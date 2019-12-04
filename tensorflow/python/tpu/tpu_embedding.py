@@ -1044,7 +1044,7 @@ class TPUEmbedding(object):
         sample_indices = (
             enqueue_data.sample_indices
             if enqueue_data.sample_indices is not None else array_ops.zeros(
-                (0,), dtype=dtypes.int32))
+                (0,), dtype=dtypes.int64))
         sample_indices_list.append(sample_indices)
 
         aggregation_weights = (

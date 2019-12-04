@@ -23,13 +23,8 @@
 #ifndef SPIRV_CONTROLFLOW_OPS
 #define SPIRV_CONTROLFLOW_OPS
 
-#ifndef SPIRV_BASE
-include "mlir/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
-
-#ifndef MLIR_CALLINTERFACES
+include "mlir/Dialect/SPIRV/SPIRVBase.td"
 include "mlir/Analysis/CallInterfaces.td"
-#endif // MLIR_CALLINTERFACES
 
 // -----
 

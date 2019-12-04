@@ -653,7 +653,13 @@ class BinaryOpsTest(xla_test.XLATestCase):
       divs = np.arange(-3, 3, .25, dtype=dtype).reshape(1, 24)
       np_result = np.true_divide(nums, divs)
       np_result[:, divs[0] == 0] = 0
-      self._testBinary(gen_math_ops.div_no_nan, nums, divs, expected=np_result)
+      self._testBinary(
+          gen_math_ops.div_no_nan,
+          nums,
+          divs,
+          expected=np_result,
+          rtol=7e-15 if dtype == np.float64 else None,
+          atol=3.9e-15 if dtype == np.float64 else None)
 
     if dtype not in self.complex_types:  # floordiv unsupported for complex.
       self._testBinary(
@@ -937,9 +943,9 @@ class BinaryOpsTest(xla_test.XLATestCase):
           dtype(50),
           expected=np.array([[50, 50], [50, 50], [50, 50]], dtype=dtype))
 
-  # Helper method used by testMatMul, testSparseMatMul, testBatchMatMul below.
-  def _testMatMul(self, op):
-    for dtype in self.float_types:
+  # Helper method used by testMatMul, testSparseMatMul below.
+  def _testMatMul(self, op, test_dtypes):
+    for dtype in test_dtypes:
       self._testBinary(
           op,
           np.array([[-0.25]], dtype=dtype),
@@ -968,7 +974,22 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([[0, 0, 0], [0, 0, 0]], dtype=dtype))
 
   def testMatMul(self):
-    self._testMatMul(math_ops.matmul)
+    self._testMatMul(math_ops.matmul, self.float_types | {np.float64})
+
+    for dtype in self.float_types | {np.float64}:
+      self._testBinary(
+          math_ops.matmul,
+          np.array([[3.1415926535897932]], dtype=dtype),
+          np.array([[2.7182818284590452]], dtype=dtype),
+          expected=np.array([[8.5397342226735668]], dtype=dtype))
+
+      # Edge case with a large range of exponent. Not supported by float16.
+      if dtype != np.float16:
+        self._testBinary(
+            math_ops.matmul,
+            np.array([[9.4039548065783000e-38]], dtype=dtype),
+            np.array([[4.5070591730234615e37]], dtype=dtype),
+            expected=np.array([[4.2384180773686798]], dtype=dtype))
 
   # TODO(phawkins): failing on GPU, no registered kernel.
   def DISABLED_testSparseMatMul(self):
@@ -982,61 +1003,57 @@ class BinaryOpsTest(xla_test.XLATestCase):
     def SparseMatmulWrapperTT(a, b):
       return math_ops.sparse_matmul(a, b, a_is_sparse=True, b_is_sparse=True)
 
-    self._testMatMul(math_ops.sparse_matmul)
-    self._testMatMul(SparseMatmulWrapperTF)
-    self._testMatMul(SparseMatmulWrapperFT)
-    self._testMatMul(SparseMatmulWrapperTT)
+    self._testMatMul(math_ops.sparse_matmul, self.float_types)
+    self._testMatMul(SparseMatmulWrapperTF, self.float_types)
+    self._testMatMul(SparseMatmulWrapperFT, self.float_types)
+    self._testMatMul(SparseMatmulWrapperTT, self.float_types)
 
   def testBatchMatMul(self):
-    # Same tests as for tf.matmul above.
-    self._testMatMul(math_ops.matmul)
-
     # Tests with batches of matrices.
-    self._testBinary(
-        math_ops.matmul,
-        np.array([[[-0.25]]], dtype=np.float32),
-        np.array([[[8]]], dtype=np.float32),
-        expected=np.array([[[-2]]], dtype=np.float32))
-    self._testBinary(
-        math_ops.matmul,
-        np.array([[[-0.25]], [[4]]], dtype=np.float32),
-        np.array([[[8]], [[2]]], dtype=np.float32),
-        expected=np.array([[[-2]], [[8]]], dtype=np.float32))
-    self._testBinary(
-        math_ops.matmul,
-        np.array(
-            [[[[7, 13], [10, 1]], [[2, 0.25], [20, 2]]],
-             [[[3, 5], [30, 3]], [[0.75, 1], [40, 4]]]],
-            dtype=np.float32),
-        np.array(
-            [[[[1, 2], [3, 4]], [[5, 6], [7, 8]]], [[[11, 22], [33, 44]],
-                                                    [[55, 66], [77, 88]]]],
-            dtype=np.float32),
-        expected=np.array(
-            [[[[46, 66], [13, 24]], [[11.75, 14], [114, 136]]],
-             [[[198, 286], [429, 792]], [[118.25, 137.5], [2508, 2992]]]],
-            dtype=np.float32))
-
-    self._testBinary(
-        math_ops.matmul,
-        np.array([], dtype=np.float32).reshape((2, 2, 0)),
-        np.array([], dtype=np.float32).reshape((2, 0, 3)),
-        expected=np.array(
-            [[[0, 0, 0], [0, 0, 0]], [[0, 0, 0], [0, 0, 0]]],
-            dtype=np.float32))
-    self._testBinary(
-        math_ops.matmul,
-        np.array([], dtype=np.float32).reshape((0, 2, 4)),
-        np.array([], dtype=np.float32).reshape((0, 4, 3)),
-        expected=np.array([], dtype=np.float32).reshape(0, 2, 3))
-
-    # Regression test for b/31472796.
-    if hasattr(np, "matmul"):
-      x = np.arange(0, 3 * 5 * 2 * 7, dtype=np.float32).reshape((3, 5, 2, 7))
+    for dtype in self.float_types | {np.float64}:
       self._testBinary(
-          lambda x, y: math_ops.matmul(x, y, adjoint_b=True),
-          x, x,
-          expected=np.matmul(x, x.transpose([0, 1, 3, 2])))
+          math_ops.matmul,
+          np.array([[[-0.25]]], dtype=dtype),
+          np.array([[[8]]], dtype=dtype),
+          expected=np.array([[[-2]]], dtype=dtype))
+      self._testBinary(
+          math_ops.matmul,
+          np.array([[[-0.25]], [[4]]], dtype=dtype),
+          np.array([[[8]], [[2]]], dtype=dtype),
+          expected=np.array([[[-2]], [[8]]], dtype=dtype))
+      self._testBinary(
+          math_ops.matmul,
+          np.array([[[[7, 13], [10, 1]], [[2, 0.25], [20, 2]]],
+                    [[[3, 5], [30, 3]], [[0.75, 1], [40, 4]]]],
+                   dtype=dtype),
+          np.array([[[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
+                    [[[11, 22], [33, 44]], [[55, 66], [77, 88]]]],
+                   dtype=dtype),
+          expected=np.array(
+              [[[[46, 66], [13, 24]], [[11.75, 14], [114, 136]]],
+               [[[198, 286], [429, 792]], [[118.25, 137.5], [2508, 2992]]]],
+              dtype=dtype))
+
+      self._testBinary(
+          math_ops.matmul,
+          np.array([], dtype=dtype).reshape((2, 2, 0)),
+          np.array([], dtype=dtype).reshape((2, 0, 3)),
+          expected=np.array([[[0, 0, 0], [0, 0, 0]], [[0, 0, 0], [0, 0, 0]]],
+                            dtype=dtype))
+      self._testBinary(
+          math_ops.matmul,
+          np.array([], dtype=dtype).reshape((0, 2, 4)),
+          np.array([], dtype=dtype).reshape((0, 4, 3)),
+          expected=np.array([], dtype=dtype).reshape(0, 2, 3))
+
+      # Regression test for b/31472796.
+      if dtype != np.float16 and hasattr(np, "matmul"):
+        x = np.arange(0, 3 * 5 * 2 * 7, dtype=dtype).reshape((3, 5, 2, 7))
+        self._testBinary(
+            lambda x, y: math_ops.matmul(x, y, adjoint_b=True),
+            x,
+            x,
+            expected=np.matmul(x, x.transpose([0, 1, 3, 2])))
 
   def testExpandDims(self):
     for dtype in self.numeric_types:

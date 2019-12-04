@@ -28,6 +28,11 @@ namespace xla_hlo {
 void PopulateGeneralDotOpLoweringPatterns(OwningRewritePatternList *patterns,
                                           MLIRContext *ctx);
 
+// Collection of rewrite patterns for lowering complex operations to equivalent
+// float operations.
+void PopulateComplexLoweringPatterns(MLIRContext *context,
+                                     OwningRewritePatternList *patterns);
+
 void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
                               MLIRContext *ctx);
 

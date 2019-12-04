@@ -147,6 +147,32 @@ func @BiasAddGrad_unranked(%arg0: tensor<*xf32>) -> tensor<?xf32> {
   return %0 : tensor<?xf32>
 }
 
+// CHECK-LABEL: func @rsqrt_grad
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<2xf32>, %[[ARG1:.*]]: tensor<2xf32>)
+func @rsqrt_grad(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<-2.000000e+00> : tensor<f32>}
+  // CHECK: %[[LHS2:.*]] = "tf.Mul"(%[[ARG0]], %[[ARG0]])
+  // CHECK: %[[LHS3:.*]] = "tf.Mul"(%[[LHS2]], %[[ARG0]])
+  // CHECK: %[[DIV:.*]] = "tf.Div"(%[[ARG1]], %[[CST]])
+  // CHECK: %[[RET:.*]] = "tf.Mul"(%[[LHS3]], %[[DIV]])
+
+  %0 = "tf.RsqrtGrad"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: return %[[RET]]
+  return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: func @rsqrt_grad_unranked
+func @rsqrt_grad_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: tf.Const
+  // CHECK: tf.Mul
+  // CHECK: tf.Mul
+  // CHECK: tf.Div
+  // CHECK: tf.Mul
+  %0 = "tf.RsqrtGrad"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+
 // CHECK-LABEL: SoftmaxCrossEntropyWithLogits
 // CHECK-SAME: %[[FEATURES:.*]]: tensor<2x3xf32>, %[[LABELS:.*]]: tensor<2x3xf32>
 func @SoftmaxCrossEntropyWithLogits(%features: tensor<2x3xf32>, %labels: tensor<2x3xf32>) -> (tensor<2xf32>, tensor<2x3xf32>) {

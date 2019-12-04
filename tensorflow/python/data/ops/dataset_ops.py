@@ -66,7 +66,6 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as tracking_base
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
@@ -2437,26 +2436,25 @@ class DatasetV1Adapter(DatasetV1):
 
 def _ensure_same_dataset_graph(dataset):
   """Walks the dataset graph to ensure all datasets come from the same graph."""
+  # pylint: disable=protected-access
   current_graph = ops.get_default_graph()
   bfs_q = Queue.Queue()
-  bfs_q.put(dataset)  # pylint: disable=protected-access
+  bfs_q.put(dataset)
   visited = []
   while not bfs_q.empty():
     ds = bfs_q.get()
     visited.append(ds)
-    ds_graph = ds._graph  # pylint: disable=protected-access
+    ds_graph = ds._graph
     if current_graph != ds_graph:
-      logging.warning("The graph (" + str(current_graph) + ") of the iterator "
-                      "is different from the graph (" + str(ds_graph) + ") "
-                      "the dataset: " + str(ds._variant_tensor) + " was "  # pylint: disable=protected-access
-                      "created in. If you are using the Estimator API, "
-                      "make sure that no part of the dataset returned by the "
-                      "`input_fn` function is defined outside the `input_fn` "
-                      "function. Please ensure that all datasets in the "
-                      "pipeline are created in the same graph as the iterator. "
-                      "NOTE: This warning will become an error in future "
-                      "versions of TensorFlow.")
-    for input_ds in ds._inputs():  # pylint: disable=protected-access
+      raise ValueError(
+          "The graph (" + str(current_graph) + ") of the iterator is different "
+          "from the graph (" + str(ds_graph) + ") the dataset: " +
+          str(ds._variant_tensor) + " was  created in. If you are using the "
+          "Estimator API, make sure that no part of the dataset returned by "
+          "the `input_fn` function is defined outside the `input_fn` function. "
+          "Please ensure that all datasets in the pipeline are created in the "
+          "same graph as the iterator.")
+    for input_ds in ds._inputs():
       if input_ds not in visited:
         bfs_q.put(input_ds)
 

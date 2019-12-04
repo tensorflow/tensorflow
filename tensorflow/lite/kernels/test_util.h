@@ -165,6 +165,9 @@ class SingleOpModel {
   }
   int AddInput(const TensorData& t, bool is_variable = false);
 
+  int AddIntermediate(TensorType type, const std::vector<float>& scale,
+                      const std::vector<int64_t>& zero_point);
+
   // Templated version of AddConstInput().
   template <typename T>
   int AddConstInput(const TensorData& t, std::initializer_list<T> data) {
@@ -183,7 +186,7 @@ class SingleOpModel {
     return AddConstInput(TensorData{type, shape}, data);
   }
 
-  // Add a null input tensor (optional input) and return kOptionalTensor.
+  // Add a null input tensor (optional input) and return kTfLiteOptionalTensor.
   int AddNullInput();
 
   // Add a TensorType output tensor and return its index.
@@ -587,6 +590,7 @@ class SingleOpModel {
 
   std::map<int, TensorData> tensor_data_;
   std::vector<int32_t> inputs_;
+  std::vector<int32_t> intermediates_;
   std::vector<int32_t> outputs_;
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<OperatorCode>> opcodes_;

@@ -362,7 +362,7 @@ struct ScatterFunctorBase<CPUDevice, T, Index, scatter_op::UpdateOp::ASSIGN> {
     // indices and params sizes were validated in DoCompute().
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
-    if (!std::is_same<T, string>::value) {
+    if (!std::is_same<T, tstring>::value) {
       for (Index i = 0; i < N; i++) {
         // Grab the index and check its validity.  Do this carefully,
         // to avoid checking the value and grabbing it again from

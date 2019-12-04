@@ -121,11 +121,12 @@ class CallTreeTransformer(converter.Base):
       # already set to be applied.
       node.decorator_list = []
     else:
+      # TODO(mdan): Fix the tests so that we can always add this decorator.
       # Inner functions are converted already, so we insert a decorator to
       # prevent double conversion. Double conversion would work too, but this
       # saves the overhead.
       node.decorator_list.append(
-          parser.parse_expression('ag__.do_not_convert_internal'))
+          parser.parse_expression('ag__.autograph_artifact'))
 
     if node.returns:
       node.returns = self.visit(node.returns)

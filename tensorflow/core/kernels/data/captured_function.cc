@@ -651,13 +651,8 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
   f_opts.step_container = &step_container;
   f_opts.runner = ctx->runner();
   f_opts.create_rendezvous = ShouldCreateRendezvous();
-  CancellationManager cancellation_manager;
+  CancellationManager cancellation_manager(ctx->cancellation_manager());
   f_opts.cancellation_manager = &cancellation_manager;
-  std::function<void()> deregister_fn;
-  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
-      ctx->cancellation_manager(),
-      [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
-  auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
                            ret_types_);
@@ -694,13 +689,8 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   f_opts.step_container = &step_container;
   f_opts.runner = ctx->runner();
   f_opts.create_rendezvous = ShouldCreateRendezvous();
-  CancellationManager cancellation_manager;
+  CancellationManager cancellation_manager(ctx->cancellation_manager());
   f_opts.cancellation_manager = &cancellation_manager;
-  std::function<void()> deregister_fn;
-  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
-      ctx->cancellation_manager(),
-      [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
-  auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
                               ret_types_);
@@ -738,13 +728,8 @@ Status InstantiatedCapturedFunction::RunInstantiated(
   f_opts.step_container = &step_container;
   f_opts.runner = &captured_runner_;
   f_opts.create_rendezvous = ShouldCreateRendezvous();
-  CancellationManager cancellation_manager;
+  CancellationManager cancellation_manager(captured_cancellation_manager_);
   f_opts.cancellation_manager = &cancellation_manager;
-  std::function<void()> deregister_fn;
-  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
-      captured_cancellation_manager_,
-      [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
-  auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
                               ret_types_);
@@ -796,17 +781,9 @@ void InstantiatedCapturedFunction::RunAsync(
   f_opts.step_container = step_container;
   f_opts.runner = ctx->runner();
   f_opts.create_rendezvous = ShouldCreateRendezvous();
-  auto cancellation_manager = absl::make_unique<CancellationManager>();
+  auto cancellation_manager =
+      absl::make_unique<CancellationManager>(ctx->cancellation_manager());
   f_opts.cancellation_manager = cancellation_manager.get();
-  std::function<void()> deregister_fn;
-  Status s = RegisterCancellationCallback(
-      ctx->cancellation_manager(),
-      [cm = cancellation_manager.get()]() { cm->StartCancel(); },
-      &deregister_fn);
-  if (!s.ok()) {
-    done(s);
-    return;
-  }
 
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   if (ctx->model() || ctx->stats_aggregator()) {
@@ -820,13 +797,11 @@ void InstantiatedCapturedFunction::RunAsync(
   auto callback = std::bind(
       [this, rets, step_container, raw_cancellation_manager, frame](
           const FunctionLibraryRuntime::DoneCallback& done,
-          IteratorContext* ctx, const std::function<void()>& deregister_fn,
-          const string& prefix,
+          IteratorContext* ctx, const string& prefix,
           const std::shared_ptr<SimpleStepStatsCollector>& stats_collector,
           // Begin unbound arguments.
           Status s) {
         delete step_container;
-        deregister_fn();
         delete raw_cancellation_manager;
         if (s.ok()) {
           s = frame->ConsumeRetvals(rets);
@@ -856,8 +831,8 @@ void InstantiatedCapturedFunction::RunAsync(
           ctx->model()->RecordStop(prefix, false /* start_output */);
         }
       },
-      std::move(done), ctx, std::move(deregister_fn), prefix,
-      std::move(stats_collector), std::placeholders::_1);
+      std::move(done), ctx, prefix, std::move(stats_collector),
+      std::placeholders::_1);
 
   profiler::TraceMe activity(
       [&] {

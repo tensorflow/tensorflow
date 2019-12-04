@@ -24,9 +24,9 @@
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/Utils.h"
-#include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/VectorOps/Utils.h"
 #include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
@@ -589,6 +589,13 @@ makePatterns(const llvm::DenseSet<Operation *> &parallelLoops, int vectorRank,
   }
 }
 
+static NestedPattern &vectorTransferPattern() {
+  static auto pattern = matcher::Op([](Operation &op) {
+    return isa<vector::TransferReadOp>(op) || isa<vector::TransferWriteOp>(op);
+  });
+  return pattern;
+}
+
 namespace {
 
 /// Base state for the vectorize pass.
@@ -893,7 +900,8 @@ isVectorizableLoopPtrFactory(const llvm::DenseSet<Operation *> &parallelLoops,
     if (parallelIt == parallelLoops.end())
       return false;
     int memRefDim = -1;
-    auto vectorizableBody = isVectorizableLoopBody(loop, &memRefDim);
+    auto vectorizableBody =
+        isVectorizableLoopBody(loop, &memRefDim, vectorTransferPattern());
     if (!vectorizableBody)
       return false;
     return memRefDim == -1 || fastestVaryingMemRefDimension == -1 ||
@@ -1172,7 +1180,7 @@ static LogicalResult vectorizeRootMatch(NestedMatch m,
   // vectorizable. If a pattern is not vectorizable anymore, we just skip it.
   // TODO(ntv): implement a non-greedy profitability analysis that keeps only
   // non-intersecting patterns.
-  if (!isVectorizableLoopBody(loop)) {
+  if (!isVectorizableLoopBody(loop, vectorTransferPattern())) {
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ loop is not vectorizable");
     return failure();
   }

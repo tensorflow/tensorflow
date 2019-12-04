@@ -110,6 +110,17 @@ StatusOr<std::string> GetComputationHloDotGraph(
                      RenderedGraphFormat::kDot);
 }
 
+// Hashes the HLO module.
+StatusOr<uint64> HashComputation(const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          computation.proto(), GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      HloModule::CreateFromProto(computation.proto(), module_config));
+  return hlo_module->Hash();
+}
+
 // Registers a 'fn_capsule' as a CPU custom call target.
 // 'fn_capsule' must be a void* pointer encapsulated in a PyCapsule object,
 // with name "xla._CUSTOM_CALL_TARGET".
@@ -577,7 +588,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("GetProgramShape", &XlaComputation::GetProgramShape)
       .def("GetSerializedProto", &GetComputationSerializedProto)
       .def("GetHloText", &GetComputationHloText)
-      .def("GetHloDotGraph", &GetComputationHloDotGraph);
+      .def("GetHloDotGraph", &GetComputationHloDotGraph)
+      .def("Hash", &HashComputation);
 
   py::class_<XlaOp>(m, "XlaOp");
 

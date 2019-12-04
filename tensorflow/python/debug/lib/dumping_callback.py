@@ -119,6 +119,8 @@ class _DumpingCallback(object):
     """Get a unique ID for an op-construction context (e.g., a graph).
 
     If the graph has been encountered before, reuse the same unique ID.
+    When encountering a new context (graph), this methods writes a DebugEvent
+    proto with the debugged_graph field to the proper DebugEvent file.
 
     Args:
       context: A context to get the unique ID for. Must be hashable. E.g., a
@@ -130,10 +132,34 @@ class _DumpingCallback(object):
     # Use the double-checked lock pattern to optimize the common case.
     if context in self._context_to_id:  # 1st check, without lock.
       return self._context_to_id[context]
+    graph_is_new = False
     with self._context_to_id_lock:
       if context not in self._context_to_id:  # 2nd check, with lock.
-        self._context_to_id[context] = _get_id()
-      return self._context_to_id[context]
+        graph_is_new = True
+        context_id = _get_id()
+        self._context_to_id[context] = context_id
+    if graph_is_new:
+      self.get_writer().WriteDebuggedGraph(debug_event_pb2.DebuggedGraph(
+          graph_id=context_id,
+          graph_name=getattr(context, "name", None),
+          outer_context_id=self._get_outer_context_id(context)))
+    return self._context_to_id[context]
+
+  def _get_outer_context_id(self, graph):
+    """Get the ID of the immediate outer context of the input graph.
+
+    Args:
+      graph: The graph (context) in question.
+
+    Returns:
+      If an outer context exists, the immediate outer context name as a string.
+      If such as outer context does not exist (i.e., `graph` is itself
+      outermost), `None`.
+    """
+    if hasattr(graph, "outer_graph") and graph.outer_graph:
+      return self._get_context_id(graph.outer_graph)
+    else:
+      return None
 
   def _write_source_file_content(self, file_path):
     """Send the content of a source file via debug-events writer.
@@ -352,7 +378,7 @@ class _DumpingCallback(object):
 
     writer = self.get_writer()
     if graph:
-      context_id = self._get_context_id(graph)
+      context_id = self._get_context_id(graph)  # Innermost context ID.
       assert op_name is not None
       output_tensor_ids = self._get_symbolic_tensor_ids(len(outputs))
       graph_op_creation = debug_event_pb2.GraphOpCreation(

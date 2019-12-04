@@ -107,12 +107,12 @@ tblgen::Attribute tblgen::Attribute::getBaseAttr() const {
   return *this;
 }
 
-bool tblgen::Attribute::hasDefaultValueInitializer() const {
+bool tblgen::Attribute::hasDefaultValue() const {
   const auto *init = def->getValueInit("defaultValue");
   return !getValueAsString(init).empty();
 }
 
-StringRef tblgen::Attribute::getDefaultValueInitializer() const {
+StringRef tblgen::Attribute::getDefaultValue() const {
   const auto *init = def->getValueInit("defaultValue");
   return getValueAsString(init);
 }

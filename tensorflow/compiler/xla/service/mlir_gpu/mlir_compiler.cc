@@ -344,15 +344,26 @@ Status InsertBufferLoadPreduleIntoKernel(
             loc, entry_type, builder.getI64IntegerAttr(extent.value()));
         builder.create<mlir::LLVM::StoreOp>(loc, extentValue, shapeEntryPtr);
       }
-      // Finally, fill the strides with all ones.
+      // Finally, fill the strides.
+      // TODO(b/137624192): Take assigned layout into account.
       entry_type = struct_type.getStructElementType(4).getArrayElementType();
-      for (int64 idx = 0; idx < shape.rank(); ++idx) {
+      Value* accumulator = nullptr;
+      for (int64 idx = shape.rank() - 1; idx >= 0; --idx) {
         auto indexValue = builder.create<mlir::LLVM::ConstantOp>(
             loc, offset_type, builder.getI64IntegerAttr(idx));
         auto strideEntryPtr = builder.create<mlir::LLVM::GEPOp>(
             loc, entry_type, descPtr,
             llvm::ArrayRef<Value*>{zero, strideIndex, indexValue});
-        builder.create<mlir::LLVM::StoreOp>(loc, one, strideEntryPtr);
+        if (accumulator) {
+          auto strideValue = builder.create<mlir::LLVM::ConstantOp>(
+              loc, entry_type,
+              builder.getI64IntegerAttr(shape.dimensions(idx + 1)));
+          accumulator = builder.create<mlir::LLVM::MulOp>(
+              loc, entry_type, accumulator, strideValue);
+        } else {
+          accumulator = one;
+        }
+        builder.create<mlir::LLVM::StoreOp>(loc, accumulator, strideEntryPtr);
       }
       // Now we can use the descriptor instead of the original argument.
       value->replaceAllUsesWith(descPtr);

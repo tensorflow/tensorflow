@@ -384,7 +384,7 @@ class Translator {
       const ::tensorflow::NodeDef& node_def, const mlir::Location& loc);
 
   // Returns opcode index for op identified by the op_name, if already
-  // available. Otherwise, creates a new OperactorCode using the given `builtin`
+  // available. Otherwise, creates a new OperatorCode using the given `builtin`
   // operator and associates it with `op_name`.
   uint32_t GetOpcodeIndex(const std::string& op_name,
                           tflite::BuiltinOperator builtin);
@@ -961,7 +961,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
     operands.reserve(inst.getNumOperands());
     for (auto* operand : inst.getOperands()) {
       if (operand->getType().isa<NoneType>())
-        operands.push_back(kOptionalTensor);
+        operands.push_back(kTfLiteOptionalTensor);
       else
         operands.push_back(tensor_index_map.lookup(operand));
     }

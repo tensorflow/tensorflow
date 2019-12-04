@@ -112,6 +112,24 @@ class ComputationPrinting(absltest.TestCase):
     self.assertTrue(hlo_dot_graph.startswith("digraph "))
 
 
+class ComputationHashTest(absltest.TestCase):
+
+  def testHash(self):
+    builder0 = xla_client.ComputationBuilder("computation0")
+    p0 = builder0.ParameterFromNumpy(np.float32(0))
+    p1 = builder0.ParameterFromNumpy(np.zeros((4,), np.float32))
+    builder0.Mul(p0, p1)
+    computation0 = builder0.Build()
+
+    builder1 = xla_client.ComputationBuilder("computation1")
+    p0 = builder1.ParameterFromNumpy(np.float32(0))
+    p1 = builder1.ParameterFromNumpy(np.zeros((4,), np.float32))
+    builder1.Mul(p0, p1)
+    computation1 = builder1.Build()
+
+    self.assertEqual(computation0.Hash(), computation1.Hash())
+
+
 class ComputationsWithConstantsTest(ComputationTest):
   """Tests focusing on Constant ops."""
 

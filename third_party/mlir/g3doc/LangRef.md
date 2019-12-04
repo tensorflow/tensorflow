@@ -147,7 +147,7 @@ id-punct  ::= [$._-]
 integer-literal ::= decimal-literal | hexadecimal-literal
 decimal-literal ::= digit+
 hexadecimal-literal ::= `0x` hex_digit+
-float-literal   ::= TODO
+float-literal ::= [-+]?[0-9]+[.][0-9]*([eE][-+]?[0-9]+)?
 string-literal  ::= `"` [^"\n\f\v\r]* `"`   TODO define escaping rules
 ```
 
@@ -162,10 +162,9 @@ Syntax:
 // Identifiers
 bare-id ::= (letter|[_]) (letter|digit|[_$.])*
 bare-id-list ::= bare-id (`,` bare-id)*
-suffix-id ::= digit+ | ((letter|id-punct) (letter|id-punct|digit)*)
+ssa-id ::= `%` (digit+ | ((letter|id-punct) (letter|id-punct|digit)*))
 
 symbol-ref-id ::= `@` (bare-id | string-literal)
-ssa-id ::= `%` suffix-id
 ssa-id-list ::= ssa-id (`,` ssa-id)*
 
 // Uses of an SSA value, e.g. in an operand list to an operation.
@@ -243,6 +242,7 @@ operation ::= op-result? string-literal `(` ssa-use-list? `)`
               (`[` successor-list `]`)? (`(` region-list `)`)?
               attribute-dict? `:` function-type
 op-result ::= ssa-id ((`:` integer-literal) | (`,` ssa-id)*) `=`
+successor ::= caret-id (`:` bb-arg-list)?
 successor-list ::= successor (`,` successor)*
 region-list    ::= region (`,` region)*
 ```
@@ -377,6 +377,7 @@ Syntax:
 block           ::= bb-label operation+
 bb-label        ::= bb-id bb-arg-list? `:`
 bb-id           ::= caret-id
+caret-id        ::= `^` bare-id
 ssa-id-and-type ::= ssa-id `:` type
 
 // Non-empty list of names and types.
@@ -587,17 +588,23 @@ Similarly to operations, dialects may define custom extensions to the type
 system.
 
 ``` {.ebnf}
-dialect-type ::= '!' dialect-namespace '<' '"' type-specific-data '"' '>'
-dialect-type ::= '!' dialect-namespace '.' pretty-dialect-type-lead-ident
-                          pretty-dialect-type-body?
+dialect-namespace ::= bare-id
 
-pretty-dialect-type-lead-ident ::= '[A-Za-z][A-Za-z0-9._]*'
-pretty-dialect-type-body ::= '<' pretty-dialect-type-contents+ '>'
-pretty-dialect-type-contents ::= pretty-dialect-type-body
-                              | '(' pretty-dialect-type-contents+ ')'
-                              | '[' pretty-dialect-type-contents+ ']'
-                              | '{' pretty-dialect-type-contents+ '}'
+opaque-dialect-item ::= dialect-namespace '<' string-literal '>'
+
+pretty-dialect-item ::= dialect-namespace '.' pretty-dialect-item-lead-ident
+                                              pretty-dialect-item-body?
+
+pretty-dialect-item-lead-ident ::= '[A-Za-z][A-Za-z0-9._]*'
+pretty-dialect-item-body ::= '<' pretty-dialect-item-contents+ '>'
+pretty-dialect-item-contents ::= pretty-dialect-item-body
+                              | '(' pretty-dialect-item-contents+ ')'
+                              | '[' pretty-dialect-item-contents+ ']'
+                              | '{' pretty-dialect-item-contents+ '}'
                               | '[^[<({>\])}\0]+'
+
+dialect-type ::= '!' opaque-dialect-item
+dialect-type ::= '!' pretty-dialect-item
 ```
 
 Dialect types can be specified in a verbose form, e.g. like this:
@@ -1137,20 +1144,14 @@ Example:
 
 ### Dialect Attribute Values
 
-Similarly to operations, dialects may define custom attribute values.
+Similarly to operations, dialects may define custom attribute values. The
+syntactic structure of these values is identical to custom dialect type values,
+except that dialect attributes values are distinguished with a leading '#',
+while dialect types are distinguished with a leading '!'.
 
 ``` {.ebnf}
-dialect-attribute ::= '#' dialect-namespace '<' '"' attr-specific-data '"' '>'
-dialect-attribute ::= '#' dialect-namespace '.' pretty-dialect-attr-lead-ident
-                          pretty-dialect-attr-body?
-
-pretty-dialect-attr-lead-ident ::= '[A-Za-z][A-Za-z0-9._]*'
-pretty-dialect-attr-body ::= '<' pretty-dialect-attr-contents+ '>'
-pretty-dialect-attr-contents ::= pretty-dialect-attr-body
-                              | '(' pretty-dialect-attr-contents+ ')'
-                              | '[' pretty-dialect-attr-contents+ ']'
-                              | '{' pretty-dialect-attr-contents+ '}'
-                              | '[^[<({>\])}\0]+'
+dialect-attribute ::= '#' opaque-dialect-item
+dialect-attribute ::= '#' pretty-dialect-item
 ```
 
 Dialect attributes can be specified in a verbose form, e.g. like this:

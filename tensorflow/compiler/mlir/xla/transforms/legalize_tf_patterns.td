@@ -20,14 +20,6 @@ include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
-def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
-def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
-
-def CastIntElementsAttr : NativeCodeCall<"$0.cast<DenseIntElementsAttr>()">;
-
-class ConstantSplat<string value> : NativeCodeCall<
-    "getSplat($_builder, $0, " # value # ")">;
-
 //===----------------------------------------------------------------------===//
 // BatchNorm op patterns.
 //===----------------------------------------------------------------------===//
@@ -64,10 +56,6 @@ def : Pat<(TF_BiasAddOp AnyStaticShapeTensor:$input, $bias, $data_format),
 //===----------------------------------------------------------------------===//
 // Binary op patterns.
 //===----------------------------------------------------------------------===//
-
-// Get the broadcast dimensions attribute from the binary operands.
-def BinBroadcastDimensions : NativeCodeCall<
-    "getBroadcastDimensionsAttr($_builder, $0, $1)">;
 
 // Check that two values can be broadcasted together
 def AreBroadcastCompatible : Constraint<CPred<"AreBroadcastCompatible($0, $1)">,
@@ -169,15 +157,16 @@ def : Pat<(TF_BroadcastToOp:$result AnyRankedTensor:$input, $shape),
            [(AnyRankedTensor $result)]>;
 
 //===----------------------------------------------------------------------===//
-// Logical binary op patterns.
+// Logical & bitwise binary op patterns.
 //===----------------------------------------------------------------------===//
 
 class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
-  : Pat<(FromOp I1Tensor:$l, I1Tensor:$r),
+  : Pat<(FromOp IntegerTensor:$l, IntegerTensor:$r),
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
 
 foreach fromToBinPair = [[TF_LogicalAndOp, HLO_AndOp],
-                         [TF_LogicalOrOp, HLO_OrOp]] in
+                         [TF_LogicalOrOp, HLO_OrOp],
+                         [TF_BitwiseOrOp, HLO_OrOp]] in
   def : DirectLogicalBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
@@ -248,7 +237,7 @@ def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis)),
 //===----------------------------------------------------------------------===//
 
 def CastElementsToI64Elements : NativeCodeCall<
-  "::xla::ConvertElementsAttr("
+  "xla::ConvertElementsAttr("
     "$0, $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
 
 def : Pat<(TF_CrossReplicaSumOp $input, (TF_ConstOp $group_assignment)),
@@ -267,25 +256,21 @@ def : Pat<(TF_RFFTOp $input, (TF_ConstOp I32ElementsAttr:$fft_length)),
 // Pad op patterns.
 //===----------------------------------------------------------------------===//
 
-def ZeroPaddingAttr : NativeCodeCall <
-  "DenseIntElementsAttr::get("
-    "RankedTensorType::get($0.getType().getShape()[0],"
-    "                      getElementTypeOrSelf($0.getType())), "
-    "{$_builder.getZeroAttr(getElementTypeOrSelf($0.getType()))})">;
-
 class SliceDenseIntElementsAttrColumn2D<string column> : NativeCodeCall<
-  "SliceDenseIntElementsAttrColumn2D("
-    "&$_builder, $0, " # column # " )">;
+  "SliceDenseIntElementsAttrColumn2D($0, " # column # " )">;
 
 class SliceDenseIntElementsAttr<string index, string axis> : NativeCodeCall<
-  "SliceDenseIntElementsAttr(&$_builder, $0, " # index # ", " # axis # ")">;
+  "SliceDenseIntElementsAttr($0, " # index # ", " # axis # ")">;
 
+// Interior padding attribute based on the TF padding.
+def GetInteriorPadding : NativeCodeCall <
+  "GetInteriorPadding($0)">;
 
-def : Pat<(TF_PadV2Op $input, (TF_ConstOp I64ElementsAttr:$padding), $c),
+def : Pat<(TF_PadV2Op $input, (TF_ConstOp $padding), $c),
           (HLO_PadOp $input, $c,
            (SliceDenseIntElementsAttrColumn2D<"0"> $padding),
            (SliceDenseIntElementsAttrColumn2D<"1"> $padding),
-           (ZeroPaddingAttr $padding))>;
+           (GetInteriorPadding $padding))>;
 
 //===----------------------------------------------------------------------===//
 // Identity op patterns.

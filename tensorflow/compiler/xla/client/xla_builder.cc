@@ -2150,7 +2150,16 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
 
     AddCalledComputation(computation, &instr);
 
-    return AddInstruction(std::move(instr), HloOpcode::kAllReduce, operands);
+    TF_ASSIGN_OR_RETURN(
+        auto all_reduce,
+        AddInstruction(std::move(instr), HloOpcode::kAllReduce, operands));
+    if (operand_shape->IsTuple() && !shape.IsTuple()) {
+      // For a single-element tuple, wrap the result into a tuple.
+      TF_RET_CHECK(operand_shapes.size() == 1);
+      TF_RET_CHECK(ShapeUtil::Compatible(*operand_shapes[0], shape));
+      return Tuple({all_reduce});
+    }
+    return all_reduce;
   });
 }
 

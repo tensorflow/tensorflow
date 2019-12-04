@@ -2501,6 +2501,32 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
     out2_1 = model2.predict_on_batch(x)
     self.assertNotAllClose(out2_0, out2_1)
 
+  def test_toggle_value(self):
+    input_0 = keras.layers.Input(shape=(1,))
+    dense_0 = keras.layers.Dense(1, kernel_initializer='ones',
+                                 bias_initializer='ones')
+    dense_1 = keras.layers.Dense(1, kernel_initializer='ones',
+                                 bias_initializer='ones')
+    result = keras.layers.Add()([dense_0(input_0), dense_1(input_0)])
+    model = keras.models.Model(input_0, result)
+    dense_0.trainable = False
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    x = np.ones((10, 1))
+    y = 5 * x + 2
+    model.train_on_batch(x, y)
+    dense_0.trainable = True
+    model.train_on_batch(x, y)
+    kernel, bias = dense_0.get_weights()
+    self.assertAllEqual([kernel[0, 0], bias[0]], [1., 1.])
+
+    kernel, bias = dense_1.get_weights()
+    self.assertAllClose([kernel[0, 0], bias[0]], [1.1176, 1.1176])
+
 
 class TestTrainingWithDataTensors(keras_parameterized.TestCase):
 

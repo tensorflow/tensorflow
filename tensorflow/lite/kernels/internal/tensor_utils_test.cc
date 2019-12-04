@@ -54,31 +54,143 @@ TEST(uKernels, VectorScalarMultiply) {
                    0.6,  0.7,  0.8,  0.9,  1.0,  1.1,  1.2,  1.3,  1.4})));
 }
 
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+
 // Test if a float array if full of zero values.
 TEST(uKernels, IsZeroFloatTest) {
-  constexpr int kVectorSize = 21;
-  static float zeros[kVectorSize] = {0.0};
-  EXPECT_TRUE(IsZeroVector(zeros, kVectorSize));
-
-  static float nonzeros[kVectorSize] = {
-      1e-6,  1e-7,  1e-8,  1e-9,  1e-10, 1e-11, 1e-12,
-      1e-13, 1e-14, 1e-15, 1e-16, 1e-17, 1e-18, 1e-19,
-      1e-20, 1e-21, 1e-22, 1e-23, 1e-24, 1e-25, 1e-26};
-  EXPECT_FALSE(IsZeroVector(nonzeros, kVectorSize));
+  // Single NEON vector (= 4 floats)
+  {
+    const float four_zeros[4] = {0, 0, 0, 0};
+    EXPECT_TRUE(IsZeroVector(four_zeros, ARRAY_SIZE(four_zeros)));
+  }
+  {
+    const float four_nonzeros[4] = {1, 2, 3, 4};
+    EXPECT_FALSE(IsZeroVector(four_nonzeros, ARRAY_SIZE(four_nonzeros)));
+  }
+  // Multiple NEON vectors
+  {
+    const float eight_zeros[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    EXPECT_TRUE(IsZeroVector(eight_zeros, ARRAY_SIZE(eight_zeros)));
+  }
+  {
+    const float eight_nonzeros[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+    EXPECT_FALSE(IsZeroVector(eight_nonzeros, ARRAY_SIZE(eight_nonzeros)));
+  }
+  {
+    const float multiple_four_mixed1[8] = {0, 0, 0, 0, 5, 6, 7, 8};
+    EXPECT_FALSE(
+        IsZeroVector(multiple_four_mixed1, ARRAY_SIZE(multiple_four_mixed1)));
+  }
+  {
+    const float multiple_four_mixed2[8] = {1, 2, 3, 4, 0, 0, 0, 0};
+    EXPECT_FALSE(
+        IsZeroVector(multiple_four_mixed2, ARRAY_SIZE(multiple_four_mixed2)));
+  }
+  // less than one NEON vector
+  {
+    const float three_zeros[3] = {0, 0, 0};
+    EXPECT_TRUE(IsZeroVector(three_zeros, ARRAY_SIZE(three_zeros)));
+  }
+  {
+    const float three_nonzeros[3] = {1, 2, 3};
+    EXPECT_FALSE(IsZeroVector(three_nonzeros, ARRAY_SIZE(three_nonzeros)));
+  }
+  {
+    const float three_mixed[3] = {1, 0, 3};
+    EXPECT_FALSE(IsZeroVector(three_mixed, ARRAY_SIZE(three_mixed)));
+  }
+  // Postamble after NEON vectors
+  {
+    const float seven_zeros[7] = {0, 0, 0, 0, 0, 0, 0};
+    EXPECT_TRUE(IsZeroVector(seven_zeros, ARRAY_SIZE(seven_zeros)));
+  }
+  {
+    const float seven_nonzeros[7] = {1, 2, 3, 4, 5, 6, 7};
+    EXPECT_FALSE(IsZeroVector(seven_nonzeros, ARRAY_SIZE(seven_nonzeros)));
+  }
+  {
+    const float nonzeros_after_zeros[7] = {0, 0, 0, 0, 5, 6, 7};
+    EXPECT_FALSE(
+        IsZeroVector(nonzeros_after_zeros, ARRAY_SIZE(nonzeros_after_zeros)));
+  }
 }
 
 // Test if an int8 array if full of zero values.
 TEST(uKernels, IsZeroInt8Test) {
-  constexpr int kVectorSize = 43;
-  static int8_t zeros[kVectorSize] = {0};
-  EXPECT_TRUE(IsZeroVector(zeros, kVectorSize));
-
-  for (int i = 0; i < kVectorSize; ++i) {
-    int8_t non_zeros[kVectorSize] = {0};
-    non_zeros[i] = 1;
-    EXPECT_FALSE(IsZeroVector(non_zeros, kVectorSize));
+  // Single NEON vector (= 16x int8_t)
+  {
+    const int8_t sixteen_zeros[16] = {0, 0, 0, 0, 0, 0, 0, 0,
+                                      0, 0, 0, 0, 0, 0, 0, 0};
+    EXPECT_TRUE(IsZeroVector(sixteen_zeros, ARRAY_SIZE(sixteen_zeros)));
+  }
+  {
+    const int8_t sixteen_nonzeros[16] = {1, 2,  3,  4,  5,  6,  7,  8,
+                                         9, 10, 11, 12, 13, 14, 15, 16};
+    EXPECT_FALSE(IsZeroVector(sixteen_nonzeros, ARRAY_SIZE(sixteen_nonzeros)));
+  }
+  // Multiple NEON vectors
+  {
+    const int8_t thritytwo_zeros[32] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    EXPECT_TRUE(IsZeroVector(thritytwo_zeros, ARRAY_SIZE(thritytwo_zeros)));
+  }
+  {
+    const int8_t thritytwo_nonzeros[32] = {
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+    EXPECT_FALSE(
+        IsZeroVector(thritytwo_nonzeros, ARRAY_SIZE(thritytwo_nonzeros)));
+  }
+  {
+    const int8_t thritytwo_mixed1[32] = {1,  2,  3,  4,  5,  6, 7, 8, 9, 10, 11,
+                                         12, 13, 14, 15, 16, 0, 0, 0, 0, 0,  0,
+                                         0,  0,  0,  0,  0,  0, 0, 0, 0, 0};
+    EXPECT_FALSE(IsZeroVector(thritytwo_mixed1, ARRAY_SIZE(thritytwo_mixed1)));
+  }
+  {
+    const int8_t thritytwo_mixed2[32] = {0, 0, 0, 0,  0,  0,  0,  0,  0,  0, 0,
+                                         0, 0, 0, 0,  0,  1,  2,  3,  4,  5, 6,
+                                         7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+    EXPECT_FALSE(IsZeroVector(thritytwo_mixed2, ARRAY_SIZE(thritytwo_mixed2)));
+  }
+  // less than one NEON vector
+  {
+    const int8_t fifteen_zeros[15] = {0, 0, 0, 0, 0, 0, 0, 0,
+                                      0, 0, 0, 0, 0, 0, 0};
+    EXPECT_TRUE(IsZeroVector(fifteen_zeros, ARRAY_SIZE(fifteen_zeros)));
+  }
+  {
+    const int8_t fifteen_nonzeros[15] = {1, 2,  3,  4,  5,  6,  7, 8,
+                                         9, 10, 11, 12, 13, 14, 15};
+    EXPECT_FALSE(IsZeroVector(fifteen_nonzeros, ARRAY_SIZE(fifteen_nonzeros)));
+  }
+  {
+    const int8_t fifteen_mixed[15] = {1, 0, 3,  0, 5,  0, 7, 0,
+                                      9, 0, 11, 0, 13, 0, 15};
+    EXPECT_FALSE(IsZeroVector(fifteen_mixed, ARRAY_SIZE(fifteen_mixed)));
+  }
+  // Postamble after NEON vectors
+  {
+    const int8_t seventeen_zeros[17] = {0, 0, 0, 0, 0, 0, 0, 0,
+                                        0, 0, 0, 0, 0, 0, 0};
+    EXPECT_TRUE(IsZeroVector(seventeen_zeros, ARRAY_SIZE(seventeen_zeros)));
+  }
+  {
+    const int8_t seventeen_nonzeros[17] = {1,  2,  3,  4,  5,  6,  7,  8, 9,
+                                           10, 11, 12, 13, 14, 15, 16, 17};
+    EXPECT_FALSE(
+        IsZeroVector(seventeen_nonzeros, ARRAY_SIZE(seventeen_nonzeros)));
+  }
+  {
+    const int8_t nonzeros_after_zeros[17] = {0, 0, 0, 0, 0, 0, 0, 0,
+                                             0, 0, 0, 0, 0, 0, 17};
+    EXPECT_FALSE(
+        IsZeroVector(nonzeros_after_zeros, ARRAY_SIZE(nonzeros_after_zeros)));
   }
 }
+
+#undef ARRAY_SIZE
 
 TEST(uKernels, SymmetricQuantizeFloatsTest) {
   constexpr int kVectorSize = 9;
@@ -1442,6 +1554,19 @@ TEST(uKernels, BatchVectorBatchVectorDotProductTest) {
   EXPECT_THAT(output, ElementsAreArray(ArrayFloatNear({0.5, 1.75})));
 }
 
+TEST(uKernels, BatchVectorBatchVectorDotProductIntegerTest) {
+  constexpr int kVectorSize = 5;
+  constexpr int kBatch = 2;
+  static int16_t input1[kVectorSize * kBatch] = {0,   5,  10,  -15, 20,
+                                                 -25, 30, -35, 40,  -45};
+  static int16_t input2[kVectorSize * kBatch] = {1,  -1, 1,  -1, 1,
+                                                 -1, 1,  -1, 1,  1};
+  std::vector<int32_t> output(kBatch);
+  BatchVectorBatchVectorDotProduct(input1, input2, kVectorSize, kBatch,
+                                   output.data(), /*result_stride=*/1);
+  EXPECT_THAT(output, ElementsAreArray(ArrayFloatNear({40, 85})));
+}
+
 TEST(uKernels, VectorShiftLeftTest) {
   constexpr int kVectorSize = 5;
   static float input[kVectorSize] = {0.0, -0.5, 1.0, -1.5, 2.0};
@@ -1470,6 +1595,17 @@ TEST(uKernels, ReductionSumVectorTest) {
   ReductionSumVector(input, result2.data(), kOutputVectorSize2,
                      kReductionSize2);
   EXPECT_THAT(result2, ElementsAreArray(ArrayFloatNear({1.0, 3.5})));
+}
+
+TEST(uKernels, ReductionSumVectorIntegerTest) {
+  constexpr int kInputVectorSize = 10;
+  constexpr int kOutputVectorSize1 = 5;
+  constexpr int kReductionSize1 = 2;
+  static int32_t input[kInputVectorSize] = {1, 2, 1, 5, -3, 2, 1, 2, 5, 10};
+  std::vector<int32_t> result1(kOutputVectorSize1);
+  ReductionSumVector(input, result1.data(), kOutputVectorSize1,
+                     kReductionSize1);
+  EXPECT_THAT(result1, testing::ElementsAreArray({3, 6, -1, 3, 15}));
 }
 
 namespace {

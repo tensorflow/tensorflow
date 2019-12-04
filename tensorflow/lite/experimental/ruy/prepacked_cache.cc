@@ -58,19 +58,14 @@ void PrepackedCache::EjectOne() {
   PrepackedMatrix &pmatrix = oldest->second.first;
   cache_size_ -= pmatrix.data_size;
   cache_size_ -= pmatrix.sums_size;
-  allocator_.FreeOne(pmatrix.data);
-  allocator_.FreeOne(pmatrix.sums);
+  allocator_.Free(pmatrix.data);
+  allocator_.Free(pmatrix.sums);
   cache_.erase(oldest);
 }
 
 void PrepackedCache::AllocatePrepackedMatrix(PrepackedMatrix *pmatrix) {
-  pmatrix->data = AllocateBytes(pmatrix->data_size);
-  pmatrix->sums = AllocateBytes(pmatrix->sums_size);
-}
-
-void *PrepackedCache::AllocateBytes(std::ptrdiff_t num_bytes) {
-  // Force system allocation for now to enable easy ejections.
-  return allocator_.AllocateSlow(num_bytes);
+  pmatrix->data = allocator_.Alloc(pmatrix->data_size);
+  pmatrix->sums = allocator_.Alloc(pmatrix->sums_size);
 }
 
 void PrepackedCache::DoInsert(const CacheKey &key,

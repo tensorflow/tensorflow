@@ -45,8 +45,8 @@ public class FileUtil {
   @NonNull
   public static List<String> loadLabels(@NonNull Context context, @NonNull String filePath)
       throws IOException {
-    SupportPrecondtions.checkNotNull(context, "Context cannot be null.");
-    SupportPrecondtions.checkNotNull(filePath, "File path cannot be null.");
+    SupportPreconditions.checkNotNull(context, "Context cannot be null.");
+    SupportPreconditions.checkNotNull(filePath, "File path cannot be null.");
     List<String> labels = new ArrayList<>();
     BufferedReader reader =
         new BufferedReader(new InputStreamReader(context.getAssets().open(filePath)));
@@ -69,8 +69,8 @@ public class FileUtil {
   @NonNull
   public static MappedByteBuffer loadMappedFile(@NonNull Context context, @NonNull String filePath)
       throws IOException {
-    SupportPrecondtions.checkNotNull(context, "Context should not be null.");
-    SupportPrecondtions.checkNotNull(filePath, "File path cannot be null.");
+    SupportPreconditions.checkNotNull(context, "Context should not be null.");
+    SupportPreconditions.checkNotNull(filePath, "File path cannot be null.");
     AssetFileDescriptor fileDescriptor = context.getAssets().openFd(filePath);
     FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor());
     FileChannel fileChannel = inputStream.getChannel();

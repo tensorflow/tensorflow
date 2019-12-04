@@ -111,3 +111,27 @@ func @compare_float(%arg0: tensor<4xf32>) -> (tensor<4xi1>,tensor<4xi1>,tensor<4
   return %0, %1, %2, %3, %4, %5: tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>
 }
 
+// CHECK-LABEL: func @int_constant
+func @int_constant() -> (tensor<i32>, tensor<2x3xi32>, tensor<2x3xi32>) {
+  // CHECK-NEXT: [[CST0:%.+]] = constant {{.+}} : tensor<i32>
+  %0 = "xla_hlo.constant"() {value = dense<0> : tensor<i32>} : () -> (tensor<i32>)
+  // CHECK-NEXT: [[CST1:%.+]] = constant {{.+}} : tensor<2x3xi32>
+  %1 = "xla_hlo.constant"() {value = dense<1> : tensor<2x3xi32>} : () -> (tensor<2x3xi32>)
+  // CHECK-NEXT: [[CST2:%.+]] = constant {{.+}} : tensor<2x3xi32>
+  %2 = "xla_hlo.constant"() {value = dense<[[1, 2, 3], [4, 5, 6]]> : tensor<2x3xi32>} : () -> (tensor<2x3xi32>)
+  // CHECK-NEXT: return [[CST0]], [[CST1]], [[CST2]] : tensor<i32>, tensor<2x3xi32>, tensor<2x3xi32>
+  return %0, %1, %2: tensor<i32>, tensor<2x3xi32>, tensor<2x3xi32>
+}
+
+// CHECK-LABEL: func @float_constant
+func @float_constant() -> (tensor<f32>, tensor<2x3xf32>, tensor<2x3xf32>) {
+  // CHECK-NEXT: [[CST0:%.+]] = constant {{.+}} : tensor<f32>
+  %0 = "xla_hlo.constant"() {value = dense<0.0> : tensor<f32>} : () -> (tensor<f32>)
+  // CHECK-NEXT: [[CST1:%.+]] = constant {{.+}} : tensor<2x3xf32>
+  %1 = "xla_hlo.constant"() {value = dense<1.0> : tensor<2x3xf32>} : () -> (tensor<2x3xf32>)
+  // CHECK-NEXT: [[CST2:%.+]] = constant {{.+}} : tensor<2x3xf32>
+  %2 = "xla_hlo.constant"() {value = dense<[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]> : tensor<2x3xf32>} : () -> (tensor<2x3xf32>)
+  // CHECK-NEXT: return [[CST0]], [[CST1]], [[CST2]] : tensor<f32>, tensor<2x3xf32>, tensor<2x3xf32>
+  return %0, %1, %2: tensor<f32>, tensor<2x3xf32>, tensor<2x3xf32>
+}
+
