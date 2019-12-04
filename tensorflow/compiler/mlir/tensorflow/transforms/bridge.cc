@@ -76,7 +76,7 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
   if (enable_logging)
     bridge.addInstrumentation(std::make_unique<tensorflow::BridgeLogger>());
 
-  StandardPipeline::Options pipeline_options;
+  StandardPipelineOptions pipeline_options;
   pipeline_options.enable_inliner.setValue(enable_inliner);
   CreateTFStandardPipeline(bridge, pipeline_options);
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
