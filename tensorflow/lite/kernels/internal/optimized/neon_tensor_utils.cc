@@ -957,11 +957,6 @@ void NeonCpuBackendGemm(const int8_t* input, const int32_t* bias,
   using ::tflite::cpu_backend_gemm::Gemm;
   using ::tflite::cpu_backend_gemm::GemmParams;
   using ::tflite::cpu_backend_gemm::MatrixParams;
-  using ::tflite::cpu_backend_gemm::QuantizationFlavor;
-
-  ruy::Matrix<int8_t> ruy_lhs;
-  ruy::Matrix<int8_t> ruy_rhs;
-  ruy::Matrix<int32_t> ruy_dst;
 
   MatrixParams<int8_t> lhs_params;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
@@ -978,15 +973,10 @@ void NeonCpuBackendGemm(const int8_t* input, const int32_t* bias,
   dst_params.rows = n_output;
   dst_params.cols = n_batch;
 
-  cpu_backend_gemm::detail::MakeRuyMatrix(lhs_params, input_to_gate_weights,
-                                          &ruy_lhs);
-  cpu_backend_gemm::detail::MakeRuyMatrix(rhs_params, input, &ruy_rhs);
-  cpu_backend_gemm::detail::MakeRuyMatrix(dst_params, scratch, &ruy_dst);
-
-  ruy::BasicSpec<int32_t, int32_t> ruy_spec;
-  ruy_spec.bias = bias;
-  ruy::Mul<ruy::kAllPaths>(ruy_lhs, ruy_rhs, ruy_spec, context->ruy_context(),
-                           &ruy_dst);
+  GemmParams<int32, int32> gemm_params;
+  gemm_params.bias = bias;
+  cpu_backend_gemm::Gemm(lhs_params, input_to_gate_weights, rhs_params, input,
+                         dst_params, scratch, gemm_params, context);
 }
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
