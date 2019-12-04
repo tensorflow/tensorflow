@@ -207,11 +207,24 @@ TfLiteStatus MicroAllocator::AllocateNodeAndRegistrations(
                                         (void**)(&builtin_data)));
     }
 
+    // Instead of copying the input and output indices, maintain pointers
+    // into the FlatBuffers Vector objects in the model, which happen to have
+    // the same memory format as TfLiteIntArray.
     // Disregard const qualifier to workaround with existing API.
     TfLiteIntArray* inputs_array = const_cast<TfLiteIntArray*>(
         reinterpret_cast<const TfLiteIntArray*>(op->inputs()));
     TfLiteIntArray* outputs_array = const_cast<TfLiteIntArray*>(
         reinterpret_cast<const TfLiteIntArray*>(op->outputs()));
+
+    if (!FLATBUFFERS_LITTLEENDIAN) {
+      // Big-endian architecture. Make a copy of the input and output indices,
+      // because TfLiteIntArray is always in host byte order and FlatBuffers'
+      // Vectors are always in little-endian byte order.
+      TF_LITE_ENSURE_STATUS(
+          FlatBufferIntArrayToTfLiteIntArray(op->inputs(), &inputs_array));
+      TF_LITE_ENSURE_STATUS(
+          FlatBufferIntArrayToTfLiteIntArray(op->outputs(), &outputs_array));
+    }
 
     TfLiteNode* node = &(output[i].node);
     node->inputs = inputs_array;
