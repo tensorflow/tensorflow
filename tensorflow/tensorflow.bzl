@@ -1,7 +1,7 @@
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "if_dynamic_kernels",
     "if_static",
     "tf_additional_grpc_deps_py",
@@ -1706,7 +1706,7 @@ def tf_custom_op_library_additional_deps():
         "@com_google_protobuf//:protobuf_headers",
         clean_dep("//third_party/eigen3"),
         clean_dep("//tensorflow/core:framework_headers_lib"),
-    ] + if_windows(["//tensorflow/python:pywrap_tensorflow_import_lib"])
+    ] + if_windows([clean_dep("//tensorflow/python:pywrap_tensorflow_import_lib")])
 
 # A list of targets that contains the implemenation of
 # tf_custom_op_library_additional_deps. It's used to generate a DEF file for
@@ -2153,7 +2153,7 @@ def gpu_py_test(
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False,
-        python_version = "PY2"):
+        **kwargs):
     # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
     # XLA tests once enough compute resources are available.
     _ignored = [xla_enable_strict_auto_jit]
@@ -2180,7 +2180,7 @@ def gpu_py_test(
             tags = test_tags,
             xla_enabled = xla_enabled,
             xla_enable_strict_auto_jit = False,
-            python_version = python_version,
+            **kwargs
         )
 
 register_extension_info(
@@ -2246,7 +2246,7 @@ def py_tests(
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False,
-        python_version = "PY2"):
+        **kwargs):
     for src in srcs:
         test_name = src.split("/")[-1].split(".")[0]
         if prefix:
@@ -2264,7 +2264,7 @@ def py_tests(
             tags = tags,
             xla_enabled = xla_enabled,
             xla_enable_strict_auto_jit = xla_enable_strict_auto_jit,
-            python_version = python_version,
+            **kwargs
         )
 
 def gpu_py_tests(
@@ -2280,7 +2280,7 @@ def gpu_py_tests(
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False,
-        python_version = "PY2"):
+        **kwargs):
     # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
     # XLA tests once enough compute resources are available.
     _ignored = [xla_enable_strict_auto_jit]
@@ -2298,7 +2298,7 @@ def gpu_py_tests(
         tags = test_tags,
         xla_enabled = xla_enabled,
         xla_enable_strict_auto_jit = False,
-        python_version = python_version,
+        **kwargs
     )
 
 # terminology changes: saving cuda_* definition for compatibility
@@ -2576,3 +2576,7 @@ def if_mlir(if_true, if_false = []):
 
 def tfcompile_extra_flags():
     return ""
+
+def tf_external_workspace_visible(visibility):
+    # External workspaces can see this target.
+    return ["//visibility:public"]

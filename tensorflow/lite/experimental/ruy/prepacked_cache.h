@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_PREPACKED_CACHE_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_PREPACKED_CACHE_H_
 
+#include <cstddef>
 #include <iostream>
 #include <map>
 #include <queue>
@@ -26,6 +27,40 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/time.h"
 
 namespace ruy {
+
+namespace detail {
+
+// Tracks a set of blocks allocated from the underlying system allocator.
+class SystemBlockAllocator {
+ public:
+  void *Alloc(std::ptrdiff_t num_bytes) {
+    void *p = detail::SystemAlignedAlloc(num_bytes);
+    blocks_.push_back(p);
+    return p;
+  }
+
+  void Free(void *block) {
+    for (auto it = blocks_.begin(); it != blocks_.end(); ++it) {
+      if (*it == block) {
+        detail::SystemAlignedFree(block);
+        blocks_.erase(it);
+        return;
+      }
+    }
+    RUY_DCHECK(false);  // Trying to free pointer we did not allocate.
+  }
+
+  ~SystemBlockAllocator() {
+    for (void *block : blocks_) {
+      detail::SystemAlignedFree(block);
+    }
+  }
+
+ private:
+  std::vector<void *> blocks_;
+};
+
+}  // namespace detail
 
 enum CachePolicy { kNoCache, kCacheLHSOnGemV };
 
@@ -71,6 +106,12 @@ class PrepackedCache {
   // Returns the total size (in bytes) of data held in this cache.
   int TotalSize() const { return cache_size_; }
 
+  // All calls to get current TimePoints go through here.
+  // TODO(b/145625614) Profile timestamps on relevant models to see if
+  // this level of granularity is sufficient. CoarseNow is cheap so
+  // it would be nice to keep it.
+  TimePoint CacheNow() const { return CoarseNow(); }
+
   // Performs the memory allocation for the `data` and `sums` members of a
   // PrepackedMatrix.
   void AllocatePrepackedMatrix(PrepackedMatrix *pmatrix);
@@ -80,12 +121,8 @@ class PrepackedCache {
 
  private:
   void EjectOne();
-  void *AllocateBytes(std::ptrdiff_t num_bytes);
   void DoInsert(const CacheKey &key, const PrepackedMatrix &matrix);
-  // Since this cache is used in the context of "pre-packing", we need to
-  // handle allocating the space for the packed matrix ourselves, so we need
-  // our own allocator.
-  AlignedAllocator allocator_;
+  detail::SystemBlockAllocator allocator_;
   std::map<CacheKey, MatrixWithTimeStamp> cache_;
   const int32_t ejection_threshold_;
   size_t cache_size_;

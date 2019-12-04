@@ -25,7 +25,7 @@ Pod::Spec.new do |s|
   s.source_files = [
     objc_dir + '{apis,sources}/*.{h,m,mm}',
     tfl_dir + 'experimental/c/c_api.h',
-    tfl_dir + 'experimental/c/c_api_types.h',
+    tfl_dir + 'experimental/c/common.h',
   ]
   s.module_map = objc_dir + 'apis/framework.modulemap'
   s.dependency 'TensorFlowLiteC', "~> #{s.version}"

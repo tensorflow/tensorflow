@@ -205,8 +205,9 @@ def _convert_tf1_model(flags):
   if flags.conversion_summary_dir:
     converter.conversion_summary_dir = flags.conversion_summary_dir
 
-  if flags.experimental_new_converter:
-    converter.experimental_new_converter = True
+  # TODO(b/145312675): Enable the new converter by default. It requires to
+  # add a new command line argument like `experimental_legacy_converter`.
+  converter.experimental_new_converter = flags.experimental_new_converter
 
   # Convert model.
   output_data = converter.convert()
@@ -230,8 +231,9 @@ def _convert_tf2_model(flags):
     model = keras.models.load_model(flags.keras_model_file)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
 
-  if flags.experimental_new_converter:
-    converter.experimental_new_converter = True
+  # TODO(b/145312675): Enable the new converter by default. It requires to
+  # add a new command line argument like `experimental_legacy_converter`.
+  converter.experimental_new_converter = flags.experimental_new_converter
 
   # Convert the model.
   tflite_model = converter.convert()

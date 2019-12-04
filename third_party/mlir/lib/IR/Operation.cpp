@@ -125,13 +125,26 @@ Operation *Operation::create(Location location, OperationName name,
 
 /// Create a new Operation from operation state.
 Operation *Operation::create(const OperationState &state) {
-  unsigned numRegions = state.regions.size();
-  Operation *op = create(state.location, state.name, state.types,
-                         state.operands, state.attributes, state.successors,
-                         numRegions, state.resizableOperandList);
+  return Operation::create(state.location, state.name, state.types,
+                           state.operands, NamedAttributeList(state.attributes),
+                           state.successors, state.regions,
+                           state.resizableOperandList);
+}
+
+/// Create a new Operation with the specific fields.
+Operation *Operation::create(Location location, OperationName name,
+                             ArrayRef<Type> resultTypes,
+                             ArrayRef<Value *> operands,
+                             NamedAttributeList attributes,
+                             ArrayRef<Block *> successors,
+                             ArrayRef<std::unique_ptr<Region>> regions,
+                             bool resizableOperandList) {
+  unsigned numRegions = regions.size();
+  Operation *op = create(location, name, resultTypes, operands, attributes,
+                         successors, numRegions, resizableOperandList);
   for (unsigned i = 0; i < numRegions; ++i)
-    if (state.regions[i])
-      op->getRegion(i).takeBody(*state.regions[i]);
+    if (regions[i])
+      op->getRegion(i).takeBody(*regions[i]);
   return op;
 }
 
@@ -140,7 +153,7 @@ Operation *Operation::create(const OperationState &state) {
 Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
                              ArrayRef<Value *> operands,
-                             const NamedAttributeList &attributes,
+                             NamedAttributeList attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
   unsigned numSuccessors = successors.size();
@@ -531,6 +544,21 @@ unsigned Operation::getSuccessorOperandIndex(unsigned index) {
   return getNumOperands() - postSuccessorOpCount;
 }
 
+Optional<std::pair<unsigned, unsigned>>
+Operation::decomposeSuccessorOperandIndex(unsigned operandIndex) {
+  assert(!isKnownNonTerminator() && "only terminators may have successors");
+  assert(operandIndex < getNumOperands());
+  unsigned currentOperandIndex = getNumOperands();
+  auto *successorOperandCounts = getTrailingObjects<unsigned>();
+  for (unsigned i = 0, e = getNumSuccessors(); i < e; i++) {
+    unsigned successorIndex = e - i - 1;
+    currentOperandIndex -= successorOperandCounts[successorIndex];
+    if (currentOperandIndex <= operandIndex)
+      return std::make_pair(successorIndex, operandIndex - currentOperandIndex);
+  }
+  return None;
+}
+
 auto Operation::getSuccessorOperands(unsigned index) -> operand_range {
   unsigned succOperandIndex = getSuccessorOperandIndex(index);
   return {operand_iterator(this, succOperandIndex),
@@ -873,18 +901,21 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultType(Operation *op) {
   return success();
 }
 
-static LogicalResult verifyBBArguments(Operation::operand_range operands,
-                                       Block *destBB, Operation *op) {
-  unsigned operandCount = std::distance(operands.begin(), operands.end());
+static LogicalResult verifySuccessor(Operation *op, unsigned succNo) {
+  Operation::operand_range operands = op->getSuccessorOperands(succNo);
+  unsigned operandCount = op->getNumSuccessorOperands(succNo);
+  Block *destBB = op->getSuccessor(succNo);
   if (operandCount != destBB->getNumArguments())
     return op->emitError() << "branch has " << operandCount
-                           << " operands, but target block has "
+                           << " operands for successor #" << succNo
+                           << ", but target block has "
                            << destBB->getNumArguments();
 
   auto operandIt = operands.begin();
   for (unsigned i = 0, e = operandCount; i != e; ++i, ++operandIt) {
     if ((*operandIt)->getType() != destBB->getArgument(i)->getType())
-      return op->emitError() << "type mismatch in bb argument #" << i;
+      return op->emitError() << "type mismatch for bb argument #" << i
+                             << " of successor #" << succNo;
   }
 
   return success();
@@ -898,7 +929,7 @@ static LogicalResult verifyTerminatorSuccessors(Operation *op) {
     auto *succ = op->getSuccessor(i);
     if (succ->getParent() != parent)
       return op->emitError("reference to block defined in another region");
-    if (failed(verifyBBArguments(op->getSuccessorOperands(i), succ, op)))
+    if (failed(verifySuccessor(op, i)))
       return failure();
   }
   return success();
@@ -940,6 +971,47 @@ LogicalResult OpTrait::impl::verifyResultsAreIntegerLike(Operation *op) {
     if (!getTensorOrVectorElementType(resultType).isIntOrIndex())
       return op->emitOpError() << "requires an integer or index type";
   return success();
+}
+
+static LogicalResult verifyValueSizeAttr(Operation *op, StringRef attrName,
+                                         bool isOperand) {
+  auto sizeAttr = op->getAttrOfType<DenseIntElementsAttr>(attrName);
+  if (!sizeAttr)
+    return op->emitOpError("requires 1D vector attribute '") << attrName << "'";
+
+  auto sizeAttrType = sizeAttr.getType().dyn_cast<VectorType>();
+  if (!sizeAttrType || sizeAttrType.getRank() != 1)
+    return op->emitOpError("requires 1D vector attribute '") << attrName << "'";
+
+  if (llvm::any_of(sizeAttr.getIntValues(), [](const APInt &element) {
+        return !element.isNonNegative();
+      }))
+    return op->emitOpError("'")
+           << attrName << "' attribute cannot have negative elements";
+
+  size_t totalCount = std::accumulate(
+      sizeAttr.begin(), sizeAttr.end(), 0,
+      [](unsigned all, APInt one) { return all + one.getZExtValue(); });
+
+  if (isOperand && totalCount != op->getNumOperands())
+    return op->emitOpError("operand count (")
+           << op->getNumOperands() << ") does not match with the total size ("
+           << totalCount << ") specified in attribute '" << attrName << "'";
+  else if (!isOperand && totalCount != op->getNumResults())
+    return op->emitOpError("result count (")
+           << op->getNumResults() << ") does not match with the total size ("
+           << totalCount << ") specified in attribute '" << attrName << "'";
+  return success();
+}
+
+LogicalResult OpTrait::impl::verifyOperandSizeAttr(Operation *op,
+                                                   StringRef attrName) {
+  return verifyValueSizeAttr(op, attrName, /*isOperand=*/true);
+}
+
+LogicalResult OpTrait::impl::verifyResultSizeAttr(Operation *op,
+                                                  StringRef attrName) {
+  return verifyValueSizeAttr(op, attrName, /*isOperand=*/false);
 }
 
 //===----------------------------------------------------------------------===//

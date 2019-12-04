@@ -533,7 +533,7 @@ static LogicalResult runWithCrashRecovery(OpPassManager &pm,
   outputFile->keep();
 
   return reproducerModule->emitError()
-         << "A crash has been detected while processing the MLIR module, a "
+         << "A failure has been detected while processing the MLIR module, a "
             "reproducer has been generated in '"
          << crashReproducerFileName << "'";
 }

@@ -15,10 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_MICRO_MUTABLE_OP_RESOLVER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_MICRO_MUTABLE_OP_RESOLVER_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/experimental/micro/compatibility.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 
 #ifndef TFLITE_REGISTRATIONS_MAX
 #define TFLITE_REGISTRATIONS_MAX (128)
@@ -26,30 +24,15 @@ limitations under the License.
 
 namespace tflite {
 
-// Op versions discussed in this file are enumerated here:
-// tensorflow/lite/tools/versioning/op_version.cc
-
 class MicroMutableOpResolver : public OpResolver {
  public:
   const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
                                    int version) const override;
   const TfLiteRegistration* FindOp(const char* op, int version) const override;
-
-  // Add a builtin op which supports only version 1.
-  void AddBuiltin(tflite::BuiltinOperator op,
-                  const TfLiteRegistration* registration);
-
-  // Add a builtin op which supports the specified version(s).
-  void AddBuiltin(tflite::BuiltinOperator op,
-                  const TfLiteRegistration* registration,
-                  const int* supported_versions, int supported_versions_len);
-
-  // Add a custom op which supports only version 1.
-  void AddCustom(const char* name, const TfLiteRegistration* registration);
-
-  // Add a custom op which supports the specified version(s).
-  void AddCustom(const char* name, const TfLiteRegistration* registration,
-                 const int* supported_versions, int supported_versions_len);
+  void AddBuiltin(tflite::BuiltinOperator op, TfLiteRegistration* registration,
+                  int min_version = 1, int max_version = 1);
+  void AddCustom(const char* name, TfLiteRegistration* registration,
+                 int min_version = 1, int max_version = 1);
 
  private:
   TfLiteRegistration registrations_[TFLITE_REGISTRATIONS_MAX];

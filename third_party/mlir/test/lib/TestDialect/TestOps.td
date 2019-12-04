@@ -19,6 +19,7 @@
 #define TEST_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/Analysis/CallInterfaces.td"
 include "mlir/Analysis/InferTypeOpInterface.td"
 
@@ -408,6 +409,34 @@ def UpdateAttr : Pat<(I32ElementsAttrOp $attr),
                      (I32ElementsAttrOp ConstantAttr<I32ElementsAttr, "0">),
                      [(IsNotScalar $attr)]>;
 
+def TestBranchOp : TEST_Op<"br", [Terminator]> {
+  let arguments = (ins Variadic<AnyType>:$operands);
+}
+
+def AttrSizedOperandOp : TEST_Op<"attr_sized_operands",
+                                 [AttrSizedOperandSegments]> {
+  let arguments = (ins
+    Variadic<I32>:$a,
+    Variadic<I32>:$b,
+    I32:$c,
+    Variadic<I32>:$d,
+    I32ElementsAttr:$operand_segment_sizes
+  );
+}
+
+def AttrSizedResultOp : TEST_Op<"attr_sized_results",
+                                [AttrSizedResultSegments]> {
+  let arguments = (ins
+    I32ElementsAttr:$result_segment_sizes
+  );
+  let results = (outs
+    Variadic<I32>:$a,
+    Variadic<I32>:$b,
+    I32:$c,
+    Variadic<I32>:$d
+  );
+}
+
 //===----------------------------------------------------------------------===//
 // Test Patterns
 //===----------------------------------------------------------------------===//
@@ -449,6 +478,18 @@ def : Pat<(OpH $input), (OpI $input)>;
 def OpJ : TEST_Op<"op_j">, Arguments<(ins)>, Results<(outs I32)>;
 def OpK : TEST_Op<"op_k">, Arguments<(ins)>, Results<(outs I32)>;
 def : Pat<(OpJ), (OpK)>;
+
+// Test `$_` for ignoring op argument match.
+def TestIgnoreArgMatchSrcOp : TEST_Op<"ignore_arg_match_src"> {
+  let arguments = (ins
+    AnyType:$a, AnyType:$b, AnyType:$c,
+    AnyAttr:$d, AnyAttr:$e, AnyAttr:$f);
+}
+def TestIgnoreArgMatchDstOp : TEST_Op<"ignore_arg_match_dst"> {
+  let arguments = (ins AnyType:$b, AnyAttr:$f);
+}
+def : Pat<(TestIgnoreArgMatchSrcOp $_, $b, I32, I64Attr:$_, $_, $f),
+          (TestIgnoreArgMatchDstOp $b, $f)>;
 
 def OpInterleavedOperandAttribute1 : TEST_Op<"interleaved_operand_attr1"> {
   let arguments = (ins
@@ -689,7 +730,7 @@ def MultiResultOpKind5: I64EnumAttrCase<"kind5", 5>;
 def MultiResultOpKind6: I64EnumAttrCase<"kind6", 6>;
 
 def MultiResultOpEnum: I64EnumAttr<
-  "Multi-result op kinds", "", [
+  "MultiResultOpEnum", "Multi-result op kinds", [
     MultiResultOpKind1, MultiResultOpKind2, MultiResultOpKind3,
     MultiResultOpKind4, MultiResultOpKind5, MultiResultOpKind6
   ]>;
@@ -993,6 +1034,18 @@ def PolyForOp : TEST_Op<"polyfor">
 
   let regions = (region SizedRegion<1>:$region);
   let parser = [{ return ::parse$cppClass(parser, result); }];
+}
+
+//===----------------------------------------------------------------------===//
+// Test OpAsmInterface.
+
+def AsmInterfaceOp : TEST_Op<"asm_interface_op"> {
+  let results = (outs AnyType:$first, Variadic<AnyType>:$middle_results,
+                      AnyType);
+}
+
+def AsmDialectInterfaceOp : TEST_Op<"asm_dialect_interface_op"> {
+  let results = (outs AnyType);
 }
 
 #endif // TEST_OPS

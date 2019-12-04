@@ -82,7 +82,7 @@ class TraceMe {
     DCHECK_GE(level, 1);
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       new (&no_init_.name) string(activity_name);
-      start_time_ = EnvTime::Default()->NowNanos();
+      start_time_ = EnvTime::NowNanos();
     } else {
       start_time_ = kUntracedActivity;
     }
@@ -97,7 +97,7 @@ class TraceMe {
     DCHECK_GE(level, 1);
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       new (&no_init_.name) string(std::move(activity_name));
-      start_time_ = EnvTime::Default()->NowNanos();
+      start_time_ = EnvTime::NowNanos();
     } else {
       start_time_ = kUntracedActivity;
     }
@@ -127,7 +127,7 @@ class TraceMe {
     DCHECK_GE(level, 1);
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       new (&no_init_.name) string(name_generator());
-      start_time_ = EnvTime::Default()->NowNanos();
+      start_time_ = EnvTime::NowNanos();
     } else {
       start_time_ = kUntracedActivity;
     }
@@ -148,7 +148,7 @@ class TraceMe {
     if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
       if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
         TraceMeRecorder::Record({kCompleteActivity, std::move(no_init_.name),
-                                 start_time_, EnvTime::Default()->NowNanos()});
+                                 start_time_, EnvTime::NowNanos()});
       }
       no_init_.name.~string();
       start_time_ = kUntracedActivity;
@@ -162,8 +162,14 @@ class TraceMe {
   // Record the start time of an activity.
   // Returns the activity ID, which is used to stop the activity.
   static uint64 ActivityStart(absl::string_view name, int level = 1) {
-    return TraceMeRecorder::Active(level) ? ActivityStartImpl(name)
-                                          : kUntracedActivity;
+    if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
+      uint64 activity_id = TraceMeRecorder::NewActivityId();
+      TraceMeRecorder::Record({activity_id, string(name),
+                               /*start_time=*/EnvTime::NowNanos(),
+                               /*end_time=*/0});
+      return activity_id;
+    }
+    return kUntracedActivity;
   }
 
   // Record the end time of an activity started by ActivityStart().
@@ -171,7 +177,8 @@ class TraceMe {
     // We don't check the level again (see ~TraceMe()).
     if (TF_PREDICT_FALSE(activity_id != kUntracedActivity)) {
       if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
-        ActivityEndImpl(activity_id);
+        TraceMeRecorder::Record({activity_id, /*name=*/"", /*start_time=*/0,
+                                 /*end_time=*/EnvTime::NowNanos()});
       }
     }
   }
@@ -185,9 +192,6 @@ class TraceMe {
   constexpr static uint64 kCompleteActivity = 1;
 
   TF_DISALLOW_COPY_AND_ASSIGN(TraceMe);
-
-  static uint64 ActivityStartImpl(absl::string_view activity_name);
-  static void ActivityEndImpl(uint64 activity_id);
 
   // Wrap the name into a union so that we can avoid the cost of string
   // initialization when tracing is disabled.

@@ -18,6 +18,7 @@ animation.
 -   [Deploy to Arduino](#deploy-to-arduino)
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
+-   [Deploy to Adafruit devices](#deploy-to-adafruit)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 
 ## Understand the model
@@ -346,11 +347,6 @@ cp ./BUILD/DISCO_F746NG/GCC_ARM/mbed.bin /Volumes/DIS_F746NG/
 Copying the file will initiate the flashing process. Once this is complete, you
 should see an animation on the device's screen.
 
-
-```
-screen /dev/tty.usbmodem14403 9600
-```
-
 In addition to this animation, debug information is logged by the board while
 the program is running. To view it, establish a serial connection to the board
 using a baud rate of `9600`. On OSX and Linux, the following command should
@@ -372,6 +368,16 @@ x_value: 1.1843798*2^2, y_value: -1.9542645*2^-1
 
 To stop viewing the debug output with `screen`, hit `Ctrl+A`, immediately
 followed by the `K` key, then hit the `Y` key.
+
+## Deploy to Adafruit devices <a name="deploy-to-adafruit"></a>
+
+This sample has been tested with the following Adafruit devices. To deploy to
+each device, read the accompanying guide on Adafruit's website.
+
+| Device                                                                                     | Guide                                                                                                                            |
+|--------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
+| [Adafruit EdgeBadge](https://www.adafruit.com/product/4400)                                | [TensorFlow Lite for EdgeBadge Kit Quickstart](https://learn.adafruit.com/tensorflow-lite-for-edgebadge-kit-quickstart?view=all) |
+| [Adafruit TensorFlow Lite for Microcontrollers Kit](https://www.adafruit.com/product/4317) | [TensorFlow Lite for EdgeBadge Kit Quickstart](https://learn.adafruit.com/tensorflow-lite-for-edgebadge-kit-quickstart?view=all) |
 
 ### Run the tests on a development machine
 

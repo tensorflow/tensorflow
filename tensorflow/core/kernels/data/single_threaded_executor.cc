@@ -195,10 +195,7 @@ class SingleThreadedExecutorImpl : public Executor {
     return Status::OK();
   }
 
-  // TODO(mrry): Consider specializing the implementation of Executor::Run()
-  // instead, to avoid unnecessary atomic operations in the callback when
-  // running synchronously.
-  void RunAsync(const Args& args, DoneCallback done) override {
+  Status Run(const Args& args) override {
     // The inputs to each kernel are stored contiguously in `inputs`.
     //
     // We use `kernels_[i].input_start_index` and `kernels_[i].num_inputs` to
@@ -275,9 +272,9 @@ class SingleThreadedExecutorImpl : public Executor {
     const size_t received_args =
         args.call_frame ? args.call_frame->num_args() : 0;
     if (arg_output_locations_.size() > received_args) {
-      done(errors::InvalidArgument("Expected ", arg_output_locations_.size(),
-                                   " arguments, but only received ",
-                                   received_args, "."));
+      return errors::InvalidArgument("Expected ", arg_output_locations_.size(),
+                                     " arguments, but only received ",
+                                     received_args, ".");
     }
 
     // ArgOp is a relatively expensive OpKernel due to the Tensor
@@ -351,8 +348,7 @@ class SingleThreadedExecutorImpl : public Executor {
             }
           }
         }
-        done(ctx.status());
-        return;
+        return ctx.status();
       }
 
       // Free the inputs to the current kernel.
@@ -379,7 +375,11 @@ class SingleThreadedExecutorImpl : public Executor {
         delete val.tensor;
       }
     }
-    done(Status::OK());
+    return Status::OK();
+  }
+
+  void RunAsync(const Args& args, DoneCallback done) override {
+    done(Run(args));
   }
 
  private:

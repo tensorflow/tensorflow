@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/util.h"

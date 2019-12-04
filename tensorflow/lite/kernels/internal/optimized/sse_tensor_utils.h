@@ -167,6 +167,14 @@ void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
   NEON_OR_PORTABLE(VectorVectorCwiseProduct, vector1, vector2, v_size, result);
 }
 
+void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
+                                      const int16_t* vector2, int v_size,
+                                      int n_batch, int32_t* result,
+                                      int result_stride) {
+  return PortableBatchVectorBatchVectorDotProduct(
+      vector1, vector2, v_size, n_batch, result, result_stride);
+}
+
 void VectorVectorCwiseProductAccumulate(const float* vector1,
                                         const float* vector2, int v_size,
                                         float* result) {
@@ -174,18 +182,12 @@ void VectorVectorCwiseProductAccumulate(const float* vector1,
                    result);
 }
 
-void VectorBatchVectorCwiseProduct(const float* vector, int v_size,
-                                   const float* batch_vector, int n_batch,
-                                   float* result) {
-  NEON_OR_PORTABLE(VectorBatchVectorCwiseProduct, vector, v_size, batch_vector,
-                   n_batch, result);
-}
-
-void VectorBatchVectorCwiseProductAccumulate(const float* vector, int v_size,
-                                             const float* batch_vector,
-                                             int n_batch, float* result) {
-  NEON_OR_PORTABLE(VectorBatchVectorCwiseProductAccumulate, vector, v_size,
-                   batch_vector, n_batch, result);
+void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,
+                                             const int16_t* batch_vector,
+                                             int n_batch, int32_t multiplier,
+                                             int shift, int16_t* result) {
+  PortableVectorBatchVectorCwiseProductAccumulate(
+      vector, v_size, batch_vector, n_batch, multiplier, shift, result);
 }
 
 float VectorVectorDotProduct(const float* vector1, const float* vector2,
@@ -196,15 +198,6 @@ float VectorVectorDotProduct(const float* vector1, const float* vector2,
 void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
                           float* batch_vector) {
   PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
-}
-
-void ApplySigmoidToVector(const float* vector, int v_size, float* result) {
-  PortableApplySigmoidToVector(vector, v_size, result);
-}
-
-void ApplyActivationToVector(const float* vector, int v_size,
-                             TfLiteFusedActivation activation, float* result) {
-  PortableApplyActivationToVector(vector, v_size, activation, result);
 }
 
 void Sub1Vector(const float* vector, int v_size, float* result) {
@@ -259,6 +252,12 @@ void ReductionSumVector(const float* input_vector, float* output_vector,
                         int output_size, int reduction_size) {
   NEON_OR_PORTABLE(ReductionSumVector, input_vector, output_vector, output_size,
                    reduction_size);
+}
+
+void ReductionSumVector(const int32_t* input_vector, int32_t* output_vector,
+                        int output_size, int reduction_size) {
+  PortableReductionSumVector(input_vector, output_vector, output_size,
+                             reduction_size);
 }
 
 void MeanStddevNormalization(const float* input_vector, float* output_vector,

@@ -13,6 +13,7 @@ then outputs the gesture to the serial port.
 -   [Getting started](#getting-started)
 -   [Deploy to Arduino](#deploy-to-arduino)
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
+-   [Deploy to Adafruit devices](#deploy-to-adafruit)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 
 ## Deploy to Arduino
@@ -316,6 +317,16 @@ SLOPE:
 
 To stop viewing the debug output with `screen`, hit `Ctrl+A`, immediately
 followed by the `K` key, then hit the `Y` key.
+
+## Deploy to Adafruit devices <a name="deploy-to-adafruit"></a>
+
+This sample has been tested with the following Adafruit devices. To deploy to
+each device, read the accompanying guide on Adafruit's website.
+
+| Device                                                                                     | Guide                                                                                                                            |
+|--------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
+| [Adafruit EdgeBadge](https://www.adafruit.com/product/4400)                                | [TensorFlow Lite for EdgeBadge Kit Quickstart](https://learn.adafruit.com/tensorflow-lite-for-edgebadge-kit-quickstart?view=all) |
+| [Adafruit TensorFlow Lite for Microcontrollers Kit](https://www.adafruit.com/product/4317) | [TensorFlow Lite for EdgeBadge Kit Quickstart](https://learn.adafruit.com/tensorflow-lite-for-edgebadge-kit-quickstart?view=all) |
 
 ## Run the tests on a development machine
 

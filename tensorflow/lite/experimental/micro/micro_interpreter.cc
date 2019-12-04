@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/experimental/micro/compatibility.h"
 #include "tensorflow/lite/experimental/micro/micro_optional_debug_tools.h"

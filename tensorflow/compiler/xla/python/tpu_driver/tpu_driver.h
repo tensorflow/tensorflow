@@ -153,11 +153,13 @@ class TpuDriver {
   virtual ~TpuDriver() {}
 
   virtual void QuerySystemInfo(SystemInfo* system_info) = 0;
-  // Synchronous. Reset the state of the TPU driver. All running programs
-  // will be terminated and all allocations reset.
+  // Synchronous. Reset the state of the TPU driver. After Reset(), this TPU
+  // driver object is no longer usable. Users must destroy this object and
+  // create a new one.
   //
-  // All events and buffer handles created prior to Reset() will be invalid,
-  // and any use will result in undefined behavior.
+  // All running programs will be terminated and all allocations reset. All
+  // events and buffer handles created prior to Reset() will be invalid, and any
+  // use will result in undefined behavior.
   virtual xla::Status Reset() = 0;
 
   virtual std::unique_ptr<BufferHandle> Allocate(

@@ -20,6 +20,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Identifier.h"
 #include "mlir/IR/StandardTypes.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"

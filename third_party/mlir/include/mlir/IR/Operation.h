@@ -63,12 +63,21 @@ public:
   static Operation *create(Location location, OperationName name,
                            ArrayRef<Type> resultTypes,
                            ArrayRef<Value *> operands,
-                           const NamedAttributeList &attributes,
+                           NamedAttributeList attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
                            bool resizableOperandList);
 
   /// Create a new Operation from the fields stored in `state`.
   static Operation *create(const OperationState &state);
+
+  /// Create a new Operation with the specific fields.
+  static Operation *create(Location location, OperationName name,
+                           ArrayRef<Type> resultTypes,
+                           ArrayRef<Value *> operands,
+                           NamedAttributeList attributes,
+                           ArrayRef<Block *> successors = {},
+                           ArrayRef<std::unique_ptr<Region>> regions = {},
+                           bool resizableOperandList = false);
 
   /// The name of an operation is the key identifier for it.
   OperationName getName() { return name; }
@@ -437,6 +446,23 @@ public:
   /// Get the index of the first operand of the successor at the provided
   /// index.
   unsigned getSuccessorOperandIndex(unsigned index);
+
+  /// Return a pair (successorIndex, successorArgIndex) containing the index
+  /// of the successor that `operandIndex` belongs to and the index of the
+  /// argument to that successor that `operandIndex` refers to.
+  ///
+  /// If `operandIndex` is not a successor operand, None is returned.
+  Optional<std::pair<unsigned, unsigned>>
+  decomposeSuccessorOperandIndex(unsigned operandIndex);
+
+  /// Returns the `BlockArgument*` corresponding to operand `operandIndex` in
+  /// some successor, or None if `operandIndex` isn't a successor operand index.
+  Optional<BlockArgument *> getSuccessorBlockArgument(unsigned operandIndex) {
+    auto decomposed = decomposeSuccessorOperandIndex(operandIndex);
+    if (!decomposed.hasValue())
+      return None;
+    return getSuccessor(decomposed->first)->getArgument(decomposed->second);
+  }
 
   //===--------------------------------------------------------------------===//
   // Accessors for various properties of operations

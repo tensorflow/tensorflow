@@ -36,8 +36,8 @@ representing many different concepts: allocating buffers, producing views to
 transform them, target-independent arithmetic, target-specific operations, and
 even arbitrary user-defined high-level operations including the
 [Module](#module) and [Function](#functions) operations. Operations may contain
-[Regions](#regions) that contain a Control Flow Graph (CFG) of
-[Blocks](#blocks), which contain operations and end with a
+[Regions](#regions) that represent a Control Flow Graph (CFG) of
+[Blocks](#blocks), that contain operations and end with a
 [terminator operation](#terminator-operations) (like branches).
 
 Here's an example of an MLIR module:
@@ -147,7 +147,7 @@ id-punct  ::= [$._-]
 integer-literal ::= decimal-literal | hexadecimal-literal
 decimal-literal ::= digit+
 hexadecimal-literal ::= `0x` hex_digit+
-float-literal   ::= TODO
+float-literal ::= [-+]?[0-9]+[.][0-9]*([eE][-+]?[0-9]+)?
 string-literal  ::= `"` [^"\n\f\v\r]* `"`   TODO define escaping rules
 ```
 
@@ -162,10 +162,10 @@ Syntax:
 // Identifiers
 bare-id ::= (letter|[_]) (letter|digit|[_$.])*
 bare-id-list ::= bare-id (`,` bare-id)*
-suffix-id ::= digit+ | ((letter|id-punct) (letter|id-punct|digit)*)
-
-symbol-ref-id ::= `@` (bare-id | string-literal)
 ssa-id ::= `%` suffix-id
+suffix-id ::= (digit+ | ((letter|id-punct) (letter|id-punct|digit)*))
+
+symbol-ref-id ::= `@` (suffix-id | string-literal)
 ssa-id-list ::= ssa-id (`,` ssa-id)*
 
 // Uses of an SSA value, e.g. in an operand list to an operation.
@@ -239,12 +239,17 @@ GPUs), and are required to align with the LLVM definition of these intrinsics.
 Syntax:
 
 ``` {.ebnf}
-operation ::= op-result? string-literal `(` ssa-use-list? `)`
-              (`[` successor-list `]`)? (`(` region-list `)`)?
-              attribute-dict? `:` function-type
-op-result ::= ssa-id ((`:` integer-literal) | (`,` ssa-id)*) `=`
-successor-list ::= successor (`,` successor)*
-region-list    ::= region (`,` region)*
+operation         ::= op-result-list? (generic-operation | custom-operation)
+                      trailing-location?
+generic-operation ::= string-literal '(' ssa-use-list? ')' attribute-dict?
+                      `:` function-type
+custom-operation  ::= bare-id custom-operation-format
+op-result-list    ::= op-result (`,` op-result)* `=`
+op-result         ::= ssa-id (`:` integer-literal)
+successor-list    ::= successor (`,` successor)*
+successor         ::= caret-id (`:` bb-arg-list)?
+region-list       ::= region (`,` region)*
+trailing-location ::= (`loc` `(` location `)`)?
 ```
 
 MLIR introduces a uniform concept called _operations_ to enable describing many
@@ -276,7 +281,6 @@ Example:
 // Invoke a TensorFlow function called tf.scramble with two inputs
 // and an attribute "fruit".
 %2 = "tf.scramble"(%result#0, %bar) {fruit: "banana"} : (f32, i32) -> f32
-
 ```
 
 In addition to the basic syntax above, dialects may register known operations.
@@ -374,15 +378,16 @@ func @example_fn_attr() attributes {dialectName.attrName = false}
 Syntax:
 
 ``` {.ebnf}
-block           ::= bb-label operation+
-bb-label        ::= bb-id bb-arg-list? `:`
-bb-id           ::= caret-id
+block           ::= block-label operation+
+block-label     ::= block-id block-arg-list? `:`
+block-id        ::= caret-id
+caret-id        ::= `^` suffix-id
 ssa-id-and-type ::= ssa-id `:` type
 
 // Non-empty list of names and types.
 ssa-id-and-type-list ::= ssa-id-and-type (`,` ssa-id-and-type)*
 
-bb-arg-list ::= `(` ssa-id-and-type-list? `)`
+block-arg-list ::= `(` ssa-id-and-type-list? `)`
 ```
 
 A [block](https://en.wikipedia.org/wiki/Basic_block) is a sequential list of
@@ -443,7 +448,7 @@ The first block in the region cannot be a successor of any other block. The
 syntax for the region is as follows:
 
 ``` {.ebnf}
-region ::= `{` block+ `}`
+region ::= `{` block* `}`
 ```
 
 The function body is an example of a region: it consists of a CFG of blocks and
@@ -587,17 +592,23 @@ Similarly to operations, dialects may define custom extensions to the type
 system.
 
 ``` {.ebnf}
-dialect-type ::= '!' dialect-namespace '<' '"' type-specific-data '"' '>'
-dialect-type ::= '!' dialect-namespace '.' pretty-dialect-type-lead-ident
-                          pretty-dialect-type-body?
+dialect-namespace ::= bare-id
 
-pretty-dialect-type-lead-ident ::= '[A-Za-z][A-Za-z0-9._]*'
-pretty-dialect-type-body ::= '<' pretty-dialect-type-contents+ '>'
-pretty-dialect-type-contents ::= pretty-dialect-type-body
-                              | '(' pretty-dialect-type-contents+ ')'
-                              | '[' pretty-dialect-type-contents+ ']'
-                              | '{' pretty-dialect-type-contents+ '}'
+opaque-dialect-item ::= dialect-namespace '<' string-literal '>'
+
+pretty-dialect-item ::= dialect-namespace '.' pretty-dialect-item-lead-ident
+                                              pretty-dialect-item-body?
+
+pretty-dialect-item-lead-ident ::= '[A-Za-z][A-Za-z0-9._]*'
+pretty-dialect-item-body ::= '<' pretty-dialect-item-contents+ '>'
+pretty-dialect-item-contents ::= pretty-dialect-item-body
+                              | '(' pretty-dialect-item-contents+ ')'
+                              | '[' pretty-dialect-item-contents+ ']'
+                              | '{' pretty-dialect-item-contents+ '}'
                               | '[^[<({>\])}\0]+'
+
+dialect-type ::= '!' opaque-dialect-item
+dialect-type ::= '!' pretty-dialect-item
 ```
 
 Dialect types can be specified in a verbose form, e.g. like this:
@@ -796,7 +807,7 @@ Examples of memref static type
 #col_major = (d0, d1, d2) -> (d2, d1, d0)
 
 // A 2-d tiled layout with tiles of size 128 x 256.
-#tiled_2d_128x256 = (d0, d1) -> (d0 div 128, d1 div 256, d0 mod 128, d0 mod 256)
+#tiled_2d_128x256 = (d0, d1) -> (d0 div 128, d1 div 256, d0 mod 128, d1 mod 256)
 
 // A tiled data layout with non-constant tile sizes.
 #tiled_dynamic = (d0, d1)[s0, s1] -> (d0 floordiv s0, d1 floordiv s1,
@@ -1113,7 +1124,7 @@ attribute-value ::= attribute-alias | dialect-attribute | standard-attribute
 ### Attribute Value Aliases
 
 ``` {.ebnf}
-attribute-alias ::= '#' alias-name '=' 'type' type
+attribute-alias ::= '#' alias-name '=' attribute-value
 attribute-alias ::= '#' alias-name
 ```
 
@@ -1137,20 +1148,14 @@ Example:
 
 ### Dialect Attribute Values
 
-Similarly to operations, dialects may define custom attribute values.
+Similarly to operations, dialects may define custom attribute values. The
+syntactic structure of these values is identical to custom dialect type values,
+except that dialect attributes values are distinguished with a leading '#',
+while dialect types are distinguished with a leading '!'.
 
 ``` {.ebnf}
-dialect-attribute ::= '#' dialect-namespace '<' '"' attr-specific-data '"' '>'
-dialect-attribute ::= '#' dialect-namespace '.' pretty-dialect-attr-lead-ident
-                          pretty-dialect-attr-body?
-
-pretty-dialect-attr-lead-ident ::= '[A-Za-z][A-Za-z0-9._]*'
-pretty-dialect-attr-body ::= '<' pretty-dialect-attr-contents+ '>'
-pretty-dialect-attr-contents ::= pretty-dialect-attr-body
-                              | '(' pretty-dialect-attr-contents+ ')'
-                              | '[' pretty-dialect-attr-contents+ ']'
-                              | '{' pretty-dialect-attr-contents+ '}'
-                              | '[^[<({>\])}\0]+'
+dialect-attribute ::= '#' opaque-dialect-item
+dialect-attribute ::= '#' pretty-dialect-item
 ```
 
 Dialect attributes can be specified in a verbose form, e.g. like this:

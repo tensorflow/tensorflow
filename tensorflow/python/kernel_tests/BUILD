@@ -1859,6 +1859,10 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+
+    # TODO(b/144432983): S32 convolutions should not be auto-clustered, only
+    # crashes tests.
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -1979,6 +1983,8 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    # TODO(b/144432983): S32 convolutions should not be auto-clustered.
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -2363,7 +2369,6 @@ cuda_py_test(
     tags = [
         "manual",
         "no_gpu",
-        "nogpu",
         "noguitar",
     ],
 )

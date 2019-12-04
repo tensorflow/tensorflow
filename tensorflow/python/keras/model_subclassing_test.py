@@ -313,7 +313,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     batch_size = None
     num_samples = 1000
     input_dim = 50
-    model = model_util.MultiIOTestModel()
+    model = model_util.get_multi_io_subclass_model()
     self.assertFalse(model.built, 'Model should not have been built')
     self.assertFalse(model.weights, ('Model should have no weights since it '
                                      'has not been built.'))
@@ -345,7 +345,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     self.assertTrue('Trainable params: 356' in print_fn.contents)
 
     # Multi-io
-    model = model_util.MultiIOTestModel(
+    model = model_util.get_multi_io_subclass_model(
         num_classes=(5, 6), use_bn=True, use_dp=True)
     model._set_inputs([np.ones((3, 4)),
                        np.ones((3, 4))])  # need to build model first
@@ -508,7 +508,7 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
     input_dim = 50
 
     with self.cached_session():
-      model = model_util.MultiIOTestModel(
+      model = model_util.get_multi_io_subclass_model(
           num_classes=num_classes, use_dp=True, use_bn=True)
       model.compile(loss='mse', optimizer='rmsprop')
 
@@ -595,7 +595,7 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
     input_dim = 50
 
     with self.cached_session():
-      model = model_util.MultiIOTestModel(
+      model = model_util.get_multi_io_subclass_model(
           num_classes=num_classes, use_dp=True, use_bn=True)
       model.compile(loss='mse', optimizer='rmsprop')
 

@@ -152,6 +152,12 @@ int64_t ShapedType::getDimSize(int64_t i) const {
   return getShape()[i];
 }
 
+unsigned ShapedType::getDynamicDimIndex(unsigned index) const {
+  assert(index < getRank() && "invalid index");
+  assert(ShapedType::isDynamic(getDimSize(index)) && "invalid index");
+  return llvm::count_if(getShape().take_front(index), ShapedType::isDynamic);
+}
+
 /// Get the number of bits require to store a value of the given shaped type.
 /// Compute the value recursively since tensors are allowed to have vectors as
 /// elements.

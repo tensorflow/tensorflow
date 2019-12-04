@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_RPC_CLIENT_DUMP_TPU_PROFILE_H_
 
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/grpc_services.h"
+#include "tensorflow/core/profiler/profiler_service.pb.h"
 
 namespace tensorflow {
 

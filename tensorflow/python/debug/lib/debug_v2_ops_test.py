@@ -19,30 +19,28 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import tempfile
 
 import numpy as np
 
 from tensorflow.core.protobuf import debug_event_pb2
 from tensorflow.python.debug.lib import debug_events_reader
 from tensorflow.python.debug.lib import debug_events_writer
+from tensorflow.python.debug.lib import dumping_callback_test_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
-from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import gen_debug_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
-class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
+class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
   def setUp(self):
     super(DebugIdentityV2OpTest, self).setUp()
-    self.dump_root = tempfile.mkdtemp()
     # Testing using a small circular-buffer size.
     self.circular_buffer_size = 4
     self.writer = debug_events_writer.DebugEventsWriter(
@@ -50,8 +48,6 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
     self.writer.Close()
-    if os.path.isdir(self.dump_root):
-      file_io.delete_recursively(self.dump_root)
     super(DebugIdentityV2OpTest, self).tearDown()
 
   @test_util.run_in_graph_and_eager_modes
@@ -87,55 +83,55 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
       self.assertAllClose(
           write_debug_trace(x), [9.0 + np.sqrt(3.0), 16.0 + 2.0])
 
-    reader = debug_events_reader.DebugEventsReader(self.dump_root)
-    metadata_iter = reader.metadata_iterator()
-    # Check that the .metadata DebugEvents data file has been created, even
-    # before FlushExecutionFiles() is called.
-    debug_event = next(metadata_iter)
-    self.assertGreater(debug_event.wall_time, 0)
-    self.assertTrue(debug_event.debug_metadata.tensorflow_version)
-    self.assertTrue(
-        debug_event.debug_metadata.file_version.startswith("debug.Event:"))
-
-    graph_trace_iter = reader.graph_execution_traces_iterator()
-    # Before FlushExecutionFiles() is called, the .graph_execution_traces file
-    # ought to be empty.
-    with self.assertRaises(StopIteration):
-      next(graph_trace_iter)
-
-    # Flush the circular buffer.
-    self.writer.FlushExecutionFiles()
-    graph_trace_iter = reader.graph_execution_traces_iterator()
-
-    # The circular buffer has a size of 4. So only the data from the
-    # last two iterations should have been written to self.dump_root.
-    for _ in range(2):
-      debug_event = next(graph_trace_iter)
+    with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
+      metadata_iter = reader.metadata_iterator()
+      # Check that the .metadata DebugEvents data file has been created, even
+      # before FlushExecutionFiles() is called.
+      debug_event = next(metadata_iter)
       self.assertGreater(debug_event.wall_time, 0)
-      trace = debug_event.graph_execution_trace
-      self.assertEqual(trace.tfdbg_context_id, "deadbeaf")
-      self.assertEqual(trace.op_name, "Square")
-      self.assertEqual(trace.output_slot, 0)
-      self.assertEqual(trace.tensor_debug_mode,
-                       debug_event_pb2.TensorDebugMode.FULL_TENSOR)
-      tensor_value = tensor_util.MakeNdarray(trace.tensor_proto)
-      self.assertAllClose(tensor_value, [9.0, 16.0])
+      self.assertTrue(debug_event.debug_metadata.tensorflow_version)
+      self.assertTrue(
+          debug_event.debug_metadata.file_version.startswith("debug.Event:"))
 
-      debug_event = next(graph_trace_iter)
-      self.assertGreater(debug_event.wall_time, 0)
-      trace = debug_event.graph_execution_trace
-      self.assertEqual(trace.tfdbg_context_id, "beafdead")
-      self.assertEqual(trace.op_name, "Sqrt")
-      self.assertEqual(trace.output_slot, 0)
-      self.assertEqual(trace.tensor_debug_mode,
-                       debug_event_pb2.TensorDebugMode.FULL_TENSOR)
-      tensor_value = tensor_util.MakeNdarray(trace.tensor_proto)
-      self.assertAllClose(tensor_value, [np.sqrt(3.0), 2.0])
+      graph_trace_iter = reader.graph_execution_traces_iterator()
+      # Before FlushExecutionFiles() is called, the .graph_execution_traces file
+      # ought to be empty.
+      with self.assertRaises(StopIteration):
+        next(graph_trace_iter)
 
-    # Only the graph-execution trace of the last iteration should be written
-    # to self.dump_root.
-    with self.assertRaises(StopIteration):
-      next(graph_trace_iter)
+      # Flush the circular buffer.
+      self.writer.FlushExecutionFiles()
+      graph_trace_iter = reader.graph_execution_traces_iterator()
+
+      # The circular buffer has a size of 4. So only the data from the
+      # last two iterations should have been written to self.dump_root.
+      for _ in range(2):
+        debug_event = next(graph_trace_iter)
+        self.assertGreater(debug_event.wall_time, 0)
+        trace = debug_event.graph_execution_trace
+        self.assertEqual(trace.tfdbg_context_id, "deadbeaf")
+        self.assertEqual(trace.op_name, "Square")
+        self.assertEqual(trace.output_slot, 0)
+        self.assertEqual(trace.tensor_debug_mode,
+                         debug_event_pb2.TensorDebugMode.FULL_TENSOR)
+        tensor_value = tensor_util.MakeNdarray(trace.tensor_proto)
+        self.assertAllClose(tensor_value, [9.0, 16.0])
+
+        debug_event = next(graph_trace_iter)
+        self.assertGreater(debug_event.wall_time, 0)
+        trace = debug_event.graph_execution_trace
+        self.assertEqual(trace.tfdbg_context_id, "beafdead")
+        self.assertEqual(trace.op_name, "Sqrt")
+        self.assertEqual(trace.output_slot, 0)
+        self.assertEqual(trace.tensor_debug_mode,
+                         debug_event_pb2.TensorDebugMode.FULL_TENSOR)
+        tensor_value = tensor_util.MakeNdarray(trace.tensor_proto)
+        self.assertAllClose(tensor_value, [np.sqrt(3.0), 2.0])
+
+      # Only the graph-execution trace of the last iteration should be written
+      # to self.dump_root.
+      with self.assertRaises(StopIteration):
+        next(graph_trace_iter)
 
   @test_util.run_in_graph_and_eager_modes
   def testControlFlow(self):
@@ -162,28 +158,28 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
     self.evaluate(collatz(x))
 
     self.writer.FlushExecutionFiles()
-    reader = debug_events_reader.DebugEventsReader(self.dump_root)
-    graph_trace_iter = reader.graph_execution_traces_iterator()
-    try:
-      x_values = []
-      timestamp = 0
-      while True:
-        debug_event = next(graph_trace_iter)
-        self.assertGreater(debug_event.wall_time, timestamp)
-        timestamp = debug_event.wall_time
-        trace = debug_event.graph_execution_trace
-        self.assertEqual(trace.tfdbg_context_id, "deadbeaf")
-        self.assertEqual(trace.op_name, "x")
-        self.assertEqual(trace.output_slot, 0)
-        self.assertEqual(trace.tensor_debug_mode,
-                         debug_event_pb2.TensorDebugMode.FULL_TENSOR)
-        x_values.append(int(tensor_util.MakeNdarray(trace.tensor_proto)))
-    except StopIteration:
-      pass
+    with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
+      graph_trace_iter = reader.graph_execution_traces_iterator()
+      try:
+        x_values = []
+        timestamp = 0
+        while True:
+          debug_event = next(graph_trace_iter)
+          self.assertGreater(debug_event.wall_time, timestamp)
+          timestamp = debug_event.wall_time
+          trace = debug_event.graph_execution_trace
+          self.assertEqual(trace.tfdbg_context_id, "deadbeaf")
+          self.assertEqual(trace.op_name, "x")
+          self.assertEqual(trace.output_slot, 0)
+          self.assertEqual(trace.tensor_debug_mode,
+                           debug_event_pb2.TensorDebugMode.FULL_TENSOR)
+          x_values.append(int(tensor_util.MakeNdarray(trace.tensor_proto)))
+      except StopIteration:
+        pass
 
-    # Due to the circular buffer, only the last 4 iterations of
-    # [10, 5, 16, 8, 4, 2] should have been written.
-    self.assertAllEqual(x_values, [16, 8, 4, 2])
+      # Due to the circular buffer, only the last 4 iterations of
+      # [10, 5, 16, 8, 4, 2] should have been written.
+      self.assertAllEqual(x_values, [16, 8, 4, 2])
 
   @test_util.run_in_graph_and_eager_modes
   def testTwoDumpRoots(self):
@@ -210,20 +206,20 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
     another_writer.Close()
 
     for debug_root in (self.dump_root, another_dump_root):
-      reader = debug_events_reader.DebugEventsReader(debug_root)
-      graph_trace_iter = reader.graph_execution_traces_iterator()
+      with debug_events_reader.DebugEventsReader(debug_root) as reader:
+        graph_trace_iter = reader.graph_execution_traces_iterator()
 
-      debug_event = next(graph_trace_iter)
-      trace = debug_event.graph_execution_trace
-      self.assertEqual(trace.tfdbg_context_id, "deadbeaf")
-      self.assertEqual(trace.op_name, "")
-      self.assertEqual(trace.tensor_debug_mode,
-                       debug_event_pb2.TensorDebugMode.FULL_TENSOR)
-      tensor_value = tensor_util.MakeNdarray(trace.tensor_proto)
-      self.assertAllClose(tensor_value, [9.0, 16.0])
+        debug_event = next(graph_trace_iter)
+        trace = debug_event.graph_execution_trace
+        self.assertEqual(trace.tfdbg_context_id, "deadbeaf")
+        self.assertEqual(trace.op_name, "")
+        self.assertEqual(trace.tensor_debug_mode,
+                         debug_event_pb2.TensorDebugMode.FULL_TENSOR)
+        tensor_value = tensor_util.MakeNdarray(trace.tensor_proto)
+        self.assertAllClose(tensor_value, [9.0, 16.0])
 
-      with self.assertRaises(StopIteration):
-        next(graph_trace_iter)
+        with self.assertRaises(StopIteration):
+          next(graph_trace_iter)
 
   @test_util.run_in_graph_and_eager_modes
   def testDebugNumericSummaryV2OpReduceInfNanTwoSlots(self):

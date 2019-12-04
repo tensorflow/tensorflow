@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_SPEECH_AUDIO_PROVIDER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_SPEECH_AUDIO_PROVIDER_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 
 // This is an abstraction around an audio source like a microphone, and is

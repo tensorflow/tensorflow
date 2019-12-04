@@ -6,7 +6,7 @@
 func @only_resource_load() -> tensor<*xi32> {
 
   // CHECK: %[[RES_HANDLE:[0-9]*]] = "tf.VarHandleOp"
-  %0 = "tf.VarHandleOp"() : () -> tensor<*x!tf.resource>
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
 
   // CHECK: %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"(%[[RES_HANDLE]]) {dtype = "tfdtype$DT_INT32"}
   // CHECK: "tf_device.launch"
@@ -32,7 +32,7 @@ func @only_resource_load() -> tensor<*xi32> {
 func @only_resource_store() -> tensor<*xi32> {
 
   // CHECK: %[[RES_HANDLE:[0-9]*]] = "tf.VarHandleOp"
-  %0 = "tf.VarHandleOp"() : () -> tensor<*x!tf.resource>
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
 
   // CHECK: %[[LAUNCH_RES:[0-9]*]]:2 = "tf_device.launch"
   // CHECK: %[[COMPUTE_RES:[0-9]*]] = "tf.SomeComputation"()
@@ -59,7 +59,7 @@ func @only_resource_store() -> tensor<*xi32> {
 func @same_resource_load_and_store() -> tensor<*xi32> {
 
   // CHECK: %[[RES_HANDLE:[0-9]*]] = "tf.VarHandleOp"
-  %0 = "tf.VarHandleOp"() : () -> tensor<*x!tf.resource>
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
 
   // CHECK: %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"(%[[RES_HANDLE]]) {dtype = "tfdtype$DT_INT32"}
   // CHECK: %[[LAUNCH_RES:[0-9]*]]:2 = "tf_device.launch"
@@ -89,7 +89,7 @@ func @same_resource_load_and_store() -> tensor<*xi32> {
 func @decompose_assign_add_variable_op() -> tensor<*xi32> {
 
   // CHECK: %[[RES_HANDLE:[0-9]*]] = "tf.VarHandleOp"
-  %0 = "tf.VarHandleOp"() : () -> tensor<*x!tf.resource>
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
 
   // CHECK: %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"(%[[RES_HANDLE]]) {dtype = "tfdtype$DT_INT32"}
   // CHECK: %[[LAUNCH_RES:[0-9]*]]:2 = "tf_device.launch"
@@ -119,7 +119,7 @@ func @decompose_assign_add_variable_op() -> tensor<*xi32> {
 // CHECK-LABEL: func @decompose_assign_sub_variable_op
 func @decompose_assign_sub_variable_op() -> tensor<*xi32> {
 
-  %0 = "tf.VarHandleOp"() : () -> tensor<*x!tf.resource>
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
 
   // CHECK: %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"
   // CHECK: %[[ONE:[0-9]*]] = "tf.Const"() {value = dense<1> : tensor<i32>}
@@ -145,7 +145,7 @@ func @decompose_assign_sub_variable_op() -> tensor<*xi32> {
 func @decompose_resource_apply_gradient_descent() -> tensor<*xf32> {
 
   // CHECK: %[[RES_HANDLE:[0-9]*]] = "tf.VarHandleOp"
-  %0 = "tf.VarHandleOp"() : () -> tensor<*x!tf.resource>
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
 
   // CHECK: %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"(%[[RES_HANDLE]]) {dtype = "tfdtype$DT_FLOAT"}
   // CHECK: %[[LAUNCH_RES:[0-9]*]]:2 = "tf_device.launch"
@@ -181,7 +181,7 @@ func @internal_resource() -> tensor<*xi32> {
   %0 = "tf_device.launch"() ( {
 
     // CHECK: %[[RES_HANDLE:[0-9]*]] = "tf.VarHandleOp"
-    %1 = "tf.VarHandleOp"() : () -> tensor<*x!tf.resource>
+    %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
 
     // CHECK: %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"(%[[RES_HANDLE]])
     %2 = "tf.ReadVariableOp"(%1) {dtype = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource>) -> tensor<*xi32>

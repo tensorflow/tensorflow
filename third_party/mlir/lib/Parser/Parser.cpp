@@ -324,7 +324,7 @@ public:
 
   /// Parse an optional trailing location.
   ///
-  ///   trailing-location     ::= location?
+  ///   trailing-location     ::= (`loc` `(` location `)`)?
   ///
   ParseResult parseOptionalTrailingLocation(Location &loc) {
     // If there is a 'loc' we parse a trailing location.
@@ -2901,7 +2901,7 @@ ParseResult AffineParser::parseAffineMapOfSSAIds(AffineMap &map) {
     return failure();
   // Parsed a valid affine map.
   if (exprs.empty())
-    map = AffineMap();
+    map = AffineMap::get(getContext());
   else
     map = AffineMap::get(numDimOperands, dimsAndSymbols.size() - numDimOperands,
                          exprs);
@@ -2912,7 +2912,8 @@ ParseResult AffineParser::parseAffineMapOfSSAIds(AffineMap &map) {
 ///
 ///  affine-map ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
 ///
-///  multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
+///  multi-dim-affine-expr ::= `(` `)`
+///  multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)`
 AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
                                             unsigned numSymbols) {
   parseToken(Token::l_paren, "expected '(' at start of affine map range");
@@ -2928,8 +2929,11 @@ AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
   // Parse a multi-dimensional affine expression (a comma-separated list of
   // 1-d affine expressions); the list cannot be empty. Grammar:
   // multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
-  if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, false))
+  if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, true))
     return AffineMap();
+
+  if (exprs.empty())
+    return AffineMap::get(getContext());
 
   // Parsed a valid affine map.
   return AffineMap::get(numDims, numSymbols, exprs);
@@ -3515,10 +3519,14 @@ Value *OperationParser::createForwardRefPlaceholder(SMLoc loc, Type type) {
 
 /// Parse an operation.
 ///
-///  operation ::=
-///    operation-result? string '(' ssa-use-list? ')' attribute-dict?
-///    `:` function-type trailing-location?
-///  operation-result ::= ssa-id ((`:` integer-literal) | (`,` ssa-id)*) `=`
+///  operation         ::= op-result-list?
+///                        (generic-operation | custom-operation)
+///                        trailing-location?
+///  generic-operation ::= string-literal '(' ssa-use-list? ')' attribute-dict?
+///                        `:` function-type
+///  custom-operation  ::= bare-id custom-operation-format
+///  op-result-list    ::= op-result (`,` op-result)* `=`
+///  op-result         ::= ssa-id (`:` integer-literal)
 ///
 ParseResult OperationParser::parseOperation() {
   auto loc = getToken().getLoc();

@@ -20,48 +20,26 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Note that for each op in this file, we use a tool to automatically generate
-// certain sections in its definition: basic structure, summary, description.
-// So modifications to these sections will not be respected. Modifications to
-// op traits, arguments, results, and sections after the results are retained.
-// Besides, ops in this file must be separated via the '// -----' marker.
+// Note that for each op in this file and the included files for specific op
+// categories, we use a tool to automatically generate certain sections in its
+// definition: basic structure, summary, description. So modifications to these
+// sections will not be respected. Modifications to op traits, arguments,
+// results, and sections after the results are retained. Besides, ops must be
+// separated via the '// -----' marker.
 
 #ifndef SPIRV_OPS
 #define SPIRV_OPS
 
-#ifndef SPIRV_BASE
 include "mlir/Dialect/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
-
-#ifndef SPIRV_ARITHMETIC_OPS
 include "mlir/Dialect/SPIRV/SPIRVArithmeticOps.td"
-#endif // SPIRV_ARITHMETIC_OPS
-
-#ifndef SPIRV_BIT_OPS
 include "mlir/Dialect/SPIRV/SPIRVBitOps.td"
-#endif // SPIRV_BIT_OPS
-
-#ifndef SPIRV_CAST_OPS
 include "mlir/Dialect/SPIRV/SPIRVCastOps.td"
-#endif // SPIRV_CAST_OPS
-
-#ifndef SPIRV_CONTROLFLOW_OPS
 include "mlir/Dialect/SPIRV/SPIRVControlFlowOps.td"
-#endif // SPIRV_CONTROLFLOW_OPS
-
-#ifndef SPIRV_LOGICAL_OPS
-include "mlir/Dialect/SPIRV/SPIRVLogicalOps.td"
-#endif // SPIRV_LOGICAL_OPS
-
-#ifndef SPIRV_STRUCTURE_OPS
-// Pull in ops for defining the SPIR-V module structure
-include "mlir/Dialect/SPIRV/SPIRVStructureOps.td"
-#endif // SPIRV_STRUCTURE_OPS
-
-#ifndef SPIRV_GLSL_OPS
-// Pull in ops for extended instruction set for GLSL
 include "mlir/Dialect/SPIRV/SPIRVGLSLOps.td"
-#endif // SPIRV_GLSL_OPS
+include "mlir/Dialect/SPIRV/SPIRVGroupOps.td"
+include "mlir/Dialect/SPIRV/SPIRVLogicalOps.td"
+include "mlir/Dialect/SPIRV/SPIRVNonUniformOps.td"
+include "mlir/Dialect/SPIRV/SPIRVStructureOps.td"
 
 // -----
 

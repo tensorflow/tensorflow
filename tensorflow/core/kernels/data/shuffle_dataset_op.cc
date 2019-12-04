@@ -137,14 +137,14 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);
-      int64 start_micros = ctx->env()->NowMicros();
+      int64 start_micros = EnvTime::NowMicros();
       int64 num_log_entries = 0;
       if (!input_impl_ && epoch_ == 0) {
         TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
             ctx, this->prefix(), &input_impl_));
       }
       while (input_impl_ && num_elements_ < this->dataset()->buffer_size_) {
-        if (ctx->env()->NowMicros() >
+        if (EnvTime::NowMicros() >
             ((num_log_entries + 1) * kLogIntervalMicros) + start_micros) {
           num_log_entries++;
           LOG(INFO) << "Filling up shuffle buffer (this may take a while): "

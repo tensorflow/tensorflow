@@ -65,7 +65,7 @@ class AssertNextDatasetParams : public DatasetParams {
   std::vector<tstring> transformations_;
 };
 
-class AssertNextDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class AssertNextDatasetOpTest : public DatasetOpsTestBase {};
 
 AssertNextDatasetParams AssertNextDatasetParams1() {
   TakeDatasetParams take_dataset_params =

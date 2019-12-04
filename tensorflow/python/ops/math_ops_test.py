@@ -441,7 +441,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     nums, divs = self.floatTestData()
     tf_result = math_ops.realdiv(nums, divs)
     np_result = np.divide(nums, divs)
-    self.assertAllEqual(tf_result, np_result)
+    self.assertAllClose(tf_result, np_result)
 
   def testComplexDiv(self):
     foo = array_ops.constant([1. + 3.j])
@@ -498,7 +498,7 @@ class DivNoNanTest(test_util.TensorFlowTestCase):
 
       with test_util.use_gpu():
         tf_result = math_ops.div_no_nan(nums, divs)
-        self.assertAllEqual(tf_result, np_result)
+        self.assertAllClose(tf_result, np_result)
 
 
 @test_util.run_all_in_graph_and_eager_modes

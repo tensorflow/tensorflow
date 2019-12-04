@@ -497,6 +497,7 @@ Status DirectSession::RunInternal(
   const uint64 start_time_usecs = options_.env->NowMicros();
   const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
   RunState run_state(step_id, &devices_);
+  const size_t num_executors = executors_and_keys->items.size();
 
   profiler::TraceMe activity(
       [&] {
@@ -520,7 +521,6 @@ Status DirectSession::RunInternal(
                             executor_step_count, &debugger_state));
   }
 
-  run_state.rendez.reset(new IntraProcessRendezvous(device_mgr_.get()));
 #ifndef __ANDROID__
   // Set up for collectives if ExecutorsAndKeys declares a key.
   if (executors_and_keys->collective_graph_key !=
@@ -553,88 +553,16 @@ Status DirectSession::RunInternal(
   }
 #endif
 
-  // Start parallel Executors.
-  const size_t num_executors = executors_and_keys->items.size();
-  Notification executors_done;
-
-  // TODO(mrry): Switch the RunInternal() synchronous use of ExecutorBarrier
-  // to use a stack-allocated barrier.
-  ExecutorBarrier* barrier =
-      new ExecutorBarrier(num_executors, run_state.rendez.get(),
-                          [&run_state, &executors_done](const Status& ret) {
-                            {
-                              mutex_lock l(run_state.mu);
-                              run_state.status.Update(ret);
-                            }
-                            executors_done.Notify();
-                          });
-
-  Executor::Args args;
-  args.step_id = step_id;
-  args.call_frame = call_frame;
-  args.rendezvous = run_state.rendez.get();
-  args.collective_executor =
-      (run_state.collective_executor ? run_state.collective_executor->get()
-                                     : nullptr);
-  CancellationManager step_cancellation_manager;
-  args.cancellation_manager = &step_cancellation_manager;
-  args.session_state = &session_state_;
-  args.session_handle = session_handle_;
-  args.tensor_store = &run_state.tensor_store;
-  args.step_container = &run_state.step_container;
-  args.sync_on_finish = sync_on_finish_;
-  args.user_intra_op_threadpool = threadpool_options.intra_op_threadpool;
-
-  const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
-
-  bool update_cost_model = false;
-  if (options_.config.graph_options().build_cost_model() > 0) {
-    const int64 build_cost_model_every =
-        options_.config.graph_options().build_cost_model();
-    const int64 build_cost_model_after =
-        options_.config.graph_options().build_cost_model_after();
-    int64 measure_step_count = executor_step_count - build_cost_model_after;
-    if (measure_step_count >= 0) {
-      update_cost_model =
-          ((measure_step_count + 1) % build_cost_model_every == 0);
-    }
-  }
-  if (do_trace || update_cost_model ||
-      run_options.report_tensor_allocations_upon_oom()) {
-    run_state.collector.reset(
-        new StepStatsCollector(run_metadata->mutable_step_stats()));
-    args.stats_collector = run_state.collector.get();
-  }
-
-  std::unique_ptr<ProfilerSession> profiler_session;
-  if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    profiler_session = ProfilerSession::Create();
-  }
+  // Use std::unique_ptr to ensure garbage collection
+  std::unique_ptr<thread::ThreadPool> threadpool_wrapper;
+  thread::ThreadPool* pool = nullptr;
 
   if (run_options.inter_op_thread_pool() < -1 ||
       run_options.inter_op_thread_pool() >=
           static_cast<int32>(thread_pools_.size())) {
-    delete barrier;
     return errors::InvalidArgument("Invalid inter_op_thread_pool: ",
                                    run_options.inter_op_thread_pool());
   }
-
-  // Register this step with session's cancellation manager, so that
-  // `Session::Close()` will cancel the step.
-  const CancellationToken cancellation_token =
-      cancellation_manager_->get_cancellation_token();
-  const bool already_cancelled = !cancellation_manager_->RegisterCallback(
-      cancellation_token, [&step_cancellation_manager]() {
-        step_cancellation_manager.StartCancel();
-      });
-  if (already_cancelled) {
-    delete barrier;
-    return errors::Cancelled("Run call was cancelled");
-  }
-
-  // Use std::unique_ptr to ensure garbage collection
-  std::unique_ptr<thread::ThreadPool> threadpool_wrapper;
-  thread::ThreadPool* pool = nullptr;
 
   if (run_in_caller_thread_) {
     pool = nullptr;
@@ -673,53 +601,136 @@ Status DirectSession::RunInternal(
       handler_ptr->ScheduleInterOpClosure(std::move(c));
     };
   } else {
-    default_runner = [this, pool](Executor::Args::Closure c) {
+    default_runner = [pool](Executor::Args::Closure c) {
       pool->Schedule(std::move(c));
     };
   }
 
-  for (const auto& item : executors_and_keys->items) {
-    // TODO(azaks): support partial run.
-    // TODO(azaks): if the device picks its own threadpool, we need to assign
-    //     less threads to the main compute pool by default.
-    thread::ThreadPool* device_thread_pool =
-        item.device->tensorflow_device_thread_pool();
-    // TODO(crk): Investigate usage of RunHandlerPool when using device specific
-    // thread pool(s).
-    if (!device_thread_pool) {
-      args.runner = default_runner;
-    } else {
-      args.runner = [this, device_thread_pool](Executor::Args::Closure c) {
-        device_thread_pool->Schedule(std::move(c));
-      };
-    }
-    if (handler != nullptr) {
-      args.user_intra_op_threadpool = handler->AsIntraThreadPoolInterface();
-    }
+  // Start parallel Executors.
+  const int64 call_timeout = run_options.timeout_in_ms() > 0
+                                 ? run_options.timeout_in_ms()
+                                 : operation_timeout_in_ms_;
+  const bool can_execute_synchronously = pool == nullptr && call_timeout == 0;
 
-    item.executor->RunAsync(args, barrier->Get());
+  Executor::Args args;
+  args.step_id = step_id;
+  args.call_frame = call_frame;
+  args.collective_executor =
+      (run_state.collective_executor ? run_state.collective_executor->get()
+                                     : nullptr);
+  args.session_state = &session_state_;
+  args.session_handle = session_handle_;
+  args.tensor_store = &run_state.tensor_store;
+  args.step_container = &run_state.step_container;
+  args.sync_on_finish = sync_on_finish_;
+  args.user_intra_op_threadpool = threadpool_options.intra_op_threadpool;
+
+  const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
+
+  bool update_cost_model = false;
+  if (options_.config.graph_options().build_cost_model() > 0) {
+    const int64 build_cost_model_every =
+        options_.config.graph_options().build_cost_model();
+    const int64 build_cost_model_after =
+        options_.config.graph_options().build_cost_model_after();
+    int64 measure_step_count = executor_step_count - build_cost_model_after;
+    if (measure_step_count >= 0) {
+      update_cost_model =
+          ((measure_step_count + 1) % build_cost_model_every == 0);
+    }
+  }
+  if (do_trace || update_cost_model ||
+      run_options.report_tensor_allocations_upon_oom()) {
+    run_state.collector.reset(
+        new StepStatsCollector(run_metadata->mutable_step_stats()));
+    args.stats_collector = run_state.collector.get();
   }
 
-  WaitForNotification(&executors_done, &run_state, &step_cancellation_manager,
-                      run_options.timeout_in_ms() > 0
-                          ? run_options.timeout_in_ms()
-                          : operation_timeout_in_ms_);
+  std::unique_ptr<ProfilerSession> profiler_session;
+  if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
+    profiler_session = ProfilerSession::Create();
+  }
 
-  if (!cancellation_manager_->DeregisterCallback(cancellation_token)) {
-    // The step has been cancelled: make sure we don't attempt to receive the
-    // outputs as this would make it block forever.
-    mutex_lock l(run_state.mu);
-    run_state.status.Update(errors::Cancelled("Run call was cancelled"));
+  // Register this step with session's cancellation manager, so that
+  // `Session::Close()` will cancel the step.
+  CancellationManager step_cancellation_manager(cancellation_manager_);
+  if (step_cancellation_manager.IsCancelled()) {
+    return errors::Cancelled("Run call was cancelled");
+  }
+  args.cancellation_manager = &step_cancellation_manager;
+
+  Status run_status;
+
+  auto set_threadpool_args_for_item =
+      [&default_runner, &handler](const PerPartitionExecutorsAndLib& item,
+                                  Executor::Args* args) {
+        // TODO(azaks): support partial run.
+        // TODO(azaks): if the device picks its own threadpool, we need to
+        // assign
+        //     less threads to the main compute pool by default.
+        thread::ThreadPool* device_thread_pool =
+            item.device->tensorflow_device_thread_pool();
+        // TODO(crk): Investigate usage of RunHandlerPool when using device
+        // specific thread pool(s).
+        if (!device_thread_pool) {
+          args->runner = default_runner;
+        } else {
+          args->runner = [device_thread_pool](Executor::Args::Closure c) {
+            device_thread_pool->Schedule(std::move(c));
+          };
+        }
+        if (handler != nullptr) {
+          args->user_intra_op_threadpool =
+              handler->AsIntraThreadPoolInterface();
+        }
+      };
+
+  if (can_execute_synchronously) {
+    PrivateIntraProcessRendezvous rendezvous(device_mgr_.get());
+    args.rendezvous = &rendezvous;
+
+    const auto& item = executors_and_keys->items[0];
+    set_threadpool_args_for_item(item, &args);
+    run_status = item.executor->Run(args);
+  } else {
+    core::RefCountPtr<RefCountedIntraProcessRendezvous> rendezvous(
+        new RefCountedIntraProcessRendezvous(device_mgr_.get()));
+    args.rendezvous = rendezvous.get();
+
+    // `barrier` will delete itself after the final executor finishes.
+    Notification executors_done;
+    ExecutorBarrier* barrier =
+        new ExecutorBarrier(num_executors, rendezvous.get(),
+                            [&run_state, &executors_done](const Status& ret) {
+                              {
+                                mutex_lock l(run_state.mu);
+                                run_state.status.Update(ret);
+                              }
+                              executors_done.Notify();
+                            });
+
+    for (const auto& item : executors_and_keys->items) {
+      set_threadpool_args_for_item(item, &args);
+      item.executor->RunAsync(args, barrier->Get());
+    }
+
+    WaitForNotification(&executors_done, &run_state, &step_cancellation_manager,
+                        call_timeout);
+    {
+      tf_shared_lock l(run_state.mu);
+      run_status = run_state.status;
+    }
+  }
+
+  if (step_cancellation_manager.IsCancelled()) {
+    run_status.Update(errors::Cancelled("Run call was cancelled"));
   }
 
   if (profiler_session) {
     TF_RETURN_IF_ERROR(profiler_session->CollectData(run_metadata));
   }
 
-  {
-    mutex_lock l(run_state.mu);
-    TF_RETURN_IF_ERROR(run_state.status);
-  }
+  TF_RETURN_IF_ERROR(run_status);
 
   // Save the output tensors of this run we choose to keep.
   if (!run_state.tensor_store.empty()) {
@@ -1133,7 +1144,7 @@ Status DirectSession::SendPRunInputs(const NamedTensorList& inputs,
 
 Status DirectSession::RecvPRunOutputs(
     const std::vector<string>& output_names,
-    const ExecutorsAndKeys* executors_and_keys, RunState* run_state,
+    const ExecutorsAndKeys* executors_and_keys, PartialRunState* run_state,
     std::vector<Tensor>* outputs) {
   Status s;
   if (!output_names.empty()) {

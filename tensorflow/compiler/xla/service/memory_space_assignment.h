@@ -268,6 +268,10 @@ class MemorySpaceAssignment {
     // Specifies the upper bound for number of outstanding asynchronous copies,
     // -1 for unlimited.
     int64 max_outstanding_async_copies = -1;
+
+    // If true, tries allocating buffers across (e.g., before and inside a while
+    // loop body) sequential calls (kWhile, kCall, and kConditional).
+    bool allocate_across_sequential_calls = false;
   };
 
   // This class represents an allocation that might either be in the default or
@@ -363,13 +367,14 @@ class MemorySpaceAssignment {
   class CopyAllocation : public Allocation {
    public:
     CopyAllocation(const Allocation& prev_allocation, MemorySpace memory_space,
-                   Chunk chunk, int64 start_time, int64 end_time)
+                   Chunk chunk, int64 start_time, int64 end_time,
+                   int64 copy_done_schedule_before_time)
         : Allocation(/*instruction=*/nullptr,
                      /*defining_position=*/{nullptr, {}}, memory_space, chunk,
                      start_time, end_time),
           prev_allocation_(prev_allocation),
           copy_start_schedule_after_(start_time),
-          copy_done_schedule_before_(end_time) {}
+          copy_done_schedule_before_(copy_done_schedule_before_time) {}
 
     bool is_copy_allocation() const override { return true; }
 
@@ -445,7 +450,8 @@ class MemorySpaceAssignment {
       absl::Span<HloInstruction* const> flattened_instructions)
       : module_(module),
         alternate_memory_space_(alternate_memory_space),
-        flattened_instruction_sequence_(flattened_instructions),
+        flattened_instructions_(flattened_instructions.begin(),
+                                flattened_instructions.end()),
         preset_assignments_(absl::make_unique<PresetAssignments>()) {}
 
   // Process calls Process methods of the allocations after the allocations have
@@ -474,7 +480,7 @@ class MemorySpaceAssignment {
 
   HloModule* module_;
   int64 alternate_memory_space_;
-  HloInstructionSequence flattened_instruction_sequence_;
+  std::vector<HloInstruction*> flattened_instructions_;
   AllocationMap allocation_map_;
   std::unique_ptr<PresetAssignments> preset_assignments_;
 
@@ -525,8 +531,8 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // allocations can be in default or alternate memory spaces, or can be
   // prefetches or evictions. Returns true if successful.
   bool FindAllocation(int64 start_time, int64 end_time, int64 last_use_time,
-                      HloPosition defining_position, HloUse use,
-                      const HloValue* buffer, int64 size,
+                      int64 latest_prefetch_time, HloPosition defining_position,
+                      HloUse use, const HloValue* buffer, int64 size,
                       MemorySpaceAssignment::AllocationSequence* allocations);
 
   // Try allocating in alternate memory without any copies. Returns true if
@@ -540,6 +546,12 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
 
   // Adds input and outputs as required assignments.
   void AddInputAndOutputRequiredAssignments();
+
+  // Returns true if the colocated intervals in the argument are in a parameter
+  // or root instruction of the entry computation and are reserved by the user
+  // to be in the alternate memory space.
+  bool AreIntervalsReservedInAlternateMemory(
+      absl::Span<const BufferInterval* const> colocated_intervals) const;
 
   // Given a buffer interval, returns the colocated intervals. Unlike the
   // similar GlobalDecreasingSizeBestFitHeap::GetTransitiveColocations, it
@@ -560,7 +572,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // Adds an asynchronous copy to the allocations.
   void AddAsyncCopy(const MemorySpaceAssignment::Allocation& prev_allocation,
                     MemorySpace memory_space, Chunk chunk, int64 start_time,
-                    int64 end_time,
+                    int64 end_time, int64 copy_done_schedule_before_time,
                     MemorySpaceAssignment::AllocationSequence* allocations);
 
   // These methods are used for delaying committing the chunk candidate until
@@ -568,6 +580,11 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   void AddToPendingChunks(const BufferInterval& buffer_interval,
                           const ChunkCandidate& chunk_candidate);
   void CommitPendingChunks();
+
+  // Returns the available heap size in the alternate memory.
+  int64 available_heap_size() const {
+    return options_.max_size_in_bytes - reserved_in_bytes_;
+  }
 
   MemorySpaceAssignment::AllocationMap* allocation_map_;
   const MemorySpaceAssignment::Options& options_;
@@ -582,6 +599,8 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // and outputs).
   absl::flat_hash_map<const HloValue*, std::vector<RequiredMemoryAssignment>>
       required_assignments_;
+  // Number of bytes reserved in alternate memory space.
+  int64 reserved_in_bytes_ = 0;
 };
 
 }  // namespace xla

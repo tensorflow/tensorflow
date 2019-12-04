@@ -167,7 +167,7 @@ func @testSqrtWithWrongInputType(tensor<? x i32>) -> tensor<? x i32> {
 // test invalid Square input
 func @testSquareWithWrongInputType(tensor<? x i32>) -> tensor<? x i32> {
 ^bb0(%arg0: tensor<? x i32>):
-  // expected-error @+1 {{tfl.square' op operand #0 must be tensor of floating-point or QI8 type or QUI8 type values}}
+  // expected-error @+1 {{tfl.square' op operand #0 must be tensor of floating-point values}}
   %0 = "tfl.square"(%arg0): (tensor<? x i32>) -> tensor<? x i32>
   return %0#0 : tensor<? x i32>
 }
@@ -188,12 +188,6 @@ func @testSquare(tensor<? x f32>) -> tensor<? x f32> {
   // CHECK: "tfl.square"(%arg0)
   %0 = "tfl.square"(%arg0): (tensor<? x f32>) -> tensor<? x f32>
   return %0 : tensor<? x f32>
-}
-
-func @testQuantizedSquare(tensor<? x !quant.uniform<u8:f32, 0.1>>) -> tensor<? x !quant.uniform<u8:f32, 0.1>> {
-^bb0(%arg0: tensor<? x !quant.uniform<u8:f32, 0.1>>):
-  %0 = "tfl.square"(%arg0): (tensor<? x !quant.uniform<u8:f32, 0.1>>) -> tensor<? x !quant.uniform<u8:f32, 0.1>>
-  return %0 : tensor<? x !quant.uniform<u8:f32, 0.1>>
 }
 
 func @testQuantizedResizeNearestNeighbor(tensor<? x !quant.uniform<u8:f32, 0.1>>, tensor<? x i32>) -> tensor<? x !quant.uniform<u8:f32, 0.1>> {
@@ -440,7 +434,7 @@ func @testEluI32(%arg0: tensor<? x i32>) -> tensor<? x i32> {
 
 // -----
 
-func @testFusedActiviationFunction(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) {
+func @testFusedActivationFunction(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) {
   // CHECK: "NONE"
   %0 = tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<4xi32>
   // CHECK: "RELU"
@@ -458,7 +452,7 @@ func @testFusedActiviationFunction(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -
 
 // -----
 
-func @testFusedActiviationFunction(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+func @testFusedActivationFunction(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   // expected-error @+1 {{attribute 'fused_activation_function' failed to satisfy constraint: fused activation enum}}
   %0 = tfl.add %arg0, %arg1 {fused_activation_function = "Relu6"} : tensor<4xi32>
   return %0: tensor<4xi32>
@@ -580,15 +574,6 @@ func @testUnidirectionalSequenceLstmWithNoneTypeAndOverrideAttr(%arg0: tensor<? 
 
 // -----
 
-// test invalid none type applied to a tensor type arg
-func @testUnidirectionalSequenceLstmWithInvalidNoneType(%arg0: tensor<? x f32>, %arg1: tensor<? x f32>, %arg2: none, %arg3: tensor<? x f32>, %arg4: tensor<? x f32>, %arg5: tensor<? x f32>, %arg6: tensor<? x f32>, %arg7: tensor<? x f32>, %arg8: tensor<? x f32>, %arg9: tensor<? x f32>, %arg10: tensor<? x f32>, %arg11: tensor<? x f32>, %arg12: tensor<? x f32>, %arg13: tensor<? x f32>, %arg14: tensor<? x f32>, %arg15: tensor<? x f32>, %arg16: tensor<? x f32>, %arg17: tensor<? x f32>, %arg18: tensor<? x f32>, %arg19: tensor<? x f32>, %arg20: tensor<? x f32>, %arg21: tensor<? x f32>, %arg22: tensor<? x f32>, %arg23: tensor<? x f32>) -> tensor<? x f32> {
-  // expected-error @+1 {{'tfl.unidirectional_sequence_lstm' op operand #2 must be tensor of 32-bit float or 8-bit integer values}}
-  %0 = "tfl.unidirectional_sequence_lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15, %arg16, %arg17, %arg18, %arg19, %arg20, %arg21, %arg22, %arg23) {fused_activation_function = "NONE", time_major = false} : (tensor<?xf32>, tensor<? x f32>, none, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
-}
-
-// -----
-
 // test violation of projection weight and projection bias pred op trait
 func @testUnidirectionalSequenceLstmWithInvalidNoneType(%arg0: tensor<? x f32>, %arg1: tensor<? x f32>, %arg2: tensor<? x f32>, %arg3: tensor<? x f32>, %arg4: tensor<? x f32>, %arg5: tensor<? x f32>, %arg6: tensor<? x f32>, %arg7: tensor<? x f32>, %arg8: tensor<? x f32>, %arg9: tensor<? x f32>, %arg10: tensor<? x f32>, %arg11: tensor<? x f32>, %arg12: tensor<? x f32>, %arg13: tensor<? x f32>, %arg14: tensor<? x f32>, %arg15: tensor<? x f32>, %arg16: none, %arg17: tensor<? x f32>, %arg18: tensor<? x f32>, %arg19: tensor<? x f32>, %arg20: tensor<? x f32>, %arg21: tensor<? x f32>, %arg22: tensor<? x f32>, %arg23: tensor<? x f32>) -> tensor<? x f32> {
   // expected-error @+1 {{'tfl.unidirectional_sequence_lstm' op failed to verify that either projection weight must be specified or both projection weight and projection bias must not be specified}}
@@ -629,15 +614,6 @@ func @testLstmWithNoneTypeAndOverrideAttr(%arg0: tensor<? x f32>, %arg1: none, %
   // CHECK: "tfl.lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15, %arg16, %arg17, %arg18, %arg19, %arg20, %arg21, %arg22, %arg23)
   // CHECK-NEXT: {cell_clip = 1.000000e+00 : f32, fused_activation_function = "NONE", kernel_type = "FULL"} : (tensor<?xf32>, none, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %0 = "tfl.lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15, %arg16, %arg17, %arg18, %arg19, %arg20, %arg21, %arg22, %arg23) ({}) {cell_clip = 1.000000e+00 : f32, fused_activation_function = "NONE", kernel_type = "FULL"} : (tensor<?xf32>, none, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
-}
-
-// -----
-
-// test invalid none type applied to a tensor type arg
-func @testLstmWithInvalidNoneType(%arg0: tensor<? x f32>, %arg1: tensor<? x f32>, %arg2: none, %arg3: tensor<? x f32>, %arg4: tensor<? x f32>, %arg5: tensor<? x f32>, %arg6: tensor<? x f32>, %arg7: tensor<? x f32>, %arg8: tensor<? x f32>, %arg9: tensor<? x f32>, %arg10: tensor<? x f32>, %arg11: tensor<? x f32>, %arg12: tensor<? x f32>, %arg13: tensor<? x f32>, %arg14: tensor<? x f32>, %arg15: tensor<? x f32>, %arg16: tensor<? x f32>, %arg17: tensor<? x f32>, %arg18: tensor<? x f32>, %arg19: tensor<? x f32>, %arg20: tensor<? x f32>, %arg21: tensor<? x f32>, %arg22: tensor<? x f32>, %arg23: tensor<? x f32>) -> tensor<? x f32> {
-  // expected-error @+1 {{'tfl.lstm' op operand #2 must be tensor of 32-bit float or 8-bit integer values}}
-  %0 = "tfl.lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15, %arg16, %arg17, %arg18, %arg19, %arg20, %arg21, %arg22, %arg23) ({}) {fused_activation_function = "NONE"} : (tensor<?xf32>, tensor<? x f32>, none, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
@@ -1031,14 +1007,6 @@ func @testConcatInvalidOutputElementalType(%arg0: tensor<2xi32>, %arg1: tensor<2
 
 // -----
 
-func @testConcatInvalidStorageType(%arg0: tensor<1x2x!quant.uniform<i9:f32, 0.1:128>>, %arg1: tensor<1x2x!quant.uniform<i8:f32, 0.1:128>>) -> tensor<2x2x!quant.uniform<i8:f32, 0.1:128>> {
-  // expected-error @+1 {{'tfl.concatenation' op operand #0 must be tensor of 32-bit float or 64-bit integer or 32-bit integer or 16-bit integer or 8-bit integer or QI8 type or QUI8 type or TFLite uint8 type values}}
-  %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2x!quant.uniform<i9:f32, 0.1:128>>, tensor<1x2x!quant.uniform<i8:f32, 0.1:128>>) -> tensor<2x2x!quant.uniform<i8:f32, 0.1:128>>
-  return %0 : tensor<2x2x!quant.uniform<i8:f32, 0.1:128>>
-}
-
-// -----
-
 func @testConcatInvalidAxis(%arg0: tensor<1x2xi32>, %arg1: tensor<1x2xi32>) -> tensor<2x2xi32> {
   // expected-error @+1 {{'tfl.concatenation' op concatenation dimension must be in [-rank, rank)}}
   %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 2 : i32, fused_activation_function = "NONE"} : (tensor<1x2xi32>, tensor<1x2xi32>) -> tensor<2x2xi32>
@@ -1079,7 +1047,7 @@ func @testConcatInvalidOperandDimSize(%arg0: tensor<1x2xi32>, %arg1: tensor<1x3x
 
 // -----
 
-func @testConcatInvalidOperandDimSizeComaredToPrevInput(%arg0: tensor<1x2xi32>, %arg1: tensor<1x3xi32>) -> tensor<?x?xi32> {
+func @testConcatInvalidOperandDimSizeComparedToPrevInput(%arg0: tensor<1x2xi32>, %arg1: tensor<1x3xi32>) -> tensor<?x?xi32> {
   // expected-error @+1 {{'tfl.concatenation' op dimension size of dimension #1 of operand #1 must be equal to dimension size of dimension #1 of operand #0, expected 2, got 3}}
   %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2xi32>, tensor<1x3xi32>) -> tensor<?x?xi32>
   return %0 : tensor<?x?xi32>
@@ -1135,6 +1103,12 @@ func @testStridedSliceWithQI8(%arg0: tensor<12x2x2x5x!quant.uniform<i8:f32, 0.1>
 func @testStridedSliceWithQUI8(%arg0: tensor<12x2x2x5x!quant.uniform<u8:f32, 0.1>>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5x!quant.uniform<u8:f32, 0.1>> {
   %0 = "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5x!quant.uniform<u8:f32, 0.1>>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5x!quant.uniform<u8:f32, 0.1>>
   return %0 : tensor<1x2x2x5x!quant.uniform<u8:f32, 0.1>>
+}
+
+// CHECK-LABEL: testStridedSliceTFType
+func @testStridedSliceTFType(%arg0: tensor<12x2x2x5x!tf.uint8>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5x!tf.quint8> {
+  %0 = "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5x!tf.uint8>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5x!tf.quint8>
+  return %0 : tensor<1x2x2x5x!tf.quint8>
 }
 
 // -----
@@ -1385,14 +1359,6 @@ func @testEmbeddingLookup(%arg0 : tensor<?xi32>, %arg1 : tensor<?xf32>) -> tenso
 
 // -----
 
-func @testEmbeddingLookupInvalidResultType(%arg0 : tensor<?xi32>, %arg1 : tensor<?xf32>) -> tensor<?xi32> {
-  // expected-error @+1 {{'tfl.embedding_lookup' op result #0 must be tensor of 32-bit float or 8-bit integer or TFLite uint8 type values}}
-  %0 = "tfl.embedding_lookup"(%arg0, %arg1) : (tensor<?xi32>,tensor<?xf32>) -> tensor<?xi32>
-  return %0 : tensor<?xi32>
-}
-
-// -----
-
 func @testEmbeddingLookupValueAndResultElementTypeTraitFailed(%arg0 : tensor<?xi32>, %arg1 : tensor<?xi8>) -> tensor<?xf32> {
   // expected-error @+1 {{'tfl.embedding_lookup' op failed to verify that value and output must have same element type}}
   %0 = "tfl.embedding_lookup"(%arg0, %arg1) : (tensor<?xi32>,tensor<?xi8>) -> tensor<?xf32>
@@ -1415,13 +1381,6 @@ func @testSvdf(%arg0: tensor<? x f32>, %arg1: tensor<? x f32>, %arg2: tensor<? x
   return %0 : tensor<?xf32>
 }
 
-// -----
-
-func @testSvdfUnsupportedType(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>, %arg2: tensor<? x i32>, %arg3: tensor<? x i32>, %arg4: tensor<? x i32>) -> tensor<? x f32> {
-  // expected-error @+1 {{'tfl.svdf' op operand #0 must be tensor of 32-bit float or 8-bit integer values}}
-  %0 = "tfl.svdf"(%arg0, %arg1, %arg2, %arg3, %arg4) {fused_activation_function = "NONE", rank = 2 : i32} : (tensor<?xi32>, tensor<?xi32>, tensor<?xi32>, tensor<?xi32>, tensor<?xi32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
-}
 // -----
 
 // CHECK-LABEL: testDepthToSpace

@@ -24,10 +24,9 @@
 #define MLIR_DIALECT_STANDARDOPS_OPS_H
 
 #include "mlir/Analysis/CallInterfaces.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Dialect.h"
-#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
 
 // Pull in all enum type definitions and utility function declarations.

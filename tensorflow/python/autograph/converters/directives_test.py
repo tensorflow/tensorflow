@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.converters import directives as directives_converter
 from tensorflow.python.autograph.core import converter_testing
-from tensorflow.python.autograph.core.converter import AgAnno
 from tensorflow.python.autograph.lang import directives
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
@@ -68,7 +67,7 @@ class DirectivesTest(converter_testing.TestCase):
     node, ctx = self.prepare(test_fn, {'directives': directives})
     node = directives_converter.transform(node, ctx)
 
-    d = anno.getanno(node.body[1], AgAnno.DIRECTIVES)
+    d = anno.getanno(node.body[1], anno.Basic.DIRECTIVES)
     d = d[directives.set_loop_options]
     self.assertEqual(d['parallel_iterations'].n, 10)
     self.assertEqual(d['back_prop'].id, 'a')

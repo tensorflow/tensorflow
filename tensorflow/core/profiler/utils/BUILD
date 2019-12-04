@@ -30,6 +30,20 @@ cc_library(
 )
 
 cc_library(
+    name = "op_metrics_db_utils",
+    srcs = ["op_metrics_db_utils.cc"],
+    hdrs = ["op_metrics_db_utils.h"],
+    deps = [
+        ":math_utils",
+        ":tf_op_utils",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "tf_op_utils",
     srcs = ["tf_op_utils.cc"],
     hdrs = ["tf_op_utils.h"],

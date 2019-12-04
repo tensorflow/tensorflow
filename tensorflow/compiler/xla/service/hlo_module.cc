@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -223,7 +224,7 @@ string HloModule::ToString(const HloPrintOptions& options) const {
   }
   s << "\n\n";
   const auto& computations = options.canonicalize_computations()
-                                 ? MakeComputationPostOrderAndSortedByNames()
+                                 ? MakeComputationSortedByContent()
                                  : MakeComputationPostOrder();
   for (const HloComputation* computation : computations) {
     if (!options.print_computation(computation)) {
@@ -600,12 +601,15 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
   return post_order;
 }
 
-std::vector<HloComputation*>
-HloModule::MakeComputationPostOrderAndSortedByNames() const {
+std::vector<HloComputation*> HloModule::MakeComputationSortedByContent() const {
   auto result = MakeComputationPostOrder();
   std::sort(result.begin(), result.end(),
             [](HloComputation* a, HloComputation* b) {
-              return a->name() < b->name();
+              if (a->instruction_count() != b->instruction_count()) {
+                return a->instruction_count() < b->instruction_count();
+              }
+              return a->ToString(HloPrintOptions::Fingerprint()) <
+                     b->ToString(HloPrintOptions::Fingerprint());
             });
   return result;
 }

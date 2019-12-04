@@ -130,7 +130,6 @@ void AllocateAndParseFlags() {
 
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
-  ops_flags->tf_xla_noresolve_compile_time_constants = false;
 
   jitter_flags = new IntroduceFloatingPointJitterPassFlags;
   jitter_flags->jitter_amount = 1e-5;
@@ -162,9 +161,6 @@ void AllocateAndParseFlags() {
 
        Flag("tf_xla_always_defer_compilation",
             &ops_flags->tf_xla_always_defer_compilation, ""),
-       Flag("tf_xla_noresolve_compile_time_constants",
-            &ops_flags->tf_xla_noresolve_compile_time_constants,
-            "Do not perform constant folding in XlaCompiler::CompileGraph"),
 
        Flag("tf_introduce_floating_point_jitter_to_tensors",
             setter_for_jitter_tensor_names, "",

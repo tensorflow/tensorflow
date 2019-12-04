@@ -16,6 +16,10 @@ application we'll be using has been tested on the following devices:
     from source)
 *   [STM32F746 Discovery kit](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html)
     (using Mbed)
+*   [Adafruit EdgeBadge](https://www.adafruit.com/product/4400) (using Arduino
+    IDE)
+*   [Adafruit TensorFlow Lite for Microcontrollers Kit](https://www.adafruit.com/product/4317)
+    (using Arduino IDE)
 
 Learn more about supported platforms in
 [TensorFlow Lite for Microcontrollers](index.md).
@@ -253,7 +257,7 @@ TF_LITE_MICRO_EXPECT_EQ(kTfLiteFloat32, input->type);
 
 The enum value `kTfLiteFloat32` is a reference to one of the TensorFlow Lite
 data types, and is defined in
-[`c_api_internal.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/c_api_internal.h).
+[`common.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/common.h).
 
 ### Provide an input value
 
@@ -280,7 +284,7 @@ if (invoke_status != kTfLiteOk) {
 
 We can check the return value, a `TfLiteStatus`, to determine if the run was
 successful. The possible values of `TfLiteStatus`, defined in
-[`c_api_internal.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/c_api_internal.h),
+[`common.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/common.h),
 are `kTfLiteOk` and `kTfLiteError`.
 
 The following code asserts that the value is `kTfLiteOk`, meaning inference was

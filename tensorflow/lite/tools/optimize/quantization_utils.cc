@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/round.h"
@@ -41,10 +41,6 @@ const int8_t kMaxQuantizedValue = 127;
 }  // namespace
 
 TfLiteStatus NumElements(const TensorT& tensor, uint64_t* num_elements) {
-  if (tensor.shape.empty()) {
-    *num_elements = 0;
-    return kTfLiteOk;
-  }
   *num_elements = 1;
   for (const int64_t dim : tensor.shape) {
     if (dim <= 0 || *num_elements > UINT64_MAX / static_cast<uint64_t>(dim)) {

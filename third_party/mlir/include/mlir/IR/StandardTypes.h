@@ -226,6 +226,10 @@ public:
   /// Otherwise, abort.
   int64_t getDimSize(int64_t i) const;
 
+  /// Returns the position of the dynamic dimension relative to just the dynamic
+  /// dimensions, given its `index` within the shape.
+  unsigned getDynamicDimIndex(unsigned index) const;
+
   /// Get the total amount of bits occupied by a value of this type.  This does
   /// not take into account any memory layout or widening constraints, e.g. a
   /// vector<3xi57> is reported to occupy 3x57=171 bit, even though in practice

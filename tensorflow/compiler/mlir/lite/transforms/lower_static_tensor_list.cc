@@ -299,9 +299,9 @@ struct ConvertTensorListInitOp : public ConversionPattern {
         new_element_shape_values.push_back(dim_value);
       }
 
-      auto attr = DenseIntElementsAttr::get<int32_t>(
-          element_shape->getType().cast<ShapedType>(),
-          new_element_shape_values);
+      auto attr =
+          DenseIntElementsAttr::get(element_shape->getType().cast<ShapedType>(),
+                                    new_element_shape_values);
       auto new_element_shape = rewriter.create<ConstantOp>(
           op.getLoc(), element_shape->getType(), attr);
       element_shape = new_element_shape;

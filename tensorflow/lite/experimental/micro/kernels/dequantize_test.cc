@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/experimental/micro/test_helpers.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
@@ -56,7 +56,7 @@ void TestDequantize(const int* input_dims_data, const float* input_data,
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, &context);
 
-  // Version 2 of dequantize supports int8 quantization.
+  // Version 4 ops support int8 quantization.
   const TfLiteRegistration* registration =
       resolver.FindOp(tflite::BuiltinOperator_DEQUANTIZE, 2);
 

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "arm_nnfunctions.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/micro/kernels/cmsis-nn/scratch_buffer.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -138,7 +138,6 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                                      const TfLiteTensor* filter,
                                      const TfLiteTensor* bias,
                                      TfLiteTensor* output) {
-#if defined(ARM_MATH_DSP) && defined(ARM_MATH_LOOPUNROLL)
   DepthwiseParams op_params;
   op_params.padding_type = PaddingType::kSame;
   op_params.padding_values.width = data->padding.width;
@@ -154,6 +153,8 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   // TODO(b/130439627): Use calculated value for clamping.
   op_params.quantized_activation_min = std::numeric_limits<int8_t>::min();
   op_params.quantized_activation_max = std::numeric_limits<int8_t>::max();
+
+#if defined(ARM_MATH_DSP) && defined(ARM_MATH_LOOPUNROLL)
   RuntimeShape filter_shape = GetTensorShape(filter);
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
@@ -206,7 +207,17 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
         ARM_MATH_SUCCESS);
   }
 #else
-#error ARM_MATH_DSP and ARM_MATH_LOOPUNROLL must be set
+#pragma message( \
+    "CMSIS-NN optimization for depthwise_conv not available for this target. Using reference kernel.")
+
+  reference_integer_ops::DepthwiseConvPerChannel(
+      op_params, data->per_channel_output_multiplier,
+      data->per_channel_output_shift, GetTensorShape(input),
+      GetTensorData<int8>(input), GetTensorShape(filter),
+      GetTensorData<int8>(filter), GetTensorShape(bias),
+      GetTensorData<int32>(bias), GetTensorShape(output),
+      GetTensorData<int8>(output));
+
 #endif
   return kTfLiteOk;
 }
@@ -267,6 +278,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         op_params.output_multiplier);
   } else
 #endif
+
   {
     tflite::reference_ops::DepthwiseConv(
         op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),

@@ -50,11 +50,8 @@ TF_LITE_MICRO_TEST(TestOperations) {
                                  tflite::MockPrepare, tflite::MockInvoke};
 
   MicroMutableOpResolver micro_mutable_op_resolver;
-  const int conv2d_versions[] = {0, 1, 2};
-  const int custom_op_versions[] = {0, 1, 2, 3};
-  micro_mutable_op_resolver.AddBuiltin(BuiltinOperator_CONV_2D, &r,
-                                       conv2d_versions, 3);
-  micro_mutable_op_resolver.AddCustom("mock_custom", &r, custom_op_versions, 4);
+  micro_mutable_op_resolver.AddBuiltin(BuiltinOperator_CONV_2D, &r, 0, 2);
+  micro_mutable_op_resolver.AddCustom("mock_custom", &r, 0, 3);
   OpResolver* resolver = &micro_mutable_op_resolver;
 
   const TfLiteRegistration* registration =

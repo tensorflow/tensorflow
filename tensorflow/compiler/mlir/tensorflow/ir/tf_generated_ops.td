@@ -27,9 +27,7 @@ limitations under the License.
 //
 // Ops in this file are sorted alphabetically.
 
-#ifndef TF_OP_BASE
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
-#endif // TF_OP_BASE
 
 def TF_AbsOp : TF_Op<"Abs", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes the absolute value of a tensor.";
@@ -576,6 +574,44 @@ endian orderings will give different results.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+}
+
+def TF_BitwiseOrOp : TF_Op<"BitwiseOr", [Broadcastable, Commutative, NoSideEffect]>,
+                     WithBroadcastableBinOpBuilder {
+  let summary = "Elementwise computes the bitwise OR of `x` and `y`.";
+
+  let description = [{
+The result will have those bits set, that are set in `x`, `y` or both. The
+computation is performed on the underlying representations of `x` and `y`.
+
+For example:
+
+```python
+import tensorflow as tf
+from tensorflow.python.ops import bitwise_ops
+dtype_list = [tf.int8, tf.int16, tf.int32, tf.int64,
+              tf.uint8, tf.uint16, tf.uint32, tf.uint64]
+
+for dtype in dtype_list:
+  lhs = tf.constant([0, 5, 3, 14], dtype=dtype)
+  rhs = tf.constant([5, 0, 7, 11], dtype=dtype)
+  exp = tf.constant([5, 5, 7, 15], dtype=tf.float32)
+
+  res = bitwise_ops.bitwise_or(lhs, rhs)
+  tf.assert_equal(tf.cast(res,  tf.float32), exp)  # TRUE
+```
+  }];
+
+  let arguments = (ins
+    TF_IntTensor:$x,
+    TF_IntTensor:$y
+  );
+
+  let results = (outs
+    TF_IntTensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_BroadcastGradientArgsOp : TF_Op<"BroadcastGradientArgs", [NoSideEffect]> {
@@ -1322,6 +1358,10 @@ Comparison with `numpy.einsum`:
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_EluOp : TF_Op<"Elu", [NoSideEffect, SameOperandsAndResultType]> {
@@ -2199,6 +2239,33 @@ for dtype in dtype_list:
   let hasCanonicalizer = 1;
 }
 
+def TF_IsFiniteOp : TF_Op<"IsFinite", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Returns which elements of x are finite.";
+
+  let description = [{
+@compatibility(numpy)
+Equivalent to np.isfinite
+@end_compatibility
+
+Example:
+
+```python
+x = tf.constant([5.0, 4.8, 6.8, np.inf, np.nan])
+tf.math.is_finite(x) ==> [True, True, True, False, False]
+```
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    I1Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_L2LossOp : TF_Op<"L2Loss", [NoSideEffect]> {
   let summary = "L2 Loss.";
 
@@ -2438,6 +2505,68 @@ def TF_LogicalOrOp : TF_Op<"LogicalOr", [Broadcastable, Commutative, NoSideEffec
 
   let results = (outs
     I1Tensor:$z
+  );
+}
+
+def TF_LookupTableFindV2Op : TF_Op<"LookupTableFindV2", []> {
+  let summary = "Looks up keys in a table, outputs the corresponding values.";
+
+  let description = [{
+The tensor `keys` must of the same type as the keys of the table.
+The output `values` is of the type of the table values.
+
+The scalar `default_value` is the value output for keys not present in the
+table. It must also be of the same type as the table values.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$table_handle,
+    TF_Tensor:$keys,
+    TF_Tensor:$default_value
+  );
+
+  let results = (outs
+    TF_Tensor:$values
+  );
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tout = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_LookupTableImportV2Op : TF_Op<"LookupTableImportV2", []> {
+  let summary = [{
+Replaces the contents of the table with the specified keys and values.
+  }];
+
+  let description = [{
+The tensor `keys` must be of the same type as the keys of the table.
+The tensor `values` must be of the type of the table values.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$table_handle,
+    TF_Tensor:$keys,
+    TF_Tensor:$values
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tout = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_LookupTableSizeV2Op : TF_Op<"LookupTableSizeV2", []> {
+  let summary = "Computes the number of elements in the given table.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$table_handle
+  );
+
+  let results = (outs
+    I64Tensor:$size
   );
 }
 
@@ -4629,6 +4758,37 @@ Given an input tensor, this function computes sine of every
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_SizeOp : TF_Op<"Size", [NoSideEffect]> {
+  let summary = "Returns the size of a tensor.";
+
+  let description = [{
+This operation returns an integer representing the number of elements in
+`input`.
+
+For example:
+
+```
+# 't' is [[[1, 1,, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]
+size(t) ==> 12
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr out_type = TF_DerivedResultTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
 def TF_SliceOp : TF_Op<"Slice", [NoSideEffect]> {
   let summary = "Return a slice from 'input'.";
 
@@ -4934,6 +5094,8 @@ def TF_SplitOp : TF_Op<"Split", [NoSideEffect]> {
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedResultSizeAttr num_split = TF_DerivedResultSizeAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_SplitVOp : TF_Op<"SplitV", [NoSideEffect]> {
@@ -5606,6 +5768,8 @@ If two elements are equal, the lower-index element appears first.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_TransposeOp : TF_Op<"Transpose", [NoSideEffect]> {

@@ -17,12 +17,6 @@ limitations under the License.
 
 namespace tflite {
 
-namespace {
-
-const int kDefaultOpVersions[] = {1};
-
-}  // namespace
-
 const TfLiteRegistration* MicroMutableOpResolver::FindOp(
     tflite::BuiltinOperator op, int version) const {
   for (int i = 0; i < registrations_len_; ++i) {
@@ -48,17 +42,10 @@ const TfLiteRegistration* MicroMutableOpResolver::FindOp(const char* op,
   return nullptr;
 }
 
-void MicroMutableOpResolver::AddBuiltin(
-    tflite::BuiltinOperator op, const TfLiteRegistration* registration) {
-  return AddBuiltin(op, registration, kDefaultOpVersions, 1);
-}
-
 void MicroMutableOpResolver::AddBuiltin(tflite::BuiltinOperator op,
-                                        const TfLiteRegistration* registration,
-                                        const int* supported_versions,
-                                        int supported_versions_len) {
-  for (int i = 0; i < supported_versions_len; ++i) {
-    int version = supported_versions[i];
+                                        TfLiteRegistration* registration,
+                                        int min_version, int max_version) {
+  for (int version = min_version; version <= max_version; ++version) {
     if (registrations_len_ >= TFLITE_REGISTRATIONS_MAX) {
       // TODO(petewarden) - Add error reporting hooks so we can report this!
       return;
@@ -73,16 +60,9 @@ void MicroMutableOpResolver::AddBuiltin(tflite::BuiltinOperator op,
 }
 
 void MicroMutableOpResolver::AddCustom(const char* name,
-                                       const TfLiteRegistration* registration) {
-  return AddCustom(name, registration, kDefaultOpVersions, 1);
-}
-
-void MicroMutableOpResolver::AddCustom(const char* name,
-                                       const TfLiteRegistration* registration,
-                                       const int* supported_versions,
-                                       int supported_versions_len) {
-  for (int i = 0; i < supported_versions_len; ++i) {
-    int version = supported_versions[i];
+                                       TfLiteRegistration* registration,
+                                       int min_version, int max_version) {
+  for (int version = min_version; version <= max_version; ++version) {
     if (registrations_len_ >= TFLITE_REGISTRATIONS_MAX) {
       // TODO(petewarden) - Add error reporting hooks so we can report this!
       return;

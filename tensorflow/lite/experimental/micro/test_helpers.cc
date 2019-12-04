@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/micro/test_helpers.h"
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/experimental/micro/micro_utils.h"
 

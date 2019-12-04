@@ -26,7 +26,6 @@
 #include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
-#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Transforms/FoldUtils.h"
 

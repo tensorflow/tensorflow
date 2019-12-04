@@ -45,7 +45,7 @@ namespace {
 // A simple rendezvous class.
 // Assumes a single sender and a single receiver, no duplicate sends, and no
 // sends of dead tensors.
-class SimpleRendezvous : public Rendezvous {
+class SimpleRendezvous : public RendezvousInterface {
  public:
   explicit SimpleRendezvous() {}
 
@@ -124,8 +124,7 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   std::unique_ptr<Graph> graph_to_run(new Graph(graph->op_registry()));
   CopyGraph(*graph, graph_to_run.get());
 
-  SimpleRendezvous* rendez = new SimpleRendezvous;
-  core::ScopedUnref rendez_unref(rendez);
+  SimpleRendezvous rendez;
 
   // Extract the input names and keys, and feed in the inputs.
   std::vector<string> input_names;
@@ -136,8 +135,8 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
                                             tensor_name, FrameAndIter(0, 0));
     Rendezvous::ParsedKey parsed;
     TF_RETURN_IF_ERROR(Rendezvous::ParseKey(full_key, &parsed));
-    TF_RETURN_IF_ERROR(rendez->Send(parsed, Rendezvous::Args(), in.second,
-                                    false /* is_dead */));
+    TF_RETURN_IF_ERROR(rendez.Send(parsed, Rendezvous::Args(), in.second,
+                                   false /* is_dead */));
   }
 
   // Call RewriteGraphForExecution
@@ -180,7 +179,7 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   // called via this method.
   args.step_id = LogMemory::CONSTANT_FOLDING_STEP_ID;
   args.runner = runner;
-  args.rendezvous = rendez;
+  args.rendezvous = &rendez;
   // NOTE: Use of graph runner is limited to single-device executions
   // so a CollectiveExecutor should never be required.
   args.collective_executor = nullptr;
@@ -201,7 +200,7 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
     bool is_dead;
     Tensor output_tensor;
     TF_RETURN_IF_ERROR(
-        rendez->Recv(parsed, Rendezvous::Args(), &output_tensor, &is_dead));
+        rendez.Recv(parsed, Rendezvous::Args(), &output_tensor, &is_dead));
     // Does a deep copy so that ownership of the tensor isn't tied to the
     // allocator of the cpu device we created above. The allocator could be
     // deleted along with the device.

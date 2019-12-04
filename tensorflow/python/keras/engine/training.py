@@ -55,6 +55,7 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
+from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -78,7 +79,7 @@ _keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
 
 
 @keras_export('keras.models.Model', 'keras.Model')
-class Model(network.Network):
+class Model(network.Network, version_utils.VersionSelector):
   """`Model` groups layers into an object with training and inference features.
 
   There are two ways to instantiate a `Model`:
@@ -675,6 +676,7 @@ class Model(network.Network):
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
               - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
               - dataset
+              
             For the first two cases, `batch_size` must be provided.
             For the last case, `validation_steps` could be provided.
         shuffle: Boolean (whether to shuffle the training data
@@ -760,6 +762,8 @@ class Model(network.Network):
             and what the model expects.
     """
     _keras_api_gauge.get_cell('fit').set(True)
+    # Legacy graph support is contained in `training_v1.Model`.
+    version_utils.disallow_legacy_graph('Model', 'fit')
     # Legacy support
     if 'nb_epoch' in kwargs:
       logging.warning(
@@ -880,6 +884,7 @@ class Model(network.Network):
         ValueError: in case of invalid arguments.
     """
     _keras_api_gauge.get_cell('evaluate').set(True)
+    version_utils.disallow_legacy_graph('Model', 'evaluate')
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
 
@@ -959,6 +964,7 @@ class Model(network.Network):
             that is not a multiple of the batch size.
     """
     _keras_api_gauge.get_cell('predict').set(True)
+    version_utils.disallow_legacy_graph('Model', 'predict')
     self._check_call_args('predict')
 
     func = self._select_training_loop(x)

@@ -141,7 +141,8 @@ To run iOS benchmarks, the
 [benchmark app](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/ios)
 was modified to include the appropriate model and `benchmark_params.json` was
 modified to set `num_threads` to 2. For GPU delegate, `"use_gpu" : "1"` and
-`"wait_type" : "aggressive"` options were also added to `benchmark_params.json`.
+`"gpu_wait_type" : "aggressive"` options were also added to
+`benchmark_params.json`.
 
 <table>
   <thead>

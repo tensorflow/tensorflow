@@ -64,7 +64,7 @@ cc_library(
         ":model_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:round",
@@ -242,6 +242,7 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_minus_127_max_plus_127.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_softmax_min_minus_5_max_plus_5.bin",
         "//tensorflow/lite/tools/optimize:testdata/split.bin",
+        "//tensorflow/lite/tools/optimize:testdata/unpack.bin",
     ],
     tags = [
         "tflite_not_portable_android",

@@ -387,6 +387,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
                                             instruction->tuple_index())));
       MakeAndReturn(GetTupleElementOp);
     };
+    case HloOpcode::kGetDimensionSize: {
+      attributes.push_back(builder_->getNamedAttr(
+          "dimension", builder_->getIntegerAttr(builder_->getIntegerType(32),
+                                                instruction->dimension())));
+      MakeAndReturn(GetDimensionSizeOp);
+    };
     case HloOpcode::kTranspose: {
       attributes.push_back(builder_->getNamedAttr(
           "permutation", ConvertDimensions(instruction->dimensions())));
@@ -632,19 +638,15 @@ mlir::DenseIntElementsAttr HloFunctionImporter::ConvertDimensions(
   for (auto value : op_dimensions) dimensions.emplace_back(APInt(64, value));
 
   return DenseIntElementsAttr::get(
-             RankedTensorType::get(dimensions.size(),
-                                   builder_->getIntegerType(64)),
-             dimensions)
-      .cast<DenseIntElementsAttr>();
+      RankedTensorType::get(dimensions.size(), builder_->getIntegerType(64)),
+      dimensions);
 }
 
 mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
     llvm::ArrayRef<int64_t> op_dimensions) {
   return DenseIntElementsAttr::get(
-             RankedTensorType::get(op_dimensions.size(),
-                                   builder_->getIntegerType(64)),
-             op_dimensions)
-      .cast<DenseIntElementsAttr>();
+      RankedTensorType::get(op_dimensions.size(), builder_->getIntegerType(64)),
+      op_dimensions);
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertPadding(

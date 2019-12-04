@@ -974,6 +974,20 @@ public:
 
   using DenseElementsAttr::DenseElementsAttr;
 
+  /// Get an instance of a DenseFPElementsAttr with the given arguments. This
+  /// simply wraps the DenseElementsAttr::get calls.
+  template <typename Arg>
+  static DenseFPElementsAttr get(const ShapedType &type, Arg &&arg) {
+    return DenseElementsAttr::get(type, llvm::makeArrayRef(arg))
+        .template cast<DenseFPElementsAttr>();
+  }
+  template <typename T>
+  static DenseFPElementsAttr get(const ShapedType &type,
+                                 const std::initializer_list<T> &list) {
+    return DenseElementsAttr::get(type, list)
+        .template cast<DenseFPElementsAttr>();
+  }
+
   /// Generates a new DenseElementsAttr by mapping each value attribute, and
   /// constructing the DenseElementsAttr given the new element type.
   DenseElementsAttr
@@ -997,6 +1011,20 @@ public:
   using iterator = DenseElementsAttr::IntElementIterator;
 
   using DenseElementsAttr::DenseElementsAttr;
+
+  /// Get an instance of a DenseIntElementsAttr with the given arguments. This
+  /// simply wraps the DenseElementsAttr::get calls.
+  template <typename Arg>
+  static DenseIntElementsAttr get(const ShapedType &type, Arg &&arg) {
+    return DenseElementsAttr::get(type, llvm::makeArrayRef(arg))
+        .template cast<DenseIntElementsAttr>();
+  }
+  template <typename T>
+  static DenseIntElementsAttr get(const ShapedType &type,
+                                  const std::initializer_list<T> &list) {
+    return DenseElementsAttr::get(type, list)
+        .template cast<DenseIntElementsAttr>();
+  }
 
   /// Generates a new DenseElementsAttr by mapping each value attribute, and
   /// constructing the DenseElementsAttr given the new element type.
@@ -1344,6 +1372,13 @@ public:
   NamedAttributeList(DictionaryAttr attrs = nullptr)
       : attrs((attrs && !attrs.empty()) ? attrs : nullptr) {}
   NamedAttributeList(ArrayRef<NamedAttribute> attributes);
+
+  bool operator!=(const NamedAttributeList &other) const {
+    return !(*this == other);
+  }
+  bool operator==(const NamedAttributeList &other) const {
+    return attrs == other.attrs;
+  }
 
   /// Return the underlying dictionary attribute. This may be null, if this list
   /// has no attributes.

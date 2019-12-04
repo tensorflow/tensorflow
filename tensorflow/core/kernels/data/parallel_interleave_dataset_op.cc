@@ -215,23 +215,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           current_elements_(params.dataset->cycle_length_) {}
 
     ~ParallelInterleaveIterator() override {
-      mutex_lock l(*mu_);
-      cancelled_ = true;
-      // Wake up all threads so that they can exit. This will also wake up any
-      // threads waiting in GetNextInternal.
-      for (auto element : current_elements_) {
-        if (element) {
-          element->cond_var.notify_all();
-        }
-      }
-      current_workers_cond_var_.notify_all();
-      future_workers_cond_var_.notify_all();
-      num_parallel_calls_cond_var_->notify_all();
-      while (outstanding_threads_ > 0) {
-        outstanding_threads_finished_cond_var_.wait(l);
-      }
-      sloppy_cond_var_.notify_all();
-      zero_active_workers_cond_var_.notify_all();
+      CancelThreads(/*wait=*/true);
+      if (deregister_fn_) deregister_fn_();
     }
 
     string BuildTraceMeName() override {
@@ -268,6 +253,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = dataset()->cycle_length_;
       }
+      // TODO(jsimsa): Register cancellation callback once the implementation is
+      // refactored not to hold mu_ while calling `GetNext` on the input.
       ctx_ = std::make_unique<IteratorContext>(*ctx);
       TF_RETURN_IF_ERROR(
           dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
@@ -319,6 +306,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                                 /*max=*/dataset()->cycle_length_)});
     }
 
+    // TODO(aaudibert): Refactor the implementations to avoid the need for
+    // `IteratorContext` when saving the state of the iterator.
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(*mu_);
       wait_for_checkpoint_ = true;
@@ -450,6 +439,29 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             initialized, no_input);
       }
     };
+
+    // Sets the cancellation bit and wakes up all threads that need to be
+    // cancelled. Optionally, the method waits until all threads finish
+    // executing.
+    void CancelThreads(bool wait) LOCKS_EXCLUDED(mu_) {
+      mutex_lock l(*mu_);
+      cancelled_ = true;
+      // Wake up all threads so that they can exit. This will also wake up any
+      // threads waiting in GetNextInternal.
+      for (auto element : current_elements_) {
+        if (element) {
+          element->cond_var.notify_all();
+        }
+      }
+      current_workers_cond_var_.notify_all();
+      future_workers_cond_var_.notify_all();
+      num_parallel_calls_cond_var_->notify_all();
+      while (wait && outstanding_threads_ > 0) {
+        outstanding_threads_finished_cond_var_.wait(l);
+      }
+      sloppy_cond_var_.notify_all();
+      zero_active_workers_cond_var_.notify_all();
+    }
 
     void EnsureInitialElementsCreated() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!initial_elements_created_) {
@@ -832,8 +844,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           continue;
         }
         std::vector<Tensor> inputs;
-        Status status =
-            input_impl_->GetNext(ctx_.get(), &inputs, &end_of_input_);
+        Status status;
+        {
+          // TODO(aaudibert): Refactor the implementation to move calls of
+          // `GetNext` out of the scope of `mu_`.
+          status = input_impl_->GetNext(ctx_.get(), &inputs, &end_of_input_);
+        }
         if (!status.ok()) {
           AddErrorResult(element, status);
           continue;
@@ -1197,6 +1213,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // but the input dataset doesn't have many elements. By tracking the index
     // of the last valid element, GetNext can avoid checking many null entries
     // each time through the cycle.
+    //
     // TODO(aaudibert): Generalize this optimization by removing null elements
     // from `current_elements_`, e.g. by compacting the vector when x% of
     // its elements are null.
@@ -1213,6 +1230,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     // Used for coordination between the main thread, the manager threads, and
     // the worker threads.
+    //
+    // NOTE: We should never call GetNext on the input while holding this mutex.
     const std::shared_ptr<mutex> mu_;
 
     // Condition variable for waking up current workers.
@@ -1294,9 +1313,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // worker threads from blocking checkpointing indefinitely.
     bool wait_for_checkpoint_ = false;
 
+    std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
+
     // Identifies whether background threads should be cancelled.
     bool cancelled_ GUARDED_BY(mu_) = false;
-    std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
+
+    // Method for deregistering the cancellation callback.
+    std::function<void()> deregister_fn_;
   };
 
   const DatasetBase* const input_;
