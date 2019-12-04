@@ -270,16 +270,17 @@ types, etc). We can always get an instance of our toy operation by using LLVM's
 casting infrastructure:
 
 ```c++
-void processConstantOp(mlir::Operation *op) {
-  ConstantOp op = llvm::dyn_cast<ConstantOp>(op);
+void processConstantOp(mlir::Operation *operation) {
+  ConstantOp op = llvm::dyn_cast<ConstantOp>(operation);
 
   // This operation is not an instance of `ConstantOp`.
   if (!op)
     return;
 
   // Get the internal operation instance back.
-  mlir::Operation *internalOp = op.getOperation();
-  assert(internalOp == op && "these operation instances are the same");
+  mlir::Operation *internalOperation = op.getOperation();
+  assert(internalOperation == operation &&
+         "these operation instances are the same");
 }
 ```
 
