@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -727,7 +728,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     op->SetDevice(device);
   }
 
-  eager::EagerClient* eager_client = nullptr;
+  core::RefCountPtr<eager::EagerClient> eager_client;
   uint64 context_id = ctx->GetContextId();
   TF_RETURN_IF_ERROR(ctx->GetClient(op->GetDeviceParsedName(), &eager_client));
   string remote_task;
@@ -860,7 +861,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
            << " (is async?: " << executor.Async() << ").";
 
   std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
-      std::move(request), op_device, eager_client,
+      std::move(request), op_device, eager_client.get(),
       op->MutableAttrs()->BuildNodeDef(), op->EagerContext()->FuncLibDef(),
       op->Inputs(), {retvals, num_outputs}));
   Status s = executor.AddOrExecute(std::move(node));
