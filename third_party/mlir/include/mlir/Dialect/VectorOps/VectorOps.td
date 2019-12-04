@@ -157,6 +157,18 @@ def Vector_ContractionOp :
     static StringRef getParallelIteratorTypeName() {
       return "parallel";
     }
+
+    // Returns the bounds of each dimension in the iteration space spanned
+    // by the iterator types of this operation.
+    void getIterationBounds(SmallVectorImpl<int64_t> &iterationBounds);
+
+    // Returns a list of index maps, where there is a list entry for each
+    // op indexing map attribute (i.e. one for each input and output, with
+    // the output listed last). Each index map, maps from this operations
+    // iteration space, to vector dimensions of the maps input/output.
+    void getIterationIndexMap(
+      std::vector<DenseMap<int64_t, int64_t>> &iterationIndexMap);
+
     std::vector<std::pair<int64_t, int64_t>> getContractingDimMap();
     std::vector<std::pair<int64_t, int64_t>> getBatchDimMap();
   }];
