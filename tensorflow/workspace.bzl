@@ -172,11 +172,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "9edd4860b52813eaf8c023f0de1767ec58e2d67a290b718e6702469208ac5be1",
-        strip_prefix = "eigen-eigen-54bca9936424",
+        sha256 = "add24720f99ab4f3222f4c8a887f2609554cf9187d4f7d24a777a151a0ee2548",
+        strip_prefix = "eigen-git-mirror-4898dcdb06f1b1b0441b8e15119764793f8997e2",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/54bca9936424.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/54bca9936424.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/eigenteam/eigen-git-mirror/archive/4898dcdb06f1b1b0441b8e15119764793f8997e2.tar.gz",
+            "https://github.com/eigenteam/eigen-git-mirror/archive/4898dcdb06f1b1b0441b8e15119764793f8997e2.tar.gz",
         ],
     )
 
