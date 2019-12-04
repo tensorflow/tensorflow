@@ -105,6 +105,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_additional_core_deps",
+    "tf_additional_env_hdrs",
     "tf_additional_lib_deps",
     "tf_additional_monitoring_hdrs",
     "tf_additional_test_deps",
@@ -398,7 +399,7 @@ filegroup(
         "//tensorflow/core/platform:file_statistics.h",
         "//tensorflow/core/platform:file_system.h",
         "//tensorflow/core/platform:path.h",
-    ],
+    ] + tf_additional_env_hdrs(),
     visibility = ["//visibility:private"],
 )
 

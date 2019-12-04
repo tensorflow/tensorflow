@@ -9,6 +9,7 @@ load(
     _tf_additional_cupti_test_flags = "tf_additional_cupti_test_flags",
     _tf_additional_cupti_utils_cuda_deps = "tf_additional_cupti_utils_cuda_deps",
     _tf_additional_device_tracer_srcs = "tf_additional_device_tracer_srcs",
+    _tf_additional_env_hdrs = "tf_additional_env_hdrs",
     _tf_additional_lib_deps = "tf_additional_lib_deps",
     _tf_additional_lib_hdrs = "tf_additional_lib_hdrs",
     _tf_additional_lib_srcs = "tf_additional_lib_srcs",
@@ -44,6 +45,7 @@ tf_additional_core_deps = _tf_additional_core_deps
 tf_additional_cupti_test_flags = _tf_additional_cupti_test_flags
 tf_additional_cupti_utils_cuda_deps = _tf_additional_cupti_utils_cuda_deps
 tf_additional_device_tracer_srcs = _tf_additional_device_tracer_srcs
+tf_additional_env_hdrs = _tf_additional_env_hdrs
 tf_additional_lib_deps = _tf_additional_lib_deps
 tf_additional_lib_hdrs = _tf_additional_lib_hdrs
 tf_additional_lib_srcs = _tf_additional_lib_srcs

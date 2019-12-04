@@ -600,6 +600,9 @@ def tf_additional_monitoring_srcs():
         "default/monitoring.cc",
     ]
 
+def tf_additional_env_hdrs():
+    return []
+
 def tf_additional_proto_hdrs():
     return [
         "default/integral_types.h",
