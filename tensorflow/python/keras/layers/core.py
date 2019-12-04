@@ -964,6 +964,8 @@ class Dense(Layer):
 
   Note: If the input to the layer has a rank greater than 2, then
   it is flattened prior to the initial dot product with `kernel`.
+  Besides, layer attributes cannot be modified after the layer has been called
+  once (except the `trainable` attribute).
 
   Example:
 
