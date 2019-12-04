@@ -311,6 +311,25 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(3.14 * 2, self.evaluate(x.assign_add(3.14)))
         self.assertAllClose(3.14, self.evaluate(x.assign_sub(3.14)))
 
+        # Assign multiple times
+        assign = x.assign(1.)
+        self.assertAllClose(1., self.evaluate(assign))
+        self.assertAllClose(0., self.evaluate(assign.assign(0.)))
+        assign_add = x.assign_add(3.14)
+        self.assertAllClose(3.14, self.evaluate(assign_add))
+        self.assertAllClose(3.14 * 2, self.evaluate(assign_add.assign_add(3.14)))
+        assign_sub = x.assign_sub(3.14)
+        self.assertAllClose(3.14, self.evaluate(assign_sub))
+        self.assertAllClose(0., self.evaluate(assign_sub.assign_sub(3.14)))
+
+        # Assign with read_value=False
+        self.assertIsNone(self.evaluate(x.assign(1., read_value=False)))
+        self.assertAllClose(1., self.evaluate(x))
+        self.assertIsNone(self.evaluate(x.assign_add(2., read_value=False)))
+        self.assertAllClose(3., self.evaluate(x))
+        self.assertIsNone(self.evaluate(x.assign_sub(3., read_value=False)))
+        self.assertAllClose(0., self.evaluate(x))
+
         # Use the tf.assign functions instead of the var.assign methods.
         self.assertAllClose(0., self.evaluate(state_ops.assign(x, 0.)))
         self.assertAllClose(3.14, self.evaluate(state_ops.assign(x, 3.14)))
