@@ -2840,7 +2840,7 @@ def ones_like_v2(
     input,  # pylint: disable=redefined-builtin
     dtype=None,
     name=None):
-  """Creates a tensor with all elements set to one.
+  """Creates a tensor of all ones that has the same shape as the input.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the
   same type and shape as `tensor` with all elements set to 1. Optionally,
@@ -2848,10 +2848,11 @@ def ones_like_v2(
 
   For example:
 
-  ```python
-  tensor = tf.constant([[1, 2, 3], [4, 5, 6]])
-  tf.ones_like(tensor)  # [[1, 1, 1], [1, 1, 1]]
-  ```
+  >>> tensor = tf.constant([[1, 2, 3], [4, 5, 6]])
+  >>> tf.ones_like(tensor)
+  <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
+    array([[1, 1, 1],
+           [1, 1, 1]], dtype=int32)>
 
   Args:
     input: A `Tensor`.
