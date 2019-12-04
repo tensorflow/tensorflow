@@ -1,4 +1,8 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -52,7 +56,7 @@ cc_test(
     name = "buffer_test",
     srcs = ["buffer_test.cc"],
     linkstatic = True,
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "linux",
         "local",
     ],
@@ -405,7 +409,7 @@ cc_test(
     name = "tensor_test",
     srcs = ["tensor_test.cc"],
     linkstatic = True,
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "linux",
         "local",
     ],
@@ -460,7 +464,7 @@ cc_test(
     name = "texture2d_test",
     srcs = ["texture2d_test.cc"],
     linkstatic = True,
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "linux",
         "local",
     ],
