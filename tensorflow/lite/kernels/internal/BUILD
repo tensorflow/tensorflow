@@ -361,6 +361,7 @@ cc_test(
     name = "quantization_util_test",
     srcs = ["quantization_util_test.cc"],
     deps = [
+        ":common",
         ":quantization_util",
         "@com_google_googletest//:gtest_main",
     ],
