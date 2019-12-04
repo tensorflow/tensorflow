@@ -57,23 +57,6 @@ llvm::Optional<uint64_t> getConstantTripCount(AffineForOp forOp);
 /// this method is thus able to determine non-trivial divisors.
 uint64_t getLargestDivisorOfTripCount(AffineForOp forOp);
 
-/// Given an induction variable `iv` of type AffineForOp and an `index` of type
-/// IndexType, returns `true` if `index` is independent of `iv` and false
-/// otherwise.
-/// The determination supports composition with at most one AffineApplyOp.
-/// The at most one AffineApplyOp comes from the fact that composition of
-/// AffineApplyOp need to be canonicalized by construction to avoid writing code
-/// that composes arbitrary numbers of AffineApplyOps everywhere. To achieve
-/// this, at the very least, the compose-affine-apply pass must have been run.
-///
-/// Prerequisites:
-///   1. `iv` and `index` of the proper type;
-///   2. at most one reachable AffineApplyOp from index;
-///
-/// Returns false in cases with more than one AffineApplyOp, this is
-/// conservative.
-bool isAccessInvariant(Value *iv, Value *index);
-
 /// Given an induction variable `iv` of type AffineForOp and `indices` of type
 /// IndexType, returns the set of `indices` that are independent of `iv`.
 ///
