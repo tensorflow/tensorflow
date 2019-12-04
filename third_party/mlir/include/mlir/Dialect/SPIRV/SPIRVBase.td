@@ -953,7 +953,9 @@ class SPV_ScalarOrVectorOf<Type type> :
 def SPV_ScalarOrVector : AnyTypeOf<[SPV_Scalar, SPV_Vector]>;
 def SPV_ScalarOrVectorOrPtr : AnyTypeOf<[SPV_ScalarOrVector, SPV_AnyPtr]>;
 
-def SPV_I32Vec4 : VectorOfLengthAndType<[4], [I32]>;
+class SPV_Vec4<Type type> : VectorOfLengthAndType<[4], [type]>;
+def SPV_IntVec4 : SPV_Vec4<SPV_Integer>;
+def SPV_I32Vec4 : SPV_Vec4<I32>;
 
 // TODO(antiagainst): Use a more appropriate way to model optional operands
 class SPV_Optional<Type type> : Variadic<type>;
@@ -1109,6 +1111,7 @@ def SPV_OC_OpReturn                 : I32EnumAttrCase<"OpReturn", 253>;
 def SPV_OC_OpReturnValue            : I32EnumAttrCase<"OpReturnValue", 254>;
 def SPV_OC_OpUnreachable            : I32EnumAttrCase<"OpUnreachable", 255>;
 def SPV_OC_OpModuleProcessed        : I32EnumAttrCase<"OpModuleProcessed", 330>;
+def SPV_OC_OpGroupNonUniformBallot  : I32EnumAttrCase<"OpGroupNonUniformBallot", 339>;
 def SPV_OC_OpSubgroupBallotKHR      : I32EnumAttrCase<"OpSubgroupBallotKHR", 4421>;
 
 def SPV_OpcodeAttr :
@@ -1150,7 +1153,7 @@ def SPV_OpcodeAttr :
       SPV_OC_OpPhi, SPV_OC_OpLoopMerge, SPV_OC_OpSelectionMerge, SPV_OC_OpLabel,
       SPV_OC_OpBranch, SPV_OC_OpBranchConditional, SPV_OC_OpReturn,
       SPV_OC_OpReturnValue, SPV_OC_OpUnreachable, SPV_OC_OpModuleProcessed,
-      SPV_OC_OpSubgroupBallotKHR
+      SPV_OC_OpGroupNonUniformBallot, SPV_OC_OpSubgroupBallotKHR
       ]> {
     let cppNamespace = "::mlir::spirv";
 }

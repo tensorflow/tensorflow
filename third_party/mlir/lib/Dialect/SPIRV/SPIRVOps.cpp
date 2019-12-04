@@ -385,7 +385,9 @@ static inline bool isMergeBlock(Block &block) {
 // TableGen'erated canonicalizers
 //===----------------------------------------------------------------------===//
 
+namespace {
 #include "SPIRVCanonicalization.inc"
+}
 
 //===----------------------------------------------------------------------===//
 // Common parsers and printers
@@ -1547,6 +1549,44 @@ static LogicalResult verify(spirv::GlobalVariableOp varOp) {
                                "spv.specConstant or spv.globalVariable op");
     }
   }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.GroupNonUniformBallotOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseGroupNonUniformBallotOp(OpAsmParser &parser,
+                                                OperationState &state) {
+  spirv::Scope executionScope;
+  OpAsmParser::OperandType operandInfo;
+  Type resultType;
+  IntegerType i1Type = parser.getBuilder().getI1Type();
+  if (parseEnumAttribute(executionScope, parser, state,
+                         kExecutionScopeAttrName) ||
+      parser.parseOperand(operandInfo) || parser.parseColonType(resultType) ||
+      parser.resolveOperand(operandInfo, i1Type, state.operands))
+    return failure();
+
+  return parser.addTypeToList(resultType, state.types);
+}
+
+static void print(spirv::GroupNonUniformBallotOp ballotOp,
+                  OpAsmPrinter &printer) {
+  printer << spirv::GroupNonUniformBallotOp::getOperationName() << " \""
+          << stringifyScope(ballotOp.execution_scope()) << "\" ";
+  printer.printOperand(ballotOp.predicate());
+  printer << " : " << ballotOp.getType();
+}
+
+static LogicalResult verify(spirv::GroupNonUniformBallotOp ballotOp) {
+  // TODO(antiagainst): check the result integer type's signedness bit is 0.
+
+  spirv::Scope scope = ballotOp.execution_scope();
+  if (scope != spirv::Scope::Workgroup && scope != spirv::Scope::Subgroup)
+    return ballotOp.emitOpError(
+        "execution scope must be 'Workgroup' or 'Subgroup'");
 
   return success();
 }
