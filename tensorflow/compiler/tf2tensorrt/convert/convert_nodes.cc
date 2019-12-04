@@ -445,9 +445,9 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
   // Compute the output dimensions.
   const int broadcast_num_dims =
       std::max(operand_l.GetTrtDims().nbDims +
-                   use_implicit_batch && operand_l.is_tensor(),
+                   (use_implicit_batch && operand_l.is_tensor()),
                operand_r.GetTrtDims().nbDims +
-                   use_implicit_batch && operand_r.is_tensor());
+                   (use_implicit_batch && operand_r.is_tensor()));
   int output_l[max_nb_dims], output_r[max_nb_dims];
   TF_RETURN_IF_ERROR(compute_output_dims(operand_l, broadcast_num_dims,
                                          output_l, operand_l_new_dims));

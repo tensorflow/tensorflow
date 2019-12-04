@@ -292,8 +292,13 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   }
   OP_REQUIRES_OK(context, context->GetAttr("max_cached_engines_count",
                                            &max_cached_engines_));
-  OP_REQUIRES_OK(context,
-                 context->GetAttr("use_implicit_batch", &use_implicit_batch_));
+
+  auto status = context->GetAttr("_use_implicit_batch", &use_implicit_batch_);
+  if (status.code() == tensorflow::error::NOT_FOUND) {
+    VLOG(2) << "Not found _use_implicit_batch in " << context->device()->name()
+            << ", thus setting _use_implicit_batch=true";
+    use_implicit_batch_ = true;
+  }
 }
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,

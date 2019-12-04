@@ -464,7 +464,7 @@ Status CreateTRTNode(const ConversionParams& params,
           .Attr("workspace_size_bytes", info.max_workspace_size_bytes)
           .Attr("precision_mode", prec_string)
           .Attr("use_calibration", info.use_calibration)
-          .Attr("use_implicit_batch", params.use_implicit_batch)
+          .Attr("_use_implicit_batch", params.use_implicit_batch)
           .Attr("OutT", out_types)
           .Finalize(&trt_node);
   if (!status.ok()) {
