@@ -21,10 +21,9 @@
 
 #include <type_traits>
 
-#include "mlir/Analysis/VectorAnalysis.h"
-#include "mlir/Conversion/VectorConversions/VectorConversions.h"
-#include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/VectorOps/Utils.h"
 #include "mlir/Dialect/VectorOps/VectorOps.h"
+#include "mlir/Dialect/VectorOps/VectorTransforms.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/AffineExpr.h"
@@ -198,7 +197,7 @@ static bool hasShape(Value *v, ArrayRef<int64_t> shape) {
 //
 // This will be extended in the future to support more advanced use cases than
 // simple pointwise ops.
-static Value *unrollSingleResultOpMatchingType(PatternRewriter &builder,
+Value * mlir::vector::unrollSingleResultOpMatchingType(PatternRewriter &builder,
                                                Operation *op,
                                                ArrayRef<int64_t> targetShape) {
   LLVM_DEBUG(dbgs() << "\n[" DEBUG_TYPE

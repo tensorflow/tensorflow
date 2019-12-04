@@ -196,13 +196,11 @@ cc_library(
     includes = ["include"],
     deps = [
         ":AffineOps",
-        ":Analysis",
         ":IR",
         ":LoopOps",
         ":StandardOps",
         ":Support",
         ":TransformUtils",
-        ":VectorOps",
         "@llvm//:support",
     ],
 )
@@ -475,15 +473,20 @@ cc_library(
     name = "VectorOps",
     srcs = [
         "lib/Dialect/VectorOps/VectorOps.cpp",
+        "lib/Dialect/VectorOps/VectorToVector.cpp",
     ],
     hdrs = [
+        "include/mlir/Dialect/VectorOps/Utils.h",
         "include/mlir/Dialect/VectorOps/VectorOps.h",
+        "include/mlir/Dialect/VectorOps/VectorTransforms.h",
     ],
     includes = ["include"],
     deps = [
+        ":EDSC",
         ":IR",
         ":Support",
         ":VectorOpsIncGen",
+        ":VectorTransformPatterns",
         "@llvm//:support",
     ],
 )
@@ -1302,6 +1305,7 @@ cc_library(
         ":StandardOps",
         ":Support",
         ":TransformUtils",
+        ":VectorAnalysis",
         ":VectorOps",
         "@llvm//:support",
     ],
@@ -1456,7 +1460,6 @@ cc_library(
         "lib/Analysis/TestMemRefDependenceCheck.cpp",
         "lib/Analysis/TestParallelismDetection.cpp",
         "lib/Analysis/Utils.cpp",
-        "lib/Analysis/VectorAnalysis.cpp",
         "lib/Analysis/Verifier.cpp",
     ],
     hdrs = [
@@ -1471,7 +1474,6 @@ cc_library(
         "include/mlir/Analysis/Passes.h",
         "include/mlir/Analysis/SliceAnalysis.h",
         "include/mlir/Analysis/Utils.h",
-        "include/mlir/Analysis/VectorAnalysis.h",
         "include/mlir/Analysis/Verifier.h",
     ],
     includes = ["include"],
@@ -1482,6 +1484,23 @@ cc_library(
         ":InferTypeOpInterfaceIncGen",
         ":LoopOps",
         ":Pass",
+        ":StandardOps",
+        ":Support",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "VectorAnalysis",
+    srcs = [
+        "lib/Analysis/VectorAnalysis.cpp",
+    ],
+    includes = ["include"],
+    deps = [
+        ":AffineOps",
+        ":Analysis",
+        ":IR",
         ":StandardOps",
         ":Support",
         ":VectorOps",
@@ -1669,7 +1688,8 @@ cc_library(
         ":StandardToSPIRVConversions",
         ":Support",
         ":Transforms",
-        ":VectorConversions",
+        ":VectorToLLVM",
+        ":VectorToLoops",
         ":ViewOpGraph",
         ":ViewRegionGraph",
         "@llvm//:support",
@@ -2202,7 +2222,7 @@ cc_library(
         ":StandardOps",
         ":Support",
         ":Transforms",
-        ":VectorConversions",
+        ":VectorToLLVM",
         "@llvm//:core",
         "@llvm//:support",
     ],
@@ -2372,18 +2392,15 @@ gentbl(
 )
 
 cc_library(
-    name = "VectorConversions",
+    name = "VectorToLLVM",
     srcs = [
-        "lib/Conversion/VectorConversions/VectorToLLVM.cpp",
-        "lib/Conversion/VectorConversions/VectorToLoops.cpp",
-        "lib/Conversion/VectorConversions/VectorToVector.cpp",  # TODO(transforms?)
+        "lib/Conversion/VectorToLLVM/ConvertVectorToLLVM.cpp",
     ],
     hdrs = [
-        "include/mlir/Conversion/VectorConversions/VectorConversions.h",
+        "include/mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h",
     ],
     includes = ["include"],
     deps = [
-        ":Analysis",
         ":EDSC",
         ":IR",
         ":LLVMDialect",
@@ -2393,7 +2410,31 @@ cc_library(
         ":Support",
         ":Transforms",
         ":VectorOps",
-        ":VectorTransformPatterns",
+        "@llvm//:core",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "VectorToLoops",
+    srcs = [
+        "lib/Conversion/VectorToLoops/ConvertVectorToLoops.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Conversion/VectorToLoops/ConvertVectorToLoops.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":EDSC",
+        ":IR",
+        ":LLVMDialect",
+        ":LLVMTransforms",
+        ":Pass",
+        ":StandardOps",
+        ":Support",
+        ":Transforms",
+        ":VectorOps",
         "@llvm//:core",
         "@llvm//:support",
     ],

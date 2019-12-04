@@ -31,8 +31,9 @@ namespace mlir {
 class AffineExpr;
 class AffineForOp;
 class AffineMap;
-class Operation;
 class MemRefType;
+class NestedPattern;
+class Operation;
 class Value;
 
 /// Returns the trip count of the loop as an affine map with its corresponding
@@ -91,14 +92,16 @@ using VectorizableLoopFun = std::function<bool(AffineForOp)>;
 ///   1. no conditionals are nested under the loop;
 ///   2. all nested load/stores are to scalar MemRefs.
 /// TODO(ntv): relax the no-conditionals restriction
-bool isVectorizableLoopBody(AffineForOp loop);
+bool isVectorizableLoopBody(AffineForOp loop,
+                            NestedPattern &vectorTransferMatcher);
 
 /// Checks whether the loop is structurally vectorizable and that all the LoadOp
 /// and StoreOp matched have access indexing functions that are are either:
 ///   1. invariant along the loop induction variable created by 'loop';
 ///   2. varying along at most one memory dimension. If such a unique dimension
 ///      is found, it is written into `memRefDim`.
-bool isVectorizableLoopBody(AffineForOp loop, int *memRefDim);
+bool isVectorizableLoopBody(AffineForOp loop, int *memRefDim,
+                            NestedPattern &vectorTransferMatcher);
 
 /// Checks where SSA dominance would be violated if a for op's body
 /// operations are shifted by the specified shifts. This method checks if a

@@ -21,8 +21,8 @@
 
 #include <type_traits>
 
-#include "mlir/Conversion/VectorConversions/VectorConversions.h"
 #include "mlir/Dialect/VectorOps/VectorOps.h"
+#include "mlir/Conversion/VectorToLoops/ConvertVectorToLoops.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/AffineExpr.h"
@@ -40,6 +40,8 @@ using vector::TransferReadOp;
 using vector::TransferWriteOp;
 
 namespace {
+
+using vector_type_cast = edsc::intrinsics::ValueBuilder<vector::TypeCastOp>;
 
 /// Implements lowering of TransferReadOp and TransferWriteOp to a
 /// proper abstraction for the hardware.
@@ -356,7 +358,6 @@ PatternMatchResult VectorTransferRewriter<TransferWriteOp>::matchAndRewrite(
 }
 } // namespace
 
-/// Populate the given list with patterns that convert from Vector to LLVM.
 void mlir::populateVectorToAffineLoopsConversionPatterns(
     MLIRContext *context, OwningRewritePatternList &patterns) {
   patterns.insert<VectorTransferRewriter<vector::TransferReadOp>,
