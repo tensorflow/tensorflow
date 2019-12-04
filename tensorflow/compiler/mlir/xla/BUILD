@@ -23,6 +23,8 @@ package_group(
     ],
 )
 
+exports_files(["ir/hlo_ops.td"])
+
 filegroup(
     name = "hlo_ops_td_files",
     srcs = [
