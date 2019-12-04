@@ -38,15 +38,19 @@ def to_categorical(y, num_classes=None, dtype='float32'):
       last.
 
   Usage Example:
-    ```python
-    import tensorflow as tf
-    y = [0, 2, 4, 3, 5, 0, 1, 1, 2]
-    tf.keras.utils.to_categorical(y, 6)
-    ```  
-
+  >>> y = [0, 1, 2, 3, 3, 1, 0]
+  >>> tf.keras.utils.to_categorical(y, 4) 
+  array([[1., 0., 0., 0.],
+         [0., 1., 0., 0.],
+         [0., 0., 1., 0.],
+         [0., 0., 0., 1.],
+         [0., 0., 0., 1.],
+         [0., 1., 0., 0.],
+         [1., 0., 0., 0.]], dtype=float32)
+                       
   Raises:
       Value Error: If input contains string value
-      
+
   """
   y = np.array(y, dtype='int')
   input_shape = y.shape
