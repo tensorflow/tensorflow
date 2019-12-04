@@ -608,8 +608,8 @@ class _MultiIOSubclassModel(keras.Model):
   """Multi IO Keras subclass model."""
 
   def __init__(self, branch_a, branch_b, shared_input_branch=None,
-               shared_output_branch=None):
-    super(_MultiIOSubclassModel, self).__init__()
+               shared_output_branch=None, name=None):
+    super(_MultiIOSubclassModel, self).__init__(name=name)
     self._shared_input_branch = shared_input_branch
     self._branch_a = branch_a
     self._branch_b = branch_b

@@ -64,7 +64,7 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     num_samples = 1000
     input_dim = 50
 
-    model = model_util.MultiIOTestModel(
+    model = model_util.get_multi_io_subclass_model(
         num_classes=num_classes, use_dp=True, use_bn=True)
     model.compile(
         loss='mse',
@@ -111,7 +111,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     num_samples = 100
     input_dim = 50
 
-    model = model_util.MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model = model_util.get_multi_io_subclass_model(
+        num_classes=num_classes, use_bn=True)
 
     x1 = np.ones((num_samples, input_dim))
     x2 = np.ones((num_samples, input_dim))
@@ -211,7 +212,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     y1 = np.zeros((num_samples, num_classes[0]))
     y2 = np.zeros((num_samples, num_classes[1]))
 
-    model = model_util.MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model = model_util.get_multi_io_subclass_model(
+        num_classes=num_classes, use_bn=True)
     model.compile(
         loss='mse',
         optimizer='rmsprop',
@@ -224,7 +226,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0,
               validation_data=([x1, x2], [y1, y2]))
 
-    model = model_util.MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model = model_util.get_multi_io_subclass_model(
+        num_classes=num_classes, use_bn=True)
     model.compile(
         loss='mse',
         optimizer='rmsprop',
@@ -246,7 +249,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     y1 = np.zeros((num_samples, num_classes[0]))
     y2 = np.zeros((num_samples, num_classes[1]))
 
-    model = model_util.MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model = model_util.get_multi_io_subclass_model(
+        num_classes=num_classes, use_bn=True)
     model.compile(
         loss='mse',
         optimizer='rmsprop',
@@ -255,10 +259,12 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.evaluate([x1, x2], [y1, y2])
     model.test_on_batch([x1, x2], [y1, y2])
 
-    model = model_util.MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model = model_util.get_multi_io_subclass_model(
+        num_classes=num_classes, use_bn=True)
     model.predict([x1, x2])
 
-    model = model_util.MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model = model_util.get_multi_io_subclass_model(
+        num_classes=num_classes, use_bn=True)
     model.predict_on_batch([x1, x2])
 
   def test_saving(self):
@@ -271,7 +277,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     y1 = np.zeros((num_samples, num_classes[0]))
     y2 = np.zeros((num_samples, num_classes[1]))
 
-    model = model_util.MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model = model_util.get_multi_io_subclass_model(
+        num_classes=num_classes, use_bn=True)
     model.compile(
         loss='mse',
         optimizer='rmsprop',
@@ -286,7 +293,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
       hdf5_format_name = os.path.join(self.get_temp_dir(), 'weights.h5')
       model.save_weights(hdf5_format_name)
 
-    model = model_util.MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model = model_util.get_multi_io_subclass_model(
+        num_classes=num_classes, use_bn=True)
 
     if h5py is not None:
       with self.assertRaises(ValueError):
