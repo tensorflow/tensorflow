@@ -484,6 +484,7 @@ cc_library(
     deps = [
         ":EDSC",
         ":IR",
+        ":StandardOps",
         ":Support",
         ":VectorOpsIncGen",
         ":VectorTransformPatterns",
