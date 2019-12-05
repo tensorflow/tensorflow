@@ -54,6 +54,9 @@ class _LazyLoader(_types.ModuleType):
     module = self._load()
     return dir(module)
 
+  def __reduce__(self):
+    return __import__, (self.__name__,)
+
 
 # Forwarding a module is as simple as lazy loading the module from the new path
 # and then registering it to sys.modules using the old path
@@ -129,7 +132,4 @@ try:
 except NameError:
   pass
 
-# Manually patch keras and estimator so tf.keras and tf.estimator work
-keras = _sys.modules["tensorflow.keras"]
-if not _root_estimator: estimator = _sys.modules["tensorflow.estimator"]
 # LINT.ThenChange(//tensorflow/virtual_root_template_v2.__init__.py.oss)

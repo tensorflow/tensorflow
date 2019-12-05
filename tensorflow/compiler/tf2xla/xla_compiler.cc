@@ -127,9 +127,9 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
       step_id, [&status, device](const string& name) {
         status = device->resource_manager()->Cleanup(name);
       });
-  TF_RETURN_IF_ERROR(device->resource_manager()->Create(
-      step_container->name(), XlaContext::kXlaContextResourceName,
-      xla_context));
+  TF_RETURN_IF_ERROR(step_container->Create(device->resource_manager(),
+                                            XlaContext::kXlaContextResourceName,
+                                            xla_context));
 
   GraphCompiler graph_compiler(device, graph.get(), flib, step_container.get());
   TF_RETURN_IF_ERROR(graph_compiler.Compile());
@@ -463,9 +463,10 @@ string XlaCompiler::Argument::HumanString() const {
       return absl::StrCat("kind=constant", common,
                           " value=", constant_value.DebugString());
     case kResource: {
-      string output = absl::StrCat("kind=resource", common, " resource_kind=",
-                                   XlaResource::KindToString(resource_kind),
-                                   " initialized=", initialized);
+      string output = absl::StrCat(
+          "kind=resource", common,
+          " resource_kind=", XlaResource::KindToString(resource_kind),
+          " initialized=", initialized, " is_fast_mem=", fast_mem);
       if (max_array_size >= 0) {
         absl::StrAppend(&output, " max_array_size=", max_array_size);
       }
@@ -493,6 +494,16 @@ std::vector<int64> XlaCompiler::Argument::DimensionSizes() const {
   }
 }
 
+absl::InlinedVector<int64, 4>
+XlaCompiler::Argument::DimensionSizesAsInlinedVector() const {
+  if (absl::holds_alternative<TensorShape>(shape)) {
+    return absl::get<TensorShape>(shape).dim_sizes();
+  } else {
+    auto v = absl::get<xla::Shape>(shape).dimensions();
+    return absl::InlinedVector<int64, 4>(v.begin(), v.end());
+  }
+}
+
 string XlaCompiler::Argument::ShapeHumanString() const {
   if (absl::holds_alternative<TensorShape>(shape)) {
     return absl::get<TensorShape>(shape).DebugString();
@@ -516,11 +527,11 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
   local_flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(),
                                                       FunctionDefLibrary{}));
   local_pflr_.reset(new ProcessFunctionLibraryRuntime(
-      &device_mgr_, Env::Default(), options.graph_def_version,
-      local_flib_def_.get(), OptimizerOptions()));
+      &device_mgr_, Env::Default(), /*config=*/nullptr,
+      options.graph_def_version, local_flib_def_.get(), OptimizerOptions()));
   pflr_.reset(new ProcessFunctionLibraryRuntime(
-      &device_mgr_, Env::Default(), options.graph_def_version, options.flib_def,
-      OptimizerOptions()));
+      &device_mgr_, Env::Default(), /*config=*/nullptr,
+      options.graph_def_version, options.flib_def, OptimizerOptions()));
 
   local_flib_runtime_ = local_pflr_->GetFLR(device_->name());
   flib_runtime_ = pflr_->GetFLR(device_->name());
@@ -800,8 +811,7 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
           TF_ASSIGN_OR_RETURN(*xla_shape,
                               options_.shape_representation_fn(
                                   absl::get<TensorShape>(arg.shape), arg.type,
-                                  /*use_fast_memory=*/false));
-
+                                  /*use_fast_memory=*/arg.fast_mem));
           return Status::OK();
         }
         case XlaResource::kTensorArray: {
@@ -1049,7 +1059,12 @@ Status XlaCompiler::BuildArguments(
     const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
     VLOG(2) << "  XLA arg " << i
             << " shape: " << xla::ShapeUtil::HumanString(arg_shapes[i])
-            << " name: " << arg.name << " TF arg " << input_to_args->at(i);
+            << " name: " << arg.name << " TF arg " << input_to_args->at(i)
+            << " node name: " << arg.node_name
+            << (arg_shardings.find(i) == arg_shardings.end()
+                    ? ""
+                    : absl::StrCat(" sharding: ",
+                                   arg_shardings.at(i).DebugString()));
     XlaExpression& arg_expression = (*arg_expressions)[input_to_args->at(i)];
     switch (arg.kind) {
       case XlaCompiler::Argument::kResource: {
@@ -1216,22 +1231,6 @@ Status ValidateGraph(const Graph* graph,
   return Status::OK();
 }
 
-// Converts the value of any expressions whose values are known at compile-time
-// to constants.
-Status ResolveConstantExpressionsToConstants(
-    xla::Client* client, absl::Span<XlaExpression> expressions) {
-  for (XlaExpression& expression : expressions) {
-    if (expression.kind() == XlaExpression::Kind::kXlaOp) {
-      TF_ASSIGN_OR_RETURN(absl::optional<Tensor> constant,
-                          expression.ResolveConstant(client));
-      if (constant.has_value()) {
-        expression = XlaExpression::Constant(*constant);
-      }
-    }
-  }
-  return Status::OK();
-}
-
 void ConvertConstantsToExpressions(xla::XlaBuilder* builder,
                                    absl::Span<XlaExpression> expressions) {
   for (XlaExpression& expression : expressions) {
@@ -1350,21 +1349,7 @@ Status XlaCompiler::CompileGraph(
   result->computation = std::make_shared<xla::XlaComputation>();
   result->outputs.resize(context->retvals().size());
   std::vector<XlaExpression> retvals = context->retvals();
-  if (options.resolve_compile_time_constants) {
-    Status status = ResolveConstantExpressionsToConstants(
-        client(), absl::Span<XlaExpression>(retvals));
-
-    // If the HloEvaluator has not implemented an expression, just evaluate it
-    // at runtime.
-    if (status.code() == error::UNIMPLEMENTED) {
-      ConvertConstantsToExpressions(&builder,
-                                    absl::Span<XlaExpression>(retvals));
-    } else {
-      TF_RETURN_IF_ERROR(status);
-    }
-  } else {
-    ConvertConstantsToExpressions(&builder, absl::Span<XlaExpression>(retvals));
-  }
+  ConvertConstantsToExpressions(&builder, absl::Span<XlaExpression>(retvals));
   TF_RETURN_IF_ERROR(BuildComputation(
       real_args, retvals, arg_shardings, retval_shardings, context->resources(),
       std::move(token_output),

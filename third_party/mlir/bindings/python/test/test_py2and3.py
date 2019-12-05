@@ -30,9 +30,9 @@ class EdscTest:
 
   def setUp(self):
     self.module = E.MLIRModule()
-    self.boolType = self.module.make_scalar_type("i", 1)
-    self.i32Type = self.module.make_scalar_type("i", 32)
-    self.f32Type = self.module.make_scalar_type("f32")
+    self.boolType = self.module.make_type("i1")
+    self.i32Type = self.module.make_type("i32")
+    self.f32Type = self.module.make_type("f32")
     self.indexType = self.module.make_index_type()
 
   def testBlockArguments(self):
@@ -195,10 +195,10 @@ class EdscTest:
   def testConstants(self):
     self.setUp()
     with self.module.function_context("constants", [], []) as fun:
-      E.constant_float(1.23, self.module.make_scalar_type("bf16"))
-      E.constant_float(1.23, self.module.make_scalar_type("f16"))
-      E.constant_float(1.23, self.module.make_scalar_type("f32"))
-      E.constant_float(1.23, self.module.make_scalar_type("f64"))
+      E.constant_float(1.23, self.module.make_type("bf16"))
+      E.constant_float(1.23, self.module.make_type("f16"))
+      E.constant_float(1.23, self.module.make_type("f32"))
+      E.constant_float(1.23, self.module.make_type("f64"))
       E.constant_int(1, 1)
       E.constant_int(123, 8)
       E.constant_int(123, 16)
@@ -285,6 +285,49 @@ class EdscTest:
     # CHECK-LABEL: testFunctionDeclaration
     #       CHECK: func @foo(memref<10xf32>, memref<10xf32> {llvm.noalias = true}, memref<10xf32> {readonly = true})
 
+  def testFunctionDeclarationWithAffineAttr(self):
+    self.setUp()
+    a1 = self.module.affine_constant_expr(23)
+    a2 = self.module.affine_constant_expr(44)
+    a3 = self.module.affine_dim_expr(1)
+    s0 = self.module.affine_symbol_expr(0)
+    aMap1 = self.module.affine_map(2, 0, [a1, a2, s0])
+    aMap2 = self.module.affine_constant_map(42)
+    aMap3 = self.module.affine_map(
+        2, 0,
+        [a1 + a2 * a3, a1 // a3 % a2,
+         a1.ceildiv(a2), a1 - 2, a2 * 2, -a3])
+
+    affineAttr1 = self.module.affineMapAttr(aMap1)
+    affineAttr2 = self.module.affineMapAttr(aMap2)
+    affineAttr3 = self.module.affineMapAttr(aMap3)
+
+    t = self.module.make_memref_type(self.f32Type, [10])
+    t_with_attr = t({
+        "affine_attr_1": affineAttr1,
+        "affine_attr_2": affineAttr2,
+        "affine_attr_3": affineAttr3,
+    })
+
+    f = self.module.declare_function("foo", [t, t_with_attr], [])
+    printWithCurrentFunctionName(str(self.module))
+    # CHECK-LABEL: testFunctionDeclarationWithAffineAttr
+    #       CHECK:  func @foo(memref<10xf32>, memref<10xf32> {affine_attr_1 = (d0, d1) -> (23, 44, s0), affine_attr_2 = () -> (42), affine_attr_3 = (d0, d1) -> (d1 * 44 + 23, (23 floordiv d1) mod 44, 1, 21, 88, -d1)})
+
+  def testFunctionDeclarationWithArrayAttr(self):
+    self.setUp()
+    arrayAttr = self.module.arrayAttr([
+        self.module.integerAttr(self.i32Type, 43),
+        self.module.integerAttr(self.i32Type, 33),
+    ])
+    t = self.module.make_memref_type(self.f32Type, [10])
+    t_with_attr = t({"array_attr": arrayAttr})
+
+    f = self.module.declare_function("foo", [t, t_with_attr], [])
+    printWithCurrentFunctionName(str(self.module))
+    # CHECK-LABEL: testFunctionDeclarationWithArrayAttr
+    #       CHECK: func @foo(memref<10xf32>, memref<10xf32> {array_attr = [43 : i32, 33 : i32]})
+
   def testFunctionMultiple(self):
     self.setUp()
     with self.module.function_context("foo", [], []):
@@ -296,6 +339,15 @@ class EdscTest:
     #       CHECK: func @foo()
     #       CHECK: func @foo_0()
     #       CHECK: %{{.*}} = constant 0 : index
+
+  def testIndexCast(self):
+    self.setUp()
+    with self.module.function_context("testIndexCast", [], []):
+      index = E.constant_index(0)
+      E.index_cast(index, self.i32Type)
+    printWithCurrentFunctionName(str(self.module))
+    # CHECK-LABEL: testIndexCast
+    #       CHECK: index_cast %{{.*}} : index to i32
 
   def testIndexedValue(self):
     self.setUp()
@@ -381,7 +433,7 @@ class EdscTest:
   def testMLIRFunctionCreation(self):
     self.setUp()
     module = E.MLIRModule()
-    t = module.make_scalar_type("f32")
+    t = module.make_type("f32")
     m = module.make_memref_type(t, [3, 4, -1, 5])
     printWithCurrentFunctionName(str(t))
     print(str(m))
@@ -396,15 +448,15 @@ class EdscTest:
   def testMLIRScalarTypes(self):
     self.setUp()
     module = E.MLIRModule()
-    printWithCurrentFunctionName(str(module.make_scalar_type("bf16")))
-    print(str(module.make_scalar_type("f16")))
-    print(str(module.make_scalar_type("f32")))
-    print(str(module.make_scalar_type("f64")))
-    print(str(module.make_scalar_type("i", 1)))
-    print(str(module.make_scalar_type("i", 8)))
-    print(str(module.make_scalar_type("i", 32)))
-    print(str(module.make_scalar_type("i", 123)))
-    print(str(module.make_scalar_type("index")))
+    printWithCurrentFunctionName(str(module.make_type("bf16")))
+    print(str(module.make_type("f16")))
+    print(str(module.make_type("f32")))
+    print(str(module.make_type("f64")))
+    print(str(module.make_type("i1")))
+    print(str(module.make_type("i8")))
+    print(str(module.make_type("i32")))
+    print(str(module.make_type("i123")))
+    print(str(module.make_type("index")))
     # CHECK-LABEL: testMLIRScalarTypes
     #       CHECK:  bf16
     #       CHECK:  f16

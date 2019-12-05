@@ -20,7 +20,6 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
-from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -99,7 +98,7 @@ class ChooseFastestBranchDatasetSerializationTest(
       dataset = dataset_ops.Dataset.from_tensors(0).repeat(1000).batch(100)
 
       def branch(dataset):
-        return dataset.apply(batching.unbatch())
+        return dataset.unbatch()
 
       return optimization._ChooseFastestBranchDataset(
           dataset, [branch, branch],

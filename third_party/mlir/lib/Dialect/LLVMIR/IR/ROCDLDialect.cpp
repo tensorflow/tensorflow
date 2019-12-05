@@ -53,7 +53,7 @@ static void printROCDLOp(OpAsmPrinter &p, Operation *op) {
 // <operation> ::= `rocdl.XYZ` : type
 static ParseResult parseROCDLOp(OpAsmParser &parser, OperationState &result) {
   Type type;
-  return failure(parser.parseOptionalAttributeDict(result.attributes) ||
+  return failure(parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.addTypeToList(type, result.types));
 }

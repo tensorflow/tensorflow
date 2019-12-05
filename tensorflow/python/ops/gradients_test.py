@@ -1077,6 +1077,24 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       with session.Session() as sess:
         self.assertAllEqual([3., 5.], self.evaluate(dy))
 
+  def testCustomGradientClass(self):
+
+    class Model(object):
+
+      @custom_gradient.custom_gradient
+      def Multiply(self, x1, x2):
+        result = x1 * x2
+        grad = lambda dy: (dy * x1, dy * x2)
+        return result, grad
+
+    with ops.Graph().as_default():
+      x1 = constant(3.)
+      x2 = constant(5.)
+      m = Model()
+      y = m.Multiply(x1, x2)
+      dy = gradients.gradients(y, [x1, x2])
+      self.assertAllEqual([3., 5.], self.evaluate(dy))
+
   def testCustomGradientErrors(self):
 
     @custom_gradient.custom_gradient

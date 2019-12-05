@@ -32,14 +32,22 @@ from tensorflow.python import _pywrap_py_func
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+
+autograph = lazy_loader.LazyLoader(
+    "autograph", globals(),
+    "tensorflow.python.autograph.impl.api")
+
 
 # Map from EagerPyFunc token to tuple (tape, eager args, eager outputs);
 # used for differentiation.
@@ -114,10 +122,10 @@ class EagerFunc(object):
     """Passes `args` to `self._func`, which is executed eagerly."""
 
     with context.eager_mode(), backprop.GradientTape() as tape:
-      # Only watch tensors with a floating dtype.
+      # Only watch tensors with a floating or complex dtype.
       for tensor in args:
         for t in nest.flatten(tensor):
-          if t.dtype.is_floating:
+          if t.dtype.is_floating or t.dtype.is_complex:
             tape.watch(t)
       ret = self._func(*args)
       # copy the returned tensors to the PyFunc op's device if necessary.
@@ -274,6 +282,9 @@ def _internal_py_func(func,
     raise ValueError("Expected func to be callable, got func of type {}".format(
         type(func)))
 
+  original_func = func
+  func = autograph.do_not_convert(func)
+
   is_list_or_tuple = False
   if isinstance(Tout, (list, tuple)):
     is_list_or_tuple = True
@@ -283,27 +294,43 @@ def _internal_py_func(func,
   if eager:
     func = EagerFunc(func, Tout, is_grad_func)
 
+  # Tying the registered function's lifetime with the current default graph is
+  # not reliable. For example, Estimator-based binaries may switch graphs in
+  # between model training end evaluation, via saved_model. Those binaries work
+  # because the original function is global, and break once the registered
+  # function is an anonymous lambda, like the one produced by do_not_convert.
+  # To avoid breaking those cases, we attach the wrapper to the original
+  # function so that their lifetime is connected.
+  # TODO(b/144286616): Remove this.
+  if tf_inspect.isfunction(original_func):
+    # Note: this check is needed because original_func may be a descriptor
+    # (https://docs.python.org/3/howto/descriptor.html)
+    # and we can't attach attributes to those.
+    original_func.ag_dnc_wrapper__ = func
+
   token = _py_funcs.insert(func)
   # We tie the registered function's lifetime with the current default graph,
   # i.e., when the current graph is destroyed, we remove its py funcs.
   graph = ops.get_default_graph()
 
-  # pylint: disable=protected-access
-  while isinstance(graph, function._FuncGraph):
-    # If the py_func was declared inside a _FuncGraph, its lifetime should be
-    # bound to that of the outer graph instead.
-    graph = graph._outer_graph
+  while True:
+    current_graph = graph
+    if isinstance(graph, function._FuncGraph):  # pylint: disable=protected-access
+      graph = graph._outer_graph  # pylint: disable=protected-access
+    elif isinstance(graph, func_graph.FuncGraph):
+      graph = graph.outer_graph
+    if graph is current_graph:
+      break
 
   # TODO(zhifengc): Consider adding a Graph method to collect
   # `cleanup` objects in one of its member.
   if not hasattr(graph, "_py_funcs_used_in_graph"):
-    graph._py_funcs_used_in_graph = []
+    graph._py_funcs_used_in_graph = []  # pylint: disable=protected-access
 
   # Store a reference to the function in the graph to ensure it stays alive
   # as long as the graph lives. When the graph is destroyed, the function
   # is left to the garbage collector for destruction as well.
-  graph._py_funcs_used_in_graph.append(func)
-  # pylint: enable=protected-access
+  graph._py_funcs_used_in_graph.append(func)  # pylint: disable=protected-access
 
   if eager:
     result = gen_script_ops.eager_py_func(

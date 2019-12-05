@@ -734,10 +734,13 @@ Status OpDefAttrDefaultsUnchanged(const OpDef& old_op, const OpDef& new_op) {
     const OpDef::AttrDef* new_attr =
         gtl::FindPtrOrNull(new_attrs, old_attr.name());
     if (new_attr == nullptr) continue;
-    if (old_attr.has_default_value() != new_attr->has_default_value()) {
+    if (new_attr->has_default_value() && !old_attr.has_default_value()) {
+      continue;  // Adding new default values is safe.
+    }
+    if (old_attr.has_default_value() && !new_attr->has_default_value()) {
       return errors::InvalidArgument(
-          "Attr '", old_attr.name(), "' has added/removed it's default; ",
-          "from ", DefaultAttrStr(old_attr), " to ", DefaultAttrStr(*new_attr));
+          "Attr '", old_attr.name(), "' has removed it's default; ", "from ",
+          DefaultAttrStr(old_attr), " to ", DefaultAttrStr(*new_attr));
     }
     if (old_attr.has_default_value() &&
         !AreAttrValuesEqual(old_attr.default_value(),

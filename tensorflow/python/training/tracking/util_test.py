@@ -1019,6 +1019,8 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     load_root.dep_two.dep_three = tracking.AutoTrackable()
     trackable_utils.add_variable(
         load_root.dep_one.dep_three, name="var", initializer=0.)
+    trackable_utils.add_variable(
+        load_root.dep_two.dep_three, name="var", initializer=0.)
     with self.assertRaises(AssertionError):
       status.assert_consumed()
     with self.assertRaises(AssertionError):
@@ -1049,6 +1051,19 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     status.run_restore_ops()
     self.assertEqual(32., self.evaluate(v1))
     self.assertEqual(64., self.evaluate(v2))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testEmptyContainersIgnored(self):
+    checkpoint_directory = self.get_temp_dir()
+    save_root = trackable_utils.Checkpoint()
+    path = save_root.save(checkpoint_directory)
+    load_root = trackable_utils.Checkpoint()
+    load_root.dep = []
+    load_root.dep.append([])
+    status = load_root.restore(path)
+    status.assert_consumed()
+    status.assert_existing_objects_matched()
+    status.assert_nontrivial_match()
 
   @test_util.run_in_graph_and_eager_modes
   def testDependencyLoop(self):

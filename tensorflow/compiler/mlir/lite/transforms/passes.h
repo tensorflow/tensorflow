@@ -27,6 +27,7 @@ template <typename T>
 class OpPassBase;
 
 namespace TFL {
+class QuantizationSpecs;
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
 std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeTFPass();
@@ -45,11 +46,8 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateLowerStaticTensorListPass();
 std::unique_ptr<OpPassBase<FuncOp>> CreateQuantizePass();
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
-// When `quantize_sign` is true, constant tensors will use int8 quantization
-// scheme.
-// TODO(fengliuai): make the bit width configurable.
 std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareQuantizePass(
-    bool quantize_sign);
+    const QuantizationSpecs& quant_specs);
 
 // Creates a instance of the TensorFlow Lite dialect PostQuantize pass.
 std::unique_ptr<OpPassBase<FuncOp>> CreatePostQuantizePass(
@@ -74,6 +72,7 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateLegalizeOphintFuncOpPass();
 // Creates an instance of TensorFlow Lite dialect SplitMergedOperandsPass.
 std::unique_ptr<OpPassBase<FuncOp>> CreateSplitMergedOperandsPass();
 
+std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeFunctionalOpsPass();
 }  // namespace TFL
 
 }  // namespace mlir

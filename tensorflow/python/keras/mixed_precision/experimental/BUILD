@@ -54,7 +54,7 @@ py_test(
     srcs = [
         "policy_test.py",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":policy",
@@ -85,7 +85,7 @@ py_test(
     name = "autocast_variable_test",
     size = "medium",
     srcs = ["autocast_variable_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     deps = [
         ":autocast_variable",
         "//tensorflow/python:client_testlib",
@@ -133,6 +133,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
     ],
+    python_version = "PY3",
 )
 
 py_library(
@@ -141,6 +142,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework",
+        "//tensorflow/python/keras",
     ],
 )
 
@@ -156,6 +158,22 @@ cuda_py_test(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = ["no_windows"],  # b/139083295: bfloat16 tests fail on Windows
+)
+
+cuda_py_test(
+    name = "layer_correctness_test",
+    size = "medium",
+    srcs = ["layer_correctness_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:one_device_strategy",
+        "//tensorflow/python/keras",
+    ],
+    python_version = "PY3",
+    tags = ["no_rocm"],
 )

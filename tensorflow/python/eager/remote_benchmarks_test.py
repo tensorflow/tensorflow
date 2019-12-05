@@ -59,6 +59,22 @@ def run_benchmark(func, num_iters, execution_mode=None):
     return end - start
 
 
+class Foo(object):
+
+  def __init__(self, num_vars):
+    self._num_vars = num_vars
+    self._v = []
+
+  def __call__(self, inputs):
+    if not self._v:
+      for _ in range(self._num_vars):
+        self._v.append(variables.Variable(
+            random_ops.random_uniform([]), shape=[]))
+    for v in self._v:
+      inputs = inputs * v
+    return inputs
+
+
 class RemoteWorkerMicroBenchmarks(test.Benchmark):
 
   def __init__(self):
@@ -155,6 +171,26 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
 
     context.context().mirroring_policy = context.MIRRORING_ALL
     self._run(func)
+    # NOTE(b/136184459): Force garbage collecting hanging resources before
+    # subsequent calls to set_server_def, to ensure the destroy resource ops are
+    # executed when their corresponding device and manager are still available.
+    gc.collect()
+
+  def benchmark_create_vars_inside_function(self):
+    remote.connect_to_remote_host(self._cached_server_target1)
+
+    def func():
+      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
+        layer = Foo(50)
+
+        @def_function.function
+        def remote_func():
+          with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
+            return layer(random_ops.random_uniform([]))
+
+        return remote_func()
+
+    self._run(func, execution_mode=context.ASYNC, num_iters=100)
     # NOTE(b/136184459): Force garbage collecting hanging resources before
     # subsequent calls to set_server_def, to ensure the destroy resource ops are
     # executed when their corresponding device and manager are still available.

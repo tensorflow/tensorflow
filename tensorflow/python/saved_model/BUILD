@@ -391,6 +391,9 @@ cuda_py_test(
         ":save",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:cond_v2",  # b/118513001
+        "//tensorflow/python:while_v2",  # b/118513001
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lib",
         "//tensorflow/python:tensor_spec",
@@ -401,8 +404,8 @@ cuda_py_test(
     ],
     shard_count = 10,
     tags = [
+        "no_gpu",  # TODO(b/136560979): flaky
         "no_mac",  # TODO(b/124822121): Re-enable this test.
-        "nogpu",  # TODO(b/136560979): flaky
     ],
 )
 

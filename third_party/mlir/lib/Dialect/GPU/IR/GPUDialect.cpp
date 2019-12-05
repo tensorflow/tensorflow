@@ -20,9 +20,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
+#include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
@@ -31,20 +33,102 @@
 using namespace mlir;
 using namespace mlir::gpu;
 
+//===----------------------------------------------------------------------===//
+// GPUDialect
+//===----------------------------------------------------------------------===//
+
 StringRef GPUDialect::getDialectName() { return "gpu"; }
 
-bool GPUDialect::isKernel(FuncOp function) {
-  UnitAttr isKernelAttr =
-      function.getAttrOfType<UnitAttr>(getKernelFuncAttrName());
+bool GPUDialect::isKernel(Operation *op) {
+  UnitAttr isKernelAttr = op->getAttrOfType<UnitAttr>(getKernelFuncAttrName());
   return static_cast<bool>(isKernelAttr);
 }
 
 GPUDialect::GPUDialect(MLIRContext *context)
     : Dialect(getDialectName(), context) {
-  addOperations<LaunchOp, LaunchFuncOp,
+  addOperations<LaunchOp, LaunchFuncOp, GPUFuncOp,
 #define GET_OP_LIST
 #include "mlir/Dialect/GPU/GPUOps.cpp.inc"
                 >();
+}
+
+LogicalResult GPUDialect::verifyOperationAttribute(Operation *op,
+                                                   NamedAttribute attr) {
+  if (!attr.second.isa<UnitAttr>() ||
+      !attr.first.is(getContainerModuleAttrName()))
+    return success();
+
+  auto module = dyn_cast<ModuleOp>(op);
+  if (!module)
+    return op->emitError("expected '")
+           << getContainerModuleAttrName() << "' attribute to be attached to '"
+           << ModuleOp::getOperationName() << '\'';
+
+  auto walkResult = module.walk([&module](LaunchFuncOp launchOp) -> WalkResult {
+    // Ignore launches that are nested more or less deep than functions in the
+    // module we are currently checking.
+    if (!launchOp.getParentOp() ||
+        launchOp.getParentOp()->getParentOp() != module)
+      return success();
+
+    // Ignore launch ops with missing attributes here. The errors will be
+    // reported by the verifiers of those ops.
+    if (!launchOp.getAttrOfType<StringAttr>(
+            LaunchFuncOp::getKernelAttrName()) ||
+        !launchOp.getAttrOfType<SymbolRefAttr>(
+            LaunchFuncOp::getKernelModuleAttrName()))
+      return success();
+
+    // Check that `launch_func` refers to a well-formed GPU kernel module.
+    StringRef kernelModuleName = launchOp.getKernelModuleName();
+    auto kernelModule = module.lookupSymbol<ModuleOp>(kernelModuleName);
+    if (!kernelModule)
+      return launchOp.emitOpError()
+             << "kernel module '" << kernelModuleName << "' is undefined";
+    if (!kernelModule.getAttrOfType<UnitAttr>(
+            GPUDialect::getKernelModuleAttrName()))
+      return launchOp.emitOpError("module '")
+             << kernelModuleName << "' is missing the '"
+             << GPUDialect::getKernelModuleAttrName() << "' attribute";
+
+    // Check that `launch_func` refers to a well-formed kernel function.
+    StringRef kernelName = launchOp.kernel();
+    Operation *kernelFunc = kernelModule.lookupSymbol(kernelName);
+    auto kernelStdFunction = dyn_cast_or_null<::mlir::FuncOp>(kernelFunc);
+    auto kernelLLVMFunction = dyn_cast_or_null<LLVM::LLVMFuncOp>(kernelFunc);
+    if (!kernelStdFunction && !kernelLLVMFunction)
+      return launchOp.emitOpError("kernel function '")
+             << kernelName << "' is undefined";
+    if (!kernelFunc->getAttrOfType<mlir::UnitAttr>(
+            GPUDialect::getKernelFuncAttrName()))
+      return launchOp.emitOpError("kernel function is missing the '")
+             << GPUDialect::getKernelFuncAttrName() << "' attribute";
+
+    unsigned actualNumArguments = launchOp.getNumKernelOperands();
+    unsigned expectedNumArguments = kernelLLVMFunction
+                                        ? kernelLLVMFunction.getNumArguments()
+                                        : kernelStdFunction.getNumArguments();
+    if (expectedNumArguments != actualNumArguments)
+      return launchOp.emitOpError("got ")
+             << actualNumArguments << " kernel operands but expected "
+             << expectedNumArguments;
+
+    // Due to the ordering of the current impl of lowering and LLVMLowering,
+    // type checks need to be temporarily disabled.
+    // TODO(ntv,zinenko,herhut): reactivate checks once "changing gpu.launchFunc
+    // to encode target module" has landed.
+    // auto functionType = kernelFunc.getType();
+    // for (unsigned i = 0; i < numKernelFuncArgs; ++i) {
+    //   if (getKernelOperand(i)->getType() != functionType.getInput(i)) {
+    //     return emitOpError("type of function argument ")
+    //            << i << " does not match";
+    //   }
+    // }
+
+    return success();
+  });
+
+  return walkResult.wasInterrupted() ? failure() : success();
 }
 
 template <typename T> static LogicalResult verifyIndexOp(T op) {
@@ -54,8 +138,40 @@ template <typename T> static LogicalResult verifyIndexOp(T op) {
   return success();
 }
 
+static LogicalResult verifyAllReduce(gpu::AllReduceOp allReduce) {
+  if (allReduce.body().empty() != allReduce.op().hasValue())
+    return allReduce.emitError(
+        "expected either an op attribute or a non-empty body");
+  if (!allReduce.body().empty()) {
+    if (allReduce.body().front().getNumArguments() != 2)
+      return allReduce.emitError("expected two region arguments");
+    for (auto *argument : allReduce.body().front().getArguments()) {
+      if (argument->getType() != allReduce.getType())
+        return allReduce.emitError("incorrect region argument type");
+    }
+    unsigned yieldCount = 0;
+    for (Block &block : allReduce.body()) {
+      if (auto yield = dyn_cast<gpu::YieldOp>(block.getTerminator())) {
+        if (yield.getNumOperands() != 1)
+          return allReduce.emitError("expected one gpu.yield operand");
+        if (yield.getOperand(0)->getType() != allReduce.getType())
+          return allReduce.emitError("incorrect gpu.yield type");
+        ++yieldCount;
+      }
+    }
+    if (yieldCount == 0)
+      return allReduce.emitError("expected gpu.yield op in region");
+  }
+  return success();
+}
+
+// Namespace avoids ambiguous ReturnOpOperandAdaptor.
+namespace mlir {
+namespace gpu {
 #define GET_OP_CLASSES
 #include "mlir/Dialect/GPU/GPUOps.cpp.inc"
+} // namespace gpu
+} // namespace mlir
 
 //===----------------------------------------------------------------------===//
 // LaunchOp
@@ -153,7 +269,7 @@ LogicalResult LaunchOp::verify() {
       continue;
     if (block.back().getNumSuccessors() != 0)
       continue;
-    if (!isa<gpu::Return>(&block.back())) {
+    if (!isa<gpu::ReturnOp>(&block.back())) {
       return block.back()
                  .emitError("expected 'gpu.terminator' or a terminator with "
                             "successors")
@@ -221,7 +337,7 @@ void LaunchOp::print(OpAsmPrinter &p) {
 //   (%region_arg, %region_arg, %region_arg) in
 //   (%region_arg = %operand, %region_arg = %operand, %region_arg = %operand)
 // where %region_arg are percent-identifiers for the region arguments to be
-// introduced futher (SSA defs), and %operand are percent-identifiers for the
+// introduced further (SSA defs), and %operand are percent-identifiers for the
 // SSA value uses.
 static ParseResult
 parseSizeAssignment(OpAsmParser &parser,
@@ -267,10 +383,10 @@ ParseResult LaunchOp::parse(OpAsmParser &parser, OperationState &result) {
       kNumConfigRegionAttributes);
   MutableArrayRef<OpAsmParser::OperandType> regionArgsRef(regionArgs);
 
-  // Parse the size assignment segments: the first segment assigns grid siezs
+  // Parse the size assignment segments: the first segment assigns grid sizes
   // and defines values for block identifiers; the second segment assigns block
-  // sies and defines values for thread identifiers.  In the region argument
-  // list, identifiers preceed sizes, and block-related values preceed
+  // sizes and defines values for thread identifiers.  In the region argument
+  // list, identifiers precede sizes, and block-related values precede
   // thread-related values.
   if (parser.parseKeyword(getBlocksKeyword().data()) ||
       parseSizeAssignment(parser, sizesRef.take_front(3),
@@ -320,7 +436,7 @@ ParseResult LaunchOp::parse(OpAsmParser &parser, OperationState &result) {
   dataTypes.insert(dataTypes.begin(), kNumConfigRegionAttributes, index);
   Region *body = result.addRegion();
   return failure(parser.parseRegion(*body, regionArgs, dataTypes) ||
-                 parser.parseOptionalAttributeDict(result.attributes));
+                 parser.parseOptionalAttrDict(result.attributes));
 }
 
 void LaunchOp::eraseKernelArgument(unsigned index) {
@@ -338,7 +454,7 @@ class PropagateConstantBounds : public OpRewritePattern<LaunchOp> {
 
   PatternMatchResult matchAndRewrite(LaunchOp launchOp,
                                      PatternRewriter &rewriter) const override {
-    auto oringInsertionPoint = rewriter.saveInsertionPoint();
+    auto origInsertionPoint = rewriter.saveInsertionPoint();
     rewriter.setInsertionPointToStart(&launchOp.getBody().front());
 
     // Traverse operands passed to kernel and check if some of them are known
@@ -365,7 +481,7 @@ class PropagateConstantBounds : public OpRewritePattern<LaunchOp> {
       kernelArg->replaceAllUsesWith(internalConstant);
       launchOp.eraseKernelArgument(index);
     }
-    rewriter.restoreInsertionPoint(oringInsertionPoint);
+    rewriter.restoreInsertionPoint(origInsertionPoint);
 
     if (!found)
       return matchFailure();
@@ -386,19 +502,24 @@ void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 void LaunchFuncOp::build(Builder *builder, OperationState &result,
-                         FuncOp kernelFunc, Value *gridSizeX, Value *gridSizeY,
-                         Value *gridSizeZ, Value *blockSizeX, Value *blockSizeY,
-                         Value *blockSizeZ, ArrayRef<Value *> kernelOperands) {
+                         ::mlir::FuncOp kernelFunc, Value *gridSizeX,
+                         Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
+                         Value *blockSizeY, Value *blockSizeZ,
+                         ArrayRef<Value *> kernelOperands) {
   // Add grid and block sizes as op operands, followed by the data operands.
   result.addOperands(
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
   result.addOperands(kernelOperands);
   result.addAttribute(getKernelAttrName(),
-                      builder->getSymbolRefAttr(kernelFunc));
+                      builder->getStringAttr(kernelFunc.getName()));
+  auto kernelModule = kernelFunc.getParentOfType<ModuleOp>();
+  if (Optional<StringRef> kernelModuleName = kernelModule.getName())
+    result.addAttribute(getKernelModuleAttrName(),
+                        builder->getSymbolRefAttr(*kernelModuleName));
 }
 
 void LaunchFuncOp::build(Builder *builder, OperationState &result,
-                         FuncOp kernelFunc, KernelDim3 gridSize,
+                         ::mlir::FuncOp kernelFunc, KernelDim3 gridSize,
                          KernelDim3 blockSize,
                          ArrayRef<Value *> kernelOperands) {
   build(builder, result, kernelFunc, gridSize.x, gridSize.y, gridSize.z,
@@ -406,11 +527,16 @@ void LaunchFuncOp::build(Builder *builder, OperationState &result,
 }
 
 StringRef LaunchFuncOp::kernel() {
-  return getAttrOfType<SymbolRefAttr>(getKernelAttrName()).getValue();
+  return getAttrOfType<StringAttr>(getKernelAttrName()).getValue();
 }
 
 unsigned LaunchFuncOp::getNumKernelOperands() {
   return getNumOperands() - kNumConfigOperands;
+}
+
+StringRef LaunchFuncOp::getKernelModuleName() {
+  return getAttrOfType<SymbolRefAttr>(getKernelModuleAttrName())
+      .getRootReference();
 }
 
 Value *LaunchFuncOp::getKernelOperand(unsigned i) {
@@ -426,35 +552,213 @@ KernelDim3 LaunchFuncOp::getBlockSizeOperandValues() {
 }
 
 LogicalResult LaunchFuncOp::verify() {
-  auto kernelAttr = this->getAttr(getKernelAttrName());
-  if (!kernelAttr) {
-    return emitOpError("attribute 'kernel' must be specified");
-  } else if (!kernelAttr.isa<SymbolRefAttr>()) {
-    return emitOpError("attribute 'kernel' must be a function");
-  }
-
   auto module = getParentOfType<ModuleOp>();
-  FuncOp kernelFunc = module.lookupSymbol<FuncOp>(kernel());
-  if (!kernelFunc)
-    return emitOpError("kernel function '") << kernelAttr << "' is undefined";
+  if (!module)
+    return emitOpError("expected to belong to a module");
 
-  if (!kernelFunc.getAttrOfType<mlir::UnitAttr>(
-          GPUDialect::getKernelFuncAttrName())) {
-    return emitOpError("kernel function is missing the '")
-           << GPUDialect::getKernelFuncAttrName() << "' attribute";
+  if (!module.getAttrOfType<UnitAttr>(GPUDialect::getContainerModuleAttrName()))
+    return emitOpError("expected the closest surrounding module to have the '" +
+                       GPUDialect::getContainerModuleAttrName() +
+                       "' attribute");
+
+  auto kernelAttr = getAttrOfType<StringAttr>(getKernelAttrName());
+  if (!kernelAttr)
+    return emitOpError("string attribute '" + getKernelAttrName() +
+                       "' must be specified");
+
+  auto kernelModuleAttr =
+      getAttrOfType<SymbolRefAttr>(getKernelModuleAttrName());
+  if (!kernelModuleAttr)
+    return emitOpError("symbol reference attribute '" +
+                       getKernelModuleAttrName() + "' must be specified");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// GPUFuncOp
+//===----------------------------------------------------------------------===//
+
+void GPUFuncOp::build(Builder *builder, OperationState &result, StringRef name,
+                      FunctionType type, ArrayRef<Type> workgroupAttributions,
+                      ArrayRef<Type> privateAttributions,
+                      ArrayRef<NamedAttribute> attrs) {
+  result.addAttribute(SymbolTable::getSymbolAttrName(),
+                      builder->getStringAttr(name));
+  result.addAttribute(getTypeAttrName(), TypeAttr::get(type));
+  result.addAttribute(getNumWorkgroupAttributionsAttrName(),
+                      builder->getI64IntegerAttr(workgroupAttributions.size()));
+  result.addAttributes(attrs);
+  Region *body = result.addRegion();
+  Block *entryBlock = new Block;
+  entryBlock->addArguments(type.getInputs());
+  entryBlock->addArguments(workgroupAttributions);
+  entryBlock->addArguments(privateAttributions);
+
+  body->getBlocks().push_back(entryBlock);
+}
+
+/// Parses a GPU function memory attribution.
+///
+/// memory-attribution ::= (`workgroup` `(` ssa-id-and-type-list `)`)?
+///                        (`private` `(` ssa-id-and-type-list `)`)?
+///
+/// Note that this function parses only one of the two similar parts, with the
+/// keyword provided as argument.
+static ParseResult
+parseAttributions(OpAsmParser &parser, StringRef keyword,
+                  SmallVectorImpl<OpAsmParser::OperandType> &args,
+                  SmallVectorImpl<Type> &argTypes) {
+  // If we could not parse the keyword, just assume empty list and succeed.
+  if (failed(parser.parseOptionalKeyword(keyword)))
+    return success();
+
+  if (failed(parser.parseLParen()))
+    return failure();
+
+  // Early exit for an empty list.
+  if (succeeded(parser.parseOptionalRParen()))
+    return success();
+
+  do {
+    OpAsmParser::OperandType arg;
+    Type type;
+
+    if (parser.parseRegionArgument(arg) || parser.parseColonType(type))
+      return failure();
+
+    args.push_back(arg);
+    argTypes.push_back(type);
+  } while (succeeded(parser.parseOptionalComma()));
+
+  return parser.parseRParen();
+}
+
+/// Parses a GPU function.
+///
+/// <operation> ::= `gpu.func` symbol-ref-id `(` argument-list `)`
+///                 (`->` function-result-list)? memory-attribution `kernel`?
+///                 function-attributes? region
+ParseResult GPUFuncOp::parse(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::OperandType, 8> entryArgs;
+  SmallVector<SmallVector<NamedAttribute, 2>, 1> argAttrs;
+  SmallVector<SmallVector<NamedAttribute, 2>, 1> resultAttrs;
+  SmallVector<Type, 8> argTypes;
+  SmallVector<Type, 4> resultTypes;
+  bool isVariadic;
+
+  // Parse the function name.
+  StringAttr nameAttr;
+  if (parser.parseSymbolName(nameAttr, ::mlir::SymbolTable::getSymbolAttrName(),
+                             result.attributes))
+    return failure();
+
+  auto signatureLocation = parser.getCurrentLocation();
+  if (failed(impl::parseFunctionSignature(
+          parser, /*allowVariadic=*/false, entryArgs, argTypes, argAttrs,
+          isVariadic, resultTypes, resultAttrs)))
+    return failure();
+
+  if (entryArgs.empty() && !argTypes.empty())
+    return parser.emitError(signatureLocation)
+           << "gpu.func requires named arguments";
+
+  // Construct the function type. More types will be added to the region, but
+  // not to the functiont type.
+  Builder &builder = parser.getBuilder();
+  auto type = builder.getFunctionType(argTypes, resultTypes);
+  result.addAttribute(getTypeAttrName(), TypeAttr::get(type));
+
+  // Parse workgroup memory attributions.
+  if (failed(parseAttributions(parser, getWorkgroupKeyword(), entryArgs,
+                               argTypes)))
+    return failure();
+
+  // Store the number of operands we just parsed as the number of workgroup
+  // memory attributions.
+  unsigned numWorkgroupAttrs = argTypes.size() - type.getNumInputs();
+  result.addAttribute(getNumWorkgroupAttributionsAttrName(),
+                      builder.getI64IntegerAttr(numWorkgroupAttrs));
+
+  // Parse private memory attributions.
+  if (failed(
+          parseAttributions(parser, getPrivateKeyword(), entryArgs, argTypes)))
+    return failure();
+
+  // Parse the kernel attribute if present.
+  if (succeeded(parser.parseOptionalKeyword(getKernelKeyword())))
+    result.addAttribute(GPUDialect::getKernelFuncAttrName(),
+                        builder.getUnitAttr());
+
+  // Parse attributes.
+  if (failed(parser.parseOptionalAttrDictWithKeyword(result.attributes)))
+    return failure();
+  mlir::impl::addArgAndResultAttrs(builder, result, argAttrs, resultAttrs);
+
+  // Parse the region. If no argument names were provided, take all names
+  // (including those of attributions) from the entry block.
+  auto *body = result.addRegion();
+  return parser.parseRegion(*body, entryArgs, argTypes);
+}
+
+static void printAttributions(OpAsmPrinter &p, StringRef keyword,
+                              ArrayRef<BlockArgument *> values) {
+  if (values.empty())
+    return;
+
+  p << ' ' << keyword << '(';
+  interleaveComma(values, p.getStream(),
+                  [&p](BlockArgument *v) { p << *v << " : " << v->getType(); });
+  p << ')';
+}
+
+void GPUFuncOp::print(OpAsmPrinter &p) {
+  p << getOperationName() << ' ';
+  p.printSymbolName(getName());
+
+  FunctionType type = getType();
+  impl::printFunctionSignature(p, this->getOperation(), type.getInputs(),
+                               /*isVariadic=*/false, type.getResults());
+
+  printAttributions(p, getWorkgroupKeyword(), getWorkgroupAttributions());
+  printAttributions(p, getPrivateKeyword(), getPrivateAttributions());
+  if (isKernel())
+    p << ' ' << getKernelKeyword();
+
+  impl::printFunctionAttributes(p, this->getOperation(), type.getNumInputs(),
+                                type.getNumResults(),
+                                {getNumWorkgroupAttributionsAttrName(),
+                                 GPUDialect::getKernelFuncAttrName()});
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+}
+
+/// Hook for FunctionLike verifier.
+LogicalResult GPUFuncOp::verifyType() {
+  Type type = getTypeAttr().getValue();
+  if (!type.isa<FunctionType>())
+    return emitOpError("requires '" + getTypeAttrName() +
+                       "' attribute of function type");
+  return success();
+}
+
+/// Verifies the body of the function.
+LogicalResult GPUFuncOp::verifyBody() {
+  unsigned numFuncArguments = getNumArguments();
+  unsigned numWorkgroupAttributions = getNumWorkgroupAttributions();
+  unsigned numBlockArguments = front().getNumArguments();
+  if (numBlockArguments < numFuncArguments + numWorkgroupAttributions)
+    return emitOpError() << "expected at least "
+                         << numFuncArguments + numWorkgroupAttributions
+                         << " arguments to body region";
+
+  ArrayRef<Type> funcArgTypes = getType().getInputs();
+  for (unsigned i = 0; i < numFuncArguments; ++i) {
+    Type blockArgType = front().getArgument(i)->getType();
+    if (funcArgTypes[i] != blockArgType)
+      return emitOpError() << "expected body region argument #" << i
+                           << " to be of type " << funcArgTypes[i] << ", got "
+                           << blockArgType;
   }
-  unsigned numKernelFuncArgs = kernelFunc.getNumArguments();
-  if (getNumKernelOperands() != numKernelFuncArgs) {
-    return emitOpError("got ")
-           << getNumKernelOperands() << " kernel operands but expected "
-           << numKernelFuncArgs;
-  }
-  auto functionType = kernelFunc.getType();
-  for (unsigned i = 0; i < numKernelFuncArgs; ++i) {
-    if (getKernelOperand(i)->getType() != functionType.getInput(i)) {
-      return emitOpError("type of function argument ")
-             << i << " does not match";
-    }
-  }
+
   return success();
 }

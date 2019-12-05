@@ -50,7 +50,7 @@ Based on the previous section, to add a delegate, we need to do the following:
 
 
 1.  Define a kernel node that is responsible for evaluating the delegate subgraph
-1.  Create an instance of [TfLiteDelegate](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/c_api_internal.h#L545), which is responsible for registering the kernel node and claiming the nodes that the delegate can execute
+1.  Create an instance of [TfLiteDelegate](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/common.h#L611), which is responsible for registering the kernel node and claiming the nodes that the delegate can execute
 
 To see it in code, let's define a delegate and call it "MyDelegate," which can execute Conv2D and Mean operations faster.
 
@@ -81,7 +81,7 @@ class MyDelegate {
 };
 
 // Create the TfLiteRegistration for the Kernel node which will replace
-// the subrgaph in the main TfLite graph.
+// the subgraph in the main TfLite graph.
 TfLiteRegistration GetMyDelegateNodeRegistration() {
   // This is the registration for the Delegate Node that gets added to
   // the TFLite graph instead of the subGraph it replaces.

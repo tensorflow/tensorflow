@@ -89,7 +89,7 @@ class Masking(Layer):
   ```
 
   See [the masking and padding
-  guide](https://www.tensorflow.org/beta/guide/keras/masking_and_padding)
+  guide](https://www.tensorflow.org/guide/keras/masking_and_padding)
   for more details.
   """
 
@@ -621,12 +621,13 @@ class Flatten(Layer):
     return outputs
 
   def compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    input_shape = tensor_shape.as_shape(input_shape).as_list()
     if not input_shape:
       output_shape = tensor_shape.TensorShape([1])
-    output_shape = [input_shape[0]]
+    else:
+      output_shape = [input_shape[0]]
     if all(input_shape[1:]):
-      output_shape += [np.prod(input_shape[1:])]
+      output_shape += [np.prod(input_shape[1:], dtype=int)]
     else:
       output_shape += [None]
     return tensor_shape.TensorShape(output_shape)
@@ -688,13 +689,16 @@ class Lambda(Layer):
   The `Lambda` layer exists so that arbitrary TensorFlow functions
   can be used when constructing `Sequential` and Functional API
   models. `Lambda` layers are best suited for simple operations or
-  quick experimentation. For more advanced use cases, subclassing
-  `keras.layers.Layer` is preferred. One reason for this is that
-  when saving a Model, `Lambda` layers are saved by serializing the
-  Python bytecode, whereas subclassed Layers are saved via overriding
-  their `get_config` method and are thus more portable. Models that rely
-  on subclassed Layers are also often easier to visualize and reason
-  about.
+  quick experimentation. For more advanced usecases, follow 
+  [this guide](https://www.tensorflow.org/alpha/guide/keras/custom_layers_and_models) 
+  for subclassing `tf.keras.layers.Layer`. 
+  
+  The main reason to subclass `tf.keras.layers.Layer` instead of using a 
+  `Lambda` layer is saving and inspecting a Model. `Lambda` layers 
+  are saved by serializing the Python bytecode, whereas subclassed 
+  Layers can be saved via overriding their `get_config` method. Overriding 
+  `get_config` improves the portability of Models. Models that rely on 
+  subclassed Layers are also often easier to visualize and reason about.
 
   Examples:
 
@@ -773,6 +777,7 @@ class Lambda(Layer):
     if mask is not None:
       self.supports_masking = True
     self.mask = mask
+    self._supports_ragged_inputs = True
     self._output_shape = output_shape
     self._variable_dict = {}
     # These attributes are inherited from `Layer`.
@@ -813,6 +818,8 @@ class Lambda(Layer):
     return nest.map_structure(_add_batch, output_shapes)
 
   def call(self, inputs, mask=None, training=None):
+    # Disallow two variables with the same name.
+    self._variables_added_in_call = set()
     arguments = self.arguments
     if self._fn_expects_mask_arg:
       arguments['mask'] = mask
@@ -823,8 +830,18 @@ class Lambda(Layer):
 
   def _variable_creator(self, next_creator, **kwargs):
     name = kwargs['name']
+
+    # Variable named "name" already created in this invocation of `call`.
+    if name in self._variables_added_in_call:
+      raise RuntimeError('`Variable`s in a `Lambda` layer must have unique '
+                         'names, found duplicate name: {}'.format(name))
+    self._variables_added_in_call.add(name)
+
+    # Reuse Variables across invocations of `call`.
     if name in self._variable_dict:
       return self._variable_dict[name]
+
+    # Variable was never created before.
     var = next_creator(**kwargs)
     self._variable_dict[name] = var
     if var.trainable:
@@ -959,6 +976,8 @@ class Dense(Layer):
 
   Note: If the input to the layer has a rank greater than 2, then
   it is flattened prior to the initial dot product with `kernel`.
+  Besides, layer attributes cannot be modified after the layer has been called
+  once (except the `trainable` attribute).
 
   Example:
 

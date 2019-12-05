@@ -13,12 +13,8 @@ def tflite_copts():
     copts = [
         "-DFARMHASH_NO_CXX_STRING",
     ] + select({
-        clean_dep("//tensorflow:android_arm64"): [
-            "-O3",
-        ],
         clean_dep("//tensorflow:android_arm"): [
             "-mfpu=neon",
-            "-O3",
         ],
         clean_dep("//tensorflow:ios_x86_64"): [
             "-msse4.1",
@@ -29,6 +25,20 @@ def tflite_copts():
         ],
         "//conditions:default": [
             "-Wno-sign-compare",
+        ],
+    }) + select({
+        clean_dep("//tensorflow:optimized"): ["-O3"],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow:android"): [
+            "-ffunction-sections",  # Helps trim binary size.
+            "-fdata-sections",  # Helps trim binary size.
+        ],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow:windows"): [],
+        "//conditions:default": [
+            "-fno-exceptions",  # Exceptions are unused in TFLite.
         ],
     })
 
@@ -142,7 +152,9 @@ def tflite_cc_shared_object(
         linkopts = [],
         linkstatic = 1,
         deps = [],
-        visibility = None):
+        visibility = None,
+        per_os_targets = False,
+        tags = None):
     """Builds a shared object for TFLite."""
     tf_cc_shared_object(
         name = name,
@@ -152,6 +164,8 @@ def tflite_cc_shared_object(
         framework_so = [],
         deps = deps,
         visibility = visibility,
+        tags = tags,
+        per_os_targets = per_os_targets,
     )
 
 def tf_to_tflite(name, src, options, out):
@@ -243,6 +257,9 @@ def generated_test_models():
         "constant",
         "control_dep",
         "conv",
+        "conv_relu",
+        "conv_relu1",
+        "conv_relu6",
         "conv2d_transpose",
         "conv_with_shared_weights",
         "conv_to_depthwiseconv_with_shared_weights",
@@ -292,6 +309,7 @@ def generated_test_models():
         "minimum",
         "mirror_pad",
         "mul",
+        "nearest_upsample",
         "neg",
         "not_equal",
         "one_hot",
@@ -336,11 +354,11 @@ def generated_test_models():
         "strided_slice_1d_exhaustive",
         "strided_slice_np_style",
         "sub",
+        "tanh",
         "tile",
         "topk",
         "transpose",
         "transpose_conv",
-        "uint8_hardswish",
         "unfused_gru",
         "unidirectional_sequence_lstm",
         "unidirectional_sequence_rnn",

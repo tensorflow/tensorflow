@@ -32,19 +32,14 @@ namespace mlir {
 class AffineForOp;
 class FuncOp;
 class ModuleOp;
+class Pass;
 template <typename T> class OpPassBase;
 
-/// Creates a constant folding pass. Note that this pass solely provides simple
-/// top-down constant folding functionality; it is intended to be used for
-/// testing purpose. Use Canonicalizer pass, which exploits more simplification
-/// opportunties exposed by constant folding, for the general cases.
-std::unique_ptr<OpPassBase<FuncOp>> createTestConstantFoldPass();
-
 /// Creates an instance of the Canonicalizer pass.
-std::unique_ptr<OpPassBase<FuncOp>> createCanonicalizerPass();
+std::unique_ptr<Pass> createCanonicalizerPass();
 
 /// Creates a pass to perform common sub expression elimination.
-std::unique_ptr<OpPassBase<FuncOp>> createCSEPass();
+std::unique_ptr<Pass> createCSEPass();
 
 /// Creates a pass to vectorize loops, operations and data types using a
 /// target-independent, n-D super-vector abstraction.
@@ -90,7 +85,11 @@ createLoopFusionPass(unsigned fastMemorySpace = 0,
 
 /// Creates a loop invariant code motion pass that hoists loop invariant
 /// instructions out of the loop.
-std::unique_ptr<OpPassBase<FuncOp>> createLoopInvariantCodeMotionPass();
+std::unique_ptr<Pass> createLoopInvariantCodeMotionPass();
+
+/// Creates a loop invariant code motion pass that hoists loop invariant
+/// instructions out of affine loop.
+std::unique_ptr<OpPassBase<FuncOp>> createAffineLoopInvariantCodeMotionPass();
 
 /// Creates a pass to pipeline explicit movement of data across levels of the
 /// memory hierarchy.
@@ -123,9 +122,6 @@ std::unique_ptr<OpPassBase<FuncOp>> createAffineDataCopyGenerationPass(
     unsigned tagMemorySpace = 0, int minDmaTransferSize = 1024,
     uint64_t fastMemCapacityBytes = std::numeric_limits<uint64_t>::max());
 
-/// Creates a pass to lower VectorTransferReadOp and VectorTransferWriteOp.
-std::unique_ptr<OpPassBase<FuncOp>> createLowerVectorTransfersPass();
-
 /// Creates a pass to perform optimizations relying on memref dataflow such as
 /// store to load forwarding, elimination of dead stores, and dead allocs.
 std::unique_ptr<OpPassBase<FuncOp>> createMemRefDataFlowOptPass();
@@ -136,6 +132,9 @@ std::unique_ptr<OpPassBase<FuncOp>> createStripDebugInfoPass();
 /// Creates a pass which tests loop fusion utilities.
 std::unique_ptr<OpPassBase<FuncOp>> createTestLoopFusionPass();
 
+/// Creates a pass which inlines calls and callable operations as defined by the
+/// CallGraph.
+std::unique_ptr<Pass> createInlinerPass();
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_PASSES_H

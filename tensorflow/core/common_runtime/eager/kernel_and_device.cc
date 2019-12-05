@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 
+#include <memory>
+
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
@@ -33,8 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
@@ -46,6 +47,25 @@ limitations under the License.
 #endif  // !IS_MOBILE_PLATFORM
 
 namespace tensorflow {
+
+Status EagerKernelArgs::GetLocalArg(const int index, Tensor* val) const {
+  Tensor* arg = tensor_args_.at(index).tensor;
+  if (arg) {
+    *val = *arg;
+    return Status::OK();
+  } else {
+    return errors::NotFound("Argument ", index, " has no local tensor.");
+  }
+}
+
+std::vector<Tensor> EagerKernelArgs::GetLocalTensors() const {
+  std::vector<Tensor> lcoal_inputs;
+  lcoal_inputs.reserve(tensor_args_.size());
+  for (const TensorValue& tensor_value : tensor_args_) {
+    lcoal_inputs.push_back(*tensor_value.tensor);
+  }
+  return lcoal_inputs;
+}
 
 std::function<void(std::function<void()>)>* KernelAndDevice::get_runner()
     const {
@@ -94,8 +114,8 @@ Status KernelAndDeviceOp::Init(const NodeDef& ndef,
   return Status::OK();
 }
 
-Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
-                                 GraphCollector* graph_collector) {
+Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
+                                            GraphCollector* graph_collector) {
   const OpDef* op_def = nullptr;
   const FunctionDef* function_def;
   if (flr_ == nullptr) {
@@ -173,28 +193,33 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
 
   TF_RETURN_IF_ERROR(
       pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
+  return pflr_->IsCrossProcess(handle_, &is_cross_process_);
+}
+
+Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
+                                 GraphCollector* graph_collector) {
+  TF_RETURN_IF_ERROR(InstantiateFunc(ndef, graph_collector));
   return pflr_->GetOutputDevices(handle_, &output_devices_);
 }
 
-Status KernelAndDeviceOp::Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
-                              std::vector<Tensor>* outputs,
-                              CancellationManager* cancellation_manager) {
-  ScopedStepContainer step_container(0, [this](const string& name) {
-    device_->resource_manager()->Cleanup(name).IgnoreError();
-  });
-  return this->Run(&step_container, inputs, outputs, cancellation_manager);
+Status KernelAndDeviceOp::Run(
+    const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
+    CancellationManager* cancellation_manager,
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
+  Status s = this->Run(&step_container_, inputs, outputs, cancellation_manager,
+                       remote_func_params);
+  step_container_.CleanUp();
+  return s;
 }
 
 Status KernelAndDeviceFunc::Run(
-    const gtl::InlinedVector<TensorValue, 4>& inputs,
-    std::vector<Tensor>* outputs, CancellationManager* cancellation_manager) {
-  const std::vector<Device*> devices = pflr_->device_mgr()->ListDevices();
-  ScopedStepContainer step_container(0, [&devices](const string& name) {
-    for (Device* device : devices) {
-      device->resource_manager()->Cleanup(name).IgnoreError();
-    }
-  });
-  return this->Run(&step_container, inputs, outputs, cancellation_manager);
+    const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
+    CancellationManager* cancellation_manager,
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
+  Status s = this->Run(&step_container_, inputs, outputs, cancellation_manager,
+                       remote_func_params);
+  step_container_.CleanUp();
+  return s;
 }
 
 namespace {
@@ -208,10 +233,10 @@ struct OpExecutionState : public core::RefCounted {
 };
 }  // anonymous namespace
 
-Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
-                              const gtl::InlinedVector<TensorValue, 4>& inputs,
-                              std::vector<Tensor>* outputs,
-                              CancellationManager* cancellation_manager) {
+Status KernelAndDeviceOp::Run(
+    ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+    std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
   gtl::InlinedVector<AllocatorAttributes, 4> in_attrs(kernel_->num_inputs());
   for (size_t i = 0; i < in_attrs.size(); ++i) {
     in_attrs[i].set_on_host(kernel_->input_memory_types()[i] ==
@@ -223,20 +248,11 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
                              tensorflow::HOST_MEMORY);
   }
 
-  gtl::InlinedVector<DeviceContext*, 4> input_device_contexts;
-  for (int i = 0; i < inputs.size(); i++) {
-    DeviceContext* device_context = nullptr;
-    if (device_->tensorflow_gpu_device_info() != nullptr) {
-      device_context = device_->tensorflow_gpu_device_info()->default_context;
-    }
-    input_device_contexts.push_back(device_context);
-  }
-
   OpKernelContext::Params params;
   params.is_eager = true;
   params.device = device_;
   params.frame_iter = FrameAndIter(0, 0);
-  params.inputs = &inputs;
+  params.inputs = inputs.GetTensorValues();
   params.op_kernel = kernel_.get();
   params.resource_manager = device_->resource_manager();
   params.input_alloc_attrs = &in_attrs;
@@ -268,7 +284,6 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.step_container = step_container;
   params.collective_executor =
       collective_executor_ ? collective_executor_->get() : nullptr;
-  params.input_device_contexts = &input_device_contexts;
 
   OpKernelContext context(&params);
 
@@ -287,7 +302,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
         [&] { return absl::StrCat(op_name, ":", kernel_->type_string()); },
         profiler::TraceMeLevel::kInfo);
     // 'ScopedAnnotation' will trace the OpKernel execution time on device.
-    tracing::ScopedAnnotation annotation(
+    profiler::ScopedAnnotation annotation(
         [&]() { return absl::StrCat(op_name, ":", kernel_->type_string()); });
     device_->Compute(kernel_.get(), &context);
   }
@@ -309,48 +324,64 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
 }
 
 Status KernelAndDeviceFunc::Run(
-    ScopedStepContainer* step_container,
-    const gtl::InlinedVector<TensorValue, 4>& inputs,
-    std::vector<Tensor>* outputs, CancellationManager* cancellation_manager) {
-  FunctionLibraryRuntime::Options opts;
+    ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+    std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
+  std::unique_ptr<FunctionLibraryRuntime::Options> opts = nullptr;
+  if (remote_func_params.has_value()) {
+    const EagerRemoteFunctionParams& params = remote_func_params.value();
+    if (params.step_id.has_value()) {
+      // If the function is a remote component of a cross-process function,
+      // re-use the step id as its parent function's.
+      opts = absl::make_unique<FunctionLibraryRuntime::Options>(
+          params.step_id.value());
+    } else {
+      opts = absl::make_unique<FunctionLibraryRuntime::Options>();
+    }
+    // Reuse the op id if it exists.
+    opts->op_id = params.op_id;
+  } else {
+    opts = absl::make_unique<FunctionLibraryRuntime::Options>();
+    if (get_op_id_ && is_cross_process_) {
+      // If the function is a cross-process function and the remote excution
+      // goes through eager service, create an eager op id for the function.
+      opts->op_id = get_op_id_();
+    }
+  }
 
   // We don't pass rendezvous from eager context because we can get tensor
   // name collisions in send/recv ops when running multiple instances
   // of the same multi-device function concurrently.
-  Rendezvous* rendezvous = rendezvous_creator_(opts.step_id);
-  opts.rendezvous = rendezvous;
-  opts.create_rendezvous = false;
+  Rendezvous* rendezvous = rendezvous_creator_(opts->step_id);
+  opts->rendezvous = rendezvous;
+  opts->create_rendezvous = false;
 
   CancellationManager cm;
   if (cancellation_manager) {
-    opts.cancellation_manager = cancellation_manager;
+    opts->cancellation_manager = cancellation_manager;
   } else {
-    opts.cancellation_manager = &cm;
+    opts->cancellation_manager = &cm;
   }
-  opts.allow_dead_tensors = true;
-  opts.step_container = step_container;
-  opts.collective_executor =
+  opts->allow_dead_tensors = true;
+  opts->step_container = step_container;
+  opts->collective_executor =
       collective_executor_ ? collective_executor_->get() : nullptr;
 
-  opts.stats_collector = nullptr;
-  opts.runner = get_runner();
+  opts->stats_collector = nullptr;
+  opts->runner = get_runner();
 
   Notification done;
   Status status;
   outputs->clear();
-  std::vector<Tensor> input_vector;
-  input_vector.reserve(inputs.size());
-  for (const TensorValue& tensor_value : inputs) {
-    input_vector.push_back(*tensor_value.tensor);
-  }
+
   {
     profiler::TraceMe activity(
         [&] {
-          return absl::StrCat("FunctionRun#name=", name(), ",id=", opts.step_id,
-                              "#");
+          return absl::StrCat("FunctionRun#name=", name(),
+                              ",id=", opts->step_id, "#");
         },
         profiler::TraceMeLevel::kInfo);
-    pflr_->Run(opts, handle_, input_vector, outputs,
+    pflr_->Run(*opts, handle_, inputs, outputs,
                [&status, &done](const Status& s) {
                  status = s;
                  done.Notify();

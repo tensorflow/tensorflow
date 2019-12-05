@@ -20,6 +20,7 @@ limitations under the License.
 PYBIND11_MODULE(_pywrap_util_port, m) {
   m.def("IsGoogleCudaEnabled", tensorflow::IsGoogleCudaEnabled);
   m.def("IsBuiltWithROCm", tensorflow::IsBuiltWithROCm);
+  m.def("IsBuiltWithNvcc", tensorflow::IsBuiltWithNvcc);
   m.def("GpuSupportsHalfMatMulAndConv",
         tensorflow::GpuSupportsHalfMatMulAndConv);
   m.def("IsMklEnabled", tensorflow::IsMklEnabled);

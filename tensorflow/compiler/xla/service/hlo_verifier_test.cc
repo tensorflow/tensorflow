@@ -323,7 +323,7 @@ TEST_F(HloVerifierTestAllowMixedPrecision, RngMixedPrecisionAllowed) {
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -440,7 +440,7 @@ static const char* const kAddWithLayoutChangeHlo = R"(
 
 TEST_F(HloVerifierTest, AddWithLayoutChange) {
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnUnverifiedModule(kAddWithLayoutChangeHlo));
+      auto module, ParseAndReturnVerifiedModule(kAddWithLayoutChangeHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -462,7 +462,7 @@ TEST_F(HloVerifierTest, ScalarIndexDynamicSlice) {
   debug_options.set_xla_allow_scalar_index_dynamic_ops(true);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kScalarIndexDynamicSlice, config));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -488,7 +488,7 @@ TEST_F(HloVerifierTest, ScalarIndexDynamicUpdateSlice) {
   debug_options.set_xla_allow_scalar_index_dynamic_ops(true);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kScalarIndexDynamicSlice, config));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -590,7 +590,7 @@ TEST_F(HloVerifierTestAllowMixedPrecision, SelectMixedPrecisionAllowed) {
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -627,7 +627,7 @@ TEST_F(HloVerifierTestLayoutSensitive, CopyStartAndCopyDone) {
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -794,7 +794,7 @@ TEST_F(HloVerifierTest, MapOperandComputationMismatch) {
 }
 
 TEST_F(HloVerifierTestAllowMixedPrecision, MapOperandComputationMismatch) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kMapOperandComputationMismatchHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -827,7 +827,7 @@ TEST_F(HloVerifierTest, ReduceOperandComputationMismatch) {
 TEST_F(HloVerifierTestAllowMixedPrecision, ReduceOperandComputationMismatch) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      ParseAndReturnUnverifiedModule(kReduceOperandComputationMismatchHlo));
+      ParseAndReturnVerifiedModule(kReduceOperandComputationMismatchHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }

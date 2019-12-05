@@ -391,7 +391,7 @@ private:
   friend DiagnosticEngine;
 
   /// The engine that this diagnostic is to report to.
-  DiagnosticEngine *owner;
+  DiagnosticEngine *owner = nullptr;
 
   /// The raw diagnostic that is inflight to be reported.
   llvm::Optional<Diagnostic> impl;
@@ -435,7 +435,7 @@ public:
   HandlerID registerHandler(const HandlerTy &handler);
 
   /// Set the diagnostic handler with a function that returns void. This is a
-  /// convient wrapper for handlers that always completely process the given
+  /// convenient wrapper for handlers that always completely process the given
   /// diagnostic.
   template <typename FuncTy, typename RetT = decltype(std::declval<FuncTy>()(
                                  std::declval<Diagnostic &>()))>
@@ -480,6 +480,30 @@ InFlightDiagnostic emitWarning(Location loc, const Twine &message);
 /// Utility method to emit a remark message using this location.
 InFlightDiagnostic emitRemark(Location loc);
 InFlightDiagnostic emitRemark(Location loc, const Twine &message);
+
+/// Overloads of the above emission functions that take an optionally null
+/// location. If the location is null, no diagnostic is emitted and a failure is
+/// returned. Given that the provided location may be null, these methods take
+/// the diagnostic arguments directly instead of relying on the returned
+/// InFlightDiagnostic.
+template <typename... Args>
+LogicalResult emitOptionalError(Optional<Location> loc, Args &&... args) {
+  if (loc)
+    return emitError(*loc).append(std::forward<Args>(args)...);
+  return failure();
+}
+template <typename... Args>
+LogicalResult emitOptionalWarning(Optional<Location> loc, Args &&... args) {
+  if (loc)
+    return emitWarning(*loc).append(std::forward<Args>(args)...);
+  return failure();
+}
+template <typename... Args>
+LogicalResult emitOptionalRemark(Optional<Location> loc, Args &&... args) {
+  if (loc)
+    return emitRemark(*loc).append(std::forward<Args>(args)...);
+  return failure();
+}
 
 //===----------------------------------------------------------------------===//
 // ScopedDiagnosticHandler

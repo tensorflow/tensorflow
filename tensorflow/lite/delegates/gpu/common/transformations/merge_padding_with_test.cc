@@ -35,8 +35,8 @@ TEST(MergePaddingWith, Smoke) {
   ASSERT_TRUE(graph.AddConsumer(pad_node->id, input->id).ok());
   pad_node->operation.type = ToString(OperationType::PAD);
   PadAttributes attr;
-  attr.prepended = HWC(1, 1, 0);
-  attr.appended = HWC(2, 2, 0);
+  attr.prepended = BHWC(0, 1, 1, 0);
+  attr.appended = BHWC(0, 2, 2, 0);
   pad_node->operation.attributes = attr;
 
   auto conv_node = graph.NewNode();
@@ -72,16 +72,16 @@ TEST(MergePaddingWith, MergeTwo) {
   ASSERT_TRUE(graph.AddConsumer(pad_node1->id, input->id).ok());
   pad_node1->operation.type = ToString(OperationType::PAD);
   PadAttributes attr;
-  attr.prepended = HWC(1, 1, 0);
-  attr.appended = HWC(0, 0, 0);
+  attr.prepended = BHWC(0, 1, 1, 0);
+  attr.appended = BHWC(0, 0, 0, 0);
   pad_node1->operation.attributes = attr;
 
   auto pad_node2 = graph.NewNode();
   Value<TensorRef<BHWC>>* temp;
   ASSERT_TRUE(ConnectTwoNodes(&graph, pad_node1, pad_node2, &temp).ok());
   pad_node2->operation.type = ToString(OperationType::PAD);
-  attr.prepended = HWC(0, 0, 0);
-  attr.appended = HWC(2, 2, 0);
+  attr.prepended = BHWC(0, 0, 0, 0);
+  attr.appended = BHWC(0, 2, 2, 0);
   pad_node2->operation.attributes = attr;
 
   auto conv_node = graph.NewNode();
@@ -119,8 +119,8 @@ TEST(MergePaddingWithAdd, MergeOne) {
   auto pad_node = graph.NewNode();
   pad_node->operation.type = ToString(OperationType::PAD);
   PadAttributes pad_attr;
-  pad_attr.prepended = HWC(0, 0, 0);
-  pad_attr.appended = HWC(0, 0, 32);
+  pad_attr.prepended = BHWC(0, 0, 0, 0);
+  pad_attr.appended = BHWC(0, 0, 0, 32);
   pad_node->operation.attributes = pad_attr;
 
   ASSERT_TRUE(graph.AddConsumer(pad_node->id, input0->id).ok());

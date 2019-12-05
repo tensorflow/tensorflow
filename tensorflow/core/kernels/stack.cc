@@ -145,7 +145,7 @@ Status GetStack(OpKernelContext* ctx, Stack** stack) {
     if (step_container == nullptr) {
       return errors::Internal("No step container.");
     }
-    TF_RETURN_IF_ERROR(rm->Lookup(step_container->name(), key, stack));
+    TF_RETURN_IF_ERROR(step_container->Lookup(rm, key, stack));
     return Status::OK();
   }
 }
@@ -188,7 +188,7 @@ void StackOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES(ctx, step_container != nullptr,
               errors::Internal("No step container."));
   Stack* stack = new Stack(elem_type_, stack_name, size);
-  OP_REQUIRES_OK(ctx, rm->Create(step_container->name(), key, stack));
+  OP_REQUIRES_OK(ctx, step_container->Create(rm, key, stack));
   if (IsRefType(ctx->expected_output_dtype(0))) {
     // Create the stack handle.
     AllocatorAttributes alloc_attr;
@@ -204,7 +204,7 @@ void StackOp::Compute(OpKernelContext* ctx) {
     Tensor* handle;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &handle));
     handle->flat<ResourceHandle>()(0) =
-        MakePerStepResourceHandle<Stack>(ctx, key);
+        ctx->step_container()->MakeResourceHandle<Stack>(key, *ctx->device());
   }
 }
 

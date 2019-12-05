@@ -52,7 +52,7 @@ def extract_model_metrics(model):
   return {m.name: m for m in model._compile_metric_functions}  # pylint: disable=protected-access
 
 
-def model_input_signature(model):
+def model_input_signature(model, keep_original_batch_size=False):
   """Inspect model to get its input signature.
 
   The model's input signature is a list with a single (possibly-nested) object.
@@ -63,7 +63,11 @@ def model_input_signature(model):
   will have input signature: [{'feature1': TensorSpec, 'feature2': TensorSpec}]
 
   Args:
-    model: Keras Model object
+    model: Keras Model object.
+    keep_original_batch_size: A boolean indicating whether we want to keep using
+      the original batch size or set it to None. Default is `False`, which means
+      that the batch dim of the returned input signature will always be set to
+      `None`.
 
   Returns:
     A list containing either a single TensorSpec or an object with nested
@@ -78,11 +82,14 @@ def model_input_signature(model):
   flat_input_names = nest.flatten(input_names)
   flat_input_specs = []
   for input_tensor, input_name in zip(flat_inputs, flat_input_names):
-    # If the user has not explicitly provided the input_signature, we
-    # create it from the inputs. We make sure to set the first dimension
-    # (batch) to None here, as in serving or retraining, batch should not
-    # be fixed. See b/132783590 for context.
-    input_shape = [None] + input_tensor.shape[1:].as_list()
+    if keep_original_batch_size:
+      input_shape = input_tensor.shape.as_list()
+    else:
+      # If the user has not explicitly provided the input_signature, we
+      # create it from the inputs. We make sure to set the first dimension
+      # (batch) to None here, as in serving or retraining, batch should not
+      # be fixed. See b/132783590 for context.
+      input_shape = [None] + input_tensor.shape[1:].as_list()
     flat_input_specs.append(tensor_spec.TensorSpec(
         shape=input_shape, dtype=input_tensor.dtype,
         name=input_name))

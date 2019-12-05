@@ -121,9 +121,6 @@ class TridiagonalMulOpTest(test.TestCase):
     self.assertAllClose(grad_theoretical, grad_numerical)
     self.assertAllClose(grad_theoretical, grad_reference)
 
-  def test1x1(self):
-    self._testAllFormats([], [2], [], [[1, 4]], [[2, 8]])
-
   def test2x2(self):
     self._testAllFormats([1], [2, 3], [4], [[2, 1], [4, 3]], [[8, 5], [20, 13]])
 

@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/DialectImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
@@ -41,38 +42,39 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "mlir/Transforms/FoldUtils.h"  // TF:local_config_mlir
+#include "mlir/Transforms/InliningUtils.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
 namespace tf_executor {
 namespace {
 
-// If the given tensor has elements of type variant, then returns a new type
-// after dropping subtypes info. Otherwise, returns the original type as is.
-ShapedType DropVariantSubTypes(ShapedType ty) {
+// If the given tensor has elements of type with subtypes, then returns a new
+// type after dropping subtypes info. Otherwise, returns the original type as
+// is.
+ShapedType DropTypeSubTypes(ShapedType ty) {
   Type element_ty = ty.getElementType();
-  if (!element_ty.isa<TF::VariantType>()) return ty;
+  auto subtype_ty = element_ty.dyn_cast<TF::TensorFlowTypeWithSubtype>();
+  if (!subtype_ty) return ty;
 
-  Type variant_ty = TF::VariantType::get(ty.getContext());
-  if (ty.hasRank()) {
-    return RankedTensorType::get(ty.getShape(), variant_ty);
-  }
+  Type default_ty = GetDefaultTypeOf(subtype_ty);
+  if (ty.hasRank()) return RankedTensorType::get(ty.getShape(), default_ty);
 
-  return UnrankedTensorType::get(variant_ty);
+  return UnrankedTensorType::get(default_ty);
 }
 
 // If the given tensor has elements of type ref, then returns a new type
 // of the shape, but corresponding non-ref type as element type. Otherwise,
 // returns the original type as is.
-ShapedType DropRefType(ShapedType type) {
-  Type element_ty = type.getElementType();
-  TF::TensorFlowRefType ref_type = element_ty.dyn_cast<TF::TensorFlowRefType>();
-  if (!ref_type) return type;
+ShapedType DropRefType(ShapedType ty) {
+  Type element_ty = ty.getElementType();
+  auto ref_ty = element_ty.dyn_cast<TF::TensorFlowRefType>();
+  if (!ref_ty) return ty;
 
-  if (type.hasRank()) {
-    return RankedTensorType::get(type.getShape(), ref_type.RemoveRef());
-  }
-  return UnrankedTensorType::get(ref_type.RemoveRef());
+  Type default_ty = GetDefaultTypeOf(ref_ty);
+  if (ty.hasRank()) return RankedTensorType::get(ty.getShape(), default_ty);
+
+  return UnrankedTensorType::get(default_ty);
 }
 
 }  // namespace
@@ -82,6 +84,24 @@ ShapedType DropRefType(ShapedType type) {
 //===----------------------------------------------------------------------===//
 
 namespace {
+
+struct TensorFlowExecutorInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  //===--------------------------------------------------------------------===//
+  // Analysis Hooks
+  //===--------------------------------------------------------------------===//
+
+  // Override the inlining hook to determine if 'src' can be inlined into
+  // 'dest'.
+  bool isLegalToInline(Region *dest, Region *src,
+                       BlockAndValueMapping &value_mapping) const final {
+    // Allow inlining into tf.island regions if the incoming region has a single
+    // block.
+    return llvm::isa<tf_executor::IslandOp>(dest->getParentOp()) &&
+           std::next(src->begin()) == src->end();
+  }
+};
 
 struct TensorFlowExecutorOpFolderDialectInterface
     : public OpFolderDialectInterface {
@@ -106,20 +126,25 @@ TensorFlowExecutorDialect::TensorFlowExecutorDialect(MLIRContext *context)
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.cc.inc"
       >();
 
-  addInterfaces<TensorFlowExecutorOpFolderDialectInterface>();
+  addInterfaces<TensorFlowExecutorInlinerInterface,
+                TensorFlowExecutorOpFolderDialectInterface>();
 
   addTypes<ControlType, TokenType>();
 }
 
-Type TensorFlowExecutorDialect::parseType(StringRef data_type,
-                                          Location loc) const {
+Type TensorFlowExecutorDialect::parseType(DialectAsmParser &parser) const {
+  StringRef data_type;
+  if (parser.parseKeyword(&data_type)) return Type();
+
   if (data_type == "control") return ControlType::get(getContext());
   if (data_type == "token") return TokenType::get(getContext());
-  emitError(loc) << "unknown tf_executor type: " << data_type;
+  parser.emitError(parser.getNameLoc())
+      << "unknown tf_executor type: " << data_type;
   return nullptr;
 }
 
-void TensorFlowExecutorDialect::printType(Type type, raw_ostream &os) const {
+void TensorFlowExecutorDialect::printType(Type type,
+                                          DialectAsmPrinter &os) const {
   if (type.isa<ControlType>()) {
     os << "control";
     return;
@@ -244,7 +269,7 @@ ParseResult ParseGraphOp(OpAsmParser &parser, OperationState &result) {
   }
 
   // Parse the optional attribute list.
-  if (parser.parseOptionalAttributeDict(result.attributes)) return failure();
+  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
 
   return success();
 }
@@ -275,7 +300,7 @@ ParseResult ParseFetchOp(OpAsmParser &parser, OperationState &result) {
   return failure(parser.parseOperandList(opInfo) ||
                  (!opInfo.empty() && parser.parseColonTypeList(types)) ||
                  parser.resolveOperands(opInfo, types, loc, result.operands) ||
-                 parser.parseOptionalAttributeDict(result.attributes)
+                 parser.parseOptionalAttrDict(result.attributes)
 
   );
 }
@@ -338,13 +363,19 @@ void Print(IslandOp op, OpAsmPrinter &p) {
       std::next(op.GetBody().begin(), 2) == op.GetBody().end()) {
     Operation &wrapped_op = op.GetBody().front();
     Operation &yield_op = op.GetBody().back();
-    if (wrapped_op.getNumResults() == yield_op.getNumOperands() &&
-        std::equal(wrapped_op.getResults().begin(),
-                   wrapped_op.getResults().end(),
-                   yield_op.getOperands().begin())) {
-      p << " wraps ";
-      p.printGenericOp(&op.GetBody().front());
-      return;
+    // The "wraps" syntax only encodes a single location.
+    // In order to correctly round-trip, we can only use this syntax when all
+    // the locations are identical.
+    if (wrapped_op.getLoc() == op.getLoc() &&
+        yield_op.getLoc() == op.getLoc()) {
+      if (wrapped_op.getNumResults() == yield_op.getNumOperands() &&
+          std::equal(wrapped_op.getResults().begin(),
+                     wrapped_op.getResults().end(),
+                     yield_op.getOperands().begin())) {
+        p << " wraps ";
+        p.printGenericOp(&op.GetBody().front());
+        return;
+      }
     }
   }
   p.printRegion(op.getOperation()->getRegion(0));
@@ -377,8 +408,9 @@ ParseResult ParseIslandOp(OpAsmParser &parser, OperationState &result) {
     if (!wrapped_op) return failure();
     OpBuilder builder(parser.getBuilder().getContext());
     builder.setInsertionPointToEnd(&block);
-    builder.create<YieldOp>(result.location,
+    builder.create<YieldOp>(wrapped_op->getLoc(),
                             llvm::to_vector<8>(wrapped_op->getResults()));
+    result.location = wrapped_op->getLoc();
   } else if (parser.parseRegion(body, llvm::None, llvm::None)) {
     return failure();
   }
@@ -392,7 +424,7 @@ ParseResult ParseIslandOp(OpAsmParser &parser, OperationState &result) {
   result.types.push_back(control_type);
 
   // Parse the optional attribute list.
-  if (parser.parseOptionalAttributeDict(result.attributes)) return failure();
+  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
   return success();
 }
 
@@ -422,7 +454,7 @@ ParseResult ParseYieldOp(OpAsmParser &parser, OperationState &result) {
   return failure(parser.parseOperandList(op_info) ||
                  (!op_info.empty() && parser.parseColonTypeList(types)) ||
                  parser.resolveOperands(op_info, types, loc, result.operands) ||
-                 parser.parseOptionalAttributeDict(result.attributes));
+                 parser.parseOptionalAttrDict(result.attributes));
 }
 
 }  // anonymous namespace
@@ -466,7 +498,7 @@ ParseResult ParseSwitchOp(OpAsmParser &parser, OperationState &result) {
   if (parser.resolveOperands(op_infos, types, loc, result.operands))
     return failure();
 
-  return parser.parseOptionalAttributeDict(result.attributes);
+  return parser.parseOptionalAttrDict(result.attributes);
 }
 
 void Print(SwitchOp switch_op, OpAsmPrinter &p) {
@@ -559,7 +591,7 @@ ParseResult ParseSwitchNOp(OpAsmParser &parser, OperationState &result) {
   // `types` already contains the type for the data, add an i32 for the
   // output_index, and then the optional control inputs.
   auto builder = parser.getBuilder();
-  types.push_back(builder.getTensorType({}, builder.getIntegerType(32)));
+  types.push_back(RankedTensorType::get({}, builder.getIntegerType(32)));
   Type control_type = ControlType::get(builder.getContext());
   types.append(op_infos.size() - 2, control_type);
 
@@ -570,7 +602,7 @@ ParseResult ParseSwitchNOp(OpAsmParser &parser, OperationState &result) {
   result.types.append(num_outs.getInt(), types[0]);
   result.types.push_back(control_type);
 
-  return parser.parseOptionalAttributeDict(result.attributes);
+  return parser.parseOptionalAttrDict(result.attributes);
 }
 
 }  // anonymous namespace
@@ -619,8 +651,8 @@ LogicalResult Verify(MergeOp merge) {
              << operand_tensor_ty << " vs " << output_tensor_ty;
     }
     Type broadcasted_type = OpTrait::util::getBroadcastedType(
-        DropRefType(DropVariantSubTypes(output_tensor_ty)),
-        DropRefType(DropVariantSubTypes(operand_tensor_ty)));
+        DropRefType(DropTypeSubTypes(output_tensor_ty)),
+        DropRefType(DropTypeSubTypes(operand_tensor_ty)));
     if (!broadcasted_type)
       return merge.emitOpError()
              << "expects all operands to be broadcastable with output type"
@@ -691,7 +723,7 @@ ParseResult ParseMergeOp(OpAsmParser &parser, OperationState &result) {
   if (parser.resolveOperands(op_infos, types, loc, result.operands))
     return failure();
 
-  return parser.parseOptionalAttributeDict(result.attributes);
+  return parser.parseOptionalAttrDict(result.attributes);
 }
 
 }  // anonymous namespace
@@ -781,7 +813,7 @@ ParseResult ParseEnterOp(OpAsmParser &parser, OperationState &result) {
   if (parser.resolveOperands(op_infos, types, loc, result.operands))
     return failure();
 
-  return parser.parseOptionalAttributeDict(result.attributes);
+  return parser.parseOptionalAttrDict(result.attributes);
 }
 
 }  // anonymous namespace
@@ -815,7 +847,7 @@ ParseResult ParseNextIterationSourceOp(OpAsmParser &parser,
   Type token_type = TokenType::get(context);
   Type control_type = ControlType::get(context);
   result.addTypes({types.front(), token_type, control_type});
-  return parser.parseOptionalAttributeDict(result.attributes);
+  return parser.parseOptionalAttrDict(result.attributes);
 }
 
 }  // anonymous namespace
@@ -871,7 +903,7 @@ ParseResult ParseNextIterationSinkOp(OpAsmParser &parser,
   if (parser.resolveOperands(op_infos, types, loc, result.operands))
     return failure();
 
-  return parser.parseOptionalAttributeDict(result.attributes);
+  return parser.parseOptionalAttrDict(result.attributes);
 }
 
 }  // anonymous namespace
@@ -903,7 +935,7 @@ ParseResult ParseExitOp(OpAsmParser &parser, OperationState &result) {
     return failure();
 
   result.addTypes({types.front(), control_type});
-  return parser.parseOptionalAttributeDict(result.attributes);
+  return parser.parseOptionalAttrDict(result.attributes);
 }
 
 }  // anonymous namespace
@@ -933,7 +965,7 @@ ParseResult ParseControlTriggerOp(OpAsmParser &parser, OperationState &result) {
 
   // Single control as the only output
   result.types.push_back(control_type);
-  return parser.parseOptionalAttributeDict(result.attributes);
+  return parser.parseOptionalAttrDict(result.attributes);
 }
 
 }  // anonymous namespace
@@ -993,7 +1025,7 @@ ParseResult ParseLoopCondOp(OpAsmParser &parser, OperationState &result) {
   if (parser.resolveOperands(op_infos, types, loc, result.operands))
     return failure();
 
-  return parser.parseOptionalAttributeDict(result.attributes);
+  return parser.parseOptionalAttrDict(result.attributes);
 }
 
 }  // namespace
@@ -1111,7 +1143,7 @@ struct DropEmptyIslandNoOperandNoDataResult
     for (auto &use : llvm::make_early_inc_range(op.control()->getUses()))
       use.getOwner()->eraseOperand(use.getOperandNumber());
 
-    rewriter.replaceOp(op, {nullptr});
+    rewriter.eraseOp(op);
 
     return matchSuccess();
   }
@@ -1166,7 +1198,7 @@ struct DropEmptyControlTrigger : public OpRewritePattern<ControlTriggerOp> {
     for (auto &use : llvm::make_early_inc_range(op.control()->getUses()))
       use.getOwner()->eraseOperand(use.getOperandNumber());
 
-    rewriter.replaceOp(op, {nullptr});
+    rewriter.eraseOp(op);
 
     return matchSuccess();
   }

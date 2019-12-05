@@ -34,12 +34,23 @@ namespace linalg {
 std::unique_ptr<OpPassBase<FuncOp>> createLinalgFusionPass();
 
 std::unique_ptr<OpPassBase<FuncOp>>
-createLinalgTilingPass(ArrayRef<int64_t> tileSizes = {},
-                       bool promoteViews = false);
+createLinalgTilingPass(ArrayRef<int64_t> tileSizes = {});
 
-std::unique_ptr<OpPassBase<FuncOp>> createLowerLinalgToLoopsPass();
+std::unique_ptr<OpPassBase<FuncOp>>
+createLinalgPromotionPass(bool dynamicBuffers);
 
-std::unique_ptr<OpPassBase<ModuleOp>> createLowerLinalgToLLVMPass();
+/// Create a pass to convert Linalg operations to loop.for loops and
+/// std.load/std.store accesses.
+std::unique_ptr<OpPassBase<FuncOp>> createConvertLinalgToLoopsPass();
+
+/// Create a pass to convert Linalg operations to affine.for loops and
+/// affine_load/affine_store accesses.
+/// Placeholder for now, this is NYI.
+std::unique_ptr<OpPassBase<FuncOp>> createConvertLinalgToAffineLoopsPass();
+
+/// Create a pass to convert Linalg operations to the LLVMIR dialect.
+std::unique_ptr<OpPassBase<ModuleOp>> createConvertLinalgToLLVMPass();
+
 } // namespace linalg
 } // namespace mlir
 

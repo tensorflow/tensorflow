@@ -52,9 +52,9 @@ def _replica_id():
 def _mimic_two_cpus():
   cpus = config.list_physical_devices("CPU")
 
-  config.set_virtual_device_configuration(cpus[0], [
-      context.VirtualDeviceConfiguration(),
-      context.VirtualDeviceConfiguration(),
+  config.set_logical_device_configuration(cpus[0], [
+      context.LogicalDeviceConfiguration(),
+      context.LogicalDeviceConfiguration(),
   ])
 
 

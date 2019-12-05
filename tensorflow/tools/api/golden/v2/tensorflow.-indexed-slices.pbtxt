@@ -33,6 +33,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "values"
     mtype: "<type \'property\'>"
   }

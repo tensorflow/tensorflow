@@ -77,27 +77,59 @@ using stream_executor::port::StatusOr;
 
 namespace {
 
+bool IsLegalChar(char c, bool first_char) {
+  if (isalpha(c)) return true;
+  if (isdigit(c)) return true;
+  if (c == '.') return true;
+  if (c == '_') return true;
+
+  // First character of a node name can only be a letter, digit, dot or
+  // underscore.
+  if (first_char) return false;
+
+  if (c == '/') return true;
+  if (c == '-') return true;
+
+  return false;
+}
+
+// Convert characters in name that are considered illegal in TensorFlow Node
+// name to '.'.
+std::string LegalizeNodeName(llvm::StringRef name) {
+  assert(!name.empty() && "expected non-empty name");
+
+  std::string legalized_name;
+  for (auto it = name.begin(); it != name.end(); ++it) {
+    if (IsLegalChar(*it, it == name.begin())) {
+      legalized_name += *it;
+    } else {
+      legalized_name += '.';
+    }
+  }
+
+  return legalized_name;
+}
+
 // TODO(jpienaar): unify and move from here to be able to reuse with tflite
 std::string GetName(Operation* inst) {
   // TODO(prakalps): b/137006652 prevents us from using location info (derived
   // from experimental_debug_info) to generate node names. Until it is fixed,
   // first check for "name" attribute to get node name.
-  if (auto attr = inst->getAttrOfType<mlir::StringAttr>("name")) {
-    return attr.getValue();
-  }
-  if (auto name_loc = inst->getLoc().dyn_cast<mlir::NameLoc>())
-    return name_loc.getName().str();
 
-  if (auto call_loc = inst->getLoc().dyn_cast<mlir::CallSiteLoc>()) {
+  // Default name is Operation type.
+  auto name = inst->getName().getStringRef();
+  if (auto attr = inst->getAttrOfType<mlir::StringAttr>("name")) {
+    name = attr.getValue();
+  } else if (auto name_loc = inst->getLoc().dyn_cast<mlir::NameLoc>()) {
+    name = name_loc.getName().strref();
+  } else if (auto call_loc = inst->getLoc().dyn_cast<mlir::CallSiteLoc>()) {
     // Return name if CallSiteLoc's callee has a NameLoc (as should be the case
     // if imported with DebugInfo), else use the fallback naming scheme below.
     if (auto name_loc = call_loc.getCallee().dyn_cast<mlir::NameLoc>())
-      return name_loc.getName().str();
+      name = name_loc.getName().strref();
   }
 
-  // If the location is none of the expected types, then simply use name
-  // generated using the op type.
-  return inst->getName().getStringRef().str();
+  return LegalizeNodeName(name);
 }
 
 // Stateful helper class to export a function into a Graph.
@@ -129,15 +161,20 @@ class Exporter {
   explicit Exporter(Graph* graph, const Dialect* tf_dialect)
       : graph_(graph), tf_dialect_(tf_dialect) {}
 
-  Status AddArgumentNode(BlockArgument* arg, unsigned index);
+  Status AddArgumentNode(BlockArgument* arg, unsigned index,
+                         llvm::StringRef name);
+  Status AddReturnNode(mlir::ReturnOp op,
+                       llvm::ArrayRef<llvm::StringRef> names);
   Status AddInstructionNode(Operation* inst);
   Status AddNextIterationNode(Operation* inst);
   Status AddEdge(Operation* inst);
 
   StatusOr<std::unique_ptr<NodeDef>> GetArgumentNode(BlockArgument* arg,
-                                                     unsigned index);
+                                                     unsigned index,
+                                                     llvm::StringRef name);
   StatusOr<std::unique_ptr<NodeDef>> GetReturnNode(Operation* inst,
-                                                   unsigned index);
+                                                   unsigned index,
+                                                   llvm::StringRef name);
   // Adds one edge between src_node and dst_node. If it is not a control edge,
   // an index is used to find out the right operand of the dst_node.
   Status AddEdgeBetweenNodes(Value* src, Node* dst_node, unsigned dst_index);
@@ -193,31 +230,48 @@ std::string Exporter::UniqueName(Operation* op) {
   return name;
 }
 
-StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(BlockArgument* arg,
-                                                             unsigned index) {
+StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
+    BlockArgument* arg, unsigned index, llvm::StringRef name) {
+  auto func = arg->getParentRegion()->getParentOfType<mlir::FuncOp>();
+
   auto node_def = absl::make_unique<NodeDef>();
-  node_def->set_name(UniqueName(
-      arg->getParentRegion()->getParentOfType<mlir::FuncOp>().getName().str()));
+  if (!name.empty())
+    node_def->set_name(name.str());
+  else
+    node_def->set_name(UniqueName(func.getName().str()));
+
   node_def->set_op(FunctionLibraryDefinition::kArgOp);
+
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
       arg->getType().cast<mlir::TensorType>().getElementType(), &dtype));
   AttrValue type_attr;
   type_attr.set_type(dtype);
   (*node_def->mutable_attr())["T"] = type_attr;
+
   AttrValue index_attr;
   index_attr.set_i(index);
   (*node_def->mutable_attr())["index"] = index_attr;
+
+  if (auto device_attr =
+          func.getArgAttrOfType<mlir::StringAttr>(index, "tf.device")) {
+    *node_def->mutable_device() = device_attr.getValue().str();
+  }
+
   return node_def;
 }
 
-StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(Operation* inst,
-                                                           unsigned index) {
+StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
+    Operation* inst, unsigned index, llvm::StringRef name) {
   auto node_def = absl::make_unique<NodeDef>();
-  auto* inst_op = inst->getOperand(index);
-  node_def->set_name(
-      UniqueName(inst->getParentOfType<mlir::FuncOp>().getName().str()));
+  if (!name.empty())
+    node_def->set_name(name.str());
+  else
+    node_def->set_name(
+        UniqueName(inst->getParentOfType<mlir::FuncOp>().getName().str()));
+
   node_def->set_op(FunctionLibraryDefinition::kRetOp);
+  auto* inst_op = inst->getOperand(index);
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
       inst_op->getType().cast<mlir::TensorType>().getElementType(), &dtype));
@@ -282,18 +336,6 @@ Status Exporter::AddEdge(Operation* inst) {
 Status Exporter::AddInstructionNode(Operation* inst) {
   Status status;
 
-  // If the op is a ReturnOp then create a return node per operand.
-  if (isa<mlir::ReturnOp>(inst)) {
-    auto& return_nodes = returns_[inst];
-    for (int index : llvm::seq<int>(0, inst->getNumOperands())) {
-      TF_ASSIGN_OR_RETURN(auto node_def, GetReturnNode(inst, index));
-      Node* node = graph_->AddNode(*node_def, &status);
-      TF_RETURN_IF_ERROR(status);
-      return_nodes.push_back(node);
-    }
-    return Status::OK();
-  }
-
   if (inst->isKnownTerminator())
     return errors::InvalidArgument("std.return is only allowed terminator");
 
@@ -316,9 +358,12 @@ bool IsEntryFunctionArg(BlockArgument* arg) {
          "main";
 }
 
-Status Exporter::AddArgumentNode(BlockArgument* arg, unsigned index) {
-  if (!IsEntryFunctionArg(arg)) {
-    TF_ASSIGN_OR_RETURN(auto node_def, GetArgumentNode(arg, index));
+// Creates argument nodes from Block argument. If a name is supplied, that
+// name will be used instead of generating a unique name.
+Status Exporter::AddArgumentNode(BlockArgument* arg, unsigned index,
+                                 llvm::StringRef name) {
+  if (!IsEntryFunctionArg(arg) || !name.empty()) {
+    TF_ASSIGN_OR_RETURN(auto node_def, GetArgumentNode(arg, index, name));
     Status status;
     Node* node = graph_->AddNode(*node_def, &status);
     TF_RETURN_IF_ERROR(status);
@@ -361,6 +406,23 @@ Status Exporter::AddArgumentNode(BlockArgument* arg, unsigned index) {
   return Status::OK();
 }
 
+// Creates return nodes per operand of a ReturnOp. If names is supplied, those
+// names will be used per node in order instead of generating a unique name.
+Status Exporter::AddReturnNode(mlir::ReturnOp op,
+                               llvm::ArrayRef<llvm::StringRef> names) {
+  Status status;
+  auto& return_nodes = returns_[op];
+  for (int index : llvm::seq<int>(0, op.getNumOperands())) {
+    TF_ASSIGN_OR_RETURN(
+        auto node_def,
+        GetReturnNode(op, index, names.empty() ? "" : names[index]));
+    Node* node = graph_->AddNode(*node_def, &status);
+    TF_RETURN_IF_ERROR(status);
+    return_nodes.push_back(node);
+  }
+  return Status::OK();
+}
+
 // Handles an NextIteration node specially:
 // - NextIteration "source" will not be added to the graph but inserted to a
 //   map by using its name attribute;
@@ -385,6 +447,9 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   }
   mlir::Block& block = function.front();
 
+  // Determine if _Arg and _Retval nodes should use input and output names.
+  bool graph_as_function = false;
+
   // Extract input & output names if set.
   llvm::SmallVector<llvm::StringRef, 2> input_names;
   llvm::SmallVector<llvm::StringRef, 2> output_names;
@@ -399,6 +464,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
         input_names, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
     dict_attr.get("outputs").cast<mlir::StringAttr>().getValue().split(
         output_names, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
+    graph_as_function = configs.graph_as_function;
   }
 
   auto graph = absl::make_unique<Graph>(OpRegistry::Global());
@@ -434,15 +500,23 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
         << ") != terminator operands (" << term->getNumOperands() << ")";
     for (auto it : llvm::enumerate(term->getOperands())) {
       exporter.name_to_count_[output_names[it.index()].str()] = 1;
-      exporter.op_to_name_[it.value()->getDefiningOp()] =
-          output_names[it.index()];
+      // Only assign defining op of operands of the return the output names if
+      // the main graph did not have its _Retval nodes lifted into the functions
+      // returns.
+      if (!graph_as_function)
+        exporter.op_to_name_[it.value()->getDefiningOp()] =
+            output_names[it.index()];
     }
   }
   if (!input_names.empty()) {
     TF_RET_CHECK(input_names.size() == block.getNumArguments());
     for (auto it : llvm::enumerate(function.getArguments())) {
       exporter.name_to_count_[input_names[it.index()].str()] = 1;
-      exporter.op_to_name_[*it.value()->user_begin()] = input_names[it.index()];
+      // Only assign user of argument the input name if the main graph did not
+      // have its _Arg nodes lifted into the functions arguments.
+      if (!graph_as_function)
+        exporter.op_to_name_[*it.value()->user_begin()] =
+            input_names[it.index()];
     }
   }
 
@@ -457,7 +531,9 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
           mlir::debugString(type), " in function ", function.getName().str());
     }
 
-    TF_RETURN_IF_ERROR(exporter.AddArgumentNode(arg, index));
+    TF_RETURN_IF_ERROR(exporter.AddArgumentNode(
+        arg, index,
+        graph_as_function && !input_names.empty() ? input_names[index] : ""));
   }
   // Adds nodes for operations.
   for (Operation& inst : block) {
@@ -488,6 +564,10 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
 
     if (inst.getName().getStringRef().contains("NextIteration")) {
       TF_RETURN_IF_ERROR(exporter.AddNextIterationNode(&inst));
+    } else if (auto return_op = llvm::dyn_cast<mlir::ReturnOp>(inst)) {
+      TF_RETURN_IF_ERROR(exporter.AddReturnNode(
+          return_op, graph_as_function ? output_names
+                                       : llvm::ArrayRef<llvm::StringRef>()));
     } else {
       TF_RETURN_IF_ERROR(exporter.AddInstructionNode(&inst));
     }
@@ -531,7 +611,8 @@ Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
   // Checks for gradient attribute. If present converts the gradient function
   // and populates the GradientDef.
   auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
-  if (auto attr = function.getAttrOfType<mlir::SymbolRefAttr>(grad_string)) {
+  if (auto attr =
+          function.getAttrOfType<mlir::FlatSymbolRefAttr>(grad_string)) {
     auto grad_func =
         function.getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
             attr.getValue());

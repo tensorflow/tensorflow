@@ -19,6 +19,10 @@
 # First argument is the ELF location.
 # Second argument is a regular expression that's required to be in the output logs
 # for the test to pass.
+#
+# This script must be run from the top-level folder of the tensorflow github
+# repository as it mounts `pwd` to the renode docker image (via docker run -v)
+# and paths in the docker run command assume the entire tensorflow repo is mounted.
 
 declare -r ROOT_DIR=`pwd`
 declare -r TEST_TMPDIR=/tmp/test_bluepill_binary/

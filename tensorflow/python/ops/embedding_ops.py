@@ -259,13 +259,11 @@ def embedding_lookup(
     max_norm=None):
   """Looks up `ids` in a list of embedding tensors.
 
-  This function is used to perform parallel lookups on the list of
-  tensors in `params`.  It is a generalization of
-  `tf.gather`, where `params` is
+  This function is used to perform parallel lookups on the list of tensors in
+  `params`.  It is a generalization of `tf.gather`, where `params` is
   interpreted as a partitioning of a large embedding tensor.  `params` may be
   a `PartitionedVariable` as returned by using `tf.compat.v1.get_variable()`
-  with a
-  partitioner.
+  with a partitioner.
 
   If `len(params) > 1`, each element `id` of `ids` is partitioned between
   the elements of `params` according to the `partition_strategy`.

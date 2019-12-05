@@ -20,6 +20,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Identifier.h"
 #include "mlir/IR/StandardTypes.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -28,8 +30,7 @@ using namespace mlir;
 using namespace mlir::spirv;
 
 // Pull in all enum utility function definitions
-#include "mlir/Dialect/SPIRV/SPIRVBitEnums.cpp.inc"
-#include "mlir/Dialect/SPIRV/SPIRVIntEnums.cpp.inc"
+#include "mlir/Dialect/SPIRV/SPIRVEnums.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // ArrayType
@@ -56,12 +57,14 @@ struct spirv::detail::ArrayTypeStorage : public TypeStorage {
 };
 
 ArrayType ArrayType::get(Type elementType, unsigned elementCount) {
+  assert(elementCount && "ArrayType needs at least one element");
   return Base::get(elementType.getContext(), TypeKind::Array, elementType,
                    elementCount, 0);
 }
 
 ArrayType ArrayType::get(Type elementType, unsigned elementCount,
                          ArrayType::LayoutInfo layoutInfo) {
+  assert(elementCount && "ArrayType needs at least one element");
   return Base::get(elementType.getContext(), TypeKind::Array, elementType,
                    elementCount, layoutInfo);
 }

@@ -148,9 +148,9 @@ xla::StatusOr<std::vector<string>> GetNodesRelatedToRefVarsSorted(
   TF_RETURN_IF_ERROR(scope.ToGraph(graph.get()));
 
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(nullptr, Env::Default(),
-                                        TF_GRAPH_DEF_VERSION, flib_def,
-                                        OptimizerOptions{}));
+      new ProcessFunctionLibraryRuntime(
+          nullptr, Env::Default(), /*config=*/nullptr, TF_GRAPH_DEF_VERSION,
+          flib_def, OptimizerOptions{}));
   FunctionLibraryRuntime* lib_runtime =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
 

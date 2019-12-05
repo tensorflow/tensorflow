@@ -14,7 +14,7 @@
 # ==============================================================================
 """Control Flow Operations.
 
-See the [autograph](https://www.tensorflow.org/guide/autographs) guide.
+See the [autograph](https://www.tensorflow.org/guide/autograph) guide.
 """
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -1067,7 +1067,7 @@ class CondContext(ControlFlowContext):
       with ops.control_dependencies(new_summaries):
         if original_result is None:
           return no_op(), None
-        else:
+        elif not isinstance(original_result, ops.Operation):
           original_result = nest.map_structure(
               array_ops.identity, original_result, expand_composites=True)
     if original_result is None:

@@ -57,7 +57,7 @@ public:
   /// then getForAxis(...) can be used.
   virtual bool supportsPerAxis() const { return false; }
 
-  /// Count of axises supported in a per-axis query.
+  /// Count of axes supported in a per-axis query.
   virtual unsigned getAxisCount() const { return 0; }
 
   /// Gets statistics for a specific axis (0..getAxisCount() - 1).
@@ -67,7 +67,7 @@ public:
   }
 };
 
-/// Wraps an MLIR Attribte and returns statistics about it.
+/// Wraps an MLIR Attribute and returns statistics about it.
 /// It is expected that the attribute be one of:
 ///   FloatAttr (scalar)
 ///   DenseFPElementsAttr

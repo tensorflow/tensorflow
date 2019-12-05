@@ -20,6 +20,8 @@ limitations under the License.
   #include <vector>
   #include "tensorflow/c/tf_status.h"
   #include "tensorflow/core/platform/types.h"
+  #include "tensorflow/python/lib/core/py_exception_registry.h"
+
   using tensorflow::uint64;
   using tensorflow::string;
 

@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
+
 #include <fstream>
+
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

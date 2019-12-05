@@ -19,8 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef NVVMIR_OPS
-#else
+#ifndef NVVMIR_OPS
 #define NVVMIR_OPS
 
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
@@ -97,16 +96,26 @@ def NVVM_ShflBflyOp :
   Arguments<(ins LLVM_Type:$dst,
                  LLVM_Type:$val,
                  LLVM_Type:$offset,
-                 LLVM_Type:$mask_and_clamp)> {
+                 LLVM_Type:$mask_and_clamp,
+                 OptionalAttr<UnitAttr>:$return_value_and_is_valid)> {
   string llvmBuilder = [{
-      auto intId = $val->getType()->isFloatTy() ?
-          llvm::Intrinsic::nvvm_shfl_sync_bfly_f32 :
-          llvm::Intrinsic::nvvm_shfl_sync_bfly_i32;
+      auto intId = getShflBflyIntrinsicId(
+          $_resultType, static_cast<bool>($return_value_and_is_valid));
       $res = createIntrinsicCall(builder,
           intId, {$dst, $val, $offset, $mask_and_clamp});
   }];
   let parser = [{ return parseNVVMShflSyncBflyOp(parser, result); }];
   let printer = [{ printNVVMIntrinsicOp(p, this->getOperation()); }];
+  let verifier = [{
+    if (!getAttrOfType<UnitAttr>("return_value_and_is_valid"))
+      return success();
+    auto type = getType().cast<LLVM::LLVMType>();
+    if (!type.isStructTy() || type.getStructNumElements() != 2 ||
+        !type.getStructElementType(1).isIntegerTy(
+            /*Bitwidth=*/1))
+      return emitError("expected return type !llvm<\"{ ?, i1 }\">");
+    return success();
+  }];
 }
 
 def NVVM_VoteBallotOp :
@@ -119,6 +128,19 @@ def NVVM_VoteBallotOp :
   }];
   let parser = [{ return parseNVVMVoteBallotOp(parser, result); }];
   let printer = [{ printNVVMIntrinsicOp(p, this->getOperation()); }];
+}
+
+def NVVM_MmaOp :
+  NVVM_Op<"mma.sync">,
+  Results<(outs LLVM_Type:$res)>,
+  Arguments<(ins Variadic<LLVM_Type>:$args)> {
+  string llvmBuilder = [{
+    $res = createIntrinsicCall(
+        builder, llvm::Intrinsic::nvvm_mma_m8n8k4_row_row_f32_f32, $args);
+  }];
+  let parser = [{ return parseNVVMMmaOp(parser, result); }];
+  let printer = [{ printNVVMMmaOp(p, *this); }];
+  let verifier = [{ return mlir::NVVM::verify(*this); }];
 }
 
 #endif // NVVMIR_OPS

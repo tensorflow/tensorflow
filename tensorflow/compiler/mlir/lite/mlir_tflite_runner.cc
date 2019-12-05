@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Parser.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
+#include "tensorflow/compiler/mlir/lite/flatbuffer_translate_flags.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"

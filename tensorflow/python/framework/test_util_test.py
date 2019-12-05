@@ -459,6 +459,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     k = math_ops.add(i, j, name="k")
 
     self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual([100] * 3, i)
     self.assertAllEqual([120] * 3, k)
     self.assertAllEqual([20] * 3, j)
 

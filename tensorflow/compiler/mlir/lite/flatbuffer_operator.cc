@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -71,8 +72,13 @@ static tflite::TensorType ConvertDerivedTypeAttrForOptionWriter(
       return tflite::TensorType_FLOAT32;
     case mlir::TF::TensorFlowTypes::STRING:
       return tflite::TensorType_STRING;
-    case mlir::TF::TensorFlowTypes::COMPLEX64:
-      return tflite::TensorType_COMPLEX64;
+    case mlir::StandardTypes::Complex: {
+      auto etype = type.cast<mlir::ComplexType>().getElementType();
+      if (etype.isF32()) {
+        return tflite::TensorType_COMPLEX64;
+      }
+      llvm_unreachable("invalid complex Type in conversion");
+    }
     case mlir::StandardTypes::Integer: {
       const auto& itype = type.cast<mlir::IntegerType>();
       switch (itype.getWidth()) {

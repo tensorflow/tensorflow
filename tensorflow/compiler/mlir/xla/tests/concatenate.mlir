@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -canonicalize | FileCheck %s
+// RUN: tf-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s
 
 // CHECK-LABEL: func @single_operand
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]

@@ -11,6 +11,14 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+config_setting(
+    name = "optimized",
+    values = {
+        "compilation_mode": "opt",
+    },
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "platform",
     hdrs = ["platform.h"],
@@ -21,7 +29,16 @@ cc_library(
     name = "check_macros",
     hdrs = ["check_macros.h"],
     copts = ruy_copts_base(),
-    deps = ["//tensorflow/lite/kernels/internal:compatibility"],
+)
+
+cc_test(
+    name = "check_macros_test",
+    srcs = ["check_macros_test.cc"],
+    copts = ruy_copts_base(),
+    deps = [
+        ":check_macros",
+        "@com_google_googletest//:gtest",
+    ],
 )
 
 cc_library(
@@ -86,11 +103,41 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "prepacked_cache",
+    srcs = [
+        "prepacked_cache.cc",
+    ],
+    hdrs = [
+        "prepacked_cache.h",
+    ],
+    copts = ruy_copts_base(),
+    deps = [
+        ":allocator",
+        ":matrix",
+        ":opt_set",
+        ":platform",
+        ":time",
+        "@gemmlowp//:profiler",
+    ],
+)
+
 cc_test(
     name = "tune_test",
     srcs = ["tune_test.cc"],
     deps = [
         ":tune",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "prepacked_cache_test",
+    srcs = ["prepacked_cache_test.cc"],
+    deps = [
+        ":prepacked_cache",
+        ":ruy",
+        ":time",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -560,6 +607,7 @@ cc_library(
         ":have_built_path_for",
         ":path",
         ":platform",
+        ":prepacked_cache",
         ":thread_pool",
         ":trace",
         ":tune",
@@ -636,6 +684,7 @@ cc_library(
         ":opt_set",
         ":pack",
         ":path",
+        ":prepacked_cache",
         ":side_pair",
         ":size_util",
         ":spec",
@@ -705,6 +754,10 @@ ruy_benchmark(
         ("u8", "u8", "i32", "i16"),
         ("i8", "i8", "i32", "i32"),
     ],
+    deps = [
+        "//tensorflow/lite/experimental/ruy:test_lib",
+        "@gemmlowp//:profiler",  # Note also tagged as req_dep.
+    ],
 )
 
 ruy_test(
@@ -720,6 +773,11 @@ ruy_test(
         ("i8", "u8", "i32", "i8"),
         ("u8", "u8", "i32", "i16"),
         ("i8", "i8", "i32", "i32"),
+        ("i8", "u8", "i32", "i32"),
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/ruy:test_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -735,6 +793,10 @@ ruy_test(
         ("i8", "i8", "i32", "i32"),
     ],
     tags = ["slow"],
+    deps = [
+        "//tensorflow/lite/experimental/ruy:test_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 ruy_test(
@@ -745,6 +807,10 @@ ruy_test(
         ("f32", "f32", "f32", "f32"),
         ("u8", "u8", "i32", "u8"),
         ("u8", "u8", "i32", "i16"),
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/ruy:test_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -768,5 +834,9 @@ ruy_benchmark_opt_sets(
         "1ff",
         "3ff",
         "7ff",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/ruy:test_lib",
+        "@gemmlowp//:profiler",  # Note also tagged as req_dep.
     ],
 )

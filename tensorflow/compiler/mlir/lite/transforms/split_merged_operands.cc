@@ -49,7 +49,7 @@ limitations under the License.
 // MLIRConverter also benefits from lots of typical compiler optimization like
 // merging same input values if they're identical. These optimizations are
 // desirable but not for those TFLite ops which have variable tensors as inputs.
-// Yes, they have identiacal input values, but those identical values are
+// Yes, they have identical input values, but those identical values are
 // "stateful", their values can change during invocations.
 //
 // A typical example is unidirectional_sequence_lstm have two variable tensor

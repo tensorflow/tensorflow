@@ -22,7 +22,6 @@ from __future__ import print_function
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
-from tensorflow.python.keras import saving
 from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
@@ -31,6 +30,8 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.engine.network import Network
+from tensorflow.python.keras.saving import model_config
+from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.platform import tf_logging as logging
@@ -41,11 +42,11 @@ from tensorflow.python.util.tf_export import keras_export
 # API entries importable from `keras.models`:
 Model = training.Model  # pylint: disable=invalid-name
 Sequential = sequential.Sequential  # pylint: disable=invalid-name
-save_model = saving.save_model
-load_model = saving.load_model
-model_from_config = saving.model_from_config
-model_from_yaml = saving.model_from_yaml
-model_from_json = saving.model_from_json
+save_model = save.save_model
+load_model = save.load_model
+model_from_config = model_config.model_from_config
+model_from_yaml = model_config.model_from_yaml
+model_from_json = model_config.model_from_json
 
 
 # Callable used to clone a layer with weights preserved.
@@ -632,44 +633,43 @@ def clone_and_build_model(
         'Error when cloning model: compile_clone was set to True, but the '
         'original model has not been compiled.')
 
-  if model._is_graph_network or isinstance(model, Sequential):
-    if custom_objects:
-      with CustomObjectScope(custom_objects):
-        clone = clone_model(model, input_tensors=input_tensors)
-    else:
+  with CustomObjectScope(custom_objects or {}):
+    if model._is_graph_network or isinstance(model, Sequential):
       clone = clone_model(model, input_tensors=input_tensors)
 
-    if all([isinstance(clone, Sequential),
-            not clone._is_graph_network,
-            getattr(model, '_build_input_shape', None) is not None]):
-      # Set model inputs to build the model and add input/output properties.
-      # TODO(kathywu): Add multiple placeholders to handle edge case where
-      # sequential model has multiple inputs.
-      clone._set_inputs(
-          K.placeholder(model._build_input_shape, dtype=model.inputs[0].dtype))
-  else:
-    try:
-      # Prefer clonining the model if serial/deserial logic is implemented for
-      # subclassed model.
-      clone = model.__class__.from_config(model.get_config())
-    except NotImplementedError:
-      logging.warning('This model is a subclassed model. Please implement '
-                      '`get_config` and `from_config` to better support '
-                      'cloning the model.')
-      if not in_place_reset:
-        raise ValueError(
-            'This model is a subclassed model. '
-            'Such a model cannot be cloned, but there is a workaround where '
-            'the model is reset in-place. To use this, please set the argument '
-            '`in_place_reset` to `True`. This will reset the attributes in the '
-            'original model. To restore the attributes, call '
-            '`in_place_subclassed_model_state_restoration(model)`.')
-      clone = model
-      _in_place_subclassed_model_reset(clone)
-    if input_tensors is not None:
-      if isinstance(input_tensors, (list, tuple)) and len(input_tensors) == 1:
-        input_tensors = input_tensors[0]
-      clone._set_inputs(input_tensors)
+      if all([
+          isinstance(clone, Sequential), not clone._is_graph_network,
+          getattr(model, '_build_input_shape', None) is not None
+      ]):
+        # Set model inputs to build the model and add input/output properties.
+        # TODO(kathywu): Add multiple placeholders to handle edge case where
+        # sequential model has multiple inputs.
+        clone._set_inputs(
+            K.placeholder(
+                model._build_input_shape, dtype=model.inputs[0].dtype))
+    else:
+      try:
+        # Prefer clonining the model if serial/deserial logic is implemented for
+        # subclassed model.
+        clone = model.__class__.from_config(model.get_config())
+      except NotImplementedError:
+        logging.warning('This model is a subclassed model. Please implement '
+                        '`get_config` and `from_config` to better support '
+                        'cloning the model.')
+        if not in_place_reset:
+          raise ValueError(
+              'This model is a subclassed model. '
+              'Such a model cannot be cloned, but there is a workaround where '
+              'the model is reset in-place. To use this, please set the '
+              'argument `in_place_reset` to `True`. This will reset the '
+              'attributes in the original model. To restore the attributes, '
+              'call `in_place_subclassed_model_state_restoration(model)`.')
+        clone = model
+        _in_place_subclassed_model_reset(clone)
+      if input_tensors is not None:
+        if isinstance(input_tensors, (list, tuple)) and len(input_tensors) == 1:
+          input_tensors = input_tensors[0]
+        clone._set_inputs(input_tensors)
 
   if compile_clone:
     if isinstance(orig_optimizer, optimizers.TFOptimizer):

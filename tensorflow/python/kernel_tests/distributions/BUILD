@@ -41,6 +41,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
     ],
     shard_count = 3,
+    xla_enable_strict_auto_jit = False,  # TODO(b/144920376)
 )
 
 cuda_py_test(

@@ -31,9 +31,16 @@ Status ReductionOp(const string& merge_op, ncclRedOp_t* reduction_op) {
   } else if (merge_op == "Mul") {
     *reduction_op = ncclProd;
     return Status::OK();
+  } else if (merge_op == "Maximum") {
+    *reduction_op = ncclMax;
+    return Status::OK();
+  } else if (merge_op == "Minimum") {
+    *reduction_op = ncclMin;
+    return Status::OK();
   } else {
-    return errors::Internal("Expected merge_op to be either Add or Mul, found ",
-                            merge_op);
+    return errors::Internal(
+        "Expected merge_op to be in [Add, Mul, Maximum, Minimum], found ",
+        merge_op);
   }
 }
 }  // namespace
@@ -172,10 +179,10 @@ void NcclReducer::Run(StatusCallback done) {
   {
     // When all devices at this worker have called `SignalMultiNodeReady`, the
     // `NcclManager` will enqueue the NCCL kernel on the NCCL stream.  Thus the
-    // implementation of `Launched` keeps track of the number of devices that
-    // have launched.
+    // implementation of `UnblockDependencies` keeps track of the number of
+    // devices that have launched.
     profiler::TraceMe activity("Schedule", profiler::TraceMeLevel::kInfo);
-    col_ctx_->col_exec->Launched(*col_params_);
+    col_ctx_->col_exec->UnblockDependencies(*col_params_);
   }
 
   // If no final_op, then this OpKernel is non-blocking.

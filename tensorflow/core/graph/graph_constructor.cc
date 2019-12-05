@@ -56,7 +56,8 @@ namespace {
 static constexpr const bool kDoNotCheckDuplicates = true;
 
 inline bool IsMerge(const NodeDef& node_def) {
-  return node_def.op() == "Merge" || node_def.op() == "RefMerge";
+  return node_def.op() == "Merge" || node_def.op() == "RefMerge" ||
+         node_def.op() == "_XlaMerge";
 }
 
 inline bool IsNextIteration(const NodeDef& node_def) {
@@ -93,7 +94,8 @@ class GraphConstructor {
           expect_device_spec(in.expect_device_spec),
           importing(false),
           validate_nodes(in.validate_nodes),
-          validate_colocation_constraints(false) {}
+          validate_colocation_constraints(false),
+          add_default_attributes(in.add_default_attributes) {}
     Options(const ImportGraphDefOptions& in)  // NOLINT(runtime/explicit)
         : allow_internal_ops(false),
           expect_device_spec(false),
@@ -140,6 +142,10 @@ class GraphConstructor {
     bool validate_nodes;
     bool validate_colocation_constraints;
     bool validate_shape = true;
+
+    // If true, GraphConstructor will add attributes with their default
+    // value to the Node when they are missing from the NodeDef.
+    bool add_default_attributes = true;
 
     string default_device;
   };
@@ -1239,11 +1245,11 @@ Status GraphConstructor::Convert() {
       const OpDef* op_def;
       TF_RETURN_IF_ERROR(
           g_->op_registry()->LookUpOpDef(node_def.op(), &op_def));
+      if (opts_.add_default_attributes) {
+        AddDefaultsToNodeDef(*op_def, &node_def);
+      }
       if (opts_.validate_nodes) {
-        AddDefaultsToNodeDef(*op_def, &node_def);
         TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, *op_def));
-      } else {
-        AddDefaultsToNodeDef(*op_def, &node_def);
       }
     }
 

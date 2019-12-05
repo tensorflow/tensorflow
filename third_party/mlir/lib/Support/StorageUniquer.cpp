@@ -16,9 +16,8 @@
 // =============================================================================
 
 #include "mlir/Support/StorageUniquer.h"
+
 #include "mlir/Support/LLVM.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/Support/Allocator.h"
 #include "llvm/Support/RWMutex.h"
 
 using namespace mlir;

@@ -185,6 +185,15 @@ def _device_str(d):
 def _nested_value(d):
   return ("a" + d, ["b" + d, {"c": "d" + d, "e": "f" + d}, "g" + d], "h" + d)
 
+def _make_mirrored_val(init_val=5.0):
+  v = []
+  devices = ["/device:GPU:0", "/device:CPU:0"]
+  for d, _ in zip(devices, ["v", "v/replica"]):
+    with ops.device(d):
+      v.append(constant_op.constant(init_val))
+  device_map = values.ReplicaDeviceMap(devices)
+  mirrored = values.Mirrored(device_map, v)
+  return mirrored
 
 def _make_mirrored():
   v = []
@@ -701,6 +710,30 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       v = variables_lib.Variable(1.)
     self.assertIs(v, values.select_replica(0, v))
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["graph", "eager"]))
+  def testModAfterAssign(self, distribution):
+    with distribution.scope():
+      v = variables_lib.Variable(0)
+    def replica_fn():
+      def merge_fn(_):
+        return math_ops.mod(v.assign_add(1), 2)
+      return distribution_strategy_context.get_replica_context().merge_call(
+          merge_fn)
+
+    @def_function.function
+    def foo():
+      distribution.experimental_run_v2(replica_fn)
+
+    foo()
+
 
 _TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)
 
@@ -762,11 +795,11 @@ class SyncOnReadVariablePropertiesTest(test.TestCase):
     with context.graph_mode():
       _, replica_local = _make_replica_local(
           variable_scope.VariableAggregation.SUM)
-      converted = ops.internal_convert_to_tensor(replica_local, as_ref=False)
+      converted = ops.convert_to_tensor(replica_local, as_ref=False)
       self.assertIsInstance(converted, ops.Tensor)
       self.assertEqual(converted.dtype, replica_local.dtype)
 
-      converted = ops.internal_convert_to_tensor(replica_local, as_ref=True)
+      converted = ops.convert_to_tensor(replica_local, as_ref=True)
       # Resources variable are converted to tensors as well when as_ref is True.
       self.assertIsInstance(converted, ops.Tensor)
       self.assertEqual(converted.dtype, replica_local.dtype)
@@ -1138,6 +1171,22 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
     vals = self.evaluate(v[0].values)
     self.assertAllEqual(vals[0], vals[1])
 
+class MirroredTest(test.TestCase):
+
+  def testAddOp(self):
+    if context.num_gpus() < 1:
+      self.skipTest("A GPU is not available for this test.")
+    mirrored_val = _make_mirrored_val(init_val=3.)
+
+    self.assertEqual(self.evaluate(constant_op.constant(6.)),
+                     self.evaluate(mirrored_val + mirrored_val))
+    self.assertEqual(self.evaluate(constant_op.constant(4.)),
+                     self.evaluate(mirrored_val + 1))
+    self.assertEqual(self.evaluate(mirrored_val + 1),
+                     self.evaluate(math_ops.add(mirrored_val, 1)))
+    self.assertEqual(type(mirrored_val + 1),
+                     type(math_ops.add(mirrored_val, 1)))
+
 
 class PerReplicaTest(test.TestCase, parameterized.TestCase):
 
@@ -1185,8 +1234,8 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
   def testIsGraphTensor(self):
     per_replica = values.PerReplica(values.SingleDeviceMap("CPU"),
                                     (constant_op.constant(1.),))
-    self.assertEqual(per_replica._is_graph_tensor,
-                     not context.executing_eagerly())
+    for t in nest.flatten(per_replica, expand_composites=True):
+      self.assertEqual(hasattr(t, "graph"), not context.executing_eagerly())
 
   def testDoesNotTriggerFunctionTracing(self):
     traces = []
@@ -1223,9 +1272,8 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
         values.SingleDeviceMap("CPU"), (constant_op.constant(1.),))
     y = f(x)
     self.assertIsNot(x, y)
-    for a, b in zip(x._to_components(), y._to_components()):
-      self.assertAllEqual(a, b)
-    self.assertEqual(x._component_metadata(), y._component_metadata())
+    nest.map_structure(self.assertAllEqual, x, y, expand_composites=True)
+    self.assertEqual(x._type_spec, y._type_spec)
 
   @test_util.run_in_graph_and_eager_modes
   def testCondWithTensorValues(self):
@@ -1270,7 +1318,7 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
           condition, lambda: per_replica_1, lambda: per_replica_2)
 
 
-class WorkerDeviceMapTest(test.TestCase):
+class WorkerDeviceMapTest(test.TestCase, parameterized.TestCase):
 
   class ReplicaContext(object):
 
@@ -1327,6 +1375,30 @@ class WorkerDeviceMapTest(test.TestCase):
     replica_context = WorkerDeviceMapTest.ReplicaContext(3)
     self.assertEqual(
         "b", device_map.select_for_current_replica(["a", "b"], replica_context))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+          ],
+          mode=["graph", "eager"]))
+  def testExperimentalLocalResultsOrder(self, distribution):
+    # Create 2 devices in the device map, where the alphabetical order and the
+    # actual order of devices are different.
+    device_map = values.ReplicaDeviceMap(["CPU:2", "CPU:10"])
+    vals = (
+        constant_op.constant(1.),
+        constant_op.constant([5., 6.0]),
+    )
+    per_replica = values.PerReplica(device_map, vals)
+    results = self.evaluate(
+        distribution.experimental_local_results(per_replica))
+
+    # We expect the outputs order the same as the inputs order.
+    self.assertLen(results, 2)
+    self.assertAllEqual(1.0, results[0])
+    self.assertAllEqual([5., 6.], results[1])
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-//===- GPUToNVMMPass.h - Convert GPU kernel to NVVM dialect -----*- C++ -*-===//
+//===- GPUToNVVMPass.h - Convert GPU kernel to NVVM dialect -----*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //

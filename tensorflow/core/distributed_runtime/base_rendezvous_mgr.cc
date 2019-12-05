@@ -152,10 +152,10 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
   CHECK_NE(session, nullptr) << "session must not be null!";
   std::vector<DeferredCall> deferred_calls;
   {
-    mutex_lock l(mu_);
+    mutex_lock l(init_mu_);
     if (session_ != nullptr) {
       if (session_->worker_name() == session->worker_name()) {
-        LOG(INFO) << "Skipping rendezvous re-initialization.";
+        VLOG(1) << "Skipping rendezvous re-initialization.";
         return Status::OK();
       }
       Status s = errors::Internal(
@@ -174,12 +174,12 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
 }
 
 WorkerSession* BaseRemoteRendezvous::session() {
-  tf_shared_lock l(mu_);
+  tf_shared_lock l(init_mu_);
   return session_;
 }
 
 bool BaseRemoteRendezvous::is_initialized() {
-  tf_shared_lock l(mu_);
+  tf_shared_lock l(init_mu_);
   return is_initialized_locked();
 }
 
@@ -187,16 +187,20 @@ Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
                                   const Rendezvous::Args& args,
                                   const Tensor& val, const bool is_dead) {
   VLOG(1) << "BaseRemoteRendezvous Send " << this << " " << parsed.FullKey();
+  WorkerSession* sess = nullptr;
   {
-    tf_shared_lock l(mu_);
+    tf_shared_lock l(init_mu_);
     if (!status_.ok()) return status_;
     DCHECK(is_initialized_locked());
-    if (!IsLocalDevice(session_->worker_name(), parsed.src_device)) {
-      return errors::InvalidArgument(
-          "Invalid rendezvous key (src): ", parsed.FullKey(), " @ ",
-          session_->worker_name());
-    }
+    sess = session_;
   }
+
+  if (!IsLocalDevice(sess->worker_name(), parsed.src_device)) {
+    return errors::InvalidArgument(
+        "Invalid rendezvous key (src): ", parsed.FullKey(), " @ ",
+        sess->worker_name());
+  }
+
   // Buffers "val" and "device_context" in local_.
   return local_->Send(parsed, args, val, is_dead);
 }
@@ -207,7 +211,7 @@ Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
   // (e.g. calling session())
   WorkerSession* sess = nullptr;
   {
-    tf_shared_lock l(mu_);
+    tf_shared_lock l(init_mu_);
     if (!status_.ok()) return status_;
     if (!is_initialized_locked()) {
       return errors::Internal("ValidateDevices called before initialization.");
@@ -310,14 +314,15 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
                                      DoneCallback done) {
   VLOG(1) << "RemoteRendezvous Recv " << this << " " << parsed.FullKey();
   Status s = ValidateDevices(parsed, false /*!is_src*/);
-  if (s.ok() && !is_initialized()) {
-    s.Update(errors::Internal(
-        "RecvAsync called when uninitialized (key:", parsed.FullKey(), ")."));
-  }
   if (!s.ok()) {
     done(s, Args(), recv_args, Tensor(), false);
     return;
   }
+
+  // ValidateDevices() returns an error status if the rendezvous is not
+  // initialized.
+  DCHECK(is_initialized()) << "RecvAsync called when uninitialized (key: "
+                           << parsed.FullKey() << ").";
 
   MEMDEBUG_CACHE_OP("RecvAsync");
   MEMDEBUG_CACHE_STEPID(0);
@@ -353,8 +358,10 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
 
 void BaseRemoteRendezvous::RecvLocalAsync(const ParsedKey& parsed,
                                           DoneCallback done) {
-  {
-    mutex_lock l(mu_);
+  // Test whether the rendezvous is initialized using a shared lock, to avoid
+  // the need for exclusive access in the common case.
+  if (TF_PREDICT_FALSE(!is_initialized())) {
+    mutex_lock l(init_mu_);
     if (!is_initialized_locked()) {
       // RecvLocalAsync can be called (due to an incoming RecvTensor RPC from a
       // remote worker) before the RunStep (or PartialRunStep) RPC from the
@@ -392,7 +399,8 @@ void BaseRemoteRendezvous::StartAbort(const Status& s) {
   local_->StartAbort(derived_status);
   {
     // Aborts all active RecvTensor calls.
-    mutex_lock l(mu_);
+    mutex_lock l(init_mu_);
+    mutex_lock l2(active_mu_);
     if (status_.ok()) {
       status_ = derived_status;
       for (auto& entry : active_) {
@@ -407,38 +415,45 @@ void BaseRemoteRendezvous::StartAbort(const Status& s) {
 void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
                                         const Rendezvous::Args& args) {
   CancellationManager* cm = args.cancellation_manager;
+  Status captured_status;
   {
-    mutex_lock l(mu_);
+    tf_shared_lock l(init_mu_);
     if (!status_.ok()) {
-      call->StartAbort(status_);
-      return;
+      captured_status = status_;
     }
-    bool already_cancelled = false;
-    InactiveCallback callback = [] {};
-    if (cm != nullptr) {
-      auto token = cm->get_cancellation_token();
-      already_cancelled = !cm->RegisterCallback(token, [this, call] {
-        {
-          mutex_lock l(mu_);
-          if (active_.find(call) == active_.end()) return;
-          call->StartAbort(
-              errors::Cancelled("RecvFromRemoteAsync is cancelled."));
-        }
-      });
-      callback = [cm, token] { cm->TryDeregisterCallback(token); };
-    }
-    if (already_cancelled) {
+  }
+  if (!captured_status.ok()) {
+    call->StartAbort(captured_status);
+    return;
+  }
+
+  bool already_cancelled = false;
+  InactiveCallback callback = [] {};
+  if (cm != nullptr) {
+    auto token = cm->get_cancellation_token();
+    already_cancelled = !cm->RegisterCallback(token, [this, call] {
+      {
+        tf_shared_lock l(active_mu_);
+        if (active_.find(call) == active_.end()) return;
+      }
       call->StartAbort(errors::Cancelled("RecvFromRemoteAsync is cancelled."));
-    } else {
-      CHECK(active_.emplace(call, callback).second);
-    }
+    });
+    callback = [cm, token] { cm->TryDeregisterCallback(token); };
+  }
+
+  if (already_cancelled) {
+    call->StartAbort(errors::Cancelled("RecvFromRemoteAsync is cancelled."));
+  } else {
+    mutex_lock l(active_mu_);
+    CHECK(active_.emplace(call, callback).second);
   }
 }
 
 void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call) {
-  mutex_lock l(mu_);
+  mutex_lock l(active_mu_);
   auto it = active_.find(call);
   if (it != active_.end()) {
+    // Deregister the cancellation callback, if one was registered.
     it->second();
     active_.erase(it);
   }

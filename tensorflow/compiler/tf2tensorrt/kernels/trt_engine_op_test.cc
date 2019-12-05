@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/test.h"
 
 #if GOOGLE_CUDA
@@ -102,7 +101,10 @@ class TRTEngineOpTestBase : public OpsTestBase {
 
   void ResetInputs() {
     inputs_.clear();
-    gtl::STLDeleteElements(&tensors_);
+    for (auto& temp : tensors_) {
+      delete temp;
+    }
+    tensors_.clear();
   }
 
  private:
@@ -133,7 +135,7 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
   // It should contain only one engine.
   auto cache = &cache_resource->cache_;
   EXPECT_EQ(1, cache->size());
-  EXPECT_THAT(cache->begin()->first, ElementsAre(TensorShape({2, 2})));
+  EXPECT_EQ(1, cache->count({TensorShape({2, 2})}));
 
   // Execute the op with batch size 1. It should reuse existing engine to
   // execute.
@@ -141,15 +143,15 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
   TRTEngineOpTestBase::AddSimpleInput<float>(TensorShape({1, 2}));
   TF_ASSERT_OK(OpsTestBase::RunOpKernel());
   EXPECT_EQ(1, cache->size());
-  EXPECT_THAT(cache->begin()->first, ElementsAre(TensorShape({2, 2})));
+  EXPECT_EQ(1, cache->count({TensorShape({2, 2})}));
 
   // Execute the op with a larger batch size.
   ResetInputs();
   TRTEngineOpTestBase::AddSimpleInput<float>(TensorShape({3, 2}));
   TF_ASSERT_OK(OpsTestBase::RunOpKernel());
   EXPECT_EQ(2, cache->size());
-  EXPECT_THAT(cache->begin()->first, ElementsAre(TensorShape({3, 2})));
-  EXPECT_THAT((++cache->begin())->first, ElementsAre(TensorShape({2, 2})));
+  EXPECT_EQ(1, cache->count({TensorShape({2, 2})}));
+  EXPECT_EQ(1, cache->count({TensorShape({3, 2})}));
 
   // Execute the op with an input that has different non-batch dimension.
   ResetInputs();
@@ -161,10 +163,9 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
   TRTEngineOpTestBase::AddSimpleInput<float>(TensorShape({1, 10}));
   TF_ASSERT_OK(OpsTestBase::RunOpKernel());
   EXPECT_EQ(3, cache->size());  // Should only create 3 engines in total.
-  auto iter = cache->begin();
-  EXPECT_THAT(iter->first, ElementsAre(TensorShape({10, 10})));
-  EXPECT_THAT((++iter)->first, ElementsAre(TensorShape({3, 2})));
-  EXPECT_THAT((++iter)->first, ElementsAre(TensorShape({2, 2})));
+  EXPECT_EQ(1, cache->count({TensorShape({2, 2})}));
+  EXPECT_EQ(1, cache->count({TensorShape({3, 2})}));
+  EXPECT_EQ(1, cache->count({TensorShape({10, 10})}));
 }
 
 template <typename T>

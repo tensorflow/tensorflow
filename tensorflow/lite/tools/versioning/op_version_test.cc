@@ -140,6 +140,26 @@ TEST(OpVersionTest, VersioningUnpackTest) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
+TEST(OpVersionTest, VersioningReluTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_RELU,
+      .input_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_RELU,
+      .input_types = std::vector<TensorType>{TensorType_UINT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_RELU,
+      .input_types = std::vector<TensorType>{TensorType_INT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+}
+
 TEST(OpVersionTest, VersioningBatchToSpaceNDTest) {
   SimpleVersioningTest(BuiltinOperator_BATCH_TO_SPACE_ND);
 }
@@ -327,6 +347,21 @@ TEST(OpVersionTest, VersioningFloorDivOperatorTest) {
   fake_op_sig = {
       .op = BuiltinOperator_FLOOR_DIV,
       .input_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
+
+TEST(OpVersionTest, VersioningTransposeConvOperatorTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE_CONV,
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_UINT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE_CONV,
+      .input_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }

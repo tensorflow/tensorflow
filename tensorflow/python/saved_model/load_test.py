@@ -54,9 +54,10 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
-from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -686,6 +687,77 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     grad = t.gradient(loss, [imported.weight, imported.bias])
     self.assertAllClose(grad, [3.5, 2.0])
 
+  def test_while_loop_backprop(self, cycles):
+    weight = variables.Variable(2., trainable=True)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(dtype=dtypes.float32, shape=(None, None))])
+    def g(x):
+      """Adds rows of matrix x after multiplying each entry by v."""
+      i_0 = constant_op.constant(0)
+      s_0 = constant_op.constant([0., 0.])
+      cond = lambda i, _: i < array_ops.shape(x)[1]
+      body = lambda i, s: (i + 1, s + weight * x[:, i])
+      i_end, s_end = control_flow_ops.while_loop(cond, body, (i_0, s_0))
+      del i_end
+      return s_end
+
+    root = tracking.AutoTrackable()
+    root.weight = weight
+    root.g = g
+    imported = cycle(root, cycles)
+
+    def get_gradient(obj):
+      with backprop.GradientTape() as t:
+        x = constant_op.constant([[1., 2., 3.], [1., -2, 3.]])
+        y = obj.g(x)
+        self.assertAllClose(y, obj.weight * [6., 2.])
+        loss = math_ops.reduce_sum(y)  # weight * 8.
+        self.assertAllEqual(t.watched_variables(), [obj.weight])
+        return t.gradient(loss, obj.weight)
+
+    imported_gradient = get_gradient(imported)
+    original_gradient = get_gradient(root)
+    self.assertIsNotNone(original_gradient)
+    self.assertAllClose(original_gradient, 8.)
+    self.assertIsNotNone(imported_gradient)
+    self.assertAllClose(imported_gradient, 8.)
+
+  def _test_restored_func_with_captured_var_backprop(self, cycles, dtype):
+    weight = variables.Variable(2., trainable=True, dtype=dtype)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(dtype=dtype, shape=())])
+    def g(x):
+      return x * weight
+
+    root = tracking.AutoTrackable()
+    root.weight = weight
+    root.g = g
+    imported = cycle(root, cycles)
+
+    def get_gradient(obj):
+      with backprop.GradientTape() as t:
+        x = constant_op.constant(2.)
+        y = obj.g(x)
+        self.assertAllClose(y, obj.weight * 2.)
+        self.assertAllEqual(t.watched_variables(), [obj.weight])
+        return t.gradient(y, obj.weight)
+
+    imported_gradient = get_gradient(imported)
+    original_gradient = get_gradient(root)
+    self.assertIsNotNone(original_gradient)
+    self.assertAllClose(original_gradient, 2.)
+    self.assertIsNotNone(imported_gradient)
+    self.assertAllClose(imported_gradient, 2.)
+
+  def test_restored_func_with_captured_var_backprop_float32(self, cycles):
+    self._test_restored_func_with_captured_var_backprop(cycles, dtypes.float32)
+
+  def test_restored_func_with_captured_var_backprop_float64(self, cycles):
+    self.skipTest("b/144573917")
+    self._test_restored_func_with_captured_var_backprop(cycles, dtypes.float64)
+
   def test_callable(self, cycles):
     class M1(tracking.AutoTrackable):
 
@@ -975,8 +1047,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                                     x=constant_op.constant(2.)).numpy())
 
   def test_concrete_function_variable_argument(self, cycles):
-    # TODO(allenl): Fix variables in input signatures.
-    self.skipTest("Need to fix encoding of variables in inputs signatures")
     capture = variables.Variable(0)
 
     @def_function.function
@@ -984,14 +1054,29 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       v.assign_add(1)
       capture.assign_sub(1)
 
+    @def_function.function(input_signature=[
+        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
+    ])
+    def func_with_input_signature(v):
+      v.assign_add(5)
+      capture.assign_sub(5)
+      return 1
+
     vsave = variables.Variable(1)
     root = tracking.AutoTrackable()
     root.f = func.get_concrete_function(vsave)
+    root.f_sig = func_with_input_signature.get_concrete_function()
     root.capture = capture
+
     self.assertEqual(1, vsave.numpy())
     root.f(vsave)
     self.assertEqual(2, vsave.numpy())
     self.assertEqual(-1, capture.numpy())
+
+    root.f_sig(vsave)
+    self.assertEqual(7, vsave.numpy())
+    self.assertEqual(-6, capture.numpy())
+
     imported = cycle(root, cycles)
 
     vload = variables.Variable(1)
@@ -999,8 +1084,13 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(2, vload.numpy())
     imported.f(v=vload)
     self.assertEqual(3, vload.numpy())
-    self.assertEqual(-3, imported.capture.numpy())
-    self.assertEqual(-1, capture.numpy())
+    self.assertEqual(-8, imported.capture.numpy())
+
+    imported.f_sig(v=vload)
+    self.assertEqual(8, vload.numpy())
+    self.assertEqual(-13, imported.capture.numpy())
+
+    self.assertEqual(-6, capture.numpy())
 
   def test_function_and_component(self, cycles):
 
@@ -1044,6 +1134,15 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(3., imported.variables[2].numpy())
     self.assertIs(None, imported.variables[1])
     self.assertEqual(3, len(imported.variables))
+
+  def test_tuple(self, cycles):
+    root = tracking.AutoTrackable()
+    root.variables = (variables.Variable(1.), 1, variables.Variable(3.))
+    imported = cycle(root, cycles)
+    self.assertEqual(1., imported.variables[0].numpy())
+    self.assertEqual(3., imported.variables[2].numpy())
+    self.assertIs(None, imported.variables[1])
+    self.assertLen(imported.variables, 3)
 
   def test_functions_list(self, cycles):
     root = tracking.AutoTrackable()
@@ -1635,7 +1734,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
   def test_destroy_resource(self, cycles):
 
     def get_handle():
-      return gen_resource_variable_ops.var_handle_op(
+      return resource_variable_ops.var_handle_op(
           shape=tensor_shape.as_shape([]),
           dtype=dtypes.float32,
           shared_name="my_var_name",
@@ -1646,7 +1745,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
       def destroy_resource(self):
         handle = get_handle()
-        gen_resource_variable_ops.destroy_resource_op(
+        resource_variable_ops.destroy_resource_op(
             handle, ignore_lookup_error=True)
 
     class MyResource(tracking.TrackableResource):
@@ -1660,7 +1759,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         return get_handle()
 
       def _initialize(self):
-        gen_resource_variable_ops.assign_variable_op(
+        resource_variable_ops.assign_variable_op(
             self.resource_handle, 1.0, name="assign")
 
     class MyModel(tracking.AutoTrackable):
@@ -1672,10 +1771,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       @def_function.function(input_signature=[])
       def increase(self):
         handle = self.resource.resource_handle
-        gen_resource_variable_ops.assign_add_variable_op(
+        resource_variable_ops.assign_add_variable_op(
             handle, 10.0, name="assign_add")
-        return gen_resource_variable_ops.read_variable_op(
-            handle, dtypes.float32)
+        return resource_variable_ops.read_variable_op(handle, dtypes.float32)
 
     root = MyModel()
     imported = cycle(root, cycles)
@@ -1690,7 +1788,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     # Try to destroy the resource again, should fail.
     with self.assertRaisesRegexp(errors.NotFoundError,
                                  r"Resource .* does not exist."):
-      gen_resource_variable_ops.destroy_resource_op(
+      resource_variable_ops.destroy_resource_op(
           handle, ignore_lookup_error=False)
 
   def test_function_called_as_operation(self, cycles):

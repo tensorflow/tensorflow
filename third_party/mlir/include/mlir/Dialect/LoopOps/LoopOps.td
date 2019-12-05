@@ -19,14 +19,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef LOOP_OPS
-#else
+#ifndef LOOP_OPS
 #define LOOP_OPS
 
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
+include "mlir/Transforms/LoopLikeInterface.td"
 
 def Loop_Dialect : Dialect {
   let name = "loop";
@@ -48,7 +45,8 @@ class Loop_Op<string mnemonic, list<OpTrait> traits = []> :
 }
 
 def ForOp : Loop_Op<"for",
-      [SingleBlockImplicitTerminator<"TerminatorOp">]> {
+      [DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+       SingleBlockImplicitTerminator<"TerminatorOp">]> {
   let summary = "for operation";
   let description = [{
     The "loop.for" operation represents a loop nest taking 3 SSA value as

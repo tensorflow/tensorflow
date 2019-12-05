@@ -20,16 +20,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
+#include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/Linalg/Utils/Intrinsics.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
-#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
-#include "mlir/Dialect/Linalg/Passes.h"
-#include "mlir/Dialect/Linalg/Utils/Intrinsics.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/STLExtras.h"
 #include "mlir/Transforms/FoldUtils.h"
@@ -59,7 +59,7 @@ mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(ValueHandle *iv,
 mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(ValueHandle *iv,
                                                SubViewOp::Range range) {
   auto forOp =
-      OperationHandle::createOp<ForOp>(range.min, range.max, range.step);
+      OperationHandle::createOp<ForOp>(range.offset, range.size, range.stride);
   *iv = ValueHandle(forOp.getInductionVar());
   auto *body = forOp.getBody();
   enter(body, /*prev=*/1);
@@ -109,18 +109,18 @@ ValueHandle LoopNestRangeBuilder::LoopNestRangeBuilder::operator()(
 static Value *emitOrFoldComposedAffineApply(OpBuilder &b, Location loc,
                                             AffineMap map,
                                             ArrayRef<Value *> operandsRef,
-                                            OperationFolder &state) {
+                                            OperationFolder *folder) {
   SmallVector<Value *, 4> operands(operandsRef.begin(), operandsRef.end());
   fullyComposeAffineMapAndOperands(&map, &operands);
   canonicalizeMapAndOperands(&map, &operands);
-  return state.create<AffineApplyOp>(b, loc, map, operands);
+  return folder ? folder->create<AffineApplyOp>(b, loc, map, operands)
+                : b.create<AffineApplyOp>(loc, map, operands);
 }
 
-SmallVector<Value *, 4> mlir::linalg::applyMapToValues(OpBuilder &b,
-                                                       Location loc,
-                                                       AffineMap map,
-                                                       ArrayRef<Value *> values,
-                                                       OperationFolder &state) {
+SmallVector<Value *, 4>
+mlir::linalg::applyMapToValues(OpBuilder &b, Location loc, AffineMap map,
+                               ArrayRef<Value *> values,
+                               OperationFolder *folder) {
   SmallVector<Value *, 4> res;
   res.reserve(map.getNumResults());
   unsigned numDims = map.getNumDims();
@@ -129,7 +129,7 @@ SmallVector<Value *, 4> mlir::linalg::applyMapToValues(OpBuilder &b,
   // folding occurs eagerly. Otherwise, an affine.apply operation is emitted.
   for (auto expr : map.getResults()) {
     AffineMap map = AffineMap::get(numDims, 0, expr);
-    res.push_back(emitOrFoldComposedAffineApply(b, loc, map, values, state));
+    res.push_back(emitOrFoldComposedAffineApply(b, loc, map, values, folder));
   }
   return res;
 }

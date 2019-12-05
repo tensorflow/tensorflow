@@ -43,7 +43,7 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
     case tflite::TensorType_INT16:
       return builder.getIntegerType(16);
     case tflite::TensorType_COMPLEX64:
-      return mlir::TF::Complex64Type::get(builder.getContext());
+      return mlir::ComplexType::get(builder.getF32Type());
     case tflite::TensorType_INT8:
       return builder.getIntegerType(8);
   }

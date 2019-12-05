@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving.saved_model import base_serialization
 from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import save_impl
@@ -48,7 +49,7 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
         name=self.obj.name,
         trainable=self.obj.trainable,
         expects_training_arg=self.obj._expects_training_arg,  # pylint: disable=protected-access
-        dtype=self.obj.dtype,
+        dtype=policy.serialize(self.obj._dtype_policy),  # pylint: disable=protected-access
         batch_input_shape=getattr(self.obj, '_batch_input_shape', None))
     try:
       # Store the config dictionary, which is only used by the revived object

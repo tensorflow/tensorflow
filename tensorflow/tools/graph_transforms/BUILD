@@ -3,7 +3,6 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_not_v2",
     "if_not_windows",
     "tf_cc_binary",
     "tf_cc_test",
@@ -208,6 +207,18 @@ tf_cc_test(
     ],
 )
 
+filegroup(
+    name = "transform_graph_hdrs",
+    srcs = [
+        "transform_graph.h",
+        "transform_utils.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "transform_graph_lib",
     srcs = ["transform_graph.cc"],
@@ -223,6 +234,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
     ],
+    alwayslink = 1,
 )
 
 # This library includes a main function, to make it easy to create other
@@ -317,8 +329,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:_pywrap_transform_graph",
         "//tensorflow/python:errors",
-        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:util",
     ],
 )

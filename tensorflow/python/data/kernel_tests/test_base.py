@@ -39,6 +39,16 @@ def default_test_combinations():
   return combinations.combine(tf_api_version=[1, 2], mode=["eager", "graph"])
 
 
+def eager_only_combinations():
+  """Returns the default test combinations for eager mode only tf.data tests."""
+  return combinations.combine(tf_api_version=[1, 2], mode="eager")
+
+
+def graph_only_combinations():
+  """Returns the default test combinations for graph mode only tf.data tests."""
+  return combinations.combine(tf_api_version=[1, 2], mode="graph")
+
+
 class DatasetTestBase(test.TestCase):
   """Base class for dataset tests."""
 
@@ -48,7 +58,11 @@ class DatasetTestBase(test.TestCase):
 
   def assertValuesEqual(self, expected, actual):
     """Asserts that two values are equal."""
-    if sparse_tensor.is_sparse(expected):
+    if isinstance(expected, dict):
+      self.assertItemsEqual(list(expected.keys()), list(actual.keys()))
+      for k in expected.keys():
+        self.assertValuesEqual(expected[k], actual[k])
+    elif sparse_tensor.is_sparse(expected):
       self.assertAllEqual(expected.indices, actual.indices)
       self.assertAllEqual(expected.values, actual.values)
       self.assertAllEqual(expected.dense_shape, actual.dense_shape)

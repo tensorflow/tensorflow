@@ -55,8 +55,8 @@ class Environment {
 
   std::vector<CalculationsPrecision> GetSupportedPrecisions() const;
   bool IsSupported(CalculationsPrecision precision) const;
-  std::vector<TensorStorageType> GetSupportedTextureStorages() const;
   std::vector<TensorStorageType> GetSupportedStorages() const;
+  bool IsSupported(TensorStorageType storage_type) const;
 
   void SetHighPerformance() const;
   void SetDefaultPerformance() const;
@@ -70,21 +70,12 @@ class Environment {
   ProgramCache program_cache_;
 };
 
-TensorStorageType GetOptimalStorageType(const CLDevice& gpu);
-
-Status CreateDefaultEnvironment(Environment* result);
+TensorStorageType GetFastestStorageType(const CLDevice& gpu);
 
 Status CreateEnvironment(Environment* result);
 Status CreateGLCompatibleEnvironment(cl_context_properties egl_context,
                                      cl_context_properties egl_display,
                                      Environment* result);
-
-Status CreateKernel(const std::string& code, const std::string& function_name,
-                    Environment* env, CLKernel* result);
-
-Status CreateKernel(const std::string& code, const std::string& function_name,
-                    const std::vector<CompilerOptions>& compiler_options,
-                    Environment* env, CLKernel* result);
 
 }  // namespace cl
 }  // namespace gpu

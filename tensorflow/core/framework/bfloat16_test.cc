@@ -169,6 +169,33 @@ static void BM_FloatToBFloat16(int iters) {
 }
 BENCHMARK(BM_FloatToBFloat16);
 
+void RoundFloatToBFloat16(const float* src, bfloat16* dst, int64 size) {
+  for (; size != 0; size--) {
+    dst[size] = bfloat16(src[size]);
+  }
+}
+
+static void BM_RoundFloatToBFloat16(int iters) {
+  testing::StopTiming();
+  static const int N = 32 << 20;
+  const int64 tot = static_cast<int64>(iters) * N;
+  testing::ItemsProcessed(tot);
+  testing::BytesProcessed(tot * (sizeof(float) + sizeof(bfloat16)));
+
+  float* inp = new float[N];
+  bfloat16* out = new bfloat16[N];
+
+  testing::StartTiming();
+  while (iters--) {
+    RoundFloatToBFloat16(inp, out, N);
+    tensorflow::testing::DoNotOptimize(inp);
+    tensorflow::testing::DoNotOptimize(out);
+  }
+  delete[] inp;
+  delete[] out;
+}
+BENCHMARK(BM_RoundFloatToBFloat16);
+
 static void BM_BFloat16ToFloat(int iters) {
   testing::StopTiming();
   static const int N = 32 << 20;

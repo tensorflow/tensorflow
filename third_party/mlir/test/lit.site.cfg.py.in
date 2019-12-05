@@ -23,7 +23,8 @@ config.llvm_bindings = "@LLVM_BINDINGS@".split(' ')
 config.host_os = "@HOST_OS@"
 config.host_cc = "@HOST_CC@"
 config.host_cxx = "@HOST_CXX@"
-config.host_ldflags = "@HOST_LDFLAGS@"
+# Note: ldflags can contain double-quoted paths, so must use single quotes here.
+config.host_ldflags = '@HOST_LDFLAGS@'
 config.llvm_use_sanitizer = "@LLVM_USE_SANITIZER@"
 config.llvm_host_triple = '@LLVM_HOST_TRIPLE@'
 config.host_arch = "@HOST_ARCH@"

@@ -251,7 +251,8 @@ Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
       auto loaded = DynamicLibrarySearchGenerator::Load(
           libPath.data(), dataLayout.getGlobalPrefix());
       if (!loaded) {
-        errs() << "Could not load: " << libPath << "\n";
+        errs() << "Could not load " << libPath << ":\n  " << loaded.takeError()
+               << "\n";
         continue;
       }
       JD.addGenerator(std::move(*loaded));

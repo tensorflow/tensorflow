@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,10 +22,15 @@ from __future__ import print_function
 import argparse
 import os
 import sys
+import warnings
+
+import six
+from six.moves import zip
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
+from tensorflow.lite.toco.logging import gen_html
 from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.platform import app
@@ -32,13 +38,13 @@ from tensorflow.python.platform import app
 
 def _parse_array(values, type_fn=str):
   if values is not None:
-    return [type_fn(val) for val in values.split(",") if val]
+    return [type_fn(val) for val in six.ensure_str(values).split(",") if val]
   return None
 
 
 def _parse_set(values):
   if values is not None:
-    return set([item for item in values.split(",") if item])
+    return set([item for item in six.ensure_str(values).split(",") if item])
   return None
 
 
@@ -81,9 +87,9 @@ def _get_toco_converter(flags):
   if flags.input_shapes:
     input_shapes_list = [
         _parse_array(shape, type_fn=int)
-        for shape in flags.input_shapes.split(":")
+        for shape in six.ensure_str(flags.input_shapes).split(":")
     ]
-    input_shapes = dict(zip(input_arrays, input_shapes_list))
+    input_shapes = dict(list(zip(input_arrays, input_shapes_list)))
   output_arrays = _parse_array(flags.output_arrays)
 
   converter_kwargs = {
@@ -152,7 +158,7 @@ def _convert_tf1_model(flags):
                        "--std_dev_values and --mean_values with multiple input "
                        "tensors in order to map between names and "
                        "values.".format(",".join(input_arrays)))
-    converter.quantized_input_stats = dict(zip(input_arrays, quant_stats))
+    converter.quantized_input_stats = dict(list(zip(input_arrays, quant_stats)))
   if (flags.default_ranges_min is not None) and (flags.default_ranges_max is
                                                  not None):
     converter.default_ranges_stats = (flags.default_ranges_min,
@@ -168,10 +174,12 @@ def _convert_tf1_model(flags):
 
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
+  if flags.custom_opdefs:
+    converter._custom_opdefs = _parse_array(flags.custom_opdefs)  # pylint: disable=protected-access
   if flags.target_ops:
     ops_set_options = lite.OpsSet.get_options()
     converter.target_spec.supported_ops = set()
-    for option in flags.target_ops.split(","):
+    for option in six.ensure_str(flags.target_ops).split(","):
       if option not in ops_set_options:
         raise ValueError("Invalid value for --target_ops. Options: "
                          "{0}".format(",".join(ops_set_options)))
@@ -194,14 +202,17 @@ def _convert_tf1_model(flags):
     converter.dump_graphviz_dir = flags.dump_graphviz_dir
   if flags.dump_graphviz_video:
     converter.dump_graphviz_vode = flags.dump_graphviz_video
+  if flags.conversion_summary_dir:
+    converter.conversion_summary_dir = flags.conversion_summary_dir
 
-  if flags.experimental_enable_mlir_converter:
-    converter.experimental_enable_mlir_converter = True
+  # TODO(b/145312675): Enable the new converter by default. It requires to
+  # add a new command line argument like `experimental_legacy_converter`.
+  converter.experimental_new_converter = flags.experimental_new_converter
 
   # Convert model.
   output_data = converter.convert()
   with open(flags.output_file, "wb") as f:
-    f.write(output_data)
+    f.write(six.ensure_binary(output_data))
 
 
 def _convert_tf2_model(flags):
@@ -220,13 +231,14 @@ def _convert_tf2_model(flags):
     model = keras.models.load_model(flags.keras_model_file)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
 
-  if flags.experimental_enable_mlir_converter:
-    converter.experimental_enable_mlir_converter = True
+  # TODO(b/145312675): Enable the new converter by default. It requires to
+  # add a new command line argument like `experimental_legacy_converter`.
+  converter.experimental_new_converter = flags.experimental_new_converter
 
   # Convert the model.
   tflite_model = converter.convert()
   with open(flags.output_file, "wb") as f:
-    f.write(tflite_model)
+    f.write(six.ensure_binary(tflite_model))
 
 
 def _check_tf1_flags(flags, unparsed):
@@ -245,7 +257,7 @@ def _check_tf1_flags(flags, unparsed):
 
   # Check unparsed flags for common mistakes based on previous TOCO.
   def _get_message_unparsed(flag, orig_flag, new_flag):
-    if flag.startswith(orig_flag):
+    if six.ensure_str(flag).startswith(orig_flag):
       return "\n  Use {0} instead of {1}".format(new_flag, orig_flag)
     return ""
 
@@ -290,6 +302,12 @@ def _check_tf1_flags(flags, unparsed):
   if flags.dump_graphviz_video and not flags.dump_graphviz_dir:
     raise ValueError("--dump_graphviz_video must be used with "
                      "--dump_graphviz_dir")
+
+  if flags.custom_opdefs and not flags.experimental_new_converter:
+    raise ValueError("--custom_opdefs must be used with "
+                     "--experimental_new_converter")
+  if flags.custom_opdefs and not flags.allow_custom_ops:
+    raise ValueError("--custom_opdefs must be used with --allow_custom_ops")
 
 
 def _check_tf2_flags(flags):
@@ -455,6 +473,12 @@ def _get_tf1_flags(parser):
             "provide these to the TensorFlow Lite runtime with a custom "
             "resolver. (default False)"))
   parser.add_argument(
+      "--custom_opdefs",
+      type=str,
+      help=("String representing a list of custom ops OpDefs delineated with "
+            "commas that are included in the GraphDef. Required when using "
+            "custom operations with --experimental_new_converter."))
+  parser.add_argument(
       "--target_ops",
       type=str,
       help=("Experimental flag, subject to change. Set of OpsSet options "
@@ -475,6 +499,13 @@ def _get_tf1_flags(parser):
       action="store_true",
       help=("Boolean indicating whether to dump the graph after every graph "
             "transformation"))
+  parser.add_argument(
+      "--conversion_summary_dir",
+      type=str,
+      help=("Full filepath to store the conversion logs, which inclues graphviz"
+            " of the model before/after the conversion, an HTML report and the "
+            "conversion proto buffers. This will only be generated when passing"
+            " --experimental_new_converter"))
 
 
 def _get_tf2_flags(parser):
@@ -525,10 +556,10 @@ def _get_parser(use_v2_converter):
 
   # Enable MLIR-TFLite converter.
   parser.add_argument(
-      "--experimental_enable_mlir_converter",
+      "--experimental_new_converter",
       action="store_true",
-      help=("Experimental flag, subject to change. Enables the MLIR converter "
-            "instead of the TOCO converter."))
+      help=("Experimental flag, subject to change. Enables MLIR-based "
+            "conversion instead of TOCO conversion."))
   return parser
 
 
@@ -561,7 +592,18 @@ def run_main(_):
   if use_v2_converter:
     _convert_tf2_model(tflite_flags)
   else:
-    _convert_tf1_model(tflite_flags)
+    try:
+      _convert_tf1_model(tflite_flags)
+    finally:
+      if tflite_flags.conversion_summary_dir:
+        if tflite_flags.experimental_new_converter:
+          gen_html.gen_conversion_log_html(tflite_flags.conversion_summary_dir,
+                                           tflite_flags.post_training_quantize,
+                                           tflite_flags.output_file)
+        else:
+          warnings.warn(
+              "Conversion summary will only be generated when enabling"
+              " the new converter via --experimental_new_converter. ")
 
 
 def main():

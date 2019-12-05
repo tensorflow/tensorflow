@@ -1155,7 +1155,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       user->opcode() == HloOpcode::kWhile) {
     // We eliminated other users in HloOrdering::LiveRangeStrictlyBefore
     // so here we just need to check that the use is at the right operand index.
-    std::vector<int64> operand_indices = user->OperandIndices(operand);
+    const auto operand_indices = user->OperandIndices(operand);
     int64 operand_no = user->opcode() == HloOpcode::kTriangularSolve ? 1 : 0;
     return operand_indices.size() == 1 && operand_indices[0] == operand_no;
   }
@@ -1171,7 +1171,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     }
     CHECK(!user_index.empty());
     // Only share with the right tuple element buffer.
-    std::vector<int64> operand_indices = user->OperandIndices(operand);
+    const auto operand_indices = user->OperandIndices(operand);
     return operand_indices.size() == 1 && user_index[0] == operand_indices[0];
   }
   if (user->opcode() == HloOpcode::kCall) {

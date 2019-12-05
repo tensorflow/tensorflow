@@ -25,8 +25,22 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "llvm/Support/CommandLine.h"
 #include <numeric>
+
 using namespace mlir;
+
+static llvm::cl::opt<bool> printOpOnDiagnostic(
+    "mlir-print-op-on-diagnostic",
+    llvm::cl::desc("When a diagnostic is emitted on an operation, also print "
+                   "the operation as an attached note"));
+
+OpAsmParser::~OpAsmParser() {}
+
+//===----------------------------------------------------------------------===//
+// OperationName
+//===----------------------------------------------------------------------===//
 
 /// Form the OperationName for an op with the specified string.  This either is
 /// a reference to an AbstractOperation if one is known, or a uniqued Identifier
@@ -57,8 +71,6 @@ const AbstractOperation *OperationName::getAbstractOperation() const {
 OperationName OperationName::getFromOpaquePointer(void *pointer) {
   return OperationName(RepresentationUnion::getFromOpaqueValue(pointer));
 }
-
-OpAsmParser::~OpAsmParser() {}
 
 //===----------------------------------------------------------------------===//
 // OpResult
@@ -101,34 +113,47 @@ template <> unsigned BlockOperand::getOperandNumber() {
 
 /// Create a new Operation with the specific fields.
 Operation *Operation::create(Location location, OperationName name,
-                             ArrayRef<Value *> operands,
                              ArrayRef<Type> resultTypes,
+                             ArrayRef<Value *> operands,
                              ArrayRef<NamedAttribute> attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
-  return create(location, name, operands, resultTypes,
+  return create(location, name, resultTypes, operands,
                 NamedAttributeList(attributes), successors, numRegions,
                 resizableOperandList);
 }
 
 /// Create a new Operation from operation state.
 Operation *Operation::create(const OperationState &state) {
-  unsigned numRegions = state.regions.size();
-  Operation *op = create(state.location, state.name, state.operands,
-                         state.types, state.attributes, state.successors,
-                         numRegions, state.resizableOperandList);
+  return Operation::create(state.location, state.name, state.types,
+                           state.operands, NamedAttributeList(state.attributes),
+                           state.successors, state.regions,
+                           state.resizableOperandList);
+}
+
+/// Create a new Operation with the specific fields.
+Operation *Operation::create(Location location, OperationName name,
+                             ArrayRef<Type> resultTypes,
+                             ArrayRef<Value *> operands,
+                             NamedAttributeList attributes,
+                             ArrayRef<Block *> successors,
+                             ArrayRef<std::unique_ptr<Region>> regions,
+                             bool resizableOperandList) {
+  unsigned numRegions = regions.size();
+  Operation *op = create(location, name, resultTypes, operands, attributes,
+                         successors, numRegions, resizableOperandList);
   for (unsigned i = 0; i < numRegions; ++i)
-    if (state.regions[i])
-      op->getRegion(i).takeBody(*state.regions[i]);
+    if (regions[i])
+      op->getRegion(i).takeBody(*regions[i]);
   return op;
 }
 
 /// Overload of create that takes an existing NamedAttributeList to avoid
 /// unnecessarily uniquing a list of attributes.
 Operation *Operation::create(Location location, OperationName name,
-                             ArrayRef<Value *> operands,
                              ArrayRef<Type> resultTypes,
-                             const NamedAttributeList &attributes,
+                             ArrayRef<Value *> operands,
+                             NamedAttributeList attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
   unsigned numSuccessors = successors.size();
@@ -299,26 +324,53 @@ void Operation::replaceUsesOfWith(Value *from, Value *to) {
 }
 
 //===----------------------------------------------------------------------===//
-// Other
+// Diagnostics
 //===----------------------------------------------------------------------===//
 
 /// Emit an error about fatal conditions with this operation, reporting up to
 /// any diagnostic handlers that may be listening.
 InFlightDiagnostic Operation::emitError(const Twine &message) {
-  return mlir::emitError(getLoc(), message);
+  InFlightDiagnostic diag = mlir::emitError(getLoc(), message);
+  if (printOpOnDiagnostic) {
+    // Print out the operation explicitly here so that we can print the generic
+    // form.
+    // TODO(riverriddle) It would be nice if we could instead provide the
+    // specific printing flags when adding the operation as an argument to the
+    // diagnostic.
+    std::string printedOp;
+    {
+      llvm::raw_string_ostream os(printedOp);
+      print(os, OpPrintingFlags().printGenericOpForm().useLocalScope());
+    }
+    diag.attachNote(getLoc()) << "see current operation: " << printedOp;
+  }
+  return diag;
 }
 
 /// Emit a warning about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 InFlightDiagnostic Operation::emitWarning(const Twine &message) {
-  return mlir::emitWarning(getLoc(), message);
+  InFlightDiagnostic diag = mlir::emitWarning(getLoc(), message);
+  if (printOpOnDiagnostic)
+    diag.attachNote(getLoc()) << "see current operation: " << *this;
+  return diag;
 }
 
 /// Emit a remark about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 InFlightDiagnostic Operation::emitRemark(const Twine &message) {
-  return mlir::emitRemark(getLoc(), message);
+  InFlightDiagnostic diag = mlir::emitRemark(getLoc(), message);
+  if (printOpOnDiagnostic)
+    diag.attachNote(getLoc()) << "see current operation: " << *this;
+  return diag;
 }
+
+//===----------------------------------------------------------------------===//
+// Operation Ordering
+//===----------------------------------------------------------------------===//
+
+constexpr unsigned Operation::kInvalidOrderIdx;
+constexpr unsigned Operation::kOrderStride;
 
 /// Given an operation 'other' that is within the same parent block, return
 /// whether the current operation is before 'other' in the operation list
@@ -329,10 +381,75 @@ bool Operation::isBeforeInBlock(Operation *other) {
   assert(block && "Operations without parent blocks have no order.");
   assert(other && other->block == block &&
          "Expected other operation to have the same parent block.");
-  // Recompute the parent ordering if necessary.
-  if (!block->isInstOrderValid())
-    block->recomputeInstOrder();
+  // If the order of the block is already invalid, directly recompute the
+  // parent.
+  if (!block->isOpOrderValid()) {
+    block->recomputeOpOrder();
+  } else {
+    // Update the order either operation if necessary.
+    updateOrderIfNecessary();
+    other->updateOrderIfNecessary();
+  }
+
   return orderIndex < other->orderIndex;
+}
+
+/// Update the order index of this operation of this operation if necessary,
+/// potentially recomputing the order of the parent block.
+void Operation::updateOrderIfNecessary() {
+  assert(block && "expected valid parent");
+
+  // If the order is valid for this operation there is nothing to do.
+  if (hasValidOrder())
+    return;
+  Operation *blockFront = &block->front();
+  Operation *blockBack = &block->back();
+
+  // This method is expected to only be invoked on blocks with more than one
+  // operation.
+  assert(blockFront != blockBack && "expected more than one operation");
+
+  // If the operation is at the end of the block.
+  if (this == blockBack) {
+    Operation *prevNode = getPrevNode();
+    if (!prevNode->hasValidOrder())
+      return block->recomputeOpOrder();
+
+    // Add the stride to the previous operation.
+    orderIndex = prevNode->orderIndex + kOrderStride;
+    return;
+  }
+
+  // If this is the first operation try to use the next operation to compute the
+  // ordering.
+  if (this == blockFront) {
+    Operation *nextNode = getNextNode();
+    if (!nextNode->hasValidOrder())
+      return block->recomputeOpOrder();
+    // There is no order to give this operation.
+    if (nextNode->orderIndex == 0)
+      return block->recomputeOpOrder();
+
+    // If we can't use the stride, just take the middle value left. This is safe
+    // because we know there is at least one valid index to assign to.
+    if (nextNode->orderIndex <= kOrderStride)
+      orderIndex = (nextNode->orderIndex / 2);
+    else
+      orderIndex = kOrderStride;
+    return;
+  }
+
+  // Otherwise, this operation is between two others. Place this operation in
+  // the middle of the previous and next if possible.
+  Operation *prevNode = getPrevNode(), *nextNode = getNextNode();
+  if (!prevNode->hasValidOrder() || !nextNode->hasValidOrder())
+    return block->recomputeOpOrder();
+  unsigned prevOrder = prevNode->orderIndex, nextOrder = nextNode->orderIndex;
+
+  // Check to see if there is a valid order between the two.
+  if (prevOrder + 1 == nextOrder)
+    return block->recomputeOpOrder();
+  orderIndex = prevOrder + 1 + ((nextOrder - prevOrder) / 2);
 }
 
 //===----------------------------------------------------------------------===//
@@ -381,8 +498,8 @@ void llvm::ilist_traits<::mlir::Operation>::addNodeToList(Operation *op) {
   assert(!op->getBlock() && "already in a operation block!");
   op->block = getContainingBlock();
 
-  // Invalidate the block ordering.
-  op->block->invalidateInstOrder();
+  // Invalidate the order on the operation.
+  op->orderIndex = Operation::kInvalidOrderIdx;
 }
 
 /// This is a trait method invoked when a operation is removed from a block.
@@ -399,7 +516,7 @@ void llvm::ilist_traits<::mlir::Operation>::transferNodesFromList(
   Block *curParent = getContainingBlock();
 
   // Invalidate the ordering of the parent block.
-  curParent->invalidateInstOrder();
+  curParent->invalidateOpOrder();
 
   // If we are transferring operations within the same block, the block
   // pointer doesn't need to be updated.
@@ -421,10 +538,10 @@ void Operation::erase() {
 }
 
 /// Unlink this operation from its current block and insert it right before
-/// `existingInst` which may be in the same or another block in the same
+/// `existingOp` which may be in the same or another block in the same
 /// function.
-void Operation::moveBefore(Operation *existingInst) {
-  moveBefore(existingInst->getBlock(), existingInst->getIterator());
+void Operation::moveBefore(Operation *existingOp) {
+  moveBefore(existingOp->getBlock(), existingOp->getIterator());
 }
 
 /// Unlink this operation from its current basic block and insert it right
@@ -493,6 +610,21 @@ unsigned Operation::getSuccessorOperandIndex(unsigned index) {
       std::accumulate(successorOpCountBegin + index,
                       successorOpCountBegin + getNumSuccessors(), 0u);
   return getNumOperands() - postSuccessorOpCount;
+}
+
+Optional<std::pair<unsigned, unsigned>>
+Operation::decomposeSuccessorOperandIndex(unsigned operandIndex) {
+  assert(!isKnownNonTerminator() && "only terminators may have successors");
+  assert(operandIndex < getNumOperands());
+  unsigned currentOperandIndex = getNumOperands();
+  auto *successorOperandCounts = getTrailingObjects<unsigned>();
+  for (unsigned i = 0, e = getNumSuccessors(); i < e; i++) {
+    unsigned successorIndex = e - i - 1;
+    currentOperandIndex -= successorOperandCounts[successorIndex];
+    if (currentOperandIndex <= operandIndex)
+      return std::make_pair(successorIndex, operandIndex - currentOperandIndex);
+  }
+  return None;
 }
 
 auto Operation::getSuccessorOperands(unsigned index) -> operand_range {
@@ -572,7 +704,7 @@ Operation *Operation::cloneWithoutRegions(BlockAndValueMapping &mapper) {
   SmallVector<Type, 8> resultTypes(getResultTypes());
   unsigned numRegions = getNumRegions();
   auto *newOp =
-      Operation::create(getLoc(), getName(), operands, resultTypes, attrs,
+      Operation::create(getLoc(), getName(), resultTypes, operands, attrs,
                         successors, numRegions, hasResizableOperandsList());
 
   // Remember the mapping of any results.
@@ -746,50 +878,31 @@ LogicalResult OpTrait::impl::verifyAtLeastNResults(Operation *op,
   return success();
 }
 
-/// Returns success if the given two types have the same shape. That is,
-/// they are both scalars (not shaped), or they are both shaped types and at
-/// least one is unranked or they have the same shape. The element type does not
-/// matter.
-static LogicalResult verifyShapeMatch(Type type1, Type type2) {
-  auto sType1 = type1.dyn_cast<ShapedType>();
-  auto sType2 = type2.dyn_cast<ShapedType>();
-
-  // Either both or neither type should be shaped.
-  if (!sType1)
-    return success(!sType2);
-  if (!sType2)
-    return failure();
-
-  if (!sType1.hasRank() || !sType2.hasRank())
-    return success();
-
-  return success(sType1.getShape() == sType2.getShape());
-}
-
 LogicalResult OpTrait::impl::verifySameOperandsShape(Operation *op) {
-  if (op->getNumOperands() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)))
     return failure();
 
   auto type = op->getOperand(0)->getType();
   for (auto opType : llvm::drop_begin(op->getOperandTypes(), 1)) {
-    if (failed(verifyShapeMatch(opType, type)))
+    if (failed(verifyCompatibleShape(opType, type)))
       return op->emitOpError() << "requires the same shape for all operands";
   }
   return success();
 }
 
 LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
-  if (op->getNumOperands() == 0 || op->getNumResults() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)) ||
+      failed(verifyAtLeastNResults(op, 1)))
     return failure();
 
   auto type = op->getOperand(0)->getType();
   for (auto resultType : op->getResultTypes()) {
-    if (failed(verifyShapeMatch(resultType, type)))
+    if (failed(verifyCompatibleShape(resultType, type)))
       return op->emitOpError()
              << "requires the same shape for all operands and results";
   }
   for (auto opType : llvm::drop_begin(op->getOperandTypes(), 1)) {
-    if (failed(verifyShapeMatch(opType, type)))
+    if (failed(verifyCompatibleShape(opType, type)))
       return op->emitOpError()
              << "requires the same shape for all operands and results";
   }
@@ -797,19 +910,12 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
 }
 
 LogicalResult OpTrait::impl::verifySameOperandsElementType(Operation *op) {
-  if (op->getNumOperands() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)))
     return failure();
+  auto elementType = getElementTypeOrSelf(op->getOperand(0));
 
-  auto type = op->getOperand(0)->getType().dyn_cast<ShapedType>();
-  if (!type)
-    return op->emitOpError("requires shaped type results");
-  auto elementType = type.getElementType();
-
-  for (auto operandType : llvm::drop_begin(op->getOperandTypes(), 1)) {
-    auto shapedType = operandType.dyn_cast<ShapedType>();
-    if (!shapedType)
-      return op->emitOpError("requires shaped type operands");
-    if (shapedType.getElementType() != elementType)
+  for (auto operand : llvm::drop_begin(op->getOperands(), 1)) {
+    if (getElementTypeOrSelf(operand) != elementType)
       return op->emitOpError("requires the same element type for all operands");
   }
 
@@ -818,30 +924,22 @@ LogicalResult OpTrait::impl::verifySameOperandsElementType(Operation *op) {
 
 LogicalResult
 OpTrait::impl::verifySameOperandsAndResultElementType(Operation *op) {
-  if (op->getNumOperands() == 0 || op->getNumResults() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)) ||
+      failed(verifyAtLeastNResults(op, 1)))
     return failure();
 
-  auto type = op->getResult(0)->getType().dyn_cast<ShapedType>();
-  if (!type)
-    return op->emitOpError("requires shaped type results");
-  auto elementType = type.getElementType();
+  auto elementType = getElementTypeOrSelf(op->getResult(0));
 
   // Verify result element type matches first result's element type.
   for (auto result : drop_begin(op->getResults(), 1)) {
-    auto resultType = result->getType().dyn_cast<ShapedType>();
-    if (!resultType)
-      return op->emitOpError("requires shaped type results");
-    if (resultType.getElementType() != elementType)
+    if (getElementTypeOrSelf(result) != elementType)
       return op->emitOpError(
           "requires the same element type for all operands and results");
   }
 
   // Verify operand's element type matches first result's element type.
   for (auto operand : op->getOperands()) {
-    auto operandType = operand->getType().dyn_cast<ShapedType>();
-    if (!operandType)
-      return op->emitOpError("requires shaped type operands");
-    if (operandType.getElementType() != elementType)
+    if (getElementTypeOrSelf(operand) != elementType)
       return op->emitOpError(
           "requires the same element type for all operands and results");
   }
@@ -850,35 +948,42 @@ OpTrait::impl::verifySameOperandsAndResultElementType(Operation *op) {
 }
 
 LogicalResult OpTrait::impl::verifySameOperandsAndResultType(Operation *op) {
-  if (op->getNumOperands() == 0 || op->getNumResults() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)) ||
+      failed(verifyAtLeastNResults(op, 1)))
     return failure();
 
   auto type = op->getResult(0)->getType();
+  auto elementType = getElementTypeOrSelf(type);
   for (auto resultType : llvm::drop_begin(op->getResultTypes(), 1)) {
-    if (resultType != type)
+    if (getElementTypeOrSelf(resultType) != elementType ||
+        failed(verifyCompatibleShape(resultType, type)))
       return op->emitOpError()
              << "requires the same type for all operands and results";
   }
   for (auto opType : op->getOperandTypes()) {
-    if (opType != type)
+    if (getElementTypeOrSelf(opType) != elementType ||
+        failed(verifyCompatibleShape(opType, type)))
       return op->emitOpError()
              << "requires the same type for all operands and results";
   }
   return success();
 }
 
-static LogicalResult verifyBBArguments(Operation::operand_range operands,
-                                       Block *destBB, Operation *op) {
-  unsigned operandCount = std::distance(operands.begin(), operands.end());
+static LogicalResult verifySuccessor(Operation *op, unsigned succNo) {
+  Operation::operand_range operands = op->getSuccessorOperands(succNo);
+  unsigned operandCount = op->getNumSuccessorOperands(succNo);
+  Block *destBB = op->getSuccessor(succNo);
   if (operandCount != destBB->getNumArguments())
     return op->emitError() << "branch has " << operandCount
-                           << " operands, but target block has "
+                           << " operands for successor #" << succNo
+                           << ", but target block has "
                            << destBB->getNumArguments();
 
   auto operandIt = operands.begin();
   for (unsigned i = 0, e = operandCount; i != e; ++i, ++operandIt) {
     if ((*operandIt)->getType() != destBB->getArgument(i)->getType())
-      return op->emitError() << "type mismatch in bb argument #" << i;
+      return op->emitError() << "type mismatch for bb argument #" << i
+                             << " of successor #" << succNo;
   }
 
   return success();
@@ -892,7 +997,7 @@ static LogicalResult verifyTerminatorSuccessors(Operation *op) {
     auto *succ = op->getSuccessor(i);
     if (succ->getParent() != parent)
       return op->emitError("reference to block defined in another region");
-    if (failed(verifyBBArguments(op->getSuccessorOperands(i), succ, op)))
+    if (failed(verifySuccessor(op, i)))
       return failure();
   }
   return success();
@@ -936,6 +1041,47 @@ LogicalResult OpTrait::impl::verifyResultsAreIntegerLike(Operation *op) {
   return success();
 }
 
+static LogicalResult verifyValueSizeAttr(Operation *op, StringRef attrName,
+                                         bool isOperand) {
+  auto sizeAttr = op->getAttrOfType<DenseIntElementsAttr>(attrName);
+  if (!sizeAttr)
+    return op->emitOpError("requires 1D vector attribute '") << attrName << "'";
+
+  auto sizeAttrType = sizeAttr.getType().dyn_cast<VectorType>();
+  if (!sizeAttrType || sizeAttrType.getRank() != 1)
+    return op->emitOpError("requires 1D vector attribute '") << attrName << "'";
+
+  if (llvm::any_of(sizeAttr.getIntValues(), [](const APInt &element) {
+        return !element.isNonNegative();
+      }))
+    return op->emitOpError("'")
+           << attrName << "' attribute cannot have negative elements";
+
+  size_t totalCount = std::accumulate(
+      sizeAttr.begin(), sizeAttr.end(), 0,
+      [](unsigned all, APInt one) { return all + one.getZExtValue(); });
+
+  if (isOperand && totalCount != op->getNumOperands())
+    return op->emitOpError("operand count (")
+           << op->getNumOperands() << ") does not match with the total size ("
+           << totalCount << ") specified in attribute '" << attrName << "'";
+  else if (!isOperand && totalCount != op->getNumResults())
+    return op->emitOpError("result count (")
+           << op->getNumResults() << ") does not match with the total size ("
+           << totalCount << ") specified in attribute '" << attrName << "'";
+  return success();
+}
+
+LogicalResult OpTrait::impl::verifyOperandSizeAttr(Operation *op,
+                                                   StringRef attrName) {
+  return verifyValueSizeAttr(op, attrName, /*isOperand=*/true);
+}
+
+LogicalResult OpTrait::impl::verifyResultSizeAttr(Operation *op,
+                                                  StringRef attrName) {
+  return verifyValueSizeAttr(op, attrName, /*isOperand=*/false);
+}
+
 //===----------------------------------------------------------------------===//
 // BinaryOp implementation
 //===----------------------------------------------------------------------===//
@@ -950,33 +1096,34 @@ void impl::buildBinaryOp(Builder *builder, OperationState &result, Value *lhs,
   result.types.push_back(lhs->getType());
 }
 
-ParseResult impl::parseBinaryOp(OpAsmParser &parser, OperationState &result) {
+ParseResult impl::parseOneResultSameOperandTypeOp(OpAsmParser &parser,
+                                                  OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   Type type;
-  return failure(parser.parseOperandList(ops, 2) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+  return failure(parser.parseOperandList(ops) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.resolveOperands(ops, type, result.operands) ||
                  parser.addTypeToList(type, result.types));
 }
 
-void impl::printBinaryOp(Operation *op, OpAsmPrinter &p) {
-  assert(op->getNumOperands() == 2 && "binary op should have two operands");
-  assert(op->getNumResults() == 1 && "binary op should have one result");
+void impl::printOneResultOp(Operation *op, OpAsmPrinter &p) {
+  assert(op->getNumResults() == 1 && "op should have one result");
 
   // If not all the operand and result types are the same, just use the
   // generic assembly form to avoid omitting information in printing.
   auto resultType = op->getResult(0)->getType();
-  if (op->getOperand(0)->getType() != resultType ||
-      op->getOperand(1)->getType() != resultType) {
+  if (llvm::any_of(op->getOperandTypes(),
+                   [&](Type type) { return type != resultType; })) {
     p.printGenericOp(op);
     return;
   }
 
-  p << op->getName() << ' ' << *op->getOperand(0) << ", " << *op->getOperand(1);
+  p << op->getName() << ' ';
+  p.printOperands(op->getOperands());
   p.printOptionalAttrDict(op->getAttrs());
   // Now we can output only one type for all operands and the result.
-  p << " : " << op->getResult(0)->getType();
+  p << " : " << resultType;
 }
 
 //===----------------------------------------------------------------------===//
@@ -993,7 +1140,7 @@ ParseResult impl::parseCastOp(OpAsmParser &parser, OperationState &result) {
   OpAsmParser::OperandType srcInfo;
   Type srcType, dstType;
   return failure(parser.parseOperand(srcInfo) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(srcType) ||
                  parser.resolveOperand(srcInfo, srcType, result.operands) ||
                  parser.parseKeywordType("to", dstType) ||

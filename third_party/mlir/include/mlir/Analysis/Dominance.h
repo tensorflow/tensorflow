@@ -90,6 +90,12 @@ public:
   bool properlyDominates(Block *a, Block *b) {
     return super::properlyDominates(a, b);
   }
+
+  /// Return the dominance node from the Region containing block A.
+  DominanceInfoNode *getNode(Block *a);
+
+  /// Update the internal DFS numbers for the dominance nodes.
+  void updateDFSNumbers();
 };
 
 /// A class for computing basic postdominance information.

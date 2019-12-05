@@ -193,7 +193,7 @@ struct OphintCompositeOp {
     for (const auto& kv : inputs) {
       Value* op_input = nullptr;
       const AggregatedOperand& operand = kv.second;
-      // Dealiong with "stack" strategy:
+      // Dealing with "stack" strategy:
       // This breaks into two parts:
       // 1) If the ops only has one element, we only add a reshape op to expand
       // the dim.
@@ -216,17 +216,17 @@ struct OphintCompositeOp {
           Operation* first_use = current_identity_op->getNextNode();
           builder->setInsertionPoint(first_use);
           Location loc = first_use->getLoc();
-          auto shape_type = builder->getTensorType({input_type.getRank() + 1},
-                                                   builder->getIntegerType(32));
+          auto shape_type = RankedTensorType::get({input_type.getRank() + 1},
+                                                  builder->getIntegerType(32));
           SmallVector<Attribute, 4> result_shape_data(reshape_op_shape.size());
           for (int i = 0; i < reshape_op_shape.size(); ++i) {
             result_shape_data[i] = builder->getI32IntegerAttr(
                 static_cast<int32_t>(reshape_op_shape[i]));
           }
           auto shape_attr =
-              builder->getDenseElementsAttr(shape_type, result_shape_data);
+              DenseElementsAttr::get(shape_type, result_shape_data);
           auto shape = builder->create<ConstantOp>(loc, shape_type, shape_attr);
-          auto reshape_output_type = builder->getTensorType(
+          auto reshape_output_type = RankedTensorType::get(
               reshape_op_shape, input_type.getElementType());
           Operation* reshape = builder->create<TFL::ReshapeOp>(
               first_use->getLoc(), reshape_output_type, input, shape);
@@ -254,7 +254,7 @@ struct OphintCompositeOp {
             pack_shape.push_back(dim);
           }
           auto pack_input_type =
-              builder->getTensorType(pack_shape, type.getElementType());
+              RankedTensorType::get(pack_shape, type.getElementType());
           builder->setInsertionPoint(first_use);
           Operation* pack_op = builder->create<TFL::PackOp>(
               first_use->getLoc(), pack_input_type, pack_input_operands,
@@ -279,10 +279,10 @@ struct OphintCompositeOp {
   // be inserted in.
   Operation* GetFirstOutputOp() { return outputs.begin()->second.ops.at(0); }
 
-  // Since we have differnt aggregation strategies, e.g., "first", "last",
+  // Since we have different aggregation strategies, e.g., "first", "last",
   // "stack". We don't somehow aggregated to get the outputs for the funcOp.
   // This function is simply compute the RankedTensorType (shape & element type)
-  std::map<int, Type> GetAggregatedOuputTypes(OpBuilder* builder) {
+  std::map<int, Type> GetAggregatedOutputTypes(OpBuilder* builder) {
     std::map<int, Type> aggregated_output_types;
     for (const auto& kv : outputs) {
       const AggregatedOperand& operand = kv.second;
@@ -298,7 +298,7 @@ struct OphintCompositeOp {
           shape.push_back(dim);
         }
         aggregated_output_types[kv.first] =
-            builder->getTensorType(shape, first_output_type.getElementType());
+            RankedTensorType::get(shape, first_output_type.getElementType());
       } else if (operand.aggregation == kStrategyLast) {
         Value* last_output =
             operand.ops.at(operand.ops.size() - 1)->getOperand(0);
@@ -318,7 +318,7 @@ struct OphintCompositeOp {
     int output_index = 0;
     for (const auto& kv : outputs) {
       const AggregatedOperand& operand = kv.second;
-      // This handles the "stack" stratefy. It push a unpack_op before all the
+      // This handles the "stack" strategy. It push a unpack_op before all the
       // outputs and make all the outputs point to the unpack_op.
       if (operand.aggregation == kStrategyStack) {
         // TODO(renjieliu): Revisit here if we need to handle
@@ -384,14 +384,15 @@ struct OphintCompositeOp {
 };
 
 // Preprocess the graph for topo sort. (each operation is a node, while
-// inputs/outputs indictate edges) Assume the graph is acyclic. The preprocess
+// inputs/outputs indicate edges) Assume the graph is acyclic. The preprocess
 // does the following:
 //   Compute each operations's in-degress (how many input nodes they're taken)
-//   Get all consumer operations for every operations. (operation_to_ouputs)
+//   Get all consumer operations for every operations. (operation_to_outputs)
 //   Get the init_queue (those operations will be processed first).
 void PreprocessTopoSortGraph(
     Block* block, std::queue<Operation*>* init_queue,
-    llvm::DenseMap<Operation*, llvm::DenseSet<Operation*>>* operation_to_ouputs,
+    llvm::DenseMap<Operation*, llvm::DenseSet<Operation*>>*
+        operation_to_outputs,
     llvm::DenseMap<Operation*, int>* operation_to_in_degrees) {
   for (auto& op : *block) {
     if (&op == block->getTerminator()) continue;
@@ -412,9 +413,9 @@ void PreprocessTopoSortGraph(
       }
       operation_to_in_degrees->try_emplace(&op, input_ops.size());
       for (auto* input_op : input_ops) {
-        auto preceeding_op_it = operation_to_ouputs->find(input_op);
-        if (preceeding_op_it == operation_to_ouputs->end()) {
-          auto result = operation_to_ouputs->try_emplace(
+        auto preceeding_op_it = operation_to_outputs->find(input_op);
+        if (preceeding_op_it == operation_to_outputs->end()) {
+          auto result = operation_to_outputs->try_emplace(
               input_op, llvm::DenseSet<Operation*>());
           preceeding_op_it = result.first;
         }
@@ -442,19 +443,19 @@ bool IsSideEffectOp(Operation* op) {
 // Also assume the block has no arguments.
 LogicalResult TopoSortOperations(OpBuilder* builder) {
   std::queue<Operation*> init_queue;
-  llvm::DenseMap<Operation*, llvm::DenseSet<Operation*>> operation_to_ouputs;
+  llvm::DenseMap<Operation*, llvm::DenseSet<Operation*>> operation_to_outputs;
   llvm::DenseMap<Operation*, int> operation_to_in_degrees;
   std::vector<Operation*> sorted_ops;
 
   PreprocessTopoSortGraph(builder->getBlock(), &init_queue,
-                          &operation_to_ouputs, &operation_to_in_degrees);
+                          &operation_to_outputs, &operation_to_in_degrees);
   while (!init_queue.empty()) {
     Operation* current_op = init_queue.front();
     init_queue.pop();
     sorted_ops.push_back(current_op);
 
-    auto current_op_to_output_it = operation_to_ouputs.find(current_op);
-    if (current_op_to_output_it == operation_to_ouputs.end()) {
+    auto current_op_to_output_it = operation_to_outputs.find(current_op);
+    if (current_op_to_output_it == operation_to_outputs.end()) {
       continue;
     }
     for (Operation* output_op : current_op_to_output_it->second) {
@@ -467,12 +468,12 @@ LogicalResult TopoSortOperations(OpBuilder* builder) {
         operation_to_in_degrees.erase(output_op_it);
       }
     }
-    operation_to_ouputs.erase(current_op_to_output_it);
+    operation_to_outputs.erase(current_op_to_output_it);
   }
 
   // Before we performs the sort. We need to make sure we didn't mess the
   // ordering of original side-effect operations.
-  // It's possible those side-effect operations have no topogocial relations
+  // It's possible those side-effect operations have no topological relations
   // at all!
   std::vector<Operation*> original_side_effect_ops;
   std::vector<Operation*> after_sort_side_effect_ops;
@@ -629,11 +630,11 @@ LogicalResult ConvertOphintToStub(StringRef stub_name,
 
   // Step 4, get aggregated output types.
   const std::map<int, Type>& aggregated_output_types =
-      ophint_composite_op.GetAggregatedOuputTypes(builder);
+      ophint_composite_op.GetAggregatedOutputTypes(builder);
 
   // Step 5, create & place the fused op and rewire the inputs.
   // Here we use a funcOp to represent the fused op. This "funcOp" will be
-  // coonverted to other ops (like UnidirectionalSequenceRNNOp) in the
+  // converted to other ops (like UnidirectionalSequenceRNNOp) in the
   // legalization phase.
   Operation* inserted_before_op = ophint_composite_op.GetFirstOutputOp();
   Operation* fused_op = BuildFusedFuncOp(

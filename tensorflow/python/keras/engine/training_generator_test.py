@@ -416,7 +416,7 @@ class TestGeneratorMethodsWithSequences(keras_parameterized.TestCase):
   @data_utils.dont_use_multiprocessing_pool
   def test_training_with_sequences(self):
 
-    class DummySequence(keras.utils.Sequence):
+    class DummySequence(data_utils.Sequence):
 
       def __getitem__(self, idx):
         return np.zeros([10, 2]), np.ones([10, 4])
@@ -449,7 +449,7 @@ class TestGeneratorMethodsWithSequences(keras_parameterized.TestCase):
   def test_sequence_input_to_fit_eval_predict(self):
     val_data = np.ones([10, 10], np.float32), np.ones([10, 1], np.float32)
 
-    class CustomSequence(keras.utils.Sequence):
+    class CustomSequence(data_utils.Sequence):
 
       def __getitem__(self, idx):
         return np.ones([10, 10], np.float32), np.ones([10, 1], np.float32)
@@ -457,7 +457,7 @@ class TestGeneratorMethodsWithSequences(keras_parameterized.TestCase):
       def __len__(self):
         return 2
 
-    class CustomSequenceChangingBatchSize(keras.utils.Sequence):
+    class CustomSequenceChangingBatchSize(data_utils.Sequence):
 
       def __getitem__(self, idx):
         batch_size = 10 - idx

@@ -38,6 +38,7 @@ from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import nest
 
 
 UNSPECIFIED = object()
@@ -150,11 +151,20 @@ def super_in_original_context(f, args, caller_fn_scope):
 def abs_(x):
   if tensor_util.is_tensor(x):
     return _tf_abs(x)
+  if isinstance(x, dataset_ops.DatasetV2):
+    return _tf_dataset_abs(x)
   return _py_abs(x)
 
 
 def _tf_abs(x):
   return math_ops.abs(x)
+
+
+def _tf_dataset_abs(x):
+  specs = nest.flatten(x.element_spec)
+  if len(specs) == 1:
+    return x.map(math_ops.abs)
+  return x.map(lambda *e: nest.map_structure(math_ops.abs, e))
 
 
 def _py_abs(x):
@@ -370,7 +380,77 @@ def _py_map(fn, *iterables):
   return map(fn, *iterables)
 
 
-SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate, zip, map)
+def filter_(function, iterable):
+  if isinstance(iterable, dataset_ops.DatasetV2):
+    return _tf_dataset_filter(function, iterable)
+  return _py_filter(function, iterable)
+
+
+def _tf_dataset_filter(function, iterable):
+  return iterable.filter(function)
+
+
+def _py_filter(function, iterable):
+  return filter(function, iterable)
+
+
+def any_(iterable):
+  if isinstance(iterable, dataset_ops.DatasetV2):
+    return _tf_dataset_any(iterable)
+  return _py_any(iterable)
+
+
+# any() operation is essentially a "if first True element exist".
+# For that it could be translated to `filter(True)` to filter out
+# only `True` element, and then `take(1)`. This works in tf.data
+# as tf.data's filter+take is done in pipeline so it will stop
+# as soon as `take(1)` returns.
+def _tf_dataset_any(iterable):
+  # check and make sure iterable.element_spec only consists of one
+  # element of tf.bool.
+  specs = nest.flatten(iterable.element_spec)
+  if len(specs) != 1 or specs[0].dtype != dtypes.bool:
+    raise ValueError('in graph mode, the "any" builtin only supports datasets '
+                     'that return bool scalars; got: {}'.format(
+                         iterable.element_spec))
+  ds = iterable.filter(lambda x: x)
+  ds = ds.take(1)
+  ds = ds.reduce(constant_op.constant(False, dtype=dtypes.bool), lambda _, y: y)
+  return ds
+
+
+def _py_any(iterable):
+  return any(iterable)
+
+
+def all_(iterable):
+  if isinstance(iterable, dataset_ops.DatasetV2):
+    return _tf_dataset_all(iterable)
+  return _py_all(iterable)
+
+
+# all() operation is similiar to any() and could be translated
+# to `filter(False)` then `take(1)`, and check if `False` exists.
+def _tf_dataset_all(iterable):
+  # check and make sure iterable.element_spec only consists of one
+  # element of tf.bool.
+  specs = nest.flatten(iterable.element_spec)
+  if len(specs) != 1 or specs[0].dtype != dtypes.bool:
+    raise ValueError('in graph mode, the "all" builtin only supports datasets '
+                     'that return bool scalars; got: {}'.format(
+                         iterable.element_spec))
+  ds = iterable.filter(lambda x: math_ops.logical_not(x))
+  ds = ds.take(1)
+  ds = ds.reduce(constant_op.constant(True, dtype=dtypes.bool), lambda _, y: y)
+  return ds
+
+
+def _py_all(iterable):
+  return all(iterable)
+
+
+SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate, zip, map,
+                      filter, any, all)
 
 if six.PY2:
   SUPPORTED_BUILTINS += (xrange,)
@@ -387,4 +467,7 @@ BUILTIN_FUINCTIONS_MAP = {
     'enumerate': enumerate_,
     'zip': zip_,
     'map': map_,
+    'filter': filter_,
+    'any': any_,
+    'all': all_,
 }

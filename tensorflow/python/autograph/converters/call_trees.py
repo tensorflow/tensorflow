@@ -28,7 +28,6 @@ import gast
 
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.pyct import anno
-from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.utils import ag_logging
@@ -46,6 +45,47 @@ class _Function(object):
 
 
 set_trace_warned = False
+
+
+class _ArgTemplateBuilder(object):
+  """Constructs a tuple representing the positional arguments in a call.
+
+  Example (yes, it's legal Python 3):
+
+      f(*args1, b, *args2, c, d)  ->  args1 + (b,) + args2 + (c, d)
+  """
+
+  def __init__(self):
+    self._arg_accumulator = []
+    self._argspec = []
+    self._finalized = False
+
+  def _consume_args(self):
+    if self._arg_accumulator:
+      self._argspec.append(
+          gast.Tuple(elts=self._arg_accumulator, ctx=gast.Load()))
+      self._arg_accumulator = []
+
+  def add_arg(self, a):
+    self._arg_accumulator.append(a)
+
+  def add_stararg(self, a):
+    self._consume_args()
+    self._argspec.append(
+        gast.Call(gast.Name('tuple', gast.Load(), None), [a], ()))
+
+  def finalize(self):
+    self._consume_args()
+    self._finalized = True
+
+  def to_ast(self):
+    assert self._finalized
+    if self._argspec:
+      result = self._argspec[0]
+      for i in range(1, len(self._argspec)):
+        result = gast.BinOp(result, gast.Add(), self._argspec[i])
+      return result
+    return gast.Tuple([], gast.Load())
 
 
 class CallTreeTransformer(converter.Base):
@@ -81,11 +121,12 @@ class CallTreeTransformer(converter.Base):
       # already set to be applied.
       node.decorator_list = []
     else:
+      # TODO(mdan): Fix the tests so that we can always add this decorator.
       # Inner functions are converted already, so we insert a decorator to
       # prevent double conversion. Double conversion would work too, but this
       # saves the overhead.
       node.decorator_list.append(
-          parser.parse_expression('ag__.do_not_convert_internal'))
+          parser.parse_expression('ag__.autograph_artifact'))
 
     if node.returns:
       node.returns = self.visit(node.returns)
@@ -97,6 +138,32 @@ class CallTreeTransformer(converter.Base):
     # Context manager calls (in node.items) are not converted.
     node.body = self.visit_block(node.body)
     return node
+
+  def _args_to_tuple(self, node):
+    """Ties together all positional and *arg arguments in a single tuple."""
+    # TODO(mdan): We could rewrite this to just a call to tuple(). Maybe better?
+    # For example for
+    #   f(a, b, *args)
+    # instead of writing:
+    #   (a, b) + args
+    # just write this?
+    #   tuple(a, b, *args)
+    builder = _ArgTemplateBuilder()
+    for a in node.args:
+      if isinstance(a, gast.Starred):
+        builder.add_stararg(a.value)
+      else:
+        builder.add_arg(a)
+    builder.finalize()
+    return builder.to_ast()
+
+  def _kwargs_to_dict(self, node):
+    """Ties together all keyword and **kwarg arguments in a single dict."""
+    if node.keywords:
+      return gast.Call(
+          gast.Name('dict', gast.Load(), None), args=(), keywords=node.keywords)
+    else:
+      return parser.parse_expression('None')
 
   def visit_Call(self, node):
     full_name = str(anno.getanno(node.func, anno.Basic.QN, default=''))
@@ -136,52 +203,14 @@ class CallTreeTransformer(converter.Base):
         not self.ctx.program.options.uses(converter.Feature.BUILTIN_FUNCTIONS)):
       return node
 
-    func = node.func
-
-    starred_arg = None
-    normal_args = []
-    for a in node.args:
-      if isinstance(a, gast.Starred):
-        assert starred_arg is None, 'Multiple *args should be impossible.'
-        starred_arg = a
-      else:
-        normal_args.append(a)
-    if starred_arg is None:
-      args = templates.replace_as_expression('(args,)', args=normal_args)
-    else:
-      args = templates.replace_as_expression(
-          '(args,) + tuple(stararg)',
-          stararg=starred_arg.value,
-          args=normal_args)
-
-    kwargs_arg = None
-    normal_keywords = []
-    for k in node.keywords:
-      if k.arg is None:
-        assert kwargs_arg is None, 'Multiple **kwargs should be impossible.'
-        kwargs_arg = k
-      else:
-        normal_keywords.append(k)
-    if kwargs_arg is None:
-      if not normal_keywords:
-        kwargs = parser.parse_expression('None')
-      else:
-        kwargs = ast_util.keywords_to_dict(normal_keywords)
-    else:
-      kwargs = templates.replace_as_expression(
-          'dict(kwargs, **keywords)',
-          kwargs=kwargs_arg.value,
-          keywords=ast_util.keywords_to_dict(normal_keywords))
-
     template = """
-      ag__.converted_call(func, options, args, kwargs, function_ctx)
+      ag__.converted_call(func, args, kwargs, function_ctx)
     """
     new_call = templates.replace_as_expression(
         template,
-        func=func,
-        options=parser.parse_expression(function_context_name + '.callopts'),
-        args=args,
-        kwargs=kwargs,
+        func=node.func,
+        args=self._args_to_tuple(node),
+        kwargs=self._kwargs_to_dict(node),
         function_ctx=function_context_name)
 
     return new_call

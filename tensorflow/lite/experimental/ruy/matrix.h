@@ -106,10 +106,11 @@ class ConstCheckingPtr final {
 // signed or unsigned.
 template <typename Scalar>
 struct Matrix final {
-  void operator=(const Matrix& other) {
+  Matrix& operator=(const Matrix& other) {
     data = other.data;
     layout = other.layout;
     zero_point = other.zero_point;
+    return *this;
   }
 
   // The underlying buffer wrapped by this matrix.
@@ -160,6 +161,16 @@ struct FixedKernelLayout {
   static constexpr int kRows = tRows;
   static constexpr int kCols = tCols;
 };
+
+#if (__cplusplus < 201703L)
+// A static constexpr data member is automatically inline and should not require
+// redeclaration without an initializer. This is actually deprecated from C++17
+// onwards. Clang with -O0 without this can fail to link.
+template <Order tOrder, int tRows, int tCols>
+constexpr int FixedKernelLayout<tOrder, tRows, tCols>::kCols;
+template <Order tOrder, int tRows, int tCols>
+constexpr int FixedKernelLayout<tOrder, tRows, tCols>::kRows;
+#endif
 
 }  // namespace ruy
 

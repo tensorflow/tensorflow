@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -28,7 +27,7 @@ class GpuConvolutionRegressionTest : public HloTestBase {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsFromFlags());
     (void)backend().compiler()->RunHloPasses(
-        ParseAndReturnUnverifiedModule(hlo_string, config).ConsumeValueOrDie(),
+        ParseAndReturnVerifiedModule(hlo_string, config).ConsumeValueOrDie(),
         backend().default_stream_executor(), backend().memory_allocator());
   }
 };

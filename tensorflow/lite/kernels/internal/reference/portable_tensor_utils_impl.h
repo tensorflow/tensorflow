@@ -20,6 +20,7 @@ limitations under the License.
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
@@ -33,9 +34,19 @@ float PortableClip(float f, float abs_limit);
 
 bool PortableIsZeroVector(const float* vector, int v_size);
 
+bool PortableIsZeroVector(const int8_t* vector, int v_size);
+
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float* min_value,
                                      float* max_value, float* scaling_factor);
+
+void PortableSymmetricQuantizeFloats(const float* values, const int size,
+                                     int8_t* quantized_values, float min_value,
+                                     float max_value, float* scaling_factor);
+
+void PortableAsymmetricQuantizeFloats(const float* values, const int size,
+                                      int8_t* quantized_values,
+                                      float* scaling_factor, int32_t* offset);
 
 // Multiply a matrix by a batch vector, and store results in a batch-size
 // vector.
@@ -49,6 +60,12 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride);
+
+void PortableMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride,
+    const float* per_channel_scale, const int32_t* input_offset);
 
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
@@ -76,31 +93,31 @@ void PortableVectorVectorCwiseProductAccumulate(const float* vector1,
 float PortableVectorVectorDotProduct(const float* vector1, const float* vector2,
                                      int v_size);
 
-// Cwise product of a vector and a batch-vector.
-void PortableVectorBatchVectorCwiseProduct(const float* vector, int v_size,
-                                           const float* batch_vector,
-                                           int n_batch, float* result);
+void PortableBatchVectorBatchVectorDotProduct(const int16_t* vector1,
+                                              const int16_t* vector2,
+                                              int v_size, int n_batch,
+                                              int32_t* result,
+                                              int result_stride);
 
-// Cwise product and accumulate of a vector and a batch-vector. Since it's a MAC
-// operation, the assumption here is that result array is initialized to valid
-// values.
-void PortableVectorBatchVectorCwiseProductAccumulate(const float* vector,
-                                                     int v_size,
-                                                     const float* batch_vector,
-                                                     int n_batch,
-                                                     float* result);
+void PortableVectorBatchVectorCwiseProductAccumulate(
+    const int16_t* vector, int v_size, const int16_t* batch_vector, int n_batch,
+    int32_t multiplier, int shift, int16_t* result);
 
 void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int16_t* output);
+    int32_t* scratch, int16_t* output, CpuBackendContext* context);
 
 void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int8_t* output);
+    int32_t* scratch, int8_t* output, CpuBackendContext* context);
+
+void PortableMatrixScalarMultiplyAccumulate(const int8_t* matrix,
+                                            int32_t scalar, int32_t n_row,
+                                            int32_t n_col, int32_t* output);
 
 void PortableApplyLayerNorm(const int16_t* input,
                             const int16_t* layer_norm_weights,
@@ -111,14 +128,8 @@ void PortableApplyLayerNorm(const int16_t* input,
 void PortableApplySigmoid(const int16_t* input, int32_t n_batch,
                           int32_t n_input, int16_t* output);
 
-void PortableApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output);
-
-void PortableApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output);
-
-void PortableApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output);
+void PortableApplyTanh(int32_t integer_bits, const int16_t* input,
+                       int32_t n_batch, int32_t n_input, int16_t* output);
 
 void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
                       int n_batch, int n_input, int shift, int16_t* output);
@@ -143,15 +154,6 @@ void PortableVectorBatchVectorAssign(const float* vector, int v_size,
 // Add another vector for each batch in the batch vector.
 void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
                                   float* batch_vector);
-
-// Apply sigmoid to elements of a vector.
-void PortableApplySigmoidToVector(const float* vector, int v_size,
-                                  float* result);
-
-// Apply activation function to elements of a vector.
-void PortableApplyActivationToVector(const float* vector, int v_size,
-                                     TfLiteFusedActivation activation,
-                                     float* result);
 
 // Compute "1.0f - elements of vector" (used in CIFG).
 void PortableSub1Vector(const float* vector, int v_size, float* result);
@@ -178,11 +180,14 @@ void PortableVectorShiftLeft(float* vector, int v_size, float shift_value);
 void PortableReductionSumVector(const float* input_vector, float* output_vector,
                                 int output_size, int reduction_size);
 
+void PortableReductionSumVector(const int32_t* input_vector,
+                                int32_t* output_vector, int output_size,
+                                int reduction_size);
+
 // Layer norm for each batch.
-// normalization_epsilon is added to avoid divergence.
 void PortableMeanStddevNormalization(const float* input_vector,
                                      float* output_vector, int v_size,
-                                     int n_batch, float normalization_epsilon);
+                                     int n_batch);
 
 }  // namespace tensor_utils
 }  // namespace tflite

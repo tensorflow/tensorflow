@@ -341,7 +341,8 @@ void BaseCollectiveExecutor::WaitForDependencies(
   VLOG(1) << "Unblocking collective " << col_params.ToString();
 }
 
-void BaseCollectiveExecutor::Launched(const CollectiveParams& col_params) {
+void BaseCollectiveExecutor::UnblockDependencies(
+    const CollectiveParams& col_params) {
   mutex_lock l(launch_mu_);
   if (launched_.find(col_params.instance.instance_key) == launched_.end()) {
     const string& task_name =

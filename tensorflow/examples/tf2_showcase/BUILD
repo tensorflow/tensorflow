@@ -26,7 +26,7 @@ py_test(
     ],
     deps = [
         "//tensorflow:tensorflow_py",
-        "//third_party/py/absl:app",
-        "//third_party/py/absl/flags",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )

@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 
+#include <limits>
+#include <map>
+#include <string>
+#include <vector>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
@@ -33,6 +38,8 @@ class MatrixTest : public ClientLibraryTestBase {
  protected:
   template <typename T>
   void TestMatrixDiagonal();
+  template <typename T>
+  void TestMatrixDiagonal4D();
   template <typename T>
   void TestSetMatrixDiagonal();
 
@@ -116,6 +123,43 @@ XLA_TEST_F(MatrixTest, GetMatrixDiagonal_S64) { TestMatrixDiagonal<int64>(); }
 
 XLA_TEST_F(MatrixTest, GetMatrixDiagonal_F32) { TestMatrixDiagonal<float>(); }
 
+template <typename T>
+void MatrixTest::TestMatrixDiagonal4D() {
+  XlaBuilder builder("GetMatrixDiagonal");
+  Array4D<T> input(2, 2, 4, 3);
+  input.FillIota(0);
+  std::map<int, Array3D<T>> k_and_expected = {
+      {0, {{{0, 4, 8}, {12, 16, 20}}, {{24, 28, 32}, {36, 40, 44}}}},
+      {1, {{{1, 5}, {13, 17}}, {{25, 29}, {37, 41}}}},
+      {2, {{{2}, {14}}, {{26}, {38}}}},
+      {3, {{{}, {}}, {{}, {}}}},
+      {4, {{{}, {}}, {{}, {}}}},
+      {-1, {{{3, 7, 11}, {15, 19, 23}}, {{27, 31, 35}, {39, 43, 47}}}},
+      {-2, {{{6, 10}, {18, 22}}, {{30, 34}, {42, 46}}}},
+      {-3, {{{9}, {21}}, {{33}, {45}}}},
+      {-4, {{{}, {}}, {{}, {}}}},
+  };
+  for (const auto& kv : k_and_expected) {
+    XlaOp a;
+    auto a_data = CreateR4Parameter<T>(input, 0, "a", &builder, &a);
+    GetMatrixDiagonal(a, kv.first);
+
+    ComputeAndCompareR3<T>(&builder, kv.second, {a_data.get()});
+  }
+}
+
+XLA_TEST_F(MatrixTest, GetMatrixDiagonal4D_S32) {
+  TestMatrixDiagonal4D<int32>();
+}
+
+XLA_TEST_F(MatrixTest, GetMatrixDiagonal4D_S64) {
+  TestMatrixDiagonal4D<int64>();
+}
+
+XLA_TEST_F(MatrixTest, GetMatrixDiagonal4D_F32) {
+  TestMatrixDiagonal4D<float>();
+}
+
 Array3D<float> BatchedAValsFull() {
   return {{
               {2, 0, 1, 2},
@@ -133,7 +177,6 @@ Array3D<float> BatchedAValsFull() {
 
 XLA_TEST_F(MatrixTest, RowBatchDot) {
   XlaBuilder builder(TestName());
-
   int n = 4;
 
   XlaOp a, row, index;
@@ -177,9 +220,9 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
   auto to_vec = [](absl::string_view s) {
     std::vector<int64> v;
     v.reserve(s.size());
-    int ellipsis_dim = 0;
+    int e = -3;
     for (auto c : s) {
-      v.push_back(c == '.' ? ellipsis_dim++ : int64{c});
+      v.push_back(c == '.' ? e++ : int64{c});
     }
     return v;
   };
@@ -190,9 +233,12 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
   };
 
   std::vector<std::vector<string>> good_test_cases = {
-      {"ab", "bc", "ac"},          {"Bab", "Bbc", "Bac"},
-      {"ab", "cd", "dcba"},        {"abc", "abd", "cbd"},
-      {"...ab", "...bc", "...ac"}, {"a...bc", "...abd", "cbd..."},
+      {"ab", "bc", "ac"},           {"Bab", "Bbc", "Bac"},
+      {"ab", "cd", "dcba"},         {"abc", "abd", "cbd"},
+      {"...ab", "...bc", "...ac"},  {"a...bc", "...abd", "cbd..."},
+      {"...ab", "...bc", "ac"},     {"...b", "...bc", "...c"},
+      {"...abz", "...bc", "...ac"}, {"...ab", "...bcz", "...ac"},
+      {"abz", "bc", "ac"},          {"ab", "bcz", "ac"},
   };
   for (auto test_case : good_test_cases) {
     auto parse_result_or_status =
@@ -209,13 +255,7 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
   }
 
   std::vector<string> einsum_strings_that_fail_parsing = {
-      "",
-      "a",
-      "ab->ba",
-      "ab,bc,cd->ad",
-      "a...b...,bc->a...c",
-      "...ab,...bc->ac",
-      "...b,...bc->...c",
+      "", "a", "ab->ba", "ab,bc,cd->ad", "a...b...,bc->a...c",
   };
   for (auto test_case : einsum_strings_that_fail_parsing) {
     auto parse_result_or_status = ParseEinsumString(test_case, 3, 3);
@@ -224,12 +264,9 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
   std::vector<std::vector<string>> einsum_strings_that_fail_numeric_validation =
       {
           {"a", "b", "c"},
-          {"ab", "bc", "acd"},
-          {"abz", "bc", "ac"},
-          {"ab", "bcz", "ac"},
           {"...a", "...b", "...c"},
-          {"...abz", "...bc", "...ac"},
-          {"...ab", "...bcz", "...ac"},
+          {"abb", "bcc", "ac"},
+          {"ab", "bc", "ad"},
       };
 
   for (auto test_case : einsum_strings_that_fail_numeric_validation) {
@@ -242,6 +279,14 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
                      parse_result[0], parse_result[1], parse_result[2])
                      .ok());
   }
+}
+
+XLA_TEST_F(MatrixTest, NormalizeEinsumString) {
+  EXPECT_EQ(NormalizeEinsumString("a,b->ab"), "");
+  EXPECT_EQ(NormalizeEinsumString("ba"), "ba->ab");
+  EXPECT_EQ(NormalizeEinsumString("ab,dc"), "ab,dc->abcd");
+  EXPECT_EQ(NormalizeEinsumString("a,b"), "a,b->ab");
+  EXPECT_EQ(NormalizeEinsumString("...ba,ca..."), "...ba,ca...->...bc");
 }
 
 }  // namespace

@@ -30,10 +30,6 @@ tf_upgrade_v2 --intree coolcode --outtree coolcode-upgraded --copyotherfiles Fal
 *Note: `tf_upgrade_v2` is installed automatically as a script by the pip install
  after TensorFlow 1.12.
 
-You may want to retain revision history, especially when preparing a CL:
-```
-g4 integrate --retroactive coolcode/... coolcode-upgraded/...
-```
 
 ## Report
 

@@ -15,6 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EXECUTE_NODE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EXECUTE_NODE_H_
 
+// clang-format off
+// Required for IS_MOBILE_PLATFORM
+#include <cstddef>
+#include <memory>
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
+
+#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -28,52 +36,91 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
+#include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
+#endif  // IS_MOBILE_PLATFORM
 
 namespace tensorflow {
 
+class ExecuteNodeArgs : public EagerKernelArgs {
+ public:
+  explicit ExecuteNodeArgs(int count) : EagerKernelArgs(count) {}
+  ~ExecuteNodeArgs() override;
+
+  Status Init(EagerContext* ctx,
+              const gtl::InlinedVector<TensorHandle*, 4>& op_inputs);
+
+  bool HasRemoteInputs() const override { return has_remote_inputs_; };
+
+#if !defined(IS_MOBILE_PLATFORM)
+  Status GetRemoteArg(const int index,
+                      eager::RemoteTensorHandle* val) const override {
+    return serialize_remote_handle_(index, val);
+  }
+#endif  // IS_MOBILE_PLATFORM
+
+ private:
+  bool has_remote_inputs_ = false;
+  TensorReferenceVector protected_tensors_;
+#if !defined(IS_MOBILE_PLATFORM)
+  std::function<Status(const int, eager::RemoteTensorHandle*)>
+      serialize_remote_handle_;
+#endif  // IS_MOBILE_PLATFORM
+};
+
 class ExecuteNode : public EagerNode {
  public:
-  ExecuteNode(EagerContext* ctx,
-              const gtl::InlinedVector<TensorHandle*, 4>& inputs,
-              core::RefCountPtr<KernelAndDevice> kernel,
-              GraphCollector* graph_collector,
-              const DataTypeVector& output_dtypes,
-              CancellationManager* cancellation_manager,
-              absl::Span<TensorHandle*> retvals)
+  ExecuteNode(
+      EagerContext* ctx, const gtl::InlinedVector<TensorHandle*, 4>& inputs,
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      core::RefCountPtr<KernelAndDevice> kernel,
+      GraphCollector* graph_collector, const DataTypeVector& output_dtypes,
+      CancellationManager* cancellation_manager, bool async,
+      absl::Span<TensorHandle*> retvals)
       : EagerNode(),
         ctx_(ctx),
         inputs_(inputs),
+        remote_func_params_(remote_func_params),
         kernel_(std::move(kernel)),
         graph_collector_(graph_collector),
-        cancellation_manager_(cancellation_manager) {
+        cancellation_manager_(cancellation_manager),
+        async_(async) {
     // Copy the output handles, since the container for them might get
     // destroyed.
     for (auto handle : retvals) {
-      handle->Ref();
       retvals_.push_back(handle);
     }
 
-    // This is required to ensure that the tensor handles stay alive across the
-    // execution.
-    for (auto handle : inputs_) {
-      handle->Ref();
+    if (async_) {
+      // This is required to ensure that the tensor handles stay alive across
+      // the execution.
+      for (auto handle : inputs_) {
+        handle->Ref();
+      }
+
+      for (auto handle : retvals_) {
+        handle->Ref();
+      }
     }
   }
 
   ~ExecuteNode() override {
-    for (auto handle : retvals_) {
-      handle->Unref();
-    }
+    if (async_) {
+      for (auto handle : retvals_) {
+        handle->Unref();
+      }
 
-    for (auto handle : inputs_) {
-      handle->Unref();
+      for (auto handle : inputs_) {
+        handle->Unref();
+      }
     }
   }
 
   Status Run() override {
-    const Status status =
-        EagerKernelExecute(ctx_, inputs_, kernel_, graph_collector_,
-                           cancellation_manager_, absl::MakeSpan(retvals_));
+    const Status status = EagerKernelExecute(
+        ctx_, inputs_, remote_func_params_, kernel_, graph_collector_,
+        cancellation_manager_, absl::MakeSpan(retvals_));
     if (!status.ok()) {
       Abort(status);
       return status;
@@ -98,9 +145,11 @@ class ExecuteNode : public EagerNode {
  private:
   EagerContext* ctx_;
   gtl::InlinedVector<TensorHandle*, 4> inputs_;
+  const absl::optional<EagerRemoteFunctionParams> remote_func_params_;
   core::RefCountPtr<KernelAndDevice> kernel_;
   GraphCollector* graph_collector_;
   CancellationManager* const cancellation_manager_;
+  const bool async_;
   gtl::InlinedVector<TensorHandle*, 2> retvals_;
 };
 

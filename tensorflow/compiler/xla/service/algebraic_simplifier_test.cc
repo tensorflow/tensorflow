@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
+#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -634,6 +635,44 @@ TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR1Operand) {
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
+}
+
+TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroWithDynamicSlice) {
+  auto m = CreateNewVerifiedModule();
+  Shape full_shape = ShapeUtil::MakeShape(F32, {1800, 12, 512});
+
+  Shape partial_shape = ShapeUtil::MakeShape(F32, {1, 12, 512});
+
+  HloComputation::Builder builder(TestName());
+  HloInstruction* full_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, full_shape, "param0"));
+  HloInstruction* partial_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, partial_shape, "param1"));
+
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
+  HloInstruction* index = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+
+  HloInstruction* bcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(full_shape, zero, {}));
+
+  HloInstruction* dynamic_update_slice =
+      builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+          full_shape, bcast, partial_param, {index, index, index}));
+
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      full_shape, HloOpcode::kAdd, full_param, dynamic_update_slice));
+
+  auto computation = m->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_THAT(root->opcode(), HloOpcode::kDynamicUpdateSlice);
+  EXPECT_THAT(root->operand(0), full_param);
+  EXPECT_THAT(root->operand(1), GmockMatch(m::Add(m::DynamicSlice(), m::Op())));
 }
 
 TEST_F(AlgebraicSimplifierTest, ConstantToBroadcast) {
@@ -3641,9 +3680,6 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
       }
     }
 
-    auto out_dims = in_dims;
-    out_dims[in_channel_idx] = options.f_output_channels;
-
     auto make_shape = [](absl::Span<const int64> dims,
                          bool minor_to_major_layout) {
       if (minor_to_major_layout) {
@@ -3654,20 +3690,26 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     };
     auto in_shape = make_shape(in_dims, options.input_minor_to_major_layout);
     auto f_shape = make_shape(f_dims, options.filter_minor_to_major_layout);
-    auto out_shape = make_shape(out_dims, options.output_minor_to_major_layout);
 
     HloInstruction* input =
         b.AddInstruction(HloInstruction::CreateParameter(0, in_shape, "input"));
     HloInstruction* filter =
         b.AddInstruction(HloInstruction::CreateParameter(1, f_shape, "filter"));
+    Shape out_shape = ShapeInference::InferConvolveShape(
+                          in_shape, f_shape, /*feature_group_count=*/1,
+                          /*batch_group_count=*/1, window, dnums)
+                          .ValueOrDie();
+    if (options.output_minor_to_major_layout) {
+      out_shape = ShapeUtil::MakeShapeWithLayout(F32, out_shape.dimensions(),
+                                                 {0, 1, 2, 3});
+    }
 
     b.AddInstruction(HloInstruction::CreateConvolve(
         out_shape, input, filter,
         /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
         DefaultPrecisionConfig(2)));
 
-    // TODO(b/80488902): verify this module.
-    auto module = CreateNewUnverifiedModule();
+    auto module = CreateNewVerifiedModule();
     auto* computation = module->AddEntryComputation(b.Build());
 
     AlgebraicSimplifierOptions simplifier_options;
@@ -3841,8 +3883,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToTransposeReshape) {
 
 // Test that ReduceWindow(Pad(op, x), y) can simplify to ReduceWindow(op, x).
 TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
-  // TODO(b/80488902): verify this module.
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
 
   // Create operand to the pad.
@@ -3883,9 +3924,10 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
     dim->set_padding_high(100);
     dim->set_window_dilation(1);
     dim->set_base_dilation(1);
+    dim->set_stride(1);
   }
   const Shape reduce_window_shape =
-      ShapeUtil::MakeShape(F32, {111, 113, 113, 115});
+      ShapeUtil::MakeShape(F32, {111, 113, 113, 116});
   HloInstruction* reduce_init_value = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
   HloInstruction* reduce_window =
@@ -3923,8 +3965,7 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
 // Test that ReduceWindow(Convert(Pad(op, x)), y) can simplify to
 // ReduceWindow(Convert(op), x).
 TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
-  // TODO(b/80488902): verify this module.
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
 
   // Create operand to the pad.
@@ -3969,9 +4010,10 @@ TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
     dim->set_padding_high(100);
     dim->set_window_dilation(1);
     dim->set_base_dilation(1);
+    dim->set_stride(1);
   }
   const Shape reduce_window_shape =
-      ShapeUtil::MakeShape(F32, {111, 113, 113, 115});
+      ShapeUtil::MakeShape(F32, {111, 113, 113, 116});
   HloInstruction* reduce_init_value = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
   HloInstruction* reduce_window =
@@ -4664,12 +4706,11 @@ TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
   EXPECT_EQ(has_no_dot, dot_should_be_transformed);
 }
 
-INSTANTIATE_TEST_SUITE_P(BatchDotStrengthReductionTestInstantiation,
-                         BatchDotStrengthReductionTest,
-                         ::testing::Combine(::testing::Values(-1, 1, 2),
-                                            ::testing::Values(-1, 1, 2),
-                                            ::testing::Values(-1, 1, 2),
-                                            ::testing::Values(F32, BF16)));
+INSTANTIATE_TEST_SUITE_P(
+    BatchDotStrengthReductionTestInstantiation, BatchDotStrengthReductionTest,
+    ::testing::Combine(::testing::Values(-1, 1, 2), ::testing::Values(-1, 1, 2),
+                       ::testing::Values(-1, 1, 2),
+                       ::testing::Values(C128, C64, F64, F32, BF16)));
 
 class DotStrengthReductionTest
     : public AlgebraicSimplifierTest,
@@ -4733,7 +4774,8 @@ INSTANTIATE_TEST_SUITE_P(
     DotStrengthReductionTestInstantiation, DotStrengthReductionTest,
     ::testing::Combine(::testing::Values(1, 2), ::testing::Values(1, 2),
                        ::testing::Values(1, 2), ::testing::Bool(),
-                       ::testing::Bool(), ::testing::Values(F32, BF16)));
+                       ::testing::Bool(),
+                       ::testing::Values(C128, C64, F64, F32, BF16)));
 
 struct DotOfConcatTestSpec {
   int64 m;

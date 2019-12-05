@@ -1029,6 +1029,16 @@ TEST_F(ShapeInferenceTest, InferSliceShapeRank2) {
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {32, 64}), inferred));
 }
 
+TEST_F(ShapeInferenceTest, InferSliceWithDynamicDimensions) {
+  Shape matrix_shape = ShapeUtil::MakeShape(F32, {128, 64}, {true, true});
+  auto inferred_status =
+      ShapeInference::InferSliceShape(matrix_shape, {32, 0}, {33, 64}, {1, 1});
+  ASSERT_IS_OK(inferred_status.status());
+  Shape inferred = inferred_status.ValueOrDie();
+  ASSERT_TRUE(ShapeUtil::Equal(
+      ShapeUtil::MakeShape(F32, {1, 64}, {false, true}), inferred));
+}
+
 TEST_F(ShapeInferenceTest, InferSliceShapeRank2WithStrides) {
   Shape matrix_shape = ShapeUtil::MakeShape(F32, {128, 64});
   auto inferred_status =
@@ -1115,6 +1125,52 @@ TEST_F(ShapeInferenceTest, InferCompareShape) {
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(PRED, {10}),
                                inferred_status.ValueOrDie()));
+}
+
+TEST_F(ShapeInferenceTest, InferReshapeDegenerateCombine) {
+  // [1, <=1]
+  //   | reshape
+  // [<=1]
+  //
+  // Both output dimension can be dynamic, use inferred_dimension to tie-break.
+  auto operand = ShapeUtil::MakeShape(F32, {1, 1}, {false, true});
+  auto status = ShapeInference::InferReshapeShape(operand, {1, 0}, {1},
+                                                  /*inferred_dimension=*/-1);
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {1}, {true}), status.ValueOrDie());
+}
+
+TEST_F(ShapeInferenceTest, InferReshapeSplit) {
+  // [<=10]
+  //   | reshape
+  // [1, 10]
+  //
+  // Both output dimension can be dynamic, use inferred_dimension to tie-break.
+  auto operand = ShapeUtil::MakeShape(F32, {10}, {true});
+  auto status = ShapeInference::InferReshapeShape(operand, {0}, {1, 10},
+                                                  /*inferred_dimension=*/0);
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {1, 10}, {true, false}),
+            status.ValueOrDie());
+}
+
+TEST_F(ShapeInferenceTest, InferReshapeCombine) {
+  // [6, <=10]
+  //   | reshape
+  // [<=60]
+  auto operand = ShapeUtil::MakeShape(F32, {6, 10}, {false, true});
+  auto status = ShapeInference::InferReshapeShape(operand, {1, 0}, {60},
+                                                  /*inferred_dimension=*/-11);
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {60}, {true}), status.ValueOrDie());
+}
+
+TEST_F(ShapeInferenceTest, UnchangedDimension) {
+  // [6, <=10]
+  //   | reshape
+  // [2, 3, <=10]
+  auto operand = ShapeUtil::MakeShape(F32, {6, 10}, {false, true});
+  auto status = ShapeInference::InferReshapeShape(operand, {1, 0}, {2, 3, 10},
+                                                  /*inferred_dimension=*/-11);
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {2, 3, 10}, {false, false, true}),
+            status.ValueOrDie());
 }
 
 TEST_F(ShapeInferenceTest, BroadcastScalar) {
@@ -2019,6 +2075,58 @@ TEST_F(ScatterGatherShapeInferenceTest, TensorFlowBatchDynamicSlice) {
   EXPECT_TRUE(ShapeUtil::Equal(
       gather_shape,
       ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28, 27, 26})))
+      << ShapeUtil::HumanString(gather_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, DynamicGatherEntireDimension) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape gather_shape,
+      ShapeInference::InferGatherShape(
+          ShapeUtil::MakeShape(F32, {3, 2, 1}, {false, true, false}),
+          ShapeUtil::MakeShape(S64, {}),
+          HloGatherInstruction::MakeGatherDimNumbers(
+              /*offset_dims=*/{0, 1},
+              /*collapsed_slice_dims=*/{0},
+              /*start_index_map=*/{0},
+              /*index_vector_dim=*/0),
+          /*slice_sizes=*/{1, 2, 1}));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      gather_shape, ShapeUtil::MakeShape(F32, {2, 1}, {true, false})))
+      << ShapeUtil::HumanString(gather_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, DynamicGatherCollapsedDimension) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape gather_shape,
+      ShapeInference::InferGatherShape(
+          ShapeUtil::MakeShape(F32, {3, 2, 1}, {true, false, false}),
+          ShapeUtil::MakeShape(S64, {}),
+          HloGatherInstruction::MakeGatherDimNumbers(
+              /*offset_dims=*/{0, 1},
+              /*collapsed_slice_dims=*/{0},
+              /*start_index_map=*/{0},
+              /*index_vector_dim=*/0),
+          /*slice_sizes=*/{1, 2, 1}));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      gather_shape, ShapeUtil::MakeShape(F32, {2, 1}, {false, false})))
+      << ShapeUtil::HumanString(gather_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, DynamicIndices) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape gather_shape,
+      ShapeInference::InferGatherShape(
+          ShapeUtil::MakeShape(F32, {3, 2, 2}),
+          ShapeUtil::MakeShape(S64, {3, 4, 2}, {false, true, false}),
+          HloGatherInstruction::MakeGatherDimNumbers(
+              /*offset_dims=*/{2, 3},
+              /*collapsed_slice_dims=*/{0},
+              /*start_index_map=*/{0, 1},
+              /*index_vector_dim=*/2),
+          /*slice_sizes=*/{1, 2, 2}));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      gather_shape,
+      ShapeUtil::MakeShape(F32, {3, 4, 2, 2}, {false, true, false, false})))
       << ShapeUtil::HumanString(gather_shape);
 }
 

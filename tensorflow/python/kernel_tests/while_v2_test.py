@@ -137,9 +137,10 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         r"but has type <dtype: 'float16'> after 1 iteration."):
       BuildWhile()
 
-  def testGradientTapeResourceVariable(self):
+  @parameterized.parameters(dtypes.float32, dtypes.float64)
+  def testGradientTapeResourceVariable(self, dtype):
     with context.eager_mode():
-      v = variables.Variable(1.)
+      v = variables.Variable(1., dtype=dtype)
 
       @def_function.function
       def fnWithLoop():  # pylint: disable=invalid-name
@@ -147,7 +148,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
           _, x = while_loop_v2(
               lambda i, _: i < 2,
               lambda i, x: (i + 1, x * v),
-              [0, 2.])
+              [0, constant_op.constant(2., dtype=dtype)])
         return tape.gradient(x, v)
 
       self.assertAllEqual(fnWithLoop(), 4.0)

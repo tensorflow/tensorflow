@@ -78,7 +78,7 @@ Path Context::GetRuntimeEnabledPaths() {
 
   // Sanity check. We can't possibly have disabled all paths, as some paths
   // are universally available (kReference, kStandardCpp).
-  RUY_DCHECK(runtime_enabled_paths_ != Path::kNone);
+  RUY_DCHECK_NE(runtime_enabled_paths_, Path::kNone);
   return runtime_enabled_paths_;
 }
 

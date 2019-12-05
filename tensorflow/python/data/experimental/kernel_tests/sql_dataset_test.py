@@ -22,6 +22,7 @@ from tensorflow.python.data.experimental.kernel_tests import sql_dataset_test_ba
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
@@ -467,6 +468,17 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
                         self.evaluate(get_next()))
     self.assertNotEqual((b"John", b"Adams", 9007199254740991.0),
                         self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+
+  # Test that SqlDataset can stop correctly when combined with batch
+  def testReadResultSetWithBatchStop(self):
+    dataset = self._createSqlDataset(
+        query="SELECT * FROM data", output_types=(dtypes.int32))
+    dataset = dataset.map(lambda x: array_ops.identity(x))
+    get_next = self.getNext(dataset.batch(2))
+    self.assertAllEqual(self.evaluate(get_next()), [0, 1])
+    self.assertAllEqual(self.evaluate(get_next()), [2])
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 

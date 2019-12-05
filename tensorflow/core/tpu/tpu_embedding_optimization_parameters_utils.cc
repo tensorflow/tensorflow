@@ -49,6 +49,8 @@ string GetOptimizationAlgorithmName(OptimizationAlgorithm alg) {
       return "ProximalAdagrad";
     case OptimizationAlgorithm::kOnlineYogi:
       return "OnlineYogi";
+    case OptimizationAlgorithm::kProximalYogi:
+      return "ProximalYogi";
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return "*** Not set ***";
   }
@@ -81,6 +83,8 @@ string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
       return "proximal Adagrad";
     case OptimizationAlgorithm::kOnlineYogi:
       return "online Yogi";
+    case OptimizationAlgorithm::kProximalYogi:
+      return "proximal Yogi";
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return "unknown (not specified)";
   }
@@ -126,6 +130,9 @@ Status GetBaseAuxiliaryParameterCount(OptimizationAlgorithm alg, int* count) {
       *count = 1;
       return Status::OK();
     case OptimizationAlgorithm::kOnlineYogi:
+      *count = 2;
+      return Status::OK();
+    case OptimizationAlgorithm::kProximalYogi:
       *count = 2;
       return Status::OK();
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
@@ -256,6 +263,13 @@ Status GetOptimizationAlgorithmStateVariables(
           MakeStandardStateVariableSpecification("linears", 0.0));
       break;
     }
+    case OptimizationAlgorithm::kProximalYogi: {
+      state_variables->push_back(
+          MakeStandardStateVariableSpecification("v", 0.0));
+      state_variables->push_back(
+          MakeStandardStateVariableSpecification("m", 0.0));
+      break;
+    }
     case OptimizationAlgorithm::PARAMETERS_NOT_SET: {
       return errors::InvalidArgument("No optimization algorithm specified");
     }
@@ -292,6 +306,7 @@ std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
       OptimizationAlgorithm::kAdadelta,
       OptimizationAlgorithm::kProximalAdagrad,
       OptimizationAlgorithm::kOnlineYogi,
+      OptimizationAlgorithm::kProximalYogi,
   };
 }
 
@@ -536,7 +551,8 @@ Status IsOptimizationAlgorithmInternal(OptimizationAlgorithm alg,
       return Status::OK();
     }
     case OptimizationAlgorithm::kBoundedAdagrad:
-    case OptimizationAlgorithm::kOnlineYogi: {
+    case OptimizationAlgorithm::kOnlineYogi:
+    case OptimizationAlgorithm::kProximalYogi: {
       *internal = true;
       return Status::OK();
     }

@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file implements a pass to check memref accessses for out of bound
+// This file implements a pass to check memref accesses for out of bound
 // accesses.
 //
 //===----------------------------------------------------------------------===//

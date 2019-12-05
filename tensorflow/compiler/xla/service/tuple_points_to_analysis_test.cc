@@ -49,7 +49,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   }
 
   void BuildModule(std::unique_ptr<HloComputation> computation) {
-    module_ = CreateNewUnverifiedModule();
+    module_ = CreateNewVerifiedModule();
     module_->AddEntryComputation(std::move(computation));
   }
 
@@ -661,7 +661,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
     auto tuple_element1 = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(update_shape, tuple_param0, 1));
     auto ones = builder.AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR1<float>({1.f, 1.f, 1.f, 1.f})));
+        LiteralUtil::CreateR1<float>({1.f, 1.f, 1.f})));
     // Create 'update' = Add(GetTupleElement(tuple_param0, 1), ones)
     auto update = builder.AddInstruction(HloInstruction::CreateBinary(
         update_shape, HloOpcode::kAdd, tuple_element1, ones));
@@ -850,7 +850,7 @@ TEST_F(FusionPointsToAnalysisTest, FusionParam0TwoUsers) {
 class PointsToAnalysisTestBase : public HloTestBase {
  protected:
   void BuildModule(std::unique_ptr<HloComputation> computation) {
-    module_ = CreateNewUnverifiedModule();
+    module_ = CreateNewVerifiedModule();
     computation_ = module_->AddEntryComputation(std::move(computation));
   }
 

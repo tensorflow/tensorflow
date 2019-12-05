@@ -35,11 +35,6 @@ namespace xla {
 //
 // Each entry has the format:
 // (enum_name, opcode_name, arity)
-// or
-// (enum_name, opcode_name, arity, p1 | p2 | ...)
-//
-// with p1, p2, ... are members of HloOpcodeProperty. They are combined
-// using bitwise-or.
 //
 // Note: Do not use ':' in opcode names. It is used as a special character
 // in these places:
@@ -160,13 +155,6 @@ enum class HloOpcode {
 // Arity value that denotes that an operator is variadic.
 enum {
   kHloOpcodeIsVariadic = -1,
-};
-
-// List of properties associated with opcodes.
-// Properties are defined as increasing powers of two, so that we can use
-// bitwise-or to combine properties, and bitwise-and to test for them.
-enum HloOpcodeProperty {
-  kHloOpcodeIsComparison = 1 << 0,
 };
 
 // Returns a string representation of the opcode.

@@ -40,6 +40,7 @@ constexpr char kDepthwiseConv2dNativeBackpropInput[] =
     "DepthwiseConv2dNativeBackpropInput";
 constexpr char kMatMul[] = "MatMul";
 constexpr char kXlaEinsum[] = "XlaEinsum";
+constexpr char kEinsum[] = "Einsum";
 constexpr char kSparseMatMul[] = "SparseMatMul";
 constexpr char kSparseTensorDenseMatMul[] = "SparseTensorDenseMatMul";
 constexpr char kPlaceholder[] = "Placeholder";
@@ -196,7 +197,8 @@ int64 CwiseOutputElementCount(const TensorShapeProto& input_shape_1,
 // Helper function for determining whether there are repeated indices in the
 // input Einsum equation.
 bool CheckRepeatedDimensions(const string& dim_str) {
-  for (int idx = 0; idx < dim_str.size() - 1; idx++) {
+  int str_size = dim_str.size();
+  for (int idx = 0; idx < str_size - 1; idx++) {
     if (dim_str.find(dim_str[idx], idx + 1) != std::string::npos) {
       return true;
     }
@@ -290,6 +292,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   device_cost_impl_.emplace(kQuantizedMatMulV2,
                             wrap(&OpLevelCostEstimator::PredictMatMul));
   device_cost_impl_.emplace(kXlaEinsum,
+                            wrap(&OpLevelCostEstimator::PredictEinsum));
+  device_cost_impl_.emplace(kEinsum,
                             wrap(&OpLevelCostEstimator::PredictEinsum));
 
   device_cost_impl_.emplace(kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp));
@@ -680,28 +684,28 @@ OpLevelCostEstimator::ConvolutionDimensionsFromInputs(
   int x_index, y_index, channel_index;
   const string& data_format = GetDataFormat(op_info);
   if (data_format == "NCHW") {
-    x_index = 2;
-    y_index = 3;
     channel_index = 1;
+    y_index = 2;
+    x_index = 3;
   } else {
     // Use NHWC.
-    x_index = 1;
-    y_index = 2;
+    y_index = 1;
+    x_index = 2;
     channel_index = 3;
   }
   const string& filter_format = GetFilterFormat(op_info);
   int filter_x_index, filter_y_index, in_channel_index, out_channel_index;
   if (filter_format == "HWIO") {
-    filter_x_index = 0;
-    filter_y_index = 1;
+    filter_y_index = 0;
+    filter_x_index = 1;
     in_channel_index = 2;
     out_channel_index = 3;
   } else {
     // Use OIHW
-    filter_x_index = 2;
-    filter_y_index = 3;
-    in_channel_index = 1;
     out_channel_index = 0;
+    in_channel_index = 1;
+    filter_y_index = 2;
+    filter_x_index = 3;
   }
   int64 batch = image_shape.dim(0).size();
   int64 ix = image_shape.dim(x_index).size();
@@ -854,6 +858,12 @@ int64 OpLevelCostEstimator::CountMatMulOperations(
 
 int64 OpLevelCostEstimator::CountBatchMatMulOperations(
     const OpInfo& op_info, bool* found_unknown_shapes) const {
+  return CountBatchMatMulOperations(op_info, nullptr, found_unknown_shapes);
+}
+
+int64 OpLevelCostEstimator::CountBatchMatMulOperations(
+    const OpInfo& op_info, BatchMatMulDimensions* batch_mat_mul,
+    bool* found_unknown_shapes) const {
   if (op_info.op() != kBatchMatMul) {
     LOG(ERROR) << "Invalid Operation: " << op_info.op();
     // TODO(pcma): Try to separate invalid inputs from unknown shapes
@@ -914,6 +924,9 @@ int64 OpLevelCostEstimator::CountBatchMatMulOperations(
     if (s_i >= 0) {
       s_dim = smaller_rank_shape->dim(s_i).size();
     }
+    if (batch_mat_mul != nullptr) {
+      batch_mat_mul->batch_dims.push_back(s_dim);
+    }
     num_matmuls *= std::max(b_dim, s_dim);
   }
 
@@ -950,6 +963,17 @@ int64 OpLevelCostEstimator::CountBatchMatMulOperations(
   for (int i = std::max(0, b_input_shape.dim_size() - matrix_rank);
        i < b_input_shape.dim_size(); ++i) {
     *(b_matrix_shape->add_dim()) = b_input_shape.dim(i);
+  }
+  if (batch_mat_mul != nullptr) {
+    batch_mat_mul->matmul_dims.m = (transpose_a.b())
+                                       ? a_matrix_shape->dim(1).size()
+                                       : a_matrix_shape->dim(0).size();
+    batch_mat_mul->matmul_dims.k = (transpose_a.b())
+                                       ? a_matrix_shape->dim(0).size()
+                                       : a_matrix_shape->dim(1).size();
+    batch_mat_mul->matmul_dims.n = (transpose_b.b())
+                                       ? b_matrix_shape->dim(0).size()
+                                       : b_matrix_shape->dim(1).size();
   }
 
   for (int i = 0; i < num_matmuls; ++i) {
@@ -1287,9 +1311,9 @@ Costs OpLevelCostEstimator::PredictFusedConv2DBiasActivation(
   // TODO(varomodt): should we centralize the Conv2D input/output shapes?
   OpInfo::TensorProperties output;
   if (data_format == "NCHW") {
-    output = DescribeTensor(DT_FLOAT, {dims.batch, dims.oz, dims.ox, dims.oy});
+    output = DescribeTensor(DT_FLOAT, {dims.batch, dims.oz, dims.oy, dims.ox});
   } else if (data_format == "NHWC") {
-    output = DescribeTensor(DT_FLOAT, {dims.batch, dims.ox, dims.oy, dims.oz});
+    output = DescribeTensor(DT_FLOAT, {dims.batch, dims.oy, dims.ox, dims.oz});
   }
 
   // Add the operations the fused op always computes.
@@ -1744,12 +1768,12 @@ OpLevelCostEstimator::OpDimensionsFromInputs(
   int x_index, y_index, channel_index;
   const string& data_format = GetDataFormat(op_info);
   if (data_format == "NCHW") {
-    x_index = 2;
-    y_index = 3;
     channel_index = 1;
-  } else {
-    x_index = 1;
     y_index = 2;
+    x_index = 3;
+  } else {
+    y_index = 1;
+    x_index = 2;
     channel_index = 3;
   }
   int64 batch = image_shape.dim(0).size();

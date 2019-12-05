@@ -252,6 +252,9 @@ REGISTER_OP("XlaDot")
       // the result dimensions in order, rhs dimensions followed by lhs
       // dimensions except the contracted and batch dimensions.
       std::vector<shape_inference::DimensionHandle> output_dims;
+      for (int64 lhs_dim : dimension_numbers.lhs_batch_dimensions()) {
+        output_dims.emplace_back(c->Dim(lhs_shape_handle, lhs_dim));
+      }
       const int32 lhs_rank = c->Rank(lhs_shape_handle);
       for (int64 i = 0; i < lhs_rank; ++i) {
         if (absl::c_linear_search(
@@ -643,6 +646,15 @@ An op which supports basic einsum op with 2 inputs and 1 output.
 
 This op has better TPU performnce since it doesn't have explicitly reshape and
 transpose operations as tf.einsum does.
+)doc");
+
+REGISTER_OP("XlaSharding")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+An op which shards the input based on the given sharding attribute.
 )doc");
 
 REGISTER_OP("XlaReplicaId")

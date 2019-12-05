@@ -76,9 +76,8 @@ class LoopInvariantNodeMotionOptimizer {
   std::unique_ptr<NodeMap> node_map_;
   std::map<NodeDef*, int> invariant_nodes_;
   std::set<int> empty_set_;
-  // TODO(rmlarsen): Use vector instead of map, since frames ids are dense.
-  std::map<int, std::set<int>> frame_children_;
-  std::map<int, int> frame_parent_;
+  std::vector<std::set<int>> frame_children_;
+  std::vector<int> frame_parent_;
   std::map<int, const NodeDef*> loop_cond_;
   std::map<int, std::vector<NodeDef*>> invariant_enters_;
   int new_enter_id_;
@@ -158,9 +157,8 @@ Status LoopInvariantNodeMotionOptimizer::HandleConst(NodeDef* node,
     }
   }
   // add a control input from the parent frame
-  auto parent_it = frame_parent_.find(frame_id);
-  if (parent_it != frame_parent_.end()) {
-    int parent_id = parent_it->second;
+  if (frame_parent_[frame_id] != -1) {
+    int parent_id = frame_parent_[frame_id];
     auto loop_cond_it = loop_cond_.find(parent_id);
     if (loop_cond_it == loop_cond_.end()) {
       return errors::InvalidArgument("Frame ", frame_id,
@@ -386,6 +384,8 @@ Status LoopInvariantNodeMotionOptimizer::Optimize() {
   // TODO(ezhulenev): Use GraphView when migrated from NodeMap.
   TF_RETURN_IF_ERROR(frame_view.InferFromGraph(*optimized_graph_));
 
+  frame_parent_.resize(frame_view.num_frames(), -1);
+  frame_children_.resize(frame_view.num_frames());
   std::deque<int> worklist;
   for (const NodeDef& node : optimized_graph_->node()) {
     const std::vector<int>& frame_ids = frame_view.Frames(node);
@@ -401,7 +401,7 @@ Status LoopInvariantNodeMotionOptimizer::Optimize() {
       frame_parent_[frame_ids.back()] = frame_ids[frame_ids.size() - 2];
     }
     if (!frame_ids.empty()) {
-      frame_children_.insert(std::make_pair(frame_ids.back(), empty_set_));
+      frame_children_[frame_ids.back()] = empty_set_;
       if (node.op() == "LoopCond") {
         if (loop_cond_.count(frame_ids.back())) {
           return errors::InvalidArgument(
@@ -418,9 +418,9 @@ Status LoopInvariantNodeMotionOptimizer::Optimize() {
     }
   }
 
-  for (auto it = frame_children_.begin(); it != frame_children_.end(); ++it) {
-    if (it->second.empty()) {
-      worklist.push_back(it->first);
+  for (size_t i = 0; i < frame_children_.size(); i++) {
+    if (frame_children_[i].empty()) {
+      worklist.push_back(i);
     }
   }
 
@@ -428,9 +428,8 @@ Status LoopInvariantNodeMotionOptimizer::Optimize() {
     int frame_id = worklist.front();
     new_enter_id_ = 0;
     worklist.pop_front();
-    auto parent_it = frame_parent_.find(frame_id);
-    if (parent_it != frame_parent_.end()) {
-      int parent_id = parent_it->second;
+    if (frame_parent_[frame_id] != -1) {
+      int parent_id = frame_parent_[frame_id];
       frame_children_[parent_id].erase(frame_id);
       if (frame_children_[parent_id].empty()) {
         worklist.push_back(parent_id);

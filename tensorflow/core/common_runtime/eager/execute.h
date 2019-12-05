@@ -47,12 +47,12 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
 
 // Low-level utility to execute the kernel specified by `kernel` on
 // `kernel->device()`, with the inputs op_inputs, in the context 'ctx'.
-Status EagerKernelExecute(EagerContext* ctx,
-                          const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
-                          const core::RefCountPtr<KernelAndDevice>& kernel,
-                          GraphCollector* graph_collector,
-                          CancellationManager* cancellation_manager,
-                          absl::Span<TensorHandle*> retvals);
+Status EagerKernelExecute(
+    EagerContext* ctx, const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+    const core::RefCountPtr<KernelAndDevice>& kernel,
+    GraphCollector* graph_collector, CancellationManager* cancellation_manager,
+    absl::Span<TensorHandle*> retvals);
 
 // Low-level utility to copy a tensor handle from one device to another. If
 // successful, result TensorHandle will be populated. If the caller requests for

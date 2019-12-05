@@ -227,6 +227,14 @@ void TF_GraphSetOutputHandleShapesAndTypes_wrapper(
     const std::vector<int>& ranks, const std::vector<TF_DataType>& types,
     TF_Status* status);
 
+// Creates Placeholders with specified types in the Graph.
+//
+// This is an internal API used to speed up creation of unused placeholders
+// in while_v2 cond graph and is subject to change/removal.
+std::vector<TF_Output> TF_CreatePlaceholders(TF_Graph* graph, PyObject* dtypes,
+                                             const char* prefix,
+                                             TF_Status* status);
+
 // Set the shape of output. If unknown is true, `num_dims` must be set to
 // -1 and `dims` is set to nullptr.
 void TF_GraphSetTensorShape_wrapper(TF_Graph* graph, TF_Output output,

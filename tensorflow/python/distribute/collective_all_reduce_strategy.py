@@ -237,7 +237,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._rpc_layer = cluster_resolver.rpc_layer
     self._warn_nccl_no_gpu()
 
-    logging.info("Single-worker CollectiveAllReduceStrategy with local_devices "
+    logging.info("Single-worker MultiWorkerMirroredStrategy with local_devices "
                  "= %r, communication = %s", local_devices, self._communication)
 
   def _initialize_multi_worker(self, cluster_resolver):
@@ -339,8 +339,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._warn_nccl_no_gpu()
 
     logging.info(
-        "Multi-worker CollectiveAllReduceStrategy with cluster_spec = %r, "
-        "task_type = %r, task_id = %r, num_workers = %r, local_devices = %r, "
+        "MultiWorkerMirroredStrategy with cluster_spec = %r, task_type = %r, "
+        "task_id = %r, num_workers = %r, local_devices = %r, "
         "communication = %s", cluster_spec.as_dict(), task_type,
         task_id, self._num_workers, local_devices,
         self._communication)

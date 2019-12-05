@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/test_util.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -90,14 +91,10 @@ Status PartiallyDecluster(std::unique_ptr<Graph>* graph) {
     }
   }
 
-  GraphOptimizationPassOptions opt_options;
-  opt_options.graph = graph;
-  FunctionDefLibrary fdef_lib;
-  FunctionLibraryDefinition flib_def(OpRegistry::Global(), fdef_lib);
-  opt_options.flib_def = &flib_def;
-  SessionOptions session_options;
-  session_options.env = Env::Default();
-  opt_options.session_options = &session_options;
+  GraphOptimizationPassWrapper wrapper;
+  GraphOptimizationPassOptions opt_options =
+      wrapper.CreateGraphOptimizationPassOptions(graph);
+
   PartiallyDeclusterPass pass;
   return pass.Run(opt_options);
 }

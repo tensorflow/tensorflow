@@ -78,7 +78,7 @@ getDirectionVectorStr(bool ret, unsigned numCommonLoops, unsigned loopNestDepth,
   return result;
 }
 
-// For each access in 'loadsAndStores', runs a depence check between this
+// For each access in 'loadsAndStores', runs a dependence check between this
 // "source" access and all subsequent "destination" accesses in
 // 'loadsAndStores'. Emits the result of the dependence check as a note with
 // the source access.

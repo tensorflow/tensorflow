@@ -590,7 +590,6 @@ class MklConvOp : public OpKernel {
       // Input tensors
       const Tensor& src_tensor = MklGetInput(context, kInputIndex_Src);
       const Tensor& filter_tensor = MklGetInput(context, kInputIndex_Filter);
-
       MklDnnShape src_mkl_shape, filter_mkl_shape;
       GetMklShape(context, kInputIndex_Src, &src_mkl_shape, eager_mode);
       GetMklShape(context, kInputIndex_Filter, &filter_mkl_shape, eager_mode);
@@ -786,7 +785,6 @@ class MklConvOp : public OpKernel {
         src_data = static_cast<Tinput*>(
             const_cast<Tinput*>(src_tensor.flat<Tinput>().data()));
       }
-
       Tfilter* filter_data = nullptr;
       if (IS_FILTER_REORDER_NEEDED(filter_md, conv_fwd_pd, conv_fwd)) {
         bool is_filter_cached = false;
@@ -859,7 +857,6 @@ class MklConvOp : public OpKernel {
                                   cpu_engine_);
         }
       }
-
       // Delete primitive since it is not cached.
       if (do_not_cache) delete conv_fwd;
     } catch (mkldnn::error& e) {
@@ -1005,9 +1002,6 @@ class MklConvOp : public OpKernel {
       output_tf_shape = output_mkl_shape->GetTfShape();
     }
 
-    AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
-                              output_tf_shape, *output_mkl_shape, eager_mode);
-
     if (fuse_add_) {
       const Tensor& add_tensor = MklGetInput(context, kInputIndex_Add);
       MklDnnShape add_mkl_shape;
@@ -1015,11 +1009,13 @@ class MklConvOp : public OpKernel {
 
       // Check if reorder is needed
       if (add_mkl_shape == *output_mkl_shape) {
-        OP_REQUIRES(
-            context, (*output_tensor)->CopyFrom(add_tensor, output_tf_shape),
-            errors::Internal("MklConvOp: AddN fusion: Failed to forward "
-                             "input tensor to output"));
+        ForwardMklTensorInToOutWithMklShape(context, kInputIndex_Add,
+                                            kOutputIndex_Dst, add_mkl_shape);
+        *output_tensor = context->mutable_output(kOutputIndex_Dst);
       } else {
+        AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
+                                  output_tf_shape, *output_mkl_shape,
+                                  eager_mode);
 #ifdef ENABLE_MKLDNN_V1
         auto output_format_tag = MklTensorFormatToMklDnnDataFormat(
             output_mkl_shape->GetTfDataFormat());
@@ -1041,18 +1037,26 @@ class MklConvOp : public OpKernel {
             const_cast<Toutput*>(add_tensor.flat<Toutput>().data()));
         void* dst_buf =
             static_cast<void*>((*output_tensor)->flat<Ttemp_output>().data());
-        auto add = new MEMORY_CONSTRUCTOR(ADD_MD, this->cpu_engine_, add_buf);
-        auto dst = new MEMORY_CONSTRUCTOR(DST_MD, this->cpu_engine_, dst_buf);
+        fuse_add_src_.reset(
+            new MEMORY_CONSTRUCTOR(ADD_MD, this->cpu_engine_, add_buf));
+        fuse_add_dst_.reset(
+            new MEMORY_CONSTRUCTOR(DST_MD, this->cpu_engine_, dst_buf));
         auto reorder_desc =
             REORDER_PD_CONSTRUCTOR(ADD_MD, DST_MD, this->cpu_engine_);
-        CreateAndExecuteReorder(reorder_desc, *add, *dst, this->cpu_engine_);
+        CreateAndExecuteReorder(reorder_desc, *fuse_add_src_, *fuse_add_dst_,
+                                this->cpu_engine_);
       }
+    } else {
+      AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
+                                output_tf_shape, *output_mkl_shape, eager_mode);
     }
   }
 
   engine cpu_engine_ = engine(ENGINE_CPU, 0);
 
  private:
+  std::shared_ptr<mkldnn::memory> fuse_add_src_;
+  std::shared_ptr<mkldnn::memory> fuse_add_dst_;
   std::vector<int32> strides_;
   std::vector<int32> dilations_;
   std::vector<Tpadding> padding_list_;
@@ -1351,7 +1355,7 @@ class MklFusedConvOp
     } else if (fused_ops == std::vector<string>{"Relu6"}) {
       this->set_fuse_activation(true, ALGORITHM::eltwise_bounded_relu, 6.0);
     } else if (fused_ops == std::vector<string>{"Elu"}) {
-      this->set_fuse_activation(true, ALGORITHM::eltwise_elu);
+      this->set_fuse_activation(true, ALGORITHM::eltwise_elu, 1.0);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, ALGORITHM::eltwise_relu);
@@ -1366,7 +1370,7 @@ class MklFusedConvOp
                       "Fused Conv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
       this->set_fuse_biasadd(true);
-      this->set_fuse_activation(true, ALGORITHM::eltwise_elu);
+      this->set_fuse_activation(true, ALGORITHM::eltwise_elu, 1.0);
       OP_REQUIRES(context, num_args == 1,
                   errors::InvalidArgument(
                       "Fused Conv2D must have one extra argument: bias."));
@@ -1396,7 +1400,7 @@ class MklFusedConvOp
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Elu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_add(true);
-      this->set_fuse_activation(true, ALGORITHM::eltwise_elu);
+      this->set_fuse_activation(true, ALGORITHM::eltwise_elu, 1.0);
       OP_REQUIRES(
           context, num_args == 2,
           errors::InvalidArgument(
@@ -1417,10 +1421,10 @@ class MklFusedConvOp
 
 // We create new class for each version of Quantized Convolution and inherit
 // from the FP32 version of the base class
-template <typename Device, typename Tbias, typename Toutput,
+template <typename Device, typename Tinput, typename Tbias, typename Toutput,
           typename Ttemp_output, bool bias_enabled, bool is_depthwise>
 class MklQuantizedConv2DOp
-    : public MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output,
+    : public MklConvOp<Device, Tinput, qint8, Tbias, Toutput, Ttemp_output,
                        int32, bias_enabled, false, is_depthwise, false> {
  public:
   virtual ~MklQuantizedConv2DOp() {
@@ -1436,7 +1440,7 @@ class MklQuantizedConv2DOp
   }
 
   explicit MklQuantizedConv2DOp(OpKernelConstruction* context)
-      : MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output, int32,
+      : MklConvOp<Device, Tinput, qint8, Tbias, Toutput, Ttemp_output, int32,
                   bias_enabled, false, is_depthwise, false>(context) {
     bool is_filter_const;
     OP_REQUIRES_OK(context,
@@ -1453,7 +1457,7 @@ class MklQuantizedConv2DOp
 
   void Compute(OpKernelContext* context) override {
     // Compute int32 output tensor
-    MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output, int32,
+    MklConvOp<Device, Tinput, qint8, Tbias, Toutput, Ttemp_output, int32,
               bias_enabled, false, is_depthwise, false>::Compute(context);
 
     // Compute additional outputs: min/max scalars.
@@ -1488,7 +1492,7 @@ class MklQuantizedConv2DOp
       if (min_filter.dims() == 0) {
         float min_output_value;
         float max_output_value;
-        MklQuantizationRangeForMultiplication<quint8, qint8, qint32>(
+        MklQuantizationRangeForMultiplication<Tinput, qint8, qint32>(
             min_input, max_input, min_filter.flat<float>()(0),
             max_filter.flat<float>()(0), &min_output_value, &max_output_value);
         AllocateOutputSetMklShape(context, 1, &output_min, {},
@@ -1505,7 +1509,7 @@ class MklQuantizedConv2DOp
         AllocateOutputSetMklShape(context, 2, &output_max,
                                   {static_cast<ptrdiff_t>(depth)},
                                   output_max_mkl_shape);
-        MklQuantizationRangeForMultiplication<quint8, qint8, qint32>(
+        MklQuantizationRangeForMultiplication<Tinput, qint8, qint32>(
             min_input, max_input, min_filter, max_filter, &output_min,
             &output_max);
       }
@@ -1515,10 +1519,9 @@ class MklQuantizedConv2DOp
  protected:
   void ExtendConvFwdParams(OpKernelContext* context,
                            MklConvFwdParams& params) override {
-    MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output, int32,
+    MklConvOp<Device, Tinput, qint8, Tbias, Toutput, Ttemp_output, int32,
               bias_enabled, false, is_depthwise,
               false>::ExtendConvFwdParams(context, params);
-
     // When the output type is quint8, the output data id requantized
     // into quint8. A post_op "output_scale" is added to do the conversion.
     if (std::is_same<Toutput, quint8>::value ||
@@ -1540,22 +1543,26 @@ class MklQuantizedConv2DOp
       const float max_freezed_output =
           context->input(7 + bias_index_offset).flat<float>()(0);
 
-      float factor = std::is_same<Toutput, quint8>::value ? 255.0f : 127.0f;
+      float int_output_limit =
+          std::is_same<Toutput, quint8>::value ? 255.0f : 127.0f;
       size_t depth = min_filter_vector.NumElements();
       const float* min_filter = min_filter_vector.flat<float>().data();
       const float* max_filter = max_filter_vector.flat<float>().data();
       std::vector<float> scales(depth);
-      float input_range = std::max(std::abs(min_input), std::abs(max_input));
-      float output_range =
+      float float_input_range =
+          std::max(std::abs(min_input), std::abs(max_input));
+      float float_output_range =
           std::max(std::abs(min_freezed_output), std::abs(max_freezed_output));
+      const float int_const_scale_limit =
+          (std::is_same<Tinput, quint8>::value) ? 255.0 * 127.0 : 127.0 * 127.0;
       for (size_t i = 0; i < depth; ++i) {
         // For simplicity and symmetry, we set filter range to be outer
         // bounds of min_filter and max_filter.
-        float filter_range =
+        float float_filter_range =
             std::max(std::abs(min_filter[i]), std::abs(max_filter[i]));
         // To understand the scaling, please see mkl_requantize_ops_test.
-        scales[i] = factor * input_range * filter_range /
-                    (255.0f * 127.0f * output_range);
+        scales[i] = int_output_limit * float_input_range * float_filter_range /
+                    (int_const_scale_limit * float_output_range);
       }
       params.post_op_params.push_back(
           {"output_scale", ALGORITHM_UNDEF, scales});
@@ -1565,6 +1572,13 @@ class MklQuantizedConv2DOp
   Tbias* GetBiasHandle(OpKernelContext* context,
                        std::shared_ptr<ConvFwdPd>& conv_fwd_pd,
                        const Tensor& bias_tensor) override {
+    if (!bias_enabled) {
+      return nullptr;
+    }
+    if (std::is_same<Tbias, qint32>::value) {
+      return static_cast<Tbias*>(
+          const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
+    }
     int bias_index_offset;
     bias_index_offset = bias_enabled ? 1 : 0;
 
@@ -1578,57 +1592,70 @@ class MklQuantizedConv2DOp
     const float* max_filter = max_filter_vector.flat<float>().data();
 
     std::vector<mkldnn::primitive> net;
-    if (bias_enabled) {
-      if (std::is_same<Tbias, qint32>::value) {
-        return static_cast<Tbias*>(
-            const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
+
+    const float int_const_scale_limit =
+        (std::is_same<Tinput, quint8>::value) ? 255.0 * 127.0 : 127.0 * 127.0;
+    // Re-scale bias if either of following 2 conditions are met:
+    // 1. Bias is not const;
+    // 2. Bias is const, but bias cache is empty (first iteration).
+
+    size_t depth = min_filter_vector.NumElements();
+    bool scales_are_valid = (depth == scales_.size());
+    scales_.resize(depth);
+    for (size_t i = 0; i < depth; ++i) {
+      float tmp_scale =
+          int_const_scale_limit /
+          (std::max(std::abs(max_input), std::abs(min_input)) *
+           std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
+      if (scales_are_valid && std::abs(tmp_scale - scales_[i]) > 1e-6) {
+        scales_are_valid = false;
+      }
+      scales_[i] = tmp_scale;
+    }
+    if (!is_bias_const_ || IsBiasCacheEmpty(context) || !scales_are_valid) {
+      mkldnn::primitive_attr bias_attr;
+      if (depth == 1) {
+        bias_attr.set_output_scales(0, scales_);
+      } else {
+        bias_attr.set_output_scales(1, scales_);
       }
 
-      // Re-scale bias if either of following 2 conditions are met:
-      // 1. Bias is not const;
-      // 2. Bias is const, but bias cache is empty (first iteration).
-      if (!is_bias_const_ || IsBiasCacheEmpty(context)) {
-        size_t depth = min_filter_vector.NumElements();
-        std::vector<float> scales(depth);
-        for (size_t i = 0; i < depth; ++i) {
-          scales[i] =
-              255.0 * 127.0 /
-              (std::max(std::abs(max_input), std::abs(min_input)) *
-               std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
-        }
-        mkldnn::primitive_attr bias_attr;
-        if (depth == 1) {
-          bias_attr.set_output_scales(0, scales);
-        } else {
-          bias_attr.set_output_scales(1, scales);
-        }
-
-        auto bias_md =
-            MEMORY_PD_CONSTRUCTOR(static_cast<int>(bias_tensor.NumElements()),
-                                  Tbias, x, this->cpu_engine_);
-        void* bias_buf = static_cast<void*>(
-            const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
+      auto bias_md =
+          MEMORY_PD_CONSTRUCTOR(static_cast<int>(bias_tensor.NumElements()),
+                                Tbias, x, this->cpu_engine_);
+      void* bias_buf = static_cast<void*>(
+          const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
+      if (!input_bias_) {
         input_bias_ =
             new MEMORY_CONSTRUCTOR(bias_md, this->cpu_engine_, bias_buf);
-        scaled_bias_ = new MEMORY_CONSTRUCTOR_WITHOUT_DATA(
-            conv_fwd_pd->PRIMITIVE_DESC_BIAS, this->cpu_engine_);
-        auto reorder_desc = REORDER_PD_CONSTRUCTOR_WITH_ATTR(
-            input_bias_->GET_DESC, scaled_bias_->GET_DESC, this->cpu_engine_,
-            bias_attr);
-        CreateAndExecuteReorder(reorder_desc, *input_bias_, *scaled_bias_,
-                                this->cpu_engine_);
-
-        Tbias* bias_data =
-            reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());
-        if (is_bias_const_)
-          CacheBias(context, conv_fwd_pd, bias_data, scaled_bias_);
-
-        return bias_data;
+      } else {
+        input_bias_->set_data_handle(bias_buf);
       }
-      return GetCachedBias(context);
-    } else {
-      return nullptr;
+
+      if (!scaled_bias_buf_)
+        AllocTmpBuffer<Tbias>(context, &scaled_bias_tensor_,
+                              conv_fwd_pd->bias_primitive_desc(),
+                              &scaled_bias_buf_);
+      if (!scaled_bias_) {
+        scaled_bias_ = new MEMORY_CONSTRUCTOR(bias_md, this->cpu_engine_,
+                                              scaled_bias_buf_);
+      } else {
+        scaled_bias_->set_data_handle(scaled_bias_buf_);
+      }
+      auto reorder_desc = REORDER_PD_CONSTRUCTOR_WITH_ATTR(
+          input_bias_->GET_DESC, scaled_bias_->GET_DESC, this->cpu_engine_,
+          bias_attr);
+      CreateAndExecuteReorder(reorder_desc, *input_bias_, *scaled_bias_,
+                              this->cpu_engine_);
+
+      Tbias* bias_data =
+          reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());
+      if (is_bias_const_)
+        CacheBias(context, conv_fwd_pd, bias_data, scaled_bias_);
+
+      return bias_data;
     }
+    return GetCachedBias(context);
   }
 
   bool is_bias_const_;
@@ -1637,7 +1664,11 @@ class MklQuantizedConv2DOp
   memory* input_bias_ = nullptr;
   memory* scaled_bias_ = nullptr;
 
+  Tensor scaled_bias_tensor_;
+  void* scaled_bias_buf_ = nullptr;
+
  private:
+  std::vector<float> scales_;
   mutex bias_cache_mu_;
   // Allocate persistent tensors for cached bias data and
   // cached bias memory descriptor (data format)
@@ -1695,54 +1726,46 @@ class MklQuantizedConv2DOp
   }
 };
 
-template <typename Device, typename Tbias, typename Toutput,
+template <typename Device, typename Tinput, typename Tbias, typename Toutput,
           typename Ttemp_output, bool bias_enabled, bool is_depthwise>
 class MklQuantizedConv2DReluOp
-    : public MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output,
+    : public MklQuantizedConv2DOp<Device, Tinput, Tbias, Toutput, Ttemp_output,
                                   bias_enabled, is_depthwise> {
  public:
   virtual ~MklQuantizedConv2DReluOp() {}
 
   explicit MklQuantizedConv2DReluOp(OpKernelConstruction* context)
-      : MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output, bias_enabled,
-                             is_depthwise>(context) {}
+      : MklQuantizedConv2DOp<Device, Tinput, Tbias, Toutput, Ttemp_output,
+                             bias_enabled, is_depthwise>(context) {}
 
  protected:
   void ExtendConvFwdParams(OpKernelContext* context,
                            MklConvFwdParams& params) override {
-    MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output, bias_enabled,
+    MklQuantizedConv2DOp<Device, Tinput, Tbias, Toutput, Ttemp_output,
+                         bias_enabled,
                          is_depthwise>::ExtendConvFwdParams(context, params);
     params.post_op_params.push_back(
         {"activation", ALGORITHM::eltwise_relu, {1.0, 0.0, 0.0}});
   }
 };
 
-template <typename Device, typename Tbias, typename Toutput,
+template <typename Device, typename Tinput, typename Tbias, typename Toutput,
           typename Ttemp_output, bool bias_enabled, bool is_depthwise>
 class MklQuantizedConv2DSumReluOp
-    : public MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output,
+    : public MklQuantizedConv2DOp<Device, Tinput, Tbias, Toutput, Ttemp_output,
                                   bias_enabled, is_depthwise> {
  public:
-  virtual ~MklQuantizedConv2DSumReluOp() {
-    if (this->summand_ != nullptr) {
-      delete this->summand_;
-      summand_ = nullptr;
-    }
-
-    if (this->dst_ != nullptr) {
-      delete this->dst_;
-      dst_ = nullptr;
-    }
-  }
+  virtual ~MklQuantizedConv2DSumReluOp() {}
 
   explicit MklQuantizedConv2DSumReluOp(OpKernelConstruction* context)
-      : MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output, bias_enabled,
-                             is_depthwise>(context) {}
+      : MklQuantizedConv2DOp<Device, Tinput, Tbias, Toutput, Ttemp_output,
+                             bias_enabled, is_depthwise>(context) {}
 
  protected:
   void ExtendConvFwdParams(OpKernelContext* context,
                            MklConvFwdParams& params) override {
-    MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output, bias_enabled,
+    MklQuantizedConv2DOp<Device, Tinput, Tbias, Toutput, Ttemp_output,
+                         bias_enabled,
                          is_depthwise>::ExtendConvFwdParams(context, params);
     // Calculate the scale (beta in mkldnn api term) for sum
     if (std::is_same<Toutput, quint8>::value) {
@@ -1816,7 +1839,7 @@ class MklQuantizedConv2DSumReluOp
       *output_tensor = const_cast<Tensor*>(&summand);
       return;
     }
-    MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output, int32,
+    MklConvOp<Device, Tinput, qint8, Tbias, Toutput, Ttemp_output, int32,
               bias_enabled, false, false,
               false>::AllocateOutputTensor(context, conv_prim_desc,
                                            output_dims_mkl_order,
@@ -1839,6 +1862,8 @@ class MklQuantizedConv2DSumReluOp
     const float* min_filter = min_filter_vector.flat<float>().data();
     const float* max_filter = max_filter_vector.flat<float>().data();
 
+    const float int_const_scale_limit =
+        (std::is_same<Tinput, quint8>::value) ? 255.0 * 127.0 : 127.0 * 127.0;
     size_t depth = min_filter_vector.NumElements();
     std::vector<float> scales(depth);
     for (size_t i = 0; i < depth; ++i) {
@@ -1846,7 +1871,7 @@ class MklQuantizedConv2DSumReluOp
       // done regularly. A Cleaner design to address all mapping in one
       // function needs to be implemented in future which also supports other
       // quantized type mapping in future.
-      scales[i] = 255.0 * 127.0 /
+      scales[i] = int_const_scale_limit /
                   (std::max(std::abs(max_input), std::abs(min_input)) *
                    std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
     }
@@ -1868,18 +1893,18 @@ class MklQuantizedConv2DSumReluOp
         static_cast<void*>(const_cast<Tbias*>(summand.flat<Tbias>().data()));
     void* dst_buf =
         static_cast<void*>((*output_tensor)->flat<Ttemp_output>().data());
-    summand_ =
-        new MEMORY_CONSTRUCTOR(SUMMAND_MD, this->cpu_engine_, summand_buf);
-    dst_ = new MEMORY_CONSTRUCTOR(conv_prim_desc.PRIMITIVE_DESC_DST,
-                                  this->cpu_engine_, dst_buf);
+    summand_.reset(
+        new MEMORY_CONSTRUCTOR(SUMMAND_MD, this->cpu_engine_, summand_buf));
+    dst_.reset(new MEMORY_CONSTRUCTOR(conv_prim_desc.PRIMITIVE_DESC_DST,
+                                      this->cpu_engine_, dst_buf));
     auto reorder_desc = REORDER_PD_CONSTRUCTOR_WITH_ATTR(
         SUMMAND_MD, conv_prim_desc.PRIMITIVE_DESC_DST, this->cpu_engine_,
         reorder_attr);
     CreateAndExecuteReorder(reorder_desc, *summand_, *dst_, this->cpu_engine_);
   }
 
-  memory* summand_ = nullptr;
-  memory* dst_ = nullptr;
+  std::shared_ptr<mkldnn::memory> summand_;
+  std::shared_ptr<mkldnn::memory> dst_;
 };
 
 // INT8 kernel registration
@@ -1906,33 +1931,41 @@ REGISTER_KERNEL_BUILDER(Name("QuantizedConv2DPerChannel")
                             .TypeConstraint<qint32>("out_type"),
                         NoOp);
 // Register a templatized implementation of MklQuantizedConv2DPerChannel.
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedConv2DPerChannel")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("Tinput")
-        .TypeConstraint<qint8>("Tfilter")
-        .TypeConstraint<qint32>("out_type")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DOp<CPUDevice, float, qint32, qint32, false, false>);
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConv2DPerChannel")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("out_type")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklQuantizedConv2DOp<CPUDevice, quint8, float, qint32,
+                                             qint32, false, false>);
 
 // Register a templatized implementation of MklQuantizedConv2D.
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedConv2D")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("Tinput")
-        .TypeConstraint<qint8>("Tfilter")
-        .TypeConstraint<qint32>("out_type")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DOp<CPUDevice, float, qint32, qint32, false, false>);
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConv2D")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("out_type")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklQuantizedConv2DOp<CPUDevice, quint8, float, qint32,
+                                             qint32, false, false>);
 
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedConv2DAndRequantize")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("Tinput")
-        .TypeConstraint<qint8>("Tfilter")
-        .TypeConstraint<qint8>("out_type")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DOp<CPUDevice, qint32, qint8, qint8, false, false>);
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConv2D")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("out_type")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklQuantizedConv2DOp<CPUDevice, qint8, float, qint32,
+                                             qint32, false, false>);
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConv2DAndRequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint8>("out_type")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklQuantizedConv2DOp<CPUDevice, quint8, qint32, qint8,
+                                             qint8, false, false>);
 
 // Register NoOp kernel for QuantizedConv2DWithBias to get a python interface.
 // This kernel will be replaced by an MKL kernel during graph
@@ -1951,15 +1984,28 @@ REGISTER_KERNEL_BUILDER(Name("QuantizedConv2DWithBiasAndRequantize")
                             .TypeConstraint<qint8>("out_type"),
                         NoOp);
 
+REGISTER_KERNEL_BUILDER(Name("QuantizedConv2DWithBias")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("out_type"),
+                        NoOp);
+
+REGISTER_KERNEL_BUILDER(Name("QuantizedConv2DWithBiasAndRequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint8>("out_type"),
+                        NoOp);
 // Register a templatized implementation MklQuantizedConv2DWithBias.
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedConv2DWithBias")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("Tinput")
-        .TypeConstraint<qint8>("Tfilter")
-        .TypeConstraint<qint32>("out_type")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DOp<CPUDevice, float, qint32, qint32, true, false>);
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConv2DWithBias")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("out_type")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklQuantizedConv2DOp<CPUDevice, quint8, float, qint32,
+                                             qint32, true, false>);
 
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2DWithBiasAndRequantize")
@@ -1969,7 +2015,7 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint32>("Tbias")
         .TypeConstraint<qint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DOp<CPUDevice, qint32, qint8, qint8, true, false>);
+    MklQuantizedConv2DOp<CPUDevice, quint8, qint32, qint8, qint8, true, false>);
 
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2DWithBiasAndRequantize")
@@ -1979,7 +2025,36 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<float>("Tbias")
         .TypeConstraint<qint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DOp<CPUDevice, float, qint8, qint8, true, false>);
+    MklQuantizedConv2DOp<CPUDevice, quint8, float, qint8, qint8, true, false>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedConv2DWithBias")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<qint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<qint32>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DOp<CPUDevice, qint8, float, qint32, qint32, true, false>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedConv2DWithBiasAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<qint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<qint32>("Tbias")
+        .TypeConstraint<qint8>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DOp<CPUDevice, qint8, qint32, qint8, qint8, true, false>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedConv2DWithBiasAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<qint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<float>("Tbias")
+        .TypeConstraint<qint8>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DOp<CPUDevice, qint8, float, qint8, qint8, true, false>);
 
 // Register NoOp kernel for QuantizedConv2DAndRelu to get a python interface.
 // This kernel will be replaced by an MKL kernel during graph-optimization pass.
@@ -1998,23 +2073,23 @@ REGISTER_KERNEL_BUILDER(Name("QuantizedConv2DAndReluAndRequantize")
                         NoOp);
 
 // Register a templatized implementation of MklQuantizedConv2DAndRelu.
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedConv2DAndRelu")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("Tinput")
-        .TypeConstraint<qint8>("Tfilter")
-        .TypeConstraint<qint32>("out_type")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DReluOp<CPUDevice, float, qint32, qint32, false, false>);
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConv2DAndRelu")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("out_type")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklQuantizedConv2DReluOp<CPUDevice, quint8, float,
+                                                 qint32, qint32, false, false>);
 
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedConv2DAndReluAndRequantize")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("Tinput")
-        .TypeConstraint<qint8>("Tfilter")
-        .TypeConstraint<quint8>("out_type")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DReluOp<CPUDevice, qint32, quint8, quint8, false, false>);
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConv2DAndReluAndRequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<quint8>("out_type")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklQuantizedConv2DReluOp<CPUDevice, quint8, qint32,
+                                                 quint8, quint8, false, false>);
 
 // Register NoOp kernel for QuantizedConv2DWithBiasAndRelu to get a python
 // interface.
@@ -2022,6 +2097,13 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(Name("QuantizedConv2DWithBiasAndRelu")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("out_type"),
+                        NoOp);
+
+REGISTER_KERNEL_BUILDER(Name("QuantizedConv2DWithBiasAndRelu")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint8>("Tinput")
                             .TypeConstraint<qint8>("Tfilter")
                             .TypeConstraint<qint32>("out_type"),
                         NoOp);
@@ -2036,37 +2118,71 @@ REGISTER_KERNEL_BUILDER(Name("QuantizedConv2DWithBiasAndReluAndRequantize")
                             .TypeConstraint<quint8>("out_type"),
                         NoOp);
 
+REGISTER_KERNEL_BUILDER(Name("QuantizedConv2DWithBiasAndReluAndRequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<quint8>("out_type"),
+                        NoOp);
 // Register a templatized implementation of MklQuantizedConv2DWithBiasAndRelu.
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedConv2DWithBiasAndRelu")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("Tinput")
-        .TypeConstraint<qint8>("Tfilter")
-        .TypeConstraint<qint32>("out_type")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DReluOp<CPUDevice, float, qint32, qint32, true, false>);
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConv2DWithBiasAndRelu")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("out_type")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklQuantizedConv2DReluOp<CPUDevice, quint8, float,
+                                                 qint32, qint32, true, false>);
 
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConv2DWithBiasAndRelu")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("out_type")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklQuantizedConv2DReluOp<CPUDevice, qint8, float,
+                                                 qint32, qint32, true, false>);
 // Register a templatized implementation of
 // MklQuantizedConv2DWithBiasAndReluAndRequantize.
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedConv2DWithBiasAndReluAndRequantize")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("Tinput")
-        .TypeConstraint<qint8>("Tfilter")
-        .TypeConstraint<float>("Tbias")
-        .TypeConstraint<quint8>("out_type")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DReluOp<CPUDevice, float, quint8, quint8, true, false>);
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConv2DWithBiasAndReluAndRequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<float>("Tbias")
+                            .TypeConstraint<quint8>("out_type")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklQuantizedConv2DReluOp<CPUDevice, quint8, float,
+                                                 quint8, quint8, true, false>);
 
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedConv2DWithBiasAndReluAndRequantize")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("Tinput")
-        .TypeConstraint<qint8>("Tfilter")
-        .TypeConstraint<qint32>("Tbias")
-        .TypeConstraint<quint8>("out_type")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DReluOp<CPUDevice, qint32, quint8, quint8, true, false>);
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConv2DWithBiasAndReluAndRequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("Tbias")
+                            .TypeConstraint<quint8>("out_type")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklQuantizedConv2DReluOp<CPUDevice, quint8, qint32,
+                                                 quint8, quint8, true, false>);
+
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConv2DWithBiasAndReluAndRequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<float>("Tbias")
+                            .TypeConstraint<quint8>("out_type")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklQuantizedConv2DReluOp<CPUDevice, qint8, float,
+                                                 quint8, quint8, true, false>);
+
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConv2DWithBiasAndReluAndRequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("Tbias")
+                            .TypeConstraint<quint8>("out_type")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklQuantizedConv2DReluOp<CPUDevice, qint8, qint32,
+                                                 quint8, quint8, true, false>);
 
 // Register NoOp kernel for QuantizedConv2DWithBiasSumAndRelu to get a python
 // interface.
@@ -2102,7 +2218,8 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint8>("Tfilter")
         .TypeConstraint<qint32>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DSumReluOp<CPUDevice, float, qint32, qint32, true, false>);
+    MklQuantizedConv2DSumReluOp<CPUDevice, quint8, float, qint32, qint32, true,
+                                false>);
 
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2DWithBiasSumAndReluAndRequantize")
@@ -2112,7 +2229,7 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint32>("Tbias")
         .TypeConstraint<quint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DSumReluOp<CPUDevice, qint32, quint8, quint8, true,
+    MklQuantizedConv2DSumReluOp<CPUDevice, quint8, qint32, quint8, quint8, true,
                                 false>);
 
 REGISTER_KERNEL_BUILDER(
@@ -2123,7 +2240,8 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint32>("Tbias")
         .TypeConstraint<quint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DSumReluOp<CPUDevice, qint32, quint8, qint8, true, false>);
+    MklQuantizedConv2DSumReluOp<CPUDevice, quint8, qint32, quint8, qint8, true,
+                                false>);
 
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2DWithBiasSumAndReluAndRequantize")
@@ -2133,7 +2251,8 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<float>("Tbias")
         .TypeConstraint<quint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DSumReluOp<CPUDevice, float, quint8, quint8, true, false>);
+    MklQuantizedConv2DSumReluOp<CPUDevice, quint8, float, quint8, quint8, true,
+                                false>);
 
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
@@ -2143,7 +2262,8 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<float>("Tbias")
         .TypeConstraint<quint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DSumReluOp<CPUDevice, float, quint8, qint8, true, false>);
+    MklQuantizedConv2DSumReluOp<CPUDevice, quint8, float, quint8, qint8, true,
+                                false>);
 
 // Register NoOp kernels for non-fused and fused versions of
 // QuantizedDepthwiseConv2D to get a Python interface. These kernels will be
@@ -2179,14 +2299,14 @@ REGISTER_KERNEL_BUILDER(
 
 // Register templatized MKL kernels for non-fused and fused-versions of
 // QuantizedDepthwiseConv2D.
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedDepthwiseConv2D")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("Tinput")
-        .TypeConstraint<qint8>("Tfilter")
-        .TypeConstraint<qint32>("out_type")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DOp<CPUDevice, float, qint32, qint32, false, true>);
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedDepthwiseConv2D")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("out_type")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklQuantizedConv2DOp<CPUDevice, quint8, float, qint32,
+                                             qint32, false, true>);
 
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedDepthwiseConv2DWithBias")
@@ -2195,16 +2315,16 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint8>("Tfilter")
         .TypeConstraint<qint32>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DOp<CPUDevice, float, qint32, qint32, true, true>);
+    MklQuantizedConv2DOp<CPUDevice, quint8, float, qint32, qint32, true, true>);
 
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedDepthwiseConv2DWithBiasAndRelu")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("Tinput")
-        .TypeConstraint<qint8>("Tfilter")
-        .TypeConstraint<qint32>("out_type")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DReluOp<CPUDevice, float, qint32, qint32, true, true>);
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedDepthwiseConv2DWithBiasAndRelu")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("out_type")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklQuantizedConv2DReluOp<CPUDevice, quint8, float,
+                                                 qint32, qint32, true, true>);
 
 // Tbias -> float
 REGISTER_KERNEL_BUILDER(
@@ -2215,7 +2335,8 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<float>("Tbias")
         .TypeConstraint<quint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DReluOp<CPUDevice, float, quint8, quint8, true, true>);
+    MklQuantizedConv2DReluOp<CPUDevice, quint8, float, quint8, quint8, true,
+                             true>);
 
 // Tbias -> qint32
 REGISTER_KERNEL_BUILDER(
@@ -2226,7 +2347,8 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint32>("Tbias")
         .TypeConstraint<quint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DReluOp<CPUDevice, qint32, quint8, quint8, true, true>);
+    MklQuantizedConv2DReluOp<CPUDevice, quint8, qint32, quint8, quint8, true,
+                             true>);
 
 // Register 2D operations
 #define REGISTER_MKL_CPU_2D(T)                                                 \

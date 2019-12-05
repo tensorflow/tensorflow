@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/kernels/conv_grad_ops.h"
+#include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -272,6 +272,10 @@ Status ConvBackpropComputeDimensionsV2XlaShapes(
 
 }  // anonymous namespace
 
+absl::Span<const DataType> GetXlaConvTypes() {
+  return {DT_FLOAT, DT_BFLOAT16, DT_HALF, DT_DOUBLE};
+}
+
 xla::StatusOr<ConvOpAttrs> ConvOpAttrs::Create(int num_spatial_dims,
                                                bool depthwise,
                                                OpKernelConstruction* ctx) {
@@ -404,7 +408,7 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
   xla::Shape expanded_filter_shape =
       attrs.depthwise ? ExpandedFilterShapeForDepthwiseConvolution(filter_shape)
                       : filter_shape;
-  // Reuse dimension computation logic from conv_grad_ops.cc.
+  // Reuse dimension computation logic from conv_grad_shape_utils.cc.
   ConvBackpropDimensions dims;
   TF_RETURN_IF_ERROR(ConvBackpropComputeDimensionsV2XlaShapes(
       type_string, attrs.num_spatial_dims, input_shape, expanded_filter_shape,
@@ -413,7 +417,7 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
 
   // The input gradients are computed by a convolution of the output
   // gradients and the filter, with some appropriate padding. See the
-  // comment at the top of conv_grad_ops.h for details.
+  // comment at the top of conv_grad_shape_utils.h for details.
 
   xla::ConvolutionDimensionNumbers dnums;
   dnums.set_input_batch_dimension(batch_dim);
@@ -487,11 +491,11 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
   const xla::Shape expanded_filter_shape =
       attrs.depthwise ? ExpandedFilterShapeForDepthwiseConvolution(filter_shape)
                       : filter_shape;
-  // Reuse dimension computation logic from conv_grad_ops.cc.
+  // Reuse dimension computation logic from conv_grad_shape_utils.cc.
   ConvBackpropDimensions dims;
   // The filter gradients are computed by a convolution of the input
   // activations and the output gradients, with some appropriate padding.
-  // See the comment at the top of conv_grad_ops.h for details.
+  // See the comment at the top of conv_grad_shape_utils.h for details.
   xla::ConvolutionDimensionNumbers dnums;
 
   TF_RETURN_IF_ERROR(ConvBackpropComputeDimensionsV2XlaShapes(

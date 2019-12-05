@@ -60,6 +60,7 @@ Status TensorStore::AddTensor(const string& name, const TensorAndKey& tk) {
     return errors::InvalidArgument("Failed to add a tensor with name '", name,
                                    "' to the tensor store.");
   }
+  dirty_ = true;
   return Status::OK();
 }
 

@@ -18,6 +18,8 @@ load("//tensorflow:workspace.bzl", "tf_repositories")
 # Please add all new TensorFlow dependencies in workspace.bzl.
 tf_repositories()
 
+register_toolchains("@local_config_python//:py_toolchain")
+
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
 
 closure_repositories()
@@ -87,7 +89,7 @@ swift_rules_dependencies()
 # files, in case the parsing of those build files depends on the bazel
 # version we require here.
 load("//tensorflow:version_check.bzl", "check_bazel_version_at_least")
-check_bazel_version_at_least("0.19.0")
+check_bazel_version_at_least("1.0.0")
 
 load("//third_party/android:android_configure.bzl", "android_configure")
 android_configure(name="local_config_android")

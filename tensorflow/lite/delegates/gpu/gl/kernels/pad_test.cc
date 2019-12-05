@@ -45,8 +45,8 @@ void TestPadOperation(const HWC& prepend, const HWC& append,
   output.shape = output_shape;
 
   PadAttributes attr;
-  attr.prepended = prepend;
-  attr.appended = append;
+  attr.prepended = BHWC(0, prepend.h, prepend.w, prepend.c);
+  attr.appended = BHWC(0, append.h, append.w, append.c);
   attr.type = PaddingContentType::ZEROS;
 
   SingleOpModel model({ToString(OperationType::PAD), attr}, {input}, {output});

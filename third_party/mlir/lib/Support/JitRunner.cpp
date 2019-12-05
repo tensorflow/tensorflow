@@ -27,7 +27,6 @@
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
-#include "mlir/ExecutionEngine/MemRefUtils.h"
 #include "mlir/ExecutionEngine/OptUtils.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
@@ -177,7 +176,7 @@ compileAndExecute(ModuleOp module, StringRef entryPoint,
 static Error compileAndExecuteVoidFunction(
     ModuleOp module, StringRef entryPoint,
     std::function<llvm::Error(llvm::Module *)> transformer) {
-  FuncOp mainFunction = module.lookupSymbol<FuncOp>(entryPoint);
+  auto mainFunction = module.lookupSymbol<LLVM::LLVMFuncOp>(entryPoint);
   if (!mainFunction || mainFunction.getBlocks().empty())
     return make_string_error("entry point not found");
   void *empty = nullptr;
@@ -187,22 +186,14 @@ static Error compileAndExecuteVoidFunction(
 static Error compileAndExecuteSingleFloatReturnFunction(
     ModuleOp module, StringRef entryPoint,
     std::function<llvm::Error(llvm::Module *)> transformer) {
-  FuncOp mainFunction = module.lookupSymbol<FuncOp>(entryPoint);
-  if (!mainFunction || mainFunction.isExternal()) {
+  auto mainFunction = module.lookupSymbol<LLVM::LLVMFuncOp>(entryPoint);
+  if (!mainFunction || mainFunction.isExternal())
     return make_string_error("entry point not found");
-  }
 
-  if (!mainFunction.getType().getInputs().empty())
+  if (mainFunction.getType().getFunctionNumParams() != 0)
     return make_string_error("function inputs not supported");
 
-  if (mainFunction.getType().getResults().size() != 1)
-    return make_string_error("only single f32 function result supported");
-
-  auto t = mainFunction.getType().getResults()[0].dyn_cast<LLVM::LLVMType>();
-  if (!t)
-    return make_string_error("only single llvm.f32 function result supported");
-  auto *llvmTy = t.getUnderlyingType();
-  if (llvmTy != llvmTy->getFloatTy(llvmTy->getContext()))
+  if (!mainFunction.getType().getFunctionResultType().isFloatTy())
     return make_string_error("only single llvm.f32 function result supported");
 
   float res;
@@ -284,13 +275,19 @@ int mlir::JitRunnerMain(
   auto transformer = mlir::makeLLVMPassesTransformer(
       passes, optLevel, /*targetMachine=*/tmOrError->get(), optPosition);
 
-  Error error = make_string_error("unsupported function type");
-  if (mainFuncType.getValue() == "f32")
-    error = compileAndExecuteSingleFloatReturnFunction(
-        m.get(), mainFuncName.getValue(), transformer);
-  else if (mainFuncType.getValue() == "void")
-    error = compileAndExecuteVoidFunction(m.get(), mainFuncName.getValue(),
-                                          transformer);
+  // Get the function used to compile and execute the module.
+  using CompileAndExecuteFnT = Error (*)(
+      ModuleOp, StringRef, std::function<llvm::Error(llvm::Module *)>);
+  auto compileAndExecuteFn =
+      llvm::StringSwitch<CompileAndExecuteFnT>(mainFuncType.getValue())
+          .Case("f32", compileAndExecuteSingleFloatReturnFunction)
+          .Case("void", compileAndExecuteVoidFunction)
+          .Default(nullptr);
+
+  Error error =
+      compileAndExecuteFn
+          ? compileAndExecuteFn(m.get(), mainFuncName.getValue(), transformer)
+          : make_string_error("unsupported function type");
 
   int exitCode = EXIT_SUCCESS;
   llvm::handleAllErrors(std::move(error),

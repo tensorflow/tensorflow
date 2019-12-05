@@ -332,6 +332,9 @@ TensorObject TensorToObj(const Tensor& tensor) {
   if (tensor.StorageType() == TensorStorageType::BUFFER) {
     return OpenClBuffer{tensor.GetMemoryPtr()};
   }
+  if (tensor.StorageType() == TensorStorageType::IMAGE_BUFFER) {
+    return OpenClBuffer{tensor.GetMemoryPtrForWriting()};
+  }
   return OpenClTexture{tensor.GetMemoryPtr()};
 }
 
@@ -509,34 +512,17 @@ class InferenceBuilderImpl : public InferenceBuilder {
   Status Initialize(const InferenceOptions& options,
                     const InferenceEnvironmentOptions& env_options,
                     const GraphFloat32& graph) {
-    // Select precision based on given options.
-    CalculationsPrecision precision = CalculationsPrecision::F32;
-    if (options.allow_precision_loss) {
-      precision = options.priority == InferencePriority::MAX_PRECISION
-                      ? CalculationsPrecision::F32_F16
-                      : CalculationsPrecision::F16;
-    }
-
-    // Increase precision if not supported.
-    if (!environment_->IsSupported(precision)) {
-      precision = CalculationsPrecision::F32_F16;
-      if (!environment_->IsSupported(precision)) {
-        precision = CalculationsPrecision::F32;
-      }
-    }
-
     context_ = absl::make_unique<InferenceContext>();
     InferenceContext::CreateInferenceInfo create_info;
-    create_info.precision = precision;
-    create_info.storage_type = GetOptimalStorageType(environment_->device());
-    create_info.hints.Add(ModelHints::kReduceKernelsCount);
-    // TODO(sorokin) temporary hack to speed up init time in some cases.
-    // TODO(sorokin): move this check to the place where hint is applied.
-    if ((precision == CalculationsPrecision::F16 ||
-         precision == CalculationsPrecision::F32_F16) &&
-        create_info.storage_type == TensorStorageType::TEXTURE_ARRAY &&
-        environment_->device().IsAdreno6xxOrHigher()) {
-      create_info.hints.Add(ModelHints::kFastTuning);
+    create_info.precision = GetPrecision(options);
+    create_info.storage_type = GetStorageType(options);
+    if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
+      create_info.hints.Add(ModelHints::kReduceKernelsCount);
+      // TODO(sorokin) temporary hack to speed up init time in some cases.
+      // TODO(sorokin): move this check to the place where hint is applied.
+      if (environment_->device().IsAdreno6xxOrHigher()) {
+        create_info.hints.Add(ModelHints::kFastTuning);
+      }
     }
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
 
@@ -608,6 +594,54 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
  private:
+  TensorStorageType GetStorageType(const InferenceOptions& options) const {
+    // Fallback to BUFFER that should be supported by default.
+    std::vector<TensorStorageType> preferred_storage_types;
+    if (GetRelativeImportance(options, InferencePriority::MIN_LATENCY,
+                              InferencePriority::MIN_MEMORY_USAGE) ==
+        PriorityImportance::HIGHER) {
+      preferred_storage_types = {GetFastestStorageType(environment_->device()),
+                                 TensorStorageType::BUFFER};
+    } else {
+      preferred_storage_types = {TensorStorageType::IMAGE_BUFFER,
+                                 GetFastestStorageType(environment_->device()),
+                                 TensorStorageType::BUFFER};
+    }
+
+    for (TensorStorageType storage_type : preferred_storage_types) {
+      if (environment_->IsSupported(storage_type)) {
+        return storage_type;
+      }
+    }
+    return TensorStorageType::UNKNOWN;
+  }
+
+  CalculationsPrecision GetPrecision(const InferenceOptions& options) const {
+    CalculationsPrecision precision;
+    switch (GetPosition(options, InferencePriority::MAX_PRECISION)) {
+      case 1:
+        precision = CalculationsPrecision::F32;
+        break;
+      case 2:
+        precision = CalculationsPrecision::F32_F16;
+        break;
+      case 3:
+        precision = CalculationsPrecision::F16;
+        break;
+      default:
+        precision = CalculationsPrecision::F16;
+        break;
+    }
+    // Increase precision if lower precision is not supported.
+    if (!environment_->IsSupported(precision)) {
+      precision = CalculationsPrecision::F32_F16;
+      if (!environment_->IsSupported(precision)) {
+        precision = CalculationsPrecision::F32;
+      }
+    }
+    return precision;
+  }
+
   // Links internal tensors with external user-facing objects.
   std::vector<TensorTieDef> LinkTensors(
       const GraphFloat32& graph,
@@ -691,6 +725,11 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
   Status NewInferenceBuilder(const InferenceOptions& options,
                              GraphFloat32 model,
                              std::unique_ptr<InferenceBuilder>* builder) final {
+    if (!IsValid(options)) {
+      return InvalidArgumentError("InferenceOptions are invalid.");
+    }
+    InferenceOptions resolved_options = options;
+    ResolveAutoPriority(&resolved_options);
     if (environment_.program_cache() &&
         !options_.serialized_binary_cache.empty()) {
       // Ignore returned error. Cache is discarded.
@@ -702,7 +741,8 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
 
     RETURN_IF_ERROR(RunGraphTransforms(&model));
     auto builder_impl = absl::make_unique<InferenceBuilderImpl>(&environment_);
-    RETURN_IF_ERROR(builder_impl->Initialize(options, options_, model));
+    RETURN_IF_ERROR(
+        builder_impl->Initialize(resolved_options, options_, model));
     *builder = std::move(builder_impl);
     return OkStatus();
   }

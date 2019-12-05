@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,11 +22,12 @@ from __future__ import print_function
 import argparse
 import os.path
 import re
+import six
 
 
 def sanitize_xml(unsanitized):
   """Uses a whitelist to avoid generating bad XML."""
-  return re.sub(r'[^a-zA-Z0-9+_\-/\\.]', '', unsanitized)
+  return re.sub(r'[^a-zA-Z0-9+_\-/\\.]', '', six.ensure_str(unsanitized))
 
 
 def main(unused_args, flags):
@@ -33,11 +35,12 @@ def main(unused_args, flags):
   with open(flags.input_template, 'r') as input_template_file:
     template_file_text = input_template_file.read()
 
-  template_file_text = re.sub(r'%{EXECUTABLE}%', flags.executable,
+  template_file_text = re.sub(r'%{EXECUTABLE}%',
+                              six.ensure_str(flags.executable),
                               template_file_text)
 
-  srcs_list = flags.srcs.split(' ')
-  hdrs_list = flags.hdrs.split(' ')
+  srcs_list = six.ensure_str(flags.srcs).split(' ')
+  hdrs_list = six.ensure_str(flags.hdrs).split(' ')
   all_srcs_list = srcs_list + hdrs_list
   all_srcs_list.sort()
 
@@ -64,9 +67,10 @@ def main(unused_args, flags):
     replace_srcs += '              <FileType>' + ext_index + '</FileType>\n'
     replace_srcs += '              <FilePath>' + clean_src + '</FilePath>\n'
     replace_srcs += '            </File>\n'
-  template_file_text = re.sub(r'%{SRCS}%', replace_srcs, template_file_text)
+  template_file_text = re.sub(r'%{SRCS}%', replace_srcs,
+                              six.ensure_str(template_file_text))
 
-  include_paths = re.sub(' ', ';', flags.include_paths)
+  include_paths = re.sub(' ', ';', six.ensure_str(flags.include_paths))
   template_file_text = re.sub(r'%{INCLUDE_PATHS}%', include_paths,
                               template_file_text)
 

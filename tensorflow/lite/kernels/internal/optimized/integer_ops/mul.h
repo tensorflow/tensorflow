@@ -18,6 +18,7 @@ limitations under the License.
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/mul.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -175,7 +176,7 @@ inline void Mul(const ArithmeticParams& params,
                    params.quantized_activation_max);
   gemmlowp::ScopedProfilingLabel label("MulInt8/8bit");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   MulElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
@@ -249,6 +250,23 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
       input2_data_reset = input2_data_ptr;
     }
   }
+}
+
+inline void BroadcastMulDispatch(const ArithmeticParams& params,
+                                 const RuntimeShape& input1_shape,
+                                 const int8* input1_data,
+                                 const RuntimeShape& input2_shape,
+                                 const int8* input2_data,
+                                 const RuntimeShape& output_shape,
+                                 int8* output_data) {
+  if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
+    return reference_integer_ops::BroadcastMul4DSlow(
+        params, input1_shape, input1_data, input2_shape, input2_data,
+        output_shape, output_data);
+  }
+
+  BroadcastMulFivefold(params, input1_shape, input1_data, input2_shape,
+                       input2_data, output_shape, output_data);
 }
 
 }  // namespace optimized_integer_ops

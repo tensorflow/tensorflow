@@ -19,8 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef LLVMIR_OPS
-#else
+#ifndef LLVMIR_OPS
 #define LLVMIR_OPS
 
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
@@ -130,8 +129,17 @@ class LLVM_ArithmeticOp<string mnemonic, string builderFunc,
            !listconcat([NoSideEffect, SameOperandsAndResultType], traits)>,
     Arguments<(ins LLVM_Type:$lhs, LLVM_Type:$rhs)>,
     LLVM_Builder<"$res = builder." # builderFunc # "($lhs, $rhs);"> {
-  let parser = [{ return impl::parseBinaryOp(parser, result); }];
-  let printer = [{ mlir::impl::printBinaryOp(this->getOperation(), p); }];
+  let parser = [{ return impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let printer = [{ mlir::impl::printOneResultOp(this->getOperation(), p); }];
+}
+class LLVM_UnaryArithmeticOp<string mnemonic, string builderFunc,
+                        list<OpTrait> traits = []> :
+    LLVM_OneResultOp<mnemonic,
+           !listconcat([NoSideEffect, SameOperandsAndResultType], traits)>,
+    Arguments<(ins LLVM_Type:$operand)>,
+    LLVM_Builder<"$res = builder." # builderFunc # "($operand);"> {
+  let parser = [{ return impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let printer = [{ mlir::impl::printOneResultOp(this->getOperation(), p); }];
 }
 
 // Integer binary operations.
@@ -145,6 +153,9 @@ def LLVM_SRemOp : LLVM_ArithmeticOp<"srem", "CreateSRem">;
 def LLVM_AndOp : LLVM_ArithmeticOp<"and", "CreateAnd">;
 def LLVM_OrOp : LLVM_ArithmeticOp<"or", "CreateOr">;
 def LLVM_XOrOp : LLVM_ArithmeticOp<"xor", "CreateXor">;
+def LLVM_ShlOp : LLVM_ArithmeticOp<"shl", "CreateShl">;
+def LLVM_LShrOp : LLVM_ArithmeticOp<"lshr", "CreateLShr">;
+def LLVM_AShrOp : LLVM_ArithmeticOp<"ashr", "CreateAShr">;
 
 // Predicate for integer comparisons.
 def ICmpPredicateEQ  : I64EnumAttrCase<"eq", 0>;
@@ -163,11 +174,7 @@ def ICmpPredicate : I64EnumAttr<
     [ICmpPredicateEQ, ICmpPredicateNE, ICmpPredicateSLT, ICmpPredicateSLE,
      ICmpPredicateSGT, ICmpPredicateSGE, ICmpPredicateULT, ICmpPredicateULE,
      ICmpPredicateUGT, ICmpPredicateUGE]> {
-  let cppNamespace = "mlir::LLVM";
-
-  let returnType = "ICmpPredicate";
-  let convertFromStorage =
-      "static_cast<" # returnType # ">($_self.getValue().getZExtValue())";
+  let cppNamespace = "::mlir::LLVM";
 }
 
 // Other integer operations.
@@ -214,11 +221,7 @@ def FCmpPredicate : I64EnumAttr<
      FCmpPredicateUEQ, FCmpPredicateUGT, FCmpPredicateUGE, FCmpPredicateULT,
      FCmpPredicateULE, FCmpPredicateUNE, FCmpPredicateUNO, FCmpPredicateTRUE
     ]> {
-  let cppNamespace = "mlir::LLVM";
-
-  let returnType = "FCmpPredicate";
-  let convertFromStorage =
-      "static_cast<" # returnType # ">($_self.getValue().getZExtValue())";
+  let cppNamespace = "::mlir::LLVM";
 }
 
 // Other integer operations.
@@ -228,6 +231,13 @@ def LLVM_FCmpOp : LLVM_OneResultOp<"fcmp", [NoSideEffect]>,
   let llvmBuilder = [{
     $res = builder.CreateFCmp(getLLVMCmpPredicate($predicate), $lhs, $rhs);
   }];
+  let builders = [OpBuilder<
+    "Builder *b, OperationState &result, FCmpPredicate predicate, Value *lhs, "
+    "Value *rhs", [{
+      LLVMDialect *dialect = &lhs->getType().cast<LLVMType>().getDialect();
+      build(b, result, LLVMType::getInt1Ty(dialect),
+            b->getI64IntegerAttr(static_cast<int64_t>(predicate)), lhs, rhs);
+    }]>];
   let parser = [{ return parseCmpOp<FCmpPredicate>(parser, result); }];
   let printer = [{ printFCmpOp(p, *this); }];
 }
@@ -238,6 +248,7 @@ def LLVM_FSubOp : LLVM_ArithmeticOp<"fsub", "CreateFSub">;
 def LLVM_FMulOp : LLVM_ArithmeticOp<"fmul", "CreateFMul">;
 def LLVM_FDivOp : LLVM_ArithmeticOp<"fdiv", "CreateFDiv">;
 def LLVM_FRemOp : LLVM_ArithmeticOp<"frem", "CreateFRem">;
+def LLVM_FNegOp : LLVM_UnaryArithmeticOp<"fneg", "CreateFNeg">;
 
 // Memory-related operations.
 def LLVM_AllocaOp :
@@ -249,7 +260,7 @@ def LLVM_AllocaOp :
     if ($alignment.hasValue()) {
       auto align = $alignment.getValue().getZExtValue();
       if (align != 0)
-        alloca->setAlignment(align);
+        alloca->setAlignment(llvm::MaybeAlign(align));
     }
     $res = alloca;
   }];
@@ -307,22 +318,23 @@ class LLVM_CastOp<string mnemonic, string builderFunc,
   let printer = [{ mlir::impl::printCastOp(this->getOperation(), p); }];
 }
 def LLVM_BitcastOp : LLVM_CastOp<"bitcast", "CreateBitCast">;
+def LLVM_AddrSpaceCastOp : LLVM_CastOp<"addrspacecast", "CreateAddrSpaceCast">;
 def LLVM_IntToPtrOp : LLVM_CastOp<"inttoptr", "CreateIntToPtr">;
 def LLVM_PtrToIntOp : LLVM_CastOp<"ptrtoint", "CreatePtrToInt">;
 def LLVM_SExtOp : LLVM_CastOp<"sext", "CreateSExt">;
 def LLVM_ZExtOp : LLVM_CastOp<"zext", "CreateZExt">;
 def LLVM_TruncOp : LLVM_CastOp<"trunc", "CreateTrunc">;
 def LLVM_SIToFPOp : LLVM_CastOp<"sitofp", "CreateSIToFP">;
+def LLVM_UIToFPOp : LLVM_CastOp<"uitofp", "CreateUIToFP">;
 def LLVM_FPToSIOp : LLVM_CastOp<"fptosi", "CreateFPToSI">;
+def LLVM_FPToUIOp : LLVM_CastOp<"fptoui", "CreateFPToUI">;
 def LLVM_FPExtOp : LLVM_CastOp<"fpext", "CreateFPExt">;
 def LLVM_FPTruncOp : LLVM_CastOp<"fptrunc", "CreateFPTrunc">;
 
 // Call-related operations.
 def LLVM_CallOp : LLVM_Op<"call">,
-                  Arguments<(ins OptionalAttr<SymbolRefAttr>:$callee,
-                             // TODO(b/133216756): fix test failure and
-                             // change to LLVM_Type
-                             Variadic<AnyType>)>,
+                  Arguments<(ins OptionalAttr<FlatSymbolRefAttr>:$callee,
+                             Variadic<LLVM_Type>)>,
                   Results<(outs Variadic<LLVM_Type>)>,
                   LLVM_TwoBuilders<LLVM_OneResultOpBuilder,
                                    LLVM_ZeroResultOpBuilder> {
@@ -455,11 +467,39 @@ def LLVM_UnreachableOp : LLVM_TerminatorOp<"unreachable", []> {
   let printer = [{ p << getOperationName(); }];
 }
 
+////////////////////////////////////////////////////////////////////////////////
 // Auxiliary operations (do not appear in LLVM IR but necessary for the dialect
 // to work correctly).
+////////////////////////////////////////////////////////////////////////////////
+
+// Linkage attribute is used on functions and globals. The order follows that of
+// https://llvm.org/docs/LangRef.html#linkage-types. The names are equivalent to
+// visible names in the IR rather than to enum values names in llvm::GlobalValue
+// since the latter is easier to change.
+def LinkagePrivate             : I64EnumAttrCase<"Private", 0>;
+def LinkageInternal            : I64EnumAttrCase<"Internal", 1>;
+def LinkageAvailableExternally : I64EnumAttrCase<"AvailableExternally", 2>;
+def LinkageLinkonce            : I64EnumAttrCase<"Linkonce", 3>;
+def LinkageWeak                : I64EnumAttrCase<"Weak", 4>;
+def LinkageCommon              : I64EnumAttrCase<"Common", 5>;
+def LinkageAppending           : I64EnumAttrCase<"Appending", 6>;
+def LinkageExternWeak          : I64EnumAttrCase<"ExternWeak", 7>;
+def LinkageLinkonceODR         : I64EnumAttrCase<"LinkonceODR", 8>;
+def LinkageWeakODR             : I64EnumAttrCase<"WeakODR", 9>;
+def LinkageExternal            : I64EnumAttrCase<"External", 10>;
+def Linkage : I64EnumAttr<
+    "Linkage",
+    "LLVM linkage types",
+    [LinkagePrivate, LinkageInternal, LinkageAvailableExternally,
+     LinkageLinkonce, LinkageWeak, LinkageCommon, LinkageAppending,
+     LinkageExternWeak, LinkageLinkonceODR, LinkageWeakODR, LinkageExternal]> {
+  let cppNamespace = "::mlir::LLVM";
+}
+
+
 def LLVM_AddressOfOp
     : LLVM_OneResultOp<"mlir.addressof">,
-      Arguments<(ins SymbolRefAttr:$global_name)> {
+      Arguments<(ins FlatSymbolRefAttr:$global_name)> {
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, LLVMType resType, "
               "StringRef name, ArrayRef<NamedAttribute> attrs = {}", [{
@@ -485,15 +525,34 @@ def LLVM_AddressOfOp
 }
 
 def LLVM_GlobalOp
-    : LLVM_ZeroResultOp<"mlir.global">,
+    : LLVM_ZeroResultOp<"mlir.global",
+                        [IsolatedFromAbove,
+                         SingleBlockImplicitTerminator<"ReturnOp">, Symbol]>,
       Arguments<(ins TypeAttr:$type, UnitAttr:$constant, StrAttr:$sym_name,
+                 Linkage:$linkage,
                  OptionalAttr<AnyAttr>:$value,
                  DefaultValuedAttr<NonNegativeI32Attr, "0">:$addr_space)> {
+  let summary = "LLVM dialect global.";
+  let description = [{
+    Can contain an optional initializer region or attribute for simple
+    initializers.
+
+    Examples:
+      // Initialized using an attribute.
+      llvm.mlir.global @a("abc") : !llvm<"[3 x i8]">
+      // Initialized using a region.
+      llvm.mlir.global constant @b() : !llvm<"i32*"> {
+        %0 = llvm.constant(0 : i32) : !llvm.i32
+        %1 = llvm.inttoptr %0 : !llvm.i32 to !llvm<"i32*">
+        llvm.return %1 : !llvm<"i32*">
+      }
+  }];
+  let regions = (region AnyRegion:$initializer);
 
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, LLVMType type, "
-              "bool isConstant, StringRef name, Attribute value, "
-              "ArrayRef<NamedAttribute> attrs = {}">
+              "bool isConstant, Linkage linkage, StringRef name, "
+              "Attribute value, ArrayRef<NamedAttribute> attrs = {}">
   ];
 
   let extraClassDeclaration = [{
@@ -501,9 +560,21 @@ def LLVM_GlobalOp
     LLVMType getType() {
       return type().cast<LLVMType>();
     }
-    /// Return the value attribute if it exists, or a null attribute.
+    /// Return the initializer attribute if it exists, or a null attribute.
     Attribute getValueOrNull() {
       return value().getValueOr(Attribute());
+    }
+    /// Return the initializer region. This may be empty, but if it is not it
+    /// terminates in an `llvm.return` op with the initializer value.
+    Region &getInitializerRegion() {
+      return getOperation()->getRegion(0);
+    }
+    /// Return the initializer block. If the initializer region is empty this
+    /// is nullptr. If it is not nullptr, it terminates with an `llvm.return`
+    /// op with the initializer value.
+    Block *getInitializerBlock() {
+      return getInitializerRegion().empty() ?
+        nullptr : &getInitializerRegion().front();
     }
   }];
 
@@ -512,8 +583,12 @@ def LLVM_GlobalOp
   let verifier = "return ::verify(*this);";
 }
 
-def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
-      [NativeOpTrait<"IsIsolatedFromAbove">, NativeOpTrait<"FunctionLike">]> {
+def LLVM_LLVMFuncOp
+    : LLVM_ZeroResultOp<"func",
+                        [NativeOpTrait<"IsIsolatedFromAbove">,
+                         NativeOpTrait<"FunctionLike">, Symbol]>,
+      Arguments<(ins DefaultValuedAttr<Linkage,
+                                       "Linkage::External">:$linkage)> {
   let summary = "LLVM dialect function, has wrapped LLVM IR function type";
 
   let regions = (region AnyRegion:$body);
@@ -522,11 +597,16 @@ def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
 
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, StringRef name, "
-              "LLVMType type, ArrayRef<NamedAttribute> attrs, "
+              "LLVMType type, LLVM::Linkage linkage = LLVM::Linkage::External, "
+              "ArrayRef<NamedAttribute> attrs = {}, "
               "ArrayRef<NamedAttributeList> argAttrs = {}">
   ];
 
   let extraClassDeclaration = [{
+    // Add an entry block to an empty function, and set up the block arguments
+    // to match the signature of the function.
+    Block *addEntryBlock();
+
     LLVMType getType() {
       return getAttrOfType<TypeAttr>(getTypeAttrName())
           .getValue().cast<LLVMType>();
@@ -539,6 +619,10 @@ def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
     // Depends on the type attribute being correct as checked by verifyType.
     unsigned getNumFuncArguments();
 
+    // Hook for OpTrait::FunctionLike, returns the number of function results.
+    // Depends on the type attribute being correct as checked by verifyType.
+    unsigned getNumFuncResults();
+
     // Hook for OpTrait::FunctionLike, called after verifying that the 'type'
     // attribute is present.  This can check for preconditions of the
     // getNumArguments hook not failing.
@@ -547,10 +631,16 @@ def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
 
   let verifier = [{ return ::verify(*this); }];
   let printer = [{ printLLVMFuncOp(p, *this); }];
-  let parser = [{
-    return impl::parseFunctionLikeOp(parser, result, /*allowVariadic=*/true,
-                                     buildLLVMFunctionType);
-  }];
+  let parser = [{ return parseLLVMFuncOp(parser, result); }];
+}
+
+def LLVM_NullOp
+    : LLVM_OneResultOp<"mlir.null", [NoSideEffect]>,
+      LLVM_Builder<"$res = llvm::ConstantPointerNull::get("
+                   "    llvm::cast<llvm::PointerType>($_resultType));"> {
+  let parser = [{ return parseNullOp(parser, result); }];
+  let printer = [{ printNullOp(p, *this); }];
+  let verifier = [{ return ::verify(*this); }];
 }
 
 def LLVM_UndefOp : LLVM_OneResultOp<"mlir.undef", [NoSideEffect]>,
@@ -572,7 +662,7 @@ def LLVM_ConstantOp
 // operations and intrinsics. However, we systematically prefix them with
 // "intr." to avoid potential name clashes.
 
-def LLVM_fmuladd : LLVM_Op<"intr.fmuladd", [NoSideEffect]>,
+def LLVM_FMulAddOp : LLVM_Op<"intr.fmuladd", [NoSideEffect]>,
                    Arguments<(ins LLVM_Type:$a, LLVM_Type:$b, LLVM_Type:$c)>,
                    Results<(outs LLVM_Type:$res)> {
   let llvmBuilder = [{
@@ -584,4 +674,14 @@ def LLVM_fmuladd : LLVM_Op<"intr.fmuladd", [NoSideEffect]>,
   }];
 }
 
+def LLVM_ExpOp : LLVM_Op<"intr.exp", [NoSideEffect]>,
+                   Arguments<(ins LLVM_Type:$in)>,
+                   Results<(outs LLVM_Type:$res)> {
+  let llvmBuilder = [{
+    llvm::Module *module = builder.GetInsertBlock()->getModule();
+    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
+        module, llvm::Intrinsic::exp, {$in->getType()});
+    $res = builder.CreateCall(fn, {$in});
+  }];
+}
 #endif // LLVMIR_OPS

@@ -643,7 +643,7 @@ func QuantizeAndDequantizeV2NarrowRange(value bool) QuantizeAndDequantizeV2Attr 
 // quantized range.
 //
 // It determines the scale from one of input_min and input_max, then updates the
-// other one to maximize the respresentable range.
+// other one to maximize the representable range.
 //
 // e.g.
 //

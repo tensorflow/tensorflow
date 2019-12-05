@@ -14,15 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 
-#include <cstddef>
+#include <stddef.h>
 
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 namespace profiler {
 
-std::atomic<int> TraceMeRecorder::trace_level_ =
+namespace internal {
+std::atomic<int> g_trace_level =
     ATOMIC_VAR_INIT(TraceMeRecorder::kTracingDisabled);
+}  // namespace internal
 
 // Implementation of TraceMeRecorder::trace_level_ must be lock-free for faster
 // execution of the TraceMe() public API. This can be commented (if compilation
@@ -77,7 +81,7 @@ class EventQueue {
     size_t end = end_.load(std::memory_order_relaxed);
     new (&end_block_->events[end++ - end_block_->start].event)
         TraceMeRecorder::Event(std::move(event));
-    if (ABSL_PREDICT_FALSE(end - end_block_->start == Block::kNumSlots)) {
+    if (TF_PREDICT_FALSE(end - end_block_->start == Block::kNumSlots)) {
       auto* new_block = new Block{end, nullptr};
       end_block_->next = new_block;
       end_block_ = new_block;
@@ -115,7 +119,7 @@ class EventQueue {
     event.~Event();  // Events must be individually destroyed.
     // If we reach the end of a block, we own it and should delete it.
     // The next block is present: end always points to something.
-    if (ABSL_PREDICT_FALSE(start_ - start_block_->start == Block::kNumSlots)) {
+    if (TF_PREDICT_FALSE(start_ - start_block_->start == Block::kNumSlots)) {
       auto* next_block = start_block_->next;
       delete start_block_;
       start_block_ = next_block;
@@ -195,7 +199,9 @@ void TraceMeRecorder::RegisterThread(int32 tid, ThreadLocalRecorder* thread) {
 void TraceMeRecorder::UnregisterThread(TraceMeRecorder::ThreadEvents&& events) {
   mutex_lock lock(mutex_);
   threads_.erase(events.thread.tid);
-  orphaned_events_.push_back(std::move(events));
+  if (!events.events.empty()) {
+    orphaned_events_.push_back(std::move(events));
+  }
 }
 
 // This method is performance critical and should be kept fast. It is called
@@ -207,7 +213,10 @@ TraceMeRecorder::Events TraceMeRecorder::Clear() {
   std::swap(orphaned_events_, result);
   for (const auto& entry : threads_) {
     auto* recorder = entry.second;
-    result.push_back(recorder->Clear());
+    TraceMeRecorder::ThreadEvents events = recorder->Clear();
+    if (!events.events.empty()) {
+      result.push_back(std::move(events));
+    }
   }
   return result;
 }
@@ -217,7 +226,7 @@ bool TraceMeRecorder::StartRecording(int level) {
   mutex_lock lock(mutex_);
   // Change trace_level_ while holding mutex_.
   int expected = kTracingDisabled;
-  bool started = trace_level_.compare_exchange_strong(
+  bool started = internal::g_trace_level.compare_exchange_strong(
       expected, level, std::memory_order_acq_rel);
   if (started) {
     // We may have old events in buffers because Record() raced with Stop().
@@ -235,11 +244,23 @@ TraceMeRecorder::Events TraceMeRecorder::StopRecording() {
   TraceMeRecorder::Events events;
   mutex_lock lock(mutex_);
   // Change trace_level_ while holding mutex_.
-  if (trace_level_.exchange(kTracingDisabled, std::memory_order_acq_rel) !=
-      kTracingDisabled) {
+  if (internal::g_trace_level.exchange(
+          kTracingDisabled, std::memory_order_acq_rel) != kTracingDisabled) {
     events = Clear();
   }
   return events;
+}
+
+/*static*/ uint64 TraceMeRecorder::NewActivityId() {
+  // Activity IDs: To avoid contention over a counter, the top 32 bits identify
+  // the originating thread, the bottom 32 bits name the event within a thread.
+  // IDs may be reused after 4 billion events on one thread, or 4 billion
+  // threads.
+  static std::atomic<uint32> thread_counter(1);  // avoid kUntracedActivity
+  const thread_local static uint32 thread_id =
+      thread_counter.fetch_add(1, std::memory_order_relaxed);
+  thread_local static uint32 per_thread_activity_id = 0;
+  return static_cast<uint64>(thread_id) << 32 | per_thread_activity_id++;
 }
 
 }  // namespace profiler

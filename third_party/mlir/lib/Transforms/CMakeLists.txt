@@ -2,6 +2,7 @@ add_subdirectory(Utils)
 
 add_llvm_library(MLIRTransforms
   AffineDataCopyGeneration.cpp
+  AffineLoopInvariantCodeMotion.cpp
   Canonicalizer.cpp
   CSE.cpp
   DialectConversion.cpp
@@ -12,9 +13,6 @@ add_llvm_library(MLIRTransforms
   LoopTiling.cpp
   LoopUnrollAndJam.cpp
   LoopUnroll.cpp
-  LowerAffine.cpp
-  LowerVectorTransfers.cpp
-  MaterializeVectors.cpp
   MemRefDataFlowOpt.cpp
   PipelineDataTransfer.cpp
   SimplifyAffineStructures.cpp
@@ -27,7 +25,9 @@ add_llvm_library(MLIRTransforms
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Transforms
   )
 
-add_dependencies(MLIRTransforms MLIRStandardOpsIncGen)
+add_dependencies(MLIRTransforms
+  MLIRLoopLikeInterfaceIncGen
+  MLIRStandardOpsIncGen)
 target_link_libraries(MLIRTransforms
   MLIRAffineOps
   MLIRAnalysis

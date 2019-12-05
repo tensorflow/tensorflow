@@ -24,7 +24,6 @@ import itertools
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.signal import dct_ops
 from tensorflow.python.platform import test
@@ -169,14 +168,13 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     # "ortho" normalization is not implemented for type I.
     if dct_type == 1 and norm == "ortho":
       return
-    with compat.forward_compatibility_horizon(2019, 10, 13):
-      with self.session(use_gpu=True):
-        tol = 5e-4 if dtype == np.float32 else 1e-7
-        signals = np.random.rand(*shape).astype(dtype)
-        n = np.random.randint(1, 2 * signals.shape[-1])
-        n = np.random.choice([None, n])
-        self._compare(signals, n, norm=norm, dct_type=dct_type,
-                      rtol=tol, atol=tol)
+    with self.session(use_gpu=True):
+      tol = 5e-4 if dtype == np.float32 else 1e-7
+      signals = np.random.rand(*shape).astype(dtype)
+      n = np.random.randint(1, 2 * signals.shape[-1])
+      n = np.random.choice([None, n])
+      self._compare(signals, n, norm=norm, dct_type=dct_type,
+                    rtol=tol, atol=tol)
 
   def test_error(self):
     signals = np.random.rand(10)

@@ -74,7 +74,7 @@ unsigned NestedPattern::getDepth() const {
 ///      there is no match;
 ///   2. calls the customizable filter function to refine the single operation
 ///      match with extra semantic constraints;
-///   3. if all is good, recursivey matches the nested patterns;
+///   3. if all is good, recursively matches the nested patterns;
 ///   4. if all nested match then the single operation matches too and is
 ///      appended to the list of matches;
 ///   5. TODO(ntv) Optionally applies actions (lambda), in which case we will

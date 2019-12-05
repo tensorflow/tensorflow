@@ -342,7 +342,8 @@ def is_symbolic_tensor(tensor):
     return (getattr(tensor, '_keras_history', False) or
             not context.executing_eagerly())
   if isinstance(tensor, composite_tensor.CompositeTensor):
-    return tensor._is_graph_tensor  # pylint: disable=protected-access
+    component_tensors = nest.flatten(tensor, expand_composites=True)
+    return any(hasattr(t, 'graph') for t in component_tensors)
   if isinstance(tensor, ops.Tensor):
     return hasattr(tensor, 'graph')
   return False

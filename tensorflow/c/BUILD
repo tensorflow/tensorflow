@@ -25,6 +25,7 @@ filegroup(
         "c_api_experimental.h",
         "tf_attrtype.h",
         "tf_datatype.h",
+        "tf_file_statistics.h",
         "tf_status.h",
         "tf_tensor.h",
     ],
@@ -95,6 +96,7 @@ tf_cuda_library(
         "c_api.h",
         "tf_attrtype.h",
         "tf_datatype.h",
+        "tf_file_statistics.h",
         "tf_status.h",
         "tf_tensor.h",
     ],
@@ -105,6 +107,7 @@ tf_cuda_library(
         ":c_api_internal",
         ":tf_attrtype",
         ":tf_status_internal",
+        ":tf_file_statistics",
     ] + select({
         "//tensorflow:with_xla_support": [
             "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -155,6 +158,7 @@ tf_cuda_library(
             "//tensorflow/core/kernels:logging_ops",
         ],
     }),
+    alwayslink = 1,
 )
 
 tf_cuda_library(
@@ -162,6 +166,9 @@ tf_cuda_library(
     hdrs = [
         "tf_status.h",
         "tf_status_internal.h",
+    ],
+    visibility = [
+        "//tensorflow/c:__subpackages__",
     ],
     deps = select({
         "//tensorflow:android": [
@@ -187,6 +194,18 @@ cc_library(
             "//tensorflow/core:lib",
         ],
     }),
+)
+
+cc_library(
+    name = "tf_status_headers",
+    hdrs = ["tf_status.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "tf_file_statistics",
+    hdrs = ["tf_file_statistics.h"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -281,6 +300,15 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 
+filegroup(
+    name = "checkpoint_reader_hdrs",
+    srcs = [
+        "checkpoint_reader.h",
+        "tf_status_helper.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
 tf_cuda_library(
     name = "tf_status_helper",
     srcs = ["tf_status_helper.cc"],
@@ -329,18 +357,18 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            ":c_api",
-            ":tf_status_helper",
             "//tensorflow/core:android_tensorflow_lib_lite",
-            "//tensorflow/core:lib",
         ],
         "//conditions:default": [
-            ":c_api",
-            ":tf_status_helper",
             "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
         ],
-    }) + [":c_api_internal"],
+    }) + [
+        ":c_api",
+        ":tf_status_helper",
+        ":c_api_internal",
+        ":tf_file_statistics",
+        "//tensorflow/core:lib",
+    ],
 )
 
 tf_cuda_library(

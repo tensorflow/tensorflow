@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
@@ -389,7 +390,7 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
     TF_RETURN_IF_ERROR(AddPlaceholder(t, output));
     DCHECK_NE(ctx->input_list(), nullptr);
     ctx->input_list()->emplace_back((*output)->name(), std::move(t));
-    LOG(WARNING)
+    LOG_EVERY_N_SEC(WARNING, 30)
         << "Input of " << dataset->DebugString()
         << " will not be optimized because the dataset does not implement the "
            "AsGraphDefInternal() method needed to apply optimizations.";
@@ -403,6 +404,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                                     bool* end_of_sequence) {
   profiler::TraceMe activity([&] { return BuildTraceMeName(); },
                              profiler::TraceMeLevel::kInfo);
+  DVLOG(3) << prefix() << " GetNext enter";
   RecordStart(ctx, /*stop_output=*/true);
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
   if (s.ok() && !*end_of_sequence) RecordElement(ctx);
@@ -415,6 +417,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                          s.error_message());
     LOG(ERROR) << s;
   }
+  DVLOG(3) << prefix() << " GetNext exit";
   return s;
 }
 

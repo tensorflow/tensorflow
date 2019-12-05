@@ -553,6 +553,20 @@ message ConfigProto {
     // to an "execute" operation. The kernel for these operations is responsible
     // to lower the encapsulated graph to a particular device.
     bool enable_mlir_bridge = 13;
+
+    // If true, the session will not store an additional copy of the graph for
+    // each subgraph.
+    //
+    // If this option is set to true when a session is created, the
+    // `RunOptions.output_partition_graphs` options must not be set.
+    bool disable_output_partition_graphs = 14;
+
+    // Minimum number of batches run through the XLA graph before XLA fusion
+    // autotuner is enabled. Default value of zero disables the autotuner.
+    //
+    // The XLA fusion autotuner can improve performance by executing a heuristic
+    // search on the compiler parameters.
+    int64 xla_fusion_autotuner_thresh = 15;
   };
 
   Experimental experimental = 16;

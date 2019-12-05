@@ -281,6 +281,7 @@ class TypesTest(test_util.TensorFlowTestCase):
         self.assertEquals(dtype.max, float.fromhex("0x1.FEp127"))
 
   def testRepr(self):
+    self.skipTest("b/142725777")
     for enum, name in dtypes._TYPE_TO_STRING.items():
       if enum > 100:
         continue

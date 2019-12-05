@@ -164,7 +164,7 @@ LogicalResult BuildUnidirectionalSequenceLSTMOp(FuncOp composite_func_op,
   // The output type set is somewhat adhoc here: The fused op only have exact
   // one output while the call_op can have more than one output. (but we only
   // take the last one).
-  // And here we check the outputs are not used (execpet the last one) if the
+  // And here we check the outputs are not used (except the last one) if the
   // call_op has more than one output.
   if (call_op.getNumResults() > 1) {
     for (int i = 0; i < call_op.getNumResults() - 1; ++i) {
@@ -191,10 +191,10 @@ LogicalResult BuildUnidirectionalSequenceLSTMOp(FuncOp composite_func_op,
   return success();
 }
 
-LogicalResult ConvertTfLiteFusedOpIfAvaiable(StringRef func_name,
-                                             FuncOp composite_func_op,
-                                             CallOp call_op,
-                                             OpBuilder* builder) {
+LogicalResult ConvertTfLiteFusedOpIfAvailable(StringRef func_name,
+                                              FuncOp composite_func_op,
+                                              CallOp call_op,
+                                              OpBuilder* builder) {
   Operation* fused_op = nullptr;
   if (func_name == kUnidirectionalSequenceRnn) {
     // TODO(renjieliu): Validate the func op inputs.
@@ -243,8 +243,8 @@ LogicalResult ConvertCallOps(llvm::StringMap<FuncOp>* composite_func_ops,
       StringRef func_name = composite_func_op.getAttr(kTfLiteFunctionName)
                                 .cast<StringAttr>()
                                 .getValue();
-      if (failed(ConvertTfLiteFusedOpIfAvaiable(func_name, composite_func_op,
-                                                call_op, &builder)))
+      if (failed(ConvertTfLiteFusedOpIfAvailable(func_name, composite_func_op,
+                                                 call_op, &builder)))
         return failure();
 
       composite_func_ops->erase(it);

@@ -20,6 +20,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
 tf_kernel_library(

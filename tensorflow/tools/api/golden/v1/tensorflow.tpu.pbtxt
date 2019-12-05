@@ -26,7 +26,7 @@ tf_module {
   }
   member_method {
     name: "initialize_system"
-    argspec: "args=[\'embedding_config\', \'job\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'embedding_config\', \'job\', \'compilation_failure_closes_chips\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
   }
   member_method {
     name: "outside_compilation"

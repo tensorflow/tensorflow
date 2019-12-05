@@ -25,7 +25,8 @@ from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.util import compat
 
 VSpace = collections.namedtuple("VSpace", [
-    "aggregate_fn", "num_elements_fn", "zeros_fn", "ones_fn", "graph_shape_fn"
+    "aggregate_fn", "num_elements_fn", "zeros_fn", "ones_fn",
+    "zeros_like_fn", "ones_like_fn", "graph_shape_fn"
 ])
 
 

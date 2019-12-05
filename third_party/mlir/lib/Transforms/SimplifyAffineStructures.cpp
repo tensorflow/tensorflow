@@ -102,9 +102,16 @@ void SimplifyAffineStructures::runOnFunction() {
     }
   });
 
-  // Turn memrefs' non-identity layouts maps into ones with identity.
-  func.walk([](AllocOp op) { normalizeMemRef(op); });
+  // Turn memrefs' non-identity layouts maps into ones with identity. Collect
+  // alloc ops first and then process since normalizeMemRef replaces/erases ops
+  // during memref rewriting.
+  SmallVector<AllocOp, 4> allocOps;
+  func.walk([&](AllocOp op) { allocOps.push_back(op); });
+  for (auto allocOp : allocOps) {
+    normalizeMemRef(allocOp);
+  }
 }
 
 static PassRegistration<SimplifyAffineStructures>
-    pass("simplify-affine-structures", "Simplify affine expressions");
+    pass("simplify-affine-structures",
+         "Simplify affine expressions in maps/sets and normalize memrefs");

@@ -28,7 +28,6 @@ import time
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python.compat import compat
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
@@ -1703,7 +1702,7 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
           offset_width,
           target_height,
           target_width,
-          "all dims of 'image.shape' must be > 0",
+          "inner 3 dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
       # Multiple assertion could fail, but the evaluation order is arbitrary.
       # Match gainst generic pattern.
@@ -2042,7 +2041,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
           offset_width,
           target_height,
           target_width,
-          "all dims of 'image.shape' must be > 0",
+          "inner 3 dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
 
       # The original error message does not contain back slashes. However, they
@@ -2055,7 +2054,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
           offset_width,
           target_height,
           target_width,
-          "all dims of \\'image.shape\\' must be > 0",
+          "inner 3 dims of \\'image.shape\\' must be > 0",
           use_tensor_inputs_options=[True])
 
   @test_util.run_deprecated_v1
@@ -3726,7 +3725,7 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
           x_shape,
           target_height,
           target_width,
-          "all dims of 'image.shape' must be > 0",
+          "inner 3 dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
 
       # The original error message does not contain back slashes. However, they
@@ -3737,7 +3736,7 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
           x_shape,
           target_height,
           target_width,
-          "all dims of \\'image.shape\\' must be > 0",
+          "inner 3 dims of \\'image.shape\\' must be > 0",
           use_tensor_inputs_options=[True])
 
   @test_util.run_deprecated_v1
@@ -3951,24 +3950,23 @@ class JpegTest(test_util.TensorFlowTestCase):
     # Previous implementation of random_jpeg_quality had a bug.
     # This unit test tests the fixed version, but due to forward compatibility
     # this test can only be done when fixed version is used.
-    if compat.forward_compatible(2019, 4, 4):
-      # Test jpeg quality dynamic randomization.
-      with ops.Graph().as_default(), self.test_session():
-        np.random.seed(7)
-        path = ("tensorflow/core/lib/jpeg/testdata/medium.jpg")
-        jpeg = io_ops.read_file(path)
-        image = image_ops.decode_jpeg(jpeg)
-        random_jpeg_image = image_ops.random_jpeg_quality(image, 40, 100)
-        with self.cached_session(use_gpu=True) as sess:
-          # Test randomization.
-          random_jpeg_images = [sess.run(random_jpeg_image) for _ in range(5)]
-          are_images_equal = []
-          for i in range(1, len(random_jpeg_images)):
-            # Most of them should be different if randomization is occurring
-            # correctly.
-            are_images_equal.append(
-                np.array_equal(random_jpeg_images[0], random_jpeg_images[i]))
-          self.assertFalse(all(are_images_equal))
+    # Test jpeg quality dynamic randomization.
+    with ops.Graph().as_default(), self.test_session():
+      np.random.seed(7)
+      path = ("tensorflow/core/lib/jpeg/testdata/medium.jpg")
+      jpeg = io_ops.read_file(path)
+      image = image_ops.decode_jpeg(jpeg)
+      random_jpeg_image = image_ops.random_jpeg_quality(image, 40, 100)
+      with self.cached_session(use_gpu=True) as sess:
+        # Test randomization.
+        random_jpeg_images = [sess.run(random_jpeg_image) for _ in range(5)]
+        are_images_equal = []
+        for i in range(1, len(random_jpeg_images)):
+          # Most of them should be different if randomization is occurring
+          # correctly.
+          are_images_equal.append(
+              np.array_equal(random_jpeg_images[0], random_jpeg_images[i]))
+        self.assertFalse(all(are_images_equal))
 
   def testAdjustJpegQuality(self):
     # Test if image_ops.adjust_jpeg_quality works when jpeq quality
@@ -5121,6 +5119,7 @@ class SobelEdgesTest(test_util.TensorFlowTestCase):
       self.assertAllClose(expected_batch, actual_sobel)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class DecodeImageTest(test_util.TensorFlowTestCase):
 
   def testJpegUint16(self):
@@ -5142,6 +5141,13 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
           image_ops.decode_png(png0, dtype=dtypes.uint16), dtypes.uint16)
       image0, image1 = self.evaluate([image0, image1])
       self.assertAllEqual(image0, image1)
+
+      # NumPy conversions should happen before
+      x = np.random.randint(256, size=(4, 4, 3), dtype=np.uint16)
+      x_str = image_ops_impl.encode_png(x)
+      x_dec = image_ops_impl.decode_image(
+          x_str, channels=3, dtype=dtypes.uint16)
+      self.assertAllEqual(x, x_dec)
 
   def testGifUint16(self):
     with self.cached_session(use_gpu=True) as sess:

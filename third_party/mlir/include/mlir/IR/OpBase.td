@@ -19,20 +19,38 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 #define OP_BASE
 
 //===----------------------------------------------------------------------===//
 // Common utilities for defining TableGen mechanisms
 //===----------------------------------------------------------------------===//
 
-// Concatenates a list of strings with a separator (default ", ")
-class StrJoin<list<string> strings, string sep = ", "> {
-  string result =
-      !if(!empty(strings), "",
-          !foldl(!head(strings), !tail(strings), prev, cur, prev # sep # cur));
+// A workaround for the inability to define functions in Tablegen.
+//
+// The template parameter defines a string that can be extracted from an
+// instance of this class by accessing the "result" member. Subclasses can take
+// their own template parameters as function "arguments" and use them to
+// populate result.
+// For example, if it didn't already exist, a concat function could be defined
+// like:
+//
+// class StrConcat<list<string> strings> :
+//     StrFunc<!foldl("", strings, prev, cur, prev # cur)>
+//
+// and then called like
+//
+// StrConcat<["a", "b", "c"]>.result
+//
+// to get the string "abc"
+class StrFunc<string r> {
+  string result = r;
 }
+
+// Concatenates a list of strings with a separator (default ", ")
+class StrJoin<list<string> strings, string sep = ", "> :
+    StrFunc<!if(!empty(strings), "",
+         !foldl(!head(strings), !tail(strings), prev, cur, prev # sep # cur))>;
 
 // Concatenates a list of integers into a string with a separator (default ", ")
 class StrJoinInt<list<int> integers, string sep = ", "> :
@@ -81,7 +99,7 @@ class CPred<code pred> : Pred {
   code predExpr = "(" # pred # ")";
 }
 
-// Kinds of predicate combiners.  These must closesly match the predicates
+// Kinds of predicate combiners.  These must closely match the predicates
 // implemented by the C++ backend (tblgen::PredCombinerKind).
 class PredCombinerKind;
 def PredCombinerAnd : PredCombinerKind;
@@ -245,11 +263,21 @@ class Dialect {
 
 // A type, carries type constraints.
 class Type<Pred condition, string descr = ""> :
-    TypeConstraint<condition, descr>;
+    TypeConstraint<condition, descr> {
+  string typeDescription = "";
+}
 
 // Allows providing an alternative name and description to an existing type def.
 class TypeAlias<Type t, string description = t.description> :
-    Type<t.predicate, description>;
+    Type<t.predicate, description> {
+  let typeDescription = t.typeDescription;
+}
+
+// A type of a specific dialect.
+class DialectType<Dialect d, Pred condition, string descr = ""> :
+    Type<condition, descr> {
+  Dialect dialect = d;
+}
 
 // A variadic type constraint. It expands to zero or more of the base type. This
 // class is used for supporting variadic operands/results. An op can declare no
@@ -334,6 +362,17 @@ def F64 : F<64>;
 def BF16 : Type<CPred<"$_self.isBF16()">, "bfloat16 type">,
            BuildableType<"getBF16Type()">;
 
+class Complex<Type type>
+    : Type<And<[
+          CPred<"$_self.isa<ComplexType>()">,
+          SubstLeaves<"$_self", "$_self.cast<ComplexType>().getElementType()",
+           type.predicate>]>,
+           "complex type with " # type.description # " elements"> {
+  Type elementType = type;
+}
+
+def AnyComplex : Type<CPred<"$_self.isa<ComplexType>()">, "complex-type">;
+
 class OpaqueType<string dialect, string name, string description>
   : Type<CPred<"isOpaqueTypeWithName($_self, \""#dialect#"\", \""#name#"\")">,
          description>;
@@ -413,6 +452,10 @@ class TensorOf<list<Type> allowedTypes> :
 
 def AnyTensor : TensorOf<[AnyType]>;
 
+def AnyRankedTensor :
+  ShapedContainerType<[AnyType], And<[IsTensorTypePred, HasRankPred]>,
+  "ranked tensor">;
+
 // TODO(b/130064155) Have an easy way to add another constraint to a type.
 class StaticShapeTensorOf<list<Type> allowedTypes>
     : Type<And<[TensorOf<allowedTypes>.predicate, HasStaticShapePred]>,
@@ -475,6 +518,20 @@ class StaticShapeMemRefOf<list<Type> allowedTypes>
            "statically shaped " # MemRefOf<allowedTypes>.description>;
 
 def AnyStaticShapeMemRef : StaticShapeMemRefOf<[AnyType]>;
+
+// For a MemRefType, verify that it has strides.
+def HasStridesPred : CPred<[{ isStrided($_self.cast<MemRefType>()) }]>;
+
+class StridedMemRefOf<list<Type> allowedTypes>
+    : Type<And<[MemRefOf<allowedTypes>.predicate, HasStridesPred]>,
+           "strided " # MemRefOf<allowedTypes>.description>;
+
+def AnyStridedMemRef : StridedMemRefOf<[AnyType]>;
+
+class AnyStridedMemRefOfRank<int rank> :
+  Type<And<[AnyStridedMemRef.predicate,
+            MemRefRankOf<[AnyType], [rank]>.predicate]>,
+       AnyStridedMemRef.description # " of rank " # rank>;
 
 // This represents a generic tuple without any constraints on element type.
 def AnyTuple : Type<IsTupleTypePred, "tuple">;
@@ -579,7 +636,7 @@ class Attr<Pred condition, string descr = ""> :
   // Unset means this is a base-level Attr.
   //
   // This field is used by attribute wrapper classes (DefaultValuedAttr,
-  // OptionalAttr, etc.) to retrive the base-level attribute definition.
+  // OptionalAttr, etc.) to retrieve the base-level attribute definition.
   // This can be used for getting its name; otherwise, we will see
   // "anonymous_<number>" as the attribute def name because of template
   // instantiation.
@@ -779,6 +836,16 @@ class IntEnumAttrCaseBase<I intType, string sym, int val> :
 class I32EnumAttrCase<string sym, int val> : IntEnumAttrCaseBase<I32, sym, val>;
 class I64EnumAttrCase<string sym, int val> : IntEnumAttrCaseBase<I64, sym, val>;
 
+// A bit enum case stored with 32-bit IntegerAttr. `val` here is *not* the
+// ordinal number of the bit that is set. It is the 32-bit integer with only
+// one bit set.
+class BitEnumAttrCase<string sym, int val> :
+    EnumAttrCaseInfo<sym, val>,
+    IntegerAttrBase<I32, "case " # sym> {
+  let predicate = CPred<
+    "$_self.cast<IntegerAttr>().getValue().getZExtValue() & " # val # "u">;
+}
+
 // Additional information for an enum attribute.
 class EnumAttrInfo<string name, list<EnumAttrCaseInfo> cases> {
   // The C++ enum class name
@@ -786,10 +853,6 @@ class EnumAttrInfo<string name, list<EnumAttrCaseInfo> cases> {
 
   // List of all accepted cases
   list<EnumAttrCaseInfo> enumerants = cases;
-
-  // Whether to skip automatically generating C++ enum class and utility
-  // functions for this enum attribute with EnumsGen.
-  bit skipAutoGen = 0;
 
   // The following fields are only used by the EnumsGen backend to generate
   // an enum class definition and conversion utility functions.
@@ -875,12 +938,48 @@ class IntEnumAttr<I intType, string name, string description,
 class I32EnumAttr<string name, string description,
                   list<I32EnumAttrCase> cases> :
     IntEnumAttr<I32, name, description, cases> {
+  let returnType = cppNamespace # "::" # name;
   let underlyingType = "uint32_t";
+  let convertFromStorage = "static_cast<" # returnType # ">($_self.getInt())";
+  let constBuilderCall = "$_builder.getI32IntegerAttr(static_cast<int32_t>($0))";
 }
 class I64EnumAttr<string name, string description,
                   list<I64EnumAttrCase> cases> :
     IntEnumAttr<I64, name, description, cases> {
+  let returnType = cppNamespace # "::" # name;
   let underlyingType = "uint64_t";
+  let convertFromStorage = "static_cast<" # returnType # ">($_self.getInt())";
+  let constBuilderCall = "$_builder.getI64IntegerAttr(static_cast<int64_t>($0))";
+}
+
+// A bit enum stored with 32-bit IntegerAttr.
+//
+// Op attributes of this kind are stored as IntegerAttr. Extra verification will
+// be generated on the integer to make sure only allowed bit are set. Besides,
+// helper methods are generated to parse a string separated with a specified
+// delimiter to a symbol and vice versa.
+class BitEnumAttr<string name, string description,
+                  list<BitEnumAttrCase> cases> :
+    EnumAttrInfo<name, cases>, IntegerAttrBase<I32, description> {
+  let predicate = And<[
+    IntegerAttrBase<I32, "">.predicate,
+    // Make sure we don't have unknown bit set.
+    CPred<"!($_self.cast<IntegerAttr>().getValue().getZExtValue() & (~(" #
+          StrJoin<!foreach(case, cases, case.value # "u"), "|">.result #
+          ")))">
+  ]>;
+
+  let returnType = cppNamespace # "::" # name;
+  let underlyingType = "uint32_t";
+  let convertFromStorage = "static_cast<" # returnType # ">($_self.getInt())";
+  let constBuilderCall = "$_builder.getI32IntegerAttr(static_cast<int32_t>($0))";
+
+  // We need to return a string because we may concatenate symbols for multiple
+  // bits together.
+  let symbolToStringFnRetType = "std::string";
+
+  // The delimiter used to separate bit enum cases in strings.
+  string separator = "|";
 }
 
 //===----------------------------------------------------------------------===//
@@ -916,13 +1015,31 @@ class IntElementsAttr<int width> : ElementsAttrBase<
 
   // Note that this is only constructing scalar elements attribute.
   let constBuilderCall = "DenseElementsAttr::get("
-    "$_builder.getTensorType({}, $_builder.getIntegerType(" # width # ")), "
+    "RankedTensorType::get({}, $_builder.getIntegerType(" # width # ")), "
     "llvm::makeArrayRef($0)).cast<DenseIntElementsAttr>()";
   let convertFromStorage = "$_self";
 }
 
 def I32ElementsAttr : IntElementsAttr<32>;
 def I64ElementsAttr : IntElementsAttr<64>;
+
+class FloatElementsAttr<int width> : ElementsAttrBase<
+  CPred<"$_self.isa<DenseFPElementsAttr>() &&"
+      "$_self.cast<DenseElementsAttr>().getType()."
+      "getElementType().isF" # width # "()">,
+  width # "-bit float elements attribute"> {
+
+  let storageType = [{ DenseElementsAttr }];
+  let returnType = [{ DenseElementsAttr }];
+
+  // Note that this is only constructing scalar elements attribute.
+  let constBuilderCall = "DenseElementsAttr::get("
+    "RankedTensorType::get({}, $_builder.getF" # width # "Type()),"
+    "llvm::makeArrayRef($0))";
+  let convertFromStorage = "$_self";
+}
+
+def F64ElementsAttr : FloatElementsAttr<64>;
 
 // A `width`-bit floating point elements attribute. The attribute should be
 // ranked and has a shape as specified in `dims`.
@@ -941,7 +1058,7 @@ class RankedFloatElementsAttr<int width, list<int> dims> : ElementsAttrBase<
   let returnType = [{ DenseFPElementsAttr }];
 
   let constBuilderCall = "DenseElementsAttr::get("
-    "$_builder.getTensorType({" # StrJoinInt<dims>.result #
+    "RankedTensorType::get({" # StrJoinInt<dims>.result #
     "}, $_builder.getF" # width # "Type()), "
     "llvm::makeArrayRef($0)).cast<DenseFPElementsAttr>()";
   let convertFromStorage = "$_self";
@@ -965,7 +1082,7 @@ def ArrayAttr : ArrayAttrBase<CPred<"$_self.isa<ArrayAttr>()">,
 // `element` specifies the element attribute kind stored in this array.
 class TypedArrayAttrBase<Attr element, string description>: ArrayAttrBase<
     And<[
-      // Guranatee this is an ArrayAttr first
+      // Guarantee this is an ArrayAttr first
       CPred<"$_self.isa<ArrayAttr>()">,
       // Guarantee all elements satisfy the constraints from `element`
       Concat<"llvm::all_of($_self.cast<ArrayAttr>(), "
@@ -1031,8 +1148,16 @@ class StructAttr<string name, Dialect dialect,
 def SymbolRefAttr : Attr<CPred<"$_self.isa<SymbolRefAttr>()">,
                         "symbol reference attribute"> {
   let storageType = [{ SymbolRefAttr }];
+  let returnType = [{ SymbolRefAttr }];
+  let constBuilderCall = "$_builder.getSymbolRefAttr($0)";
+  let convertFromStorage = "$_self";
+}
+def FlatSymbolRefAttr : Attr<CPred<"$_self.isa<FlatSymbolRefAttr>()">,
+                                   "flat symbol reference attribute"> {
+  let storageType = [{ FlatSymbolRefAttr }];
   let returnType = [{ StringRef }];
   let constBuilderCall = "$_builder.getSymbolRefAttr($0)";
+  let convertFromStorage = "$_self.getValue()";
 }
 
 def SymbolRefArrayAttr :
@@ -1114,6 +1239,10 @@ class ArrayMinCount<int n> : AttrConstraint<
     CPred<"$_self.cast<ArrayAttr>().size() >= " # n>,
     "with at least " # n # " elements">;
 
+class ArrayCount<int n> : AttrConstraint<
+    CPred<"$_self.cast<ArrayAttr>().size() == " #n>,
+    "with exactly " # n # " elements">;
+
 class IntArrayNthElemEq<int index, int value> : AttrConstraint<
     And<[
       CPred<"$_self.cast<ArrayAttr>().size() > " # index>,
@@ -1132,6 +1261,16 @@ class IntArrayNthElemMinValue<int index, int min> : AttrConstraint<
 
 def IsNullAttr : AttrConstraint<
     CPred<"!$_self">, "empty attribute (for optional attributes)">;
+
+// An attribute constraint on FlatSymbolRefAttr that requires that the
+// reference point to an op of `opClass` within the closest parent with a symbol
+// table.
+// TODO(riverriddle) Add support for nested symbol references.
+class ReferToOp<string opClass> : AttrConstraint<
+    CPred<"isa_and_nonnull<" # opClass # ">("
+            "::mlir::SymbolTable::lookupNearestSymbolFrom("
+              "&$_op, $_self.cast<FlatSymbolRefAttr>().getValue()))">,
+    "referencing to a '" # opClass # "' symbol">;
 
 //===----------------------------------------------------------------------===//
 // Region definitions
@@ -1168,8 +1307,7 @@ class NativeOpTrait<string prop> : OpTrait {
 // the value in `prop` as the trait name and the value in `params` as
 // parameters to construct the native trait class name.
 class ParamNativeOpTrait<string prop, string params>
-    : NativeOpTrait<prop # "<" # params # ">::Impl"> {
-}
+    : NativeOpTrait<prop # "<" # params # ">::Impl">;
 
 // GenInternalOpTrait is an op trait that does not have direct C++ mapping but
 // affects op definition generator internals, like how op builders and
@@ -1202,13 +1340,17 @@ def SameOperandsShape : NativeOpTrait<"SameOperandsShape">;
 def SameOperandsAndResultShape : NativeOpTrait<"SameOperandsAndResultShape">;
 // Op has the same operand and result type.
 def SameOperandsAndResultType : NativeOpTrait<"SameOperandsAndResultType">;
-// Op has the same element type for all operands.
+// Op has the same element type (or type itself, if scalar) for all operands.
 def SameOperandsElementType : NativeOpTrait<"SameOperandsElementType">;
-// Op has the same operand and result element type.
+// Op has the same operand and result element type (or type itself, if scalar).
 def SameOperandsAndResultElementType :
   NativeOpTrait<"SameOperandsAndResultElementType">;
+// Op is a symbol.
+def Symbol : NativeOpTrait<"Symbol">;
+// Op defines a symbol table.
+def SymbolTable : NativeOpTrait<"SymbolTable">;
 // Op is a terminator.
-def Terminator       : NativeOpTrait<"IsTerminator">;
+def Terminator : NativeOpTrait<"IsTerminator">;
 
 // Op's regions have a single block with the specified terminator.
 class SingleBlockImplicitTerminator<string op>
@@ -1238,6 +1380,18 @@ def SameVariadicOperandSize : GenInternalOpTrait<"SameVariadicOperandSize">;
 // to have the same array size.
 def SameVariadicResultSize : GenInternalOpTrait<"SameVariadicResultSize">;
 
+// Uses an attribute named `operand_segment_sizes` to specify how many actual
+// operand each ODS-declared operand (variadic or not) corresponds to.
+// This trait is used for ops that have multiple variadic operands but do
+// not know statically their size relationship. The attribute must be a 1D
+// vector that has the same number of elements as the number of ODS declared
+// operands. That means even if some operands are non-variadic, the attribute
+// still need to have an element for its size, which is always 1.
+def AttrSizedOperandSegments : NativeOpTrait<"AttrSizedOperandSegments">;
+// Similar to AttrSizedOperandSegments, but used for results. The attribute
+// should be named as `result_segment_sizes`.
+def AttrSizedResultSegments  : NativeOpTrait<"AttrSizedResultSegments">;
+
 //===----------------------------------------------------------------------===//
 // OpInterface definitions
 //===----------------------------------------------------------------------===//
@@ -1260,16 +1414,16 @@ class InterfaceMethod<string desc, string retTy, string methodName,
   // A human-readable description of what this method does.
   string description = desc;
 
-  /// The name of the interface method.
+  // The name of the interface method.
   string name = methodName;
 
-  /// The c++ type-name of the return type.
+  // The c++ type-name of the return type.
   string returnType = retTy;
 
-  /// A dag of string that correspond to the arguments of the method.
+  // A dag of string that correspond to the arguments of the method.
   dag arguments = args;
 
-  /// An optional body to the method.
+  // An optional body to the method.
   code body = methodBody;
 }
 
@@ -1286,8 +1440,18 @@ class OpInterface<string name> : OpInterfaceTrait<name> {
   // The name given to the c++ interface class.
   string cppClassName = name;
 
-  /// The list of methods defined by this interface.
+  // The list of methods defined by this interface.
   list<InterfaceMethod> methods = [];
+}
+
+// Whether to declare the op interface methods in the op's header. This class
+// simply wraps an OpInterface but is used to indicate that the method
+// declarations should be generated.
+class DeclareOpInterfaceMethods<OpInterface interface> :
+  OpInterface<interface.cppClassName> {
+    let description = interface.description;
+    let cppClassName = interface.cppClassName;
+    let methods = interface.methods;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1341,7 +1505,7 @@ class Op<Dialect dialect, string mnemonic, list<OpTrait> props = []> {
   // Additional, longer human-readable description of what the op does.
   string description = "";
 
-  // Dag containting the arguments of the op. Default to 0 arguments.
+  // Dag containing the arguments of the op. Default to 0 arguments.
   dag arguments = (ins);
 
   // The list of results of the op. Default to 0 results.
@@ -1437,6 +1601,17 @@ def HasNoUseOf: Constraint<
 
 // TODO(b/135033717): Improve the autogenerated error messages.
 
+class Rank<string name> :
+    StrFunc<"$" # name # ".getType().cast<ShapedType>().getRank()">;
+
+class Shape<string name> :
+    StrFunc<"$" # name # ".getType().cast<ShapedType>().getShape()">;
+
+class ElementCount<string name> :
+  StrFunc<"$" # name # ".getType().cast<ShapedType>().getNumElements()">;
+
+class ElementType<string name> : StrFunc<"getElementTypeOrSelf($" # name # ")">;
+
 class AllMatchPred<list<string> values> :
     CPred<"llvm::is_splat(llvm::makeArrayRef({"# StrJoin<values>.result #"}))">;
 
@@ -1454,17 +1629,18 @@ class AllMatchSameOperatorTrait<list<string> names, string operator,
         AllMatchSameOperatorPred<names, operator>>;
 
 class AllElementCountsMatch<list<string> names> :
-    AllMatchSameOperatorTrait<
-      names, "$_self.getType().cast<ShapedType>().getNumElements()",
-      "element count">;
+    AllMatchSameOperatorTrait<names, ElementCount<"_self">.result,
+                              "element count">;
 
 class AllElementTypesMatch<list<string> names> :
-    AllMatchSameOperatorTrait<names,
-                              "getElementTypeOrSelf($_self)", "element type">;
+    AllMatchSameOperatorTrait<names, ElementType<"_self">.result,
+                              "element type">;
 
 class AllRanksMatch<list<string> names> :
-    AllMatchSameOperatorTrait<
-        names, "$_self.getType().cast<ShapedType>().getRank()", "rank">;
+    AllMatchSameOperatorTrait<names, Rank<"_self">.result, "rank">;
+
+class AllShapesMatch<list<string> names> :
+    AllMatchSameOperatorTrait<names, Shape<"_self">.result, "shape">;
 
 class AllTypesMatch<list<string> names> :
     AllMatchSameOperatorTrait<names, "$_self.getType()", "type">;
@@ -1515,6 +1691,12 @@ class TCOpResIsShapedTypePred<int i, int j> : And<[
       IsShapedTypePred>,
     SubstLeaves<"$_self", "$_op.getOperand(" # j # ")->getType()",
       IsShapedTypePred>]>;
+
+// Predicate to verify that the i'th result and the j'th operand have the same
+// type.
+class TCresIsSameAsOpBase<int i, int j> :
+    CPred<"$_op.getResult(" # i # ")->getType() == "
+          "$_op.getOperand(" # j # ")->getType()">;
 
 // Basic Predicate to verify that the i'th result and the j'th operand have the
 // same elemental type.
@@ -1605,7 +1787,7 @@ def addBenefit;
 //
 // Then `TwoResultOp` will replace the first two values of `ThreeResultOp`.
 //
-// You can also use `$<name>__N` to explicitly access the N-th reusult.
+// You can also use `$<name>__N` to explicitly access the N-th result.
 // ```
 // def : Pattern<(FiveResultOp ...),
 //               [(TwoResultOp1:$res1__1 ...), (replaceWithValue $res1__0),
@@ -1655,8 +1837,8 @@ class Pat<dag pattern, dag result, list<dag> preds = [],
 //
 // * `$_builder` will be replaced by the current `mlir::PatternRewriter`.
 // * `$_self` will be replaced with the entity this transformer is attached to.
-//   E.g., with the definition `def transform : tAttr<$_self...>`, `$_self` in
-//   `transform:$attr` will be replaced by  the value for `$att`.
+//   E.g., with the definition `def transform : NativeCodeCall<"$_self...">`,
+//   `$_self` in `transform:$attr` will be replaced by the value for `$attr`.
 //
 // If used as a DAG node, i.e., `(NativeCodeCall<"..."> <arg0>, ..., <argN>)`,
 // then positional placeholders are also supported; placeholder `$N` in the

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/memory_management/internal.h"
 
+#include <algorithm>
+
 namespace tflite {
 namespace gpu {
 

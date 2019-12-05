@@ -222,10 +222,12 @@ Status FunctionalizeControlFlowForXlaPass::Run(
     DumpGraphToFile("functionalize_control_flow_before", *graph,
                     options.flib_def);
   }
+  const auto* config = &options.session_options->config;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
       new ProcessFunctionLibraryRuntime(
-          /*device_mgr=*/nullptr, options.session_options->env,
-          TF_GRAPH_DEF_VERSION, options.flib_def, OptimizerOptions()));
+          /*device_mgr=*/nullptr, options.session_options->env, config,
+          TF_GRAPH_DEF_VERSION, options.flib_def,
+          config->graph_options().optimizer_options()));
   FunctionLibraryRuntime* flr =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
 

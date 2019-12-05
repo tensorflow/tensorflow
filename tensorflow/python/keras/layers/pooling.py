@@ -581,6 +581,7 @@ class GlobalPooling1D(Layer):
     super(GlobalPooling1D, self).__init__(**kwargs)
     self.input_spec = InputSpec(ndim=3)
     self.data_format = conv_utils.normalize_data_format(data_format)
+    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -638,9 +639,8 @@ class GlobalAveragePooling1D(GlobalPooling1D):
     steps_axis = 1 if self.data_format == 'channels_last' else 2
     if mask is not None:
       mask = math_ops.cast(mask, backend.floatx())
-      input_shape = inputs.shape.as_list()
-      broadcast_shape = [-1, input_shape[steps_axis], 1]
-      mask = array_ops.reshape(mask, broadcast_shape)
+      mask = array_ops.expand_dims(
+          mask, 2 if self.data_format == 'channels_last' else 1)
       inputs *= mask
       return backend.sum(inputs, axis=steps_axis) / math_ops.reduce_sum(
           mask, axis=steps_axis)
@@ -689,6 +689,7 @@ class GlobalPooling2D(Layer):
     super(GlobalPooling2D, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=4)
+    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -780,6 +781,7 @@ class GlobalPooling3D(Layer):
     super(GlobalPooling3D, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=5)
+    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()

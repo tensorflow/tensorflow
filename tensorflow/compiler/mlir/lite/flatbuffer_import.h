@@ -26,11 +26,13 @@ namespace tflite {
 // The buffer must live for the duration of the function call,
 // The caller receives ownership of the module.
 // `base_loc` is used for error reporting and debug info.
-// Returns nullptr on failure, and more specific errors will be emitted
-// via the context.
-mlir::OwningModuleRef FlatBufferToMlir(absl::string_view buffer,
-                                       mlir::MLIRContext* context,
-                                       mlir::Location base_loc);
+// If ordered_output_arrays is not empty, then the imported mlir function will
+// only return nodes in ordered_output_arrays in the same order. Returns nullptr
+// on failure, and more specific errors will be emitted via the context.
+mlir::OwningModuleRef FlatBufferToMlir(
+    absl::string_view buffer, mlir::MLIRContext* context,
+    mlir::Location base_loc,
+    const std::vector<std::string>& ordered_output_arrays);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_IMPORT_H_

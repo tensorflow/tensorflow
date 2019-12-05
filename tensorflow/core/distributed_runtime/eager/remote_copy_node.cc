@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
@@ -63,9 +64,8 @@ Status CreateUncachedKernelAndDeviceOp(
 string GetUniqueWireID() {
   static tensorflow::uint64 random_seed = random::New64();
   static tensorflow::mutex wireid_mutex(tensorflow::LINKER_INITIALIZED);
-  static tensorflow::int64 wireid GUARDED_BY(wireid_mutex) = 0;
-  tensorflow::mutex_lock l(wireid_mutex);
-  return strings::StrCat(random_seed, "_", wireid++);
+  static std::atomic<int64_t> wire_id;
+  return strings::StrCat(random_seed, "_", wire_id++);
 }
 
 }  // namespace
@@ -81,7 +81,8 @@ RemoteCopyNode::RemoteCopyNode(EagerContext* ctx, EagerExecutor* executor,
       recv_device_(recv_device),
       wire_id_(GetUniqueWireID()),
       recv_op_id_(recv_op_id),
-      captured_state_(std::make_shared<CapturedSharedState>(dst)) {
+      captured_state_(std::make_shared<CapturedSharedState>(dst)),
+      started_(false) {
   DCHECK(!send_device_->IsLocal() || !recv_device_->IsLocal());
   src_->Ref();
   ctx_->Ref();
@@ -103,7 +104,8 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   gtl::InlinedVector<TensorValue, 4> input_vector(1);
   TF_RETURN_IF_ERROR(src_->TensorValue(&input_vector[0]));
 
-  return kernel->Run(input_vector, nullptr, nullptr);
+  EagerKernelArgs args(std::move(input_vector));
+  return kernel->Run(args, nullptr, nullptr, absl::nullopt);
 }
 
 void RemoteCopyNode::StartSend() {
@@ -154,7 +156,7 @@ void RemoteCopyNode::StartSend() {
     remote_op->set_id(ctx_->RemoteMgr()->NextOpId());
 
     // Issue the RPC
-    eager::EagerClient* eager_client;
+    core::RefCountPtr<eager::EagerClient> eager_client;
     status = ctx_->GetClient(send_device_, &eager_client);
     if (!status.ok()) {
       captured_state_->SetSendStatus(status);
@@ -184,9 +186,9 @@ Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
   core::RefCountPtr<KernelAndDevice> kernel;
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
 
-  gtl::InlinedVector<TensorValue, 4> input_vector;
-  return kernel->Run(input_vector, outputs,
-                     captured_state_->recv_cancellation());
+  EagerKernelArgs args;
+  return kernel->Run(args, outputs, captured_state_->recv_cancellation(),
+                     absl::nullopt);
 }
 
 void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
@@ -197,7 +199,7 @@ void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
   PrepareRemoteOp(remote_op, op);
   remote_op->set_id(recv_op_id_);
 
-  eager::EagerClient* eager_client;
+  core::RefCountPtr<eager::EagerClient> eager_client;
   Status status = ctx_->GetClient(recv_device_, &eager_client);
   if (!status.ok()) {
     captured_state_->dst()->Poison(status);
@@ -275,7 +277,7 @@ void RemoteCopyNode::StartRecv(StatusCallback done) {
       done(status);
       return;
     }
-    status = captured_state_->dst()->SetTensor(outputs[0]);
+    status = captured_state_->dst()->SetTensor(std::move(outputs[0]));
     done(status);
   } else {
     // Handles captured_state_->dst_ internally.
@@ -305,7 +307,7 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
   }
   tensor.AsProtoTensorContent(send_tensor->add_tensors());
 
-  eager::EagerClient* eager_client;
+  core::RefCountPtr<eager::EagerClient> eager_client;
   s = ctx_->GetClient(recv_device_, &eager_client);
   if (!s.ok()) {
     captured_state_->dst()->Poison(s);
@@ -341,6 +343,7 @@ Status RemoteCopyNode::Prepare() {
 }
 
 void RemoteCopyNode::RunAsync(StatusCallback done) {
+  started_ = true;
   if (ctx_->UseSendTensorRPC() && send_device_->IsLocal() &&
       !recv_device_->IsLocal()) {
     return StartRemoteSendTensor(std::move(done));
@@ -368,7 +371,9 @@ void RemoteCopyNode::RunAsync(StatusCallback done) {
 }
 
 void RemoteCopyNode::Abort(Status status) {
-  captured_state_->dst()->Poison(status);
+  if (!started_) {
+    captured_state_->dst()->Poison(status);
+  }
 }
 
 }  // namespace eager

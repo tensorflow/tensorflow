@@ -21,14 +21,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef MLIR_CALLINTERFACES
-#else
+#ifndef MLIR_CALLINTERFACES
 #define MLIR_CALLINTERFACES
 
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 // `CallInterfaceCallable`: This is a type used to represent a single callable
 // region. A callable is either a symbol, or an SSA value, that is referenced by
@@ -39,7 +35,8 @@ def CallOpInterface : OpInterface<"CallOpInterface"> {
   let description = [{
     A call-like operation is one that transfers control from one sub-routine to
     another. These operations may be traditional direct calls `call @foo`, or
-    indirect calls to other operations `call_indirect %foo`.
+    indirect calls to other operations `call_indirect %foo`. An operation that
+    uses this interface, must *not* also provide the `CallableOpInterface`.
   }];
 
   let methods = [
@@ -49,6 +46,12 @@ def CallOpInterface : OpInterface<"CallOpInterface"> {
         SSA value.
       }],
       "CallInterfaceCallable", "getCallableForCallee"
+    >,
+    InterfaceMethod<[{
+        Returns the operands within this call that are used as arguments to the
+        callee.
+      }],
+      "Operation::operand_range", "getArgOperands"
     >,
   ];
 }
@@ -73,10 +76,16 @@ def CallableOpInterface : OpInterface<"CallableOpInterface"> {
       "Region *", "getCallableRegion", (ins "CallInterfaceCallable":$callable)
     >,
     InterfaceMethod<[{
-        Returns all of the callable regions of this operation
+        Returns all of the callable regions of this operation.
       }],
       "void", "getCallableRegions",
               (ins "SmallVectorImpl<Region *> &":$callables)
+    >,
+    InterfaceMethod<[{
+        Returns the results types that the given callable region produces when
+        executed.
+      }],
+      "ArrayRef<Type>", "getCallableResults", (ins "Region *":$callable)
     >,
   ];
 }

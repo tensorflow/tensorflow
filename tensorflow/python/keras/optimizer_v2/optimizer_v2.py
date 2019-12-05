@@ -474,18 +474,17 @@ class OptimizerV2(trackable.Trackable):
       else:
         return update_op
 
+    eagerly_outside_functions = ops.executing_eagerly_outside_functions()
     update_ops = []
-    with backend.name_scope(name or self._name):
+    with ops.name_scope(name or self._name, skip_on_eager=True):
       for grad, var in grads_and_vars:
-        scope_name = ("update" if ops.executing_eagerly_outside_functions() else
-                      "update_" + var.op.name)
         # Colocate the update with variables to avoid unnecessary communication
         # delays. See b/136304694.
-        with backend.name_scope(
-            scope_name), distribution.extended.colocate_vars_with(var):
-          update_ops.extend(
-              distribution.extended.update(
-                  var, apply_grad_to_update_var, args=(grad,), group=False))
+        with distribution.extended.colocate_vars_with(var):
+          with ops.name_scope("update" if eagerly_outside_functions else
+                              "update_" + var.op.name, skip_on_eager=True):
+            update_ops.extend(distribution.extended.update(
+                var, apply_grad_to_update_var, args=(grad,), group=False))
 
       any_symbolic = any(isinstance(i, ops.Operation) or
                          tf_utils.is_symbolic_tensor(i) for i in update_ops)
@@ -582,6 +581,15 @@ class OptimizerV2(trackable.Trackable):
       else:
         initial_value = initializer
       strategy = distribute_ctx.get_strategy()
+      if not strategy.extended.variable_created_in_scope(var):
+        raise ValueError(
+            "Trying to create optimizer slot variable under the scope for "
+            "tf.distribute.Strategy ({}), which is different from the scope "
+            "used for the original variable ({}). Make sure the slot "
+            "variables are created under the same strategy scope. This may "
+            "happen if you're restoring from a checkpoint outside the scope"
+            .format(strategy, var))
+
       with strategy.extended.colocate_vars_with(var):
         weight = tf_variables.Variable(
             name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
@@ -842,8 +850,10 @@ class OptimizerV2(trackable.Trackable):
     Returns:
       Valid types for loss, variables and gradients.
     """
-    return set(
-        [dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64])
+    return set([
+        dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64,
+        dtypes.complex64, dtypes.complex128
+    ])
 
   def _call_if_callable(self, param):
     """Call the function if param is callable."""

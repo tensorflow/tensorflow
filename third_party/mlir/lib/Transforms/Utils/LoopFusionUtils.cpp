@@ -187,7 +187,7 @@ static bool
 gatherLoadsAndStores(AffineForOp forOp,
                      SmallVectorImpl<Operation *> &loadAndStoreOps) {
   bool hasIfOp = false;
-  forOp.getOperation()->walk([&](Operation *op) {
+  forOp.walk([&](Operation *op) {
     if (isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op))
       loadAndStoreOps.push_back(op);
     else if (isa<AffineIfOp>(op))
@@ -219,7 +219,7 @@ FusionResult mlir::canFuseLoops(AffineForOp srcForOp, AffineForOp dstForOp,
     return FusionResult::FailBlockDependence;
   }
 
-  // Check if 'srcForOp' precedeces 'dstForOp' in 'block'.
+  // Check if 'srcForOp' precedes 'dstForOp' in 'block'.
   bool isSrcForOpBeforeDstForOp =
       srcForOp.getOperation()->isBeforeInBlock(dstForOp.getOperation());
   // 'forOpA' executes before 'forOpB' in 'block'.
@@ -261,7 +261,7 @@ FusionResult mlir::canFuseLoops(AffineForOp srcForOp, AffineForOp dstForOp,
 bool mlir::getLoopNestStats(AffineForOp forOpRoot, LoopNestStats *stats) {
   auto walkResult = forOpRoot.walk([&](AffineForOp forOp) {
     auto *childForOp = forOp.getOperation();
-    auto *parentForOp = forOp.getOperation()->getParentOp();
+    auto *parentForOp = forOp.getParentOp();
     if (!llvm::isa<FuncOp>(parentForOp)) {
       if (!isa<AffineForOp>(parentForOp)) {
         LLVM_DEBUG(llvm::dbgs() << "Expected parent AffineForOp");
@@ -444,7 +444,7 @@ bool mlir::getFusionComputeCost(AffineForOp srcForOp, LoopNestStats &srcStats,
     // forwarding to remove.
     unsigned storeCount = 0;
     llvm::SmallDenseSet<Value *, 4> storeMemrefs;
-    srcForOp.getOperation()->walk([&](Operation *op) {
+    srcForOp.walk([&](Operation *op) {
       if (auto storeOp = dyn_cast<AffineStoreOp>(op)) {
         storeMemrefs.insert(storeOp.getMemRef());
         ++storeCount;

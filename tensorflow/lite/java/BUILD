@@ -11,6 +11,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["src/testdata/add.bin"])
+
 JAVA_SRCS = glob([
     "src/main/java/org/tensorflow/lite/*.java",
     "src/main/java/org/tensorflow/lite/annotations/*.java",
@@ -144,6 +146,7 @@ java_test(
     javacopts = JAVACOPTS,
     tags = [
         "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+        "v1only",
     ],
     test_class = "org.tensorflow.lite.TensorFlowLiteTest",
     visibility = ["//visibility:private"],
@@ -281,6 +284,8 @@ java_test(
     srcs = ["src/test/java/org/tensorflow/lite/TensorTest.java"],
     data = [
         "src/testdata/add.bin",
+        "src/testdata/int32.bin",
+        "src/testdata/int64.bin",
     ],
     javacopts = JAVACOPTS,
     tags = [

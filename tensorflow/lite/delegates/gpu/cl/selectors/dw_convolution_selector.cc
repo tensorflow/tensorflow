@@ -29,7 +29,7 @@ Status SelectDWConvolutionAdreno(const DepthwiseConvolution2DAttributes& attr,
                                  const CreationContext& creation_context,
                                  const OperationDef& op_def,
                                  std::unique_ptr<GPUOperation>* ptr) {
-  if (IsDepthWiseConv3x3Supported(attr)) {
+  if (!op_def.batch_support && IsDepthWiseConv3x3Supported(attr)) {
     DepthWiseConv3x3 dw_conv;
     RETURN_IF_ERROR(
         CreateDepthWiseConv3x3(creation_context, op_def, attr, &dw_conv));
@@ -47,7 +47,7 @@ Status SelectDWConvolutionPowerVR(const DepthwiseConvolution2DAttributes& attr,
                                  const CreationContext& creation_context,
                                  const OperationDef& op_def,
                                  std::unique_ptr<GPUOperation>* ptr) {
-  if (IsDepthWiseConv3x3Supported(attr)) {
+  if (!op_def.batch_support && IsDepthWiseConv3x3Supported(attr)) {
     DepthWiseConv3x3 dw_conv;
     RETURN_IF_ERROR(
         CreateDepthWiseConv3x3(creation_context, op_def, attr, &dw_conv));

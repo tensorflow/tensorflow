@@ -20,6 +20,19 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_parsers",
+    srcs = ["custom_parsers.cc"],
+    hdrs = ["custom_parsers.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:any",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "access_type",
     hdrs = ["access_type.h"],
 )
@@ -96,6 +109,7 @@ cc_library(
     srcs = ["model_builder.cc"],
     hdrs = ["model_builder.h"],
     deps = [
+        ":custom_parsers",
         ":data_type",
         ":model",
         ":operations",
@@ -105,7 +119,7 @@ cc_library(
         "//tensorflow/lite:context",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
@@ -122,7 +136,7 @@ cc_test(
         ":model_builder",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -236,5 +250,16 @@ cc_test(
     deps = [
         ":util",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "workgroup_selection",
+    srcs = ["workgroup_selection.cc"],
+    hdrs = ["workgroup_selection.h"],
+    deps = [
+        ":status",
+        ":types",
+        ":util",
     ],
 )

@@ -58,7 +58,7 @@ bool getDefaultStorageParams(unsigned numBits, bool narrowRange, bool isSigned,
 // If 0.0 < rmin < rmax or rmin < rmax < 0.0, the range will be shifted
 // to include 0.0, but the range width size (rmax-rmin) isn't changed. The zero
 // point is derived from the shifted range, and the scale isn't changed. As
-// a consequence some values, which are supposeed in the original [rmin, rmax]
+// a consequence some values, which are supposed in the original [rmin, rmax]
 // range will be outside the shifted range and be clamped during quantization.
 // TODO(fengliuai): we should nudge the scale as well, but that requires the
 // fake quant op used in the training to use the nudged scale as well.

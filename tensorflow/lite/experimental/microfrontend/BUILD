@@ -17,6 +17,7 @@ package(
 cc_library(
     name = "audio_microfrontend",
     srcs = ["audio_microfrontend.cc"],
+    hdrs = ["audio_microfrontend.h"],
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/experimental/microfrontend/lib:frontend",

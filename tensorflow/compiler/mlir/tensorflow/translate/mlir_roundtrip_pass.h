@@ -28,6 +28,12 @@ class MlirRoundtripPass : public GraphOptimizationPass {
   Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
+// An optimization pass that simply imports the Graph to MLIR.
+class MlirImportPass : public GraphOptimizationPass {
+ public:
+  Status Run(const GraphOptimizationPassOptions& options) override;
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_MLIR_ROUNDTRIP_PASS_H_

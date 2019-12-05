@@ -1592,14 +1592,27 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
 
   Example:
 
-  ```python
-  tf.assert_shapes([
-    (x: ('N', 'Q')),
-    (y: ('N', 'D')),
-    (param: ('Q',)),
-    (scalar: ()),
-  ])
-  ```
+  >>> n = 10
+  >>> q = 3
+  >>> d = 7
+  >>> x = tf.zeros([n,q]) 
+  >>> y = tf.ones([n,d])
+  >>> param = tf.Variable([1.0, 2.0, 3.0])
+  >>> scalar = 1.0
+  >>> tf.debugging.assert_shapes([
+  ...  (x, ('N', 'Q')),
+  ...  (y, ('N', 'D')),
+  ...  (param, ('Q',)),
+  ...  (scalar, ()),
+  ... ])
+  
+  >>> tf.debugging.assert_shapes([
+  ...   (x, ('N', 'D')), 
+  ...   (y, ('N', 'D'))
+  ... ])
+  Traceback (most recent call last):
+  ...
+  ValueError: ...
 
   If `x`, `y`, `param` or `scalar` does not have a shape that satisfies
   all specified constraints, `message`, as well as the first `summarize` entries
@@ -1645,12 +1658,12 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
   Example:
 
   ```python
-  tf.assert_shapes({
+  tf.assert_shapes([
     (x, ('N', 'Q')),
     (y, ('N', 'D')),
     (param, ('Q',)),
     (scalar, ())
-  })
+  ])
   ```
 
   Example of adding a dependency to an operation:

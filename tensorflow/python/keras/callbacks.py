@@ -33,6 +33,7 @@ import numpy as np
 import six
 
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.distribute import distributed_file_utils
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -48,8 +49,9 @@ from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.util.tf_export import keras_export
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.tf_export import keras_export
+from tensorflow.tools.docs import doc_controls
 
 try:
   import requests
@@ -170,7 +172,7 @@ def set_callback_parameters(callback_list,
 def _is_generator_like(data):
   """Checks if data is a generator, Sequence, or Iterator."""
   return (hasattr(data, 'next') or hasattr(data, '__next__') or isinstance(
-      data, (Sequence, iterator_ops.Iterator, iterator_ops.IteratorV2)))
+      data, (Sequence, iterator_ops.Iterator, iterator_ops.OwnedIterator)))
 
 
 def make_logs(model, logs, outputs, mode, prefix=''):
@@ -463,12 +465,15 @@ class Callback(object):
   def set_model(self, model):
     self.model = model
 
+  @doc_controls.for_subclass_implementers
   def on_batch_begin(self, batch, logs=None):
     """A backwards compatibility alias for `on_train_batch_begin`."""
 
+  @doc_controls.for_subclass_implementers
   def on_batch_end(self, batch, logs=None):
     """A backwards compatibility alias for `on_train_batch_end`."""
 
+  @doc_controls.for_subclass_implementers
   def on_epoch_begin(self, epoch, logs=None):
     """Called at the start of an epoch.
 
@@ -481,6 +486,7 @@ class Callback(object):
           but that may change in the future.
     """
 
+  @doc_controls.for_subclass_implementers
   def on_epoch_end(self, epoch, logs=None):
     """Called at the end of an epoch.
 
@@ -494,6 +500,7 @@ class Callback(object):
           are prefixed with `val_`.
     """
 
+  @doc_controls.for_subclass_implementers
   def on_train_batch_begin(self, batch, logs=None):
     """Called at the beginning of a training batch in `fit` methods.
 
@@ -507,6 +514,7 @@ class Callback(object):
     # For backwards compatibility.
     self.on_batch_begin(batch, logs=logs)
 
+  @doc_controls.for_subclass_implementers
   def on_train_batch_end(self, batch, logs=None):
     """Called at the end of a training batch in `fit` methods.
 
@@ -519,6 +527,7 @@ class Callback(object):
     # For backwards compatibility.
     self.on_batch_end(batch, logs=logs)
 
+  @doc_controls.for_subclass_implementers
   def on_test_batch_begin(self, batch, logs=None):
     """Called at the beginning of a batch in `evaluate` methods.
 
@@ -533,6 +542,7 @@ class Callback(object):
           number and the size of the batch.
     """
 
+  @doc_controls.for_subclass_implementers
   def on_test_batch_end(self, batch, logs=None):
     """Called at the end of a batch in `evaluate` methods.
 
@@ -546,6 +556,7 @@ class Callback(object):
         logs: dict. Metric results for this batch.
     """
 
+  @doc_controls.for_subclass_implementers
   def on_predict_batch_begin(self, batch, logs=None):
     """Called at the beginning of a batch in `predict` methods.
 
@@ -557,6 +568,7 @@ class Callback(object):
           number and the size of the batch.
     """
 
+  @doc_controls.for_subclass_implementers
   def on_predict_batch_end(self, batch, logs=None):
     """Called at the end of a batch in `predict` methods.
 
@@ -567,6 +579,7 @@ class Callback(object):
         logs: dict. Metric results for this batch.
     """
 
+  @doc_controls.for_subclass_implementers
   def on_train_begin(self, logs=None):
     """Called at the beginning of training.
 
@@ -577,6 +590,7 @@ class Callback(object):
           but that may change in the future.
     """
 
+  @doc_controls.for_subclass_implementers
   def on_train_end(self, logs=None):
     """Called at the end of training.
 
@@ -587,6 +601,7 @@ class Callback(object):
           but that may change in the future.
     """
 
+  @doc_controls.for_subclass_implementers
   def on_test_begin(self, logs=None):
     """Called at the beginning of evaluation or validation.
 
@@ -597,6 +612,7 @@ class Callback(object):
           but that may change in the future.
     """
 
+  @doc_controls.for_subclass_implementers
   def on_test_end(self, logs=None):
     """Called at the end of evaluation or validation.
 
@@ -607,6 +623,7 @@ class Callback(object):
           but that may change in the future.
     """
 
+  @doc_controls.for_subclass_implementers
   def on_predict_begin(self, logs=None):
     """Called at the beginning of prediction.
 
@@ -617,6 +634,7 @@ class Callback(object):
           but that may change in the future.
     """
 
+  @doc_controls.for_subclass_implementers
   def on_predict_end(self, logs=None):
     """Called at the end of prediction.
 
@@ -992,35 +1010,42 @@ class ModelCheckpoint(Callback):
       self.epochs_since_last_save = 0
       filepath = self._get_file_path(epoch, logs)
 
-      if self.save_best_only:
-        current = logs.get(self.monitor)
-        if current is None:
-          logging.warning('Can save best model only with %s available, '
-                          'skipping.', self.monitor)
-        else:
-          if self.monitor_op(current, self.best):
-            if self.verbose > 0:
-              print('\nEpoch %05d: %s improved from %0.5f to %0.5f,'
-                    ' saving model to %s' % (epoch + 1, self.monitor, self.best,
-                                             current, filepath))
-            self.best = current
-            if self.save_weights_only:
-              self.model.save_weights(filepath, overwrite=True)
-            else:
-              self.model.save(filepath, overwrite=True)
+      try:
+        if self.save_best_only:
+          current = logs.get(self.monitor)
+          if current is None:
+            logging.warning('Can save best model only with %s available, '
+                            'skipping.', self.monitor)
           else:
-            if self.verbose > 0:
-              print('\nEpoch %05d: %s did not improve from %0.5f' %
-                    (epoch + 1, self.monitor, self.best))
-      else:
-        if self.verbose > 0:
-          print('\nEpoch %05d: saving model to %s' % (epoch + 1, filepath))
-        if self.save_weights_only:
-          self.model.save_weights(filepath, overwrite=True)
+            if self.monitor_op(current, self.best):
+              if self.verbose > 0:
+                print('\nEpoch %05d: %s improved from %0.5f to %0.5f,'
+                      ' saving model to %s' % (epoch + 1, self.monitor,
+                                               self.best, current, filepath))
+              self.best = current
+              if self.save_weights_only:
+                self.model.save_weights(filepath, overwrite=True)
+              else:
+                self.model.save(filepath, overwrite=True)
+            else:
+              if self.verbose > 0:
+                print('\nEpoch %05d: %s did not improve from %0.5f' %
+                      (epoch + 1, self.monitor, self.best))
         else:
-          self.model.save(filepath, overwrite=True)
+          if self.verbose > 0:
+            print('\nEpoch %05d: saving model to %s' % (epoch + 1, filepath))
+          if self.save_weights_only:
+            self.model.save_weights(filepath, overwrite=True)
+          else:
+            self.model.save(filepath, overwrite=True)
 
-      self._maybe_remove_file()
+        self._maybe_remove_file()
+      except IOError as e:
+        # `e.errno` appears to be `None` so checking the content of `e.args[0]`.
+        if 'is a directory' in six.ensure_str(e.args[0]):
+          raise IOError('Please specify a non-directory filepath for '
+                        'ModelCheckpoint. Filepath used is an existing '
+                        'directory: {}'.format(filepath))
 
   def _get_file_path(self, epoch, logs):
     """Returns the file path for checkpoint."""
@@ -1379,6 +1404,7 @@ class TensorBoard(Callback):
   TensorBoard is a visualization tool provided with TensorFlow.
 
   This callback logs events for TensorBoard, including:
+
   * Metrics summary plots
   * Training graph visualization
   * Activation histograms
@@ -1469,10 +1495,6 @@ class TensorBoard(Callback):
     # True when a trace is running.
     self._is_tracing = False
 
-    # TensorBoard should only write summaries on the chief when in a
-    # Multi-Worker setting.
-    self._chief_worker_only = True
-
   def _validate_kwargs(self, kwargs):
     """Handle arguments were supported in V1."""
     if kwargs.get('write_grads', False):
@@ -1503,6 +1525,12 @@ class TensorBoard(Callback):
   def set_model(self, model):
     """Sets Keras model and writes graph if specified."""
     self.model = model
+
+    # TensorBoard callback involves writing a summary file in a
+    # possibly distributed settings.
+    self._log_write_dir = distributed_file_utils.write_dirpath(
+        self.log_dir, self.model._get_distribution_strategy())  # pylint: disable=protected-access
+
     with context.eager_mode():
       self._close_writers()
       if self.write_graph:
@@ -1561,7 +1589,7 @@ class TensorBoard(Callback):
       def get_logdir(self):
         return self.logdir
 
-    writer = DummyWriter(self.log_dir)
+    writer = DummyWriter(self._log_write_dir)
     projector.visualize_embeddings(writer, config)
 
   def _close_writers(self):
@@ -1588,7 +1616,7 @@ class TensorBoard(Callback):
       A `SummaryWriter` object.
     """
     if writer_name not in self._writers:
-      path = os.path.join(self.log_dir, writer_name)
+      path = os.path.join(self._log_write_dir, writer_name)
       writer = summary_ops_v2.create_file_writer_v2(path)
       self._writers[writer_name] = writer
     return self._writers[writer_name]
@@ -1697,6 +1725,10 @@ class TensorBoard(Callback):
     summary_state.writer = self._prev_summary_writer
     summary_state.step = self._prev_summary_step
 
+    # Safely remove the unneeded temp files.
+    distributed_file_utils.remove_temp_dirpath(
+        self.log_dir, self.model._get_distribution_strategy())  # pylint: disable=protected-access
+
   def _enable_trace(self):
     if context.executing_eagerly():
       summary_ops_v2.trace_on(graph=True, profiler=True)
@@ -1712,7 +1744,7 @@ class TensorBoard(Callback):
         summary_ops_v2.trace_export(
             name='batch_%d' % step,
             step=step,
-            profiler_outdir=os.path.join(self.log_dir, 'train'))
+            profiler_outdir=os.path.join(self._log_write_dir, 'train'))
       self._is_tracing = False
 
   def _log_metrics(self, logs, prefix, step):
@@ -1799,7 +1831,7 @@ class TensorBoard(Callback):
       summary_ops_v2.image(weight_name, w_img, step=epoch)
 
   def _log_embeddings(self, epoch):
-    embeddings_ckpt = os.path.join(self.log_dir, 'train',
+    embeddings_ckpt = os.path.join(self._log_write_dir, 'train',
                                    'keras_embedding.ckpt-{}'.format(epoch))
     self.model.save_weights(embeddings_ckpt)
 

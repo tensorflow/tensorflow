@@ -35,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import test
@@ -413,6 +414,82 @@ def _test_cholesky(use_placeholder, shapes_info, dtype):
   return test_cholesky
 
 
+def _test_eigvalsh(use_placeholder, shapes_info, dtype):
+  def test_eigvalsh(self):
+    with self.test_session(graph=ops.Graph()) as sess:
+      sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+      operator, mat = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder,
+          ensure_self_adjoint_and_pd=True)
+      # Eigenvalues are real, so we'll cast these to float64 and sort
+      # for comparison.
+      op_eigvals = sort_ops.sort(
+          math_ops.cast(operator.eigvals(), dtype=dtypes.float64), axis=-1)
+      if dtype.is_complex:
+        mat = math_ops.cast(mat, dtype=dtypes.complex128)
+      else:
+        mat = math_ops.cast(mat, dtype=dtypes.float64)
+      mat_eigvals = sort_ops.sort(
+          math_ops.cast(
+              linalg_ops.self_adjoint_eigvals(mat), dtype=dtypes.float64),
+          axis=-1)
+      op_eigvals_v, mat_eigvals_v = sess.run([op_eigvals, mat_eigvals])
+
+      atol = self._atol[dtype]  # pylint: disable=protected-access
+      rtol = self._rtol[dtype]  # pylint: disable=protected-access
+      if dtype == dtypes.float32 or dtype == dtypes.complex64:
+        atol = 2e-4
+        rtol = 2e-4
+      self.assertAllClose(op_eigvals_v, mat_eigvals_v, atol=atol, rtol=rtol)
+  return test_eigvalsh
+
+
+def _test_cond(use_placeholder, shapes_info, dtype):
+  def test_cond(self):
+    with self.test_session(graph=ops.Graph()) as sess:
+      # svd does not work with zero dimensional matrices, so we'll
+      # skip
+      if 0 in shapes_info.shape[-2:]:
+        return
+
+      # ROCm platform does not yet support complex types
+      if test.is_built_with_rocm() and \
+         ((dtype == dtypes.complex64) or (dtype == dtypes.complex128)):
+        return
+
+      sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+      # Ensure self-adjoint and PD so we get finite condition numbers.
+      operator, mat = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder,
+          ensure_self_adjoint_and_pd=True)
+      # Eigenvalues are real, so we'll cast these to float64 and sort
+      # for comparison.
+      op_cond = operator.cond()
+      s = math_ops.abs(linalg_ops.svd(mat, compute_uv=False))
+      mat_cond = math_ops.reduce_max(s, axis=-1) / math_ops.reduce_min(
+          s, axis=-1)
+      op_cond_v, mat_cond_v = sess.run([op_cond, mat_cond])
+
+      atol_override = {
+          dtypes.float16: 1e-2,
+          dtypes.float32: 1e-3,
+          dtypes.float64: 1e-6,
+          dtypes.complex64: 1e-3,
+          dtypes.complex128: 1e-6,
+      }
+      rtol_override = {
+          dtypes.float16: 1e-2,
+          dtypes.float32: 1e-3,
+          dtypes.float64: 1e-4,
+          dtypes.complex64: 1e-3,
+          dtypes.complex128: 1e-6,
+      }
+      atol = atol_override[dtype]
+      rtol = rtol_override[dtype]
+      self.assertAllClose(op_cond_v, mat_cond_v, atol=atol, rtol=rtol)
+  return test_cond
+
+
 def _test_solve_base(
     self,
     use_placeholder,
@@ -550,8 +627,10 @@ def add_tests(test_cls):
   test_name_dict = {
       "add_to_tensor": _test_add_to_tensor,
       "cholesky": _test_cholesky,
+      "cond": _test_cond,
       "det": _test_det,
       "diag_part": _test_diag_part,
+      "eigvalsh": _test_eigvalsh,
       "inverse": _test_inverse,
       "log_abs_det": _test_log_abs_det,
       "matmul": _test_matmul,
@@ -678,6 +757,7 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
     """List of test names to skip."""
     return [
         "cholesky",
+        "eigvalsh",
         "inverse",
         "solve",
         "solve_with_broadcast",

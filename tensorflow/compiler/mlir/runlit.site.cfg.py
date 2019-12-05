@@ -28,7 +28,7 @@ config.llvm_tools_dir = os.path.join(os.environ['TEST_SRCDIR'], 'llvm')
 config.mlir_obj_root = os.path.join(os.environ['TEST_SRCDIR'])
 config.mlir_tools_dir = os.path.join(os.environ['TEST_SRCDIR'],
                                      'local_config_mlir')
-# TODO(jpienaar): Replace with sufffices in build rule.
+# TODO(jpienaar): Replace with suffices in build rule.
 config.suffixes = ['.td', '.mlir', '.pbtxt']
 
 mlir_tf_tools_dirs = [

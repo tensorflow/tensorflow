@@ -19,11 +19,14 @@ limitations under the License.
 #include <cstddef>
 
 #include "absl/types/span.h"
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
+#include "tensorflow/core/common_runtime/eager/shape_inference.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 
 namespace tensorflow {
@@ -57,6 +60,7 @@ class RemoteExecuteNode : public AsyncEagerNode {
     for (auto handle : inputs_) {
       handle->Ref();
     }
+    eager_client_->Ref();
   }
 
   ~RemoteExecuteNode() override {
@@ -67,9 +71,12 @@ class RemoteExecuteNode : public AsyncEagerNode {
     for (auto handle : inputs_) {
       handle->Unref();
     }
+    eager_client_->Unref();
   }
 
-  Status Prepare() override;
+  Status Prepare() override {
+    return RunShapeInference(ndef_, *lib_def_, inputs_, retvals_);
+  }
 
   void RunAsync(StatusCallback done) override;
 

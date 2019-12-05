@@ -45,6 +45,7 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
@@ -124,6 +125,40 @@ class SaveTest(test.TestCase):
         {"out": 2.},
         _import_and_infer(
             save_dir, {"z": 1.}, signature_key="non_default_key"))
+
+  def test_method_save_annotated_function(self):
+    # This test is only meaningful with Python 3 because Python 2's
+    # inspect.getargspec doesn't save annotations.
+
+    root = tracking.AutoTrackable()
+
+    class UnknownType(object):  # pylint: disable=unused-variable
+      pass
+
+    def annotated_function(z):
+      return {"out": 2. * z}
+
+    # Same effect as annotating function like the following.
+    # def annotated_function("z": UnknownType) -> UnknownType:
+    # This is a workaround since Python 2 does not support annotations and
+    # our presubmit linter catches it.
+    annotated_function.__annotations__ = {
+        "z": UnknownType,
+        "return": UnknownType
+    }
+
+    root.f = def_function.function(annotated_function)
+    root.f(constant_op.constant(1.))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(
+        root, save_dir, {
+            "non_default_key":
+                root.f.get_concrete_function(
+                    tensor_spec.TensorSpec(None, dtypes.float32))
+        })
+    self.assertEqual({"out": 2.},
+                     _import_and_infer(
+                         save_dir, {"z": 1.}, signature_key="non_default_key"))
 
   def test_unbuilt_model_does_not_prevent_saving(self):
     root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))
@@ -394,6 +429,18 @@ class SaveTest(test.TestCase):
             tensor_spec.TensorSpec(None, dtypes.int64)))
     self.assertAllClose({"output_0": 3 * (1 + 4 + 9 + 16)},
                         _import_and_infer(save_dir, {"x": 3}))
+
+  def test_variable_args_cannot_be_used_as_signature(self):
+    @def_function.function(input_signature=[
+        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)])
+    def f(unused_v):
+      return 1
+    root = tracking.AutoTrackable()
+    root.f = f.get_concrete_function()
+    with self.assertRaisesRegexp(ValueError,
+                                 "tf.Variable inputs cannot be exported"):
+      save.save(root, os.path.join(self.get_temp_dir(), "saved_model"),
+                signatures=root.f)
 
 
 class SavingOptionsTest(test.TestCase):

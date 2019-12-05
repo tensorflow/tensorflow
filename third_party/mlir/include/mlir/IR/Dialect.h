@@ -25,6 +25,8 @@
 #include "mlir/IR/OperationSupport.h"
 
 namespace mlir {
+class DialectAsmParser;
+class DialectAsmPrinter;
 class DialectInterface;
 class OpBuilder;
 class Type;
@@ -115,21 +117,20 @@ public:
 
   /// Parse an attribute registered to this dialect. If 'type' is nonnull, it
   /// refers to the expected type of the attribute.
-  virtual Attribute parseAttribute(StringRef attrData, Type type,
-                                   Location loc) const;
+  virtual Attribute parseAttribute(DialectAsmParser &parser, Type type) const;
 
   /// Print an attribute registered to this dialect. Note: The type of the
   /// attribute need not be printed by this method as it is always printed by
   /// the caller.
-  virtual void printAttribute(Attribute, raw_ostream &) const {
+  virtual void printAttribute(Attribute, DialectAsmPrinter &) const {
     llvm_unreachable("dialect has no registered attribute printing hook");
   }
 
   /// Parse a type registered to this dialect.
-  virtual Type parseType(StringRef tyData, Location loc) const;
+  virtual Type parseType(DialectAsmParser &parser) const;
 
   /// Print a type registered to this dialect.
-  virtual void printType(Type, raw_ostream &) const {
+  virtual void printType(Type, DialectAsmPrinter &) const {
     llvm_unreachable("dialect has no registered type printing hook");
   }
 
@@ -145,6 +146,15 @@ public:
                                                  unsigned regionIndex,
                                                  unsigned argIndex,
                                                  NamedAttribute);
+
+  /// Verify an attribute from this dialect on the result at 'resultIndex' for
+  /// the region at 'regionIndex' on the given operation. Returns failure if
+  /// the verification failed, success otherwise. This hook may optionally be
+  /// invoked from any operation containing a region.
+  virtual LogicalResult verifyRegionResultAttribute(Operation *,
+                                                    unsigned regionIndex,
+                                                    unsigned resultIndex,
+                                                    NamedAttribute);
 
   /// Verify an attribute from this dialect on the given operation. Returns
   /// failure if the verification failed, success otherwise.

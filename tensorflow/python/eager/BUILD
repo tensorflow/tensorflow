@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_logged_benchmark",
@@ -39,6 +40,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/python:cpp_python_util",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",
@@ -155,7 +157,10 @@ py_library(
     name = "monitoring",
     srcs = ["monitoring.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_agents:__subpackages__",
+    ],
     deps = [
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:pywrap_tensorflow",
@@ -191,7 +196,6 @@ cuda_py_test(
         ":profiler",
         ":test",
         "//tensorflow/python:constant_op",
-        "//tensorflow/core/profiler:protos_all_py",
     ],
 )
 
@@ -617,6 +621,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:test_ops",
     ],
 )
 
@@ -681,6 +686,8 @@ cuda_py_test(
     srcs = ["def_function_test.py"],
     additional_deps = [
         ":def_function",
+        "//tensorflow/python/autograph/core",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
@@ -718,6 +725,8 @@ tf_xla_py_test(
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:framework_ops",
     ],
 )
@@ -770,33 +779,29 @@ cuda_py_test(
         ":def_function",
         ":test",
         ":remote",
+        "@absl_py//absl/testing:parameterized",
+        "@six_archive//:six",
         "//tensorflow/python:resource_variable_ops",
     ],
     grpc_enabled = True,
+    shard_count = 2,
     tags = [
         "no_oss",  # This test launches local server.
-        "notsan",  # TODO(b/141712955): flaky with OOM or timeout
         "optonly",  # times out
     ],
 )
 
-tf_py_test(
+tpu_py_test(
     name = "remote_cloud_tpu_test",
-    size = "medium",
     srcs = ["remote_cloud_tpu_test.py"],
-    additional_deps = [
-        ":remote",
+    tags = [
+        "notap",
+    ],
+    deps = [
         ":context",
+        ":remote",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/tpu:tpu_strategy_util",
-    ],
-    tags = [
-        "no_pip",
-        "nogpu",
-        "noguitar",
-        "nomac",
-        "notap",
-        "tpu",
     ],
 )
 

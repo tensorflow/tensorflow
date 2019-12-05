@@ -48,9 +48,9 @@ class ReductionV2(object):
            (1. / global_batch_size)
      ```
 
-     Please see
-     https://www.tensorflow.org/alpha/tutorials/distribute/training_loops for
-     more details on this.
+  Please see the
+  [custom training guide](https://www.tensorflow.org/tutorials/distribute/custom_training)  # pylint: disable=line-too-long
+  for more details on this.
   """
 
   AUTO = 'auto'

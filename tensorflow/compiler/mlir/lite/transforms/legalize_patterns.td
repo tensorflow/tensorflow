@@ -37,17 +37,9 @@ class ExtractI32At<int i> : NativeCodeCall<
 def Merge2AttrsToArray : NativeCodeCall<"$_builder.getArrayAttr({$0, $1})">;
 
 // Use the tensor type information from $0 and convert min $1, max $2 and
-// storage type $3 to a QuantizedType.
-def ConvertToQuantType : NativeCodeCall<
-    "GetQuantizedTypeAttr($_builder, $0->getType(), $1, $2, $3.getValue())">;
-
-// Use the tensor type information from $0 and convert min $1, max $2 and
 // numBits $3 and narrowRange $4 to a QuantizedType.
 def ConvertToQuantTypeFromAttrs : NativeCodeCall<
-    "GetQuantizedTypeAttr($_builder, $0->getType(), $1, $2, $3, $4)">;
-
-// Predicate that holds if all the three attributes are set.
-def HasAll3Attrs : Constraint<CPred<"HasAll3Attrs($0, $1, $2)">>;
+    "GetQuantizedTypeAttr($_builder, $0->getType(), $1, $2, -1, $3, $4, /*is_signed=*/false)">;
 
 // Converts an integer attribute $0 to 32-bit with builder.
 def convertIntAttrTo32Bit : NativeCodeCall<
@@ -72,9 +64,14 @@ def : Pat<(TF_ConstOp:$res NonOpaqueElementsAttr:$value), (ConstantOp $value),
 //===----------------------------------------------------------------------===//
 def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">;
 def IsIntList1XY1 : AttrConstraint<CPred<"TFIntListIs1XY1($_self)">>;
+def IsAllOnes : AttrConstraint<CPred<"TFIntListIsAllOnes($_self)">>;
+def IsSameOrValid : AttrConstraint<
+    CPred<"$_self.cast<StringAttr>().getValue() == \"SAME\" || " #
+          "$_self.cast<StringAttr>().getValue() == \"VALID\"">,
+    "'SAME' or 'VALID' paddings">;
 
 def : Pat<(TF_AbsOp $arg), (TFL_AbsOp $arg)>;
-def : Pat<(TF_AddNOp $inputs, $N), (TFL_AddNOp $inputs)>;
+def : Pat<(TF_AddNOp $inputs), (TFL_AddNOp $inputs)>;
 
 def : Pat<(TF_AvgPoolOp $value,
               IsIntList1XY1:$ksize,
@@ -113,6 +110,7 @@ def : Pat<(TF_FillOp $arg, $value), (TFL_FillOp $arg, $value)>;
 def : Pat<(TF_FloorOp $arg), (TFL_FloorOp $arg)>;
 
 def : Pat<(TF_LeakyReluOp $arg, F32Attr:$a), (TFL_LeakyReluOp $arg, $a)>;
+def : Pat<(TF_LogOp $arg), (TFL_LogOp $arg)>;
 def : Pat<(TF_LogicalNotOp $arg), (TFL_LogicalNotOp $arg)>;
 def : Pat<(TF_LogSoftmaxOp $arg), (TFL_LogSoftmaxOp $arg)>;
 
@@ -131,6 +129,7 @@ def : Pat<(TF_MaxPoolOp $value,
 
 def : Pat<(TF_MaximumOp $arg1, $arg2), (TFL_MaximumOp $arg1, $arg2)>;
 def : Pat<(TF_MinimumOp $arg1, $arg2), (TFL_MinimumOp $arg1, $arg2)>;
+def : Pat<(TF_NegOp $arg), (TFL_NegOp $arg)>;
 def : Pat<(TF_OneHotOp $indices, $depth, $on_value, $off_value, $axis),
           (TFL_OneHotOp $indices, $depth, $on_value, $off_value,
            (convertIntAttrTo32Bit $axis))>;
@@ -160,19 +159,6 @@ def : Pat<(TF_TanhOp $arg), (TFL_TanhOp $arg)>;
 def : Pat<(TF_TransposeOp $arg, $perm), (TFL_TransposeOp $arg, $perm)>;
 def : Pat<(TF_WhereOp $arg), (TFL_WhereOp $arg)>;
 def : Pat<(TF_ZerosLikeOp $arg), (TFL_ZerosLikeOp $arg)>;
-
-// The following two rules can both match an tf.Placeholder.input node with
-// min/max/type attributes, so we increase the benefit of the first rule by one
-// so the tfl.quantize and tfl.dequantize ops will be inserted if it matches.
-def : Pat<(TF_PlaceholderInputOp TensorOf<[F16, F32, F64]>:$inputs,
-              $min, $max, $type),
-          (TFL_DequantizeOp
-              (TFL_QuantizeOp
-                  (TFL_InputOp $inputs),
-                  (ConvertToQuantType $inputs, $min, $max, $type))),
-          [(HasAll3Attrs $min, $max, $type)], (addBenefit 1)>;
-def : Pat<(TF_PlaceholderInputOp $inputs, $min, $max, $type),
-          (TFL_InputOp $inputs)>;
 
 //===----------------------------------------------------------------------===//
 // Binary ops patterns.
@@ -305,12 +291,6 @@ def : Pat<(TF_MirrorPadOp $arg0, $arg1, $cst), (TFL_MirrorPadOp $arg0, $arg1, $c
 def : Pat<(TF_SparseToDenseOp $sparse_indices, $output_shape, $sparse_values, $default_value, $validate_indices),
           (TFL_SparseToDenseOp $sparse_indices, $output_shape, $sparse_values, $default_value)>;
 
-def : Pat<
-  (TF_StridedSliceOp $input, $begin, $end, $strides, $begin_mask, $end_mask, $ellipsis_mask, $new_axis_mask, $shrink_axis_mask),
-  (TFL_StridedSliceOp $input, $begin, $end, $strides,
-    (convertIntAttrTo32Bit $begin_mask), (convertIntAttrTo32Bit $end_mask), (convertIntAttrTo32Bit $ellipsis_mask),
-    (convertIntAttrTo32Bit $new_axis_mask), (convertIntAttrTo32Bit $shrink_axis_mask))>;
-
 def : Pat<(TF_UniqueOp $arg0),(TFL_UniqueOp $arg0)>;
 
 def : Pat<(TF_FloorModOp $arg0, $arg1), (TFL_FloorModOp $arg0, $arg1)>;
@@ -328,3 +308,31 @@ def : Pat<
 
 def : Pat<(TF_MatrixDiagOp $diagonal), (TFL_MatrixDiagOp $diagonal)>;
 
+class I32VectorElementsAttr<int len> : ElementsAttrBase<
+  CPred<"$_self.isa<DenseIntElementsAttr>() &&"
+      "$_self.cast<DenseIntElementsAttr>().getType()."
+      "getElementType().isInteger(32)">,
+  "32-bit int elements attribute of shape [" # len # "]"> {
+
+  let storageType = [{ DenseIntElementsAttr }];
+  let returnType = [{ DenseIntElementsAttr }];
+
+  let constBuilderCall = "DenseElementsAttr::get("
+    "RankedTensorType::get({" # len # "}, $_builder.getIntegerType(32)), $0)";
+}
+
+def : Pat<
+  (TF_Conv2DBackpropInputOp $input_sizes, $filter, $out_backprop,
+     IsIntList1XY1:$strides,
+     BoolAttr:$use_cudnn_on_gpu,
+     IsSameOrValid:$padding,
+     I64ArrayAttr:$explicit_paddings,
+     IsDataFormatNHWC:$data_format,
+     IsAllOnes:$dilations),
+  (TFL_TransposeConvOp $input_sizes,
+     (TF_TransposeOp $filter,
+       (ConstantOp ConstantAttr<I32VectorElementsAttr<4>, "{2, 0, 1, 3}">)),
+     $out_backprop,
+     /*padding=*/ $padding,
+     /*stride_h=*/ ExtractI32At<1>:$strides,
+     /*stride_w=*/ ExtractI32At<2>:$strides)>;

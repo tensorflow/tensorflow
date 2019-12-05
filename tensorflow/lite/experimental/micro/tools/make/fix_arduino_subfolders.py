@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,16 +22,19 @@ from __future__ import print_function
 import argparse
 import glob
 import os
+import six
 
 
 def rename_example_subfolder_files(library_dir):
   """Moves source files in example subfolders to equivalents at root."""
-  search_path = os.path.join(library_dir, 'examples/*/*', '*.cpp')
-  for cpp_path in glob.glob(search_path):
-    cpp_dir = os.path.dirname(cpp_path)
-    cpp_base = os.path.basename(cpp_path)
-    new_cpp_path = cpp_dir + '_' + cpp_base
-    os.rename(cpp_path, new_cpp_path)
+  patterns = ['*.h', '*.cpp']
+  for pattern in patterns:
+    search_path = os.path.join(library_dir, 'examples/*/*', pattern)
+    for source_file_path in glob.glob(search_path):
+      source_file_dir = os.path.dirname(source_file_path)
+      source_file_base = os.path.basename(source_file_path)
+      new_source_file_path = source_file_dir + '_' + source_file_base
+      os.rename(source_file_path, new_source_file_path)
 
 
 def move_person_data(library_dir):
@@ -41,15 +45,16 @@ def move_person_data(library_dir):
       'person_model_grayscale/person_detect_model_data.cpp'
   )
   new_person_data_path = os.path.join(
-      library_dir, 'examples/micro_vision/person_detect_model_data.cpp')
+      library_dir, 'examples/person_detection/person_detect_model_data.cpp')
   if os.path.exists(old_person_data_path):
     os.rename(old_person_data_path, new_person_data_path)
     # Update include.
     with open(new_person_data_path, 'r') as source_file:
       file_contents = source_file.read()
     file_contents = file_contents.replace(
-        '#include "tensorflow/lite/experimental/micro/examples/' +
-        'micro_vision/person_detect_model_data.h"',
+        six.ensure_str(
+            '#include "tensorflow/lite/experimental/micro/examples/' +
+            'person_detection/person_detect_model_data.h"'),
         '#include "person_detect_model_data.h"')
     with open(new_person_data_path, 'w') as source_file:
       source_file.write(file_contents)

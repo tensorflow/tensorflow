@@ -42,7 +42,7 @@ struct UniformStorageParams {
   int64_t minValue;
 };
 
-/// Solves for the uniform quantization scheme paramers delta and z given
+/// Solves for the uniform quantization scheme parameters delta and z given
 /// bounding min/max.
 class UniformParamsFromMinMaxSolver {
 public:

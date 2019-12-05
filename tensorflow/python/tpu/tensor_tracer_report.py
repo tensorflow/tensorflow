@@ -235,7 +235,7 @@ class TTReportHandle(object):
       tensor_trace_order: TensorTraceOrder object storing a topological order of
         the graph.
       tensor_trace_points: Progromatically added trace_points/checkpoints.
-        collected_signature_types: The signature types collected, e,g, norm,
+      collected_signature_types: The signature types collected, e,g, norm,
         max, min, mean...
     Returns:
       TensorTracerReport proto.

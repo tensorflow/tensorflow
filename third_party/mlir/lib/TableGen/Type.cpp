@@ -23,16 +23,27 @@
 #include "llvm/TableGen/Record.h"
 
 using namespace mlir;
+using namespace mlir::tblgen;
 
-tblgen::TypeConstraint::TypeConstraint(const llvm::Record *record)
+TypeConstraint::TypeConstraint(const llvm::Record *record)
     : Constraint(Constraint::CK_Type, record) {
   assert(def->isSubClassOf("TypeConstraint") &&
          "must be subclass of TableGen 'TypeConstraint' class");
 }
 
-tblgen::TypeConstraint::TypeConstraint(const llvm::DefInit *init)
+TypeConstraint::TypeConstraint(const llvm::DefInit *init)
     : TypeConstraint(init->getDef()) {}
 
-bool tblgen::TypeConstraint::isVariadic() const {
+bool TypeConstraint::isVariadic() const {
   return def->isSubClassOf("Variadic");
+}
+
+Type::Type(const llvm::Record *record) : TypeConstraint(record) {}
+
+StringRef Type::getTypeDescription() const {
+  return def->getValueAsString("typeDescription");
+}
+
+Dialect Type::getDialect() const {
+  return Dialect(def->getValueAsDef("dialect"));
 }

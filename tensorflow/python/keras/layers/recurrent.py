@@ -23,7 +23,9 @@ import collections
 
 import numpy as np
 
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
@@ -36,15 +38,20 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
+
+
+RECURRENT_DROPOUT_WARNING_MSG = (
+    'RNN `implementation=2` is not supported when `recurrent_dropout` is set. '
+    'Using `implementation=1`.')
 
 
 @keras_export('keras.layers.StackedRNNCells')
@@ -59,14 +66,17 @@ class StackedRNNCells(Layer):
   Examples:
 
   ```python
-  cells = [
-      keras.layers.LSTMCell(output_dim),
-      keras.layers.LSTMCell(output_dim),
-      keras.layers.LSTMCell(output_dim),
-  ]
+  batch_size = 3
+  sentence_max_length = 5
+  n_features = 2
+  new_shape = (batch_size, sentence_max_length, n_features)
+  x = tf.constant(np.reshape(np.arange(30), new_shape), dtype = tf.float32)
 
-  inputs = keras.Input((timesteps, input_dim))
-  x = keras.layers.RNN(cells)(inputs)
+  rnn_cells = [tf.keras.layers.LSTMCell(128) for _ in range(2)]
+  stacked_lstm = tf.keras.layers.StackedRNNCells(rnn_cells)
+  lstm_layer = tf.keras.layers.RNN(stacked_lstm)
+
+  result = lstm_layer(x)
   ```
   """
 
@@ -189,7 +199,7 @@ class StackedRNNCells(Layer):
 class RNN(Layer):
   """Base class for recurrent layers.
 
-  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  See [the Keras RNN API guide](https://www.tensorflow.org/guide/keras/rnn)
   for details about the usage of RNN API.
 
   Arguments:
@@ -417,6 +427,12 @@ class RNN(Layer):
     self._states = None
     self.constants_spec = None
     self._num_constants = 0
+    self._supports_ragged_inputs = True
+
+    if stateful:
+      if ds_context.has_strategy():
+        raise ValueError('RNNs with stateful=True not yet supported with '
+                         'tf.distribute.Strategy.')
 
   @property
   def states(self):
@@ -648,9 +664,12 @@ class RNN(Layer):
       ]
       self._num_constants = len(constants)
       additional_specs += self.constants_spec
-    # at this point additional_inputs cannot be empty
-    is_keras_tensor = K.is_keras_tensor(nest.flatten(additional_inputs)[0])
-    for tensor in nest.flatten(additional_inputs):
+    # additional_inputs can be empty if initial_state or constants are provided
+    # but empty (e.g. the cell is stateless).
+    flat_additional_inputs = nest.flatten(additional_inputs)
+    is_keras_tensor = K.is_keras_tensor(
+        flat_additional_inputs[0]) if flat_additional_inputs else True
+    for tensor in flat_additional_inputs:
       if K.is_keras_tensor(tensor) != is_keras_tensor:
         raise ValueError('The initial state or constants of an RNN'
                          ' layer cannot be specified with a mix of'
@@ -688,7 +707,7 @@ class RNN(Layer):
            constants=None):
     # The input should be dense, padded with zeros. If a ragged input is fed
     # into the layer, it is padded and the row lengths are used for masking.
-    inputs, row_lengths = self._convert_inputs_if_ragged(inputs)
+    inputs, row_lengths = K.convert_inputs_if_ragged(inputs)
     is_ragged_input = (row_lengths is not None)
     self._validate_args_if_ragged(is_ragged_input, mask)
 
@@ -772,8 +791,7 @@ class RNN(Layer):
       self.add_update(updates)
 
     if self.return_sequences:
-      output = self._maybe_convert_to_ragged(is_ragged_input, outputs,
-                                             row_lengths)
+      output = K.maybe_convert_to_ragged(is_ragged_input, outputs, row_lengths)
     else:
       output = last_output
 
@@ -826,29 +844,6 @@ class RNN(Layer):
                        ' initial states.')
     return inputs, initial_state, constants
 
-  def _convert_inputs_if_ragged(self, inputs):
-    """Converts any ragged tensors to dense."""
-
-    def _convert_ragged_input(inputs):
-      if isinstance(inputs, ragged_tensor.RaggedTensor):
-        return inputs.to_tensor()
-      return inputs
-
-    flat_inputs = nest.flatten(inputs)
-    contains_ragged = K.py_any(
-        isinstance(i, ragged_tensor.RaggedTensor) for i in flat_inputs)
-
-    if not contains_ragged:
-      return inputs, None
-
-    inputs = nest.map_structure(_convert_ragged_input, inputs)
-    # Multiple mask are not yet supported, so one mask is used on all inputs.
-    # We approach this similarly when using row lengths to ignore steps.
-    nested_row_lengths = math_ops.cast(flat_inputs[0].nested_row_lengths()[0],
-                                       'int32')
-
-    return inputs, nested_row_lengths
-
   def _validate_args_if_ragged(self, is_ragged_input, mask):
     if not is_ragged_input:
       return
@@ -862,14 +857,6 @@ class RNN(Layer):
       raise ValueError('The input received constains RaggedTensors and does '
                        'not support unrolling. Disable unrolling by passing '
                        '`unroll=False` in the RNN Layer constructor.')
-
-  def _maybe_convert_to_ragged(self, is_ragged_input, output,
-                               nested_row_lengths):
-    """Converts any ragged input back to its initial structure."""
-    if not is_ragged_input:
-      return output
-
-    return ragged_tensor.RaggedTensor.from_tensor(output, nested_row_lengths)
 
   def _maybe_reset_cell_dropout_mask(self, cell):
     if isinstance(cell, DropoutRNNCellMixin):
@@ -982,7 +969,7 @@ class RNN(Layer):
 class AbstractRNNCell(Layer):
   """Abstract object representing an RNN cell.
 
-  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  See [the Keras RNN API guide](https://www.tensorflow.org/guide/keras/rnn)
   for details about the usage of RNN API.
 
   This is the base class for implementing RNN cells with custom behavior.
@@ -1202,7 +1189,7 @@ class DropoutRNNCellMixin(object):
 class SimpleRNNCell(DropoutRNNCellMixin, Layer):
   """Cell class for SimpleRNN.
 
-  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  See [the Keras RNN API guide](https://www.tensorflow.org/guide/keras/rnn)
   for details about the usage of RNN API.
 
   This class processes one step within the whole time sequence input, whereas
@@ -1283,6 +1270,7 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
                dropout=0.,
                recurrent_dropout=0.,
                **kwargs):
+    self._enable_caching_device = kwargs.pop('enable_caching_device', False)
     super(SimpleRNNCell, self).__init__(**kwargs)
     self.units = units
     self.activation = activations.get(activation)
@@ -1307,25 +1295,29 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
+    default_caching_device = _caching_device(self)
     self.kernel = self.add_weight(
         shape=(input_shape[-1], self.units),
         name='kernel',
         initializer=self.kernel_initializer,
         regularizer=self.kernel_regularizer,
-        constraint=self.kernel_constraint)
+        constraint=self.kernel_constraint,
+        caching_device=default_caching_device)
     self.recurrent_kernel = self.add_weight(
         shape=(self.units, self.units),
         name='recurrent_kernel',
         initializer=self.recurrent_initializer,
         regularizer=self.recurrent_regularizer,
-        constraint=self.recurrent_constraint)
+        constraint=self.recurrent_constraint,
+        caching_device=default_caching_device)
     if self.use_bias:
       self.bias = self.add_weight(
           shape=(self.units,),
           name='bias',
           initializer=self.bias_initializer,
           regularizer=self.bias_regularizer,
-          constraint=self.bias_constraint)
+          constraint=self.bias_constraint,
+          caching_device=default_caching_device)
     else:
       self.bias = None
     self.built = True
@@ -1393,7 +1385,7 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
 class SimpleRNN(RNN):
   """Fully-connected RNN where the output is to be fed back to input.
 
-  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  See [the Keras RNN API guide](https://www.tensorflow.org/guide/keras/rnn)
   for details about the usage of RNN API.
 
   Arguments:
@@ -1709,6 +1701,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
                implementation=1,
                reset_after=False,
                **kwargs):
+    self._enable_caching_device = kwargs.pop('enable_caching_device', False)
     super(GRUCell, self).__init__(**kwargs)
     self.units = units
     self.activation = activations.get(activation)
@@ -1729,7 +1722,11 @@ class GRUCell(DropoutRNNCellMixin, Layer):
 
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
-    self.implementation = implementation
+    if self.recurrent_dropout != 0 and implementation != 1:
+      logging.debug(RECURRENT_DROPOUT_WARNING_MSG)
+      self.implementation = 1
+    else:
+      self.implementation = implementation
     self.reset_after = reset_after
     self.state_size = self.units
     self.output_size = self.units
@@ -1737,18 +1734,21 @@ class GRUCell(DropoutRNNCellMixin, Layer):
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
     input_dim = input_shape[-1]
+    default_caching_device = _caching_device(self)
     self.kernel = self.add_weight(
         shape=(input_dim, self.units * 3),
         name='kernel',
         initializer=self.kernel_initializer,
         regularizer=self.kernel_regularizer,
-        constraint=self.kernel_constraint)
+        constraint=self.kernel_constraint,
+        caching_device=default_caching_device)
     self.recurrent_kernel = self.add_weight(
         shape=(self.units, self.units * 3),
         name='recurrent_kernel',
         initializer=self.recurrent_initializer,
         regularizer=self.recurrent_regularizer,
-        constraint=self.recurrent_constraint)
+        constraint=self.recurrent_constraint,
+        caching_device=default_caching_device)
 
     if self.use_bias:
       if not self.reset_after:
@@ -1763,7 +1763,8 @@ class GRUCell(DropoutRNNCellMixin, Layer):
                                   name='bias',
                                   initializer=self.bias_initializer,
                                   regularizer=self.bias_regularizer,
-                                  constraint=self.bias_constraint)
+                                  constraint=self.bias_constraint,
+                                  caching_device=default_caching_device)
     else:
       self.bias = None
     self.built = True
@@ -1841,12 +1842,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
         # biases: bias_z_i, bias_r_i, bias_h_i
         matrix_x = K.bias_add(matrix_x, input_bias)
 
-      x_z = matrix_x[:, :self.units]
-      x_r = matrix_x[:, self.units: 2 * self.units]
-      x_h = matrix_x[:, 2 * self.units:]
-
-      if 0. < self.recurrent_dropout < 1.:
-        h_tm1 = h_tm1 * rec_dp_mask[0]
+      x_z, x_r, x_h = array_ops.split(matrix_x, 3, axis=-1)
 
       if self.reset_after:
         # hidden state projected by all gate matrices at once
@@ -1857,14 +1853,14 @@ class GRUCell(DropoutRNNCellMixin, Layer):
         # hidden state projected separately for update/reset and new
         matrix_inner = K.dot(h_tm1, self.recurrent_kernel[:, :2 * self.units])
 
-      recurrent_z = matrix_inner[:, :self.units]
-      recurrent_r = matrix_inner[:, self.units:2 * self.units]
+      recurrent_z, recurrent_r, recurrent_h = array_ops.split(
+          matrix_inner, [self.units, self.units, -1], axis=-1)
 
       z = self.recurrent_activation(x_z + recurrent_z)
       r = self.recurrent_activation(x_r + recurrent_r)
 
       if self.reset_after:
-        recurrent_h = r * matrix_inner[:, 2 * self.units:]
+        recurrent_h = r * recurrent_h
       else:
         recurrent_h = K.dot(r * h_tm1,
                             self.recurrent_kernel[:, 2 * self.units:])
@@ -2259,6 +2255,7 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
                recurrent_dropout=0.,
                implementation=1,
                **kwargs):
+    self._enable_caching_device = kwargs.pop('enable_caching_device', False)
     super(LSTMCell, self).__init__(**kwargs)
     self.units = units
     self.activation = activations.get(activation)
@@ -2280,7 +2277,11 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
 
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
-    self.implementation = implementation
+    if self.recurrent_dropout != 0 and implementation != 1:
+      logging.debug(RECURRENT_DROPOUT_WARNING_MSG)
+      self.implementation = 1
+    else:
+      self.implementation = implementation
     # tuple(_ListWrapper) was silently dropping list content in at least 2.7.10,
     # and fixed after 2.7.16. Converting the state_size to wrapper around
     # NoDependency(), so that the base_layer.__setattr__ will not convert it to
@@ -2292,19 +2293,22 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
+    default_caching_device = _caching_device(self)
     input_dim = input_shape[-1]
     self.kernel = self.add_weight(
         shape=(input_dim, self.units * 4),
         name='kernel',
         initializer=self.kernel_initializer,
         regularizer=self.kernel_regularizer,
-        constraint=self.kernel_constraint)
+        constraint=self.kernel_constraint,
+        caching_device=default_caching_device)
     self.recurrent_kernel = self.add_weight(
         shape=(self.units, self.units * 4),
         name='recurrent_kernel',
         initializer=self.recurrent_initializer,
         regularizer=self.recurrent_regularizer,
-        constraint=self.recurrent_constraint)
+        constraint=self.recurrent_constraint,
+        caching_device=default_caching_device)
 
     if self.use_bias:
       if self.unit_forget_bias:
@@ -2322,7 +2326,8 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
           name='bias',
           initializer=bias_initializer,
           regularizer=self.bias_regularizer,
-          constraint=self.bias_constraint)
+          constraint=self.bias_constraint,
+          caching_device=default_caching_device)
     else:
       self.bias = None
     self.built = True
@@ -2400,8 +2405,6 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
       if 0. < self.dropout < 1.:
         inputs = inputs * dp_mask[0]
       z = K.dot(inputs, self.kernel)
-      if 0. < self.recurrent_dropout < 1.:
-        h_tm1 = h_tm1 * rec_dp_mask[0]
       z += K.dot(h_tm1, self.recurrent_kernel)
       if self.use_bias:
         z = K.bias_add(z, self.bias)
@@ -2911,3 +2914,50 @@ def _generate_zero_filled_state(batch_size_tensor, state_size, dtype):
     return nest.map_structure(create_zeros, state_size)
   else:
     return create_zeros(state_size)
+
+
+def _caching_device(rnn_cell):
+  """Returns the caching device for the RNN variable.
+
+  This is useful for distributed training, when variable is not located as same
+  device as the training worker. By enabling the device cache, this allows
+  worker to read the variable once and cache locally, rather than read it every
+  time step from remote when it is needed.
+
+  Note that this is assuming the variable that cell needs for each time step is
+  having the same value in the forward path, and only gets updated in the
+  backprop. It is true for all the default cells (SimpleRNN, GRU, LSTM). If the
+  cell body relies on any variable that gets updated every time step, then
+  caching device will cause it to read the stall value.
+
+  Args:
+    rnn_cell: the rnn cell instance.
+  """
+  if context.executing_eagerly():
+    # caching_device is not supported in eager mode.
+    return None
+  if not getattr(rnn_cell, '_enable_caching_device', False):
+    return None
+  # Don't set a caching device when running in a loop, since it is possible that
+  # train steps could be wrapped in a tf.while_loop. In that scenario caching
+  # prevents forward computations in loop iterations from re-reading the
+  # updated weights.
+  if control_flow_util.IsInWhileLoop(ops.get_default_graph()):
+    logging.warn('Variable read device caching has been disabled because the '
+                 'RNN is in tf.while_loop loop context, which will cause '
+                 'reading stalled value in forward path. This could slow down '
+                 'the training due to duplicated variable reads. Please '
+                 'consider updating your code to remove tf.while_loop if '
+                 'possible.')
+    return None
+  if rnn_cell._dtype_policy.should_cast_variables:
+    logging.warn('Variable read device caching has been disabled since it '
+                 'doesn\'t work with the mixed precision API. This is '
+                 'likely to cause a slowdown for RNN training due to '
+                 'duplicated read of variable for each timestep, which '
+                 'will be significant in a multi remote worker setting. '
+                 'Please consider disabling mixed precision API if '
+                 'the performance has been affected.')
+    return None
+  # Cache the value on the device that access the variable.
+  return lambda op: op.device

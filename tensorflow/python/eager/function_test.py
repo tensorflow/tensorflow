@@ -133,11 +133,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     super(FunctionTest, self).setUp()
     cpus = config.list_physical_devices('CPU')
     # Set 4 virtual CPUs
-    config.set_virtual_device_configuration(cpus[0], [
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration()
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
     ])
 
   def testBasic(self):
@@ -147,6 +147,39 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     sq2 = matmul(sq, t, transpose_a=True)
     self.assertAllEqual(sq.numpy().reshape(-1), [10, 14, 14, 20])
     self.assertAllEqual(sq2.numpy().reshape(-1), [52, 76, 74, 108])
+
+  def testOnExitCallback(self):
+    values = []
+    def append_1():
+      values.append(1)
+
+    def append_2():
+      values.append(2)
+
+    def g(x):
+      old_values = list(values)
+      ops.add_exit_callback_to_default_func_graph(append_1)
+      self.assertEqual(old_values, values)
+      return x + 1
+
+    tf_g = def_function.function(g)
+
+    def f(x):
+      old_values = list(values)
+      ops.add_exit_callback_to_default_func_graph(append_2)
+      self.assertEqual(old_values, values)
+      return tf_g(x)
+
+    tf_f = def_function.function(f)
+    self.assertEmpty(values)
+    tf_f(constant_op.constant(1.0))
+    self.assertEqual(values, [1, 2])  # Once for g, once for f.
+    tf_f(constant_op.constant([1.0]))  # force a retrace
+    self.assertEqual(values, [1, 2, 1, 2])  # And again.
+
+  def testCannotAddExitCallbackWhenNotInFunctionScope(self):
+    with self.assertRaisesRegexp(RuntimeError, 'when not building a function.'):
+      ops.add_exit_callback_to_default_func_graph(lambda: None)
 
   def testVariable(self):
     v1 = variables.Variable(1.0)
@@ -290,16 +323,25 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(unknown_dim[0])
     self.assertLen(total_function_cache(func), 2)
 
-  def testCaptureNonTrainableVariable(self):
-
-    v = variables.Variable(1.0, trainable=False)
+  def testCapturesVariables(self):
+    a = variables.Variable(1.0, trainable=False)
+    b = variables.Variable(1.0)
+    cc = [None]
 
     @def_function.function
     def f():
-      return v + 1
+      c = cc[0]
+      if c is None:
+        c = cc[0] = variables.Variable(1.)
+      return a + b + c + 1
 
-    c = f.get_concrete_function()
-    self.assertEqual(len(list(c.graph.variables)), 1)  # pylint: disable=g-generic-assert
+    cf = f.get_concrete_function()
+    c = cc[0]
+
+    self.assertEqual(cf.variables, (a, b, c))
+    self.assertEqual(cf.trainable_variables, (b, c))
+    self.assertEqual(cf.graph.variables, (a, b, c))
+    self.assertEqual(cf.graph.trainable_variables, (b, c))
 
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
@@ -524,6 +566,18 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     _ = pool.map(thread_func, list(range(num_threads)))
 
     self.assertLen(set(concrete_functions), 1)
+
+  def testGetConcreteFunctionThreadSafetyWithArgs(self):
+    @def_function.function
+    def add_100(*args):
+      return math_ops.add_n(args)
+
+    p = multiprocessing.pool.ThreadPool(2)
+    args = (constant_op.constant(1.),) * 100
+    f1, f2 = p.map(add_100.get_concrete_function, [args] * 2)
+    # I see about len(args) + max(0, len(args) - 3) arguments expected.
+    f1(*args)
+    del f2
 
   def testInputSpecGraphFunction(self):
     matmul = def_function.function(math_ops.matmul)
@@ -1153,6 +1207,23 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     for (input_component, output_component) in zip(input_flat, output_flat):
       self.assertAllEqual(input_component, output_component)
 
+  def testTracedCompositeDiscardsShapeInfo(self):
+    # SparseTensorSpec intentionally excludes info about the number of elements
+    # that are in a sparse tensor (which is recorded as st.indices.shape[0] and
+    # st.values.shape[0]).  Similarly, RaggedTensorSpec intentionally excludes
+    # info about the total number of values in a RaggedTensor (stored as
+    # rt.values.shape[0]).  This test checks that the placeholders created by
+    # tf.function() properly mask this shape info.
+    @def_function.function
+    def f(rt, st):
+      self.assertEqual(st.indices.shape.as_list()[:1], [None])
+      self.assertEqual(st.values.shape.as_list(), [None])
+      return (rt, st)
+
+    rt = ragged_factory_ops.constant([[1, 2], [3]])
+    st = sparse_tensor.SparseTensor([[0]], [0], [10])
+    f(rt, st)
+
   @test_util.run_gpu_only
   def testFunctionOnDevice(self):
     x = constant_op.constant([1.]).gpu()
@@ -1323,7 +1394,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testVariableNamesRespectNameScopesWithDefun(self):
     @def_function.function
     def create_variable():
-      with ops.name_scope('foo'):
+      with ops.name_scope('foo', skip_on_eager=False):
         v = resource_variable_ops.ResourceVariable(0.0, name='bar')
       self.assertEqual(v.name, 'foo/bar:0')
 
@@ -1333,7 +1404,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with context.graph_mode():
       @def_function.function
       def create_variable():
-        with ops.name_scope('foo'):
+        with ops.name_scope('foo', skip_on_eager=False):
           v = resource_variable_ops.ResourceVariable([1.0, 2.0], name='bar')
         self.assertEqual(v.name, 'foo/bar:0')
 
@@ -1984,6 +2055,27 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, 'does not match'):
       defined(rt5)
 
+  def testInputSignatureWithVariableArgs(self):
+
+    def f(v):
+      v.assign_add(1)
+
+    signature = [
+        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
+    ]
+    defined = function.defun(f, input_signature=signature)
+
+    v1 = variables.Variable(0)
+    v2 = variables.Variable(0)
+
+    defined(v1)
+    self.assertEqual(v1.numpy(), 1)
+    self.assertEqual(v2.numpy(), 0)
+
+    defined(v=v2)
+    self.assertEqual(v1.numpy(), 1)
+    self.assertEqual(v2.numpy(), 1)
+
   def testTensorKeywordArguments(self):
 
     def foo(a, b):
@@ -2524,6 +2616,45 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         TestClass([constant_op.constant(1.),
                    constant_op.constant(2.)], constant_op.constant(3.)))
     self.assertLen(total_function_cache(defined), 2)
+
+  def testCacheKeyVariables(self):
+    @function.defun
+    def defined(a, b, c):
+      return a + b + c
+
+    x = resource_variable_ops.ResourceVariable(0.0)
+    y = resource_variable_ops.ResourceVariable(0.0)
+    z = resource_variable_ops.ResourceVariable(0.0)
+
+    # If tensor equality is not enabled, we always get a cache miss if the
+    # function is called with different variables. With equality enabled we
+    # should only get a miss if the aliasing changed.
+    defined(x, y, z)
+    self.assertLen(total_function_cache(defined), 1)
+
+    # Calling again is a cache hit
+    defined(x, y, z)
+    self.assertLen(total_function_cache(defined), 1)
+
+    # Re-arranging arguments doesn't change signature
+    defined(z, y, x)
+    self.assertLen(total_function_cache(defined),
+                   1 if ops.Tensor._USE_EQUALITY else 2)
+
+    # Aliasing causes cache miss
+    defined(x, x, z)
+    self.assertLen(total_function_cache(defined),
+                   2 if ops.Tensor._USE_EQUALITY else 3)
+
+    # Re-arranging arguments doesn't change signature
+    defined(y, y, z)
+    self.assertLen(total_function_cache(defined),
+                   2 if ops.Tensor._USE_EQUALITY else 4)
+
+    # Different alias positions causes cache miss
+    defined(z, y, y)
+    self.assertLen(total_function_cache(defined),
+                   3 if ops.Tensor._USE_EQUALITY else 5)
 
   def testDecoratedMethod(self):
     m = DefunnedMiniModel()

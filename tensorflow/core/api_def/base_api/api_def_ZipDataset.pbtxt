@@ -1,5 +1,28 @@
 op {
   graph_op_name: "ZipDataset"
   visibility: HIDDEN
+  in_arg {
+    name: "input_datasets"
+    description: <<END
+List of `N` variant Tensors representing datasets to be zipped together.
+END
+  }
+  attr {
+    name: "output_types"
+  }
+  attr {
+    name: "output_shapes"
+  }
+  attr {
+    name: "N"
+    description: "The length of `input_datasets`"
+  }
   summary: "Creates a dataset that zips together `input_datasets`."
+  description: <<END
+The elements of the resulting dataset are created by zipping corresponding 
+elements from each of the input datasets.
+
+The size of the resulting dataset will match the size of the smallest input
+dataset, and no error will be raised if input datasets have different sizes.
+END
 }

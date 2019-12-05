@@ -60,7 +60,7 @@ class CalibrationWrapper {
   PyObject* FeedTensor(PyObject* input_value);
 
   PyObject* QuantizeModel(int input_py_type, int output_py_type,
-                          bool allow_float);
+                          bool allow_float, bool enable_mlir_quantizer = false);
 
   // Allows quantizing only the operator that produces the tensor with name
   // operator_output_name. (This can be used to help debug.).

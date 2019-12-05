@@ -20,47 +20,26 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Note that for each op in this file, we use a tool to automatically generate
-// certain sections in its definition: basic structure, summary, description.
-// So modifications to these sections will not be respected. Modifications to
-// op traits, arguments, results, and sections after the results are retained.
-// Besides, ops in this file must be separated via the '// -----' marker.
+// Note that for each op in this file and the included files for specific op
+// categories, we use a tool to automatically generate certain sections in its
+// definition: basic structure, summary, description. So modifications to these
+// sections will not be respected. Modifications to op traits, arguments,
+// results, and sections after the results are retained. Besides, ops must be
+// separated via the '// -----' marker.
 
-#ifdef SPIRV_OPS
-#else
+#ifndef SPIRV_OPS
 #define SPIRV_OPS
 
-#ifdef SPIRV_BASE
-#else
 include "mlir/Dialect/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
-
-#ifdef SPIRV_ARITHMETIC_OPS
-#else
 include "mlir/Dialect/SPIRV/SPIRVArithmeticOps.td"
-#endif // SPIRV_ARITHMETIC_OPS
-
-#ifdef SPIRV_CONTROLFLOW_OPS
-#else
+include "mlir/Dialect/SPIRV/SPIRVBitOps.td"
+include "mlir/Dialect/SPIRV/SPIRVCastOps.td"
 include "mlir/Dialect/SPIRV/SPIRVControlFlowOps.td"
-#endif // SPIRV_CONTROLFLOW_OPS
-
-#ifdef SPIRV_LOGICAL_OPS
-#else
-include "mlir/Dialect/SPIRV/SPIRVLogicalOps.td"
-#endif // SPIRV_LOGICAL_OPS
-
-#ifdef SPIRV_STRUCTURE_OPS
-#else
-// Pull in ops for defining the SPIR-V module structure
-include "mlir/Dialect/SPIRV/SPIRVStructureOps.td"
-#endif // SPIRV_STRUCTURE_OPS
-
-#ifdef SPIRV_GLSL_OPS
-#else
-// Pull in ops for extended instruction set for GLSL
 include "mlir/Dialect/SPIRV/SPIRVGLSLOps.td"
-#endif // SPIRV_GLSL_OPS
+include "mlir/Dialect/SPIRV/SPIRVGroupOps.td"
+include "mlir/Dialect/SPIRV/SPIRVLogicalOps.td"
+include "mlir/Dialect/SPIRV/SPIRVNonUniformOps.td"
+include "mlir/Dialect/SPIRV/SPIRVStructureOps.td"
 
 // -----
 
@@ -122,58 +101,8 @@ def SPV_AccessChainOp : SPV_Op<"AccessChain", [NoSideEffect]> {
 
   let builders = [OpBuilder<[{Builder *builder, OperationState &state,
                               Value *basePtr, ArrayRef<Value *> indices}]>];
-}
 
-// -----
-
-def SPV_BitcastOp : SPV_Op<"Bitcast", [NoSideEffect]> {
-  let summary = "Bit pattern-preserving type conversion.";
-
-  let description = [{
-    Result Type must be an OpTypePointer, or a scalar or vector of
-    numerical-type.
-
-    Operand must have a type of OpTypePointer, or a scalar or vector of
-    numerical-type. It must be a different type than Result Type.
-
-    If either Result Type or Operand is a pointer, the other must be a
-    pointer (diverges from the SPIR-V spec).
-
-    If Result Type has a different number of components than Operand, the
-    total number of bits in Result Type must equal the total number of bits
-    in Operand. Let L be the type, either Result Type or Operand’s type,
-    that has the larger number of components. Let S be the other type, with
-    the smaller number of components. The number of components in L must be
-    an integer multiple of the number of components in S. The first
-    component (that is, the only or lowest-numbered component) of S maps to
-    the first components of L, and so on,  up to the last component of S
-    mapping to the last components of L. Within this mapping, any single
-    component of S (mapping to multiple components of L) maps its lower-
-    ordered bits to the lower-numbered components of L.
-
-    ### Custom assembly form
-
-    ``` {.ebnf}
-    bitcast-op ::= ssa-id `=` `spv.Bitcast` ssa-use
-                   `from` operand-type `to` result-type
-    ```
-
-    For example:
-
-    ```
-    %1 = spv.Bitcast %0 from f32 to i32
-    %1 = spv.Bitcast %0 from vector<2xf32> to i64
-    %1 = spv.Bitcast %0 from !spv.ptr<f32 to Function> to !spv.ptr<i32, Function>
-    ```
-  }];
-
-  let arguments = (ins
-    SPV_ScalarOrVectorOrPtr:$operand
-  );
-
-  let results = (outs
-    SPV_ScalarOrVectorOrPtr:$result
-  );
+  let hasCanonicalizer = 1;
 }
 
 // -----
@@ -322,9 +251,9 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
   }];
 
   let arguments = (ins
-    SymbolRefAttr:$fn,
+    FlatSymbolRefAttr:$fn,
     SPV_ExecutionModeAttr:$execution_mode,
-    OptionalAttr<I32ArrayAttr>:$values
+    I32ArrayAttr:$values
   );
 
   let results = (outs);
@@ -332,6 +261,11 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
   let verifier = [{ return success(); }];
 
   let autogenSerialization = 0;
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                              FuncOp function,
+                              spirv::ExecutionMode executionMode,
+                              ArrayRef<int32_t> params}]>];
 }
 
 // -----
@@ -380,6 +314,10 @@ def SPV_LoadOp : SPV_Op<"Load", []> {
   let results = (outs
     SPV_Type:$value
   );
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                  Value *basePtr, /*optional*/IntegerAttr memory_access,
+                  /*optional*/IntegerAttr alignment}]>];
 }
 
 // -----
@@ -471,7 +409,54 @@ def SPV_StoreOp : SPV_Op<"Store", []> {
     OptionalAttr<I32Attr>:$alignment
   );
 
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &state, "
+      "Value *ptr, Value *value, ArrayRef<NamedAttribute> namedAttrs", [{
+      state.addOperands(ptr);
+      state.addOperands(value);
+      state.addAttributes(namedAttrs);
+    }]>
+  ];
+
   let results = (outs);
+}
+
+// -----
+
+def SPV_UndefOp : SPV_Op<"undef", []> {
+  let summary = "Make an intermediate object whose value is undefined.";
+
+  let description = [{
+    Result Type is the type of object to make.
+
+    Each consumption of Result <id> yields an arbitrary, possibly different
+    bit pattern or abstract value resulting in possibly different concrete,
+    abstract, or opaque values.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    undef-op ::= `spv.undef` `:` sprirv-type
+    ```
+
+    For example:
+
+    ```
+    %0 = spv.undef : f32
+    %1 = spv.undef : !spv.struct<!spv.array<4 x vector<4xi32>>>
+    ```
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    SPV_Type:$result
+  );
+
+  let verifier = [{ return success(); }];
+
+  let hasOpcode = 0;
+  let autogenSerialization = 0;
 }
 
 // -----

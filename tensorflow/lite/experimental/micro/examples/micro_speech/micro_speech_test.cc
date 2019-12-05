@@ -16,22 +16,13 @@ limitations under the License.
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/no_micro_features_data.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/yes_micro_features_data.h"
+#include "tensorflow/lite/experimental/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
 #include "tensorflow/lite/experimental/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
-
-namespace tflite {
-namespace ops {
-namespace micro {
-TfLiteRegistration* Register_DEPTHWISE_CONV_2D();
-TfLiteRegistration* Register_FULLY_CONNECTED();
-TfLiteRegistration* Register_SOFTMAX();
-}  // namespace micro
-}  // namespace ops
-}  // namespace tflite
 
 TF_LITE_MICRO_TESTS_BEGIN
 
@@ -87,6 +78,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[0]);
   TF_LITE_MICRO_EXPECT_EQ(49, input->dims->data[1]);
   TF_LITE_MICRO_EXPECT_EQ(40, input->dims->data[2]);
+  TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[3]);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteUInt8, input->type);
 
   // Copy a spectrogram created from a .wav audio file of someone saying "Yes",

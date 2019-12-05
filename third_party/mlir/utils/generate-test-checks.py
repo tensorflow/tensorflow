@@ -51,7 +51,7 @@ class SSAVariableNamer:
     self.scopes = []
     self.name_counter = 0
 
-  # Generate a subsitution name for the given ssa value name.
+  # Generate a substitution name for the given ssa value name.
   def generate_name(self, ssa_name):
     variable = 'VAL_' + str(self.name_counter)
     self.name_counter += 1

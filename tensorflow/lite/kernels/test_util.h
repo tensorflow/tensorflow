@@ -60,6 +60,7 @@ template <typename T>
 inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
                                      int32_t zero_point) {
   std::vector<float> f;
+  f.reserve(data.size());
   for (const T& q : data) {
     f.push_back(scale * (q - zero_point));
   }
@@ -164,10 +165,18 @@ class SingleOpModel {
   }
   int AddInput(const TensorData& t, bool is_variable = false);
 
+  int AddIntermediate(TensorType type, const std::vector<float>& scale,
+                      const std::vector<int64_t>& zero_point);
+
   // Templated version of AddConstInput().
   template <typename T>
   int AddConstInput(const TensorData& t, std::initializer_list<T> data) {
-    int id = AddTensor(t, data);
+    int id = 0;
+    if (t.per_channel_quantization) {
+      id = AddTensorPerChannelQuant(t);
+    } else {
+      id = AddTensor(t, data);
+    }
     inputs_.push_back(id);
     return id;
   }
@@ -177,7 +186,7 @@ class SingleOpModel {
     return AddConstInput(TensorData{type, shape}, data);
   }
 
-  // Add a null input tensor (optional input) and return kOptionalTensor.
+  // Add a null input tensor (optional input) and return kTfLiteOptionalTensor.
   int AddNullInput();
 
   // Add a TensorType output tensor and return its index.
@@ -253,7 +262,7 @@ class SingleOpModel {
                     flatbuffers::Offset<void> builtin_options);
   void SetCustomOp(const string& name,
                    const std::vector<uint8_t>& custom_option,
-                   const std::function<TfLiteRegistration*()>& registeration);
+                   const std::function<TfLiteRegistration*()>& registration);
 
   // Build the interpreter for this model. Also, resize and allocate all
   // tensors given the shapes of the inputs.
@@ -345,6 +354,7 @@ class SingleOpModel {
   std::vector<int> GetTensorShape(int index) {
     std::vector<int> result;
     TfLiteTensor* t = interpreter_->tensor(index);
+    result.reserve(t->dims->size);
     for (int i = 0; i < t->dims->size; ++i) {
       result.push_back(t->dims->data[i]);
     }
@@ -580,6 +590,7 @@ class SingleOpModel {
 
   std::map<int, TensorData> tensor_data_;
   std::vector<int32_t> inputs_;
+  std::vector<int32_t> intermediates_;
   std::vector<int32_t> outputs_;
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<OperatorCode>> opcodes_;
@@ -608,6 +619,7 @@ class SingleOpTest : public ::testing::TestWithParam<string> {
   static std::vector<string> GetKernelTags(
       const std::map<string, TfLiteRegistration*>& kernel_map) {
     std::vector<string> tags;
+    tags.reserve(kernel_map.size());
     for (const auto& it : kernel_map) {
       tags.push_back(it.first);
     }

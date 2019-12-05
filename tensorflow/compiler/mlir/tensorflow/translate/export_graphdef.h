@@ -38,7 +38,7 @@ StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
 // The "main" function of the module is stored in the graph and the rest of
 // functions are stored in the library.
 stream_executor::port::Status ConvertMlirToGraph(
-    mlir::ModuleOp module, const GraphExportConfig& confs,
+    mlir::ModuleOp module, const GraphExportConfig& configs,
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def);
 }  // namespace tensorflow
 

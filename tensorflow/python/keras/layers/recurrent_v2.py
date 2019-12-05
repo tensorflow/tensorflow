@@ -33,6 +33,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.util.tf_export import keras_export
 
@@ -57,7 +58,7 @@ _RUNTIME_GPU = 2
 class GRUCell(recurrent.GRUCell):
   """Cell class for the GRU layer.
 
-  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  See [the Keras RNN API guide](https://www.tensorflow.org/guide/keras/rnn)
   for details about the usage of RNN API.
 
   This class processes one step within the whole time sequence input, whereas
@@ -177,7 +178,7 @@ class GRUCell(recurrent.GRUCell):
 class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
   """Gated Recurrent Unit - Cho et al. 2014.
 
-  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  See [the Keras RNN API guide](https://www.tensorflow.org/guide/keras/rnn)
   for details about the usage of RNN API.
 
   Based on available runtime hardware and constraints, this layer
@@ -367,10 +368,23 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
         recurrent_dropout == 0 and not unroll and use_bias and
         reset_after and ops.executing_eagerly_outside_functions())
 
+  def build(self, input_shape):
+    super(GRU, self).build(input_shape)
+
+    if not all(isinstance(v, resource_variable_ops.ResourceVariable)
+               for v in self.weights):
+      # Non-resource variables, such as DistributedVariables and
+      # AutoCastVariables, do not work properly with the implementation
+      # selector, which is used when cuDNN is used. However, by chance, such
+      # variables happen to work in LSTM, so this check is only needed for GRU.
+      # TODO(b/136512020): Make non-resource variables work with the
+      # implementation selector.
+      self.could_use_cudnn = False
+
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # The input should be dense, padded with zeros. If a ragged input is fed
     # into the layer, it is padded and the row lengths are used for masking.
-    inputs, row_lengths = self._convert_inputs_if_ragged(inputs)
+    inputs, row_lengths = K.convert_inputs_if_ragged(inputs)
     is_ragged_input = (row_lengths is not None)
     self._validate_args_if_ragged(is_ragged_input, mask)
 
@@ -412,8 +426,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
       self.add_update(updates)
 
     if self.return_sequences:
-      output = self._maybe_convert_to_ragged(is_ragged_input, outputs,
-                                             row_lengths)
+      output = K.maybe_convert_to_ragged(is_ragged_input, outputs, row_lengths)
     else:
       output = last_output
 
@@ -703,13 +716,6 @@ def gru_with_backend_selection(inputs, init_h, kernel, recurrent_kernel, bias,
           time_major=time_major,
           go_backwards=go_backwards,
           sequence_lengths=sequence_lengths)
-    # Note that mask is a boolean tensor, which doesn't need to do gradient
-    # calculation, when using tf.cond, a default gradient is added for it,
-    # which then cause the backward function to have a signature mismatch.
-    # Force the mask to not generate gradient to allow implementation_selector
-    # to work properly.
-    # TODO(b/80444525): Remove the stop_gradient().
-    mask = array_ops.stop_gradient(mask)
 
     def input_right_padded():
       return cudnn_gru(
@@ -763,7 +769,7 @@ def gru_with_backend_selection(inputs, init_h, kernel, recurrent_kernel, bias,
 class LSTMCell(recurrent.LSTMCell):
   """Cell class for the LSTM layer.
 
-  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  See [the Keras RNN API guide](https://www.tensorflow.org/guide/keras/rnn)
   for details about the usage of RNN API.
 
   This class processes one step within the whole time sequence input, whereas
@@ -884,7 +890,7 @@ class LSTMCell(recurrent.LSTMCell):
 class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
   """Long Short-Term Memory layer - Hochreiter 1997.
 
-  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  See [the Keras RNN API guide](https://www.tensorflow.org/guide/keras/rnn)
   for details about the usage of RNN API.
 
   Based on available runtime hardware and constraints, this layer
@@ -1062,7 +1068,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # The input should be dense, padded with zeros. If a ragged input is fed
     # into the layer, it is padded and the row lengths are used for masking.
-    inputs, row_lengths = self._convert_inputs_if_ragged(inputs)
+    inputs, row_lengths = K.convert_inputs_if_ragged(inputs)
     is_ragged_input = (row_lengths is not None)
     self._validate_args_if_ragged(is_ragged_input, mask)
 
@@ -1152,8 +1158,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       self.add_update(updates)
 
     if self.return_sequences:
-      output = self._maybe_convert_to_ragged(is_ragged_input, outputs,
-                                             row_lengths)
+      output = K.maybe_convert_to_ragged(is_ragged_input, outputs, row_lengths)
     else:
       output = last_output
 
@@ -1455,13 +1460,6 @@ def lstm_with_backend_selection(inputs, init_h, init_c, kernel,
           time_major=time_major,
           go_backwards=go_backwards,
           sequence_lengths=sequence_lengths)
-    # Note that mask is a boolean tensor, which doesn't need to do gradient
-    # calculation, when using tf.cond, a default gradient is added for it,
-    # which then cause the backward function to have a signature mismatch.
-    # Force the mask to not generate gradient to allow implementation_selector
-    # to work properly.
-    # TODO(b/80444525): Remove the stop_gradient().
-    mask = array_ops.stop_gradient(mask)
 
     def input_right_padded():
       return cudnn_lstm(

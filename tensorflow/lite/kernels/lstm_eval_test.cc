@@ -20,7 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -564,6 +564,7 @@ class QuantizedLstmParam {
 };
 
 void TestOneFullyQuantizedLSTM() {
+  CpuBackendContext context;
   QuantizedLstmParam one_parameter;
   auto activation = one_parameter.GetActivation();
   auto output = one_parameter.GetOutput();
@@ -581,7 +582,7 @@ void TestOneFullyQuantizedLSTM() {
       one_parameter.GetProjectionBias(), nullptr, param, activation, cell,
       output, one_parameter.GetScratch0(), one_parameter.GetScratch1(),
       one_parameter.GetScratch2(), one_parameter.GetScratch3(),
-      one_parameter.GetScratch4(), one_parameter.GetScratch5());
+      one_parameter.GetScratch4(), one_parameter.GetScratch5(), &context);
 
   // Verify results.
   const std::vector<int16_t> expected_cell = {

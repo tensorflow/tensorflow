@@ -41,6 +41,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tfdev
 from tensorflow.python.framework import dtypes as dtypes_module
@@ -70,8 +71,10 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
+from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import moving_averages
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
@@ -341,6 +344,7 @@ def set_learning_phase(value):
 
   Arguments:
       value: Learning phase value, either 0 or 1 (integers).
+             0 = test, 1 = train
 
   Raises:
       ValueError: if `value` is neither `0` nor `1`.
@@ -365,6 +369,7 @@ def learning_phase_scope(value):
 
   Arguments:
      value: Learning phase value, either 0 or 1 (integers).
+            0 = test, 1 = train
 
   Yields:
     None.
@@ -407,6 +412,7 @@ def eager_learning_phase_scope(value):
 
   Arguments:
       value: Learning phase value, either 0 or 1 (integers).
+             0 = test, 1 = train
 
   Yields:
     None.
@@ -628,7 +634,7 @@ def _get_available_gpus():
   """
   if ops.executing_eagerly_outside_functions():
     # Returns names of devices directly.
-    return [name for name in context.list_devices() if 'GPU' in name]
+    return [d.name for d in config.list_logical_devices('GPU')]
 
   global _LOCAL_DEVICES
   if _LOCAL_DEVICES is None:
@@ -1597,11 +1603,6 @@ def moving_average_update(x, value, momentum):
   Returns:
       An Operation to update the variable.
   """
-  # `training` is higher-up than the Keras backend in the abstraction hierarchy.
-  # In particular, `training` depends on layers, and thus on Keras.
-  # moving_averages, being low-level ops, should not be part of the training
-  # module.
-  from tensorflow.python.training import moving_averages  # pylint: disable=g-import-not-at-top
   zero_debias = not tf2.enabled()
   return moving_averages.assign_moving_average(
       x, value, momentum, zero_debias=zero_debias)
@@ -2285,18 +2286,20 @@ def clip(x, min_value, max_value):
 
   Arguments:
       x: Tensor or variable.
-      min_value: Python float or integer.
-      max_value: Python float or integer.
+      min_value: Python float, integer, or tensor.
+      max_value: Python float, integer, or tensor.
 
   Returns:
       A tensor.
   """
-  if max_value is not None and max_value < min_value:
-    max_value = min_value
+  if (isinstance(min_value, (int, float)) and
+      isinstance(max_value, (int, float))):
+    if max_value < min_value:
+      max_value = min_value
+  if min_value is None:
+    min_value = -np.inf
   if max_value is None:
     max_value = np.inf
-  min_value = _constant_to_tensor(min_value, x.dtype.base_dtype)
-  max_value = _constant_to_tensor(max_value, x.dtype.base_dtype)
   return clip_ops.clip_by_value(x, min_value, max_value)
 
 
@@ -2675,6 +2678,8 @@ def concatenate(tensors, axis=-1):
 
   if py_all(is_sparse(x) for x in tensors):
     return sparse_ops.sparse_concat(axis, tensors)
+  elif py_all(isinstance(x, ragged_tensor.RaggedTensor) for x in tensors):
+    return ragged_concat_ops.concat(tensors, axis)
   else:
     return array_ops.concat([to_dense(x) for x in tensors], axis)
 
@@ -4058,7 +4063,9 @@ def rnn(step_function,
         return mask_ta.read(time)
 
       def compute_masked_output(mask_t, flat_out, flat_mask):
-        tiled_mask_t = tuple(_expand_mask(mask_t, o) for o in flat_out)
+        tiled_mask_t = tuple(
+            _expand_mask(mask_t, o, fixed_dim=len(mask_t.shape))
+            for o in flat_out)
         return tuple(
             array_ops.where_v2(m, o, fm)
             for m, o, fm in zip(tiled_mask_t, flat_out, flat_mask))
@@ -5082,6 +5089,7 @@ def separable_conv2d(x,
   return x
 
 
+@keras_export('keras.backend.depthwise_conv2d')
 def depthwise_conv2d(x,
                      depthwise_kernel,
                      strides=(1, 1),
@@ -5968,3 +5976,34 @@ def cast_variables_to_tensor(tensors):
 
 def _is_symbolic_tensor(x):
   return tensor_util.is_tensor(x) and not isinstance(x, ops.EagerTensor)
+
+
+def convert_inputs_if_ragged(inputs):
+  """Converts any ragged tensors to dense."""
+
+  def _convert_ragged_input(inputs):
+    if isinstance(inputs, ragged_tensor.RaggedTensor):
+      return inputs.to_tensor()
+    return inputs
+
+  flat_inputs = nest.flatten(inputs)
+  contains_ragged = py_any(
+      isinstance(i, ragged_tensor.RaggedTensor) for i in flat_inputs)
+
+  if not contains_ragged:
+    return inputs, None
+
+  inputs = nest.map_structure(_convert_ragged_input, inputs)
+  # Multiple mask are not yet supported, so one mask is used on all inputs.
+  # We approach this similarly when using row lengths to ignore steps.
+  nested_row_lengths = math_ops.cast(flat_inputs[0].nested_row_lengths()[0],
+                                     'int32')
+  return inputs, nested_row_lengths
+
+
+def maybe_convert_to_ragged(is_ragged_input, output, nested_row_lengths):
+  """Converts any ragged input back to its initial structure."""
+  if not is_ragged_input:
+    return output
+
+  return ragged_tensor.RaggedTensor.from_tensor(output, nested_row_lengths)

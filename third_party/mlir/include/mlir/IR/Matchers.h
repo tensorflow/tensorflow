@@ -36,7 +36,7 @@ namespace detail {
 /// inside the Attribute.
 template <
     typename AttrClass,
-    // Require AttrClass to be a derived class from Atribute and get its
+    // Require AttrClass to be a derived class from Attribute and get its
     // value type
     typename ValueType =
         typename std::enable_if<std::is_base_of<Attribute, AttrClass>::value,
@@ -98,7 +98,7 @@ struct constant_int_op_binder {
       return false;
     auto type = op->getResult(0)->getType();
 
-    if (type.isa<IntegerType>()) {
+    if (type.isIntOrIndex()) {
       return attr_value_binder<IntegerAttr>(bind_value).match(attr);
     }
     if (type.isa<VectorType>() || type.isa<RankedTensorType>()) {
@@ -111,13 +111,21 @@ struct constant_int_op_binder {
   }
 };
 
-// The matcher that matches a given target constant scalar / vector splat /
-// tensor splat integer value.
+/// The matcher that matches a given target constant scalar / vector splat /
+/// tensor splat integer value.
 template <int64_t TargetValue> struct constant_int_value_matcher {
   bool match(Operation *op) {
     APInt value;
-
     return constant_int_op_binder(&value).match(op) && TargetValue == value;
+  }
+};
+
+/// The matcher that matches anything except the given target constant scalar /
+/// vector splat / tensor splat integer value.
+template <int64_t TargetNotValue> struct constant_int_not_value_matcher {
+  bool match(Operation *op) {
+    APInt value;
+    return constant_int_op_binder(&value).match(op) && TargetNotValue != value;
   }
 };
 
@@ -170,6 +178,12 @@ template <typename OpClass> inline detail::op_matcher<OpClass> m_Op() {
 /// Matches a constant scalar / vector splat / tensor splat integer zero.
 inline detail::constant_int_value_matcher<0> m_Zero() {
   return detail::constant_int_value_matcher<0>();
+}
+
+/// Matches a constant scalar / vector splat / tensor splat integer that is any
+/// non-zero value.
+inline detail::constant_int_not_value_matcher<0> m_NonZero() {
+  return detail::constant_int_not_value_matcher<0>();
 }
 
 } // end namespace mlir

@@ -48,7 +48,7 @@ struct OpaqueTypeStorage;
 /// Types are constructed and uniqued via the 'detail::TypeUniquer' class.
 ///
 /// Derived type classes are expected to implement several required
-/// implementaiton hooks:
+/// implementation hooks:
 ///  * Required:
 ///    - static bool kindof(unsigned kind);
 ///      * Returns if the provided type kind corresponds to an instance of the
@@ -56,7 +56,7 @@ struct OpaqueTypeStorage;
 ///
 ///  * Optional:
 ///    - static LogicalResult verifyConstructionInvariants(
-///                                               llvm::Optional<Location> loc,
+///                                               Optional<Location> loc,
 ///                                               MLIRContext *context,
 ///                                               Args... args)
 ///      * This method is invoked when calling the 'TypeBase::get/getChecked'
@@ -250,10 +250,10 @@ public:
   StringRef getTypeData() const;
 
   /// Verify the construction of an opaque type.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, Identifier dialect,
-                               StringRef typeData);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *context,
+                                                    Identifier dialect,
+                                                    StringRef typeData);
 
   static bool kindof(unsigned kind) { return kind == Kind::Opaque; }
 };

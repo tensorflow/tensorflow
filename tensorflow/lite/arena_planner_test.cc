@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/arena_planner.h"
 
 #include <cstdarg>
+#include <cstdint>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -181,18 +182,30 @@ class ArenaPlannerTest : public ::testing::Test {
     CHECK(planner_->ExecuteAllocations(start, end) == kTfLiteOk);
   }
 
+  void ReleaseNonPersistentMemory() {
+    CHECK(planner_->ReleaseNonPersistentMemory() == kTfLiteOk);
+  }
+
+  void AcquireNonPersistentMemory() {
+    CHECK(planner_->AcquireNonPersistentMemory() == kTfLiteOk);
+  }
+
+  bool HasNonPersistentMemory() {
+    return planner_ && planner_->HasNonPersistentMemory();
+  }
+
   // Returns the actual offset of a given tensor, relative to the start of its
   // arena.
-  int64_t GetOffset(int tensor_index) {
+  std::ptrdiff_t GetOffset(int tensor_index) {
     const TfLiteTensor& tensor = (*graph_->tensors())[tensor_index];
-    return reinterpret_cast<int64_t>(tensor.data.raw) -
+    return reinterpret_cast<std::intptr_t>(tensor.data.raw) -
            planner_->BasePointer(tensor.allocation_type);
   }
 
   // Returns the first aligned offset after a given tensor.
-  int64_t GetOffsetAfter(int tensor_index) {
+  std::ptrdiff_t GetOffsetAfter(int tensor_index) {
     const TfLiteTensor& tensor = (*graph_->tensors())[tensor_index];
-    int64_t offset = GetOffset(tensor_index) + tensor.bytes;
+    std::ptrdiff_t offset = GetOffset(tensor_index) + tensor.bytes;
     // We must make sure the offset is aligned to kDefaultArenaAlignment.
     if (offset % kTensorAlignment != 0) {
       offset += kTensorAlignment - offset % kTensorAlignment;
@@ -207,6 +220,18 @@ class ArenaPlannerTest : public ::testing::Test {
 
 TEST_F(ArenaPlannerTest, EmptyGraph) {
   TestGraph graph({}, {}, {});
+  SetGraph(&graph);
+  Execute(0, 10);
+}
+
+TEST_F(ArenaPlannerTest, DeallocationOfInputTensor) {
+  // This is a negative TC, which will try to make sure that no allocation for
+  // input tensors is done, when making call with negative node_index, since
+  // previous check was doing comparison of node_index which was int and
+  // unsigned int, implicit conversion was passing this case, as the negative
+  // number was converted to unsigned it making it invalid.The new check
+  // takes care of this problem and removes the warning as well.
+  TestGraph graph({-1}, {}, {1});
   SetGraph(&graph);
   Execute(0, 10);
 }
@@ -227,8 +252,8 @@ TEST_F(ArenaPlannerTest, GraphWithOneOp) {
   TestGraph graph({1}, {{{1}, {2}, {}}}, {2});
   SetGraph(&graph);
   Execute(0, 10);
-  EXPECT_EQ(GetOffset(2), 0);
-  EXPECT_EQ(GetOffset(1), GetOffsetAfter(2));
+  EXPECT_EQ(GetOffset(1), 0);
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(1));
 }
 
 TEST_F(ArenaPlannerTest, ZeroSizedTensors) {
@@ -252,12 +277,12 @@ TEST_F(ArenaPlannerTest, SimpleGraph) {
   Execute(0, 10);
 
   // Alloc(+) and dealloc(-) order: +0 +1 +2 -1 +4 +5 -2 -0 +3 -4 -5
-  EXPECT_EQ(GetOffset(5), 0);
-  EXPECT_EQ(GetOffset(4), GetOffsetAfter(5));
-  EXPECT_EQ(GetOffset(3), GetOffsetAfter(4));
-  EXPECT_EQ(GetOffset(2), GetOffsetAfter(4));
-  EXPECT_EQ(GetOffset(0), GetOffsetAfter(2));
-  EXPECT_EQ(GetOffset(1), 0);
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(1));
+  EXPECT_EQ(GetOffset(4), GetOffsetAfter(2));
+  EXPECT_EQ(GetOffset(5), GetOffsetAfter(4));
+  EXPECT_EQ(GetOffset(3), 0);
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraphInputsPreserved) {
@@ -275,10 +300,13 @@ TEST_F(ArenaPlannerTest, SimpleGraphInputsPreserved) {
   // Alloc(+) and dealloc(-) order: +0 +1 +2 +4 +5 -2 +3 -4 -5
   EXPECT_EQ(GetOffset(0), 0);
   EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
-  EXPECT_EQ(GetOffset(5), GetOffsetAfter(1));
-  EXPECT_EQ(GetOffset(4), GetOffsetAfter(5));
-  EXPECT_EQ(GetOffset(3), GetOffsetAfter(4));
-  EXPECT_EQ(GetOffset(2), GetOffsetAfter(4));
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(1));
+  EXPECT_EQ(GetOffset(4), GetOffsetAfter(2));
+  EXPECT_EQ(GetOffset(5), GetOffsetAfter(4));
+  // Because we are keeping the inputs alive until the end (due to
+  // preserve_inputs=true), the output tensor will not be able to use that
+  // space. It will end up using the same are as tensor #2.
+  EXPECT_EQ(GetOffset(3), GetOffsetAfter(1));
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraphWithTemporary) {
@@ -294,12 +322,12 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithTemporary) {
   Execute(0, 10);
 
   // Alloc(+) and dealloc(-) order: +0 +1 +2 -1 +5 +4 -2 -0 -5 +3 -4
-  EXPECT_EQ(GetOffset(3), 0);
-  EXPECT_EQ(GetOffset(5), 0);
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(1));
+  EXPECT_EQ(GetOffset(5), GetOffsetAfter(2));
   EXPECT_EQ(GetOffset(4), GetOffsetAfter(5));
-  EXPECT_EQ(GetOffset(2), GetOffsetAfter(4));
-  EXPECT_EQ(GetOffset(0), GetOffsetAfter(2));
-  EXPECT_EQ(GetOffset(1), 0);
+  EXPECT_EQ(GetOffset(3), 0);
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraphWithOptionals) {
@@ -315,12 +343,12 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithOptionals) {
   Execute(0, 10);
 
   // Alloc(+) and dealloc(-) order: +0 +1 +2 -1 +4 +5 -2 -0 +3 -4 -5
-  EXPECT_EQ(GetOffset(5), 0);
-  EXPECT_EQ(GetOffset(4), GetOffsetAfter(5));
-  EXPECT_EQ(GetOffset(3), GetOffsetAfter(4));
-  EXPECT_EQ(GetOffset(2), GetOffsetAfter(4));
-  EXPECT_EQ(GetOffset(0), GetOffsetAfter(2));
-  EXPECT_EQ(GetOffset(1), 0);
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(1));
+  EXPECT_EQ(GetOffset(4), GetOffsetAfter(2));
+  EXPECT_EQ(GetOffset(5), GetOffsetAfter(4));
+  EXPECT_EQ(GetOffset(3), 0);
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraphWithLargeTensor) {
@@ -340,12 +368,12 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithLargeTensor) {
   Execute(0, 10);
 
   // Alloc(+) and dealloc(-) order: +0 +1 +2 -1 +5 +4 -2 -0 -5 +3 -4
-  EXPECT_EQ(GetOffset(1), 0);
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
   EXPECT_EQ(GetOffset(2), GetOffsetAfter(1));
-  EXPECT_EQ(GetOffset(0), GetOffsetAfter(2));
-  EXPECT_EQ(GetOffset(3), 0);
-  EXPECT_EQ(GetOffset(5), 0);
+  EXPECT_EQ(GetOffset(5), GetOffsetAfter(0));
   EXPECT_EQ(GetOffset(4), GetOffsetAfter(5));
+  EXPECT_EQ(GetOffset(3), 0);
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraphWithPersistentTensor) {
@@ -371,12 +399,12 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithPersistentTensor) {
   EXPECT_NE((*graph.tensors())[0].data.raw, (*graph.tensors())[1].data.raw);
 
   // Alloc(+) and dealloc(-) order: +0 +1 +2 -1 +5 +4 -2 -0 -5 +3 -4
-  EXPECT_EQ(GetOffset(5), 0);
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(1), 0);
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(0));
+  EXPECT_EQ(GetOffset(5), GetOffsetAfter(2));
   EXPECT_EQ(GetOffset(4), GetOffsetAfter(5));
   EXPECT_EQ(GetOffset(3), 0);
-  EXPECT_EQ(GetOffset(2), GetOffsetAfter(4));
-  EXPECT_EQ(GetOffset(0), GetOffsetAfter(2));
-  EXPECT_EQ(GetOffset(1), 0);
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraphWithDynamicTensor) {
@@ -398,11 +426,11 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithDynamicTensor) {
   EXPECT_EQ((*graph.tensors())[1].data.raw, nullptr);
 
   // Alloc(+) and dealloc(-) order: +0 +1 +2 -1 +5 +4 -2 -0 -5 +3 -4
-  EXPECT_EQ(GetOffset(5), 0);
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(0));
+  EXPECT_EQ(GetOffset(5), GetOffsetAfter(2));
   EXPECT_EQ(GetOffset(4), GetOffsetAfter(5));
   EXPECT_EQ(GetOffset(3), 0);
-  EXPECT_EQ(GetOffset(2), GetOffsetAfter(4));
-  EXPECT_EQ(GetOffset(0), GetOffsetAfter(2));
 }
 
 TEST_F(ArenaPlannerTest, LargerGraphAndStepwiseAllocation) {
@@ -431,10 +459,10 @@ TEST_F(ArenaPlannerTest, LargerGraphAndStepwiseAllocation) {
   //   Op4: +10 -4 -5 -8
 
   Execute(0, 0);
-  EXPECT_EQ(GetOffset(3), 0);
-  EXPECT_EQ(GetOffset(2), GetOffsetAfter(3));
-  EXPECT_EQ(GetOffset(1), GetOffsetAfter(2));
-  EXPECT_EQ(GetOffset(0), GetOffsetAfter(1));
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(1));
+  EXPECT_EQ(GetOffset(3), GetOffsetAfter(2));
   EXPECT_TRUE(is_unallocated(6));
   EXPECT_TRUE(is_unallocated(4));
   EXPECT_TRUE(is_unallocated(5));
@@ -444,61 +472,62 @@ TEST_F(ArenaPlannerTest, LargerGraphAndStepwiseAllocation) {
   EXPECT_TRUE(is_unallocated(10));
 
   Execute(1, 1);
-  EXPECT_EQ(GetOffset(3), 0);
-  EXPECT_EQ(GetOffset(2), GetOffsetAfter(3));
-  EXPECT_EQ(GetOffset(1), GetOffsetAfter(2));
-  EXPECT_EQ(GetOffset(0), GetOffsetAfter(1));
-  EXPECT_EQ(GetOffset(6), GetOffsetAfter(0));
-  EXPECT_EQ(GetOffset(5), GetOffsetAfter(6));
-  EXPECT_EQ(GetOffset(4), GetOffsetAfter(5));
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(1));
+  EXPECT_EQ(GetOffset(3), GetOffsetAfter(2));
+  EXPECT_EQ(GetOffset(6), GetOffsetAfter(3));
+  EXPECT_EQ(GetOffset(4), GetOffsetAfter(6));
+  EXPECT_EQ(GetOffset(5), GetOffsetAfter(4));
   EXPECT_TRUE(is_unallocated(7));
   EXPECT_TRUE(is_unallocated(9));
   EXPECT_TRUE(is_unallocated(8));
   EXPECT_TRUE(is_unallocated(10));
 
   Execute(2, 2);
-  EXPECT_EQ(GetOffset(3), 0);
-  EXPECT_EQ(GetOffset(2), GetOffsetAfter(3));
-  EXPECT_EQ(GetOffset(1), GetOffsetAfter(2));
-  EXPECT_EQ(GetOffset(0), GetOffsetAfter(1));
-  EXPECT_EQ(GetOffset(6), GetOffsetAfter(0));
-  EXPECT_EQ(GetOffset(5), GetOffsetAfter(6));
-  EXPECT_EQ(GetOffset(4), GetOffsetAfter(5));
-  // #7 (24 bytes) is allocated at the place, where #0 and #6 (4+24=28 bytes)
-  // were before their deallocation.
-  EXPECT_EQ(GetOffset(7), GetOffsetAfter(1));
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(1));
+  EXPECT_EQ(GetOffset(3), GetOffsetAfter(2));
+  EXPECT_EQ(GetOffset(6), GetOffsetAfter(3));
+  EXPECT_EQ(GetOffset(4), GetOffsetAfter(6));
+  EXPECT_EQ(GetOffset(5), GetOffsetAfter(4));
+  // Here's an interesting allocation. Even though #6 requires only 21 bytes,
+  // its deallocation freed up 24 bytes due to the alignment requirements in
+  // the arena. That means we can fit #7 in the same space!
+  EXPECT_EQ(GetOffset(7), GetOffsetAfter(3));
   EXPECT_TRUE(is_unallocated(9));
   EXPECT_TRUE(is_unallocated(8));
   EXPECT_TRUE(is_unallocated(10));
 
   Execute(3, 3);
-  EXPECT_EQ(GetOffset(3), 0);
-  EXPECT_EQ(GetOffset(2), GetOffsetAfter(3));
-  EXPECT_EQ(GetOffset(1), GetOffsetAfter(2));
-  EXPECT_EQ(GetOffset(0), GetOffsetAfter(1));
-  EXPECT_EQ(GetOffset(6), GetOffsetAfter(0));
-  EXPECT_EQ(GetOffset(5), GetOffsetAfter(6));
-  EXPECT_EQ(GetOffset(4), GetOffsetAfter(5));
-  EXPECT_EQ(GetOffset(7), GetOffsetAfter(1));
-  // The deallocation of #1 and #2 frees up 20 bytes but that's not enough
-  // neither for #9, nor for #8, so they both go at the end.
-  EXPECT_EQ(GetOffset(9), GetOffsetAfter(4));
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(1));
+  EXPECT_EQ(GetOffset(3), GetOffsetAfter(2));
+  EXPECT_EQ(GetOffset(6), GetOffsetAfter(3));
+  EXPECT_EQ(GetOffset(4), GetOffsetAfter(6));
+  EXPECT_EQ(GetOffset(5), GetOffsetAfter(4));
+  EXPECT_EQ(GetOffset(7), GetOffsetAfter(3));
+  // The deallocation of #0, #1 and #2 freed up 24 bytes but that's not enough
+  // for #9, so it goes at the end.
+  EXPECT_EQ(GetOffset(9), GetOffsetAfter(5));
   EXPECT_EQ(GetOffset(8), GetOffsetAfter(9));
   EXPECT_TRUE(is_unallocated(10));
 
   Execute(4, 4);
-  EXPECT_EQ(GetOffset(3), 0);
-  EXPECT_EQ(GetOffset(2), GetOffsetAfter(3));
-  EXPECT_EQ(GetOffset(1), GetOffsetAfter(2));
-  EXPECT_EQ(GetOffset(0), GetOffsetAfter(1));
-  EXPECT_EQ(GetOffset(6), GetOffsetAfter(0));
-  EXPECT_EQ(GetOffset(5), GetOffsetAfter(6));
-  EXPECT_EQ(GetOffset(4), GetOffsetAfter(5));
-  EXPECT_EQ(GetOffset(7), GetOffsetAfter(1));
-  EXPECT_EQ(GetOffset(9), GetOffsetAfter(4));
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(1));
+  EXPECT_EQ(GetOffset(3), GetOffsetAfter(2));
+  EXPECT_EQ(GetOffset(6), GetOffsetAfter(3));
+  EXPECT_EQ(GetOffset(4), GetOffsetAfter(6));
+  EXPECT_EQ(GetOffset(5), GetOffsetAfter(4));
+  EXPECT_EQ(GetOffset(7), GetOffsetAfter(3));
+  EXPECT_EQ(GetOffset(9), GetOffsetAfter(5));
   EXPECT_EQ(GetOffset(8), GetOffsetAfter(9));
-  // There is enough space at the beginning for #10 due to the
-  // deallocation of #7, #1, #2 and #3 (total 56 bytes, #10 needs
+  // There's just enough space at the beginning for #10 due to the
+  // deallocation of #0, #1, #2 and #3 (total 36 bytes, #10 needs
   // only 33.)
   EXPECT_EQ(GetOffset(10), 0);
 }
@@ -531,84 +560,54 @@ TEST_F(ArenaPlannerTest, ModifiedGraph) {
   EXPECT_EQ(GetOffset(3), GetOffsetAfter(1));
 }
 
-TEST_F(ArenaPlannerTest, ComplexGraph) {
-  TestGraph graph({0},
-                  {
-                      /* in, out, tmp */
-                      {{0}, {1}, {}},
-                      {{1}, {2}, {}},
-                      {{1}, {3}, {}},
-                      {{1}, {4}, {}},
-                      {{2, 3, 4}, {5}, {}},
-                      {{5}, {6}, {}},
-                      {{5}, {7}, {}},
-                      {{6, 7}, {8}, {}},
-                  },
-                  {8});
-  (*graph.tensors())[0].bytes = 32;
-  (*graph.tensors())[1].bytes = 28;
-  (*graph.tensors())[2].bytes = 36;
-  (*graph.tensors())[3].bytes = 16;
-  (*graph.tensors())[4].bytes = 8;
-  (*graph.tensors())[5].bytes = 64;
-  (*graph.tensors())[6].bytes = 10;
-  (*graph.tensors())[7].bytes = 40;
-  SetGraph(&graph);
-  Execute(0, 10);
-
-  // Alloc(+) and dealloc(-) order: +0 +1 -0 +2 +3 +4 -1 +5 -2 -3 -4 +6 +7 -5 +8
-  EXPECT_EQ(GetOffset(5), 0);
-  EXPECT_EQ(GetOffset(7), GetOffsetAfter(5));
-  EXPECT_EQ(GetOffset(6), GetOffsetAfter(7));
-  EXPECT_EQ(GetOffset(2), GetOffsetAfter(5));
-  EXPECT_EQ(GetOffset(3), GetOffsetAfter(2));
-  EXPECT_EQ(GetOffset(4), GetOffsetAfter(3));
-  EXPECT_EQ(GetOffset(0), 0);
-  EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
-  EXPECT_EQ(GetOffset(8), 0);
-}
-
-TEST_F(ArenaPlannerTest, GraphWithIntermediates) {
+TEST_F(ArenaPlannerTest, ModifiedGraph_DeallocateNonPersistentArena) {
   TestGraph graph({0, 1},
                   {
                       /* in, out, tmp */
-                      {{0}, {2}, {3}},
-                      {{1, 2}, {4, 5}, {}},
-                      {{5}, {6, 7}, {8, 9, 10}},
-                      {{4, 6}, {11}, {12}},
-                      {{11}, {13}, {}},
-                      {{7, 13}, {14}, {15}},
+                      {{0, 1}, {2}, {}},     // First op
+                      {{2, 0}, {4, 5}, {}},  // Second op
+                      {{4, 5}, {3}, {}}      // Third op
                   },
-                  {11, 14});
+                  {3});
   SetGraph(&graph, /*preserve_inputs=*/true);
   Execute(0, 10);
 
-  // Alloc(+) and dealloc(-) order by operation:
-  // Op0: +0 +1 +2 +3 -3
-  // Op1: +4 +5 -2 -4
-  // Op2: +6 +7 +8 +9 +10 -8 -9 -10 -5
-  // Op3: +11 +12 -12 -4 -6
-  // Op4: +13
-  // Op5: +14 +15 -7 -13 -15
+  // Should be no-ops, since ReleaseNonPersistentMemory() hasn't been called.
+  AcquireNonPersistentMemory();
+  AcquireNonPersistentMemory();
+
+  EXPECT_TRUE(HasNonPersistentMemory());
+
+  // Release non-persistent arena.
+  ReleaseNonPersistentMemory();
+  EXPECT_FALSE(HasNonPersistentMemory());
+  // Offsets should be zero.
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(1), 0);
+  EXPECT_EQ(GetOffset(3), 0);
+
+  // Now update the graph data used by the existing allocator. It should behave
+  // as if it had been recreated with the new graph.
+  TestGraph pruned_graph({0, 1},
+                         {
+                             /* in, out, tmp */
+                             {{0, 1}, {3}, {}},  // First op
+                         },
+                         {3});
+  SwapGraph(&pruned_graph);
+  Execute(0, 10);
+
+  // Should be a no-op.
+  AcquireNonPersistentMemory();
+  EXPECT_TRUE(HasNonPersistentMemory());
+
+  // Release & acquire non-persistent memory.
+  ReleaseNonPersistentMemory();
+  AcquireNonPersistentMemory();
+  // Offset checks from previous test should still apply.
   EXPECT_EQ(GetOffset(0), 0);
   EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
-  EXPECT_EQ(GetOffset(15), GetOffsetAfter(1));
-  EXPECT_EQ(GetOffset(14), GetOffsetAfter(15));
-  EXPECT_EQ(GetOffset(13), GetOffsetAfter(14));
-  EXPECT_EQ(GetOffset(12), GetOffsetAfter(1));
-  EXPECT_EQ(GetOffset(11), GetOffsetAfter(13));
-  EXPECT_EQ(GetOffset(10), GetOffsetAfter(1));
-  EXPECT_EQ(GetOffset(9), GetOffsetAfter(10));
-  EXPECT_EQ(GetOffset(8), GetOffsetAfter(9));
-  EXPECT_EQ(GetOffset(7), GetOffsetAfter(11));
-  EXPECT_EQ(GetOffset(6), GetOffsetAfter(8));
-  EXPECT_EQ(GetOffset(5), GetOffsetAfter(6));
-  EXPECT_EQ(GetOffset(4), GetOffsetAfter(7));
   EXPECT_EQ(GetOffset(3), GetOffsetAfter(1));
-
-  // 2 is allocated in the smallest suitable gap, which is not equal to the
-  // first available one.
-  EXPECT_EQ(GetOffset(2), GetOffsetAfter(5));
 }
 
 }  // namespace

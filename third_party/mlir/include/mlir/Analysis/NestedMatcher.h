@@ -1,4 +1,4 @@
-//===- NestedMacher.h - Nested matcher for MLFunction -----------*- C++ -*-===//
+//===- NestedMacher.h - Nested matcher for Function -------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as _np  # Avoids becoming a part of public Tensorflow API.
 
+from tensorflow.compiler.tf2xla.python import xla as tf2xla
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.core.framework import attr_value_pb2
 
@@ -171,7 +172,9 @@ class Sharding(object):
 #   tensor = xla_sharding.replicate(tensor)
 
 
-def replicate(tensor, assign_tuple_sharding=False):
+def replicate(tensor, assign_tuple_sharding=False, use_sharding_op=False):
+  if use_sharding_op:
+    tensor = tf2xla.sharding(tensor)
   Sharding.replicate().apply_to_tensor(
       tensor,
       assign_tuple_sharding=assign_tuple_sharding)
@@ -185,7 +188,21 @@ def assign_device(tensor, device, assign_tuple_sharding=False):
   return tensor
 
 
-def tile(tensor, tile_assignment, assign_tuple_sharding=False):
+def tile(tensor,
+         tile_assignment,
+         assign_tuple_sharding=False,
+         use_sharding_op=False):
+  """Returns a tensor that has tiled sharding.
+
+  Args:
+    tensor: A tf.Tensor to shard.
+    tile_assignment: An np.ndarray describing the topology of the tiling and
+      which device will compute which part of the topology.
+    assign_tuple_sharding: If the sharding type should be a tuple.
+    use_sharding_op: If true, adds a sharding op to set the sharding.
+  """
+  if use_sharding_op:
+    tensor = tf2xla.sharding(tensor)
   Sharding.tile(tile_assignment).apply_to_tensor(
       tensor,
       assign_tuple_sharding=assign_tuple_sharding
@@ -193,7 +210,22 @@ def tile(tensor, tile_assignment, assign_tuple_sharding=False):
   return tensor
 
 
-def split(tensor, split_dimension, num_devices, assign_tuple_sharding=False):
+def split(tensor,
+          split_dimension,
+          num_devices,
+          assign_tuple_sharding=False,
+          use_sharding_op=False):
+  """Returns a tensor that is split along the given dimension.
+
+  Args:
+    tensor: A tf.Tensor to split.
+    split_dimension: The dimension to split.
+    num_devices: The number of devices to partition the dimension.
+    assign_tuple_sharding: If the sharding type should be a tuple.
+    use_sharding_op: If true, adds a sharding op to set the sharding.
+  """
+  if use_sharding_op:
+    tensor = tf2xla.sharding(tensor)
   Sharding.split(tensor, split_dimension, num_devices).apply_to_tensor(
       tensor,
       assign_tuple_sharding=assign_tuple_sharding)

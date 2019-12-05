@@ -6,9 +6,9 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
-load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library_cc",
     "tf_proto_library_py",
 )
 
@@ -20,16 +20,17 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-xla_proto_library(
+tf_proto_library_cc(
     name = "xrt_proto",
     srcs = ["xrt.proto"],
-    visibility = ["//visibility:public"],
-    deps = [
+    cc_api_version = 2,
+    protodeps = [
         "//tensorflow/compiler/tf2xla:host_compute_metadata_proto",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
     ],
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library_py(
@@ -56,7 +57,7 @@ cc_library(
         "xrt_util.h",
     ],
     deps = [
-        ":xrt_proto",
+        ":xrt_proto_cc",
         "//tensorflow/compiler/jit:xla_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -65,8 +66,8 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla:xla_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:shaped_buffer",

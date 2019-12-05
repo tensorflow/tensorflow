@@ -75,10 +75,10 @@ public:
   static constexpr unsigned MaxStorageBits = 32;
 
   static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, unsigned flags,
-                               Type storageType, Type expressedType,
-                               int64_t storageTypeMin, int64_t storageTypeMax);
+  verifyConstructionInvariants(Optional<Location> loc, MLIRContext *context,
+                               unsigned flags, Type storageType,
+                               Type expressedType, int64_t storageTypeMin,
+                               int64_t storageTypeMax);
 
   /// Support method to enable LLVM-style type casting.
   static bool classof(Type type) {
@@ -88,7 +88,7 @@ public:
 
   /// Gets the minimum possible stored by a storageType. storageTypeMin must
   /// be greater than or equal to this value.
-  static int64_t getDefaultMininumForInteger(bool isSigned,
+  static int64_t getDefaultMinimumForInteger(bool isSigned,
                                              unsigned integralWidth) {
     if (isSigned) {
       return llvm::minIntN(integralWidth);
@@ -98,7 +98,7 @@ public:
 
   /// Gets the maximum possible stored by a storageType. storageTypeMax must
   /// be less than or equal to this value.
-  static int64_t getDefaultMaxinumForInteger(bool isSigned,
+  static int64_t getDefaultMaximumForInteger(bool isSigned,
                                              unsigned integralWidth) {
     if (isSigned) {
       return llvm::maxIntN(integralWidth);
@@ -238,10 +238,10 @@ public:
 
   /// Verifies construction invariants and issues errors/warnings.
   static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, unsigned flags,
-                               Type storageType, Type expressedType,
-                               int64_t storageTypeMin, int64_t storageTypeMax);
+  verifyConstructionInvariants(Optional<Location> loc, MLIRContext *context,
+                               unsigned flags, Type storageType,
+                               Type expressedType, int64_t storageTypeMin,
+                               int64_t storageTypeMax);
 };
 
 /// Represents a family of uniform, quantized types.
@@ -298,7 +298,7 @@ public:
 
   /// Verifies construction invariants and issues errors/warnings.
   static LogicalResult verifyConstructionInvariants(
-      llvm::Optional<Location> loc, MLIRContext *context, unsigned flags,
+      Optional<Location> loc, MLIRContext *context, unsigned flags,
       Type storageType, Type expressedType, double scale, int64_t zeroPoint,
       int64_t storageTypeMin, int64_t storageTypeMax);
 

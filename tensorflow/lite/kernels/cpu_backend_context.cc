@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/experimental/ruy/context.h"
+#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 
@@ -51,6 +52,9 @@ CpuBackendContext::CpuBackendContext()
       ruy_context_(new ruy::Context),
       gemmlowp_context_(new gemmlowp::GemmContext) {
   SetMaxNumThreads(1);
+#ifdef TFLITE_WITH_RUY_GEMV
+  ruy_context_->cache_policy = ruy::kCacheLHSOnGemV;
+#endif
 }
 
 CpuBackendContext::~CpuBackendContext() {}

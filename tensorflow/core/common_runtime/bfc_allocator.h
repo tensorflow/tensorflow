@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/allocator_retry.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
@@ -537,6 +536,8 @@ class BFCAllocator : public Allocator {
   AllocatorStats stats_ GUARDED_BY(lock_);
 #ifdef TENSORFLOW_MEM_DEBUG
   int64 action_counter_ GUARDED_BY(lock_);
+#define MEM_DEBUG_SIZE_HISTORY_SIZE 4096
+  int64 size_history_[MEM_DEBUG_SIZE_HISTORY_SIZE];
 #endif
 
   friend class GPUBFCAllocatorPrivateMethodsTest;

@@ -42,7 +42,7 @@
         *   cmsis_power.txt: the magnitude squared of the DFT
         *   cmsis_power_avg.txt: the 6-bin average of the magnitude squared of
             the DFT
-    *   Run both verisons of the 1KHz pre-processor test and then compare.
+    *   Run both versions of the 1KHz pre-processor test and then compare.
         *   These files can be plotted with "python compare\_1k.py"
     *   Also prints out the number of cycles the code took to execute (using the
         DWT->CYCCNT register)
@@ -60,7 +60,7 @@
         *   micro_power.txt: the magnitude squared of the DFT
         *   micro_power_avg.txt: the 6-bin average of the magnitude squared of
             the DFT
-    *   Run both verisons of the 1KHz pre-processor test and then compare.
+    *   Run both versions of the 1KHz pre-processor test and then compare.
         *   These files can be plotted with "python compare\_1k.py"
     *   Also prints out the number of cycles the code took to execute (using the
         DWT->CYCCNT register)
@@ -79,7 +79,7 @@
     is the same: a 1 kHz sinusoid.
 *   **get\_yesno\_data.cmd**: A GDB command file that runs preprocessor_test
     (where TARGET=apollo3evb) and dumps the calculated data for the "yes" and
-    "no" input wavfeorms to text files
+    "no" input waveforms to text files
 *   **\_main.c**: Point of entry for the micro_speech test
 *   **preprocessor_1k.cc**: A version of preprocessor.cc where a 1 kHz sinusoid
     is provided as input to the preprocessor

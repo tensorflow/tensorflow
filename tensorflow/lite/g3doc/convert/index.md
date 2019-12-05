@@ -3,8 +3,8 @@
 The TensorFlow Lite converter takes a TensorFlow model and generates a
 TensorFlow Lite [`FlatBuffer`](https://google.github.io/flatbuffers/) file
 (`.tflite`). The converter supports
-[SavedModel directories](https://www.tensorflow.org/alpha/guide/saved_model),
-[`tf.keras` models](https://www.tensorflow.org/alpha/guide/keras/overview), and
+[SavedModel directories](https://www.tensorflow.org/guide/saved_model),
+[`tf.keras` models](https://www.tensorflow.org/guide/keras/overview), and
 [concrete functions](concrete_function.md).
 
 Note: This page contains documentation on the converter API for TensorFlow 2.0.

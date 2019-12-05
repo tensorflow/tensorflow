@@ -34,12 +34,13 @@
 
 namespace mlir {
 class Attribute;
-class FuncOp;
 class Location;
 class ModuleOp;
 class Operation;
 
 namespace LLVM {
+
+class LLVMFuncOp;
 
 // Implementation class for module translation.  Holds a reference to the module
 // being translated, and the mappings between the original and the translated
@@ -50,7 +51,11 @@ class ModuleTranslation {
 public:
   template <typename T = ModuleTranslation>
   static std::unique_ptr<llvm::Module> translateModule(ModuleOp m) {
+    if (failed(checkSupportedModuleOps(m)))
+      return nullptr;
     auto llvmModule = prepareLLVMModule(m);
+    if (!llvmModule)
+      return nullptr;
 
     T translator(m);
     translator.llvmModule = std::move(llvmModule);
@@ -72,15 +77,18 @@ protected:
                                          llvm::IRBuilder<> &builder);
   static std::unique_ptr<llvm::Module> prepareLLVMModule(ModuleOp m);
 
-private:
-  LogicalResult convertFunctions();
-  void convertGlobals();
-  LogicalResult convertOneFunction(FuncOp func);
-  void connectPHINodes(FuncOp func);
-  LogicalResult convertBlock(Block &bb, bool ignoreArguments);
-
   template <typename Range>
   SmallVector<llvm::Value *, 8> lookupValues(Range &&values);
+
+private:
+  /// Check whether the module contains only supported ops directly in its body.
+  static LogicalResult checkSupportedModuleOps(ModuleOp m);
+
+  LogicalResult convertFunctions();
+  void convertGlobals();
+  LogicalResult convertOneFunction(LLVMFuncOp func);
+  void connectPHINodes(LLVMFuncOp func);
+  LogicalResult convertBlock(Block &bb, bool ignoreArguments);
 
   llvm::Constant *getLLVMConstant(llvm::Type *llvmType, Attribute attr,
                                   Location loc);

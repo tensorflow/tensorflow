@@ -29,17 +29,17 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 using ::tflite::gpu::Axis;
+using ::tflite::gpu::BHWC;
 using ::tflite::gpu::Convolution2DAttributes;
 using ::tflite::gpu::DataType;
-using ::tflite::gpu::BHWC;
 using ::tflite::gpu::HW;
 using ::tflite::gpu::Linear;
-using ::tflite::gpu::metal::CompareVectors;
-using ::tflite::gpu::metal::SingleOpModel;
-using ::tflite::gpu::OperationType;
 using ::tflite::gpu::OHWI;
+using ::tflite::gpu::OperationType;
 using ::tflite::gpu::Tensor;
 using ::tflite::gpu::TensorRef;
+using ::tflite::gpu::metal::CompareVectors;
+using ::tflite::gpu::metal::SingleOpModel;
 
 @interface ConvTest : XCTestCase
 @end
@@ -82,9 +82,9 @@ using ::tflite::gpu::TensorRef;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 1, 1, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({4, 8, 4, 8, 2, 4, 2, 4}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testO1H2W2I1Stride1x1Dilation2x2 {
@@ -120,9 +120,9 @@ using ::tflite::gpu::TensorRef;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 1, 1, 1, 1, 1, 1, 1, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({10}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testO1H3W3I1Stride1x1Dilation1x1 {
@@ -158,9 +158,9 @@ using ::tflite::gpu::TensorRef;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 1, 1, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({11}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testO2H1W1I2Stride1x1Dilation1x1 {
@@ -196,9 +196,9 @@ using ::tflite::gpu::TensorRef;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 1, 1, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({4, 8, 4, 8}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testO1H1W1I1Stride2x2Dilation1x1 {
@@ -235,9 +235,9 @@ using ::tflite::gpu::TensorRef;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 0, 2, 0, 0, 0, 4, 0, 8}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({2, 4, 8, 16}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 @end
