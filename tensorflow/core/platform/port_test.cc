@@ -15,12 +15,12 @@ limitations under the License.
 
 #include <condition_variable>
 
-#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/threadpool.h"
 
 namespace tensorflow {
 namespace port {

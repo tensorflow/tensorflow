@@ -49,7 +49,7 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-_TF_MIN_BAZEL_VERSION = '0.27.1'
+_TF_MIN_BAZEL_VERSION = '1.0.0'
 _TF_MAX_BAZEL_VERSION = '1.1.0'
 
 NCCL_LIB_PATHS = [
@@ -1155,29 +1155,34 @@ def system_specific_test_config(env):
   """Add default build and test flags required for TF tests to bazelrc."""
   write_to_bazelrc('test --flaky_test_attempts=3')
   write_to_bazelrc('test --test_size_filters=small,medium')
-  write_to_bazelrc(
-      'test --test_tag_filters=-benchmark-test,-no_oss,-oss_serial')
-  write_to_bazelrc('test --build_tag_filters=-benchmark-test,-no_oss')
+
+  # Each instance of --test_tag_filters or --build_tag_filters overrides all
+  # previous instances, so we need to build up a complete list and write a
+  # single list of filters for the .bazelrc file.
+
+  # Filters to use with both --test_tag_filters and --build_tag_filters
+  test_and_build_filters = ['-benchmark-test', '-no_oss']
+  # Additional filters for --test_tag_filters beyond those in
+  # test_and_build_filters
+  test_only_filters = ['-oss_serial']
   if is_windows():
+    test_and_build_filters.append('-no_windows')
     if env.get('TF_NEED_CUDA', None) == '1':
-      write_to_bazelrc(
-          'test --test_tag_filters=-no_windows,-no_windows_gpu,-no_gpu')
-      write_to_bazelrc(
-          'test --build_tag_filters=-no_windows,-no_windows_gpu,-no_gpu')
+      test_and_build_filters += ['-no_windows_gpu', '-no_gpu']
     else:
-      write_to_bazelrc('test --test_tag_filters=-no_windows,-gpu')
-      write_to_bazelrc('test --build_tag_filters=-no_windows,-gpu')
+      test_and_build_filters.append('-gpu')
   elif is_macos():
-    write_to_bazelrc('test --test_tag_filters=-gpu,-nomac,-no_mac')
-    write_to_bazelrc('test --build_tag_filters=-gpu,-nomac,-no_mac')
+    test_and_build_filters += ['-gpu', '-nomac', '-no_mac']
   elif is_linux():
     if env.get('TF_NEED_CUDA', None) == '1':
-      write_to_bazelrc('test --test_tag_filters=-no_gpu')
-      write_to_bazelrc('test --build_tag_filters=-no_gpu')
+      test_and_build_filters.append('-no_gpu')
       write_to_bazelrc('test --test_env=LD_LIBRARY_PATH')
     else:
-      write_to_bazelrc('test --test_tag_filters=-gpu')
-      write_to_bazelrc('test --build_tag_filters=-gpu')
+      test_and_build_filters.append('-gpu')
+  write_to_bazelrc('test --test_tag_filters=%s' %
+                   ','.join(test_and_build_filters + test_only_filters))
+  write_to_bazelrc('test --build_tag_filters=%s' %
+                   ','.join(test_and_build_filters))
 
 
 def set_system_libs_flag(environ_cp):
@@ -1227,20 +1232,6 @@ def is_reduced_optimize_huge_functions_available(environ_cp):
 
 def set_windows_build_flags(environ_cp):
   """Set Windows specific build options."""
-  # The non-monolithic build is not supported yet
-  write_to_bazelrc('build --config monolithic')
-  # Suppress warning messages
-  write_to_bazelrc('build --copt=-w --host_copt=-w')
-  # Fix winsock2.h conflicts
-  write_to_bazelrc(
-      'build --copt=-DWIN32_LEAN_AND_MEAN --host_copt=-DWIN32_LEAN_AND_MEAN '
-      '--copt=-DNOGDI --host_copt=-DNOGDI')
-  # Output more verbose information when something goes wrong
-  write_to_bazelrc('build --verbose_failures')
-  # The host and target platforms are the same in Windows build. So we don't
-  # have to distinct them. This avoids building the same targets twice.
-  write_to_bazelrc('build --distinct_host_configuration=false')
-
   if is_reduced_optimize_huge_functions_available(environ_cp):
     write_to_bazelrc(
         'build --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions'

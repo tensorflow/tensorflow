@@ -135,13 +135,18 @@ TrtConversionParams = collections.namedtuple(
 
         # Whether to generate dynamic TRT ops which will build the TRT network
         # and engine at run time.
-        # This option should be set to True in TF 2.0.
+        # i.e. Since TensorRT version < 6.0 does not support dynamic dimensions
+        # other than the batch dimension, when the TensorFlow graph has a
+        # non-batch dimension of dynamic size, we would need to enable this
+        # option. This option should be set to True in TF 2.0.
         "is_dynamic_op",
 
-        # Max number of cached TRT engines in dynamic TRT ops. If the number of
-        # cached engines is already at max but none of them can serve the input,
-        # the TRTEngineOp will fall back to run the TF function based on which
-        # the TRTEngineOp is created.
+        # Max number of cached TRT engines for dynamic TRT ops.
+        # Created TRT engines for a dynamic dimension are cached.
+        # This is the maximum number of engines that can be cached.
+        # If the number of cached engines is already at max but none of them
+        # supports the input shapes, the TRTEngineOp will fall back to run the
+        # original TF subgraph that corresponds to the TRTEngineOp.
         "maximum_cached_engines",
 
         # This argument is ignored if precision_mode is not INT8. If set to

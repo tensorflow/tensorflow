@@ -45,7 +45,8 @@ struct TFOptimizePass : public FunctionPass<TFOptimizePass> {
 }  // namespace
 
 // NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
-void CreateTFStandardPipeline(OpPassManager &pm) {
+void CreateTFStandardPipeline(OpPassManager &pm,
+                              const StandardPipelineOptions &options) {
   OpPassManager &func_pm = pm.nest<FuncOp>();
 
   // First operates on the executor dialect:
@@ -59,8 +60,12 @@ void CreateTFStandardPipeline(OpPassManager &pm) {
   // Hopefully there is a single island left, or there wasn't any to begin with.
   // We now run the optimizer which operates mostly inside islands.
   func_pm.addPass(createCanonicalizerPass());
-  func_pm.addPass(CreateTFOptimizePass());
-  func_pm.addPass(createCSEPass());
+  if (options.enable_inliner) {
+    pm.addPass(createInlinerPass());
+  }
+  pm.addNestedPass<FuncOp>(CreateTFShapeInferencePass());
+  pm.addNestedPass<FuncOp>(CreateTFOptimizePass());
+  pm.addNestedPass<FuncOp>(createCSEPass());
 }
 
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass() {
@@ -70,7 +75,7 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass() {
 static PassRegistration<TFOptimizePass> pass("tf-optimize", "Optimizes TF.");
 
 // Registers a pipeline builder function for the default canonicalize/optimizer.
-static mlir::PassPipelineRegistration<> pipeline(
+static mlir::PassPipelineRegistration<StandardPipelineOptions> pipeline(
     "tf-standard-pipeline",
     "Run all the passes involved in transforming/optimizing the graph after "
     "importing into MLIR, without any target specialization.",

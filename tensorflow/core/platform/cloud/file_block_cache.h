@@ -22,11 +22,12 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <vector>
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
+
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 

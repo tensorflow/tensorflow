@@ -68,11 +68,11 @@ class ConvertEmbeddedLookupFunc {
     if (func_.getNumArguments() != 2) {
       return func_.emitError()
              << "Invalid number of arguments in the embedding "
-                "matmal composite function";
+                "matmul composite function";
     }
     if (func_.getType().getNumResults() != 1) {
       return func_.emitError() << "Invalid number of results in the embedding "
-                                  "matmal composite function";
+                                  "matmul composite function";
     }
     return success();
   }

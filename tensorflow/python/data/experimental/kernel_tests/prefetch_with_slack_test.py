@@ -44,9 +44,9 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
         dataset, ["/cpu:1", "/cpu:2"])
     dataset = multi_device_iterator._dataset  # pylint: disable=protected-access
-    self.assertIn("slack", dataset.options()._static_optimizations())
+    self.assertIn("slack", dataset.options()._graph_rewrites())
     self.assertIn("slack:slack_period:2",
-                  dataset.options()._static_optimization_configs())
+                  dataset.options()._graph_rewrite_configs())
 
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.test_session(config=config):
@@ -67,9 +67,9 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     options = dataset_ops.Options()
     options.experimental_slack = True
     dataset = dataset.with_options(options)
-    self.assertIn("slack", dataset.options()._static_optimizations())
+    self.assertIn("slack", dataset.options()._graph_rewrites())
     self.assertIn("slack:slack_period:1",
-                  dataset.options()._static_optimization_configs())
+                  dataset.options()._graph_rewrite_configs())
     self.assertDatasetProduces(dataset, range(10))
 
   def testWithPassthroughDataset(self):

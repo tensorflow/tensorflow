@@ -34,7 +34,6 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import _pywrap_utils
-from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
@@ -1030,18 +1029,8 @@ class _TapeGradientFunctions(object):
         with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
             {"PartitionedCall": gradient_function,
              "StatefulPartitionedCall": gradient_function}):
-          # Previously, we relyed on "_gradient_op_type" attribute to restore a
-          # function gradient in function_deserialization.py, So add a dummy
-          # value "PartitionedCallUnused" for the forward compatibility.
-          if fwd_compat.forward_compatible(2019, 11, 16):
-            forward_outputs = forward_function.call(context.context(),
-                                                    forward_inputs)
-          else:
-            with ops.get_default_graph().gradient_override_map(
-                {"PartitionedCall": "PartitionedCallUnused",
-                 "StatefulPartitionedCall": "PartitionedCallUnused"}):
-              forward_outputs = forward_function.call(context.context(),
-                                                      forward_inputs)
+          forward_outputs = forward_function.call(context.context(),
+                                                  forward_inputs)
         py_backward, _ = self._wrap_backward_function(
             self._func_graph, backward_function, forward_outputs)
       # We will never request backward tape gradients for this operation
@@ -1235,6 +1224,12 @@ class _TapeGradientFunctions(object):
       processed_args = []
       input_index = 0
       for output_index, arg in enumerate(args):
+        # Convert IndexedSlices to dense tensors. The IndexedSlices optimization
+        # is only really effective when doing tf.gather(variable) as the
+        # adjoint functions for most operations are unlikely to preserve the
+        # sparsity in IndexedSlices.
+        if isinstance(arg, ops.IndexedSlices):
+          arg = ops.convert_to_tensor(arg)
         if output_index in skip_positions:
           continue
         if arg is None:
@@ -1703,16 +1698,7 @@ class ConcreteFunction(object):
       with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
           {"PartitionedCall": self._get_gradient_function(),
            "StatefulPartitionedCall": self._get_gradient_function()}):
-        # Previously, we relyed on "_gradient_op_type" attribute to restore a
-        # function gradient in function_deserialization.py. So add a dummy
-        # value "PartitionedCallUnused" for the forward compatibility.
-        if fwd_compat.forward_compatible(2019, 11, 16):
-          flat_outputs = forward_function.call(ctx, args_with_tangents)
-        else:
-          with ops.get_default_graph().gradient_override_map(
-              {"PartitionedCall": "PartitionedCallUnused",
-               "StatefulPartitionedCall": "PartitionedCallUnused"}):
-            flat_outputs = forward_function.call(ctx, args_with_tangents)
+        flat_outputs = forward_function.call(ctx, args_with_tangents)
     forward_backward.record(flat_outputs)
     return self._build_call_outputs(flat_outputs)
 

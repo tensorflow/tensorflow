@@ -482,7 +482,7 @@ typedef Converter<Eigen::half> NumpyHalfConverter;
 // String support
 
 template <>
-struct ConverterTraits<string> {
+struct ConverterTraits<tstring> {
   static const tensorflow::DataType kTypeEnum = DT_STRING;
 
   static const char* ConvertScalar(PyObject* v, tstring* out) {
@@ -509,7 +509,7 @@ struct ConverterTraits<string> {
   }
 };
 
-typedef Converter<string> StringConverter;
+typedef Converter<tstring> StringConverter;
 
 // Converts Python object `c` that should hold a Python string into a
 // C++ string in *out.  Returns nullptr on success, or a message on error.
@@ -521,7 +521,7 @@ tstring PyRepr(PyObject* obj) {
   Safe_PyObjectPtr repr_obj = make_safe(PyObject_Repr(obj));
   if (repr_obj) {
     tstring repr_str;
-    if (ConverterTraits<string>::ConvertScalar(repr_obj.get(), &repr_str) ==
+    if (ConverterTraits<tstring>::ConvertScalar(repr_obj.get(), &repr_str) ==
         nullptr) {
       return repr_str;
     }

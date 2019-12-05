@@ -373,22 +373,3 @@ func @empty_control_trigger() {
 // CHECK:        tf_executor.island(%[[ISLAND_0]])
 // CHECK-NEXT:     "tf.opB"
 // CHECK-NOT:    tf_executor.island
-
-
-// Tests single island graph with a target node/control ret does not get
-// removed.
-// CHECK-LABEL: graph_control_ret
-func @graph_control_ret() {
-  tf_executor.graph {
-    %0 = tf_executor.island {
-      %1 = "tf.opA"() : () -> tensor<i1>
-      tf_executor.yield
-    }
-    tf_executor.fetch %0 : !tf_executor.control
-  }
-  return
-}
-
-// CHECK: tf_executor.graph
-// CHECK:   %[[ISLAND:.*]] = tf_executor.island
-// CHECK:   tf_executor.fetch %[[ISLAND]]

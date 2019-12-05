@@ -2,7 +2,7 @@
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_rpc_deps",
 )
 
@@ -61,10 +61,55 @@ py_library(
 )
 
 py_library(
+    name = "cloud_tpu_client",
+    srcs = ["cloud_tpu_client.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+        "@six_archive//:six",
+    ],
+)
+
+tf_py_test(
+    name = "cloud_tpu_client_py_test",
+    size = "small",
+    srcs = ["cloud_tpu_client_test.py"],
+    additional_deps = [
+        ":cloud_tpu_client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training_server_lib",
+    ],
+    grpc_enabled = True,
+    main = "cloud_tpu_client_test.py",
+    python_version = "PY3",
+)
+
+tf_py_test(
+    name = "cloud_tpu_client_py2_test",
+    size = "small",
+    srcs = ["cloud_tpu_client_test.py"],
+    additional_deps = [
+        ":cloud_tpu_client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training_server_lib",
+    ],
+    grpc_enabled = True,
+    main = "cloud_tpu_client_test.py",
+    python_version = "PY2",
+)
+
+py_library(
     name = "tpu_cluster_resolver_py",
     srcs = ["tpu_cluster_resolver.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":cloud_tpu_client",
         ":base_cluster_resolver_py",
         "//tensorflow/python:training_server_lib",
     ] + tf_additional_rpc_deps(),

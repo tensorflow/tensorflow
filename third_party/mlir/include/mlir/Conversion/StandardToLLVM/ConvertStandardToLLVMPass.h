@@ -57,25 +57,40 @@ void populateStdToLLVMConversionPatterns(LLVMTypeConverter &converter,
                                          OwningRewritePatternList &patterns);
 
 /// Creates a pass to convert the Standard dialect into the LLVMIR dialect.
-std::unique_ptr<OpPassBase<ModuleOp>> createLowerToLLVMPass();
+/// By default stdlib malloc/free are used for allocating MemRef payloads.
+/// Specifying `useAlloca-true` emits stack allocations instead. In the future
+/// this may become an enum when we have concrete uses for other options.
+std::unique_ptr<OpPassBase<ModuleOp>>
+createLowerToLLVMPass(bool useAlloca = false);
 
 /// Creates a pass to convert operations to the LLVMIR dialect.  The conversion
 /// is defined by a list of patterns and a type converter that will be obtained
 /// during the pass using the provided callbacks.
+/// By default stdlib malloc/free are used for allocating MemRef payloads.
+/// Specifying `useAlloca-true` emits stack allocations instead. In the future
+/// this may become an enum when we have concrete uses for other options.
 std::unique_ptr<OpPassBase<ModuleOp>>
 createLowerToLLVMPass(LLVMPatternListFiller patternListFiller,
-                      LLVMTypeConverterMaker typeConverterMaker);
+                      LLVMTypeConverterMaker typeConverterMaker,
+                      bool useAlloca = false);
 
 /// Creates a pass to convert operations to the LLVMIR dialect.  The conversion
 /// is defined by a list of patterns obtained during the pass using the provided
 /// callback and an optional type conversion class, an instance is created
 /// during the pass.
+/// By default stdlib malloc/free are used for allocating MemRef payloads.
+/// Specifying `useAlloca-true` emits stack allocations instead. In the future
+/// this may become an enum when we have concrete uses for other options.
 template <typename TypeConverter = LLVMTypeConverter>
 std::unique_ptr<OpPassBase<ModuleOp>>
-createLowerToLLVMPass(LLVMPatternListFiller patternListFiller) {
-  return createLowerToLLVMPass(patternListFiller, [](MLIRContext *context) {
-    return std::make_unique<TypeConverter>(context);
-  });
+createLowerToLLVMPass(LLVMPatternListFiller patternListFiller,
+                      bool useAlloca = false) {
+  return createLowerToLLVMPass(
+      patternListFiller,
+      [](MLIRContext *context) {
+        return std::make_unique<TypeConverter>(context);
+      },
+      useAlloca);
 }
 
 namespace LLVM {

@@ -23,9 +23,7 @@
 #ifndef SPIRV_BIT_OPS
 #define SPIRV_BIT_OPS
 
-#ifndef SPIRV_BASE
-include "mlir/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
+include "mlir/Dialect/SPIRV/SPIRVBase.td"
 
 class SPV_BitBinaryOp<string mnemonic, list<OpTrait> traits = []> :
       // All the operands type used in bit instructions are SPV_Integer.

@@ -979,7 +979,7 @@ TileLoops mlir::extractFixedOuterLoops(loop::ForOp rootForOp,
 static void
 replaceAllUsesExcept(Value *orig, Value *replacement,
                      const SmallPtrSetImpl<Operation *> &exceptions) {
-  for (auto &use : orig->getUses()) {
+  for (auto &use : llvm::make_early_inc_range(orig->getUses())) {
     if (exceptions.count(use.getOwner()) == 0)
       use.set(replacement);
   }

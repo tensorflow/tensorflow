@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -366,7 +367,6 @@ cc_library(
 
 cc_library(
     name = "traceme_recorder",
-    srcs = ["traceme_recorder.cc"],
     hdrs = ["traceme_recorder.h"],
     visibility = [
         "//perftools/accelerators/xprof/xprofilez:__subpackages__",
@@ -374,8 +374,23 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:lib",
+    ] + if_static([
+        ":traceme_recorder_impl",
+    ]),
+)
+
+# Linked into libtensorflow_framework.so via :framework_internal_impl.
+cc_library(
+    name = "traceme_recorder_impl",
+    srcs = [
+        "traceme_recorder.cc",
+        "traceme_recorder.h",
     ],
-    alwayslink = 1,
+    visibility = ["//tensorflow/core:__pkg__"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = True,
 )
 
 tf_cc_test(
@@ -414,16 +429,32 @@ filegroup(
 
 cc_library(
     name = "annotation_stack",
-    srcs = ["annotation_stack.cc"],
     hdrs = ["annotation_stack.h"],
     visibility = [
         "//perftools/accelerators/xprof/xprofilez:__subpackages__",
         "//tensorflow/core/profiler:__subpackages__",
     ],
     deps = [
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:lib",
+    ] + if_static([
+        ":annotation_stack_impl",
+    ]),
+)
+
+# Linked into libtensorflow_framework.so via :framework_internal_impl.
+cc_library(
+    name = "annotation_stack_impl",
+    srcs = [
+        "annotation_stack.cc",
+        "annotation_stack.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+    deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
     ],
+    alwayslink = True,
 )
 
 tf_cc_test(

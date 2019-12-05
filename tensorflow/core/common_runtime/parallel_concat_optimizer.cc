@@ -117,7 +117,7 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
     return Status::OK();
   }
 };
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 10,
                       ParallelConcatRemovePass);
 
 }  // namespace

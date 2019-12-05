@@ -8,11 +8,11 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # For platform specific build config
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_kernel_tests_linkstatic",
 )
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -22,6 +22,11 @@ package(
 )
 
 exports_files(["LICENSE"])
+
+exports_files(
+    ["server_lib.h"],
+    visibility = ["//tensorflow:internal"],
+)
 
 filegroup(
     name = "c_srcs",

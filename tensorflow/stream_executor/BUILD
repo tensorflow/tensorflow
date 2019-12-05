@@ -5,8 +5,8 @@
 # do not link against restricted binary blobs.
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
-load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
 
 package(

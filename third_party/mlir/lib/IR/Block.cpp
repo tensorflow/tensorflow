@@ -122,7 +122,8 @@ bool Block::verifyOpOrder() {
   for (auto &i : *this) {
     // The previous operation must have a smaller order index than the next as
     // it appears earlier in the list.
-    if (prev && prev->orderIndex >= i.orderIndex)
+    if (prev && prev->orderIndex != Operation::kInvalidOrderIdx &&
+        prev->orderIndex >= i.orderIndex)
       return true;
     prev = &i;
   }
@@ -133,11 +134,9 @@ bool Block::verifyOpOrder() {
 void Block::recomputeOpOrder() {
   parentValidOpOrderPair.setInt(true);
 
-  // TODO(riverriddle) Have non-congruent indices to reduce the number of times
-  // an insert invalidates the list.
   unsigned orderIndex = 0;
   for (auto &op : *this)
-    op.orderIndex = orderIndex++;
+    op.orderIndex = (orderIndex += Operation::kOrderStride);
 }
 
 //===----------------------------------------------------------------------===//

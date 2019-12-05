@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
@@ -42,6 +42,19 @@ struct TensorInfo {
 // requirement for SIMD extensions.
 constexpr int kBufferAlignment = 16;
 
+// If building with GCC 4.8.x or lower, `max_align_t` is not a member of `std`.
+// If using a newer version of GCC, we import `max_align_t` into the local
+// anonymous namespace to be able to use it like the global `max_align_t` from
+// the older clib.
+#ifdef __GNUC__
+#if __GNUC_PREREQ(4, 9)
+using std::max_align_t;
+#endif
+#else
+// We assume other compilers don't have this issue.
+using std::max_align_t;
+#endif
+
 class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
  public:
   explicit MicroBuiltinDataAllocator(SimpleMemoryAllocator* memory_allocator)
@@ -51,7 +64,7 @@ class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
     // Align to an address that is proper for all primitive types, but no more
     // than the size.
     return memory_allocator_->AllocateFromTail(
-        size, std::min(size, alignof(std::max_align_t)));
+        size, std::min(size, alignof(max_align_t)));
   }
   void Deallocate(void* data) override {
     // Do not deallocate, builtin data needs to be available for the life time
@@ -89,6 +102,11 @@ MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
       reinterpret_cast<TfLiteTensor*>(memory_allocator_.AllocateFromTail(
           sizeof(TfLiteTensor) * context_->tensors_size,
           alignof(TfLiteTensor)));
+  if (context_->tensors == nullptr) {
+    error_reporter_->Report(
+        "Failed to allocate memory for context->tensors, %d bytes required",
+        sizeof(TfLiteTensor) * context_->tensors_size);
+  }
 
   // Null all inputs so we can later perform a null check to avoid re-allocating
   // registered pre-allocated inputs.
@@ -230,6 +248,12 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
   TensorInfo* tensor_info =
       reinterpret_cast<TensorInfo*>(tmp_allocator.AllocateFromTail(
           sizeof(TensorInfo) * tensors_size, alignof(TensorInfo)));
+  if (tensor_info == nullptr) {
+    error_reporter_->Report(
+        "Failed to allocate memory for tensor_info, %d bytes required",
+        sizeof(TfLiteTensor) * context_->tensors_size);
+    return kTfLiteError;
+  }
 
   // Set up the runtime data structures for all tensors.
   for (size_t i = 0; i < tensors_size; ++i) {
@@ -401,7 +425,7 @@ TfLiteStatus MicroAllocator::InitializeRuntimeTensor(
     // If we've found a buffer, does it have any data?
     if (auto* array = buffer->data()) {
       // If it has any data, is the data size larger than zero?
-      if (size_t array_size = array->size()) {
+      if (array->size()) {
         // We've found a buffer with valid data, so update the runtime tensor
         // data structure to point to it.
         result->data.raw =

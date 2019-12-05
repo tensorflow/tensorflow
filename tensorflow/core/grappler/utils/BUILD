@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_protos_grappler",
 )
 
@@ -386,11 +386,17 @@ cc_library(
     hdrs = ["transitive_fanin.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:utils",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:protos_all_cc",
+        ],
+    }),
 )
 
 tf_cc_test(

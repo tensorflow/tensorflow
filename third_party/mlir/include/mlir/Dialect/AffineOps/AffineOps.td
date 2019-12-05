@@ -22,15 +22,9 @@
 #ifndef AFFINE_OPS
 #define AFFINE_OPS
 
-#ifndef OP_BASE
-include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-#ifndef MLIR_LOOPLIKEINTERFACE
-include "mlir/Transforms/LoopLikeInterface.td"
-#endif
-
 include "mlir/Dialect/AffineOps/AffineOpsBase.td"
+include "mlir/IR/OpBase.td"
+include "mlir/Transforms/LoopLikeInterface.td"
 
 def Affine_Dialect : Dialect {
   let name = "affine";

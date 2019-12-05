@@ -102,9 +102,9 @@ public:
                                 Location location);
 
   /// Verify the construction of an integer type.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, unsigned width);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *context,
+                                                    unsigned width);
 
   /// Return the bitwidth of this integer type.
   unsigned getWidth() const;
@@ -168,9 +168,9 @@ public:
   static ComplexType getChecked(Type elementType, Location location);
 
   /// Verify the construction of an integer type.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, Type elementType);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *context,
+                                                    Type elementType);
 
   Type getElementType();
 
@@ -226,6 +226,10 @@ public:
   /// Otherwise, abort.
   int64_t getDimSize(int64_t i) const;
 
+  /// Returns the position of the dynamic dimension relative to just the dynamic
+  /// dimensions, given its `index` within the shape.
+  unsigned getDynamicDimIndex(unsigned index) const;
+
   /// Get the total amount of bits occupied by a value of this type.  This does
   /// not take into account any memory layout or widening constraints, e.g. a
   /// vector<3xi57> is reported to occupy 3x57=171 bit, even though in practice
@@ -265,10 +269,10 @@ public:
                                Location location);
 
   /// Verify the construction of a vector type.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, ArrayRef<int64_t> shape,
-                               Type elementType);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *context,
+                                                    ArrayRef<int64_t> shape,
+                                                    Type elementType);
 
   /// Returns true of the given type can be used as an element of a vector type.
   /// In particular, vectors can consist of integer or float primitives.
@@ -324,10 +328,10 @@ public:
                                      Location location);
 
   /// Verify the construction of a ranked tensor type.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, ArrayRef<int64_t> shape,
-                               Type elementType);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *context,
+                                                    ArrayRef<int64_t> shape,
+                                                    Type elementType);
 
   ArrayRef<int64_t> getShape() const;
 
@@ -355,9 +359,9 @@ public:
   static UnrankedTensorType getChecked(Type elementType, Location location);
 
   /// Verify the construction of a unranked tensor type.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, Type elementType);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *context,
+                                                    Type elementType);
 
   ArrayRef<int64_t> getShape() const { return llvm::None; }
 

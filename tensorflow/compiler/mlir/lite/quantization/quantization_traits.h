@@ -54,7 +54,7 @@ class SameOperandsAndResultsScale
 //           OpTrait::quant::FixedResultUniformScale<
 //               8, -128, 390625, -8, 0, 255, false>::Impl> {
 //
-// TODO(fengliuai): create a better way to epxress floating point scale in the
+// TODO(fengliuai): create a better way to express floating point scale in the
 // template argument list.
 template <unsigned BitWidth, int ZeroPoint, int ScaleMantissa, int ScaleExp,
           int64_t StorageTypeMin, int64_t StorageTypeMax, bool Sign>

@@ -16,12 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
@@ -186,6 +188,46 @@ static LogicalResult VerifySavedModelModule(
   return success();
 }
 
+LogicalResult VerifyExportedFunc(FuncOp func) {
+  bool reached_bound_inputs = false;
+  for (int i = 0, e = func.getNumArguments(); i < e; i++) {
+    if (func.getArgAttr(i, "tf_saved_model.bound_input")) {
+      reached_bound_inputs = true;
+      continue;
+    }
+    if (func.getArgAttr(i, "tf_saved_model.index_path")) {
+      if (reached_bound_inputs) {
+        return func.emitError()
+               << "all 'tf_saved_model.index_path' arg attributes should "
+                  "precede all 'tf_saved_model.bound_input' arg attributes";
+      }
+      continue;
+    }
+    return func.emitError()
+           << "all arguments should have 'tf_saved_model.index_path' or "
+              "'tf_saved_model.bound_input' attributes";
+  }
+  llvm::SmallDenseSet<StringRef, 8> unique_bound_inputs;
+  for (int i = 0, e = func.getNumArguments(); i < e; i++) {
+    if (auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
+            i, "tf_saved_model.bound_input")) {
+      if (!unique_bound_inputs.insert(attr.getValue()).second) {
+        return func.emitError()
+               << "duplicate 'tf_saved_model.bound_input' binding";
+      }
+    }
+  }
+
+  for (int i = 0, e = func.getNumResults(); i < e; i++) {
+    if (!func.getResultAttr(i, "tf_saved_model.index_path")) {
+      return func.emitError() << "all results should have "
+                                 "'tf_saved_model.index_path' attributes";
+    }
+  }
+
+  return success();
+}
+
 LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
     Operation *op, NamedAttribute named_attr) {
   if (named_attr.first == "tf_saved_model.exported_names") {
@@ -204,29 +246,8 @@ LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
                 "'tf_saved_model.semantics'";
     }
     if (auto func = dyn_cast<FuncOp>(op)) {
-      bool reached_bound_inputs = false;
-      for (int i = 0, e = func.getNumArguments(); i < e; i++) {
-        if (func.getArgAttr(i, "tf_saved_model.bound_input")) {
-          reached_bound_inputs = true;
-          continue;
-        }
-        if (func.getArgAttr(i, "tf_saved_model.index_path")) {
-          if (reached_bound_inputs) {
-            return op->emitError()
-                   << "all 'tf_saved_model.index_path' arg attributes should "
-                      "precede all 'tf_saved_model.bound_input' arg attributes";
-          }
-          continue;
-        }
-        return op->emitError()
-               << "all arguments should have 'tf_saved_model.index_path' or "
-                  "'tf_saved_model.bound_input' attributes";
-      }
-      for (int i = 0, e = func.getNumResults(); i < e; i++) {
-        if (!func.getResultAttr(i, "tf_saved_model.index_path")) {
-          return op->emitError() << "all results should have "
-                                    "'tf_saved_model.index_path' attributes";
-        }
+      if (failed(VerifyExportedFunc(func))) {
+        return failure();
       }
     }
     return success();

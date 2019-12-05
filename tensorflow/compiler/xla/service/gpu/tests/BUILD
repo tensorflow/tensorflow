@@ -7,7 +7,7 @@
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -64,6 +64,33 @@ tf_cc_test(
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "reduction_degenerate_dim_remover_test",
+    srcs = [
+        "reduction_degenerate_dim_remover_test.cc",
+    ],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",

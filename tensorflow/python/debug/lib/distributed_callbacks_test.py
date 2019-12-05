@@ -178,7 +178,7 @@ class DistributedDumpingCallbackTest(
 
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
     (context_ids, _,
-     op_name_to_op_type) = self._readAndCheckGraphsFile(stack_frame_by_id)
+     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
     (op_names, device_names, _,
      tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
     executed_op_types = [op_name_to_op_type[op_name] for op_name in op_names]
@@ -261,7 +261,7 @@ class DistributedDumpingCallbackTest(
 
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
     (context_ids, _,
-     op_name_to_op_type) = self._readAndCheckGraphsFile(stack_frame_by_id)
+     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
     (op_names, device_names, _,
      tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
 

@@ -15,7 +15,7 @@ load(
     "if_cuda_is_configured",
 )
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -126,6 +126,17 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "memcpy_test",
+    srcs = ["memcpy_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/lib",
     ],
 )
 

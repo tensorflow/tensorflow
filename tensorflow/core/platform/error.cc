@@ -18,7 +18,7 @@ limitations under the License.
 #include <errno.h>
 #include <string.h>
 
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {

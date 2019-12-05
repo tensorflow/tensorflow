@@ -20,7 +20,7 @@
 #import "tensorflow/lite/experimental/objc/apis/TFLInterpreterOptions.h"
 #import "tensorflow/lite/experimental/objc/apis/TFLTensor.h"
 
-#include "tensorflow/lite/experimental/c/c_api.h"
+#include "tensorflow/lite/c/c_api.h"
 
 NS_ASSUME_NONNULL_BEGIN
 

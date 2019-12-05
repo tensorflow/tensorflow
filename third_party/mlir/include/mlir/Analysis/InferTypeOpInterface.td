@@ -23,9 +23,7 @@
 #ifndef MLIR_INFERTYPEOPINTERFACE
 #define MLIR_INFERTYPEOPINTERFACE
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 // OpInterface to compute the return type of an operation. The arguments match
 // those in Operation::create with the exception that the location is optional

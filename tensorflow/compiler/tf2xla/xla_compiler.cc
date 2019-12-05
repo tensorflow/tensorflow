@@ -1059,7 +1059,12 @@ Status XlaCompiler::BuildArguments(
     const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
     VLOG(2) << "  XLA arg " << i
             << " shape: " << xla::ShapeUtil::HumanString(arg_shapes[i])
-            << " name: " << arg.name << " TF arg " << input_to_args->at(i);
+            << " name: " << arg.name << " TF arg " << input_to_args->at(i)
+            << " node name: " << arg.node_name
+            << (arg_shardings.find(i) == arg_shardings.end()
+                    ? ""
+                    : absl::StrCat(" sharding: ",
+                                   arg_shardings.at(i).DebugString()));
     XlaExpression& arg_expression = (*arg_expressions)[input_to_args->at(i)];
     switch (arg.kind) {
       case XlaCompiler::Argument::kResource: {
