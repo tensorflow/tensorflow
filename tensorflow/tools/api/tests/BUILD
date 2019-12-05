@@ -45,11 +45,7 @@ py_test(
     srcs = ["deprecation_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_cuda",
-        "no_rocm",
-        "v1only",
-    ],
+    tags = ["v1only"],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",

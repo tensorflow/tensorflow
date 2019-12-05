@@ -164,11 +164,7 @@ py_test(
     srcs = ["tf_upgrade_v2_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_cuda",
-        "no_rocm",
-        "v1only",
-    ],
+    tags = ["v1only"],
     deps = [
         ":tf_upgrade_v2_lib",
         "//tensorflow:tensorflow_py",
@@ -253,11 +249,7 @@ py_test(
     srcs = ["testdata/test_file_v1_12.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_cuda",
-        "no_rocm",
-        "v1only",
-    ],
+    tags = ["v1only"],
     deps = [
         "//tensorflow:tensorflow_py",
     ],
