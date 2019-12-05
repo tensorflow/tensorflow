@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 #if GOOGLE_CUDA
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/util/stream_executor_util.h"
@@ -220,7 +221,7 @@ REGISTER_CPU(double);
 
 #undef REGISTER_CPU
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA && CUDNN_VERSION >= 7603
 class CTCLossOpGPU : public OpKernel {
  public:
   explicit CTCLossOpGPU(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -368,5 +369,5 @@ REGISTER_KERNEL_BUILDER(Name("CTCLossV2").Device(DEVICE_GPU)
                                        .HostMemory("labels_values")
                                        .HostMemory("sequence_length"),
                         CTCLossOpGPU);
-#endif // GOOGLE_CUDA
+#endif // GOOGLE_CUDA && CUDNN_VERSION >= 7603
 }  // end namespace tensorflow

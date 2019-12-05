@@ -2299,6 +2299,7 @@ tf_kernel_library(
     ] + if_cuda([
         ":gpu_utils",
         ":conv_ops_gpu_hdrs",
+        "@local_config_cuda//cuda:cudnn_header",
     ]),
 )
 
