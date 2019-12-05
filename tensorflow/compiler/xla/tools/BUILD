@@ -279,3 +279,19 @@ tf_cc_test(
         "//tensorflow/core:test",
     ],
 )
+
+cc_library(
+    name = "prepare_reference_module",
+    srcs = ["prepare_reference_module.cc"],
+    hdrs = ["prepare_reference_module.h"],
+    deps = [
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/service:despecializer",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/stream_executor/lib",
+    ],
+)
