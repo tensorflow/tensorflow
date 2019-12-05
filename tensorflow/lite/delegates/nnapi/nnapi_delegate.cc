@@ -2023,7 +2023,7 @@ bool NNAPIDelegateKernel::Validate(
              "NNAPI only supports constant int32 axis tensor.", &val_ctx);
     } break;
     case kTfLiteBuiltinSplit: {
-      ExpectOpVersion(version, 1, &val_ctx);
+      ExpectOpVersion(version, 3, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       // Tensor indices: split_dim: 0, value: 1
