@@ -762,6 +762,7 @@ cc_library(
         ":SPIRVDialect",
         ":SPIRVLowering",
         ":StandardToSPIRVConversions",
+        ":Support",
         ":Transforms",
     ],
     alwayslink = 1,
