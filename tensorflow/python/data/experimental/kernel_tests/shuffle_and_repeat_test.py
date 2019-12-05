@@ -17,18 +17,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import shuffle_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class ShuffleAndRepeatTest(test_base.DatasetTestBase):
 
   def _build_ds(self, seed, count=5, num_elements=20):
     return dataset_ops.Dataset.range(num_elements).apply(
@@ -44,7 +44,6 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.evaluate(get_next())
     return outputs
 
-  @combinations.generate(test_base.default_test_combinations())
   def testCorrectOutput(self):
     output = self._gen_outputs(lambda: self._build_ds(10), 100)
     self.assertSequenceEqual(
@@ -53,7 +52,6 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
     for i in range(5):
       self.assertSequenceEqual(sorted(output[i * 20:(i + 1) * 20]), range(20))
 
-  @combinations.generate(test_base.default_test_combinations())
   def testReshuffling(self):
     # Check that the output orders of different epochs are indeed different.
     output = self._gen_outputs(lambda: self._build_ds(10), 100)
@@ -62,20 +60,17 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
       epoch2 = output[(i + 1) * 20:(i + 2) * 20]
       self.assertNotEqual(epoch1, epoch2)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSameOrderForSameSeeds(self):
     output1 = self._gen_outputs(lambda: self._build_ds(10), 100)
     output2 = self._gen_outputs(lambda: self._build_ds(10), 100)
     self.assertEqual(output1, output2)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testDifferentOrderForDifferentSeeds(self):
     output1 = self._gen_outputs(lambda: self._build_ds(10), 100)
     output2 = self._gen_outputs(lambda: self._build_ds(20), 100)
     self.assertNotEqual(output1, output2)
     self.assertEqual(sorted(output1), sorted(output2))
 
-  @combinations.generate(test_base.default_test_combinations())
   def testCountNone(self):
     output1 = self._gen_outputs(
         lambda: self._build_ds(10, count=None), 100, verify_exhausted=False)
@@ -84,7 +79,6 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertNotEqual(output1, output2)
     self.assertEqual(sorted(output1), sorted(output2))
 
-  @combinations.generate(test_base.default_test_combinations())
   def testCountMinusOne(self):
     output1 = self._gen_outputs(
         lambda: self._build_ds(10, count=-1), 100, verify_exhausted=False)
@@ -93,7 +87,6 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertNotEqual(output1, output2)
     self.assertEqual(sorted(output1), sorted(output2))
 
-  @combinations.generate(test_base.default_test_combinations())
   def testInfiniteOutputs(self):
     # Asserting the iterator is exhausted after producing 100 items should fail.
     with self.assertRaises(AssertionError):
@@ -101,7 +94,6 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(AssertionError):
       self._gen_outputs(lambda: self._build_ds(10, count=-1), 100)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testInfiniteEmpty(self):
     with self.assertRaises(errors.OutOfRangeError):
       self._gen_outputs(lambda: self._build_ds(10, count=None, num_elements=0),
@@ -110,14 +102,12 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
       self._gen_outputs(lambda: self._build_ds(10, count=-1, num_elements=0),
                         100)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testLargeBufferSize(self):
     ds = dataset_ops.Dataset.range(20).apply(
         shuffle_ops.shuffle_and_repeat(buffer_size=21))
     get_next = self.getNext(ds)
     self.evaluate(get_next())
 
-  @combinations.generate(test_base.default_test_combinations())
   def testVeryLargeBufferSize(self):
     num_epochs = 1000 * 1000
     # Each element being shuffled and repeated has shape (100,). This will OOM

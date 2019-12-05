@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import copy
 
-from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.example import example_pb2
@@ -29,11 +28,11 @@ from tensorflow.python.data.experimental.ops import parsing_ops as contrib_parsi
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
-from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
@@ -51,8 +50,8 @@ feature_lists = lambda d: feature_pb2.FeatureLists(feature_list=d)
 sequence_example = example_pb2.SequenceExample
 
 
-class ParseExampleDatasetTest(test_base.DatasetTestBase,
-                              parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class ParseExampleDatasetTest(test_base.DatasetTestBase):
 
   def _compare_output_to_expected(self, dict_tensors, expected_tensors):
     self.assertEqual(set(dict_tensors.keys()), set(expected_tensors.keys()))
@@ -108,7 +107,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         self.assertEqual(
             dataset_ops.get_legacy_output_shapes(dataset)[k].as_list()[1], None)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testEmptySerializedWithAllDefaults(self):
     sparse_name = "st_a"
     a_name = "a"
@@ -147,7 +145,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_values=expected_output,
         create_iterator_twice=True)
 
-  @combinations.generate(test_base.graph_only_combinations())
+  @test_util.run_deprecated_v1
   def testEmptySerializedWithoutDefaultsShouldFail(self):
     input_features = {
         "st_a":
@@ -181,7 +179,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_err=(errors_impl.InvalidArgumentError,
                       "Feature: c \\(data type: float\\) is required"))
 
-  @combinations.generate(test_base.graph_only_combinations())
+  @test_util.run_deprecated_v1
   def testDenseNotMatchingShapeShouldFail(self):
     original = [
         example(features=features({
@@ -199,7 +197,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_err=(errors_impl.InvalidArgumentError,
                       "Key: a, Index: 1.  Number of float values"))
 
-  @combinations.generate(test_base.default_test_combinations())
   def testDenseDefaultNoShapeShouldFail(self):
     original = [example(features=features({"a": float_feature([1, 1, 3]),})),]
 
@@ -210,7 +207,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         {"a": parsing_ops.FixedLenFeature(None, dtypes.float32)},
         expected_err=(ValueError, "Missing shape for feature a"))
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingSparse(self):
     original = [
         example(features=features({
@@ -252,7 +248,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_values=expected_output,
         create_iterator_twice=True)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingSparseFeature(self):
     original = [
         example(features=features({
@@ -289,7 +284,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_values=expected_output,
         create_iterator_twice=True)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingSparseFeatureReuse(self):
     original = [
         example(features=features({
@@ -331,7 +325,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_values=expected_output,
         create_iterator_twice=True)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContaining3DSparseFeature(self):
     original = [
         example(features=features({
@@ -377,7 +370,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_values=expected_output,
         create_iterator_twice=True)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingDense(self):
     aname = "a"
     bname = "b*has+a:tricky_name"
@@ -415,7 +407,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
 
   # This test is identical as the previous one except
   # for the creation of 'serialized'.
-  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingDenseWithConcat(self):
     aname = "a"
     bname = "b*has+a:tricky_name"
@@ -461,7 +452,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_values=expected_output,
         create_iterator_twice=True)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingDenseScalar(self):
     original = [
         example(features=features({
@@ -486,7 +476,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_values=expected_output,
         create_iterator_twice=True)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingDenseWithDefaults(self):
     original = [
         example(features=features({
@@ -525,7 +514,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_values=expected_output,
         create_iterator_twice=True)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSerializedSparseAndSparseFeatureAndDenseWithNoDefault(self):
     expected_st_a = sparse_tensor.SparseTensorValue(  # indices, values, shape
         np.empty((0, 2), dtype=np.int64),  # indices
@@ -581,7 +569,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_values=expected_output,
         create_iterator_twice=True)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testerializedContainingSparseAndSparseFeatureWithReuse(self):
     expected_idx = sparse_tensor.SparseTensorValue(  # indices, values, shape
         np.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=np.int64),
@@ -680,13 +667,11 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_values=expected_output,
         create_iterator_twice=True)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingVarLenDenseLargerBatch(self):
     np.random.seed(3456)
     for batch_size in (1, 10, 20, 100, 256):
       self._testSerializedContainingVarLenDenseLargerBatch(batch_size)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSerializedShapeMismatch(self):
     aname = "a"
     bname = "b"
@@ -739,7 +724,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
           expected_err=(ValueError,
                         "Cannot reshape a tensor with 0 elements to shape"))
 
-  @combinations.generate(test_base.graph_only_combinations())
+  @test_util.run_deprecated_v1
   def testSerializedContainingVarLenDense(self):
     aname = "a"
     bname = "b"
@@ -892,7 +877,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
                       "Unsupported: FixedLenSequenceFeature requires "
                       "allow_missing to be True."))
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingRaggedFeatureWithNoPartitions(self):
     original = [
         example(
@@ -938,7 +922,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_values=expected_output,
         create_iterator_twice=True)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingRaggedFeatureWithOnePartition(self):
     original = [
         example(
@@ -1057,7 +1040,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_values=expected_output,
         create_iterator_twice=True)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingRaggedFeatureWithMultiplePartitions(self):
     original = [
         # rt shape: [(batch), 2, None, None]

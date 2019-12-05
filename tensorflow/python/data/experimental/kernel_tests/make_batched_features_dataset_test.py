@@ -17,29 +17,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import readers
-from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import nest
-from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class MakeBatchedFeaturesDatasetTest(
-    reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase,
-    parameterized.TestCase):
+    reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase):
 
-  @combinations.generate(test_base.default_test_combinations())
   def testRead(self):
     for batch_size in [1, 2]:
       for num_epochs in [1, 10]:
@@ -88,7 +85,6 @@ class MakeBatchedFeaturesDatasetTest(
         with self.assertRaises(errors.OutOfRangeError):
           self._next_actual_batch()
 
-  @combinations.generate(test_base.default_test_combinations())
   def testReadWithEquivalentDataset(self):
     features = {
         "file": parsing_ops.FixedLenFeature([], dtypes.int64),
@@ -107,7 +103,6 @@ class MakeBatchedFeaturesDatasetTest(
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
-  @combinations.generate(test_base.default_test_combinations())
   def testReadWithFusedShuffleRepeatDataset(self):
     num_epochs = 5
     total_records = num_epochs * self._num_records
@@ -156,7 +151,6 @@ class MakeBatchedFeaturesDatasetTest(
           all_equal = all_equal and np.array_equal(batch1[i], batch2[i])
       self.assertFalse(all_equal)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testParallelReadersAndParsers(self):
     num_epochs = 5
     for batch_size in [1, 2]:
@@ -192,7 +186,6 @@ class MakeBatchedFeaturesDatasetTest(
           with self.assertRaises(errors.OutOfRangeError):
             self._next_actual_batch()
 
-  @combinations.generate(test_base.default_test_combinations())
   def testDropFinalBatch(self):
     for batch_size in [1, 2]:
       for num_epochs in [1, 10]:
@@ -208,7 +201,6 @@ class MakeBatchedFeaturesDatasetTest(
             if isinstance(tensor, ops.Tensor):  # Guard against SparseTensor.
               self.assertEqual(tensor.shape[0], batch_size)
 
-  @combinations.generate(test_base.default_test_combinations())
   def testIndefiniteRepeatShapeInference(self):
     dataset = self.make_batch_feature(
         filenames=self.test_filenames[0],
@@ -221,7 +213,6 @@ class MakeBatchedFeaturesDatasetTest(
       if issubclass(clazz, ops.Tensor):
         self.assertEqual(32, shape[0])
 
-  @combinations.generate(test_base.default_test_combinations())
   def testOldStyleReader(self):
     with self.assertRaisesRegexp(
         TypeError, r"The `reader` argument must return a `Dataset` object. "

@@ -19,15 +19,14 @@ from __future__ import print_function
 
 import os
 
-from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
-from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
@@ -37,9 +36,9 @@ from tensorflow.python.util import compat
 _NUMPY_RANDOM_SEED = 42
 
 
-class IgnoreErrorsTest(test_base.DatasetTestBase, parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class IgnoreErrorsTest(test_base.DatasetTestBase):
 
-  @combinations.generate(test_base.default_test_combinations())
   def testMapIgnoreError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
@@ -54,7 +53,6 @@ class IgnoreErrorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  @combinations.generate(test_base.default_test_combinations())
   def testParallelMapIgnoreError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
@@ -69,7 +67,6 @@ class IgnoreErrorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  @combinations.generate(test_base.default_test_combinations())
   def testReadFileIgnoreError(self):
 
     def write_string_to_file(value, filename):
@@ -105,7 +102,6 @@ class IgnoreErrorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  @combinations.generate(test_base.default_test_combinations())
   def testTFRecordDatasetIgnoreError(self):
     filenames = []
     for i in range(5):
@@ -130,7 +126,6 @@ class IgnoreErrorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  @combinations.generate(test_base.default_test_combinations())
   def testZipIgnoreError(self):
     a = dataset_ops.Dataset.from_tensor_slices([1., 2., 0., 4.])
     b = a.map(lambda x: array_ops.check_numerics(1. / x, "error"))
