@@ -366,8 +366,11 @@ InFlightDiagnostic Operation::emitRemark(const Twine &message) {
 }
 
 //===----------------------------------------------------------------------===//
-// Other
+// Operation Ordering
 //===----------------------------------------------------------------------===//
+
+constexpr unsigned Operation::kInvalidOrderIdx;
+constexpr unsigned Operation::kOrderStride;
 
 /// Given an operation 'other' that is within the same parent block, return
 /// whether the current operation is before 'other' in the operation list
@@ -378,10 +381,75 @@ bool Operation::isBeforeInBlock(Operation *other) {
   assert(block && "Operations without parent blocks have no order.");
   assert(other && other->block == block &&
          "Expected other operation to have the same parent block.");
-  // Recompute the parent ordering if necessary.
-  if (!block->isOpOrderValid())
+  // If the order of the block is already invalid, directly recompute the
+  // parent.
+  if (!block->isOpOrderValid()) {
     block->recomputeOpOrder();
+  } else {
+    // Update the order either operation if necessary.
+    updateOrderIfNecessary();
+    other->updateOrderIfNecessary();
+  }
+
   return orderIndex < other->orderIndex;
+}
+
+/// Update the order index of this operation of this operation if necessary,
+/// potentially recomputing the order of the parent block.
+void Operation::updateOrderIfNecessary() {
+  assert(block && "expected valid parent");
+
+  // If the order is valid for this operation there is nothing to do.
+  if (hasValidOrder())
+    return;
+  Operation *blockFront = &block->front();
+  Operation *blockBack = &block->back();
+
+  // This method is expected to only be invoked on blocks with more than one
+  // operation.
+  assert(blockFront != blockBack && "expected more than one operation");
+
+  // If the operation is at the end of the block.
+  if (this == blockBack) {
+    Operation *prevNode = getPrevNode();
+    if (!prevNode->hasValidOrder())
+      return block->recomputeOpOrder();
+
+    // Add the stride to the previous operation.
+    orderIndex = prevNode->orderIndex + kOrderStride;
+    return;
+  }
+
+  // If this is the first operation try to use the next operation to compute the
+  // ordering.
+  if (this == blockFront) {
+    Operation *nextNode = getNextNode();
+    if (!nextNode->hasValidOrder())
+      return block->recomputeOpOrder();
+    // There is no order to give this operation.
+    if (nextNode->orderIndex == 0)
+      return block->recomputeOpOrder();
+
+    // If we can't use the stride, just take the middle value left. This is safe
+    // because we know there is at least one valid index to assign to.
+    if (nextNode->orderIndex <= kOrderStride)
+      orderIndex = (nextNode->orderIndex / 2);
+    else
+      orderIndex = kOrderStride;
+    return;
+  }
+
+  // Otherwise, this operation is between two others. Place this operation in
+  // the middle of the previous and next if possible.
+  Operation *prevNode = getPrevNode(), *nextNode = getNextNode();
+  if (!prevNode->hasValidOrder() || !nextNode->hasValidOrder())
+    return block->recomputeOpOrder();
+  unsigned prevOrder = prevNode->orderIndex, nextOrder = nextNode->orderIndex;
+
+  // Check to see if there is a valid order between the two.
+  if (prevOrder + 1 == nextOrder)
+    return block->recomputeOpOrder();
+  orderIndex = prevOrder + 1 + ((nextOrder - prevOrder) / 2);
 }
 
 //===----------------------------------------------------------------------===//
@@ -430,8 +498,8 @@ void llvm::ilist_traits<::mlir::Operation>::addNodeToList(Operation *op) {
   assert(!op->getBlock() && "already in a operation block!");
   op->block = getContainingBlock();
 
-  // Invalidate the block ordering.
-  op->block->invalidateOpOrder();
+  // Invalidate the order on the operation.
+  op->orderIndex = Operation::kInvalidOrderIdx;
 }
 
 /// This is a trait method invoked when a operation is removed from a block.
