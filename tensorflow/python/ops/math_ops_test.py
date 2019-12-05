@@ -180,6 +180,48 @@ class RoundTest(test_util.TensorFlowTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class FloorTest(test_util.TensorFlowTestCase):
+
+  def testFloor(self):
+    x = np.arange(-5.0, 5.0, .25)
+    for dtype in [np.float32, np.double, np.int32]:
+      x_np = np.array(x, dtype=dtype)
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y_tf = math_ops.floor(x_tf)
+      y_tf_np = self.evaluate(y_tf)
+      y_np = np.floor(x_np)
+      self.assertAllClose(y_tf_np, y_np, atol=1e-2)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class CeilTest(test_util.TensorFlowTestCase):
+
+  def testCeil(self):
+    x = np.arange(-5.0, 5.0, .25)
+    for dtype in [np.float32, np.double, np.int32]:
+      x_np = np.array(x, dtype=dtype)
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y_tf = math_ops.ceil(x_tf)
+      y_tf_np = self.evaluate(y_tf)
+      y_np = np.ceil(x_np)
+      self.assertAllClose(y_tf_np, y_np, atol=1e-2)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class RintTest(test_util.TensorFlowTestCase):
+
+  def testRint(self):
+    x = np.arange(-5.0, 5.0, .25)
+    for dtype in [np.float32, np.double, np.int32]:
+      x_np = np.array(x, dtype=dtype)
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y_tf = math_ops.rint(x_tf)
+      y_tf_np = self.evaluate(y_tf)
+      y_np = np.rint(x_np)
+      self.assertAllClose(y_tf_np, y_np, atol=1e-2)
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class ModTest(test_util.TensorFlowTestCase):
 
   def testFloat(self):
