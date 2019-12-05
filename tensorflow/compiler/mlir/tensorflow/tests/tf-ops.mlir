@@ -1610,7 +1610,7 @@ func @testSplitUnknownDimInput(%input: tensor<4x?x4xf32>) {
 
 // -----
 
-func @testSplitNonConstSplitDim(%input: tensor<4x4xf32>, %split_dim: tensor<1xi32>) {
+func @testSplitNonScalarSplitDim(%input: tensor<4x4xf32>, %split_dim: tensor<1xi32>) {
   // expected-error @+1 {{split dimension should be an integer scalar tensor}}
   %0:2 = "tf.Split"(%split_dim, %input) : (tensor<1xi32>, tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>)
   return
@@ -1672,5 +1672,84 @@ func @testTopKV2WrongInputRank(%input: tensor<f32>, %k: tensor<i32>) {
 func @testTopKV2WrongKRank(%input: tensor<8xf32>, %k: tensor<5xi32>) {
   // expected-error @+1 {{op requires k operand to be 0D tensor}}
   %0:2 = "tf.TopKV2"(%input, %k) : (tensor<8xf32>, tensor<5xi32>) -> (tensor<*xf32>, tensor<*xi32>)
+  return
+}
+
+// -----
+
+func @testSplitVScalarInput(%input: tensor<f32>, %split_sizes: tensor<2xi32>, %split_dim: tensor<i32>) {
+  // expected-error @+1 {{cannot split scalar input tensor}}
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<f32>, tensor<2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitVNonScalarSplitDim(%input: tensor<4x4xf32>, %split_sizes: tensor<2xi32>, %split_dim: tensor<1xi32>) {
+  // expected-error @+1 {{split dimension should be an integer scalar tensor}}
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2xi32>, tensor<1xi32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitVSplitDimOutOfRange(%input: tensor<4x4xf32>, %split_sizes: tensor<2xi32>) {
+  %split_dim = "tf.Const"() {value = dense<100>: tensor<i32>} : () -> (tensor<i32>)
+  // expected-error @+1 {{split dimension must be in range [-2, 2)}}
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitVWrongSplitSizesType(%input: tensor<4x4xf32>, %split_sizes: tensor<2x2xi32>, %split_dim: tensor<i32>) {
+  // expected-error @+1 {{op split sizes should be a 1D tensor of 2 elements}}
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2x2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitVMultipleDynamicSizes(%input: tensor<4x4xf32>) {
+  %split_dim = "tf.Const"() {value = dense<1>: tensor<i32>} : () -> (tensor<i32>)
+  %split_sizes = "tf.Const"() {value = dense<[-1, -1]>: tensor<2xi32>} : () -> (tensor<2xi32>)
+  // expected-error @+1 {{cannot have more than one dynamic dimension in split sizes}}
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitVSplitSizeOutOfRange(%input: tensor<4x4xf32>) {
+  %split_dim = "tf.Const"() {value = dense<1>: tensor<i32>} : () -> (tensor<i32>)
+  %split_sizes = "tf.Const"() {value = dense<[-1, 100]>: tensor<2xi32>} : () -> (tensor<2xi32>)
+  // expected-error @+1 {{split sizes must sum up to be less than or equal to the dimension size along split dimension, found 100 vs 4}}
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitVSplitSizeOutOfRange(%input: tensor<4x4xf32>) {
+  %split_dim = "tf.Const"() {value = dense<1>: tensor<i32>} : () -> (tensor<i32>)
+  %split_sizes = "tf.Const"() {value = dense<[2, 3]>: tensor<2xi32>} : () -> (tensor<2xi32>)
+  // expected-error @+1 {{split sizes must sum up to the dimension size along split dimension, found 5 vs 4}}
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitV1(%input: tensor<4x4xf32>) {
+  %split_dim = "tf.Const"() {value = dense<1>: tensor<i32>} : () -> (tensor<i32>)
+  %split_sizes = "tf.Const"() {value = dense<[-1, 4]>: tensor<2xi32>} : () -> (tensor<2xi32>)
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+func @testSplitV2(%input: tensor<4x4xf32>) {
+  %split_dim = "tf.Const"() {value = dense<1>: tensor<i32>} : () -> (tensor<i32>)
+  %split_sizes = "tf.Const"() {value = dense<[3, 1]>: tensor<2xi32>} : () -> (tensor<2xi32>)
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
   return
 }

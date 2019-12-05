@@ -1542,17 +1542,23 @@ static LogicalResult Verify(SoftmaxCrossEntropyWithLogitsOp op) {
 // SplitOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(SplitOp op) {
+// Verifies the input and split dimension operands for tf.Split/tf.SplitV.
+// Writes the split dimension's index (adjusted with input rank) via `dim_index`
+// if it's a constant.
+template <class Op>
+LogicalResult VerifySplitInputAndSplitDim(Op op, Optional<int64_t> *dim_index) {
+  *dim_index = llvm::None;
+
   Value *split_dim = op.split_dim();
-  auto split_dim_type = split_dim->getType().dyn_cast<RankedTensorType>();
-  if (!split_dim_type) return success();
-  if (split_dim_type.getRank() != 0)
-    return op.emitOpError("split dimension should be an integer scalar tensor");
+  if (auto split_dim_type = split_dim->getType().dyn_cast<RankedTensorType>())
+    if (split_dim_type.getRank() != 0)
+      return op.emitOpError(
+          "split dimension should be an integer scalar tensor");
 
   // We can perform further verification if the input tensor to be split has
   // known rank and the split dimension tensor is a constant.
 
-  auto input_type = op.value()->getType().dyn_cast<RankedTensorType>();
+  auto input_type = op.value()->getType().template dyn_cast<RankedTensorType>();
   if (!input_type) return success();
 
   int64_t input_rank = input_type.getRank();
@@ -1562,21 +1568,95 @@ static LogicalResult Verify(SplitOp op) {
   DenseIntElementsAttr split_dim_attr;
   if (!matchPattern(split_dim, m_Constant(&split_dim_attr))) return success();
 
-  int64_t dim_index = (*split_dim_attr.begin()).getSExtValue();
+  int64_t index = (*split_dim_attr.begin()).getSExtValue();
 
-  if (dim_index + input_rank < 0 || dim_index >= input_rank) {
+  if (index + input_rank < 0 || index >= input_rank) {
     return op.emitOpError("split dimension must be in range [-")
            << input_rank << ", " << input_rank << ")";
   }
 
-  if (dim_index < 0) dim_index += input_rank;
+  if (index < 0) index += input_rank;
+  *dim_index = index;
 
-  int64_t input_dim_size = input_type.getDimSize(dim_index);
-  if (input_dim_size < 0) return success();
+  return success();
+}
+
+static LogicalResult Verify(SplitOp op) {
+  Optional<int64_t> dim_index;
+  if (failed(VerifySplitInputAndSplitDim(op, &dim_index))) return failure();
+  if (!dim_index) return success();
+
+  int64_t input_dim_size =
+      op.value()->getType().cast<RankedTensorType>().getDimSize(*dim_index);
+  if (input_dim_size == ShapedType::kDynamicSize) return success();
 
   if (input_dim_size % op.getNumResults() != 0)
     return op.emitOpError("dimension #")
-           << dim_index << " not divisible by the number of result tensors";
+           << *dim_index << " not divisible by the number of result tensors";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SplitVOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SplitVOp op) {
+  auto split_sizes_type =
+      op.size_splits()->getType().dyn_cast<RankedTensorType>();
+  if (!split_sizes_type) return success();
+
+  if (split_sizes_type.getRank() != 1 ||
+      split_sizes_type.getDimSize(0) != op.getNumResults())
+    return op.emitOpError("split sizes should be a 1D tensor of ")
+           << op.getNumResults() << " elements";
+
+  Optional<int64_t> dim_index = 0;
+  if (failed(VerifySplitInputAndSplitDim(op, &dim_index))) return failure();
+  if (!dim_index) return success();
+
+  int64_t input_dim_size =
+      op.value()->getType().cast<RankedTensorType>().getDimSize(*dim_index);
+  if (input_dim_size == ShapedType::kDynamicSize) return success();
+
+  // If split sizes come from a constant, they must sum to the dimension size
+  // along split_dim, and we can have no more than one dynamic dimension.
+  DenseIntElementsAttr split_sizes_attr;
+  if (!matchPattern(op.size_splits(), m_Constant(&split_sizes_attr)))
+    return success();
+
+  int64_t total_dim_size = 0;  // Total dimension size assigned to splits
+  llvm::Optional<int> dynamic_dim_index;
+
+  SmallVector<int64_t, 4> split_sizes;
+  split_sizes.reserve(
+      split_sizes_attr.getType().cast<ShapedType>().getNumElements());
+
+  for (auto dim : llvm::enumerate(split_sizes_attr)) {
+    int64_t dim_val = dim.value().getSExtValue();
+    split_sizes.push_back(dim_val);
+    if (dim_val == ShapedType::kDynamicSize) {
+      // We cannot have more than one dynamic dimension.
+      if (dynamic_dim_index)
+        return op.emitOpError(
+            "cannot have more than one dynamic dimension in split sizes");
+      dynamic_dim_index = dim.index();
+    } else {
+      total_dim_size += dim_val;
+    }
+  }
+
+  if (!dynamic_dim_index && total_dim_size != input_dim_size)
+    return op.emitOpError(
+               "split sizes must sum up to the dimension size along split "
+               "dimension, found ")
+           << total_dim_size << " vs " << input_dim_size;
+
+  if (dynamic_dim_index && total_dim_size > input_dim_size)
+    return op.emitOpError(
+               "split sizes must sum up to be less than or equal to the "
+               "dimension size along split dimension, found ")
+           << total_dim_size << " vs " << input_dim_size;
 
   return success();
 }

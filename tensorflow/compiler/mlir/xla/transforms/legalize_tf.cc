@@ -925,7 +925,7 @@ class ConvertSizeOp : public OpRewritePattern<TF::SizeOp> {
 };
 
 // Converts the tf.Split op into a series of HLO slice ops when the tensor to be
-// split has fuly static shape and the dimension to split is a constant.
+// split has fully static shape and the dimension to split is a constant.
 //
 // The main logic of this pattern is to calculate the index start and end range
 // for each slice. And this happens only on the dimension to be split; for all
@@ -1009,6 +1009,118 @@ class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
                                    GetI64ElementsAttr(begin_indices, &rewriter),
                                    GetI64ElementsAttr(end_indices, &rewriter),
                                    GetI64ElementsAttr(strides, &rewriter)));
+    }
+
+    rewriter.replaceOp(op, slices);
+    return matchSuccess();
+  }
+};
+
+// Converts the tf.SplitV op into a series of HLO slice ops when the tensor to
+// be split has fully static shape and the dimension to split and split sizes
+// are constants.
+//
+// This is similar to the conversion for tf.Split op other than that the size of
+// each chunk on the dimension to split is explicitly given as an op operand
+// and they are not necessarily the same.
+//
+// For example, given the following IR:
+//
+// %split_sizes = "tf.Const"() {value = dense<[1, -1, 3]> : tensor<3xi32>}
+// %split_dim = "tf.Const"() {value = dense<1> : tensor<i32>}
+// %0:3 = "tf.SplitV"(%input, %split_sizes, %split_dim) :
+//                   (tensor<4x6xf32>, tensor<3xi32>, tensor<i32>) ->
+//                   (tensor<4x1xf32>, tensor<4x2xf32>, tensor<4x3xf32>)
+//
+// We will generate slices following slices:
+// %0 = "xla_hlo.slice"(%input) {
+//        limit_indices = dense<[4, 1]> : tensor<2xi64>,
+//        start_indices = dense<0> : tensor<2xi64>,
+//        strides = dense<1> : tensor<2xi64>} :
+//        (tensor<4x6xf32>) -> tensor<4x1xf32>
+// %1 = "xla_hlo.slice"(%input) {
+//        limit_indices = dense<[4, 3]> : tensor<2xi64>,
+//        start_indices = dense<[0, 1]> : tensor<2xi64>,
+//        strides = dense<1> : tensor<2xi64>} :
+//        (tensor<4x6xf32>) -> tensor<4x2xf32>
+// %2 = "xla_hlo.slice"(%input) {
+//        limit_indices = dense<[4, 6]> : tensor<2xi64>,
+//        start_indices = dense<[0, 3]> : tensor<2xi64>,
+//        strides = dense<1> : tensor<2xi64>} :
+//        (tensor<4x6xf32>) -> tensor<4x3xf32>
+class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::SplitVOp op,
+                                     PatternRewriter &rewriter) const override {
+    // We can only split along static dimensions.
+    // TODO(b/145731001): enhance to support dynamic-shaped inputs.
+    auto input_type = op.value()->getType().dyn_cast<RankedTensorType>();
+    if (!input_type) return matchFailure();
+
+    // We can only match when the split dimension is a constant scalar.
+    DenseIntElementsAttr split_dim_attr;
+    if (!matchPattern(op.split_dim(), m_Constant(&split_dim_attr)))
+      return matchFailure();
+
+    // We can only match when the split sizes is a constant int vector.
+    DenseIntElementsAttr split_sizes_attr;
+    if (!matchPattern(op.size_splits(), m_Constant(&split_sizes_attr)))
+      return matchFailure();
+
+    // Get each chunck's size along the dimension to split. It may contain
+    // dynamic sizes and we need to update it if so.
+    SmallVector<int64_t, 4> split_sizes;
+    int64_t total_dim_size = 0;  // Total dimension size assigned to splits
+    llvm::Optional<int> dynamic_dim_index;
+    split_sizes.reserve(
+        split_sizes_attr.getType().cast<ShapedType>().getNumElements());
+    for (auto dim : llvm::enumerate(split_sizes_attr)) {
+      int64_t dim_val = dim.value().getSExtValue();
+      split_sizes.push_back(dim_val);
+      if (dim_val == ShapedType::kDynamicSize) {
+        // We cannot have more than one dynamic dimension.
+        assert(!dynamic_dim_index && "invalid split sizes");
+        dynamic_dim_index = dim.index();
+      } else {
+        total_dim_size += dim_val;
+      }
+    }
+
+    // Get the dimension we are splitting at. Offset properly if it's negative.
+    int64_t input_rank = input_type.getRank();
+    int64_t dim_index = (*split_dim_attr.begin()).getSExtValue();
+    if (dim_index < 0) dim_index += input_rank;
+
+    int64_t input_dim_size = input_type.getDimSize(dim_index);
+    if (TensorType::isDynamic(input_dim_size)) return matchFailure();
+
+    assert(((dynamic_dim_index && total_dim_size <= input_dim_size) ||
+            (!dynamic_dim_index && total_dim_size == input_dim_size)) &&
+           "invalid split sizes");
+
+    // Update the dynamic dimension with calculated concrete size.
+    if (dynamic_dim_index)
+      split_sizes[*dynamic_dim_index] = input_dim_size - total_dim_size;
+
+    // Parameters for constructing each slice.
+    SmallVector<int64_t, 4> begin_indices(input_rank, 0);
+    auto end_indices = llvm::to_vector<4>(input_type.getShape());
+    SmallVector<int64_t, 4> strides(input_rank, 1);
+
+    // All HLO slice results used to replace the original tf.Split op.
+    SmallVector<Value *, 4> slices;
+    slices.reserve(op.getNumResults());
+
+    for (int i = 0; i < op.getNumResults(); ++i) {
+      end_indices[dim_index] = begin_indices[dim_index] + split_sizes[i];
+      slices.push_back(rewriter.create<xla_hlo::SliceOp>(
+          op.getLoc(), op.value(), GetI64ElementsAttr(begin_indices, &rewriter),
+          GetI64ElementsAttr(end_indices, &rewriter),
+          GetI64ElementsAttr(strides, &rewriter)));
+      // Prepare the begin indice for the next slice.
+      begin_indices[dim_index] = end_indices[dim_index];
     }
 
     rewriter.replaceOp(op, slices);
@@ -2018,16 +2130,16 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
   // level TensorFlow ops. So, we don't have to target all the TensorFlow ops
   // here for lowering to HLO.
   TF::PopulateLoweringTFPatterns(context, &patterns);
-  patterns
-      .insert<ConvertArgMaxOp, ConvertBF16FloorDivOp, ConvertConv2D,
-              ConvertEinsumOp, ConvertMaxPoolOp, ConvertRangeOp,
-              ConvertSigmoidOp, ConvertSizeOp, ConvertMaxPoolOp, ConvertRangeOp,
-              ConvertSigmoidOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
-              ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp,
-              ConvertStridedSliceOp, ConvertTopKV2Op, ConvertMeanOp,
-              ConvertSumOp, ConvertMaxOp, ConvertTileOp, ConvertMaxPoolGradOp,
-              ConvertOneHotOp, ConvertConv2DBackpropInputOp,
-              ConvertConv2DBackpropFilterOp>(op->getContext());
+  patterns.insert<
+      ConvertArgMaxOp, ConvertBF16FloorDivOp, ConvertConv2D, ConvertEinsumOp,
+      ConvertMaxPoolOp, ConvertRangeOp, ConvertSigmoidOp, ConvertSizeOp,
+      ConvertMaxPoolOp, ConvertRangeOp, ConvertSigmoidOp,
+      ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
+      ConvertStridedSliceOp, ConvertTopKV2Op, ConvertMeanOp, ConvertSumOp,
+      ConvertMaxOp, ConvertTileOp, ConvertMaxPoolGradOp, ConvertOneHotOp,
+      ConvertConv2DBackpropInputOp, ConvertConv2DBackpropFilterOp>(
+      op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();
