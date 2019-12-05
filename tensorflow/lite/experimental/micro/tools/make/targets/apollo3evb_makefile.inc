@@ -1,4 +1,4 @@
-# Settings for apollo3 evb and SparkFun Edge platforms.
+# Settings for apollo3 evb, SparkFun Redboard Artemis and SparkFun Edge platforms.
 ifeq ($(TARGET),$(filter $(TARGET),\
   apollo3evb\
   sparkfun_edge\
