@@ -1927,6 +1927,272 @@ TEST_P(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   EXPECT_THAT(tanh4, op::ShapeWithLayout(shape_in_default_mem));
 }
 
+TEST_P(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
+  Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
+  Shape f32v1 = ShapeUtil::MakeShape(F32, {1});
+  Shape t_s32_f32v1 = ShapeUtil::MakeTupleShape({s32, f32v1});
+  auto module = CreateNewVerifiedModule("SimpleWhile");
+  HloSchedule schedule(module.get());
+
+  // A simple compare-to-limit (x < 4) computation for a While.
+  //
+  // condition:
+  //   const4[s32] -----------------------------------\
+  //                                                   \
+  //   param[(s32,f32[4])] --- get-tuple-element[0] --- less-than
+  //
+  HloComputation* cond_computation;
+  {
+    auto builder = HloComputation::Builder("WhileCond");
+    auto const4 = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(4)));
+    auto param = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, t_s32_f32v1, "x"));
+    auto index = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(const4->shape(), param, 0));
+    auto compare = builder.AddInstruction(
+        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), index,
+                                      const4, ComparisonDirection::kLt));
+    cond_computation = module->AddEmbeddedComputation(builder.Build());
+    schedule.set_sequence(cond_computation, {const4, param, index, compare});
+  }
+
+  // Builds a simple body computation for a While.
+  //
+  // body:
+  //   constv[f32[1]] --------------------------------------\
+  //                                                         \
+  //                           /--- get-tuple-elementv[1] --- addv ---\
+  //   param[(s32,f32[1])] ---|                                    tuple
+  //                           \--- get-tuple-elementc[0] --- addc ---/
+  //                                                         /
+  //   const1[s32] -----------------------------------------/
+  //
+  HloComputation* body_computation;
+  {
+    auto builder = HloComputation::Builder("WhileBody");
+    auto const1 = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(1)));
+    auto constv = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({1.1f})));
+    auto param = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, t_s32_f32v1, "x"));
+    auto indexc = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(const1->shape(), param, 0));
+    auto addc = builder.AddInstruction(HloInstruction::CreateBinary(
+        indexc->shape(), HloOpcode::kAdd, indexc, const1));
+    auto indexv = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(constv->shape(), param, 1));
+    auto addv = builder.AddInstruction(HloInstruction::CreateBinary(
+        constv->shape(), HloOpcode::kAdd, indexv, constv));
+    auto tuple =
+        builder.AddInstruction(HloInstruction::CreateTuple({addc, addv}));
+    body_computation = module->AddEmbeddedComputation(builder.Build());
+    schedule.set_sequence(body_computation, {const1, constv, param, indexc,
+                                             addc, indexv, addv, tuple});
+  }
+
+  // This tests a simple while loop where the parameters are aliased with the
+  // output buffers.
+  auto builder = HloComputation::Builder("SimpleWhile");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, t_s32_f32v1, "param"));
+  auto gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(s32, param, 0));
+  auto gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32v1, param, 1));
+  auto tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
+  auto while0 = builder.AddInstruction(HloInstruction::CreateWhile(
+      t_s32_f32v1, cond_computation, body_computation, tuple));
+
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+  schedule.set_sequence(computation, {param, gte0, gte1, tuple, while0});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/50);
+
+  // Ensure all parameters and while are placed in default memory.
+  Shape shape_in_default_mem = ShapeUtil::MakeShapeWithLayout(
+      F32, {4, 6},
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      kDefaultMemorySpace);
+  Shape s32_in_default_mem = ShapeUtil::MakeShapeWithLayout(
+      xla::S32, {},
+      /*minor_to_major=*/{}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      kDefaultMemorySpace);
+  Shape f32v1_in_default_mem = ShapeUtil::MakeShapeWithLayout(
+      F32, {1},
+      /*minor_to_major=*/{0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      kDefaultMemorySpace);
+  Shape t_s32_f32v1_in_default_mem =
+      ShapeUtil::MakeTupleShape({s32_in_default_mem, f32v1_in_default_mem});
+  EXPECT_THAT(param, op::ShapeWithLayout(t_s32_f32v1_in_default_mem));
+  EXPECT_THAT(while0, op::ShapeWithLayout(t_s32_f32v1_in_default_mem));
+}
+
+TEST_P(MemorySpaceAssignmentTest, EvictionsShouldntBeDelayed) {
+  // This test reproduces an eviction scheduling bug where evictions to default
+  // memory can happen later than intended, causing memory corruption. This test
+  // is a variant of MemoryBoundednessBufferIntervalCompare but uses f32[4,3]
+  // tensors instead, so at most two tensors should fit in the alternate memory
+  // space at a given time. We have a number of redundant operations
+  // (tanh_redundant ops) that do not have users. The bug was due to
+  // SimplifyGraph removing dead instructions, and removing them from the
+  // schedule. However, the CopyStart/CopyDone insertion relies on the schedule
+  // indexes, so they could be inserted too late.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* tanh0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* tanh_redundant0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* tanh_redundant1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* tanh_redundant2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* tanh_redundant3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* tanh_redundant4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* tanh_redundant5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* tanh_redundant6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, tanh0));
+  HloInstruction* tanh1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, negate0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* tanh2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, tanh1));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* tanh3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, tanh2));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* tuple = builder.AddInstruction(
+      HloInstruction::CreateTuple({tanh3, negate3, tanh0}));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      computation,
+      {p0, tanh0, tanh_redundant0, tanh_redundant1, tanh_redundant2,
+       tanh_redundant3, tanh_redundant4, tanh_redundant5, tanh_redundant6,
+       negate0, tanh1, negate1, tanh2, negate2, tanh3, negate3, tuple});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpaceUsingCostAnalysis(module.get());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                          HloAliasAnalysis::Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_live_range,
+                          HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                            module->entry_computation()));
+
+  std::vector<int> num_live_buffers_in_alternate_mem(
+      hlo_live_range->flattened_instruction_sequence().size() + 1, 0);
+
+  // Go through each value and for those that are allocated in the alternate
+  // memory space, increment (inclusive) num_live_buffers_in_alternate_mem for
+  // every time step that they are live.
+  for (const HloValue* value : alias_analysis->dataflow_analysis().values()) {
+    const Shape& shape = value->shape();
+    if (!shape.has_layout() ||
+        shape.layout().memory_space() == kDefaultMemorySpace) {
+      continue;
+    }
+
+    HloLiveRange::TimeBound time_bound =
+        hlo_live_range->buffer_live_ranges().at(value);
+    for (int i = time_bound.start; i <= time_bound.end; ++i) {
+      ++num_live_buffers_in_alternate_mem[i];
+    }
+  }
+
+  // The test memory can at most hold two f32[4,3] buffers at a time. If there
+  // is more than that, it means we have memory corruption.
+  for (int i = 0; i < num_live_buffers_in_alternate_mem.size(); ++i) {
+    EXPECT_LE(num_live_buffers_in_alternate_mem[i], 2);
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest,
+       InputOutputsInAlternateMemShouldntBeAssigned) {
+  // When input/outputs are marked to be in the alternate memory (e.g.
+  // go/tpu-fast-mem-inference), do not allocate those and assume they will live
+  // in the alternate memory for the entire computation. The BufferAssignment
+  // pass, which is run after this, will allocate those buffers.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
+      F32, {2, 3},
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      kAlternateMemorySpace);
+  // p0 is in the default memory space.
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  // p1 is in the alternate memory space.
+  HloInstruction* p1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape_in_alternate_mem, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape_in_alternate_mem, HloOpcode::kAdd, negate6, p1));
+  // Index {0} of the root instruction is in the alternate memory space, index
+  // {1} is in the default memory space.
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({add, negate5}));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation,
+                        {p0, p1, negate0, negate1, negate2, negate3, negate4,
+                         negate5, negate6, add, tuple});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpace(module.get());
+
+  // Ensure that p1 is in the alternate memory and add, which has p1 as an
+  // operand, has a direct dependency to p1 (no CopyStart/CopyDone).
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(add, op::Add(op::Negate(), op::Parameter(1)));
+  // Make sure add is still in the alternate memory space.
+  EXPECT_THAT(add, op::ShapeWithLayout(shape_in_alternate_mem));
+
+  // Check the preset assignments and ensure the inputs/outputs in the alternate
+  // memory space aren't in the preset assignments. Inputs/outputs in the
+  // alternate memory space are left to BufferAssignment to be allocated.
+  for (const auto& position_and_chunk : preset_assignments->chunks()) {
+    const HloPosition& position = position_and_chunk.first;
+    EXPECT_NE(position.instruction, p1);
+    EXPECT_NE(position.instruction, add);
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));

@@ -106,6 +106,7 @@ from tensorflow.python.ops import sets
 from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops.distributions import distributions
 from tensorflow.python.ops.linalg import linalg
+from tensorflow.python.ops.linalg.sparse import sparse
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops.signal import signal
 from tensorflow.python.profiler import profiler

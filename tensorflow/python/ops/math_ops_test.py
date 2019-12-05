@@ -689,5 +689,42 @@ class RangeTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(values, self.evaluate(tensor))
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class ScalarOptimizationTest(test_util.TensorFlowTestCase):
+
+  def testAddZero(self):
+    x = constant_op.constant(1)
+    y = math_ops.add_v2(x, 0)
+    self.assertAllEqual(x, y)
+    self.assertIs(x, y)
+
+    # Optimization not applied
+    y = math_ops.add_v2(x, constant_op.constant(0))
+    self.assertAllEqual(x, y)
+    self.assertIsNot(x, y)
+
+  def testSubtractZero(self):
+    x = constant_op.constant(1)
+    y = math_ops.subtract(x, 0)
+    self.assertAllEqual(x, y)
+    self.assertIs(x, y)
+
+    # Optimization not applied
+    y = math_ops.subtract(x, constant_op.constant(0))
+    self.assertAllEqual(x, y)
+    self.assertIsNot(x, y)
+
+  def testMultiplyOne(self):
+    x = constant_op.constant(1)
+    y = math_ops.multiply(x, 1)
+    self.assertAllEqual(x, y)
+    self.assertIs(x, y)
+
+    # Optimization not applied
+    y = math_ops.multiply(x, constant_op.constant(1))
+    self.assertAllEqual(x, y)
+    self.assertIsNot(x, y)
+
+
 if __name__ == "__main__":
   googletest.main()

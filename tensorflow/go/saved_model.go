@@ -19,6 +19,10 @@ package tensorflow
 import (
 	"runtime"
 	"unsafe"
+
+	"github.com/golang/protobuf/proto"
+
+	tfpb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core/framework"
 )
 
 // #include <stdlib.h>
@@ -28,8 +32,9 @@ import "C"
 // SavedModel represents the contents of loaded SavedModel.
 // TODO(jhseu): Add and document metagraphdef when we pregenerate protobufs.
 type SavedModel struct {
-	Session *Session
-	Graph   *Graph
+	Session    *Session
+	Graph      *Graph
+	Signatures map[string]Signature
 }
 
 // LoadSavedModel creates a new SavedModel from a model previously
@@ -58,17 +63,35 @@ func LoadSavedModel(exportDir string, tags []string, options *SessionOptions) (*
 		cTags[i] = C.CString(tags[i])
 	}
 	graph := NewGraph()
+	metaGraphDefBuf := C.TF_NewBuffer()
+	defer C.TF_DeleteBuffer(metaGraphDefBuf)
 	// TODO(jhseu): Add support for run_options and meta_graph_def.
-	cSess := C.TF_LoadSessionFromSavedModel(cOpt, nil, cExportDir, (**C.char)(unsafe.Pointer(&cTags[0])), C.int(len(cTags)), graph.c, nil, status.c)
+	cSess := C.TF_LoadSessionFromSavedModel(cOpt, nil, cExportDir, (**C.char)(unsafe.Pointer(&cTags[0])), C.int(len(cTags)), graph.c, metaGraphDefBuf, status.c)
 	for i := range cTags {
 		C.free(unsafe.Pointer(cTags[i]))
 	}
 	C.free(unsafe.Pointer(cExportDir))
+
+	metaGraphDefBytes := C.GoBytes(metaGraphDefBuf.data, C.int(metaGraphDefBuf.length))
+	metaGraphDef := new(tfpb.MetaGraphDef)
+	if err := proto.Unmarshal(metaGraphDefBytes, metaGraphDef); err != nil {
+		return nil, err
+	}
+
+	signatures := generateSignatures(metaGraphDef.GetSignatureDef())
 
 	if err := status.Err(); err != nil {
 		return nil, err
 	}
 	s := &Session{c: cSess}
 	runtime.SetFinalizer(s, func(s *Session) { s.Close() })
-	return &SavedModel{Session: s, Graph: graph}, nil
+	return &SavedModel{Session: s, Graph: graph, Signatures: signatures}, nil
+}
+
+func generateSignatures(pb map[string]*tfpb.SignatureDef) map[string]Signature {
+	signatures := make(map[string]Signature)
+	for name, signature := range pb {
+		signatures[name] = signatureDefFromProto(signature)
+	}
+	return signatures
 }

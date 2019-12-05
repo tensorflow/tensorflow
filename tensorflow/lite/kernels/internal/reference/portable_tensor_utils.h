@@ -144,19 +144,9 @@ void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
   PortableApplySigmoid(input, n_batch, n_input, output);
 }
 
-void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output) {
-  PortableApplyTanh0(input, n_batch, n_input, output);
-}
-
-void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output) {
-  PortableApplyTanh3(input, n_batch, n_input, output);
-}
-
-void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output) {
-  PortableApplyTanh4(input, n_batch, n_input, output);
+void ApplyTanh(int32_t integer_bits, const int16_t* input, int32_t n_batch,
+               int32_t n_input, int16_t* output) {
+  PortableApplyTanh(integer_bits, input, n_batch, n_input, output);
 }
 
 void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
@@ -197,18 +187,12 @@ void VectorVectorCwiseProductAccumulate(const float* vector1,
   PortableVectorVectorCwiseProductAccumulate(vector1, vector2, v_size, result);
 }
 
-void VectorBatchVectorCwiseProduct(const float* vector, int v_size,
-                                   const float* batch_vector, int n_batch,
-                                   float* result) {
-  PortableVectorBatchVectorCwiseProduct(vector, v_size, batch_vector, n_batch,
-                                        result);
-}
-
-void VectorBatchVectorCwiseProductAccumulate(const float* vector, int v_size,
-                                             const float* batch_vector,
-                                             int n_batch, float* result) {
-  PortableVectorBatchVectorCwiseProductAccumulate(vector, v_size, batch_vector,
-                                                  n_batch, result);
+void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,
+                                             const int16_t* batch_vector,
+                                             int n_batch, int32_t multiplier,
+                                             int shift, int16_t* result) {
+  PortableVectorBatchVectorCwiseProductAccumulate(
+      vector, v_size, batch_vector, n_batch, multiplier, shift, result);
 }
 
 float VectorVectorDotProduct(const float* vector1, const float* vector2,
@@ -216,18 +200,17 @@ float VectorVectorDotProduct(const float* vector1, const float* vector2,
   return PortableVectorVectorDotProduct(vector1, vector2, v_size);
 }
 
+void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
+                                      const int16_t* vector2, int v_size,
+                                      int n_batch, int32_t* result,
+                                      int result_stride) {
+  return PortableBatchVectorBatchVectorDotProduct(
+      vector1, vector2, v_size, n_batch, result, result_stride);
+}
+
 void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
                           float* batch_vector) {
   PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
-}
-
-void ApplySigmoidToVector(const float* vector, int v_size, float* result) {
-  PortableApplySigmoidToVector(vector, v_size, result);
-}
-
-void ApplyActivationToVector(const float* vector, int v_size,
-                             TfLiteFusedActivation activation, float* result) {
-  PortableApplyActivationToVector(vector, v_size, activation, result);
 }
 
 void Sub1Vector(const float* vector, int v_size, float* result) {
@@ -250,6 +233,12 @@ void ClipVector(const float* vector, int v_size, float abs_limit,
 }
 
 void ReductionSumVector(const float* input_vector, float* output_vector,
+                        int output_size, int reduction_size) {
+  PortableReductionSumVector(input_vector, output_vector, output_size,
+                             reduction_size);
+}
+
+void ReductionSumVector(const int32_t* input_vector, int32_t* output_vector,
                         int output_size, int reduction_size) {
   PortableReductionSumVector(input_vector, output_vector, output_size,
                              reduction_size);

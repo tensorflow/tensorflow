@@ -59,6 +59,8 @@ class EagerKernelArgs : public FunctionArgsInterface {
  public:
   EagerKernelArgs() {}
 
+  explicit EagerKernelArgs(int count) : tensor_args_(count) {}
+
   explicit EagerKernelArgs(gtl::InlinedVector<TensorValue, 4>&& tensor_args)
       : tensor_args_(std::move(tensor_args)) {}
 

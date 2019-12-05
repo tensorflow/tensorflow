@@ -64,11 +64,9 @@ cc_library(
 
 cc_library(
     name = "random",
-    srcs = ["random.cc"],
     hdrs = ["random.h"],
     deps = [
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core/platform:random",
     ],
 )
 
@@ -133,7 +131,6 @@ filegroup(
     name = "legacy_lib_random_all_srcs",
     srcs = [
         "distribution_sampler.cc",
-        "random.cc",
         "random_distributions.cc",
         "simple_philox.cc",
         "weighted_picker.cc",

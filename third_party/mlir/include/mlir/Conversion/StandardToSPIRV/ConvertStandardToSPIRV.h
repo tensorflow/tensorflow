@@ -26,11 +26,18 @@
 
 namespace mlir {
 class SPIRVTypeConverter;
+
 /// Appends to a pattern list additional patterns for translating StandardOps to
-/// SPIR-V ops.
+/// SPIR-V ops. Also adds the patterns legalize ops not directly translated to
+/// SPIR-V dialect.
 void populateStandardToSPIRVPatterns(MLIRContext *context,
                                      SPIRVTypeConverter &typeConverter,
                                      OwningRewritePatternList &patterns);
+
+/// Appends to a pattern list patterns to legalize ops that are not directly
+/// lowered to SPIR-V.
+void populateStdLegalizationPatternsForSPIRVLowering(
+    MLIRContext *context, OwningRewritePatternList &patterns);
 
 } // namespace mlir
 

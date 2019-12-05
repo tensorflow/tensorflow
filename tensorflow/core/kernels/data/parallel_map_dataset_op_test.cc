@@ -95,7 +95,7 @@ class ParallelMapDatasetParams : public DatasetParams {
   bool preserve_cardinality_;
 };
 
-class ParallelMapDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class ParallelMapDatasetOpTest : public DatasetOpsTestBase {};
 
 FunctionDefHelper::AttrValueWrapper MapFunc(const string& func_name,
                                             const DataType& dtype) {

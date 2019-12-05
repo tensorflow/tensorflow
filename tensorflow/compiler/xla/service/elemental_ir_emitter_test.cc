@@ -35,6 +35,17 @@ class ElementalIrEmitterExecutionTest : public HloTestBase {
                             ParseAndReturnVerifiedModule(hlo_text, config));
     EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), args, nullopt));
   }
+
+  void RunTypeConversionTest(absl::string_view hlo_text) {
+    HloModuleConfig config;
+    auto debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_cpu_fast_math_honor_nans(true);
+    debug_options.set_xla_cpu_fast_math_honor_infs(true);
+    config.set_debug_options(debug_options);
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                            ParseAndReturnVerifiedModule(hlo_text, config));
+    EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
+  }
 };
 
 XLA_TEST_F(ElementalIrEmitterExecutionTest, DotFusion) {
@@ -189,22 +200,125 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest,
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF16toBF16) {
-  constexpr char hlo_text[] = R"(
-    HloModule convertF16toBF16
-    ENTRY ConvertF16toBF16 (p: f16[]) -> bf16[] {
-      p = f16[] parameter(0)
-      ROOT convert = bf16[] convert(f16[] p)
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertFloatsToBF16) {
+  RunTypeConversionTest(R"(
+    HloModule convertToBF16
+    ENTRY ConvertToBF16
+        (f16_ f16[], f32_ f32[], f64_ f64[]) -> (bf16[], bf16[], bf16[]) {
+      f16_ = f16[] parameter(0)
+      f32_ = f32[] parameter(1)
+      f64_ = f64[] parameter(2)
+      converted_f16 = bf16[] convert(f16[] f16_)
+      converted_f32 = bf16[] convert(f32[] f32_)
+      converted_f64 = bf16[] convert(f64[] f64_)
+      ROOT tuple = (bf16[], bf16[], bf16[]) tuple(converted_f16, converted_f32,
+                                                  converted_f64)
     }
-  )";
-  HloModuleConfig config;
-  auto debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_cpu_fast_math_honor_nans(true);
-  debug_options.set_xla_cpu_fast_math_honor_infs(true);
-  config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
-  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertSignedToBF16) {
+  RunTypeConversionTest(R"(
+    HloModule convertToBF16
+    ENTRY ConvertToBF16 (s8_ s8[], s16_ s16[], s32_ s32[], s64_ s64[]) ->
+        (bf16[], bf16[], bf16[], bf16[]) {
+      s8_ = s8[] parameter(0)
+      s16_ = s16[] parameter(1)
+      s32_ = s32[] parameter(2)
+      s64_ = s64[] parameter(3)
+      converted_s8 = bf16[] convert(s8[] s8_)
+      converted_s16 = bf16[] convert(s16[] s16_)
+      converted_s32 = bf16[] convert(s32[] s32_)
+      converted_s64 = bf16[] convert(s64[] s64_)
+      ROOT tuple = (bf16[], bf16[], bf16[], bf16[]) tuple(
+          converted_s8, converted_s16, converted_s32, converted_s64)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertUnsignedToBF16) {
+  RunTypeConversionTest(R"(
+    HloModule convertToBF16
+    ENTRY ConvertToBF16 (u8_ u8[], u16_ u16[], u32_ u32[], u64_ u64[]) ->
+        (bf16[], bf16[], bf16[], bf16[]) {
+      u8_ = u8[] parameter(0)
+      u16_ = u16[] parameter(1)
+      u32_ = u32[] parameter(2)
+      u64_ = u64[] parameter(3)
+      converted_u8 = bf16[] convert(u8[] u8_)
+      converted_u16 = bf16[] convert(u16[] u16_)
+      converted_u32 = bf16[] convert(u32[] u32_)
+      converted_u64 = bf16[] convert(u64[] u64_)
+      ROOT tuple = (bf16[], bf16[], bf16[], bf16[]) tuple(
+          converted_u8, converted_u16, converted_u32, converted_u64)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertBF16ToFloat) {
+  RunTypeConversionTest(R"(
+    HloModule convertFromBF16
+    ENTRY ConvertFromBF16
+        (to_f16 bf16[], to_f32 bf16[], to_f64 bf16[]) -> (f16[], f32[], f64[]) {
+      to_f16 = bf16[] parameter(0)
+      to_f32 = bf16[] parameter(1)
+      to_f64 = bf16[] parameter(2)
+      f16_ = f16[] convert(bf16[] to_f16)
+      f32_ = f32[] convert(bf16[] to_f32)
+      f64_ = f64[] convert(bf16[] to_f64)
+      ROOT tuple = (f16[], f32[], f64[]) tuple(f16_, f32_, f64_)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertBF16ToSigned) {
+  RunTypeConversionTest(R"(
+    HloModule convertFromBF16
+    ENTRY ConvertFromBF16(to_s8 bf16[], to_s16 bf16[], to_s32 bf16[],
+                          to_s64 bf16[]) -> (s8[], s16[], s32[], s64[]) {
+      to_s8 = bf16[] parameter(0)
+      to_s16 = bf16[] parameter(1)
+      to_s32 = bf16[] parameter(2)
+      to_s64 = bf16[] parameter(3)
+      s8_ = s8[] convert(bf16[] to_s8)
+      s16_ = s16[] convert(bf16[] to_s16)
+      s32_ = s32[] convert(bf16[] to_s32)
+      s64_ = s64[] convert(bf16[] to_s64)
+      ROOT tuple = (s8[], s16[], s32[], s64[]) tuple(s8_, s16_, s32_, s64_)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertBF16ToUnsigned) {
+  RunTypeConversionTest(R"(
+    HloModule convertFromBF16
+    ENTRY ConvertFromBF16(to_u8 bf16[], to_u16 bf16[], to_u32 bf16[],
+                          to_u64 bf16[]) -> (u8[], u16[], u32[], u64[]) {
+      to_u8 = bf16[] parameter(0)
+      to_u16 = bf16[] parameter(1)
+      to_u32 = bf16[] parameter(2)
+      to_u64 = bf16[] parameter(3)
+      u8_ = u8[] convert(bf16[] to_u8)
+      u16_ = u16[] convert(bf16[] to_u16)
+      u32_ = u32[] convert(bf16[] to_u32)
+      u64_ = u64[] convert(bf16[] to_u64)
+      ROOT tuple = (u8[], u16[], u32[], u64[]) tuple(u8_, u16_, u32_, u64_)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertBF16ToComplex) {
+  RunTypeConversionTest(R"(
+    HloModule convertFromBF16
+    ENTRY ConvertFromBF16
+        (to_c64 bf16[], to_c128 bf16[]) -> (c64[], c128[]) {
+      to_c64 = bf16[] parameter(0)
+      to_c128 = bf16[] parameter(1)
+      c64_ = c64[] convert(bf16[] to_c64)
+      c128_ = c128[] convert(bf16[] to_c128)
+      ROOT tuple = (c64[], c128[]) tuple(c64_, c128_)
+    }
+  )");
 }
 
 }  // namespace

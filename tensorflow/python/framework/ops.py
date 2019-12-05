@@ -1206,18 +1206,26 @@ def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
   objects. It accepts `Tensor` objects, numpy arrays, Python lists,
   and Python scalars. For example:
 
-  ```python
-  import numpy as np
+  >>> def my_func(arg):
+  ...   arg = tf.convert_to_tensor(arg, dtype=tf.float32)
+  ...   return arg
 
-  def my_func(arg):
-    arg = tf.convert_to_tensor(arg, dtype=tf.float32)
-    return tf.matmul(arg, arg) + arg
-
-  # The following calls are equivalent.
-  value_1 = my_func(tf.constant([[1.0, 2.0], [3.0, 4.0]]))
-  value_2 = my_func([[1.0, 2.0], [3.0, 4.0]])
-  value_3 = my_func(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32))
-  ```
+  >>> # The following calls are equivalent.
+  >>> value_1 = my_func(tf.constant([[1.0, 2.0], [3.0, 4.0]]))
+  >>> print(value_1)
+  tf.Tensor(
+    [[1. 2.]
+     [3. 4.]], shape=(2, 2), dtype=float32)
+  >>> value_2 = my_func([[1.0, 2.0], [3.0, 4.0]])
+  >>> print(value_2)
+  tf.Tensor(
+    [[1. 2.]
+     [3. 4.]], shape=(2, 2), dtype=float32)
+  >>> value_3 = my_func(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32))
+  >>> print(value_3)
+  tf.Tensor(
+    [[1. 2.]
+     [3. 4.]], shape=(2, 2), dtype=float32)
 
   This function can be useful when composing a new operation in Python
   (such as `my_func` in the example above). All standard Python op

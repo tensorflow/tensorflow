@@ -405,5 +405,33 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
           EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)));
 }
 
+bool AreFusedReductionOutputsConsistent(
+    absl::Span<const HloInstruction* const> output_instructions,
+    const HloInstruction* first_reduce) {
+  for (const HloInstruction* inst : output_instructions) {
+    if (IsReductionFromOrToContiguousDimensions(*inst)) {
+      // Shapes, layouts and dimensions must be the same for all reduces
+      // inside of this fusion.
+      // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
+      if (!(ShapeUtil::Equal(first_reduce->shape(), inst->shape()) &&
+            ShapeUtil::Equal(first_reduce->operand(0)->shape(),
+                             inst->operand(0)->shape()) &&
+            ShapeUtil::Equal(first_reduce->operand(1)->shape(),
+                             inst->operand(1)->shape()) &&
+            first_reduce->dimensions() == inst->dimensions())) {
+        return false;
+      }
+    } else {
+      if (!(ShapeUtil::CompatibleIgnoringElementType(
+                first_reduce->operand(0)->shape(), inst->shape()) &&
+            LayoutUtil::Equal(first_reduce->operand(0)->shape().layout(),
+                              inst->shape().layout()))) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 }  // namespace gpu
 }  // namespace xla

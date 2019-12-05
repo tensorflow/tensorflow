@@ -75,7 +75,6 @@ import six
 from six.moves import builtins
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -342,12 +341,18 @@ def divide(x, y, name=None):
     # override names. Use a dummy class to track the runtime division behavior
     return DivideDelegateWithName(x, name) / y
   else:
+    # We could short-circuit when y is 1, but we'd still have to cast to float,
+    # hence it doesn't seem to be worth optimizing.
     return x / y
 
 
 @tf_export("math.multiply", "multiply")
 @dispatch.add_dispatch_support
-def multiply(x, y, name=None):
+def multiply(x, y, name=None):  # pylint: disable=missing-docstring
+  # Do an is comparison here since this is cheaper than isinstance or __eq__
+  if y is 1:  # pylint: disable=literal-comparison
+    return x
+
   return gen_math_ops.mul(x, y, name)
 
 
@@ -359,16 +364,28 @@ multiply.__doc__ = gen_math_ops.mul.__doc__.replace("Multiply", "tf.multiply")
     "2016-12-30",
     "`tf.mul(x, y)` is deprecated, please use `tf.multiply(x, y)` or `x * y`")
 def _mul(x, y, name=None):
-  return gen_math_ops.mul(x, y, name)
+  return multiply(x, y, name=name)
 
 
 _mul.__doc__ = (
     gen_math_ops.mul.__doc__ + ("" if _mul.__doc__ is None else _mul.__doc__))
 
 
+def add_v2(x, y, name=None):
+  # Do an is comparison here since this is cheaper than isinstance or __eq__
+  if y is 0:  # pylint: disable=literal-comparison
+    return x
+
+  return gen_math_ops.add_v2(x, y, name=name)
+
+
 @tf_export("math.subtract", "subtract")
 @dispatch.add_dispatch_support
 def subtract(x, y, name=None):
+  # Do an is comparison here since this is cheaper than isinstance or __eq__
+  if y is 0:  # pylint: disable=literal-comparison
+    return x
+
   return gen_math_ops.sub(x, y, name)
 
 
@@ -380,7 +397,7 @@ subtract.__doc__ = gen_math_ops.sub.__doc__.replace("`Sub`", "`tf.subtract`")
     "2016-12-30",
     "`tf.sub(x, y)` is deprecated, please use `tf.subtract(x, y)` or `x - y`")
 def _sub(x, y, name=None):
-  return gen_math_ops.sub(x, y, name)
+  return subtract(x, y, name)
 
 
 _sub.__doc__ = (
@@ -1208,7 +1225,7 @@ def _add_dispatch(x, y, name=None):
   if x.dtype == dtypes.string:
     return gen_math_ops.add(x, y, name=name)
   else:
-    return gen_math_ops.add_v2(x, y, name=name)
+    return add_v2(x, y, name=name)
 
 
 def _mul_dispatch(x, y, name=None):
@@ -1234,7 +1251,7 @@ _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_mul, "mul",
                               sparse_tensor.SparseTensor)
 
 _OverrideBinaryOperatorHelper(_add_dispatch, "add")
-_OverrideBinaryOperatorHelper(gen_math_ops.sub, "sub")
+_OverrideBinaryOperatorHelper(subtract, "sub")
 _OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
 _OverrideBinaryOperatorHelper(_div_python2, "div")
 _OverrideBinaryOperatorHelper(_truediv_python3, "truediv")
@@ -1364,10 +1381,7 @@ def tensor_equals(self, other):
   g = getattr(self, "graph", None)
   if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
       (g is None or g._building_function)):  # pylint: disable=protected-access
-    if fwd_compat.forward_compatible(2019, 9, 25):
-      return gen_math_ops.equal(self, other, incompatible_shape_error=False)
-    else:
-      return gen_math_ops.equal(self, other)
+    return gen_math_ops.equal(self, other, incompatible_shape_error=False)
   else:
     # In legacy graph mode, tensor equality is object equality
     return self is other
@@ -1378,10 +1392,7 @@ def tensor_not_equals(self, other):
   if other is None:
     return True
   if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
-    if fwd_compat.forward_compatible(2019, 9, 25):
-      return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)
-    else:
-      return gen_math_ops.not_equal(self, other)
+    return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)
   else:
     # In legacy graph mode, tensor equality is object equality
     return self is not other
@@ -4258,3 +4269,30 @@ def ndtri(x, name=None):
   """
   with ops.name_scope(name, "ndtri", [x]):
     return gen_math_ops.ndtri(x)
+
+
+@tf_export("math.ceil", v1=["math.ceil", "ceil"])
+@deprecation.deprecated_endpoints("ceil")
+@dispatch.add_dispatch_support
+def ceil(x, name=None):
+  """Return the ceiling of the input, element-wise.
+
+  For example:
+
+  >>> tf.math.ceil([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0])
+  <tf.Tensor: shape=(7,), dtype=float32,
+  numpy=array([-1., -1., -0.,  1.,  2.,  2.,  2.], dtype=float32)>
+
+  Args:
+    x: A `tf.Tensor`. Must be one of the following types: `bfloat16`, `half`,
+      `float32`, `float64`. `int32`
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tf.Tensor`. Has the same type as `x`.
+
+  @compatibility(numpy)
+  Equivalent to np.ceil
+  @end_compatibility
+  """
+  return gen_math_ops.ceil(x, name)

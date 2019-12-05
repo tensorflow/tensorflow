@@ -2369,7 +2369,6 @@ cuda_py_test(
     tags = [
         "manual",
         "no_gpu",
-        "nogpu",
         "noguitar",
     ],
 )

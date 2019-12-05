@@ -347,7 +347,6 @@ cuda_py_test(
     shard_count = 32,
     tags = [
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
-        "nomsan",  # b/140958724
         # TODO(b/123307453): Add "multi_and_single_gpu",
     ],
 )
@@ -406,7 +405,6 @@ cuda_py_test(
     # TODO(b/132384649): Enable once fixed.
     tags = [
         "no_oss",
-        "nomsan",  # b/140958724
     ],
 )
 
@@ -426,7 +424,6 @@ cuda_py_test(
         "manual",  # b/139844866
         "multi_and_single_gpu",
         "no_oss",
-        "nomsan",  # b/140958724
         "notap",
     ],
 )

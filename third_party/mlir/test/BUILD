@@ -45,6 +45,14 @@ gentbl(
             "lib/TestDialect/TestOps.cpp.inc",
         ),
         (
+            "-gen-enum-decls",
+            "lib/TestDialect/TestOpEnums.h.inc",
+        ),
+        (
+            "-gen-enum-defs",
+            "lib/TestDialect/TestOpEnums.cpp.inc",
+        ),
+        (
             "-gen-rewriters",
             "lib/TestDialect/TestPatterns.inc",
         ),
@@ -75,6 +83,7 @@ cc_library(
     ],
     deps = [
         ":TestOpsIncGen",
+        "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:Dialect",
         "@local_config_mlir//:IR",
@@ -124,9 +133,9 @@ cc_library(
         "lib/Transforms/TestLoopFusion.cpp",
         "lib/Transforms/TestLoopMapping.cpp",
         "lib/Transforms/TestLoopParametricTiling.cpp",
-        "lib/Transforms/TestLowerVectorTransfers.cpp",
         "lib/Transforms/TestMemRefStrideCalculation.cpp",
         "lib/Transforms/TestOpaqueLoc.cpp",
+        "lib/Transforms/TestVectorToLoopsConversion.cpp",
         "lib/Transforms/TestVectorToVectorConversion.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
     ],
@@ -146,8 +155,9 @@ cc_library(
         "@local_config_mlir//:Support",
         "@local_config_mlir//:TransformUtils",
         "@local_config_mlir//:Transforms",
-        "@local_config_mlir//:VectorConversions",
         "@local_config_mlir//:VectorOps",
+        "@local_config_mlir//:VectorToLLVM",
+        "@local_config_mlir//:VectorToLoops",
     ],
     alwayslink = 1,
 )

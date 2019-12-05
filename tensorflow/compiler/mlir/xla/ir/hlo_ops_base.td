@@ -16,9 +16,7 @@ limitations under the License.
 #ifndef HLO_OPS_BASE
 #define HLO_OPS_BASE
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 def HLO_Int : IntOfWidths<[8, 16, 32, 64]>;
 def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
@@ -467,6 +465,16 @@ class BASE_HLO_XorOp {
   }];
 }
 
+class BASE_HLO_AllReduceOp {
+  string summary = "AllReduce operator";
+
+  string description = [{
+    Performs a custom reduction across replicas.
+
+    See https://www.tensorflow.org/xla/operation_semantics#allreduce.
+  }];
+}
+
 class BASE_HLO_ReduceOp {
   string summary = "Reduce operator";
 
@@ -618,6 +626,16 @@ class BASE_HLO_DynamicUpdateSliceOp {
 // XLA Other op definitions.
 //===----------------------------------------------------------------------===//
 
+class BASE_HLO_BatchNormGradOp {
+  string summary = "Batch Normalization Gradient";
+
+  string description = [{
+    Calculates gradients of batch norm.
+
+    See https://www.tensorflow.org/xla/operation_semantics#batchnormgrad
+  }];
+}
+
 class BASE_HLO_BatchNormInferenceOp {
   string summary = "Batch Normalization for Inference";
 
@@ -625,6 +643,16 @@ class BASE_HLO_BatchNormInferenceOp {
     Normalizes an array across batch and spatial dimensions.
 
     See https://www.tensorflow.org/xla/operation_semantics#batchnorminference
+  }];
+}
+
+class BASE_HLO_BatchNormTrainingOp {
+  string summary = "Batch Normalization for Training";
+
+  string description = [{
+    Normalizes an array across batch and spatial dimensions.
+
+    See https://www.tensorflow.org/xla/operation_semantics#batchnormtraining
   }];
 }
 
@@ -680,7 +708,7 @@ class BASE_HLO_ClampOp  {
 }
 
 class BASE_HLO_ConcatenateOp {
-   string summary = "XLA's concantenate op";
+   string summary = "XLA's concatenate op";
 
    string description = [{
      Concatenates a set of tensors along the specified dimension.
@@ -766,6 +794,18 @@ class BASE_HLO_ReshapeOp {
   }];
 }
 
+class BASE_HLO_ScatterOp {
+  string summary = "Scatter operator";
+
+  string description = [{
+    Generates a result which is the value of the input array `operand`,
+    with several slices (at indices specified by `scatter_indices`)
+    updated with the values in `updates` using `update_computation`.
+
+    See https://www.tensorflow.org/xla/operation_semantics#scatter.
+  }];
+}
+
 class BASE_HLO_SelectOp {
   string summary = "Select operator";
 
@@ -789,6 +829,17 @@ class BASE_HLO_SelectAndScatterOp {
     combined using the `scatter` function.
 
     See https://www.tensorflow.org/xla/operation_semantics#selectandscatter.
+  }];
+}
+
+class BASE_HLO_SortOp {
+  string summary = "Sort operator";
+
+  string description = [{
+    Sorts the given `operands` at the given `dimension` with the given
+    `comparator`.
+
+    See https://www.tensorflow.org/xla/operation_semantics#sort.
   }];
 }
 

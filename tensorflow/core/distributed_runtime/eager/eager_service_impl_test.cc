@@ -103,13 +103,15 @@ class FakeEagerClient : public EagerClient {
 class DummyEagerClientCache : public EagerClientCache {
  public:
   DummyEagerClientCache() : client_(new FakeEagerClient) {}
-  Status GetClient(const string& target, EagerClient** client) override {
-    *client = client_.get();
+  Status GetClient(const string& target,
+                   core::RefCountPtr<EagerClient>* client) override {
+    client->reset(client_.get());
+    client_->Ref();
     return Status::OK();
   }
 
  private:
-  std::unique_ptr<EagerClient> client_;
+  core::RefCountPtr<EagerClient> client_;
 };
 
 class FakeCache : public TestWorkerCache {
@@ -481,9 +483,9 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
     TF_ASSERT_OK(eager_service_impl_.GetEagerContext(context_id_, &ctx));
     Device* device;
     TF_ASSERT_OK(ctx->FindDeviceFromName(local_device_.c_str(), &device));
-    EagerClient* client;
+    core::RefCountPtr<EagerClient> client;
     TF_ASSERT_OK(ctx->GetClient(device, &client));
-    FakeEagerClient* fake_client = static_cast<FakeEagerClient*>(client);
+    FakeEagerClient* fake_client = static_cast<FakeEagerClient*>(client.get());
     fake_client->SetServiceImpl(&eager_service_impl_);
 
     // Create an input on local_device for MatMulFunction.

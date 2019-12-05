@@ -2,16 +2,15 @@
 #   GPU-specific components in XLA service implementation.
 
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",
 )
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_nccl",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -25,6 +24,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("//tensorflow:tensorflow.bzl", "if_nccl")
 
 package(
     default_visibility = [":friends"],
@@ -422,7 +422,7 @@ tf_cuda_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-    ] + if_cuda([
+    ] + if_nccl([
         "@local_config_nccl//:nccl",
     ]),
 )
@@ -1196,6 +1196,7 @@ cc_library(
         ":gpu_conv_padding_legalization",
         ":gpu_conv_rewriter",
         ":gpu_layout_assignment",
+        ":reduction_degenerate_dim_remover",
         ":stream_executor_util",
         ":target_constants",
         "//tensorflow/compiler/xla:status_macros",
@@ -1662,5 +1663,26 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "reduction_degenerate_dim_remover",
+    srcs = ["reduction_degenerate_dim_remover.cc"],
+    hdrs = ["reduction_degenerate_dim_remover.h"],
+    deps = [
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )

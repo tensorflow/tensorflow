@@ -377,20 +377,10 @@ def saved_model_format_scope(value):
     _thread_local_data.saved_model_format = previous_value
 
 
-def get_saved_model_format():
-  """Gets the saved model format that should be tested."""
-  if _thread_local_data.saved_model_format is None:
-    raise ValueError(
-        'Cannot call `get_saved_model_format()` outside of a '
-        '`saved_model_format_scope()` or `run_with_all_saved_model_formats` '
-        'decorator.')
-  return _thread_local_data.saved_model_format
-
-
 def get_save_format():
   if _thread_local_data.saved_model_format is None:
     raise ValueError(
-        'Cannot call `get_saved_model_format()` outside of a '
+        'Cannot call `get_save_format()` outside of a '
         '`saved_model_format_scope()` or `run_with_all_saved_model_formats` '
         'decorator.')
   return _thread_local_data.saved_model_format
@@ -426,17 +416,28 @@ def get_small_functional_mlp(num_hidden, num_classes, input_dim):
   return keras.Model(inputs, outputs)
 
 
-class _SmallSubclassMLP(keras.Model):
+class SmallSubclassMLP(keras.Model):
   """A subclass model based small MLP."""
 
-  def __init__(self, num_hidden, num_classes):
-    super(_SmallSubclassMLP, self).__init__()
+  def __init__(self, num_hidden, num_classes, use_bn=False, use_dp=False):
+    super(SmallSubclassMLP, self).__init__(name='test_model')
+    self.use_bn = use_bn
+    self.use_dp = use_dp
+
     self.layer_a = keras.layers.Dense(num_hidden, activation='relu')
     activation = 'sigmoid' if num_classes == 1 else 'softmax'
     self.layer_b = keras.layers.Dense(num_classes, activation=activation)
+    if self.use_dp:
+      self.dp = keras.layers.Dropout(0.5)
+    if self.use_bn:
+      self.bn = keras.layers.BatchNormalization(axis=-1)
 
   def call(self, inputs, **kwargs):
     x = self.layer_a(inputs)
+    if self.use_dp:
+      x = self.dp(x)
+    if self.use_bn:
+      x = self.bn(x)
     return self.layer_b(x)
 
 
@@ -461,7 +462,7 @@ class _SmallSubclassMLPCustomBuild(keras.Model):
 
 
 def get_small_subclass_mlp(num_hidden, num_classes):
-  return _SmallSubclassMLP(num_hidden, num_classes)
+  return SmallSubclassMLP(num_hidden, num_classes)
 
 
 def get_small_subclass_mlp_with_custom_build(num_hidden, num_classes):
@@ -608,8 +609,8 @@ class _MultiIOSubclassModel(keras.Model):
   """Multi IO Keras subclass model."""
 
   def __init__(self, branch_a, branch_b, shared_input_branch=None,
-               shared_output_branch=None):
-    super(_MultiIOSubclassModel, self).__init__()
+               shared_output_branch=None, name=None):
+    super(_MultiIOSubclassModel, self).__init__(name=name)
     self._shared_input_branch = shared_input_branch
     self._branch_a = branch_a
     self._branch_b = branch_b

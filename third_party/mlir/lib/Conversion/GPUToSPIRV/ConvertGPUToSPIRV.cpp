@@ -163,15 +163,26 @@ PatternMatchResult LaunchConfigConversion<SourceOp, builtin>::matchAndRewrite(
 PatternMatchResult
 KernelFnConversion::matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
                                     ConversionPatternRewriter &rewriter) const {
-  FuncOp newFuncOp;
   if (!gpu::GPUDialect::isKernel(funcOp)) {
     return matchFailure();
   }
 
-  if (failed(spirv::lowerAsEntryFunction(funcOp, &typeConverter, rewriter,
-                                         newFuncOp))) {
+  SmallVector<spirv::InterfaceVarABIAttr, 4> argABI;
+  for (auto argNum : llvm::seq<unsigned>(0, funcOp.getNumArguments())) {
+    argABI.push_back(spirv::getInterfaceVarABIAttr(
+        0, argNum, spirv::StorageClass::StorageBuffer, rewriter.getContext()));
+  }
+  // TODO(ravishankarm) : For now set this to {32, 1, 1}. This is incorrect. The
+  // actual workgroup size needs to be plumbed through.
+  auto context = rewriter.getContext();
+  auto entryPointAttr = spirv::getEntryPointABIAttr({32, 1, 1}, context);
+  FuncOp newFuncOp = spirv::lowerAsEntryFunction(
+      funcOp, typeConverter, rewriter, argABI, entryPointAttr);
+  if (!newFuncOp) {
     return matchFailure();
   }
+  newFuncOp.removeAttr(Identifier::get(gpu::GPUDialect::getKernelFuncAttrName(),
+                                       rewriter.getContext()));
   return matchSuccess();
 }
 

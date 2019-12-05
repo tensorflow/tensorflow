@@ -210,32 +210,34 @@ def fill(dims, value, name=None):
 
   For example:
 
-  ```
-  # Output tensor has shape [2, 3].
-  fill([2, 3], 9) ==> [[9, 9, 9]
-                       [9, 9, 9]]
-  ```
+  # Output tensor with shape [2, 3].
+  >>> tf.fill([2, 3], 9)
+  <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
+  array([[9, 9, 9],
+         [9, 9, 9]], dtype=int32)>
 
-  `tf.fill` differs from `tf.constant` in a few ways:
-
-  *   `tf.fill` only supports scalar contents, whereas `tf.constant` supports
-      Tensor values.
-  *   `tf.fill` creates an Op in the computation graph that constructs the
-  actual
-      Tensor value at runtime. This is in contrast to `tf.constant` which embeds
-      the entire Tensor into the graph with a `Const` node.
-  *   Because `tf.fill` evaluates at graph runtime, it supports dynamic shapes
-      based on other runtime Tensors, unlike `tf.constant`.
+  `tf.fill` evaluates at graph runtime and supports dynamic shapes based on
+  other runtime `tf.Tensors`, unlike `tf.constant(value, shape=dims)`, which
+  embeds the value as a `Const` node.
 
   Args:
-    dims: A `Tensor`. Must be one of the following types: `int32`, `int64`. 1-D.
-      Represents the shape of the output tensor.
-    value: A `Tensor`. 0-D (scalar). Value to fill the returned tensor.
-      @compatibility(numpy) Equivalent to np.full @end_compatibility
-    name: A name for the operation (optional).
+    dims: A 1-D sequence of non-negative numbers. Represents the shape of the
+      output `tf.Tensor`. Entries should be of type: `int32`, `int64`.
+    value: A value to fill the returned `tf.Tensor`.
+    name: Optional string. The name of the output `tf.Tensor`.
 
   Returns:
-    A `Tensor`. Has the same type as `value`.
+    A `tf.Tensor` with shape `dims` and the same dtype as `value`.
+
+  Raises:
+    InvalidArgumentError: `dims` contains negative entries.
+    NotFoundError: `dims` contains non-integer entries.
+
+  @compatibility(numpy)
+  Similar to `np.full`. In `numpy`, more parameters are supported. Passing a
+  number argument as the shape (`np.full(5, value)`) is valid in `numpy` for
+  specifying a 1-D shaped result, while TensorFlow does not support this syntax.
+  @end_compatibility
   """
   result = gen_array_ops.fill(dims, value, name=name)
   tensor_util.maybe_set_static_shape(result, dims)
@@ -245,18 +247,32 @@ def fill(dims, value, name=None):
 @tf_export("identity")
 @dispatch.add_dispatch_support
 def identity(input, name=None):  # pylint: disable=redefined-builtin
-  r"""Return a tensor with the same shape and contents as input.
+  r"""Return a Tensor with the same shape and contents as input.
+
+  The return value is not the same Tensor as the original, but contains the same
+  values.  This operation is fast when used on the same device.
 
   For example:
 
-  ```python
-  import tensorflow as tf
-  val0 = tf.ones((1,), dtype=tf.float32)
-  a = tf.atan2(val0, val0)
-  a_identity = tf.identity(a)
-  print(a.numpy())          #[0.7853982]
-  print(a_identity.numpy()) #[0.7853982]
-  ```
+  >>> a = tf.constant([0.78])
+  >>> a_identity = tf.identity(a)
+  >>> a.numpy()
+  array([0.78], dtype=float32)
+  >>> a_identity.numpy()
+  array([0.78], dtype=float32)
+
+  Calling `tf.identity` on a variable will make a Tensor that represents the
+  value of that variable at the time it is called. This is equivalent to calling
+  `<variable>.read_value()`.
+
+  >>> a = tf.Variable(5)
+  >>> a_identity = tf.identity(a)
+  >>> a.assign_add(1)
+  <tf.Variable ... shape=() dtype=int32, numpy=6>
+  >>> a.numpy()
+  6
+  >>> a_identity.numpy()
+  5
 
   Args:
     input: A `Tensor`.
@@ -429,6 +445,41 @@ listdiff.__doc__ = gen_array_ops.list_diff.__doc__ + "\n" + listdiff.__doc__
                         "Please switch to tf.sets.difference().")
 @tf_export(v1=["setdiff1d"])
 def setdiff1d(x, y, index_dtype=dtypes.int32, name=None):
+  """Computes the difference between two lists of numbers or strings.
+
+  Given a list x and a list y, this operation returns a list out that
+  represents all values that are in x but not in y. The returned list
+  out is sorted in the same order that the numbers appear in x
+  (duplicates are preserved). This operation also returns a list idx
+  that represents the position of each out element in x.
+
+  In other words:
+
+  ```python
+  out[i] = x[idx[i]] for i in [0, 1, ..., len(out) - 1]
+  ```
+
+  Example usage:
+
+  >>> x = [1, 2, 3, 4, 5, 6]
+  >>> y = [1, 3, 5]
+  >>> setdiff1d(x,y)
+  ListDiff(out=<tf.Tensor: id=2, shape=(3,), dtype=int32,
+  numpy=array([2, 4, 6], dtype=int32)>, idx=<tf.Tensor: id=3,
+  shape=(3,), dtype=int32, numpy=array([1, 3, 5], dtype=int32)>)
+
+  Args:
+    x: A Tensor. 1-D. Values to keep.
+    y: A Tensor. Must have the same type as x. 1-D. Values to remove.
+    out_idx: An optional tf.DType from: tf.int32, tf.int64. Defaults to
+      tf.int32.
+    name: A name for the operation (optional).
+
+  Returns:
+    A tuple of Tensor objects (out, idx).
+    out: A Tensor. Has the same type as x.
+    idx: A Tensor of type out_idx.
+  """
   return gen_array_ops.list_diff(x, y, index_dtype, name)
 
 
@@ -543,8 +594,8 @@ def shape(input, name=None, out_type=dtypes.int32):
   Args:
     input: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
-    out_type: (Optional) The specified output type of the operation (`int32` or
-      `int64`). Defaults to `tf.int32`.
+    out_type: (Optional) The specified output type of the operation (`int32`
+    or `int64`). Defaults to `tf.int32`.
 
   Returns:
     A `Tensor` of type `out_type`.
@@ -610,10 +661,9 @@ def size_v2(input, out_type=dtypes.int32, name=None):
 
   For example:
 
-  ```python
-  t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
-  tf.size(t)  # 12
-  ```
+  >>> t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
+  >>> tf.size(t)
+  <tf.Tensor: shape=(), dtype=int32, numpy=12>
 
   Args:
     input: A `Tensor` or `SparseTensor`.
@@ -1738,6 +1788,39 @@ def sparse_mask(a, mask_indices, name=None):
 
 @tf_export("unique")
 def unique(x, out_idx=dtypes.int32, name=None):
+  """Finds unique elements in a 1-D tensor.
+
+  This operation returns a tensor `y` containing all of the unique elements
+  of `x` sorted in the same order that they occur in `x`. This operation
+  also returns a tensor `idx` the same size as `x` that contains the index
+  of each value of `x` in the unique output `y`. In other words:
+
+
+    y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]
+
+  Example usage:
+
+  >>> x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
+  >>> y, idx = unique(x)
+  >>> y
+  <tf.Tensor: id=5, shape=(5,), dtype=int32,
+  numpy=array([1, 2, 4, 7, 8], dtype=int32)>
+  >>> idx
+  <tf.Tensor: id=6, shape=(9,), dtype=int32,
+  numpy=array([0, 0, 1, 2, 2, 2, 3, 4, 4], dtype=int32)>
+
+  Args:
+    x: A Tensor. 1-D.
+    out_idx: An optional tf.DType from: tf.int32, tf.int64. Defaults to
+      tf.int32.
+    name: A name for the operation (optional).
+
+  Returns:
+    A tuple of Tensor objects (y, idx).
+      y: A Tensor. Has the same type as x.
+      idx: A Tensor of type out_idx.
+
+  """
   # TODO(yongtang): switch to v2 once API deprecation
   # period (3 weeks) pass.
   # TODO(yongtang): The documentation should also
@@ -1750,6 +1833,44 @@ unique.__doc__ = gen_array_ops.unique.__doc__
 
 @tf_export("unique_with_counts")
 def unique_with_counts(x, out_idx=dtypes.int32, name=None):
+  """Finds unique elements in a 1-D tensor.
+
+  This operation returns a tensor `y` containing all of the unique elements
+  of `x` sorted in the same order that they occur in `x`. This operation
+  also returns a tensor `idx` the same size as `x` that contains the index
+  of each value of `x` in the unique output `y`. Finally, it returns a
+  third tensor `count` that contains the count of each element of `y`
+  in `x`. In other words:
+
+    y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]
+
+  Example usage:
+
+  >>> x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
+  >>> y, idx, count = unique_with_counts(x)
+  >>> y
+  <tf.Tensor: id=8, shape=(5,), dtype=int32,
+  numpy=array([1, 2, 4, 7, 8], dtype=int32)>
+  >>> idx
+  <tf.Tensor: id=9, shape=(9,), dtype=int32,
+  numpy=array([0, 0, 1, 2, 2, 2, 3, 4, 4], dtype=int32)>
+  >>> count
+  <tf.Tensor: id=10, shape=(5,), dtype=int32,
+  numpy=array([2, 1, 3, 1, 2], dtype=int32)>
+
+  Args:
+    x: A Tensor. 1-D.
+    out_idx: An optional tf.DType from: tf.int32, tf.int64. Defaults to
+      tf.int32.
+    name: A name for the operation (optional).
+
+  Returns:
+    A tuple of Tensor objects (y, idx, count).
+      y: A Tensor. Has the same type as x.
+      idx: A Tensor of type out_idx.
+      count: A Tensor of type out_idx.
+
+  """
   # TODO(yongtang): switch to v2 once API deprecation
   # period (3 weeks) pass.
   # TODO(yongtang): The documentation should also
@@ -1833,16 +1954,17 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
 
 @tf_export("transpose", v1=[])
 def transpose_v2(a, perm=None, conjugate=False, name="transpose"):
-  """Transposes `a`.
+  """Transposes `a`, where `a` is a Tensor.
 
-  Permutes the dimensions according to `perm`.
+  Permutes the dimensions according to the value of `perm`.
 
-  The returned tensor's dimension i will correspond to the input dimension
-  `perm[i]`. If `perm` is not given, it is set to (n-1...0), where n is
-  the rank of the input tensor. Hence by default, this operation performs a
-  regular matrix transpose on 2-D input Tensors. If conjugate is True and
-  `a.dtype` is either `complex64` or `complex128` then the values of `a`
-  are conjugated and transposed.
+  The returned tensor's dimension `i` will correspond to the input dimension
+  `perm[i]`. If `perm` is not given, it is set to (n-1...0), where n is the rank
+  of the input tensor. Hence by default, this operation performs a regular
+  matrix transpose on 2-D input Tensors.
+
+  If conjugate is `True` and `a.dtype` is either `complex64` or `complex128`
+  then the values of `a` are conjugated and transposed.
 
   @compatibility(numpy)
   In `numpy` transposes are memory-efficient constant time operations as they
@@ -1854,43 +1976,52 @@ def transpose_v2(a, perm=None, conjugate=False, name="transpose"):
 
   For example:
 
-  ```python
-  x = tf.constant([[1, 2, 3], [4, 5, 6]])
-  tf.transpose(x)  # [[1, 4]
-                   #  [2, 5]
-                   #  [3, 6]]
+  >>> x = tf.constant([[1, 2, 3], [4, 5, 6]])
+  >>> tf.transpose(x)
+  <tf.Tensor: shape=(3, 2), dtype=int32, numpy=
+  array([[1, 4],
+         [2, 5],
+         [3, 6]], dtype=int32)>
 
-  # Equivalently
-  tf.transpose(x, perm=[1, 0])  # [[1, 4]
-                                #  [2, 5]
-                                #  [3, 6]]
+  Equivalently, you could call `tf.transpose(x, perm=[1, 0])`.
 
-  # If x is complex, setting conjugate=True gives the conjugate transpose
-  x = tf.constant([[1 + 1j, 2 + 2j, 3 + 3j],
-                   [4 + 4j, 5 + 5j, 6 + 6j]])
-  tf.transpose(x, conjugate=True)  # [[1 - 1j, 4 - 4j],
-                                   #  [2 - 2j, 5 - 5j],
-                                   #  [3 - 3j, 6 - 6j]]
+  If `x` is complex, setting conjugate=True gives the conjugate transpose:
 
-  # 'perm' is more useful for n-dimensional tensors, for n > 2
-  x = tf.constant([[[ 1,  2,  3],
-                    [ 4,  5,  6]],
-                   [[ 7,  8,  9],
-                    [10, 11, 12]]])
+  >>> x = tf.constant([[1 + 1j, 2 + 2j, 3 + 3j],
+  ...                  [4 + 4j, 5 + 5j, 6 + 6j]])
+  >>> tf.transpose(x, conjugate=True)
+  <tf.Tensor: shape=(3, 2), dtype=complex128, numpy=
+  array([[1.-1.j, 4.-4.j],
+         [2.-2.j, 5.-5.j],
+         [3.-3.j, 6.-6.j]])>
 
-  # Take the transpose of the matrices in dimension-0
-  # (this common operation has a shorthand `linalg.matrix_transpose`)
-  tf.transpose(x, perm=[0, 2, 1])  # [[[1,  4],
-                                   #   [2,  5],
-                                   #   [3,  6]],
-                                   #  [[7, 10],
-                                   #   [8, 11],
-                                   #   [9, 12]]]
-  ```
+  'perm' is more useful for n-dimensional tensors where n > 2:
+
+  >>> x = tf.constant([[[ 1,  2,  3],
+  ...                   [ 4,  5,  6]],
+  ...                  [[ 7,  8,  9],
+  ...                   [10, 11, 12]]])
+
+  As above, simply calling `tf.transpose` will default to `perm=[2,1,0]`.
+
+  To take the transpose of the matrices in dimension-0 (such as when you are
+  transposing matrices where 0 is the batch dimesnion), you would set
+  `perm=[0,2,1]`.
+
+  >>> tf.transpose(x, perm=[0, 2, 1])
+  <tf.Tensor: shape=(2, 3, 2), dtype=int32, numpy=
+  array([[[ 1,  4],
+          [ 2,  5],
+          [ 3,  6]],
+          [[ 7, 10],
+          [ 8, 11],
+          [ 9, 12]]], dtype=int32)>
+
+  Note: This has a shorthand `linalg.matrix_transpose`):
 
   Args:
     a: A `Tensor`.
-    perm: A permutation of the dimensions of `a`.
+    perm: A permutation of the dimensions of `a`.  This should be a vector.
     conjugate: Optional bool. Setting it to `True` is mathematically equivalent
       to tf.math.conj(tf.transpose(input)).
     name: A name for the operation (optional).
@@ -2734,7 +2865,7 @@ def ones_like_v2(
     input,  # pylint: disable=redefined-builtin
     dtype=None,
     name=None):
-  """Creates a tensor with all elements set to one.
+  """Creates a tensor of all ones that has the same shape as the input.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the
   same type and shape as `tensor` with all elements set to 1. Optionally,
@@ -2742,10 +2873,11 @@ def ones_like_v2(
 
   For example:
 
-  ```python
-  tensor = tf.constant([[1, 2, 3], [4, 5, 6]])
-  tf.ones_like(tensor)  # [[1, 1, 1], [1, 1, 1]]
-  ```
+  >>> tensor = tf.constant([[1, 2, 3], [4, 5, 6]])
+  >>> tf.ones_like(tensor)
+  <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
+    array([[1, 1, 1],
+           [1, 1, 1]], dtype=int32)>
 
   Args:
     input: A `Tensor`.
@@ -4272,7 +4404,7 @@ def gather(params,
       to `batch_dims`.  Defaults to the first non-batch dimension. Supports
       negative indexes.
     batch_dims: An `integer`.  The number of batch dimensions.  Must be less
-      than `rank(indices)`.
+      than or equal to `rank(indices)`.
     name: A name for the operation (optional).
 
   Returns:
@@ -5080,6 +5212,34 @@ def extract_image_patches(  # pylint: disable=missing-docstring
     padding=None,
     name=None,
     sizes=None):
+  """Extract patches from images and put them in the "depth" output dimension.
+
+  Args:
+    `images`: A `Tensor`. Must be one of the following types: `float32`,
+      `float64`, `int32`, `uint8`, `int16`, `int8`, `int64`, `bfloat16`,
+      `uint16`, `half`, `uint32`, `uint64`. 4-D Tensor with shape
+    `[batch, in_rows, in_cols, depth]`. `ksizes`: A list of `ints` that has
+      length `>= 4`. The size of the sliding window for each
+    dimension of `images`. `strides`: A list of `ints` that has length `>= 4`.
+      1-D of length 4. How far the centers of two consecutive
+    patches are in the images. Must be:
+    `[1, stride_rows, stride_cols, 1]`. `rates`: A list of `ints`
+    that has length `>= 4`. 1-D of length 4. Must be: `[1, rate_rows, rate_cols,
+      1]`. This is the input stride, specifying how far two consecutive patch
+      samples are in the input. Equivalent to extracting patches with
+      `patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1)`,
+      followed by subsampling them spatially by a factor of `rates`. This is
+      equivalent to `rate` in dilated (a.k.a. Atrous) convolutions.
+    `padding`: A `string` from: "SAME", "VALID". The type of padding algorithm
+      to use.
+    We specify the size-related attributes as:  ``` ksizes = [1, ksize_rows,
+      ksize_cols, 1] strides = [1, strides_rows, strides_cols, 1] rates = [1,
+      rates_rows, rates_cols, 1]
+    name: A name for the operation (optional). ```
+
+  Returns:
+    A Tensor. Has the same type as images.
+  """
   ksizes = deprecation.deprecated_argument_lookup("sizes", sizes, "ksizes",
                                                   ksizes)
   return gen_array_ops.extract_image_patches(images, ksizes, strides, rates,

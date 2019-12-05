@@ -1658,12 +1658,12 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
   Example:
 
   ```python
-  tf.assert_shapes({
+  tf.assert_shapes([
     (x, ('N', 'Q')),
     (y, ('N', 'D')),
     (param, ('Q',)),
     (scalar, ())
-  })
+  ])
   ```
 
   Example of adding a dependency to an operation:

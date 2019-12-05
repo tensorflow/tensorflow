@@ -23,9 +23,7 @@
 #ifndef MLIR_OPASMINTERFACE
 #define MLIR_OPASMINTERFACE
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 /// Interface for hooking into the OpAsmPrinter and OpAsmParser.
 def OpAsmOpInterface : OpInterface<"OpAsmOpInterface"> {

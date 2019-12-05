@@ -7,6 +7,11 @@ package(
 
 exports_files(["LICENSE"])
 
+exports_files(
+    ["autotune_benchmark.py"],
+    visibility = ["//tensorflow:internal"],
+)
+
 tf_py_test(
     name = "autotune_benchmark",
     srcs = ["autotune_benchmark.py"],

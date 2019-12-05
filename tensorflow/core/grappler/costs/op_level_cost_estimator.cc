@@ -684,28 +684,28 @@ OpLevelCostEstimator::ConvolutionDimensionsFromInputs(
   int x_index, y_index, channel_index;
   const string& data_format = GetDataFormat(op_info);
   if (data_format == "NCHW") {
-    x_index = 2;
-    y_index = 3;
     channel_index = 1;
+    y_index = 2;
+    x_index = 3;
   } else {
     // Use NHWC.
-    x_index = 1;
-    y_index = 2;
+    y_index = 1;
+    x_index = 2;
     channel_index = 3;
   }
   const string& filter_format = GetFilterFormat(op_info);
   int filter_x_index, filter_y_index, in_channel_index, out_channel_index;
   if (filter_format == "HWIO") {
-    filter_x_index = 0;
-    filter_y_index = 1;
+    filter_y_index = 0;
+    filter_x_index = 1;
     in_channel_index = 2;
     out_channel_index = 3;
   } else {
     // Use OIHW
-    filter_x_index = 2;
-    filter_y_index = 3;
-    in_channel_index = 1;
     out_channel_index = 0;
+    in_channel_index = 1;
+    filter_y_index = 2;
+    filter_x_index = 3;
   }
   int64 batch = image_shape.dim(0).size();
   int64 ix = image_shape.dim(x_index).size();
@@ -1311,9 +1311,9 @@ Costs OpLevelCostEstimator::PredictFusedConv2DBiasActivation(
   // TODO(varomodt): should we centralize the Conv2D input/output shapes?
   OpInfo::TensorProperties output;
   if (data_format == "NCHW") {
-    output = DescribeTensor(DT_FLOAT, {dims.batch, dims.oz, dims.ox, dims.oy});
+    output = DescribeTensor(DT_FLOAT, {dims.batch, dims.oz, dims.oy, dims.ox});
   } else if (data_format == "NHWC") {
-    output = DescribeTensor(DT_FLOAT, {dims.batch, dims.ox, dims.oy, dims.oz});
+    output = DescribeTensor(DT_FLOAT, {dims.batch, dims.oy, dims.ox, dims.oz});
   }
 
   // Add the operations the fused op always computes.
@@ -1768,12 +1768,12 @@ OpLevelCostEstimator::OpDimensionsFromInputs(
   int x_index, y_index, channel_index;
   const string& data_format = GetDataFormat(op_info);
   if (data_format == "NCHW") {
-    x_index = 2;
-    y_index = 3;
     channel_index = 1;
-  } else {
-    x_index = 1;
     y_index = 2;
+    x_index = 3;
+  } else {
+    y_index = 1;
+    x_index = 2;
     channel_index = 3;
   }
   int64 batch = image_shape.dim(0).size();
