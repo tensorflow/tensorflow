@@ -6,6 +6,7 @@ ifeq ($(TARGET),$(filter $(TARGET),\
   sparkfun_redboard_artemis\
   sparkfun_redboard_artemis_atp\
   sparkfun_redboard_artemis_nano\
+  sparkfun_artemis_thing_plus\
   ))
   export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
   TARGET_ARCH := cortex-m4
