@@ -11,6 +11,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["src/testdata/add.bin"])
+
 JAVA_SRCS = glob([
     "src/main/java/org/tensorflow/lite/*.java",
     "src/main/java/org/tensorflow/lite/annotations/*.java",
