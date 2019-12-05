@@ -233,7 +233,7 @@ def _CTCLossGrad(op, grad_loss, _):
      The CTC Loss gradient.
   """
   return _CTCLossGradImpl(op, grad_loss, _)
-  
+
 # pylint: disable=unused-argument
 @ops.RegisterGradient("CTCLossV2")
 def _CTCLossV2Grad(op, grad_loss, _):
@@ -247,7 +247,7 @@ def _CTCLossV2Grad(op, grad_loss, _):
      The CTC Loss V2 gradient.
   """
   return _CTCLossGradImpl(op, grad_loss, _)
-  
+
 @tf_export("nn.ctc_greedy_decoder")
 def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
   """Performs greedy decoding on the logits given in input (best path).
