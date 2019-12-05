@@ -1086,6 +1086,13 @@ void ModulePrinter::printType(Type type) {
     os << '>';
     return;
   }
+  case StandardTypes::UnrankedMemRef: {
+    auto v = type.cast<UnrankedMemRefType>();
+    os << "memref<*x";
+    printType(v.getElementType());
+    os << '>';
+    return;
+  }
   case StandardTypes::Complex:
     os << "complex<";
     printType(type.cast<ComplexType>().getElementType());

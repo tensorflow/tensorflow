@@ -1769,46 +1769,70 @@ bool MemRefCastOp::areCastCompatible(Type a, Type b) {
   auto aT = a.dyn_cast<MemRefType>();
   auto bT = b.dyn_cast<MemRefType>();
 
-  if (!aT || !bT)
-    return false;
-  if (aT.getElementType() != bT.getElementType())
-    return false;
-  if (aT.getAffineMaps() != bT.getAffineMaps()) {
-    int64_t aOffset, bOffset;
-    SmallVector<int64_t, 4> aStrides, bStrides;
-    if (failed(getStridesAndOffset(aT, aStrides, aOffset)) ||
-        failed(getStridesAndOffset(bT, bStrides, bOffset)) ||
-        aStrides.size() != bStrides.size())
-      return false;
+  auto uaT = a.dyn_cast<UnrankedMemRefType>();
+  auto ubT = b.dyn_cast<UnrankedMemRefType>();
 
-    // Strides along a dimension/offset are compatible if the value in the
-    // source memref is static and the value in the target memref is the
-    // same. They are also compatible if either one is dynamic (see description
-    // of MemRefCastOp for details).
-    auto checkCompatible = [](int64_t a, int64_t b) {
-      return (a == MemRefType::getDynamicStrideOrOffset() ||
-              b == MemRefType::getDynamicStrideOrOffset() || a == b);
-    };
-    if (!checkCompatible(aOffset, bOffset))
+  if (aT && bT) {
+    if (aT.getElementType() != bT.getElementType())
       return false;
-    for (auto aStride : enumerate(aStrides))
-      if (!checkCompatible(aStride.value(), bStrides[aStride.index()]))
+    if (aT.getAffineMaps() != bT.getAffineMaps()) {
+      int64_t aOffset, bOffset;
+      SmallVector<int64_t, 4> aStrides, bStrides;
+      if (failed(getStridesAndOffset(aT, aStrides, aOffset)) ||
+          failed(getStridesAndOffset(bT, bStrides, bOffset)) ||
+          aStrides.size() != bStrides.size())
         return false;
-  }
-  if (aT.getMemorySpace() != bT.getMemorySpace())
-    return false;
 
-  // They must have the same rank, and any specified dimensions must match.
-  if (aT.getRank() != bT.getRank())
-    return false;
-
-  for (unsigned i = 0, e = aT.getRank(); i != e; ++i) {
-    int64_t aDim = aT.getDimSize(i), bDim = bT.getDimSize(i);
-    if (aDim != -1 && bDim != -1 && aDim != bDim)
+      // Strides along a dimension/offset are compatible if the value in the
+      // source memref is static and the value in the target memref is the
+      // same. They are also compatible if either one is dynamic (see
+      // description of MemRefCastOp for details).
+      auto checkCompatible = [](int64_t a, int64_t b) {
+        return (a == MemRefType::getDynamicStrideOrOffset() ||
+                b == MemRefType::getDynamicStrideOrOffset() || a == b);
+      };
+      if (!checkCompatible(aOffset, bOffset))
+        return false;
+      for (auto aStride : enumerate(aStrides))
+        if (!checkCompatible(aStride.value(), bStrides[aStride.index()]))
+          return false;
+    }
+    if (aT.getMemorySpace() != bT.getMemorySpace())
       return false;
+
+    // They must have the same rank, and any specified dimensions must match.
+    if (aT.getRank() != bT.getRank())
+      return false;
+
+    for (unsigned i = 0, e = aT.getRank(); i != e; ++i) {
+      int64_t aDim = aT.getDimSize(i), bDim = bT.getDimSize(i);
+      if (aDim != -1 && bDim != -1 && aDim != bDim)
+        return false;
+    }
+    return true;
+  } else {
+    if (!aT && !uaT)
+      return false;
+    if (!bT && !ubT)
+      return false;
+    // Unranked to unranked casting is unsupported
+    if (uaT && ubT)
+      return false;
+
+    auto aEltType = (aT) ? aT.getElementType() : uaT.getElementType();
+    auto bEltType = (bT) ? bT.getElementType() : ubT.getElementType();
+    if (aEltType != bEltType)
+      return false;
+
+    auto aMemSpace = (aT) ? aT.getMemorySpace() : uaT.getMemorySpace();
+    auto bMemSpace = (bT) ? bT.getMemorySpace() : ubT.getMemorySpace();
+    if (aMemSpace != bMemSpace)
+      return false;
+
+    return true;
   }
 
-  return true;
+  return false;
 }
 
 OpFoldResult MemRefCastOp::fold(ArrayRef<Attribute> operands) {

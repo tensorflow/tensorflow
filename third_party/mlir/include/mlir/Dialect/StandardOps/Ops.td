@@ -842,7 +842,8 @@ def MemRefCastOp : CastOp<"memref_cast"> {
   let description = [{
     The "memref_cast" operation converts a memref from one type to an equivalent
     type with a compatible shape. The source and destination types are
-    when both are memref types with the same element type, affine mappings,
+    compatible if:
+    a. both are ranked memref types with the same element type, affine mappings,
     address space, and rank but where the individual dimensions may add or
     remove constant dimensions from the memref type.
 
@@ -850,6 +851,7 @@ def MemRefCastOp : CastOp<"memref_cast"> {
     acts as an assertion that fails at runtime of the dynamic dimensions
     disagree with resultant destination size.
 
+    Example:
     Assert that the input dynamic shape matches the destination static shape.
        %2 = memref_cast %1 : memref<?x?xf32> to memref<4x4xf32>
     Erase static shape information, replacing it with dynamic information.
@@ -864,10 +866,20 @@ def MemRefCastOp : CastOp<"memref_cast"> {
     dynamic information.
        %5 = memref_cast %1 : memref<12x4xf32, offset:5, strides: [4, 1]> to
                              memref<12x4xf32, offset:?, strides: [?, ?]>
+
+    b. either or both memref types are unranked with the same element type, and
+    address space.
+
+    Example:
+    Cast to concrete shape.
+        %4 = memref_cast %1 : memref<*xf32> to memref<4x?xf32>
+
+    Erase rank information.
+        %5 = memref_cast %1 : memref<4x?xf32> to memref<*xf32>
   }];
 
-  let arguments = (ins AnyMemRef:$source);
-  let results = (outs AnyMemRef);
+  let arguments = (ins AnyRankedOrUnrankedMemRef:$source);
+  let results = (outs AnyRankedOrUnrankedMemRef);
 
   let extraClassDeclaration = [{
     /// Return true if `a` and `b` are valid operand and result pairs for
@@ -875,7 +887,7 @@ def MemRefCastOp : CastOp<"memref_cast"> {
     static bool areCastCompatible(Type a, Type b);
 
     /// The result of a memref_cast is always a memref.
-    MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
+    Type getType() { return getResult()->getType(); }
   }];
 }
 
