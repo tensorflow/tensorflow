@@ -238,7 +238,7 @@ def _rocm_include_path(repository_ctx, rocm_config):
 
     return inc_dirs
 
-def enable_rocm(repository_ctx):
+def _enable_rocm(repository_ctx):
     if "TF_NEED_ROCM" in repository_ctx.os.environ:
         enable_rocm = repository_ctx.os.environ["TF_NEED_ROCM"].strip()
         if enable_rocm == "1":
@@ -895,7 +895,7 @@ def _create_remote_rocm_repository(repository_ctx, remote_config_repo):
 
 def _rocm_autoconf_impl(repository_ctx):
     """Implementation of the rocm_autoconf repository rule."""
-    if not enable_rocm(repository_ctx):
+    if not _enable_rocm(repository_ctx):
         _create_dummy_repository(repository_ctx)
     elif _TF_ROCM_CONFIG_REPO in repository_ctx.os.environ:
         _create_remote_rocm_repository(
