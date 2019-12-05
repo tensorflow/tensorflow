@@ -2,7 +2,6 @@
 ifeq ($(TARGET),$(filter $(TARGET),\
   apollo3evb\
   sparkfun_edge\
-  sparkfun_edge2\
   sparkfun_redboard_artemis\
   sparkfun_redboard_artemis_atp\
   sparkfun_redboard_artemis_nano\
