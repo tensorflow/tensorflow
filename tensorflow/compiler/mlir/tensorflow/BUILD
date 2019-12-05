@@ -810,7 +810,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/types:span",
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Parser",
