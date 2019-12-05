@@ -207,7 +207,8 @@ static IntegerAttr getFeatureDimensionAttr(Builder &b, StringAttr format,
 // Bias op utilities.
 //===----------------------------------------------------------------------===//
 
-/// Return a 1D DenseIntElementsAttr for the feature dimension of a BiasAdd.
+// Return a 1D DenseIntElementsAttr for the feature dimension of a BiasAdd.
+// Requires input to have ranked tensor.
 static DenseIntElementsAttr getBiasFeatureDimension(Builder &b,
                                                     StringAttr format,
                                                     Value *input) {

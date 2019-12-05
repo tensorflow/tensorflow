@@ -49,7 +49,9 @@ def : Pattern<
 def BiasAddFeatureDimension : NativeCodeCall<
     "getBiasFeatureDimension($_builder, $0, $1)">;
 
-def : Pat<(TF_BiasAddOp AnyStaticShapeTensor:$input, $bias, $data_format),
+// $input needs to be a ranked tensor to identify index of the feature
+// dimension depending on the data_format 'NHWC' or 'NCHW'.
+def : Pat<(TF_BiasAddOp AnyRankedTensor:$input, $bias, $data_format),
           (HLO_AddOp $input, $bias,
               (BiasAddFeatureDimension $data_format, $input))>;
 
@@ -298,7 +300,7 @@ def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
 //===----------------------------------------------------------------------===//
 
 def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
-          [(AnyStaticShapeTensor $res), (HLO_Tensor $res)]>;
+          [(HLO_Tensor $res)]>;
 
 //===----------------------------------------------------------------------===//
 // Relu op patterns.
@@ -316,11 +318,21 @@ def : Pat<(TF_Relu6Op AnyStaticShapeTensor:$input),
                        (HLO_ConstOp (ConstantSplat<"6"> $input)))>;
 
 // ReluGrad(gradients, features) = gradients * (features > 0)
-def : Pat<(TF_ReluGradOp AnyStaticShapeTensor:$gradients, AnyStaticShapeTensor:$features),
+//
+// $gradients needs to be of static shape so that on_true and on_false operands
+// of SelectOp have same shape.
+//
+// $features needs to be ranked for computation of the broadcast dimensions for
+// CompareOp.
+//
+// TODO(hinsu): Relax $gradients static shape requirement when there is a way
+// to create splat tensor of dynamic shape in HLO.
+def : Pat<(TF_ReluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$features),
           (HLO_SelectOp
-            (HLO_CompareOp $features, (HLO_ConstOp:$zero (ConstantSplat<"0"> $features)),
+            (HLO_CompareOp $features,
+              (HLO_ConstOp (GetScalarOfType<0> $features)),
               (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_GT),
-            $gradients, $zero)>;
+            $gradients, (HLO_ConstOp (ConstantSplat<"0"> $gradients)))>;
 
 //===----------------------------------------------------------------------===//
 // Slice op patterns.
@@ -386,8 +398,12 @@ def : Pat<(TF_CastOp HLO_Tensor:$arg, ConstBoolAttrFalse),
 def : Pat<(TF_TransposeOp:$res $arg, (TF_ConstOp $permutation)),
           (HLO_TransposeOp $arg, (CastElementsToI64Elements $permutation))>;
 
+// Result of the following ops changing tensor shape needs to have static
+// shape as HLO doesn't yet support dynamic reshaping ops.
+//
+// TODO(hinsu): Update once HLO supports dynamic reshaping ops.
 foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
-  def : Pat<(TfOp:$res AnyStaticShapeTensor:$arg, $ignored),
+  def : Pat<(TfOp:$res $arg, $ignored),
             (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
 }
 
