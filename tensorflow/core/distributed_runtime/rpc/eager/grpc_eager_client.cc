@@ -230,8 +230,9 @@ class GrpcEagerClientCache : public EagerClientCache {
       }
       int assigned_index = AssignClientToThread(target);
       GrpcEagerClientThread* thread = threads_[assigned_index].get();
-      auto worker = new GrpcEagerClient(shared, thread);
-      it = clients_.emplace(target, worker).first;
+      core::RefCountPtr<EagerClient> worker(
+          new GrpcEagerClient(shared, thread));
+      it = clients_.emplace(target, std::move(worker)).first;
     }
 
     it->second->Ref();
