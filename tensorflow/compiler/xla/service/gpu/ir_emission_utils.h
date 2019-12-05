@@ -157,6 +157,11 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 // kept are contiguous in the input of the reduce instruction.
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
 
+// Whether it is an input fusion whose root is either a non-strided slice
+// or a tuple of non-strided slices.
+bool IsInputFusibleSlices(const HloInstruction& unnested_hlo,
+                          bool verify_no_strides = false);
+
 struct ReductionDimensions {
   // Indicates whether the reduction is a row reduction or a column reduction.
   bool is_row_reduction;

@@ -301,6 +301,41 @@ llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo, int64 launch_size,
   return b->getInt32Ty();
 }
 
+// Check whether all the shapes of the slice input operands are the same.
+// As each slice can have different (output) shapes, we need their inputs
+// to be in the same shape, which will be used as the kernel launch dims.
+// Return the shape of the input operands.
+StatusOr<Shape> AreFusedSlicesNonStridedAndConsistent(
+    const HloInstruction& fusion) {
+  if (!IsInputFusibleSlices(fusion, /*verify_no_strides=*/true)) {
+    return FailedPrecondition(
+        "Unsupported root for slice input fusion. "
+        "Only non-strided slices are supported.");
+  }
+
+  auto& root = *fusion.fused_expression_root();
+  if (root.opcode() == HloOpcode::kSlice) {
+    return root.operands()[0]->shape();
+  }
+
+  DCHECK(root.opcode() == HloOpcode::kTuple);
+  const Shape& first_slice_operand_shape =
+      root.operands()[0]->operands()[0]->shape();
+  for (size_t i = 1; i < root.operands().size(); ++i) {
+    auto slice = root.operands()[i];
+    const Shape& operand_shape = slice->operands()[0]->shape();
+    if (!ShapeUtil::EqualIgnoringElementType(first_slice_operand_shape,
+                                             operand_shape)) {
+      return FailedPrecondition(
+          "Fused slices do not have the same input shape, fused computation = "
+          "%s.",
+          root.parent()->name());
+    }
+  }
+
+  return first_slice_operand_shape;
+}
+
 }  // namespace
 
 Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
@@ -388,7 +423,13 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
             absl::make_unique<SequentialThunk>(std::move(thunks), fusion));
         return Status::OK();
       }
+      // In the case of root tuple, it can be either reduce or slice input
+      // fusion.
       case HloOpcode::kTuple: {
+        if (IsInputFusibleSlices(*fusion)) {
+          return EmitInputFusibleNonStridedSlices(fusion);
+        }
+
         CHECK_GE(root->operand_count(), 1);
         return EmitReductionFromOrToContiguousDimensions(fusion,
                                                          root->operands());
@@ -403,6 +444,9 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
               "Vectorized variadic reduce is not supported on GPU");
         }
         return EmitReductionFromOrToContiguousDimensions(fusion, {root});
+      }
+      case HloOpcode::kSlice: {
+        return EmitInputFusibleNonStridedSlices(fusion);
       }
       default:
         LOG(FATAL) << "Bad opcode for input fusion: "
@@ -3057,6 +3101,167 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
   }
 
   return Status::OK();
+}
+
+// Overall, emit code for slices based on the below structure. A `slice_guard_i`
+// and a `slice_i` are generated for each slice. `slice_guard_i` computes
+// the guarding condition to decide if it should jump into `slice_i`
+// for writing to slice output or continue to next `slice_guard_{i+1}`.
+//
+// init_block:
+//   Compute values of slice input operands
+//   Br slice_guard_0
+//
+// slice_guard_0:
+//   Compute guarding_cond0
+//   CondBr guarding_cond0, slice_0, slice_guard_1
+//
+// slice_0:
+//   Write to output of slice0
+//   Br slice_guard_1
+//
+// slice_guard_1:
+//   Compute guarding_cond1
+//   CondBr guarding_cond1, slice_1, exit_block
+//
+// slice_1:
+//   Write to output of slice1
+//   Br exit_block
+//
+// exit_block:
+//
+void IrEmitterUnnested::EmitElementForInputFusibleSlices(
+    HloInstruction* unnested_hlo, const llvm_ir::IrArray::Index& index) {
+  VLOG(10) << "Emitting slice input fusion for " << unnested_hlo->ToString();
+
+  HloInstruction* slice_or_tuple = unnested_hlo->fused_expression_root();
+  auto slice_instructions = ([&]() -> absl::Span<HloInstruction* const> {
+    if (slice_or_tuple->opcode() == HloOpcode::kSlice) {
+      return absl::Span<HloInstruction* const>(&slice_or_tuple, 1);
+    }
+    DCHECK(slice_or_tuple->opcode() == HloOpcode::kTuple);
+    return slice_or_tuple->operands();
+  })();
+
+  // Emit input operand values of slices here.
+  std::vector<llvm::Value*> input_ir_values;
+  GpuElementalIrEmitter elem_emitter(hlo_module_config_, module_, &b_,
+                                     GetNestedComputer());
+  FusedIrEmitter fused_emitter(GetGeneratorForOperandIrArrays(unnested_hlo),
+                               &elem_emitter);
+  TF_CHECK_OK(unnested_hlo->fused_expression_root()->Accept(&fused_emitter));
+  for (size_t i = 0; i < slice_instructions.size(); ++i) {
+    const HloInstruction* slice = slice_instructions[i];
+    auto input_generator = fused_emitter.GetGenerator(slice->operand(0));
+    input_ir_values.push_back(input_generator(index).ValueOrDie());
+  }
+
+  // Emit for slice_instructions begins here.
+  llvm::BasicBlock* init_block = b_.GetInsertBlock();
+  llvm::BasicBlock* exit_block;
+  exit_block = init_block->splitBasicBlock(b_.GetInsertPoint(),
+                                           IrName(unnested_hlo, "merge"));
+
+  // First, generate blocks and guard_blocks for each slice. Will populate
+  // them below.
+  std::vector<llvm::BasicBlock*> emitted_guard_blocks;
+  std::vector<llvm::BasicBlock*> emitted_slice_blocks;
+  for (size_t i = 0; i < slice_instructions.size(); ++i) {
+    emitted_guard_blocks.emplace_back(llvm_ir::CreateBasicBlock(
+        exit_block, StrCat("slice_guard_id", i), &b_));
+    emitted_slice_blocks.emplace_back(
+        llvm_ir::CreateBasicBlock(exit_block, StrCat("slice_id", i), &b_));
+  }
+
+  // Jump from init_block to the first guard_block.
+  init_block->getTerminator()->eraseFromParent();
+  b_.SetInsertPoint(init_block);
+  Br(emitted_guard_blocks[0]);
+
+  // Populate the guard blocks.
+  for (size_t i = 0; i < slice_instructions.size(); ++i) {
+    b_.SetInsertPoint(emitted_guard_blocks[i]);
+    const HloInstruction* slice = slice_instructions[i];
+
+    // guarding_cond := index >= start && index < limit.
+    llvm::Value* guarding_cond = nullptr;
+    for (size_t dim = 0; dim < slice->slice_starts().size(); ++dim) {
+      DCHECK(slice->slice_strides(dim) == 1);
+      auto larger_or_equal_than_start =
+          ICmpSGE(index.multidim()[dim],
+                  index.GetConstantWithIndexType(slice->slice_starts(dim)));
+      auto smaller_than_limit =
+          ICmpSLT(index.multidim()[dim],
+                  index.GetConstantWithIndexType(slice->slice_limits(dim)));
+      auto within_range = And(larger_or_equal_than_start, smaller_than_limit);
+      guarding_cond = (guarding_cond == nullptr)
+                          ? within_range
+                          : And(guarding_cond, within_range);
+    }
+    CondBr(guarding_cond, emitted_slice_blocks[i],
+           (i == slice_instructions.size() - 1) ? exit_block
+                                                : emitted_guard_blocks[i + 1]);
+  }
+
+  // Populate the slice blocks.
+  for (int64 i = 0; i < slice_instructions.size(); ++i) {
+    b_.SetInsertPoint(emitted_slice_blocks[i]);
+    HloInstruction* slice = slice_instructions[i];
+    const std::vector<llvm::Value*>& src_multidim = index.multidim();
+    std::vector<llvm::Value*> dst_multidim(src_multidim.size());
+    for (size_t dim = 0; dim < src_multidim.size(); ++dim) {
+      dst_multidim[dim] =
+          Sub(src_multidim[dim],
+              index.GetConstantWithIndexType(slice->slice_starts(dim)));
+    }
+    ShapeIndex shape_index = (slice_or_tuple->opcode() == HloOpcode::kSlice)
+                                 ? ShapeIndex()
+                                 : ShapeIndex({i});
+    llvm_ir::IrArray src_ir_array =
+        GetIrArray(*unnested_hlo, *unnested_hlo, shape_index);
+    IrArray::Index slice_dst_index(dst_multidim, slice->shape(),
+                                   index.GetType());
+    llvm::Value* dst_addr = src_ir_array.EmitArrayElementAddress(
+        slice_dst_index, &b_, "slice.dest");
+    Store(input_ir_values[i], dst_addr);
+    if (i != slice_instructions.size() - 1) {
+      Br(emitted_guard_blocks[i + 1]);
+    } else {
+      Br(exit_block);
+    }
+  }
+
+  b_.SetInsertPoint(exit_block);
+}
+
+Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
+    HloInstruction* unnested_hlo) {
+  constexpr int unroll_factor = 1;
+  std::unique_ptr<KernelThunk> kernel_thunk = BuildKernelThunk(
+      unnested_hlo, /*implements_whole_instruction=*/true, unroll_factor);
+
+  TF_ASSIGN_OR_RETURN(Shape element_shape,
+                      AreFusedSlicesNonStridedAndConsistent(*unnested_hlo));
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      element_shape, ir_emitter_context_->device_description(), unroll_factor);
+  UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                         ir_emitter_context_->llvm_module());
+
+  auto loop_body_generator =
+      [&](const llvm_ir::IrArray::Index index) -> Status {
+    EmitElementForInputFusibleSlices(unnested_hlo, index);
+    return Status::OK();
+  };
+  Status emit_status =
+      ParallelLoopEmitter(loop_body_generator, element_shape, launch_dimensions,
+                          &b_)
+          .EmitLoop(IrName(unnested_hlo),
+                    GetIndexTypeForKernel(
+                        unnested_hlo, launch_dimensions.launch_bound(), &b_));
+
+  thunk_sequence_->emplace_back(std::move(kernel_thunk));
+
+  return emit_status;
 }
 
 }  // namespace gpu
