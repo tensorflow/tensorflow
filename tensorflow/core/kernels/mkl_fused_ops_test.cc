@@ -110,14 +110,14 @@ class CommonTestUtilities : public OpsTestBase {
     DataType dtype = DataTypeToEnum<T>::v();
 
     Tensor image(dtype, {image_batch_count, image_height, image_width, depth});
-    image.flat<T>() = image.flat<T>().setRandom();
+    image.flat<T>() = image.flat<T>().template setRandom<random_gen_>();
 
     Tensor filter(dtype, {filter_size, filter_size, depth, filter_count});
-    filter.flat<T>() = filter.flat<T>().setRandom();
+    filter.flat<T>() = filter.flat<T>().template setRandom<random_gen_>();
 
     const int bias_size = filter_count;
     Tensor bias(dtype, {bias_size});
-    bias.flat<T>() = bias.flat<T>().setRandom();
+    bias.flat<T>() = bias.flat<T>().template setRandom<random_gen_>();
 
     Tensor conv_2d;
     Tensor fused_conv_2d;
@@ -140,14 +140,14 @@ class CommonTestUtilities : public OpsTestBase {
     DataType dtype = DataTypeToEnum<T>::v();
 
     Tensor image(dtype, {image_batch_count, image_height, image_width, depth});
-    image.flat<T>() = image.flat<T>().setRandom();
+    image.flat<T>() = image.flat<T>().template setRandom<random_gen_>();
 
     Tensor filter(dtype, {filter_size, filter_size, depth, filter_count});
-    filter.flat<T>() = filter.flat<T>().setRandom();
+    filter.flat<T>() = filter.flat<T>().template setRandom<random_gen_>();
 
     const int bias_size = filter_count;
     Tensor bias(dtype, {bias_size});
-    bias.flat<T>() = bias.flat<T>().setRandom();
+    bias.flat<T>() = bias.flat<T>().template setRandom<random_gen_>();
 
     Tensor conv_2d;
     Tensor fused_conv_2d;
@@ -168,13 +168,13 @@ class CommonTestUtilities : public OpsTestBase {
     DataType dtype = DataTypeToEnum<T>::v();
 
     Tensor input(dtype, {batch, depth});
-    input.flat<T>() = input.flat<T>().setRandom();
+    input.flat<T>() = input.flat<T>().template setRandom<random_gen_>();
 
     Tensor weight(dtype, {depth, weight_count});
-    weight.flat<T>() = weight.flat<T>().setRandom();
+    weight.flat<T>() = weight.flat<T>().template setRandom<random_gen_>();
 
     Tensor bias(dtype, {weight_count});
-    bias.flat<T>() = bias.flat<T>().setRandom();
+    bias.flat<T>() = bias.flat<T>().template setRandom<random_gen_>();
 
     Tensor output;
     Tensor fused_output;
@@ -187,6 +187,9 @@ class CommonTestUtilities : public OpsTestBase {
 
     test::ExpectClose(output, fused_output, 1e-5);
   }
+
+  private:
+   using random_gen_ = Eigen::internal::NormalRandomGenerator<T>;
 };
 
 // Testing MKL's fused convolution ops
@@ -242,7 +245,7 @@ class MklFusedConv2DOpTest : public OpsTestBase {
     if (std::find(fused_ops.begin(), fused_ops.end(), "Elu") !=
         fused_ops.end()) {
       last_op = "with_elu";
-      next_op = ops::Relu(root.WithOpName(last_op), next_op);
+      next_op = ops::Elu(root.WithOpName(last_op), next_op);
     }
 
     CommonTestUtilities<T>::RunAndFetch(root, last_op, output);
