@@ -1526,10 +1526,14 @@ class TensorBoard(Callback):
     """Sets Keras model and writes graph if specified."""
     self.model = model
 
-    # TensorBoard callback involves writing a summary file in a
-    # possibly distributed settings.
-    self._log_write_dir = distributed_file_utils.write_dirpath(
-        self.log_dir, self.model._get_distribution_strategy())  # pylint: disable=protected-access
+    # In case this callback is used via native Keras, _get_distribution_strategy does not exist.
+    if hasattr(self.model, '_get_distribution_strategy'):
+      # TensorBoard callback involves writing a summary file in a
+      # possibly distributed settings.
+      self._log_write_dir = distributed_file_utils.write_dirpath(
+          self.log_dir, self.model._get_distribution_strategy())  # pylint: disable=protected-access
+    else:
+      self._log_write_dir = self.log_dir
 
     with context.eager_mode():
       self._close_writers()
@@ -1725,9 +1729,11 @@ class TensorBoard(Callback):
     summary_state.writer = self._prev_summary_writer
     summary_state.step = self._prev_summary_step
 
-    # Safely remove the unneeded temp files.
-    distributed_file_utils.remove_temp_dirpath(
-        self.log_dir, self.model._get_distribution_strategy())  # pylint: disable=protected-access
+    # In case this callback is used via native Keras, _get_distribution_strategy does not exist.
+    if hasattr(self.model, '_get_distribution_strategy'):
+      # Safely remove the unneeded temp files.
+      distributed_file_utils.remove_temp_dirpath(
+          self.log_dir, self.model._get_distribution_strategy())  # pylint: disable=protected-access
 
   def _enable_trace(self):
     if context.executing_eagerly():
