@@ -201,7 +201,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
-      std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
+      std::vector<dnn::ProfileResult>* out_algorithms) override;
 
   bool GetRnnAlgorithms(
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;

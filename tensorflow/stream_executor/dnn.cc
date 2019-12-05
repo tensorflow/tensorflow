@@ -47,7 +47,7 @@ bool DnnSupport::GetMIOpenConvolveAlgorithms(
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
-    std::vector<AlgorithmDesc>* out_algorithms) {
+    std::vector<ProfileResult>* out_algorithms) {
   return false;
 }
 

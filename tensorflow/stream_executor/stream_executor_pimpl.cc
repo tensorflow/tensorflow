@@ -296,7 +296,7 @@ bool StreamExecutor::GetMIOpenConvolveAlgorithms(
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
-    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
+    std::vector<dnn::ProfileResult>* out_algorithms) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
     return false;

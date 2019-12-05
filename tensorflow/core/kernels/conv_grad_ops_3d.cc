@@ -1434,7 +1434,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         }
       }
 #elif TENSORFLOW_USE_ROCM
-      std::vector<AlgorithmDesc> algorithms;
+      std::vector<ProfileResult> algorithms;
       CHECK(stream->parent()->GetMIOpenConvolveAlgorithms(
           se::dnn::ConvolutionKind::BACKWARD_DATA, stream,
           se::dnn::ToDataType<T>::value, input_desc, filter_desc, conv_desc,
@@ -1442,7 +1442,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       ProfileResult best_result;
       ProfileResult best_result_no_scratch;
       std::vector<tensorflow::AutotuneResult> results;
-      for (auto profile_algorithm : algorithms) {
+      for (auto miopen_algorithm : algorithms) {
+        auto profile_algorithm = miopen_algorithm.algorithm();
         DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                               context);
         ProfileResult profile_result;
@@ -1893,35 +1894,40 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         }
       }
 #elif TENSORFLOW_USE_ROCM
-      std::vector<AlgorithmDesc> algorithms;
+      std::vector<ProfileResult> algorithms;
       CHECK(stream->parent()->GetMIOpenConvolveAlgorithms(
           se::dnn::ConvolutionKind::BACKWARD_FILTER, stream,
           se::dnn::ToDataType<T>::value, input_desc, filter_desc, conv_desc,
           output_desc, &algorithms));
       ProfileResult best_result;
       ProfileResult best_result_no_scratch;
-      for (auto profile_algorithm : algorithms) {
-        DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
-                                              context);
-        ProfileResult profile_result;
-        bool cudnn_launch_status =
-            stream
-                ->ThenConvolveBackwardFilterWithAlgorithm(
-                    input_desc, input_ptr, output_desc, out_backprop_ptr,
-                    conv_desc, filter_desc, &filter_backprop_ptr,
-                    &scratch_allocator, AlgorithmConfig(profile_algorithm),
-                    &profile_result)
-                .ok();
-        if (cudnn_launch_status) {
-          if (profile_result.is_valid()) {
-            if (profile_result.elapsed_time_in_ms() <
-                best_result.elapsed_time_in_ms()) {
-              best_result = profile_result;
-            }
-            if (scratch_allocator.TotalByteSize() == 0 &&
-                profile_result.elapsed_time_in_ms() <
-                    best_result_no_scratch.elapsed_time_in_ms()) {
-              best_result_no_scratch = profile_result;
+      if (algorithms.size() == 1) {
+        best_result = algorithms[0];
+      } else {
+        for (auto miopen_algorithm : algorithms) {
+          auto profile_algorithm = miopen_algorithm.algorithm();
+          DnnScratchAllocator scratch_allocator(
+              ConvolveBackwardFilterScratchSize, context);
+          ProfileResult profile_result;
+          bool cudnn_launch_status =
+              stream
+                  ->ThenConvolveBackwardFilterWithAlgorithm(
+                      input_desc, input_ptr, output_desc, out_backprop_ptr,
+                      conv_desc, filter_desc, &filter_backprop_ptr,
+                      &scratch_allocator, AlgorithmConfig(profile_algorithm),
+                      &profile_result)
+                  .ok();
+          if (cudnn_launch_status) {
+            if (profile_result.is_valid()) {
+              if (profile_result.elapsed_time_in_ms() <
+                  best_result.elapsed_time_in_ms()) {
+                best_result = profile_result;
+              }
+              if (scratch_allocator.TotalByteSize() == 0 &&
+                  profile_result.elapsed_time_in_ms() <
+                      best_result_no_scratch.elapsed_time_in_ms()) {
+                best_result_no_scratch = profile_result;
+              }
             }
           }
         }
