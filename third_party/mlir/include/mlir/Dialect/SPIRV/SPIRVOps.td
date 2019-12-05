@@ -32,6 +32,7 @@
 
 include "mlir/Dialect/SPIRV/SPIRVBase.td"
 include "mlir/Dialect/SPIRV/SPIRVArithmeticOps.td"
+include "mlir/Dialect/SPIRV/SPIRVAtomicOps.td"
 include "mlir/Dialect/SPIRV/SPIRVBitOps.td"
 include "mlir/Dialect/SPIRV/SPIRVCastOps.td"
 include "mlir/Dialect/SPIRV/SPIRVControlFlowOps.td"
