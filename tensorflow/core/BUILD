@@ -2775,7 +2775,7 @@ tf_cuda_library(
     deps = [":framework_lite"],
 )
 
-# TODO(josh11b): Is this needed, or can we just use ":protos_all"?
+# TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
 cc_library(
     name = "protos_cc",
     visibility = ["//visibility:public"],
