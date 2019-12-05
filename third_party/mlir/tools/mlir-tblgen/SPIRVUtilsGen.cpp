@@ -127,10 +127,9 @@ static void emitOperandSerialization(const Operator &op, ArrayRef<SMLoc> loc,
       os << tabs << "    auto argID = getValueID(arg);\n";
       os << tabs << "    if (!argID) {\n";
       os << tabs
-         << formatv(
-                "      emitError({0}.getLoc(), \"operand {1} has a use before "
-                "def\");\n",
-                opVar, operandNum);
+         << formatv("      return emitError({0}.getLoc(), "
+                    "\"operand #{1} has a use before def\");\n",
+                    opVar, operandNum);
       os << tabs << "    }\n";
       os << tabs << formatv("    {0}.push_back(argID);\n", operands);
       os << "    }\n";
@@ -232,7 +231,7 @@ static void emitSerializationFunction(const Record *attrClass,
                   record->getValueAsInt("extendedInstOpcode"), operands);
   } else {
     os << formatv("  encodeInstructionInto("
-                  "functions, spirv::getOpcode<{0}>(), {1});\n",
+                  "functionBody, spirv::getOpcode<{0}>(), {1});\n",
                   op.getQualCppClassName(), operands);
   }
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
@@ -29,6 +30,8 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
 namespace mlir {
 namespace xla_hlo {
@@ -36,11 +39,17 @@ namespace {
 
 constexpr StringRef kTempBufferAttr = "temp";
 
-Value* GetTensorStoreMemRef(Value* value) {
+Value* GetTensorStoreOrReturnMemRef(Value* value) {
   for (const auto& user : value->getUsers()) {
     if (auto tensor_store = dyn_cast<TensorStoreOp>(user)) {
       if (tensor_store.getOperand(0) == value) {
         return tensor_store.getOperand(1);
+      }
+    }
+    if (auto return_op = dyn_cast<xla_hlo::ReturnOp>(user)) {
+      if (return_op.getOperand(0) == value) {
+        auto block = return_op.getOperation()->getBlock();
+        return *block->args_rbegin();
       }
     }
   }
@@ -86,8 +95,8 @@ Value* InsertAllocAndDealloc(Location loc, Value* result,
 /// function to store that values held in the tensor.
 Value* GetBufferForResultValue(Location loc, Value* result,
                                ConversionPatternRewriter* rewriter) {
-  if (auto tensor_store_memref = GetTensorStoreMemRef(result)) {
-    return tensor_store_memref;
+  if (auto existing_memref = GetTensorStoreOrReturnMemRef(result)) {
+    return existing_memref;
   }
   return InsertAllocAndDealloc(loc, result, rewriter);
 }
@@ -120,6 +129,62 @@ class HloToLhloOpConverter : public ConversionPattern {
   }
 };
 
+struct HloToLHloReduceConverter
+    : public OpConversionPattern<xla_hlo::ReduceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      xla_hlo::ReduceOp op, ArrayRef<Value*> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = op.getLoc();
+    // TODO(b/137624192) Implement variadic reduce.
+    if (op.getNumResults() != 1) return matchFailure();
+    if (op.getParentRegion()->getBlocks().size() != 1) {
+      emitError(loc,
+                "tensor to buffer conversion expects a single block in the "
+                "region containing the operation");
+    }
+    const auto& original_results = op.getResults();
+    SmallVector<Value*, 4> buffer_args(operands.begin(), operands.end());
+    for (auto result : original_results) {
+      buffer_args.push_back(GetBufferForResultValue(loc, result, &rewriter));
+    }
+    auto new_op = rewriter.create<xla_lhlo::ReduceOp>(
+        loc, llvm::None, buffer_args, op.getAttrs());
+
+    // Copy over the operations inside the region.
+    rewriter.inlineRegionBefore(op.body(), new_op.body(), new_op.body().end());
+
+    // Create new block arguments with correct type.
+    auto& entry_block = new_op.body().front();
+    int original_arg_count = entry_block.getNumArguments();
+    for (int i = 0; i < original_arg_count; ++i) {
+      auto old_arg = entry_block.getArgument(i);
+      auto old_type = old_arg->getType().cast<TensorType>();
+      auto new_type =
+          MemRefType::get(old_type.getShape(), old_type.getElementType());
+      auto new_arg = entry_block.addArgument(new_type);
+      rewriter.replaceUsesOfBlockArgument(old_arg, new_arg);
+    }
+    // Add an argument for the result.
+    entry_block.addArgument(
+        entry_block.getArgument(original_arg_count)->getType());
+    // Remove the old arguments.
+    for (int i = original_arg_count - 1; i >= 0; --i) {
+      entry_block.eraseArgument(i);
+    }
+    // Insert terminator at the end.
+    rewriter.setInsertionPointToEnd(&entry_block);
+    rewriter.create<xla_lhlo::TerminatorOp>(loc);
+
+    rewriter.replaceOp(op, ArrayRef<Value*>(buffer_args).slice(operands.size()),
+                       llvm::to_vector<4>(original_results));
+
+    return matchSuccess();
+  }
+};
+
 class HloToLhloTensorLoadConverter : public ConversionPattern {
  public:
   explicit HloToLhloTensorLoadConverter(MLIRContext* context)
@@ -133,6 +198,7 @@ class HloToLhloTensorLoadConverter : public ConversionPattern {
   }
 };
 
+// TODO(b/137624192): Rewrite into a copy and elide copy if possible.
 class HloToLhloTensorStoreConverter : public ConversionPattern {
  public:
   explicit HloToLhloTensorStoreConverter(MLIRContext* context)
@@ -146,25 +212,18 @@ class HloToLhloTensorStoreConverter : public ConversionPattern {
   }
 };
 
-void populateHLOToLHLOConversionPattern(MLIRContext* context,
-                                        OwningRewritePatternList* patterns) {
-  patterns
-      ->insert<HloToLhloOpConverter<xla_hlo::AddOp, xla_lhlo::AddOp>,
-               HloToLhloOpConverter<xla_hlo::AndOp, xla_lhlo::AndOp>,
-               HloToLhloOpConverter<xla_hlo::BroadcastInDimOp,
-                                    xla_lhlo::BroadcastInDimOp>,
-               HloToLhloOpConverter<xla_hlo::CompareOp, xla_lhlo::CompareOp>,
-               HloToLhloOpConverter<xla_hlo::DivOp, xla_lhlo::DivOp>,
-               HloToLhloOpConverter<xla_hlo::ExpOp, xla_lhlo::ExpOp>,
-               HloToLhloOpConverter<xla_hlo::IotaOp, xla_lhlo::IotaOp>,
-               HloToLhloOpConverter<xla_hlo::MaxOp, xla_lhlo::MaxOp>,
-               HloToLhloOpConverter<xla_hlo::MinOp, xla_lhlo::MinOp>,
-               HloToLhloOpConverter<xla_hlo::MulOp, xla_lhlo::MulOp>,
-               HloToLhloOpConverter<xla_hlo::SelectOp, xla_lhlo::SelectOp>,
-               HloToLhloOpConverter<xla_hlo::SubOp, xla_lhlo::SubOp>,
-               HloToLhloTensorLoadConverter, HloToLhloTensorStoreConverter>(
-          context);
-}
+// TODO(b/137624192): Rewrite into a copy and elide copy if possible.
+class HloToLhloReturnConverter : public OpConversionPattern<xla_hlo::ReturnOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      xla_hlo::ReturnOp op, ArrayRef<Value*> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    rewriter.eraseOp(op);
+    return matchSuccess();
+  }
+};
 
 // Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 // buffers if necessary.
@@ -221,6 +280,38 @@ struct HloLegalizeToLhlo : public FunctionPass<HloLegalizeToLhlo> {
 };
 
 }  // namespace
+
+void populateHLOToLHLOConversionPattern(MLIRContext* context,
+                                        OwningRewritePatternList* patterns) {
+  // clang-format off
+  patterns->insert<
+      HloToLhloOpConverter<xla_hlo::AbsOp, xla_lhlo::AbsOp>,
+      HloToLhloOpConverter<xla_hlo::AddOp, xla_lhlo::AddOp>,
+      HloToLhloOpConverter<xla_hlo::AndOp, xla_lhlo::AndOp>,
+      HloToLhloOpConverter<xla_hlo::BroadcastInDimOp,
+                           xla_lhlo::BroadcastInDimOp>,
+      HloToLhloOpConverter<xla_hlo::CeilOp, xla_lhlo::CeilOp>,
+      HloToLhloOpConverter<xla_hlo::CompareOp, xla_lhlo::CompareOp>,
+      HloToLhloOpConverter<xla_hlo::ConstOp, xla_lhlo::ConstOp>,
+      HloToLhloOpConverter<xla_hlo::ConvertOp, xla_lhlo::ConvertOp>,
+      HloToLhloOpConverter<xla_hlo::CosOp, xla_lhlo::CosOp>,
+      HloToLhloOpConverter<xla_hlo::DivOp, xla_lhlo::DivOp>,
+      HloToLhloOpConverter<xla_hlo::ExpOp, xla_lhlo::ExpOp>,
+      HloToLhloOpConverter<xla_hlo::IotaOp, xla_lhlo::IotaOp>,
+      HloToLhloOpConverter<xla_hlo::MaxOp, xla_lhlo::MaxOp>,
+      HloToLhloOpConverter<xla_hlo::MinOp, xla_lhlo::MinOp>,
+      HloToLhloOpConverter<xla_hlo::MulOp, xla_lhlo::MulOp>,
+      HloToLhloOpConverter<xla_hlo::NegOp, xla_lhlo::NegOp>,
+      HloToLhloOpConverter<xla_hlo::RemOp, xla_lhlo::RemOp>,
+      HloToLhloOpConverter<xla_hlo::SelectOp, xla_lhlo::SelectOp>,
+      HloToLhloOpConverter<xla_hlo::SignOp, xla_lhlo::SignOp>,
+      HloToLhloOpConverter<xla_hlo::SubOp, xla_lhlo::SubOp>,
+      HloToLhloOpConverter<xla_hlo::TanhOp, xla_lhlo::TanhOp>,
+      HloToLHloReduceConverter, HloToLhloReturnConverter,
+      HloToLhloTensorLoadConverter, HloToLhloTensorStoreConverter
+  >(context);
+  // clang-format on
+}
 
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLhloPass() {
   return absl::make_unique<HloLegalizeToLhlo>();

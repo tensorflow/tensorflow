@@ -108,7 +108,8 @@ class Adam(optimizer_v2.OptimizerV2):
     unless a variable slice was actually used).
 
     Args:
-      learning_rate: A Tensor or a floating point value.  The learning rate.
+      learning_rate: A `Tensor`, floating point value, or a schedule that is a
+        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
       beta_1: A float value or a constant float tensor. The exponential decay
         rate for the 1st moment estimates.
       beta_2: A float value or a constant float tensor. The exponential decay

@@ -1013,6 +1013,14 @@ class TFETest(test_util.TensorFlowTestCase):
     for t in threads:
       t.join()
 
+  def testEmptyResourceReturned(self):
+    v = variables.Variable(1.)
+    empty_handle = array_ops.gather(
+        v.handle[array_ops.newaxis], array_ops.zeros([0], dtype=dtypes.int32))
+    self.assertEqual(
+        [0],
+        empty_handle.shape.as_list())
+
 
 class SendRecvTest(test_util.TensorFlowTestCase):
 

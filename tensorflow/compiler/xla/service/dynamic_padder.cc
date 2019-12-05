@@ -106,6 +106,10 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kSort:
     case HloOpcode::kSlice:
       return nullptr;
+    // Assume that custom calls created by the client are valid with padded
+    // dynamic dimensions.
+    case HloOpcode::kCustomCall:
+      return nullptr;
     default:
       return UnimplementedStrCat("Unimplemented padding for instruction: ",
                                  inst->ToString());
@@ -563,7 +567,55 @@ Status RewriteDynamicReshapeSingleDim(
   }
   return Status::OK();
 }
-
+StatusOr<bool> RewriteDynamicConcat(
+    HloInstruction* concat,
+    DynamicDimensionInference* dynamic_dimension_inference) {
+  const int64 concat_dim = concat->concatenate_dimension();
+  HloComputation* comp = concat->parent();
+  if (dynamic_dimension_inference->GetDynamicSize(concat, {}, concat_dim) ==
+      nullptr) {
+    // Concat dimension is not dynamic -- no rewrite needed.
+    return false;
+  }
+  std::vector<HloInstruction*> offsets;
+  for (int64 i = 0; i < concat->shape().dimensions_size(); ++i) {
+    offsets.push_back(comp->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0))));
+  }
+  HloInstruction* rewritten_concat = concat;
+  // Keep track of previous users before rewrite so that we can update their
+  // operands later.
+  auto prev_users = concat->users();
+  for (int64 i = 0; i < concat->operand_count(); ++i) {
+    // Rewrite the concat by dynamic update slicing operand into the concat dim.
+    HloInstruction* operand = concat->mutable_operand(i);
+    rewritten_concat =
+        comp->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+            rewritten_concat->shape(), rewritten_concat, operand, offsets));
+    // Update the offset of concat dimension by adding the size of the concat
+    // dimension of the operand to it.
+    HloInstruction* dynamic_size =
+        dynamic_dimension_inference->GetDynamicSize(operand, {}, concat_dim);
+    if (dynamic_size == nullptr) {
+      HloInstruction* static_size = comp->AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+              operand->shape().dimensions(concat_dim))));
+      offsets[concat_dim] = comp->AddInstruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeScalarShape(S32), HloOpcode::kAdd, offsets[concat_dim],
+          static_size));
+    } else {
+      offsets[concat_dim] = comp->AddInstruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeScalarShape(S32), HloOpcode::kAdd, offsets[concat_dim],
+          dynamic_size));
+    }
+  }
+  for (HloInstruction* user : prev_users) {
+    TF_RETURN_IF_ERROR(concat->ReplaceUseWith(user, rewritten_concat));
+  }
+  TF_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+      concat, rewritten_concat, {}));
+  return true;
+}
 StatusOr<bool> RewriteDynamicReshape(
     HloInstruction* reshape,
     DynamicDimensionInference* dynamic_dimension_inference) {
@@ -705,6 +757,11 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
 
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* inst : computation->instructions()) {
+      if (inst->opcode() == HloOpcode::kConcatenate) {
+        TF_ASSIGN_OR_RETURN(
+            changed, RewriteDynamicConcat(inst, &dynamic_dimension_inference));
+        continue;
+      }
       for (int64 operand_num = 0; operand_num < inst->operand_count();
            ++operand_num) {
         HloInstruction* original_operand = inst->mutable_operand(operand_num);

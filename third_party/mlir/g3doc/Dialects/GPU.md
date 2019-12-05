@@ -22,7 +22,7 @@ x, y, or z `dimension`.
 Example:
 
 ```mlir {.mlir}
-  %bDimX = "gpu.block_dim"() {dimension: "x"} : () -> (index)
+  %bDimX = "gpu.block_dim"() {dimension = "x"} : () -> (index)
 ```
 
 ### `gpu.block_id`
@@ -33,7 +33,7 @@ the x, y, or z `dimension`.
 Example:
 
 ```mlir {.mlir}
-  %bIdY = "gpu.block_id"() {dimension: "y"} : () -> (index)
+  %bIdY = "gpu.block_id"() {dimension = "y"} : () -> (index)
 ```
 
 ### `gpu.grid_dim`
@@ -44,8 +44,86 @@ Returns the number of thread blocks in the grid along the x, y, or z
 Example:
 
 ```mlir {.mlir}
-  %gDimZ = "gpu.grid_dim"() {dimension: "z"} : () -> (index)
+  %gDimZ = "gpu.grid_dim"() {dimension = "z"} : () -> (index)
 ```
+
+### `gpu.func`
+
+Defines a function that can be executed on a GPU. This supports memory
+attribution and its body has a particular execution model.
+
+GPU functions are either kernels (as indicated by the `kernel` attribute) or
+regular functions. The former can be launched from the host side, while the
+latter are device side only.
+
+The memory attribution defines SSA values that correspond to memory buffers
+allocated in the memory hierarchy of the GPU (see below).
+
+The operation has one attached region that corresponds to the body of the
+function. The region arguments consist of the function arguments without
+modification, followed by buffers defined in memory annotations. The body of a
+GPU function, when launched, is executed by multiple work items. There are no
+guarantees on the order in which work items execute, or on the connection
+between them. In particular, work items are not necessarily executed in
+lock-step. Synchronization ops such as "gpu.barrier" should be used to
+coordinate work items. Declarations of GPU functions, i.e. not having the body
+region, are not supported.
+
+#### Memory attribution
+
+Memory buffers are defined at the function level, either in "gpu.launch" or in
+"gpu.func" ops. This encoding makes it clear where the memory belongs and makes
+the lifetime of the memory visible. The memory is only accessible while the
+kernel is launched/the function is currently invoked. The latter is more strict
+than actual GPU implementations but using static memory at the function level is
+just for convenience. It is also always possible to pass pointers to the
+workgroup memory into other functions, provided they expect the correct memory
+space.
+
+The buffers are considered live throughout the execution of the GPU function
+body. The absence of memory attribution syntax means that the function does not
+require special buffers. Rationale: although the underlying models declare
+memory buffers at the module level, we chose to do it at the function level to
+provide some structuring for the lifetime of those buffers; this avoids the
+incentive to use the buffers for communicating between different kernels or
+launches of the same kernel, which should be done through function arguments
+intead; we chose not to use `alloca`-style approach that would require more
+complex lifetime analysis following the principles of MLIR that promote
+structure and representing analysis results in the IR.
+
+Syntax:
+
+``` {.ebnf}
+op ::= `gpu.func` symbol-ref-id `(` argument-list `)` (`->`
+function-result-list)?
+       memory-attribution `kernel`? function-attributes? region
+
+memory-attribution ::= (`workgroup` `(` ssa-id-and-type-list `)`)?
+                       (`private` `(` ssa-id-and-type-list `)`)?
+```
+
+Example:
+
+```mlir {.mlir}
+gpu.func @foo(%arg0: index)
+    workgroup(%workgroup: memref<32xf32, 3>)
+    private(%private: memref<1xf32, 5>)
+    kernel
+    attributes {qux: "quux"} {
+  gpu.return
+}
+```
+
+The generic form illustrates the concept
+
+```mlir {.mlir}
+"gpu.func"(%arg: index) {sym_name: "foo", kernel, qux: "quux"} ({
+^bb0(%arg0: index, %workgroup: memref<32xf32, 3>, %private: memref<1xf32, 5>):
+  "gpu.return"() : () -> ()
+}) : (index) -> ()
+```
+
+Note the non-default memory spaces used in memref types in memory-attribution.
 
 ### `gpu.launch`
 
@@ -148,25 +226,25 @@ module attributes {gpu.container_module} {
   // This module creates a separate compilation unit for the GPU compiler.
   module @kernels attributes {gpu.kernel_module} {
     func @kernel_1(%arg0 : f32, %arg1 : !llvm<"float*">)
-        attributes { nvvm.kernel: true } {
+        attributes { nvvm.kernel = true } {
 
       // Operations that produce block/thread IDs and dimensions are injected when
       // outlining the `gpu.launch` body to a function called by `gpu.launch_func`.
-      %tIdX = "gpu.thread_id"() {dimension: "x"} : () -> (index)
-      %tIdY = "gpu.thread_id"() {dimension: "y"} : () -> (index)
-      %tIdZ = "gpu.thread_id"() {dimension: "z"} : () -> (index)
+      %tIdX = "gpu.thread_id"() {dimension = "x"} : () -> (index)
+      %tIdY = "gpu.thread_id"() {dimension = "y"} : () -> (index)
+      %tIdZ = "gpu.thread_id"() {dimension = "z"} : () -> (index)
 
-      %bDimX = "gpu.block_dim"() {dimension: "x"} : () -> (index)
-      %bDimY = "gpu.block_dim"() {dimension: "y"} : () -> (index)
-      %bDimZ = "gpu.block_dim"() {dimension: "z"} : () -> (index)
+      %bDimX = "gpu.block_dim"() {dimension = "x"} : () -> (index)
+      %bDimY = "gpu.block_dim"() {dimension = "y"} : () -> (index)
+      %bDimZ = "gpu.block_dim"() {dimension = "z"} : () -> (index)
 
-      %bIdX = "gpu.block_id"() {dimension: "x"} : () -> (index)
-      %bIdY = "gpu.block_id"() {dimension: "y"} : () -> (index)
-      %bIdZ = "gpu.block_id"() {dimension: "z"} : () -> (index)
+      %bIdX = "gpu.block_id"() {dimension = "x"} : () -> (index)
+      %bIdY = "gpu.block_id"() {dimension = "y"} : () -> (index)
+      %bIdZ = "gpu.block_id"() {dimension = "z"} : () -> (index)
 
-      %gDimX = "gpu.grid_dim"() {dimension: "x"} : () -> (index)
-      %gDimY = "gpu.grid_dim"() {dimension: "y"} : () -> (index)
-      %gDimZ = "gpu.grid_dim"() {dimension: "z"} : () -> (index)
+      %gDimX = "gpu.grid_dim"() {dimension = "x"} : () -> (index)
+      %gDimY = "gpu.grid_dim"() {dimension = "y"} : () -> (index)
+      %gDimZ = "gpu.grid_dim"() {dimension = "z"} : () -> (index)
 
       "some_op"(%bx, %tx) : (index, index) -> ()
       %42 = load %arg1[%bx] : memref<?xf32, 1>
@@ -190,7 +268,7 @@ along the x, y, or z `dimension`.
 Example:
 
 ```mlir {.mlir}
-  %tIdX = "gpu.thread_id"() {dimension: "x"} : () -> (index)
+  %tIdX = "gpu.thread_id"() {dimension = "x"} : () -> (index)
 ```
 
 ### `gpu.yield`

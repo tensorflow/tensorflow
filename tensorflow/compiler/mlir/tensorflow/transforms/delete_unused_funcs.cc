@@ -67,7 +67,8 @@ void DeleteUnusedFuncsPass::runOnModule() {
     SmallPtrSet<FuncOp, 8> callees;
     auto uses = SymbolTable::getSymbolUses(func);
     for (auto use : *uses) {
-      auto func = symbol_table.lookup<FuncOp>(use.getSymbolRef().getValue());
+      auto func = symbol_table.lookup<FuncOp>(
+          use.getSymbolRef().cast<FlatSymbolRefAttr>().getValue());
       if (func) {
         callees.insert(func);
       }

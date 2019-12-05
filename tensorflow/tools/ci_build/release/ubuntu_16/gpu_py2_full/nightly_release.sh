@@ -31,7 +31,7 @@ export TF_NEED_GCP=1
 export TF_NEED_HDFS=1
 export TF_NEED_S3=1
 export TF_NEED_CUDA=1
-export TF_CUDA_VERSION=10
+export TF_CUDA_VERSION=10.1
 export TF_CUDNN_VERSION=7
 export TF_CUDA_COMPUTE_CAPABILITIES=3.5,3.7,5.2,6.0,6.1,7.0
 export TF_NEED_TENSORRT=1
@@ -60,6 +60,17 @@ for WHL_PATH in $(ls pip_pkg/tf_nightly*dev*.whl); do
   cp "${WHL_DIR}"/"${WHL_BASE_NAME}" "${WHL_PATH}"
   echo "Copied manylinux2010 wheel file at: ${WHL_PATH}"
 
-  echo "Uploading package: ${AUDITED_WHL_NAME}"
-  twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}" || echo
+  # test the whl pip package
+  chmod +x tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh
+  ./tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh ${AUDITED_WHL_NAME}
+  RETVAL=$?
+
+  # Upload the PIP package if whl test passes.
+  if [ ${RETVAL} -eq 0 ]; then
+    echo "Basic PIP test PASSED, Uploading package: ${AUDITED_WHL_NAME}"
+    twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}" || echo
+  else
+    echo "Basic PIP test FAILED, will not upload ${AUDITED_WHL_NAME} package"
+    return 1
+  fi
 done

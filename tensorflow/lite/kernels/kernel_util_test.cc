@@ -146,7 +146,7 @@ TEST_F(KernelUtilTest, BroadcastShapeDifferentSizes) {
 
 TEST_F(KernelUtilTest, CheckAndPopulate) {
   // Create input.
-  TfLiteTensor input;
+  TfLiteTensor input = {};
   input.type = kTfLiteInt8;
   input.allocation_type = kTfLiteArenaRw;
   input.dims = TfLiteIntArrayCreate(1);
@@ -163,7 +163,7 @@ TEST_F(KernelUtilTest, CheckAndPopulate) {
   input.quantization.params = reinterpret_cast<void*>(input_params);
 
   // Create filter.
-  TfLiteTensor filter;
+  TfLiteTensor filter = {};
   filter.type = kTfLiteInt8;
   filter.allocation_type = kTfLiteArenaRw;
   filter.dims = TfLiteIntArrayCreate(4);
@@ -188,7 +188,7 @@ TEST_F(KernelUtilTest, CheckAndPopulate) {
   filter.quantization.params = reinterpret_cast<void*>(filter_params);
 
   // Create bias.
-  TfLiteTensor bias;
+  TfLiteTensor bias = {};
   bias.type = kTfLiteInt32;
   bias.allocation_type = kTfLiteArenaRw;
   bias.dims = TfLiteIntArrayCreate(4);
@@ -208,7 +208,7 @@ TEST_F(KernelUtilTest, CheckAndPopulate) {
   bias.quantization.params = reinterpret_cast<void*>(bias_params);
 
   // Create output.
-  TfLiteTensor output;
+  TfLiteTensor output = {};
   output.type = kTfLiteInt8;
   output.allocation_type = kTfLiteArenaRw;
   output.dims = nullptr;
@@ -252,7 +252,7 @@ TEST_F(KernelUtilTest, CheckAndPopulate) {
 
 TEST_F(KernelUtilTest, CheckAndPopulateShift) {
   // Create input of type kTfLiteUInt8.
-  TfLiteTensor input;
+  TfLiteTensor input = {};
   input.type = kTfLiteUInt8;
   input.allocation_type = kTfLiteArenaRw;
   input.dims = TfLiteIntArrayCreate(1);
@@ -269,7 +269,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateShift) {
   input.quantization.params = reinterpret_cast<void*>(input_params);
 
   // Create filter of type kTfLiteUInt8.
-  TfLiteTensor filter;
+  TfLiteTensor filter = {};
   filter.type = kTfLiteUInt8;
   filter.allocation_type = kTfLiteArenaRw;
   filter.dims = TfLiteIntArrayCreate(4);
@@ -291,7 +291,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateShift) {
   filter.quantization.params = reinterpret_cast<void*>(filter_params);
 
   // Create bias for kTfLiteUInt8.
-  TfLiteTensor bias;
+  TfLiteTensor bias = {};
   bias.type = kTfLiteUInt8;
   bias.allocation_type = kTfLiteArenaRw;
   bias.dims = TfLiteIntArrayCreate(4);
@@ -311,7 +311,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateShift) {
   bias.quantization.params = reinterpret_cast<void*>(bias_params);
 
   // Create output for kTfLiteUInt8.
-  TfLiteTensor output;
+  TfLiteTensor output = {};
   output.type = kTfLiteUInt8;
   output.allocation_type = kTfLiteArenaRw;
   output.dims = nullptr;
@@ -359,7 +359,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateShift) {
 #ifndef __APPLE__  // Some Apple toolchains don't support std::ldexp
 TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
   // Create input.
-  TfLiteTensor input;
+  TfLiteTensor input = {};
   input.type = kTfLiteInt8;
   input.allocation_type = kTfLiteArenaRw;
   input.dims = TfLiteIntArrayCreate(1);
@@ -376,7 +376,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
   input.quantization.params = reinterpret_cast<void*>(input_params);
 
   // Create filter.
-  TfLiteTensor filter;
+  TfLiteTensor filter = {};
   filter.type = kTfLiteInt8;
   filter.allocation_type = kTfLiteArenaRw;
   filter.dims = TfLiteIntArrayCreate(4);
@@ -401,7 +401,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
   filter.quantization.params = reinterpret_cast<void*>(filter_params);
 
   // Create bias.
-  TfLiteTensor bias;
+  TfLiteTensor bias = {};
   bias.type = kTfLiteInt32;
   bias.allocation_type = kTfLiteArenaRw;
   bias.dims = TfLiteIntArrayCreate(4);
@@ -421,7 +421,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
   bias.quantization.params = reinterpret_cast<void*>(bias_params);
 
   // Create output.
-  TfLiteTensor output;
+  TfLiteTensor output = {};
   output.type = kTfLiteInt8;
   output.allocation_type = kTfLiteArenaRw;
   output.dims = nullptr;
@@ -466,7 +466,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
 
 TEST_F(KernelUtilTest, CheckAndPopulateUint8) {
   // Create input.
-  TfLiteTensor input;
+  TfLiteTensor input = {};
   input.type = kTfLiteUInt8;
   input.allocation_type = kTfLiteArenaRw;
   input.dims = TfLiteIntArrayCreate(1);
@@ -483,7 +483,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateUint8) {
   input.quantization.params = reinterpret_cast<void*>(input_params);
 
   // Create filter.
-  TfLiteTensor filter;
+  TfLiteTensor filter = {};
   filter.type = kTfLiteUInt8;
   filter.allocation_type = kTfLiteArenaRw;
   filter.dims = TfLiteIntArrayCreate(4);
@@ -505,7 +505,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateUint8) {
   filter.quantization.params = reinterpret_cast<void*>(filter_params);
 
   // Create bias.
-  TfLiteTensor bias;
+  TfLiteTensor bias = {};
   bias.type = kTfLiteInt32;
   bias.allocation_type = kTfLiteArenaRw;
   bias.dims = TfLiteIntArrayCreate(4);
@@ -521,7 +521,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateUint8) {
   bias.quantization.params = reinterpret_cast<void*>(bias_params);
 
   // Create output.
-  TfLiteTensor output;
+  TfLiteTensor output = {};
   output.type = kTfLiteUInt8;
   output.allocation_type = kTfLiteArenaRw;
   output.dims = nullptr;
@@ -564,7 +564,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateUint8) {
 
 TEST_F(KernelUtilTest, CheckAndPopulateWithoutBias) {
   // Create input.
-  TfLiteTensor input;
+  TfLiteTensor input = {};
   input.type = kTfLiteUInt8;
   input.allocation_type = kTfLiteArenaRw;
   input.dims = TfLiteIntArrayCreate(1);
@@ -581,7 +581,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateWithoutBias) {
   input.quantization.params = reinterpret_cast<void*>(input_params);
 
   // Create filter.
-  TfLiteTensor filter;
+  TfLiteTensor filter = {};
   filter.type = kTfLiteUInt8;
   filter.allocation_type = kTfLiteArenaRw;
   filter.dims = TfLiteIntArrayCreate(4);
@@ -603,7 +603,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateWithoutBias) {
   filter.quantization.params = reinterpret_cast<void*>(filter_params);
 
   // Create output.
-  TfLiteTensor output;
+  TfLiteTensor output = {};
   output.type = kTfLiteUInt8;
   output.allocation_type = kTfLiteArenaRw;
   output.dims = nullptr;

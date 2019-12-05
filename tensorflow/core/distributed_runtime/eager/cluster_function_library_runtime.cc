@@ -59,7 +59,7 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
 
   VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << target
           << " (this: " << this << ")";
-  eager::EagerClient* eager_client = nullptr;
+  core::RefCountPtr<eager::EagerClient> eager_client;
   Device* device;
   s = ctx_->FindDeviceFromName(target.c_str(), &device);
   if (!s.ok()) {
@@ -97,7 +97,8 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
 
   eager_client->EnqueueAsync(request, response,
                              [this, request, response, handle, released_op,
-                              target, eager_client, done](const Status& s) {
+                              target, eager_client = eager_client.get(),
+                              done](const Status& s) {
                                {
                                  mutex_lock l(mu_);
                                  *handle = function_data_.size();

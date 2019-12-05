@@ -102,9 +102,9 @@ public:
                                 Location location);
 
   /// Verify the construction of an integer type.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, unsigned width);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *context,
+                                                    unsigned width);
 
   /// Return the bitwidth of this integer type.
   unsigned getWidth() const;
@@ -168,9 +168,9 @@ public:
   static ComplexType getChecked(Type elementType, Location location);
 
   /// Verify the construction of an integer type.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, Type elementType);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *context,
+                                                    Type elementType);
 
   Type getElementType();
 
@@ -185,6 +185,13 @@ class ShapedType : public Type {
 public:
   using ImplType = detail::ShapedTypeStorage;
   using Type::Type;
+
+  // TODO(ntv): merge these two special values in a single one used everywhere.
+  // Unfortunately, uses of `-1` have crept deep into the codebase now and are
+  // hard to track.
+  static constexpr int64_t kDynamicSize = -1;
+  static constexpr int64_t kDynamicStrideOrOffset =
+      std::numeric_limits<int64_t>::min();
 
   /// Return the element type.
   Type getElementType() const;
@@ -218,6 +225,10 @@ public:
   /// If this is ranked type, return the size of the specified dimension.
   /// Otherwise, abort.
   int64_t getDimSize(int64_t i) const;
+
+  /// Returns the position of the dynamic dimension relative to just the dynamic
+  /// dimensions, given its `index` within the shape.
+  unsigned getDynamicDimIndex(unsigned index) const;
 
   /// Get the total amount of bits occupied by a value of this type.  This does
   /// not take into account any memory layout or widening constraints, e.g. a
@@ -258,10 +269,10 @@ public:
                                Location location);
 
   /// Verify the construction of a vector type.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, ArrayRef<int64_t> shape,
-                               Type elementType);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *context,
+                                                    ArrayRef<int64_t> shape,
+                                                    Type elementType);
 
   /// Returns true of the given type can be used as an element of a vector type.
   /// In particular, vectors can consist of integer or float primitives.
@@ -317,10 +328,10 @@ public:
                                      Location location);
 
   /// Verify the construction of a ranked tensor type.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, ArrayRef<int64_t> shape,
-                               Type elementType);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *context,
+                                                    ArrayRef<int64_t> shape,
+                                                    Type elementType);
 
   ArrayRef<int64_t> getShape() const;
 
@@ -348,9 +359,9 @@ public:
   static UnrankedTensorType getChecked(Type elementType, Location location);
 
   /// Verify the construction of a unranked tensor type.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, Type elementType);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *context,
+                                                    Type elementType);
 
   ArrayRef<int64_t> getShape() const { return llvm::None; }
 
@@ -395,8 +406,12 @@ public:
   /// Returns the memory space in which data referred to by this memref resides.
   unsigned getMemorySpace() const;
 
+  // TODO(ntv): merge these two special values in a single one used everywhere.
+  // Unfortunately, uses of `-1` have crept deep into the codebase now and are
+  // hard to track.
+  static constexpr int64_t kDynamicSize = -1;
   static int64_t getDynamicStrideOrOffset() {
-    return std::numeric_limits<int64_t>::min();
+    return ShapedType::kDynamicStrideOrOffset;
   }
 
   static bool kindof(unsigned kind) { return kind == StandardTypes::MemRef; }
@@ -410,7 +425,6 @@ private:
                             unsigned memorySpace, Optional<Location> location);
   using Base::getImpl;
 };
-
 
 /// Tuple types represent a collection of other types. Note: This type merely
 /// provides a common mechanism for representing tuples in MLIR. It is up to

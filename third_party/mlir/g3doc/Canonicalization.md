@@ -1,11 +1,11 @@
 # Operation Canonicalization in MLIR
 
-Canonicalization is an important part of compiler IR design - it makes it easier
-to implement reliable compiler transformations, be able to reason about what is
-better or worse in the code, and forces interesting discussions about what the
-goals of a particular level of IR are interested in. Dan Gohman wrote
+Canonicalization is an important part of compiler IR design: it makes it easier
+to implement reliable compiler transformations and to reason about what is
+better or worse in the code, and it forces interesting discussions about the
+goals of a particular level of IR. Dan Gohman wrote
 [an article](https://sunfishcode.github.io/blog/2018/10/22/Canonicalization.html)
-exploring these issues, it is worth reading if you're not familiar with these
+exploring these issues; it is worth reading if you're not familiar with these
 concepts.
 
 Most compilers have canonicalization passes, and sometimes they have many
@@ -13,7 +13,7 @@ different ones (e.g. instcombine, dag combine, etc in LLVM). Because MLIR is a
 multi-level IR, we can provide a single canonicalization infrastructure and
 reuse it across many different IRs that it represents. This document describes
 the general approach, global canonicalizations performed, and provides sections
-to capture IR specific rules for reference.
+to capture IR-specific rules for reference.
 
 ## General Design
 

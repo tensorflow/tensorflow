@@ -60,6 +60,12 @@ void getUsedValuesDefinedAbove(Region &region, Region &limit,
 void getUsedValuesDefinedAbove(llvm::MutableArrayRef<Region> regions,
                                llvm::SetVector<Value *> &values);
 
+/// Run a set of structural simplifications over the given regions. This
+/// includes transformations like unreachable block elimination, dead argument
+/// elimination, as well as some other DCE. This function returns success if any
+/// of the regions were simplified, failure otherwise.
+LogicalResult simplifyRegions(llvm::MutableArrayRef<Region> regions);
+
 } // namespace mlir
 
 #endif // MLIR_TRANSFORMS_REGIONUTILS_H_

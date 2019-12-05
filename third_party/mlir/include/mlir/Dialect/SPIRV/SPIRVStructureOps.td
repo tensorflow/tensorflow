@@ -24,9 +24,7 @@
 #ifndef SPIRV_STRUCTURE_OPS
 #define SPIRV_STRUCTURE_OPS
 
-#ifndef SPIRV_BASE
-include "mlir/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
+include "mlir/Dialect/SPIRV/SPIRVBase.td"
 
 def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
   let summary = "Get the address of a global variable.";
@@ -55,7 +53,7 @@ def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
   }];
 
   let arguments = (ins
-    SymbolRefAttr:$variable
+    FlatSymbolRefAttr:$variable
   );
 
   let results = (outs
@@ -120,6 +118,13 @@ def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
   let extraClassDeclaration = [{
     // Returns true if a constant can be built for the given `type`.
     static bool isBuildableWith(Type type);
+
+    // Creates a constant zero/one of the given `type` at the current insertion
+    // point of `builder` and returns it.
+    static spirv::ConstantOp getZero(Type type, Location loc,
+                                     OpBuilder *builder);
+    static spirv::ConstantOp getOne(Type type, Location loc,
+                                    OpBuilder *builder);
   }];
 
   let hasOpcode = 0;
@@ -174,7 +179,7 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
 
   let arguments = (ins
     SPV_ExecutionModelAttr:$execution_model,
-    SymbolRefAttr:$fn,
+    FlatSymbolRefAttr:$fn,
     SymbolRefArrayAttr:$interface
   );
 
@@ -237,7 +242,7 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope, Symbol]> {
   let arguments = (ins
     TypeAttr:$type,
     StrAttr:$sym_name,
-    OptionalAttr<SymbolRefAttr>:$initializer
+    OptionalAttr<FlatSymbolRefAttr>:$initializer
   );
 
   let builders = [
@@ -245,7 +250,10 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope, Symbol]> {
       "TypeAttr type, ArrayRef<NamedAttribute> namedAttrs", [{
       state.addAttribute("type", type);
       state.addAttributes(namedAttrs);
-    }]>
+    }]>,
+    OpBuilder<[{Builder *builder, OperationState &state,
+                Type type, StringRef name, unsigned descriptorSet,
+                unsigned binding}]>
   ];
 
   let results = (outs);
@@ -394,7 +402,7 @@ def SPV_ReferenceOfOp : SPV_Op<"_reference_of", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    SymbolRefAttr:$spec_const
+    FlatSymbolRefAttr:$spec_const
   );
 
   let results = (outs

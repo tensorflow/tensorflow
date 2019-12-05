@@ -195,7 +195,8 @@ private:
 /// global and use it to compute the address of the first character in the
 /// string (operations inserted at the builder insertion point).
 Value *createGlobalString(Location loc, OpBuilder &builder, StringRef name,
-                          StringRef value, LLVM::LLVMDialect *llvmDialect);
+                          StringRef value, LLVM::Linkage linkage,
+                          LLVM::LLVMDialect *llvmDialect);
 
 } // end namespace LLVM
 } // end namespace mlir

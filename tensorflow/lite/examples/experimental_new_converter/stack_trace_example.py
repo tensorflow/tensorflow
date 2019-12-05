@@ -21,17 +21,58 @@ from __future__ import print_function
 import sys
 from absl import app
 
-from tensorflow import enable_v2_behavior
 import tensorflow as tf # TF2
-enable_v2_behavior()
+# Try to enable TensorFlow V2 behavior.
+try:
+  from tensorflow import enable_v2_behavior  # pylint: disable=g-import-not-at-top
+  enable_v2_behavior()
+except ImportError:
+  # `enable_v2_behavior` is not available in pip build.
+  # Ignore if the symbole isn't found. This should work in
+  # TensorFlow 2 nightly pip.
+  pass
 
 
-# Comment out the `@suppress_exception` to display the stack trace
+def suppress_exception(f):
+  def wrapped():
+    try:
+      f()
+    except:  # pylint: disable=bare-except
+      pass
+  return wrapped
+
+
+class TestModule(tf.Module):
+  """The test model has unsupported op."""
+
+  @tf.function(input_signature=[tf.TensorSpec(shape=[3, 3], dtype=tf.float32)])
+  def model(self, x):
+    y = tf.math.reciprocal(x)  # Not supported
+    return y + y
+
+
+# comment out the `@suppress_exception` to display the stack trace
+@suppress_exception
+def test_from_saved_model():
+  """displaying stack trace when converting saved model."""
+  test_model = TestModule()
+  saved_model_path = '/tmp/test.saved_model'
+  save_options = tf.saved_model.SaveOptions(save_debug_info=True)
+  tf.saved_model.save(test_model, saved_model_path, options=save_options)
+
+  # load the model and convert
+  converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_path)
+  converter.experimental_new_converter = True
+  converter.convert()
+
+
+# comment out the `@suppress_exception` to display the stack trace
+# @suppress_exception
 def test_from_concrete_function():
   """displaying stack trace when converting concrete function."""
   @tf.function(input_signature=[tf.TensorSpec(shape=[3, 3], dtype=tf.float32)])
   def model(x):
-    y = tf.math.reciprocal(x)  # Not supported
+    y = tf.math.reciprocal(x)  # not supported
     return y + y
 
   func = model.get_concrete_function()
@@ -44,8 +85,11 @@ def main(argv):
   if len(argv) > 1:
     raise app.UsageError('Too many command-line arguments.')
 
-  sys.stdout.write('==== Testing from_concrete_functions ====')
+  sys.stdout.write('==== Testing from_concrete_functions ====\n')
   test_from_concrete_function()
+
+  sys.stdout.write('==== Testing from_saved_model ====\n')
+  test_from_saved_model()
 
 
 if __name__ == '__main__':

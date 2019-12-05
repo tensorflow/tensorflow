@@ -616,7 +616,9 @@ LogicalResult mlir::computeSliceUnion(ArrayRef<Operation *> opsA,
           return failure();
       }
       // Compute union bounding box of 'sliceUnionCst' and 'tmpSliceCst'.
-      if (failed(sliceUnionCst.unionBoundingBox(tmpSliceCst))) {
+      if (sliceUnionCst.getNumLocalIds() > 0 ||
+          tmpSliceCst.getNumLocalIds() > 0 ||
+          failed(sliceUnionCst.unionBoundingBox(tmpSliceCst))) {
         LLVM_DEBUG(llvm::dbgs()
                    << "Unable to compute union bounding box of slice bounds."
                       "\n.");

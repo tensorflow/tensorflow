@@ -478,6 +478,7 @@ cc_library(
         ":aarch64_utils",
         ":analysis",
         ":asm_printer",
+        ":cf_guard",
         ":code_gen",
         ":config",
         ":core",
@@ -890,6 +891,7 @@ cc_library(
         ":arm_info",
         ":arm_utils",
         ":asm_printer",
+        ":cf_guard",
         ":code_gen",
         ":config",
         ":core",
@@ -1426,6 +1428,27 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":config",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "cf_guard",
+    srcs = glob([
+        "lib/Transforms/CFGuard/*.c",
+        "lib/Transforms/CFGuard/*.cpp",
+        "lib/Transforms/CFGuard/*.inc",
+        "lib/Transforms/CFGuard/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/CFGuard/*.h",
+        "include/llvm/Transforms/CFGuard/*.def",
+        "include/llvm/Transforms/CFGuard/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":core",
         ":support",
     ],
 )
@@ -2821,6 +2844,26 @@ cc_library(
 )
 
 cc_library(
+    name = "orc_error",
+    srcs = glob([
+        "lib/ExecutionEngine/OrcError/*.c",
+        "lib/ExecutionEngine/OrcError/*.cpp",
+        "lib/ExecutionEngine/OrcError/*.inc",
+        "lib/ExecutionEngine/OrcError/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/ExecutionEngine/OrcError/*.h",
+        "include/llvm/ExecutionEngine/OrcError/*.def",
+        "include/llvm/ExecutionEngine/OrcError/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
     name = "orc_jit",
     srcs = glob([
         "lib/ExecutionEngine/Orc/*.c",
@@ -2841,6 +2884,7 @@ cc_library(
         ":jit_link",
         ":mc",
         ":object",
+        ":orc_error",
         ":passes",
         ":runtime_dyld",
         ":support",
@@ -3909,6 +3953,7 @@ cc_library(
     deps = [
         ":analysis",
         ":asm_printer",
+        ":cf_guard",
         ":code_gen",
         ":config",
         ":core",

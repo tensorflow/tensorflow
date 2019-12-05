@@ -232,10 +232,47 @@ class MemorySpaceAssignment {
   using BufferInterval = GlobalDecreasingSizeBestFitHeap::BufferInterval;
   using BufferIntervalCompare =
       GlobalDecreasingSizeBestFitHeap::BufferIntervalCompare;
+  using IsAllowedInAlternateMemoryFunction =
+      std::function<bool(const HloValue&)>;
 
   // MemorySpaceAssignment uses a notion of a slow and large default memory
   // space and a fast and small alternate memory space.
   enum class MemorySpace { kDefault, kAlternate };
+
+  // The different options to be passed to the Run() API.
+  struct Options {
+    // Backend-specific integer value that describes the alternate memory.
+    int64 alternate_memory_space = 0;
+
+    // Maximum size of the alternate memory space.
+    int64 max_size_in_bytes = 0;
+
+    // Memory alignment of the alternate memory space.
+    int64 alignment_in_bytes = 1;
+
+    // If provided, we sort the buffers using this comparison function
+    // otherwise, we use GlobalDecreasingSizeBestFitHeap::kSpatial.
+    absl::optional<BufferIntervalCompare> buffer_interval_compare =
+        absl::nullopt;
+
+    // This object determines how early and how late prefetches can occur.
+    PrefetchIntervalPicker* prefetch_interval_picker = nullptr;
+
+    // Size function for buffer values.
+    BufferValue::SizeFunction size_fn;
+
+    // This function can be used to prevent certain HloValues (e.g., based on
+    // the opcode) to be placed on the alternate memory.
+    IsAllowedInAlternateMemoryFunction is_allowed_in_alternate_mem_fn;
+
+    // Specifies the upper bound for number of outstanding asynchronous copies,
+    // -1 for unlimited.
+    int64 max_outstanding_async_copies = -1;
+
+    // If true, tries allocating buffers across (e.g., before and inside a while
+    // loop body) sequential calls (kWhile, kCall, and kConditional).
+    bool allocate_across_sequential_calls = false;
+  };
 
   // This class represents an allocation that might either be in the default or
   // alternate memory. An HloValue might live in multiple different allocations
@@ -330,13 +367,14 @@ class MemorySpaceAssignment {
   class CopyAllocation : public Allocation {
    public:
     CopyAllocation(const Allocation& prev_allocation, MemorySpace memory_space,
-                   Chunk chunk, int64 start_time, int64 end_time)
+                   Chunk chunk, int64 start_time, int64 end_time,
+                   int64 copy_done_schedule_before_time)
         : Allocation(/*instruction=*/nullptr,
                      /*defining_position=*/{nullptr, {}}, memory_space, chunk,
                      start_time, end_time),
           prev_allocation_(prev_allocation),
           copy_start_schedule_after_(start_time),
-          copy_done_schedule_before_(end_time) {}
+          copy_done_schedule_before_(copy_done_schedule_before_time) {}
 
     bool is_copy_allocation() const override { return true; }
 
@@ -395,26 +433,9 @@ class MemorySpaceAssignment {
   using AllocationMap =
       absl::flat_hash_map<const HloValue*, AllocationSequence>;
 
-  // Runs the MemorySpaceAssignment pass. alternate_memory_space is the
-  // architecture-specific integer value that describes the alternate memory.
-  // max_size_in_bytes is the maximum size of the alternate memory.
-  // If a buffer_interval_compare is provided, we sort the buffers using that
-  // (otherwise, we use GlobalDecreasingSizeBestFitHeap::kSpatial).
-  // prefetch_interval_picker determines how early and how late can prefetches
-  // occur. alternate_memory_space_alignment_in_bytes is the alignment required
-  // in the alternate memory space, size_fn is the size function for buffer
-  // values, and is_allowed_in_alternate_mem can be used to prevent certain
-  // HloValues (e.g., based on the opcode) to be placed on the alternate memory.
-  // max_outstanding_async_copies specifies the upper bound for number of
-  // outstanding asynchronous copies, -1 for unlimited.
+  // Runs the MemorySpaceAssignment pass.
   static StatusOr<std::unique_ptr<PresetAssignments>> Run(
-      HloModule* module, int64 alternate_memory_space, int64 max_size_in_bytes,
-      absl::optional<BufferIntervalCompare> buffer_interval_compare,
-      PrefetchIntervalPicker* prefetch_interval_picker,
-      int64 alternate_memory_space_alignment_in_bytes,
-      BufferValue::SizeFunction size_fn,
-      std::function<bool(const HloValue&)> is_allowed_in_alternate_mem,
-      int64 max_outstanding_async_copies = -1);
+      HloModule* module, const Options& options);
 
   // Returns the maximum number of outstanding asynchronous copies in the
   // module.
@@ -424,9 +445,13 @@ class MemorySpaceAssignment {
       const MemorySpaceAssignmentCostAnalysis& cost_analysis);
 
  private:
-  MemorySpaceAssignment(HloModule* module, int64 alternate_memory_space)
+  MemorySpaceAssignment(
+      HloModule* module, int64 alternate_memory_space,
+      absl::Span<HloInstruction* const> flattened_instructions)
       : module_(module),
         alternate_memory_space_(alternate_memory_space),
+        flattened_instructions_(flattened_instructions.begin(),
+                                flattened_instructions.end()),
         preset_assignments_(absl::make_unique<PresetAssignments>()) {}
 
   // Process calls Process methods of the allocations after the allocations have
@@ -453,13 +478,9 @@ class MemorySpaceAssignment {
   // corresponding CopyDones follow the same order.
   void ScheduleAsynchronousCopies();
 
-  // Add the position to the pending positions that will be colored as alternate
-  // memory.
-  void AddPositionInAlternateMemorySpace(HloPosition position);
-
   HloModule* module_;
   int64 alternate_memory_space_;
-  std::unique_ptr<HloLiveRange> hlo_live_range_;
+  std::vector<HloInstruction*> flattened_instructions_;
   AllocationMap allocation_map_;
   std::unique_ptr<PresetAssignments> preset_assignments_;
 
@@ -468,7 +489,6 @@ class MemorySpaceAssignment {
   // to modify and fix the schedule.
   absl::flat_hash_map<int64, std::vector<HloInstruction*>> schedule_after_;
   absl::flat_hash_map<int64, std::vector<HloInstruction*>> schedule_before_;
-  std::vector<HloPosition> pending_positions_in_alternate_mem_;
 };
 
 // This struct contains mandatory memory assignments at a given time. E.g., an
@@ -484,30 +504,21 @@ struct RequiredMemoryAssignment {
 // maximum size.
 class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
  public:
-  using IsAllowedInAlternateMemoryFunction =
-      std::function<bool(const HloValue&)>;
   using MemorySpace = MemorySpaceAssignment::MemorySpace;
 
   AlternateMemoryBestFitHeap(
       MemorySpaceAssignment::AllocationMap* allocation_map,
-      int64 max_size_in_bytes,
-      absl::optional<BufferIntervalCompare> buffer_interval_compare,
-      PrefetchIntervalPicker* prefetch_interval_picker,
+      const MemorySpaceAssignment::Options& options,
       const HloAliasAnalysis& alias_analysis,
-      const HloLiveRange& hlo_live_range, int64 alignment,
-      IsAllowedInAlternateMemoryFunction is_allowed_in_alternate_mem,
-      int64 max_outstanding_async_copies)
-      : GlobalDecreasingSizeBestFitHeap(alignment),
+      const HloLiveRange& hlo_live_range)
+      : GlobalDecreasingSizeBestFitHeap(options.alignment_in_bytes),
         allocation_map_(allocation_map),
-        max_size_in_bytes_(max_size_in_bytes),
-        prefetch_interval_picker_(prefetch_interval_picker),
+        options_(options),
         alias_analysis_(alias_analysis),
-        hlo_live_range_(hlo_live_range),
-        is_allowed_in_alternate_mem_(is_allowed_in_alternate_mem),
-        max_outstanding_async_copies_(max_outstanding_async_copies) {
+        hlo_live_range_(hlo_live_range) {
     // Override buffer interval compare if provided.
-    if (buffer_interval_compare) {
-      buffer_interval_compare_ = *buffer_interval_compare;
+    if (options.buffer_interval_compare) {
+      buffer_interval_compare_ = *options.buffer_interval_compare;
     }
   }
 
@@ -520,8 +531,8 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // allocations can be in default or alternate memory spaces, or can be
   // prefetches or evictions. Returns true if successful.
   bool FindAllocation(int64 start_time, int64 end_time, int64 last_use_time,
-                      HloPosition defining_position, HloUse use,
-                      const HloValue* buffer, int64 size,
+                      int64 latest_prefetch_time, HloPosition defining_position,
+                      HloUse use, const HloValue* buffer, int64 size,
                       MemorySpaceAssignment::AllocationSequence* allocations);
 
   // Try allocating in alternate memory without any copies. Returns true if
@@ -535,6 +546,12 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
 
   // Adds input and outputs as required assignments.
   void AddInputAndOutputRequiredAssignments();
+
+  // Returns true if the colocated intervals in the argument are in a parameter
+  // or root instruction of the entry computation and are reserved by the user
+  // to be in the alternate memory space.
+  bool AreIntervalsReservedInAlternateMemory(
+      absl::Span<const BufferInterval* const> colocated_intervals) const;
 
   // Given a buffer interval, returns the colocated intervals. Unlike the
   // similar GlobalDecreasingSizeBestFitHeap::GetTransitiveColocations, it
@@ -555,7 +572,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // Adds an asynchronous copy to the allocations.
   void AddAsyncCopy(const MemorySpaceAssignment::Allocation& prev_allocation,
                     MemorySpace memory_space, Chunk chunk, int64 start_time,
-                    int64 end_time,
+                    int64 end_time, int64 copy_done_schedule_before_time,
                     MemorySpaceAssignment::AllocationSequence* allocations);
 
   // These methods are used for delaying committing the chunk candidate until
@@ -564,22 +581,26 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
                           const ChunkCandidate& chunk_candidate);
   void CommitPendingChunks();
 
+  // Returns the available heap size in the alternate memory.
+  int64 available_heap_size() const {
+    return options_.max_size_in_bytes - reserved_in_bytes_;
+  }
+
   MemorySpaceAssignment::AllocationMap* allocation_map_;
-  int64 max_size_in_bytes_;
-  PrefetchIntervalPicker* prefetch_interval_picker_;
+  const MemorySpaceAssignment::Options& options_;
   const HloAliasAnalysis& alias_analysis_;
   const HloLiveRange& hlo_live_range_;
-  IsAllowedInAlternateMemoryFunction is_allowed_in_alternate_mem_;
   // We use a interval tree to keep track of the number of outstanding
   // asynchronous copies.
   BufferIntervalTree async_copy_interval_tree_;
-  int64 max_outstanding_async_copies_;
   std::vector<std::pair<BufferInterval, ChunkCandidate>> pending_chunks_;
   std::vector<std::pair<int64, int64>> pending_async_copies_;
   // This map contains required memory assignments for HloValues (e.g., input
   // and outputs).
   absl::flat_hash_map<const HloValue*, std::vector<RequiredMemoryAssignment>>
       required_assignments_;
+  // Number of bytes reserved in alternate memory space.
+  int64 reserved_in_bytes_ = 0;
 };
 
 }  // namespace xla

@@ -23,15 +23,30 @@
 #ifndef SPIRV_BIT_OPS
 #define SPIRV_BIT_OPS
 
-#ifndef SPIRV_BASE
-include "mlir/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
+include "mlir/Dialect/SPIRV/SPIRVBase.td"
 
 class SPV_BitBinaryOp<string mnemonic, list<OpTrait> traits = []> :
       // All the operands type used in bit instructions are SPV_Integer.
       SPV_BinaryOp<mnemonic, SPV_Integer, SPV_Integer,
                    !listconcat(traits,
                                [NoSideEffect, SameOperandsAndResultType])>;
+
+class SPV_BitFieldExtractOp<string mnemonic, list<OpTrait> traits = []> :
+      SPV_Op<mnemonic, !listconcat(traits, [NoSideEffect])> {
+  let arguments = (ins
+    SPV_ScalarOrVectorOf<SPV_Integer>:$base,
+    SPV_Integer:$offset,
+    SPV_Integer:$count
+  );
+
+  let results = (outs
+    SPV_ScalarOrVectorOf<SPV_Integer>:$result
+  );
+
+  let parser = [{ return ::parseBitFieldExtractOp(parser, result); }];
+  let printer = [{ ::printBitFieldExtractOp(this->getOperation(), p); }];
+  let verifier = [{ return ::verifyBitFieldExtractOp(this->getOperation()); }];
+}
 
 class SPV_BitUnaryOp<string mnemonic, list<OpTrait> traits = []> :
       SPV_UnaryOp<mnemonic, SPV_Integer, SPV_Integer,
@@ -80,6 +95,143 @@ def SPV_BitCountOp : SPV_BitUnaryOp<"BitCount", []> {
     ```
     %2 = spv.BitCount %0: i32
     %3 = spv.BitCount %1: vector<4xi32>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_BitFieldInsertOp : SPV_Op<"BitFieldInsert", [NoSideEffect]> {
+  let summary = [{
+    Make a copy of an object, with a modified bit field that comes from
+    another object.
+  }];
+
+  let description = [{
+     Results are computed per component.
+
+    Result Type must be a scalar or vector of integer type.
+
+     The type of Base and Insert must be the same as Result Type.
+
+    Any result bits numbered outside [Offset, Offset + Count -  1]
+    (inclusive) will come from the corresponding bits in Base.
+
+    Any result bits numbered in [Offset, Offset + Count -  1] come, in
+    order, from the bits numbered [0, Count - 1] of Insert.
+
+    Count  must be an integer type scalar. Count is the number of bits taken
+    from Insert. It will be consumed as an unsigned value. Count can be 0,
+    in which case the result will be Base.
+
+    Offset  must be an integer type scalar. Offset is the lowest-order bit
+    of the bit field.  It will be consumed as an unsigned value.
+
+    The resulting value is undefined if Count or Offset or their sum is
+    greater than the number of bits in the result.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    integer-scalar-vector-type ::= integer-type |
+                                  `vector<` integer-literal `x` integer-type `>`
+    bitfield-insert-op ::= ssa-id `=` `spv.BitFieldInsert` ssa-use `,` ssa-use
+                                      `,` ssa-use `,` ssa-use
+                                      `:` integer-scalar-vector-type
+                                      `,` integer-type `,` integer-type
+    ```
+
+    For example:
+
+    ```
+    %0 = spv.BitFieldInsert %base, %insert, %offset, %count : vector<3xi32>, i8, i8
+    ```
+  }];
+
+  let arguments = (ins
+    SPV_ScalarOrVectorOf<SPV_Integer>:$base,
+    SPV_ScalarOrVectorOf<SPV_Integer>:$insert,
+    SPV_Integer:$offset,
+    SPV_Integer:$count
+  );
+
+  let results = (outs
+    SPV_ScalarOrVectorOf<SPV_Integer>:$result
+  );
+}
+
+// -----
+
+def SPV_BitFieldSExtractOp : SPV_BitFieldExtractOp<"BitFieldSExtract", []> {
+  let summary = "Extract a bit field from an object, with sign extension.";
+
+  let description = [{
+     Results are computed per component.
+
+    Result Type must be a scalar or vector of integer type.
+
+     The type of Base must be the same as Result Type.
+
+    If Count is greater than 0: The bits of Base numbered in [Offset, Offset
+    + Count -  1] (inclusive) become the bits numbered [0, Count - 1] of the
+    result. The remaining bits of the result will all be the same as bit
+    Offset + Count -  1 of Base.
+
+    Count  must be an integer type scalar. Count is the number of bits
+    extracted from Base. It will be consumed as an unsigned value. Count can
+    be 0, in which case the result will be 0.
+
+    Offset  must be an integer type scalar. Offset is the lowest-order bit
+    of the bit field to extract from Base.  It will be consumed as an
+    unsigned value.
+
+    The resulting value is undefined if Count or Offset or their sum is
+    greater than the number of bits in the result.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    integer-scalar-vector-type ::= integer-type |
+                                  `vector<` integer-literal `x` integer-type `>`
+    bitfield-exctact-s-op ::= ssa-id `=` `spv.BitFieldSExtract` ssa-use
+                                         `,` ssa-use `,` ssa-use
+                                         `:` integer-scalar-vector-type
+                                         `,` integer-type `,` integer-type
+    ```
+
+    For example:
+
+    ```
+    %0 = spv.BitFieldSExtract %base, %offset, %count : vector<3xi32>, i8, i8
+    ```
+  }];
+}
+
+// -----
+
+def SPV_BitFieldUExtractOp : SPV_BitFieldExtractOp<"BitFieldUExtract", []> {
+  let summary = "Extract a bit field from an object, without sign extension.";
+
+  let description = [{
+    The semantics are the same as with OpBitFieldSExtract with the exception
+    that there is no sign extension. The remaining bits of the result will
+    all be 0.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    integer-scalar-vector-type ::= integer-type |
+                                  `vector<` integer-literal `x` integer-type `>`
+    bitfield-exctact-u-op ::= ssa-id `=` `spv.BitFieldUExtract` ssa-use
+                                         `,` ssa-use `,` ssa-use
+                                         `:` integer-scalar-vector-type
+                                         `,` integer-type `,` integer-type
+    ```
+
+    For example:
+
+    ```
+    %0 = spv.BitFieldUExtract %base, %offset, %count : vector<3xi32>, i8, i8
     ```
   }];
 }

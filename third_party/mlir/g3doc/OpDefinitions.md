@@ -263,7 +263,7 @@ TODO: Design and implement more primitive constraints
 Similar to operands, results are specified inside the `dag`-typed `results`, led
 by `outs`:
 
-```tablgen
+```tablegen
 let results = (outs
   <type-constraint>:$<result-name>,
   ...
@@ -382,26 +382,85 @@ def OpWithInferTypeInterfaceOp : Op<...
     [DeclareOpInterfaceMethods<MyInterface>]> { ... }
 ```
 
-### Custom builder methods
+### Builder methods
 
-For each operation, there are two builders automatically generated based on the
-arguments and returns types:
+For each operation, there are a few builders automatically generated based on
+the arguments and returns types. For example, given the following op definition:
+
+```tablegen
+def MyOp : ... {
+  let arguments = (ins
+    I32:$i32_operand,
+    F32:$f32_operand,
+    ...,
+
+    I32Attr:$i32_attr,
+    F32Attr:$f32_attr,
+    ...
+  );
+
+  let results = (outs
+    I32:$i32_result,
+    F32:$f32_result,
+    ...
+  );
+}
+```
+
+The following builders are generated:
 
 ```c++
-static void build(Builder *, OperationState &tblgen_state,
-                  Type <result0-name>, Type <result1-name>, ...,
-                  Value <arg0-name>, Value <arg1-name>, ...,
-                  Attribute <attr0-name>, Attribute <attr1-name>, ...);
-
-static void build(Builder *, OperationState &tblgen_state,
+// All result-types/operands/attributes have one aggregate parameter.
+static void build(Builder *tblgen_builder, OperationState &tblgen_state,
                   ArrayRef<Type> resultTypes,
                   ArrayRef<Value> operands,
                   ArrayRef<NamedAttribute> attributes);
+
+// Each result-type/operand/attribute has a separate parameter. The parameters
+// for attributes are of mlir::Attribute types.
+static void build(Builder *tblgen_builder, OperationState &tblgen_state,
+                  Type i32_result, Type f32_result, ...,
+                  Value *i32_operand, Value *f32_operand, ...,
+                  IntegerAttr i32_attr, FloatAttr f32_attr, ...);
+
+// Each result-type/operand/attribute has a separate parameter. The parameters
+// for attributes are raw values unwrapped with mlir::Attribute instances.
+// (Note that this builder will not always be generated. See the following
+// explanation for more details.)
+static void build(Builder *tblgen_builder, OperationState &tblgen_state,
+                  Type i32_result, Type f32_result, ...,
+                  Value *i32_operand, Value *f32_operand, ...,
+                  APInt i32_attr, StringRef f32_attr, ...);
+
+// (And potentially others depending on the specific op.)
 ```
 
-The above cases make sure basic uniformity so that we can create ops using the
+The first form provides basic uniformity so that we can create ops using the
 same form regardless of the exact op. This is particularly useful for
 implementing declarative pattern rewrites.
+
+The second and third forms are good for use in manually written code given that
+they provide better guarantee via signatures.
+
+The third form will be generated if any of the op's attribute has different
+`Attr.returnType` from `Attr.storageType` and we know how to build an attribute
+from an unwrapped value (i.e., `Attr.constBuilderCall` is defined.)
+Additionally, for the third form, if an attribute appearing later in the
+`arguments` list has a default value, the default value will be supplied in the
+declaration. This works for `BoolAttr`, `StrAttr`, `EnumAttr` for now and the
+list can grow in the future. So if possible, default valued attribute should be
+placed at the end of the `arguments` list to leverage this feature. (This
+behavior is essentially due to C++ function parameter default value placement
+restrictions.) Otherwise, the builder of the third form will still be generated
+but default values for the attributes not at the end of the `arguments` list
+will not be supplied in the builder's signature.
+
+And there may potentially exist other builders depending on the specific op;
+please refer to the
+[generated C++ file](#run-mlir-tblgen-to-see-the-generated-content) for the
+complete list.
+
+#### Custom builder methods
 
 However, if the above cases cannot satisfy all needs, you can define additional
 convenience build methods with `OpBuilder`.
@@ -727,7 +786,7 @@ several mechanisms: `StrEnumAttr`, `IntEnumAttr`, and `BitEnumAttr`.
 *   `BitEnumAttr`: each enum case is a bit, the attribute is stored as a
     [`IntegerAttr`][IntegerAttr] in the op.
 
-All these `*EnumAttr` attributes require fully specifying all of the the allowed
+All these `*EnumAttr` attributes require fully specifying all of the allowed
 cases via their corresponding `*EnumAttrCase`. With this, ODS is able to
 generate additional verification to only accept allowed cases. To facilitate the
 interaction between `*EnumAttr`s and their C++ consumers, the
@@ -938,6 +997,37 @@ use in the generation of the helper accessors) as well as method to convert
 between the internal storage and the helper method. Derived attributes are a
 special class of attributes that do not have storage but are instead calculated
 based on the operation and its attributes.
+
+## Debugging Tips
+
+### Run `mlir-tblgen` to see the generated content
+
+TableGen syntax sometimes can be obscure; reading the generated content can be
+a very helpful way to understand and debug issues. To build `mlir-tblgen`, run
+`cmake --build . --target mlir-tblgen` in your build directory and find the
+`mlir-tblgen` binary in the `bin/` subdirectory. All the supported generators
+can be found via `mlir-tblgen --help`. For example, `--gen-op-decls` and
+`--gen-op-defs` as explained in [Generated C++ code](#generated-c++-code).
+
+To see the generated code, invoke `mlir-tblgen` with a specific generator by
+providing include paths via `-I`. For example,
+
+```sh
+# To see op C++ class declaration
+mlir-tblgen --gen-op-decls -I /path/to/mlir/include /path/to/input/td/file
+# To see op C++ class definition
+mlir-tblgen --gen-op-defs -I /path/to/mlir/include /path/to/input/td/file
+# To see op documentation
+mlir-tblgen --gen-op-doc -I /path/to/mlir/include /path/to/input/td/file
+
+# To see op interface C++ class declaration
+mlir-tblgen --gen-op-interface-decls -I /path/to/mlir/include /path/to/input/td/file
+# To see op interface C++ class definition
+mlir-tblgen --gen-op-interface-defs -I /path/to/mlir/include /path/to/input/td/file
+# To see op interface documentation
+mlir-tblgen --gen-op-interface-doc -I /path/to/mlir/include /path/to/input/td/file
+```
+
 
 ## Appendix
 

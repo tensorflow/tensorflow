@@ -94,7 +94,8 @@ static GlobalTensorUsesMap CreateGlobalTensorUsesMap(ModuleOp module) {
       if (!sym) {
         continue;
       }
-      auto global_tensor = symbol_table.lookup<GlobalTensorOp>(sym.getValue());
+      auto global_tensor = symbol_table.lookup<GlobalTensorOp>(
+          sym.cast<FlatSymbolRefAttr>().getValue());
       global_tensor_uses[global_tensor].push_back({func, i});
     }
   }
@@ -164,24 +165,14 @@ void EraseUnusedGlobalTensors(ModuleOp module,
 
 void EraseUnusedBoundInputs(ModuleOp module) {
   for (auto func : module.getOps<FuncOp>()) {
-    SmallVector<int, 4> args_to_erase;
+    SmallVector<unsigned, 4> args_to_erase;
     for (int i = 0, e = func.getNumArguments(); i < e; i++) {
       if (func.getArgAttr(i, "tf_saved_model.bound_input") &&
           func.getArgument(i)->use_empty()) {
         args_to_erase.push_back(i);
       }
     }
-    // Fix up the function.
-    auto arg_types = llvm::to_vector<4>(func.getType().getInputs());
-    auto bound_input_ident =
-        Identifier::get("tf_saved_model.bound_input", module.getContext());
-    for (int arg_index : llvm::reverse(args_to_erase)) {
-      func.front().eraseArgument(arg_index);
-      arg_types.erase(arg_types.begin() + arg_index);
-      func.removeArgAttr(arg_index, bound_input_ident);
-    }
-    func.setType(FunctionType::get(arg_types, func.getType().getResults(),
-                                   module.getContext()));
+    func.eraseArguments(args_to_erase);
   }
 }
 

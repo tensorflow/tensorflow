@@ -955,7 +955,7 @@ Arguments           | Type                  | Semantics
 ------------------- | --------------------- | ---------------
 `lhs`               | `XlaOp`               | array of type T
 `rhs`               | `XlaOp`               | array of type T
-`dimension_numbers` | `DotDimensionNumbers` | array of type T
+`dimension_numbers` | `DotDimensionNumbers` | contracting and batch dimension numbers
 
 As Dot, but allows contracting and batch dimension numbers to be specified for
 both the 'lhs' and 'rhs'.

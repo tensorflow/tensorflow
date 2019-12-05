@@ -183,6 +183,7 @@ cc_library(
         "transforms/passes.h",
         "utils/attribute_utils.h",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_traits.h",
+        "@local_config_mlir//:include/mlir/Transforms/InliningUtils.h",
     ],
     deps = [
         ":tensorflow_lite_ops_inc_gen",
@@ -275,6 +276,7 @@ cc_library(
     ],
     deps = [
         ":common",
+        ":lstm_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":validators",
@@ -655,5 +657,15 @@ cc_library(
         "@local_config_mlir//:QuantOpsDialectRegistration",
         "@local_config_mlir//:Support",
         "@local_config_mlir//:Transforms",
+    ],
+)
+
+exports_files(
+    ["transforms/passes.h"],
+    visibility = [
+        "//configs/devtools/hawkeye/tflite:__subpackages__",
+        "//learning/brain/models/app_benchmarks:__subpackages__",
+        "//tensorflow/compiler/mlir/lite:friends",
+        "//tensorflow/lite/experimental/mlir:__subpackages__",
     ],
 )

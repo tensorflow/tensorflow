@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/prepacked_cache.h"
 
+#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/matrix.h"
 
 namespace ruy {
@@ -26,7 +27,7 @@ CacheIterator PrepackedCache::FindAndUpdate(const CacheKey &key) {
   auto itr = cache_.find(key);
   // If found, update with new access time for this entry.
   if (itr != cache_.end()) {
-    const TimePoint time = CoarseNow();
+    const TimePoint time = CacheNow();
     itr->second.second = time;
   }
   return itr;
@@ -37,7 +38,7 @@ void PrepackedCache::Insert(const CacheKey &key,
   // Calculate size of this new item.
   const size_t size_bytes = matrix.data_size + matrix.sums_size;
 
-  // If we are above the threshold of ejection, eject the LRU entry.
+  // While we are above the threshold of ejection, eject the LRU entry.
   while (!cache_.empty() &&
          ((TotalSize() + size_bytes) > ejection_threshold_)) {
     EjectOne();
@@ -47,38 +48,33 @@ void PrepackedCache::Insert(const CacheKey &key,
 }
 
 void PrepackedCache::EjectOne() {
-  TimePoint oldest_time = CoarseNow();
+  TimePoint oldest_time = CacheNow();
   auto oldest = cache_.begin();
-  for (auto itr = cache_.begin(); itr != cache_.end(); ++itr) {
-    if (itr->second.second < oldest_time) {
-      oldest_time = itr->second.second;
-      oldest = itr;
+  {
+    gemmlowp::ScopedProfilingLabel label("PepackedCacheEjection");
+    for (auto itr = cache_.begin(); itr != cache_.end(); ++itr) {
+      if (itr->second.second < oldest_time) {
+        oldest_time = itr->second.second;
+        oldest = itr;
+      }
     }
   }
   PrepackedMatrix &pmatrix = oldest->second.first;
   cache_size_ -= pmatrix.data_size;
   cache_size_ -= pmatrix.sums_size;
-  allocator_.FreeOne(pmatrix.data);
-  allocator_.FreeOne(pmatrix.sums);
+  allocator_.Free(pmatrix.data);
+  allocator_.Free(pmatrix.sums);
   cache_.erase(oldest);
 }
 
 void PrepackedCache::AllocatePrepackedMatrix(PrepackedMatrix *pmatrix) {
-  pmatrix->data = AllocateBytes(pmatrix->data_size);
-  pmatrix->sums = AllocateBytes(pmatrix->sums_size);
-}
-
-void *PrepackedCache::AllocateBytes(std::ptrdiff_t num_bytes) {
-  // Force system allocation for now to enable easy ejections.
-  return allocator_.AllocateSlow(num_bytes);
+  pmatrix->data = allocator_.Alloc(pmatrix->data_size);
+  pmatrix->sums = allocator_.Alloc(pmatrix->sums_size);
 }
 
 void PrepackedCache::DoInsert(const CacheKey &key,
                               const PrepackedMatrix &matrix) {
-  // TODO(talumbau) Profile timestamps on relevant models to see if
-  // this level of granularity is sufficient. CoarseNow is cheap so
-  // it would be nice to keep it.
-  const TimePoint t = CoarseNow();
+  const TimePoint t = CacheNow();
   const MatrixWithTimeStamp mts({matrix, t});
   cache_.insert({key, mts});
 }

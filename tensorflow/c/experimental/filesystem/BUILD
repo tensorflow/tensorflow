@@ -44,7 +44,11 @@ cc_library(
     hdrs = ["modular_filesystem.h"],
     deps = [
         ":filesystem_interface",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:ptr_util",
         "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:strcat",
     ],
 )
 

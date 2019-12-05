@@ -108,12 +108,11 @@ static ParseResult parseGenericOp(OpAsmParser &parser, OperationState &result) {
 }
 
 template <typename GenericOpType>
-LogicalResult verifyBlockArgs(GenericOpType op, Block &block, unsigned nViews,
-                              unsigned nLoops, unsigned nInputViews);
+LogicalResult verifyBlockArgs(GenericOpType op, Block &block);
 
-template <>
-LogicalResult verifyBlockArgs(GenericOp op, Block &block, unsigned nViews,
-                              unsigned nLoops, unsigned nInputViews) {
+template <> LogicalResult verifyBlockArgs(GenericOp op, Block &block) {
+  auto nViews = op.getNumInputsAndOutputs();
+  auto nInputViews = op.getNumInputs();
   if (block.getNumArguments() != nViews)
     return op.emitError(
         "op expected number of block arguments to match number of views");
@@ -129,10 +128,10 @@ LogicalResult verifyBlockArgs(GenericOp op, Block &block, unsigned nViews,
   return success();
 }
 
-template <>
-LogicalResult verifyBlockArgs(IndexedGenericOp op, Block &block,
-                              unsigned nViews, unsigned nLoops,
-                              unsigned nInputViews) {
+template <> LogicalResult verifyBlockArgs(IndexedGenericOp op, Block &block) {
+  auto nInputViews = op.getNumInputs();
+  auto nLoops = op.getNumLoops();
+  auto nViews = op.getNumInputsAndOutputs();
   if (block.getNumArguments() != nViews + nLoops)
     return op.emitError(
         "op expected number of block arguments to match number of views + "
@@ -158,6 +157,76 @@ LogicalResult verifyBlockArgs(IndexedGenericOp op, Block &block,
 }
 
 template <typename GenericOpType>
+LogicalResult verifyFuncArgs(GenericOpType op, FunctionType funType);
+
+template <> LogicalResult verifyFuncArgs(GenericOp op, FunctionType funType) {
+  auto nViews = op.getNumInputsAndOutputs();
+  auto nInputViews = op.getNumInputs();
+  if (funType.getNumInputs() != nViews)
+    return op.emitError("op expected fun arguments to match number of views");
+  if (funType.getNumResults() != op.getNumOutputs())
+    return op.emitError(
+        "op expected fun results to match number of output views");
+
+  for (auto en : llvm::enumerate(op.indexing_maps())) {
+    auto idx = en.index();
+    auto view = (idx < nInputViews) ? op.getInputViewType(idx)
+                                    : op.getOutputViewType(idx - nInputViews);
+    if (funType.getInput(idx) != view.getElementType())
+      return op.emitError("op expected fun argument ")
+             << idx << " of the same type as elemental type "
+             << view.getElementType() << " of view " << idx;
+
+    if (idx >= nInputViews) {
+      auto resultIdx = idx - nInputViews;
+      if (funType.getResult(resultIdx) != view.getElementType())
+        return op.emitError("op expected fun result ")
+               << resultIdx << " of the same type as elemental type "
+               << view.getElementType() << " of view " << idx;
+    }
+  }
+  return success();
+}
+
+template <>
+LogicalResult verifyFuncArgs(IndexedGenericOp op, FunctionType funType) {
+  auto nLoops = op.getNumLoops();
+  auto nInputViews = op.getNumInputs();
+  auto nOutputs = op.getNumOutputs();
+  auto nViews = op.getNumInputsAndOutputs();
+  if (funType.getNumInputs() != nViews + nLoops)
+    return op.emitError(
+        "op expected fun arguments to match number of views + number of loops");
+  if (funType.getNumResults() != nOutputs)
+    return op.emitError(
+        "op expected fun results to match number of output views");
+  for (unsigned i = 0; i < nLoops; ++i) {
+    if (!funType.getInput(i).isIndex())
+      return op.emitError("op expected fun argument ")
+             << i << " to be of IndexType";
+  }
+  for (auto en : llvm::enumerate(op.indexing_maps())) {
+    auto idx = en.index();
+    auto funIdx = nLoops + idx;
+    auto view = (idx < nInputViews) ? op.getInputViewType(idx)
+                                    : op.getOutputViewType(idx - nInputViews);
+    if (funType.getInput(funIdx) != view.getElementType())
+      return op.emitError("op expected fun argument ")
+             << funIdx << " of the same type as elemental type "
+             << view.getElementType() << " of view " << idx;
+
+    if (idx >= nInputViews) {
+      auto resultIdx = idx - nInputViews;
+      if (funType.getResult(resultIdx) != view.getElementType())
+        return op.emitError("op expected fun result ")
+               << resultIdx << " of the same type as elemental type "
+               << view.getElementType() << " of view " << idx;
+    }
+  }
+  return success();
+}
+
+template <typename GenericOpType>
 LogicalResult verifyGenericOp(GenericOpType op) {
   auto nInputViews = op.getNumInputs();
   auto nLoops = op.getNumLoops();
@@ -171,20 +240,14 @@ LogicalResult verifyGenericOp(GenericOpType op) {
   if (!region.empty()) {
     if (region.getBlocks().size() != 1)
       return op.emitError("op expected region with 1 block");
-
-    auto &block = region.getBlocks().front();
-    if (failed(verifyBlockArgs(op, block, nViews, nLoops, nInputViews))) {
+    if (failed(verifyBlockArgs(op, region.getBlocks().front())))
       return failure();
-    }
   } else {
     if (!funOp || !funOp.getType())
       return op.emitError(
           "op expected fun attribute to refer to a defined symbol");
-    if (funType.getNumInputs() != nViews)
-      return op.emitError("op expected fun arguments to match number of views");
-    if (funType.getNumResults() != op.getNumOutputs())
-      return op.emitError(
-          "op expected fun results to match number of output views");
+    if (failed(verifyFuncArgs(op, funType)))
+      return failure();
   }
 
   SmallVector<AffineMap, 4> indexingMaps;
@@ -215,19 +278,6 @@ LogicalResult verifyGenericOp(GenericOpType op) {
     if (m.getNumResults() != view.getRank())
       return op.emitError("op expected indexing_map #")
              << idx << " results to match view rank: " << view;
-
-    if (funType) {
-      if (funType.getInput(idx) != view.getElementType())
-        return op.emitError("op expected fun argument ")
-               << idx
-               << " to match view element type: " << view.getElementType();
-
-      if (idx >= nInputViews)
-        if (funType.getResult(idx - nInputViews) != view.getElementType())
-          return op.emitError("op expected fun result ")
-                 << idx << " to match output view element type: "
-                 << view.getElementType();
-    }
   }
 
   auto concatMap = concatAffineMaps(indexingMaps);
@@ -341,73 +391,6 @@ static LogicalResult verify(SliceOp op) {
     return op.emitOpError() << "expected rank of the view(" << op.getRank()
                             << ") to be the number of ranges(" << rank << ")";
   return success();
-}
-
-//===----------------------------------------------------------------------===//
-// SubViewOp
-//===----------------------------------------------------------------------===//
-static Type getSubViewResultType(MemRefType memRefType) {
-  auto rank = memRefType.getRank();
-  SmallVector<int64_t, 4> sizes(rank, -1);
-  int64_t offset;
-  SmallVector<int64_t, 4> strides;
-  Type elementType = memRefType.getElementType();
-  auto res = getStridesAndOffset(memRefType, strides, offset);
-  assert(succeeded(res) && "SubViewOp expected strided memref type");
-  (void)res;
-  // Assume sizes and offset are fully dynamic for now until canonicalization
-  // occurs on the ranges.
-  // Strides don't change though.
-  // TODO(ntv) for canonicalization it may be better to use a (min, size, step)
-  // instead of a (min, max, step) abstraction.
-  auto stridedLayout = makeStridedLinearLayoutMap(
-      strides, MemRefType::getDynamicStrideOrOffset(), memRefType.getContext());
-  return MemRefType::get(sizes, elementType, stridedLayout,
-                         memRefType.getMemorySpace());
-}
-
-void mlir::linalg::SubViewOp::build(Builder *b, OperationState &result,
-                                    Value *view, ArrayRef<Value *> ranges,
-                                    Type resultType,
-                                    ArrayRef<NamedAttribute> attrs) {
-  if (!resultType)
-    resultType = getSubViewResultType(view->getType().cast<MemRefType>());
-  build(b, result, resultType, view, ranges);
-  result.addAttributes(attrs);
-}
-
-static void print(OpAsmPrinter &p, SubViewOp op) {
-  p << op.getOperationName() << " " << *op.getOperand(0) << "[";
-  auto ranges = op.getRanges();
-  interleaveComma(ranges, p, [&p](const SubViewOp::Range &i) {
-    p << *i.min << ", " << *i.max << ", " << *i.step;
-  });
-  p << "]";
-  p.printOptionalAttrDict(op.getAttrs());
-  p << " : " << op.getViewType();
-}
-
-static ParseResult parseSubViewOp(OpAsmParser &parser, OperationState &result) {
-  OpAsmParser::OperandType inputView, resultView;
-  MemRefType memRefType;
-  if (parser.parseOperand(inputView))
-    return failure();
-
-  SmallVector<OpAsmParser::OperandType, 12> ops;
-  // TODO(ntv) evolve parsing from
-  //    linalg.subview %0[%1, %2, %3, %4, %5, %6]
-  // to something resembling
-  //    linalg.subview %0[%1:%2:%3][%4:%5:%6]
-  if (parser.parseOperandList(ops, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttrDict(result.attributes) ||
-      parser.parseColonType(memRefType))
-    return failure();
-
-  auto indexTy = parser.getBuilder().getIndexType();
-  return failure(
-      parser.resolveOperand(inputView, memRefType, result.operands) ||
-      parser.resolveOperands(ops, indexTy, result.operands) ||
-      parser.addTypeToList(getSubViewResultType(memRefType), result.types));
 }
 
 //===----------------------------------------------------------------------===//
@@ -646,12 +629,6 @@ static LogicalResult verify(ConvOp op) {
   return success();
 }
 
-llvm::raw_ostream &mlir::linalg::operator<<(llvm::raw_ostream &os,
-                                            SubViewOp::Range &range) {
-  return os << "range " << *range.min << ":" << *range.max << ":"
-            << *range.step;
-}
-
 namespace mlir {
 namespace linalg {
 
@@ -790,6 +767,13 @@ SmallVector<AffineMap, 4> mlir::linalg::loopToOperandRangesMaps(Operation *op) {
     for (unsigned i = 0, e = nViews; i < e; ++i) {
       res.push_back(genericOp.getIndexingMap(i));
     }
+    return res;
+  } else if (auto indexedGenericOp = dyn_cast<IndexedGenericOp>(op)) {
+    SmallVector<AffineMap, 4> res;
+    unsigned nViews = indexedGenericOp.getNumInputsAndOutputs();
+    res.reserve(nViews);
+    for (unsigned i = 0, e = nViews; i < e; ++i)
+      res.push_back(indexedGenericOp.getIndexingMap(i));
     return res;
   }
   llvm_unreachable("Missing loopToOperandRangesMaps for op");

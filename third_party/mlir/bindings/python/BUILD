@@ -7,14 +7,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["BUILD"])
 
 package(
-    default_visibility = [":friends"],
-)
-
-package_group(
-    name = "friends",
-    packages = [
-        "@local_config_mlir//bindings/...",
-    ],
+    default_visibility = ["@local_config_mlir//:friends"],
 )
 
 #
@@ -30,6 +23,7 @@ py_extension(
         "//third_party/llvm/llvm:ir",
         "//third_party/llvm/llvm:support",
         "//third_party/pybind11",
+        "@local_config_mlir//:AffineToStandardTransforms",
         "@local_config_mlir//:EDSC",
         "@local_config_mlir//:EDSCInterface",
         "@local_config_mlir//:ExecutionEngine",

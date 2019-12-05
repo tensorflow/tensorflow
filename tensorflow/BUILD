@@ -2,12 +2,9 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-load("//tensorflow:tensorflow.bzl", "VERSION")
-load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library_additional_deps_impl")
-load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "VERSION", "tf_cc_shared_object", "tf_custom_op_library_additional_deps_impl", "tf_native_cc_binary")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
 )
 load(
@@ -42,7 +39,8 @@ package(
 exports_files([
     "LICENSE",
     "ACKNOWLEDGMENTS",
-    # The leakr files are used by //third_party/cloud_tpu.
+    # The leakr files are used by //third_party/cloud_tpu and
+    # //third_party/tensorboard/google:copybara_config_test.
     "leakr_badwords.dic",
     "leakr_badfiles.dic",
     "leakr_file_type_recipe.ftrcp",
@@ -107,27 +105,6 @@ config_setting(
         "crosstool_top": "//external:android/crosstool",
         "cpu": "armeabi",
     },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "chromiumos_x86_64",
-    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
-    values = {"cpu": "k8"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "chromiumos_arm64",
-    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
-    values = {"cpu": "arm"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "chromiumos_armv7",
-    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
-    values = {"cpu": "armeabi-v7a"},
     visibility = ["//visibility:public"],
 )
 
@@ -470,6 +447,7 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
+        "//learning/brain/swift/x10/...",
         "//perftools/accelerators/xprof/api/...",
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
@@ -605,6 +583,18 @@ tf_cc_shared_object(
         "//tensorflow/stream_executor:stream_executor_impl",
         "//tensorflow:tf_framework_version_script.lds",
     ] + tf_additional_binary_deps(),
+)
+
+# This is intended to be the same as tf_binary_additional_srcs:
+# https://github.com/tensorflow/tensorflow/blob/cd67f4f3723f9165aabedd0171aaadc6290636e5/tensorflow/tensorflow.bzl#L396-L425
+# And is usable in the "deps" attribute instead of the "srcs" attribute
+# as a workaround for https://github.com/tensorflow/tensorflow/issues/34117
+cc_import(
+    name = "libtensorflow_framework_import_lib",
+    shared_library = select({
+        "//tensorflow:macos": ":libtensorflow_framework.dylib",
+        "//conditions:default": ":libtensorflow_framework.so",
+    }),
 )
 
 # -------------------------------------------
@@ -828,7 +818,7 @@ genrule(
     }),
     outs = ["__init__.py"],
     cmd = select({
-        "api_version_2": "cp $(@D)/_api/v2/v2.py $(OUTS) && sed -i'.original' 's:from . import:from . _api.v2 import:g' $(OUTS)",
+        "api_version_2": "cp $(@D)/_api/v2/v2.py $(OUTS) && sed -i'.original' 's:from . import:from ._api.v2 import:g' $(OUTS)",
         "//conditions:default": "cp $(@D)/_api/v1/v1.py $(OUTS) && sed -i'.original' 's:from . import:from ._api.v1 import:g' $(OUTS)",
     }),
 )

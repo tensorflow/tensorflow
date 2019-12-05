@@ -26,7 +26,7 @@ limitations under the License.
 %include "tensorflow/c/tf_datatype.h"
 %include "tensorflow/c/tf_status.h"
 
-%ignore "";
+%ignoreall;
 
 %rename("%s") TF_SetXlaEnableLazyCompilation;
 %rename("%s") TF_SetTfXlaCpuGlobalJit;
@@ -53,6 +53,7 @@ limitations under the License.
 %rename("%s") TFE_ContextSetThreadLocalMirroringPolicy;
 %rename("%s") TFE_ContextSetServerDef;
 %rename("%s") TFE_ContextUpdateServerDef;
+%rename("%s") TFE_ContextCheckAlive;
 %rename("%s") TFE_NewExecutor;
 %rename("%s") TFE_DeleteExecutor;
 %rename("%s") TFE_ExecutorIsAsync;
@@ -510,3 +511,5 @@ static PyObject* TFE_ClearScalarCache();
 %typemap(freearg) (TF_Status* out_status);
 %typemap(argout) (TFE_OutputTensorHandles* outputs, TF_Status* out_status);
 %typemap(in) (const void* proto);
+
+%unignoreall

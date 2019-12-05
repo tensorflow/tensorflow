@@ -67,7 +67,8 @@ class EagerOperation {
     }
     attr_types_ = t;
     device_ = nullptr;
-    device_name_ = DeviceNameUtils::ParsedName();
+    device_name_ = "";
+    device_parsed_name_.Clear();
     use_xla_ = false;
     is_function_ = is_function;
     cancellation_manager_ = nullptr;
@@ -104,12 +105,19 @@ class EagerOperation {
   tensorflow::Device* Device() const { return device_; }
   void SetDevice(tensorflow::Device* device) {
     device_ = device;
-    device_name_ = device->parsed_name();
+    device_name_ = device->name();
+    device_parsed_name_ = device->parsed_name();
   }
-  const DeviceNameUtils::ParsedName& GetDeviceName() const {
-    return device_name_;
+
+  const string& GetDeviceName() const { return device_name_; }
+  const DeviceNameUtils::ParsedName& GetDeviceParsedName() const {
+    return device_parsed_name_;
   }
   tensorflow::Status SetDeviceName(const char* device);
+
+  // Indicates whether the op is assigned to a device that is local to the
+  // current host.
+  bool IsLocal() const;
 
   void SetUseXla(bool use_xla) { use_xla_ = use_xla; }
 
@@ -139,7 +147,8 @@ class EagerOperation {
   const tensorflow::AttrTypeMap* attr_types_;
   tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 4> inputs_;
   tensorflow::Device* device_;
-  DeviceNameUtils::ParsedName device_name_;
+  string device_name_;
+  DeviceNameUtils::ParsedName device_parsed_name_;
   bool use_xla_ = false;
   bool is_function_;  // Conceptually const, but can't be because of Reset
   CancellationManager* cancellation_manager_ = nullptr;  // Not owned.

@@ -19,24 +19,16 @@ limitations under the License.
 
 %include "tensorflow/python/pywrap_tfe.i"
 
+%include "tensorflow/python/client/tf_session.i"
+
+%include "tensorflow/python/lib/io/file_io.i"
 
 %include "tensorflow/python/lib/io/py_record_reader.i"
 %include "tensorflow/python/lib/io/py_record_writer.i"
-
-%include "tensorflow/python/client/tf_session.i"
-
-%include "tensorflow/python/lib/core/bfloat16.i"
-
-%include "tensorflow/python/lib/io/file_io.i"
 
 %include "tensorflow/python/grappler/cluster.i"
 %include "tensorflow/python/grappler/item.i"
 %include "tensorflow/python/grappler/tf_optimizer.i"
 %include "tensorflow/python/grappler/cost_analyzer.i"
-%include "tensorflow/python/grappler/model_analyzer.i"
-
-%include "tensorflow/python/framework/python_op_gen.i"
-
-
 
 %include "tensorflow/compiler/mlir/python/mlir.i"

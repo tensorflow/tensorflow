@@ -609,12 +609,12 @@ func @search(%A: memref<?x?xi32, %S: <?xi32>, %key : i32) {
   %ni = dim %A, 0 : memref<?x?xi32>
   // This loop can be parallelized
   affine.for %i = 0 to %ni {
-    call @search_body (%A, %S, %i) : (memref<?x?xi32>, memref<?xi32>, i32)
+    call @search_body (%A, %S, %key, %i) : (memref<?x?xi32>, memref<?xi32>, i32, i32)
   }
   return
 }
 
-func @search_body(%A: memref<?x?xi32>, %S: memref<?xi32>, %key: i32) {
+func @search_body(%A: memref<?x?xi32>, %S: memref<?xi32>, %key: i32, %i : i32) {
   %nj = dim %A, 1 : memref<?x?xi32>
   br ^bb1(0)
 

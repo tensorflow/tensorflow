@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <atomic>
+
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -35,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "tensorflow/core/kernels/redux_functor.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -43,6 +46,13 @@ using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
 namespace functor {
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+using se::DeviceMemory;
+using se::ScratchAllocator;
+using se::Stream;
+using se::port::StatusOr;
+#endif
 
 string ToString(FusedBatchNormActivationMode activation_mode) {
   switch (activation_mode) {
@@ -78,181 +88,19 @@ struct FusedBatchNorm;
 template <typename Device, typename T, typename U>
 struct FusedBatchNormGrad;
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-using se::DeviceMemory;
-using se::ScratchAllocator;
-using se::Stream;
-using se::port::StatusOr;
-
-template <typename U, typename T>
-DeviceMemory<U> CastDeviceMemory(Tensor* tensor) {
-  return DeviceMemory<U>::MakeFromByteSize(
-      tensor->template flat<T>().data(),
-      tensor->template flat<T>().size() * sizeof(T));
-}
-
-// A helper to allocate temporary scratch memory for Cudnn BatchNormEx ops. It
-// takes the ownership of the underlying memory. The expectation is that the
-// memory should be alive for the span of the Cudnn BatchNormEx itself.
-template <typename T>
-class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
- public:
-  ~CudnnBatchNormAllocatorInTemp() override = default;
-
-  explicit CudnnBatchNormAllocatorInTemp(OpKernelContext* context)
-      : context_(context) {}
-
-  int64 GetMemoryLimitInBytes() override {
-    return std::numeric_limits<int64>::max();
-  }
-
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
-    Tensor temporary_memory;
-    const DataType tf_data_type = DataTypeToEnum<T>::v();
-    int64 allocate_count =
-        Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
-    Status allocation_status(context_->allocate_temp(
-        tf_data_type, TensorShape({allocate_count}), &temporary_memory));
-    if (!allocation_status.ok()) {
-      return allocation_status;
-    }
-    // Hold the reference of the allocated tensors until the end of the
-    // allocator.
-    allocated_tensors_.push_back(temporary_memory);
-    total_byte_size_ += byte_size;
-    return DeviceMemory<uint8>::MakeFromByteSize(
-        temporary_memory.template flat<T>().data(),
-        temporary_memory.template flat<T>().size() * sizeof(T));
-  }
-
-  int64 TotalByteSize() const { return total_byte_size_; }
-
-  Tensor get_allocated_tensor(int index) const {
-    return allocated_tensors_[index];
-  }
-
- private:
-  int64 total_byte_size_ = 0;
-  OpKernelContext* context_;  // not owned
-  std::vector<Tensor> allocated_tensors_;
-};
-
-// A helper to allocate memory for Cudnn BatchNormEx as a kernel output. It is
-// used by forward pass kernel to feed the output to the backward pass.
-// The memory is expected to live long enough after the backward pass is
-// finished.
-template <typename T>
-class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
- public:
-  ~CudnnBatchNormAllocatorInOutput() override {
-    if (!output_allocated) {
-      Tensor* dummy_reserve_space = nullptr;
-      OP_REQUIRES_OK(context_, context_->allocate_output(output_index_, {},
-                                                         &dummy_reserve_space));
-    }
-  }
-
-  CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index)
-      : context_(context), output_index_(output_index) {}
-
-  int64 GetMemoryLimitInBytes() override {
-    return std::numeric_limits<int64>::max();
-  }
-
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
-    output_allocated = true;
-    DCHECK(total_byte_size_ == 0)
-        << "Reserve space allocator can only be called once";
-    int64 allocate_count =
-        Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
-
-    Tensor* temporary_memory = nullptr;
-    Status allocation_status(context_->allocate_output(
-        output_index_, TensorShape({allocate_count}), &temporary_memory));
-    if (!allocation_status.ok()) {
-      return allocation_status;
-    }
-    total_byte_size_ += byte_size;
-    auto memory_uint8 = DeviceMemory<uint8>::MakeFromByteSize(
-        temporary_memory->template flat<T>().data(),
-        temporary_memory->template flat<T>().size() * sizeof(T));
-    return StatusOr<DeviceMemory<uint8>>(memory_uint8);
-  }
-
-  int64 TotalByteSize() { return total_byte_size_; }
-
- private:
-  int64 total_byte_size_ = 0;
-  OpKernelContext* context_;  // not owned
-  int output_index_;
-  bool output_allocated = false;
-};
-#else
-// A dummy class for the non-GPU environment. Its child classes
-// CudnnBatchNormAllocatorInTemp and CudnnBatchNormAllocatorInOutput are used
-// to make the non-GPU operations compatible with GPU ones.
-class ScratchAllocator {
- public:
-  virtual ~ScratchAllocator() {}
-};
-
-template <typename T>
-class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
- public:
-  explicit CudnnBatchNormAllocatorInTemp(OpKernelContext* context) {}
-};
-
-template <typename T>
-class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
- public:
-  ~CudnnBatchNormAllocatorInOutput() override {
-    Tensor* dummy_reserve_space = nullptr;
-    OP_REQUIRES_OK(context_, context_->allocate_output(output_index_, {},
-                                                       &dummy_reserve_space));
-    // Initialize the memory, to avoid sanitizer alerts.
-    dummy_reserve_space->flat<T>()(0) = T();
-  }
-  CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index)
-      : context_(context), output_index_(output_index) {}
-
- private:
-  OpKernelContext* context_;  // not owned
-  int output_index_;
-};
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-template <bool IsSame, typename Y, typename X, typename T>
-struct CastIfNecessary {
-  static inline void process(
-      Y& y, X& x_shifted, const Eigen::DSizes<Eigen::Index, 2>& rest_by_depth,
-      const CPUDevice& d) {
-    y.reshape(rest_by_depth).device(d) = x_shifted.template cast<T>();
-  }
-};
-
-template <typename Y, typename X, typename T>
-struct CastIfNecessary<true, Y, X, T> {
-  static inline void process(
-      Y& y, X& x_shifted, const Eigen::DSizes<Eigen::Index, 2>& rest_by_depth,
-      const CPUDevice& d) {
-    y.reshape(rest_by_depth).device(d) = x_shifted;
-  }
-};
-
 template <typename T, typename U>
 struct FusedBatchNorm<CPUDevice, T, U> {
   void operator()(OpKernelContext* context, const Tensor& x_input,
                   const Tensor& scale_input, const Tensor& offset_input,
                   const Tensor& estimated_mean_input,
                   const Tensor& estimated_variance_input,
-                  const Tensor& side_input, U epsilon,
+                  const Tensor* side_input, U epsilon,
                   FusedBatchNormActivationMode activation_mode,
                   Tensor* y_output, Tensor* batch_mean_output,
                   Tensor* batch_var_output, Tensor* saved_mean_output,
                   Tensor* saved_var_output, TensorFormat tensor_format,
-                  ScratchAllocator* reserve_space_allocator,
-                  ScratchAllocator* workspace_allocator, bool is_training) {
-    OP_REQUIRES(context, side_input.dim_size(0) == 0,
+                  bool use_reserved_space, bool is_training) {
+    OP_REQUIRES(context, side_input == nullptr,
                 errors::Internal(
                     "The CPU implementation of FusedBatchNorm does not support "
                     "side input."));
@@ -260,6 +108,14 @@ struct FusedBatchNorm<CPUDevice, T, U> {
                 activation_mode == FusedBatchNormActivationMode::kIdentity,
                 errors::Internal("The CPU implementation of FusedBatchNorm "
                                  "does not support activations."));
+
+    if (use_reserved_space) {
+      Tensor* dummy_reserve_space = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(5, {}, &dummy_reserve_space));
+      // Initialize the memory, to avoid sanitizer alerts.
+      dummy_reserve_space->flat<U>()(0) = U();
+    }
     Tensor transformed_x;
     Tensor transformed_y;
     if (tensor_format == FORMAT_NCHW) {
@@ -326,46 +182,65 @@ struct FusedBatchNorm<CPUDevice, T, U> {
 
     Eigen::Tensor<U, 1, Eigen::RowMajor> mean(depth);
     Eigen::Tensor<U, 1, Eigen::RowMajor> variance(depth);
+    BlockingCounter barrier(1);
+    std::atomic<uint8> task_counter;
+    auto on_done = [&]() {
+      uint8 count = --task_counter;
+      if (count == 0) {
+        if (tensor_format == FORMAT_NCHW) {
+          // Perform NHWC to NCHW
+          const std::vector<int32> perm = {0, 3, 1, 2};
+          const Status s =
+              ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
+                                        transformed_y, perm, y_output);
+          if (!s.ok()) {
+            context->SetStatus(
+                errors::InvalidArgument("Transpose failed: ", s));
+          }
+        }
+        barrier.DecrementCount();
+      }
+    };
     if (is_training) {
       mean.device(d) = (x_rest_by_depth.sum(reduce_dims) * rest_size_inv);
-      batch_mean.device(d) = mean;
-      saved_mean.device(d) = mean;
-    } else {
-      mean.device(d) = estimated_mean;
-    }
+      auto x_centered =
+          x_rest_by_depth - mean.reshape(one_by_depth).broadcast(bcast_spec);
 
-    auto x_centered =
-        x_rest_by_depth - mean.reshape(one_by_depth).broadcast(bcast_spec);
-
-    if (is_training) {
       variance.device(d) = x_centered.square().sum(reduce_dims) * rest_size_inv;
-      batch_var.device(d) = variance * rest_size_adjust;
-      saved_var.device(d) = variance;
-    } else {
-      variance.device(d) = estimated_variance;
+      auto scaling_factor = ((variance + epsilon).rsqrt() * scale)
+                                .eval()
+                                .reshape(one_by_depth)
+                                .broadcast(bcast_spec);
+      auto x_scaled = x_centered * scaling_factor;
+      auto x_shifted =
+          (x_scaled + offset.reshape(one_by_depth).broadcast(bcast_spec))
+              .template cast<T>();
+
+      task_counter = 5;
+      y.reshape(rest_by_depth).device(d, on_done) = x_shifted;
+      batch_var.device(d, on_done) = variance * rest_size_adjust;
+      saved_var.device(d, on_done) = variance;
+      batch_mean.device(d, on_done) = mean;
+      saved_mean.device(d, on_done) = mean;
+    } else {  // is_training == false
+      auto x_centered =
+          x_rest_by_depth -
+          estimated_mean.reshape(one_by_depth).broadcast(bcast_spec);
+      auto scaling_factor = ((estimated_variance + epsilon).rsqrt() * scale)
+                                .eval()
+                                .reshape(one_by_depth)
+                                .broadcast(bcast_spec);
+      auto x_scaled = x_centered * scaling_factor;
+      auto x_shifted =
+          (x_scaled + offset.reshape(one_by_depth).broadcast(bcast_spec))
+              .template cast<T>();
+
+      task_counter = 3;
+      y.reshape(rest_by_depth).device(d, on_done) = x_shifted;
+      mean.device(d, on_done) = estimated_mean;
+      variance.device(d, on_done) = estimated_variance;
     }
-
-    auto scaling_factor = ((variance + epsilon).rsqrt() * scale)
-                              .eval()
-                              .reshape(one_by_depth)
-                              .broadcast(bcast_spec);
-    auto x_scaled = x_centered * scaling_factor;
-    auto x_shifted =
-        x_scaled + offset.reshape(one_by_depth).broadcast(bcast_spec);
-
-    // Explicitly checks the types of T and U and only casts x_shifted when
-    // T != U. (Not doing so caused a 35-50% performance slowdown for
-    // some compiler flags.)
-    CastIfNecessary<std::is_same<T, U>::value, decltype(y), decltype(x_shifted),
-                    T>::process(y, x_shifted, rest_by_depth, d);
-
-    if (tensor_format == FORMAT_NCHW) {
-      // Perform NHWC to NCHW
-      std::vector<int32> perm = {0, 3, 1, 2};
-      OP_REQUIRES_OK(
-          context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
-                                             transformed_y, perm, y_output));
-    }
+    barrier.Wait();
   }
 };
 
@@ -376,9 +251,7 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
                   const Tensor& mean_input, const Tensor& variance_input,
                   U epsilon, Tensor* x_backprop_output,
                   Tensor* scale_backprop_output, Tensor* offset_backprop_output,
-                  const Tensor* reserve_space,
-                  ScratchAllocator* workspace_allocator,
-                  TensorFormat tensor_format) {
+                  bool use_reserved_space, TensorFormat tensor_format) {
     Tensor transformed_y_backprop_input;
     Tensor transformed_x_input;
     Tensor transformed_x_backprop_output;
@@ -680,18 +553,121 @@ bool BatchnormSpatialPersistentEnabled() {
 }
 }  // namespace
 
+template <typename U, typename T>
+DeviceMemory<U> CastDeviceMemory(Tensor* tensor) {
+  return DeviceMemory<U>::MakeFromByteSize(
+      tensor->template flat<T>().data(),
+      tensor->template flat<T>().size() * sizeof(T));
+}
+
+// A helper to allocate temporary scratch memory for Cudnn BatchNormEx ops. It
+// takes the ownership of the underlying memory. The expectation is that the
+// memory should be alive for the span of the Cudnn BatchNormEx itself.
+template <typename T>
+class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
+ public:
+  ~CudnnBatchNormAllocatorInTemp() override = default;
+
+  explicit CudnnBatchNormAllocatorInTemp(OpKernelContext* context)
+      : context_(context) {}
+
+  int64 GetMemoryLimitInBytes() override {
+    return std::numeric_limits<int64>::max();
+  }
+
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
+    Tensor temporary_memory;
+    const DataType tf_data_type = DataTypeToEnum<T>::v();
+    int64 allocate_count =
+        Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
+    Status allocation_status(context_->allocate_temp(
+        tf_data_type, TensorShape({allocate_count}), &temporary_memory));
+    if (!allocation_status.ok()) {
+      return allocation_status;
+    }
+    // Hold the reference of the allocated tensors until the end of the
+    // allocator.
+    allocated_tensors_.push_back(temporary_memory);
+    total_byte_size_ += byte_size;
+    return DeviceMemory<uint8>::MakeFromByteSize(
+        temporary_memory.template flat<T>().data(),
+        temporary_memory.template flat<T>().size() * sizeof(T));
+  }
+
+  int64 TotalByteSize() const { return total_byte_size_; }
+
+  Tensor get_allocated_tensor(int index) const {
+    return allocated_tensors_[index];
+  }
+
+ private:
+  int64 total_byte_size_ = 0;
+  OpKernelContext* context_;  // not owned
+  std::vector<Tensor> allocated_tensors_;
+};
+
+// A helper to allocate memory for Cudnn BatchNormEx as a kernel output. It is
+// used by forward pass kernel to feed the output to the backward pass.
+// The memory is expected to live long enough after the backward pass is
+// finished.
+template <typename T>
+class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
+ public:
+  ~CudnnBatchNormAllocatorInOutput() override {
+    if (!output_allocated) {
+      Tensor* dummy_reserve_space = nullptr;
+      OP_REQUIRES_OK(context_, context_->allocate_output(output_index_, {},
+                                                         &dummy_reserve_space));
+    }
+  }
+
+  CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index)
+      : context_(context), output_index_(output_index) {}
+
+  int64 GetMemoryLimitInBytes() override {
+    return std::numeric_limits<int64>::max();
+  }
+
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
+    output_allocated = true;
+    DCHECK(total_byte_size_ == 0)
+        << "Reserve space allocator can only be called once";
+    int64 allocate_count =
+        Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
+
+    Tensor* temporary_memory = nullptr;
+    Status allocation_status(context_->allocate_output(
+        output_index_, TensorShape({allocate_count}), &temporary_memory));
+    if (!allocation_status.ok()) {
+      return allocation_status;
+    }
+    total_byte_size_ += byte_size;
+    auto memory_uint8 = DeviceMemory<uint8>::MakeFromByteSize(
+        temporary_memory->template flat<T>().data(),
+        temporary_memory->template flat<T>().size() * sizeof(T));
+    return StatusOr<DeviceMemory<uint8>>(memory_uint8);
+  }
+
+  int64 TotalByteSize() { return total_byte_size_; }
+
+ private:
+  int64 total_byte_size_ = 0;
+  OpKernelContext* context_;  // not owned
+  int output_index_;
+  bool output_allocated = false;
+};
+
 template <typename T, typename U>
 struct FusedBatchNorm<GPUDevice, T, U> {
   void operator()(OpKernelContext* context, const Tensor& x,
                   const Tensor& scale, const Tensor& offset,
                   const Tensor& estimated_mean,
-                  const Tensor& estimated_variance, const Tensor& side_input,
+                  const Tensor& estimated_variance, const Tensor* side_input,
                   U epsilon, FusedBatchNormActivationMode activation_mode,
                   Tensor* y, Tensor* batch_mean, Tensor* batch_var,
                   Tensor* saved_mean, Tensor* saved_inv_var,
-                  TensorFormat tensor_format,
-                  ScratchAllocator* reserve_space_allocator,
-                  ScratchAllocator* workspace_allocator, bool is_training) {
+                  TensorFormat tensor_format, bool use_reserved_space,
+                  bool is_training) {
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available"));
 
@@ -700,19 +676,18 @@ struct FusedBatchNorm<GPUDevice, T, U> {
     const int64 height = GetTensorDim(x, tensor_format, 'H');
     const int64 width = GetTensorDim(x, tensor_format, 'W');
 
-    // We have reserve_space_3 output only in FusedBatchNormV3 op, and in this
-    // case we pass non-nullptr allocators.
-    const bool has_reserve_space_3 =
-        reserve_space_allocator != nullptr && workspace_allocator != nullptr;
+    // If use_reserved_space we have reserve_space_3 output (only in
+    // FusedBatchNormV3 op).
 
     // Check if cuDNN batch normalization has a fast NHWC implementation:
     //   (1) In inference mode it's always fast.
-    //   (2) Tensorflow enabled batchnorm spatial persistence, and
-    //       FusedBatchNormV3 passed non-null allocators.
+    //   (2) Tensorflow enabled batchnorm spatial persistence, we are called
+    //   from
+    //       FusedBatchNormV3, i.e. use_reserved_space is true.
     const bool fast_nhwc_batch_norm =
         !is_training ||
         (BatchnormSpatialPersistentEnabled() &&
-         DataTypeToEnum<T>::value == DT_HALF && has_reserve_space_3);
+         DataTypeToEnum<T>::value == DT_HALF && use_reserved_space);
 
     // If input tensor is in NHWC format, and we have a fast cuDNN
     // implementation, there is no need to do data format conversion.
@@ -726,13 +701,21 @@ struct FusedBatchNorm<GPUDevice, T, U> {
             << " x shape: " << x.shape().DebugString()
             << " scale shape: " << scale.shape().DebugString()
             << " offset shape: " << offset.shape().DebugString()
-            << " side input shape: " << side_input.shape().DebugString()
             << " activation mode: " << ToString(activation_mode)
             << " tensor format: " << ToString(tensor_format)
             << " compute format: " << ToString(compute_format);
 
+    auto maybe_make_dummy_output = [context, use_reserved_space]() -> Status {
+      if (use_reserved_space) {
+        Tensor* dummy_reserve_space = nullptr;
+        return context->allocate_output(5, {}, &dummy_reserve_space);
+      }
+      return Status::OK();
+    };
+
     // If input is empty, return NaN mean/variance
     if (x.shape().num_elements() == 0) {
+      OP_REQUIRES_OK(context, maybe_make_dummy_output());
       functor::SetNanFunctor<U> f;
       f(context->eigen_device<GPUDevice>(), batch_mean->flat<U>());
       f(context->eigen_device<GPUDevice>(), batch_var->flat<U>());
@@ -741,18 +724,19 @@ struct FusedBatchNorm<GPUDevice, T, U> {
 
     // In inference mode we use custom CUDA kernel, because cuDNN does not
     // support side input and activations for inference.
-    const bool has_side_input = side_input.dim_size(0) != 0;
+    const bool has_side_input = side_input != nullptr;
     const bool has_activation =
         activation_mode != FusedBatchNormActivationMode::kIdentity;
 
     if (!is_training && (has_side_input || has_activation)) {
+      OP_REQUIRES_OK(context, maybe_make_dummy_output());
       FusedBatchNormInferenceFunctor<GPUDevice, T, U> inference_functor;
 
       if (has_side_input) {
         inference_functor(context, tensor_format, x.tensor<T, 4>(),
                           scale.vec<U>(), offset.vec<U>(),
                           estimated_mean.vec<U>(), estimated_variance.vec<U>(),
-                          side_input.tensor<T, 4>(), epsilon, activation_mode,
+                          side_input->tensor<T, 4>(), epsilon, activation_mode,
                           y->tensor<T, 4>());
       } else {
         typename TTypes<T, 4>::ConstTensor empty_tensor(nullptr, 0, 0, 0, 0);
@@ -762,7 +746,6 @@ struct FusedBatchNorm<GPUDevice, T, U> {
                           empty_tensor, epsilon, activation_mode,
                           y->tensor<T, 4>());
       }
-
       return;
     }
 
@@ -823,7 +806,10 @@ struct FusedBatchNorm<GPUDevice, T, U> {
         StreamExecutorUtil::AsDeviceMemory<U>(estimated_mean);
     auto estimated_variance_ptr =
         StreamExecutorUtil::AsDeviceMemory<U>(estimated_variance);
-    auto side_input_ptr = StreamExecutorUtil::AsDeviceMemory<U>(side_input);
+    auto side_input_ptr =
+        side_input != nullptr
+            ? StreamExecutorUtil::AsDeviceMemory<U>(*side_input)
+            : se::DeviceMemory<U>();
     auto batch_mean_ptr = StreamExecutorUtil::AsDeviceMemory<U>(*batch_mean);
 
     auto batch_var_ptr = StreamExecutorUtil::AsDeviceMemory<U>(*batch_var);
@@ -858,6 +844,16 @@ struct FusedBatchNorm<GPUDevice, T, U> {
       InvVarianceToVariance<U>()(d, epsilon, sample_size, channels, variance);
     };
 
+    std::unique_ptr<functor::CudnnBatchNormAllocatorInOutput<U>>
+        reserve_space_allocator;
+    std::unique_ptr<functor::CudnnBatchNormAllocatorInTemp<uint8>>
+        workspace_allocator;
+    if (use_reserved_space) {
+      reserve_space_allocator.reset(
+          new functor::CudnnBatchNormAllocatorInOutput<U>(context, 5));
+      workspace_allocator.reset(
+          new functor::CudnnBatchNormAllocatorInTemp<uint8>(context));
+    }
     bool cudnn_launch_status =
         stream
             ->ThenBatchNormalizationForward(
@@ -867,14 +863,15 @@ struct FusedBatchNorm<GPUDevice, T, U> {
                 AsDnnActivationMode(activation_mode), &y_ptr, &batch_mean_ptr,
                 &batch_var_ptr, &saved_mean_ptr, &saved_inv_var_ptr,
                 is_training, std::move(var_to_inv_var),
-                std::move(inv_var_to_var), reserve_space_allocator,
-                workspace_allocator)
+                std::move(inv_var_to_var), reserve_space_allocator.get(),
+                workspace_allocator.get())
             .ok();
 
     if (!cudnn_launch_status) {
       context->SetStatus(
           errors::Internal("cuDNN launch failure : input shape (",
                            x.shape().DebugString(), ")"));
+      return;
     }
 
     if (tensor_format == FORMAT_NHWC && compute_format == FORMAT_NCHW) {
@@ -892,9 +889,7 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
                   const Tensor& x, const Tensor& scale, const Tensor& mean,
                   const Tensor& inv_variance, U epsilon, Tensor* x_backprop,
                   Tensor* scale_backprop, Tensor* offset_backprop,
-                  const Tensor* reserve_space,
-                  ScratchAllocator* workspace_allocator,
-                  TensorFormat tensor_format) {
+                  bool use_reserved_space, TensorFormat tensor_format) {
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available"));
 
@@ -908,8 +903,7 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
     //       FusedBatchNormGradV3 passed non-null reserve space and allocator.
     const bool fast_nhwc_batch_norm = BatchnormSpatialPersistentEnabled() &&
                                       DataTypeToEnum<T>::value == DT_HALF &&
-                                      reserve_space != nullptr &&
-                                      workspace_allocator != nullptr;
+                                      use_reserved_space;
 
     // If input tensor is in NHWC format, and we have a fast cuDNN
     // implementation, there is no need to do data format conversion.
@@ -1007,21 +1001,32 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
     auto offset_backprop_ptr =
         StreamExecutorUtil::AsDeviceMemory<U>(*offset_backprop);
 
-    // the cudnn kernel outputs inverse variance in forward and reuse it in
-    // backward
+    std::unique_ptr<functor::CudnnBatchNormAllocatorInTemp<uint8>>
+        workspace_allocator;
     DeviceMemory<uint8>* reserve_space_data = nullptr;
-    if (reserve_space != nullptr && reserve_space->dims() != 0) {
-      auto reserve_space_uint8 = functor::CastDeviceMemory<uint8, U>(
-          const_cast<Tensor*>(reserve_space));
-      reserve_space_data = &reserve_space_uint8;
+#if CUDNN_VERSION >= 7402
+    if (use_reserved_space) {
+      const Tensor& reserve_space = context->input(5);
+      workspace_allocator.reset(
+          new functor::CudnnBatchNormAllocatorInTemp<uint8>(context));
+
+      // the cudnn kernel outputs inverse variance in forward and reuse it in
+      // backward
+      if (reserve_space.dims() != 0) {
+        auto reserve_space_uint8 = functor::CastDeviceMemory<uint8, U>(
+            const_cast<Tensor*>(&reserve_space));
+        reserve_space_data = &reserve_space_uint8;
+      }
     }
+#endif  // CUDNN_VERSION >= 7402
+
     bool cudnn_launch_status =
         stream
             ->ThenBatchNormalizationBackward(
                 y_backprop_ptr, x_ptr, scale_ptr, mean_ptr, inv_variance_ptr,
                 x_desc, scale_offset_desc, static_cast<double>(epsilon),
                 &x_backprop_ptr, &scale_backprop_ptr, &offset_backprop_ptr,
-                reserve_space_data, workspace_allocator)
+                reserve_space_data, workspace_allocator.get())
             .ok();
 
     if (!cudnn_launch_status) {
@@ -1075,7 +1080,7 @@ class FusedBatchNormOpBase : public OpKernel {
  protected:
   explicit FusedBatchNormOpBase(OpKernelConstruction* context,
                                 bool is_batch_norm_ex = false)
-      : OpKernel(context), empty_side_input_(DataTypeToEnum<T>::value, {0}) {
+      : OpKernel(context) {
     float epsilon;
     OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
     epsilon_ = U(epsilon);
@@ -1134,8 +1139,7 @@ class FusedBatchNormOpBase : public OpKernel {
     const Tensor& offset = context->input(2);
     const Tensor& estimated_mean = context->input(3);
     const Tensor& estimated_variance = context->input(4);
-    const Tensor& side_input =
-        has_side_input_ ? context->input(5) : empty_side_input_;
+    const Tensor* side_input = has_side_input_ ? &context->input(5) : nullptr;
 
     OP_REQUIRES(context, x.dims() == 4,
                 errors::InvalidArgument("input must be 4-dimensional",
@@ -1154,10 +1158,10 @@ class FusedBatchNormOpBase : public OpKernel {
         errors::InvalidArgument("estimated_variance must be 1-dimensional",
                                 estimated_variance.shape().DebugString()));
     if (has_side_input_) {
-      OP_REQUIRES(context, side_input.shape() == x.shape(),
+      OP_REQUIRES(context, side_input->shape() == x.shape(),
                   errors::InvalidArgument(
                       "side_input shape must be equal to input shape: ",
-                      side_input.shape().DebugString(),
+                      side_input->shape().DebugString(),
                       " != ", x.shape().DebugString()));
     }
 
@@ -1197,23 +1201,11 @@ class FusedBatchNormOpBase : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(4, scale.shape(),
                                                      &saved_maybe_inv_var));
 
-    if (!use_reserved_space) {
-      functor::FusedBatchNorm<Device, T, U>()(
-          context, x, scale, offset, estimated_mean, estimated_variance,
-          side_input, epsilon_, activation_mode_, y, batch_mean, batch_var,
-          saved_mean, saved_maybe_inv_var, tensor_format_, nullptr, nullptr,
-          is_training_);
-    } else {
-      functor::CudnnBatchNormAllocatorInOutput<U> reserve_space_allocator(
-          context, 5);
-      functor::CudnnBatchNormAllocatorInTemp<uint8> workspace_allocator(
-          context);
-      functor::FusedBatchNorm<Device, T, U>()(
-          context, x, scale, offset, estimated_mean, estimated_variance,
-          side_input, epsilon_, activation_mode_, y, batch_mean, batch_var,
-          saved_mean, saved_maybe_inv_var, tensor_format_,
-          &reserve_space_allocator, &workspace_allocator, is_training_);
-    }
+    functor::FusedBatchNorm<Device, T, U>()(
+        context, x, scale, offset, estimated_mean, estimated_variance,
+        side_input, epsilon_, activation_mode_, y, batch_mean, batch_var,
+        saved_mean, saved_maybe_inv_var, tensor_format_, use_reserved_space,
+        is_training_);
   }
 
  private:
@@ -1222,7 +1214,6 @@ class FusedBatchNormOpBase : public OpKernel {
   bool is_training_;
   bool has_side_input_;
   FbnActivationMode activation_mode_;
-  Tensor empty_side_input_;
 };
 
 template <typename Device, typename T, typename U>
@@ -1341,25 +1332,11 @@ class FusedBatchNormGradOpBase : public OpKernel {
       return;
     }
 
-    const Tensor* reserve_space_data = nullptr;
-    functor::CudnnBatchNormAllocatorInTemp<uint8>* workspace_allocator_ptr =
-        nullptr;
-
-#if CUDNN_VERSION >= 7402
-    functor::CudnnBatchNormAllocatorInTemp<uint8> workspace_allocator(context);
-    if (use_reserved_space) {
-      const Tensor& reserve_space = context->input(5);
-      reserve_space_data = &reserve_space;
-      workspace_allocator_ptr = &workspace_allocator;
-    }
-#endif  // CUDNN_VERSION >= 7402
-
     if (is_training_) {
       functor::FusedBatchNormGrad<Device, T, U>()(
           context, y_backprop, x, scale, saved_mean_or_pop_mean,
           saved_maybe_inv_var_or_pop_var, epsilon_, x_backprop, scale_backprop,
-          offset_backprop, reserve_space_data, workspace_allocator_ptr,
-          tensor_format_);
+          offset_backprop, use_reserved_space, tensor_format_);
     } else {
       // Necessary layout conversion is currently done in python.
       CHECK(tensor_format_ == FORMAT_NHWC)

@@ -34,7 +34,7 @@ limitations under the License.
 // NOLINTNEXTLINE
 static llvm::cl::list<std::string> quantize_whitelist(
     "tfl-test-quantize-whitelist", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma seprarated list of whitelisted functions to be "
+    llvm::cl::desc("comma separated list of whitelisted functions to be "
                    "quantized. Only used in tests"),
     llvm::cl::CommaSeparated);
 
@@ -42,6 +42,12 @@ static llvm::cl::list<std::string> quantize_whitelist(
 static llvm::cl::opt<bool> quantize_signed(
     "tfl-test-quantize-signed", llvm::cl::value_desc("bool"),
     llvm::cl::desc("signed inference type. Only used in tests"),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> disable_per_channel(
+    "tfl-disable-per-channel", llvm::cl::value_desc("bool"),
+    llvm::cl::desc("Whether disable per-channel quantized weights."),
     llvm::cl::init(false));
 
 //===----------------------------------------------------------------------===//
@@ -140,8 +146,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
         auto min_max = GetMinMaxValuesForArgument(func_name, i);
         TypeAttr params = GetQuantizedTypeAttr(
             builder, input_type, builder.getF64FloatAttr(min_max.first),
-            builder.getF64FloatAttr(min_max.second), num_bits, narrow_range,
-            is_signed);
+            builder.getF64FloatAttr(min_max.second), /*quant_dim=*/-1, num_bits,
+            narrow_range, is_signed);
         builder.setInsertionPoint(block, insertion_point);
         auto q_op = builder.create<TFL::QuantizeOp>(loc, params.getValue(), arg,
                                                     params);
@@ -205,7 +211,8 @@ void PrepareQuantizePass::runOnFunction() {
 
   // Finally, the quantization parameters can be propagated to the rest of the
   // values (tensors).
-  ApplyQuantizationParamsPropagation(func, is_signed, GetOpQuantSpec);
+  ApplyQuantizationParamsPropagation(func, is_signed, disable_per_channel,
+                                     GetOpQuantSpec);
 }
 
 }  // namespace

@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_PROFILING_MEMORY_INFO_H_
 
 #include <cstdint>
+#include <sstream>
 
 namespace tflite {
 namespace profiling {
@@ -25,30 +26,49 @@ struct MemoryUsage {
   static const int kValueNotSet;
 
   MemoryUsage()
-      : max_rss_kb(kValueNotSet), total_allocated_bytes(kValueNotSet) {}
+      : max_rss_kb(kValueNotSet),
+        total_allocated_bytes(kValueNotSet),
+        in_use_allocated_bytes(kValueNotSet) {}
 
   // The maximum memory size (in kilobytes) occupied by an OS process that is
   // held in main memory (RAM). Such memory usage information is generally
   // referred as resident set size (rss). This is an alias to rusage::ru_maxrss.
   int64_t max_rss_kb;
 
-  // Total allocated space in bytes. This is an alias to mallinfo::uordblks.
+  // Total non-mmapped space allocated from system in bytes. This is an alias to
+  // mallinfo::arena.
   int total_allocated_bytes;
 
-  MemoryUsage operator+(MemoryUsage const &obj) const {
+  // Total allocated (including mmapped) bytes that's in use (i.e. excluding
+  // those are freed). This is an alias to mallinfo::uordblks.
+  int in_use_allocated_bytes;
+
+  MemoryUsage operator+(MemoryUsage const& obj) const {
     MemoryUsage res;
     res.max_rss_kb = max_rss_kb + obj.max_rss_kb;
     res.total_allocated_bytes =
         total_allocated_bytes + obj.total_allocated_bytes;
+    res.in_use_allocated_bytes =
+        in_use_allocated_bytes + obj.in_use_allocated_bytes;
     return res;
   }
 
-  MemoryUsage operator-(MemoryUsage const &obj) const {
+  MemoryUsage operator-(MemoryUsage const& obj) const {
     MemoryUsage res;
     res.max_rss_kb = max_rss_kb - obj.max_rss_kb;
     res.total_allocated_bytes =
         total_allocated_bytes - obj.total_allocated_bytes;
+    res.in_use_allocated_bytes =
+        in_use_allocated_bytes - obj.in_use_allocated_bytes;
     return res;
+  }
+
+  void AllStatsToStream(std::ostream* stream) const;
+
+  friend std::ostream& operator<<(std::ostream& stream,
+                                  const MemoryUsage& obj) {
+    obj.AllStatsToStream(&stream);
+    return stream;
   }
 };
 

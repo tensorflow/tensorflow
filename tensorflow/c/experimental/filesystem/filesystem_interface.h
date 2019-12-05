@@ -252,9 +252,9 @@ typedef struct TF_WritableFileOps {
   ///
   /// Flushes all buffers and deallocates all resources.
   ///
-  /// Plugins must ensure that calling this on an already closed `*file` only
-  /// sets `status` to a non `TF_OK` value. Furthermore, calling `close` must
-  /// not result in calling `cleanup`.
+  /// Calling `close` must not result in calling `cleanup`.
+  ///
+  /// Core TensorFlow will never call `close` twice.
   void (*close)(const TF_WritableFile* file, TF_Status* status);
 } TF_WritableFileOps;
 // LINT.ThenChange(:writable_file_ops_version)
@@ -471,8 +471,8 @@ typedef struct TF_FilesystemOps {
   ///   * Must set `status` to `TF_NOT_FOUND` if one of the parents entries in
   ///     either `src` or `dst` doesn't exist or if the specified `src` path
   ///     doesn't exist.
-  ///   * Must set `status` to `TF_FAILED_PRECONDITION` if either `src` or `dst`
-  ///     is a directory or if either of these paths are invalid.
+  ///   * Must set `status` to `TF_FAILED_PRECONDITION` if either `src` or
+  ///     `dst` is a directory or if either of them is invalid.
   ///   * Might use any other error value for `status` to signal other errors.
   ///
   /// DEFAULT IMPLEMENTATION: Copies file and deletes original. Needs
@@ -494,8 +494,8 @@ typedef struct TF_FilesystemOps {
   ///   * Must set `status` to `TF_NOT_FOUND` if one of the parents entries in
   ///     either `src` or `dst` doesn't exist or if the specified `src` path
   ///     doesn't exist.
-  ///   * Must set `status` to `TF_FAILED_PRECONDITION` if `src` is a directory
-  ///     or if either `src` or `dst` are invalid.
+  ///   * Must set `status` to `TF_FAILED_PRECONDITION` if either `src` or
+  ///     `dst` is a directory or if either of them is invalid.
   ///   * Might use any other error value for `status` to signal other errors.
   ///
   /// DEFAULT IMPLEMENTATION: Reads from `src` and writes to `dst`. Needs
@@ -527,11 +527,13 @@ typedef struct TF_FilesystemOps {
   ///     of type `TF_Status*`.
   ///
   /// If `statuses` is not null, plugins must fill each element with detailed
-  /// status for each file, as if calling `path_exists` on each one.
+  /// status for each file, as if calling `path_exists` on each one. Core
+  /// TensorFlow initializes the `statuses` array and plugins must use
+  /// `TF_SetStatus` to set each element instead of dirrectly assigning.
   ///
   /// DEFAULT IMPLEMENTATION: Checks existence of every file. Needs
   /// `path_exists`.
-  bool (*paths_exist)(const TF_Filesystem* filesystem, const char** paths,
+  bool (*paths_exist)(const TF_Filesystem* filesystem, char** paths,
                       int num_files, TF_Status** statuses);
 
   /// Obtains statistics for the given `path`.
@@ -609,13 +611,12 @@ typedef struct TF_FilesystemOps {
   ///
   /// The returned entries are paths relative to `path`.
   ///
-  /// Caller passes `nullptr` for `entries`. Plugins must allocate `entries`
-  /// to hold all names that need to be returned and return the size of
-  /// `entries`.
+  /// Plugins must allocate `entries` to hold all names that need to be returned
+  /// and return the size of `entries`. Caller takes ownership of `entries`
+  /// after the call.
   ///
   /// In case of error, plugins must set `status` to a value different than
-  /// `TF_OK`, return -1 and leave `entries` unchanged (i.e., `nullptr`, freeing
-  /// any allocated memory).
+  /// `TF_OK`, free memory allocated for `entries` and return -1.
   ///
   /// Plugins:
   ///   * Must set `status` to `TF_OK` if all children were returned.
@@ -645,13 +646,13 @@ typedef struct TF_FilesystemOps {
   ///   '\\' c: matches character c
   ///   lo '-' hi: matches character c for lo <= c <= hi
   ///
-  /// Caller passes `nullptr` for `entries`. Plugins must allocate `entries`
-  /// to hold all names that need to be returned and return the size of
-  /// `entries`.
+  /// Implementations must allocate `entries` to hold all names that need to be
+  /// returned and return the size of `entries`. Caller takes ownership of
+  /// `entries` after the call.
   ///
-  /// In case of error, plugins must set `status` to a value different than
-  /// `TF_OK`, return -1 and leave `entries` unchanged (i.e., `nullptr`, freeing
-  /// any allocated memory)
+  /// In case of error, the implementations must set `status` to a value
+  /// different than `TF_OK`, free any memory that might have been allocated for
+  /// `entries` and return -1.
   ///
   /// Plugins:
   ///   * Must set `status` to `TF_OK` if all matches were returned.

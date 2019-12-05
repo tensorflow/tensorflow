@@ -55,11 +55,6 @@ static llvm::cl::opt<bool> clPromoteDynamic(
     llvm::cl::desc("Test generation of dynamic promoted buffers"),
     llvm::cl::cat(clOptionsCategory), llvm::cl::init(false));
 
-static AffineMap getAffineDifferenceMap(MLIRContext *context) {
-  AffineExpr d0(getAffineDimExpr(0, context)), d1(getAffineDimExpr(1, context));
-  return AffineMap::get(2, 0, {d0 - d1});
-}
-
 static Value *allocBuffer(Type elementType, Value *size, bool dynamicBuffers) {
   auto *ctx = size->getContext();
   auto width = llvm::divideCeil(elementType.getIntOrFloatBitWidth(), 8);
@@ -95,7 +90,7 @@ static PromotionInfo promoteFullTileBuffer(OpBuilder &b, Location loc,
   auto zero = constant_index(folder, 0);
   auto one = constant_index(folder, 1);
 
-  auto viewType = subView.getViewType();
+  auto viewType = subView.getType();
   auto rank = viewType.getRank();
   Value *allocSize = one;
   SmallVector<Value *, 8> fullRanges, partialRanges;
@@ -104,12 +99,7 @@ static PromotionInfo promoteFullTileBuffer(OpBuilder &b, Location loc,
   for (auto en : llvm::enumerate(subView.getRanges())) {
     auto rank = en.index();
     auto rangeValue = en.value();
-    Value *d =
-        isa<DimOp>(rangeValue.max->getDefiningOp())
-            ? rangeValue.max
-            : applyMapToValues(b, loc, getAffineDifferenceMap(b.getContext()),
-                               {rangeValue.max, rangeValue.min}, folder)
-                  .front();
+    Value *d = rangeValue.size;
     allocSize = muli(folder, allocSize, d).getValue();
     fullRanges.push_back(d);
     partialRanges.push_back(range(folder, zero, dim(subView, rank), one));
@@ -136,7 +126,7 @@ mlir::linalg::promoteSubViews(OpBuilder &b, Location loc,
   DenseMap<Value *, PromotionInfo> promotionInfoMap;
   for (auto *v : subViews) {
     SubViewOp subView = cast<SubViewOp>(v->getDefiningOp());
-    auto viewType = subView.getViewType();
+    auto viewType = subView.getType();
     // TODO(ntv): support more cases than just float.
     if (!viewType.getElementType().isa<FloatType>())
       continue;
@@ -153,7 +143,7 @@ mlir::linalg::promoteSubViews(OpBuilder &b, Location loc,
       continue;
     // TODO(ntv): value to fill with should be related to the operation.
     // For now, just use APFloat(0.0f).
-    auto t = subView.getViewType().getElementType().cast<FloatType>();
+    auto t = subView.getType().getElementType().cast<FloatType>();
     Value *fillVal = constant_float(folder, APFloat(0.0f), t);
     // TODO(ntv): fill is only necessary if `promotionInfo` has a full local
     // view that is different from the partial local view and we are on the

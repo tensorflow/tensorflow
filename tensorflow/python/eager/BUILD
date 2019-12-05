@@ -40,6 +40,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/python:cpp_python_util",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",
@@ -156,7 +157,10 @@ py_library(
     name = "monitoring",
     srcs = ["monitoring.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_agents:__subpackages__",
+    ],
     deps = [
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:pywrap_tensorflow",
@@ -192,7 +196,6 @@ cuda_py_test(
         ":profiler",
         ":test",
         "//tensorflow/python:constant_op",
-        "//tensorflow/core/profiler:protos_all_py",
     ],
 )
 
@@ -618,6 +621,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:test_ops",
     ],
 )
 
@@ -776,6 +780,7 @@ cuda_py_test(
         ":test",
         ":remote",
         "@absl_py//absl/testing:parameterized",
+        "@six_archive//:six",
         "//tensorflow/python:resource_variable_ops",
     ],
     grpc_enabled = True,

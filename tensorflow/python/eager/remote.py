@@ -105,6 +105,11 @@ def connect_to_cluster(cluster_spec_or_resolver,
       a cluster spec is passed. Will throw an error if the caller is currently
       already in some device scope.
   """
+  if not context.executing_eagerly():
+    raise ValueError(
+        "`tf.config.experimental_connect_to_cluster` can only be called in "
+        "eager mode."
+    )
   protocol = protocol or remote_utils.get_default_communication_protocol()
   if isinstance(cluster_spec_or_resolver, server_lib.ClusterSpec):
     cluster_spec = cluster_spec_or_resolver

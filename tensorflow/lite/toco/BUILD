@@ -1,5 +1,5 @@
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",
     "tf_proto_library_py",
 )
@@ -18,12 +18,14 @@ package(
 tf_proto_library_cc(
     name = "types_proto",
     srcs = ["types.proto"],
+    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
 tf_proto_library_cc(
     name = "toco_flags_proto",
     srcs = ["toco_flags.proto"],
+    cc_api_version = 2,
     protodeps = [":types_proto"],
     visibility = ["//visibility:public"],
 )
@@ -31,6 +33,7 @@ tf_proto_library_cc(
 tf_proto_library_cc(
     name = "model_flags_proto",
     srcs = ["model_flags.proto"],
+    cc_api_version = 2,
     protodeps = [":types_proto"],
     visibility = ["//visibility:public"],
 )
@@ -177,8 +180,8 @@ cc_library(
     name = "graph_transformations",
     srcs = [
         "graph_transformations/convert_expanddims_to_reshape.cc",
-        "graph_transformations/convert_matrix_diag_v2_to_v1.cc",
-        "graph_transformations/convert_matrix_set_diag_v2_to_v1.cc",
+        "graph_transformations/convert_matrix_diag_v2_or_v3_to_v1.cc",
+        "graph_transformations/convert_matrix_set_diag_v2_or_v3_to_v1.cc",
         "graph_transformations/convert_pure_conv_to_depthwise.cc",
         "graph_transformations/convert_reorder_axes.cc",
         "graph_transformations/convert_squeeze_to_reshape.cc",

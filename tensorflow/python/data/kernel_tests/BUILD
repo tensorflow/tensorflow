@@ -287,6 +287,7 @@ tf_py_test(
     size = "small",
     srcs = ["iterator_cluster_test.py"],
     additional_deps = [
+        ":test_base",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
@@ -400,6 +401,7 @@ tf_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/ops/ragged",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
@@ -413,7 +415,7 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/experimental/ops:optimization_options",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -422,9 +424,9 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
     ],
     tags = [
+        "no_gpu",  #TODO(b/141255188): Enable test after bug is resolved.
         "no_oss",
         "no_windows_gpu",
-        "nogpu",  #TODO(b/141255188): Enable test after bug is resolved.
     ],
 )
 
@@ -441,6 +443,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    tags = ["notsan"],  # b/144706539
 )
 
 tf_py_test(
@@ -555,7 +558,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
     ],

@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 
 from absl.testing import parameterized
+import mock
 import numpy as np
 
 
@@ -81,17 +82,20 @@ class AggregatePredictResultsTest(test.TestCase, parameterized.TestCase):
 
     start = 0
     for batch in distributed_data:
-      batch_result = self.predict_loop(batch)
-      final_result = training_v2_utils._aggregate_predict_results(
-          self.strategy, batch_result, self.mock_model)
+      with mock.patch.object(training_v2_utils,
+                             '_should_add_batch_index_to_element',
+                             fake_should_add_batch_index_to_element):
+        batch_result = self.predict_loop(batch)
+        final_result = training_v2_utils._aggregate_predict_results(
+            self.strategy, batch_result, self.mock_model)
 
-      # Make sure the dense result is in a sorted order.
-      expected_result = np.arange(
-          start=start, stop=start+self.batch_size).reshape((-1, 1))
-      expected_result = np.tile(expected_result, 6).reshape(
-          (-1,) + self.dense_shape)
-      self.assertAllClose(final_result[0], expected_result)
-      start += self.batch_size
+        # Make sure the dense result is in a sorted order.
+        expected_result = np.arange(
+            start=start, stop=start+self.batch_size).reshape((-1, 1))
+        expected_result = np.tile(expected_result, 6).reshape(
+            (-1,) + self.dense_shape)
+        self.assertAllClose(final_result[0], expected_result)
+        start += self.batch_size
 
   @combinations.generate(combinations.combine(tf_api_version=[1, 2],
                                               mode='eager'))
@@ -108,14 +112,17 @@ class AggregatePredictResultsTest(test.TestCase, parameterized.TestCase):
 
     start = 0
     for batch in distributed_data:
-      batch_result = self.predict_loop(batch)
-      final_result = training_v2_utils._aggregate_predict_results(
-          self.strategy, batch_result, self.mock_model)
+      with mock.patch.object(training_v2_utils,
+                             '_should_add_batch_index_to_element',
+                             fake_should_add_batch_index_to_element):
+        batch_result = self.predict_loop(batch)
+        final_result = training_v2_utils._aggregate_predict_results(
+            self.strategy, batch_result, self.mock_model)
 
-      # Make sure the dense result is in a sorted order.
-      expected_values = np.arange(start=start, stop=start+self.batch_size)
-      self.assertAllClose(final_result[0].values, expected_values)
-      start += self.batch_size
+        # Make sure the dense result is in a sorted order.
+        expected_values = np.arange(start=start, stop=start+self.batch_size)
+        self.assertAllClose(final_result[0].values, expected_values)
+        start += self.batch_size
 
   @combinations.generate(combinations.combine(tf_api_version=[1, 2],
                                               mode='eager'))
@@ -129,14 +136,24 @@ class AggregatePredictResultsTest(test.TestCase, parameterized.TestCase):
 
     start = 0
     for batch in distributed_data:
-      batch_result = self.predict_loop(batch)
-      final_result = training_v2_utils._aggregate_predict_results(
-          self.strategy, batch_result, self.mock_model)
+      with mock.patch.object(training_v2_utils,
+                             '_should_add_batch_index_to_element',
+                             fake_should_add_batch_index_to_element):
+        batch_result = self.predict_loop(batch)
+        final_result = training_v2_utils._aggregate_predict_results(
+            self.strategy, batch_result, self.mock_model)
 
-      # Make sure the dense result is in a sorted order.
-      expected_values = np.arange(start=start, stop=start+self.batch_size)
-      self.assertAllClose(final_result[0].flat_values, expected_values)
-      start += self.batch_size
+        # Make sure the dense result is in a sorted order.
+        expected_values = np.arange(start=start, stop=start+self.batch_size)
+        self.assertAllClose(final_result[0].flat_values, expected_values)
+        start += self.batch_size
+
+
+def fake_should_add_batch_index_to_element(strategy, mode):
+  # Ignore the strategy instance check since we were using the MirroredStrategy
+  # for testing.
+  del strategy
+  return mode == ModeKeys.PREDICT
 
 
 if __name__ == '__main__':

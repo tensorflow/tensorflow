@@ -1003,6 +1003,14 @@ class SparseCategoricalCrossentropyTest(test.TestCase):
     loss = cce_obj(y_true, logits)
     self.assertAllClose((0.001822, 0.000459, 0.169846), self.evaluate(loss), 3)
 
+  def test_non_tensor(self):
+    # Test case for GitHub issue 33394.
+    cce_obj = keras.losses.SparseCategoricalCrossentropy()
+    y_true = [[0], [1], [2]]
+    y_pred = [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]]
+    loss = cce_obj(y_true, y_pred, sample_weight=2.3)
+    self.assertAlmostEqual(self.evaluate(loss), .7449, 3)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class HingeTest(test.TestCase):

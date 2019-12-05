@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #if GOOGLE_CUDA
-#include "tensorflow/core/platform/cuda.h"
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"

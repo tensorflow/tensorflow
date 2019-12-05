@@ -330,33 +330,26 @@ string SanitizeFileName(string file_name) {
 // [2] T. J. Dekker, A floating point technique for extending the available
 //     precision, Numerische Mathematik, vol. 18, pp. 224–242, 1971.
 std::pair<float, float> SplitF64ToF32(double x) {
-  // Early return if x is equal to infinity or -infinity.
-  if (std::isinf(x)) {
-    return std::make_pair(static_cast<float>(x), 0.0f);
+  const float x_f32 = static_cast<float>(x);
+  // Early return if x is an infinity or NaN.
+  if (!std::isfinite(x)) {
+    return std::make_pair(x_f32, 0.0f);
   }
-
-  // Following [1], the splitter is chosen as 2^{s} + 1, so that the most
-  // significant (p - s) bits comprise the mantissa of 'hi'.
-  static_assert(std::numeric_limits<double>::radix == 2,
-                "Double is not Binary FP");
-  constexpr double kSplitter = (1 << (std::numeric_limits<double>::digits -
-                                      std::numeric_limits<float>::digits)) +
-                               1;
 
   // Only values within the range of F32 are supported, unless it is infinity.
   // Small values with large negative exponents would be rounded to zero.
-  CHECK(std::isfinite(static_cast<float>(x))) << x;
+  CHECK(std::isfinite(x_f32)) << x;
 
-  // The value of '(shifted - x)' should algebraically be exactly 2^{29} * x
-  // but it can a bit smaller, because of rounding to 53 bits in computation of
-  // (2^29 + 1) * x'. This overestimates the value of 'hi' by a multiple of
-  // 2^{-29} (assuming exponent was 0), and makes 'lo' negative. An extra bit is
-  // squeezed into the 'sign' bit of 'lo' to represent 25 bits of significand.
-  const double shifted = kSplitter * x;
-  // TODO(anudhyan): Write a test to ensure that compiler is not optimizing away
-  // the following computation to 'hi = x;'.
-  const float hi = shifted - (shifted - x);
-  const float lo = x - hi;
+  // The high float is simply the double rounded to the nearest float. Because
+  // we are roundinng to nearest with ties to even, the error introduced in
+  // rounding is less than half an ULP in the high ULP.
+  const float hi = x_f32;
+  // We can compute the low term using Sterbenz' lemma: If a and b are two
+  // positive floating point numbers and a/2 ≤ b ≤ 2a, then their difference can
+  // be computed exactly.
+  // Note: the difference is computed exactly but is rounded to the nearest
+  // float which will introduce additional error.
+  const float lo = static_cast<float>(x - static_cast<double>(hi));
   return std::make_pair(hi, lo);
 }
 

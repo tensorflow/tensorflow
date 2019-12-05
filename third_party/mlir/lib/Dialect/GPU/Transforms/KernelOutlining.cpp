@@ -56,22 +56,34 @@ static void injectGpuIndexOperations(Location loc, FuncOp kernelFunc) {
   }
 }
 
-// Move all constant arguments of the given kernel function into the function,
-// thereby reducing the number of kernel arguments.
-static gpu::LaunchFuncOp inlineConstants(FuncOp kernelFunc,
-                                         gpu::LaunchFuncOp launch) {
+static bool isInliningBeneficiary(Operation *op) {
+  return isa<ConstantOp>(op) || isa<DimOp>(op);
+}
+
+// Move arguments of the given kernel function into the function if this reduces
+// the number of kernel arguments.
+static gpu::LaunchFuncOp inlineBeneficiaryOps(FuncOp kernelFunc,
+                                              gpu::LaunchFuncOp launch) {
   OpBuilder kernelBuilder(kernelFunc.getBody());
   auto &firstBlock = kernelFunc.getBody().front();
   llvm::SmallVector<Value *, 8> newLaunchArgs;
+  BlockAndValueMapping map;
+  for (int i = 0, e = launch.getNumKernelOperands(); i < e; ++i) {
+    map.map(launch.getKernelOperand(i), kernelFunc.getArgument(i));
+  }
   for (int i = launch.getNumKernelOperands() - 1; i >= 0; --i) {
     auto operandOp = launch.getKernelOperand(i)->getDefiningOp();
-    auto constant = dyn_cast_or_null<ConstantOp>(operandOp);
-    if (!constant) {
+    if (!operandOp || !isInliningBeneficiary(operandOp)) {
       newLaunchArgs.push_back(launch.getKernelOperand(i));
       continue;
     }
-    auto newConstant = kernelBuilder.clone(*operandOp);
-    firstBlock.getArgument(i)->replaceAllUsesWith(newConstant->getResult(0));
+    // Only inline operations that do not create new arguments.
+    if (!llvm::all_of(operandOp->getOperands(),
+                      [map](Value *value) { return map.contains(value); })) {
+      continue;
+    }
+    auto clone = kernelBuilder.clone(*operandOp, map);
+    firstBlock.getArgument(i)->replaceAllUsesWith(clone->getResult(0));
     firstBlock.eraseArgument(i);
   }
   if (newLaunchArgs.size() == launch.getNumKernelOperands())
@@ -125,7 +137,7 @@ static void convertToLaunchFuncOp(gpu::LaunchOp &launchOp, FuncOp kernelFunc) {
   auto launchFuncOp = builder.create<gpu::LaunchFuncOp>(
       launchOp.getLoc(), kernelFunc, launchOp.getGridSizeOperandValues(),
       launchOp.getBlockSizeOperandValues(), kernelOperandValues);
-  inlineConstants(kernelFunc, launchFuncOp);
+  inlineBeneficiaryOps(kernelFunc, launchFuncOp);
   launchOp.erase();
 }
 
@@ -189,7 +201,8 @@ private:
       if (Optional<SymbolTable::UseRange> symbolUses =
               SymbolTable::getSymbolUses(symbolDefWorklist.pop_back_val())) {
         for (SymbolTable::SymbolUse symbolUse : *symbolUses) {
-          StringRef symbolName = symbolUse.getSymbolRef().getValue();
+          StringRef symbolName =
+              symbolUse.getSymbolRef().cast<FlatSymbolRefAttr>().getValue();
           if (moduleManager.lookupSymbol(symbolName))
             continue;
 

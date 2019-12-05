@@ -120,10 +120,6 @@ class KernelMappingScheme {
     return dims_in_blocks_;
   }
 
-  int64 GetNumberOfTilesInTotal() const {
-    return absl::c_accumulate(dims_in_tiles_, 1LL, std::multiplies<int64>());
-  }
-
   int64 GetNumberOfTilesInOneBlock() const { return block_size_z_; }
 
   int64 BlockSizeZ() const { return block_size_z_; }

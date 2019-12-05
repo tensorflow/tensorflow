@@ -56,7 +56,7 @@ struct OpaqueTypeStorage;
 ///
 ///  * Optional:
 ///    - static LogicalResult verifyConstructionInvariants(
-///                                               llvm::Optional<Location> loc,
+///                                               Optional<Location> loc,
 ///                                               MLIRContext *context,
 ///                                               Args... args)
 ///      * This method is invoked when calling the 'TypeBase::get/getChecked'
@@ -250,10 +250,10 @@ public:
   StringRef getTypeData() const;
 
   /// Verify the construction of an opaque type.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, Identifier dialect,
-                               StringRef typeData);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *context,
+                                                    Identifier dialect,
+                                                    StringRef typeData);
 
   static bool kindof(unsigned kind) { return kind == Kind::Opaque; }
 };

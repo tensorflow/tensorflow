@@ -62,7 +62,8 @@ using absl::StrJoin;
 StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     const HloInstructionProto& proto,
     const absl::flat_hash_map<int64, HloInstruction*>& instruction_map,
-    const absl::flat_hash_map<int64, HloComputation*>& computation_map) {
+    const absl::flat_hash_map<int64, HloComputation*>& computation_map,
+    bool prohibit_empty_literal) {
   TF_RET_CHECK(!proto.opcode().empty());
   HloOpcode opcode;
   auto opcode_or = StringToHloOpcode(proto.opcode());
@@ -300,8 +301,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kConstant: {
       // TODO(b/110214922): Revert this to CHECK(proto.has_literal()).
       if (proto.has_literal()) {
-        TF_ASSIGN_OR_RETURN(auto literal,
-                            Literal::CreateFromProto(proto.literal()));
+        TF_ASSIGN_OR_RETURN(
+            auto literal,
+            Literal::CreateFromProto(proto.literal(), prohibit_empty_literal));
         instruction = CreateConstant(std::move(literal));
         // Literal's shape may have no/different tiling info.
         TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
@@ -314,8 +316,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     }
     case HloOpcode::kTrace: {
       TF_RET_CHECK(proto.has_literal());
-      TF_ASSIGN_OR_RETURN(auto literal,
-                          Literal::CreateFromProto(proto.literal()));
+      TF_ASSIGN_OR_RETURN(
+          auto literal,
+          Literal::CreateFromProto(proto.literal(), prohibit_empty_literal));
       instruction = CreateTrace(literal.GetR1U8AsString(), operands(0));
       break;
     }

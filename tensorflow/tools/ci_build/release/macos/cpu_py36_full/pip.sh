@@ -23,13 +23,18 @@ which bazel
 bazel version
 set_bazel_outdir
 
+# Pick a more recent version of xcode
+export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
+sudo xcode-select -s "${DEVELOPER_DIR}"
+
 # Install macos pip dependencies
 install_macos_pip_deps sudo pip3.6
 
-# Export required variables for running pip.sh
+# Export required variables for running pip_new.sh
 export OS_TYPE="MACOS"
 export CONTAINER_TYPE="CPU"
 export TF_PYTHON_VERSION='python3.6'
+export TF_BUILD_BOTH_CPU_PACKAGES=1
 
 # Run configure.
 export TF_NEED_CUDA=0

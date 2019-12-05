@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/platform/platform.h"  // NOLINT
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #ifdef TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -69,6 +70,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -231,7 +233,7 @@ tensorflow::Status GetReplacedFromExistingWorkers(
   std::vector<tensorflow::eager::KeepAliveResponse> responses(
       existing_workers->size());
   for (int i = 0; i < existing_workers->size(); i++) {
-    tensorflow::eager::EagerClient* eager_client;
+    tensorflow::core::RefCountPtr<tensorflow::eager::EagerClient> eager_client;
     statuses[i] =
         client_cache->GetClient(existing_workers->at(i), &eager_client);
     if (!statuses[i].ok()) {
@@ -280,7 +282,7 @@ tensorflow::Status CreateRemoteContexts(
       continue;
     }
 
-    tensorflow::eager::EagerClient* eager_client;
+    tensorflow::core::RefCountPtr<tensorflow::eager::EagerClient> eager_client;
     statuses[i] = remote_eager_workers->GetClient(remote_worker, &eager_client);
     if (eager_client == nullptr) {
       statuses[i] = tensorflow::errors::Internal(
@@ -338,7 +340,7 @@ tensorflow::Status UpdateRemoteContexts(
       continue;
     }
 
-    tensorflow::eager::EagerClient* eager_client;
+    tensorflow::core::RefCountPtr<tensorflow::eager::EagerClient> eager_client;
     statuses[i] = remote_eager_workers->GetClient(remote_worker, &eager_client);
     if (eager_client == nullptr) {
       statuses[i] = tensorflow::errors::Internal(
@@ -794,6 +796,63 @@ TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDef(TFE_Context* ctx,
   // TODO(haoyuzhang): Check server_def compatibility before the update
   status->status = UpdateTFE_ContextWithServerDef(keep_alive_secs, server_def,
                                                   ctx, /*reset_context=*/false);
+#endif  // !IS_MOBILE_PLATFORM
+}
+
+TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
+                                                 const char* worker_name,
+                                                 TF_Status* status) {
+#if defined(IS_MOBILE_PLATFORM)
+  status->status = tensorflow::errors::Unimplemented(
+      "TFE_ContextSetServerDef not supported on mobile");
+  return false;
+#else   // !defined(IS_MOBILE_PLATFORM)
+  tensorflow::GrpcServer* grpc_server =
+      static_cast<tensorflow::GrpcServer*>(ctx->context->GetServer());
+
+  std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
+  status->status = grpc_server->master_env()->worker_cache->GetEagerClientCache(
+      &remote_eager_workers);
+  if (!status->status.ok()) {
+    LOG(ERROR) << "Failed to get client cache for remote workers.";
+    return false;
+  }
+
+  // TODO(yuefengz): support partially specified `worker_name`.
+  tensorflow::core::RefCountPtr<tensorflow::eager::EagerClient> eager_client;
+  status->status = remote_eager_workers->GetClient(worker_name, &eager_client);
+  if (!status->status.ok()) {
+    return false;
+  }
+
+  // Send a rpc request to the worker to check aliveness.
+  tensorflow::eager::KeepAliveRequest request;
+  request.set_context_id(ctx->context->GetContextId());
+  tensorflow::eager::KeepAliveResponse response;
+
+  tensorflow::Status keep_alive_status;
+  tensorflow::Notification done;
+  eager_client->KeepAliveAsync(
+      &request, &response,
+      [&keep_alive_status, &done](const tensorflow::Status& s) {
+        keep_alive_status = s;
+        done.Notify();
+      });
+  done.WaitForNotification();
+
+  status->status = tensorflow::Status::OK();
+
+  // If `context_id` doesn't exist on the remote worker, an InvalidArgument
+  // error will return. But this still indicates that the remote worker is
+  // alive.
+  if (keep_alive_status.ok() ||
+      keep_alive_status.code() == tensorflow::error::INVALID_ARGUMENT) {
+    return true;
+  } else {
+    LOG(INFO) << "Remote worker " << worker_name
+              << " is not alive: " << keep_alive_status.error_message();
+    return false;
+  }
 #endif  // !IS_MOBILE_PLATFORM
 }
 

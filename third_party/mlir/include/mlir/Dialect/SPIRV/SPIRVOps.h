@@ -26,6 +26,8 @@
 #include "mlir/IR/Function.h"
 
 namespace mlir {
+class OpBuilder;
+
 namespace spirv {
 
 #define GET_OP_CLASSES

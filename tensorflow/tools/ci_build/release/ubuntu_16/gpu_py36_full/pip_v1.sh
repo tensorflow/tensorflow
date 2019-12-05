@@ -32,7 +32,7 @@ export TF_NEED_GCP=1
 export TF_NEED_HDFS=1
 export TF_NEED_S3=1
 export TF_NEED_CUDA=1
-export TF_CUDA_VERSION=10
+export TF_CUDA_VERSION=10.1
 export TF_CUDNN_VERSION=7
 export TF_NEED_TENSORRT=1
 export TENSORRT_INSTALL_PATH=/usr/local/tensorrt
@@ -45,7 +45,7 @@ export TF_CUDA_COMPUTE_CAPABILITIES=3.5,3.7,5.2,6.0,6.1,7.0
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Export optional variables for running pip.sh
-export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-nogpu,-no_oss,-oss_serial,-no_oss_py36'
+export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py36'
 export TF_BUILD_FLAGS="--config=opt --config=cuda --distinct_host_configuration=false \
 --action_env=TF_CUDA_VERSION --action_env=TF_CUDNN_VERSION --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain "
 export TF_TEST_FLAGS="--test_tag_filters=${TF_TEST_FILTER_TAGS} --build_tag_filters=${TF_TEST_FILTER_TAGS} \

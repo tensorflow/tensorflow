@@ -22,15 +22,9 @@
 #ifndef AFFINE_OPS
 #define AFFINE_OPS
 
-#ifndef OP_BASE
-include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-#ifndef MLIR_LOOPLIKEINTERFACE
-include "mlir/Transforms/LoopLikeInterface.td"
-#endif
-
 include "mlir/Dialect/AffineOps/AffineOpsBase.td"
+include "mlir/IR/OpBase.td"
+include "mlir/Transforms/LoopLikeInterface.td"
 
 def Affine_Dialect : Dialect {
   let name = "affine";
@@ -246,6 +240,24 @@ def AffineIfOp : Affine_Op<"if", [ImplicitAffineTerminator]> {
   }];
 
   let hasCanonicalizer = 1;
+}
+
+def AffineMinOp : Affine_Op<"min"> {
+  let summary = "min operation";
+  let description = [{
+    The "min" operation computes the minimum value result from a multi-result
+    affine map.
+
+    Example:
+
+       %0 = affine.min (d0) -> (1000, d0 + 512) (%i0) : index
+  }];
+  let arguments = (ins AffineMapAttr:$map, Variadic<Index>:$operands);
+  let results = (outs Index);
+  let extraClassDeclaration = [{
+    static StringRef getMapAttrName() { return "map"; }
+  }];
+  let hasFolder = 1;
 }
 
 def AffineTerminatorOp :

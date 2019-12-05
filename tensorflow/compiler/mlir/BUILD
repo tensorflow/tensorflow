@@ -29,6 +29,7 @@ cc_library(
     srcs = ["op_or_arg_name_mapper.cc"],
     hdrs = ["op_or_arg_name_mapper.h"],
     deps = [
+        "@com_google_absl//absl/strings",
         "@llvm//:support",
         "@local_config_mlir//:IR",
     ],
@@ -77,7 +78,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_legalize_control_flow",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
-        "//tensorflow/compiler/mlir/xla:xla_lower_general_dot",
+        "//tensorflow/compiler/mlir/xla:xla_lower",
         "@local_config_mlir//:AffineDialectRegistration",
         "@local_config_mlir//:QuantOps",
         "@local_config_mlir//:QuantOpsDialectRegistration",

@@ -85,7 +85,6 @@ SmallVector<AffineMap, 4> loopToOperandRangesMaps(Operation *op);
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Linalg/IR/LinalgLibraryOps.h.inc"
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, SubViewOp::Range &range);
 
 } // namespace linalg
 } // namespace mlir

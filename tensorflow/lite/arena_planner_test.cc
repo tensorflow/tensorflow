@@ -190,6 +190,10 @@ class ArenaPlannerTest : public ::testing::Test {
     CHECK(planner_->AcquireNonPersistentMemory() == kTfLiteOk);
   }
 
+  bool HasNonPersistentMemory() {
+    return planner_ && planner_->HasNonPersistentMemory();
+  }
+
   // Returns the actual offset of a given tensor, relative to the start of its
   // arena.
   std::ptrdiff_t GetOffset(int tensor_index) {
@@ -572,8 +576,11 @@ TEST_F(ArenaPlannerTest, ModifiedGraph_DeallocateNonPersistentArena) {
   AcquireNonPersistentMemory();
   AcquireNonPersistentMemory();
 
+  EXPECT_TRUE(HasNonPersistentMemory());
+
   // Release non-persistent arena.
   ReleaseNonPersistentMemory();
+  EXPECT_FALSE(HasNonPersistentMemory());
   // Offsets should be zero.
   EXPECT_EQ(GetOffset(0), 0);
   EXPECT_EQ(GetOffset(1), 0);
@@ -592,6 +599,7 @@ TEST_F(ArenaPlannerTest, ModifiedGraph_DeallocateNonPersistentArena) {
 
   // Should be a no-op.
   AcquireNonPersistentMemory();
+  EXPECT_TRUE(HasNonPersistentMemory());
 
   // Release & acquire non-persistent memory.
   ReleaseNonPersistentMemory();

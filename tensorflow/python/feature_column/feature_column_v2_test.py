@@ -5320,6 +5320,10 @@ class IndicatorColumnTest(test.TestCase):
     self.assertEqual(indicator_b.variable_shape, [1, 100])
     self.assertFalse(indicator_b._is_v2_column)
 
+  def test_not_categorical_input(self):
+    with self.assertRaisesRegexp(ValueError, 'Unsupported input type.'):
+      fc.indicator_column('aaa')
+
   def test_1D_shape_succeeds(self):
     animal = fc.indicator_column(
         fc.categorical_column_with_hash_bucket('animal', 4))

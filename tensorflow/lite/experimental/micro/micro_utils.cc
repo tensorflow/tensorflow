@@ -19,7 +19,7 @@ limitations under the License.
 #include <math.h>
 #include <stdint.h>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 
@@ -75,7 +75,7 @@ int8_t FloatToAsymmetricQuantizedInt8(const float value, const float scale,
 }
 
 int8_t FloatToSymmetricQuantizedInt8(const float value, const float scale) {
-  return FloatToSymmetricQuantizedUInt8(value, scale) + kAsymmetricInt8Min;
+  return FloatToAsymmetricQuantizedInt8(value, scale, 0.0f);
 }
 
 int32_t FloatToSymmetricQuantizedInt32(const float value, const float scale) {

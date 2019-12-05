@@ -128,7 +128,7 @@ func @multiple_islands_separate_metadata(%arg0 : tensor<i1>) -> (tensor<i1>, ten
   return %0#0, %0#1 : tensor<i1>, tensor<i1>
 }
 
-// CHECK:        %[[ISLAND_1:[0-9]*]]:2 = tf_executor.island {
+// CHECK:        %[[ISLAND_1:.*]], %[[ISLAND_1_control:.*]] = tf_executor.island {
 // CHECK:          "tf.opB"
 // CHECK:          %[[LAUNCH_0:[0-9]*]] = "tf_device.launch"() ( {
 // CHECK-NEXT:       %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
@@ -141,7 +141,7 @@ func @multiple_islands_separate_metadata(%arg0 : tensor<i1>) -> (tensor<i1>, ten
 // CHECK:        tf_executor.island {
 // CHECK:          "tf.opE"
 // CHECK:          %[[LAUNCH_1:[0-9]*]] = "tf_device.launch"() ( {
-// CHECK-NEXT:       %[[OP_D:[0-9]*]] = "tf.opD"(%[[ISLAND_1]]#0)
+// CHECK-NEXT:       %[[OP_D:[0-9]*]] = "tf.opD"(%[[ISLAND_1]])
 // CHECK-NEXT:       %[[OP_F:[0-9]*]] = "tf.opF"(%[[ARG_0]])
 // CHECK-NEXT:       tf_device.return %[[OP_F]]
 // CHECK-NEXT:     _tpu_replicate = "replicate"

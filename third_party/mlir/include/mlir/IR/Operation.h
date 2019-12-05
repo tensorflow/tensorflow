@@ -63,12 +63,21 @@ public:
   static Operation *create(Location location, OperationName name,
                            ArrayRef<Type> resultTypes,
                            ArrayRef<Value *> operands,
-                           const NamedAttributeList &attributes,
+                           NamedAttributeList attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
                            bool resizableOperandList);
 
   /// Create a new Operation from the fields stored in `state`.
   static Operation *create(const OperationState &state);
+
+  /// Create a new Operation with the specific fields.
+  static Operation *create(Location location, OperationName name,
+                           ArrayRef<Type> resultTypes,
+                           ArrayRef<Value *> operands,
+                           NamedAttributeList attributes,
+                           ArrayRef<Block *> successors = {},
+                           ArrayRef<std::unique_ptr<Region>> regions = {},
+                           bool resizableOperandList = false);
 
   /// The name of an operation is the key identifier for it.
   OperationName getName() { return name; }
@@ -438,6 +447,23 @@ public:
   /// index.
   unsigned getSuccessorOperandIndex(unsigned index);
 
+  /// Return a pair (successorIndex, successorArgIndex) containing the index
+  /// of the successor that `operandIndex` belongs to and the index of the
+  /// argument to that successor that `operandIndex` refers to.
+  ///
+  /// If `operandIndex` is not a successor operand, None is returned.
+  Optional<std::pair<unsigned, unsigned>>
+  decomposeSuccessorOperandIndex(unsigned operandIndex);
+
+  /// Returns the `BlockArgument*` corresponding to operand `operandIndex` in
+  /// some successor, or None if `operandIndex` isn't a successor operand index.
+  Optional<BlockArgument *> getSuccessorBlockArgument(unsigned operandIndex) {
+    auto decomposed = decomposeSuccessorOperandIndex(operandIndex);
+    if (!decomposed.hasValue())
+      return None;
+    return getSuccessor(decomposed->first)->getArgument(decomposed->second);
+  }
+
   //===--------------------------------------------------------------------===//
   // Accessors for various properties of operations
   //===--------------------------------------------------------------------===//
@@ -547,6 +573,26 @@ public:
   /// Emit a remark about this operation, reporting up to any diagnostic
   /// handlers that may be listening.
   InFlightDiagnostic emitRemark(const Twine &message = {});
+
+private:
+  //===--------------------------------------------------------------------===//
+  // Ordering
+  //===--------------------------------------------------------------------===//
+
+  /// This value represents an invalid index ordering for an operation within a
+  /// block.
+  static constexpr unsigned kInvalidOrderIdx = -1;
+
+  /// This value represents the stride to use when computing a new order for an
+  /// operation.
+  static constexpr unsigned kOrderStride = 5;
+
+  /// Update the order index of this operation of this operation if necessary,
+  /// potentially recomputing the order of the parent block.
+  void updateOrderIfNecessary();
+
+  /// Returns true if this operation has a valid order.
+  bool hasValidOrder() { return orderIndex != kInvalidOrderIdx; }
 
 private:
   Operation(Location location, OperationName name, unsigned numResults,

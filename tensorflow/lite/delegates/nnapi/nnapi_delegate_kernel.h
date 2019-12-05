@@ -20,7 +20,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
@@ -285,7 +285,7 @@ class NNAPIDelegateKernel {
   // Access to NNApi.
   const NnApi* nnapi_;
   // ANN device handle.
-  ANeuralNetworksDevice* nnapi_device_ = nullptr;
+  std::vector<ANeuralNetworksDevice*> nnapi_devices_;
   // ANN API state.
   std::unique_ptr<ANeuralNetworksModel, NNFreeModel> nn_model_;
   std::unique_ptr<ANeuralNetworksCompilation, NNFreeCompilation>

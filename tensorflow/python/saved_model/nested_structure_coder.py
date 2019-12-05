@@ -217,7 +217,7 @@ class _NamedTupleCodec(object):
   """Codec for namedtuples.
 
   Encoding and decoding a namedtuple reconstructs a namedtuple with a different
-  actual Python type, but with same `typename` and `fields`.
+  actual Python type, but with the same `typename` and `fields`.
   """
 
   def can_encode(self, pyobj):

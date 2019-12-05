@@ -24,9 +24,8 @@ limitations under the License.
 #include "profiling/profiler.h"
 #endif
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -363,28 +362,6 @@ inline void LstmStepWithAuxInput(
   }
 }
 
-void ApplyActivationsToVector(float* input, int input_size,
-                              TfLiteFusedActivation activation_type,
-                              float* output) {
-  using VectorMap = Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, 1>>;
-  VectorMap input_map(input, input_size, 1);
-  VectorMap output_map(output, input_size, 1);
-  switch (activation_type) {
-    case kTfLiteActSigmoid: {
-      output_map.array() = input_map.array().logistic();
-      break;
-    }
-    case kTfLiteActTanh: {
-      output_map.array() = input_map.array().tanh();
-      break;
-    }
-    default: {
-      tensor_utils::ApplyActivationToVector(input, input_size, activation_type,
-                                            output);
-    }
-  }
-}
-
 // Same as above but with quantized weight matrices. In detail:
 // Input of size 'n_batch * n_input':
 //   input_ptr_batch
@@ -699,8 +676,8 @@ inline void LstmStepWithAuxInput(
       tensor_utils::VectorBatchVectorAdd(input_gate_bias_ptr, n_cell, n_batch,
                                          input_gate_scratch);
     }
-    ApplyActivationsToVector(input_gate_scratch, n_cell * n_batch,
-                             kTfLiteActSigmoid, input_gate_scratch);
+    tensor_utils::ApplySigmoidToVector(input_gate_scratch, n_cell * n_batch,
+                                       input_gate_scratch);
   }
 
   // For each batch and cell: update forget gate.
@@ -721,8 +698,8 @@ inline void LstmStepWithAuxInput(
     tensor_utils::VectorBatchVectorAdd(forget_gate_bias_ptr, n_cell, n_batch,
                                        forget_gate_scratch);
   }
-  ApplyActivationsToVector(forget_gate_scratch, n_cell * n_batch,
-                           kTfLiteActSigmoid, forget_gate_scratch);
+  tensor_utils::ApplySigmoidToVector(forget_gate_scratch, n_cell * n_batch,
+                                     forget_gate_scratch);
 
   // For each batch and cell: update the cell.
   tensor_utils::VectorVectorCwiseProduct(forget_gate_scratch, cell_state_ptr,
@@ -736,8 +713,8 @@ inline void LstmStepWithAuxInput(
     tensor_utils::VectorBatchVectorAdd(cell_bias_ptr, n_cell, n_batch,
                                        cell_scratch);
   }
-  ApplyActivationsToVector(cell_scratch, n_batch * n_cell, params->activation,
-                           cell_scratch);
+  tensor_utils::ApplyActivationToVector(cell_scratch, n_batch * n_cell,
+                                        params->activation, cell_scratch);
   if (use_cifg) {
     tensor_utils::Sub1Vector(forget_gate_scratch, n_batch * n_cell,
                              forget_gate_scratch);
@@ -772,10 +749,10 @@ inline void LstmStepWithAuxInput(
     tensor_utils::VectorBatchVectorAdd(output_gate_bias_ptr, n_cell, n_batch,
                                        output_gate_scratch);
   }
-  ApplyActivationsToVector(output_gate_scratch, n_batch * n_cell,
-                           kTfLiteActSigmoid, output_gate_scratch);
-  ApplyActivationsToVector(cell_state_ptr, n_batch * n_cell, params->activation,
-                           cell_scratch);
+  tensor_utils::ApplySigmoidToVector(output_gate_scratch, n_batch * n_cell,
+                                     output_gate_scratch);
+  tensor_utils::ApplyActivationToVector(cell_state_ptr, n_batch * n_cell,
+                                        params->activation, cell_scratch);
   tensor_utils::VectorVectorCwiseProduct(output_gate_scratch, cell_scratch,
                                          n_batch * n_cell, output_gate_scratch);
 
@@ -1100,7 +1077,7 @@ inline void LstmStepQuantized(
                                  n_batch, n_cell, scratch_2_ptr);
   }
 
-  tensor_utils::ApplyTanh3(scratch_2_ptr, n_batch, n_cell, scratch_2_ptr);
+  tensor_utils::ApplyTanh(3, scratch_2_ptr, n_batch, n_cell, scratch_2_ptr);
 
   // Ouptut gate.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
@@ -1162,12 +1139,8 @@ inline void LstmStepQuantized(
     tensor_utils::CwiseClipping(cell_ptr, quantized_cell_clip, n_batch, n_cell);
   }
 
-  // TODO(jianlijianli): swtich to a tempalte.
-  if (cell_scale == -11) {
-    tensor_utils::ApplyTanh4(cell_ptr, n_batch, n_cell, scratch_0_ptr);
-  } else if (cell_scale == -15) {
-    tensor_utils::ApplyTanh0(cell_ptr, n_batch, n_cell, scratch_0_ptr);
-  }
+  tensor_utils::ApplyTanh(15 + cell_scale, cell_ptr, n_batch, n_cell,
+                          scratch_0_ptr);
 
   tensor_utils::CwiseMul(scratch_3_ptr, scratch_0_ptr, effective_hidden_scale_a,
                          effective_hidden_scale_b, n_batch, n_cell, hidden_zp,

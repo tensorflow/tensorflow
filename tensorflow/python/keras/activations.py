@@ -44,10 +44,10 @@ _TF_ACTIVATIONS_V2 = {
 def softmax(x, axis=-1):
   """Softmax converts a real vector to a vector of categorical probabilities.
 
-  The the elements of the output vector are in range (0, 1) and sum to 1.
+  The elements of the output vector are in range (0, 1) and sum to 1.
 
   Each vector is handled independently. The `axis` argument sets which axis
-  of the input the finction is applied along.
+  of the input the function is applied along.
 
   Softmax is often used as the activation for the last
   layer of a classification network because the result could be interpreted as
@@ -120,7 +120,7 @@ def selu(x):
   and the number of inputs is "large enough"
   (see references for more information).
 
-  ![](https://cdn-images-1.medium.com/max/1600/1*m0e8lZU_Zrkh4ESfQkY2Pw.png)
+  ![]https://cdn-images-1.medium.com/max/1600/1*m0e8lZU_Zrkh4ESfQkY2Pw.png
   (Courtesy: Blog on Towards DataScience at
   https://towardsdatascience.com/selu-make-fnns-great-again-snn-8d61526802a9)
 
@@ -177,7 +177,7 @@ def softsign(x):
       x: Input tensor.
 
   Returns:
-      The softplus activation: `x / (abs(x) + 1)`.
+      The softsign activation: `x / (abs(x) + 1)`.
   """
   return nn.softsign(x)
 
@@ -260,9 +260,8 @@ def sigmoid(x):
 
   >>> a = tf.constant([-20, -1.0, 0.0, 1.0, 20], dtype = tf.float32)
   >>> b = tf.keras.activations.sigmoid(a)
-  >>> b.numpy()
-  array([0.        , 0.26894143, 0.5       , 0.7310586 , 1.        ],
-         dtype=float32)
+  >>> b.numpy() > 0.0
+  array([False,  True,  True,  True,  True])
 
   Arguments:
       x: Input tensor.
@@ -380,7 +379,7 @@ def deserialize(name, custom_objects=None):
       x : String
 
   Returns:
-      Tensorlow Activation function denoted by input string.
+      TensorFlow Activation function denoted by input string.
 
   For example:
   >>> tf.keras.activations.deserialize('linear')
@@ -393,7 +392,7 @@ def deserialize(name, custom_objects=None):
   ValueError: Unknown activation function:abcd
 
   Args:
-    name: The name of the actiuvation function.
+    name: The name of the activation function.
     custom_objects: A {name:value} dictionary for activations not build into
       keras.
 

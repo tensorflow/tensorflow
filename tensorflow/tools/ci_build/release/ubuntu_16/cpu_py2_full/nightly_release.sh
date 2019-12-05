@@ -38,7 +38,7 @@ yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Build the pip package
 bazel build --config=opt --config=v2 \
-  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain \
+  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
   tensorflow/tools/pip_package:build_pip_package
 
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --cpu --nightly_flag
@@ -51,6 +51,17 @@ for WHL_PATH in $(ls pip_pkg/tf_nightly_cpu-*dev*.whl); do
   AUDITED_WHL_NAME="${WHL_DIR}"/$(echo "${WHL_BASE_NAME//linux/manylinux2010}")
   auditwheel repair --plat manylinux2010_x86_64 -w "${WHL_DIR}" "${WHL_PATH}"
 
-  echo "Uploading package: ${AUDITED_WHL_NAME}"
-  twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}" || echo
+  # test the whl pip package
+  chmod +x tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh
+  ./tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh ${AUDITED_WHL_NAME}
+  RETVAL=$?
+
+  # Update results counter
+  if [ ${RETVAL} -eq 0 ]; then
+    echo "Basic PIP test PASSED, Uploading package: ${AUDITED_WHL_NAME}"
+    twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}" || echo
+  else
+    echo "Basic PIP test FAILED, will not upload ${AUDITED_WHL_NAME} package"
+    return 1
+  fi
 done

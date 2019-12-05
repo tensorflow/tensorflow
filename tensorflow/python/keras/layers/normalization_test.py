@@ -378,8 +378,8 @@ def _run_batchnorm_correctness_test(layer, dtype='float32', fused=False):
   out -= keras.backend.eval(norm.beta)
   out /= keras.backend.eval(norm.gamma)
 
-  np.testing.assert_allclose(out.mean(), 0.0, atol=1e-1)
-  np.testing.assert_allclose(out.std(), 1.0, atol=1e-1)
+  np.testing.assert_allclose(out.mean(), 0.0, atol=2e-1)
+  np.testing.assert_allclose(out.std(), 1.0, atol=2e-1)
 
 
 @parameterized.parameters(

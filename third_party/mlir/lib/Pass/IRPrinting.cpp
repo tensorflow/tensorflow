@@ -72,7 +72,7 @@ static void printIR(Operation *op, bool printModuleScope, raw_ostream &out,
 
   // Otherwise, check to see if we are not printing at module scope.
   if (!printModuleScope)
-    return op->print(out << "\n", flags);
+    return op->print(out << "\n", flags.useLocalScope());
 
   // Otherwise, we are printing at module scope.
   out << " ('" << op->getName() << "' operation";

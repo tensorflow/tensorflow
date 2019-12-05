@@ -273,7 +273,7 @@ void EagerContext::CloseRemoteContexts(
 
   int i = 0;
   for (const auto& worker : remote_contexts) {
-    eager::EagerClient* client;
+    core::RefCountPtr<eager::EagerClient> client;
     Status s = remote_eager_workers_->GetClient(worker, &client);
 
     client->CloseContextAsync(
@@ -449,7 +449,7 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
       register_function->mutable_function_def()->mutable_node_def());
 
   for (const auto& target : remote_contexts_) {
-    eager::EagerClient* eager_client;
+    core::RefCountPtr<eager::EagerClient> eager_client;
     TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(target, &eager_client));
 
     eager::EnqueueResponse* response = new eager::EnqueueResponse();
@@ -475,7 +475,7 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
   // Register multiple functions on selected remote workers.
   uint64 context_id = GetContextId();
   for (int i = 0; i < remote_workers.size(); i++) {
-    eager::EagerClient* eager_client;
+    core::RefCountPtr<eager::EagerClient> eager_client;
     Status s =
         remote_eager_workers_->GetClient(remote_workers[i], &eager_client);
     if (!s.ok()) {
@@ -648,25 +648,14 @@ Status GetTaskName(Device* d, string* task_name) {
 }
 }  // namespace
 
-bool EagerContext::IsLocalDeviceName(
-    const DeviceNameUtils::ParsedName& device_name) const {
-  if ((!device_name.has_job && !device_name.has_replica &&
-       !device_name.has_task) ||
-      remote_device_mgr() == nullptr)
-    return true;
-  auto& host_cpu_name = HostCPU()->parsed_name();
-  return device_name.job == host_cpu_name.job &&
-         device_name.replica == host_cpu_name.replica &&
-         device_name.task == host_cpu_name.task;
-}
-
 #if !defined(IS_MOBILE_PLATFORM)
-Status EagerContext::GetClient(Device* device, eager::EagerClient** client) {
+Status EagerContext::GetClient(Device* device,
+                               core::RefCountPtr<eager::EagerClient>* client) {
   return GetClient(device->parsed_name(), client);
 }
 
 Status EagerContext::GetClient(const DeviceNameUtils::ParsedName& device_name,
-                               eager::EagerClient** client) {
+                               core::RefCountPtr<eager::EagerClient>* client) {
   if (remote_eager_workers_ == nullptr) {
     return errors::Internal(
         "Haven't set up remote eager worker in this eager context yet.");
@@ -697,7 +686,7 @@ Status EagerContext::GetClient(const DeviceNameUtils::ParsedName& device_name,
 }
 
 Status EagerContext::GetClient(const string& remote_task,
-                               eager::EagerClient** client) {
+                               core::RefCountPtr<eager::EagerClient>* client) {
   if (remote_eager_workers_ == nullptr) {
     return errors::Internal(
         "Haven't set up remote eager worker in this eager context yet.");
@@ -946,7 +935,7 @@ Status EagerContext::SetMasterContextState(
                 if (keep_alive_secs_ > 0) {
                   {
                     for (const auto& worker : remote_contexts_) {
-                      eager::EagerClient* client;
+                      core::RefCountPtr<eager::EagerClient> client;
                       Status s =
                           remote_eager_workers_->GetClient(worker, &client);
 

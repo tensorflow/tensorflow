@@ -55,7 +55,7 @@ tf.math.segment_sum(c, tf.constant([0, 0, 1]))
 
 The standard `segment_*` functions assert that the segment indices are sorted.
 If you have unsorted indices use the equivalent `unsorted_segment_` function.
-Thses functions take an additional argument `num_segments` so that the output
+These functions take an additional argument `num_segments` so that the output
 tensor can be efficiently allocated.
 
 ``` python
@@ -75,7 +75,6 @@ import six
 from six.moves import builtins
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -108,6 +107,7 @@ arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max) 
 arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
 tf_export(v1=["arg_max"])(arg_max)
 tf_export(v1=["arg_min"])(arg_min)
+
 
 # This is set by resource_variable_ops.py. It is included in this way since
 # there is a circular dependency between math_ops and resource_variable_ops
@@ -317,19 +317,42 @@ class DivideDelegateWithName(object):
 @tf_export("math.divide", "divide")
 @dispatch.add_dispatch_support
 def divide(x, y, name=None):
-  """Computes Python style division of `x` by `y`."""
+  """Computes Python style division of `x` by `y`.
+
+  For example:
+
+  >>> x = tf.constant([16, 12, 11])
+  >>> y = tf.constant([4, 6, 2])
+  >>> tf.divide(x,y)
+  <tf.Tensor: shape=(3,), dtype=float64,
+  numpy=array([4. , 2. , 5.5])>
+
+  Args:
+    x: A `Tensor`
+    y: A `Tensor`
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with same shape as input
+  """
 
   if name is not None:
     # Cannot use tensors operator overload, because it has no way to track
     # override names. Use a dummy class to track the runtime division behavior
     return DivideDelegateWithName(x, name) / y
   else:
+    # We could short-circuit when y is 1, but we'd still have to cast to float,
+    # hence it doesn't seem to be worth optimizing.
     return x / y
 
 
 @tf_export("math.multiply", "multiply")
 @dispatch.add_dispatch_support
-def multiply(x, y, name=None):
+def multiply(x, y, name=None):  # pylint: disable=missing-docstring
+  # Do an is comparison here since this is cheaper than isinstance or __eq__
+  if y is 1:  # pylint: disable=literal-comparison
+    return x
+
   return gen_math_ops.mul(x, y, name)
 
 
@@ -341,16 +364,28 @@ multiply.__doc__ = gen_math_ops.mul.__doc__.replace("Multiply", "tf.multiply")
     "2016-12-30",
     "`tf.mul(x, y)` is deprecated, please use `tf.multiply(x, y)` or `x * y`")
 def _mul(x, y, name=None):
-  return gen_math_ops.mul(x, y, name)
+  return multiply(x, y, name=name)
 
 
 _mul.__doc__ = (
     gen_math_ops.mul.__doc__ + ("" if _mul.__doc__ is None else _mul.__doc__))
 
 
+def add_v2(x, y, name=None):
+  # Do an is comparison here since this is cheaper than isinstance or __eq__
+  if y is 0:  # pylint: disable=literal-comparison
+    return x
+
+  return gen_math_ops.add_v2(x, y, name=name)
+
+
 @tf_export("math.subtract", "subtract")
 @dispatch.add_dispatch_support
 def subtract(x, y, name=None):
+  # Do an is comparison here since this is cheaper than isinstance or __eq__
+  if y is 0:  # pylint: disable=literal-comparison
+    return x
+
   return gen_math_ops.sub(x, y, name)
 
 
@@ -362,7 +397,7 @@ subtract.__doc__ = gen_math_ops.sub.__doc__.replace("`Sub`", "`tf.subtract`")
     "2016-12-30",
     "`tf.sub(x, y)` is deprecated, please use `tf.subtract(x, y)` or `x - y`")
 def _sub(x, y, name=None):
-  return gen_math_ops.sub(x, y, name)
+  return subtract(x, y, name)
 
 
 _sub.__doc__ = (
@@ -1190,7 +1225,7 @@ def _add_dispatch(x, y, name=None):
   if x.dtype == dtypes.string:
     return gen_math_ops.add(x, y, name=name)
   else:
-    return gen_math_ops.add_v2(x, y, name=name)
+    return add_v2(x, y, name=name)
 
 
 def _mul_dispatch(x, y, name=None):
@@ -1216,7 +1251,7 @@ _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_mul, "mul",
                               sparse_tensor.SparseTensor)
 
 _OverrideBinaryOperatorHelper(_add_dispatch, "add")
-_OverrideBinaryOperatorHelper(gen_math_ops.sub, "sub")
+_OverrideBinaryOperatorHelper(subtract, "sub")
 _OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
 _OverrideBinaryOperatorHelper(_div_python2, "div")
 _OverrideBinaryOperatorHelper(_truediv_python3, "truediv")
@@ -1346,10 +1381,7 @@ def tensor_equals(self, other):
   g = getattr(self, "graph", None)
   if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
       (g is None or g._building_function)):  # pylint: disable=protected-access
-    if fwd_compat.forward_compatible(2019, 9, 25):
-      return gen_math_ops.equal(self, other, incompatible_shape_error=False)
-    else:
-      return gen_math_ops.equal(self, other)
+    return gen_math_ops.equal(self, other, incompatible_shape_error=False)
   else:
     # In legacy graph mode, tensor equality is object equality
     return self is other
@@ -1360,10 +1392,7 @@ def tensor_not_equals(self, other):
   if other is None:
     return True
   if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
-    if fwd_compat.forward_compatible(2019, 9, 25):
-      return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)
-    else:
-      return gen_math_ops.not_equal(self, other)
+    return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)
   else:
     # In legacy graph mode, tensor equality is object equality
     return self is not other
@@ -3288,32 +3317,52 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
 
   By default, this op performs an inclusive cumsum, which means that the first
   element of the input is identical to the first element of the output:
+  For example:
 
-  ```python
-  tf.cumsum([a, b, c])  # [a, a + b, a + b + c]
-  ```
-
+  # tf.cumsum([a, b, c])   # [a, a + b, a + b + c]
+  >>> x = tf.constant([2, 4, 6, 8])
+  >>> tf.cumsum(x)
+  <tf.Tensor: shape=(4,), dtype=int32,
+  numpy=array([ 2,  6, 12, 20], dtype=int32)>
+  
+  # using varying `axis` values
+  >>> y = tf.constant([[2, 4, 6, 8], [1,3,5,7]])
+  >>> tf.cumsum(y, axis=0)
+  <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
+  array([[ 2,  4,  6,  8],
+         [ 3,  7, 11, 15]], dtype=int32)>
+         
+  >>> tf.cumsum(y, axis=1)
+  <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
+  array([[ 2,  6, 12, 20],
+         [ 1,  4,  9, 16]], dtype=int32)>
+ 
   By setting the `exclusive` kwarg to `True`, an exclusive cumsum is performed
   instead:
-
-  ```python
-  tf.cumsum([a, b, c], exclusive=True)  # [0, a, a + b]
-  ```
+  
+  # tf.cumsum([a, b, c], exclusive=True)  => [0, a, a + b]
+  >>> x = tf.constant([2, 4, 6, 8])
+  >>> tf.cumsum(x, exclusive=True)
+  <tf.Tensor: shape=(4,), dtype=int32,
+  numpy=array([ 0,  2,  6, 12], dtype=int32)>
 
   By setting the `reverse` kwarg to `True`, the cumsum is performed in the
   opposite direction:
-
-  ```python
-  tf.cumsum([a, b, c], reverse=True)  # [a + b + c, b + c, c]
-  ```
+  
+  # tf.cumsum([a, b, c], reverse=True)  # [a + b + c, b + c, c]
+  >>> x = tf.constant([2, 4, 6, 8])
+  >>> tf.cumsum(x, reverse=True) 
+  <tf.Tensor: shape=(4,), dtype=int32,
+  numpy=array([20, 18, 14,  8], dtype=int32)>
 
   This is more efficient than using separate `tf.reverse` ops.
-
   The `reverse` and `exclusive` kwargs can also be combined:
-
-  ```python
-  tf.cumsum([a, b, c], exclusive=True, reverse=True)  # [b + c, c, 0]
-  ```
+  
+  # tf.cumsum([a, b, c], exclusive=True, reverse=True)  # [b + c, c, 0]
+  >>> x = tf.constant([2, 4, 6, 8])
+  >>> tf.cumsum(x, exclusive=True, reverse=True)
+  <tf.Tensor: shape=(4,), dtype=int32,
+  numpy=array([18, 14,  8,  0], dtype=int32)>
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
@@ -4119,8 +4168,8 @@ def tensordot(a, b, axes, name=None):
 def polyval(coeffs, x, name=None):
   r"""Computes the elementwise value of a polynomial.
 
-  If `x` is a tensor and `coeffs` is a list n + 1 tensors, this function returns
-  the value of the n-th order polynomial
+  If `x` is a tensor and `coeffs` is a list n + 1 tensors,
+  this function returns the value of the n-th order polynomial
 
      p(x) = coeffs[n-1] + coeffs[n-2] * x + ...  + coeffs[0] * x**(n-1)
 
@@ -4135,8 +4184,8 @@ def polyval(coeffs, x, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    A `tensor` of the shape as the expression p(x) with usual broadcasting rules
-    for element-wise addition and multiplication applied.
+    A `tensor` of the shape as the expression p(x) with usual broadcasting
+    rules for element-wise addition and multiplication applied.
 
   @compatibility(numpy)
   Equivalent to numpy.polyval.
@@ -4187,3 +4236,63 @@ def reciprocal_no_nan(x, name=None):
     x = ops.convert_to_tensor(x, name="x")
     one = constant_op.constant(1, dtype=x.dtype.base_dtype, name="one")
     return gen_math_ops.div_no_nan(one, x, name=scope)
+
+
+@tf_export("math.erfinv")
+@dispatch.add_dispatch_support
+def erfinv(x, name=None):
+  """Compute inverse error function.
+
+  Given `x`, compute the inverse error function of `x`. This function
+  is the inverse of `tf.math.erf`.
+
+  Args:
+    x: `Tensor` with type `float` or `double`.
+    name: A name for the operation (optional).
+  Returns:
+    Inverse error function of `x`.
+  """
+  with ops.name_scope(name, "erfinv", [x]):
+    return gen_math_ops.erfinv(x)
+
+
+@tf_export("math.ndtri")
+@dispatch.add_dispatch_support
+def ndtri(x, name=None):
+  """Compute quantile of Standard Normal.
+
+  Args:
+    x: `Tensor` with type `float` or `double`.
+    name: A name for the operation (optional).
+  Returns:
+    Inverse error function of `x`.
+  """
+  with ops.name_scope(name, "ndtri", [x]):
+    return gen_math_ops.ndtri(x)
+
+
+@tf_export("math.ceil", v1=["math.ceil", "ceil"])
+@deprecation.deprecated_endpoints("ceil")
+@dispatch.add_dispatch_support
+def ceil(x, name=None):
+  """Return the ceiling of the input, element-wise.
+
+  For example:
+
+  >>> tf.math.ceil([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0])
+  <tf.Tensor: shape=(7,), dtype=float32,
+  numpy=array([-1., -1., -0.,  1.,  2.,  2.,  2.], dtype=float32)>
+
+  Args:
+    x: A `tf.Tensor`. Must be one of the following types: `bfloat16`, `half`,
+      `float32`, `float64`. `int32`
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tf.Tensor`. Has the same type as `x`.
+
+  @compatibility(numpy)
+  Equivalent to np.ceil
+  @end_compatibility
+  """
+  return gen_math_ops.ceil(x, name)

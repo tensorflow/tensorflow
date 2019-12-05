@@ -33,6 +33,7 @@ limitations under the License.
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
@@ -57,6 +58,8 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
+#include "mlir/Support/Functional.h"  // TF:local_config_mlir
+#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "mlir/Translation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
@@ -152,7 +155,8 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
   uint32_t flags =
       is_signed ? mlir::quant::QuantizationFlags::FlagValue::Signed : 0;
 
-  if (0 != quant_params.quantized_dimension) {
+  // Scale size can't be zero as it is checked before.
+  if (quant_params.scale.size() != 1) {
     llvm::SmallVector<double, 4> scales(quant_params.scale.begin(),
                                         quant_params.scale.end());
     return mlir::quant::UniformQuantizedPerAxisType::get(
@@ -577,6 +581,18 @@ StatusOr<llvm::SmallVector<int32_t, 4>> GetOutputTensorIndices(
   return outputs;
 }
 
+// Given a list of tensor indices, returns a string of concatenated tensor names
+// wrapped in a NamedAttribute.
+template <typename ContainerType>
+mlir::NamedAttribute BuildTFEntryFunctionAttribute(
+    const tflite::SubGraphT& subgraph, Builder* builder, const std::string name,
+    const ContainerType indices) {
+  llvm::SmallVector<std::string, 8> tensor_names = mlir::functional::map(
+      [&](int i) { return subgraph.tensors.at(i)->name; }, indices);
+  return builder->getNamedAttr(
+      name, builder->getStringAttr(llvm::join(tensor_names, ",")));
+}
+
 // Build a FuncOp from a tflite SubGraph
 // The op_names are a mapping from indexes into the TFLite operators array to
 // the operator name MLIR expects (tfl.foo_op). The buffers are directly taken
@@ -654,7 +670,6 @@ StatusOr<FuncOp> ConvertSubgraph(
   Value* maybe_optional_arg_marker = nullptr;
 
   // Get or construct MLIR values for each input
-  llvm::SmallVector<std::string, 4> input_names;
   for (int i = 0, e = subgraph.inputs.size(); i < e; i++) {
     auto input_tensor = subgraph.inputs[i];
     const auto& tensor = *subgraph.tensors.at(input_tensor);
@@ -664,7 +679,6 @@ StatusOr<FuncOp> ConvertSubgraph(
       return emitError(loc, err.ToString()), err;
     }
     Value* input_value = func.getArgument(i);
-    if (is_entry_point) input_names.push_back(tensor.name);
 
     // If the `tensor` has min/max and doesn't have scale/zero_point
     // information, a stats op is created to use the input_value, then the
@@ -677,14 +691,18 @@ StatusOr<FuncOp> ConvertSubgraph(
     }
   }
 
-  // TODO(lyandy): Check if output names should be also stored.
-  if (is_entry_point && !input_names.empty()) {
-    std::string s;
-    llvm::raw_string_ostream ss(s);
-    mlir::interleave(input_names, ss, ",");
-    auto inputs =
-        builder.getNamedAttr("inputs", builder.getStringAttr(ss.str()));
-    func.setAttr("tf.entry_function", builder.getDictionaryAttr({inputs}));
+  // Set tf.entry_function attribute
+  if (is_entry_point) {
+    llvm::SmallVector<mlir::NamedAttribute, 2> attributes;
+    if (!subgraph.inputs.empty()) {
+      attributes.push_back(BuildTFEntryFunctionAttribute(
+          subgraph, &builder, "inputs", subgraph.inputs));
+    }
+    if (!func_outputs.empty()) {
+      attributes.push_back(BuildTFEntryFunctionAttribute(
+          subgraph, &builder, "outputs", func_outputs));
+    }
+    func.setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
   }
 
   // Construct MLIR operators from TFLite operators
@@ -862,11 +880,8 @@ static OwningModuleRef FlatBufferFileToMlirTrans(llvm::SourceMgr* source_mgr,
       mlir::FileLineColLoc::get(input->getBufferIdentifier(), 0, 0, context);
 
   // Parses output_arrays_order from command line option.
-  absl::flat_hash_set<std::string> output_set;
-  std::vector<std::string> output_arrays_order;
-  if (!tensorflow::ParseOutputArrayInfo(output_arrays_string, &output_set,
-                                        &output_arrays_order)
-           .ok()) {
+  std::vector<std::string> outputs;
+  if (!tensorflow::ParseOutputArrayInfo(output_arrays_string, &outputs).ok()) {
     return emitError(loc, "parsing output array info failed ")
                << output_arrays_string,
            nullptr;
@@ -874,7 +889,7 @@ static OwningModuleRef FlatBufferFileToMlirTrans(llvm::SourceMgr* source_mgr,
 
   return tflite::FlatBufferToMlir(
       absl::string_view(input->getBufferStart(), input->getBufferSize()),
-      context, loc, output_arrays_order);
+      context, loc, outputs);
 }
 
 static mlir::TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(

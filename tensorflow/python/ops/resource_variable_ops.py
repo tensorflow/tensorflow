@@ -1516,8 +1516,10 @@ class ResourceVariable(BaseResourceVariable):
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.init_scope():
       self._in_graph_mode = not context.executing_eagerly()
-      with ops.name_scope(name, "Variable", []
-                          if init_from_fn else [initial_value]) as name:
+      with ops.name_scope(
+          name,
+          "Variable", [] if init_from_fn else [initial_value],
+          skip_on_eager=False) as name:
         # pylint: disable=protected-access
         handle_name = ops.name_from_scope_name(name)
         if self._in_graph_mode:
@@ -1753,7 +1755,7 @@ class UninitializedVariable(BaseResourceVariable):
     with ops.init_scope():
       self._in_graph_mode = not context.executing_eagerly()
     with ops.init_scope():
-      with ops.name_scope(name, "Variable") as name:
+      with ops.name_scope(name, "Variable", skip_on_eager=False) as name:
         handle_name = ops.name_from_scope_name(name)
         if self._in_graph_mode:
           shared_name = handle_name

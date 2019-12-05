@@ -14,29 +14,30 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 
-#include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace {
-std::vector<ProfilerFactory>* GetFactories() {
+
+mutex mu(LINKER_INITIALIZED);
+
+std::vector<ProfilerFactory>* GetFactories() EXCLUSIVE_LOCKS_REQUIRED(mu) {
   static auto factories = new std::vector<ProfilerFactory>();
   return factories;
 }
-absl::Mutex* GetMutex() {
-  static auto mutex = new absl::Mutex;
-  return mutex;
-}
+
 }  // namespace
 
 void RegisterProfilerFactory(ProfilerFactory factory) {
-  absl::MutexLock lock(GetMutex());
+  mutex_lock lock(mu);
   GetFactories()->push_back(factory);
 }
 
 void CreateProfilers(
     const profiler::ProfilerOptions& options,
     std::vector<std::unique_ptr<profiler::ProfilerInterface>>* result) {
-  absl::MutexLock lock(GetMutex());
+  mutex_lock lock(mu);
   for (auto factory : *GetFactories()) {
     if (auto profiler = factory(options)) {
       result->push_back(std::move(profiler));

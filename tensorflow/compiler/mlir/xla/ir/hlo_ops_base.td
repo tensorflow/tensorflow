@@ -16,9 +16,7 @@ limitations under the License.
 #ifndef HLO_OPS_BASE
 #define HLO_OPS_BASE
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 def HLO_Int : IntOfWidths<[8, 16, 32, 64]>;
 def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
@@ -112,6 +110,17 @@ class BASE_HLO_ExpOp {
   }];
 }
 
+class BASE_HLO_Expm1Op {
+  string summary = "Exponential minus one operator";
+
+  string description = [{
+    Returns `e^(operand) - 1` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_FloorOp {
   string summary = "Floor operator";
 
@@ -123,11 +132,36 @@ class BASE_HLO_FloorOp {
   }];
 }
 
+class BASE_HLO_GetDimensionSizeOp {
+  string summary = "GetDimensionSize operator";
+
+  string description = [{
+    Returns the size of the given dimension of the operand.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#getdimensionsize.
+  }];
+}
+
 class BASE_HLO_ImagOp {
   string summary = "Imag operator";
 
   string description = [{
     Returns `Imag(operand)` element-wise.
+  }];
+}
+
+class BASE_HLO_IsFiniteOp {
+  string summary = "IsFinite operator";
+
+  string description = [{
+    Tests whether each element of operand is finite, i.e., is not positive or
+    negative infinity, and is not NaN. Returns a tensor of 1-bit integers with
+    the same shape as the input, where each element is nonzero (i.e. true) if
+    and only if the corresponding input element is finite.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
 
@@ -142,11 +176,44 @@ class BASE_HLO_LogOp {
   }];
 }
 
+class BASE_HLO_Log1pOp {
+  string summary = "Log1p operator";
+
+  string description = [{
+    Returns `log(operand+1)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_NegOp {
   string summary = "Negation operator";
 
   string description = [{
     Returns `-operand` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_NotOp {
+  string summary = "Not operator";
+
+  string description = [{
+    Returns `!operand` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_PopulationCountOp {
+  string summary = "PopulationCount operator";
+
+  string description = [{
+    Returns the number of bits set in each operand element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
@@ -398,6 +465,16 @@ class BASE_HLO_XorOp {
   }];
 }
 
+class BASE_HLO_AllReduceOp {
+  string summary = "AllReduce operator";
+
+  string description = [{
+    Performs a custom reduction across replicas.
+
+    See https://www.tensorflow.org/xla/operation_semantics#allreduce.
+  }];
+}
+
 class BASE_HLO_ReduceOp {
   string summary = "Reduce operator";
 
@@ -549,6 +626,16 @@ class BASE_HLO_DynamicUpdateSliceOp {
 // XLA Other op definitions.
 //===----------------------------------------------------------------------===//
 
+class BASE_HLO_BatchNormGradOp {
+  string summary = "Batch Normalization Gradient";
+
+  string description = [{
+    Calculates gradients of batch norm.
+
+    See https://www.tensorflow.org/xla/operation_semantics#batchnormgrad
+  }];
+}
+
 class BASE_HLO_BatchNormInferenceOp {
   string summary = "Batch Normalization for Inference";
 
@@ -556,6 +643,16 @@ class BASE_HLO_BatchNormInferenceOp {
     Normalizes an array across batch and spatial dimensions.
 
     See https://www.tensorflow.org/xla/operation_semantics#batchnorminference
+  }];
+}
+
+class BASE_HLO_BatchNormTrainingOp {
+  string summary = "Batch Normalization for Training";
+
+  string description = [{
+    Normalizes an array across batch and spatial dimensions.
+
+    See https://www.tensorflow.org/xla/operation_semantics#batchnormtraining
   }];
 }
 
@@ -611,7 +708,7 @@ class BASE_HLO_ClampOp  {
 }
 
 class BASE_HLO_ConcatenateOp {
-   string summary = "XLA's concantenate op";
+   string summary = "XLA's concatenate op";
 
    string description = [{
      Concatenates a set of tensors along the specified dimension.
@@ -697,6 +794,18 @@ class BASE_HLO_ReshapeOp {
   }];
 }
 
+class BASE_HLO_ScatterOp {
+  string summary = "Scatter operator";
+
+  string description = [{
+    Generates a result which is the value of the input array `operand`,
+    with several slices (at indices specified by `scatter_indices`)
+    updated with the values in `updates` using `update_computation`.
+
+    See https://www.tensorflow.org/xla/operation_semantics#scatter.
+  }];
+}
+
 class BASE_HLO_SelectOp {
   string summary = "Select operator";
 
@@ -704,13 +813,7 @@ class BASE_HLO_SelectOp {
     Constructs an output tensor from the elements of `on_true` and `on_false`
     based on the values of `pred`.
 
-    `on_true` and `on_false` must be the same shape. For each element of `pred`,
-    `res` has the corresponding element of `on_true` or `on_false` depending on
-    the value in `pred`. `pred` must be the same shape as `on_true` and
-    `on_false` or a scalar, in which case `res` is equal to either `on_true` or
-    `on_false`.
-
-    See https://www.tensorflow.org/xla/operation_semantics#select.
+    `pred`, `on_true` and `on_false` must be broadcast compatible.
   }];
 }
 
@@ -726,6 +829,17 @@ class BASE_HLO_SelectAndScatterOp {
     combined using the `scatter` function.
 
     See https://www.tensorflow.org/xla/operation_semantics#selectandscatter.
+  }];
+}
+
+class BASE_HLO_SortOp {
+  string summary = "Sort operator";
+
+  string description = [{
+    Sorts the given `operands` at the given `dimension` with the given
+    `comparator`.
+
+    See https://www.tensorflow.org/xla/operation_semantics#sort.
   }];
 }
 

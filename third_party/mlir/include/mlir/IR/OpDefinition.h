@@ -386,6 +386,8 @@ LogicalResult verifyResultsAreBoolLike(Operation *op);
 LogicalResult verifyResultsAreFloatLike(Operation *op);
 LogicalResult verifyResultsAreIntegerLike(Operation *op);
 LogicalResult verifyIsTerminator(Operation *op);
+LogicalResult verifyOperandSizeAttr(Operation *op, StringRef sizeAttrName);
+LogicalResult verifyResultSizeAttr(Operation *op, StringRef sizeAttrName);
 } // namespace impl
 
 /// Helper class for implementing traits.  Clients are not expected to interact
@@ -905,6 +907,43 @@ template <typename ParentOpType> struct HasParent {
                                << ParentOpType::getOperationName() << "'";
     }
   };
+};
+
+/// A trait for operations that have an attribute specifying operand segments.
+///
+/// Certain operations can have multiple variadic operands and their size
+/// relationship is not always known statically. For such cases, we need
+/// a per-op-instance specification to divide the operands into logical groups
+/// or segments. This can be modeled by attributes. The attribute will be named
+/// as `operand_segment_sizes`.
+///
+/// This trait verifies the attribute for specifying operand segments has
+/// the correct type (1D vector) and values (non-negative), etc.
+template <typename ConcreteType>
+class AttrSizedOperandSegments
+    : public TraitBase<ConcreteType, AttrSizedOperandSegments> {
+public:
+  static StringRef getOperandSegmentSizeAttr() {
+    return "operand_segment_sizes";
+  }
+
+  static LogicalResult verifyTrait(Operation *op) {
+    return ::mlir::OpTrait::impl::verifyOperandSizeAttr(
+        op, getOperandSegmentSizeAttr());
+  }
+};
+
+/// Similar to AttrSizedOperandSegments but used for results.
+template <typename ConcreteType>
+class AttrSizedResultSegments
+    : public TraitBase<ConcreteType, AttrSizedResultSegments> {
+public:
+  static StringRef getResultSegmentSizeAttr() { return "result_segment_sizes"; }
+
+  static LogicalResult verifyTrait(Operation *op) {
+    return ::mlir::OpTrait::impl::verifyResultSizeAttr(
+        op, getResultSegmentSizeAttr());
+  }
 };
 
 } // end namespace OpTrait

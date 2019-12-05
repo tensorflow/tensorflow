@@ -69,6 +69,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
@@ -2167,7 +2168,11 @@ class TensorFlowTestCase(googletest.TestCase):
                    force_gpu=False):
     """Use cached_session instead."""
     if self.id().endswith(".test_session"):
-      self.skipTest("Not a test.")
+      self.skipTest(
+          "Tests that have the name \"test_session\" are automatically skipped "
+          "by TensorFlow test fixture, as the name is reserved for creating "
+          "sessions within tests. Please rename your test if you have a test "
+          "with this name.")
     if context.executing_eagerly():
       yield None
     else:
@@ -2341,8 +2346,8 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertTrue(self._NDArrayNear(ndarray1, ndarray2, err), msg=msg)
 
   def _GetNdArray(self, a):
-    # If a is a tensor then convert it to ndarray
-    if isinstance(a, ops.Tensor):
+    # If a is tensor-like then convert it to ndarray
+    if tensor_util.is_tensor(a):
       if isinstance(a, ops._EagerTensorBase):
         a = a.numpy()
       else:
@@ -2604,6 +2609,8 @@ class TensorFlowTestCase(googletest.TestCase):
         x, y = a, b
       msgs.append("not equal lhs = {}".format(x))
       msgs.append("not equal rhs = {}".format(y))
+      # With Python 3, we need to make sure the dtype matches between a and b.
+      b = b.astype(a.dtype)
       np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
 
   @py_func_if_in_function

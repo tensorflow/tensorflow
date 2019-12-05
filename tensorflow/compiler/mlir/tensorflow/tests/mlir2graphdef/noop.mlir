@@ -2,12 +2,12 @@
 
 func @main() {
 ^bb0:
-  "_tf.NoOp"() {} : () -> () loc("no op")
+  "_tf.NoOp"() {} : () -> () loc("noop")
   return
 }
 
 // CHECK: node {
-// CHECK-NEXT:  name: "no op"
+// CHECK-NEXT:  name: "noop"
 // CHECK-NEXT:  op: "NoOp"
 // CHECK-NEXT:  experimental_debug_info {
 // CHECK-NEXT:  }

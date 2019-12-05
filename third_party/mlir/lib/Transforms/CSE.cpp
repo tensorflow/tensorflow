@@ -47,7 +47,7 @@ struct SimpleOperationInfo : public llvm::DenseMapInfo<Operation *> {
     //   - Result Types
     //   - Operands
     return hash_combine(
-        op->getName(), op->getAttrs(),
+        op->getName(), op->getAttrList().getDictionary(),
         hash_combine_range(op->result_type_begin(), op->result_type_end()),
         hash_combine_range(op->operand_begin(), op->operand_end()));
   }
@@ -68,7 +68,7 @@ struct SimpleOperationInfo : public llvm::DenseMapInfo<Operation *> {
         lhs->getNumResults() != rhs->getNumResults())
       return false;
     // Compare attributes.
-    if (lhs->getAttrs() != rhs->getAttrs())
+    if (lhs->getAttrList() != rhs->getAttrList())
       return false;
     // Compare operands.
     if (!std::equal(lhs->operand_begin(), lhs->operand_end(),

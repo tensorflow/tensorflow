@@ -23,9 +23,7 @@
 #ifndef SPIRV_CAST_OPS
 #define SPIRV_CAST_OPS
 
-#ifndef SPIRV_BASE
-include "mlir/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
+include "mlir/Dialect/SPIRV/SPIRVBase.td"
 
 class SPV_CastOp<string mnemonic, Type resultType, Type operandType,
                  list<OpTrait> traits = []> :
@@ -98,6 +96,8 @@ def SPV_BitcastOp : SPV_Op<"Bitcast", [NoSideEffect]> {
 
   let parser = [{ return mlir::impl::parseCastOp(parser, result); }];
   let printer = [{ mlir::impl::printCastOp(this->getOperation(), p); }];
+
+  let hasCanonicalizer = 1;
 }
 
 // -----

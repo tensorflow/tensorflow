@@ -1,4 +1,4 @@
-// RUN: tf-opt -xla-lower-general-dot -split-input-file %s -o - | FileCheck %s
+// RUN: tf-opt -test-xla-lower-general-dot -split-input-file %s -o - | FileCheck %s
 
 // CHECK-LABEL: @testDebatch1
 func @testDebatch1(%arg0: tensor<1x1x2xf32>, %arg1: tensor<2x3xf32>) -> tensor<1x1x3xf32> {

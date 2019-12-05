@@ -16,7 +16,7 @@ limitations under the License.
 /* This file is a modification of the Tensorflow Micro Lite file
  * micro_speech_test.cc */
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/simple_features_generator.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/tiny_conv_simple_features_model_data.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"

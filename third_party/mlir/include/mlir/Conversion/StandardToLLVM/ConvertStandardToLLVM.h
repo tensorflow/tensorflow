@@ -82,11 +82,6 @@ public:
   Value *promoteOneMemRefDescriptor(Location loc, Value *operand,
                                     OpBuilder &builder);
 
-  static constexpr unsigned kPtrPosInMemRefDescriptor = 0;
-  static constexpr unsigned kOffsetPosInMemRefDescriptor = 1;
-  static constexpr unsigned kSizePosInMemRefDescriptor = 2;
-  static constexpr unsigned kStridePosInMemRefDescriptor = 3;
-
 protected:
   /// LLVM IR module used to parse/create types.
   llvm::Module *module;
@@ -130,6 +125,64 @@ private:
 
   // Extract an LLVM IR dialect type.
   LLVM::LLVMType unwrap(Type type);
+};
+
+/// Helper class to produce LLVM dialect operations extracting or inserting
+/// elements of a MemRef descriptor. Wraps a Value pointing to the descriptor.
+/// The Value may be null, in which case none of the operations are valid.
+class MemRefDescriptor {
+public:
+  /// Construct a helper for the given descriptor value.
+  explicit MemRefDescriptor(Value *descriptor);
+  /// Builds IR creating an `undef` value of the descriptor type.
+  static MemRefDescriptor undef(OpBuilder &builder, Location loc,
+                                Type descriptorType);
+  /// Builds IR extracting the allocated pointer from the descriptor.
+  Value *allocatedPtr(OpBuilder &builder, Location loc);
+  /// Builds IR inserting the allocated pointer into the descriptor.
+  void setAllocatedPtr(OpBuilder &builder, Location loc, Value *ptr);
+
+  /// Builds IR extracting the aligned pointer from the descriptor.
+  Value *alignedPtr(OpBuilder &builder, Location loc);
+
+  /// Builds IR inserting the aligned pointer into the descriptor.
+  void setAlignedPtr(OpBuilder &builder, Location loc, Value *ptr);
+
+  /// Builds IR extracting the offset from the descriptor.
+  Value *offset(OpBuilder &builder, Location loc);
+
+  /// Builds IR inserting the offset into the descriptor.
+  void setOffset(OpBuilder &builder, Location loc, Value *offset);
+
+  /// Builds IR extracting the pos-th size from the descriptor.
+  Value *size(OpBuilder &builder, Location loc, unsigned pos);
+
+  /// Builds IR inserting the pos-th size into the descriptor
+  void setSize(OpBuilder &builder, Location loc, unsigned pos, Value *size);
+
+  /// Builds IR extracting the pos-th size from the descriptor.
+  Value *stride(OpBuilder &builder, Location loc, unsigned pos);
+
+  /// Builds IR inserting the pos-th stride into the descriptor
+  void setStride(OpBuilder &builder, Location loc, unsigned pos, Value *stride);
+
+  /// Returns the (LLVM) type this descriptor points to.
+  LLVM::LLVMType getElementType();
+
+  /*implicit*/ operator Value *() { return value; }
+
+private:
+  Value *extractPtr(OpBuilder &builder, Location loc, unsigned pos);
+  void setPtr(OpBuilder &builder, Location loc, unsigned pos, Value *ptr);
+
+  // Cached descriptor type.
+  Type structType;
+
+  // Cached index type.
+  Type indexType;
+
+  // Actual descriptor.
+  Value *value;
 };
 
 /// Base class for operation conversions targeting the LLVM IR dialect. Provides

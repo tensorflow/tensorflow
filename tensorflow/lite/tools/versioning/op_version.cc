@@ -149,6 +149,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_TRANSPOSE_CONV:
+      // If the op takes int8 input, it is version 2.
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_LSTM:
       // If the input tensor is float and a weight is int8, this is a version
       // 3 hybrid operation.

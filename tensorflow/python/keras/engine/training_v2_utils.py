@@ -75,12 +75,12 @@ def _make_execution_function(model, mode):
 
   def distributed_function(input_iterator):
     """A single step of the distributed execution across replicas."""
-    args = _prepare_feed_values(model, input_iterator, mode)
     # Call `Model.{train,test,predict}_on_batch` on every replica passing
     # PerReplicas as arguments.  On every replica inside this call, each
     # PerReplica object will return the value for that replica.  The outputs
     # are PerReplicas too.
     strategy = distribution_strategy_context.get_strategy()
+    args = _prepare_feed_values(model, input_iterator, mode, strategy)
     outputs = strategy.experimental_run_v2(
         per_replica_function, args=args)
     # Out of PerReplica outputs reduce or pick values to return.
@@ -129,7 +129,7 @@ def _non_none_constant_value(v):
   return constant_value if constant_value is not None else v
 
 
-def _prepare_feed_values(model, inputs, mode):
+def _prepare_feed_values(model, inputs, mode, strategy):
   """Prepare feed values to the model execution function.
 
   Arguments:
@@ -138,6 +138,7 @@ def _prepare_feed_values(model, inputs, mode):
       model inputs may be lists, single values, or dicts mapping input feed
       names to values.
     mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
+    strategy: The current distribution strategy for the model.
 
   Returns:
     Feed values for the model in the given mode. This is a tuple of
@@ -146,7 +147,7 @@ def _prepare_feed_values(model, inputs, mode):
     for inputs will always be wrapped in lists.
   """
   # For predict, we need to extract the manually added batch_index first.
-  with_batch_index = mode == ModeKeys.PREDICT
+  with_batch_index = _should_add_batch_index_to_element(strategy, mode)
 
   inputs, targets, sample_weights, batch_index = _get_input_from_iterator(
       inputs, with_batch_index)
@@ -207,7 +208,10 @@ def _make_replica_execution_function(model, mode):
       del y, sample_weights
       # Note that the x and batch_index is already per-replica value.
       result = predict_on_batch(model, x)
-      return (batch_index, result)
+      if batch_index is None:
+        return result
+      else:
+        return batch_index, result
 
     func = _predict_on_batch
 
@@ -227,6 +231,9 @@ def _aggregate_predict_results(strategy, batch_outs, model):
   if not isinstance(batch_outs, list):
     batch_outs = [batch_outs]
 
+  with_batch_index = _should_add_batch_index_to_element(
+      strategy, ModeKeys.PREDICT)
+
   # batch_outs is in following structure:
   # [
   #  replica_1_batch_index, replica_2_batch_index, ...., replica_x_batch_index,
@@ -234,14 +241,19 @@ def _aggregate_predict_results(strategy, batch_outs, model):
   #  ......
   #  replica_1_output_y, replica_2_output_y, ...., replica_x_output_y,
   # ]
-  batch_index, batch_outs = batch_outs[:num_replicas], batch_outs[num_replicas:]
-  batch_index = dist_utils.concat_along_batch_dimension(batch_index)
-  # Reorder the batch_index for it to do proper gather. Eg, if the original
-  # index is [0, 2, 4, 6, 1, 3, 5, 7], then the index for gather should be
-  # [0, 4, 1, 5, 2, 6, 3, 7].
-  batch_index = np.argsort(batch_index)
-  # Only need to gather if the batch index is not sorted.
-  need_batch_index_gather = np.any(np.diff(batch_index) < 0)
+  # The replica_x_batch_index is optional and depended on teh strategy type.
+  if with_batch_index:
+    batch_index, batch_outs = (batch_outs[:num_replicas],
+                               batch_outs[num_replicas:])
+    batch_index = dist_utils.concat_along_batch_dimension(batch_index)
+    # Reorder the batch_index for it to do proper gather. Eg, if the original
+    # index is [0, 2, 4, 6, 1, 3, 5, 7], then the index for gather should be
+    # [0, 4, 1, 5, 2, 6, 3, 7].
+    batch_index = np.argsort(batch_index)
+    # Only need to gather if the batch index is not sorted.
+    need_batch_index_gather = np.any(np.diff(batch_index) < 0)
+  else:
+    need_batch_index_gather = False
 
   total_batch_outs = []
   for i in range(num_outputs):
@@ -316,6 +328,28 @@ def _add_batch_index_to_element(dataset):
     (batch_index, (x, y, sample_weights)).
   """
   return dataset.map(lambda *inp: (math_ops.range(_get_batch_size(inp)), inp))
+
+
+def _should_add_batch_index_to_element(strategy, mode):
+  """Whether or not the batch index should be added to the input dataset.
+
+  See docstring of _add_batch_index_to_element() for more details. So far the
+  batch index is only need when using TPUStrategy with a multi-worker setting.
+  We will try to avoid adding batch index for other cases since it has the
+  performance implication.
+
+  Args:
+    strategy: the current distribution strategy for the model.
+    mode: the current mode (Training/Eval/Predict) for the model.
+  Returns:
+    Boolean, whether the batch index should be added for the input data to
+      preserve the ordering.
+  """
+  # TODO(priyag, rxsang): Come up a better way to determine when the batch index
+  # should be added.
+  return (mode == ModeKeys.PREDICT
+          and dist_utils.is_tpu_strategy(strategy)
+          and strategy.extended.num_hosts > 1)
 
 
 def train_on_batch(

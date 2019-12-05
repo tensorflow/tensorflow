@@ -15,7 +15,7 @@
 """tf.data.Dataset interface to the MNIST dataset.
 
  This is cloned from
- https://github.com/tensorflow/models/blob/master/official/mnist/dataset.py
+ https://github.com/tensorflow/models/blob/master/official/r1/mnist/dataset.py
 """
 
 from __future__ import absolute_import

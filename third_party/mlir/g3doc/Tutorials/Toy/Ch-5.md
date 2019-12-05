@@ -1,38 +1,40 @@
-# Chapter 5 - Partial Lowering to Lower-Level Dialects for Optimization
+# Chapter 5: Partial Lowering to Lower-Level Dialects for Optimization
+
+[TOC]
 
 At this point, we are eager to generate actual code and see our Toy language
-taking life. We will obviously use LLVM to generate code, but just showing the
-LLVM builder interface wouldn't be very exciting here. Instead, we will show how
-to perform progressive lowering through a mix of dialects coexisting in the same
-function.
+take life. We will use LLVM to generate code, but just showing the LLVM builder
+interface here wouldn't be very exciting. Instead, we will show how to perform
+progressive lowering through a mix of dialects coexisting in the same function.
 
-To make it more interesting, in this chapter we will will consider that we want
-to reuse existing optimizations implemented in a dialect optimizing affine
+To make it more interesting, in this chapter we will consider that we want to
+reuse existing optimizations implemented in a dialect optimizing affine
 transformations: `Affine`. This dialect is tailored to the computation-heavy
-part of the program, and is limited: it doesn't support representing our
-`toy.print` builtin for instance, neither should it! Instead we can target
+part of the program and is limited: it doesn't support representing our
+`toy.print` builtin, for instance, neither should it! Instead, we can target
 `Affine` for the computation heavy part of Toy, and in the
 [next chapter](Ch-6.md) directly the `LLVM IR` dialect for lowering `print`. As
 part of this lowering, we will be lowering from the
-[TensorType](../../LangRef.md#tensor-type), that `Toy` operates on, to the
+[TensorType](../../LangRef.md#tensor-type) that `Toy` operates on to the
 [MemRefType](../../LangRef.md#memref-type) that is indexed via an affine
 loop-nest. Tensors represent an abstract value-typed sequence of data, meaning
-that they don't live in any memory. MemRefs on the other hand represent lower
+that they don't live in any memory. MemRefs, on the other hand, represent lower
 level buffer access, as they are concrete references to a region of memory.
 
 # Dialect Conversions
 
-MLIR contains many different dialects, so it is important to have a unified
-framework for converting between them. This is where the `DialectConversion`
-framework comes into play. This framework allows for transforming a set of
-`illegal` operations to a set of `legal` ones. To use this framework we need to
-provide two things:
+MLIR has many different dialects, so it is important to have a unified framework
+for [converting](../../Glossary.md#conversion) between them. This is where the
+`DialectConversion` framework comes into play. This framework allows for
+transforming a set of `illegal` operations to a set of `legal` ones. To use this
+framework, we need to provide two things (and an optional third):
 
 *   A [Conversion Target](../../DialectConversion.md#conversion-target)
 
-    -   This is the formal specification of what operations, or dialects, are
+    -   This is the formal specification of what operations or dialects are
         legal for the conversion. Operations that aren't legal will require
-        rewrite patterns to perform legalization.
+        rewrite patterns to perform
+        [legalization](./../../Glossary.md#legalization).
 
 *   A set of
     [Rewrite Patterns](../../DialectConversion.md#rewrite-pattern-specification)
@@ -40,14 +42,14 @@ provide two things:
     -   These are the set of [patterns](../../QuickstartRewrites.md) used to
         convert `illegal` operations into a set of zero or more `legal` ones.
 
-*   Optionally, A [Type Converter](../../DialectConversion.md#type-conversion).
+*   Optionally, a [Type Converter](../../DialectConversion.md#type-conversion).
 
     -   If provided, this is used to convert the types of block arguments. We
         won't be needing this for our conversion.
 
 ## Conversion Target
 
-For our purposes, we want to convert the compute intensive `Toy` operations into
+For our purposes, we want to convert the compute-intensive `Toy` operations into
 a combination of operations from the `Affine` `Standard` dialects for further
 optimization. To start off the lowering, we first define our conversion target:
 
@@ -79,16 +81,16 @@ After the conversion target has been defined, we can define how to convert the
 framework introduced in [chapter 3](Ch-3.md), the
 [`DialectConversion` framework](../../DialectConversion.md) also uses
 [RewritePatterns](../../QuickstartRewrites.md) to perform the conversion logic.
-These patterns may be the `RewritePatterns` seen before, or a new type of
-pattern specific to the conversion framework `ConversionPattern`.
-`ConversionPatterns` are different from traditional `RewritePatterns` in that
-they accept an additional `operands` parameter containing operands that have
-been remapped/replaced. This is used when dealing with type conversions as the
-pattern will want to operand on values of the new type, but match against the
-old. For our lowering, this invariant will be useful during our lowering as we
-will be translating from the [TensorType](../../LangRef.md#tensor-type),
-currently being operated on, to the [MemRefType](../../LangRef.md#memref-type).
-Let's look at a snippet of lowering the `toy.transpose` operation:
+These patterns may be the `RewritePatterns` seen before or a new type of pattern
+specific to the conversion framework `ConversionPattern`. `ConversionPatterns`
+are different from traditional `RewritePatterns` in that they accept an
+additional `operands` parameter containing operands that have been
+remapped/replaced. This is used when dealing with type conversions, as the
+pattern will want to operate on values of the new type but match against the
+old. For our lowering, this invariant will be useful as it translates from the
+[TensorType](../../LangRef.md#tensor-type) currently being operated on to the
+[MemRefType](../../LangRef.md#memref-type). Let's look at a snippet of lowering
+the `toy.transpose` operation:
 
 ```c++
 /// Lower the `toy.transpose` operation to an affine loop nest.
@@ -116,8 +118,8 @@ struct TransposeOpLowering : public mlir::ConversionPattern {
           // This allows for using the nice named accessors that are generated
           // by the ODS. This adaptor is automatically provided by the ODS
           // framework.
-          TransposeOpOperandAdaptor tranposeAdaptor(memRefOperands);
-          mlir::Value *input = tranposeAdaptor.input();
+          TransposeOpOperandAdaptor transposeAdaptor(memRefOperands);
+          mlir::Value *input = transposeAdaptor.input();
 
           // Transpose the elements by generating a load from the reverse
           // indices.
@@ -146,9 +148,9 @@ void ToyToAffineLoweringPass::runOnFunction() {
 ## Partial Lowering
 
 Once the patterns have been defined, we can perform the actual lowering. The
-`DialectConversion` framework provides several different modes of lowering, but
-for our purposes we will be performing a partial lowering, as we will not be
-converting `toy.print` at this time.
+`DialectConversion` framework provides several different modes of lowering, but,
+for our purposes, we will perform a partial lowering, as we will not convert
+`toy.print` at this time.
 
 ```c++
 void ToyToAffineLoweringPass::runOnFunction() {
@@ -186,8 +188,8 @@ void ToyToAffineLoweringPass::runOnFunction() {
 
 Before diving into the result of our lowering, this is a good time to discuss
 potential design considerations when it comes to partial lowering. In our
-lowering, we will be transforming from a value-type, TensorType, to a
-allocated(buffer-like) type, MemRefType. Given that we will not be lowering the
+lowering, we transform from a value-type, TensorType, to an allocated
+(buffer-like) type, MemRefType. However, given that we do not lower the
 `toy.print` operation, we need to temporarily bridge these two worlds. There are
 many ways to go about this, each with their own tradeoffs:
 
@@ -204,10 +206,10 @@ been performed.
 
 Another option would be to have another, lowered, variant of `toy.print` that
 operates on the lowered type. The benefit of this option is that there is no
-hidden, unnecessary, copy to optimizer. The downside is that another operation
-definition is needed, that may duplicate many aspects of the first. Defining a
-base class in [ODS](../../OpDefinitions.md) may simplify this, but you still
-need to treat these operations separately.
+hidden, unnecessary copy to the optimizer. The downside is that another
+operation definition is needed that may duplicate many aspects of the first.
+Defining a base class in [ODS](../../OpDefinitions.md) may simplify this, but
+you still need to treat these operations separately.
 
 *   Update `toy.print` to allow for operating on the lowered type
 
@@ -299,8 +301,8 @@ func @main() {
 
 ## Taking Advantage of Affine Optimization
 
-Our naive lowering is correct, but it leaves a lot to be desired in regards to
-efficiency; For example the lowering of `toy.mul` has generated some redundant
+Our naive lowering is correct, but it leaves a lot to be desired with regards to
+efficiency. For example, the lowering of `toy.mul` has generated some redundant
 loads. Let's look at how adding a few existing optimizations to the pipeline can
 help clean this up. Adding the `LoopFusion` and `MemRefDataFlowOpt` passes to
 the pipeline gives the following result:
@@ -345,10 +347,10 @@ func @main() {
 }
 ```
 
-Here we can see that an allocation was removed, the two loop nests were fused,
-and we also were able to remove an unnecessary allocation! You can build
-`toyc-ch5` and try yourself: `toyc-ch5 test/lowering.toy -emit=mlir-affine`. We
-can also check our optimizations by adding `-opt`.
+Here, we can see that a redundant allocation was removed, the two loop nests
+were fused, and some unnecessary `load`s were removed. You can build `toyc-ch5`
+and try yourself: `toyc-ch5 test/lowering.toy -emit=mlir-affine`. We can also
+check our optimizations by adding `-opt`.
 
 In this chapter we explored some aspects of partial lowering, with the intent to
 optimize. In the [next chapter](Ch-6.md) we will continue the discussion about

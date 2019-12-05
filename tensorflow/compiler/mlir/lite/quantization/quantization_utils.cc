@@ -35,6 +35,8 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
+const float kNearZeroTolerance = 1.0e-6;
+
 // Returns the quantized type for the
 // input_type/min/max/storag_type_width/narrow_range.
 static Type GetQuantizedType(Builder builder, Type input_type,
@@ -45,13 +47,14 @@ static Type GetQuantizedType(Builder builder, Type input_type,
       quant::ExpressedToQuantizedConverter::forInputType(input_type);
 
   quant::QuantizedType quantizedEleType;
-  if (min.size() == 1 && max.size() == 1) {
+  if (min.size() == 1 && max.size() == 1 && quant_dim == -1) {
     quantizedEleType = quant::fakeQuantAttrsToType(
         builder.getUnknownLoc(), storage_type_width, min[0], max[0],
         narrow_range, converter.expressedType, is_signed);
   } else if (min.size() == max.size()) {
     auto shape = input_type.dyn_cast<ShapedType>();
-    if (!shape || min.size() != shape.getDimSize(quant_dim)) {
+    if (!shape || shape.getRank() <= quant_dim ||
+        min.size() != shape.getDimSize(quant_dim)) {
       return {};
     }
     // TODO(b/141508873): the quantization dim is set to the last dimension.
@@ -92,33 +95,39 @@ TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
   Type final_type =
       GetQuantizedType(builder, input_type, min_value, max_value, quant_dim,
                        num_bits.getInt(), narrow_range.getValue(), is_signed);
+  if (!final_type) return {};
   return TypeAttr::get(final_type);
 }
 
-// TODO(fengliuai): expose the `quant_dim` argument.
-TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
-                              Attribute max, IntegerAttr num_bits,
-                              BoolAttr narrow_range, bool is_signed) {
-  // When input_type isn't a ranked shaped type, it shouldn't be per-axis
-  // quantizatied, and `quant_dim` shouldn't be used, otherwise, set it to the
-  // last dimension.
-  int quant_dim = 0;
-  if (auto shape = input_type.dyn_cast<RankedTensorType>()) {
-    quant_dim = shape.getRank() - 1;
+// Repeats the content of `data` multiple times to resize to `target_size`.
+// Note that this only broadcast across one dimension.
+template <typename T>
+static bool BroadcastVector(int target_size, SmallVectorImpl<T>& data) {
+  int size = data.size();
+  if (size != target_size) {
+    if (target_size % size != 0) return true;
+    data.reserve(target_size);
+    for (int i = 1, e = target_size / size; i != e; ++i) {
+      data.insert(data.end(), data.begin(), data.begin() + size);
+    }
   }
-  return GetQuantizedTypeAttr(builder, input_type, min, max, quant_dim,
-                              num_bits, narrow_range, is_signed);
+  return false;
 }
 
 // Changes the axis of the input per-channel quantized type to match the
 // dimension of the target type. Returns nullptr if it fails.
 static quant::UniformQuantizedPerAxisType ResetAxisAndBroadcast(
-    quant::UniformQuantizedPerAxisType qtype, Type target, int axis) {
-  auto shaped = target.dyn_cast<ShapedType>();
+    quant::UniformQuantizedPerAxisType qtype, Type target, int quant_dim) {
+  auto shaped = target.dyn_cast<RankedTensorType>();
   if (!shaped) return {};
 
-  // Broadcast the scales and zero points to match the length of the axis-th
-  // dimension of the target type. Currently, it covers two cases:
+  SmallVector<double, 4> scales(qtype.getScales().begin(),
+                                qtype.getScales().end());
+  SmallVector<int64_t, 4> zero_points(qtype.getZeroPoints().begin(),
+                                      qtype.getZeroPoints().end());
+  // Broadcast the scales and zero points to match the target size, which is
+  // usually the axis-th dimension of the target type. Currently, it covers two
+  // cases:
   // - for Transpose, the data layout is changed so the `dim[axis]` still equals
   // to the `scales_size`. The broadcast skips;
   // - for Reshape, the data layout isn't changed but the innermost dimension is
@@ -127,33 +136,13 @@ static quant::UniformQuantizedPerAxisType ResetAxisAndBroadcast(
   //
   // TODO(b/141709944): after the fix, the `scales` can be for dim[2], thus we
   // have to repeat each elements in the `scales` locally dim[3] times.
-  auto scales = qtype.getScales();
-  auto zero_points = qtype.getZeroPoints();
-  int target_size = shaped.getDimSize(axis);
-  int scales_size = scales.size();
-  int zero_points_size = zero_points.size();
-
-  SmallVector<double, 4> new_scales;
-  SmallVector<int64_t, 4> new_zero_points;
-  if (scales_size != target_size) {
-    if (target_size % scales_size != 0) return {};
-    for (int i = 0, e = target_size / scales_size; i != e; ++i) {
-      new_scales.insert(new_scales.end(), scales.begin(), scales.end());
-    }
-    scales = new_scales;
+  if (BroadcastVector<double>(shaped.getDimSize(quant_dim), scales) ||
+      BroadcastVector<int64_t>(shaped.getDimSize(quant_dim), zero_points)) {
+    return {};
   }
-  if (zero_points_size != target_size) {
-    if (target_size % zero_points_size != 0) return {};
-    for (int i = 0, e = target_size / zero_points_size; i != e; ++i) {
-      new_zero_points.insert(new_zero_points.end(), zero_points.begin(),
-                             zero_points.end());
-    }
-    zero_points = new_zero_points;
-  }
-
   return quant::UniformQuantizedPerAxisType::get(
       qtype.getFlags(), qtype.getStorageType(), qtype.getExpressedType(),
-      scales, zero_points, axis, qtype.getStorageTypeMin(),
+      scales, zero_points, quant_dim, qtype.getStorageTypeMin(),
       qtype.getStorageTypeMax());
 }
 
@@ -176,9 +165,13 @@ TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
   return {};
 }
 
-Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, unsigned num_bits,
-                                      bool is_signed, bool narrow_range) {
+Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, bool symmetric,
+                                      unsigned num_bits, bool is_signed,
+                                      bool narrow_range) {
   Builder builder(attr.getContext());
+  // `symmetric` can only be used when it is `signed` and `narrow_range`.
+  if (symmetric && (!is_signed || !narrow_range)) return {};
+
   double min = std::numeric_limits<double>::max();
   double max = std::numeric_limits<double>::min();
   auto fp = attr.dyn_cast<DenseFPElementsAttr>();
@@ -193,9 +186,9 @@ Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, unsigned num_bits,
     // works for both this value and 0.0.
     if (single_value < 0.0) {
       min = single_value;
-      max = 0.0;
+      max = symmetric ? -single_value : 0.0;
     } else if (single_value > 0.0) {
-      min = 0.0;
+      min = symmetric ? -single_value : 0.0;
       max = single_value;
     } else {
       min = max = single_value;
@@ -205,10 +198,16 @@ Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, unsigned num_bits,
       double ele_value = FloatAttr::getValueAsDouble(*it);
       min = std::min(min, ele_value);
       max = std::max(max, ele_value);
+      if (symmetric) {
+        max = std::max(std::abs(min), std::abs(max));
+        // In case the scale is extremely small, a fixed scale is used.
+        if (max < kNearZeroTolerance) max = 1.0;
+        min = -max;
+      }
     }
   }
   auto type =
-      GetQuantizedType(builder, attr.getType(), min, max, /*quant_dim=*/0,
+      GetQuantizedType(builder, attr.getType(), min, max, /*quant_dim=*/-1,
                        num_bits, narrow_range, is_signed);
   if (auto ele_type = type.dyn_cast_or_null<TensorType>())
     return ele_type.getElementType();
@@ -270,7 +269,7 @@ Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
       for (int i = 0; i < dim_size; ++i) {
         max[i] = std::max(std::abs(min[i]), std::abs(max[i]));
         // In case the scale is extremely small, a fixed scale is used.
-        if (max[i] < 1.0e-6) max[i] = 1.0;
+        if (max[i] < kNearZeroTolerance) max[i] = 1.0;
         min[i] = -max[i];
       }
     }

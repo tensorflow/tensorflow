@@ -46,6 +46,17 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass();
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
 
+struct StandardPipelineOptions : public PassOptions<StandardPipelineOptions> {
+  Option<bool> enable_inliner{*this, "enable-inliner",
+                              llvm::cl::desc("Enable inliner."),
+                              llvm::cl::init(false)};
+};
+
+// Propagates the pass manager with the passes involved in transforming or
+// optimizing an MLIR graph without any target specialization.
+// NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
+void CreateTFStandardPipeline(OpPassManager& pm,
+                              const StandardPipelineOptions& options);
 }  // namespace TF
 
 namespace TFControlFlow {
@@ -67,8 +78,8 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorIslandCoarseningPass();
 // Create a pass to prune tf_executor.graph from dead nodes.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorGraphPruningPass();
 
-// Prune a tf_executor.graph operation from dead nodes.
-void prune_graph(GraphOp graph);
+// Prunes unreachable operations of a tf_executor.graph operation.
+void PruneGraph(GraphOp graph);
 
 // Sink `tf.Const` operations in the LaunchOp region using them. This is
 // performed in order to limit the number of values implicitly captured in this
@@ -111,12 +122,17 @@ namespace TFTPU {
 std::unique_ptr<OpPassBase<FuncOp>> CreateTPUClusterFormationPass();
 
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
-// ops
+// ops.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTPURewritePass();
+
+// Creates a pass that merges device variable reads/updates into the surrounded
+// TPUExecute node. This allows the execute node to perform in-place variable
+// updates.
+std::unique_ptr<OpPassBase<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge. NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
-void createTPUBridge(OpPassManager& pm);
+void CreateTPUBridge(OpPassManager& pm);
 
 }  // namespace TFTPU
 
@@ -128,6 +144,10 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateDeleteUnusedFuncsPass();
 
 // Creates a pass that optimizes tf_saved_model.global_tensor ops.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeGlobalTensorsPass();
+
+// Creates a pass that inlines global tensors as tf.Const ops in the function
+// body.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateInlineGlobalTensorsPass();
 
 }  // namespace tf_saved_model
 

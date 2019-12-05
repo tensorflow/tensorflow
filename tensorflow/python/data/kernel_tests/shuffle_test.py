@@ -32,6 +32,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -39,7 +40,7 @@ from tensorflow.python.platform import test
 class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
-  def testShuffleDataset(self):
+  def testBasic(self):
     components = (
         np.array([1, 2, 3, 4]), np.array([5, 6, 7, 8]),
         np.array([9.0, 10.0, 11.0, 12.0])
@@ -159,7 +160,7 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          combinations.combine(tf_api_version=[1, 2], mode="graph"),
+          test_base.graph_only_combinations(),
           combinations.combine(reshuffle=[True, False]),
           combinations.combine(graph_seed=38, op_seed=None) +
           combinations.combine(graph_seed=None, op_seed=42) +
@@ -187,7 +188,7 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
   # TODO(b/117581999): enable this test for eager-mode.
   @combinations.generate(
       combinations.times(
-          combinations.combine(tf_api_version=[1, 2], mode="graph"),
+          test_base.graph_only_combinations(),
           combinations.combine(
               reshuffle=[True, False], initializable=[True, False])))
   def testMultipleIterators(self, reshuffle, initializable):
@@ -277,7 +278,7 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          combinations.combine(tf_api_version=[1, 2], mode="eager"),
+          test_base.eager_only_combinations(),
           combinations.combine(reshuffle=[True, False], seed=[None, 42])))
   def testReshuffleSeparateTransformations(self, reshuffle, seed):
     dataset = dataset_ops.Dataset.range(10)
@@ -307,6 +308,28 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     consume()
     self.assertAllEqual(self.evaluate(counter_var), 10)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testEmptyDataset(self):
+    dataset = dataset_ops.Dataset.from_tensors(1)
+
+    def map_fn(x):
+      with ops.control_dependencies([check_ops.assert_equal(x, 0)]):
+        return x
+
+    dataset = dataset.map(map_fn)
+    dataset = dataset.cache()
+    dataset = dataset.shuffle(buffer_size=10).repeat()
+
+    get_next = self.getNext(dataset)
+
+    # First time around, we get an error for the failed assertion.
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(get_next())
+
+    # Second time around, we get an EOF because the cached dataset is empty.
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
 
 if __name__ == "__main__":

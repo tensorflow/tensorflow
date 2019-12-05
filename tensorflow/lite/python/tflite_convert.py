@@ -174,6 +174,8 @@ def _convert_tf1_model(flags):
 
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
+  if flags.custom_opdefs:
+    converter._custom_opdefs = _parse_array(flags.custom_opdefs)  # pylint: disable=protected-access
   if flags.target_ops:
     ops_set_options = lite.OpsSet.get_options()
     converter.target_spec.supported_ops = set()
@@ -205,6 +207,8 @@ def _convert_tf1_model(flags):
 
   if flags.experimental_new_converter:
     converter.experimental_new_converter = True
+  if flags.experimental_legacy_converter:
+    converter.experimental_new_converter = False
 
   # Convert model.
   output_data = converter.convert()
@@ -230,6 +234,8 @@ def _convert_tf2_model(flags):
 
   if flags.experimental_new_converter:
     converter.experimental_new_converter = True
+  if flags.experimental_legacy_converter:
+    converter.experimental_new_converter = False
 
   # Convert the model.
   tflite_model = converter.convert()
@@ -299,6 +305,16 @@ def _check_tf1_flags(flags, unparsed):
     raise ValueError("--dump_graphviz_video must be used with "
                      "--dump_graphviz_dir")
 
+  if flags.custom_opdefs and not flags.experimental_new_converter:
+    raise ValueError("--custom_opdefs must be used with "
+                     "--experimental_new_converter")
+  if flags.custom_opdefs and not flags.allow_custom_ops:
+    raise ValueError("--custom_opdefs must be used with --allow_custom_ops")
+  if flags.experimental_new_converter and flags.experimental_legacy_converter:
+    raise ValueError(
+        "--experimental_new_converter and experimental_legacy_converter "
+        "cannot be used together")
+
 
 def _check_tf2_flags(flags):
   """Checks the parsed and unparsed flags to ensure they are valid in 2.X.
@@ -312,6 +328,10 @@ def _check_tf2_flags(flags):
   if not flags.keras_model_file and not flags.saved_model_dir:
     raise ValueError("one of the arguments --saved_model_dir "
                      "--keras_model_file is required")
+  if flags.experimental_new_converter and flags.experimental_legacy_converter:
+    raise ValueError(
+        "--experimental_new_converter and experimental_legacy_converter "
+        "cannot be used together")
 
 
 def _get_tf1_flags(parser):
@@ -463,6 +483,12 @@ def _get_tf1_flags(parser):
             "provide these to the TensorFlow Lite runtime with a custom "
             "resolver. (default False)"))
   parser.add_argument(
+      "--custom_opdefs",
+      type=str,
+      help=("String representing a list of custom ops OpDefs delineated with "
+            "commas that are included in the GraphDef. Required when using "
+            "custom operations with --experimental_new_converter."))
+  parser.add_argument(
       "--target_ops",
       type=str,
       help=("Experimental flag, subject to change. Set of OpsSet options "
@@ -538,12 +564,20 @@ def _get_parser(use_v2_converter):
   else:
     _get_tf1_flags(parser)
 
-  # Enable MLIR-TFLite converter.
+  # Note: When neither of the following command line argument is passed,
+  # it will use the default behavior defined in `lite.py`.
+  # Enable MLIR-based TFLite converter.
   parser.add_argument(
       "--experimental_new_converter",
       action="store_true",
       help=("Experimental flag, subject to change. Enables MLIR-based "
             "conversion instead of TOCO conversion."))
+  # Explicitly disable the MLIR-based TFLite converter.
+  parser.add_argument(
+      "--experimental_legacy_converter",
+      action="store_true",
+      help=("Experimental flag, subject to change. Disable MLIR-based "
+            "conversion and use the legacy converter."))
   return parser
 
 

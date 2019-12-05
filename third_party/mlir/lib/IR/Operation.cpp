@@ -26,9 +26,21 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "llvm/Support/CommandLine.h"
 #include <numeric>
 
 using namespace mlir;
+
+static llvm::cl::opt<bool> printOpOnDiagnostic(
+    "mlir-print-op-on-diagnostic",
+    llvm::cl::desc("When a diagnostic is emitted on an operation, also print "
+                   "the operation as an attached note"));
+
+OpAsmParser::~OpAsmParser() {}
+
+//===----------------------------------------------------------------------===//
+// OperationName
+//===----------------------------------------------------------------------===//
 
 /// Form the OperationName for an op with the specified string.  This either is
 /// a reference to an AbstractOperation if one is known, or a uniqued Identifier
@@ -59,8 +71,6 @@ const AbstractOperation *OperationName::getAbstractOperation() const {
 OperationName OperationName::getFromOpaquePointer(void *pointer) {
   return OperationName(RepresentationUnion::getFromOpaqueValue(pointer));
 }
-
-OpAsmParser::~OpAsmParser() {}
 
 //===----------------------------------------------------------------------===//
 // OpResult
@@ -115,13 +125,26 @@ Operation *Operation::create(Location location, OperationName name,
 
 /// Create a new Operation from operation state.
 Operation *Operation::create(const OperationState &state) {
-  unsigned numRegions = state.regions.size();
-  Operation *op = create(state.location, state.name, state.types,
-                         state.operands, state.attributes, state.successors,
-                         numRegions, state.resizableOperandList);
+  return Operation::create(state.location, state.name, state.types,
+                           state.operands, NamedAttributeList(state.attributes),
+                           state.successors, state.regions,
+                           state.resizableOperandList);
+}
+
+/// Create a new Operation with the specific fields.
+Operation *Operation::create(Location location, OperationName name,
+                             ArrayRef<Type> resultTypes,
+                             ArrayRef<Value *> operands,
+                             NamedAttributeList attributes,
+                             ArrayRef<Block *> successors,
+                             ArrayRef<std::unique_ptr<Region>> regions,
+                             bool resizableOperandList) {
+  unsigned numRegions = regions.size();
+  Operation *op = create(location, name, resultTypes, operands, attributes,
+                         successors, numRegions, resizableOperandList);
   for (unsigned i = 0; i < numRegions; ++i)
-    if (state.regions[i])
-      op->getRegion(i).takeBody(*state.regions[i]);
+    if (regions[i])
+      op->getRegion(i).takeBody(*regions[i]);
   return op;
 }
 
@@ -130,7 +153,7 @@ Operation *Operation::create(const OperationState &state) {
 Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
                              ArrayRef<Value *> operands,
-                             const NamedAttributeList &attributes,
+                             NamedAttributeList attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
   unsigned numSuccessors = successors.size();
@@ -301,26 +324,53 @@ void Operation::replaceUsesOfWith(Value *from, Value *to) {
 }
 
 //===----------------------------------------------------------------------===//
-// Other
+// Diagnostics
 //===----------------------------------------------------------------------===//
 
 /// Emit an error about fatal conditions with this operation, reporting up to
 /// any diagnostic handlers that may be listening.
 InFlightDiagnostic Operation::emitError(const Twine &message) {
-  return mlir::emitError(getLoc(), message);
+  InFlightDiagnostic diag = mlir::emitError(getLoc(), message);
+  if (printOpOnDiagnostic) {
+    // Print out the operation explicitly here so that we can print the generic
+    // form.
+    // TODO(riverriddle) It would be nice if we could instead provide the
+    // specific printing flags when adding the operation as an argument to the
+    // diagnostic.
+    std::string printedOp;
+    {
+      llvm::raw_string_ostream os(printedOp);
+      print(os, OpPrintingFlags().printGenericOpForm().useLocalScope());
+    }
+    diag.attachNote(getLoc()) << "see current operation: " << printedOp;
+  }
+  return diag;
 }
 
 /// Emit a warning about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 InFlightDiagnostic Operation::emitWarning(const Twine &message) {
-  return mlir::emitWarning(getLoc(), message);
+  InFlightDiagnostic diag = mlir::emitWarning(getLoc(), message);
+  if (printOpOnDiagnostic)
+    diag.attachNote(getLoc()) << "see current operation: " << *this;
+  return diag;
 }
 
 /// Emit a remark about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 InFlightDiagnostic Operation::emitRemark(const Twine &message) {
-  return mlir::emitRemark(getLoc(), message);
+  InFlightDiagnostic diag = mlir::emitRemark(getLoc(), message);
+  if (printOpOnDiagnostic)
+    diag.attachNote(getLoc()) << "see current operation: " << *this;
+  return diag;
 }
+
+//===----------------------------------------------------------------------===//
+// Operation Ordering
+//===----------------------------------------------------------------------===//
+
+constexpr unsigned Operation::kInvalidOrderIdx;
+constexpr unsigned Operation::kOrderStride;
 
 /// Given an operation 'other' that is within the same parent block, return
 /// whether the current operation is before 'other' in the operation list
@@ -331,10 +381,75 @@ bool Operation::isBeforeInBlock(Operation *other) {
   assert(block && "Operations without parent blocks have no order.");
   assert(other && other->block == block &&
          "Expected other operation to have the same parent block.");
-  // Recompute the parent ordering if necessary.
-  if (!block->isOpOrderValid())
+  // If the order of the block is already invalid, directly recompute the
+  // parent.
+  if (!block->isOpOrderValid()) {
     block->recomputeOpOrder();
+  } else {
+    // Update the order either operation if necessary.
+    updateOrderIfNecessary();
+    other->updateOrderIfNecessary();
+  }
+
   return orderIndex < other->orderIndex;
+}
+
+/// Update the order index of this operation of this operation if necessary,
+/// potentially recomputing the order of the parent block.
+void Operation::updateOrderIfNecessary() {
+  assert(block && "expected valid parent");
+
+  // If the order is valid for this operation there is nothing to do.
+  if (hasValidOrder())
+    return;
+  Operation *blockFront = &block->front();
+  Operation *blockBack = &block->back();
+
+  // This method is expected to only be invoked on blocks with more than one
+  // operation.
+  assert(blockFront != blockBack && "expected more than one operation");
+
+  // If the operation is at the end of the block.
+  if (this == blockBack) {
+    Operation *prevNode = getPrevNode();
+    if (!prevNode->hasValidOrder())
+      return block->recomputeOpOrder();
+
+    // Add the stride to the previous operation.
+    orderIndex = prevNode->orderIndex + kOrderStride;
+    return;
+  }
+
+  // If this is the first operation try to use the next operation to compute the
+  // ordering.
+  if (this == blockFront) {
+    Operation *nextNode = getNextNode();
+    if (!nextNode->hasValidOrder())
+      return block->recomputeOpOrder();
+    // There is no order to give this operation.
+    if (nextNode->orderIndex == 0)
+      return block->recomputeOpOrder();
+
+    // If we can't use the stride, just take the middle value left. This is safe
+    // because we know there is at least one valid index to assign to.
+    if (nextNode->orderIndex <= kOrderStride)
+      orderIndex = (nextNode->orderIndex / 2);
+    else
+      orderIndex = kOrderStride;
+    return;
+  }
+
+  // Otherwise, this operation is between two others. Place this operation in
+  // the middle of the previous and next if possible.
+  Operation *prevNode = getPrevNode(), *nextNode = getNextNode();
+  if (!prevNode->hasValidOrder() || !nextNode->hasValidOrder())
+    return block->recomputeOpOrder();
+  unsigned prevOrder = prevNode->orderIndex, nextOrder = nextNode->orderIndex;
+
+  // Check to see if there is a valid order between the two.
+  if (prevOrder + 1 == nextOrder)
+    return block->recomputeOpOrder();
+  orderIndex = prevOrder + 1 + ((nextOrder - prevOrder) / 2);
 }
 
 //===----------------------------------------------------------------------===//
@@ -383,8 +498,8 @@ void llvm::ilist_traits<::mlir::Operation>::addNodeToList(Operation *op) {
   assert(!op->getBlock() && "already in a operation block!");
   op->block = getContainingBlock();
 
-  // Invalidate the block ordering.
-  op->block->invalidateOpOrder();
+  // Invalidate the order on the operation.
+  op->orderIndex = Operation::kInvalidOrderIdx;
 }
 
 /// This is a trait method invoked when a operation is removed from a block.
@@ -495,6 +610,21 @@ unsigned Operation::getSuccessorOperandIndex(unsigned index) {
       std::accumulate(successorOpCountBegin + index,
                       successorOpCountBegin + getNumSuccessors(), 0u);
   return getNumOperands() - postSuccessorOpCount;
+}
+
+Optional<std::pair<unsigned, unsigned>>
+Operation::decomposeSuccessorOperandIndex(unsigned operandIndex) {
+  assert(!isKnownNonTerminator() && "only terminators may have successors");
+  assert(operandIndex < getNumOperands());
+  unsigned currentOperandIndex = getNumOperands();
+  auto *successorOperandCounts = getTrailingObjects<unsigned>();
+  for (unsigned i = 0, e = getNumSuccessors(); i < e; i++) {
+    unsigned successorIndex = e - i - 1;
+    currentOperandIndex -= successorOperandCounts[successorIndex];
+    if (currentOperandIndex <= operandIndex)
+      return std::make_pair(successorIndex, operandIndex - currentOperandIndex);
+  }
+  return None;
 }
 
 auto Operation::getSuccessorOperands(unsigned index) -> operand_range {
@@ -839,18 +969,21 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultType(Operation *op) {
   return success();
 }
 
-static LogicalResult verifyBBArguments(Operation::operand_range operands,
-                                       Block *destBB, Operation *op) {
-  unsigned operandCount = std::distance(operands.begin(), operands.end());
+static LogicalResult verifySuccessor(Operation *op, unsigned succNo) {
+  Operation::operand_range operands = op->getSuccessorOperands(succNo);
+  unsigned operandCount = op->getNumSuccessorOperands(succNo);
+  Block *destBB = op->getSuccessor(succNo);
   if (operandCount != destBB->getNumArguments())
     return op->emitError() << "branch has " << operandCount
-                           << " operands, but target block has "
+                           << " operands for successor #" << succNo
+                           << ", but target block has "
                            << destBB->getNumArguments();
 
   auto operandIt = operands.begin();
   for (unsigned i = 0, e = operandCount; i != e; ++i, ++operandIt) {
     if ((*operandIt)->getType() != destBB->getArgument(i)->getType())
-      return op->emitError() << "type mismatch in bb argument #" << i;
+      return op->emitError() << "type mismatch for bb argument #" << i
+                             << " of successor #" << succNo;
   }
 
   return success();
@@ -864,7 +997,7 @@ static LogicalResult verifyTerminatorSuccessors(Operation *op) {
     auto *succ = op->getSuccessor(i);
     if (succ->getParent() != parent)
       return op->emitError("reference to block defined in another region");
-    if (failed(verifyBBArguments(op->getSuccessorOperands(i), succ, op)))
+    if (failed(verifySuccessor(op, i)))
       return failure();
   }
   return success();
@@ -906,6 +1039,47 @@ LogicalResult OpTrait::impl::verifyResultsAreIntegerLike(Operation *op) {
     if (!getTensorOrVectorElementType(resultType).isIntOrIndex())
       return op->emitOpError() << "requires an integer or index type";
   return success();
+}
+
+static LogicalResult verifyValueSizeAttr(Operation *op, StringRef attrName,
+                                         bool isOperand) {
+  auto sizeAttr = op->getAttrOfType<DenseIntElementsAttr>(attrName);
+  if (!sizeAttr)
+    return op->emitOpError("requires 1D vector attribute '") << attrName << "'";
+
+  auto sizeAttrType = sizeAttr.getType().dyn_cast<VectorType>();
+  if (!sizeAttrType || sizeAttrType.getRank() != 1)
+    return op->emitOpError("requires 1D vector attribute '") << attrName << "'";
+
+  if (llvm::any_of(sizeAttr.getIntValues(), [](const APInt &element) {
+        return !element.isNonNegative();
+      }))
+    return op->emitOpError("'")
+           << attrName << "' attribute cannot have negative elements";
+
+  size_t totalCount = std::accumulate(
+      sizeAttr.begin(), sizeAttr.end(), 0,
+      [](unsigned all, APInt one) { return all + one.getZExtValue(); });
+
+  if (isOperand && totalCount != op->getNumOperands())
+    return op->emitOpError("operand count (")
+           << op->getNumOperands() << ") does not match with the total size ("
+           << totalCount << ") specified in attribute '" << attrName << "'";
+  else if (!isOperand && totalCount != op->getNumResults())
+    return op->emitOpError("result count (")
+           << op->getNumResults() << ") does not match with the total size ("
+           << totalCount << ") specified in attribute '" << attrName << "'";
+  return success();
+}
+
+LogicalResult OpTrait::impl::verifyOperandSizeAttr(Operation *op,
+                                                   StringRef attrName) {
+  return verifyValueSizeAttr(op, attrName, /*isOperand=*/true);
+}
+
+LogicalResult OpTrait::impl::verifyResultSizeAttr(Operation *op,
+                                                  StringRef attrName) {
+  return verifyValueSizeAttr(op, attrName, /*isOperand=*/false);
 }
 
 //===----------------------------------------------------------------------===//
