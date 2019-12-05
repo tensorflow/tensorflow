@@ -91,16 +91,68 @@ class Initializer(object):
 
 @tf_export("zeros_initializer", v1=[])
 class Zeros(Initializer):
-  """Initializer that generates tensors initialized to 0."""
+  """Initializer that generates tensors initialized to 0.
+
+  Initializers allow you to pre-specify an initialization strategy, encoded in
+  the Initializer object, without knowing the shape and dtype of the variable
+  being initialized.
+
+  Examples:
+
+  >>> def make_variables(k, initializer):
+  ...   return (tf.Variable(initializer(shape=[k], dtype=tf.float32)),
+  ...           tf.Variable(initializer(shape=[k, k], dtype=tf.float32)))
+  >>> v1, v2 = make_variables(3, tf.zeros_initializer())
+  >>> v1
+  <tf.Variable ... shape=(3,) ... numpy=array([0., 0., 0.], dtype=float32)>
+  >>> v2
+  <tf.Variable ... shape=(3, 3) ... numpy=
+  array([[0., 0., 0.],
+         [0., 0., 0.],
+         [0., 0., 0.]], dtype=float32)>
+  >>> make_variables(4, tf.random_uniform_initializer(minval=-1., maxval=1.))
+  (<tf.Variable...shape=(4,) dtype=float32...>, <tf.Variable...shape=(4, 4) ...
+  """
 
   def __call__(self, shape, dtype=dtypes.float32):
+    """Returns a tensor object initialized as specified by the initializer.
+
+    Args:
+      shape: Shape of the tensor.
+      dtype: Optional dtype of the tensor. Only numeric or boolean dtypes are
+       supported.
+
+    Raises:
+      ValuesError: If the dtype is not numeric or boolean.
+    """
     dtype = dtypes.as_dtype(dtype)
     return array_ops.zeros(shape, dtype)
 
 
 @tf_export("ones_initializer", v1=[])
 class Ones(Initializer):
-  """Initializer that generates tensors initialized to 1."""
+  """Initializer that generates tensors initialized to 1.
+
+  Initializers allow you to pre-specify an initialization strategy, encoded in
+  the Initializer object, without knowing the shape and dtype of the variable
+  being initialized.
+
+  Examples:
+
+  >>> def make_variables(k, initializer):
+  ...   return (tf.Variable(initializer(shape=[k], dtype=tf.float32)),
+  ...           tf.Variable(initializer(shape=[k, k], dtype=tf.float32)))
+  >>> v1, v2 = make_variables(3, tf.ones_initializer())
+  >>> v1
+  <tf.Variable ... shape=(3,) ... numpy=array([1., 1., 1.], dtype=float32)>
+  >>> v2
+  <tf.Variable ... shape=(3, 3) ... numpy=
+  array([[1., 1., 1.],
+         [1., 1., 1.],
+         [1., 1., 1.]], dtype=float32)>
+  >>> make_variables(4, tf.random_uniform_initializer(minval=-1., maxval=1.))
+  (<tf.Variable...shape=(4,) dtype=float32...>, <tf.Variable...shape=(4, 4) ...
+  """
 
   def __call__(self, shape, dtype=dtypes.float32):
     """Returns a tensor object initialized as specified by the initializer.
@@ -123,18 +175,56 @@ class Ones(Initializer):
 class Constant(Initializer):
   """Initializer that generates tensors with constant values.
 
-  The resulting tensor is populated with values of type `dtype`, as
-  specified by arguments `value` following the desired `shape` of the
-  new tensor (see examples below).
+  Initializers allow you to pre-specify an initialization strategy, encoded in
+  the Initializer object, without knowing the shape and dtype of the variable
+  being initialized.
 
-  The argument `value` can be a constant value, or a list of values of type
-  `dtype`. If `value` is a list, then the length of the list must be less
-  than or equal to the number of elements implied by the desired shape of the
-  tensor. In the case where the total number of elements in `value` is less
-  than the number of elements required by the tensor shape, the last element
-  in `value` will be used to fill the remaining entries. If the total number of
-  elements in `value` is greater than the number of elements required by the
-  tensor shape, the initializer will raise a `ValueError`.
+  `tf.constant_initializer` returns an object which when called returns a tensor
+  populated with the `value` specified in the constructor. This `value` must be
+  convertible to the requested `dtype`.
+
+  The argument `value` can be a scalar constant value, or a list of
+  values. Scalars broadcast to whichever shape is requested from the
+  initializer.
+
+  If `value` is a list, then the length of the list must be equal to the number
+  of elements implied by the desired shape of the tensor. If the total number of
+  elements in `value` is not equal to the number of elements required by the
+  tensor shape, the initializer will raise a `TypeError`.
+
+  Examples:
+
+  >>> def make_variables(k, initializer):
+  ...   return (tf.Variable(initializer(shape=[k], dtype=tf.float32)),
+  ...           tf.Variable(initializer(shape=[k, k], dtype=tf.float32)))
+  >>> v1, v2 = make_variables(3, tf.constant_initializer(2.))
+  >>> v1
+  <tf.Variable ... shape=(3,) ... numpy=array([2., 2., 2.], dtype=float32)>
+  >>> v2
+  <tf.Variable ... shape=(3, 3) ... numpy=
+  array([[2., 2., 2.],
+         [2., 2., 2.],
+         [2., 2., 2.]], dtype=float32)>
+  >>> make_variables(4, tf.random_uniform_initializer(minval=-1., maxval=1.))
+  (<tf.Variable...shape=(4,) dtype=float32...>, <tf.Variable...shape=(4, 4) ...
+
+  >>> value = [0, 1, 2, 3, 4, 5, 6, 7]
+  >>> init = tf.constant_initializer(value)
+  >>> # Fitting shape
+  >>> tf.Variable(init(shape=[2, 4], dtype=tf.float32))
+  <tf.Variable ...
+  array([[0., 1., 2., 3.],
+         [4., 5., 6., 7.]], dtype=float32)>
+  >>> # Larger shape
+  >>> tf.Variable(init(shape=[3, 4], dtype=tf.float32))
+  Traceback (most recent call last):
+  ...
+  TypeError: ...value has 8 elements, shape is (3, 4) with 12 elements...
+  >>> # Smaller shape
+  >>> tf.Variable(init(shape=[2, 3], dtype=tf.float32))
+  Traceback (most recent call last):
+  ...
+  TypeError: ...value has 8 elements, shape is (2, 3) with 6 elements...
 
   Args:
     value: A Python scalar, list or tuple of values, or a N-dimensional numpy
@@ -143,36 +233,6 @@ class Constant(Initializer):
 
   Raises:
     TypeError: If the input `value` is not one of the expected types.
-
-  Examples:
-    The following example can be rewritten using a numpy.ndarray instead
-    of the `value` list, even reshaped, as shown in the two commented lines
-    below the `value` list initialization.
-
-  >>> value = [0, 1, 2, 3, 4, 5, 6, 7]
-  >>> init = tf.compat.v1.constant_initializer(value)
-  >>> # Fitting shape
-  >>> with tf.compat.v1.Session():
-  ...   x = tf.compat.v1.get_variable('x', shape=[2, 4], initializer=init)
-  ...   x.initializer.run()
-  ...   print(x.eval())
-  [[0. 1. 2. 3.]
-   [4. 5. 6. 7.]]
-  >>> # Larger shape
-  >>> with tf.compat.v1.Session():
-  ...   y = tf.compat.v1.get_variable('y', shape=[3, 4], initializer=init)
-  ...   y.initializer.run()
-  ...   print(y.eval())
-  [[0. 1. 2. 3.]
-   [4. 5. 6. 7.]
-   [7. 7. 7. 7.]]
-  >>> # Smaller shape
-  >>> with tf.compat.v1.Session():
-  ...   z = tf.compat.v1.get_variable('z', shape=[2, 3], initializer=init)
-  Traceback (most recent call last):
-  ...
-  ValueError: Too many elements provided. Needed at most 6, but received 8
-
   """
 
   def __init__(self, value=0):
@@ -207,14 +267,33 @@ class Constant(Initializer):
 class RandomUniform(Initializer):
   """Initializer that generates tensors with a uniform distribution.
 
+  Initializers allow you to pre-specify an initialization strategy, encoded in
+  the Initializer object, without knowing the shape and dtype of the variable
+  being initialized.
+
+  Examples:
+
+  >>> def make_variables(k, initializer):
+  ...   return (tf.Variable(initializer(shape=[k], dtype=tf.float32)),
+  ...           tf.Variable(initializer(shape=[k, k], dtype=tf.float32)))
+  >>> v1, v2 = make_variables(3, tf.ones_initializer())
+  >>> v1
+  <tf.Variable ... shape=(3,) ... numpy=array([1., 1., 1.], dtype=float32)>
+  >>> v2
+  <tf.Variable ... shape=(3, 3) ... numpy=
+  array([[1., 1., 1.],
+         [1., 1., 1.],
+         [1., 1., 1.]], dtype=float32)>
+  >>> make_variables(4, tf.random_uniform_initializer(minval=-1., maxval=1.))
+  (<tf.Variable...shape=(4,) dtype=float32...>, <tf.Variable...shape=(4, 4) ...
+
   Args:
-    minval: A python scalar or a scalar tensor. Lower bound of the range
-      of random values to generate.
-    maxval: A python scalar or a scalar tensor. Upper bound of the range
-      of random values to generate.  Defaults to 1 for float types.
+    minval: A python scalar or a scalar tensor. Lower bound of the range of
+      random values to generate (inclusive).
+    maxval: A python scalar or a scalar tensor. Upper bound of the range of
+      random values to generate (exclusive).
     seed: A Python integer. Used to create random seeds. See
-      `tf.compat.v1.set_random_seed`
-      for behavior.
+      `tf.random.set_seed` for behavior.
   """
 
   def __init__(self, minval=-0.05, maxval=0.05, seed=None):
@@ -252,14 +331,33 @@ class RandomUniform(Initializer):
 class RandomNormal(Initializer):
   """Initializer that generates tensors with a normal distribution.
 
+  Initializers allow you to pre-specify an initialization strategy, encoded in
+  the Initializer object, without knowing the shape and dtype of the variable
+  being initialized.
+
+  Examples:
+
+  >>> def make_variables(k, initializer):
+  ...   return (tf.Variable(initializer(shape=[k], dtype=tf.float32)),
+  ...           tf.Variable(initializer(shape=[k, k], dtype=tf.float32)))
+  >>> v1, v2 = make_variables(3,
+  ...                         tf.random_normal_initializer(mean=1., stddev=2.))
+  >>> v1
+  <tf.Variable ... shape=(3,) ... numpy=array([...], dtype=float32)>
+  >>> v2
+  <tf.Variable ... shape=(3, 3) ... numpy=
+  ...
+  >>> make_variables(4, tf.random_uniform_initializer(minval=-1., maxval=1.))
+  (<tf.Variable...shape=(4,) dtype=float32...>, <tf.Variable...shape=(4, 4) ...
+
   Args:
-    mean: a python scalar or a scalar tensor. Mean of the random values
-      to generate.
-    stddev: a python scalar or a scalar tensor. Standard deviation of the
-      random values to generate.
+    mean: a python scalar or a scalar tensor. Mean of the random values to
+      generate.
+    stddev: a python scalar or a scalar tensor. Standard deviation of the random
+      values to generate.
     seed: A Python integer. Used to create random seeds. See
-      `tf.compat.v1.set_random_seed`
-      for behavior.
+      `tf.random.set_seed` for behavior.
+
   """
 
   def __init__(self, mean=0.0, stddev=0.05, seed=None):
