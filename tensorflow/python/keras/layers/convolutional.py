@@ -449,6 +449,33 @@ class Conv2D(Conv):
   e.g. `input_shape=(128, 128, 3)` for 128x128 RGB pictures
   in `data_format="channels_last"`.
 
+  Examples:
+
+  >>> # Small convolutional model for 128x128 RGB images with `channels_last`
+  >>> input_shape = (32, 128, 128, 3)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.Conv2D(
+  ... 2, 3, activation='relu', input_shape=input_shape)(x)
+  >>> print(y.shape)
+  (32, 126, 126, 2)
+
+  >>> # With `dilation_rate` as 2.
+  >>> input_shape = (32, 128, 128, 3)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.Conv2D(
+  ... 2, 3, activation='relu', dilation_rate=2, input_shape=input_shape)(x)
+  >>> print(y.shape)
+  (32, 124, 124, 2)
+
+  >>> # With `padding` as "same".
+  >>> input_shape = (32, 128, 128, 3)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.Conv2D(
+  ... 2, 3, activation='relu', padding="same", input_shape=input_shape)(x)
+  >>> print(y.shape)
+  (32, 128, 128, 2)
+
+
   Arguments:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
@@ -481,17 +508,25 @@ class Conv2D(Conv):
       incompatible with specifying any stride value != 1.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied
-      (ie. "linear" activation: `a(x) = x`).
+      (ie. "linear" activation: `a(x) = x`). Check `keras.activations` for
+      available activation functions.
     use_bias: Boolean, whether the layer uses a bias vector.
-    kernel_initializer: Initializer for the `kernel` weights matrix.
-    bias_initializer: Initializer for the bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix. Check
+      `keras.initializers` for available initializers.
+    bias_initializer: Initializer for the bias vector. Check
+      `keras.initializers` for available initializers.
     kernel_regularizer: Regularizer function applied to
-      the `kernel` weights matrix.
-    bias_regularizer: Regularizer function applied to the bias vector.
+      the `kernel` weights matrix. Check
+      `keras.regularizers` for available regularizers.
+    bias_regularizer: Regularizer function applied to the bias vector. Check
+      `keras.regularizers` for available regularizers.
     activity_regularizer: Regularizer function applied to
-      the output of the layer (its "activation")..
-    kernel_constraint: Constraint function applied to the kernel matrix.
-    bias_constraint: Constraint function applied to the bias vector.
+      the output of the layer (its "activation"). Check
+      `keras.regularizers` for available regularizers.
+    kernel_constraint: Constraint function applied to the kernel matrix. Check
+      `keras.constraints` for available constraints.
+    bias_constraint: Constraint function applied to the bias vector. Check
+      `keras.constraints` for available constraints.
 
   Input shape:
     4D tensor with shape:
@@ -505,6 +540,14 @@ class Conv2D(Conv):
     or 4D tensor with shape:
     `(samples, new_rows, new_cols, filters)` if data_format='channels_last'.
     `rows` and `cols` values might have changed due to padding.
+
+  Returns:
+    A tensor of rank 4 representing
+    `activation(conv2d(inputs, kernel) + bias)`.
+
+  Raises:
+      ValueError: if `padding` is "causal".
+      ValueError: when both `strides` > 1 and `dilation_rate` > 1.
   """
 
   def __init__(self,
