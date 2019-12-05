@@ -255,45 +255,44 @@ ENTRY %AddMultiply (x: f32[2,2], y: f32[2,2], z: f32[2,2]) -> f32[2,2] {
                      LoweringStage::GPU);
 }
 
-// TODO(herhut): Re-enable once we can lower hlo_reduce to proper lhlo_reduce.
-// TEST_F(LhloGenTest, FusedReduce) {
-//   CompileAndVerifyIr(R"(
-// HloModule FusedReduce
-//
-// %add (x: f32[], y: f32[]) -> f32[] {
-//   %x = f32[] parameter(0)
-//   %y = f32[] parameter(1)
-//   ROOT %add = f32[] add(f32[] %x, f32[] %y)
-// }
-//
-// %fused_computation (param: f32[100,10]) -> f32[10] {
-//   %param = f32[100,10] parameter(0)
-//   %constant = f32[] constant(0)
-//   ROOT %reduce = f32[10]{0} reduce(f32[100,10]{1,0} %param, f32[] %constant),
-//       dimensions={0}, to_apply=%add
-// }
-//
-// ENTRY %FusedReduce (x: f32[100,10]) -> f32[10] {
-//   %x = f32[100,10] parameter(0)
-//   ROOT %fusion = f32[10]{0} fusion(f32[100,10]{1,0} %x), kind=kInput,
-//       calls=%fused_computation
-// }
-// )",
-//                      R"(
-// ;CHECK: func @fusion(%[[ARG0:.*]]: [[TYPE:.*]], %[[RESULT:.*]]: [[RTYPE:.*]])
-// ;CHECK: "xla_lhlo.fusion"() ( {
-// ;CHECK:   %[[REF0:.*]] = tensor_load %arg0 : [[TYPE]]
-// ;CHECK:   %[[CT0:.*]] = xla_hlo.constant dense<0.000000e+00>
-// ;CHECK:   %[[RED:.*]] = "xla_hlo.reduce"(%0, %1) ( {
-// ;CHECK:     ^bb0(%[[BARG0:.*]]: [[ETYPE:.*]], %[[BARG1:.*]]: [[ETYPE]])
-// ;CHECK:       %[[ADD:.*]] = xla_hlo.add %[[BARG0]], %[[BARG1]] : [[ETYPE]]
-// ;CHECK:       "xla_hlo.return"(%[[ADD]])
-// ;CHECK:     })
-// ;CHECK:   tensor_store %[[RED]], %[[RESULT]] : [[RTYPE]]
-// ;CHECK:   "xla_lhlo.terminator"()
-// ;CHECK-NEXT: })
-//       )");
-// }
+TEST_F(LhloGenTest, FusedReduce) {
+  CompileAndVerifyIr(R"(
+HloModule FusedReduce
+
+%add (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %x, f32[] %y)
+}
+
+%fused_computation (param: f32[100,10]) -> f32[10] {
+  %param = f32[100,10] parameter(0)
+  %constant = f32[] constant(0)
+  ROOT %reduce = f32[10]{0} reduce(f32[100,10]{1,0} %param, f32[] %constant),
+      dimensions={0}, to_apply=%add
+}
+
+ENTRY %FusedReduce (x: f32[100,10]) -> f32[10] {
+  %x = f32[100,10] parameter(0)
+  ROOT %fusion = f32[10]{0} fusion(f32[100,10]{1,0} %x), kind=kInput,
+      calls=%fused_computation
+}
+)",
+                     R"(
+;CHECK: func @fusion(%[[ARG0:.*]]: [[TYPE:.*]], %[[RESULT:.*]]: [[RTYPE:.*]])
+;CHECK: "xla_lhlo.fusion"() ( {
+;CHECK:   %[[REF0:.*]] = tensor_load %arg0 : [[TYPE]]
+;CHECK:   %[[CT0:.*]] = xla_hlo.constant dense<0.000000e+00>
+;CHECK:   %[[RED:.*]] = "xla_hlo.reduce"(%0, %1) ( {
+;CHECK:     ^bb0(%[[BARG0:.*]]: [[ETYPE:.*]], %[[BARG1:.*]]: [[ETYPE]])
+;CHECK:       %[[ADD:.*]] = xla_hlo.add %[[BARG0]], %[[BARG1]] : [[ETYPE]]
+;CHECK:       "xla_hlo.return"(%[[ADD]])
+;CHECK:     })
+;CHECK:   tensor_store %[[RED]], %[[RESULT]] : [[RTYPE]]
+;CHECK:   "xla_lhlo.terminator"()
+;CHECK-NEXT: })
+      )");
+}
 
 TEST_F(LhloGenTest, Broadcast) {
   CompileAndVerifyIr(R"(

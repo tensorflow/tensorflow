@@ -65,8 +65,8 @@ struct FusionToLhloConverter
     mlir::OwningRewritePatternList patterns;
     mlir::ConversionTarget target(ctx);
     target.addLegalDialect<::mlir::xla_lhlo::XlaLhloDialect>();
-
     ::mlir::xla_hlo::populateHLOToLHLOConversionPattern(&ctx, &patterns);
+
     getFunction().walk([&](FusionOp op) {
       if (failed(applyPartialConversion(op, target, patterns, nullptr))) {
         signalPassFailure();
