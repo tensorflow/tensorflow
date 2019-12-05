@@ -9,7 +9,6 @@
 # press enter all the way
 #
 yes "" | TF_NEED_ROCM=1 PYTHON_BIN_PATH=/usr/bin/python ./configure
-pip uninstall -y tensorflow || true
 bazel build --config=opt --config=rocm --config=verbs --config=gdr //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
 bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg &&
-pip install /tmp/tensorflow_pkg/tensorflow-1.12.0rc0-cp27-cp27m-linux_x86_64.whl
+pip install --upgrade /tmp/tensorflow_pkg/tensorflow-1.12.0rc0-cp27-cp27m-linux_x86_64.whl
