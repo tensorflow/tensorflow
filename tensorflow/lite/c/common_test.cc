@@ -96,11 +96,37 @@ TEST(Quantization, TestQuantizationFree) {
   t.allocation_type = kTfLiteArenaRw;
   t.dims = nullptr;
   t.quantization.type = kTfLiteAffineQuantization;
+  t.sparsity = nullptr;
   auto* params = reinterpret_cast<TfLiteAffineQuantization*>(
       malloc(sizeof(TfLiteAffineQuantization)));
   params->scale = TfLiteFloatArrayCreate(3);
   params->zero_point = TfLiteIntArrayCreate(3);
   t.quantization.params = reinterpret_cast<void*>(params);
+  TfLiteTensorFree(&t);
+}
+
+TEST(Sparsity, TestSparsityFree) {
+  TfLiteTensor t;
+  // Set these values, otherwise TfLiteTensorFree has uninitialized values.
+  t.allocation_type = kTfLiteArenaRw;
+  t.dims = nullptr;
+
+  // A dummy CSR sparse matrix.
+  t.sparsity = static_cast<TfLiteSparsity*>(malloc(sizeof(TfLiteSparsity)));
+  t.sparsity->traversal_order = TfLiteIntArrayCreate(2);
+  t.sparsity->block_map = nullptr;
+
+  t.sparsity->dim_metadata = static_cast<TfLiteDimensionMetadata*>(
+      malloc(sizeof(TfLiteDimensionMetadata) * 2));
+  t.sparsity->dim_metadata_size = 2;
+
+  t.sparsity->dim_metadata[0].format = kTfLiteDimDense;
+  t.sparsity->dim_metadata[0].dense_size = 4;
+
+  t.sparsity->dim_metadata[1].format = kTfLiteDimSparseCSR;
+  t.sparsity->dim_metadata[1].array_segments = TfLiteIntArrayCreate(2);
+  t.sparsity->dim_metadata[1].array_indices = TfLiteIntArrayCreate(3);
+
   TfLiteTensorFree(&t);
 }
 
