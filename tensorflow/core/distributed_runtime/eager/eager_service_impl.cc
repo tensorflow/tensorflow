@@ -412,7 +412,8 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
                                  EnqueueResponse* response, uint64 stream_id) {
   profiler::TraceMe activity(
       [&] {
-        return absl::StrCat("EagerService:Enqueue:", request->DebugString());
+        return absl::StrCat(
+            "EagerService:Enqueue#debug_str=", request->DebugString(), "#");
       },
       profiler::TraceMeLevel::kInfo);
   ServerContext* context = nullptr;
