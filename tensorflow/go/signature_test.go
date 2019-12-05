@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"testing"
 
-	tfpb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core/framework"
+	tfpb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core"
 )
 
 func TestSignatureFromProto(t *testing.T) {
