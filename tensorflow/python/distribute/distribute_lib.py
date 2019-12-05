@@ -652,8 +652,7 @@ class Strategy(object):
     `.shard` operation to the end of the processing pipeline. This will cause
     the entire preprocessing pipeline for all the data to be run on every
     worker, and each worker will do redundant work. We will print a warning
-    if this method of sharding is selected. In this case, consider using
-    `experimental_distribute_datasets_from_function` instead.
+    if this method of sharding is selected.
 
     You can disable dataset sharding across workers using the `auto_shard`
     option in `tf.data.experimental.DistributeOptions`.
