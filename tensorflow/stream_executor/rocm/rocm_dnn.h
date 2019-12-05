@@ -431,25 +431,13 @@ class MIOpenSupport : public dnn::DnnSupport {
                   const DeviceMemory<float>& input_data,
                   DeviceMemory<float>* output_data, uint64 options) override;
 
-  bool DoDropoutForward(Stream* stream,
-                        const dnn::DropoutDescriptor& dropout_params,
-                        const dnn::BatchDescriptor& noise_dimensions,
-                        const dnn::BatchDescriptor& input_dimensions,
-                        const DeviceMemory<double>& input_data,
-                        const dnn::BatchDescriptor& output_dimensions,
-                        DeviceMemory<double>* output_data,
-                        ScratchAllocator* workspace_allocator = nullptr) {
-    LOG(ERROR) << "miopen does not support dropout for dobule type yet";
-    return false;
-  }
-
   bool DoDropoutForward(
       Stream* stream, const dnn::DropoutDescriptor& dropout_params,
       const dnn::BatchDescriptor& noise_dimensions,
       const dnn::BatchDescriptor& input_dimensions,
       const DeviceMemory<float>& input_data,
       const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<float>* output_data,
+      DeviceMemory<float>* output_data, DeviceMemory<bool>* mask,
       ScratchAllocator* workspace_allocator = nullptr) override;
 
   bool DoDropoutForward(
@@ -458,20 +446,8 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& input_dimensions,
       const DeviceMemory<Eigen::half>& input_data,
       const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<Eigen::half>* output_data,
+      DeviceMemory<Eigen::half>* output_data, DeviceMemory<bool>* mask,
       ScratchAllocator* workspace_allocator = nullptr) override;
-
-  bool DoDropoutBackward(Stream* stream,
-                         const dnn::DropoutDescriptor& dropout_params,
-                         const dnn::BatchDescriptor& noise_dimensions,
-                         const dnn::BatchDescriptor& input_diff_dimensions,
-                         const DeviceMemory<double>& input_diff_data,
-                         const dnn::BatchDescriptor& output_diff_dimensions,
-                         DeviceMemory<double>* output_data,
-                         ScratchAllocator* workspace_allocator = nullptr) {
-    LOG(ERROR) << "miopen does not support dropout for dobule type yet";
-    return false;
-  }
 
   bool DoDropoutBackward(Stream* stream,
                          const dnn::DropoutDescriptor& dropout_params,
@@ -480,6 +456,7 @@ class MIOpenSupport : public dnn::DnnSupport {
                          const DeviceMemory<float>& input_diff_data,
                          const dnn::BatchDescriptor& output_diff_dimensions,
                          DeviceMemory<float>* output_data,
+                         DeviceMemory<bool>* mask,
                          ScratchAllocator* workspace_allocator) override;
 
   bool DoDropoutBackward(Stream* stream,
@@ -489,6 +466,7 @@ class MIOpenSupport : public dnn::DnnSupport {
                          const DeviceMemory<Eigen::half>& input_diff_data,
                          const dnn::BatchDescriptor& output_diff_dimensions,
                          DeviceMemory<Eigen::half>* output_data,
+                         DeviceMemory<bool>* mask,
                          ScratchAllocator* workspace_allocator) override;
 
   bool DoPoolForward(Stream* stream,

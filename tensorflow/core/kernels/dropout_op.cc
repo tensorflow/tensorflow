@@ -19,7 +19,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
+#include "tensorflow/core/kernels/random_op.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/util/guarded_philox_random.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
@@ -28,8 +30,13 @@ typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Device, typename T>
 class DropoutOp : public OpKernel {
+ private:
+  GuardedPhiloxRandom generator_;
+
  public:
-  explicit DropoutOp(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit DropoutOp(OpKernelConstruction* context) : OpKernel(context) {
+    generator_.Init(0, 0);
+  }
 
   ~DropoutOp() override {}
 
@@ -46,7 +53,7 @@ class DropoutOp : public OpKernel {
         ctx, in1.dims() == 0,
         errors::InvalidArgument("Dropout rate must be a scalar tensor."));
     auto rate_src_ptr = AsDeviceMemory<T>(&in1.scalar<T>()(), sizeof(T));
-    T rate = 0;
+    T rate;
     stream->ThenMemcpy(&rate, rate_src_ptr, sizeof(T));
 
     const Tensor& in2 = ctx->input(2);
@@ -67,9 +74,10 @@ class DropoutOp : public OpKernel {
         AsDeviceMemory<int64>(&in3.scalar<int64>()(), sizeof(int64));
     int64 seed = 0;
     stream->ThenMemcpy(&seed, seed_src_ptr, sizeof(int64));
+    generator_.ResetSeeds(seed, 0);
 
     se::dnn::DropoutDescriptor dropout_desc;
-    dropout_desc.set_rate(rate);
+    dropout_desc.set_rate(static_cast<float>(rate));
     dropout_desc.set_seed(seed);
 
     // Allocate output, and exit early if possible
@@ -128,11 +136,43 @@ class DropoutOp : public OpKernel {
     );
     DnnScratchAllocator scratch_allocator(DropoutScratchSize, ctx);
 
-    bool status = stream
-                      ->ThenDropoutForward(dropout_desc, noise_desc, input_desc,
-                                           input_data, output_desc,
-                                           &output_data, &scratch_allocator)
-                      .ok();
+    // Build random uniform distribution
+    typedef random::UniformDistribution<random::PhiloxRandom, T> Distribution;
+    Distribution dist;
+
+    std::vector<T> random_nums(in0.shape().num_elements());
+    functor::FillPhiloxRandom<Eigen::ThreadPoolDevice, Distribution>()(
+        ctx, ctx->eigen_device<Eigen::ThreadPoolDevice>(),
+        // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change
+        // it just here.
+        generator_.ReserveRandomOutputs(random_nums.size() * sizeof(T), 256),
+        random_nums.data(), random_nums.size(), dist);
+
+    Eigen::Tensor<T, 1> rate_tensor(random_nums.size());
+    rate_tensor.setConstant(rate);
+    Eigen::TensorMap<Eigen::Tensor<T, 1>> random_tensor(random_nums.data(),
+                                                        random_nums.size());
+    Eigen::Tensor<bool, 1> mask_tensor(random_nums.size());
+    mask_tensor = random_tensor >= rate_tensor;
+    se::DeviceMemoryBase mask_tensor_host =
+        se::DeviceMemoryBase(mask_tensor.data());
+
+    auto mask_tensor_device =
+        stream->AllocateTemporaryArray<bool>(mask_tensor.size())
+            .ConsumeValueOrDie();
+    se::DeviceMemoryBase* mask_tensor_device_mutable =
+        mask_tensor_device->mutable_device_memory();
+    stream->ThenMemcpy(mask_tensor_device_mutable, mask_tensor_host,
+                       mask_tensor.size());
+    se::DeviceMemory<bool> mask_tensor_device_typed =
+        se::DeviceMemory<bool>(*mask_tensor_device_mutable);
+
+    bool status =
+        stream
+            ->ThenDropoutForward(dropout_desc, noise_desc, input_desc,
+                                 input_data, output_desc, &output_data,
+                                 &mask_tensor_device_typed, &scratch_allocator)
+            .ok();
     OP_REQUIRES(ctx, status,
                 errors::Internal("dnn DropoutForward launch failed"));
   }
@@ -144,14 +184,19 @@ class DropoutOp : public OpKernel {
       DropoutOp<GPUDevice, TYPE>);
 
 TF_CALL_float(REGISTER_DROPOUT_GPU);
+TF_CALL_half(REGISTER_DROPOUT_GPU);
 // TODO Enable when MIOpen supports the following data types
 //TF_CALL_double(REGISTER_DROPOUT_GPU);
-//TF_CALL_half(REGISTER_DROPOUT_GPU);
 
 template <typename Device, typename T>
 class DropoutGradOp : public OpKernel {
+ private:
+  GuardedPhiloxRandom generator_;
+
  public:
-  explicit DropoutGradOp(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit DropoutGradOp(OpKernelConstruction* context) : OpKernel(context) {
+    generator_.Init(0, 0);
+  }
 
   ~DropoutGradOp() override {}
 
@@ -168,7 +213,7 @@ class DropoutGradOp : public OpKernel {
         ctx, in1.dims() == 0,
         errors::InvalidArgument("Dropout rate must be a scalar tensor."));
     auto rate_src_ptr = AsDeviceMemory<T>(&in1.scalar<T>()(), sizeof(T));
-    T rate = 0;
+    T rate;
     stream->ThenMemcpy(&rate, rate_src_ptr, sizeof(T));
 
     const Tensor& in2 = ctx->input(2);
@@ -189,9 +234,10 @@ class DropoutGradOp : public OpKernel {
         AsDeviceMemory<int64>(&in3.scalar<int64>()(), sizeof(int64));
     int64 seed = 0;
     stream->ThenMemcpy(&seed, seed_src_ptr, sizeof(int64));
+    generator_.ResetSeeds(seed, 0);
 
     se::dnn::DropoutDescriptor dropout_desc;
-    dropout_desc.set_rate(rate);
+    dropout_desc.set_rate(static_cast<float>(rate));
     dropout_desc.set_seed(seed);
 
     // Allocate output, and exit early if possible
@@ -211,8 +257,8 @@ class DropoutGradOp : public OpKernel {
     const int64 in_cols = input_dim_sizes[3];
 
     // Interpret compute data layout to NCHW to be consistent with input tensor
-    se::dnn::BatchDescriptor input_delta_desc;
-    input_delta_desc.set_count(in_batch)
+    se::dnn::BatchDescriptor input_desc;
+    input_desc.set_count(in_batch)
         .set_feature_map_count(in_depths)
         .set_height(in_rows)
         .set_width(in_cols)
@@ -235,9 +281,9 @@ class DropoutGradOp : public OpKernel {
         .set_layout(se::dnn::DataLayout::kBatchDepthYX);
 
     se::dnn::BatchDescriptor output_desc;
-    output_desc.CloneFrom(input_delta_desc);
+    output_desc.CloneFrom(input_desc);
 
-    auto input_delta =
+    auto input_data =
         AsDeviceMemory(in0.flat<T>().data(), in0.flat<T>().size());
 
     auto output_data =
@@ -250,11 +296,42 @@ class DropoutGradOp : public OpKernel {
     );
     DnnScratchAllocator scratch_allocator(DropoutScratchSize, ctx);
 
+    // Build random uniform distribution
+    typedef random::UniformDistribution<random::PhiloxRandom, T> Distribution;
+    Distribution dist;
+
+    std::vector<T> random_nums(in0.shape().num_elements());
+    functor::FillPhiloxRandom<Eigen::ThreadPoolDevice, Distribution>()(
+        ctx, ctx->eigen_device<Eigen::ThreadPoolDevice>(),
+        // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change
+        // it just here.
+        generator_.ReserveRandomOutputs(random_nums.size() * sizeof(T), 256),
+        random_nums.data(), random_nums.size(), dist);
+
+    Eigen::Tensor<T, 1> rate_tensor(random_nums.size());
+    rate_tensor.setConstant(rate);
+    Eigen::TensorMap<Eigen::Tensor<T, 1>> random_tensor(random_nums.data(),
+                                                        random_nums.size());
+    Eigen::Tensor<bool, 1> mask_tensor(random_nums.size());
+    mask_tensor = random_tensor >= rate_tensor;
+    se::DeviceMemoryBase mask_tensor_host =
+        se::DeviceMemoryBase(mask_tensor.data());
+
+    auto mask_tensor_device =
+        stream->AllocateTemporaryArray<bool>(mask_tensor.size())
+            .ConsumeValueOrDie();
+    se::DeviceMemoryBase* mask_tensor_device_mutable =
+        mask_tensor_device->mutable_device_memory();
+    stream->ThenMemcpy(mask_tensor_device_mutable, mask_tensor_host,
+                       mask_tensor.size());
+    se::DeviceMemory<bool> mask_tensor_device_typed =
+        se::DeviceMemory<bool>(*mask_tensor_device_mutable);
+
     bool status =
         stream
-            ->ThenDropoutBackward(dropout_desc, noise_desc, input_delta_desc,
-                                  input_delta, output_desc, &output_data,
-                                  &scratch_allocator)
+            ->ThenDropoutBackward(dropout_desc, noise_desc, input_desc,
+                                  input_data, output_desc, &output_data,
+                                  &mask_tensor_device_typed, &scratch_allocator)
             .ok();
     OP_REQUIRES(ctx, status,
                 errors::Internal("dnn DropoutBackward launch failed"));
@@ -267,9 +344,9 @@ class DropoutGradOp : public OpKernel {
       DropoutGradOp<GPUDevice, TYPE>);
 
 TF_CALL_float(REGISTER_DROPOUT_GRAD_GPU);
+TF_CALL_half(REGISTER_DROPOUT_GRAD_GPU);
 // TODO Enable when MIOpen supports the following data types
 //TF_CALL_double(REGISTER_DROPOUT_GRAD_GPU);
-//TF_CALL_half(REGISTER_DROPOUT_GRAD_GPU);
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_USE_ROCM

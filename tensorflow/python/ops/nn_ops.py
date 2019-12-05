@@ -4472,7 +4472,8 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
 
       # Should there be ROCm support, use it. Otherwise fallback to generic
       # implementation
-      if build_info.is_rocm_build and x.dtype is dtypes.float32:
+      if build_info.is_rocm_build and \
+         (x.dtype == dtypes.float32 or x.dtype == dtypes.float16):
         if seed is None:
           seed = 0
         return gen_nn_ops.dropout(x,rate,noise_shape=noise_shape,seed=seed)
@@ -4525,7 +4526,8 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
 
       # Should there be ROCm support, use it. Otherwise fallback to generic
       # implementation
-      if build_info.is_rocm_build and x.dtype is dtypes.float32:
+      if build_info.is_rocm_build and \
+         (x.dtype == dtypes.float32 or x.dtype == dtypes.float16):
         if seed is None:
           seed = 0
         return gen_nn_ops.dropout(x,rate,noise_shape=noise_shape,seed=seed)
