@@ -134,23 +134,43 @@ struct TiledLinalgOp {
 };
 
 /// Performs standalone tiling of a single LinalgOp by `tileSizes`.
-/// Returns a struct containing the tiled loops and the cloned op if successful,
-/// llvm::None otherwise.
+/// and permute the loop nest according to `permutation`
+/// The permutation is expressed as a list of integers that specify
+/// the new ordering of the loop nest. The length of `permutation`
+/// must be equal to the length of `tileSizes`.
+/// E.g. the permutation `(i,j,k) -> (j,k,i)` will be expressed with
+/// `permutation = [1,2,0]`. All values in `permutation` must be
+/// integers, in the range 0..`tileSizes.size()` without duplications
+/// (i.e. `[1,1,2]` is an invalid permutation). An empty list
+/// states for the identity permutation.
+/// Returns a struct containing the tiled loops in the specified order
+/// and the cloned op if successful, llvm::None otherwise.
 /// When non-null, the optional pointer `folder` is used to call into the
 /// `createAndFold` builder method. If `folder` is null, the regular `create`
 /// method is called.
 llvm::Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
                                            ArrayRef<Value *> tileSizes,
+                                           ArrayRef<unsigned> permutation = {},
                                            OperationFolder *folder = nullptr);
 
 /// Performs standalone tiling of a single LinalgOp by constant `tileSizes`.
-/// Returns a struct containing the tiled loops and the cloned op if successful,
-/// llvm::None otherwise.
+/// and permute the loop nest according to `permutation`
+/// The permutation is expressed as a list of integers that specify
+/// the new ordering of the loop nest. The length of `permutation`
+/// must be equal to the length of `tileSizes`.
+/// E.g. the permutation `(i,j,k) -> (j,k,i)` will be expressed with
+/// `permutation = [1,2,0]`. All values in `permutation` must be
+/// integers, in the range 0..`tileSizes.size()` without duplications
+/// (i.e. `[1,1,2]` is an invalid permutation). An empty list
+/// states for the identity permutation.
+/// Returns a struct containing the tiled loops in the specified order
+/// and the cloned op if successful, llvm::None otherwise.
 /// When non-null, the optional pointer `folder` is used to call into the
 /// `createAndFold` builder method. If `folder` is null, the regular `create`
 /// method is called.
 llvm::Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
                                            ArrayRef<int64_t> tileSizes,
+                                           ArrayRef<unsigned> permutation = {},
                                            OperationFolder *folder = nullptr);
 
 template <typename... Args>
