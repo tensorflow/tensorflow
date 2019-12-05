@@ -645,10 +645,9 @@ def size_v2(input, out_type=dtypes.int32, name=None):
 
   For example:
 
-  ```python
-  t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
-  tf.size(t)  # 12
-  ```
+  >>> t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
+  >>> tf.size(t)
+  <tf.Tensor: shape=(), dtype=int32, numpy=12>
 
   Args:
     input: A `Tensor` or `SparseTensor`.
