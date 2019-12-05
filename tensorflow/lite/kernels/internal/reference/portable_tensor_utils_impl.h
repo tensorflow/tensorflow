@@ -128,14 +128,8 @@ void PortableApplyLayerNorm(const int16_t* input,
 void PortableApplySigmoid(const int16_t* input, int32_t n_batch,
                           int32_t n_input, int16_t* output);
 
-void PortableApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output);
-
-void PortableApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output);
-
-void PortableApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output);
+void PortableApplyTanh(int32_t integer_bits, const int16_t* input,
+                       int32_t n_batch, int32_t n_input, int16_t* output);
 
 void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
                       int n_batch, int n_input, int shift, int16_t* output);

@@ -524,7 +524,7 @@ TEST(uKernels, QuantTanh0Test) {
       653,  -29, -53,  1058, -52, -164, -149, -635, 201,  -1297,
   };
   std::vector<int16_t> output(4 * 15, 0);
-  ApplyTanh0(input.data(), 4, 15, output.data());
+  ApplyTanh(0, input.data(), 4, 15, output.data());
   const std::vector<int16_t> expected_output = {
       -136, 904, -176, -40,  260, 292,  8,    28,   -44,  -1304,
       -120, 120, -24,  112,  376, -576, -308, 88,   -544, 544,
@@ -547,7 +547,7 @@ TEST(uKernels, QuantTanh3Test) {
       653,  -29, -53,  1058, -52, -164, -149, -635, 201,  -1297,
   };
   std::vector<int16_t> output(4 * 15, 0);
-  ApplyTanh3(input.data(), 4, 15, output.data());
+  ApplyTanh(3, input.data(), 4, 15, output.data());
   const std::vector<int16_t> expected_output = {
       -1156, 7076, -1412, -276, 2104, 2308,  64,    220,   -288,  -10132,
       -964,  1016, -120,  844,  2944, -4640, -2392, 736,   -4352, 4352,
@@ -568,7 +568,7 @@ TEST(uKernels, QuantTanh4Test) {
       -26, -36, 9,   -73, 25, 14, -2, -1, 29, -10, -12, -18, -29, 51, -92,
   };
   std::vector<int16_t> output(4 * 15, 0);
-  ApplyTanh4(input.data(), 4, 15, output.data());
+  ApplyTanh(4, input.data(), 4, 15, output.data());
   const std::vector<int16_t> expected_output = {
       -76,  2596, -496, -76, 856,  1436, 24,   36,   -64,   -672,
       -120, 456,  0,    752, 2400, -412, -576, 148,  -1168, 400,

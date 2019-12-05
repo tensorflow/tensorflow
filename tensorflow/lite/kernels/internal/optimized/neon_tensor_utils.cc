@@ -1504,19 +1504,25 @@ void NeonApplyTanhImpl(const int16_t* input, int32_t n_batch, int32_t n_input,
   }
 }
 
-void NeonApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                    int16_t* output) {
-  NeonApplyTanhImpl<0>(input, n_batch, n_input, output);
-}
-
-void NeonApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                    int16_t* output) {
-  NeonApplyTanhImpl<3>(input, n_batch, n_input, output);
-}
-
-void NeonApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                    int16_t* output) {
-  NeonApplyTanhImpl<4>(input, n_batch, n_input, output);
+void NeonApplyTanh(int32_t integer_bits, const int16_t* input, int32_t n_batch,
+                   int32_t n_input, int16_t* output) {
+  assert(integer_bits <= 6);
+#define DISPATCH_TANH(i)                                   \
+  case i:                                                  \
+    NeonApplyTanhImpl<i>(input, n_batch, n_input, output); \
+    break;
+  switch (integer_bits) {
+    DISPATCH_TANH(0);
+    DISPATCH_TANH(1);
+    DISPATCH_TANH(2);
+    DISPATCH_TANH(3);
+    DISPATCH_TANH(4);
+    DISPATCH_TANH(5);
+    DISPATCH_TANH(6);
+    default:
+      return;
+  }
+#undef DISPATCH_TANH
 }
 
 void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,

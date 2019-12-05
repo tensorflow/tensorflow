@@ -1077,7 +1077,7 @@ inline void LstmStepQuantized(
                                  n_batch, n_cell, scratch_2_ptr);
   }
 
-  tensor_utils::ApplyTanh3(scratch_2_ptr, n_batch, n_cell, scratch_2_ptr);
+  tensor_utils::ApplyTanh(3, scratch_2_ptr, n_batch, n_cell, scratch_2_ptr);
 
   // Ouptut gate.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
@@ -1139,12 +1139,8 @@ inline void LstmStepQuantized(
     tensor_utils::CwiseClipping(cell_ptr, quantized_cell_clip, n_batch, n_cell);
   }
 
-  // TODO(jianlijianli): swtich to a tempalte.
-  if (cell_scale == -11) {
-    tensor_utils::ApplyTanh4(cell_ptr, n_batch, n_cell, scratch_0_ptr);
-  } else if (cell_scale == -15) {
-    tensor_utils::ApplyTanh0(cell_ptr, n_batch, n_cell, scratch_0_ptr);
-  }
+  tensor_utils::ApplyTanh(15 + cell_scale, cell_ptr, n_batch, n_cell,
+                          scratch_0_ptr);
 
   tensor_utils::CwiseMul(scratch_3_ptr, scratch_0_ptr, effective_hidden_scale_a,
                          effective_hidden_scale_b, n_batch, n_cell, hidden_zp,

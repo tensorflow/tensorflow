@@ -394,22 +394,10 @@ void PortableApplySigmoid(const int16_t* input, int32_t n_batch,
   }
 }
 
-void PortableApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output) {
-  using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
-  for (int batch = 0; batch < n_batch; ++batch) {
-    for (int i = 0; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      F0 tanh_input = F0::FromRaw(input[index]);
-      F0 tanh_output = gemmlowp::tanh(tanh_input);
-      output[index] = tanh_output.raw();
-    }
-  }
-}
-
-void PortableApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output) {
-  using FX = gemmlowp::FixedPoint<std::int16_t, 3>;
+template <int IntegerBits>
+void PortableApplyTanhImpl(const int16_t* input, int32_t n_batch,
+                           int32_t n_input, int16_t* output) {
+  using FX = gemmlowp::FixedPoint<std::int16_t, IntegerBits>;
   using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
   for (int batch = 0; batch < n_batch; ++batch) {
     for (int i = 0; i < n_input; ++i) {
@@ -421,18 +409,25 @@ void PortableApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
   }
 }
 
-void PortableApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output) {
-  using FX = gemmlowp::FixedPoint<std::int16_t, 4>;
-  using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
-  for (int batch = 0; batch < n_batch; ++batch) {
-    for (int i = 0; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      FX tanh_input = FX::FromRaw(input[index]);
-      F0 tanh_output = gemmlowp::tanh(tanh_input);
-      output[index] = tanh_output.raw();
-    }
+void PortableApplyTanh(int32_t integer_bits, const int16_t* input,
+                       int32_t n_batch, int32_t n_input, int16_t* output) {
+  assert(integer_bits <= 6);
+#define DISPATCH_TANH(i)                                       \
+  case i:                                                      \
+    PortableApplyTanhImpl<i>(input, n_batch, n_input, output); \
+    break;
+  switch (integer_bits) {
+    DISPATCH_TANH(0);
+    DISPATCH_TANH(1);
+    DISPATCH_TANH(2);
+    DISPATCH_TANH(3);
+    DISPATCH_TANH(4);
+    DISPATCH_TANH(5);
+    DISPATCH_TANH(6);
+    default:
+      return;
   }
+#undef DISPATCH_TANH
 }
 
 void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,

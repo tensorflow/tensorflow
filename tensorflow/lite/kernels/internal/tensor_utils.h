@@ -233,33 +233,15 @@ void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
 
 // Apply Tanh to a quantized vector.
 // Parameters:
+//     - integer_bits: the integer bits of the input.
+//                     Currently supports 0, 1, 2, 3, 4, 5, 6.
 //     - input: batch vector of size n_batch * n_input; 16 bit.
 //     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - output:  the 16 bit output
-// The input is in Q0.15 format and the output is in Q0.15 format.
-void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output);
-
-// Apply Tanh to a quantized vector.
-// Parameters:
-//     - input: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batches.
-//     - n_input: the size for input and output.
-//     - output:  the 16 bit output
-// The input is in Q3.12 format and the output is in Q0.15 format.
-void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output);
-
-// Apply Tanh to a quantized vector.
-// Parameters:
-//     - input: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batches.
-//     - n_input: the size for input and output.
-//     - output:  the 16 bit output
-// The input is in Q4.11 format and the output is in Q0.15 format.
-void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output);
+// The input is in Qm.15-m format and the output is in Q0.15 format.
+void ApplyTanh(int32_t integer_bits, const int16_t* input, int32_t n_batch,
+               int32_t n_input, int16_t* output);
 
 // Element-wise multiplication of two quantized vectors.
 // Parameters:
