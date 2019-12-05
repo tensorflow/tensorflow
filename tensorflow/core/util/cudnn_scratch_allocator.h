@@ -42,7 +42,7 @@ class CudnnAllocatorInTemp : public ScratchAllocator {
   OpKernelContext* context_;  // not owned
   std::vector<Tensor> allocated_tensors_;
 
-	SE_DISALLOW_COPY_AND_ASSIGN(CudnnAllocatorInTemp);
+  SE_DISALLOW_COPY_AND_ASSIGN(CudnnAllocatorInTemp);
 };
 
 }  // namespace tensorflow

@@ -2297,8 +2297,8 @@ tf_kernel_library(
         "//tensorflow/core/util/ctc:ctc_beam_search_lib",
         "//tensorflow/core/util/ctc:ctc_loss_calculator_lib",
     ] + if_cuda([
-        "//tensorflow/core:stream_executor",
-        "//tensorflow/core:cudnn_scratch_allocator",
+        ":gpu_utils",
+        ":conv_ops_gpu_hdrs",
     ]),
 )
 

@@ -367,16 +367,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "cudnn_scratch_allocator",
-    srcs = ["util/cudnn_scratch_allocator.cc"],
-    hdrs = ["util/cudnn_scratch_allocator.h"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/stream_executor:scratch_allocator",
-    ],
-)
-
 filegroup(
     name = "util_port_hdrs",
     srcs = [
