@@ -153,7 +153,7 @@ struct PythonMLIRModule {
   PythonMLIRModule()
       : mlirContext(),
         module(mlir::ModuleOp::create(mlir::UnknownLoc::get(&mlirContext))),
-        moduleManager(*module) {}
+        symbolTable(*module) {}
 
   PythonType makeMemRefType(PythonType elemType, std::vector<int64_t> sizes) {
     return ::makeMemRefType(mlir_context_t{&mlirContext}, elemType,
@@ -270,7 +270,7 @@ struct PythonMLIRModule {
   }
 
   PythonFunction getNamedFunction(const std::string &name) {
-    return moduleManager.lookupSymbol<FuncOp>(name);
+    return symbolTable.lookup<FuncOp>(name);
   }
 
   PythonFunctionContext
@@ -282,7 +282,7 @@ private:
   mlir::MLIRContext mlirContext;
   // One single module in a python-exposed MLIRContext for now.
   mlir::OwningModuleRef module;
-  mlir::ModuleManager moduleManager;
+  mlir::SymbolTable symbolTable;
 
   // An execution engine and an associated target machine. The latter must
   // outlive the former since it may be used by the transformation layers.
@@ -692,7 +692,7 @@ PythonMLIRModule::declareFunction(const std::string &name,
       UnknownLoc::get(&mlirContext), name,
       mlir::Type::getFromOpaquePointer(funcType).cast<FunctionType>(), attrs,
       inputAttrs);
-  moduleManager.insert(func);
+  symbolTable.insert(func);
   return func;
 }
 

@@ -101,6 +101,7 @@ cc_library(
         "lib/IR/TestSymbolUses.cpp",
     ],
     deps = [
+        ":TestDialect",
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
