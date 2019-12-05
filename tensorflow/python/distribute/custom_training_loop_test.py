@@ -217,9 +217,11 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
   def _get_dataset(self):
     if tf2.enabled():
-      return dataset_ops.DatasetV2.range(10).batch(2)
+      return dataset_ops.DatasetV2.range(10).\
+        map(lambda x: math_ops.cast(x, dtypes.int32)).batch(2)
     else:
-      return dataset_ops.Dataset.range(10).batch(2)
+      return dataset_ops.Dataset.range(10).\
+        map(lambda x: math_ops.cast(x, dtypes.int32)).batch(2)
 
   def _validate_outputs(self, actual_results):
     expected_results = [[i**2, (i+1)**2] for i in range(0, 10, 2)]
