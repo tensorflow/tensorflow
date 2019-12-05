@@ -1833,6 +1833,13 @@ def rgb_to_grayscale(images, name=None):
 
   Returns:
     The converted grayscale image(s).
+    
+  Usage Example:
+    ```python
+    import tensorflow as tf
+    original_image = tf.random.normal(shape=(256, 256, 1))
+    converted_image = tf.image.grayscale_to_rgb(original_image)
+    ```
   """
   with ops.name_scope(name, 'rgb_to_grayscale', [images]) as name:
     images = ops.convert_to_tensor(images, name='images')
