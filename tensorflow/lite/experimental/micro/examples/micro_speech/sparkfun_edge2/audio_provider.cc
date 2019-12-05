@@ -158,8 +158,8 @@ void enable_burst_mode(tflite::ErrorReporter* error_reporter) {
 //*****************************************************************************
 am_hal_pdm_config_t g_sPdmConfig = {
     .eClkDivider = AM_HAL_PDM_MCLKDIV_1,
-    .eLeftGain = AM_HAL_PDM_GAIN_P255DB,
-    .eRightGain = AM_HAL_PDM_GAIN_P255DB,
+    .eLeftGain = AM_HAL_PDM_GAIN_P165DB,
+    .eRightGain = AM_HAL_PDM_GAIN_P165DB,
     .ui32DecimationRate =
         48,  // OSR = 1500/16 = 96 = 2*SINCRATE --> SINC_RATE = 48
     .bHighPassEnable = 1,
