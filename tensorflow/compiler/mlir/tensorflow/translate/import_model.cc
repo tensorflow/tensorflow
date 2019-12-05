@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 
 #include <iterator>
+#include <string>
 #include <tuple>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -303,19 +306,24 @@ class ImporterBase {
   // Gets the location information string for the given node.
   std::string GetLocationStr(const Node& node, bool includeNodeName = false);
 
-  // Inserts a placeholder node in the graph to replace the input node. Replaces
-  // all the output edges of the input_node with the placeholder node, and
-  // removes the input_node from the graph. The new node has the same name as
-  // the input_node, so Nodespecs do not need any modification.
+  // Inserts a placeholder node in the graph to replace a feed output tensor,
+  // and returns the new placeholder node and a boolean indicating if the
+  // original input node was removed from the graph. Uses of the feed output
+  // tensor are replaced with this placeholder node. If the feed output tensor
+  // is of a single output node, the control dependencies are forwarded to the
+  // the placeholder node, and the original node will be removed.
   // Note: This modifies the graph, and so any list of ordered nodes needs to be
   // reconstructed.
-  StatusOr<Node*> ReplaceWithPlaceholderNode(const TensorShapeProto& shape,
-                                             DataType dtype, Node* input_node);
+  StatusOr<std::pair<Node*, bool>> CreatePlaceholderNodeForFeed(
+      const TensorShapeProto& shape, DataType dtype, Node* node, int index,
+      const std::unordered_map<string, Node*>& node_name_map);
 
   // Gets the input and output nodes corresponding to the specified input and
   // output nodes in specs_. If there are no input or output nodes specified,
-  // nodes will be empty
-  Status GetInputOutputNodes(std::unordered_set<const Node*>* nodes);
+  // nodes will be empty.
+  Status GetInputOutputNodes(
+      const std::unordered_map<string, Node*>& node_name_map,
+      std::unordered_set<const Node*>* nodes);
 
   // The input graph with backedges removed. The removed backedges are stored
   // in the back_edge_helper.
@@ -345,6 +353,10 @@ class ImporterBase {
   NodeValueMap node_values_;
   std::unique_ptr<ShapeRefiner> shape_refiner_;
   NameUniquifier* function_name_uniquifier_;
+
+ protected:
+  // Maps feed as TensorId to new Placeholder node name.
+  absl::flat_hash_map<TensorId, absl::string_view> remapped_feeds_;
 };
 
 // Returns true if the node with given name has a non primary output that is
@@ -425,6 +437,49 @@ Status PreprocessGraphDef(const GraphImportConfig* specs, GraphDef* graph_def) {
   return Status::OK();
 }
 
+// Mapping from node name to feed (index and ArrayInfo). Node name must outlive
+// this map.
+using FeedsByNode = absl::flat_hash_map<
+    absl::string_view,
+    absl::flat_hash_map<int, const std::pair<std::string, ArrayInfo>*>>;
+
+// Creates from a `GraphImportConfig::InputArrays` a mapping from a feeds output
+// tensor name to index and ArrayInfo. Keys and values are backed by
+// `GraphImportConfig::InputArrays`.
+StatusOr<FeedsByNode> GetFeedsByNode(
+    const GraphImportConfig::InputArrays& inputs) {
+  FeedsByNode feeds_by_node;
+  feeds_by_node.reserve(inputs.size());
+
+  for (const auto& input : inputs) {
+    TensorId tensor = ParseTensorName(input.first);
+    if (tensor.index() < 0)
+      return errors::FailedPrecondition(
+          "Feed output tensor must be a data output '", tensor.ToString(), "'");
+
+    auto& node = feeds_by_node[tensor.node()];
+    if (!node.insert({tensor.index(), &input}).second)
+      return errors::FailedPrecondition(
+          "Multiple feeds for the same output tensor '", tensor.ToString(),
+          "'");
+  }
+
+  return feeds_by_node;
+}
+
+// Creates a unique name for a node that will be replacing a feed output tensor.
+std::string GetUniqueNodeName(
+    absl::string_view node_name, int index,
+    const std::unordered_map<string, Node*>& node_name_map) {
+  std::string new_node_name_base = absl::StrCat(node_name, "_", index);
+  int count = 0;
+  std::string new_node_name = new_node_name_base;
+  while (node_name_map.find(new_node_name) != node_name_map.end()) {
+    new_node_name = absl::StrCat(new_node_name_base, "_", count++);
+  }
+  return new_node_name;
+}
+
 Status ImporterBase::RemoveBackedges(const Graph& graph) {
   // TODO(fengliuai): Converting to GraphDef and back is the easiest way to
   // clone a graph.
@@ -465,37 +520,54 @@ Status ImporterBase::RemoveBackedges(const Graph& graph) {
   return Status::OK();
 }
 
-StatusOr<Node*> ImporterBase::ReplaceWithPlaceholderNode(
-    const TensorShapeProto& shape, DataType dtype, Node* input_node) {
+StatusOr<std::pair<Node*, bool>> ImporterBase::CreatePlaceholderNodeForFeed(
+    const TensorShapeProto& shape, DataType dtype, Node* node, int index,
+    const std::unordered_map<string, Node*>& node_name_map) {
+  DCHECK_LT(index, node->num_outputs());
+  const bool update_inplace = node->num_outputs() == 1 && index == 0;
+  std::string new_node_name =
+      update_inplace ? node->name()
+                     : GetUniqueNodeName(node->name(), index, node_name_map);
+
   Node* placeholder_node;
-  NodeBuilder builder(input_node->name(), "Placeholder");
+  NodeBuilder builder(new_node_name, "Placeholder");
   builder.Attr("shape", shape);
   builder.Attr("dtype", dtype);
   TF_RETURN_IF_ERROR(builder.Finalize(graph_.get(), &placeholder_node));
 
-  while (!input_node->out_edges().empty()) {
-    const Edge* oe = *input_node->out_edges().begin();
-    // UpdateEdge cannot be used with control edges.
-    if (oe->src_output() == Graph::kControlSlot) {
-      graph_->AddControlEdge(placeholder_node, oe->dst());
-      graph_->RemoveControlEdge(oe);
-      continue;
+  // Update edges from original feed with Placeholder node.
+  std::vector<const Edge*> data_edges;
+  std::vector<const Edge*> control_edges;
+  for (const tensorflow::Edge* edge : node->out_edges()) {
+    if (edge->src_output() == index) {
+      data_edges.push_back(edge);
+    } else if (update_inplace && edge->IsControlEdge()) {
+      control_edges.push_back(edge);
     }
-
-    TF_RETURN_IF_ERROR(
-        graph_->UpdateEdge(placeholder_node, 0, oe->dst(), oe->dst_input()));
   }
 
-  graph_->RemoveNode(input_node);
+  for (const auto* edge : data_edges) {
+    TF_RETURN_IF_ERROR(graph_->UpdateEdge(placeholder_node, 0, edge->dst(),
+                                          edge->dst_input()));
+  }
 
-  return placeholder_node;
+  for (const auto* edge : control_edges) {
+    graph_->AddControlEdge(placeholder_node, edge->dst());
+    graph_->RemoveControlEdge(edge);
+  }
+
+  if (update_inplace) {
+    graph_->RemoveNode(node);
+  }
+
+  return std::pair<Node*, bool>(placeholder_node, update_inplace);
 }
 
 Status ImporterBase::GetInputOutputNodes(
+    const std::unordered_map<string, Node*>& node_name_map,
     std::unordered_set<const Node*>* nodes) {
-  auto node_name_map = graph_->BuildNodeNameIndex();
-  auto add_node = [&](const string& name) {
-    auto it = node_name_map.find(name);
+  auto add_node = [&](absl::string_view name) {
+    auto it = node_name_map.find(std::string(name));
     if (it == node_name_map.end()) {
       return errors::FailedPrecondition(
           absl::StrCat("Graph does not contain node: ", name));
@@ -504,13 +576,25 @@ Status ImporterBase::GetInputOutputNodes(
     return Status::OK();
   };
 
+  // Remap feeds and fetches to newly created Placeholder nodes.
   for (const auto& input : specs_.inputs) {
-    TF_RETURN_IF_ERROR(add_node(input.first));
+    TensorId tensor = ParseTensorName(input.first);
+    auto remapped_it = remapped_feeds_.find(tensor);
+    if (remapped_it != remapped_feeds_.end()) {
+      TF_RETURN_IF_ERROR(add_node(remapped_it->second));
+    } else {
+      TF_RETURN_IF_ERROR(add_node(tensor.node()));
+    }
   }
 
   for (const auto& output : specs_.outputs) {
-    auto output_node_name = std::string(ParseTensorName(output).first);
-    TF_RETURN_IF_ERROR(add_node(output_node_name));
+    TensorId tensor = ParseTensorName(output);
+    auto remapped_it = remapped_feeds_.find(tensor);
+    if (remapped_it != remapped_feeds_.end()) {
+      TF_RETURN_IF_ERROR(add_node(remapped_it->second));
+    } else {
+      TF_RETURN_IF_ERROR(add_node(tensor.node()));
+    }
   }
 
   return Status::OK();
@@ -526,6 +610,9 @@ Status ImporterBase::AddNodesToShapeRefiner() {
   shape_refiner_->set_require_shape_inference_fns(false);
   shape_refiner_->set_function_library_for_shape_inference(&graph_flib_);
 
+  TF_ASSIGN_OR_RETURN(auto feeds_by_node, GetFeedsByNode(specs_.inputs));
+  auto node_name_map = graph_->BuildNodeNameIndex();
+
   // First add all nodes to the refiner.
   for (Node* node : ordered_nodes_) {
     // We need to use a TensorFlow node to teach the shape refiner that user
@@ -539,28 +626,49 @@ Status ImporterBase::AddNodesToShapeRefiner() {
     // it to replace the original input node, so the shape refiner can
     // successfully propagate the user's input type and shape to the rest of the
     // graph.
-    auto it = specs_.inputs.find(node->name());
-    if (it != specs_.inputs.end()) {
-      auto node_name = node->op_def().name();
-      if (node_name != "Placeholder" && node_name != "LegacyFedInput" &&
-          node_name != FunctionLibraryDefinition::kArgOp) {
-        // We do not handle the case where the input node has multiple outputs
-        if (node->num_outputs() > 1) {
-          return errors::FailedPrecondition(absl::StrCat(
-              "Input arrays can only have op with single output. Node op:",
-              node_name));
+    bool node_added_to_shape_refiner = false;
+    auto it = feeds_by_node.find(node->name());
+    if (it != feeds_by_node.end()) {
+      auto op_name = node->op_def().name();
+      if (op_name != "Placeholder" && op_name != "LegacyFedInput" &&
+          op_name != FunctionLibraryDefinition::kArgOp) {
+        for (const auto& output_tensor : it->second) {
+          const int index = output_tensor.first;
+          const ArrayInfo& array_info = output_tensor.second->second;
+
+          DataType dtype = array_info.imported_dtype;
+          // Uses the existing output type if it isn't specified by the user.
+          if (dtype == DT_INVALID) {
+            dtype = node->output_type(0);
+          }
+
+          TF_ASSIGN_OR_RETURN(
+              auto placeholder_node_and_removed,
+              CreatePlaceholderNodeForFeed(array_info.shape, dtype, node, index,
+                                           node_name_map));
+
+          Node* placeholder_node = placeholder_node_and_removed.first;
+          if (placeholder_node_and_removed.second) {
+            // Original node has been removed from the graph.
+            node = placeholder_node;
+            node_added_to_shape_refiner = true;
+          }
+          remapped_feeds_[{it->first, index}] = placeholder_node->name();
+          node_name_map[placeholder_node->name()] = placeholder_node;
+          // Add the new placeholder node to the shape refiner.
+          TF_RETURN_WITH_CONTEXT_IF_ERROR(
+              shape_refiner_->AddNode(placeholder_node),
+              GetLocationStr(*placeholder_node));
         }
-        // For single output nodes, replace them with Placeholder node.
-        DataType dtype = it->second.imported_dtype;
-        // Uses the existing output type if it isn't specified by the user.
-        if (dtype == DT_INVALID) {
-          dtype = node->output_type(0);
-        }
-        TF_ASSIGN_OR_RETURN(
-            node, ReplaceWithPlaceholderNode(it->second.shape, dtype, node));
       } else {
-        node->AddAttr("shape", it->second.shape);
-        DataType dtype = it->second.imported_dtype;
+        auto index_it = it->second.find(0);
+        if (index_it == it->second.end()) {
+          return errors::FailedPrecondition(
+              "Missing feed output tensor at index 0 for node '", node->name(),
+              "'");
+        }
+        node->AddAttr("shape", index_it->second->second.shape);
+        DataType dtype = index_it->second->second.imported_dtype;
         // Uses the existing output type if it isn't specified by the user.
         if (dtype == DT_INVALID) {
           dtype = node->output_type(0);
@@ -568,9 +676,11 @@ Status ImporterBase::AddNodesToShapeRefiner() {
         node->AddAttr("dtype", dtype);
       }
     }
-    // Adds the node to the shape refiner.
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(shape_refiner_->AddNode(node),
-                                    GetLocationStr(*node));
+    if (!node_added_to_shape_refiner) {
+      // Add the node to the shape refiner if the node hasn't been removed.
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(shape_refiner_->AddNode(node),
+                                      GetLocationStr(*node));
+    }
 
     auto set_shape_from_list_attr = [&](const AttrValue* attr) {
       auto& list = attr->list();
@@ -631,7 +741,7 @@ Status ImporterBase::AddNodesToShapeRefiner() {
   // Prune nodes in the graph that are not reachable from the output.
   if (specs_.prune_unused_nodes) {
     std::unordered_set<const Node*> prune_start;
-    TF_RETURN_IF_ERROR(GetInputOutputNodes(&prune_start));
+    TF_RETURN_IF_ERROR(GetInputOutputNodes(node_name_map, &prune_start));
     if (!prune_start.empty()) {
       if (PruneForReverseReachability(graph_.get(), prune_start)) {
         VLOG(1) << "Pruned unused nodes in graphdef";
@@ -1703,36 +1813,52 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
     const GraphImportConfig& specs, mlir::MLIRContext* context,
     absl::InlinedVector<OutputTensor, 4>* arg_nodes,
     absl::InlinedVector<OutputTensor, 4>* ret_nodes) {
-  // Finds out all the input nodes and output nodes.
-  absl::flat_hash_set<absl::string_view> output_node_names;
-  for (const auto& output_tensor : specs.outputs) {
-    output_node_names.insert(ParseTensorName(output_tensor).node());
+  // Find all the input nodes and output nodes.
+  // Feeds have been remapped to single output nodes (Placeholder), so an exact
+  // name match is sufficient.
+  absl::flat_hash_map<absl::string_view, int> inputs;
+  for (auto input_and_idx : llvm::enumerate(specs.inputs)) {
+    TensorId tensor = ParseTensorName(input_and_idx.value().first);
+    auto remapped_it = remapped_feeds_.find(tensor);
+    if (remapped_it != remapped_feeds_.end()) {
+      inputs.insert({remapped_it->second, input_and_idx.index()});
+    } else {
+      inputs.insert({tensor.node(), input_and_idx.index()});
+    }
   }
-  if (!specs.inputs.empty() || !specs.outputs.empty()) {
-    arg_nodes->resize(specs.inputs.size());
-    ret_nodes->resize(specs.outputs.size());
+
+  absl::flat_hash_set<absl::string_view> output_node_names;
+  std::vector<TensorId> outputs;
+  output_node_names.reserve(specs.outputs.size());
+  for (const auto& output : specs.outputs) {
+    TensorId tensor = ParseTensorName(output);
+    auto remapped_it = remapped_feeds_.find(tensor);
+    if (remapped_it != remapped_feeds_.end()) {
+      output_node_names.insert(remapped_it->second);
+      outputs.push_back({remapped_it->second, 0});
+    } else {
+      output_node_names.insert(tensor.node());
+      outputs.push_back(tensor);
+    }
+  }
+
+  if (!inputs.empty() || !outputs.empty()) {
+    arg_nodes->resize(inputs.size());
+    ret_nodes->resize(outputs.size());
 
     for (Node* n : GetOrderedNodes()) {
       // Handle inputs/arguments.
-      auto input_it = specs.inputs.find(n->name());
-      if (input_it != specs.inputs.end()) {
-        (*arg_nodes)[std::distance(specs.inputs.begin(), input_it)] = {n, 0};
+      auto input_it = inputs.find(n->name());
+      if (input_it != inputs.end()) {
+        (*arg_nodes)[input_it->second] = {n, 0};
       }
 
       // Handle outputs/returns.
       if (output_node_names.contains(n->name())) {
-        for (int i = 0, e = specs.outputs.size(); i != e; ++i) {
-          std::pair<std::string, std::string> name_and_port =
-              absl::StrSplit(specs.outputs[i], ':');
-          auto name = name_and_port.first;
-          if (name != n->name()) continue;
-          int port = 0;
-          if (!name_and_port.second.empty() &&
-              !absl::SimpleAtoi(name_and_port.second, &port)) {
-            return errors::InvalidArgument("Invalid port specification: ",
-                                           specs.outputs[i]);
-          }
-          (*ret_nodes)[i] = {n, port};
+        for (int i = 0, e = outputs.size(); i != e; ++i) {
+          TensorId tensor = outputs[i];
+          if (n->name() != tensor.node()) continue;
+          (*ret_nodes)[i] = {n, tensor.index()};
         }
       }
     }
