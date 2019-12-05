@@ -439,29 +439,32 @@ class Tensor(_TensorLike):
     for more details of what a shape represents.
 
     The inferred shape of a tensor is used to provide shape
-    information without having to launch the graph in a session. This
-    can be used for debugging, and providing early error messages. For
+    information without having to execute the underlying kernel. This
+    can be used for debugging and providing early error messages. For
     example:
 
     ```python
-    c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    >>> c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    >>> print(c.shape) # will be TensorShape([2, 3])
+    (2, 3)
 
-    print(c.shape)
-    ==> TensorShape([Dimension(2), Dimension(3)])
-
-    d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
-
-    print(d.shape)
-    ==> TensorShape([Dimension(4), Dimension(2)])
+    >>> d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
+    >>> print(d.shape)
+    (4, 2)
 
     # Raises a ValueError, because `c` and `d` do not have compatible
     # inner dimensions.
-    e = tf.matmul(c, d)
+    >>> e = tf.matmul(c, d)
+    Traceback (most recent call last):
+        ...
+    tensorflow.python.framework.errors_impl.InvalidArgumentError: Matrix
+    size-incompatible: In[0]: [2,3], In[1]: [4,2] [Op:MatMul] name: MatMul/
 
-    f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
+    # This works because we have compatible shapes.
+    >>> f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
+    >>> print(f.shape)
+    (3, 4)
 
-    print(f.shape)
-    ==> TensorShape([Dimension(3), Dimension(4)])
     ```
 
     In some cases, the inferred shape may have unknown dimensions. If
@@ -470,7 +473,7 @@ class Tensor(_TensorLike):
     inferred shape.
 
     Returns:
-      A `TensorShape` representing the shape of this tensor.
+      A `tf.TensorShape` representing the shape of this tensor.
 
     """
     if self._shape_val is None:
@@ -570,7 +573,7 @@ class Tensor(_TensorLike):
     return self.shape.ndims
 
   def get_shape(self):
-    """Alias of Tensor.shape."""
+    """Alias of `tf.Tensor.shape`."""
     return self.shape
 
   def set_shape(self, shape):

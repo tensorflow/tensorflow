@@ -544,6 +544,8 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
   """Returns the shape of a tensor.
 
   This operation returns a 1-D integer tensor representing the shape of `input`.
+  This represents the minimal set of known information at definition time.
+
 
   For example:
 
@@ -570,6 +572,10 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
     out_type: (Optional) The specified output type of the operation (`int32` or
       `int64`). Defaults to `tf.int32`.
     name: A name for the operation (optional).
+
+  `tf.shape` and `Tensor.shape` should be identical in eager mode.  Within
+  `tf.function` or within a `compat.v1` context, not all dimensions may be
+  known until execution time.
 
   Returns:
     A `Tensor` of type `out_type`.
