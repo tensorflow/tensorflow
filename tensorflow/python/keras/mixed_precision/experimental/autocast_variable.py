@@ -186,65 +186,59 @@ class AutoCastVariable(variables.Variable):
 
   def assign(self, value, use_locking=None, name=None, read_value=True):
     assign_op = self._variable.assign(value, use_locking, name, read_value)
-    if read_value and resource_variable_ops.is_resource_variable(assign_op):
-      return create_autocast_variable(assign_op)
-    return assign_op
+    return _maybe_wrap(assign_op, wrap=read_value)
 
   def assign_add(self, delta, use_locking=None, name=None, read_value=True):
     assign_op = self._variable.assign_add(delta, use_locking, name, read_value)
-    if read_value and resource_variable_ops.is_resource_variable(assign_op):
-      return create_autocast_variable(assign_op)
-    return assign_op
+    return _maybe_wrap(assign_op, wrap=read_value)
 
   def assign_sub(self, delta, use_locking=None, name=None, read_value=True):
     assign_op = self._variable.assign_sub(delta, use_locking, name, read_value)
-    if read_value and resource_variable_ops.is_resource_variable(assign_op):
-      return create_autocast_variable(assign_op)
-    return assign_op
+    return _maybe_wrap(assign_op, wrap=read_value)
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     var = self._variable.scatter_sub(sparse_delta, use_locking, name)
-    return create_autocast_variable(var)
+    return _maybe_wrap(var)
 
   def scatter_add(self, sparse_delta, use_locking=False, name=None):
     var = self._variable.scatter_add(sparse_delta, use_locking, name)
-    return create_autocast_variable(var)
+    return _maybe_wrap(var)
 
   def scatter_max(self, sparse_delta, use_locking=False, name=None):
     var = self._variable.scatter_max(sparse_delta, use_locking, name)
-    return create_autocast_variable(var)
+    return _maybe_wrap(var)
 
   def scatter_min(self, sparse_delta, use_locking=False, name=None):
     var = self._variable.scatter_min(sparse_delta, use_locking, name)
-    return create_autocast_variable(var)
+    return _maybe_wrap(var)
 
   def scatter_mul(self, sparse_delta, use_locking=False, name=None):
     var = self._variable.scatter_mul(sparse_delta, use_locking, name)
-    return create_autocast_variable(var)
+    return _maybe_wrap(var)
 
   def scatter_div(self, sparse_delta, use_locking=False, name=None):
     var = self._variable.scatter_div(sparse_delta, use_locking, name)
-    return create_autocast_variable(var)
+    return _maybe_wrap(var)
 
   def scatter_update(self, sparse_delta, use_locking=False, name=None):
     var = self._variable.scatter_update(sparse_delta, use_locking, name)
-    return create_autocast_variable(var)
+    return _maybe_wrap(var)
 
   def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
     var = self._variable.batch_scatter_update(sparse_delta, use_locking, name)
-    return create_autocast_variable(var)
+    return _maybe_wrap(var)
 
   def scatter_nd_sub(self, indices, updates, name=None):
     var = self._variable.scatter_nd_sub(indices, updates, name)
-    return create_autocast_variable(var)
+    return _maybe_wrap(var)
 
   def scatter_nd_add(self, indices, updates, name=None):
     var = self._variable.scatter_nd_add(indices, updates, name)
-    return create_autocast_variable(var)
+    return _maybe_wrap(var)
 
   def scatter_nd_update(self, indices, updates, name=None):
     var = self._variable.scatter_nd_update(indices, updates, name)
-    return create_autocast_variable(var)
+    return _maybe_wrap(var)
 
   def load(self, value, session=None):
     return self._variable.load(value, session)
@@ -430,3 +424,24 @@ def create_autocast_variable(variable):
       # pylint: enable=missing-format-attribute
 
   return AutoCastDistributedVariable(variable)
+
+
+def _maybe_wrap(variable, wrap=True):
+  """Creates an AutoCastVariable that wraps another variable if applicable.
+
+  This function is used to wrap the return value of AutoCastVariable.assign.
+  Unfortunately MirroredVariable.assign will (incorrectly) return a Mirrored
+  value instead of a MirroredVariable. So we cannot properly wrap it in an
+  AutoCastVariable. We return the original variable in that case.
+
+  Args:
+    variable: A tf.Variable or op.
+    wrap: A boolean to define whether to wrap the variable in an
+      AutoCastVariable or not.
+
+  Returns:
+    An AutoCastVariable if wrap is True and variable is a resource variable.
+  """
+  if wrap and resource_variable_ops.is_resource_variable(variable):
+    return create_autocast_variable(variable)
+  return variable
