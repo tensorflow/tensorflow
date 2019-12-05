@@ -18,9 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import uuid
+
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function as function_eager
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
@@ -43,6 +47,27 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 import os
+
+_DEFUN_API_NAME_ATTRIBUTE = 'api_implements'
+_DEFUN_DEVICE_ATTRIBUTE = 'api_preferred_device'
+_CPU_DEVICE_NAME = 'CPU'
+_GPU_DEVICE_NAME = 'GPU'
+
+def _get_context_device_type():
+  """Parse the current context and return the device type, eg CPU/GPU."""
+  current_device = context.context().device_name
+  if current_device is None:
+    return None
+  return device.DeviceSpec.from_string(current_device).device_type
+
+def _generate_defun_backend(unique_api_name, preferred_device, func):
+  function_attributes = {
+      _DEFUN_API_NAME_ATTRIBUTE: unique_api_name,
+      _DEFUN_DEVICE_ATTRIBUTE: preferred_device,
+  }
+  return function_eager.defun_with_attributes(func=func,
+                                              attributes=function_attributes,
+                                              autograph=False)
 
 # pylint: disable=protected-access, invalid-name
 @tf_export(v1=["nn.ctc_loss"])
@@ -634,12 +659,46 @@ def _ctc_loss_grad(op, grad_loss, _):
   grad += [None] * (len(op.inputs) - len(grad))
   return grad
 
+def _ctc_loss_op_standard(labels, logits, logit_length, logits_time_major,
+                          blank_index):
+  part_before = logits[:, :, :blank_index]
+  part_after = logits[:, :, blank_index + 1:]
+  part_blank = logits[:, :, blank_index:blank_index + 1]
+  logits = array_ops.concat([part_before, part_after, part_blank], axis=2)
+  labels = sparse_tensor.SparseTensor(
+      labels.indices,
+      array_ops.where(labels.values < blank_index, labels.values,
+                      labels.values - 1), labels.dense_shape)
+  return _ctc_loss_impl(
+      labels=labels,
+      inputs=logits,
+      sequence_length=logit_length,
+      time_major=logits_time_major,
+      use_cudnn=False)
+
+def _ctc_loss_op_cudnn(labels, logits, logit_length, logits_time_major,
+                       blank_index):
+  part_before = logits[:, :, :blank_index]
+  part_after = logits[:, :, blank_index + 1:]
+  part_blank = logits[:, :, blank_index:blank_index + 1]
+  logits = array_ops.concat([part_blank, part_before, part_after], axis=2)
+  labels = sparse_tensor.SparseTensor(
+      labels.indices,
+      array_ops.where(labels.values < blank_index, labels.values + 1,
+                      labels.values), labels.dense_shape)
+  return _ctc_loss_impl(
+      labels=labels,
+      inputs=logits,
+      sequence_length=logit_length,
+      time_major=logits_time_major,
+      use_cudnn=True)
+
 
 def _ctc_loss_shape(op):
   return [op.inputs[2].get_shape(), op.inputs[0].get_shape()]
 
 
-@tf_export("nn.ctc_loss", v1=["nn.ctc_loss_v2"])
+@tf_export(v1=["nn.ctc_loss_v2"])
 def ctc_loss_v2(labels,
                 logits,
                 label_length,
@@ -698,36 +757,128 @@ def ctc_loss_v2(labels,
       raise ValueError(
           "blank_index must be given when using SparseTensor labels.")
 
-    _ctc_use_cudnn = os.environ.get("TF_CUDNN_CTC_LOSS", "0")
-    if _ctc_use_cudnn == "1":
-      use_cudnn = True
-    else:
-      use_cudnn = False
-
     if blank_index < 0:
       blank_index += _get_dim(logits, 2)
 
-    part_before = logits[:, :, :blank_index]
-    part_after = logits[:, :, blank_index + 1:]
-    part_blank = logits[:, :, blank_index:blank_index + 1]
-    if use_cudnn:
-      logits = array_ops.concat([part_blank, part_before, part_after], axis=2)
-      labels = sparse_tensor.SparseTensor(
-          labels.indices,
-          array_ops.where(labels.values < blank_index, labels.values + 1,
-                          labels.values), labels.dense_shape)
-    else:
-      logits = array_ops.concat([part_before, part_after, part_blank], axis=2)
+    if blank_index != _get_dim(logits, 2) - 1:
+      logits = array_ops.concat([
+          logits[:, :, :blank_index],
+          logits[:, :, blank_index + 1:],
+          logits[:, :, blank_index:blank_index + 1],
+      ],
+                                axis=2)
       labels = sparse_tensor.SparseTensor(
           labels.indices,
           array_ops.where(labels.values < blank_index, labels.values,
                           labels.values - 1), labels.dense_shape)
-    return _ctc_loss_impl(
+
+    return ctc_loss(
         labels=labels,
         inputs=logits,
         sequence_length=logit_length,
-        time_major=logits_time_major,
-        use_cudnn=use_cudnn)
+        time_major=logits_time_major)
+
+  if blank_index is None:
+    blank_index = 0
+
+  return ctc_loss_dense(
+      labels=labels,
+      logits=logits,
+      label_length=label_length,
+      logit_length=logit_length,
+      logits_time_major=logits_time_major,
+      unique=unique,
+      blank_index=blank_index,
+      name=name)
+
+
+@tf_export("nn.ctc_loss")
+def ctc_loss_v3(labels,
+                logits,
+                label_length,
+                logit_length,
+                logits_time_major=True,
+                unique=None,
+                blank_index=None,
+                name=None):
+  """Computes CTC (Connectionist Temporal Classification) loss.
+
+  This op implements the CTC loss as presented in (Graves et al., 2016).
+
+  Notes:
+
+  - Same as the "Classic CTC" in TensorFlow 1.x's tf.compat.v1.nn.ctc_loss
+    setting of preprocess_collapse_repeated=False, ctc_merge_repeated=True
+  - Labels may be supplied as either a dense, zero-padded tensor with a
+    vector of label sequence lengths OR as a SparseTensor.
+  - On TPU and GPU: Only dense padded labels are supported.
+  - On CPU: Caller may use SparseTensor or dense padded labels but calling with
+    a SparseTensor will be significantly faster.
+  - Default blank label is 0 rather num_classes - 1, unless overridden by
+    blank_index.
+
+  Args:
+    labels: tensor of shape [batch_size, max_label_seq_length] or SparseTensor
+    logits: tensor of shape [frames, batch_size, num_labels], if
+      logits_time_major == False, shape is [batch_size, frames, num_labels].
+    label_length: tensor of shape [batch_size], None if labels is SparseTensor
+      Length of reference label sequence in labels.
+    logit_length: tensor of shape [batch_size] Length of input sequence in
+      logits.
+    logits_time_major: (optional) If True (default), logits is shaped [time,
+      batch, logits]. If False, shape is [batch, time, logits]
+    unique: (optional) Unique label indices as computed by
+      ctc_unique_labels(labels).  If supplied, enable a faster, memory efficient
+      implementation on TPU.
+    blank_index: (optional) Set the class index to use for the blank label.
+      Negative values will start from num_classes, ie, -1 will reproduce the
+      ctc_loss behavior of using num_classes - 1 for the blank symbol. There is
+      some memory/performance overhead to switching from the default of 0 as an
+      additional shifted copy of the logits may be created.
+    name: A name for this `Op`. Defaults to "ctc_loss_dense".
+
+  Returns:
+    loss: tensor of shape [batch_size], negative log probabilities.
+
+  References:
+      Connectionist Temporal Classification - Labeling Unsegmented Sequence Data
+      with Recurrent Neural Networks:
+        [Graves et al., 2016](https://dl.acm.org/citation.cfm?id=1143891)
+        ([pdf](http://www.cs.toronto.edu/~graves/icml_2006.pdf))
+  """
+  if isinstance(labels, sparse_tensor.SparseTensor):
+    if blank_index is None:
+      raise ValueError(
+          "blank_index must be given when using SparseTensor labels.")
+
+    if blank_index < 0:
+      blank_index += _get_dim(logits, 2)
+
+    params = {'labels': labels, 'logits': logits,
+              'logit_length': logit_length,
+              'logits_time_major': logits_time_major,
+              'blank_index': blank_index}
+
+    if context.executing_eagerly():
+      device_type = _get_context_device_type()
+      can_use_gpu = (
+          # Either user specified GPU or unspecified but GPU is available.
+          (device_type == _GPU_DEVICE_NAME
+           or (device_type is None and context.num_gpus() > 0)))
+      # Under eager context, check the device placement and prefer the
+      if can_use_gpu:
+        res = _ctc_loss_op_cudnn(**params)
+      else:
+        res = _ctc_loss_op_standard(**params)
+    else:
+      api_name = 'ctc_loss_' + str(uuid.uuid4())
+      ctc_loss_op_standard = _generate_defun_backend(
+          api_name, _CPU_DEVICE_NAME, _ctc_loss_op_standard)
+      ctc_loss_op_cudnn = _generate_defun_backend(
+          api_name, _GPU_DEVICE_NAME, _ctc_loss_op_cudnn)
+      res = ctc_loss_op_standard(**params)
+      function_eager.register(ctc_loss_op_cudnn, **params)
+    return res
 
   if blank_index is None:
     blank_index = 0
