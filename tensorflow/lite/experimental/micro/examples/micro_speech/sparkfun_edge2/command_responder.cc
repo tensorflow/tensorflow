@@ -25,10 +25,10 @@ void RespondToCommand(tflite::ErrorReporter* error_reporter,
   static bool is_initialized = false;
   if (!is_initialized) {
     // Setup LED's as outputs
-    am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_RED, g_AM_HAL_GPIO_OUTPUT_12);
+    //am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_RED, g_AM_HAL_GPIO_OUTPUT_12);
     am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_BLUE, g_AM_HAL_GPIO_OUTPUT_12);
-    am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_GREEN, g_AM_HAL_GPIO_OUTPUT_12);
-    am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_YELLOW, g_AM_HAL_GPIO_OUTPUT_12);
+    //am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_GREEN, g_AM_HAL_GPIO_OUTPUT_12);
+    //am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_YELLOW, g_AM_HAL_GPIO_OUTPUT_12);
     is_initialized = true;
   }
   static int count = 0;
@@ -42,20 +42,23 @@ void RespondToCommand(tflite::ErrorReporter* error_reporter,
   }
 
   // Turn on the yellow LED if 'yes' was heard.
-  am_hal_gpio_output_clear(AM_BSP_GPIO_LED_RED);
-  am_hal_gpio_output_clear(AM_BSP_GPIO_LED_YELLOW);
-  am_hal_gpio_output_clear(AM_BSP_GPIO_LED_GREEN);
+  //am_hal_gpio_output_clear(AM_BSP_GPIO_LED_RED);
+  //am_hal_gpio_output_clear(AM_BSP_GPIO_LED_YELLOW);
+  //am_hal_gpio_output_clear(AM_BSP_GPIO_LED_GREEN);
   if (is_new_command) {
-    error_reporter->Report("Heard %s (%d) @%dms", found_command, score,
+    error_reporter->Report("\nHeard %s (%d) @%dms", found_command, score,
                            current_time);
-    if (found_command[0] == 'y') {
-      am_hal_gpio_output_set(AM_BSP_GPIO_LED_YELLOW);
+    /*if (found_command[0] == 'y') {
+      error_reporter->Report("\nYES");
+      //am_hal_gpio_output_set(AM_BSP_GPIO_LED_YELLOW);
     }
     if (found_command[0] == 'n') {
-      am_hal_gpio_output_set(AM_BSP_GPIO_LED_RED);
+      error_reporter->Report("\nNO");
+      //am_hal_gpio_output_set(AM_BSP_GPIO_LED_RED);
     }
     if (found_command[0] == 'u') {
-      am_hal_gpio_output_set(AM_BSP_GPIO_LED_GREEN);
-    }
+      error_reporter->Report("\nUNKNOWN");
+      //am_hal_gpio_output_set(AM_BSP_GPIO_LED_GREEN);
+    }*/
   }
 }
