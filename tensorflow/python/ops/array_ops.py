@@ -210,32 +210,34 @@ def fill(dims, value, name=None):
 
   For example:
 
-  ```
-  # Output tensor has shape [2, 3].
-  fill([2, 3], 9) ==> [[9, 9, 9]
-                       [9, 9, 9]]
-  ```
+  # Output tensor with shape [2, 3].
+  >>> tf.fill([2, 3], 9)
+  <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
+  array([[9, 9, 9],
+         [9, 9, 9]], dtype=int32)>
 
-  `tf.fill` differs from `tf.constant` in a few ways:
-
-  *   `tf.fill` only supports scalar contents, whereas `tf.constant` supports
-      Tensor values.
-  *   `tf.fill` creates an Op in the computation graph that constructs the
-  actual
-      Tensor value at runtime. This is in contrast to `tf.constant` which embeds
-      the entire Tensor into the graph with a `Const` node.
-  *   Because `tf.fill` evaluates at graph runtime, it supports dynamic shapes
-      based on other runtime Tensors, unlike `tf.constant`.
+  `tf.fill` evaluates at graph runtime and supports dynamic shapes based on
+  other runtime `tf.Tensors`, unlike `tf.constant(value, shape=dims)`, which
+  embeds the value as a `Const` node.
 
   Args:
-    dims: A `Tensor`. Must be one of the following types: `int32`, `int64`. 1-D.
-      Represents the shape of the output tensor.
-    value: A `Tensor`. 0-D (scalar). Value to fill the returned tensor.
-      @compatibility(numpy) Equivalent to np.full @end_compatibility
-    name: A name for the operation (optional).
+    dims: A 1-D sequence of non-negative numbers. Represents the shape of the
+      output `tf.Tensor`. Entries should be of type: `int32`, `int64`.
+    value: A value to fill the returned `tf.Tensor`.
+    name: Optional string. The name of the output `tf.Tensor`.
 
   Returns:
-    A `Tensor`. Has the same type as `value`.
+    A `tf.Tensor` with shape `dims` and the same dtype as `value`.
+
+  Raises:
+    InvalidArgumentError: `dims` contains negative entries.
+    NotFoundError: `dims` contains non-integer entries.
+
+  @compatibility(numpy)
+  Similar to `np.full`. In `numpy`, more parameters are supported. Passing a
+  number argument as the shape (`np.full(5, value)`) is valid in `numpy` for
+  specifying a 1-D shaped result, while TensorFlow does not support this syntax.
+  @end_compatibility
   """
   result = gen_array_ops.fill(dims, value, name=name)
   tensor_util.maybe_set_static_shape(result, dims)
