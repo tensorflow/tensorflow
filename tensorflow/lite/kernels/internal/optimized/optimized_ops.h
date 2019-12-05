@@ -5617,14 +5617,11 @@ inline void Quantize(int32_t multiplier, int32_t shift, int32_t total_size,
   }
 }
 
-// TODO(b/145632530): Refactor other quantize per-channel to use this one.
 inline void Quantize(const int32_t* multiplier, const int32_t* shift,
                      int32_t channel_size, int32_t total_size,
-                     int32_t output_zp, int32_t* scratch, int8_t* output) {
+                     int32_t output_zp, int32_t output_min, int32_t output_max,
+                     int32_t* scratch, int8_t* output) {
   gemmlowp::ScopedProfilingLabel label("Quantize/int8");
-
-  const int32_t output_min = std::numeric_limits<int8_t>::min();
-  const int32_t output_max = std::numeric_limits<int8_t>::max();
 
   // Here we're trying to quantize the raw accumulators:
   //        output_channels

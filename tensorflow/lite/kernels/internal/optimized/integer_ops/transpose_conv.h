@@ -94,9 +94,12 @@ inline void TransposeConvV2(
     scratch_data_p += output_offset;
   }
 
+  const int32_t output_min = std::numeric_limits<int8_t>::min();
+  const int32_t output_max = std::numeric_limits<int8_t>::max();
+
   optimized_ops::Quantize(output_multiplier, output_shift, output_depth,
                           output_shape.FlatSize(), params.output_offset,
-                          scratch_data, output_data);
+                          output_min, output_max, scratch_data, output_data);
 }
 
 }  // namespace optimized_integer_ops
