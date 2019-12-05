@@ -57,6 +57,9 @@ struct StandardPipelineOptions : public PassOptions<StandardPipelineOptions> {
 // NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
 void CreateTFStandardPipeline(OpPassManager& pm,
                               const StandardPipelineOptions& options);
+
+// Propagates device attributes of resources from callers to callees.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceDeviceInferencePass();
 }  // namespace TF
 
 namespace TFControlFlow {
