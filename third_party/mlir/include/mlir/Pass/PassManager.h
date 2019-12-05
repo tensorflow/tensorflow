@@ -21,6 +21,9 @@
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/iterator.h"
+
+#include <vector>
 
 namespace llvm {
 class Any;
@@ -53,6 +56,13 @@ public:
   OpPassManager(const OpPassManager &rhs);
   ~OpPassManager();
   OpPassManager &operator=(const OpPassManager &rhs);
+
+  /// Iterator over the passes in this pass manager.
+  using pass_iterator =
+      llvm::pointee_iterator<std::vector<std::unique_ptr<Pass>>::iterator>;
+  pass_iterator begin();
+  pass_iterator end();
+  llvm::iterator_range<pass_iterator> getPasses() { return {begin(), end()}; }
 
   /// Run the held passes over the given operation.
   LogicalResult run(Operation *op, AnalysisManager am);
@@ -93,6 +103,9 @@ public:
   /// the correctness of per-pass overrides of Pass::printAsTextualPipeline.
   void printAsTextualPipeline(raw_ostream &os);
 
+  /// Merge the pass statistics of this class into 'other'.
+  void mergeStatisticsInto(OpPassManager &other);
+
 private:
   OpPassManager(OperationName name, bool disableThreads, bool verifyPasses);
 
@@ -107,10 +120,10 @@ private:
 // PassManager
 //===----------------------------------------------------------------------===//
 
-/// An enum describing the different display modes for the pass timing
-/// information within the pass manager.
-enum class PassTimingDisplayMode {
-  // In this mode the results are displayed in a list sorted by total time,
+/// An enum describing the different display modes for the information within
+/// the pass manager.
+enum class PassDisplayMode {
+  // In this mode the results are displayed in a list sorted by total,
   // with each pass/analysis instance aggregated into one unique result.
   List,
 
@@ -162,12 +175,22 @@ public:
   /// Note: Timing should be enabled after all other instrumentations to avoid
   /// any potential "ghost" timing from other instrumentations being
   /// unintentionally included in the timing results.
-  void enableTiming(
-      PassTimingDisplayMode displayMode = PassTimingDisplayMode::Pipeline);
+  void enableTiming(PassDisplayMode displayMode = PassDisplayMode::Pipeline);
+
+  /// Prompts the pass manager to print the statistics collected for each of the
+  /// held passes after each call to 'run'.
+  void
+  enableStatistics(PassDisplayMode displayMode = PassDisplayMode::Pipeline);
 
 private:
+  /// Dump the statistics of the passes within this pass manager.
+  void dumpStatistics();
+
   /// Flag that specifies if pass timing is enabled.
   bool passTiming : 1;
+
+  /// Flag that specifies if pass statistics should be dumped.
+  Optional<PassDisplayMode> passStatisticsMode;
 
   /// A manager for pass instrumentations.
   std::unique_ptr<PassInstrumentor> instrumentor;

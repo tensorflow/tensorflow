@@ -158,6 +158,7 @@ cc_library(
         "lib/Pass/PassDetail.h",
         "lib/Pass/PassManagerOptions.cpp",
         "lib/Pass/PassRegistry.cpp",
+        "lib/Pass/PassStatistics.cpp",
         "lib/Pass/PassTiming.cpp",
     ],
     hdrs = [

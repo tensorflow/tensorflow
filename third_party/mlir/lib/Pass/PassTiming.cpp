@@ -169,7 +169,7 @@ struct Timer {
 };
 
 struct PassTiming : public PassInstrumentation {
-  PassTiming(PassTimingDisplayMode displayMode) : displayMode(displayMode) {}
+  PassTiming(PassDisplayMode displayMode) : displayMode(displayMode) {}
   ~PassTiming() override { print(); }
 
   /// Setup the instrumentation hooks.
@@ -242,7 +242,7 @@ struct PassTiming : public PassInstrumentation {
   DenseMap<uint64_t, SmallVector<Timer *, 4>> activeThreadTimers;
 
   /// The display mode to use when printing the timing results.
-  PassTimingDisplayMode displayMode;
+  PassDisplayMode displayMode;
 
   /// A mapping of pipeline timers that need to be merged into the parent
   /// collection. The timers are mapped to the parent info to merge into.
@@ -289,15 +289,8 @@ void PassTiming::startPassTimer(Pass *pass) {
   auto kind = isAdaptorPass(pass) ? TimerKind::PipelineCollection
                                   : TimerKind::PassOrAnalysis;
   Timer *timer = getTimer(pass, kind, [pass]() -> std::string {
-    if (auto *adaptor = getAdaptorPassBase(pass)) {
-      std::string name = "Pipeline Collection : [";
-      llvm::raw_string_ostream os(name);
-      interleaveComma(adaptor->getPassManagers(), os, [&](OpPassManager &pm) {
-        os << '\'' << pm.getOpName() << '\'';
-      });
-      os << ']';
-      return os.str();
-    }
+    if (auto *adaptor = getAdaptorPassBase(pass))
+      return adaptor->getName();
     return pass->getName();
   });
 
@@ -345,8 +338,8 @@ void PassTiming::runAfterAnalysis(llvm::StringRef, AnalysisID *, Operation *) {
 static void printTimerHeader(llvm::raw_ostream &os, TimeRecord total) {
   os << "===" << std::string(73, '-') << "===\n";
   // Figure out how many spaces to description name.
-  unsigned Padding = (80 - kPassTimingDescription.size()) / 2;
-  os.indent(Padding) << kPassTimingDescription << '\n';
+  unsigned padding = (80 - kPassTimingDescription.size()) / 2;
+  os.indent(padding) << kPassTimingDescription << '\n';
   os << "===" << std::string(73, '-') << "===\n";
 
   // Print the total time followed by the section headers.
@@ -379,10 +372,10 @@ void PassTiming::print() {
 
   // Defer to a specialized printer for each display mode.
   switch (displayMode) {
-  case PassTimingDisplayMode::List:
+  case PassDisplayMode::List:
     printResultsAsList(*os, rootTimer.get(), totalTime);
     break;
-  case PassTimingDisplayMode::Pipeline:
+  case PassDisplayMode::Pipeline:
     printResultsAsPipeline(*os, rootTimer.get(), totalTime);
     break;
   }
@@ -472,7 +465,7 @@ void PassTiming::printResultsAsPipeline(raw_ostream &os, Timer *root,
 
 /// Add an instrumentation to time the execution of passes and the computation
 /// of analyses.
-void PassManager::enableTiming(PassTimingDisplayMode displayMode) {
+void PassManager::enableTiming(PassDisplayMode displayMode) {
   // Check if pass timing is already enabled.
   if (passTiming)
     return;
