@@ -849,6 +849,16 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
+        name = "rules_cc",
+        sha256 = "cf3b76a90c86c0554c5b10f4b160f05af71d252026b71362c4674e2fb9936cf9",
+        strip_prefix = "rules_cc-01d4a48911d5e7591ecb1c06d3b8af47fe872371",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_cc/archive/01d4a48911d5e7591ecb1c06d3b8af47fe872371.zip",
+            "https://github.com/bazelbuild/rules_cc/archive/01d4a48911d5e7591ecb1c06d3b8af47fe872371.zip",
+        ],
+    )
+
+    tf_http_archive(
         name = "build_bazel_rules_android",
         sha256 = "cd06d15dd8bb59926e4d65f9003bfc20f9da4b2519985c27e190cddc8b7a7806",
         strip_prefix = "rules_android-0.1.1",
