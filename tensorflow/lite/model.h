@@ -223,8 +223,6 @@ class InterpreterBuilder {
   TfLiteStatus ParseQuantization(const QuantizationParameters* src_quantization,
                                  TfLiteQuantization* quantization,
                                  const std::vector<int>& dims);
-  TfLiteStatus ParseSparsity(const SparsityParameters* src_sparsity,
-                             TfLiteSparsity** sparsity);
 
   const ::tflite::Model* model_;
   const OpResolver& op_resolver_;

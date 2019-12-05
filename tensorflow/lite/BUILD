@@ -318,7 +318,6 @@ cc_test(
         "testdata/2_subgraphs.bin",
         "testdata/empty_model.bin",
         "testdata/multi_add_flex.bin",
-        "testdata/sparse_tensor.bin",
         "testdata/test_min_runtime.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",

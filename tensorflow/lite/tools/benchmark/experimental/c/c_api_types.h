@@ -303,29 +303,6 @@ enum {
   kTfLiteNullBufferHandle = -1,
 };
 
-// Storage format of each dimension in a sparse tensor.
-typedef enum {
-  kTfLiteDimDense = 0,
-  kTfLiteDimSparseCSR,
-} TfLiteDimensionType;
-
-// Metadata to encode each dimension in a sparse tensor.
-typedef struct {
-  TfLiteDimensionType format;
-  int dense_size;
-  TfLiteIntArray* array_segments;
-  TfLiteIntArray* array_indices;
-} TfLiteDimensionMetadata;
-
-// Parameters used to encode a sparse tensor. For detailed explanation of each
-// field please refer to lite/schema/schema.fbs.
-typedef struct {
-  TfLiteIntArray* traversal_order;
-  TfLiteIntArray* block_map;
-  TfLiteDimensionMetadata* dim_metadata;
-  int dim_metadata_size;
-} TfLiteSparsity;
-
 // An tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).
 typedef struct {
@@ -380,11 +357,6 @@ typedef struct {
 
   // Quantization information. Replaces params field above.
   TfLiteQuantization quantization;
-
-  // Parameters used to encode a sparse tensor.
-  // This is optional. The field is NULL if a tensor is dense.
-  // WARNING: This is an experimental interface that is subject to change.
-  TfLiteSparsity* sparsity;
 } TfLiteTensor;
 
 // Free data memory of tensor `t`.
@@ -392,9 +364,6 @@ void TfLiteTensorDataFree(TfLiteTensor* t);
 
 // Free quantization data.
 void TfLiteQuantizationFree(TfLiteQuantization* quantization);
-
-// Free sparsity parameters.
-void TfLiteSparsityFree(TfLiteSparsity* sparsity);
 
 // Free memory of tensor `t`.
 void TfLiteTensorFree(TfLiteTensor* t);
