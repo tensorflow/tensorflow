@@ -392,10 +392,29 @@ class RandomNormal(Initializer):
 class TruncatedNormal(Initializer):
   """Initializer that generates a truncated normal distribution.
 
-  These values are similar to values from a `random_normal_initializer`
-  except that values more than two standard deviations from the mean
-  are discarded and re-drawn. This is the recommended initializer for
-  neural network weights and filters.
+  Initializers allow you to pre-specify an initialization strategy, encoded in
+  the Initializer object, without knowing the shape and dtype of the variable
+  being initialized.
+
+  These values are similar to values from a `tf.initializers.RandomNormal`
+  except that values more than two standard deviations from the mean are
+  discarded and re-drawn. This is the recommended initializer for neural network
+  weights and filters.
+
+  Examples:
+
+  >>> def make_variables(k, initializer):
+  ...   return (tf.Variable(initializer(shape=[k], dtype=tf.float32)),
+  ...           tf.Variable(initializer(shape=[k, k], dtype=tf.float32)))
+  >>> v1, v2 = make_variables(
+  ...     3, tf.initializers.TruncatedNormal(mean=1., stddev=2.))
+  >>> v1
+  <tf.Variable ... shape=(3,) ... numpy=array([...], dtype=float32)>
+  >>> v2
+  <tf.Variable ... shape=(3, 3) ... numpy=
+  ...
+  >>> make_variables(4, tf.initializers.RandomUniform(minval=-1., maxval=1.))
+  (<tf.Variable...shape=(4,) dtype=float32...>, <tf.Variable...shape=(4, 4) ...
 
   Args:
     mean: a python scalar or a scalar tensor. Mean of the random values
@@ -403,8 +422,7 @@ class TruncatedNormal(Initializer):
     stddev: a python scalar or a scalar tensor. Standard deviation of the
       random values to generate.
     seed: A Python integer. Used to create random seeds. See
-      `tf.compat.v1.set_random_seed`
-      for behavior.
+      `tf.random.set_seed` for behavior.
   """
 
   def __init__(self, mean=0.0, stddev=0.05, seed=None):
@@ -439,11 +457,15 @@ class TruncatedNormal(Initializer):
 class VarianceScaling(Initializer):
   """Initializer capable of adapting its scale to the shape of weights tensors.
 
-  With `distribution="truncated_normal" or "untruncated_normal"`,
-  samples are drawn from a truncated/untruncated normal
-  distribution with a mean of zero and a standard deviation (after truncation,
-  if used) `stddev = sqrt(scale / n)`
+  Initializers allow you to pre-specify an initialization strategy, encoded in
+  the Initializer object, without knowing the shape and dtype of the variable
+  being initialized.
+
+  With `distribution="truncated_normal" or "untruncated_normal"`, samples are
+  drawn from a truncated/untruncated normal distribution with a mean of zero and
+  a standard deviation (after truncation, if used) `stddev = sqrt(scale / n)`
   where n is:
+
     - number of input units in the weight tensor, if mode = "fan_in"
     - number of output units, if mode = "fan_out"
     - average of the numbers of input and output units, if mode = "fan_avg"
@@ -451,14 +473,27 @@ class VarianceScaling(Initializer):
   With `distribution="uniform"`, samples are drawn from a uniform distribution
   within [-limit, limit], with `limit = sqrt(3 * scale / n)`.
 
+  Examples:
+
+  >>> def make_variables(k, initializer):
+  ...   return (tf.Variable(initializer(shape=[k], dtype=tf.float32)),
+  ...           tf.Variable(initializer(shape=[k, k], dtype=tf.float32)))
+  >>> v1, v2 = make_variables(3, tf.initializers.VarianceScaling(scale=1.))
+  >>> v1
+  <tf.Variable ... shape=(3,) ... numpy=array([...], dtype=float32)>
+  >>> v2
+  <tf.Variable ... shape=(3, 3) ... numpy=
+  ...
+  >>> make_variables(4, tf.initializers.VarianceScaling(distribution='uniform'))
+  (<tf.Variable...shape=(4,) dtype=float32...>, <tf.Variable...shape=(4, 4) ...
+
   Args:
     scale: Scaling factor (positive float).
     mode: One of "fan_in", "fan_out", "fan_avg".
     distribution: Random distribution to use. One of "truncated_normal",
       "untruncated_normal" and  "uniform".
     seed: A Python integer. Used to create random seeds. See
-      `tf.compat.v1.set_random_seed`
-      for behavior.
+      `tf.random.set_seed` for behavior.
 
   Raises:
     ValueError: In case of an invalid value for the "scale", mode" or
@@ -534,6 +569,10 @@ class VarianceScaling(Initializer):
 class Orthogonal(Initializer):
   """Initializer that generates an orthogonal matrix.
 
+  Initializers allow you to pre-specify an initialization strategy, encoded in
+  the Initializer object, without knowing the shape and dtype of the variable
+  being initialized.
+
   If the shape of the tensor to initialize is two-dimensional, it is initialized
   with an orthogonal matrix obtained from the QR decomposition of a matrix of
   random numbers drawn from a normal distribution.
@@ -545,11 +584,24 @@ class Orthogonal(Initializer):
   is initialized, where `n` is the length of the shape vector.
   The matrix is subsequently reshaped to give a tensor of the desired shape.
 
+  Examples:
+
+  >>> def make_variables(k, initializer):
+  ...   return (tf.Variable(initializer(shape=[k, k], dtype=tf.float32)),
+  ...           tf.Variable(initializer(shape=[k, k, k], dtype=tf.float32)))
+  >>> v1, v2 = make_variables(3, tf.initializers.Orthogonal())
+  >>> v1
+  <tf.Variable ... shape=(3, 3) ...
+  >>> v2
+  <tf.Variable ... shape=(3, 3, 3) ...
+  >>> make_variables(4, tf.initializers.Orthogonal(gain=0.5))
+  (<tf.Variable ... shape=(4, 4) dtype=float32...
+   <tf.Variable ... shape=(4, 4, 4) dtype=float32...
+
   Args:
     gain: multiplicative factor to apply to the orthogonal matrix
     seed: A Python integer. Used to create random seeds. See
-      `tf.compat.v1.set_random_seed`
-    for behavior.
+      `tf.random.set_seed` for behavior.
 
   References:
       [Saxe et al., 2014](https://openreview.net/forum?id=_wzZwKpTDF_9C)
@@ -604,7 +656,25 @@ class Orthogonal(Initializer):
 class Identity(Initializer):
   """Initializer that generates the identity matrix.
 
-  Only use for 2D matrices.
+  Initializers allow you to pre-specify an initialization strategy, encoded in
+  the Initializer object, without knowing the shape and dtype of the variable
+  being initialized.
+
+  Only usable for generating 2D matrices.
+
+  Examples:
+
+  >>> def make_variable(k, initializer):
+  ...   return tf.Variable(initializer(shape=[k, k], dtype=tf.float32))
+  >>> make_variable(2, tf.initializers.Identity())
+  <tf.Variable ... shape=(2, 2) dtype=float32, numpy=
+  array([[1., 0.],
+         [0., 1.]], dtype=float32)>
+  >>> make_variable(3, tf.initializers.Identity(gain=0.5))
+  <tf.Variable ... shape=(3, 3) dtype=float32, numpy=
+  array([[0.5, 0. , 0. ],
+         [0. , 0.5, 0. ],
+         [0. , 0. , 0.5]], dtype=float32)>
 
   Args:
     gain: Multiplicative factor to apply to the identity matrix.
@@ -623,6 +693,7 @@ class Identity(Initializer):
 
     Raises:
       ValueError: If the dtype is not floating point
+      ValueError: If the requested shape does not have exactly two axes.
     """
     partition_info = None  # Keeps logic so can be readded later if necessary
     dtype = _assert_float_dtype(dtype)
@@ -643,15 +714,32 @@ class Identity(Initializer):
 class GlorotUniform(VarianceScaling):
   """The Glorot uniform initializer, also called Xavier uniform initializer.
 
-  It draws samples from a uniform distribution within [-limit, limit]
-  where `limit` is `sqrt(6 / (fan_in + fan_out))`
-  where `fan_in` is the number of input units in the weight tensor
-  and `fan_out` is the number of output units in the weight tensor.
+  Initializers allow you to pre-specify an initialization strategy, encoded in
+  the Initializer object, without knowing the shape and dtype of the variable
+  being initialized.
+
+  Draws samples from a uniform distribution within [-limit, limit] where `limit`
+  is `sqrt(6 / (fan_in + fan_out))` where `fan_in` is the number of input units
+  in the weight tensor and `fan_out` is the number of output units in the weight
+  tensor.
+
+  Examples:
+
+  >>> def make_variables(k, initializer):
+  ...   return (tf.Variable(initializer(shape=[k, k], dtype=tf.float32)),
+  ...           tf.Variable(initializer(shape=[k, k, k], dtype=tf.float32)))
+  >>> v1, v2 = make_variables(3, tf.initializers.GlorotUniform())
+  >>> v1
+  <tf.Variable ... shape=(3, 3) ...
+  >>> v2
+  <tf.Variable ... shape=(3, 3, 3) ...
+  >>> make_variables(4, tf.initializers.RandomNormal())
+  (<tf.Variable ... shape=(4, 4) dtype=float32...
+   <tf.Variable ... shape=(4, 4, 4) dtype=float32...
 
   Args:
     seed: A Python integer. Used to create random seeds. See
-      `tf.compat.v1.set_random_seed`
-      for behavior.
+      `tf.random.set_seed` for behavior.
 
   References:
       [Glorot et al., 2010](http://proceedings.mlr.press/v9/glorot10a.html)
@@ -672,14 +760,32 @@ class GlorotUniform(VarianceScaling):
 class GlorotNormal(VarianceScaling):
   """The Glorot normal initializer, also called Xavier normal initializer.
 
-  It draws samples from a truncated normal distribution centered on 0
-  with `stddev = sqrt(2 / (fan_in + fan_out))`
-  where `fan_in` is the number of input units in the weight tensor
-  and `fan_out` is the number of output units in the weight tensor.
+  Initializers allow you to pre-specify an initialization strategy, encoded in
+  the Initializer object, without knowing the shape and dtype of the variable
+  being initialized.
+
+  Draws samples from a truncated normal distribution centered on 0 with `stddev
+  = sqrt(2 / (fan_in + fan_out))` where `fan_in` is the number of input units in
+  the weight tensor and `fan_out` is the number of output units in the weight
+  tensor.
+
+  Examples:
+
+  >>> def make_variables(k, initializer):
+  ...   return (tf.Variable(initializer(shape=[k, k], dtype=tf.float32)),
+  ...           tf.Variable(initializer(shape=[k, k, k], dtype=tf.float32)))
+  >>> v1, v2 = make_variables(3, tf.initializers.GlorotNormal())
+  >>> v1
+  <tf.Variable ... shape=(3, 3) ...
+  >>> v2
+  <tf.Variable ... shape=(3, 3, 3) ...
+  >>> make_variables(4, tf.initializers.RandomNormal())
+  (<tf.Variable ... shape=(4, 4) dtype=float32...
+   <tf.Variable ... shape=(4, 4, 4) dtype=float32...
 
   Args:
     seed: A Python integer. Used to create random seeds. See
-      `tf.compat.v1.set_random_seed` for behavior.
+      `tf.random.set_seed` for behavior.
 
   References:
       [Glorot et al., 2010](http://proceedings.mlr.press/v9/glorot10a.html)
@@ -717,15 +823,34 @@ identity_initializer = Identity
 def lecun_normal(seed=None):
   """LeCun normal initializer.
 
-  It draws samples from a truncated normal distribution centered on 0
-  with `stddev = sqrt(1 / fan_in)`
-  where `fan_in` is the number of input units in the weight tensor.
+  Initializers allow you to pre-specify an initialization strategy, encoded in
+  the Initializer object, without knowing the shape and dtype of the variable
+  being initialized.
+
+  Draws samples from a truncated normal distribution centered on 0 with `stddev
+  = sqrt(1 / fan_in)` where `fan_in` is the number of input units in the weight
+  tensor.
+
+  Examples:
+
+  >>> def make_variables(k, initializer):
+  ...   return (tf.Variable(initializer(shape=[k, k], dtype=tf.float32)),
+  ...           tf.Variable(initializer(shape=[k, k, k], dtype=tf.float32)))
+  >>> v1, v2 = make_variables(3, tf.initializers.lecun_normal())
+  >>> v1
+  <tf.Variable ... shape=(3, 3) ...
+  >>> v2
+  <tf.Variable ... shape=(3, 3, 3) ...
+  >>> make_variables(4, tf.initializers.RandomNormal())
+  (<tf.Variable ... shape=(4, 4) dtype=float32...
+   <tf.Variable ... shape=(4, 4, 4) dtype=float32...
 
   Arguments:
     seed: A Python integer. Used to seed the random generator.
 
   Returns:
-    An initializer.
+    A callable Initializer with `shape` and `dtype` arguments which generates a
+    tensor.
 
   References:
       - Self-Normalizing Neural Networks,
@@ -743,15 +868,34 @@ def lecun_normal(seed=None):
 def lecun_uniform(seed=None):
   """LeCun uniform initializer.
 
-  It draws samples from a uniform distribution within [-limit, limit]
-  where `limit` is `sqrt(3 / fan_in)`
-  where `fan_in` is the number of input units in the weight tensor.
+  Initializers allow you to pre-specify an initialization strategy, encoded in
+  the Initializer object, without knowing the shape and dtype of the variable
+  being initialized.
+
+  Draws samples from a uniform distribution within [-limit, limit] where `limit`
+  is `sqrt(3 / fan_in)` where `fan_in` is the number of input units in the
+  weight tensor.
+
+  Examples:
+
+  >>> def make_variables(k, initializer):
+  ...   return (tf.Variable(initializer(shape=[k, k], dtype=tf.float32)),
+  ...           tf.Variable(initializer(shape=[k, k, k], dtype=tf.float32)))
+  >>> v1, v2 = make_variables(3, tf.initializers.lecun_uniform())
+  >>> v1
+  <tf.Variable ... shape=(3, 3) ...
+  >>> v2
+  <tf.Variable ... shape=(3, 3, 3) ...
+  >>> make_variables(4, tf.initializers.RandomNormal())
+  (<tf.Variable ... shape=(4, 4) dtype=float32...
+   <tf.Variable ... shape=(4, 4, 4) dtype=float32...
 
   Arguments:
     seed: A Python integer. Used to seed the random generator.
 
   Returns:
-    An initializer.
+    A callable Initializer with `shape` and `dtype` arguments which generates a
+    tensor.
 
   References:
       - Self-Normalizing Neural Networks,
@@ -767,15 +911,34 @@ def lecun_uniform(seed=None):
 def he_normal(seed=None):
   """He normal initializer.
 
-  It draws samples from a truncated normal distribution centered on 0
-  with `stddev = sqrt(2 / fan_in)`
-  where `fan_in` is the number of input units in the weight tensor.
+  Initializers allow you to pre-specify an initialization strategy, encoded in
+  the Initializer object, without knowing the shape and dtype of the variable
+  being initialized.
+
+  It draws samples from a truncated normal distribution centered on 0 with
+  `stddev = sqrt(2 / fan_in)` where `fan_in` is the number of input units in the
+  weight tensor.
+
+  Examples:
+
+  >>> def make_variables(k, initializer):
+  ...   return (tf.Variable(initializer(shape=[k, k], dtype=tf.float32)),
+  ...           tf.Variable(initializer(shape=[k, k, k], dtype=tf.float32)))
+  >>> v1, v2 = make_variables(3, tf.initializers.he_normal())
+  >>> v1
+  <tf.Variable ... shape=(3, 3) ...
+  >>> v2
+  <tf.Variable ... shape=(3, 3, 3) ...
+  >>> make_variables(4, tf.initializers.RandomNormal())
+  (<tf.Variable ... shape=(4, 4) dtype=float32...
+   <tf.Variable ... shape=(4, 4, 4) dtype=float32...
 
   Arguments:
     seed: A Python integer. Used to seed the random generator.
 
   Returns:
-    An initializer.
+    A callable Initializer with `shape` and `dtype` arguments which generates a
+    tensor.
 
   References:
       [He et al., 2015](https://www.cv-foundation.org/openaccess/content_iccv_2015/html/He_Delving_Deep_into_ICCV_2015_paper.html) # pylint: disable=line-too-long
@@ -788,15 +951,34 @@ def he_normal(seed=None):
 def he_uniform(seed=None):
   """He uniform variance scaling initializer.
 
-  It draws samples from a uniform distribution within [-limit, limit]
-  where `limit` is `sqrt(6 / fan_in)`
-  where `fan_in` is the number of input units in the weight tensor.
+  Initializers allow you to pre-specify an initialization strategy, encoded in
+  the Initializer object, without knowing the shape and dtype of the variable
+  being initialized.
+
+  Draws samples from a uniform distribution within [-limit, limit] where `limit`
+  is `sqrt(6 / fan_in)` where `fan_in` is the number of input units in the
+  weight tensor.
+
+  Examples:
+
+  >>> def make_variables(k, initializer):
+  ...   return (tf.Variable(initializer(shape=[k, k], dtype=tf.float32)),
+  ...           tf.Variable(initializer(shape=[k, k, k], dtype=tf.float32)))
+  >>> v1, v2 = make_variables(3, tf.initializers.he_uniform())
+  >>> v1
+  <tf.Variable ... shape=(3, 3) ...
+  >>> v2
+  <tf.Variable ... shape=(3, 3, 3) ...
+  >>> make_variables(4, tf.initializers.RandomNormal())
+  (<tf.Variable ... shape=(4, 4) dtype=float32...
+   <tf.Variable ... shape=(4, 4, 4) dtype=float32...
 
   Arguments:
     seed: A Python integer. Used to seed the random generator.
 
   Returns:
-    An initializer.
+    A callable Initializer with `shape` and `dtype` arguments which generates a
+    tensor.
 
   References:
       [He et al., 2015](https://www.cv-foundation.org/openaccess/content_iccv_2015/html/He_Delving_Deep_into_ICCV_2015_paper.html) # pylint: disable=line-too-long
