@@ -5050,10 +5050,16 @@ def device(device_name_or_function):
 def device_v2(device_name):
   """Specifies the device for ops created/executed in this context.
 
-  `device_name` can be fully specified, as in "/job:worker/task:1/device:cpu:0",
-  or partially specified, containing only a subset of the "/"-separated
-  fields. Any fields which are specified override device annotations from outer
-  scopes. For example:
+  This function specifies the device to be used for ops created/executed in a
+  particular context. Nested contexts will inherit and also create/execute
+  their ops on the specified device. If a specific device is not required,
+  consider not using this function so that a device can be automatically
+  assigned.  In general the use of this function is optional. `device_name` can
+  be fully specified, as in "/job:worker/task:1/device:cpu:0", or partially
+  specified, containing only a subset of the "/"-separated fields. Any fields
+  which are specified will override device annotations from outer scopes.
+
+  For example:
 
   ```python
   with tf.device('/job:foo'):
