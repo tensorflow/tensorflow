@@ -1672,21 +1672,9 @@ class DnnSupport {
       Stream* stream, const dnn::DropoutDescriptor& dropout_params,
       const dnn::BatchDescriptor& noise_dimensions,
       const dnn::BatchDescriptor& input_dimensions,
-      const DeviceMemory<double>& input_data,
-      const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<double>* output_data,
-      ScratchAllocator* workspace_allocator = nullptr) {
-    LOG(FATAL) << "DoDropoutForward not implemented for double.";
-    return false;
-  }
-
-  virtual bool DoDropoutForward(
-      Stream* stream, const dnn::DropoutDescriptor& dropout_params,
-      const dnn::BatchDescriptor& noise_dimensions,
-      const dnn::BatchDescriptor& input_dimensions,
       const DeviceMemory<float>& input_data,
       const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<float>* output_data,
+      DeviceMemory<float>* output_data, DeviceMemory<bool>* mask,
       ScratchAllocator* workspace_allocator = nullptr) {
     LOG(FATAL) << "DoDropoutForward not implemented for float.";
     return false;
@@ -1698,32 +1686,9 @@ class DnnSupport {
       const dnn::BatchDescriptor& input_dimensions,
       const DeviceMemory<Eigen::half>& input_data,
       const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<Eigen::half>* output_data,
+      DeviceMemory<Eigen::half>* output_data, DeviceMemory<bool>* mask,
       ScratchAllocator* workspace_allocator = nullptr) {
-    LOG(FATAL) << "DoDropoutForward not implemented for Eigen::half.";
-    return false;
-  }
-
-  virtual bool DoDropoutForward(
-      Stream* stream, const dnn::DropoutDescriptor& dropout_params,
-      const dnn::BatchDescriptor& noise_dimensions,
-      const dnn::BatchDescriptor& input_dimensions,
-      const DeviceMemory<int8>& input_data,
-      const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<int8>* output_data,
-      ScratchAllocator* workspace_allocator = nullptr) {
-    LOG(FATAL) << "DoDropoutForward not implemented for int8.";
-    return false;
-  }
-  virtual bool DoDropoutBackward(
-      Stream* stream, const dnn::DropoutDescriptor& dropout_params,
-      const dnn::BatchDescriptor& noise_dimensions,
-      const dnn::BatchDescriptor& input_dimensions,
-      const DeviceMemory<double>& input_data,
-      const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<double>* output_data,
-      ScratchAllocator* workspace_allocator = nullptr) {
-    LOG(FATAL) << "DoDropoutBackward not implemented for double.";
+    LOG(FATAL) << "DoDropoutForward not implemented for half.";
     return false;
   }
 
@@ -1733,7 +1698,7 @@ class DnnSupport {
       const dnn::BatchDescriptor& input_dimensions,
       const DeviceMemory<float>& input_data,
       const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<float>* output_data,
+      DeviceMemory<float>* output_data, DeviceMemory<bool>* mask,
       ScratchAllocator* workspace_allocator = nullptr) {
     LOG(FATAL) << "DoDropoutBackward not implemented for float.";
     return false;
@@ -1745,21 +1710,9 @@ class DnnSupport {
       const dnn::BatchDescriptor& input_dimensions,
       const DeviceMemory<Eigen::half>& input_data,
       const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<Eigen::half>* output_data,
+      DeviceMemory<Eigen::half>* output_data, DeviceMemory<bool>* mask,
       ScratchAllocator* workspace_allocator = nullptr) {
-    LOG(FATAL) << "DoDropoutBackward not implemented for Eigen::half.";
-    return false;
-  }
-
-  virtual bool DoDropoutBackward(
-      Stream* stream, const dnn::DropoutDescriptor& dropout_params,
-      const dnn::BatchDescriptor& noise_dimensions,
-      const dnn::BatchDescriptor& input_dimensions,
-      const DeviceMemory<int8>& input_data,
-      const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<int8>* output_data,
-      ScratchAllocator* workspace_allocator = nullptr) {
-    LOG(FATAL) << "DoDropoutBackward not implemented for int8.";
+    LOG(FATAL) << "DoDropoutBackward not implemented for half.";
     return false;
   }
 

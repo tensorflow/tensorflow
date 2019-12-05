@@ -1079,7 +1079,7 @@ def ConditionalRegister(dec, condition):
 @ConditionalRegister(ops.RegisterGradient("Dropout"),build_info.is_rocm_build)
 def _DropoutGrad(op, grad):
   dx = 0
-  if op.inputs[0].dtype is dtypes.float32:
+  if op.inputs[0].dtype == dtypes.float32 or op.inputs[0].dtype == dtypes.float16:
     dx = gen_nn_ops.dropout_grad(
           grad, op.inputs[1], op.inputs[2], op.inputs[3])
   else:
