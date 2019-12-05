@@ -7,8 +7,8 @@ methods).
 ## Style guide
 
 MLIR follows the [LLVM style](https://llvm.org/docs/CodingStandards.html) guide.
-We also adhere to the following, that deviates from, or isn't specified in the
-LLVM style guide:
+We also adhere to the following (which deviate from or are not specified in the
+LLVM style guide):
 
 *   Adopts [camelBack](https://llvm.org/docs/Proposals/VariableNames.html);
 *   Except for IR units (Region, Block, and Operation), non-nullable output
@@ -20,6 +20,10 @@ LLVM style guide:
     recursive way). At the moment, we tolerate it for the two following cases:
     *   The nesting of the IR: we use recursion when traversing nested regions.
     *   Type nesting: recursion may be used for the nesting of composite types.
+*   Follow the `git` conventions for writing a commit message, in particular the
+    first line is the "title", it should be followed by an empty line and an
+    optional description. This [post](https://chris.beams.io/posts/git-commit/)
+    give examples and more details.
 
 Please run clang-format on the files you modified with the `.clang-format`
 configuration file available in the root directory. Check the clang-format
@@ -37,6 +41,12 @@ options in general. Options that are specific to a pass should also be prefixed
 with the pass name. For example, the affine dialect provides a loop tiling pass
 that is registered on the command line as `-affine-tile`, and with a tile size
 option that can be set with `-affine-tile-size`.
+
+We also avoid `cl::opt` to provide pass options in favor of the
+[pass options](WritingAPass.md#instance-specific-pass-options) mechanism. This
+allows for these options to be serialized in a pass pipeline description, as
+well as passing different options to multiple instances of a pass in the same
+pipeline.
 
 ## Testing guidelines
 

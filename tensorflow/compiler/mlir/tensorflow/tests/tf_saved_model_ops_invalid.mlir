@@ -13,7 +13,7 @@ module attributes {tf_saved_model.semantics} {
 
 module attributes {tf_saved_model.semantics} {
 
-  // expected-error@+1 {{'tf_saved_model.bound_input' attribute should be a SymbolRefAttr}}
+  // expected-error@+1 {{'tf_saved_model.bound_input' attribute should be a FlatSymbolRefAttr}}
   func @f(
     %arg0: tensor<f32> {tf_saved_model.bound_input = 1 : i32}
   ) attributes { tf_saved_model.exported_names = ["foo.some_func"] } {
@@ -133,7 +133,7 @@ module attributes {tf_saved_model.semantics} {
 
 module attributes {tf_saved_model.semantics} {
 
-  "tf_saved_model.global_tensor"() { sym_name = "some_constant", value = dense<42.0> : tensor<f32> } : () -> ()
+  "tf_saved_model.global_tensor"() { sym_name = "some_constant", type = tensor<f32>, value = dense<42.0> : tensor<f32> } : () -> ()
 
   // expected-error@+1 {{all 'tf_saved_model.index_path' arg attributes should precede all 'tf_saved_model.bound_input' arg attributes}}
   func @f(
@@ -204,4 +204,24 @@ module attributes {tf_saved_model.semantics} {
     return
   }
 
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+  // expected-error@+1 {{'type' and 'value' attributes should have compatible tensor types}}
+  "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v0", type = tensor<3xf32>, value = dense<42.0> : tensor<9xf32> } : () -> ()
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+  "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<f32>, value = dense<42.0> : tensor<f32> } : () -> ()
+  // expected-error@+1 {{duplicate 'tf_saved_model.bound_input' binding}}
+  func @f(
+    %arg0: tensor<*x!tf.resource> {tf_saved_model.bound_input = @v},
+    %arg1: tensor<*x!tf.resource> {tf_saved_model.bound_input = @v}
+  ) attributes {tf_saved_model.exported_names = ["f"]} {
+    return
+  }
 }

@@ -92,11 +92,13 @@ void LinearAlgebraOp<InputScalar, OutputScalar>::Compute(
   TensorShapes input_matrix_shapes;
   TensorShape batch_shape;
   AnalyzeInputs(context, &inputs, &input_matrix_shapes, &batch_shape);
+  if (!context->status().ok()) return;
 
   TensorShapes output_matrix_shapes;
   TensorOutputs outputs;
   PrepareOutputs(context, input_matrix_shapes, batch_shape, &outputs,
                  &output_matrix_shapes);
+  if (!context->status().ok()) return;
 
   // Process the individual matrix problems in parallel using a threadpool.
   auto shard = [this, &inputs, &input_matrix_shapes, &outputs,

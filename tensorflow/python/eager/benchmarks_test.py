@@ -58,6 +58,7 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training import gradient_descent
@@ -815,6 +816,56 @@ class MicroBenchmarks(test.Benchmark):
   def benchmark_tf_tensordot_GPU_async(self):
     self._benchmark_tf_tensordot(device=GPU, execution_mode=context.ASYNC)
 
+  def _benchmark_tf_zeros(self, shape, dtype, device=CPU):
+    with context.device(device):
+      func = lambda: array_ops.zeros(shape, dtype)
+      self._run(func, 3000)
+
+  def benchmark_tf_zeros_2_by_2_float32_CPU(self):
+    self._benchmark_tf_zeros((2, 2), dtypes.float32)
+
+  def benchmark_tf_zeros_2_by_2_bool_CPU(self):
+    self._benchmark_tf_zeros((2, 2), dtypes.bool)
+
+  def benchmark_tf_zeros_2_by_2_string_CPU(self):
+    self._benchmark_tf_zeros((2, 2), dtypes.string)
+
+  def benchmark_tf_zeros_2_by_2_float32_GPU(self):
+    self._benchmark_tf_zeros((2, 2), dtypes.float32, device=GPU)
+
+  def benchmark_tf_zeros_2_by_2_bool_GPU(self):
+    self._benchmark_tf_zeros((2, 2), dtypes.bool, device=GPU)
+
+  def benchmark_tf_zeros_30_by_30_float32_CPU(self):
+    self._benchmark_tf_zeros((30, 30), dtypes.float32)
+
+  def benchmark_tf_zeros_30_by_30_bool_CPU(self):
+    self._benchmark_tf_zeros((30, 30), dtypes.bool)
+
+  def benchmark_tf_zeros_30_by_30_string_CPU(self):
+    self._benchmark_tf_zeros((30, 30), dtypes.string)
+
+  def benchmark_tf_zeros_30_by_30_float32_GPU(self):
+    self._benchmark_tf_zeros((30, 30), dtypes.float32, device=GPU)
+
+  def benchmark_tf_zeros_30_by_30_bool_GPU(self):
+    self._benchmark_tf_zeros((30, 30), dtypes.bool, device=GPU)
+
+  def benchmark_tf_zeros_100_by_100_float32_CPU(self):
+    self._benchmark_tf_zeros((100, 100), dtypes.float32)
+
+  def benchmark_tf_zeros_100_by_100_bool_CPU(self):
+    self._benchmark_tf_zeros((100, 100), dtypes.bool)
+
+  def benchmark_tf_zeros_100_by_100_string_CPU(self):
+    self._benchmark_tf_zeros((100, 100), dtypes.string)
+
+  def benchmark_tf_zeros_100_by_100_float32_GPU(self):
+    self._benchmark_tf_zeros((100, 100), dtypes.float32, device=GPU)
+
+  def benchmark_tf_zeros_100_by_100_bool_GPU(self):
+    self._benchmark_tf_zeros((100, 100), dtypes.bool, device=GPU)
+
   def _benchmark_tf_zeros_like(self, m, device=CPU):
     with context.device(device):
       func = lambda: array_ops.zeros_like(m)
@@ -867,6 +918,34 @@ class MicroBenchmarks(test.Benchmark):
     with context.device(GPU):
       func = lambda: random_ops.random_uniform((2, 2))
       self._run(func, num_iters=self._num_iters_2_by_2)
+
+  def _benchmark_tf_dropout_2_by_2(self,
+                                   is_rate_tensor=True,
+                                   noise_shape=None,
+                                   device=CPU):
+    if is_rate_tensor:
+      rate = constant_op.constant(0.5, dtype=dtypes.float32)
+    else:
+      rate = 0.5
+    with context.device(device):
+
+      def func():
+        return nn_ops.dropout(
+            self._m_2_by_2, rate=rate, noise_shape=noise_shape)
+
+      self._run(func, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_dropout_scalar_rate_2_by_2_CPU(self):
+    self._benchmark_tf_dropout_2_by_2(is_rate_tensor=False)
+
+  def benchmark_tf_dropout_scalar_rate_2_by_2_GPU(self):
+    self._benchmark_tf_dropout_2_by_2(is_rate_tensor=False, device=GPU)
+
+  def benchmark_tf_dropout_2_by_2_CPU(self):
+    self._benchmark_tf_dropout_2_by_2()
+
+  def benchmark_tf_dropout_2_by_2_GPU(self):
+    self._benchmark_tf_dropout_2_by_2(device=GPU)
 
   def _benchmark_transpose(self,
                            m,

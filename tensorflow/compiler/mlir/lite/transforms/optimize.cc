@@ -50,6 +50,24 @@ namespace TFL {
 // The actual Optimize Pass.
 namespace {
 
+bool L2NormalizeReduceAxis(Value *sq_op, DenseElementsAttr axis) {
+  if (sq_op->getType().cast<ShapedType>().getRank() - 1 ==
+          *axis.getValues<int>().begin() ||
+      *axis.getValues<int>().begin() == -1) {
+    return true;
+  }
+  if (sq_op->getType().cast<ShapedType>().getRank() != axis.getNumElements()) {
+    return false;
+  }
+  auto shape = sq_op->getType().cast<ShapedType>();
+  SmallVector<int, 4> elems{axis.getValues<int>().begin(),
+                            axis.getValues<int>().end()};
+  for (int i = 0; i < shape.getRank(); ++i) {
+    if (i != elems[i]) return false;
+  }
+  return true;
+}
+
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
@@ -120,6 +138,22 @@ ElementsAttr ExpandTo4DForConv(Attribute a) {
 
 ElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
   return ExpandTo4DForConvImpl(a, true);
+}
+
+// Returns shape of a ranked tensor.
+// Precondition: output_val's is ranked tensor.
+DenseElementsAttr GetShape(Value *output_val) {
+  auto output_type = output_val->getType().cast<RankedTensorType>();
+  auto shape_vector = output_type.getShape();
+  std::vector<int32_t> shape(shape_vector.size());
+  for (int i = 0; i < shape_vector.size(); ++i) {
+    shape[i] = shape_vector[i];
+  }
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get(
+          {static_cast<int>(shape.size())},
+          mlir::IntegerType::get(32, output_val->getContext())),
+      llvm::makeArrayRef(shape));
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
@@ -440,10 +474,16 @@ void Optimize::runOnFunction() {
   auto *ctx = &getContext();
   auto func = getFunction();
 
-  // Add the generated patterns to the list.
+  // Potentially the binary ops might be fused together, like hard_swish, thus
+  // we explore these potentially first and then fuse the binary ops with the
+  // following ops in a second pattern match.
   TFL::populateWithGenerated(ctx, &patterns);
   patterns.insert<FuseFullyConnectedAndAdd, FuseFullyConnectedAndRelu,
-                  FuseFullyConnectedAndMul, FuseBinaryOpToFollowingConv2D,
+                  FuseFullyConnectedAndMul>(ctx);
+  applyPatternsGreedily(func, patterns);
+
+  // Fuse the binary ops with the following ops.
+  patterns.insert<FuseBinaryOpToFollowingConv2D,
                   FuseBinaryOpToFollowingDepthwiseConv2D,
                   FuseBinaryOpToFollowingFullyConnected>(ctx);
   applyPatternsGreedily(func, patterns);

@@ -59,11 +59,13 @@ private:
   // Lexer implementation methods.
   Token lexAtIdentifier(const char *tokStart);
   Token lexBareIdentifierOrKeyword(const char *tokStart);
-  Token lexComment();
   Token lexEllipsis(const char *tokStart);
   Token lexNumber(const char *tokStart);
   Token lexPrefixedIdentifier(const char *tokStart);
   Token lexString(const char *tokStart);
+
+  /// Skip a comment line, starting with a '//'.
+  void skipComment();
 
   const llvm::SourceMgr &sourceMgr;
   MLIRContext *context;

@@ -12,8 +12,8 @@ continuous design provides a framework to lower from dataflow graphs to
 high-performance target-specific code.
 
 This document defines and describes the key concepts in MLIR, and is intended to
-be a dry reference document - [rationale documentation](Rationale.md) and other
-content is hosted elsewhere.
+be a dry reference document - the [rationale documentation](Rationale.md),
+[glossary](Glossary.md), and other content are hosted elsewhere.
 
 MLIR is designed to be used in three different forms: a human-readable textual
 form suitable for debugging, an in-memory form suitable for programmatic
@@ -36,8 +36,8 @@ representing many different concepts: allocating buffers, producing views to
 transform them, target-independent arithmetic, target-specific operations, and
 even arbitrary user-defined high-level operations including the
 [Module](#module) and [Function](#functions) operations. Operations may contain
-[Regions](#regions) that contain a Control Flow Graph (CFG) of
-[Blocks](#blocks), which contain operations and end with a
+[Regions](#regions) that represent a Control Flow Graph (CFG) of
+[Blocks](#blocks), that contain operations and end with a
 [terminator operation](#terminator-operations) (like branches).
 
 Here's an example of an MLIR module:
@@ -107,7 +107,7 @@ func @multiply(%A: memref<100x?xf32>, %B: memref<?x50xf32>)
 
 MLIR has a simple and unambiguous grammar, allowing it to reliably round-trip
 through a textual form. This is important for development of the compiler - e.g.
-understanding the state of code as it is being transformed and for writing test
+for understanding the state of code as it is being transformed and writing test
 cases.
 
 This document describes the grammar using
@@ -147,7 +147,7 @@ id-punct  ::= [$._-]
 integer-literal ::= decimal-literal | hexadecimal-literal
 decimal-literal ::= digit+
 hexadecimal-literal ::= `0x` hex_digit+
-float-literal   ::= TODO
+float-literal ::= [-+]?[0-9]+[.][0-9]*([eE][-+]?[0-9]+)?
 string-literal  ::= `"` [^"\n\f\v\r]* `"`   TODO define escaping rules
 ```
 
@@ -162,10 +162,10 @@ Syntax:
 // Identifiers
 bare-id ::= (letter|[_]) (letter|digit|[_$.])*
 bare-id-list ::= bare-id (`,` bare-id)*
-suffix-id ::= digit+ | ((letter|id-punct) (letter|id-punct|digit)*)
-
-symbol-ref-id ::= `@` (bare-id | string-literal)
 ssa-id ::= `%` suffix-id
+suffix-id ::= (digit+ | ((letter|id-punct) (letter|id-punct|digit)*))
+
+symbol-ref-id ::= `@` (suffix-id | string-literal)
 ssa-id-list ::= ssa-id (`,` ssa-id)*
 
 // Uses of an SSA value, e.g. in an operand list to an operation.
@@ -193,7 +193,7 @@ identifiers and mapping identifiers are visible across the entire module.
 
 ## Dialects
 
-Dialects are the mechanism in which to engage with and extend the MLIR
+Dialects are the mechanism by which to engage with and extend the MLIR
 ecosystem. They allow for defining new [operations](#operations), as well as
 [attributes](#attributes) and [types](#type-system). Each dialect is given a
 unique `namespace` that is prefixed to each defined attribute/operation/type.
@@ -203,7 +203,7 @@ For example, the [Affine dialect](Dialects/Affine.md) defines the namespace:
 MLIR allows for multiple dialects, even those outside of the main tree, to
 co-exist together within one module. Dialects are produced and consumed by
 certain passes. MLIR provides a [framework](DialectConversion.md) to convert
-between, and within different dialects.
+between, and within, different dialects.
 
 A few of the dialects supported by MLIR:
 
@@ -239,17 +239,22 @@ GPUs), and are required to align with the LLVM definition of these intrinsics.
 Syntax:
 
 ``` {.ebnf}
-operation ::= op-result? string-literal `(` ssa-use-list? `)`
-              (`[` successor-list `]`)? (`(` region-list `)`)?
-              attribute-dict? `:` function-type
-op-result ::= ssa-id ((`:` integer-literal) | (`,` ssa-id)*) `=`
-successor-list ::= successor (`,` successor)*
-region-list    ::= region (`,` region)*
+operation         ::= op-result-list? (generic-operation | custom-operation)
+                      trailing-location?
+generic-operation ::= string-literal '(' ssa-use-list? ')' attribute-dict?
+                      `:` function-type
+custom-operation  ::= bare-id custom-operation-format
+op-result-list    ::= op-result (`,` op-result)* `=`
+op-result         ::= ssa-id (`:` integer-literal)
+successor-list    ::= successor (`,` successor)*
+successor         ::= caret-id (`:` bb-arg-list)?
+region-list       ::= region (`,` region)*
+trailing-location ::= (`loc` `(` location `)`)?
 ```
 
 MLIR introduces a uniform concept called _operations_ to enable describing many
 different levels of abstractions and computations. Operations in MLIR are fully
-extensible (there is no fixed list of operations), and have application-specific
+extensible (there is no fixed list of operations) and have application-specific
 semantics. For example, MLIR supports
 [target-independent operations](Dialects/Standard.md#memory-operations),
 [affine operations](Dialects/Affine.md), and
@@ -276,7 +281,6 @@ Example:
 // Invoke a TensorFlow function called tf.scramble with two inputs
 // and an attribute "fruit".
 %2 = "tf.scramble"(%result#0, %bar) {fruit: "banana"} : (f32, i32) -> f32
-
 ```
 
 In addition to the basic syntax above, dialects may register known operations.
@@ -285,9 +289,9 @@ printing operations. In the operation sets listed below, we show both forms.
 
 ### Terminator Operations
 
-These are a special class of operations that *must* terminate a block, for
-example [branches](Dialects/Standard.md#terminator-operations). These operations
-may also have a list of successors ([blocks](#blocks) and their arguments).
+These are a special category of operations that *must* terminate a block, e.g.
+[branches](Dialects/Standard.md#terminator-operations). These operations may
+also have a list of successors ([blocks](#blocks) and their arguments).
 
 Example:
 
@@ -343,6 +347,9 @@ some other module) has no body. While the MLIR textual form provides a nice
 inline syntax for function arguments, they are internally represented as "block
 arguments" to the first block in the region.
 
+Only dialect attribute names may be specified in the attribute dictionaries for
+function arguments, results, or the function itself.
+
 Examples:
 
 ```mlir {.mlir}
@@ -355,6 +362,15 @@ func @count(%x: i64) -> (i64, i64)
   attributes {fruit: "banana"} {
   return %x, %x: i64, i64
 }
+
+// A function with an argument attribute
+func @example_fn_arg(%x: i32 {swift.self = unit})
+
+// A function with a result attribute
+func @example_fn_result() -> (f64 {dialectName.attrName = 0 : i64})
+
+// A function with an attribute
+func @example_fn_attr() attributes {dialectName.attrName = false}
 ```
 
 ## Blocks
@@ -362,15 +378,16 @@ func @count(%x: i64) -> (i64, i64)
 Syntax:
 
 ``` {.ebnf}
-block           ::= bb-label operation+
-bb-label        ::= bb-id bb-arg-list? `:`
-bb-id           ::= caret-id
+block           ::= block-label operation+
+block-label     ::= block-id block-arg-list? `:`
+block-id        ::= caret-id
+caret-id        ::= `^` suffix-id
 ssa-id-and-type ::= ssa-id `:` type
 
 // Non-empty list of names and types.
 ssa-id-and-type-list ::= ssa-id-and-type (`,` ssa-id-and-type)*
 
-bb-arg-list ::= `(` ssa-id-and-type-list? `)`
+block-arg-list ::= `(` ssa-id-and-type-list? `)`
 ```
 
 A [block](https://en.wikipedia.org/wiki/Basic_block) is a sequential list of
@@ -431,7 +448,7 @@ The first block in the region cannot be a successor of any other block. The
 syntax for the region is as follows:
 
 ``` {.ebnf}
-region ::= `{` block+ `}`
+region ::= `{` block* `}`
 ```
 
 The function body is an example of a region: it consists of a CFG of blocks and
@@ -443,11 +460,11 @@ of the function signature).
 ### Control and Value Scoping
 
 Regions provide nested control isolation: it is impossible to branch to a block
-within a region from outside it, or to branch from within a region to a block
-outside it. Similarly it provides a natural scoping for value visibility: SSA
-values defined in a region don't escape to the enclosing region if any. By
-default, a region can reference values defined outside of the region, whenever
-it would have been legal to use them as operands to the enclosing operation.
+within a region from outside it or to branch from within a region to a block
+outside it. Similarly, it provides a natural scoping for value visibility: SSA
+values defined in a region don't escape to the enclosing region, if any. By
+default, a region can reference values defined outside of the region whenever it
+would have been legal to use them as operands to the enclosing operation.
 
 Example:
 
@@ -524,12 +541,12 @@ defines the relation between the region results and the operation results.
 
 Each SSA value in MLIR has a type defined by the type system below. There are a
 number of primitive types (like integers) and also aggregate types for tensors
-and memory buffers. MLIR standard types do not include structures, arrays, or
-dictionaries.
+and memory buffers. MLIR [standard types](#standard-types) do not include
+structures, arrays, or dictionaries.
 
-MLIR has an open type system (there is no fixed list of types), and types may
-have application-specific semantics. For example, MLIR supports a set of
-[standard types](#standard-types) as well as [dialect types](#dialect-types).
+MLIR has an open type system (i.e. there is no fixed list of types), and types
+may have application-specific semantics. For example, MLIR supports a set of
+[dialect types](#dialect-types).
 
 ``` {.ebnf}
 type ::= type-alias | dialect-type | standard-type
@@ -575,17 +592,23 @@ Similarly to operations, dialects may define custom extensions to the type
 system.
 
 ``` {.ebnf}
-dialect-type ::= '!' dialect-namespace '<' '"' type-specific-data '"' '>'
-dialect-type ::= '!' dialect-namespace '.' pretty-dialect-type-lead-ident
-                          pretty-dialect-type-body?
+dialect-namespace ::= bare-id
 
-pretty-dialect-type-lead-ident ::= '[A-Za-z][A-Za-z0-9._]*'
-pretty-dialect-type-body ::= '<' pretty-dialect-type-contents+ '>'
-pretty-dialect-type-contents ::= pretty-dialect-type-body
-                              | '(' pretty-dialect-type-contents+ ')'
-                              | '[' pretty-dialect-type-contents+ ']'
-                              | '{' pretty-dialect-type-contents+ '}'
+opaque-dialect-item ::= dialect-namespace '<' string-literal '>'
+
+pretty-dialect-item ::= dialect-namespace '.' pretty-dialect-item-lead-ident
+                                              pretty-dialect-item-body?
+
+pretty-dialect-item-lead-ident ::= '[A-Za-z][A-Za-z0-9._]*'
+pretty-dialect-item-body ::= '<' pretty-dialect-item-contents+ '>'
+pretty-dialect-item-contents ::= pretty-dialect-item-body
+                              | '(' pretty-dialect-item-contents+ ')'
+                              | '[' pretty-dialect-item-contents+ ']'
+                              | '{' pretty-dialect-item-contents+ '}'
                               | '[^[<({>\])}\0]+'
+
+dialect-type ::= '!' opaque-dialect-item
+dialect-type ::= '!' pretty-dialect-item
 ```
 
 Dialect types can be specified in a verbose form, e.g. like this:
@@ -784,7 +807,7 @@ Examples of memref static type
 #col_major = (d0, d1, d2) -> (d2, d1, d0)
 
 // A 2-d tiled layout with tiles of size 128 x 256.
-#tiled_2d_128x256 = (d0, d1) -> (d0 div 128, d1 div 256, d0 mod 128, d0 mod 256)
+#tiled_2d_128x256 = (d0, d1) -> (d0 div 128, d1 div 256, d0 mod 128, d1 mod 256)
 
 // A tiled data layout with non-constant tile sizes.
 #tiled_dynamic = (d0, d1)[s0, s1] -> (d0 floordiv s0, d1 floordiv s1,
@@ -876,6 +899,10 @@ A layout map is a [semi-affine map](Dialects/Affine.md#semi-affine-maps) which
 encodes logical to physical index space mapping, by mapping input dimensions to
 their ordering from most-major (slowest varying) to most-minor (fastest
 varying). Therefore, an identity layout map corresponds to a row-major layout.
+Identity layout maps do not contribute to the MemRef type identification and are
+discarded on construction. That is, a type with an explicit identity map is
+`memref<?x?xf32, (i,j)->(i,j)>` is strictly the same as the one without layout
+maps, `memref<?x?xf32>`.
 
 Layout map examples:
 
@@ -1079,8 +1106,8 @@ convolution. They consist of a name and a concrete attribute value. The set of
 expected attributes, their structure, and their interpretation are all
 contextually dependent on what they are attached to.
 
-There are two main classes of attributes; dependent and dialect. Dependent
-attributes derive their structure and meaning from what they are attached to,
+There are two main classes of attributes: dependent and dialect. Dependent
+attributes derive their structure and meaning from what they are attached to;
 e.g., the meaning of the `index` attribute on a `dim` operation is defined by
 the `dim` operation. Dialect attributes, on the other hand, derive their context
 and meaning from a specific dialect. An example of a dialect attribute may be a
@@ -1097,7 +1124,7 @@ attribute-value ::= attribute-alias | dialect-attribute | standard-attribute
 ### Attribute Value Aliases
 
 ``` {.ebnf}
-attribute-alias ::= '#' alias-name '=' 'type' type
+attribute-alias ::= '#' alias-name '=' attribute-value
 attribute-alias ::= '#' alias-name
 ```
 
@@ -1121,20 +1148,14 @@ Example:
 
 ### Dialect Attribute Values
 
-Similarly to operations, dialects may define custom attribute values.
+Similarly to operations, dialects may define custom attribute values. The
+syntactic structure of these values is identical to custom dialect type values,
+except that dialect attributes values are distinguished with a leading '#',
+while dialect types are distinguished with a leading '!'.
 
 ``` {.ebnf}
-dialect-attribute ::= '#' dialect-namespace '<' '"' attr-specific-data '"' '>'
-dialect-attribute ::= '#' dialect-namespace '.' pretty-dialect-attr-lead-ident
-                          pretty-dialect-attr-body?
-
-pretty-dialect-attr-lead-ident ::= '[A-Za-z][A-Za-z0-9._]*'
-pretty-dialect-attr-body ::= '<' pretty-dialect-attr-contents+ '>'
-pretty-dialect-attr-contents ::= pretty-dialect-attr-body
-                              | '(' pretty-dialect-attr-contents+ ')'
-                              | '[' pretty-dialect-attr-contents+ ']'
-                              | '{' pretty-dialect-attr-contents+ '}'
-                              | '[^[<({>\])}\0]+'
+dialect-attribute ::= '#' opaque-dialect-item
+dialect-attribute ::= '#' pretty-dialect-item
 ```
 
 Dialect attributes can be specified in a verbose form, e.g. like this:
@@ -1367,13 +1388,15 @@ A string attribute is an attribute that represents a string literal value.
 Syntax:
 
 ``` {.ebnf}
-symbol-ref-attribute ::= symbol-ref-id
+symbol-ref-attribute ::= symbol-ref-id (`::` symbol-ref-id)*
 ```
 
 A symbol reference attribute is a literal attribute that represents a named
 reference to an operation that is nested within an operation with the
 `OpTrait::SymbolTable` trait. As such, this reference is given meaning by the
-nearest parent operation containing the `OpTrait::SymbolTable` trait.
+nearest parent operation containing the `OpTrait::SymbolTable` trait. It may
+optionally contain a set of nested references that further resolve to a symbol
+nested within a different symbol table.
 
 This attribute can only be held internally by
 [array attributes](#array-attribute) and
@@ -1416,8 +1439,8 @@ either is the self/context or it isn't.
 
 ```mlir {.mlir}
 // A unit attribute defined with the `unit` value specifier.
-func @verbose_form(i1 {unitAttr : unit})
+func @verbose_form(i1) attributes {dialectName.unitAttr = unit}
 
 // A unit attribute can also be defined without the value specifier.
-func @simple_form(i1 {unitAttr})
+func @simple_form(i1) attributes {dialectName.unitAttr}
 ```

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/refcounting_hash_map.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/device_memory.h"
@@ -414,40 +416,30 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
   xla::RendezvousKey rendezvous_key(run_options->run_id(),
                                     participating_replicas_vec, op_kind, op_id);
 
-  std::shared_ptr<CpuAllReduceRendezvous> rendezvous =
-      GlobalRendezvousMap()[rendezvous_key];
 
   auto shape_str = ShapeString(shape_ptr, shape_length);
   VLOG(2) << "All-reduce input/output shape : " << shape_str;
 
   xla::Shape shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length).ValueOrDie();
+  CHECK(xla::LayoutUtil::IsDenseArray(shape))
+      << "All-reduce on CPU is implemented only for dense arrays";
 
   xla::AllReduceParticipantData participant(rendezvous_key);
-
-  CHECK_EQ(shape.dimensions_size(), 1);
-  participant.element_count = shape.dimensions(0);
+  participant.element_count = xla::ShapeUtil::ElementsIn(shape);
   participant.device_ordinal = device_ordinal;
   participant.primitive_type = shape.element_type();
   participant.stream = run_options->stream();
-
-  se::DeviceMemoryBase input(input_buffer, xla::ShapeUtil::ByteSizeOf(shape));
-  se::DeviceMemoryBase output(output_buffer, xla::ShapeUtil::ByteSizeOf(shape));
-  participant.source_data = input;
-  participant.destination_data = output;
+  participant.source_data =
+      se::DeviceMemoryBase(input_buffer, xla::ShapeUtil::ByteSizeOf(shape));
+  participant.destination_data =
+      se::DeviceMemoryBase(output_buffer, xla::ShapeUtil::ByteSizeOf(shape));
   participant.reduction_kind = static_cast<xla::ReductionKind>(reduction_kind);
 
-  auto p = rendezvous->SubmitParticipant(participant).ValueOrDie();
-  std::shared_ptr<tensorflow::BlockingCounter> blocking_counter = p.second;
-  blocking_counter->DecrementCount();
-  xla::WaitAndLogIfStuck(blocking_counter.get(), [&] {
-    return absl::StrFormat(
-        "participant waiting for all threads to drop their reference to the "
-        "rendezvous: %s",
-        rendezvous_key.ToString());
-  });
-
-  rendezvous.reset();
+  TF_CHECK_OK(
+      CpuAllReduceRendezvous::SubmitParticipant(
+          [&] { return GlobalRendezvousMap()[rendezvous_key]; }, participant)
+          .status());
 }
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ReplicaId(

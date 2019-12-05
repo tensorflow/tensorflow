@@ -1,5 +1,5 @@
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",
     "tf_proto_library_py",
 )
@@ -16,6 +16,7 @@ package(
 tf_proto_library_cc(
     name = "toco_conversion_log_proto",
     srcs = ["toco_conversion_log.proto"],
+    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 

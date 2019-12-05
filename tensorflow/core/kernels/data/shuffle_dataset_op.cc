@@ -54,6 +54,7 @@ const int64 kLogIntervalMicros = 10 * 1000000;  // 10 seconds.
 const int64 kMaxEpochsInBuffer = 3;
 
 constexpr char kNumRandomSamples[] = "num_random_samples";
+constexpr char kDataProduced[] = "data_produced";
 constexpr char kEndOfInputSequence[] = "end_of_input_sequence";
 constexpr char kEpoch[] = "epoch";
 constexpr char kNumElements[] = "num_elements";
@@ -136,16 +137,14 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);
-      int64 start_micros = ctx->env()->NowMicros();
+      int64 start_micros = EnvTime::NowMicros();
       int64 num_log_entries = 0;
-      bool first_call = false;
       if (!input_impl_ && epoch_ == 0) {
-        first_call = true;
         TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
             ctx, this->prefix(), &input_impl_));
       }
       while (input_impl_ && num_elements_ < this->dataset()->buffer_size_) {
-        if (ctx->env()->NowMicros() >
+        if (EnvTime::NowMicros() >
             ((num_log_entries + 1) * kLogIntervalMicros) + start_micros) {
           num_log_entries++;
           LOG(INFO) << "Filling up shuffle buffer (this may take a while): "
@@ -158,13 +157,12 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &input_element,
                                                   &end_of_input_sequence));
           if (!end_of_input_sequence) {
-            first_call = false;
+            data_produced_ = true;
             break;
           }
-          if (first_call && this->dataset()->count_ == -1) {
-            // If the first call to GetNext() fails because the end
-            // of sequence has been reached, we terminate the
-            // iteration immediately. (Otherwise, this iterator
+          if (!data_produced_ && this->dataset()->count_ == -1) {
+            // If we encounter the end of sequence without producing data, we
+            // terminate the iteration immediately. (Otherwise, this iterator
             // would loop infinitely and never produce a value.)
             *end_of_sequence = true;
             return Status::OK();
@@ -289,6 +287,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           }
         }
       }
+      if (data_produced_) {
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(this->full_name(kDataProduced), ""));
+      }
 
       return Status::OK();
     }
@@ -353,6 +355,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           }
         }
       }
+      data_produced_ = reader->Contains(this->full_name(kDataProduced));
 
       return Status::OK();
     }
@@ -394,6 +397,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     random::SingleSampleAdapter<random::PhiloxRandom> generator_
         GUARDED_BY(mu_);
     int64 num_random_samples_ GUARDED_BY(mu_) = 0;
+    bool data_produced_ GUARDED_BY(mu_) = false;
   };
 
   const DatasetBase* const input_;

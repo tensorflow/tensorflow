@@ -91,6 +91,23 @@ class Backend(object):
   def compile(self, computation, compile_options):
     """Compiles a computation. Returns an executable."""
 
+  @abc.abstractmethod
+  def get_default_device_assignment(self, num_replicas):
+    """Returns the default device assignment that `compile` would use.
+
+    If `compile_options.device_assignment` isn't set, `compile` will pick a
+    deterministic device assignment based on the number of replicas, possibly
+    optimizing for device locality. This method returns that assignment, which
+    is useful for e.g. manually replicating a value before passing it to a
+    compiled executable.
+
+    Args:
+      num_replicas: the number of replicas needed.
+
+    Returns:
+      A list of Devices of length `num_replicas` indexed by replica ID.
+    """
+
 
 class LocalBackend(Backend):
   """XLA backend implemented using the in-process xla::LocalClient API."""
@@ -142,6 +159,9 @@ class LocalBackend(Backend):
                                         compile_options.argument_layouts,
                                         options, self.client,
                                         compile_options.device_assignment)
+
+  def get_default_device_assignment(self, num_replicas):
+    return self.client.GetDefaultDeviceAssignment(num_replicas)
 
   def serialize(self, executable):
     return self.client.SerializeExecutable(executable)
@@ -594,6 +614,9 @@ class Computation(object):
   def GetReturnValueShape(self):
     return self._c_computation.GetProgramShape().result_shape()
 
+  def Hash(self):
+    return self._c_computation.Hash()
+
 
 # An Executable is a C++ class that duck types with the following API:
 # class Executable(object):
@@ -739,6 +762,17 @@ class ComputationBuilder(object):
   def ClearOpMetadata(self):
     """Clear metadata for operations that are about to be enqueued."""
     self._builder.ClearOpMetadata()
+
+  def SetSharding(self, sharding):
+    """Set sharding that will be attached to all instructions until cleared."""
+    self._builder.SetSharding(sharding)
+
+  def ClearSharding(self):
+    """Clears the sharding.
+
+    Ops will be shared according to the default placement policy.
+    """
+    self._builder.ClearSharding()
 
   def CreateToken(self):
     """Enqueues a CreateToken op onto the computation.
@@ -1810,6 +1844,20 @@ class ConvolutionDimensionNumbers(object):
     self.output_batch_dimension = 0
     self.output_feature_dimension = 0
     self.output_spatial_dimensions = []
+
+
+class OpSharding(object):
+  """Python representation of a xla.OpSharding protobuf."""
+  __slots__ = ('type', 'tile_assignment_dimensions', 'tile_assignment_devices',
+               'tuple_shardings')
+
+  Type = _xla.OpSharding_Type
+
+  def __init__(self):
+    self.type = self.Type.REPLICATED
+    self.tile_assignment_dimensions = []
+    self.tile_assignment_devices = []
+    self.tuple_shardings = []
 
 
 class PrecisionConfig(object):

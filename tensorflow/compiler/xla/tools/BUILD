@@ -37,11 +37,11 @@ tf_cc_binary(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/service:hlo_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/types:span",
@@ -59,7 +59,7 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:global_data",
@@ -67,7 +67,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:testing",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service:hlo_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service/gpu:infeed_manager",
         "//tensorflow/compiler/xla/service/gpu:outfeed_manager",
         "//tensorflow/compiler/xla/tests:test_utils",
@@ -96,6 +96,14 @@ tf_cc_binary(
 )
 
 tf_cc_binary(
+    name = "replay_computation_mlir_gpu",
+    deps = [
+        ":replay_computation_library",
+        "//tensorflow/compiler/xla/service:mlir_gpu_plugin",
+    ],
+)
+
+tf_cc_binary(
     name = "replay_computation_interpreter",
     deps = [
         ":replay_computation_library",
@@ -109,7 +117,7 @@ tf_cc_binary(
     deps = [
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
     ],
 )
@@ -120,7 +128,7 @@ tf_cc_binary(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla/service:hlo_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:lib",
     ],
 )
@@ -133,7 +141,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:text_literal_reader",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
     ],
 )
@@ -144,13 +152,13 @@ tf_cc_binary(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service",
-        "//tensorflow/compiler/xla/service:hlo_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/types:span",
@@ -163,14 +171,14 @@ tf_cc_binary(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -185,7 +193,7 @@ tf_cc_binary(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
     ],
@@ -227,7 +235,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
-        "//tensorflow/compiler/xla/service:hlo_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_runner",
         "//tensorflow/compiler/xla/service:local_service",
         "//tensorflow/compiler/xla/service:platform_util",
@@ -243,4 +251,31 @@ sh_test(
     name = "interactive_graphviz_build_only_test",
     srcs = ["interactive_graphviz_test.sh"],
     data = [":interactive_graphviz"],
+)
+
+cc_library(
+    name = "hlo_module_loader",
+    srcs = ["hlo_module_loader.cc"],
+    hdrs = ["hlo_module_loader.h"],
+    deps = [
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:regexp_internal",
+        "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf_headers",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_module_loader_test",
+    srcs = ["hlo_module_loader_test.cc"],
+    deps = [
+        ":hlo_module_loader",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:test",
+    ],
 )

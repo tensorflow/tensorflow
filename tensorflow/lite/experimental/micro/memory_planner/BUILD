@@ -19,7 +19,7 @@ cc_library(
         "-Wsign-compare",
     ],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -40,7 +40,7 @@ cc_library(
     ],
     deps = [
         ":memory_planner",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -61,7 +61,7 @@ cc_library(
     ],
     deps = [
         ":memory_planner",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
     ],

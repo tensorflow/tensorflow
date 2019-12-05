@@ -566,10 +566,10 @@ class BufferAssigner {
   static Colorer DefaultColorer() {
     return [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
       for (HloValue* value : alias_analysis->dataflow_analysis().values()) {
-        HloInstruction* defining_instruction = value->defining_instruction();
-        if (defining_instruction->shape().has_layout()) {
+        const HloPosition& defining_position = value->defining_position();
+        if (defining_position.shape().has_layout()) {
           value->set_color(BufferValue::Color(
-              defining_instruction->shape().layout().memory_space()));
+              defining_position.shape().layout().memory_space()));
         } else {
           value->set_color(BufferValue::Color(0));
         }

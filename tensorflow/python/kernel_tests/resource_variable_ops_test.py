@@ -1068,7 +1068,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     with context.eager_mode():
       init = array_ops.ones(shape=[10, 20, 35], dtype=dtypes.int32)
       constraint = lambda x: x
-      with ops.name_scope("foo"):
+      with ops.name_scope("foo", skip_on_eager=False):
         v = resource_variable_ops.ResourceVariable(
             name="var7",
             initial_value=init,

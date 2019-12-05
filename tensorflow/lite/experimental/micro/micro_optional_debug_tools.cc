@@ -14,6 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/micro/micro_optional_debug_tools.h"
 
+// `cinttypes` requires `__STDC_FORMAT_MACROS` to be defined to expose `PRId32`.
+#ifndef __STDC_FORMAT_MACROS
+#define __STDC_FORMAT_MACROS
+#endif
+
+#include <cinttypes>
+
 #include "tensorflow/lite/schema/schema_generated.h"
 namespace tflite {
 namespace {
@@ -122,7 +129,7 @@ void PrintInterpreterState(MicroInterpreter* interpreter) {
       printf("Node %3zu Operator Custom Name %s\n", node_index,
              reg->custom_name);
     } else {
-      printf("Node %3zu Operator Builtin Code %3d %s\n", node_index,
+      printf("Node %3zu Operator Builtin Code %3" PRId32 " %s\n", node_index,
              reg->builtin_code, EnumNamesBuiltinOperator()[reg->builtin_code]);
     }
     printf("  Inputs:");

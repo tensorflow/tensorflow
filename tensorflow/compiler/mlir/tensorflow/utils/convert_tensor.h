@@ -29,10 +29,6 @@ namespace tensorflow {
 
 using stream_executor::port::StatusOr;
 
-// Converts an TensorFlow shape proto to the one used in MLIR.
-Status ConvertToMlirShape(const TensorShapeProto& input_shape,
-                          llvm::SmallVectorImpl<int64_t>* shape);
-
 // Converts an TensorFlow tensor proto into an MLIR elements attribute.
 StatusOr<mlir::ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
                                                 mlir::Builder* builder);

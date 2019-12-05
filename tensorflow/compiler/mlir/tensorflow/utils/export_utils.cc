@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/Support/DebugStringHelper.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -129,7 +130,7 @@ Status ConvertAttribute(const mlir::UnitAttr& attr, AttrValue* value) {
   return Status::OK();
 }
 
-Status ConvertAttribute(const mlir::SymbolRefAttr& attr, AttrValue* value) {
+Status ConvertAttribute(const mlir::FlatSymbolRefAttr& attr, AttrValue* value) {
   value->mutable_func()->set_name(attr.getValue());
   return Status::OK();
 }
@@ -163,7 +164,7 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, AttrValue* value) {
       TensorProto tensor;
       TF_RETURN_IF_ERROR(ConvertToTensorProto(attr, &tensor));
       *list->add_tensor() = tensor;
-    } else if (auto attr = a.dyn_cast<mlir::SymbolRefAttr>()) {
+    } else if (auto attr = a.dyn_cast<mlir::FlatSymbolRefAttr>()) {
       AttrValue attr_val;
       TF_RETURN_IF_ERROR(ConvertAttribute(attr, &attr_val));
       *list->add_func() = attr_val.func();
@@ -253,21 +254,30 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
   // Note: we do not use NodeBuilder or NodeDefBuilder as that would require
   // mapping back from the inputs to the input arguments.
 
-  // Some control flow ops in TensorFlow Graph have their respective "Ref" ops
-  // as well. For example there is Enter and RefEnter op. RefEnter forwards
-  // the input ref buffer to output. However both Enter and RefEnter are
-  // mapped to tf_executor::EnterOp during import and then to _tf.Enter op in
-  // control dialect. Check if it is a Ref op to correctly map to the TensorFlow
-  // Graph op.
   llvm::SmallString<64> op_name;
-  if (IsRefTypeControlOp(inst)) op_name = "Ref";
+  if (IsLegacyCallInstruction(inst)) {
+    // The op_name is the name of the function.
+    op_name.append(
+        inst->getAttrOfType<mlir::SymbolRefAttr>("f").getLeafReference());
+    // Remove the attribute from the instruction as it is already converted to
+    // op_name.
+    auto attr_id = mlir::Identifier::get("f", inst->getContext());
+    inst->removeAttr(attr_id);
+  } else {
+    // Some control flow ops in TensorFlow Graph have their respective "Ref" ops
+    // as well. For example there is Enter and RefEnter op. RefEnter forwards
+    // the input ref buffer to output. However both Enter and RefEnter are
+    // mapped to tf_executor::EnterOp during import and then to _tf.Enter op in
+    // control dialect. Check if it is a Ref op to correctly map to the
+    // TensorFlow Graph op.
+    if (IsRefTypeControlOp(inst)) op_name = "Ref";
+    TF_ASSIGN_OR_RETURN(auto tf_name,
+                        GetTensorFlowOpName(inst->getName().getStringRef()));
+    op_name.append(tf_name);
+  }
 
-  TF_ASSIGN_OR_RETURN(auto tf_name,
-                      GetTensorFlowOpName(inst->getName().getStringRef()));
-  op_name.append(tf_name);
-
+  node_def->set_name(name.str());
   node_def->set_op(op_name.str());
-  node_def->set_name(name);
 
   // Add inputs to the NodeDef based on the number of operands. This is required
   // as later when edges are added to the Node using Graph::AddEdge the
@@ -318,7 +328,7 @@ Status ConvertAttributes(
     AttrValue value;
     switch (attr.getKind()) {
       case mlir::StandardAttributes::SymbolRef: {
-        auto func_attr = attr.cast<mlir::SymbolRefAttr>();
+        auto func_attr = attr.cast<mlir::FlatSymbolRefAttr>();
         value.mutable_func()->set_name(func_attr.getValue());
         func_call_attrs[string(name)] = value;
         continue;
@@ -432,6 +442,31 @@ Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shaped_type,
     }
   }
   return Status::OK();
+}
+
+Status SetSizeAttribute(absl::string_view name, size_t size,
+                        AttrValueMap* values) {
+  AttrValue value;
+  value.set_i(size);
+
+  auto result = values->insert({string(name), value});
+  if (!result.second) {
+    // This should be extremely rare as it means we are adding the same
+    // attribute multiple times/have some redundancy in representing this
+    // attribute.
+    int64 actual_size = result.first->second.i();
+    // Just check via string output as we shouldn't get here and if we do they
+    // should be trivially the same, else fail.
+    if (actual_size != size)
+      return errors::InvalidArgument("Expected '", name, "' attribute to be ",
+                                     size, " but found ", actual_size);
+  }
+  return Status::OK();
+}
+
+bool IsLegacyCallInstruction(mlir::Operation* inst) {
+  return llvm::dyn_cast<mlir::TF::LegacyCallOp>(inst) ||
+         inst->getName().getStringRef().compare("_tf.LegacyCall") == 0;
 }
 
 }  // namespace tensorflow

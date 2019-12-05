@@ -46,6 +46,7 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.training.tracking import tracking
 
@@ -469,9 +470,9 @@ class FromSavedModelTest(TestModels):
     root = tracking.AutoTrackable()
     root.f = def_function.function(lambda x: 2. * x)
     to_save = root.f.get_concrete_function(input_data)
-
+    options = save_options.SaveOptions(save_debug_info=True)
     save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
-    save(root, save_dir, to_save)
+    save(root, save_dir, to_save, options)
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverterV2.from_saved_model(save_dir)

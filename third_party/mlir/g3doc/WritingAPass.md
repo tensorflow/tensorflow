@@ -20,14 +20,14 @@ In MLIR, the main unit of abstraction and transformation is an
 work on instances of operations at different levels of nesting. The structure of
 the [pass manager](#pass-manager), and the concept of nesting, is detailed
 further below. All passes in MLIR derive from `OperationPass` and adhere to the
-following restrictions; Any noncompliance will lead to problematic behavior in
+following restrictions; any noncompliance will lead to problematic behavior in
 multithreaded and other advanced scenarios:
 
 *   Modify anything within the parent block/region/operation/etc, outside of the
     current operation being operated on. This includes adding or removing
     operations from the parent block.
-*   Maintain pass state across invocations of runOnOperation. A pass may be run
-    on several different operations with no guarantee of execution order.
+*   Maintain pass state across invocations of `runOnOperation`. A pass may be
+    run on several different operations with no guarantee of execution order.
     *   When multithreading, a specific pass instance may not even execute on
         all operations within the module. As such, a pass should not rely on
         running on all operations.
@@ -116,11 +116,19 @@ the following:
 *   Provide a valid constructor taking an `Operation*`.
 *   Must not modify the given operation.
 
-The base `OperationPass` class provide utilities for querying and preserving
-analyses for the current operation being processed. Using the example passes
-defined above, let's see some examples:
+An analysis may provide additional hooks to control various behavior:
+
+*   `bool isInvalidated(const AnalysisManager::PreservedAnalyses &)`
+
+Given a preserved analysis set, the analysis returns true if it should truly be
+invalidated. This allows for more fine-tuned invalidation in cases where an
+analysis wasn't explicitly marked preserved, but may be preserved(or
+invalidated) based upon other properties such as analyses sets.
 
 ### Querying Analyses
+
+The base `OperationPass` class provide utilities for querying and preserving
+analyses for the current operation being processed.
 
 *   OperationPass automatically provides the following utilities for querying
     analyses:
@@ -137,7 +145,7 @@ defined above, let's see some examples:
         -   Get an analysis for a given child operation, constructing it if
             necessary.
 
-A few example usages are shown below:
+Using the example passes defined above, let's see some examples:
 
 ```c++
 /// An interesting analysis.
@@ -418,13 +426,13 @@ options           ::= '{' (key ('=' value)?)+ '}'
 For example, the following pipeline:
 
 ```shell
-$ mlir-opt foo.mlir -cse -canonicalize -lower-to-llvm
+$ mlir-opt foo.mlir -cse -canonicalize -convert-std-to-llvm
 ```
 
 Can also be specified as (via the `-pass-pipeline` flag):
 
 ```shell
-$ mlir-opt foo.mlir -pass-pipeline='func(cse, canonicalize), lower-to-llvm'
+$ mlir-opt foo.mlir -pass-pipeline='func(cse, canonicalize), convert-std-to-llvm'
 ```
 
 In order to support round-tripping your pass to the textual representation using
@@ -546,7 +554,7 @@ pipeline. This display mode is available in mlir-opt via
 `-pass-timing-display=list`.
 
 ```shell
-$ mlir-opt foo.mlir -disable-pass-threading -cse -canonicalize -lower-to-llvm -pass-timing -pass-timing-display=list
+$ mlir-opt foo.mlir -disable-pass-threading -cse -canonicalize -convert-std-to-llvm -pass-timing -pass-timing-display=list
 
 ===-------------------------------------------------------------------------===
                       ... Pass execution timing report ...
@@ -571,7 +579,7 @@ the most time, and can also be used to identify when analyses are being
 invalidated and recomputed. This is the default display mode.
 
 ```shell
-$ mlir-opt foo.mlir -disable-pass-threading -cse -canonicalize -lower-to-llvm -pass-timing
+$ mlir-opt foo.mlir -disable-pass-threading -cse -canonicalize -convert-std-to-llvm -pass-timing
 
 ===-------------------------------------------------------------------------===
                       ... Pass execution timing report ...
@@ -602,7 +610,7 @@ perceived time, or clock time, whereas the `User Time` will display the total
 cpu time.
 
 ```shell
-$ mlir-opt foo.mlir -cse -canonicalize -lower-to-llvm -pass-timing
+$ mlir-opt foo.mlir -cse -canonicalize -convert-std-to-llvm -pass-timing
 
 ===-------------------------------------------------------------------------===
                       ... Pass execution timing report ...
@@ -624,9 +632,6 @@ $ mlir-opt foo.mlir -cse -canonicalize -lower-to-llvm -pass-timing
 
 #### IR Printing
 
-Note: The IR Printing instrumentation should only be used when multi-threading
-is disabled(`-disable-pass-threading`)
-
 When debugging it is often useful to dump the IR at various stages of a pass
 pipeline. This is where the IR printing instrumentation comes into play. This
 instrumentation allows for conditionally printing the IR before and after pass
@@ -641,7 +646,7 @@ this instrumentation:
     *   Print the IR before every pass in the pipeline.
 
 ```shell
-$ mlir-opt foo.mlir -disable-pass-threading -cse -print-ir-before=cse
+$ mlir-opt foo.mlir -cse -print-ir-before=cse
 
 *** IR Dump Before CSE ***
 func @simple_constant() -> (i32, i32) {
@@ -657,7 +662,7 @@ func @simple_constant() -> (i32, i32) {
     *   Print the IR after every pass in the pipeline.
 
 ```shell
-$ mlir-opt foo.mlir -disable-pass-threading -cse -print-ir-after=cse
+$ mlir-opt foo.mlir -cse -print-ir-after=cse
 
 *** IR Dump After CSE ***
 func @simple_constant() -> (i32, i32) {
@@ -669,6 +674,8 @@ func @simple_constant() -> (i32, i32) {
 *   `print-ir-module-scope`
     *   Always print the top-level module operation, regardless of pass type or
         operation nesting level.
+    *   Note: Printing at module scope should only be used when multi-threading
+        is disabled(`-disable-pass-threading`)
 
 ```shell
 $ mlir-opt foo.mlir -disable-pass-threading -cse -print-ir-after=cse -print-ir-module-scope

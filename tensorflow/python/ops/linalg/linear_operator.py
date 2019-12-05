@@ -1073,6 +1073,31 @@ class LinearOperator(module.Module):
     with self._name_scope(name):
       return self._eigvals()
 
+  def _cond(self):
+    if not self.is_self_adjoint:
+      # In general the condition number is the ratio of the
+      # absolute value of the largest and smallest singular values.
+      vals = linalg_ops.svd(self.to_dense(), compute_uv=False)
+    else:
+      # For self-adjoint matrices, and in general normal matrices,
+      # we can use eigenvalues.
+      vals = math_ops.abs(self._eigvals())
+
+    return (math_ops.reduce_max(vals, axis=-1) /
+            math_ops.reduce_min(vals, axis=-1))
+
+  def cond(self, name="cond"):
+    """Returns the condition number of this linear operator.
+
+    Args:
+      name:  A name for this `Op`.
+
+    Returns:
+      Shape `[B1,...,Bb]` `Tensor` of same `dtype` as `self`.
+    """
+    with self._name_scope(name):
+      return self._cond()
+
   def _can_use_cholesky(self):
     return self.is_self_adjoint and self.is_positive_definite
 
@@ -1111,10 +1136,17 @@ def _cholesky(input, name=None):   # pylint:disable=redefined-builtin
 
 
 # The signature has to match with the one in python/op/array_ops.py,
-# so we have k and padding_value even though we don't use them here.
+# so we have k, padding_value, and align even though we don't use them here.
+# pylint:disable=unused-argument
 @dispatch.dispatch_for_types(linalg.diag_part, LinearOperator)
-def _diag_part(input, name="diag_part", k=0, padding_value=0):  # pylint:disable=redefined-builtin, unused-argument
+def _diag_part(
+    input,  # pylint:disable=redefined-builtin
+    name="diag_part",
+    k=0,
+    padding_value=0,
+    align="RIGHT_LEFT"):
   return input.diag_part(name)
+# pylint:enable=unused-argument
 
 
 @dispatch.dispatch_for_types(linalg.det, LinearOperator)

@@ -28,14 +28,7 @@ limitations under the License.
 #define TF_OPS
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
-
-#ifndef MLIR_CALLINTERFACES
 include "mlir/Analysis/CallInterfaces.td"
-#endif // MLIR_CALLINTERFACES
-
-// A derived attribute that returns the shape of the first result type.
-def TF_DerivedResultShapeAttr : DerivedAttr<"ShapedType",
-  "return (*getOperation()->result_type_begin()).cast<ShapedType>();">;
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
   let results = (outs
@@ -157,8 +150,8 @@ else_branch: A function that takes 'inputs' and returns a list of
     TF_Tensor:$cond,
     Variadic<TF_Tensor>:$input,
 
-    SymbolRefAttr:$then_branch,
-    SymbolRefAttr:$else_branch,
+    FlatSymbolRefAttr:$then_branch,
+    FlatSymbolRefAttr:$else_branch,
     DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
 
     // Used to map StatelessIf and If op defined in TensorFlow to a common op.
@@ -203,6 +196,42 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_LegacyCallOp : TF_Op<"LegacyCall",
+                            [CallOpInterface, NoSideEffect]> {
+  let summary =
+    "returns `f(inputs)`, where `f` is a function.";
+
+  let description = [{
+    The LegacyCall operation represents a direct call to a function that is
+    within the same symbol scope as the call and is mapped to a GraphDef node
+    with the function name as the op name. Unlike a PartitionedCall which
+    represents asynchronously executing a function across multiple devices, a
+    LegacyCall represents a function call with the only attribute
+    _diable_call_shape_inference.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+
+    FlatSymbolRefAttr:$f,
+    DefaultValuedAttr<BoolAttr, "false">:$_disable_call_shape_inference
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  let extraClassDeclaration = [{
+    // Gets the argument operands to the called function.
+    operand_range getArgOperands() { return args(); }
+
+    // Returns the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getAttrOfType<SymbolRefAttr>("f");
+    }
+  }];
+}
+
 def TF_PartitionedCallOp : TF_Op<"PartitionedCall",
                                  [CallOpInterface, NoSideEffect]> {
   let summary =
@@ -217,7 +246,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
 
-    SymbolRefAttr:$f,
+    FlatSymbolRefAttr:$f,
     StrAttr:$config,
     StrAttr:$config_proto,
     StrAttr:$executor_type
@@ -290,7 +319,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
 
-    SymbolRefAttr:$f,
+    FlatSymbolRefAttr:$f,
     StrAttr:$config,
     StrAttr:$config_proto,
     StrAttr:$executor_type
@@ -339,8 +368,8 @@ body: A function that takes a list of tensors and returns another
   let arguments = (ins
     Variadic<TF_Tensor>:$input,
 
-    SymbolRefAttr:$cond,
-    SymbolRefAttr:$body,
+    FlatSymbolRefAttr:$cond,
+    FlatSymbolRefAttr:$body,
     DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
 
@@ -403,5 +432,36 @@ This operation holds the metadata common to operations of a `tpu.replicate()` co
   );
 
   let results = (outs);
+}
+
+def TF_VarHandleOp : TF_Op<"VarHandleOp", []> {
+  let summary = "Creates a handle to a Variable resource from its name.";
+
+  let description = [{
+container: the container this variable is placed in.
+shared_name: the name by which this variable is referred to.
+dtype and shape: attributes representing the data type and shape held in the
+  variable.
+
+Example:
+    resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[8, 16], container="foo", shared_name="bar")
+  returns a handle for a variable with name "bar" in container "foo", and the
+  variable holds a tensor of shape [8, 16] and dtype int32.
+  }];
+
+  let arguments = (ins
+    DefaultValuedAttr<StrAttr, "">:$container,
+    DefaultValuedAttr<StrAttr, "">:$shared_name
+  );
+
+  let results = (outs
+    TF_ResourceTensor:$resource
+  );
+
+  TF_DerivedOperandOrResultHandleTypeAttr dtype =
+    TF_DerivedOperandOrResultHandleTypeAttr<"resource">;
+  TF_DerivedOperandOrResultHandleShapeAttr shape =
+    TF_DerivedOperandOrResultHandleShapeAttr<"resource">;
 }
 #endif // TF_OPS

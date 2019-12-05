@@ -421,6 +421,12 @@ class Bidirectional(Wrapper):
       raise ValueError('Invalid merge mode. '
                        'Merge mode should be one of '
                        '{"sum", "mul", "ave", "concat", None}')
+    # We don't want to track `layer` since we're already tracking the two copies
+    # of it we actually run.
+    self._setattr_tracking = False
+    super(Bidirectional, self).__init__(layer, **kwargs)
+    self._setattr_tracking = True
+
     # Recreate the forward layer from the original layer config, so that it will
     # not carry over any state from the layer.
     self.forward_layer = self._recreate_layer_from_config(layer)
@@ -459,11 +465,6 @@ class Bidirectional(Wrapper):
     self.supports_masking = True
     self._trainable = True
     self._num_constants = 0
-    # We don't want to track `layer` since we're already tracking the two copies
-    # of it we actually run.
-    self._setattr_tracking = False
-    super(Bidirectional, self).__init__(layer, **kwargs)
-    self._setattr_tracking = True
     self.input_spec = layer.input_spec
     self._supports_ragged_inputs = True
 

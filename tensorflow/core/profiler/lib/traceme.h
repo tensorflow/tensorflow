@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 
@@ -79,9 +80,9 @@ class TraceMe {
   // out their host traces based on verbosity.
   explicit TraceMe(absl::string_view activity_name, int level = 1) {
     DCHECK_GE(level, 1);
-    if (TraceMeRecorder::Active(level)) {
+    if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       new (&no_init_.name) string(activity_name);
-      start_time_ = EnvTime::Default()->NowNanos();
+      start_time_ = EnvTime::NowNanos();
     } else {
       start_time_ = kUntracedActivity;
     }
@@ -94,9 +95,9 @@ class TraceMe {
   // constructor so we avoid copying them when tracing is disabled.
   explicit TraceMe(string &&activity_name, int level = 1) {
     DCHECK_GE(level, 1);
-    if (TraceMeRecorder::Active(level)) {
+    if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       new (&no_init_.name) string(std::move(activity_name));
-      start_time_ = EnvTime::Default()->NowNanos();
+      start_time_ = EnvTime::NowNanos();
     } else {
       start_time_ = kUntracedActivity;
     }
@@ -124,9 +125,9 @@ class TraceMe {
   template <typename NameGeneratorT>
   explicit TraceMe(NameGeneratorT name_generator, int level = 1) {
     DCHECK_GE(level, 1);
-    if (TraceMeRecorder::Active(level)) {
+    if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       new (&no_init_.name) string(name_generator());
-      start_time_ = EnvTime::Default()->NowNanos();
+      start_time_ = EnvTime::NowNanos();
     } else {
       start_time_ = kUntracedActivity;
     }
@@ -144,10 +145,10 @@ class TraceMe {
     //   spuriously record the event. This is extremely rare, and acceptable as
     //   event will be discarded when its start timestamp fall outside of the
     //   start/stop session timestamp.
-    if (start_time_ != kUntracedActivity) {
-      if (TraceMeRecorder::Active()) {
+    if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
+      if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
         TraceMeRecorder::Record({kCompleteActivity, std::move(no_init_.name),
-                                 start_time_, EnvTime::Default()->NowNanos()});
+                                 start_time_, EnvTime::NowNanos()});
       }
       no_init_.name.~string();
       start_time_ = kUntracedActivity;
@@ -156,28 +157,33 @@ class TraceMe {
 
   ~TraceMe() { Stop(); }
 
-  // TraceMe is not movable or copyable.
-  TraceMe(const TraceMe &) = delete;
-  TraceMe &operator=(const TraceMe &) = delete;
-
   // Static API, for use when scoped objects are inconvenient.
 
   // Record the start time of an activity.
   // Returns the activity ID, which is used to stop the activity.
   static uint64 ActivityStart(absl::string_view name, int level = 1) {
-    return TraceMeRecorder::Active(level) ? ActivityStartImpl(name)
-                                          : kUntracedActivity;
+    if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
+      uint64 activity_id = TraceMeRecorder::NewActivityId();
+      TraceMeRecorder::Record({activity_id, string(name),
+                               /*start_time=*/EnvTime::NowNanos(),
+                               /*end_time=*/0});
+      return activity_id;
+    }
+    return kUntracedActivity;
   }
 
   // Record the end time of an activity started by ActivityStart().
   static void ActivityEnd(uint64 activity_id) {
     // We don't check the level again (see ~TraceMe()).
-    if (activity_id != kUntracedActivity) {
-      if (TraceMeRecorder::Active()) {
-        ActivityEndImpl(activity_id);
+    if (TF_PREDICT_FALSE(activity_id != kUntracedActivity)) {
+      if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
+        TraceMeRecorder::Record({activity_id, /*name=*/"", /*start_time=*/0,
+                                 /*end_time=*/EnvTime::NowNanos()});
       }
     }
   }
+
+  static bool Active(int level = 1) { return TraceMeRecorder::Active(level); }
 
  private:
   // Activity ID or start time used when tracing is disabled.
@@ -185,8 +191,7 @@ class TraceMe {
   // Activity ID used as a placeholder when both start and end are present.
   constexpr static uint64 kCompleteActivity = 1;
 
-  static uint64 ActivityStartImpl(absl::string_view activity_name);
-  static void ActivityEndImpl(uint64 activity_id);
+  TF_DISALLOW_COPY_AND_ASSIGN(TraceMe);
 
   // Wrap the name into a union so that we can avoid the cost of string
   // initialization when tracing is disabled.

@@ -93,12 +93,12 @@ func @graph_with_multiple_islands(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>
 }
 
 // CHECK-NEXT: %[[GRAPH:[0-9]*]]:3 = tf_executor.graph {
-// CHECK-NEXT:   %[[ISLAND_0:[0-9]*]]:4 = tf_executor.island {
+// CHECK-NEXT:   %[[ISLAND_0:.*]]:3, %{{.*}} = tf_executor.island {
 // CHECK-NEXT:     %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:     %[[OP_B:[0-9]*]] = "tf.opB"(%[[OP_A]])
 // CHECK-NEXT:     %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_B]])
 // CHECK-NEXT:     tf_executor.yield %[[OP_A]], %[[OP_C]], %[[OP_B]] : tensor<i1>, tensor<i1>, tensor<i1>
-// CHECK:        %[[ISLAND_1:[0-9]*]]:3 = tf_executor.island {
+// CHECK:        %[[ISLAND_1:.*]]:2, %{{.*}} = tf_executor.island {
 // CHECK-NEXT:     %[[OP_D:[0-9]*]] = "tf.opD"(%[[ARG_0]])
 // CHECK-NEXT:     %[[OP_E:[0-9]*]] = "tf.opE"(%[[OP_D]])
 // CHECK-NEXT:     tf_executor.yield %[[OP_E]], %[[OP_D]] : tensor<i1>, tensor<i1>
@@ -124,13 +124,13 @@ func @graph_with_island_and_executor_op(%arg0 : tensor<i1>) -> (tensor<i1>, tens
 }
 
 // CHECK-NEXT: %[[GRAPH:[0-9]*]]:3 = tf_executor.graph {
-// CHECK-NEXT:   %[[ISLAND:[0-9]*]]:4 = tf_executor.island {
+// CHECK-NEXT:   %[[ISLAND:.*]]:3, %{{.*}} = tf_executor.island {
 // CHECK-NEXT:     %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:     %[[OP_B:[0-9]*]] = "tf.opB"(%[[OP_A]])
 // CHECK-NEXT:     %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_B]])
 // CHECK-NEXT:     tf_executor.yield %[[OP_A]], %[[OP_C]], %[[OP_B]] : tensor<i1>, tensor<i1>, tensor<i1>
-// CHECK:        %[[LOOP_COND:[0-9]*]]:2 = tf_executor.LoopCond %[[ISLAND]]#0
-// CHECK-NEXT:   tf_executor.fetch %[[ISLAND]]#1, %[[ISLAND]]#0, %[[LOOP_COND]]#0 : tensor<i1>, tensor<i1>, tensor<i1>
+// CHECK:        %[[LOOP_COND:.*]], %[[LOOP_COND_control:.*]] = tf_executor.LoopCond %[[ISLAND]]#0
+// CHECK-NEXT:   tf_executor.fetch %[[ISLAND]]#1, %[[ISLAND]]#0, %[[LOOP_COND]] : tensor<i1>, tensor<i1>, tensor<i1>
 // CHECK:      return %[[GRAPH]]#2, %[[GRAPH]]#1 : tensor<i1>, tensor<i1>
 
 
@@ -285,7 +285,7 @@ func @empty_island_no_operand_no_data_result() {
   return
 }
 
-// CHECK:        %[[ISLAND_0:[0-9]*]] = tf_executor.island
+// CHECK:        %[[ISLAND_0:.*]] = tf_executor.island
 // CHECK-NEXT:     "tf.opA"
 // CHECK:        tf_executor.island(%[[ISLAND_0]])
 // CHECK-NEXT:     "tf.opB"
@@ -313,7 +313,7 @@ func @empty_island_one_operand_no_data_result() {
   return
 }
 
-// CHECK:        %[[ISLAND_1:[0-9]*]] = tf_executor.island
+// CHECK:        %[[ISLAND_1:.*]] = tf_executor.island
 // CHECK-NEXT:     "tf.opA"
 // CHECK:        tf_executor.island(%[[ISLAND_1]])
 // CHECK-NEXT:     "tf.opB"
@@ -368,7 +368,7 @@ func @empty_control_trigger() {
   return
 }
 
-// CHECK:        %[[ISLAND_0:[0-9]*]] = tf_executor.island
+// CHECK:        %[[ISLAND_0:.*]] = tf_executor.island
 // CHECK-NEXT:     "tf.opA"
 // CHECK:        tf_executor.island(%[[ISLAND_0]])
 // CHECK-NEXT:     "tf.opB"

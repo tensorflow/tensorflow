@@ -14,16 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.h"
 
+#include <algorithm>
+#include <cstdio>
+#include <vector>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/activation_functor.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/tools/optimize/calibration/calibration_logger.h"
 
 namespace tflite {
 namespace optimize {

@@ -21,7 +21,7 @@ import timeit
 import numpy as np
 
 from tensorflow.python.client import session
-from tensorflow.python.data.experimental.ops import sleep
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.platform import test
@@ -61,7 +61,7 @@ class MetaBenchmark(test.Benchmark):
     dataset = self.setup_fast_dataset()
     self.iters = 1000
     # sleep for 1e-3s per iteration
-    return dataset.apply(sleep.sleep(1000))
+    return dataset.apply(testing.sleep(1000))
 
   def benchmark_slow_dataset_with_only_cpp_iterations(self):
     dataset = self.setup_slow_dataset()

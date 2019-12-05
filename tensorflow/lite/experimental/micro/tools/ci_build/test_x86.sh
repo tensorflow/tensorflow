@@ -28,4 +28,4 @@ readable_run make -f tensorflow/lite/experimental/micro/tools/make/Makefile clea
 
 # TODO(b/143715361): downloading first to allow for parallel builds.
 readable_run make -f tensorflow/lite/experimental/micro/tools/make/Makefile third_party_downloads
-readable_run make -j8 -f tensorflow/lite/experimental/micro/tools/make/Makefile test
+readable_run make -s -j8 -f tensorflow/lite/experimental/micro/tools/make/Makefile test

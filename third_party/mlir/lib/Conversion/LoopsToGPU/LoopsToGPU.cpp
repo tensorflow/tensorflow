@@ -23,6 +23,7 @@
 
 #include "mlir/Conversion/LoopsToGPU/LoopsToGPU.h"
 
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
@@ -30,7 +31,6 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Transforms/LoopUtils.h"
-#include "mlir/Transforms/LowerAffine.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/Support/Debug.h"

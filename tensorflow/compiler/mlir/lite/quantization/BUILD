@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
 

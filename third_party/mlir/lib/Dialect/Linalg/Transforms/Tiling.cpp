@@ -153,16 +153,11 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
 
   // Construct (potentially temporary) mins and maxes on which to apply maps
   // that define tile subviews.
-  SmallVector<Value *, 8> mins, maxes;
+  SmallVector<Value *, 8> lbs, subViewSizes;
   for (unsigned idx = 0, idxIvs = 0, e = tileSizes.size(); idx < e; ++idx) {
-    if (isZero(tileSizes[idx])) {
-      mins.push_back(constant_index(folder, 0));
-      maxes.push_back(viewSizes[idx]);
-    } else {
-      ValueHandle lb(ivs[idxIvs++]), step(tileSizes[idx]);
-      mins.push_back(lb);
-      maxes.push_back(lb + step);
-    }
+    bool isTiled = !isZero(tileSizes[idx]);
+    lbs.push_back(isTiled ? ivs[idxIvs++] : (Value *)constant_index(folder, 0));
+    subViewSizes.push_back(isTiled ? tileSizes[idx] : viewSizes[idx]);
   }
 
   auto *op = linalgOp.getOperation();
@@ -182,43 +177,40 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
     }
 
     // Construct a new subview for the tile.
-    SmallVector<SubViewOp::Range, 4> subViewRangeOperands;
-    subViewRangeOperands.reserve(rank * 3);
+    SmallVector<Value *, 4> offsets, sizes, strides;
+    offsets.reserve(rank);
+    sizes.reserve(rank);
+    strides.reserve(rank);
     for (unsigned r = 0; r < rank; ++r) {
       if (!isTiled(map.getSubMap({r}), tileSizes)) {
-        subViewRangeOperands.push_back(
-            SubViewOp::Range{constant_index(folder, 0), dim(view, r),
-                             constant_index(folder, 1)});
+        offsets.push_back(constant_index(folder, 0));
+        sizes.push_back(dim(view, r));
+        strides.push_back(constant_index(folder, 1));
         continue;
       }
 
-      auto m = map.getSubMap({r});
-      auto *min = applyMapToValues(b, loc, m, mins, folder).front();
-      auto *max = applyMapToValues(b, loc, m, maxes, folder).front();
       // Tiling creates a new slice at the proper index, the slice step is 1
       // (i.e. the slice view does not subsample, stepping occurs in the loop).
-      subViewRangeOperands.push_back(
-          SubViewOp::Range{min, max, constant_index(folder, 1)});
+      auto m = map.getSubMap({r});
+      auto *offset = applyMapToValues(b, loc, m, lbs, folder).front();
+      offsets.push_back(offset);
+      auto *size = applyMapToValues(b, loc, m, subViewSizes, folder).front();
+      sizes.push_back(size);
+      strides.push_back(constant_index(folder, 1));
     }
-    SmallVector<Value *, 12> subViewOperands;
-    subViewOperands.reserve(subViewRangeOperands.size() * 3);
-    for (auto r : subViewRangeOperands) {
-      subViewOperands.push_back(r.min);
-      subViewOperands.push_back(r.max);
-      subViewOperands.push_back(r.step);
-    }
-    res.push_back(b.create<SubViewOp>(loc, view, subViewOperands));
+    // TODO(b/144419024) Atm std.subview is not guaranteed in-bounds. Depending
+    // on the semantics we attach to it, we may need to use min(size, dim) here
+    // and canonicalize later.
+    res.push_back(b.create<SubViewOp>(loc, view, offsets, sizes, strides));
   }
 
   // Traverse the mins/maxes and erase those that don't have uses left.
   // This is a special type of folding that we only apply when `folder` is
   // defined.
-  if (folder) {
-    mins.append(maxes.begin(), maxes.end());
-    for (auto *v : mins)
+  if (folder)
+    for (auto *v : llvm::concat<Value *>(lbs, subViewSizes))
       if (v->use_empty())
         v->getDefiningOp()->erase();
-  }
 
   return res;
 }

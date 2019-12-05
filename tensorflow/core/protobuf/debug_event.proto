@@ -87,8 +87,7 @@ message DebugEvent {
     // a Python function).
     GraphOpCreation graph_op_creation = 7;
 
-    // Information about a debugged graph, including its graph def and
-    // list of the graph's ops that are instrumented.
+    // Information about a debugged graph.
     DebuggedGraph debugged_graph = 8;
 
     // Execution of an op or a Graph (e.g., a tf.function).
@@ -176,6 +175,9 @@ message GraphOpCreation {
 
   // The unique ID for code location (stack trace) of the op's creation.
   CodeLocation code_location = 8;
+
+  // Unique IDs for the output tensors of this op.
+  repeated int32 output_tensor_ids = 9;
 }
 
 // A debugger-instrumented graph.
@@ -197,6 +199,9 @@ message DebuggedGraph {
   // An encoded version of a GraphDef.
   // This graph may include the debugger-inserted ops.
   bytes instrumented_graph_def = 5;
+
+  // IDs of the immediate enclosing context (graph), if any.
+  string outer_context_id = 6;
 }
 
 // Data relating to the eager execution of an op or a Graph.

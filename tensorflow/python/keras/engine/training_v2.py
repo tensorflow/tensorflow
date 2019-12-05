@@ -436,7 +436,7 @@ class Loop(training_utils.TrainingLoop):
 
       # tf.print('{} on {} steps.'.format(ModeKeys.TRAIN, steps_per_epoch))
       training_context = TrainingContext()
-      if mode == ModeKeys.PREDICT:
+      if training_v2_utils._should_add_batch_index_to_element(strategy, mode):
         dataset = training_v2_utils._add_batch_index_to_element(dataset)
       dataset = strategy.experimental_distribute_dataset(dataset)
 

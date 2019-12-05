@@ -100,6 +100,14 @@ IntegerAttr Builder::getI64IntegerAttr(int64_t value) {
   return IntegerAttr::get(getIntegerType(64), APInt(64, value));
 }
 
+DenseIntElementsAttr Builder::getI32VectorAttr(ArrayRef<int32_t> values) {
+  return DenseElementsAttr::get(
+             VectorType::get(static_cast<int64_t>(values.size()),
+                             getIntegerType(32)),
+             values)
+      .cast<DenseIntElementsAttr>();
+}
+
 IntegerAttr Builder::getI32IntegerAttr(int32_t value) {
   return IntegerAttr::get(getIntegerType(32), APInt(32, value));
 }
@@ -150,14 +158,19 @@ ArrayAttr Builder::getArrayAttr(ArrayRef<Attribute> value) {
   return ArrayAttr::get(value, context);
 }
 
-SymbolRefAttr Builder::getSymbolRefAttr(Operation *value) {
+FlatSymbolRefAttr Builder::getSymbolRefAttr(Operation *value) {
   auto symName =
       value->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
   assert(symName && "value does not have a valid symbol name");
   return getSymbolRefAttr(symName.getValue());
 }
-SymbolRefAttr Builder::getSymbolRefAttr(StringRef value) {
+FlatSymbolRefAttr Builder::getSymbolRefAttr(StringRef value) {
   return SymbolRefAttr::get(value, getContext());
+}
+SymbolRefAttr
+Builder::getSymbolRefAttr(StringRef value,
+                          ArrayRef<FlatSymbolRefAttr> nestedReferences) {
+  return SymbolRefAttr::get(value, nestedReferences, getContext());
 }
 
 ArrayAttr Builder::getI32ArrayAttr(ArrayRef<int32_t> values) {

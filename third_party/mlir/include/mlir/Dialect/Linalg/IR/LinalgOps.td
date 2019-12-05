@@ -22,13 +22,8 @@
 #ifndef LINALG_OPS
 #define LINALG_OPS
 
-#ifndef AFFINE_OPS_BASE
 include "mlir/Dialect/AffineOps/AffineOpsBase.td"
-#endif // AFFINE_OPS_BASE
-
-#ifndef LINALG_BASE
 include "mlir/Dialect/Linalg/IR/LinalgBase.td"
-#endif // LINALG_BASE
 
 // Base class for Linalg dialect ops that do not correspond to library calls.
 class Linalg_Op<string mnemonic, list<OpTrait> traits = []> :
@@ -126,70 +121,6 @@ def SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
       for (auto *operand : indexings())
         if (!operand->getType().isa<IndexType>())
           res.push_back(operand);
-      return res;
-    }
-  }];
-}
-
-def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
-    Arguments<(ins AnyStridedMemRef:$view, Variadic<Index>:$ranges)>,
-    Results<(outs AnyStridedMemRef)> {
-  let summary = "subview operation";
-  let description = [{
-    The "linalg.subview" op produces a linalg.view which is a subview of a given
-    base view. This allows defining a subregion within the underlying buffer.
-
-    The "linalg.subview" operation takes a base view, a list of indices and
-    returns a new linalg.view of the same type that is contained within the
-    view. This operation is equivalent to a non-rank-reducing slice operation.
-    The main difference is the operands are all of type `index` and no
-    intermediate linalg.range operations are required. A "linalg.subview" is
-    thus a specialized linalg.slice with a higher level of abstraction.
-
-    Similary to linalg.slice, if a range extends past the size of the base view,
-    the slice operation automatically truncates it to be within the bounds of
-    the view.
-
-    Example:
-
-      %1 = linalg.subview %0[%1, %2, %3, %4, %5, %6] :
-        memref<?x?xf32, stride_specification>
-
-  }];
-  // TODO(ntv) evolve syntax towards:
-  //   linalg.subview %0[%1:%2:%3][%4:%5:%6] :
-  //     memref<?x?xf32, stride_specification>
-
-  let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Value *buffer, "
-    "ArrayRef<Value *> ranges, Type resultType = Type(), "
-    "ArrayRef<NamedAttribute> attrs = {}">];
-
-  let verifier = [{
-    auto rank = getViewType().getRank();
-    if (getNumOperands() != 3 * rank + 1)
-      return emitOpError("expected a strided memref followed by ") << (3 * rank)
-        << " indices specifying a range for each dimension";
-    return success();
-  }];
-
-  let extraClassDeclaration = [{
-    Value *getView() { return getOperand(0); }
-    MemRefType getViewType() { return getView()->getType().cast<MemRefType>(); }
-
-    struct Range { Value *min; Value *max; Value *step; };
-
-    Range getRange(unsigned i) {
-      return Range{
-        getOperand(1 + 3*i), getOperand(1 + 3*i + 1), getOperand(1 + 3*i + 2)};
-    }
-
-    SmallVector<Range, 8> getRanges() {
-      SmallVector<Range, 8> res;
-      unsigned rank = getViewType().getRank();
-      res.reserve(rank);
-      for (unsigned i = 0; i < rank; ++i)
-        res.push_back(getRange(i));
       return res;
     }
   }];

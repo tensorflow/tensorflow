@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -183,6 +184,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
     case mlir::TF::TensorFlowTypes::STRING:
       return tflite::TensorType_STRING;
     case mlir::TF::TensorFlowTypes::UINT8:
+      return tflite::TensorType_UINT8;
+    case mlir::TF::TensorFlowTypes::QUINT8:
       return tflite::TensorType_UINT8;
     case mlir::StandardTypes::Complex: {
       auto ftype = type.cast<mlir::ComplexType>().getElementType();
@@ -381,7 +384,7 @@ class Translator {
       const ::tensorflow::NodeDef& node_def, const mlir::Location& loc);
 
   // Returns opcode index for op identified by the op_name, if already
-  // available. Otherwise, creates a new OperactorCode using the given `builtin`
+  // available. Otherwise, creates a new OperatorCode using the given `builtin`
   // operator and associates it with `op_name`.
   uint32_t GetOpcodeIndex(const std::string& op_name,
                           tflite::BuiltinOperator builtin);
@@ -958,7 +961,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
     operands.reserve(inst.getNumOperands());
     for (auto* operand : inst.getOperands()) {
       if (operand->getType().isa<NoneType>())
-        operands.push_back(kOptionalTensor);
+        operands.push_back(kTfLiteOptionalTensor);
       else
         operands.push_back(tensor_index_map.lookup(operand));
     }

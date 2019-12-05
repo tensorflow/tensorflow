@@ -96,6 +96,12 @@ std::string DOTGraphTraits<mlir::Block *>::getNodeLabel(mlir::Operation *op,
       continue;
     }
 
+    auto array = attr.second.dyn_cast<mlir::ArrayAttr>();
+    if (array && static_cast<int64_t>(array.size()) > elideIfLarger) {
+      os << "[...]";
+      continue;
+    }
+
     // Print all other attributes.
     attr.second.print(os);
   }

@@ -65,7 +65,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
@@ -81,7 +81,7 @@ bool IsInitializationOp(const Node* node) {
 
 // Helper routines for collecting step stats.
 namespace nodestats {
-inline int64 NowInNsec() { return Env::Default()->NowNanos(); }
+inline int64 NowInNsec() { return EnvTime::NowNanos(); }
 
 void SetScheduled(NodeExecStatsInterface* stats, int64 micros) {
   if (!stats) return;
@@ -1287,7 +1287,7 @@ class ExecutorState {
 
   int64 step_id_;
   // Not owned.
-  Rendezvous* rendezvous_;
+  RendezvousInterface* rendezvous_;
   Executor::RendezvousFactory* create_rendezvous_ = nullptr;
   CollectiveExecutor* collective_executor_ = nullptr;
   SessionState* session_state_;
@@ -1637,7 +1637,7 @@ bool MightTrace(const NodeItem& item,
                 const tracing::EventCollector* event_collector) {
   // Tracing will only be enabled if either `event_collector` is non null,
   // or `trace_collector` is non-null and enabled for this particular kernel.
-  // Although `profiler::TraceMe`, `tracing::ScopedAnnotation`, and
+  // Although `profiler::TraceMe`, `profiler::ScopedAnnotation`, and
   // `tracing::ScopedRegion` check subsets of these properties internally in
   // their constructors, the cost of passing the necessary arguments to them can
   // be significant, so we avoid constructing them in the common case (when we
@@ -1646,9 +1646,9 @@ bool MightTrace(const NodeItem& item,
     return true;
   }
 
-  if (tracing::ScopedAnnotation::IsEnabled()) return true;
+  if (profiler::ScopedAnnotation::IsEnabled()) return true;
 
-  return profiler::TraceMeRecorder::Active(
+  return profiler::TraceMe::Active(
       profiler::GetTFTraceMeLevel(item.kernel->IsExpensive()));
 }
 
@@ -1659,7 +1659,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         if (step_container_ && step_container_->step_id()) {
           id = step_container_->step_id();
         }
-        return absl::StrCat("ExecutorState::Process#id=", id, "#");
+        return absl::StrCat("ExecutorState::Process#id=", id,
+                            ",iter_num=", tagged_node.input_iter, "#");
       },
       2);
   WithContext wc(context_);
@@ -1851,13 +1852,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         {
           profiler::TraceMe activity(
               [&] {
-                int64 id = step_id_;
-                if (step_container_ && step_container_->step_id()) {
-                  id = step_container_->step_id();
-                }
-                return strings::StrCat(
-                    op_kernel->name(), ":", op_kernel->type_string(),
-                    "#id=", id, ",device=", device->name(), ",async=true#");
+                return strings::StrCat(op_kernel->name(), ":",
+                                       op_kernel->type_string());
               },
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
           device->ComputeAsync(async, &state->ctx, done);
@@ -1869,13 +1865,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
 
         if (TF_PREDICT_FALSE(MightTrace(item, event_collector_))) {
           const string& op_name = op_kernel->name();
-          int64 id = step_id_;
-          if (step_container_ && step_container_->step_id()) {
-            id = step_container_->step_id();
-          }
-          const string kernel_label = strings::StrCat(
-              op_name, ":", op_kernel->type_string(), "#id=", id,
-              ",device=", device->name(), ",async=false#");
+          const string kernel_label =
+              strings::StrCat(op_name, ":", op_kernel->type_string());
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
           // 'TraceMe' will trace the OpKernel scheduling time.
@@ -1883,7 +1874,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
               absl::string_view(kernel_label),
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
           // 'ScopedAnnotation' will trace the OpKernel execution time.
-          tracing::ScopedAnnotation annotation(kernel_label);
+          profiler::ScopedAnnotation annotation(kernel_label);
           device->Compute(op_kernel, &ctx);
         } else {
           // In the common case, avoid creating any tracing objects.

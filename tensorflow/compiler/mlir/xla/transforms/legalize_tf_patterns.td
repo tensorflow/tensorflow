@@ -20,14 +20,6 @@ include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
-def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
-def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
-
-def CastIntElementsAttr : NativeCodeCall<"$0.cast<DenseIntElementsAttr>()">;
-
-class ConstantSplat<string value> : NativeCodeCall<
-    "getSplat($_builder, $0, " # value # ")">;
-
 //===----------------------------------------------------------------------===//
 // BatchNorm op patterns.
 //===----------------------------------------------------------------------===//
@@ -65,10 +57,6 @@ def : Pat<(TF_BiasAddOp AnyStaticShapeTensor:$input, $bias, $data_format),
 // Binary op patterns.
 //===----------------------------------------------------------------------===//
 
-// Get the broadcast dimensions attribute from the binary operands.
-def BinBroadcastDimensions : NativeCodeCall<
-    "getBroadcastDimensionsAttr($_builder, $0, $1)">;
-
 // Check that two values can be broadcasted together
 def AreBroadcastCompatible : Constraint<CPred<"AreBroadcastCompatible($0, $1)">,
     "types must be broadcastable">;
@@ -88,8 +76,7 @@ foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
                          [TF_SubOp, HLO_SubOp]] in
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
-def : Pat<(TF_ComplexOp $r, $i),
-          (HLO_ComplexOp $r, $i)>;
+def : Pat<(TF_ComplexOp $r, $i), (HLO_ComplexOp $r, $i)>;
 
 def IntegerTensor : TensorOf<[I1, I8, I16, I32, I64]>;
 
@@ -102,9 +89,9 @@ def IEEEFloatTensor : TensorOf<[F16, F32, F64]>;
 def : Pat<(TF_FloorDivOp IEEEFloatTensor:$l, IEEEFloatTensor:$r),
         (HLO_FloorOp (HLO_DivOp $l, $r, (BinBroadcastDimensions $l, $r)))>;
 
-// Performs a substituion of FloorDir for integer tensors, which required
+// Performs a substitution of FloorDir for integer tensors, which required
 // additional correction for a negative numerator / denominator. Equivalent
-// psuedocode is shown below:
+// pseudocode is shown below:
 //
 // if ((x < 0) != (y < 0)) {
 //   T abs_x = std::abs(x);
@@ -115,7 +102,7 @@ def : Pat<(TF_FloorDivOp IEEEFloatTensor:$l, IEEEFloatTensor:$r),
 // }
 //
 // BraodcastToDimensions is used to compute the broadcast attr to higher
-// dimensions. This computes the braodcast of 'l' to broadcast('l', 'r')
+// dimensions. This computes the broadcast of 'l' to broadcast('l', 'r')
 // without returning the broadcast of 'r' to broadcast('l', 'r').
 //
 // NOTE: This should be optimized for unsigned integers.
@@ -160,15 +147,26 @@ def : Pat<(TF_FloorModOp $l, $r),
          $rem, (BinBroadcastDimensions $r, $rem)), $rem)>;
 
 //===----------------------------------------------------------------------===//
-// Logical binary op patterns.
+// BroadcastTo op patterns.
+//===----------------------------------------------------------------------===//
+
+// input and result needs to ranked for computation of the broadcast dimensions.
+def : Pat<(TF_BroadcastToOp:$result AnyRankedTensor:$input, $shape),
+          (HLO_BroadcastInDimOp $input,
+           (BinBroadcastDimensions $input, $result)),
+           [(AnyRankedTensor $result)]>;
+
+//===----------------------------------------------------------------------===//
+// Logical & bitwise binary op patterns.
 //===----------------------------------------------------------------------===//
 
 class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
-  : Pat<(FromOp I1Tensor:$l, I1Tensor:$r),
+  : Pat<(FromOp IntegerTensor:$l, IntegerTensor:$r),
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
 
 foreach fromToBinPair = [[TF_LogicalAndOp, HLO_AndOp],
-                         [TF_LogicalOrOp, HLO_OrOp]] in
+                         [TF_LogicalOrOp, HLO_OrOp],
+                         [TF_BitwiseOrOp, HLO_OrOp]] in
   def : DirectLogicalBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
@@ -230,7 +228,7 @@ def IsShapedTensor
 // the conversion, original Concat op operands still refers to the old ops even
 // if HLO constant op is introduced as an replacement for the TensorFlow
 // Constant op.
-def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis), $unused),
+def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis)),
           (HLO_ConcatenateOp $inputs, (GetHLOAxisFromTFAxis $axis, $inputs)),
           [(HasRankedFirstOperand $inputs)]>;
 
@@ -239,7 +237,7 @@ def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis), $unused),
 //===----------------------------------------------------------------------===//
 
 def CastElementsToI64Elements : NativeCodeCall<
-  "::xla::ConvertElementsAttr("
+  "xla::ConvertElementsAttr("
     "$0, $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
 
 def : Pat<(TF_CrossReplicaSumOp $input, (TF_ConstOp $group_assignment)),
@@ -247,7 +245,7 @@ def : Pat<(TF_CrossReplicaSumOp $input, (TF_ConstOp $group_assignment)),
             (CastElementsToI64Elements $group_assignment))>;
 
 //===----------------------------------------------------------------------===//
-// Fft op patterns.
+// FFT op patterns.
 //===----------------------------------------------------------------------===//
 
 def : Pat<(TF_RFFTOp $input, (TF_ConstOp I32ElementsAttr:$fft_length)),
@@ -258,31 +256,29 @@ def : Pat<(TF_RFFTOp $input, (TF_ConstOp I32ElementsAttr:$fft_length)),
 // Pad op patterns.
 //===----------------------------------------------------------------------===//
 
-def ZeroPaddingAttr : NativeCodeCall <
-  "DenseElementsAttr::get("
-    "RankedTensorType::get($0.getType().getShape()[0], getElementTypeOrSelf($0.getType())), "
-    "{$_builder.getZeroAttr(getElementTypeOrSelf($0.getType()))})"
-    ".cast<DenseIntElementsAttr>()">;
-
 class SliceDenseIntElementsAttrColumn2D<string column> : NativeCodeCall<
-  "SliceDenseIntElementsAttrColumn2D("
-    "&$_builder, $0, " # column # " )">;
+  "SliceDenseIntElementsAttrColumn2D($0, " # column # " )">;
 
 class SliceDenseIntElementsAttr<string index, string axis> : NativeCodeCall<
-  "SliceDenseIntElementsAttr(&$_builder, $0, " # index # ", " # axis # ")">;
+  "SliceDenseIntElementsAttr($0, " # index # ", " # axis # ")">;
 
+// Interior padding attribute based on the TF padding.
+def GetInteriorPadding : NativeCodeCall <
+  "GetInteriorPadding($0)">;
 
-def : Pat<(TF_PadV2Op $input, (TF_ConstOp I64ElementsAttr:$padding), $c),
+def : Pat<(TF_PadV2Op $input, (TF_ConstOp $padding), $c),
           (HLO_PadOp $input, $c,
            (SliceDenseIntElementsAttrColumn2D<"0"> $padding),
            (SliceDenseIntElementsAttrColumn2D<"1"> $padding),
-           (ZeroPaddingAttr $padding))>;
+           (GetInteriorPadding $padding))>;
 
 //===----------------------------------------------------------------------===//
 // Identity op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_IdentityOp $op), (replaceWithValue $op)>;
+foreach src = [TF_IdentityOp, TF_StopGradientOp] in
+  def : Pat<(src $op), (replaceWithValue $op)>;
+def : Pat<(TF_PreventGradientOp $op, $msg), (replaceWithValue $op)>;
 
 //===----------------------------------------------------------------------===//
 // MatMul op patterns.
@@ -301,9 +297,8 @@ def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
 // Nullary op patterns.
 //===----------------------------------------------------------------------===//
 
-// TODO(riverriddle) Formalize a policy on converting opaque attributes.
 def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
-          [(AnyStaticShapeTensor $res)]>;
+          [(AnyStaticShapeTensor $res), (HLO_Tensor $res)]>;
 
 //===----------------------------------------------------------------------===//
 // Relu op patterns.
@@ -328,14 +323,6 @@ def : Pat<(TF_ReluGradOp AnyStaticShapeTensor:$gradients, AnyStaticShapeTensor:$
             $gradients, $zero)>;
 
 //===----------------------------------------------------------------------===//
-// Relu op patterns.
-//===----------------------------------------------------------------------===//
-
-def : Pat<(TF_SelectOp $condition, $lhs, $rhs),
-          (HLO_SelectOp $condition, $lhs, $rhs)>;
-
-
-//===----------------------------------------------------------------------===//
 // Slice op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -354,6 +341,19 @@ def : Pat<(TF_SliceOp HLO_Tensor:$input, HLO_Tensor:$starting_indices,
             $slice_sizes)]>;
 
 //===----------------------------------------------------------------------===//
+// Ternary op patterns.
+//===----------------------------------------------------------------------===//
+
+def BothTypesMatch : Constraint<CPred<"$0->getType() == $1->getType()">,
+   "types must be equal">;
+
+foreach src = [TF_SelectOp, TF_SelectV2Op] in
+  def : Pat<(src $cond, $t, $e), (HLO_SelectOp $cond, $t, $e),
+    // TODO(jpienaar): This restriction is to avoid creating a currently
+    // unsupported HLO select.
+    [(BothTypesMatch $t, $e)]>;
+
+//===----------------------------------------------------------------------===//
 // Unary op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -365,6 +365,7 @@ foreach Mapping = [
                    [TF_ExpOp, HLO_ExpOp],
                    [TF_FloorOp, HLO_FloorOp],
                    [TF_ImagOp, HLO_ImagOp],
+                   [TF_IsFiniteOp, HLO_IsFiniteOp],
                    [TF_LogOp, HLO_LogOp],
                    [TF_NegOp, HLO_NegOp],
                    [TF_RealOp, HLO_RealOp],
@@ -382,8 +383,8 @@ foreach Mapping = [
 def : Pat<(TF_CastOp HLO_Tensor:$arg, ConstBoolAttrFalse),
           (HLO_ConvertOp $arg)>;
 
-def : Pat<(TF_TransposeOp:$res $arg, (TF_ConstOp I64ElementsAttr:$permutation)),
-          (HLO_TransposeOp $arg, (CastIntElementsAttr $permutation))>;
+def : Pat<(TF_TransposeOp:$res $arg, (TF_ConstOp $permutation)),
+          (HLO_TransposeOp $arg, (CastElementsToI64Elements $permutation))>;
 
 foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
   def : Pat<(TfOp:$res AnyStaticShapeTensor:$arg, $ignored),

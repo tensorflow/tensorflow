@@ -1,4 +1,6 @@
-# Chapter 6 - Lowering to LLVM and CodeGeneration
+# Chapter 6: Lowering to LLVM and CodeGeneration
+
+[TOC]
 
 In the [previous chapter](Ch-5.md), we introduced the
 [dialect conversion](../../DialectConversion.md) framework and partially lowered
@@ -8,27 +10,27 @@ chapter, we will finally lower to LLVM for code generation.
 # Lowering to LLVM
 
 For this lowering, we will again use the dialect conversion framework to perform
-the heavy lifting. Although this time, we will be performing a full conversion
-to the [LLVM dialect](../../Dialects/LLVM.md). Thankfully we have already
+the heavy lifting. However, this time, we will be performing a full conversion
+to the [LLVM dialect](../../Dialects/LLVM.md). Thankfully, we have already
 lowered all but one of the `toy` operations, with the last being `toy.print`.
 Before going over the conversion to LLVM, let's lower the `toy.print` operation.
-We will be lowering `toy.print` to a non-affine loop nest, that invokes `printf`
-for each element. Note that because the dialect conversion framework supports
-transitive lowering, we don't need to directly emit operations in the LLVM
-dialect. By transitive lowering, we mean that the conversion framework may apply
-multiple patterns to fully legalize an operation. In this example, we are
-generating a structured loop nest, instead of the branch-form in the LLVM
-dialect. As long as we have a lowering from the loop operations to LLVM, the
-lowering will still succeed.
+We will lower this operation to a non-affine loop nest that invokes `printf` for
+each element. Note that, because the dialect conversion framework supports
+[transitive lowering](Glossary.md#transitive-lowering), we don't need to
+directly emit operations in the LLVM dialect. By transitive lowering, we mean
+that the conversion framework may apply multiple patterns to fully legalize an
+operation. In this example, we are generating a structured loop nest instead of
+the branch-form in the LLVM dialect. As long as we then have a lowering from the
+loop operations to LLVM, the lowering will still succeed.
 
 During lowering we can get, or build, the declaration for printf as so:
 
 ```c++
 /// Return a symbol reference to the printf function, inserting it into the
 /// module if necessary.
-static SymbolRefAttr getOrInsertPrintf(PatternRewriter &rewriter,
-                                       ModuleOp module,
-                                       LLVM::LLVMDialect *llvmDialect) {
+static FlatSymbolRefAttr getOrInsertPrintf(PatternRewriter &rewriter,
+                                           ModuleOp module,
+                                           LLVM::LLVMDialect *llvmDialect) {
   auto *context = module.getContext();
   if (module.lookupSymbol<LLVM::LLVMFuncOp>("printf"))
     return SymbolRefAttr::get("printf", context);
@@ -65,13 +67,13 @@ everything to the LLVM dialect.
 
 ## Type Converter
 
-During this lowering, we will also be lowering the MemRef types, that are
-currently being operated on, to a representation in LLVM. To perform this
-conversion we use a TypeConverter as part of the lowering. This converter
-details how one type maps to another. This is necessary now that we will be
-doing more complicated lowerings, involving block arguments. Given that we don't
-have any `toy dialect-specific` types that need to be lowered, the default
-converter is enough for our usecase.
+This lowering will also transform the MemRef types which are currently being
+operated on into a representation in LLVM. To perform this conversion, we use a
+TypeConverter as part of the lowering. This converter specifies how one type
+maps to another. This is necessary now that we are performing more complicated
+lowerings involving block arguments. Given that we don't have any
+Toy-dialect-specific types that need to be lowered, the default converter is
+enough for our use case.
 
 ```c++
   LLVMTypeConverter typeConverter(&getContext());
@@ -80,13 +82,11 @@ converter is enough for our usecase.
 ## Conversion Patterns
 
 Now that the conversion target has been defined, we need to provide the patterns
-used for lowering. At this point of the compilation process, we have a
+used for lowering. At this point in the compilation process, we have a
 combination of `toy`, `affine`, and `std` operations. Luckily, the `std` and
-`affine` dialect already provide the set of patterns needed to transform them
+`affine` dialects already provide the set of patterns needed to transform them
 into LLVM dialect. These patterns allow for lowering the IR in multiple stages
-by relying on transitive lowering. Transitive lowering, or A->B->C lowering, is
-when multiple patterns must be applied to fully transform an illegal operation
-into a set of legal ones.
+by relying on [transitive lowering](Glossary.md#transitive-lowering).
 
 ```c++
   mlir::OwningRewritePatternList patterns;
@@ -123,7 +123,7 @@ func @main() {
 }
 ```
 
-We can now lower down to the LLVM dialect:
+We can now lower down to the LLVM dialect, which produces the following code:
 
 ```.mlir
 llvm.func @free(!llvm<"i8*">)
@@ -172,7 +172,7 @@ more in-depth details on lowering to the LLVM dialect.
 # CodeGen: Getting Out of MLIR
 
 At this point we are right at the cusp of code generation. We can generate code
-in the LLVM dialect, so now we just need to export to LLVM IR and setup a jit to
+in the LLVM dialect, so now we just need to export to LLVM IR and setup a JIT to
 run it.
 
 ## Emitting LLVM IR
@@ -221,8 +221,8 @@ define void @main() {
 }
 ```
 
-If we enable optimization on the generated LLVM IR, we can trim this down by
-quite a bit:
+If we enable optimization on the generated LLVM IR, we can trim this down quite
+a bit:
 
 ```.llvm
 define void @main()
@@ -314,7 +314,10 @@ $ echo 'def main() { print([[1, 2], [3, 4]]); }' | ./bin/toyc-ch6 -emit=jit
 3.000000 4.000000
 ```
 
-You can also play with -emit=mlir, -emit=mlir-affine, -emit=mlir-llvm, and
--emit=llvm to compare the various levels of IR involved. Also try options like
-[--print-ir-after-all](../../WritingAPass.md#ir-printing) to track the evolution
-of the IR throughout the pipeline.
+You can also play with `-emit=mlir`, `-emit=mlir-affine`, `-emit=mlir-llvm`, and
+`-emit=llvm` to compare the various levels of IR involved. Also try options like
+[`--print-ir-after-all`](../../WritingAPass.md#ir-printing) to track the
+evolution of the IR throughout the pipeline.
+
+So far, we have worked with primitive data types. In the
+[next chapter](Ch-7.md), we will add a composite `struct` type.

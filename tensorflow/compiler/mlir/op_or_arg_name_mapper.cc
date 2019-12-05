@@ -17,88 +17,123 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 
+static inline absl::string_view StringRefToView(llvm::StringRef ref) {
+  return absl::string_view(ref.data(), ref.size());
+}
+
+static inline llvm::StringRef StringViewToRef(absl::string_view view) {
+  return llvm::StringRef(view.data(), view.size());
+}
+
 namespace tensorflow {
 
 OpOrArgNameMapper::~OpOrArgNameMapper() {}
 
-std::string OpOrArgNameMapper::GetUniqueName(llvm::StringRef prefix) {
-  std::string name = prefix;
-  if (IsUnique(name)) {
-    ++name_to_count_[name];
-    return name;
+llvm::StringRef OpOrArgNameMapper::GetUniqueName(llvm::StringRef prefix) {
+  // Insert/find if prefix is unique.
+  auto prefix_it = name_to_count_.try_emplace(prefix, 0);
+  if (prefix_it.second && IsUnique(prefix)) {
+    // Name is unique, increment count and return string name backed by
+    // `name_to_count_`.
+    ++prefix_it.first->second;
+    return prefix_it.first->first();
   }
 
-  auto& val = name_to_count_[name];
+  // Add increasing number (count) to end of prefix until it is determined
+  // to be unique.
+  auto& val = prefix_it.first->second;
   llvm::SmallString<64> probe_name(prefix);
   while (true) {
     probe_name.resize(prefix.size());
     // TODO(jpienaar): Subtract one so that the initial suffix is 0 instead
     // of 1.
     // TODO(jpienaar): Switch to radix 36 and update tests.
-    llvm::APInt(32, val++).toString(probe_name, /*Radix=*/10,
-                                    /*Signed=*/false);
+    llvm::APInt(32, val++).toString(probe_name, /*Radix=*/10, /*Signed=*/false);
     if (IsUnique(probe_name)) {
-      name = llvm::StringRef(probe_name);
-      ++name_to_count_[name];
-      break;
+      // Insert/find if prefix with appended number is unique.
+      auto probe_name_it = name_to_count_.try_emplace(probe_name, 1);
+      if (probe_name_it.second) {
+        // Name is unique, return string name backed by `name_to_count_`.
+        return probe_name_it.first->first();
+      }
     }
   }
-  return name;
 }
 
-const std::string& OpOrArgNameMapper::GetUniqueName(OpOrArg op_or_arg) {
+llvm::StringRef OpOrArgNameMapper::GetUniqueName(OpOrArg op_or_arg) {
+  auto& name = op_or_arg_to_name_[op_or_arg];
+  if (!name.empty()) return StringViewToRef(name);
+  // Update the value in the map with unique name.
+  llvm::StringRef ref = GetUniqueName(GetName(op_or_arg));
+  name = StringRefToView(ref);
+  return ref;
+}
+
+absl::string_view OpOrArgNameMapper::GetUniqueNameView(OpOrArg op_or_arg) {
   auto& name = op_or_arg_to_name_[op_or_arg];
   if (!name.empty()) return name;
   // Update the value in the map with unique name.
-  name = GetUniqueName(GetName(op_or_arg));
+  name = StringRefToView(GetUniqueName(GetName(op_or_arg)));
   return name;
 }
 
 int OpOrArgNameMapper::InitOpName(OpOrArg op_or_arg, llvm::StringRef name) {
-  op_or_arg_to_name_[op_or_arg] = name;
-  return name_to_count_[name]++;
+  auto it = name_to_count_.try_emplace(name, 0);
+  op_or_arg_to_name_[op_or_arg] = StringRefToView(it.first->first());
+  return it.first->second++;
 }
 
-bool OpOrArgNameMapper::IsUnique(llvm::StringRef name) {
-  return name_to_count_.count(name) == 0;
-}
+bool OpOrArgNameMapper::IsUnique(llvm::StringRef name) { return true; }
 
 namespace {
 // Derives name from location.
 std::string GetNameFromLoc(mlir::Location loc) {
-  if (auto name_loc = loc.dyn_cast<mlir::NameLoc>())
-    return name_loc.getName().str();
+  llvm::SmallVector<llvm::StringRef, 8> loc_names;
+  llvm::SmallVector<mlir::Location, 8> locs;
+  locs.push_back(loc);
+  bool names_is_nonempty = false;
 
-  if (auto call_loc = loc.dyn_cast<mlir::CallSiteLoc>()) {
-    // Return name if CallSiteLoc's callee has a NameLoc (as should be the case
-    // if imported with DebugInfo), else use the fallback naming scheme below.
-    if (auto name_loc = call_loc.getCallee().dyn_cast<mlir::NameLoc>())
-      return name_loc.getName().str();
-  }
+  while (!locs.empty()) {
+    mlir::Location curr_loc = locs.pop_back_val();
 
-  if (auto fused_loc = loc.dyn_cast<mlir::FusedLoc>()) {
-    llvm::ArrayRef<mlir::Location> locations = fused_loc.getLocations();
-    std::vector<std::string> names;
-    bool names_is_nonempty = false;
-    for (const auto& loc : locations) {
-      const std::string loc_name = GetNameFromLoc(loc);
-      names.push_back(loc_name);
-      if (!loc_name.empty()) {
-        names_is_nonempty = true;
+    if (auto name_loc = curr_loc.dyn_cast<mlir::NameLoc>()) {
+      // Add name in NameLoc.
+      loc_names.push_back(name_loc.getName().strref());
+      if (!name_loc.getName().strref().empty()) names_is_nonempty = true;
+      continue;
+    } else if (auto call_loc = curr_loc.dyn_cast<mlir::CallSiteLoc>()) {
+      // Add name if CallSiteLoc's callee has a NameLoc (as should be the
+      // case if imported with DebugInfo).
+      if (auto name_loc = call_loc.getCallee().dyn_cast<mlir::NameLoc>()) {
+        loc_names.push_back(name_loc.getName().strref());
+        if (!name_loc.getName().strref().empty()) names_is_nonempty = true;
+        continue;
       }
+    } else if (auto fused_loc = curr_loc.dyn_cast<mlir::FusedLoc>()) {
+      // Push all locations in FusedLoc in reverse order, so locations are
+      // visited based on order in FusedLoc.
+      auto reversed_fused_locs = llvm::reverse(fused_loc.getLocations());
+      locs.append(reversed_fused_locs.begin(), reversed_fused_locs.end());
+      continue;
     }
-    if (names_is_nonempty) {
-      return llvm::join(names.begin(), names.end(), ",");
-    }
+
+    // Location is not a supported, so an empty StringRef is added.
+    loc_names.push_back(llvm::StringRef());
   }
+
+  if (names_is_nonempty)
+    return llvm::join(loc_names.begin(), loc_names.end(), ";");
 
   return "";
 }
@@ -120,9 +155,7 @@ std::string OpOrArgLocNameMapper::GetName(OpOrArg op_or_arg) {
 }
 
 std::string OpOrArgStripNameMapper::GetName(OpOrArg op_or_arg) {
-  return llvm::APInt(32, count_++)
-      .toString(/*Radix=*/36,
-                /*Signed=*/false);
+  return llvm::APInt(32, count_++).toString(/*Radix=*/36, /*Signed=*/false);
 }
 
 }  // namespace tensorflow

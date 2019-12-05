@@ -18,11 +18,24 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
+
+// Lowers MLIR module to XLA HLO inside an XlaComputation. The input module
+// should only contain operations in tf dialect. If the input module contains
+// operation in the tf_executor dialect, for example, returns an error.
+//
+// use_tuple_args: when this is true, always create a tuple argument for the
+//   entry computation.
+// return_tuple: when this is true, always create a tuple result for the
+//   entry computation.
+Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
+                                   xla::XlaComputation* xla_computation,
+                                   bool use_tuple_args, bool return_tuple);
 
 // Compiles a serialized MLIR module into XLA HLO, generates all accompanying
 // metadata and stores them in CompilationResult.

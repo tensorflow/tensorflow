@@ -474,7 +474,7 @@ the representational differences between SPIR-V dialect and binary format:
 Similarly, a few transformations are performed during deserialization:
 
 *   Instructions for execution environment requirements will be placed as
-    attribues on `spv.module`.
+    attributes on `spv.module`.
 *   `OpConstant*` instructions are materialized as `spv.constant` at each use
     site.
 *   `OpPhi` instructions are converted to block arguments.

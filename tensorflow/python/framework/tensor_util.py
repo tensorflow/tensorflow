@@ -870,6 +870,20 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   shape = tensor.get_shape().with_rank(1)
   if shape == [0]:
     return tensor_shape.TensorShape([])
+  elif tensor.op.type == "Cast":
+    pre_cast = constant_value_as_shape(tensor.op.inputs[0])
+    if pre_cast.dims is None:
+      # the input to cast has a totally undefined shape; just return that.
+      return pre_cast
+    cast_dtype = dtypes.as_dtype(tensor.op.get_attr("DstT"))
+    if cast_dtype not in (dtypes.int32, dtypes.int64):
+      return tensor_shape.unknown_shape(shape.dims[0].value)
+    dest_dtype_shape_array = np.array(
+        [x if x is not None else -1 for x in pre_cast.as_list()]).astype(
+            cast_dtype.as_numpy_dtype)
+    return tensor_shape.TensorShape([
+        x if x >= 0 else None
+        for x in dest_dtype_shape_array])
   elif tensor.op.type == "Shape":
     return tensor.op.inputs[0].get_shape()
   elif tensor.op.type == "Pack":

@@ -49,7 +49,7 @@ static constexpr const char *cuModuleGetFunctionName = "mcuModuleGetFunction";
 static constexpr const char *cuLaunchKernelName = "mcuLaunchKernel";
 static constexpr const char *cuGetStreamHelperName = "mcuGetStreamHelper";
 static constexpr const char *cuStreamSynchronizeName = "mcuStreamSynchronize";
-static constexpr const char *kMcuMemHostRegisterPtr = "mcuMemHostRegisterPtr";
+static constexpr const char *kMcuMemHostRegister = "mcuMemHostRegister";
 
 static constexpr const char *kCubinAnnotation = "nvvm.cubin";
 static constexpr const char *kCubinStorageSuffix = "_cubin_cst";
@@ -228,13 +228,13 @@ void GpuLaunchFuncToCudaCallsPass::declareCudaFunctions(Location loc) {
                                       getPointerType() /* CUstream stream */,
                                       /*isVarArg=*/false));
   }
-  if (!module.lookupSymbol(kMcuMemHostRegisterPtr)) {
+  if (!module.lookupSymbol(kMcuMemHostRegister)) {
     builder.create<LLVM::LLVMFuncOp>(
-        loc, kMcuMemHostRegisterPtr,
+        loc, kMcuMemHostRegister,
         LLVM::LLVMType::getFunctionTy(getVoidType(),
                                       {
                                           getPointerType(), /* void *ptr */
-                                          getInt32Type()    /* int32 flags*/
+                                          getInt64Type()    /* int64 sizeBytes*/
                                       },
                                       /*isVarArg=*/false));
   }
@@ -277,12 +277,14 @@ GpuLaunchFuncToCudaCallsPass::setupParamsArray(gpu::LaunchFuncOp launchOp,
     //   the descriptor pointer is registered via @mcuMemHostRegisterPtr
     if (llvmType.isStructTy()) {
       auto registerFunc =
-          getModule().lookupSymbol<LLVM::LLVMFuncOp>(kMcuMemHostRegisterPtr);
-      auto zero = builder.create<LLVM::ConstantOp>(
-          loc, getInt32Type(), builder.getI32IntegerAttr(0));
+          getModule().lookupSymbol<LLVM::LLVMFuncOp>(kMcuMemHostRegister);
+      auto nullPtr = builder.create<LLVM::NullOp>(loc, llvmType.getPointerTo());
+      auto gep = builder.create<LLVM::GEPOp>(loc, llvmType.getPointerTo(),
+                                             ArrayRef<Value *>{nullPtr, one});
+      auto size = builder.create<LLVM::PtrToIntOp>(loc, getInt64Type(), gep);
       builder.create<LLVM::CallOp>(loc, ArrayRef<Type>{},
                                    builder.getSymbolRefAttr(registerFunc),
-                                   ArrayRef<Value *>{casted, zero});
+                                   ArrayRef<Value *>{casted, size});
       Value *memLocation = builder.create<LLVM::AllocaOp>(
           loc, getPointerPointerType(), one, /*alignment=*/1);
       builder.create<LLVM::StoreOp>(loc, casted, memLocation);
@@ -318,7 +320,7 @@ Value *GpuLaunchFuncToCudaCallsPass::generateKernelNameConstant(
   std::string globalName = llvm::formatv("{0}_kernel_name", name);
   return LLVM::createGlobalString(
       loc, builder, globalName, StringRef(kernelName.data(), kernelName.size()),
-      llvmDialect);
+      LLVM::Linkage::Internal, llvmDialect);
 }
 
 // Emits LLVM IR to launch a kernel function. Expects the module that contains
@@ -366,7 +368,8 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   SmallString<128> nameBuffer(*kernelModule.getName());
   nameBuffer.append(kCubinStorageSuffix);
   Value *data = LLVM::createGlobalString(
-      loc, builder, nameBuffer.str(), cubinAttr.getValue(), getLLVMDialect());
+      loc, builder, nameBuffer.str(), cubinAttr.getValue(),
+      LLVM::Linkage::Internal, getLLVMDialect());
 
   // Emit the load module call to load the module data. Error checking is done
   // in the called helper function.

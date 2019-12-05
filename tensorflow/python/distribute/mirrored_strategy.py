@@ -38,6 +38,7 @@ from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolve
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
@@ -206,7 +207,8 @@ def _is_device_list_single_worker(devices):
   """Checks whether the devices list is for single or multi-worker.
 
   Args:
-    devices: a list of device strings, either local or for remote devices.
+    devices: a list of device strings or tf.config.LogicalDevice objects, for
+      either local or for remote devices.
 
   Returns:
     a boolean indicating whether these device strings are for local or for
@@ -215,7 +217,10 @@ def _is_device_list_single_worker(devices):
   Raises:
     ValueError: if device strings are not consistent.
   """
-  specs = (tf_device.DeviceSpec.from_string(d) for d in devices)
+  specs = []
+  for d in devices:
+    name = d.name if isinstance(d, context.LogicalDevice) else d
+    specs.append(tf_device.DeviceSpec.from_string(name))
   num_workers = len({(d.job, d.task, d.replica) for d in specs})
   all_local = all(d.job in (None, "localhost") for d in specs)
   any_local = any(d.job in (None, "localhost") for d in specs)
@@ -321,9 +326,10 @@ def _infer_num_gpus_per_worker(devices):
 
 
 def all_local_devices(num_gpus=None):
-  if num_gpus is None:
-    num_gpus = context.num_gpus()
-  return device_util.local_devices_from_num_gpus(num_gpus)
+  devices = config.list_logical_devices("GPU")
+  if num_gpus is not None:
+    devices = devices[:num_gpus]
+  return devices or config.list_logical_devices("CPU")
 
 
 def all_devices():
@@ -337,19 +343,86 @@ def all_devices():
 
 @tf_export("distribute.MirroredStrategy", v1=[])  # pylint: disable=g-classes-have-attributes
 class MirroredStrategy(distribute_lib.Strategy):
-  """Mirrors vars to distribute across multiple devices and machines.
+  """Synchronous training across multiple replicas on one machine.
 
-  This strategy uses one replica per device and sync replication for its
-  multi-GPU version.
+  This strategy is typically used for training on one
+  machine with multiple GPUs. For TPUs, use
+  `tf.distribute.experimental.TPUStrategy`. To use `MirroredStrategy` with
+  multiple workers, please refer to
+  `tf.distribute.experimental.MultiWorkerMirroredStrategy`.
 
-  To use `MirroredStrategy` with multiple workers, please refer to
-  `tf.distribute.MultiWorkerMirroredStrategy`.
+  For example, a variable created under a `MirroredStrategy` is a
+  `MirroredVariable`. If no devices are specified in the constructor argument of
+  the strategy then it will use all the available GPUs. If no GPUs are found, it
+  will use the available CPUs. Note that TensorFlow treats all CPUs on a
+  machine as a single device, and uses threads internally for parallelism.
+
+  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> with strategy.scope():
+  ...   x = tf.Variable(1.)
+  >>> x
+  MirroredVariable:{
+      0 /job:localhost/replica:0/task:0/device:CPU:0: <tf.Variable ...
+      shape=() dtype=float32, numpy=1.0>
+    }
+
+  While using distribution strategies, all the variable creation should be done
+  within the strategy's scope. This will replicate the variables across all the
+  replicas and keep them in sync using an all-reduce algorithm.
+
+  Variables created inside a `MirroredStrategy` which is wrapped with a
+  `tf.function` are still `MirroredVariables`.
+
+  >>> x = []
+  >>> @tf.function  # Wrap the function with tf.function.
+  ... def create_variable():
+  ...   if not x:
+  ...     x.append(tf.Variable(1.))
+  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> with strategy.scope():
+  ...   create_variable()
+  ...   print (x[0])
+  MirroredVariable:{
+      0 /job:localhost/replica:0/task:0/device:CPU:0: <tf.Variable ...
+      shape=() dtype=float32, numpy=1.0>
+    }
+
+  `experimental_distribute_dataset` can be used to distribute the dataset across
+  the replicas when writing your own training loop. If you are using `.fit` and
+  `.compile` methods available in `tf.keras`, then `tf.keras` will handle the
+  distribution for you.
+
+  For example:
+
+  ```python
+  my_strategy = tf.distribute.MirroredStrategy()
+  with my_strategy.scope():
+    @tf.function
+    def distribute_train_epoch(dataset):
+      def replica_fn(input):
+        # process input and return result
+        return result
+
+      total_result = 0
+      for x in dataset:
+        per_replica_result = my_strategy.experimental_run_v2(replica_fn,
+                                                             args=(x,))
+        total_result += my_strategy.reduce(tf.distribute.ReduceOp.SUM,
+                                           per_replica_result, axis=None)
+      return total_result
+
+    dist_dataset = my_strategy.experimental_distribute_dataset(dataset)
+    for _ in range(EPOCHS):
+      train_result = distribute_train_epoch(dist_dataset)
+  ```
 
   Args:
-    devices: a list of device strings.  If `None`, all available GPUs are used.
-    If no GPUs are found, CPU is used.
+    devices: a list of device strings such as `['/gpu:0', '/gpu:1']`.  If
+      `None`, all available GPUs are used. If no GPUs are found, CPU is used.
     cross_device_ops: optional, a descedant of `CrossDeviceOps`. If this is not
-      set, nccl will be used by default.
+      set, `NcclAllReduce()` will be used by default.  One would customize this
+      if NCCL isn't available or if a special implementation that exploits
+      the particular hardware is available.
   """
 
   def __init__(self, devices=None, cross_device_ops=None):
@@ -739,7 +812,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     updates = []
     for i, (d, v) in enumerate(zip(var.devices, var.values)):
       name = "update_%d" % i
-      with ops.device(d), distribute_lib.UpdateContext(d), ops.name_scope(name):
+      with ops.device(d), distribute_lib.UpdateContext(i), ops.name_scope(name):
         # If args and kwargs are not mirrored, the value is returned as is.
         updates.append(fn(v,
                           *values.select_device_mirrored(d, args),
@@ -752,7 +825,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     updates = []
     for i, d in enumerate(colocate_with):
       name = "update_%d" % i
-      with ops.device(d), distribute_lib.UpdateContext(d), ops.name_scope(name):
+      with ops.device(d), distribute_lib.UpdateContext(i), ops.name_scope(name):
         updates.append(fn(*values.select_device_mirrored(d, args),
                           **values.select_device_mirrored(d, kwargs)))
     return values.update_regroup(self, self._device_map, updates, group)

@@ -16,7 +16,7 @@ limitations under the License.
 #include <math.h>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/micro/kernels/activation_utils.h"
 #include "tensorflow/lite/experimental/micro/micro_utils.h"
 #include "tensorflow/lite/kernels/internal/common.h"

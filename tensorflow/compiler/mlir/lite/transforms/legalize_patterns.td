@@ -39,7 +39,7 @@ def Merge2AttrsToArray : NativeCodeCall<"$_builder.getArrayAttr({$0, $1})">;
 // Use the tensor type information from $0 and convert min $1, max $2 and
 // numBits $3 and narrowRange $4 to a QuantizedType.
 def ConvertToQuantTypeFromAttrs : NativeCodeCall<
-    "GetQuantizedTypeAttr($_builder, $0->getType(), $1, $2, $3, $4, /*is_signed=*/false)">;
+    "GetQuantizedTypeAttr($_builder, $0->getType(), $1, $2, -1, $3, $4, /*is_signed=*/false)">;
 
 // Converts an integer attribute $0 to 32-bit with builder.
 def convertIntAttrTo32Bit : NativeCodeCall<
@@ -71,7 +71,7 @@ def IsSameOrValid : AttrConstraint<
     "'SAME' or 'VALID' paddings">;
 
 def : Pat<(TF_AbsOp $arg), (TFL_AbsOp $arg)>;
-def : Pat<(TF_AddNOp $inputs, $N), (TFL_AddNOp $inputs)>;
+def : Pat<(TF_AddNOp $inputs), (TFL_AddNOp $inputs)>;
 
 def : Pat<(TF_AvgPoolOp $value,
               IsIntList1XY1:$ksize,

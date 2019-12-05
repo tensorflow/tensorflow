@@ -747,7 +747,7 @@ static Loops stripmineSink(loop::ForOp forOp, Value *factor,
     // Insert newForOp before the terminator of `t`.
     OpBuilder b(t.getBodyBuilder());
     Value *stepped = b.create<AddIOp>(t.getLoc(), iv, forOp.step());
-    Value *less = b.create<CmpIOp>(t.getLoc(), CmpIPredicate::SLT,
+    Value *less = b.create<CmpIOp>(t.getLoc(), CmpIPredicate::slt,
                                    forOp.upperBound(), stepped);
     Value *ub =
         b.create<SelectOp>(t.getLoc(), less, forOp.upperBound(), stepped);
@@ -979,7 +979,7 @@ TileLoops mlir::extractFixedOuterLoops(loop::ForOp rootForOp,
 static void
 replaceAllUsesExcept(Value *orig, Value *replacement,
                      const SmallPtrSetImpl<Operation *> &exceptions) {
-  for (auto &use : orig->getUses()) {
+  for (auto &use : llvm::make_early_inc_range(orig->getUses())) {
     if (exceptions.count(use.getOwner()) == 0)
       use.set(replacement);
   }

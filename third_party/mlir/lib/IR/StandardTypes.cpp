@@ -61,13 +61,12 @@ bool Type::isIntOrFloat() { return isa<IntegerType>() || isa<FloatType>(); }
 constexpr unsigned IntegerType::kMaxWidth;
 
 /// Verify the construction of an integer type.
-LogicalResult IntegerType::verifyConstructionInvariants(
-    llvm::Optional<Location> loc, MLIRContext *context, unsigned width) {
+LogicalResult IntegerType::verifyConstructionInvariants(Optional<Location> loc,
+                                                        MLIRContext *context,
+                                                        unsigned width) {
   if (width > IntegerType::kMaxWidth) {
-    if (loc)
-      emitError(*loc) << "integer bitwidth is limited to "
-                      << IntegerType::kMaxWidth << " bits";
-    return failure();
+    return emitOptionalError(loc, "integer bitwidth is limited to ",
+                             IntegerType::kMaxWidth, " bits");
   }
   return success();
 }
@@ -123,6 +122,8 @@ unsigned Type::getIntOrFloatBitWidth() {
 //===----------------------------------------------------------------------===//
 // ShapedType
 //===----------------------------------------------------------------------===//
+constexpr int64_t ShapedType::kDynamicSize;
+constexpr int64_t ShapedType::kDynamicStrideOrOffset;
 
 Type ShapedType::getElementType() const {
   return static_cast<ImplType *>(impl)->elementType;
@@ -148,6 +149,12 @@ bool ShapedType::hasRank() const { return !isa<UnrankedTensorType>(); }
 int64_t ShapedType::getDimSize(int64_t i) const {
   assert(i >= 0 && i < getRank() && "invalid index for shaped type");
   return getShape()[i];
+}
+
+unsigned ShapedType::getDynamicDimIndex(unsigned index) const {
+  assert(index < getRank() && "invalid index");
+  assert(ShapedType::isDynamic(getDimSize(index)) && "invalid index");
+  return llvm::count_if(getShape().take_front(index), ShapedType::isDynamic);
 }
 
 /// Get the number of bits require to store a value of the given shaped type.
@@ -205,26 +212,21 @@ VectorType VectorType::getChecked(ArrayRef<int64_t> shape, Type elementType,
                           StandardTypes::Vector, shape, elementType);
 }
 
-LogicalResult VectorType::verifyConstructionInvariants(
-    llvm::Optional<Location> loc, MLIRContext *context, ArrayRef<int64_t> shape,
-    Type elementType) {
-  if (shape.empty()) {
-    if (loc)
-      emitError(*loc, "vector types must have at least one dimension");
-    return failure();
-  }
+LogicalResult VectorType::verifyConstructionInvariants(Optional<Location> loc,
+                                                       MLIRContext *context,
+                                                       ArrayRef<int64_t> shape,
+                                                       Type elementType) {
+  if (shape.empty())
+    return emitOptionalError(loc,
+                             "vector types must have at least one dimension");
 
-  if (!isValidElementType(elementType)) {
-    if (loc)
-      emitError(*loc, "vector elements must be int or float type");
-    return failure();
-  }
+  if (!isValidElementType(elementType))
+    return emitOptionalError(loc, "vector elements must be int or float type");
 
-  if (any_of(shape, [](int64_t i) { return i <= 0; })) {
-    if (loc)
-      emitError(*loc, "vector types must have positive constant sizes");
-    return failure();
-  }
+  if (any_of(shape, [](int64_t i) { return i <= 0; }))
+    return emitOptionalError(loc,
+                             "vector types must have positive constant sizes");
+
   return success();
 }
 
@@ -239,11 +241,8 @@ ArrayRef<int64_t> VectorType::getShape() const { return getImpl()->getShape(); }
 static inline LogicalResult checkTensorElementType(Optional<Location> location,
                                                    MLIRContext *context,
                                                    Type elementType) {
-  if (!TensorType::isValidElementType(elementType)) {
-    if (location)
-      emitError(*location, "invalid tensor element type");
-    return failure();
-  }
+  if (!TensorType::isValidElementType(elementType))
+    return emitOptionalError(location, "invalid tensor element type");
   return success();
 }
 
@@ -265,14 +264,11 @@ RankedTensorType RankedTensorType::getChecked(ArrayRef<int64_t> shape,
 }
 
 LogicalResult RankedTensorType::verifyConstructionInvariants(
-    llvm::Optional<Location> loc, MLIRContext *context, ArrayRef<int64_t> shape,
+    Optional<Location> loc, MLIRContext *context, ArrayRef<int64_t> shape,
     Type elementType) {
   for (int64_t s : shape) {
-    if (s < -1) {
-      if (loc)
-        emitError(*loc, "invalid tensor dimension size");
-      return failure();
-    }
+    if (s < -1)
+      return emitOptionalError(loc, "invalid tensor dimension size");
   }
   return checkTensorElementType(loc, context, elementType);
 }
@@ -297,7 +293,7 @@ UnrankedTensorType UnrankedTensorType::getChecked(Type elementType,
 }
 
 LogicalResult UnrankedTensorType::verifyConstructionInvariants(
-    llvm::Optional<Location> loc, MLIRContext *context, Type elementType) {
+    Optional<Location> loc, MLIRContext *context, Type elementType) {
   return checkTensorElementType(loc, context, elementType);
 }
 
@@ -342,19 +338,14 @@ MemRefType MemRefType::getImpl(ArrayRef<int64_t> shape, Type elementType,
   auto *context = elementType.getContext();
 
   // Check that memref is formed from allowed types.
-  if (!elementType.isIntOrFloat() && !elementType.isa<VectorType>()) {
-    if (location)
-      emitError(*location, "invalid memref element type");
-    return nullptr;
-  }
+  if (!elementType.isIntOrFloat() && !elementType.isa<VectorType>())
+    return emitOptionalError(location, "invalid memref element type"),
+           MemRefType();
 
   for (int64_t s : shape) {
     // Negative sizes are not allowed except for `-1` that means dynamic size.
-    if (s < -1) {
-      if (location)
-        emitError(*location, "invalid memref size");
-      return {};
-    }
+    if (s < -1)
+      return emitOptionalError(location, "invalid memref size"), MemRefType();
   }
 
   // Check that the structure of the composition is valid, i.e. that each
@@ -623,11 +614,8 @@ ComplexType ComplexType::getChecked(Type elementType, Location location) {
 /// Verify the construction of an integer type.
 LogicalResult ComplexType::verifyConstructionInvariants(
     llvm::Optional<Location> loc, MLIRContext *context, Type elementType) {
-  if (!elementType.isa<FloatType>() && !elementType.isa<IntegerType>()) {
-    if (loc)
-      emitError(*loc, "invalid element type for complex");
-    return failure();
-  }
+  if (!elementType.isa<FloatType>() && !elementType.isa<IntegerType>())
+    return emitOptionalError(loc, "invalid element type for complex");
   return success();
 }
 

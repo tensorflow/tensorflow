@@ -18,12 +18,13 @@ limitations under the License.
 #include <atomic>
 #include <utility>
 #include <vector>
+
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
 
 namespace tensorflow {
@@ -203,7 +204,7 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
                         const Tensor* input, Tensor* output,
                         int dev_to_dev_stream_index, StatusCallback done,
                         bool sync_dst_compute) {
-  tracing::ScopedAnnotation annotation(edge_name);
+  profiler::ScopedAnnotation annotation(edge_name);
   VLOG(1) << "Copy " << edge_name;
 
   const DeviceType src_device_type(

@@ -54,6 +54,9 @@ class Conv(Layer):
   a bias vector is created and added to the outputs. Finally, if
   `activation` is not `None`, it is applied to the outputs as well.
 
+  Note: layer attributes cannot be modified after the layer has been called
+  once (except the `trainable` attribute).
+
   Arguments:
     rank: An integer, the rank of the convolution, e.g. "2" for 2D convolution.
     filters: Integer, the dimensionality of the output space (i.e. the number
@@ -186,16 +189,9 @@ class Conv(Layer):
     self.built = True
 
   def call(self, inputs):
-    # Check if the input_shape in call() is different from that in build().
-    # If they are different, recreate the _convolution_op to avoid the stateful
-    # behavior.
-    call_input_shape = inputs.get_shape()
-    recreate_conv_op = (
-        call_input_shape[1:] != self._build_conv_op_input_shape[1:])
-
-    if recreate_conv_op:
+    if self._recreate_conv_op(inputs):
       self._convolution_op = nn_ops.Convolution(
-          call_input_shape,
+          inputs.get_shape(),
           filter_shape=self.kernel.shape,
           dilation_rate=self.dilation_rate,
           strides=self.strides,
@@ -304,6 +300,27 @@ class Conv(Layer):
     if not isinstance(op_padding, (list, tuple)):
       op_padding = op_padding.upper()
     return op_padding
+
+  def _recreate_conv_op(self, inputs):
+    """Recreate conv_op if necessary.
+
+    Check if the input_shape in call() is different from that in build().
+    For the values that are not None, if they are different, recreate
+    the _convolution_op to avoid the stateful behavior.
+
+    Args:
+      inputs: The input data to call() method.
+
+    Returns:
+      `True` or `False` to indicate whether to recreate the conv_op.
+    """
+    call_input_shape = inputs.get_shape()
+    for axis in range(1, len(call_input_shape)):
+      if (call_input_shape[axis] is not None
+          and self._build_conv_op_input_shape[axis] is not None
+          and call_input_shape[axis] != self._build_conv_op_input_shape[axis]):
+        return True
+    return False
 
 
 @keras_export('keras.layers.Conv1D', 'keras.layers.Convolution1D')

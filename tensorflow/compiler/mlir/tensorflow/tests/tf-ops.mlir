@@ -656,6 +656,26 @@ func @FakeQuantWithMinMaxVarsPerChannel_mismatch_min_max(tensor<1x2x3x8xf32>, te
 
 // -----
 
+// Test invalid tf.Fill
+func @testFill(tensor<i32>, tensor<f32>) -> tensor<?x?xf32> {
+^bb0(%arg0: tensor<i32>, %arg1: tensor<f32>):
+  // expected-error @+1 {{requires dims to be a 1D tensor}}
+  %0 = "tf.Fill"(%arg0, %arg1) : (tensor<i32>, tensor<f32>) -> (tensor<?x?xf32>)
+  return %0 : tensor<?x?xf32>
+}
+
+// -----
+
+// Test invalid tf.Fill
+func @testFill(tensor<2xi32>, tensor<1xf32>) -> tensor<?x?xf32> {
+^bb0(%arg0: tensor<2xi32>, %arg1: tensor<1xf32>):
+  // expected-error @+1 {{requires value to be a scalar}}
+  %0 = "tf.Fill"(%arg0, %arg1) : (tensor<2xi32>, tensor<1xf32>) -> (tensor<?x?xf32>)
+  return %0 : tensor<?x?xf32>
+}
+
+// -----
+
 // Test valid tf.FusedBatchNorm
 // CHECK-LABEL: func @testFusedBatchNorm
 func @testFusedBatchNorm(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> tensor<8x8x8x8xf32> {
@@ -1022,6 +1042,62 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
 
 // -----
 
+func @testWhileCond(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<i1>)
+func @testWhileBody(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<16xf32>>>)
+
+// Test invalid 'While' operation verifier that detects incompatible tf.resource
+// subtypes.
+func @testWhileResult(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<16xf32>>>) {
+^bb0(%arg0: tensor<*x!tf.resource<tensor<32xf32>>>):
+  // expected-error @+1 {{operand type tensor<*x!tf.resource<tensor<32xf32>>> is incompatible with result type}}
+  %1 = "tf.While"(%arg0) {
+    cond = @testWhileCond,
+    body = @testWhileBody,
+    is_stateless = false
+  } : (tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<16xf32>>>)
+
+  return %1 : tensor<!tf.resource<tensor<16xf32>>>
+}
+
+// -----
+
+func @testWhileCond(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<i1>)
+func @testWhileBody(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<*xf32>>>)
+
+// Test 'While' operation verifier allows compatible tf.resource subtypes.
+// CHECK-LABEL: func @testWhileResult
+func @testWhileResult(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<*xf32>>>) {
+^bb0(%arg0: tensor<*x!tf.resource<tensor<32xf32>>>):
+  %1 = "tf.While"(%arg0) {
+    cond = @testWhileCond,
+    body = @testWhileBody,
+    is_stateless = false
+  } : (tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<*xf32>>>)
+
+  return %1 : tensor<!tf.resource<tensor<*xf32>>>
+}
+
+// -----
+
+func @testWhileCond(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<i1>)
+func @testWhileBody(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource>)
+
+// Test 'While' operation verifier treats tf.resource with subtype and without
+// subtype as compatible types.
+// CHECK-LABEL: func @testWhileResult
+func @testWhileResult(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource>) {
+^bb0(%arg0: tensor<*x!tf.resource<tensor<32xf32>>>):
+  %1 = "tf.While"(%arg0) {
+    cond = @testWhileCond,
+    body = @testWhileBody,
+    is_stateless = false
+  } : (tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource>)
+
+  return %1 : tensor<!tf.resource>
+}
+
+// -----
+
 // CHECK-LABEL: func @testValidShape
 func @testValidShape(tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<4xi32>, tensor<?xi32>) {
 ^bb0(%arg0: tensor<1x32x32x16xf32>, %arg1: tensor<*xf32>):
@@ -1070,7 +1146,7 @@ func @testShapeWrongResultDimDynamic(tensor<*xf32>) -> tensor<2xi32> {
 // CHECK-LABEL: func @testValidShapeN
 func @testValidShapeN(%arg0 : tensor<1x32x32x16xf32>, %arg1 : tensor<*xf32>) -> (tensor<4xi32>, tensor<?xi32>) {
   // CHECK-NEXT: "tf.ShapeN"
-  %0:2 = "tf.ShapeN"(%arg0, %arg1) {N = 2 : i64} : (tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<4xi32>, tensor<?xi32>)
+  %0:2 = "tf.ShapeN"(%arg0, %arg1) : (tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<4xi32>, tensor<?xi32>)
   return %0#0, %0#1 : tensor<4xi32>, tensor<?xi32>
 }
 
@@ -1078,7 +1154,7 @@ func @testValidShapeN(%arg0 : tensor<1x32x32x16xf32>, %arg1 : tensor<*xf32>) -> 
 
 func @testShapeNWrongResultElemType(%arg0: tensor<1x32x32x16xf32>) -> tensor<4xf32> {
   // expected-error @+1 {{result #1 must be tensor of 32/64-bit integer values}}
-  %0:2 = "tf.ShapeN"(%arg0, %arg0) {N = 2 : i64} : (tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>) -> (tensor<4xi32>, tensor<4xf32>)
+  %0:2 = "tf.ShapeN"(%arg0, %arg0) : (tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>) -> (tensor<4xi32>, tensor<4xf32>)
   return %0#1 : tensor<4xf32>
 }
 
@@ -1087,7 +1163,7 @@ func @testShapeNWrongResultElemType(%arg0: tensor<1x32x32x16xf32>) -> tensor<4xf
 func @testShapeNWrongResultDim(tensor<1x32x32x16xf32>) -> tensor<*xi32> {
 ^bb0(%arg0: tensor<1x32x32x16xf32>):
   // expected-error @+1 {{requires 1D type for result #1}}
-  %0:2 = "tf.ShapeN"(%arg0, %arg0) {N = 2 : i64} : (tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>) -> (tensor<4xi32>, tensor<*xi32>)
+  %0:2 = "tf.ShapeN"(%arg0, %arg0) : (tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>) -> (tensor<4xi32>, tensor<*xi32>)
   return %0#1 : tensor<*xi32>
 }
 
@@ -1096,7 +1172,7 @@ func @testShapeNWrongResultDim(tensor<1x32x32x16xf32>) -> tensor<*xi32> {
 func @testShapeNMismatchDim(tensor<1x32x32x16xf32>) -> tensor<2xi32> {
 ^bb0(%arg0: tensor<1x32x32x16xf32>):
   // expected-error @+1 {{requires dimension size of result #1 to match rank of operand #1}}
-  %0:2 = "tf.ShapeN"(%arg0, %arg0) {N = 2 : i64} : (tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>) -> (tensor<4xi32>, tensor<2xi32>)
+  %0:2 = "tf.ShapeN"(%arg0, %arg0) : (tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>) -> (tensor<4xi32>, tensor<2xi32>)
   return %0#1 : tensor<2xi32>
 }
 
@@ -1105,17 +1181,8 @@ func @testShapeNMismatchDim(tensor<1x32x32x16xf32>) -> tensor<2xi32> {
 func @testShapeNWrongResultDimDynamic(tensor<*xf32>) -> tensor<2xi32> {
 ^bb0(%arg0: tensor<*xf32>):
   // expected-error @+1 {{requires dynamic shape result #1 for unranked operand #1}}
-  %0:2 = "tf.ShapeN"(%arg0, %arg0) {N = 2 : i64} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<?xi32>, tensor<2xi32>)
+  %0:2 = "tf.ShapeN"(%arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>) -> (tensor<?xi32>, tensor<2xi32>)
   return %0#1 : tensor<2xi32>
-}
-
-// -----
-
-func @testShapeNWrongNumOperands(tensor<*xf32>) {
-^bb0(%arg0: tensor<*xf32>):
-  // expected-error @+1 {{requires 3 operand(s), got 2 operand(s)}}
-  %0:3 = "tf.ShapeN"(%arg0, %arg0) {N = 3 : i64} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<?xi32>, tensor<?xi32>, tensor<?xi32>)
-  return
 }
 
 // -----
@@ -1123,7 +1190,7 @@ func @testShapeNWrongNumOperands(tensor<*xf32>) {
 func @testShapeNWrongNumResults(tensor<*xf32>) {
 ^bb0(%arg0: tensor<*xf32>):
   // expected-error @+1 {{requires 3 result(s), got 2 result(s)}}
-  %0:2 = "tf.ShapeN"(%arg0, %arg0, %arg0) {N = 3 : i64} : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> (tensor<?xi32>, tensor<?xi32>)
+  %0:2 = "tf.ShapeN"(%arg0, %arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> (tensor<?xi32>, tensor<?xi32>)
   return
 }
 
@@ -1210,7 +1277,7 @@ func @testLess(tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32> {
 
 // Test valid tf.ConcatV2
 func @testConcatV2(%arg: tensor<8x16xf32>, %axis: tensor<i32>) -> tensor<?xf32> {
-  %0 = "tf.ConcatV2"(%arg, %arg, %axis) {N = 2: i64} : (tensor<8x16xf32>, tensor<8x16xf32>, tensor<i32>) -> tensor<?xf32>
+  %0 = "tf.ConcatV2"(%arg, %arg, %axis) : (tensor<8x16xf32>, tensor<8x16xf32>, tensor<i32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
@@ -1219,7 +1286,7 @@ func @testConcatV2(%arg: tensor<8x16xf32>, %axis: tensor<i32>) -> tensor<?xf32> 
 // tf.ConcatV2 with wrong 'axis' element type
 func @testConcatV2(%arg: tensor<8x16xf32>, %axis: tensor<f32>) -> tensor<?xf32> {
   // expected-error @+1 {{operand #2 must be tensor of 32/64-bit integer values}}
-  %0 = "tf.ConcatV2"(%arg, %arg, %axis) {N = 2: i64} : (tensor<8x16xf32>, tensor<8x16xf32>, tensor<f32>) -> tensor<?xf32>
+  %0 = "tf.ConcatV2"(%arg, %arg, %axis) : (tensor<8x16xf32>, tensor<8x16xf32>, tensor<f32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
@@ -1228,24 +1295,7 @@ func @testConcatV2(%arg: tensor<8x16xf32>, %axis: tensor<f32>) -> tensor<?xf32> 
 // tf.ConcatV2 missing required 'axis' operand
 func @testConcatV2() -> tensor<?xf32> {
   // expected-error @+1 {{expected 1 or more operands}}
-  %0 = "tf.ConcatV2"() {N = 0: i64} : () -> tensor<?xf32>
-  return %0 : tensor<?xf32>
-}
-
-// -----
-
-// tf.ConcatV2 with less than required number of values for the variadic operand
-func @testConcatV2(%arg: tensor<8x16xf32>, %axis: tensor<i32>) -> tensor<?xf32> {
-  // expected-error @+1 {{attribute 'N' failed to satisfy constraint: 64-bit integer attribute whose minimal value is 2}}
-  %0 = "tf.ConcatV2"(%arg, %axis) {N = 1: i64} : (tensor<8x16xf32>, tensor<i32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
-}
-
-// -----
-
-func @testConcatV2(%arg: tensor<8x16xf32>, %axis: tensor<i32>) -> tensor<?xf32> {
-  // expected-error @+1 {{requires attribute 'N' to match the number of inputs; expected: 2 Found: 3}}
-  %0 = "tf.ConcatV2"(%arg, %arg, %axis) {N = 3: i64} : (tensor<8x16xf32>, tensor<8x16xf32>, tensor<i32>) -> tensor<?xf32>
+  %0 = "tf.ConcatV2"() : () -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
@@ -1316,7 +1366,7 @@ func @testNotEqualOpIncompatibleShapeFalse(%x: tensor<5xf32>, %y: tensor<4xf32>)
 // -----
 
 func @testConcatV2(%arg: tensor<8x16xf32>, %axis: tensor<1x1xi32>) -> tensor<*xf32> { // expected-error @+1 {{requires axis to be of scalar type (or vector type for older versions)}}
-  %0 = "tf.ConcatV2"(%arg, %arg, %axis) {N = 2: i64} : (tensor<8x16xf32>, tensor<8x16xf32>, tensor<1x1xi32>) -> tensor<*xf32>
+  %0 = "tf.ConcatV2"(%arg, %arg, %axis) : (tensor<8x16xf32>, tensor<8x16xf32>, tensor<1x1xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -1324,7 +1374,7 @@ func @testConcatV2(%arg: tensor<8x16xf32>, %axis: tensor<1x1xi32>) -> tensor<*xf
 
 func @testConcatV2(%arg: tensor<8x16xf32>, %axis: tensor<1x1xi32>) -> tensor<*xf32> {
   // expected-error @+1 {{requires axis to be of scalar type (or vector type for older versions)}}
-  %0 = "tf.Concat"(%axis, %arg, %arg) {N = 2: i64} : (tensor<1x1xi32>, tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<*xf32>
+  %0 = "tf.Concat"(%axis, %arg, %arg) : (tensor<1x1xi32>, tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -1332,7 +1382,7 @@ func @testConcatV2(%arg: tensor<8x16xf32>, %axis: tensor<1x1xi32>) -> tensor<*xf
 
 func @testConcatV2(%arg0: tensor<8x16xf32>, %arg1: tensor<8xf32>, %axis: tensor<i32>) -> tensor<*xf32> {
   // expected-error @+1 {{operand type 'tensor<8xf32>' is not compatible with preceding operands; expected rank: 2}}
-  %0 = "tf.ConcatV2"(%arg0, %arg1, %axis) {N = 2: i64} : (tensor<8x16xf32>, tensor<8xf32>, tensor<i32>) -> tensor<*xf32>
+  %0 = "tf.ConcatV2"(%arg0, %arg1, %axis) : (tensor<8x16xf32>, tensor<8xf32>, tensor<i32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -1340,7 +1390,7 @@ func @testConcatV2(%arg0: tensor<8x16xf32>, %arg1: tensor<8xf32>, %axis: tensor<
 
 // Valid Concat operation with concat axis 1 or -1.
 func @testConcatV2(%arg0: tensor<8x16xf32>, %arg1: tensor<8x8xf32>, %axis: tensor<i32>) -> tensor<*xf32> {
-  %0 = "tf.ConcatV2"(%arg0, %arg1, %axis) {N = 2: i64} : (tensor<8x16xf32>, tensor<8x8xf32>, tensor<i32>) -> tensor<*xf32>
+  %0 = "tf.ConcatV2"(%arg0, %arg1, %axis) : (tensor<8x16xf32>, tensor<8x8xf32>, tensor<i32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -1348,7 +1398,7 @@ func @testConcatV2(%arg0: tensor<8x16xf32>, %arg1: tensor<8x8xf32>, %axis: tenso
 
 func @testConcatV2(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>, %axis: tensor<i32>) -> tensor<*xf32> {
   // expected-error @+1 {{operand type 'tensor<16x8xf32>' is not compatible with preceding operands; expected dimension at index 1: 16}}
-  %0 = "tf.ConcatV2"(%arg0, %arg1, %axis) {N = 2: i64} : (tensor<8x16xf32>, tensor<16x8xf32>, tensor<i32>) -> tensor<*xf32>
+  %0 = "tf.ConcatV2"(%arg0, %arg1, %axis) : (tensor<8x16xf32>, tensor<16x8xf32>, tensor<i32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -1356,7 +1406,7 @@ func @testConcatV2(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>, %axis: tens
 
 // Valid Concat operation with concat axis 1 or -1.
 func @testConcatV2(%arg0: tensor<8x8xf32>, %arg1: tensor<?x4xf32>, %arg2: tensor<*xf32>, %arg3: tensor<8x?xf32>, %axis: tensor<i32>) -> tensor<*xf32> {
-  %0 = "tf.ConcatV2"(%arg0, %arg1, %arg2, %arg3, %axis) {N = 4: i64} : (tensor<8x8xf32>, tensor<?x4xf32>, tensor<*xf32>, tensor<8x?xf32>, tensor<i32>) -> tensor<*xf32>
+  %0 = "tf.ConcatV2"(%arg0, %arg1, %arg2, %arg3, %axis) : (tensor<8x8xf32>, tensor<?x4xf32>, tensor<*xf32>, tensor<8x?xf32>, tensor<i32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -1364,23 +1414,16 @@ func @testConcatV2(%arg0: tensor<8x8xf32>, %arg1: tensor<?x4xf32>, %arg2: tensor
 
 // Valid Pack operation.
 func @testPack(%arg0: tensor<4x8xf32>, %arg1: tensor<4x8xf32>) -> tensor<*xf32> {
-  %0 = "tf.Pack"(%arg0, %arg1) {axis = 1 : i64, N = 2: i64} : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<*xf32>
+  %0 = "tf.Pack"(%arg0, %arg1) {axis = 1 : i64} : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
-// -----
-
-func @testPack(%arg0: tensor<4x8xf32>, %arg1: tensor<4x8xf32>) -> tensor<*xf32> {
-  // expected-error @+1 {{requires attribute 'N' to match the number of inputs; expected: 2 Found: 1}}
-  %0 = "tf.Pack"(%arg0, %arg1) {axis = 1 : i64, N = 1: i64} : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
-}
 
 // -----
 
 func @testPack(%arg0: tensor<4x8xf32>, %arg1: tensor<4x2xf32>) -> tensor<*xf32> {
   // expected-error @+1 {{operand type 'tensor<4x2xf32>' is not compatible with preceding operands; expected dimension at index 1: 8}}
-  %0 = "tf.Pack"(%arg0, %arg1) {axis = 1 : i64, N = 2: i64} : (tensor<4x8xf32>, tensor<4x2xf32>) -> tensor<*xf32>
+  %0 = "tf.Pack"(%arg0, %arg1) {axis = 1 : i64} : (tensor<4x8xf32>, tensor<4x2xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -1388,7 +1431,7 @@ func @testPack(%arg0: tensor<4x8xf32>, %arg1: tensor<4x2xf32>) -> tensor<*xf32> 
 
 func @testPack(%arg0: tensor<4x8xf32>, %arg1: tensor<4x8xf32>, %axis: tensor<i32>) -> tensor<*xf32> {
   // expected-error @+1 {{attribute 'axis' should be within range [-3, 3); actual value: 3}}
-  %0 = "tf.Pack"(%arg0, %arg1) {axis = 3 : i64, N = 2: i64} : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<*xf32>
+  %0 = "tf.Pack"(%arg0, %arg1) {axis = 3 : i64} : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -1539,4 +1582,95 @@ func @testOneHot(%indices: tensor<3xi32>, %depth: tensor<i32>, %on_value: tensor
   // expected-error @+1 {{expected axis (-2) to be -1 or between [0, 1]}}
   %result = "tf.OneHot"(%indices, %depth, %on_value, %off_value) {axis = -2 : i64} : (tensor<3xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<3x5xf32>
   return %result : tensor<3x5xf32>
+}
+
+// -----
+
+func @testSplitNonConstSplitDim(%input: tensor<4x4xf32>, %split_dim: tensor<i32>) {
+  %0:2 = "tf.Split"(%split_dim, %input) : (tensor<i32>, tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+func @testSplitUnknownRankSplitDim(%input: tensor<4x4xf32>, %split_dim: tensor<*xi32>) {
+  %0:2 = "tf.Split"(%split_dim, %input) : (tensor<*xi32>, tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+func @testSplitUnknownRankInput(%input: tensor<*xf32>) {
+  %cst = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %0:2 = "tf.Split"(%cst, %input) : (tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+func @testSplitUnknownDimInput(%input: tensor<4x?x4xf32>) {
+  %cst = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %0:2 = "tf.Split"(%cst, %input) : (tensor<i32>, tensor<4x?x4xf32>) -> (tensor<4x?x4xf32>, tensor<4x?x4xf32>)
+  return
+}
+
+// -----
+
+func @testSplitNonConstSplitDim(%input: tensor<4x4xf32>, %split_dim: tensor<1xi32>) {
+  // expected-error @+1 {{split dimension should be an integer scalar tensor}}
+  %0:2 = "tf.Split"(%split_dim, %input) : (tensor<1xi32>, tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitScalarInput(%input: tensor<f32>, %split_dim: tensor<i32>) {
+  // expected-error @+1 {{cannot split scalar input tensor}}
+  %0:2 = "tf.Split"(%split_dim, %input) : (tensor<i32>, tensor<f32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitLargeSplitDim(%input: tensor<4x8xf32>) {
+  %cst = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+  // expected-error @+1 {{split dimension must be in range [-2, 2)}}
+  %0:2 = "tf.Split"(%cst, %input) : (tensor<i32>, tensor<4x8xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitSmallSplitDim(%input: tensor<4x8xf32>) {
+  %cst = "tf.Const"() {value = dense<-3> : tensor<i32>} : () -> tensor<i32>
+  // expected-error @+1 {{split dimension must be in range [-2, 2)}}
+  %0:2 = "tf.Split"(%cst, %input) : (tensor<i32>, tensor<4x8xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitSmallSplitDim(%input: tensor<4x8xf32>) {
+  %cst = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // expected-error @+1 {{dimension #0 not divisible by the number of result tensors}}
+  %0:3 = "tf.Split"(%cst, %input) : (tensor<i32>, tensor<4x8xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testTernaryEinsum(%arg0: tensor<2x3xf32>){
+  // expected-error @+1 {{supports at most two operands}}
+  %0 = "tf.Einsum"(%arg0, %arg0, %arg0) {equation = "ab,cd,ef->"} : (tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>) -> (tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testTopKV2WrongInputRank(%input: tensor<f32>, %k: tensor<i32>) {
+  // expected-error @+1 {{op requires input operand to have at least 1 dimension}}
+  %0:2 = "tf.TopKV2"(%input, %k) : (tensor<f32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xi32>)
+  return
+}
+
+// -----
+
+func @testTopKV2WrongKRank(%input: tensor<8xf32>, %k: tensor<5xi32>) {
+  // expected-error @+1 {{op requires k operand to be 0D tensor}}
+  %0:2 = "tf.TopKV2"(%input, %k) : (tensor<8xf32>, tensor<5xi32>) -> (tensor<*xf32>, tensor<*xi32>)
+  return
 }

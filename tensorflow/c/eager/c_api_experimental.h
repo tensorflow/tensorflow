@@ -420,6 +420,12 @@ TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDef(TFE_Context* ctx,
                                                       size_t proto_len,
                                                       TF_Status* status);
 
+// Checks whether a remote worker is alive or not. This will return true even if
+// the context doesn't exist on the remote worker.
+TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
+                                                 const char* worker_name,
+                                                 TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

@@ -1040,11 +1040,11 @@ struct SqueezeParams {
 
 struct StridedSliceParams {
   int8 start_indices_count;
-  int16 start_indices[4];
+  int32 start_indices[4];
   int8 stop_indices_count;
-  int16 stop_indices[4];
+  int32 stop_indices[4];
   int8 strides_count;
-  int16 strides[4];
+  int32 strides[4];
 
   int16 begin_mask;
   int16 ellipsis_mask;

@@ -29,7 +29,6 @@ import numpy as np
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
-
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
 from tensorflow.python.compat import compat
@@ -66,7 +65,6 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as tracking_base
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
@@ -91,15 +89,9 @@ autograph = lazy_loader.LazyLoader(
 
 ops.NotDifferentiable("ReduceDataset")
 
-
 # A constant that can be used to enable auto-tuning.
 AUTOTUNE = -1
 tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
-
-
-class AutotuneAlgorithm(enum.Enum):
-  HILL_CLIMB = 0
-  GRADIENT_DESCENT = 1
 
 
 class ExternalStatePolicy(enum.Enum):
@@ -228,9 +220,9 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         def. In that case, the state in these ops would be thrown away.
       strip_device_assignment: If true, non-local (i.e. job and task) device
         assignment is stripped from ops in the serialized graph.
-      external_state_policy: The ExternalStatePolicy enum that determines how
-        we handle input pipelines that depend on external state. By default,
-        its set to WARN.
+      external_state_policy: The ExternalStatePolicy enum that determines how we
+        handle input pipelines that depend on external state. By default, its
+        set to WARN.
 
     Returns:
       A scalar `tf.Tensor` of `tf.string` type, representing this dataset as a
@@ -356,6 +348,8 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     dataset = self
     options = self.options()
+
+    # (1) Apply threading options
     if options.experimental_threading is not None:
       t_options = options.experimental_threading
       if t_options.max_intra_op_parallelism is not None:
@@ -364,36 +358,31 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       if t_options.private_threadpool_size is not None:
         dataset = _PrivateThreadPoolDataset(dataset,
                                             t_options.private_threadpool_size)
+
+    # (2) Apply graph rewrite options
     # pylint: disable=protected-access
-    static_optimizations = options._static_optimizations()
-    static_optimization_configs = options._static_optimization_configs()
+    graph_rewrites = options._graph_rewrites()
+    graph_rewrite_configs = options._graph_rewrite_configs()
     # pylint: enable=protected-access
-    if static_optimizations:
+    if graph_rewrites:
       if self._has_captured_ref():
         warnings.warn(
-            "tf.data static optimizations are not compatible with tf.Variable. "
-            "The following optimizations will be disabled: %s. To enable "
-            "optimizations, use resource variables instead by calling "
+            "tf.data graph rewrites are not compatible with tf.Variable. "
+            "The following rewrites will be disabled: %s. To enable "
+            "rewrites, use resource variables instead by calling "
             "`tf.enable_resource_variables()` at the start of the program." %
-            ", ".join(static_optimizations))
+            ", ".join(graph_rewrites))
       else:
-        dataset = _OptimizeDataset(dataset, static_optimizations,
-                                   static_optimization_configs)
+        dataset = _OptimizeDataset(dataset, graph_rewrites,
+                                   graph_rewrite_configs)
 
-    autotune = True
-    algorithm = AutotuneAlgorithm.HILL_CLIMB
-    cpu_budget = 0  # Indicates that all CPU cores should be used.
-    if options.experimental_optimization is not None:
-      if options.experimental_optimization.autotune is False:  # pylint: disable=g-bool-id-comparison
-        autotune = False
-      if options.experimental_optimization.autotune_algorithm is not None:
-        algorithm = options.experimental_optimization.autotune_algorithm
-      if options.experimental_optimization.autotune_cpu_budget is not None:
-        cpu_budget = options.experimental_optimization.autotune_cpu_budget
+    # (3) Apply autotune options
+    autotune, algorithm, cpu_budget = options._autotune_settings()  # pylint: disable=protected-access
 
     if autotune:
       dataset = _ModelDataset(dataset, algorithm, cpu_budget)
 
+    # (4) Apply stats aggregator options
     if options.experimental_stats and options.experimental_stats.aggregator:  # pylint: disable=line-too-long
       dataset = _SetStatsAggregatorDataset(  # pylint: disable=protected-access
           dataset, options.experimental_stats.aggregator,
@@ -2437,26 +2426,25 @@ class DatasetV1Adapter(DatasetV1):
 
 def _ensure_same_dataset_graph(dataset):
   """Walks the dataset graph to ensure all datasets come from the same graph."""
+  # pylint: disable=protected-access
   current_graph = ops.get_default_graph()
   bfs_q = Queue.Queue()
-  bfs_q.put(dataset)  # pylint: disable=protected-access
+  bfs_q.put(dataset)
   visited = []
   while not bfs_q.empty():
     ds = bfs_q.get()
     visited.append(ds)
-    ds_graph = ds._graph  # pylint: disable=protected-access
+    ds_graph = ds._graph
     if current_graph != ds_graph:
-      logging.warning("The graph (" + str(current_graph) + ") of the iterator "
-                      "is different from the graph (" + str(ds_graph) + ") "
-                      "the dataset: " + str(ds._variant_tensor) + " was "  # pylint: disable=protected-access
-                      "created in. If you are using the Estimator API, "
-                      "make sure that no part of the dataset returned by the "
-                      "`input_fn` function is defined outside the `input_fn` "
-                      "function. Please ensure that all datasets in the "
-                      "pipeline are created in the same graph as the iterator. "
-                      "NOTE: This warning will become an error in future "
-                      "versions of TensorFlow.")
-    for input_ds in ds._inputs():  # pylint: disable=protected-access
+      raise ValueError(
+          "The graph (" + str(current_graph) + ") of the iterator is different "
+          "from the graph (" + str(ds_graph) + ") the dataset: " +
+          str(ds._variant_tensor) + " was  created in. If you are using the "
+          "Estimator API, make sure that no part of the dataset returned by "
+          "the `input_fn` function is defined outside the `input_fn` function. "
+          "Please ensure that all datasets in the pipeline are created in the "
+          "same graph as the iterator.")
+    for input_ds in ds._inputs():
       if input_ds not in visited:
         bfs_q.put(input_ds)
 
@@ -2602,7 +2590,7 @@ def get_legacy_output_types(dataset_or_iterator):
 class Options(options_lib.OptionsBase):
   """Represents options for tf.data.Dataset.
 
-  An `Options` object can be, for instance, used to control which static
+  An `Options` object can be, for instance, used to control which graph
   optimizations to apply or whether to use performance modeling to dynamically
   tune the parallelism of operations such as `tf.data.Dataset.map` or
   `tf.data.Dataset.interleave`.
@@ -2677,11 +2665,15 @@ class Options(options_lib.OptionsBase):
       "might be thrown away; FAIL: We fail if any state is being captured.",
       default_factory=lambda: ExternalStatePolicy.WARN)
 
-  def _static_optimizations(self):
-    """Produces the list of enabled static optimizations."""
-
+  def _graph_rewrites(self):
+    """Produces the list of enabled static graph rewrites."""
     result = []
-    result.extend(self.experimental_optimization._static_optimizations())  # pylint: disable=protected-access
+    if self.experimental_optimization is not None:
+      result.extend(self.experimental_optimization._graph_rewrites())  # pylint: disable=protected-access
+    else:
+      # Apply default options
+      result.extend(
+          optimization_options.OptimizationOptions()._graph_rewrites())  # pylint: disable=protected-access
 
     if self.experimental_deterministic is False:
       result.append("make_sloppy")
@@ -2694,12 +2686,11 @@ class Options(options_lib.OptionsBase):
       result.append("make_stateless")
     return result
 
-  def _static_optimization_configs(self):
-    """Produces the list of configurations for enabled static optimizations."""
+  def _graph_rewrite_configs(self):
+    """Produces the list of configurations for enabled graph optimizations."""
     result = []
     if self.experimental_optimization:
-      result.extend(
-          self.experimental_optimization._static_optimization_configs())  # pylint: disable=protected-access
+      result.extend(self.experimental_optimization._graph_rewrite_configs())  # pylint: disable=protected-access
 
     if self.experimental_slack:
       num_devices = self.experimental_distribute.num_devices
@@ -2707,6 +2698,13 @@ class Options(options_lib.OptionsBase):
         num_devices = 1
       result.append("slack:slack_period:%d" % num_devices)
     return result
+
+  def _autotune_settings(self):
+    if self.experimental_optimization is not None:
+      return self.experimental_optimization._autotune_settings()  # pylint: disable=protected-access
+
+    # Return default autotune options
+    return optimization_options.OptimizationOptions()._autotune_settings()  # pylint: disable=protected-access
 
   def merge(self, options):
     """Merges itself with the given `tf.data.Options`.
@@ -3145,7 +3143,7 @@ class StructuredFunctionWrapper(object):
       resource_tracker = tracking.ResourceTracker()
       with tracking.resource_tracker_scope(resource_tracker):
         # TODO(b/141462134): Switch to using garbage collection.
-        self._function = wrapper_fn._get_concrete_function_internal()
+        self._function = wrapper_fn.get_concrete_function()
 
         if add_to_graph:
           self._function.add_to_graph(ops.get_default_graph())
@@ -4179,20 +4177,11 @@ class _ModelDataset(UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset, algorithm, cpu_budget):
     self._input_dataset = input_dataset
-    # TODO(jsimsa): This check is introduced for forward compatibility and can
-    # be removed after 7/24/2019. At that point, all servers are expected to
-    # recognize the `algorithm` attribute.
-    if algorithm != AutotuneAlgorithm.HILL_CLIMB:
-      variant_tensor = gen_dataset_ops.model_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          algorithm=algorithm,
-          cpu_budget=cpu_budget,
-          **self._flat_structure)
-    else:
-      variant_tensor = gen_dataset_ops.model_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          cpu_budget=cpu_budget,
-          **self._flat_structure)
+    variant_tensor = gen_dataset_ops.model_dataset(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        algorithm=algorithm.value,
+        cpu_budget=cpu_budget,
+        **self._flat_structure)
     super(_ModelDataset, self).__init__(input_dataset, variant_tensor)
 
 

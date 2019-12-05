@@ -1,7 +1,7 @@
 # Description: Operations defined for Cloud TPUs
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 # Do not add anymore paths here. You do not need to be in the visibility list
@@ -438,7 +438,7 @@ tf_proto_library(
     name = "tensor_tracer_proto",
     srcs = ["tensor_tracer.proto"],
     protodeps = [
-        "//tensorflow/core:protos_all_proto",
+        "//tensorflow/core:protos_all",
     ],
     visibility = ["//visibility:public"],
 )

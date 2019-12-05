@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "arm_nnfunctions.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/micro/kernels/cmsis-nn/scratch_buffer.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -35,7 +35,7 @@ constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
-constexpr int kMaxChannels = 64;
+constexpr int kMaxChannels = 256;
 
 const int kTensorNotAllocated = -1;
 
@@ -153,7 +153,6 @@ TfLiteStatus EvalQuantizedPerChannel(
     TfLiteContext* context, TfLiteNode* node, TfLiteConvParams* params,
     OpData* data, const TfLiteTensor* input, const TfLiteTensor* filter,
     const TfLiteTensor* bias, TfLiteTensor* output, TfLiteTensor* im2col) {
-#if defined(ARM_MATH_DSP) && defined(ARM_MATH_LOOPUNROLL)
   ConvParams op_params;
   op_params.input_offset = -input->params.zero_point;
   op_params.output_offset = output->params.zero_point;
@@ -164,12 +163,14 @@ TfLiteStatus EvalQuantizedPerChannel(
   op_params.padding_values.height = data->padding.height;
   op_params.padding_values.width = data->padding.width;
 
+#if defined(ARM_MATH_DSP) && defined(ARM_MATH_LOOPUNROLL)
+
   RuntimeShape filter_shape = GetTensorShape(filter);
   RuntimeShape input_shape = GetTensorShape(input);
   RuntimeShape output_shape = GetTensorShape(output);
   RuntimeShape bias_shape = GetTensorShape(bias);
 
-  // TODO(b/130439627): Use calculated value for clamping.
+  // Set min and max value of the output.
   const int32 output_activation_min = std::numeric_limits<int8_t>::min();
   const int32 output_activation_max = std::numeric_limits<int8_t>::max();
 
@@ -235,7 +236,17 @@ TfLiteStatus EvalQuantizedPerChannel(
     }
   }
 #else
-#error ARM_MATH_DSP and ARM_MATH_LOOPUNROLL must be set
+#pragma message( \
+    "CMSIS-NN optimization for conv not available for this target. Using reference kernel.")
+
+  reference_integer_ops::ConvPerChannel(
+      op_params, data->per_channel_output_multiplier,
+      data->per_channel_output_shift, GetTensorShape(input),
+      GetTensorData<int8>(input), GetTensorShape(filter),
+      GetTensorData<int8>(filter), GetTensorShape(bias),
+      GetTensorData<int32>(bias), GetTensorShape(output),
+      GetTensorData<int8>(output));
+
 #endif
   return kTfLiteOk;
 }
@@ -285,7 +296,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   int output_height = output->dims->data[1];
 
   OpData data;
-  if (input->type != kTfLiteFloat32) {
+
+  // All per-channel quantized tensors need valid zero point and scale arrays.
+  if (input->type == kTfLiteInt8) {
     TF_LITE_ENSURE_EQ(context, filter->quantization.type,
                       kTfLiteAffineQuantization);
 
@@ -294,6 +307,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             filter->quantization.params);
     TF_LITE_ENSURE(context, affine_quantization);
     TF_LITE_ENSURE(context, affine_quantization->scale);
+    TF_LITE_ENSURE(context, affine_quantization->zero_point);
+    // Conv is quantized along dimension 0:
+    // https://www.tensorflow.org/lite/performance/quantization_spec
+    TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
+                      affine_quantization->scale->size);
+    TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
+                      affine_quantization->zero_point->size);
   }
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(

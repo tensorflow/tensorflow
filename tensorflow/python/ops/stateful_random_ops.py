@@ -22,11 +22,16 @@ import sys
 
 import numpy as np
 
+from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util.tf_export import tf_export
@@ -133,6 +138,12 @@ def _get_state_size(alg):
     raise ValueError("Unsupported algorithm id: %s" % alg)
 
 
+def _check_state_shape(shape, alg):
+  if isinstance(alg, ops.Tensor) and not context.executing_eagerly():
+    return
+  shape.assert_is_compatible_with([_get_state_size(int(alg))])
+
+
 def _make_state_from_seed(seed, alg):
   return _make_1d_state(_get_state_size(alg), seed)
 
@@ -167,8 +178,42 @@ def _convert_to_state_tensor(t):
   return ops.convert_to_tensor(t, dtype=STATE_TYPE)
 
 
+class GeneratorSpec(type_spec.TypeSpec):
+  """TypeSpec for Generator."""
+
+  def __init__(self, shape=None, dtype=None):
+    self.shape = shape
+    self.dtype = dtype
+
+  @property
+  def _component_specs(self):
+    return (tensor_spec.TensorSpec(shape=(), dtype=dtypes.resource),
+            tensor_spec.TensorSpec(shape=(), dtype=ALGORITHM_TYPE))
+
+  def _to_components(self, value):
+    return (value.state.handle, ops.convert_to_tensor(value.algorithm,
+                                                      dtype=ALGORITHM_TYPE))
+
+  def _from_components(self, components):
+    assert isinstance(components, (list, tuple))
+    assert len(components) == 2
+    handle = components[0]
+    alg = components[1]
+    state_var = resource_variable_ops.BaseResourceVariable(
+        handle=handle, shape=self.shape, dtype=self.dtype,
+        trainable=False, handle_deleter=object(), handle_name="RNGVar")
+    return Generator(state=state_var, alg=alg)
+
+  @property
+  def value_type(self):
+    return Generator
+
+  def _serialize(self):
+    return (self.shape, self.dtype)
+
+
 @tf_export("random.experimental.Generator")
-class Generator(tracking.AutoTrackable):
+class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
   """Random-number generator.
 
   It uses Variable to manage its internal state, and allows choosing an
@@ -192,7 +237,9 @@ class Generator(tracking.AutoTrackable):
     Args:
       copy_from: a generator to be copied from.
       state: a vector of dtype STATE_TYPE representing the initial state of the
-        RNG, whose length and semantics are algorithm-specific.
+        RNG, whose length and semantics are algorithm-specific. If it's a
+        variable, the generator will reuse it instead of creating a new
+        variable.
       alg: the RNG algorithm. Possible values are `RNG_ALG_PHILOX` for the
         Philox algorithm and `RNG_ALG_THREEFRY` for the ThreeFry
         algorithm (see paper 'Parallel Random Numbers: As Easy as 1, 2, 3'
@@ -210,11 +257,11 @@ class Generator(tracking.AutoTrackable):
     else:
       assert alg is not None and state is not None
       if isinstance(state, variables.Variable):
-        state.shape.assert_is_compatible_with([_get_state_size(alg)])
+        _check_state_shape(state.shape, alg)
         self._state_var = state
       else:
         state = _convert_to_state_tensor(state)
-        state.shape.assert_is_compatible_with([_get_state_size(alg)])
+        _check_state_shape(state.shape, alg)
         self._state_var = variables.Variable(state, dtype=STATE_TYPE,
                                              trainable=False)
       self._alg = alg
@@ -344,6 +391,10 @@ class Generator(tracking.AutoTrackable):
     key = array_ops.reshape(key, [1])
     state = array_ops.concat([counter, key], 0)
     self._state_var.assign(state)
+
+  @property
+  def _type_spec(self):
+    return GeneratorSpec(shape=self.state.shape, dtype=self.state.dtype)
 
   @property
   def state(self):
@@ -547,22 +598,30 @@ class Generator(tracking.AutoTrackable):
     ```python
     counts = [10., 20.]
     # Probability of success.
-    probs = [0.8, 0.9]
+    probs = [0.8]
 
     rng = tf.random.experimental.Generator.from_seed(seed=234)
     binomial_samples = rng.binomial(shape=[2], counts=counts, probs=probs)
+
+
+    counts = ... # Shape [3, 1, 2]
+    probs = ...  # Shape [1, 4, 2]
+    shape = [3, 4, 3, 4, 2]
+    rng = tf.random.experimental.Generator.from_seed(seed=1717)
+    # Sample shape will be [3, 4, 3, 4, 2]
+    binomial_samples = rng.binomial(shape=shape, counts=counts, probs=probs)
     ```
 
 
     Args:
       shape: A 1-D integer Tensor or Python array. The shape of the output
         tensor.
-      counts: A 0/1-D Tensor or Python value. The counts of the binomial
-        distribution.  Must be broadcastable with the leftmost dimension
-        defined by `shape`.
-      probs: A 0/1-D Tensor or Python value. The probability of success for the
-        binomial distribution.  Must be broadcastable with the leftmost
-        dimension defined by `shape`.
+      counts: Tensor. The counts of the binomial distribution. Must be
+        broadcastable with `probs`, and broadcastable with the rightmost
+        dimensions of `shape`.
+      probs: Tensor. The probability of success for the
+        binomial distribution. Must be broadcastable with `counts` and
+        broadcastable with the rightmost dimensions of `shape`.
       dtype: The type of the output. Default: tf.int32
       name: A name for the operation (optional).
 

@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_BUILTIN_LOGGING_OPS_LSTM_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_BUILTIN_LOGGING_OPS_LSTM_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_logger.h"
 
 namespace tflite {

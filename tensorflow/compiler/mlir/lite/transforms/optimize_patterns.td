@@ -46,9 +46,10 @@ multiclass FuseActFnIntoConvOpPat<dag ActFnOp, dag ActFnAttr> {
 
 // TODO(hinsu): Also fuse ops corresponding to RELU_N1_TO_1 and SIGN_BIT fused
 // activation functions.
+// Currently we're not fusing tanh, sigmoid, hard_swish and other activations
+// those cannot be simply translated into clamping.
 foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
-                     [TFL_Relu6Op, TFL_AF_Relu6],
-		     [TFL_TanhOp, TFL_AF_Tanh]] in
+                     [TFL_Relu6Op, TFL_AF_Relu6]] in
   defm : FuseActFnIntoConvOpPat<actFnPair[0], actFnPair[1]>;
 
 
@@ -189,6 +190,9 @@ class ConstDoubleValueLessThan<string n> : Constraint<
   "std::abs(*$0.cast<DenseElementsAttr>().getValues<float>().begin()) < "
   # n>>;
 
+def L2NormValidReduceIndex : Constraint<CPred<
+  "L2NormalizeReduceAxis($0, $1.cast<DenseElementsAttr>())">>;
+
 // Currently L2Normalization doesn't support activation function
 // in TFLite.
 // TODO(karimnosseir): Add constraints that the kernel code assumes.
@@ -200,12 +204,13 @@ multiclass L2NormalizePatterns<dag FirstOp, dag SecondOp> {
   def : Pat<(FirstOp $operand1,
                      (SecondOp
                         (TFL_SumOp
-                           (TFL_SquareOp $square_operand),
-                           (ConstantOp I32ElementsAttr:$constant),
+                           (TFL_SquareOp:$sq_op $square_operand),
+                           (ConstantOp I32ElementsAttr:$axis),
                            $keep_dims)),
                      TFL_AF_None),
            (TFL_L2NormalizationOp $operand1, TFL_AF_None),
-           [(EqualOperands $operand1, $square_operand)]>;
+           [(EqualOperands $operand1, $square_operand),
+            (L2NormValidReduceIndex $sq_op, $axis)]>;
 
   // Below patterns for L2Normalize when there is an Add or Maximum
   // adding or clamping to a small constant scalar.
@@ -213,26 +218,28 @@ multiclass L2NormalizePatterns<dag FirstOp, dag SecondOp> {
                      (SecondOp
                       (TFL_AddOp
                        (TFL_SumOp
-                        (TFL_SquareOp $square_operand),
-                        (ConstantOp I32ElementsAttr:$constant),
+                        (TFL_SquareOp:$sq_op $square_operand),
+                        (ConstantOp I32ElementsAttr:$axis),
                         $keep_dims),
                        (ConstantOp $epsilon), TFL_AF_None)),
            TFL_AF_None),
            (TFL_L2NormalizationOp $operand1, TFL_AF_None),
            [(EqualOperands $operand1, $square_operand),
+            (L2NormValidReduceIndex $sq_op, $axis),
             (ConstDoubleValueLessThan<"1e-3"> $epsilon)]>;
 
   def : Pat<(FirstOp $operand1,
                      (SecondOp
                       (TFL_MaximumOp
                        (TFL_SumOp
-                        (TFL_SquareOp $square_operand),
-                        (ConstantOp I32ElementsAttr:$constant),
+                        (TFL_SquareOp:$sq_op $square_operand),
+                        (ConstantOp I32ElementsAttr:$axis),
                         $keep_dims),
                        (ConstantOp $epsilon))),
            TFL_AF_None),
            (TFL_L2NormalizationOp $operand1, TFL_AF_None),
            [(EqualOperands $operand1, $square_operand),
+            (L2NormValidReduceIndex $sq_op, $axis),
             (ConstDoubleValueLessThan<"1e-3"> $epsilon)]>;
 
 }
@@ -259,3 +266,28 @@ multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
 
 foreach BroadcastingOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp]
   in defm : FuseTileBroadcastIntoFollowingBinary<BroadcastingOp>;
+
+// Returns shape of a ranked tensor.
+// if called without a ranked tensor it will fail.
+def GetShape: NativeCodeCall<"GetShape($0)">;
+
+def : Pat<(TFL_SqueezeOp:$squeeze_op $input, $squeeze_dims),
+          (TFL_ReshapeOp $input,
+           (ConstantOp (GetShape $squeeze_op))),
+          [(AnyStaticShapeTensor $squeeze_op)]>;
+
+class ValueEquals<string val> : Constraint<CPred<
+  "$0.cast<DenseElementsAttr>().getNumElements() == 1 &&"
+  "*$0.cast<DenseElementsAttr>().getValues<float>().begin() == " # val>>;
+
+def : Pat<(TFL_MinimumOp (TFL_MaximumOp $input,
+                          (ConstantOp $NegOne)),
+           (ConstantOp $One)),
+          (TFL_Relu1Op $input),
+          [(ValueEquals<"-1"> $NegOne), (ValueEquals<"1"> $One)]>;
+
+def : Pat<(TFL_MaximumOp (TFL_MinimumOp $input,
+                          (ConstantOp $One)),
+           (ConstantOp $NegOne)),
+          (TFL_Relu1Op $input),
+          [(ValueEquals<"-1"> $NegOne), (ValueEquals<"1"> $One)]>;

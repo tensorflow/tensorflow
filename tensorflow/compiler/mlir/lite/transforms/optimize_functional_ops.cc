@@ -142,7 +142,7 @@ static void EraseDeadFuncs(const FuncSet& candiate_funcs, ModuleOp module) {
   FuncSet in_use_funcs;
   manager.getModule().walk([&](Operation* op) {
     for (auto attr : op->getAttrs()) {
-      if (auto symbol = attr.second.dyn_cast<SymbolRefAttr>()) {
+      if (auto symbol = attr.second.dyn_cast<FlatSymbolRefAttr>()) {
         auto func = manager.lookupSymbol<FuncOp>(symbol.getValue());
         in_use_funcs.insert(func);
       }

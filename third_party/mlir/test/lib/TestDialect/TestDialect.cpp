@@ -22,6 +22,7 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Transforms/FoldUtils.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "llvm/ADT/StringSwitch.h"
 
 using namespace mlir;
 
@@ -30,6 +31,18 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 namespace {
+
+// Test support for interacting with the AsmPrinter.
+struct TestOpAsmInterface : public OpAsmDialectInterface {
+  using OpAsmDialectInterface::OpAsmDialectInterface;
+
+  void getAsmResultNames(Operation *op,
+                         OpAsmSetValueNameFn setNameFn) const final {
+    if (auto asmOp = dyn_cast<AsmDialectInterfaceOp>(op))
+      setNameFn(asmOp, "result");
+  }
+};
+
 struct TestOpFolderDialectInterface : public OpFolderDialectInterface {
   using OpFolderDialectInterface::OpFolderDialectInterface;
 
@@ -112,8 +125,16 @@ TestDialect::TestDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "TestOps.cpp.inc"
       >();
-  addInterfaces<TestOpFolderDialectInterface, TestInlinerInterface>();
+  addInterfaces<TestOpAsmInterface, TestOpFolderDialectInterface,
+                TestInlinerInterface>();
   allowUnknownOperations();
+}
+
+LogicalResult TestDialect::verifyOperationAttribute(Operation *op,
+                                                    NamedAttribute namedAttr) {
+  if (namedAttr.first == "test.invalid_attr")
+    return op->emitError() << "invalid to use 'test.invalid_attr'";
+  return success();
 }
 
 LogicalResult TestDialect::verifyRegionArgAttribute(Operation *op,
@@ -220,6 +241,7 @@ static void print(OpAsmPrinter &p, WrappingRegionOp op) {
 //===----------------------------------------------------------------------===//
 // Test PolyForOp - parse list of region arguments.
 //===----------------------------------------------------------------------===//
+
 static ParseResult parsePolyForOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 4> ivsInfo;
   // Parse list of region arguments without a delimiter.
@@ -282,6 +304,8 @@ SmallVector<Type, 2> mlir::OpWithInferTypeInterfaceOp::inferReturnTypes(
 
 // Static initialization for Test dialect registration.
 static mlir::DialectRegistration<mlir::TestDialect> testDialect;
+
+#include "TestOpEnums.cpp.inc"
 
 #define GET_OP_CLASSES
 #include "TestOps.cpp.inc"

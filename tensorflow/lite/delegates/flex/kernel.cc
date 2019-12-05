@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
@@ -258,9 +258,7 @@ class OpNode {
 
     // Precalculating a cache key saves about 10% of inference time for very
     // small models.
-    tensorflow::Device* device = op_->Device();
-    op_->MutableAttrs()->CacheKey(device == nullptr ? "unspecified"
-                                                    : device->name());
+    op_->MutableAttrs()->CacheKey(op_->GetDeviceName());
 
     return tensorflow::Status::OK();
   }

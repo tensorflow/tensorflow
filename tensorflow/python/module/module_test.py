@@ -46,7 +46,7 @@ class TestModuleNaming(test_util.TensorFlowTestCase):
     self.assertEqual(mod.name_scope.name, "simple/")
 
   def test_construct_in_scope(self):
-    with ops.name_scope("foo"):
+    with ops.name_scope("foo", skip_on_eager=False):
       mod = module.Module(name="bar")
     self.assertEqual(mod.name, "bar")
     self.assertEqual(mod.name_scope.name, "foo/bar/")
@@ -87,7 +87,7 @@ class TestModuleNaming(test_util.TensorFlowTestCase):
     self.assertEqual(mod.alternative_forward(), mod.name_scope.name)
 
   def test_patched_callable(self):
-    with ops.name_scope("foo"):
+    with ops.name_scope("foo", skip_on_eager=False):
       mod = module.Module(name="bar")
     mod.foo = get_name_scope
     # `foo` is not a method so we do not re-enter the name scope.
@@ -320,7 +320,7 @@ class AbcTest(test_util.TensorFlowTestCase):
 
 
 def get_name_scope():
-  with ops.name_scope("x") as ns:
+  with ops.name_scope("x", skip_on_eager=False) as ns:
     ns = "/".join(ns.split("/")[:-2])
     return ns + "/" if ns else ""
 
@@ -409,7 +409,7 @@ class ModuleOverridingNameScope(ReturnsNameScopeModule):
 
   @property
   def name_scope(self):
-    return ops.name_scope("yolo/")
+    return ops.name_scope("yolo/", skip_on_eager=False)
 
 
 class ModuleWithFunctionAnnotatedCall(module.Module):

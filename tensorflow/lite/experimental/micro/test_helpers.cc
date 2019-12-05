@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/micro/test_helpers.h"
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/experimental/micro/micro_utils.h"
 
@@ -47,7 +47,7 @@ class StackAllocator : public flatbuffers::Allocator {
     return *inst;
   }
 
-  static constexpr int kStackAllocatorSize = 4096;
+  static constexpr size_t kStackAllocatorSize = 4096;
 
  private:
   uint8_t data_backing_[kStackAllocatorSize];

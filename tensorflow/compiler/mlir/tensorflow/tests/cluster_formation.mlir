@@ -99,7 +99,7 @@ module {
   // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
   func @argliveinotherislands(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = tf_executor.graph {
-      // CHECK: %[[OTHER_ISLAND_OUTPUT:[0-9]*]]:2 = tf_executor.island wraps "tf.D"
+      // CHECK: %[[OTHER_ISLAND_OUTPUT:[a-z0-9]*]], %{{.*}} = tf_executor.island wraps "tf.D"
       %1:2 = tf_executor.island wraps "tf.D"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
 
       %2:2 = tf_executor.island {
@@ -107,7 +107,7 @@ module {
         // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"(%[[ARG_0]]) : (tensor<?xi32>) -> tensor<?xi32>
         %3 = "tf.A"(%arg0) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
 
-        // CHECK: %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[A_OUTPUT]], %[[OTHER_ISLAND_OUTPUT]]#0) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+        // CHECK: %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[A_OUTPUT]], %[[OTHER_ISLAND_OUTPUT]]) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
         %4 = "tf.B"(%3, %1#0) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
 
         // CHECK: tf_device.return %[[B_OUTPUT]]
@@ -232,12 +232,12 @@ module {
 
 // -----
 
-// Single device with non-continous instructions in original block.
+// Single device with non-continuous instructions in original block.
 
 module {
-  // CHECK-LABEL: func @noncontinoussinglecluster
+  // CHECK-LABEL: func @noncontinuoussinglecluster
   // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
-  func @noncontinoussinglecluster(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  func @noncontinuoussinglecluster(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = tf_executor.graph {
       %1:2 = tf_executor.island {
 
