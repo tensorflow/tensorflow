@@ -29,7 +29,7 @@ if [ ! -f $BZL_FILE_PATH ]; then
   exit 1;
 fi
 
-EIGEN_URL="$(grep -o 'http.*bitbucket.org/eigen/eigen/get/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v mirror.tensorflow | head -n1)"
+EIGEN_URL="$(grep -o 'http.*github.com/eigenteam/eigen-git-mirror/archive/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v mirror.tensorflow | head -n1)"
 GEMMLOWP_URL="$(grep -o 'https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/gemmlowp/.*zip' "${BZL_FILE_PATH}" | head -n1)"
 GOOGLETEST_URL="https://github.com/google/googletest/archive/release-1.8.0.tar.gz"
 ABSL_URL="$(grep -o 'https://github.com/abseil/abseil-cpp/.*tar.gz' "${BZL_FILE_PATH}" | head -n1)"
