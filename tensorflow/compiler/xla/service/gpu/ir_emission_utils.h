@@ -169,14 +169,17 @@ struct ReductionDimensions {
   std::array<int64, 3> dimensions;
 };
 
-// Given the input shape and dimensions to reduce for a reduction, returns
-// ReductionDimensions.
+// Given the reduction operation, returns ReductionDimensions.
 //
 // Prerequisite: the reduction instruction passes the check
 // IsReductionFromOrToContiguousDimensions, which guarantees either the
 // dimensions to reduce or the dimensions to keep are consecutive.
 ReductionDimensions GetReductionKindAndContiguousComponents(
-    const Shape& input_shape, absl::Span<const int64> dims_to_reduce);
+    const HloInstruction& reduce);
+
+// Get tiling per thread for the given reduction in dimensions [D, H, W].
+std::array<int64, 3> GetReductionTiling(
+    const ReductionDimensions& reduction_dimensions);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,

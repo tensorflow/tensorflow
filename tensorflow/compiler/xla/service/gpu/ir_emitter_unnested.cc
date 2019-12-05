@@ -2876,34 +2876,26 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
     const HloInstruction* unnested_hlo, const HloInstruction* first_reduce) {
   const Shape& input_shape = first_reduce->operand(0)->shape();
   ReductionDimensions reduction_dimensions =
-      GetReductionKindAndContiguousComponents(input_shape,
-                                              first_reduce->dimensions());
+      GetReductionKindAndContiguousComponents(*first_reduce);
   VLOG(10) << "is_row_reduction " << reduction_dimensions.is_row_reduction
            << " " << reduction_dimensions.dimensions[0] << " "
            << reduction_dimensions.dimensions[1] << " "
            << reduction_dimensions.dimensions[2];
 
+  std::array<int64, 3> reduction_tiling =
+      GetReductionTiling(reduction_dimensions);
+  int64 tile_size_y = reduction_tiling[1];
+  int64 block_size_z = reduction_tiling[0];
+  bool dilated_x =
+      !reduction_dimensions.is_row_reduction &&
+      !IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,
+                                            reduction_dimensions.dimensions[2]);
+
   int64 tile_size_x = 1;
-  int64 tile_size_y = 1;
-  int64 block_size_z = 1;
   int64 num_threads_x = 1;
-  bool dilated_x = true;
   if (reduction_dimensions.is_row_reduction) {
     num_threads_x = kWarpSize;
-    if (reduction_dimensions.dimensions[1] == 1) {
-      // Scalar reduction is handled differently than the other kind of row
-      // reduction.
-      CHECK_EQ(reduction_dimensions.dimensions[0], 1);
-      tile_size_x = kWarpSize * 16;
-    } else {
-      if (reduction_dimensions.dimensions[2] % (kWarpSize * 64) == 0) {
-        tile_size_x = kWarpSize * 64;
-      } else {
-        tile_size_x = kWarpSize * 8;
-      }
-      block_size_z =
-          std::min(reduction_dimensions.dimensions[0], static_cast<int64>(8));
-    }
+    tile_size_x = reduction_tiling[2] * kWarpSize;
   } else {
     // Column reduction without transpose doesn't require communication among
     // threads processing elements in the same tile. The current implementation
@@ -2913,20 +2905,17 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
     // num_threads_x and tile_size_x to allow a bigger hardware thread block.
     int64 hw_threads_per_block_limit =
         ThreadsPerBlockLimit(ir_emitter_context_->device_description());
-    if (IsUnrollingColumnReductionBeneficial(
-            unnested_hlo, input_shape, reduction_dimensions.dimensions[2])) {
+    if (!dilated_x) {
       // Vectorized loads: two elements per thread.
       tile_size_x = std::min(2 * hw_threads_per_block_limit,
                              reduction_dimensions.dimensions[2]);
       num_threads_x = tile_size_x / 2;
-      dilated_x = false;
     } else {
       // One element per thread.
       tile_size_x = std::min(hw_threads_per_block_limit,
                              reduction_dimensions.dimensions[2]);
       num_threads_x = tile_size_x;
     }
-    tile_size_y = 128;
   }
 
   KernelMappingScheme mapping_scheme(
