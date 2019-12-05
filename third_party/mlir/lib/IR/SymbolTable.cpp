@@ -31,23 +31,24 @@ static bool isPotentiallyUnknownSymbolTable(Operation *op) {
 //===----------------------------------------------------------------------===//
 
 /// Build a symbol table with the symbols within the given operation.
-SymbolTable::SymbolTable(Operation *op) : context(op->getContext()) {
-  assert(op->hasTrait<OpTrait::SymbolTable>() &&
+SymbolTable::SymbolTable(Operation *symbolTableOp)
+    : symbolTableOp(symbolTableOp) {
+  assert(symbolTableOp->hasTrait<OpTrait::SymbolTable>() &&
          "expected operation to have SymbolTable trait");
-  assert(op->getNumRegions() == 1 &&
+  assert(symbolTableOp->getNumRegions() == 1 &&
          "expected operation to have a single region");
+  assert(has_single_element(symbolTableOp->getRegion(0)) &&
+         "expected operation to have a single block");
 
-  for (auto &block : op->getRegion(0)) {
-    for (auto &op : block) {
-      auto nameAttr = op.getAttrOfType<StringAttr>(getSymbolAttrName());
-      if (!nameAttr)
-        continue;
+  for (auto &op : symbolTableOp->getRegion(0).front()) {
+    auto nameAttr = op.getAttrOfType<StringAttr>(getSymbolAttrName());
+    if (!nameAttr)
+      continue;
 
-      auto inserted = symbolTable.insert({nameAttr.getValue(), &op});
-      (void)inserted;
-      assert(inserted.second &&
-             "expected region to contain uniquely named symbol operations");
-    }
+    auto inserted = symbolTable.insert({nameAttr.getValue(), &op});
+    (void)inserted;
+    assert(inserted.second &&
+           "expected region to contain uniquely named symbol operations");
   }
 }
 
@@ -61,17 +62,31 @@ Operation *SymbolTable::lookup(StringRef name) const {
 void SymbolTable::erase(Operation *symbol) {
   auto nameAttr = symbol->getAttrOfType<StringAttr>(getSymbolAttrName());
   assert(nameAttr && "expected valid 'name' attribute");
+  assert(symbol->getParentOp() == symbolTableOp &&
+         "expected this operation to be inside of the operation with this "
+         "SymbolTable");
 
   auto it = symbolTable.find(nameAttr.getValue());
-  if (it != symbolTable.end() && it->second == symbol)
+  if (it != symbolTable.end() && it->second == symbol) {
     symbolTable.erase(it);
+    symbol->erase();
+  }
 }
 
-/// Insert a new symbol into the table, and rename it as necessary to avoid
-/// collisions.
-void SymbolTable::insert(Operation *symbol) {
+/// Insert a new symbol into the table and associated operation, and rename it
+/// as necessary to avoid collisions.
+void SymbolTable::insert(Operation *symbol, Block::iterator insertPt) {
   auto nameAttr = symbol->getAttrOfType<StringAttr>(getSymbolAttrName());
   assert(nameAttr && "expected valid 'name' attribute");
+
+  auto &body = symbolTableOp->getRegion(0).front();
+  if (insertPt == Block::iterator() || insertPt == body.end())
+    insertPt = Block::iterator(body.getTerminator());
+
+  assert(insertPt->getParentOp() == symbolTableOp &&
+         "expected insertPt to be in the associated module operation");
+
+  body.getOperations().insert(insertPt, symbol);
 
   // Add this symbol to the symbol table, uniquing the name if a conflict is
   // detected.
@@ -89,7 +104,8 @@ void SymbolTable::insert(Operation *symbol) {
     nameBuffer += '_';
     nameBuffer += std::to_string(uniquingCounter++);
   } while (!symbolTable.insert({nameBuffer, symbol}).second);
-  symbol->setAttr(getSymbolAttrName(), StringAttr::get(nameBuffer, context));
+  symbol->setAttr(getSymbolAttrName(),
+                  StringAttr::get(nameBuffer, symbolTableOp->getContext()));
 }
 
 /// Returns the operation registered with the given symbol name with the
@@ -136,6 +152,9 @@ LogicalResult OpTrait::impl::verifySymbolTable(Operation *op) {
   if (op->getNumRegions() != 1)
     return op->emitOpError()
            << "Operations with a 'SymbolTable' must have exactly one region";
+  if (!has_single_element(op->getRegion(0)))
+    return op->emitOpError()
+           << "Operations with a 'SymbolTable' must have exactly one block";
 
   // Check that all symbols are uniquely named within child regions.
   llvm::StringMap<Location> nameToOrigLoc;

@@ -86,6 +86,33 @@ static Optional<int64_t> getTypeNumBytes(Type t) {
     return integerType.getWidth() / 8;
   } else if (auto floatType = t.dyn_cast<FloatType>()) {
     return floatType.getWidth() / 8;
+  } else if (auto memRefType = t.dyn_cast<MemRefType>()) {
+    // TODO: Layout should also be controlled by the ABI attributes. For now
+    // using the layout from MemRef.
+    int64_t offset;
+    SmallVector<int64_t, 4> strides;
+    if (!memRefType.hasStaticShape() ||
+        failed(getStridesAndOffset(memRefType, strides, offset))) {
+      return llvm::None;
+    }
+    // To get the size of the memref object in memory, the total size is the
+    // max(stride * dimension-size) computed for all dimensions times the size
+    // of the element.
+    auto elementSize = getTypeNumBytes(memRefType.getElementType());
+    if (!elementSize) {
+      return llvm::None;
+    }
+    auto dims = memRefType.getShape();
+    if (llvm::is_contained(dims, ShapedType::kDynamicSize) ||
+        offset == MemRefType::getDynamicStrideOrOffset() ||
+        llvm::is_contained(strides, MemRefType::getDynamicStrideOrOffset())) {
+      return llvm::None;
+    }
+    int64_t memrefSize = -1;
+    for (auto shape : enumerate(dims)) {
+      memrefSize = std::max(memrefSize, shape.value() * strides[shape.index()]);
+    }
+    return (offset + memrefSize) * elementSize.getValue();
   }
   // TODO: Add size computation for other types.
   return llvm::None;
@@ -120,40 +147,21 @@ static Type convertStdType(Type type) {
     if (!elementSize) {
       return Type();
     }
-
-    if (!memRefType.hasStaticShape()) {
-      // TODO(ravishankarm) : Handle dynamic shapes.
-      return Type();
+    // TODO(ravishankarm) : Handle dynamic shapes.
+    if (memRefType.hasStaticShape()) {
+      auto arraySize = getTypeNumBytes(memRefType);
+      if (!arraySize) {
+        return Type();
+      }
+      auto arrayType = spirv::ArrayType::get(
+          elementType, arraySize.getValue() / elementSize.getValue(),
+          elementSize.getValue());
+      auto structType = spirv::StructType::get(arrayType, 0);
+      // For now initialize the storage class to StorageBuffer. This will be
+      // updated later based on whats passed in w.r.t to the ABI attributes.
+      return spirv::PointerType::get(structType,
+                                     spirv::StorageClass::StorageBuffer);
     }
-
-    // Get the strides and offset.
-    int64_t offset;
-    SmallVector<int64_t, 4> strides;
-    if (failed(getStridesAndOffset(memRefType, strides, offset)) ||
-        offset == MemRefType::getDynamicStrideOrOffset() ||
-        llvm::is_contained(strides, MemRefType::getDynamicStrideOrOffset())) {
-      // TODO(ravishankarm) : Handle dynamic strides and offsets.
-      return Type();
-    }
-
-    // Convert to a multi-dimensional spv.array if size is known.
-    auto shape = memRefType.getShape();
-    assert(shape.size() == strides.size());
-    Type arrayType = elementType;
-    // TODO(antiagainst): Introduce layout as part of the shader ABI to have
-    // better separate of concerns.
-    for (int i = shape.size(); i > 0; --i) {
-      arrayType = spirv::ArrayType::get(
-          arrayType, shape[i - 1], strides[i - 1] * elementSize.getValue());
-    }
-
-    // For the offset, need to wrap the array in a struct.
-    auto structType =
-        spirv::StructType::get(arrayType, offset * elementSize.getValue());
-    // For now initialize the storage class to StorageBuffer. This will be
-    // updated later based on whats passed in w.r.t to the ABI attributes.
-    return spirv::PointerType::get(structType,
-                                   spirv::StorageClass::StorageBuffer);
   }
 
   return Type();

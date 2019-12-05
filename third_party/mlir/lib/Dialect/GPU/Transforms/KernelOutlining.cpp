@@ -24,6 +24,7 @@
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/Pass.h"
 
 using namespace mlir;
@@ -155,7 +156,7 @@ namespace {
 class GpuKernelOutliningPass : public ModulePass<GpuKernelOutliningPass> {
 public:
   void runOnModule() override {
-    ModuleManager moduleManager(getModule());
+    SymbolTable symbolTable(getModule());
     bool modified = false;
     for (auto func : getModule().getOps<FuncOp>()) {
       // Insert just after the function.
@@ -166,8 +167,8 @@ public:
         // Create nested module and insert outlinedFunc. The module will
         // originally get the same name as the function, but may be renamed on
         // insertion into the parent module.
-        auto kernelModule = createKernelModule(outlinedFunc, moduleManager);
-        moduleManager.insert(insertPt, kernelModule);
+        auto kernelModule = createKernelModule(outlinedFunc, symbolTable);
+        symbolTable.insert(kernelModule, insertPt);
 
         // Potentially changes signature, pulling in constants.
         convertToLaunchFuncOp(op, outlinedFunc);
@@ -185,16 +186,15 @@ public:
 private:
   // Returns a module containing kernelFunc and all callees (recursive).
   ModuleOp createKernelModule(FuncOp kernelFunc,
-                              const ModuleManager &parentModuleManager) {
+                              const SymbolTable &parentSymbolTable) {
     auto context = getModule().getContext();
     Builder builder(context);
     auto kernelModule =
         ModuleOp::create(builder.getUnknownLoc(), kernelFunc.getName());
     kernelModule.setAttr(gpu::GPUDialect::getKernelModuleAttrName(),
                          builder.getUnitAttr());
-    ModuleManager moduleManager(kernelModule);
-
-    moduleManager.insert(kernelFunc);
+    SymbolTable symbolTable(kernelModule);
+    symbolTable.insert(kernelFunc);
 
     llvm::SmallVector<Operation *, 8> symbolDefWorklist = {kernelFunc};
     while (!symbolDefWorklist.empty()) {
@@ -203,13 +203,13 @@ private:
         for (SymbolTable::SymbolUse symbolUse : *symbolUses) {
           StringRef symbolName =
               symbolUse.getSymbolRef().cast<FlatSymbolRefAttr>().getValue();
-          if (moduleManager.lookupSymbol(symbolName))
+          if (symbolTable.lookup(symbolName))
             continue;
 
           Operation *symbolDefClone =
-              parentModuleManager.lookupSymbol(symbolName)->clone();
+              parentSymbolTable.lookup(symbolName)->clone();
           symbolDefWorklist.push_back(symbolDefClone);
-          moduleManager.insert(symbolDefClone);
+          symbolTable.insert(symbolDefClone);
         }
       }
     }

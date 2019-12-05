@@ -70,6 +70,7 @@ tf_instantiate_platform_libraries(names = [
     "strong_hash",
     "subprocess",
     "test",
+    "test_benchmark",
     "tracing",
     "types",
     "unbounded_work_queue",
@@ -636,6 +637,16 @@ cc_library(
 )
 
 cc_library(
+    name = "test_benchmark",
+    testonly = True,
+    hdrs = ["test_benchmark.h"],
+    deps = [
+        ":platform",
+        ":test_benchmark_impl",
+    ],
+)
+
+cc_library(
     name = "thread_annotations",
     hdrs = ["thread_annotations.h"],
 )
@@ -826,6 +837,46 @@ filegroup(
             "cuda.h",
             "rocm.h",
             "google/**/*",
+            "hadoop/**/*",
+            "gif.h",
+            "jpeg.h",
+            "png.h",
+            "logger.cc",
+            "stream_executor.*",
+            "windows/**/*",
+        ],
+    ),
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "legacy_srcs_no_runtime_google",
+    srcs = glob(
+        [
+            "**/*.h",
+            "**/*.cc",
+        ],
+        exclude = [
+            "*test.*",
+            "*testutil*",
+            "*testlib*",
+            "*main.cc",
+            "**/*test.*",
+            "**/*testutil*",
+            "**/*testlib*",
+            "**/*main.cc",
+            "**/cuda_libdevice_path.*",
+            # Exclude env_time and logging to avoid collisions with
+            # :platform_base, a common dependency for downstream targets.
+            "**/env_time.cc",
+            "**/logging.cc",
+            "**/mutex.cc",
+            "**/rocm_rocdl_path.*",
+            "google/test_benchmark.*",
+            "google/monitoring.*",
+            "cuda.h",
+            "rocm.h",
+            "default/**/*",
             "hadoop/**/*",
             "gif.h",
             "jpeg.h",

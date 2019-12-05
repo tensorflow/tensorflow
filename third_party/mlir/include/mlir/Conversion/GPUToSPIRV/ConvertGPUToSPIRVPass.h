@@ -22,6 +22,8 @@
 #ifndef MLIR_CONVERSION_GPUTOSPIRV_CONVERTGPUTOSPIRVPASS_H
 #define MLIR_CONVERSION_GPUTOSPIRV_CONVERTGPUTOSPIRVPASS_H
 
+#include "mlir/Support/LLVM.h"
+
 #include <memory>
 
 namespace mlir {
@@ -29,8 +31,10 @@ namespace mlir {
 class ModuleOp;
 template <typename T> class OpPassBase;
 
-/// Pass to convert GPU Ops to SPIR-V ops.
-std::unique_ptr<OpPassBase<ModuleOp>> createConvertGPUToSPIRVPass();
+/// Pass to convert GPU Ops to SPIR-V ops.  Needs the workgroup size as input
+/// since SPIR-V/Vulkan requires the workgroup size to be statically specified.
+std::unique_ptr<OpPassBase<ModuleOp>>
+createConvertGPUToSPIRVPass(ArrayRef<int64_t> workGroupSize);
 
 } // namespace mlir
 #endif // MLIR_CONVERSION_GPUTOSPIRV_CONVERTGPUTOSPIRVPASS_H

@@ -67,6 +67,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
     "if_android",
+    "if_chromiumos",
     "if_emscripten",
     "if_ios",
     "if_mobile",
@@ -105,6 +106,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_additional_core_deps",
+    "tf_additional_env_hdrs",
     "tf_additional_lib_deps",
     "tf_additional_monitoring_hdrs",
     "tf_additional_test_deps",
@@ -398,7 +400,7 @@ filegroup(
         "//tensorflow/core/platform:file_statistics.h",
         "//tensorflow/core/platform:file_system.h",
         "//tensorflow/core/platform:path.h",
-    ],
+    ] + tf_additional_env_hdrs(),
     visibility = ["//visibility:private"],
 )
 
@@ -573,8 +575,8 @@ cc_library(
     name = "util_reporter",
     srcs = ["util/reporter.cc"],
     hdrs = ["util/reporter.h"],
-    # Not to be used outside this file.
-    visibility = ["//visibility:private"],
+    # This should only be used in tensorflow/core/platform:test_benchmark
+    visibility = ["//tensorflow/core/platform:__subpackages__"],
     deps = [
         ":test_log_proto_impl_cc",
         "//tensorflow/core/platform:env",
@@ -1569,7 +1571,6 @@ filegroup(
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
-        "//tensorflow/core/platform:legacy_srcs_no_runtime",
         "//tensorflow/core/profiler:mobile_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
         "//tensorflow/core/util/sparse:mobile_srcs_no_runtime_group",
@@ -1604,6 +1605,9 @@ filegroup(
             "common_runtime/eager/*",
             "common_runtime/gpu_device_factory.*",
         ],
+    ) + if_chromiumos(
+        ["//tensorflow/core/platform:legacy_srcs_no_runtime_google"],
+        otherwise = ["//tensorflow/core/platform:legacy_srcs_no_runtime"],
     ),
     visibility = ["//visibility:private"],
 )
@@ -2695,6 +2699,8 @@ tf_cuda_library(
         "@com_google_absl//absl/time",
         "//third_party/eigen3",
         "//tensorflow/core/framework:attr_value_proto_text",
+        "//tensorflow/core/framework:bfloat16",
+        "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:traceme",
@@ -2772,7 +2778,7 @@ tf_cuda_library(
     deps = [":framework_lite"],
 )
 
-# TODO(josh11b): Is this needed, or can we just use ":protos_all"?
+# TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
 cc_library(
     name = "protos_cc",
     visibility = ["//visibility:public"],

@@ -522,6 +522,10 @@ StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
 
   auto llvmModule = mlir::translateModuleToNVVMIR(*kernel_module);
 
+  if (!llvmModule) {
+    return InternalError("Translation to LLVM failed");
+  }
+
   llvmModule->setModuleIdentifier(emission_context.getHloModule()->name());
   // TODO(herhut): Why is this needed and does not come from the template?
   llvmModule->setDataLayout(gpu::nvptx::kDataLayout);

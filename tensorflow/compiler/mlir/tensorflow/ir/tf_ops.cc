@@ -1699,6 +1699,21 @@ static LogicalResult Verify(TensorListStackOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// TopKV2Op
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(TopKV2Op op) {
+  if (!HasRankAtLeast(op.input(), 1))
+    return op.emitOpError(
+        "requires input operand to have at least 1 dimension");
+
+  if (!IsOfRankOrUnranked(op.k(), 0))
+    return op.emitOpError("requires k operand to be 0D tensor");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
 

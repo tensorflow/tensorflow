@@ -25,8 +25,6 @@ exports_files(
         "allocator_registry.h",
         "attr_value_util.cc",
         "attr_value_util.h",
-        "bfloat16.cc",
-        "bfloat16.h",
         "bounds_check.h",
         "cancellation.cc",
         "cancellation.h",
@@ -73,7 +71,6 @@ exports_files(
         "node_def_util.cc",
         "node_def_util.h",
         "numeric_op.h",
-        "numeric_types.h",
         "op.cc",
         "op.h",
         "op_def_builder.cc",
@@ -267,12 +264,13 @@ filegroup(
             "**/*test*",
             "**/*main.cc",
             "allocator.cc",
-            "cpu_allocator_impl.cc",
             "allocator_registry.cc",
-            "tracking_allocator.cc",
+            "bfloat16.cc",
+            "cpu_allocator_impl.cc",
             "fake_input.*",
             "op_gen_lib.*",
             "reader_base.*",
+            "tracking_allocator.cc",
         ],
     ),
 )
@@ -314,6 +312,42 @@ filegroup(
     ) + [
         "node_def_util.cc",
         "op_kernel.cc",
+    ],
+)
+
+# Individual targets. These should be prefered over tensorflow/core:framework
+# whenever possible.
+cc_library(
+    name = "bfloat16",
+    srcs = ["bfloat16.cc"],
+    hdrs = ["bfloat16.h"],
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        ":numeric_types",
+        "//tensorflow/core/platform:byte_order",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
+    name = "numeric_types",
+    hdrs = ["numeric_types.h"],
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        "//tensorflow/core/lib/bfloat16",
+        "//tensorflow/core/platform:types",
+        "//third_party/eigen3",
+    ],
+)
+
+# Files whose users still need to be migrated from core:framework to the
+# above targets.
+# TODO(gonnet): Remove these files once targets depending on them have
+# been cleaned up.
+exports_files(
+    srcs = [
+        "bfloat16.h",
+        "numeric_types.h",
     ],
 )
 

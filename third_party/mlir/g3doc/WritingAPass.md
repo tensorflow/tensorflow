@@ -116,11 +116,19 @@ the following:
 *   Provide a valid constructor taking an `Operation*`.
 *   Must not modify the given operation.
 
-The base `OperationPass` class provide utilities for querying and preserving
-analyses for the current operation being processed. Using the example passes
-defined above, let's see some examples:
+An analysis may provide additional hooks to control various behavior:
+
+*   `bool isInvalidated(const AnalysisManager::PreservedAnalyses &)`
+
+Given a preserved analysis set, the analysis returns true if it should truly be
+invalidated. This allows for more fine-tuned invalidation in cases where an
+analysis wasn't explicitly marked preserved, but may be preserved(or
+invalidated) based upon other properties such as analyses sets.
 
 ### Querying Analyses
+
+The base `OperationPass` class provide utilities for querying and preserving
+analyses for the current operation being processed.
 
 *   OperationPass automatically provides the following utilities for querying
     analyses:
@@ -137,7 +145,7 @@ defined above, let's see some examples:
         -   Get an analysis for a given child operation, constructing it if
             necessary.
 
-A few example usages are shown below:
+Using the example passes defined above, let's see some examples:
 
 ```c++
 /// An interesting analysis.
@@ -311,10 +319,10 @@ program has been run through the passes. This provides several benefits:
 
 ## Pass Registration
 
-Briefly shown in the example definitions of the various
-pass types is the `PassRegistration` class. This is a utility to
-register derived pass classes so that they may be created, and inspected, by
-utilities like mlir-opt. Registering a pass class takes the form:
+Briefly shown in the example definitions of the various pass types is the
+`PassRegistration` class. This is a utility to register derived pass classes so
+that they may be created, and inspected, by utilities like mlir-opt. Registering
+a pass class takes the form:
 
 ```c++
 static PassRegistration<MyPass> pass("command-line-arg", "description");
@@ -459,6 +467,76 @@ struct MyPassOptions : public PassOptions<MyPassOptions> {
 };
 
 static PassRegistration<MyPass, MyPassOptions> pass("my-pass", "description");
+```
+
+## Pass Statistics
+
+Statistics are a way to keep track of what the compiler is doing and how
+effective various transformations are. It is often useful to see what effect
+specific transformations have on a particular program, and how often they
+trigger. Pass statistics are instance specific which allow for taking this a
+step further as you are able to see the effect of placing a particular
+transformation at specific places within the pass pipeline. For example, they
+help answer questions like `What happens if I run CSE again here?`.
+
+Statistics can be added to a pass by using the 'Pass::Statistic' class. This
+class takes as a constructor arguments: the parent pass, a name, and a
+description. This class acts like an unsigned integer, and may be incremented
+and updated accordingly. These statistics use the same infrastructure as
+[`llvm::Statistic`](http://llvm.org/docs/ProgrammersManual.html#the-statistic-class-stats-option)
+and thus have similar usage constraints. Collected statistics can be dumped by
+the [pass manager](#pass-manager) programmatically via
+`PassManager::enableStatistics`; or via `-pass-statistics` and
+`-pass-statistics-display` on the command line.
+
+An example is shown below:
+
+```c++
+struct MyPass : public OperationPass<MyPass> {
+  Statistic testStat{this, "testStat", "A test statistic"};
+
+  void runOnOperation() {
+    ...
+
+    // Update our statistic after some invariant was hit.
+    ++testStat;
+
+    ...
+  }
+};
+```
+
+The collected statistics may be aggregated in two types of views:
+
+A pipeline view that models the structure of the pass manager, this is the
+default view:
+
+```shell
+$ mlir-opt -pass-pipeline='func(my-pass,my-pass)' foo.mlir -pass-statistics
+
+===-------------------------------------------------------------------------===
+                         ... Pass statistics report ...
+===-------------------------------------------------------------------------===
+'func' Pipeline
+  MyPass
+    (S) 15 testStat - A test statistic
+  VerifierPass
+  MyPass
+    (S)  6 testStat - A test statistic
+  VerifierPass
+VerifierPass
+```
+
+And a list view that aggregates all instances of a specific pass together:
+
+```shell
+$ mlir-opt -pass-pipeline='func(my-pass, my-pass)' foo.mlir -pass-statistics -pass-statistics-display=list
+
+===-------------------------------------------------------------------------===
+                         ... Pass statistics report ...
+===-------------------------------------------------------------------------===
+MyPass
+  (S) 21 testStat - A test statistic
 ```
 
 ## Pass Instrumentation

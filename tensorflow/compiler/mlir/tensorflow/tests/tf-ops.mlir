@@ -1658,3 +1658,19 @@ func @testTernaryEinsum(%arg0: tensor<2x3xf32>){
   %0 = "tf.Einsum"(%arg0, %arg0, %arg0) {equation = "ab,cd,ef->"} : (tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>) -> (tensor<*xf32>)
   return
 }
+
+// -----
+
+func @testTopKV2WrongInputRank(%input: tensor<f32>, %k: tensor<i32>) {
+  // expected-error @+1 {{op requires input operand to have at least 1 dimension}}
+  %0:2 = "tf.TopKV2"(%input, %k) : (tensor<f32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xi32>)
+  return
+}
+
+// -----
+
+func @testTopKV2WrongKRank(%input: tensor<8xf32>, %k: tensor<5xi32>) {
+  // expected-error @+1 {{op requires k operand to be 0D tensor}}
+  %0:2 = "tf.TopKV2"(%input, %k) : (tensor<8xf32>, tensor<5xi32>) -> (tensor<*xf32>, tensor<*xi32>)
+  return
+}

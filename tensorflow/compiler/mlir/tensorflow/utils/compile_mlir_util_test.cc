@@ -41,9 +41,9 @@ TEST(CompileSerializedMlirToXlaHloTest, InvalidSerializedMlirModule) {
   std::vector<TensorShape> arg_shapes;
   XlaCompiler::CompilationResult compilation_result;
 
-  Status s = CompileSerializedMlirToXlaHlo(
-      invalid_mlir_module, absl::Span<TensorShape>(arg_shapes),
-      TestShapeRepresentation, &compilation_result);
+  Status s = CompileSerializedMlirToXlaHlo(invalid_mlir_module, arg_shapes,
+                                           TestShapeRepresentation,
+                                           &compilation_result);
   EXPECT_EQ(s.code(), tensorflow::errors::Code::INVALID_ARGUMENT);
 }
 
@@ -61,8 +61,7 @@ TEST(CompileSerializedMlirToXlaHloTest, Success) {
   XlaCompiler::CompilationResult compilation_result;
 
   Status s = CompileSerializedMlirToXlaHlo(
-      mlir_module, absl::Span<TensorShape>(arg_shapes), TestShapeRepresentation,
-      &compilation_result);
+      mlir_module, arg_shapes, TestShapeRepresentation, &compilation_result);
   ASSERT_TRUE(s.ok());
 
   const xla::HloModuleConfig module_config(
@@ -134,8 +133,7 @@ TEST(CompileSerializedMlirToXlaHloTest, CompileTimeConstantFoldedSuccess) {
   XlaCompiler::CompilationResult compilation_result;
 
   Status s = CompileSerializedMlirToXlaHlo(
-      mlir_module, absl::Span<TensorShape>(arg_shapes), TestShapeRepresentation,
-      &compilation_result);
+      mlir_module, arg_shapes, TestShapeRepresentation, &compilation_result);
   ASSERT_TRUE(s.ok());
 
   const xla::HloModuleConfig module_config(
@@ -174,8 +172,7 @@ TEST(CompileSerializedMlirToXlaHloTest, ShapeInference) {
   XlaCompiler::CompilationResult compilation_result;
 
   Status s = CompileSerializedMlirToXlaHlo(
-      mlir_module, absl::Span<TensorShape>(arg_shapes), TestShapeRepresentation,
-      &compilation_result);
+      mlir_module, arg_shapes, TestShapeRepresentation, &compilation_result);
   TF_ASSERT_OK(s);
 
   const xla::HloModuleConfig module_config(

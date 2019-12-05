@@ -157,6 +157,18 @@ def Vector_ContractionOp :
     static StringRef getParallelIteratorTypeName() {
       return "parallel";
     }
+
+    // Returns the bounds of each dimension in the iteration space spanned
+    // by the iterator types of this operation.
+    void getIterationBounds(SmallVectorImpl<int64_t> &iterationBounds);
+
+    // Returns a list of index maps, where there is a list entry for each
+    // op indexing map attribute (i.e. one for each input and output, with
+    // the output listed last). Each index map, maps from this operations
+    // iteration space, to vector dimensions of the maps input/output.
+    void getIterationIndexMap(
+      std::vector<DenseMap<int64_t, int64_t>> &iterationIndexMap);
+
     std::vector<std::pair<int64_t, int64_t>> getContractingDimMap();
     std::vector<std::pair<int64_t, int64_t>> getBatchDimMap();
   }];
@@ -390,6 +402,7 @@ def Vector_StridedSliceOp :
     static StringRef getStridesAttrName() { return "strides"; }
     VectorType getVectorType(){ return vector()->getType().cast<VectorType>(); }
   }];
+  let hasCanonicalizer = 1;
 }
 
 def Vector_TransferReadOp :
@@ -627,7 +640,73 @@ def Vector_TypeCastOp :
   }];
 }
 
-// TODO(andydavis) Morph this operation into a Vector_MaskOp.
+def Vector_ConstantMaskOp :
+  Vector_Op<"constant_mask", [NoSideEffect]>,
+    Arguments<(ins I64ArrayAttr:$mask_dim_sizes)>,
+    Results<(outs VectorOf<[I1]>)> {
+  let summary = "creates a constant vector mask";
+  let description = [{
+    Creates and returns a vector mask where elements of the result vector
+    are set to '0' or '1', based on whether the element indices are contained
+    within a hyper-rectangular region specified by the 'mask_dim_sizes'
+    array attribute argument. Each element of the 'mask_dim_sizes' array,
+    specifices an exclusive upper bound [0, mask-dim-size-element-value)
+    for a unique dimension in the vector result. The conjunction of the ranges
+    define a hyper-rectangular region within which elements values are set to 1
+    (otherwise element values are set to 0).
+
+    Example: create a constant vector mask of size 4x3xi1 with elements in range
+             0 <= row <= 2 and 0 <= col <= 1 are set to 1 (others to 0).
+
+      %1 = vector.constant_mask [3, 2] : vector<4x3xi1>
+
+      print %1
+                    columns
+                  0    1    2
+                |------------
+              0 | 1    1    0
+        rows  1 | 1    1    0
+              2 | 1    1    0
+              3 | 0    0    0
+  }];
+
+  let extraClassDeclaration = [{
+    static StringRef getMaskDimSizesAttrName() { return "mask_dim_sizes"; }
+  }];
+}
+
+def Vector_CreateMaskOp :
+  Vector_Op<"create_mask", [NoSideEffect]>,
+    Arguments<(ins Variadic<Index>:$operands)>, Results<(outs VectorOf<[I1]>)> {
+  let summary = "creates a vector mask";
+  let description = [{
+    Creates and returns a vector mask where elements of the result vector
+    are set to '0' or '1', based on whether the element indices are contained
+    within a hyper-rectangular region specified by the operands. Specifically,
+    each operand specifies a range [0, operand-value) for a unique dimension in
+    the vector result. The conjunction of the operand ranges define a
+    hyper-rectangular region within which elements values are set to 1
+    (otherwise element values are set to 0).
+
+    Example: create a vector mask of size 4x3xi1 where elements in range
+             0 <= row <= 2 and 0 <= col <= 1 are set to 1 (others to 0).
+
+      %1 = vector.create_mask %c3, %c2 : vector<4x3xi1>
+
+      print %1
+                    columns
+                  0    1    2
+                |------------
+              0 | 1    1    0
+        rows  1 | 1    1    0
+              2 | 1    1    0
+              3 | 0    0    0
+  }];
+
+  let hasCanonicalizer = 1;
+}
+
+// TODO(andydavis) Delete this op once ContractOp is converted to use VectorMask
 def Vector_IndexTupleOp :
   Vector_Op<"make_index_tuple", [NoSideEffect]>,
     Arguments<(ins Variadic<Index>:$operands)>,

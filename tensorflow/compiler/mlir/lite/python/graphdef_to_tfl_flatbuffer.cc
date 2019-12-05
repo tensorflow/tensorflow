@@ -237,8 +237,8 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   // Parse output arrays.
   std::vector<string> output_arrays(model_flags.output_arrays().begin(),
                                     model_flags.output_arrays().end());
-  TF_RETURN_IF_ERROR(tensorflow::ParseOutputArrayInfo(
-      output_arrays, &specs.output_arrays, &specs.output_arrays_order));
+  TF_RETURN_IF_ERROR(
+      tensorflow::ParseOutputArrayInfo(output_arrays, &specs.outputs));
 
   // Other flags.
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();

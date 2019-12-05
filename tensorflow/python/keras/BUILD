@@ -1187,6 +1187,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 6,
     tags = [
         "noasan",  # times out

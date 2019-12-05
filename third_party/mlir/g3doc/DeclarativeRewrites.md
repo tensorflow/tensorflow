@@ -50,7 +50,7 @@ features:
 *   Matching and generating ops with block arguments.
 *   Matching multi-result ops in nested patterns.
 *   Matching and generating variadic operand/result ops in nested patterns.
-*   Packing and unpacking variaidc operands/results during generation.
+*   Packing and unpacking variadic operands/results during generation.
 *   [`NativeCodeCall`](#native-code-call-transforming-the-generated-op)
     returning more than one results.
 

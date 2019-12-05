@@ -85,15 +85,14 @@ class KernelMappingScheme {
         dims_in_tiles_{dims_in_elems[0],
                        CeilOfRatio<int64>(dims_in_elems[1], tile_size_y),
                        CeilOfRatio<int64>(dims_in_elems[2], tile_size_x)},
-        dims_in_blocks_{dims_in_tiles_[0] / block_size_z, dims_in_tiles_[1],
-                        dims_in_tiles_[2]},
+        dims_in_blocks_{CeilOfRatio<int64>(dims_in_tiles_[0], block_size_z),
+                        dims_in_tiles_[1], dims_in_tiles_[2]},
         block_size_z_{block_size_z},
         num_threads_x_(num_threads_x),
         num_threads_y_(num_threads_y),
         dilated_x_(is_dilated_x) {
     CHECK_EQ(tile_size_y % num_threads_y_, 0);
     CHECK_EQ(tile_size_x % num_threads_x_, 0);
-    CHECK_EQ((dims_in_elems[0] % block_size_z), 0);
     VLOG(10) << "dims_in_elems_ = " << absl::StrJoin(dims_in_elems_, ",");
     VLOG(10) << "dims_in_tiles_ = " << absl::StrJoin(dims_in_tiles_, ",");
     VLOG(10) << "dims_in_blocks_ = " << absl::StrJoin(dims_in_blocks_, ",");

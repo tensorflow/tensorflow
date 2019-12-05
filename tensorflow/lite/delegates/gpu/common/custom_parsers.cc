@@ -12,33 +12,25 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/nnapi/nnapi_handler.h"
+#include "tensorflow/lite/delegates/gpu/common/custom_parsers.h"
 
-#include <cstdio>
+#include <string>
 
-#include "tensorflow/lite/nnapi/nnapi_implementation.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/any.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
-namespace nnapi {
+namespace gpu {
 
-const NnApi* NnApiPassthroughInstance() {
-  static const NnApi orig_nnapi_copy = *NnApiImplementation();
-  return &orig_nnapi_copy;
+Status ParseCustomAttributes(absl::string_view op_name, const void* data,
+                             uint32_t data_size, absl::any* attr,
+                             BHWC* output_shape) {
+  return UnimplementedError(absl::StrCat(
+      "Attributes parsing is not enabled for ", op_name, " operation"));
 }
 
-// static
-NnApiHandler* NnApiHandler::Instance() {
-  // Ensuring that the original copy of nnapi is saved before we return
-  // access to NnApiHandler
-  NnApiPassthroughInstance();
-  static NnApiHandler handler{const_cast<NnApi*>(NnApiImplementation())};
-  return &handler;
-}
-
-void NnApiHandler::Reset() {
-  // Restores global NNAPI to original value
-  *nnapi_ = *NnApiPassthroughInstance();
-}
-
-}  // namespace nnapi
+}  // namespace gpu
 }  // namespace tflite

@@ -1,4 +1,4 @@
-//===- TestLowerVectorTransfers.cpp - Test VectorTransfers lowering -------===//
+//===- TestVectorToLoopsConversion.cpp - Test VectorTransfers lowering ----===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -17,7 +17,7 @@
 
 #include <type_traits>
 
-#include "mlir/Conversion/VectorConversions/VectorConversions.h"
+#include "mlir/Conversion/VectorToLoops/ConvertVectorToLoops.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/Passes.h"
@@ -26,8 +26,8 @@ using namespace mlir;
 
 namespace {
 
-struct TestLowerVectorTransfersPass
-    : public FunctionPass<TestLowerVectorTransfersPass> {
+struct TestVectorToLoopsPass
+    : public FunctionPass<TestVectorToLoopsPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     auto *context = &getContext();
@@ -38,7 +38,6 @@ struct TestLowerVectorTransfersPass
 
 } // end anonymous namespace
 
-static PassRegistration<TestLowerVectorTransfersPass>
-    pass("test-affine-lower-vector-transfers",
-         "Materializes vector transfer ops to a "
-         "proper abstraction for the hardware");
+static PassRegistration<TestVectorToLoopsPass>
+    pass("test-convert-vector-to-loops",
+         "Converts vector transfer ops to loops over scalars and vector casts");

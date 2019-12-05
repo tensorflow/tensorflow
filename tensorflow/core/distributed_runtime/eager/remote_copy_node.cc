@@ -156,7 +156,7 @@ void RemoteCopyNode::StartSend() {
     remote_op->set_id(ctx_->RemoteMgr()->NextOpId());
 
     // Issue the RPC
-    eager::EagerClient* eager_client;
+    core::RefCountPtr<eager::EagerClient> eager_client;
     status = ctx_->GetClient(send_device_, &eager_client);
     if (!status.ok()) {
       captured_state_->SetSendStatus(status);
@@ -199,7 +199,7 @@ void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
   PrepareRemoteOp(remote_op, op);
   remote_op->set_id(recv_op_id_);
 
-  eager::EagerClient* eager_client;
+  core::RefCountPtr<eager::EagerClient> eager_client;
   Status status = ctx_->GetClient(recv_device_, &eager_client);
   if (!status.ok()) {
     captured_state_->dst()->Poison(status);
@@ -307,7 +307,7 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
   }
   tensor.AsProtoTensorContent(send_tensor->add_tensors());
 
-  eager::EagerClient* eager_client;
+  core::RefCountPtr<eager::EagerClient> eager_client;
   s = ctx_->GetClient(recv_device_, &eager_client);
   if (!s.ok()) {
     captured_state_->dst()->Poison(s);

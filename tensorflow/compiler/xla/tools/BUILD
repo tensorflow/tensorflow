@@ -252,3 +252,46 @@ sh_test(
     srcs = ["interactive_graphviz_test.sh"],
     data = [":interactive_graphviz"],
 )
+
+cc_library(
+    name = "hlo_module_loader",
+    srcs = ["hlo_module_loader.cc"],
+    hdrs = ["hlo_module_loader.h"],
+    deps = [
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:regexp_internal",
+        "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf_headers",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_module_loader_test",
+    srcs = ["hlo_module_loader_test.cc"],
+    deps = [
+        ":hlo_module_loader",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "prepare_reference_module",
+    srcs = ["prepare_reference_module.cc"],
+    hdrs = ["prepare_reference_module.h"],
+    deps = [
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/service:despecializer",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/stream_executor/lib",
+    ],
+)
