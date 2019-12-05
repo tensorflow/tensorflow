@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
@@ -24,7 +25,9 @@ from tensorflow.python.data.experimental.kernel_tests import stats_dataset_test_
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.experimental.ops import stats_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -32,8 +35,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
+class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase,
+                       parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testBytesProduced(self):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).map(
@@ -57,6 +62,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     self.assertStatisticsHasCount(handle, "bytes_produced", 100.0, 101)
     self.assertStatisticsHasSum(handle, "bytes_produced", expected_sum, 101)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testLatencyStats(self):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
@@ -76,6 +82,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     handle = self.getHandle(aggregator)
     self.assertStatisticsHasCount(handle, "record_latency", 100.0, 101)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPrefetchBufferUtilization(self):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).map(
@@ -117,6 +124,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         301,
         offset=2)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPrefetchBufferScalars(self):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(10).map(
@@ -140,6 +148,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFilteredElementsStats(self):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(101).filter(
@@ -167,6 +176,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         handle, self.regexForNodeName("FilterDataset", "filtered_elements"),
         34.0)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testReinitialize(self):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
@@ -187,6 +197,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self.assertStatisticsHasCount(handle, "record_latency", (j + 1) * 100.0,
                                     (j * 100) + 101)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNoAggregatorRegistered(self):
     dataset = dataset_ops.Dataset.range(100).apply(
         stats_ops.latency_stats("record_latency"))
@@ -198,6 +209,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMultipleTags(self):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
@@ -221,6 +233,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         handle, "record_latency", 100.0, 201, offset=1)
     self.assertStatisticsHasCount(handle, "record_latency_2", 100.0, 201)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testRepeatedTags(self):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
@@ -239,6 +252,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     handle = self.getHandle(aggregator)
     self.assertStatisticsHasCount(handle, "record_latency", 200.0, 201)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMultipleIteratorsSameAggregator(self):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
@@ -259,6 +273,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     handle = self.getHandle(aggregator)
     self.assertStatisticsHasCount(handle, "record_latency", 200.0, 201)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMultipleDatasetWithPrefixes(self):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
@@ -289,6 +304,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     self.assertStatisticsHasCount(handle, "dataset2::record_latency", 100.0,
                                   201)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMultiplePrefetchStats(self):
 
     aggregator = stats_aggregator.StatsAggregator()
@@ -314,8 +330,10 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self.evaluate(next_element())
 
 
-class ThreadUtilizationStatsTest(stats_dataset_test_base.StatsDatasetTestBase):
+class ThreadUtilizationStatsTest(stats_dataset_test_base.StatsDatasetTestBase,
+                                 parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMapBufferUtilization(self):
 
     def dataset_fn():
@@ -326,6 +344,7 @@ class ThreadUtilizationStatsTest(stats_dataset_test_base.StatsDatasetTestBase):
     self.parallelCallsStats(
         dataset_fn, {"ParallelMapDataset"}, 10, function_processing_time=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMapAutoTuneBufferUtilization(self):
 
     def dataset_fn():
@@ -336,6 +355,7 @@ class ThreadUtilizationStatsTest(stats_dataset_test_base.StatsDatasetTestBase):
     self.parallelCallsStats(
         dataset_fn, {"ParallelMapDataset"}, 10, function_processing_time=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testInterleaveAutoTuneBufferUtilization(self):
 
     def dataset_fn():
@@ -351,6 +371,7 @@ class ThreadUtilizationStatsTest(stats_dataset_test_base.StatsDatasetTestBase):
 
     self.parallelCallsStats(dataset_fn, {"ParallelInterleaveDatasetV2"}, 10)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMapAndBatchAutoTuneBufferUtilization(self):
 
     def dataset_fn():
@@ -370,8 +391,10 @@ class ThreadUtilizationStatsTest(stats_dataset_test_base.StatsDatasetTestBase):
 
 class FeatureStatsDatasetTest(
     stats_dataset_test_base.StatsDatasetTestBase,
-    reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase):
+    reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase,
+    parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFeaturesStats(self):
     num_epochs = 5
     total_records = num_epochs * self._num_records
