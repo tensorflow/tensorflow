@@ -513,6 +513,7 @@ edgetpu_ops = [
     "sub",
     "sum",  # high error
     "tanh",
+    "transpose",
     "transpose_conv",
 ]
 
