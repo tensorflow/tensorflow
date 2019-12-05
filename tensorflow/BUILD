@@ -196,6 +196,12 @@ config_setting(
 )
 
 config_setting(
+    name = "chromiumos",
+    values = {"crosstool_top": "//external:android/chromiumos"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_aarch64",
     values = {"cpu": "aarch64"},
     visibility = ["//visibility:public"],

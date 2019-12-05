@@ -850,6 +850,46 @@ filegroup(
 )
 
 filegroup(
+    name = "legacy_srcs_no_runtime_google",
+    srcs = glob(
+        [
+            "**/*.h",
+            "**/*.cc",
+        ],
+        exclude = [
+            "*test.*",
+            "*testutil*",
+            "*testlib*",
+            "*main.cc",
+            "**/*test.*",
+            "**/*testutil*",
+            "**/*testlib*",
+            "**/*main.cc",
+            "**/cuda_libdevice_path.*",
+            # Exclude env_time and logging to avoid collisions with
+            # :platform_base, a common dependency for downstream targets.
+            "**/env_time.cc",
+            "**/logging.cc",
+            "**/mutex.cc",
+            "**/rocm_rocdl_path.*",
+            "google/test_benchmark.*",
+            "google/monitoring.*",
+            "cuda.h",
+            "rocm.h",
+            "default/**/*",
+            "hadoop/**/*",
+            "gif.h",
+            "jpeg.h",
+            "png.h",
+            "logger.cc",
+            "stream_executor.*",
+            "windows/**/*",
+        ],
+    ),
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
     name = "legacy_lib_internal_headers",
     srcs = glob(
         [

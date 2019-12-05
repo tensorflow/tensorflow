@@ -67,6 +67,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
     "if_android",
+    "if_chromiumos",
     "if_emscripten",
     "if_ios",
     "if_mobile",
@@ -1570,7 +1571,6 @@ filegroup(
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
-        "//tensorflow/core/platform:legacy_srcs_no_runtime",
         "//tensorflow/core/profiler:mobile_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
         "//tensorflow/core/util/sparse:mobile_srcs_no_runtime_group",
@@ -1605,6 +1605,9 @@ filegroup(
             "common_runtime/eager/*",
             "common_runtime/gpu_device_factory.*",
         ],
+    ) + if_chromiumos(
+        ["//tensorflow/core/platform:legacy_srcs_no_runtime_google"],
+        otherwise = ["//tensorflow/core/platform:legacy_srcs_no_runtime"],
     ),
     visibility = ["//visibility:private"],
 )

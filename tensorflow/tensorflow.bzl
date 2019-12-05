@@ -170,6 +170,12 @@ def if_emscripten(a):
         "//conditions:default": [],
     })
 
+def if_chromiumos(a, otherwise = []):
+    return select({
+        clean_dep("//tensorflow:chromiumos"): a,
+        "//conditions:default": otherwise,
+    })
+
 def if_macos(a, otherwise = []):
     return select({
         clean_dep("//tensorflow:macos"): a,
