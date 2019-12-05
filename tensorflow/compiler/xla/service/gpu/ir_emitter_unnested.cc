@@ -2900,11 +2900,9 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
         tile_size_x = kWarpSize * 64;
       } else {
         tile_size_x = kWarpSize * 8;
-        block_size_z = 8;
-        while (reduction_dimensions.dimensions[0] % block_size_z != 0) {
-          block_size_z -= 1;
-        }
       }
+      block_size_z =
+          std::min(reduction_dimensions.dimensions[0], static_cast<int64>(8));
     }
   } else {
     // Column reduction without transpose doesn't require communication among
