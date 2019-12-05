@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace xla {

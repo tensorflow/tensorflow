@@ -109,22 +109,6 @@ void HorizontalFusionImpl::FusionCandidates::Initialize(
       return false;
     }
 
-    // All outputs need to have the same shape.
-    auto root = insn.fused_expression_root();
-    if (root->opcode() != HloOpcode::kTuple) {
-      return true;
-    }
-    if (ShapeUtil::IsEmptyTuple(root->shape())) {
-      return false;
-    }
-    auto first_shape = ShapeUtil::GetTupleElementShape(root->shape(), 0);
-    for (int64 i = 1; i < ShapeUtil::TupleElementCount(root->shape()); i++) {
-      auto cur_shape = ShapeUtil::GetTupleElementShape(root->shape(), i);
-      if (!ShapeUtil::EqualIgnoringElementType(cur_shape, first_shape)) {
-        return false;
-      }
-    }
-
     return true;
   };
 
@@ -149,7 +133,7 @@ void HorizontalFusionImpl::FusionCandidates::Initialize(
 
   auto is_profitable = [](const HloInstruction& insn) -> bool {
     // Do not fuse computation with too large shapes or too many instructions,
-    // as it may not be easily profitable.
+    // because it may not be easily profitable.
     constexpr int64 kShapeThreshold = 128 * 2048;
     constexpr int64 kInsnCountThreshold = 30;
     auto root = insn.fused_expression_root();
@@ -177,7 +161,8 @@ void HorizontalFusionImpl::FusionCandidates::Initialize(
     return true;
   };
 
-  // Do not fuse non-row-major as it may increase bandwidth pressure.
+  // Do not fuse computations with non-row-major layouts because it may
+  // increase bandwidth pressure.
   auto all_row_major = [](const HloInstruction& fusion_insn) -> bool {
     auto insns = fusion_insn.fused_instructions_computation()->instructions();
     for (auto insn : insns) {
@@ -210,7 +195,7 @@ void HorizontalFusionImpl::FusionCandidates::Initialize(
     }
   }
 
-  // Sort according to output sizes and instruciton counts.
+  // Sort according to the number of outputs and instruciton counts.
   std::sort(fusion_insns_.begin(), fusion_insns_.end(),
             [&](const HloInstruction* a, const HloInstruction* b) {
               if (GetOutputSizeOfFusion(*a) == GetOutputSizeOfFusion(*b)) {
@@ -254,7 +239,7 @@ HorizontalFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
   size_t first_output_size = GetOutputSizeOfFusion(*fusion_insns_[left]);
   for (; right < fusion_insns_.size(); ++right) {
     if (first_output_size != GetOutputSizeOfFusion(*fusion_insns_[right])) {
-      // Cannot fuse computations of different sizes.
+      // Cannot fuse computations who have different numbers of outputs.
       break;
     } else if (fusion_insns_[left]->fused_instruction_count() !=
                fusion_insns_[right]->fused_instruction_count()) {
@@ -326,8 +311,8 @@ Status HorizontalFusionImpl::CreateFusedComputation(
   }
 
   std::vector<HloInstruction*> concated_outputs;
-  // Since we require each fusion to have the same output size, we can simply
-  // use the first instruction as the representative.
+  // Since we require each fusion to have the same number of outputs, we can
+  // simply use the first fusion as the representative.
   size_t fused_insn_output_size = GetOutputSizeOfFusion(*fused_fusion_insns[0]);
   for (size_t i = 0; i < fused_insn_output_size; ++i) {
     std::vector<HloInstruction*> reshapes(fused_fusion_insns.size());
@@ -388,7 +373,7 @@ Status HorizontalFusionImpl::Fuse(
   fused_comp->SetFusionInstruction(hori_fusion_insn);
 
   // Insert bitcasts and replace corresponding users. Note that we do not insert
-  // the bitcast in the fused computation as it does not fit into the slice
+  // the bitcasts in the fused computation as it does not fit into the slice
   // input fusion pattern. However, inserting bitcasts outside the fused
   // computation creates no performance cost.
   size_t total_output_id = 0;
