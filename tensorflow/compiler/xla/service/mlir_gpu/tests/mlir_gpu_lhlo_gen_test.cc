@@ -113,41 +113,20 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ;CHECK: "gpu.launch_func"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[ARG0]], %[[ARG1]], %[[ARG2]]
 ;CHECK: }
 ;CHECK: func @add_kernel(%[[ARG0]]: [[TYPE]], %[[ARG1]]: [[TYPE]], %[[ARG2]]: [[TYPE]]
-;CHECK: load %[[ARG0]][[INDEX:.*]]
-;CHECK: load %[[ARG1]][[INDEX]]
-;CHECK: store %{{.*}}, %[[ARG2]][[INDEX]]
+;CHECK-DAG: std.subview %[[ARG0]]{{\[}}[[INDEX:.*]]]
+;CHECK-DAG: std.subview %[[ARG1]]{{\[}}[[INDEX]]]
+;CHECK-DAG: std.subview %[[ARG2]]{{\[}}[[INDEX]]]
+;CHECK: %[[VAL1:.*]] = load %{{.*\[}}[[INDEX:.*]]]
+;CHECK: %[[VAL2:.*]] = load %{{.*\[}}[[INDEX]]]
+;CHECK: %[[RES:.*]] = addf %[[VAL1]], %[[VAL2]]
+;CHECK: store %[[RES]], %{{.*\[}}[[INDEX]]]
       )",
                      LoweringStage::GPU);
 }
 
-TEST_F(LhloGenTest, AddInLVVMDialect) {
-  CompileAndVerifyIr(R"(
-HloModule Add
-
-ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
-  %x = f32[2,2]{1,0} parameter(0)
-  %y = f32[2,2]{1,0} parameter(1)
-  ROOT %add = f32[2,2]{1,0} add(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
-})",
-                     R"(
-;CHECK: func @add_kernel(%[[ARG0:.*]]: [[TYPE:!llvm<.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]
-;CHECK: %[[LD0:.*]] = llvm.load %[[ARG0]] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }*">
-;CHECK: %[[LD1:.*]] = llvm.load %[[ARG1]] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }*">
-;CHECK: %[[LD2:.*]] = llvm.load %[[ARG2]] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }*">
-;CHECK: %[[PTR0:.*]] = llvm.extractvalue %[[LD0]][1]
-;CHECK: %[[GEP0:.*]] = llvm.getelementptr %[[PTR0]]
-;CHECK: %[[VAL0:.*]] = llvm.load %[[GEP0]]
-;CHECK: %[[PTR1:.*]] = llvm.extractvalue %[[LD1]][1]
-;CHECK: %[[GEP1:.*]] = llvm.getelementptr %[[PTR1]]
-;CHECK: %[[VAL1:.*]] = llvm.load %[[GEP1]]
-;CHECK: %[[VAL2:.*]] = llvm.fadd %[[VAL0]], %[[VAL1]]
-;CHECK: %[[PTR2:.*]] = llvm.extractvalue %[[LD2]][1]
-;CHECK: %[[GEP2:.*]] = llvm.getelementptr %[[PTR2]]
-;CHECK: llvm.store %[[VAL2]], %[[GEP2]]
-      )",
-                     LoweringStage::LLVM);
-}
-
+// This test verifies that the kernel signature is amended correctly. The actual
+// body of the generated function does not matter, it is already checked at the
+// GPU level above.
 TEST_F(LhloGenTest, AddAsKernel) {
   CompileAndVerifyIr(R"(
 HloModule Add
@@ -219,20 +198,6 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ;CHECK: llvm.store %{{.*}}, %[[GEP2ST0]]
 ;CHECK: %[[GEP2ST1:.*]] = llvm.getelementptr %[[DESC2]]
 ;CHECK: llvm.store %{{.*}}, %[[GEP2ST1]]
-
-;CHECK: %[[VL0:.*]] = llvm.load %[[DESC0]]
-;CHECK: %[[VL1:.*]] = llvm.load %[[DESC1]]
-;CHECK: %[[VL2:.*]] = llvm.load %[[DESC2]]
-;CHECK: %[[EV0:.*]] = llvm.extractvalue %[[VL0]][1]
-;CHECK: %[[VGEP0:.*]] = llvm.getelementptr %[[EV0]]
-;CHECK: %[[VAL0:.*]] = llvm.load %[[VGEP0]]
-;CHECK: %[[EV1:.*]] = llvm.extractvalue %[[VL1]][1]
-;CHECK: %[[VGEP1:.*]] = llvm.getelementptr %[[EV1]]
-;CHECK: %[[VAL1:.*]] = llvm.load %[[VGEP1]]
-;CHECK: %[[VAL2:.*]] = llvm.fadd %[[VAL0]], %[[VAL1]]
-;CHECK: %[[EV2:.*]] = llvm.extractvalue %[[VL2]][1]
-;CHECK: %[[SGEP:.*]] = llvm.getelementptr %[[EV2]]
-;CHECK: llvm.store %[[VAL2]], %[[SGEP]]
       )",
                      LoweringStage::KERNEL);
 }
@@ -262,42 +227,73 @@ ENTRY %AddMultiply (x: f32[2,2], y: f32[2,2], z: f32[2,2]) -> f32[2,2] {
       )");
 }
 
-TEST_F(LhloGenTest, FusedReduce) {
+TEST_F(LhloGenTest, AddMultiplyGPU) {
   CompileAndVerifyIr(R"(
-HloModule FusedReduce
+HloModule AddMultiply
 
-%add (x: f32[], y: f32[]) -> f32[] {
-  %x = f32[] parameter(0)
-  %y = f32[] parameter(1)
-  ROOT %add = f32[] add(f32[] %x, f32[] %y)
-}
-
-%fused_computation (param: f32[100,10]) -> f32[10] {
-  %param = f32[100,10] parameter(0)
-  %constant = f32[] constant(0)
-  ROOT %reduce = f32[10]{0} reduce(f32[100,10]{1,0} %param, f32[] %constant), dimensions={0}, to_apply=%add
-}
-
-ENTRY %FusedReduce (x: f32[100,10]) -> f32[10] {
-  %x = f32[100,10] parameter(0)
-  ROOT %fusion = f32[10]{0} fusion(f32[100,10]{1,0} %x), kind=kInput, calls=%fused_computation
-}
-)",
+ENTRY %AddMultiply (x: f32[2,2], y: f32[2,2], z: f32[2,2]) -> f32[2,2] {
+  %x = f32[2,2]{1,0} parameter(0)
+  %y = f32[2,2]{1,0} parameter(1)
+  %z = f32[2,2]{1,0} parameter(2)
+  %add = f32[2,2]{1,0} add(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
+  ROOT %mul = f32[2,2]{1,0} multiply(f32[2,2]{1,0} %add, f32[2,2]{1,0} %z)
+})",
                      R"(
-;CHECK: func @fusion(%[[ARG0:.*]]: [[TYPE:.*]], %[[RESULT:.*]]: [[RTYPE:.*]])
-;CHECK: "xla_lhlo.fusion"() ( {
-;CHECK:   %[[REF0:.*]] = tensor_load %arg0 : [[TYPE]]
-;CHECK:   %[[CT0:.*]] = xla_hlo.constant dense<0.000000e+00>
-;CHECK:   %[[RED:.*]] = "xla_hlo.reduce"(%0, %1) ( {
-;CHECK:     ^bb0(%[[BARG0:.*]]: [[ETYPE:.*]], %[[BARG1:.*]]: [[ETYPE]])
-;CHECK:       %[[ADD:.*]] = xla_hlo.add %[[BARG0]], %[[BARG1]] : [[ETYPE]]
-;CHECK:       "xla_hlo.return"(%[[ADD]])
-;CHECK:     })
-;CHECK:   tensor_store %[[RED]], %[[RESULT]] : [[RTYPE]]
-;CHECK:   "xla_lhlo.terminator"()
-;CHECK-NEXT: })
-      )");
+;CHECK: func @fusion_kernel(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]], %[[RESULT:.*]]: [[TYPE]])
+;CHECK-DAG: std.subview %[[ARG0]]{{\[}}[[INDEX:.*]]]
+;CHECK-DAG: std.subview %[[ARG1]]{{\[}}[[INDEX]]]
+;CHECK-DAG: std.subview %[[ARG2]]{{\[}}[[INDEX]]]
+;CHECK-DAG: std.subview %[[RESULT]]{{\[}}[[INDEX]]]
+;CHECK:   %[[V0:.*]] = load %{{.*\[}}[[CSTIDX:.*]]]
+;CHECK:   %[[V1:.*]] = load %{{.*\[}}[[CSTIDX:.*]]]
+;CHECK:   %[[ADD:.*]] = addf %[[V0]], %[[V1]]
+;CHECK:   %[[V2:.*]] = load %{{.*\[}}[[CSTIDX:.*]]]
+;CHECK:   %[[MUL:.*]] = mulf %[[ADD]], %[[V2]]
+;CHECK:   store %[[MUL]], %{{.*\[}}[[CSTIDX:.*]]]
+;CHECK-NEXT: return
+      )",
+                     LoweringStage::GPU);
 }
+
+// TODO(herhut): Re-enable once we can lower hlo_reduce to proper lhlo_reduce.
+// TEST_F(LhloGenTest, FusedReduce) {
+//   CompileAndVerifyIr(R"(
+// HloModule FusedReduce
+//
+// %add (x: f32[], y: f32[]) -> f32[] {
+//   %x = f32[] parameter(0)
+//   %y = f32[] parameter(1)
+//   ROOT %add = f32[] add(f32[] %x, f32[] %y)
+// }
+//
+// %fused_computation (param: f32[100,10]) -> f32[10] {
+//   %param = f32[100,10] parameter(0)
+//   %constant = f32[] constant(0)
+//   ROOT %reduce = f32[10]{0} reduce(f32[100,10]{1,0} %param, f32[] %constant),
+//       dimensions={0}, to_apply=%add
+// }
+//
+// ENTRY %FusedReduce (x: f32[100,10]) -> f32[10] {
+//   %x = f32[100,10] parameter(0)
+//   ROOT %fusion = f32[10]{0} fusion(f32[100,10]{1,0} %x), kind=kInput,
+//       calls=%fused_computation
+// }
+// )",
+//                      R"(
+// ;CHECK: func @fusion(%[[ARG0:.*]]: [[TYPE:.*]], %[[RESULT:.*]]: [[RTYPE:.*]])
+// ;CHECK: "xla_lhlo.fusion"() ( {
+// ;CHECK:   %[[REF0:.*]] = tensor_load %arg0 : [[TYPE]]
+// ;CHECK:   %[[CT0:.*]] = xla_hlo.constant dense<0.000000e+00>
+// ;CHECK:   %[[RED:.*]] = "xla_hlo.reduce"(%0, %1) ( {
+// ;CHECK:     ^bb0(%[[BARG0:.*]]: [[ETYPE:.*]], %[[BARG1:.*]]: [[ETYPE]])
+// ;CHECK:       %[[ADD:.*]] = xla_hlo.add %[[BARG0]], %[[BARG1]] : [[ETYPE]]
+// ;CHECK:       "xla_hlo.return"(%[[ADD]])
+// ;CHECK:     })
+// ;CHECK:   tensor_store %[[RED]], %[[RESULT]] : [[RTYPE]]
+// ;CHECK:   "xla_lhlo.terminator"()
+// ;CHECK-NEXT: })
+//       )");
+// }
 
 TEST_F(LhloGenTest, Broadcast) {
   CompileAndVerifyIr(R"(
