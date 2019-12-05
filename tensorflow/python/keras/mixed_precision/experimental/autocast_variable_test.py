@@ -157,25 +157,36 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
     # Test AutoCastVariable correctly delegates Variable methods to the
     # underlying variable.
     with get_distribute_scope(distribute):
-      evaluate = self.evaluate
       for read_dtype in (dtypes.float32, dtypes.float16):
+        if distribute:
+          # MirroredVariable.assign will (incorrectly) return a Mirrored value
+          # instead of a MirroredVariable. So we cannot properly wrap it in an
+          # AutoCastVariable.
+          evaluate = self.evaluate
+        else:
+
+          def evaluate(var):
+            self.assertIsInstance(var, autocast_variable.AutoCastVariable)
+            self.assertEqual(var.dtype, read_dtype)
+            return self.evaluate(var)
+
         x = get_var(7., dtypes.float32)
         x = autocast_variable.create_autocast_variable(x)
         with ops.get_default_graph()._enable_auto_casting_variables(
             read_dtype):
-          evaluate(x.initializer)
-          self.assertEqual(evaluate(x.value()), 7)
-          self.assertEqual(evaluate(x.read_value()), 7)
+          self.evaluate(x.initializer)
+          self.assertEqual(self.evaluate(x.value()), 7)
+          self.assertEqual(self.evaluate(x.read_value()), 7)
           self.assertTrue(x.trainable)
           self.assertEqual(x.synchronization, x._variable.synchronization)
           self.assertEqual(x.aggregation, x._variable.aggregation)
-          self.assertEqual(evaluate(x.initialized_value()), 7)
+          self.assertEqual(self.evaluate(x.initialized_value()), 7)
           if not context.executing_eagerly():
             if not distribute:
               # These functions are not supported for DistributedVariables
               x.load(9)
               self.assertEqual(x.eval(), 9)
-            self.assertEqual(evaluate(x.initial_value), 7)
+            self.assertEqual(self.evaluate(x.initial_value), 7)
             self.assertEqual(x.op, x._variable.op)
             self.assertEqual(x.graph, x._variable.graph)
           if not distribute:
@@ -197,8 +208,8 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
           x = autocast_variable.create_autocast_variable(x)
           with ops.get_default_graph()._enable_auto_casting_variables(
               read_dtype):
-            evaluate(x.initializer)
-            self.assertAllEqual(evaluate(x.value()), [7, 8])
+            self.evaluate(x.initializer)
+            self.assertAllEqual(self.evaluate(x.value()), [7, 8])
 
             def slices(val, index):
               return indexed_slices.IndexedSlices(
@@ -304,6 +315,26 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(3.14, self.evaluate(x.assign(3.14)))
         self.assertAllClose(3.14 * 2, self.evaluate(x.assign_add(3.14)))
         self.assertAllClose(3.14, self.evaluate(x.assign_sub(3.14)))
+
+        # Assign multiple times
+        assign = x.assign(1.)
+        self.assertAllClose(1., self.evaluate(assign))
+        self.assertAllClose(0., self.evaluate(assign.assign(0.)))
+        assign_add = x.assign_add(3.14)
+        self.assertAllClose(3.14, self.evaluate(assign_add))
+        self.assertAllClose(3.14 * 2,
+                            self.evaluate(assign_add.assign_add(3.14)))
+        assign_sub = x.assign_sub(3.14)
+        self.assertAllClose(3.14, self.evaluate(assign_sub))
+        self.assertAllClose(0., self.evaluate(assign_sub.assign_sub(3.14)))
+
+        # Assign with read_value=False
+        self.assertIsNone(self.evaluate(x.assign(1., read_value=False)))
+        self.assertAllClose(1., self.evaluate(x))
+        self.assertIsNone(self.evaluate(x.assign_add(2., read_value=False)))
+        self.assertAllClose(3., self.evaluate(x))
+        self.assertIsNone(self.evaluate(x.assign_sub(3., read_value=False)))
+        self.assertAllClose(0., self.evaluate(x))
 
         # Use the tf.assign functions instead of the var.assign methods.
         self.assertAllClose(0., self.evaluate(state_ops.assign(x, 0.)))
