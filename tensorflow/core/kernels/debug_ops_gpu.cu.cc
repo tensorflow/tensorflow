@@ -51,6 +51,36 @@ __global__ void CurtHealthKernel(const Tin* __restrict__ data, int size,
   }
 }
 
+// A CUDA kernel that fills the three elements of an output
+// vector with the number of NaNs, -infs, and infs in the input respectively.
+template <typename Tin, typename Tout>
+__global__ void ConciseHealthKernel(const Tin* __restrict__ data, int size,
+                                    Tout output[3]) {
+  const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+  const int32 total_thread_count = gridDim.x * blockDim.x;
+
+  int32 offset = thread_id;
+  Tout accum[3] = {0.0, 0.0, 0.0};
+
+  while (offset < size) {
+    if (isinf(data[offset])) {
+      if (data[offset] < static_cast<Tin>(0.f)) {
+        ++accum[0];
+      } else {
+        ++accum[1];
+      }
+    }
+    if (isnan(data[offset])) {
+      ++accum[2];
+    }
+    offset += total_thread_count;
+  }
+
+  atomicAdd(output, accum[0]);
+  atomicAdd(output + 1, accum[1]);
+  atomicAdd(output + 2, accum[2]);
+}
+
 // A CUDA kernel that fills a length-3 vector according to whether any of the
 // input data contains negative infinity, positive infinity, or NaN. The first
 // element is filled with -infinity if any of the elements is -infinity.
@@ -100,6 +130,26 @@ template struct CurtHealthLaunch<double, float>;
 template struct CurtHealthLaunch<Eigen::half, double>;
 template struct CurtHealthLaunch<float, double>;
 template struct CurtHealthLaunch<double, double>;
+
+template <typename Tin, typename Tout>
+struct ConciseHealthLaunch {
+  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[3]) {
+    const int32 block_size = d.maxGpuThreadsPerBlock();
+    const int32 num_blocks =
+        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
+        block_size;
+
+    TF_CHECK_OK(GpuLaunchKernel(ConciseHealthKernel<Tin, Tout>, num_blocks,
+                                block_size, 0, d.stream(), data, size, output));
+  }
+};
+
+template struct ConciseHealthLaunch<Eigen::half, float>;
+template struct ConciseHealthLaunch<float, float>;
+template struct ConciseHealthLaunch<double, float>;
+template struct ConciseHealthLaunch<Eigen::half, double>;
+template struct ConciseHealthLaunch<float, double>;
+template struct ConciseHealthLaunch<double, double>;
 
 template <typename Tin, typename Tout>
 struct ReduceInfNanThreeSlotsLaunch {

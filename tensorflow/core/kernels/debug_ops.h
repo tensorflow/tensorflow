@@ -468,6 +468,18 @@ extern template struct CurtHealthLaunch<float, double>;
 extern template struct CurtHealthLaunch<double, double>;
 
 template <typename Tin, typename Tout>
+struct ConciseHealthLaunch {
+  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[3]);
+};
+
+extern template struct ConciseHealthLaunch<Eigen::half, float>;
+extern template struct ConciseHealthLaunch<float, float>;
+extern template struct ConciseHealthLaunch<double, float>;
+extern template struct ConciseHealthLaunch<Eigen::half, double>;
+extern template struct ConciseHealthLaunch<float, double>;
+extern template struct ConciseHealthLaunch<double, double>;
+
+template <typename Tin, typename Tout>
 struct ReduceInfNanThreeSlotsLaunch {
   void Run(const GPUDevice& d, const Tin* data, int size, Tout output[3]);
 };
@@ -502,6 +514,7 @@ class DebugNumericSummaryV2Op<CPUDevice, Tin, Tout> : public OpKernel {
     const int64 size = in.size();
     Tensor* output_tensor;
     Tout tensor_id = static_cast<Tout>(tensor_id_);
+    const float num_elem = static_cast<float>(context->input(0).NumElements());
     // Disregard lossy cast if mode is REDUCE_INF_NAN_THREE_SLOTS because
     // that mode does not make use of tensor_id.
     if (tensor_debug_mode_ != 8) {
@@ -527,6 +540,31 @@ class DebugNumericSummaryV2Op<CPUDevice, Tin, Tout> : public OpKernel {
       if (fp_props) {
         output_tensor->flat<Tout>()(1) = 1.0;
       }
+    } else if (tensor_debug_mode_ == 3) {  // CONCISE_HEALTH
+      TensorShape shape({5});
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, shape, &output_tensor));
+      output_tensor->flat<Tout>()(0) = tensor_id;
+      output_tensor->flat<Tout>()(1) = num_elem;
+
+      // Accumlator value [neg_inf_count, pos_inf_count, nan_count]
+      Tout fp_props[3] = {0.0, 0.0, 0.0};
+      std::for_each(data, data + size, [&fp_props](const Tin& y) {
+        if (TF_PREDICT_TRUE(Eigen::numext::isfinite(y))) {
+          // Do nothing: common case.
+        } else if (Eigen::numext::isinf(y)) {
+          if (y < static_cast<Tin>(0.f)) {
+            ++fp_props[0];
+          } else {
+            ++fp_props[1];
+          }
+        } else if (Eigen::numext::isnan(y)) {
+          ++fp_props[2];
+        }
+      });
+      output_tensor->flat<Tout>()(2) = fp_props[0];  // Slot for -inf count
+      output_tensor->flat<Tout>()(3) = fp_props[1];  // Slot for inf count
+      output_tensor->flat<Tout>()(4) = fp_props[2];  // Slot for nan count
     } else if (tensor_debug_mode_ == 8) {  // REDUCE_INF_NAN_THREE_SLOTS.
       TensorShape shape({3});
       OP_REQUIRES_OK(context,
@@ -590,6 +628,7 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
     Tensor* output_tensor;
     Tout tensor_id = static_cast<Tout>(tensor_id_);
+    const float num_elem = static_cast<float>(context->input(0).NumElements());
     // Disregard lossy cast if mode is REDUCE_INF_NAN_THREE_SLOTS because
     // that mode does not make use of tensor_id.
     if (tensor_debug_mode_ != 8) {
@@ -628,6 +667,37 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       auto input = context->input(0).flat<Tin>();
       CurtHealthLaunch<Tin, Tout>().Run(d, input.data(), input.size(),
                                         output_tensor->flat<Tout>().data() + 1);
+
+      auto check_cb = [this, done]() { done(); };
+
+      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+          stream, std::move(check_cb));
+    } else if (tensor_debug_mode_ == 3) {  // CONCISE_HEALTH.
+      TensorShape shape({5});
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, shape, &output_tensor));
+
+      auto* stream = context->op_device_context()->stream();
+      OP_REQUIRES_ASYNC(context, stream != nullptr,
+                        errors::Internal("No GPU stream available."), done);
+
+      se::DeviceMemoryBase output_tensor_ptr(
+          output_tensor->flat<Tout>().data(),
+          output_tensor->flat<Tout>().size());
+      stream->ThenMemset32(&output_tensor_ptr, 0, 5 * sizeof(Tout));
+      const Tout static_output[] = {tensor_id, num_elem};
+      stream->ThenMemcpy(&output_tensor_ptr, &static_output, 2 * sizeof(Tout));
+      if (num_elem == 0) {
+        done();
+        return;
+      }
+
+      // Call the GPU kernels for the numerical (inf/nan) checks.
+      const Device& d = context->eigen_device<Device>();
+      auto input = context->input(0).flat<Tin>();
+      ConciseHealthLaunch<Tin, Tout>().Run(
+          d, input.data(), input.size(),
+          output_tensor->flat<Tout>().data() + 2);
 
       auto check_cb = [this, done]() { done(); };
 
