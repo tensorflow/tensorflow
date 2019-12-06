@@ -568,20 +568,6 @@ struct scalar_round_op_google {
   }
 };
 
-template <>
-struct scalar_round_op_google<float> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(const float& x) const {
-    return std::rint(x);
-  }
-};
-template <>
-struct scalar_round_op_google<double> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE double operator()(
-      const double& x) const {
-    return std::rint(x);
-  }
-};
-
 template <typename Scalar>
 struct scalar_round_op_google<Scalar, true> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
