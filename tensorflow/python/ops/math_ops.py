@@ -147,39 +147,26 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   Note that in case of ties the identity of the return value is not guaranteed.
 
   For example:
-  ```python
-  A=tf.constant([2,20,30,3,6]) # Constant 1-D Tensor
-  tf.math.argmax(A) # output 2 as index 2 (A[2]) is maximum in tensor A
-  B=tf.constant([[2,20,30,3,6],[3,11,16,1,8],[14,45,23,5,27]])
-  tf.math.argmax(B,0) # [2, 2, 0, 2, 2]
-  tf.math.argmax(B,1) # [2, 2, 1]
-  ```
+
+  >>> A = tf.constant([2, 20, 30, 3, 6])
+  >>> tf.math.argmax(A)  # A[2] is maximum in tensor A
+  <tf.Tensor: shape=(), dtype=int64, numpy=2>
+  >>> B = tf.constant([[2, 20, 30, 3, 6], [3, 11, 16, 1, 8],
+  ...                  [14, 45, 23, 5, 27]])
+  >>> tf.math.argmax(B, 0)
+  <tf.Tensor: shape=(5,), dtype=int64, numpy=array([2, 2, 0, 2, 2])>
+  >>> tf.math.argmax(B, 1)
+  <tf.Tensor: shape=(3,), dtype=int64, numpy=array([2, 2, 1])>
 
   Args:
-    input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
-      `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`,
-      `quint8`, `qint32`, `bfloat16`, `uint16`, `complex128`, `half`, `uint32`,
-      `uint64`.
-    axis: A `Tensor`. Must be one of the following types: `int32`, `int64`.
-      int32 or int64, must be in the range `-rank(input), rank(input))`.
-      Describes which axis of the input Tensor to reduce across. For vectors,
-      use axis = 0.
-    output_type: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to
-      `tf.int64`.
-    name: A name for the operation (optional).
+    input: A `Tensor`.
+    axis: An integer, the axis to reduce across. Default to 0.
+    output_type: An optional output dtype (`tf.int32` or `tf.int64`). Defaults
+      to `tf.int64`.
+    name: An optional name for the operation.
 
   Returns:
     A `Tensor` of type `output_type`.
-
-  Usage:
-  ```python
-  import tensorflow as tf
-  a = [1, 10, 26.9, 2.8, 166.32, 62.3]
-  b = tf.math.argmax(input = a)
-  c = tf.keras.backend.eval(b)
-  # c = 4
-  # here a[4] = 166.32 which is the largest element of a across axis 0
-  ```
   """
   if axis is None:
     axis = 0
