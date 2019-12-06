@@ -1052,7 +1052,14 @@ class ModelCheckpoint(Callback):
     # pylint: disable=protected-access
     if not self.model._in_multi_worker_mode(
     ) or multi_worker_util.should_save_checkpoint():
-      return self.filepath.format(epoch=epoch + 1, **logs)
+      try:
+        # `filepath` may contain placeholders such as `{epoch:02d}` and
+        # `{mape:.2f}`. A mismatch between logged metrics and the path's
+        # placeholders can cause formatting to fail.
+        return self.filepath.format(epoch=epoch + 1, **logs)
+      except KeyError as e:
+        raise KeyError('Failed to format this callback filepath: "{}". '
+                       'Reason: {}'.format(self.filepath, e))
     else:
       # If this is multi-worker training, and this worker should not
       # save checkpoint, we use a temp filepath to store a dummy checkpoint, so
