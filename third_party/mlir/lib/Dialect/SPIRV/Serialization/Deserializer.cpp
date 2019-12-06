@@ -1874,8 +1874,10 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
       if (Block *mappedTo = mapper.lookupOrNull(newMerge))
         newMerge = mappedTo;
 
-      blockMergeInfo.try_emplace(newHeader, newMerge, newContinue);
+      // The iterator should be erased before adding a new entry into
+      // blockMergeInfo to avoid iterator invalidation.
       blockMergeInfo.erase(it);
+      blockMergeInfo.try_emplace(newHeader, newMerge, newContinue);
     }
 
     // The structured selection/loop's entry block does not have arguments.
