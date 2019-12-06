@@ -586,9 +586,7 @@ def LLVM_GlobalOp
 }
 
 def LLVM_LLVMFuncOp
-    : LLVM_ZeroResultOp<"func",
-                        [NativeOpTrait<"IsIsolatedFromAbove">,
-                         NativeOpTrait<"FunctionLike">, Symbol]>,
+    : LLVM_ZeroResultOp<"func", [IsolatedFromAbove, FunctionLike, Symbol]>,
       Arguments<(ins DefaultValuedAttr<Linkage,
                                        "Linkage::External">:$linkage)> {
   let summary = "LLVM dialect function, has wrapped LLVM IR function type";
