@@ -454,9 +454,8 @@ class Converter {
   };
 
   static StatusOr<std::unique_ptr<Converter>> Create(
-      TrtPrecisionMode precision_mode,
-      bool use_calibration, nvinfer1::ILogger* trt_logger,
-      const bool use_implicit_batch);
+      TrtPrecisionMode precision_mode, bool use_calibration,
+      nvinfer1::ILogger* trt_logger, const bool use_implicit_batch);
 
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by the TRT engine builder to build a TRT network from a TF
@@ -541,9 +540,8 @@ class Converter {
                                          const nvinfer1::Dims& dims);
 
  private:
-  Converter(TrtPrecisionMode precision_mode,
-            bool use_calibration, nvinfer1::ILogger* trt_logger,
-            const bool use_implicit_batch);
+  Converter(TrtPrecisionMode precision_mode, bool use_calibration,
+            nvinfer1::ILogger* trt_logger, const bool use_implicit_batch);
 
   Status Init(nvinfer1::ILogger* trt_logger);
 
@@ -604,7 +602,7 @@ class Converter {
 
   const bool use_calibration_;
 
-  // If this is false, all dimensions including the batch dimension are 
+  // If this is false, all dimensions including the batch dimension are
   // set explicitely.
   const bool use_implicit_batch_;
 

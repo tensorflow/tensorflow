@@ -20,8 +20,8 @@ limitations under the License.
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 #define EIGEN_USE_GPU  // For definition of Eigen::GpuDevice.
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {

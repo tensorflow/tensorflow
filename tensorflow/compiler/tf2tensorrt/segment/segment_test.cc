@@ -87,8 +87,8 @@ class SegmentTest : public ::testing::Test {
       }
       if (segment_node_names.size() == expected.size()) continue;
       for (const auto& name : segment_node_names) {
-        EXPECT_TRUE(expected.count(name))
-            << "Unexpected node found in segment " << i << ": " << name;
+        EXPECT_TRUE(expected.count(name)) << "Unexpected node found in segment "
+                                          << i << ": " << name;
       }
     }
   }

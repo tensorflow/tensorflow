@@ -65,9 +65,9 @@ using ::testing::NanSensitiveFloatNear;
 // TODO(laigd): put this into some test utils file.
 void ExpectStatus(Status status, error::Code code = error::OK,
                   const char* substr = nullptr) {
-  EXPECT_EQ(code, status.code())
-      << status << " vs expected error code \"" << error::Code_Name(code)
-      << "\" and message \"" << substr << "\"";
+  EXPECT_EQ(code, status.code()) << status << " vs expected error code \""
+                                 << error::Code_Name(code)
+                                 << "\" and message \"" << substr << "\"";
   if (substr) {
     EXPECT_THAT(status.error_message(), ::testing::HasSubstr(substr)) << status;
   }
@@ -1142,9 +1142,9 @@ TEST_F(ConverterTest, CreateConstantLayer) {
     nvinfer1::ITensor* tensor =
         converter_->CreateConstantLayer(weights, GetTestDims({3, 10}));
     ASSERT_NE(nullptr, tensor);
-    EXPECT_EQ(dtype, tensor->getType())
-        << "Expected " << DebugString(dtype) << " vs. actual "
-        << DebugString(tensor->getType());
+    EXPECT_EQ(dtype, tensor->getType()) << "Expected " << DebugString(dtype)
+                                        << " vs. actual "
+                                        << DebugString(tensor->getType());
     ExpectTrtDimsEqualsArray({3, 10}, tensor->getDimensions());
   }
 }
@@ -1381,8 +1381,8 @@ class OpConverterTest : public ::testing::Test {
     const nvinfer1::DataType dtype = TfDataTypeToTrt(DataTypeToEnum<T>::v());
     const nvinfer1::Dims trt_dims = GetTestDims(dims);
     const int64_t num_elements = TrtWeightDimsNumElements(trt_dims);
-    QCHECK_EQ(num_elements, values.size())
-        << num_elements << " vs " << values.size();
+    QCHECK_EQ(num_elements, values.size()) << num_elements << " vs "
+                                           << values.size();
     TRT_ShapedWeights weights(dtype);
     if (num_elements) {
       weights = converter_->weight_store_.GetTempWeights(dtype, trt_dims);
@@ -1499,9 +1499,9 @@ void TestConvertConst(OpConverterTest* test) {
   node_def.set_op("Const");
 
   auto reset_and_test = [&node_def, test](
-                            const Tensor& tensor, const bool as_tensor_content,
-                            const std::vector<int>& expected_dims,
-                            const std::vector<OutputCType>& expected_value) {
+      const Tensor& tensor, const bool as_tensor_content,
+      const std::vector<int>& expected_dims,
+      const std::vector<OutputCType>& expected_value) {
     test->Reset();
 
     TensorProto* tensor_attr =
@@ -2306,9 +2306,9 @@ void TestAddN(OpConverterTest* test) {
     ExpectTrtDimsEqualsArray({1, 2}, output.tensor()->getDimensions());
 
     DataVec output_data{{"my_addn", ConstructTensor<CType>(2)}};
-    test->BuildAndRun(
-        input_data, &output_data,
-        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
+                                                    ? TrtPrecisionMode::FP16
+                                                    : TrtPrecisionMode::FP32);
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAreArray(CastTestVector<int, CType>({5, 8})));
   }
@@ -2475,9 +2475,9 @@ void TestConvertSquare(OpConverterTest* test) {
   // Engine outputs are converted to FP16 automatically if we set FP16 mode in
   // the builder.
   DataVec output_data{{"my_square", ConstructTensor<CType>(num_inputs)}};
-  test->BuildAndRun(
-      input_data, &output_data,
-      dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+  test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
+                                                  ? TrtPrecisionMode::FP16
+                                                  : TrtPrecisionMode::FP32);
   ExpectArrayNear(expected_outputs, GetSpanForData<CType>(output_data[0]));
 }
 
@@ -2955,9 +2955,9 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
 
 TEST_F(OpConverterTest, ConvertStridedSlice) {
   // Get nodedef for StridedSlice layer.
-  auto get_strided_slice_nodedef =
-      [](int64 begin_mask = 0, int64 end_mask = 0, int64 ellipsis_mask = 0,
-         int64 new_axis_mask = 0, int64 shrink_axis_mask = 0) -> NodeDef {
+  auto get_strided_slice_nodedef = [](
+      int64 begin_mask = 0, int64 end_mask = 0, int64 ellipsis_mask = 0,
+      int64 new_axis_mask = 0, int64 shrink_axis_mask = 0) -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     auto begin = ops::Placeholder(s.WithOpName("begin"), DT_INT32);
@@ -3705,10 +3705,10 @@ TEST_F(OpConverterTest, ConvertSlice) {
 
 TEST_F(OpConverterTest, ConvertConv2D) {
   // Get nodedef for Conv2D layer.
-  auto get_conv2d_nodedef =
-      [](std::vector<int> strides = {1, 1, 1, 1}, string padding = "SAME",
-         string data_format = "NCHW", std::vector<int> dilations = {1, 1, 1, 1},
-         bool is_conv2d_backprop_input = false) -> NodeDef {
+  auto get_conv2d_nodedef = [](
+      std::vector<int> strides = {1, 1, 1, 1}, string padding = "SAME",
+      string data_format = "NCHW", std::vector<int> dilations = {1, 1, 1, 1},
+      bool is_conv2d_backprop_input = false) -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     auto filter = ops::Placeholder(s.WithOpName("weights"), DT_FLOAT);
@@ -3968,11 +3968,11 @@ TEST_F(OpConverterTest, ConvertConv2D) {
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 TEST_F(OpConverterTest, ConvertConv3D) {
   // Get nodedef for Conv3D layer.
-  auto get_conv3d_nodedef =
-      [](std::vector<int> strides = {1, 1, 1, 1, 1}, string padding = "SAME",
-         string data_format = "NCDHW",
-         std::vector<int> dilations = {1, 1, 1, 1, 1},
-         bool is_conv3d_backprop_input = false) -> NodeDef {
+  auto get_conv3d_nodedef = [](
+      std::vector<int> strides = {1, 1, 1, 1, 1}, string padding = "SAME",
+      string data_format = "NCDHW",
+      std::vector<int> dilations = {1, 1, 1, 1, 1},
+      bool is_conv3d_backprop_input = false) -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     auto filter = ops::Placeholder(s.WithOpName("weights"), DT_FLOAT);
@@ -4682,10 +4682,9 @@ void TestConvertGather(OpConverterTest* test) {
     }
 
     const auto& indices_shape = ok_params[i].indices_shape;
-    test->AddTestTensor(
-        "indices",
-        std::vector<int>(indices_shape.begin() + 1, indices_shape.end()),
-        indices_shape[0], nvinfer1::DataType::kINT32);
+    test->AddTestTensor("indices", std::vector<int>(indices_shape.begin() + 1,
+                                                    indices_shape.end()),
+                        indices_shape[0], nvinfer1::DataType::kINT32);
     test->AddTestWeights<int32>("axis", {1}, {ok_params[i].axis});
     test->RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
@@ -5051,9 +5050,9 @@ void TestConvertConcat(OpConverterTest* test) {
     DataVec output_data{
         {"my_concat",
          ConstructTensor<CType>(ok_params[i].expected_output.size())}};
-    test->BuildAndRun(
-        input_data, &output_data,
-        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
+                                                    ? TrtPrecisionMode::FP16
+                                                    : TrtPrecisionMode::FP32);
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAreArray(ok_params[i].expected_output));
   }
@@ -5219,9 +5218,9 @@ void TestConvertSplit(OpConverterTest* test) {
     // Verify output values are correct.
     const DataVec input_data{
         {"value", test::AsTensor<CType>(ok_params[i].value)}};
-    test->BuildAndRun(
-        input_data, &output_data,
-        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
+                                                    ? TrtPrecisionMode::FP16
+                                                    : TrtPrecisionMode::FP32);
     for (int j = 0; j < outputs.size(); ++j) {
       EXPECT_THAT(GetSpanForData<CType>(output_data[j]),
                   ElementsAreArray(ok_params[i].expected_outputs[j]));
@@ -5399,9 +5398,9 @@ void TestConvertUnpack(OpConverterTest* test) {
     // Verify output values are correct.
     const DataVec input_data{
         {"value", test::AsTensor<CType>(ok_params[i].value)}};
-    test->BuildAndRun(
-        input_data, &output_data,
-        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
+                                                    ? TrtPrecisionMode::FP16
+                                                    : TrtPrecisionMode::FP32);
     for (int j = 0; j < outputs.size(); ++j) {
       EXPECT_THAT(GetSpanForData<CType>(output_data[j]),
                   ElementsAreArray(ok_params[i].expected_outputs[j]));
@@ -5570,9 +5569,9 @@ void TestConvertPack(OpConverterTest* test) {
     }
     DataVec output_data{
         {"my_pack", ConstructTensor<CType>(params[i].expected_output.size())}};
-    test->BuildAndRun(
-        input_data, &output_data,
-        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
+                                                    ? TrtPrecisionMode::FP16
+                                                    : TrtPrecisionMode::FP32);
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAreArray(params[i].expected_output));
   }
@@ -5720,9 +5719,9 @@ void TestConvertArgMinMax(OpConverterTest* test) {
     DataVec output_data{
         {"my_arg",
          ConstructTensor<int32>(params[i].expected_argmax_output.size())}};
-    test->BuildAndRun(
-        input_data, &output_data,
-        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
+                                                    ? TrtPrecisionMode::FP16
+                                                    : TrtPrecisionMode::FP32);
 
     if (node_def.op() == "ArgMax") {
       EXPECT_THAT(GetSpanForData<int32>(output_data[0]),
@@ -5821,9 +5820,9 @@ void TestConvertDepthSpaceShuffle(
     DataVec input_data{{"input", test::AsTensor<CType>(params[i].input_value)}};
     DataVec output_data{{"my_shuffle", ConstructTensor<CType>(
                                            params[i].expected_output.size())}};
-    test->BuildAndRun(
-        input_data, &output_data,
-        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
+                                                    ? TrtPrecisionMode::FP16
+                                                    : TrtPrecisionMode::FP32);
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAreArray(params[i].expected_output));
   }
@@ -5868,13 +5867,9 @@ void TestConvertDepthToSpace(OpConverterTest* test) {
           /*block_size=*/2,
           /*data_format=*/"NHWC",
           /*expected_output_dims=*/{4, 4, 2},
-          /*expected_output=*/CastTestVector<int, CType>({0,  1,  2,  3,  8,
-                                                          9,  10, 11, 4,  5,
-                                                          6,  7,  12, 13, 14,
-                                                          15, 16, 17, 18, 19,
-                                                          24, 25, 26, 27, 20,
-                                                          21, 22, 23, 28, 29,
-                                                          30, 31}),
+          /*expected_output=*/CastTestVector<int, CType>(
+              {0,  1,  2,  3,  8,  9,  10, 11, 4,  5,  6,  7,  12, 13, 14, 15,
+               16, 17, 18, 19, 24, 25, 26, 27, 20, 21, 22, 23, 28, 29, 30, 31}),
       },
   };
 
@@ -5967,13 +5962,9 @@ void TestConvertSpaceToDepth(OpConverterTest* test) {
           /*block_size=*/2,
           /*data_format=*/"NHWC",
           /*expected_output_dims=*/{2, 2, 8},
-          /*expected_output=*/CastTestVector<int, CType>({0,  1,  2,  3,  8,
-                                                          9,  10, 11, 4,  5,
-                                                          6,  7,  12, 13, 14,
-                                                          15, 16, 17, 18, 19,
-                                                          24, 25, 26, 27, 20,
-                                                          21, 22, 23, 28, 29,
-                                                          30, 31}),
+          /*expected_output=*/CastTestVector<int, CType>(
+              {0,  1,  2,  3,  8,  9,  10, 11, 4,  5,  6,  7,  12, 13, 14, 15,
+               16, 17, 18, 19, 24, 25, 26, 27, 20, 21, 22, 23, 28, 29, 30, 31}),
       },
   };
 
@@ -6099,9 +6090,9 @@ void TestConvertClipByValue(OpConverterTest* test) {
     DataVec input_data{{"t", test::AsTensor<CType>(params[i].input_value)}};
     DataVec output_data{
         {"my_clip", ConstructTensor<CType>(params[i].expected_output.size())}};
-    test->BuildAndRun(
-        input_data, &output_data,
-        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
+                                                    ? TrtPrecisionMode::FP16
+                                                    : TrtPrecisionMode::FP32);
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAreArray(params[i].expected_output));
   }
@@ -6209,9 +6200,9 @@ void TestConvertSquaredDifference(OpConverterTest* test) {
     DataVec output_data{
         {"my_squared_diff",
          ConstructTensor<CType>(params[i].expected_output.size())}};
-    test->BuildAndRun(
-        input_data, &output_data,
-        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
+                                                    ? TrtPrecisionMode::FP16
+                                                    : TrtPrecisionMode::FP32);
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAreArray(params[i].expected_output));
   }
@@ -6316,9 +6307,9 @@ void TestConvertResize(OpConverterTest* test) {
         {"my_resize", ConstructTensor<CType>(
                           params[i].expected_nearest_output_values.size())}};
 
-    test->BuildAndRun(
-        input_data, &output_data,
-        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
+                                                    ? TrtPrecisionMode::FP16
+                                                    : TrtPrecisionMode::FP32);
 
     if (node_def.op() == "ResizeBilinear") {
       ExpectArrayAlmostEqual(params[i].expected_bilinear_output_values,
@@ -6418,9 +6409,9 @@ void TestConvertPad(OpConverterTest* test) {
         {"my_pad",
          ConstructTensor<CType>(params[i].expected_output_values.size())}};
 
-    test->BuildAndRun(
-        input_data, &output_data,
-        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
+                                                    ? TrtPrecisionMode::FP16
+                                                    : TrtPrecisionMode::FP32);
     ExpectArrayAlmostEqual(params[i].expected_output_values,
                            GetSpanForData<CType>(output_data[0]), CType(1e-5));
   }

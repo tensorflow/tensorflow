@@ -42,9 +42,9 @@ namespace convert {
 // TODO(laigd): put this into some test utils file.
 void ExpectStatus(Status status, error::Code code = error::OK,
                   const char* substr = nullptr) {
-  EXPECT_EQ(code, status.code())
-      << status << " vs expected error code \"" << error::Code_Name(code)
-      << "\" and message \"" << substr << "\"";
+  EXPECT_EQ(code, status.code()) << status << " vs expected error code \""
+                                 << error::Code_Name(code)
+                                 << "\" and message \"" << substr << "\"";
   if (substr) {
     EXPECT_THAT(status.error_message(), ::testing::HasSubstr(substr)) << status;
   }

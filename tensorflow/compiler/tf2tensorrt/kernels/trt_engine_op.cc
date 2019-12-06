@@ -306,10 +306,9 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
   std::vector<Tensor> inputs;
   std::vector<Tensor>* outputs = new std::vector<Tensor>();
   if (func_handle_ == kInvalidHandle) {
-    OP_REQUIRES_OK_ASYNC(
-        ctx,
-        ConstructFunctionHandle(ctx->function_library(), ctx->device()->name()),
-        *helper);
+    OP_REQUIRES_OK_ASYNC(ctx, ConstructFunctionHandle(ctx->function_library(),
+                                                      ctx->device()->name()),
+                         *helper);
   }
   auto lib = ctx->function_library();
   FunctionLibraryRuntime::Options opts;
@@ -436,9 +435,9 @@ Status TRTEngineOp::GetEngineInputShapes(
     // This should not happen, but just for safety.
     if (actual_input_shapes.size() != cached_input_shapes.size()) {
       return errors::InvalidArgument(
-          "Input shape list size mismatch for ", name(),
-          ", cached size: ", cached_input_shapes.size(),
-          " vs. actual size: ", actual_input_shapes.size());
+          "Input shape list size mismatch for ", name(), ", cached size: ",
+          cached_input_shapes.size(), " vs. actual size: ",
+          actual_input_shapes.size());
     }
     if (AreShapesCompatible(actual_input_shapes, cached_input_shapes)) {
       const int cached_batch_size = cached_input_shapes[0].dim_size(0);
@@ -850,8 +849,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
         cres->calibrator_->getBatchSize(), this->workspace_size_,
         partial_shapes, &cache_res->GetLogger(), cache_res->allocator_.get(),
         cres->calibrator_.get(), &cres->engine_,
-        /*use_calibration=*/true,
-        this->use_implicit_batch_,
+        /*use_calibration=*/true, this->use_implicit_batch_,
         /*convert_successfully=*/nullptr);
     if (!s.ok()) {
       LOG(ERROR) << "Calibration failed: " << s;
