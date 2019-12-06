@@ -81,9 +81,15 @@ class ProfilingListener : public BenchmarkListener {
       : interpreter_(interpreter), profiler_(max_num_entries) {
     TFLITE_BENCHMARK_CHECK(interpreter);
     interpreter_->SetProfiler(&profiler_);
+
+    // We start profiling here in order to catch events that are recorded during
+    // the benchmark run preparation stage where TFLite interpreter is
+    // initialized and model graph is prepared.
     profiler_.Reset();
     profiler_.StartProfiling();
   }
+
+  void OnBenchmarkStart(const BenchmarkParams& params) override;
 
   void OnSingleRunStart(RunType run_type) override;
 
@@ -94,7 +100,8 @@ class ProfilingListener : public BenchmarkListener {
  private:
   Interpreter* interpreter_;
   profiling::BufferedProfiler profiler_;
-  profiling::ProfileSummarizer summarizer_;
+  profiling::ProfileSummarizer run_summarizer_;
+  profiling::ProfileSummarizer init_summarizer_;
 };
 
 // Dumps gemmlowp profiling events if gemmlowp profiling is enabled.
@@ -105,29 +112,39 @@ class GemmlowpProfilingListener : public BenchmarkListener {
   void OnBenchmarkEnd(const BenchmarkResults& results) override;
 };
 
+void ProfilingListener::OnBenchmarkStart(const BenchmarkParams& params) {
+  // At this point, we have completed the prepration for benchmark runs
+  // including TFLite interpreter initialization etc. So we are going to process
+  // profiling events recorded during this stage.
+  profiler_.StopProfiling();
+  auto profile_events = profiler_.GetProfileEvents();
+  init_summarizer_.ProcessProfiles(profile_events, *interpreter_);
+  profiler_.Reset();
+}
+
 void ProfilingListener::OnSingleRunStart(RunType run_type) {
-  // Note: we have started profiling when this listener is created. In order
-  // not to count events during the WARMUP phase, we need to stop profiling and
-  // process already-recorded profile events when the WARMUP run starts and
-  // restart profiling at the REGULAR run.
-  if (run_type == WARMUP) {
-    OnSingleRunEnd();
-  } else if (run_type == REGULAR) {
+  if (run_type == REGULAR) {
     profiler_.Reset();
     profiler_.StartProfiling();
   }
 }
 
 void ProfilingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
-  if (summarizer_.HasProfiles()) {
-    TFLITE_LOG(INFO) << summarizer_.GetOutputString();
+  if (init_summarizer_.HasProfiles()) {
+    TFLITE_LOG(INFO) << "Profiling Info for Benchmark Initialization:";
+    TFLITE_LOG(INFO) << init_summarizer_.GetOutputString();
+  }
+  if (run_summarizer_.HasProfiles()) {
+    TFLITE_LOG(INFO)
+        << "Operator-wise Profiling Info for Regular Benchmark Runs:";
+    TFLITE_LOG(INFO) << run_summarizer_.GetOutputString();
   }
 }
 
 void ProfilingListener::OnSingleRunEnd() {
   profiler_.StopProfiling();
   auto profile_events = profiler_.GetProfileEvents();
-  summarizer_.ProcessProfiles(profile_events, *interpreter_);
+  run_summarizer_.ProcessProfiles(profile_events, *interpreter_);
 }
 
 void GemmlowpProfilingListener::OnBenchmarkStart(
@@ -553,6 +570,16 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     return kTfLiteError;
   }
 
+  // Install profilers if necessary right after interpreter is created so that
+  // any memory allocations inside the TFLite runtime could be recorded if the
+  // installed profiler profile memory usage information.
+  if (params_.Get<bool>("enable_op_profiling")) {
+    profiling_listener_.reset(new ProfilingListener(
+        interpreter_.get(),
+        params_.Get<int32_t>("max_profiling_buffer_entries")));
+    AddListener(profiling_listener_.get());
+  }
+
   interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
@@ -615,16 +642,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     if (t->type != kTfLiteString) {
       interpreter_->ResizeInputTensor(i, input.shape);
     }
-  }
-
-  // Install profilers if necessary but *before* any memory allocations inside
-  // the TFLite interpreter because the installed profiler might profile memory
-  // usage information.
-  if (params_.Get<bool>("enable_op_profiling")) {
-    profiling_listener_.reset(new ProfilingListener(
-        interpreter_.get(),
-        params_.Get<int32_t>("max_profiling_buffer_entries")));
-    AddListener(profiling_listener_.get());
   }
 
   if (interpreter_->AllocateTensors() != kTfLiteOk) {
