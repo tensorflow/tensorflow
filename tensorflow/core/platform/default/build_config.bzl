@@ -595,11 +595,6 @@ def tf_additional_lib_srcs(exclude = []):
 def tf_additional_monitoring_hdrs():
     return []
 
-def tf_additional_monitoring_srcs():
-    return [
-        "default/monitoring.cc",
-    ]
-
 def tf_additional_env_hdrs():
     return []
 

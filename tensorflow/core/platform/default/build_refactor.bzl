@@ -174,6 +174,17 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "monitoring": {
+        "name": "monitoring_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:monitoring.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/monitoring.cc",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
     "mutex": {
         "name": "mutex_impl",
         "hdrs": [
@@ -642,3 +653,6 @@ def tf_platform_helper_deps(name):
 
 def tf_logging_deps():
     return [":logging_impl"]
+
+def tf_monitoring_deps():
+    return [":monitoring_impl"]

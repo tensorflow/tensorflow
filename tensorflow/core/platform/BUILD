@@ -12,7 +12,6 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
-    "tf_additional_monitoring_srcs",
     "tf_additional_proto_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
@@ -25,6 +24,7 @@ load(
     "tf_instantiate_platform_libraries",
     "tf_logging_deps",
     "tf_mobile_aware_deps",
+    "tf_monitoring_deps",
     "tf_platform_helper_deps",
 )
 load(
@@ -60,6 +60,7 @@ tf_instantiate_platform_libraries(names = [
     "human_readable_json",
     "logging",
     "load_library",
+    "monitoring",
     "mutex",
     "net",
     "notification",
@@ -297,6 +298,12 @@ cc_library(
     name = "logging",
     textual_hdrs = ["logging.h"],
     deps = tf_logging_deps(),
+)
+
+cc_library(
+    name = "monitoring",
+    textual_hdrs = ["monitoring.h"],
+    deps = tf_monitoring_deps(),
 )
 
 cc_library(
@@ -971,12 +978,6 @@ filegroup(
 filegroup(
     name = "legacy_test_srcs",
     srcs = tf_additional_test_srcs(),
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_monitoring_srcs",
-    srcs = tf_additional_monitoring_srcs(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
