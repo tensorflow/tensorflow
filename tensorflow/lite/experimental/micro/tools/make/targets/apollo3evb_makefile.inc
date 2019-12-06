@@ -86,6 +86,7 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/boards_sfe: $(MAKEFILE_DIR)/downloads/$
   endif
   ifeq ($(findstring sparkfun,$(TARGET)), sparkfun)
     BOARD_BSP_PATH := $(APOLLO3_SDK)/boards_sfe/$(subst sparkfun_,,$(TARGET))/bsp
+    ALL_TAGS+=sparkfun_generic
   endif
   MICROLITE_LIBS := \
     $(BOARD_BSP_PATH)/gcc/bin/libam_bsp.a \
