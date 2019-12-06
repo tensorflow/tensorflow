@@ -44,6 +44,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.platform import build_info
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
@@ -308,6 +309,9 @@ class GRUV2Test(keras_parameterized.TestCase):
     self.assertAllClose(y, y_ref)
 
   def test_with_masking_layer_GRU(self):
+    if build_info.is_rocm_build:
+      self.skipTest("Skipping the test as ROCm MIOpen does not support padded input yet.")
+
     layer_class = rnn.GRU
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
@@ -320,6 +324,9 @@ class GRUV2Test(keras_parameterized.TestCase):
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
   def test_masking_with_stacking_GRU(self):
+    if build_info.is_rocm_build:
+      self.skipTest("Skipping the test as ROCm MIOpen does not support padded input yet.")
+
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
     targets /= targets.sum(axis=-1, keepdims=True)
@@ -358,6 +365,9 @@ class GRUV2Test(keras_parameterized.TestCase):
         input_dtype='float64')
 
   def test_return_states_GRU(self):
+    if build_info.is_rocm_build:
+      self.skipTest("Skipping the test as ROCm MIOpen does not support padded input yet.")
+
     layer_class = rnn.GRU
     x = np.random.random((2, 3, 4))
     y = np.abs(np.random.random((2, 5)))
@@ -438,6 +448,9 @@ class GRUV2Test(keras_parameterized.TestCase):
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
   def test_statefulness_GRU(self):
+    if build_info.is_rocm_build:
+      self.skipTest("Skipping the test as ROCm MIOpen does not support padded input yet.")
+
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
