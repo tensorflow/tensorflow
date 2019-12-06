@@ -567,7 +567,6 @@ cc_library(
     hdrs = ["utils/error_util.h"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/lib",
         "@llvm//:support",
         "@local_config_mlir//:IR",
     ],

@@ -40,7 +40,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
+using ::stream_executor::port::StatusOr;
 using ::tensorflow::int16;
 using ::tensorflow::int32;
 using ::tensorflow::int64;
