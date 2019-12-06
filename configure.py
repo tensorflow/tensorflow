@@ -1179,10 +1179,17 @@ def system_specific_test_config(env):
       write_to_bazelrc('test --test_env=LD_LIBRARY_PATH')
     else:
       test_and_build_filters.append('-gpu')
-  write_to_bazelrc('test --test_tag_filters=%s' %
+
+  # Disable tests with "v1only" tag in "v2" Bazel config, but not in "v1" config
+  write_to_bazelrc('test:v1 --test_tag_filters=%s' %
                    ','.join(test_and_build_filters + test_only_filters))
-  write_to_bazelrc('test --build_tag_filters=%s' %
+  write_to_bazelrc('test:v1 --build_tag_filters=%s' %
                    ','.join(test_and_build_filters))
+  write_to_bazelrc('test:v2 --test_tag_filters=%s' %
+                   ','.join(test_and_build_filters + test_only_filters
+                            + ["-v1only"]))
+  write_to_bazelrc('test:v2 --build_tag_filters=%s' %
+                   ','.join(test_and_build_filters + ["-v1only"]))
 
 
 def set_system_libs_flag(environ_cp):
