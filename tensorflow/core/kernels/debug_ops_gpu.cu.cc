@@ -76,9 +76,9 @@ __global__ void ConciseHealthKernel(const Tin* __restrict__ data, int size,
     offset += total_thread_count;
   }
 
-  atomicAdd(output, accum[0]);
-  atomicAdd(output + 1, accum[1]);
-  atomicAdd(output + 2, accum[2]);
+  GpuAtomicAdd(output, accum[0]);
+  GpuAtomicAdd(output + 1, accum[1]);
+  GpuAtomicAdd(output + 2, accum[2]);
 }
 
 // A CUDA kernel that fills the six elements of an output vector with the
@@ -114,12 +114,12 @@ __global__ void FullHealthKernel(const Tin* __restrict__ data, int size,
     offset += total_thread_count;
   }
 
-  atomicAdd(output, accum[0]);
-  atomicAdd(output + 1, accum[1]);
-  atomicAdd(output + 2, accum[2]);
-  atomicAdd(output + 3, accum[3]);
-  atomicAdd(output + 4, accum[4]);
-  atomicAdd(output + 5, accum[5]);
+  GpuAtomicAdd(output, accum[0]);
+  GpuAtomicAdd(output + 1, accum[1]);
+  GpuAtomicAdd(output + 2, accum[2]);
+  GpuAtomicAdd(output + 3, accum[3]);
+  GpuAtomicAdd(output + 4, accum[4]);
+  GpuAtomicAdd(output + 5, accum[5]);
 }
 
 // A CUDA kernel that fills a length-3 vector according to whether any of the
