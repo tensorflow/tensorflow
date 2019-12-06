@@ -945,9 +945,11 @@ StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
       return builder_.getFloatAttr(builder_.getF32Type(), value.f());
     case AttrValue::kB:
       return builder_.getBoolAttr(value.b());
-    case AttrValue::kType:
-      return builder_.getStringAttr(
-          mangling_util::MangleDataType(value.type()));
+    case AttrValue::kType: {
+      mlir::Type type;
+      TF_RETURN_IF_ERROR(ConvertDataType(value.type(), builder_, &type));
+      return mlir::TypeAttr::get(type);
+    }
     case AttrValue::kShape:
       return builder_.getStringAttr(mangling_util::MangleShape(value.shape()));
     case AttrValue::kTensor:
