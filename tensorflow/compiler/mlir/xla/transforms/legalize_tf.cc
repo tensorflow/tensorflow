@@ -1299,8 +1299,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     ArrayRef<int64_t> input_shape = input_ty.getShape();
 
     DenseIntElementsAttr dimensions;
-    if (!matchPattern(op.reduction_indices(), m_Constant(&dimensions)) ||
-        dimensions.getType().getRank() != 1)
+    if (!matchPattern(op.reduction_indices(), m_Constant(&dimensions)))
       return this->matchFailure();
 
     // Build the final shape from input_shape and dimensions using a bitmap

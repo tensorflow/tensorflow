@@ -1555,6 +1555,16 @@ func @mean(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
   return %0 : tensor<4x1xf16>
 }
 
+// CHECK-LABEL: func @mean_scalar_dim
+func @mean_scalar_dim(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
+  // Verify that tf.Mean op with scalar attributes are lowered successfully.
+
+  // CHECK-NOT: tf.Mean
+  %dimension = "tf.Const"() { value = dense<1> : tensor<i64> } : () -> tensor<i64>
+  %0 = "tf.Mean"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8xf16>, tensor<i64>) -> tensor<4x1xf16>
+  return %0 : tensor<4x1xf16>
+}
+
 // CHECK-LABEL: func @mean_dynamic
 func @mean_dynamic(%arg0: tensor<4x?xf16>) -> tensor<4x1xf16> {
   %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
