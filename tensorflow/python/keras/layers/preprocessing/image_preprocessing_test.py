@@ -24,7 +24,7 @@ import numpy as np
 from tensorflow.python.framework import errors
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.layers import image_preprocessing
+from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import image_ops_impl as image_ops
 from tensorflow.python.ops import stateless_random_ops
