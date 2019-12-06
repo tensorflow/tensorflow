@@ -1364,11 +1364,26 @@ OpFoldResult DimOp::fold(ArrayRef<Attribute> operands) {
   else if (auto memrefType = opType.dyn_cast<MemRefType>())
     indexSize = memrefType.getShape()[getIndex()];
 
-  if (indexSize >= 0)
+  if (!ShapedType::isDynamic(indexSize))
     return IntegerAttr::get(IndexType::get(getContext()), indexSize);
 
-  // Fold dim to the size argument of a SubViewOp.
+  // Fold dim to the size argument for an AllocOp/ViewOp/SubViewOp.
+  auto memrefType = opType.dyn_cast<MemRefType>();
+  if (!memrefType)
+    return {};
+
+  // The size at getIndex() is now a dynamic size of a memref.
+
   auto memref = memrefOrTensor()->getDefiningOp();
+  if (auto alloc = dyn_cast_or_null<AllocOp>(memref))
+    return *(alloc.getDynamicSizes().begin() +
+             memrefType.getDynamicDimIndex(getIndex()));
+
+  if (auto view = dyn_cast_or_null<ViewOp>(memref))
+    return *(view.getDynamicSizes().begin() +
+             memrefType.getDynamicDimIndex(getIndex()));
+
+  // The subview op here is expected to have rank dynamic sizes now.
   if (auto subview = dyn_cast_or_null<SubViewOp>(memref)) {
     auto sizes = subview.sizes();
     if (!sizes.empty())
