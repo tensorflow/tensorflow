@@ -869,7 +869,8 @@ static StringRef getLinkageAttrName() { return "linkage"; }
 
 void GlobalOp::build(Builder *builder, OperationState &result, LLVMType type,
                      bool isConstant, Linkage linkage, StringRef name,
-                     Attribute value, ArrayRef<NamedAttribute> attrs) {
+                     Attribute value, unsigned addrSpace,
+                     ArrayRef<NamedAttribute> attrs) {
   result.addAttribute(SymbolTable::getSymbolAttrName(),
                       builder->getStringAttr(name));
   result.addAttribute("type", TypeAttr::get(type));
@@ -879,6 +880,8 @@ void GlobalOp::build(Builder *builder, OperationState &result, LLVMType type,
     result.addAttribute("value", value);
   result.addAttribute(getLinkageAttrName(), builder->getI64IntegerAttr(
                                                 static_cast<int64_t>(linkage)));
+  if (addrSpace != 0)
+    result.addAttribute("addr_space", builder->getI32IntegerAttr(addrSpace));
   result.attributes.append(attrs.begin(), attrs.end());
   result.addRegion();
 }

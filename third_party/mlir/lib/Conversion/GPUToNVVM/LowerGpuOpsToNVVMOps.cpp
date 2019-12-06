@@ -385,12 +385,10 @@ private:
 
     auto arrayType = LLVM::LLVMType::getArrayTy(elementType, numElements);
     StringRef name = "reduce_buffer";
-    auto addrSpace =
-        builder.getNamedAttr("addr_space", builder.getI32IntegerAttr(3));
     auto globalOp = builder.create<LLVM::GlobalOp>(
         loc, arrayType.cast<LLVM::LLVMType>(),
         /*isConstant=*/false, LLVM::Linkage::Internal, name,
-        /*value=*/Attribute(), llvm::makeArrayRef(addrSpace));
+        /*value=*/Attribute(), gpu::GPUDialect::getWorkgroupAddressSpace());
 
     return rewriter.create<LLVM::AddressOfOp>(loc, globalOp);
   }
@@ -481,15 +479,12 @@ struct FuncOpLowering : LLVMOpLowering {
       auto elementType =
           lowering.convertType(type.getElementType()).cast<LLVM::LLVMType>();
       auto arrayType = LLVM::LLVMType::getArrayTy(elementType, numElements);
-      auto addSpaceAttr = rewriter.getNamedAttr(
-          "addr_space", rewriter.getI32IntegerAttr(
-                            gpu::GPUDialect::getWorkgroupAddressSpace()));
       std::string name =
           llvm::formatv("__wg_{0}_{1}", gpuFuncOp.getName(), en.index());
       auto globalOp = rewriter.create<LLVM::GlobalOp>(
           gpuFuncOp.getLoc(), arrayType, /*isConstant=*/false,
           LLVM::Linkage::Internal, name, /*value=*/Attribute(),
-          llvm::makeArrayRef(addSpaceAttr));
+          gpu::GPUDialect::getWorkgroupAddressSpace());
       workgroupBuffers.push_back(globalOp);
     }
 
