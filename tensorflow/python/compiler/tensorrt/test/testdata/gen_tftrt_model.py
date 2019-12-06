@@ -28,17 +28,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python import Session
+from tensorflow.python.framework import dtypes
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import array_ops
+from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import utils
+from tensorflow.python.saved_model import builder
 from tensorflow.python.compiler.tensorrt import trt_convert
 
 def GetGraph(input1, input2, var):
@@ -60,20 +63,19 @@ def GenerateModelV2(tf_saved_model_dir, tftrt_saved_model_dir):
       self.v = None
 
     @def_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=[None, 1, 1], dtype=tf.dtypes.float32),
-        tensor_spec.TensorSpec(shape=[None, 1, 1], dtype=tf.dtypes.float32)
+        tensor_spec.TensorSpec(shape=[None, 1, 1], dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=[None, 1, 1], dtype=dtypes.float32)
     ])
     def run(self, input1, input2):
       if self.v is None:
-        self.v = variables.Variable([[[1.0]]], dtype=tf.dtypes.float32)
+        self.v = variables.Variable([[[1.0]]], dtype=dtypes.float32)
       return GetGraph(input1, input2, self.v)
 
   root = SimpleModel()
 
   # Saved TF model
-  tf.saved_model.save(
-      root, tf_saved_model_dir,
-      {signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: root.run})
+  save(root, tf_saved_model_dir,
+       {signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: root.run})
 
   # Convert TF model to TensorRT
   converter = trt_convert.TrtGraphConverterV2(
@@ -87,10 +89,10 @@ def GenerateModelV1(tf_saved_model_dir, tftrt_saved_model_dir):
   def SimpleModel():
     def GraphFn():
       input1 = array_ops.placeholder(
-          dtype=tf.dtypes.float32, shape=[None, 1, 1], name="input1")
+          dtype=dtypes.float32, shape=[None, 1, 1], name="input1")
       input2 = array_ops.placeholder(
-          dtype=tf.dtypes.float32, shape=[None, 1, 1], name="input2")
-      var = variables.Variable([[[1.0]]], dtype=tf.dtypes.float32, name="v1")
+          dtype=dtypes.float32, shape=[None, 1, 1], name="input2")
+      var = variables.Variable([[[1.0]]], dtype=dtypes.float32, name="v1")
       out = GetGraph(input1, input2, var)
       return g, var, input1, input2, out
 
@@ -104,11 +106,11 @@ def GenerateModelV1(tf_saved_model_dir, tftrt_saved_model_dir):
           "input1": utils.build_tensor_info(input1),
           "input2": utils.build_tensor_info(input2)
       },
-      outputs={"output": tf.saved_model.utils.build_tensor_info(out)},
+      outputs={"output": utils.build_tensor_info(out)},
       method_name=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
-  saved_model_builder = tf.saved_model.builder.SavedModelBuilder(
+  saved_model_builder = builder.SavedModelBuilder(
       tf_saved_model_dir)
-  with tf.Session(graph=g) as sess:
+  with Session(graph=g) as sess:
     sess.run(var.initializer)
     saved_model_builder.add_meta_graph_and_variables(
         sess, [tag_constants.SERVING], signature_def_map={
