@@ -825,7 +825,8 @@ static LogicalResult verify(AddressOfOp op) {
     return op.emitOpError(
         "must reference a global defined by 'llvm.mlir.global'");
 
-  if (global.getType().getPointerTo() != op.getResult()->getType())
+  if (global.getType().getPointerTo(global.addr_space().getZExtValue()) !=
+      op.getResult()->getType())
     return op.emitOpError(
         "the type must be a pointer to the type of the referred global");
 

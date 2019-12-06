@@ -509,8 +509,9 @@ def LLVM_AddressOfOp
 
     OpBuilder<"Builder *builder, OperationState &result, GlobalOp global, "
               "ArrayRef<NamedAttribute> attrs = {}", [{
-      build(builder, result, global.getType().getPointerTo(), global.sym_name(),
-            attrs);}]>
+      build(builder, result,
+            global.getType().getPointerTo(global.addr_space().getZExtValue()),
+            global.sym_name(), attrs);}]>
   ];
 
   let extraClassDeclaration = [{
