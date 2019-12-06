@@ -354,9 +354,9 @@ def random_crop(value, size, seed=None, name=None):
   
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.random_crop(x, size=[200, 200, 3])
+    >>> import tensorflow as tf
+    >>> x = tf.random.normal(shape=(256, 256, 3))
+    >>> tf.image.random_crop(x, size=[200, 200, 3])
     ```
 
   Args:

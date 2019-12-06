@@ -942,9 +942,9 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.resize_with_crop_or_pad(x, 200, 200)
+    >>> import tensorflow as tf
+    >>> x = tf.random.normal(shape=(256, 256, 3))
+    >>> tf.image.resize_with_crop_or_pad(x, 200, 200)
     ```
 
   Args:
@@ -1496,9 +1496,9 @@ def resize_image_with_pad_v2(image,
   
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.resize_with_pad(x, 200, 200, tf.image.ResizeMethod.BILINEAR, False)
+    >>> import tensorflow as tf
+    >>> x = tf.random.normal(shape=(256, 256, 3))
+    >>> tf.image.resize_with_pad(x, 200, 200, tf.image.ResizeMethod.BILINEAR, False)
     ```
 
   Args:
@@ -1581,9 +1581,9 @@ def random_brightness(image, max_delta, seed=None):
   
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.random_brightness(x, 0.8, 1)
+    >>> import tensorflow as tf
+    >>> x = tf.random.normal(shape=(256, 256, 3))
+    >>> tf.image.random_brightness(x, 0.8, 1)
     ```
 
   Args:
@@ -1614,9 +1614,9 @@ def random_contrast(image, lower, upper, seed=None):
   
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.random_contrast(x, 0.2, 0.8, 1)
+    >>> import tensorflow as tf
+    >>> x = tf.random.normal(shape=(256, 256, 3))
+    >>> tf.image.random_contrast(x, 0.2, 0.8, 1)
     ```
 
   Args:

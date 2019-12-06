@@ -1139,10 +1139,8 @@ def multiply_no_nan(x, y, name=None):
   
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> x = tf.constant([[1.0, 3.0], [5.0, 4.0]])
-    >> y = tf.constant([[7.0, 2.0], [1.0, 9.0]])
-    >> tf.math.multiply_no_nan(x, y) # [[7, 6] [5, 36]]
+    >>> import tensorflow as tf
+    >>> tf.math.multiply_no_nan([[1.0, 3.0], [5.0, 4.0]], [[7.0, 2.0], [1.0, 9.0]]) # [[7, 6] [5, 36]]
     ```
 
   Args:
@@ -4211,9 +4209,9 @@ def reciprocal_no_nan(x, name=None):
   
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> x = tf.constant([1.0, 2.0, 4.0])
-    >> tf.math.reciprocal_no_nan(x) # [1, 0.5, 0.25]
+    >>> import tensorflow as tf
+    >>> x = tf.constant([1.0, 2.0, 4.0])
+    >>> tf.math.reciprocal_no_nan(x) # [1, 0.5, 0.25]
     ```
 
   Args:
