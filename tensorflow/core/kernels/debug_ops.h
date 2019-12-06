@@ -480,6 +480,18 @@ extern template struct ConciseHealthLaunch<float, double>;
 extern template struct ConciseHealthLaunch<double, double>;
 
 template <typename Tin, typename Tout>
+struct FullHealthLaunch {
+  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[6]);
+};
+
+extern template struct FullHealthLaunch<Eigen::half, float>;
+extern template struct FullHealthLaunch<float, float>;
+extern template struct FullHealthLaunch<double, float>;
+extern template struct FullHealthLaunch<Eigen::half, double>;
+extern template struct FullHealthLaunch<float, double>;
+extern template struct FullHealthLaunch<double, double>;
+
+template <typename Tin, typename Tout>
 struct ReduceInfNanThreeSlotsLaunch {
   void Run(const GPUDevice& d, const Tin* data, int size, Tout output[3]);
 };
@@ -565,7 +577,46 @@ class DebugNumericSummaryV2Op<CPUDevice, Tin, Tout> : public OpKernel {
       output_tensor->flat<Tout>()(2) = fp_props[0];  // Slot for -inf count
       output_tensor->flat<Tout>()(3) = fp_props[1];  // Slot for inf count
       output_tensor->flat<Tout>()(4) = fp_props[2];  // Slot for nan count
-    } else if (tensor_debug_mode_ == 5) {            // SHAPE
+    } else if (tensor_debug_mode_ == 4) {            // FULL HEALTH
+      TensorShape shape({11});
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, shape, &output_tensor));
+      int num_dims = tensor.dims();
+      output_tensor->flat<Tout>()(0) = tensor_id;
+      output_tensor->flat<Tout>()(1) = -1.0;  // TODO(144919262): Device ID
+      output_tensor->flat<Tout>()(2) = static_cast<Tout>(tensor.dtype());
+      output_tensor->flat<Tout>()(3) = static_cast<Tout>(num_dims);
+      output_tensor->flat<Tout>()(4) = num_elem;
+
+      // Accumlator value [neg_inf_count, pos_inf_count, nan_count, neg_count,
+      //                   zero_count, pos_count]
+      Tout fp_props[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+      std::for_each(data, data + size, [&fp_props](const Tin& y) {
+        if (TF_PREDICT_TRUE(Eigen::numext::isfinite(y))) {
+          if (y < static_cast<Tin>(0.f)) {
+            ++fp_props[3];
+          } else if (y == static_cast<Tin>(0.f)) {
+            ++fp_props[4];
+          } else {
+            ++fp_props[5];
+          }
+        } else if (Eigen::numext::isinf(y)) {
+          if (y < static_cast<Tin>(0.f)) {
+            ++fp_props[0];
+          } else {
+            ++fp_props[1];
+          }
+        } else if (Eigen::numext::isnan(y)) {
+          ++fp_props[2];
+        }
+      });
+      output_tensor->flat<Tout>()(5) = fp_props[0];   // Slot for -inf count
+      output_tensor->flat<Tout>()(6) = fp_props[1];   // Slot for inf count
+      output_tensor->flat<Tout>()(7) = fp_props[2];   // Slot for nan count.
+      output_tensor->flat<Tout>()(8) = fp_props[3];   // Slot for neg count.
+      output_tensor->flat<Tout>()(9) = fp_props[4];   // Slot for zero count.
+      output_tensor->flat<Tout>()(10) = fp_props[5];  // Slot for pos count.
+    } else if (tensor_debug_mode_ == 5) {             // SHAPE
       TensorShape shape({10});
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, shape, &output_tensor));
@@ -724,6 +775,38 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       ConciseHealthLaunch<Tin, Tout>().Run(
           d, input.data(), input.size(),
           output_tensor->flat<Tout>().data() + 2);
+
+      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+          stream, std::move(check_cb));
+    } else if (tensor_debug_mode_ == 4) {  // FULL HEALTH
+      TensorShape shape({11});
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, shape, &output_tensor));
+
+      auto* stream = context->op_device_context()->stream();
+      OP_REQUIRES_ASYNC(context, stream != nullptr,
+                        errors::Internal("No GPU stream available."), done);
+
+      se::DeviceMemoryBase output_tensor_ptr(
+          output_tensor->flat<Tout>().data(),
+          output_tensor->flat<Tout>().size());
+      stream->ThenMemset32(&output_tensor_ptr, 0, 11 * sizeof(Tout));
+
+      int num_dims = tensor.dims();
+      const Tout static_output[] = {tensor_id,
+                                    -1.0,  // TODO(144919262): Device ID
+                                    static_cast<Tout>(tensor.dtype()),
+                                    static_cast<Tout>(num_dims), num_elem};
+      stream->ThenMemcpy(&output_tensor_ptr, &static_output, 5 * sizeof(Tout));
+      if (num_elem == 0) {
+        done();
+        return;
+      }
+
+      // Call the GPU kernels for the numerical (inf/nan) checks and
+      // pos/neg/zero counts.
+      FullHealthLaunch<Tin, Tout>().Run(d, input.data(), input.size(),
+                                        output_tensor->flat<Tout>().data() + 5);
 
       context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
           stream, std::move(check_cb));

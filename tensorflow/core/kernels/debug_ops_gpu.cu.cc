@@ -81,6 +81,47 @@ __global__ void ConciseHealthKernel(const Tin* __restrict__ data, int size,
   atomicAdd(output + 2, accum[2]);
 }
 
+// A CUDA kernel that fills the six elements of an output vector with the
+// number of -infs, infs, nans, negatives, zeros, and positives in the input
+// respectively.
+template <typename Tin, typename Tout>
+__global__ void FullHealthKernel(const Tin* __restrict__ data, int size,
+                                 Tout output[6]) {
+  const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+  const int32 total_thread_count = gridDim.x * blockDim.x;
+
+  int32 offset = thread_id;
+  Tout accum[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+
+  while (offset < size) {
+    if (isinf(data[offset])) {
+      if (data[offset] < static_cast<Tin>(0.f)) {
+        ++accum[0];
+      } else {
+        ++accum[1];
+      }
+    } else if (isnan(data[offset])) {
+      ++accum[2];
+    } else {
+      if (data[offset] < static_cast<Tin>(0.f)) {
+        ++accum[3];
+      } else if (data[offset] == static_cast<Tin>(0.f)) {
+        ++accum[4];
+      } else {
+        ++accum[5];
+      }
+    }
+    offset += total_thread_count;
+  }
+
+  atomicAdd(output, accum[0]);
+  atomicAdd(output + 1, accum[1]);
+  atomicAdd(output + 2, accum[2]);
+  atomicAdd(output + 3, accum[3]);
+  atomicAdd(output + 4, accum[4]);
+  atomicAdd(output + 5, accum[5]);
+}
+
 // A CUDA kernel that fills a length-3 vector according to whether any of the
 // input data contains negative infinity, positive infinity, or NaN. The first
 // element is filled with -infinity if any of the elements is -infinity.
@@ -150,6 +191,26 @@ template struct ConciseHealthLaunch<double, float>;
 template struct ConciseHealthLaunch<Eigen::half, double>;
 template struct ConciseHealthLaunch<float, double>;
 template struct ConciseHealthLaunch<double, double>;
+
+template <typename Tin, typename Tout>
+struct FullHealthLaunch {
+  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[6]) {
+    const int32 block_size = d.maxGpuThreadsPerBlock();
+    const int32 num_blocks =
+        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
+        block_size;
+
+    TF_CHECK_OK(GpuLaunchKernel(FullHealthKernel<Tin, Tout>, num_blocks,
+                                block_size, 0, d.stream(), data, size, output));
+  }
+};
+
+template struct FullHealthLaunch<Eigen::half, float>;
+template struct FullHealthLaunch<float, float>;
+template struct FullHealthLaunch<double, float>;
+template struct FullHealthLaunch<Eigen::half, double>;
+template struct FullHealthLaunch<float, double>;
+template struct FullHealthLaunch<double, double>;
 
 template <typename Tin, typename Tout>
 struct ReduceInfNanThreeSlotsLaunch {
