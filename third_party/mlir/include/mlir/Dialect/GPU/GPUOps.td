@@ -275,9 +275,6 @@ def GPU_LaunchOp : GPU_Op<"launch", [IsolatedFromAbove]>,
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
-    /// Get the kernel region.
-    Region &getBody();
-
     /// Get the SSA values corresponding to kernel block identifiers.
     KernelDim3 getBlockIds();
     /// Get the SSA values corresponding to kernel thread identifiers.

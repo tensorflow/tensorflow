@@ -197,29 +197,27 @@ void LaunchOp::build(Builder *builder, OperationState &result, Value *gridSizeX,
   kernelRegion->push_back(body);
 }
 
-Region &LaunchOp::getBody() { return getOperation()->getRegion(0); }
-
 KernelDim3 LaunchOp::getBlockIds() {
-  assert(!getBody().getBlocks().empty() && "FuncOp body must not be empty.");
-  auto args = getBody().getBlocks().front().getArguments();
+  assert(!body().getBlocks().empty() && "FuncOp body must not be empty.");
+  auto args = body().getBlocks().front().getArguments();
   return KernelDim3{args[0], args[1], args[2]};
 }
 
 KernelDim3 LaunchOp::getThreadIds() {
-  assert(!getBody().getBlocks().empty() && "FuncOp body must not be empty.");
-  auto args = getBody().getBlocks().front().getArguments();
+  assert(!body().getBlocks().empty() && "FuncOp body must not be empty.");
+  auto args = body().getBlocks().front().getArguments();
   return KernelDim3{args[3], args[4], args[5]};
 }
 
 KernelDim3 LaunchOp::getGridSize() {
-  assert(!getBody().getBlocks().empty() && "FuncOp body must not be empty.");
-  auto args = getBody().getBlocks().front().getArguments();
+  assert(!body().getBlocks().empty() && "FuncOp body must not be empty.");
+  auto args = body().getBlocks().front().getArguments();
   return KernelDim3{args[6], args[7], args[8]};
 }
 
 KernelDim3 LaunchOp::getBlockSize() {
-  assert(!getBody().getBlocks().empty() && "FuncOp body must not be empty.");
-  auto args = getBody().getBlocks().front().getArguments();
+  assert(!body().getBlocks().empty() && "FuncOp body must not be empty.");
+  auto args = body().getBlocks().front().getArguments();
   return KernelDim3{args[9], args[10], args[11]};
 }
 
@@ -240,7 +238,7 @@ KernelDim3 LaunchOp::getBlockSizeOperandValues() {
 }
 
 llvm::iterator_range<Block::args_iterator> LaunchOp::getKernelArguments() {
-  auto args = getBody().getBlocks().front().getArguments();
+  auto args = body().getBlocks().front().getArguments();
   return llvm::drop_begin(args, LaunchOp::kNumConfigRegionAttributes);
 }
 
@@ -248,8 +246,8 @@ LogicalResult verify(LaunchOp op) {
   // Kernel launch takes kNumConfigOperands leading operands for grid/block
   // sizes and transforms them into kNumConfigRegionAttributes region arguments
   // for block/thread identifiers and grid/block sizes.
-  if (!op.getBody().empty()) {
-    Block &entryBlock = op.getBody().front();
+  if (!op.body().empty()) {
+    Block &entryBlock = op.body().front();
     if (entryBlock.getNumArguments() !=
         LaunchOp::kNumConfigOperands + op.getNumOperands())
       return op.emitOpError("unexpected number of region arguments");
@@ -257,7 +255,7 @@ LogicalResult verify(LaunchOp op) {
 
   // Block terminators without successors are expected to exit the kernel region
   // and must be `gpu.launch`.
-  for (Block &block : op.getBody()) {
+  for (Block &block : op.body()) {
     if (block.empty())
       continue;
     if (block.back().getNumSuccessors() != 0)
@@ -304,13 +302,13 @@ void printLaunchOp(OpAsmPrinter &p, LaunchOp op) {
   operands = operands.drop_front(LaunchOp::kNumConfigOperands);
 
   // Print the data argument remapping.
-  if (!op.getBody().empty() && !operands.empty()) {
+  if (!op.body().empty() && !operands.empty()) {
     p << ' ' << op.getArgsKeyword() << '(';
     for (unsigned i = 0, e = operands.size(); i < e; ++i) {
       if (i != 0)
         p << ", ";
-      p << *op.getBody().front().getArgument(
-               LaunchOp::kNumConfigRegionAttributes + i)
+      p << *op.body().front().getArgument(LaunchOp::kNumConfigRegionAttributes +
+                                          i)
         << " = " << *operands[i];
     }
     p << ") ";
@@ -326,7 +324,7 @@ void printLaunchOp(OpAsmPrinter &p, LaunchOp op) {
     }
   }
 
-  p.printRegion(op.getBody(), /*printEntryBlockArgs=*/false);
+  p.printRegion(op.body(), /*printEntryBlockArgs=*/false);
   p.printOptionalAttrDict(op.getAttrs());
 }
 
@@ -438,7 +436,7 @@ ParseResult parseLaunchOp(OpAsmParser &parser, OperationState &result) {
 }
 
 void LaunchOp::eraseKernelArgument(unsigned index) {
-  Block &entryBlock = getBody().front();
+  Block &entryBlock = body().front();
   assert(index < entryBlock.getNumArguments() - kNumConfigRegionAttributes &&
          "kernel argument index overflow");
   entryBlock.eraseArgument(kNumConfigRegionAttributes + index);
@@ -453,7 +451,7 @@ class PropagateConstantBounds : public OpRewritePattern<LaunchOp> {
   PatternMatchResult matchAndRewrite(LaunchOp launchOp,
                                      PatternRewriter &rewriter) const override {
     auto origInsertionPoint = rewriter.saveInsertionPoint();
-    rewriter.setInsertionPointToStart(&launchOp.getBody().front());
+    rewriter.setInsertionPointToStart(&launchOp.body().front());
 
     // Traverse operands passed to kernel and check if some of them are known
     // constants.  If so, clone the constant operation inside the kernel region
