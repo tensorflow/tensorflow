@@ -82,16 +82,12 @@ static ParseResult parseContractionOp(OpAsmParser &parser,
   if (masksInfo.size() != 2)
     return parser.emitError(parser.getNameLoc(),
                             "expected zero or exactly 2 vector mask operands");
-  auto indexType = parser.getBuilder().getIndexType();
   auto lhsType = types[0].cast<VectorType>();
   auto rhsType = types[1].cast<VectorType>();
+  auto maskElementType = parser.getBuilder().getI1Type();
   SmallVector<Type, 2> maskTypes;
-  SmallVector<Type, 4> lhsMaskElementTypes(lhsType.getRank(), indexType);
-  maskTypes.push_back(
-      TupleType::get(lhsMaskElementTypes, parser.getBuilder().getContext()));
-  SmallVector<Type, 4> rhsMaskElementTypes(rhsType.getRank(), indexType);
-  maskTypes.push_back(
-      TupleType::get(rhsMaskElementTypes, parser.getBuilder().getContext()));
+  maskTypes.push_back(VectorType::get(lhsType.getShape(), maskElementType));
+  maskTypes.push_back(VectorType::get(rhsType.getShape(), maskElementType));
   if (parser.resolveOperands(masksInfo, maskTypes, loc, result.operands))
     return failure();
   return success();
@@ -231,15 +227,10 @@ static LogicalResult verify(ContractionOp op) {
   if ((lhsMaskType && !rhsMaskType) || (!lhsMaskType && rhsMaskType))
     return op.emitOpError("invalid number of vector masks specified");
   if (lhsMaskType && rhsMaskType) {
-    // Verify tuple element size is != rank.
-    if (lhsMaskType.getTypes().size() != lhsType.getShape().size() ||
-        rhsMaskType.getTypes().size() != rhsType.getShape().size())
-      return op.emitOpError("invalid number of vector mask elements");
-    // Verify all tuple elements are index type.
-    for (auto eltType : lhsMaskType.getTypes()) {
-      if (!eltType.isa<IndexType>())
-        return op.emitOpError("vector mask element must have index type");
-    }
+    // Verify mask rank == argument rank.
+    if (lhsMaskType.getShape().size() != lhsType.getShape().size() ||
+        rhsMaskType.getShape().size() != rhsType.getShape().size())
+      return op.emitOpError("invalid vector mask rank");
   }
   return success();
 }
@@ -1218,33 +1209,9 @@ void CreateMaskOp::getCanonicalizationPatterns(
   results.insert<CreateMaskFolder>(context);
 }
 
-//===----------------------------------------------------------------------===//
-// IndexTupleOp
-//===----------------------------------------------------------------------===//
-
-ParseResult parseIndexTupleOp(OpAsmParser &parser, OperationState &result) {
-  auto indexType = parser.getBuilder().getIndexType();
-  Type resultType;
-  SmallVector<OpAsmParser::OperandType, 4> operandInfo;
-  return failure(
-      parser.parseOperandList(operandInfo) ||
-      parser.parseOptionalAttrDict(result.attributes) ||
-      parser.parseColonType(resultType) ||
-      parser.resolveOperands(operandInfo, indexType, result.operands) ||
-      parser.addTypeToList(resultType, result.types));
-}
-
-static void print(OpAsmPrinter &p, IndexTupleOp &op) {
-  p << op.getOperationName() << ' ';
-  p.printOperands(op.operands());
-  p << " : " << op.getResult()->getType();
-}
-
-static LogicalResult verify(IndexTupleOp &op) {
-  for (auto operand : op.getOperands())
-    if (!operand->getType().isa<IndexType>())
-      return op.emitOpError("all operands must be of index type");
-  return success();
+void mlir::vector::populateVectorToVectorCanonicalizationPatterns(
+    OwningRewritePatternList &patterns, MLIRContext *context) {
+  patterns.insert<CreateMaskFolder, StridedSliceConstantMaskFolder>(context);
 }
 
 namespace mlir {
