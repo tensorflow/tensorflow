@@ -41,6 +41,7 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.engine import compile_utils
 from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_utils
@@ -273,6 +274,11 @@ class Model(network.Network, version_utils.VersionSelector):
     if isinstance(self.optimizer, trackable.Trackable):
       self._track_trackable(
           self.optimizer, name='optimizer', overwrite=True)
+
+    output_names = self.output_names if self._is_graph_network else None
+    self.compiled_loss = compile_utils.LossesContainer(
+        loss, loss_weights=loss_weights, output_names=output_names)
+
     self.loss = loss or {}
     self.loss_weights = loss_weights
     self.sample_weight_mode = sample_weight_mode

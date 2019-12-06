@@ -193,10 +193,7 @@ class CompileTest(keras_parameterized.TestCase):
   def test_compile_with_incorrect_loss_key(self):
     model = testing_utils.get_small_sequential_mlp(
         num_hidden=10, num_classes=2, input_dim=3)
-    with self.assertRaisesRegexp(
-        ValueError,
-        r'Unknown entries in loss dictionary: \[\'unknown_output\'\]. '
-        r'Only expected following keys: \[\'dense_1\'\]'):
+    with self.assertRaisesRegexp(ValueError, 'unknown_output'):
       model.compile(
           optimizer='adam',
           loss={'unknown_output': 'mse'},
@@ -220,10 +217,7 @@ class CompileTest(keras_parameterized.TestCase):
   def test_compile_with_incorrect_loss_weights_key(self):
     model = testing_utils.get_small_sequential_mlp(
         num_hidden=10, num_classes=2, input_dim=3)
-    with self.assertRaisesRegexp(
-        ValueError,
-        r'Unknown entries in loss_weights dictionary: \[\'unknown_output\'\]. '
-        r'Only expected following keys: \[\'dense_1\'\]'):
+    with self.assertRaisesRegexp(ValueError, 'unknown_output'):
       model.compile(
           optimizer='adam',
           loss='mse',

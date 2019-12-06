@@ -19,24 +19,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 from tensorflow.python.eager.backprop import GradientTape
-from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-
-
-def _eager_loss_fn(outputs, targets, loss_fn, output_name):
-  with backend.name_scope(output_name + '_loss'):
-    loss = loss_fn(targets, outputs)
-  return loss
 
 
 def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
@@ -106,101 +96,25 @@ def _model_loss(model,
      regularization losses and applies masking and sample weighting
      to the loss value.
   """
-  # TODO(psv): Dedup code here with graph mode prepare_total_loss() fn.
-  # Used to keep track of the total loss value (stateless).
-  # eg., total_loss = loss_weight_1 * output_1_loss_fn(...) +
-  #                   loss_weight_2 * output_2_loss_fn(...) +
-  #                   layer losses.
-  total_loss = 0
   kwargs = {}
   if model._expects_training_arg:
     kwargs['training'] = training
   if len(inputs) == 1 and not isinstance(inputs, dict):
     inputs = inputs[0]
 
-  # Allow mixed `NumPy` and `EagerTensor` input here.
-  if any(
-      isinstance(input_t, (np.ndarray, float, int))
-      for input_t in nest.flatten(inputs)):
-    inputs = nest.map_structure(ops.convert_to_tensor, inputs)
-
   outs = model(inputs, **kwargs)
-  outs = nest.flatten(outs)
-
-  if targets:
-    targets = training_utils.cast_if_floating_dtype_and_mismatch(targets, outs)
-  # TODO(sallymatson/psv): check if we should do same mismatch fix for weights
-  if sample_weights:
-    sample_weights = [
-        training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
-        if val is not None else None for val in sample_weights
-    ]
-
-  masks = [getattr(t, '_keras_mask', None) for t in outs]
-  targets = nest.flatten(targets)
-
-  # Used to keep track of individual output losses.
-  output_losses = []
 
   with backend.name_scope('loss'):
-    loss_fns = [
-        loss_fn for loss_fn in model.loss_functions if loss_fn is not None
-    ]
-    for i, loss_fn in enumerate(loss_fns):
-      weights = sample_weights[i] if sample_weights else None
-      mask = masks[i]
-      with backend.name_scope(model.output_names[i] + '_loss'):
-        if mask is not None:
-          mask = math_ops.cast(mask, outs[i].dtype)
-          # Update weights with mask.
-          if weights is None:
-            weights = mask
-          else:
-            # Update dimensions of weights to match with mask if possible.
-            weights = math_ops.cast(weights, outs[i].dtype)
-            mask, _, weights = (
-                tf_losses_utils.squeeze_or_expand_dimensions(
-                    mask, sample_weight=weights))
-            weights *= mask
+    total_loss, output_losses = model.compiled_loss(
+        targets, outs, sample_weight=sample_weights)
 
-        if hasattr(loss_fn, 'reduction'):
-          per_sample_losses = loss_fn.call(targets[i], outs[i])
-          weighted_losses = losses_utils.compute_weighted_loss(
-              per_sample_losses,
-              sample_weight=weights,
-              reduction=losses_utils.ReductionV2.NONE)
-          loss_reduction = loss_fn.reduction
-
-          # `AUTO` loss reduction defaults to `SUM_OVER_BATCH_SIZE` for all
-          # compile use cases.
-          if loss_reduction == losses_utils.ReductionV2.AUTO:
-            loss_reduction = losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE
-
-          # Compute the stateless loss value.
-          output_loss = losses_utils.reduce_weighted_loss(
-              weighted_losses, reduction=loss_reduction)
-        else:
-          # Compute the stateless loss value for a custom loss class.
-          # Here we assume that the class takes care of loss reduction
-          # because if this class returns a vector value we cannot
-          # differentiate between use case where a custom optimizer
-          # expects a vector loss value vs unreduced per-sample loss value.
-          output_loss = loss_fn(targets[i], outs[i], sample_weight=weights)
-          loss_reduction = losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE
-
-      # If the number of outputs is 1 then we don't append the loss metric
-      # associated with each model output. When there are multiple outputs
-      # associated with a model, each output's loss is calculated and returned
-      # as part of the loss_metrics.
-      if len(model.outputs) > 1:
-        # Keep track of the stateful output loss result.
-        output_losses.append(output_loss_metrics[i](output_loss))
-
-      # Scale output loss for distribution. For custom losses we assume
-      # reduction was mean.
-      if loss_reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
-        output_loss = losses_utils.scale_loss_for_distribution(output_loss)
-      total_loss += model._loss_weights_list[i] * output_loss
+    if len(output_losses) > 1:
+      stateful_output_losses = [
+          output_metric(output_loss) for output_loss, output_metric in zip(
+              output_losses, output_loss_metrics)
+      ]
+    else:
+      stateful_output_losses = []
 
     # Add regularization losses
     custom_losses = model.losses
@@ -208,7 +122,8 @@ def _model_loss(model,
       total_loss += losses_utils.scale_loss_for_distribution(
           math_ops.add_n(custom_losses))
 
-  return outs, total_loss, output_losses, masks
+  masks = [getattr(t, '_keras_mask', None) for t in nest.flatten(outs)]
+  return outs, total_loss, stateful_output_losses, masks
 
 
 def _process_single_batch(model,
