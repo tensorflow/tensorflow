@@ -87,10 +87,11 @@ class TracingCallbackTest(
 
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
+      ("CurtHealth", "CURT_HEALTH"),
       ("FullTensor", "FULL_TENSOR"),
   )
   def testPureEagerOpExecution(self, tensor_debug_mode):
-    """Test catching Infinity in eager op execution: float32."""
+    """Test dumping data from eager op execution: float32."""
     writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
 
@@ -137,6 +138,14 @@ class TracingCallbackTest(
           # Due to the NO_TENSOR tensor debug mode, tensor_protos ought to
           # be empty.
           self.assertFalse(execution.tensor_protos)
+        elif tensor_debug_mode == "CURT_HEALTH":
+          self.assertLen(execution.tensor_protos, 1)
+          if execution.op_type in ("AddV2", "Mul", "RealDiv"):
+            # 1st element: -1 is the unset tensor_id for eager op execution.
+            # 2nd element: 0 means there is no inf or nan.
+            self.assertAllClose(
+                tensor_util.MakeNdarray(execution.tensor_protos[0]),
+                [-1.0, 0.0])
         elif tensor_debug_mode == "FULL_TENSOR":
           # Under the FULL_TENSOR mode, the value of the tensor should be
           # available through `tensor_protos`.
@@ -195,6 +204,7 @@ class TracingCallbackTest(
 
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
+      ("CurtHealth", "CURT_HEALTH"),
       ("FullTensor", "FULL_TENSOR"),
   )
   @test_util.run_in_graph_and_eager_modes
@@ -229,6 +239,7 @@ class TracingCallbackTest(
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
     (context_ids, op_types, op_name_to_op_type,
      op_name_to_context_id) = self._readAndCheckGraphsFile(stack_frame_by_id)
+
     self.assertIn("AddV2", op_types)
     self.assertIn("Log", op_types)
     self.assertIn("Sin", op_types)
@@ -256,6 +267,15 @@ class TracingCallbackTest(
       for tensor_value in tensor_values:
         self.assertEqual(tensor_value.dtype, np.float32)
         self.assertEqual(tensor_value.shape, (0,))
+    elif tensor_debug_mode == "CURT_HEALTH":
+      for tensor_value in tensor_values:
+        self.assertLen(tensor_value, 2)
+        # 1st element: tensor_id, should be >= 0.
+        # TODO(cais): Assert on detailed value once Function-graph association
+        # is in place.
+        self.assertGreaterEqual(tensor_value[0], 0)
+        # 2nd element: 0 means there is no inf or nan.
+        self.assertEqual(tensor_value[1], 0)
     elif tensor_debug_mode == "FULL_TENSOR":
       self.assertAllClose(tensor_values[0], 5.0)  # 1st AddV2 op.
       self.assertAllClose(tensor_values[1], np.log(5.0))  # Log op.
@@ -554,6 +574,15 @@ class TracingCallbackTest(
         for tensor_value in tensor_values:
           self.assertEqual(tensor_value.dtype, np.float32)
           self.assertEqual(tensor_value.shape, (0,))
+      elif tensor_debug_mode == "CURT_TENSOR":
+        for tensor_value in tensor_values:
+          self.assertLen(tensor_value, 2)
+          # 1st element: tensor_id, should be >= 0.
+          # TODO(cais): Assert on detailed value once Function-graph association
+          # is in place.
+          self.assertGreaterEqual(tensor_value[0], 0)
+          # 2nd element: 0 means there is no inf or nan.
+          self.assertEqual(tensor_value[1], 0)
       elif tensor_debug_mode == "FULL_TENSOR":
         less_values = [
             tensor_values[i]
@@ -683,6 +712,7 @@ class TracingCallbackTest(
 
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
+      ("CurtHealth", "CURT_HEALTH"),
       ("FullTensor", "FULL_TENSOR"),
   )
   def testMultiThreadedExecutionWithSameSetting(self, tensor_debug_mode):
@@ -735,6 +765,15 @@ class TracingCallbackTest(
       for tensor_value in tensor_values:
         self.assertEqual(tensor_value.dtype, np.float32)
         self.assertEqual(tensor_value.shape, (0,))
+    elif tensor_debug_mode == "CURT_HEALTH":
+      for tensor_value in tensor_values:
+        self.assertLen(tensor_value, 2)
+        # 1st element: tensor_id, should be >= 0.
+        # TODO(cais): Assert on detailed value once Function-graph association
+        # is in place.
+        self.assertGreaterEqual(tensor_value[0], 0)
+        # 2nd element: 0 means there is no inf or nan.
+        self.assertEqual(tensor_value[1], 0)
     elif tensor_debug_mode == "FULL_TENSOR":
       mul_values = [
           tensor_values[i]
