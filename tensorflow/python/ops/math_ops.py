@@ -98,12 +98,11 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 # Aliases for some automatically-generated names.
-linspace = gen_math_ops.lin_space
 nextafter = gen_math_ops.next_after
 
 
-@tf_export("linspace_nd")
-def linspace_nd(start, stop, num, axis=0, name=None):
+@tf_export("linspace")
+def linspace_nd(start, stop, num, name=None, axis=0):
   r"""Generates evenly-spaced values in an interval along a given axis.
 
   Matches [np.linspace](https://docs.scipy.org/doc/numpy/reference/generated/numpy.linspace.html)'s behaviour.
@@ -111,21 +110,17 @@ def linspace_nd(start, stop, num, axis=0, name=None):
   If `num > 1`, the values in the sequence increase by `stop - start / num - 1`,
   so that the last one is exactly `stop`.
 
-  Very similar to [tf.linspace](./linspace.md), but can accept
-  multi dimensional tensors and do linspace for every element
-  along a given `axis`. When `num == 0`, `linspace` raises an
-  exception, while `linspace_nd` returns a tensor with `0`
-  elements along the given `axis`.
+  When `num == 0`, returns a tensor with `0` elements along the given `axis`.
 
   For example:
 
   ```
-  tf.linspace_nd(10.0, 12.0, 3, name="linspace") => [ 10.0  11.0  12.0]
+  tf.linspace(10.0, 12.0, 3, name="linspace") => [ 10.0  11.0  12.0]
   ```
 
   `Start` and `stop` can be tensors of arbitrary size:
 
-  >>> tf.linspace_nd([0., 5.], [10., 40.], 5, axis=0)
+  >>> tf.linspace([0., 5.], [10., 40.], 5, axis=0)
   <tf.Tensor: shape=(5, 2), dtype=float32, numpy=
   array([[ 0.  ,  5.  ],
          [ 2.5 , 13.75],
@@ -136,7 +131,7 @@ def linspace_nd(start, stop, num, axis=0, name=None):
   `Axis` is where the values will be generated (the dimension in the
   returned tensor which corresponds to the axis will be equal to `num`)
 
-  >>> tf.linspace_nd([0., 5.], [10., 40.], 5, axis=-1)
+  >>> tf.linspace([0., 5.], [10., 40.], 5, axis=-1)
   <tf.Tensor: shape=(2, 5), dtype=float32, numpy=
   array([[ 0.  ,  2.5 ,  5.  ,  7.5 , 10.  ],
          [ 5.  , 13.75, 22.5 , 31.25, 40.  ]], dtype=float32)>
@@ -206,6 +201,7 @@ def linspace_nd(start, stop, num, axis=0, name=None):
     size = array_ops.where_v2(mask, num_slice, shape)
     return array_ops.slice(concatenated, begin, size)
 
+linspace = linspace_nd
 
 arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
 arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
