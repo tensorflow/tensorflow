@@ -416,16 +416,16 @@ static LogicalResult verify(BroadcastOp op) {
   // Scalar to vector broadcast is always valid. A vector
   // to vector broadcast needs some additional checking.
   if (srcVectorType) {
-    const int64_t srcRank = srcVectorType.getRank();
-    const int64_t dstRank = dstVectorType.getRank();
+    int64_t srcRank = srcVectorType.getRank();
+    int64_t dstRank = dstVectorType.getRank();
     if (srcRank > dstRank)
       return op.emitOpError("source rank higher than destination rank");
     // Source has an exact match or singleton value for all trailing dimensions
     // (all leading dimensions are simply duplicated).
-    const int64_t lead = dstRank - srcRank;
-    for (int64_t i = 0; i < srcRank; i++) {
-      const int64_t srcDim = srcVectorType.getDimSize(i);
-      const int64_t dstDim = dstVectorType.getDimSize(lead + i);
+    int64_t lead = dstRank - srcRank;
+    for (int64_t r = 0; r < srcRank; ++r) {
+      int64_t srcDim = srcVectorType.getDimSize(r);
+      int64_t dstDim = dstVectorType.getDimSize(lead + r);
       if (srcDim != 1 && srcDim != dstDim)
         return op.emitOpError("dimension mismatch (")
                << srcDim << " vs. " << dstDim << ")";
