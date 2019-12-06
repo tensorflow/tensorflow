@@ -3093,8 +3093,6 @@ def _as_indexed_slices_list(inputs, optimize=True):
 def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
-  Converts `IndexedSlices` objects into dense tensors prior to adding.
-
   `tf.math.add_n` performs the same operation as `tf.math.accumulate_n`, but it
   waits for all of its inputs to be ready before beginning to sum.
   This buffering can result in higher memory consumption when inputs are ready
@@ -3108,19 +3106,21 @@ def add_n(inputs, name=None):
 
   For example:
 
-  ```python
-  a = tf.constant([[3, 5], [4, 8]])
-  b = tf.constant([[1, 6], [2, 9]])
-  tf.math.add_n([a, b, a])  # [[7, 16], [10, 25]]
-  ```
+  >>> a = tf.constant([[3, 5], [4, 8]])
+  >>> b = tf.constant([[1, 6], [2, 9]])
+  >>> tf.math.add_n([a, b, a])
+  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+  array([[ 7, 16],
+         [10, 25]], dtype=int32)>
 
   Args:
-    inputs: A list of `tf.Tensor` or `tf.IndexedSlices` objects, each with same
-      shape and type.
+    inputs: A list of `tf.Tensor` or `tf.IndexedSlices` objects, each with the
+      same shape and type. `tf.IndexedSlices` objects will be converted into
+      dense tensors prior to adding.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of same shape and type as the elements of `inputs`.
+    A `tf.Tensor` of the same shape and type as the elements of `inputs`.
 
   Raises:
     ValueError: If `inputs` don't all have same shape and dtype or the shape
