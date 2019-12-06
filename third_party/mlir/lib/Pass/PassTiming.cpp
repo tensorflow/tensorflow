@@ -323,7 +323,7 @@ void PassTiming::runAfterPass(Pass *pass, Operation *) {
     return;
   }
 
-  // Adapator passes aren't timed directly, so we don't need to stop their
+  // Adaptor passes aren't timed directly, so we don't need to stop their
   // timers.
   if (!isAdaptorPass(pass))
     timer->stop();

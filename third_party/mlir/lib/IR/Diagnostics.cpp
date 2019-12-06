@@ -689,7 +689,7 @@ SourceMgrDiagnosticVerifierHandler::SourceMgrDiagnosticVerifierHandler(
   for (unsigned i = 0, e = mgr.getNumBuffers(); i != e; ++i)
     (void)impl->computeExpectedDiags(mgr.getMemoryBuffer(i + 1));
 
-  // Register a handler to verfy the diagnostics.
+  // Register a handler to verify the diagnostics.
   setHandler([&](Diagnostic &diag) {
     // Process the main diagnostics.
     process(diag);

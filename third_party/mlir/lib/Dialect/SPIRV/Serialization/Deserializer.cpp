@@ -270,7 +270,6 @@ private:
   //    block and redirect all branches to the old header block to the old
   //    merge block (which contains the spv.selection/spv.loop op now).
 
-
   /// For OpPhi instructions, we use block arguments to represent them. OpPhi
   /// encodes a list of (value, predecessor) pairs. At the time of handling the
   /// block containing an OpPhi instruction, the predecessor block might not be
@@ -278,7 +277,7 @@ private:
   /// the block argument from the predecessors. We use the following approach:
   ///
   /// 1. For each OpPhi instruction, add a block argument to the current block
-  ///    in construction. Record the block argment in `valueMap` so its uses
+  ///    in construction. Record the block argument in `valueMap` so its uses
   ///    can be resolved. For the list of (value, predecessor) pairs, update
   ///    `blockPhiInfo` for bookkeeping.
   /// 2. After processing all blocks, loop over `blockPhiInfo` to fix up each

@@ -87,7 +87,7 @@ memory buffers at the module level, we chose to do it at the function level to
 provide some structuring for the lifetime of those buffers; this avoids the
 incentive to use the buffers for communicating between different kernels or
 launches of the same kernel, which should be done through function arguments
-intead; we chose not to use `alloca`-style approach that would require more
+instead; we chose not to use `alloca`-style approach that would require more
 complex lifetime analysis following the principles of MLIR that promote
 structure and representing analysis results in the IR.
 

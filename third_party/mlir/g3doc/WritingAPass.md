@@ -122,7 +122,7 @@ An analysis may provide additional hooks to control various behavior:
 
 Given a preserved analysis set, the analysis returns true if it should truly be
 invalidated. This allows for more fine-tuned invalidation in cases where an
-analysis wasn't explicitly marked preserved, but may be preserved(or
+analysis wasn't explicitly marked preserved, but may be preserved (or
 invalidated) based upon other properties such as analyses sets.
 
 ### Querying Analyses
