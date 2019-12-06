@@ -4811,6 +4811,18 @@ cuda_py_test(
     python_version = "PY3",
 )
 
+py_test(
+    name = "tensor_array_ops_test",
+    size = "small",
+    srcs = ["ops/tensor_array_ops_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+    ],
+)
+
 cuda_py_test(
     name = "special_math_ops_test",
     size = "medium",
