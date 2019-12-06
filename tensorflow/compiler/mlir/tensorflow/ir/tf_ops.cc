@@ -311,6 +311,49 @@ void AddV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// AllOp
+//===----------------------------------------------------------------------===//
+
+// Verifies an reduction op's `input` and reduction `dims`.
+static LogicalResult VerifyReductionInputAndDims(Value *input, Value *dims,
+                                                 Location loc) {
+  auto dims_type = dims->getType().dyn_cast<RankedTensorType>();
+  if (!dims_type) return success();
+  if (dims_type.getRank() > 1)
+    return emitError(loc, "dimensions can only be 0D or 1D tensor");
+
+  auto input_type = input->getType().dyn_cast<RankedTensorType>();
+  if (!input_type) return success();
+  int64_t rank = input_type.getRank();
+
+  DenseIntElementsAttr dims_attr;
+  if (!matchPattern(dims, m_Constant(&dims_attr))) return success();
+  for (const auto &dim_pair : llvm::enumerate(dims_attr)) {
+    int64_t cur_dim = dim_pair.value().getSExtValue();
+    if (cur_dim < -rank || cur_dim >= rank)
+      return emitError(loc)
+             << dim_pair.index() << "-th dimension should be in the range of [-"
+             << rank << ", " << rank << ")";
+  }
+
+  return success();
+}
+
+static LogicalResult Verify(AllOp op) {
+  return VerifyReductionInputAndDims(op.input(), op.reduction_indices(),
+                                     op.getLoc());
+}
+
+//===----------------------------------------------------------------------===//
+// AnyOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(AnyOp op) {
+  return VerifyReductionInputAndDims(op.input(), op.reduction_indices(),
+                                     op.getLoc());
+}
+
+//===----------------------------------------------------------------------===//
 // AssertOp
 //===----------------------------------------------------------------------===//
 

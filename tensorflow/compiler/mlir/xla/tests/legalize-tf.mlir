@@ -1631,6 +1631,66 @@ func @max_dynamic(%arg0: tensor<4x?xf16>) -> tensor<4x1xf16> {
   return %0 : tensor<4x1xf16>
 }
 
+// CHECK-LABEL: @all
+func @all(%input: tensor<4x8xi1>) -> tensor<4xi1> {
+  %dims = "tf.Const"() { value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: %[[INIT:.*]] = xla_hlo.constant dense<true> : tensor<i1>
+  // CHECK: "xla_hlo.reduce"(%{{.*}}, %[[INIT]]) ( {
+  // CHECK: ^{{.*}}(%[[ARGA:.*]]: tensor<i1>, %[[ARGB:.*]]: tensor<i1>):
+  // CHECK:  %[[AND:.*]] = xla_hlo.and %[[ARGA]], %[[ARGB]] : tensor<i1>
+  // CHECK:  "xla_hlo.return"(%[[AND]]) : (tensor<i1>) -> ()
+  // CHECK: }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<4x8xi1>, tensor<i1>) -> tensor<4xi1>
+  %0 = "tf.All"(%input, %dims) : (tensor<4x8xi1>, tensor<1xi32>) -> tensor<4xi1>
+  return %0 : tensor<4xi1>
+}
+
+// CHECK-LABEL: @all_keep_dim
+func @all_keep_dim(%input: tensor<4x8xi1>) -> tensor<4x1xi1> {
+  // CHECK: "xla_hlo.reshape"(%{{.*}}) : (tensor<4xi1>) -> tensor<4x1xi1>
+  %dims = "tf.Const"() { value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %0 = "tf.All"(%input, %dims) {keep_dims = true} : (tensor<4x8xi1>, tensor<1xi32>) -> tensor<4x1xi1>
+  return %0 : tensor<4x1xi1>
+}
+
+// CHECk-LABEL: @all_dynamic
+func @all_dynamic(%input: tensor<4x?xi1>) -> tensor<4x1xi1> {
+  %dims = "tf.Const"() { value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: %[[ARG:.*]] = "xla_hlo.convert"(%{{.*}}) : (tensor<4x?xi1>) -> tensor<4x?xi1>
+  // CHECK: "xla_hlo.reduce"(%[[ARG]]
+  %0 = "tf.All"(%input, %dims) {keep_dims = true} : (tensor<4x?xi1>, tensor<1xi32>) -> tensor<4x1xi1>
+  return %0 : tensor<4x1xi1>
+}
+
+// CHECK-LABEL: @any
+func @any(%input: tensor<4x8xi1>) -> tensor<4xi1> {
+  %dims = "tf.Const"() { value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: %[[INIT:.*]] = xla_hlo.constant dense<false> : tensor<i1>
+  // CHECK: "xla_hlo.reduce"(%{{.*}}, %[[INIT]]) ( {
+  // CHECK: ^{{.*}}(%[[ARGA:.*]]: tensor<i1>, %[[ARGB:.*]]: tensor<i1>):
+  // CHECK:  %[[AND:.*]] = xla_hlo.or %[[ARGA]], %[[ARGB]] : tensor<i1>
+  // CHECK:  "xla_hlo.return"(%[[AND]]) : (tensor<i1>) -> ()
+  // CHECK: }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<4x8xi1>, tensor<i1>) -> tensor<4xi1>
+  %0 = "tf.Any"(%input, %dims) : (tensor<4x8xi1>, tensor<1xi32>) -> tensor<4xi1>
+  return %0 : tensor<4xi1>
+}
+
+// CHECK-LABEL: @any_keep_dim
+func @any_keep_dim(%input: tensor<4x8xi1>) -> tensor<4x1xi1> {
+  // CHECK: "xla_hlo.reshape"(%{{.*}}) : (tensor<4xi1>) -> tensor<4x1xi1>
+  %dims = "tf.Const"() { value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %0 = "tf.Any"(%input, %dims) {keep_dims = true} : (tensor<4x8xi1>, tensor<1xi32>) -> tensor<4x1xi1>
+  return %0 : tensor<4x1xi1>
+}
+
+// CHECk-LABEL: @any_dynamic
+func @any_dynamic(%input: tensor<4x?xi1>) -> tensor<4x1xi1> {
+  %dims = "tf.Const"() { value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: %[[ARG:.*]] = "xla_hlo.convert"(%{{.*}}) : (tensor<4x?xi1>) -> tensor<4x?xi1>
+  // CHECK: "xla_hlo.reduce"(%[[ARG]]
+  %0 = "tf.Any"(%input, %dims) {keep_dims = true} : (tensor<4x?xi1>, tensor<1xi32>) -> tensor<4x1xi1>
+  return %0 : tensor<4x1xi1>
+}
+
 //===----------------------------------------------------------------------===//
 // Tile op legalizations.
 //===----------------------------------------------------------------------===//

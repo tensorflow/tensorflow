@@ -1753,3 +1753,45 @@ func @testSplitV2(%input: tensor<4x4xf32>) {
   %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
   return
 }
+
+// -----
+
+//===--------------------------------------------------------------------===//
+//  tf.All
+//===--------------------------------------------------------------------===//
+
+func @testAllDimWrongRank(%input: tensor<4x6xi1>, %dims: tensor<2x2xi32>) {
+  // expected-error @+1 {{dimensions can only be 0D or 1D tensor}}
+  %0 = "tf.All"(%input, %dims) : (tensor<4x6xi1>, tensor<2x2xi32>) -> (tensor<*xi1>)
+  return
+}
+
+// -----
+
+func @testAllDimOutOfRange(%input: tensor<4x6xi1>) {
+  %dims = "tf.Const"() {value = dense<[-1, 5]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  // expected-error @+1 {{1-th dimension should be in the range of [-2, 2)}}
+  %0 = "tf.All"(%input, %dims) : (tensor<4x6xi1>, tensor<2xi32>) -> (tensor<*xi1>)
+  return
+}
+
+// -----
+
+//===--------------------------------------------------------------------===//
+//  tf.Any
+//===--------------------------------------------------------------------===//
+
+func @testAnyDimWrongRank(%input: tensor<4x6xi1>, %dims: tensor<2x2xi32>) {
+  // expected-error @+1 {{dimensions can only be 0D or 1D tensor}}
+  %0 = "tf.Any"(%input, %dims) : (tensor<4x6xi1>, tensor<2x2xi32>) -> (tensor<*xi1>)
+  return
+}
+
+// -----
+
+func @testAnyDimOutOfRange(%input: tensor<4x6xi1>) {
+  %dims = "tf.Const"() {value = dense<[-1, 5]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  // expected-error @+1 {{1-th dimension should be in the range of [-2, 2)}}
+  %0 = "tf.Any"(%input, %dims) : (tensor<4x6xi1>, tensor<2xi32>) -> (tensor<*xi1>)
+  return
+}

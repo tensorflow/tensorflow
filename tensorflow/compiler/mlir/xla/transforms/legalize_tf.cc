@@ -1377,7 +1377,6 @@ class ConvertMeanOp
     : public GenericConvertReductionOp<ConvertMeanOp, TF::MeanOp, AddOp> {
  public:
   using GenericConvertReductionOp::GenericConvertReductionOp;
-
   static Value *GetInitialValue(Type reduce_element_type, Location loc,
                                 PatternRewriter &rewriter) {
     return GetScalarConstOfType(reduce_element_type, loc, 0, &rewriter);
@@ -1414,6 +1413,36 @@ class ConvertMaxOp
   static Value *GetInitialValue(Type reduce_element_type, Location loc,
                                 PatternRewriter &rewriter) {
     return GetMinValueForType(reduce_element_type, loc, &rewriter);
+  }
+};
+
+// Converts All op to HLO Reduce op.
+//
+//   %init = constant dense<...> : tensor<T>
+//   %max = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.and"]
+//               {dimensions = ...}
+class ConvertAllOp
+    : public GenericConvertReductionOp<ConvertAllOp, TF::AllOp, AndOp> {
+ public:
+  using GenericConvertReductionOp::GenericConvertReductionOp;
+  static Value *GetInitialValue(Type reduce_element_type, Location loc,
+                                PatternRewriter &rewriter) {
+    return GetScalarConstOfType(reduce_element_type, loc, 1, &rewriter);
+  }
+};
+
+// Converts Any op to HLO Reduce op.
+//
+//   %init = constant dense<...> : tensor<T>
+//   %max = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.or"]
+//               {dimensions = ...}
+class ConvertAnyOp
+    : public GenericConvertReductionOp<ConvertAnyOp, TF::AnyOp, OrOp> {
+ public:
+  using GenericConvertReductionOp::GenericConvertReductionOp;
+  static Value *GetInitialValue(Type reduce_element_type, Location loc,
+                                PatternRewriter &rewriter) {
+    return GetScalarConstOfType(reduce_element_type, loc, 0, &rewriter);
   }
 };
 
@@ -2137,9 +2166,9 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertTopKV2Op, ConvertMeanOp, ConvertSumOp,
-      ConvertMaxOp, ConvertTileOp, ConvertMaxPoolGradOp, ConvertOneHotOp,
-      ConvertConv2DBackpropInputOp, ConvertConv2DBackpropFilterOp>(
-      op->getContext());
+      ConvertMaxOp, ConvertAllOp, ConvertAnyOp, ConvertTileOp,
+      ConvertMaxPoolGradOp, ConvertOneHotOp, ConvertConv2DBackpropInputOp,
+      ConvertConv2DBackpropFilterOp>(op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();

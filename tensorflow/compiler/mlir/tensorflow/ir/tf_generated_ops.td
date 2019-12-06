@@ -143,6 +143,8 @@ retained with length 1.
   );
 
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_AnyOp : TF_Op<"Any", [NoSideEffect]> {
@@ -169,6 +171,8 @@ retained with length 1.
   );
 
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_ArgMaxOp : TF_Op<"ArgMax", [NoSideEffect]> {
