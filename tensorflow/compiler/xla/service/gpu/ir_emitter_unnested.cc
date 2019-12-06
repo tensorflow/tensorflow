@@ -1988,10 +1988,11 @@ static int GetNumberOfPartialResults(
   if (reduction_info.IsRowReduction()) {
     return 1;
   }
-  int64 num_thread = mapping_scheme.GetNumberOfThreadsForDimensionX();
-  int64 tile_size = mapping_scheme.GetTileSizeForDimensionX();
-  CHECK_EQ(tile_size % num_thread, 0);
-  return tile_size / num_thread;
+  int64 num_partial_results = mapping_scheme.DilatedX() ? 1 : 2;
+  CHECK_EQ(num_partial_results,
+           (mapping_scheme.GetTileSizeForDimensionX() /
+            mapping_scheme.GetNumberOfThreadsForDimensionX()));
+  return num_partial_results;
 }
 
 void IrEmitterUnnested::EmitPrologueForOneReduction(
