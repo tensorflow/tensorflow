@@ -254,13 +254,15 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
   corresponding element in the input.
 
   Given a tensor `x` of complex numbers, this operation returns a tensor of type
-  `float32` or `float64` that is the absolute value of each element in `x`. All
-  elements in `x` must be complex numbers of the form \\(a + bj\\). The
-  absolute value is computed as \\( \sqrt{a^2 + b^2}\\).  For example:
-  ```python
-  x = tf.constant([[-2.25 + 4.75j], [-3.25 + 5.75j]])
-  tf.abs(x)  # [5.25594902, 6.60492229]
-  ```
+  `float32` or `float64` that is the absolute value of each element in `x`. For
+  a complex number \\(a + bj\\), its absolute value is computed as \\(\sqrt{a^2
+  + b^2}\\).  For example:
+
+  >>> x = tf.constant([[-2.25 + 4.75j], [-3.25 + 5.75j]])
+  >>> tf.abs(x)
+  <tf.Tensor: shape=(2, 1), dtype=float64, numpy=
+  array([[5.25594901],
+         [6.60492241]])>
 
   Args:
     x: A `Tensor` or `SparseTensor` of type `float16`, `float32`, `float64`,
@@ -268,10 +270,9 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` the same size, type, and sparsity as `x` with
-      absolute values.
-    Note, for `complex64` or `complex128` input, the returned `Tensor` will be
-      of type `float32` or `float64`, respectively.
+    A `Tensor` or `SparseTensor` of the same size, type and sparsity as `x`,
+      with absolute values. Note, for `complex64` or `complex128` input, the
+      returned `Tensor` will be of type `float32` or `float64`, respectively.
   """
   with ops.name_scope(name, "Abs", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
