@@ -24,9 +24,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
+#if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_utils.h"
+#endif
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/trace_events.pb.h"
@@ -194,7 +197,9 @@ Status ProfilerSession::CollectData(RunMetadata* run_metadata) {
 
   if (active_) {
     // Allow another session to start.
+#if !defined(IS_MOBILE_PLATFORM)
     profiler::ReleaseProfilerLock();
+#endif
     active_ = false;
   }
 
@@ -215,7 +220,11 @@ Status ProfilerSession::SerializeToString(string* content) {
 }
 
 ProfilerSession::ProfilerSession(const profiler::ProfilerOptions& options)
+#if !defined(IS_MOBILE_PLATFORM)
     : active_(profiler::AcquireProfilerLock()),
+#else
+    : active_(false),
+#endif
       start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
   if (!active_) {
     status_ = tensorflow::Status(error::UNAVAILABLE,
@@ -225,7 +234,9 @@ ProfilerSession::ProfilerSession(const profiler::ProfilerOptions& options)
 
   LOG(INFO) << "Profiler session started.";
 
+#if !defined(IS_MOBILE_PLATFORM)
   CreateProfilers(options, &profilers_);
+#endif
   status_ = Status::OK();
 
   for (auto& profiler : profilers_) {
@@ -244,7 +255,9 @@ ProfilerSession::~ProfilerSession() {
 
   if (active_) {
     // Allow another session to start.
+#if !defined(IS_MOBILE_PLATFORM)
     profiler::ReleaseProfilerLock();
+#endif
   }
 }
 }  // namespace tensorflow

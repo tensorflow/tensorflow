@@ -21,6 +21,7 @@ cc_library(
     ] + select({
         "//tensorflow:android": [],
         "//conditions:default": [
+            "//tensorflow/core/platform",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
@@ -47,6 +48,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:traceme_recorder",
         "@com_google_absl//absl/strings",
     ],
@@ -58,6 +60,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:annotation_stack",
         "@com_google_absl//absl/strings",
     ],
@@ -75,8 +78,6 @@ filegroup(
     srcs = [
         "profiler_session.cc",
         "profiler_session.h",
-        "profiler_utils.cc",
-        "profiler_utils.h",
         "scoped_annotation.h",
         "traceme.h",
     ],

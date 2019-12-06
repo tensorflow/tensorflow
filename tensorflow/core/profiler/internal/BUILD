@@ -428,13 +428,7 @@ cc_library(
 filegroup(
     name = "mobile_srcs",
     srcs = [
-        "annotation_stack.cc",
-        "annotation_stack.h",
-        "profiler_factory.cc",
-        "profiler_factory.h",
         "profiler_interface.h",
-        "traceme_recorder.cc",
-        "traceme_recorder.h",
     ],
     visibility = ["//visibility:public"],
 )
