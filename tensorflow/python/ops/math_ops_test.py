@@ -443,6 +443,16 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     np_result = np.divide(nums, divs)
     self.assertAllClose(tf_result, np_result)
 
+  def testDivideType(self):
+    a = array_ops.constant([2], dtype=dtypes.int32)
+    # Since __future__.division is effect, we should always upgrade to float64
+    b = math_ops.divide(a, 1)
+    self.assertEqual(b.dtype, dtypes.float64)
+    self.assertEqual(2.0, self.evaluate(b))
+    c = math_ops.divide(a, 4)
+    self.assertEqual(c.dtype, dtypes.float64)
+    self.assertEqual(0.5, self.evaluate(c))
+
   def testComplexDiv(self):
     foo = array_ops.constant([1. + 3.j])
     _ = math_ops.divide(foo, 1.)
