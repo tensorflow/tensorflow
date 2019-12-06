@@ -590,8 +590,8 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
 
   if (!inputs_.empty()) {
     TFLITE_BENCHMARK_CHECK_EQ(inputs_.size(), interpreter_inputs.size())
-        << "Inputs mismatch: Model inputs #:" << interpreter_inputs.size()
-        << " expected: " << inputs_.size();
+        << "Inputs mismatch: Model inputs #:" << inputs_.size()
+        << " expected: " << interpreter_inputs.size();
   }
 
   // Check if the tensor names match, and log a warning if it doesn't.
