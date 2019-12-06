@@ -1280,6 +1280,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
