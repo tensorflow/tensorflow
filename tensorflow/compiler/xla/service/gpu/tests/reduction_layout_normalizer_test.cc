@@ -18,44 +18,41 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 namespace {
 
-class ReductionDegenerateDimRemoverTest : public GpuCodegenTest {
+class ReductionLayoutNormalizerTest : public GpuCodegenTest {
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    debug_options.add_xla_disable_hlo_passes("reduction-layout-normalizer");
     debug_options.add_xla_disable_hlo_passes("reduction-dimension-grouper");
+    debug_options.add_xla_disable_hlo_passes("layout-assignment");
     return debug_options;
   }
 };
 
-TEST_F(ReductionDegenerateDimRemoverTest, ReductionWithDegenerateDimensions) {
+TEST_F(ReductionLayoutNormalizerTest, LayoutCanonicalizerTest) {
   const char* hlo_text = R"(
-HloModule ReduceWithDegenerateDimensions
+HloModule ReduceWithLayoutChange
 
 add {
-  accum = f32[] parameter(0)
-  op = f32[] parameter(1)
-  ROOT out = f32[] add(accum, op)
+  x0 = f32[] parameter(0)
+  y0 = f32[] parameter(1)
+  ROOT add0 = f32[] add(x0, y0)
 }
 
 ENTRY main {
-  input = f32[1,3,1,4,1,5,1] parameter(0)
-  zero = f32[] constant(0)
-
-  ROOT out = f32[1,1,1,1] reduce(input, zero), dimensions={1,3,5}, to_apply=add
+  arg0 = f32[4,5,5,16,12,12,3,3]{2,3,5,4,0,7,6,1}  parameter(0)
+  constant0 = f32[] constant(0)
+  ROOT reduce0 = f32[4,5,16,12,12]{4,3,2,1,0} reduce(arg0, constant0),
+    dimensions={1,6,7}, to_apply=add
 }
 
 )";
@@ -63,7 +60,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHloWithShapes(hlo_text,
                               R"(
-// CHECK: f32[] reduce(f32[3,4,5]{2,1,0} {{.+}}, f32[] {{.+}}), dimensions={0,1,2}, to_apply=%add
+// CHECK: f32[4,12,12,16,5]{2,1,3,4,0} reduce(f32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0} {{.+}}, f32[] {{.+}}), dimensions={0,1,2}, to_apply=%add
       )");
 }
 

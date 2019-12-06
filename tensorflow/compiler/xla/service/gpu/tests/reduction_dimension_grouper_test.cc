@@ -18,32 +18,29 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 namespace {
 
-class ReductionDegenerateDimRemoverTest : public GpuCodegenTest {
+class ReductionDimensionGrouperTest : public GpuCodegenTest {
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.add_xla_disable_hlo_passes("reduction-layout-normalizer");
-    debug_options.add_xla_disable_hlo_passes("reduction-dimension-grouper");
+    debug_options.add_xla_disable_hlo_passes("layout-assignment");
     return debug_options;
   }
 };
 
-TEST_F(ReductionDegenerateDimRemoverTest, ReductionWithDegenerateDimensions) {
+TEST_F(ReductionDimensionGrouperTest, ReductionWithGrouping) {
   const char* hlo_text = R"(
-HloModule ReduceWithDegenerateDimensions
+HloModule ReductionWithGrouping
 
 add {
   accum = f32[] parameter(0)
@@ -52,18 +49,19 @@ add {
 }
 
 ENTRY main {
-  input = f32[1,3,1,4,1,5,1] parameter(0)
+  input = f32[100,10,32,3]{3,2,1,0} parameter(0)
   zero = f32[] constant(0)
 
-  ROOT out = f32[1,1,1,1] reduce(input, zero), dimensions={1,3,5}, to_apply=add
+  ROOT out = f32[100,10]{0,1} reduce(input, zero), dimensions={2,3}, to_apply=add
 }
+
 
 )";
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHloWithShapes(hlo_text,
                               R"(
-// CHECK: f32[] reduce(f32[3,4,5]{2,1,0} {{.+}}, f32[] {{.+}}), dimensions={0,1,2}, to_apply=%add
+// CHECK: f32[100,10]{0,1} reduce(f32[100,10,96]{2,1,0} {{.+}}, f32[] {{.+}}), dimensions={2}, to_apply=%add
       )");
 }
 
