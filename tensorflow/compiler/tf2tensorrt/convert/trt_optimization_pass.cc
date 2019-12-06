@@ -69,6 +69,7 @@ Status TRTOptimizationPass::Init(
   }
   if (params.count("trt_logger")) {
     trt_logger_name_ = params.at("trt_logger").s();
+  }
   if (params.count("allow_build_at_runtime")) {
     allow_build_at_runtime_ = params.at("allow_build_at_runtime").b();
   }
