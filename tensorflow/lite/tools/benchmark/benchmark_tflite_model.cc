@@ -573,12 +573,8 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   // Install profilers if necessary right after interpreter is created so that
   // any memory allocations inside the TFLite runtime could be recorded if the
   // installed profiler profile memory usage information.
-  if (params_.Get<bool>("enable_op_profiling")) {
-    profiling_listener_.reset(new ProfilingListener(
-        interpreter_.get(),
-        params_.Get<int32_t>("max_profiling_buffer_entries")));
-    AddListener(profiling_listener_.get());
-  }
+  profiling_listener_ = MayCreateProfilingListener();
+  if (profiling_listener_) AddListener(profiling_listener_.get());
 
   interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
@@ -769,6 +765,14 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
   auto resolver = new tflite::ops::builtin::BuiltinOpResolver();
   RegisterSelectedOps(resolver);
   return std::unique_ptr<tflite::OpResolver>(resolver);
+}
+
+std::unique_ptr<BenchmarkListener>
+BenchmarkTfLiteModel::MayCreateProfilingListener() const {
+  if (!params_.Get<bool>("enable_op_profiling")) return nullptr;
+  return std::unique_ptr<BenchmarkListener>(new ProfilingListener(
+      interpreter_.get(),
+      params_.Get<int32_t>("max_profiling_buffer_entries")));
 }
 
 TfLiteStatus BenchmarkTfLiteModel::RunImpl() { return interpreter_->Invoke(); }
