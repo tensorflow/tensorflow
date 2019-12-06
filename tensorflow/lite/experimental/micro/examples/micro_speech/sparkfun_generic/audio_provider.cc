@@ -205,54 +205,6 @@ void pdm_start_dma(tflite::ErrorReporter* error_reporter) {
   g_pdm_dma_error = false;
 }
 
-#if USE_MAYA
-extern "C" void power_down_sequence(void) {
-  am_hal_gpio_read_type_e eReadType;
-  eReadType = AM_HAL_GPIO_INPUT_READ;
-
-  // Reconfigure PDM Pins for low power
-  // Drive PDMCLK low so Mics go in standby mode of ~ 10 to 20uA each
-  am_hal_gpio_pinconfig(12, g_AM_HAL_GPIO_OUTPUT);
-  am_hal_gpio_state_write(12, AM_HAL_GPIO_OUTPUT_SET);
-
-  // Disable PDMDATA pin so no input buffer leakage current from floating pin
-  am_hal_gpio_pinconfig(11, g_AM_HAL_GPIO_DISABLE);
-
-  // Disable PDM
-  am_hal_pdm_disable(g_pdm_handle);
-  am_hal_pdm_power_control(g_pdm_handle, AM_HAL_PDM_POWER_OFF, false);
-  am_hal_interrupt_master_disable();
-
-  am_hal_gpio_interrupt_clear(AM_HAL_GPIO_BIT(AM_BSP_GPIO_BUTTON0));
-  am_hal_gpio_interrupt_disable(AM_HAL_GPIO_BIT(AM_BSP_GPIO_BUTTON0));
-  am_util_delay_ms(200);  // Debounce Delay
-  am_hal_gpio_interrupt_clear(AM_HAL_GPIO_BIT(AM_BSP_GPIO_BUTTON0));
-  am_hal_gpio_interrupt_enable(AM_HAL_GPIO_BIT(AM_BSP_GPIO_BUTTON0));
-
-  am_hal_sysctrl_sleep(AM_HAL_SYSCTRL_SLEEP_DEEP);
-  // Apollo3 will be < 3uA in deep sleep
-
-  am_hal_reset_control(AM_HAL_RESET_CONTROL_SWPOR, 0);
-  // Use Reset to perform clean power-on from sleep
-}
-
-//*****************************************************************************
-//
-// GPIO ISR
-//
-//*****************************************************************************
-extern "C" void am_gpio_isr(void) {
-  uint64_t ui64Status;
-  // Read and clear the GPIO interrupt status then service the interrupts.
-  am_hal_gpio_interrupt_status_get(false, &ui64Status);
-  am_hal_gpio_interrupt_clear(ui64Status);
-  am_hal_gpio_interrupt_service(ui64Status);
-}
-
-extern "C" void power_button_handler(void) { g_PowerOff = 1; }
-
-#endif  // USE_MAYA
-
 // Interrupt handler for the PDM.
 extern "C" void am_pdm0_isr(void) {
   uint32_t ui32IntMask;
