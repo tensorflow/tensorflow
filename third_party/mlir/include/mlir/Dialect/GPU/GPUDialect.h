@@ -61,6 +61,10 @@ public:
   /// 'gpu.kernel' attribute.
   static bool isKernel(Operation *op);
 
+  /// Returns the numeric value used to identify the workgroup memory address
+  /// space.
+  static int getWorkgroupAddressSpace() { return 3; }
+
   LogicalResult verifyOperationAttribute(Operation *op,
                                          NamedAttribute attr) override;
 };
@@ -249,6 +253,12 @@ public:
     return {begin, getBody().front().args_end()};
   }
 
+  /// Returns the name of the attribute containing the number of buffers located
+  /// in the workgroup memory.
+  static StringRef getNumWorkgroupAttributionsAttrName() {
+    return "workgroup_attibutions";
+  }
+
 private:
   // FunctionLike trait needs access to the functions below.
   friend class OpTrait::FunctionLike<GPUFuncOp>;
@@ -256,12 +266,6 @@ private:
   /// Hooks for the input/output type enumeration in FunctionLike .
   unsigned getNumFuncArguments() { return getType().getNumInputs(); }
   unsigned getNumFuncResults() { return getType().getNumResults(); }
-
-  /// Returns the name of the attribute containing the number of buffers located
-  /// in the workgroup memory.
-  static StringRef getNumWorkgroupAttributionsAttrName() {
-    return "workgroup_attibutions";
-  }
 
   /// Returns the keywords used in the custom syntax for this Op.
   static StringRef getWorkgroupKeyword() { return "workgroup"; }

@@ -700,6 +700,7 @@ cc_library(
         ":NVVMDialect",
         ":Pass",
         ":Transforms",
+        "@llvm//:support",
     ],
     alwayslink = 1,
 )

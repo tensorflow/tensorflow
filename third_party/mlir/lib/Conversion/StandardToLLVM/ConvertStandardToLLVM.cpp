@@ -304,6 +304,36 @@ MemRefDescriptor MemRefDescriptor::undef(OpBuilder &builder, Location loc,
   return MemRefDescriptor(descriptor);
 }
 
+/// Builds IR creating a MemRef descriptor that represents `type` and
+/// populates it with static shape and stride information extracted from the
+/// type.
+MemRefDescriptor
+MemRefDescriptor::fromStaticShape(OpBuilder &builder, Location loc,
+                                  LLVMTypeConverter &typeConverter,
+                                  MemRefType type, Value *memory) {
+  assert(type.hasStaticShape() && "unexpected dynamic shape");
+  assert(type.getAffineMaps().empty() && "unexpected layout map");
+
+  auto convertedType = typeConverter.convertType(type);
+  assert(convertedType && "unexpected failure in memref type conversion");
+
+  auto descr = MemRefDescriptor::undef(builder, loc, convertedType);
+  descr.setAllocatedPtr(builder, loc, memory);
+  descr.setAlignedPtr(builder, loc, memory);
+  descr.setConstantOffset(builder, loc, 0);
+
+  // Fill in sizes and strides, in reverse order to simplify stride
+  // calculation.
+  uint64_t runningStride = 1;
+  for (unsigned i = type.getRank(); i > 0; --i) {
+    unsigned dim = i - 1;
+    descr.setConstantSize(builder, loc, dim, type.getDimSize(dim));
+    descr.setConstantStride(builder, loc, dim, runningStride);
+    runningStride *= type.getDimSize(dim);
+  }
+  return descr;
+}
+
 /// Builds IR extracting the allocated pointer from the descriptor.
 Value *MemRefDescriptor::allocatedPtr(OpBuilder &builder, Location loc) {
   return extractPtr(builder, loc, kAllocatedPtrPosInMemRefDescriptor);
@@ -326,6 +356,14 @@ void MemRefDescriptor::setAlignedPtr(OpBuilder &builder, Location loc,
   setPtr(builder, loc, kAlignedPtrPosInMemRefDescriptor, ptr);
 }
 
+// Creates a constant Op producing a value of `resultType` from an index-typed
+// integer attribute.
+static Value *createIndexAttrConstant(OpBuilder &builder, Location loc,
+                                      Type resultType, int64_t value) {
+  return builder.create<LLVM::ConstantOp>(
+      loc, resultType, builder.getIntegerAttr(builder.getIndexType(), value));
+}
+
 /// Builds IR extracting the offset from the descriptor.
 Value *MemRefDescriptor::offset(OpBuilder &builder, Location loc) {
   return builder.create<LLVM::ExtractValueOp>(
@@ -339,6 +377,13 @@ void MemRefDescriptor::setOffset(OpBuilder &builder, Location loc,
   value = builder.create<LLVM::InsertValueOp>(
       loc, structType, value, offset,
       builder.getI64ArrayAttr(kOffsetPosInMemRefDescriptor));
+}
+
+/// Builds IR inserting the offset into the descriptor.
+void MemRefDescriptor::setConstantOffset(OpBuilder &builder, Location loc,
+                                         uint64_t offset) {
+  setOffset(builder, loc,
+            createIndexAttrConstant(builder, loc, indexType, offset));
 }
 
 /// Builds IR extracting the pos-th size from the descriptor.
@@ -356,6 +401,13 @@ void MemRefDescriptor::setSize(OpBuilder &builder, Location loc, unsigned pos,
       builder.getI64ArrayAttr({kSizePosInMemRefDescriptor, pos}));
 }
 
+/// Builds IR inserting the pos-th size into the descriptor
+void MemRefDescriptor::setConstantSize(OpBuilder &builder, Location loc,
+                                       unsigned pos, uint64_t size) {
+  setSize(builder, loc, pos,
+          createIndexAttrConstant(builder, loc, indexType, size));
+}
+
 /// Builds IR extracting the pos-th size from the descriptor.
 Value *MemRefDescriptor::stride(OpBuilder &builder, Location loc,
                                 unsigned pos) {
@@ -370,6 +422,13 @@ void MemRefDescriptor::setStride(OpBuilder &builder, Location loc, unsigned pos,
   value = builder.create<LLVM::InsertValueOp>(
       loc, structType, value, stride,
       builder.getI64ArrayAttr({kStridePosInMemRefDescriptor, pos}));
+}
+
+/// Builds IR inserting the pos-th stride into the descriptor
+void MemRefDescriptor::setConstantStride(OpBuilder &builder, Location loc,
+                                         unsigned pos, uint64_t stride) {
+  setStride(builder, loc, pos,
+            createIndexAttrConstant(builder, loc, indexType, stride));
 }
 
 LLVM::LLVMType MemRefDescriptor::getElementType() {
@@ -448,8 +507,7 @@ public:
   // Create an LLVM IR pseudo-operation defining the given index constant.
   Value *createIndexConstant(ConversionPatternRewriter &builder, Location loc,
                              uint64_t value) const {
-    auto attr = builder.getIntegerAttr(builder.getIndexType(), value);
-    return builder.create<LLVM::ConstantOp>(loc, getIndexType(), attr);
+    return createIndexAttrConstant(builder, loc, getIndexType(), value);
   }
 
 protected:
