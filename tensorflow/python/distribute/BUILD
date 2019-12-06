@@ -187,6 +187,7 @@ py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
