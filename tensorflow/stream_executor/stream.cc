@@ -5238,22 +5238,21 @@ Stream &Stream::ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
                             DeviceMemory<float> *costs_data,
                             const dnn::RnnStateTensorDescriptor &grads_desc,
                             DeviceMemory<float> *grads_data,
-                            const dnn::CtcLossDescriptor &ctc_loss_desc,
                             ScratchAllocator *workspace_allocator) {
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       DeviceMemory<uint8> scratch_memory;
       auto status =
           dnn->PrepareForCtcLoss(
-              this, ctc_loss_desc, probs_desc, probs_data, grads_desc,
-              labels_data, labels_lengths_data, input_lengths_data,
-              workspace_allocator, &scratch_memory)
+              this, probs_desc, probs_data, grads_desc, labels_data,
+              labels_lengths_data, input_lengths_data, workspace_allocator,
+              &scratch_memory)
           .ok();
       if (status) {
         status = dnn->DoCtcLoss(
             this, probs_desc, probs_data, labels_data, labels_lengths_data,
             input_lengths_data, costs_data, grads_desc, grads_data,
-            ctc_loss_desc, &scratch_memory);
+            &scratch_memory);
       }
       if (!status) {
         SetError();

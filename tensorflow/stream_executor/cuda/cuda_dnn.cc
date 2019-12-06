@@ -1210,8 +1210,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
 #if CUDNN_VERSION >= 7603
 class CudnnCtcLossDescriptor {
  public:
-  CudnnCtcLossDescriptor(const dnn::CtcLossDescriptor& ctc_loss_desc,
-                         cudnnDataType_t data_type)
+  CudnnCtcLossDescriptor(cudnnDataType_t data_type)
       : handle_(CreateCtcLossDescriptor()) {
     CHECK_CUDNN_OK(cudnnSetCTCLossDescriptorEx(
         /*ctcLossDesc=*/handle_.get(),
@@ -1231,8 +1230,7 @@ class CudnnCtcLossDescriptor {
 // dummy class
 class CudnnCtcLossDescriptor {
  public:
-  CudnnCtcLossDescriptor(const dnn::CtcLossDescriptor& ctc_loss_desc,
-                         cudnnDataType_t data_type) {}
+  CudnnCtcLossDescriptor(cudnnDataType_t data_type) {}
 };
 #endif
 
@@ -3917,7 +3915,6 @@ bool CudnnSupport::DoFusedConvolve(
 
 port::Status CudnnSupport::DoPrepareForCtcLoss(
       Stream* stream, dnn::DataType element_type,
-      const dnn::CtcLossDescriptor &ctc_loss_desc,
       const dnn::RnnStateTensorDescriptor &probs_desc,
       const dnn::RnnStateTensorDescriptor &grads_desc,
       absl::Span<const int> labels_data,
@@ -3926,8 +3923,7 @@ port::Status CudnnSupport::DoPrepareForCtcLoss(
       ScratchAllocator* scratch_allocator,
       DeviceMemory<uint8>* scratch_memory) {
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  CudnnCtcLossDescriptor cudnn_ctc_loss_desc(ctc_loss_desc,
-                                             ToCudnnDataType(element_type));
+  CudnnCtcLossDescriptor cudnn_ctc_loss_desc(ToCudnnDataType(element_type));
   const CudnnRnnStateTensorDescriptor& cudnn_probs_desc =
       static_cast<const CudnnRnnStateTensorDescriptor&>(probs_desc);
   const CudnnRnnStateTensorDescriptor& cudnn_grads_desc =
@@ -3968,13 +3964,13 @@ port::Status CudnnSupport::DoCtcLoss(
     Stream* stream, dnn::DataType element_type,
     const dnn::RnnStateTensorDescriptor &probs_desc,
     const DeviceMemoryBase probs_data,
+
     absl::Span<const int> labels_data,
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data,
     DeviceMemoryBase costs_data,
     const dnn::RnnStateTensorDescriptor &grads_desc,
     DeviceMemoryBase grads_data,
-    const dnn::CtcLossDescriptor &ctc_loss_desc,
     DeviceMemory<uint8> scratch_memory) {
   // Current cuDNN CTC Loss only supports the float datatype
   if (CUDNN_VERSION < 7603 || element_type != dnn::DataType::kFloat) {
@@ -3982,8 +3978,7 @@ port::Status CudnnSupport::DoCtcLoss(
                         "CudnnCtcLossDescriptor is supported only when the "
                         "CUDNN_VERSION >= 7.6.3 and DataType is float");
   }
-  CudnnCtcLossDescriptor cudnn_ctc_loss_desc(ctc_loss_desc,
-                                             ToCudnnDataType(element_type));
+  CudnnCtcLossDescriptor cudnn_ctc_loss_desc(ToCudnnDataType(element_type));
   const CudnnRnnStateTensorDescriptor& cudnn_probs_desc =
       static_cast<const CudnnRnnStateTensorDescriptor&>(probs_desc);
   const CudnnRnnStateTensorDescriptor& cudnn_grads_desc =

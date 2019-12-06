@@ -1923,7 +1923,6 @@ class Stream {
       DeviceMemory<float> *costs_data,
       const dnn::RnnStateTensorDescriptor &grads_desc,
       DeviceMemory<float> *grads_data,
-      const dnn::CtcLossDescriptor &ctc_loss_desc,
       ScratchAllocator *workspace_allocator);
 
   // Enqueue onto the stream a operation that transforms a tensor.

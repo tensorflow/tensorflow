@@ -225,27 +225,27 @@ REGISTER_CPU(double);
 class CTCLossOpGPU : public OpKernel {
  public:
   explicit CTCLossOpGPU(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    bool preprocess_collapse_repeated_;
-    bool ctc_merge_repeated_;
-    bool ignore_longer_outputs_than_inputs_;
+    bool preprocess_collapse_repeated;
+    bool ctc_merge_repeated;
+    bool ignore_longer_outputs_than_inputs;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("preprocess_collapse_repeated",
-                                     &preprocess_collapse_repeated_));
+                                     &preprocess_collapse_repeated));
     OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("ctc_merge_repeated", &ctc_merge_repeated_));
+                   ctx->GetAttr("ctc_merge_repeated", &ctc_merge_repeated));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("ignore_longer_outputs_than_inputs",
-                                     &ignore_longer_outputs_than_inputs_));
+                                     &ignore_longer_outputs_than_inputs));
 
-    OP_REQUIRES(ctx, !preprocess_collapse_repeated_,
+    OP_REQUIRES(ctx, !preprocess_collapse_repeated,
                 errors::InvalidArgument("GPU CTCLossOp requires "
                                         "preprocess_collapse_repeated to be "
                                         "false"));
-    OP_REQUIRES(ctx, ctc_merge_repeated_,
+    OP_REQUIRES(ctx, ctc_merge_repeated,
                 errors::InvalidArgument("GPU CTCLossOp requires "
-                                        "ctc_merge_repeated_ to be "
+                                        "ctc_merge_repeated to be "
                                         "true"));
-    OP_REQUIRES(ctx, !ignore_longer_outputs_than_inputs_,
+    OP_REQUIRES(ctx, !ignore_longer_outputs_than_inputs,
                 errors::InvalidArgument("GPU CTCLossOp requires "
-                                        "ignore_longer_outputs_than_inputs_ to"
+                                        "ignore_longer_outputs_than_inputs to"
                                         "be false"));
   }
 
@@ -345,13 +345,12 @@ class CTCLossOpGPU : public OpKernel {
     DnnScratchAllocator workspace_allocator(1LL << 32, ctx);
 
     Stream* stream = ctx->op_device_context()->stream();
-    se::dnn::CtcLossDescriptor ctc_loss_desc;
     bool cudnn_launch_status =
         stream
             ->ThenCtcLoss(
                 *probs_desc, probs_data, labels_data, labels_lengths_data,
                 input_lengths_data, &costs_data, *grads_desc, &grads_data,
-                ctc_loss_desc, &workspace_allocator)
+                &workspace_allocator)
             .ok();
 
     if (!cudnn_launch_status) {

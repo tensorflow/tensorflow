@@ -573,7 +573,6 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemoryBase costs_data,
       const dnn::RnnStateTensorDescriptor &grads_desc,
       DeviceMemoryBase grads_data,
-      const dnn::CtcLossDescriptor &ctc_loss_desc,
       DeviceMemory<uint8> scratch_memory) override;
 
   bool DoTransformTensor(Stream* stream, const dnn::BatchDescriptor& input_desc,
@@ -714,7 +713,6 @@ class CudnnSupport : public dnn::DnnSupport {
 
   port::Status DoPrepareForCtcLoss(
       Stream* stream, dnn::DataType element_type,
-      const dnn::CtcLossDescriptor &ctc_loss_desc,
       const dnn::RnnStateTensorDescriptor &probs_desc,
       const dnn::RnnStateTensorDescriptor &grads_desc,
       absl::Span<const int> labels_data,

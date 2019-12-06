@@ -2393,7 +2393,6 @@ class DnnSupport {
   template <typename ElementType>
   port::Status PrepareForCtcLoss(
       Stream* stream,
-      const CtcLossDescriptor &ctc_loss_desc,
       const RnnStateTensorDescriptor &probs_desc,
       DeviceMemory<ElementType> probs_data,
       const RnnStateTensorDescriptor &grads_desc,
@@ -2403,8 +2402,8 @@ class DnnSupport {
       ScratchAllocator *workspace_allocator,
       DeviceMemory<uint8>* scratch_memory) {
     return DoPrepareForCtcLoss(
-        stream, ToDataType<ElementType>::value, ctc_loss_desc, probs_desc,
-        grads_desc, labels_data, labels_lengths_data, input_lengths_data,
+        stream, ToDataType<ElementType>::value, probs_desc, grads_desc,
+        labels_data, labels_lengths_data, input_lengths_data,
         workspace_allocator, scratch_memory);
   }
 
@@ -2439,7 +2438,6 @@ class DnnSupport {
       DeviceMemoryBase costs_data,
       const RnnStateTensorDescriptor &grads_desc,
       DeviceMemoryBase grads_data,
-      const CtcLossDescriptor &ctc_loss_desc,
       DeviceMemory<uint8> scratch_memory) = 0;
 
   template<typename ElementType>
@@ -2452,13 +2450,12 @@ class DnnSupport {
                  DeviceMemory<ElementType> *costs_data,
                  const dnn::RnnStateTensorDescriptor &grads_desc,
                  DeviceMemory<ElementType> *grads_data,
-                 const dnn::CtcLossDescriptor &ctc_loss_desc,
                  DeviceMemory<uint8>* scratch_memory) {
     return IsStatusOk(
         DoCtcLoss(stream, ToDataType<ElementType>::value, probs_desc,
                   probs_data, labels_data, labels_lengths_data,
                   input_lengths_data, *costs_data, grads_desc, *grads_data,
-                  ctc_loss_desc, *scratch_memory),
+                  *scratch_memory),
         false);
   }
 
@@ -2719,7 +2716,6 @@ class DnnSupport {
 
   virtual port::Status DoPrepareForCtcLoss(
       Stream* stream, DataType element_type,
-      const CtcLossDescriptor &ctc_loss_desc,
       const RnnStateTensorDescriptor &probs_desc,
       const RnnStateTensorDescriptor &grads_desc,
       absl::Span<const int> labels_data,
