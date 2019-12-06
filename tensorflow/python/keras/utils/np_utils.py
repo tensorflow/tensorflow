@@ -37,7 +37,8 @@ def to_categorical(y, num_classes=None, dtype='float32'):
       A binary matrix representation of the input. The classes axis is placed
       last.
 
-  Usage Example:
+  Usage example:
+
   >>> y = [0, 1, 2, 3, 3, 1, 0]
   >>> tf.keras.utils.to_categorical(y, 4) 
   array([[1., 0., 0., 0.],
