@@ -29,6 +29,7 @@ from tensorflow.python.debug.lib import dumping_callback_test_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -222,7 +223,8 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
           next(graph_trace_iter)
 
   @test_util.run_in_graph_and_eager_modes
-  def testDebugNumericSummaryV2OpReduceInfNanTwoSlots(self):
+  def testDebugNumericSummaryV2OpReduceInfNanThreeSlots(self):
+
     def debug_summary(x):
       return self.evaluate(gen_debug_ops.debug_numeric_summary_v2(
           x, tensor_debug_mode=(
@@ -264,6 +266,128 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
     x[9700] = np.nan
     self.assertAllEqual(
         debug_summary(constant_op.constant(x)), [0.0, 0.0, np.nan])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDebugNumericSummaryV2OpLargeTensorIDError(self):
+    modes = [
+        debug_event_pb2.TensorDebugMode.CURT_HEALTH,
+    ]
+    # Maximum allowed tensor_id
+    tensor_id = np.power(2, 53)
+    for mode in modes:
+      self.evaluate(
+          gen_debug_ops.debug_numeric_summary_v2(
+              constant_op.constant(42.0),
+              tensor_debug_mode=mode,
+              tensor_id=tensor_id,
+              output_dtype=dtypes.float64))
+    # Incrementing by one should error
+    tensor_id += 1
+    for mode in modes:
+      with self.assertRaises(errors.InvalidArgumentError):
+        self.evaluate(
+            gen_debug_ops.debug_numeric_summary_v2(
+                constant_op.constant(42.0),
+                tensor_debug_mode=mode,
+                tensor_id=tensor_id,
+                output_dtype=dtypes.float64))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDebugNumericSummaryV2OpCurtHealthValuesSmall(self):
+
+    def debug_summary(x):
+      return self.evaluate(
+          gen_debug_ops.debug_numeric_summary_v2(
+              x,
+              tensor_debug_mode=(debug_event_pb2.TensorDebugMode.CURT_HEALTH),
+              tensor_id=x._id,
+              output_dtype=dtypes.float64)), x._id
+
+    tensor, tensor_id = debug_summary(constant_op.constant([]))
+    self.assertAllEqual(tensor, [tensor_id, 0.0])
+
+    tensor, tensor_id = debug_summary(constant_op.constant(42.0))
+    self.assertAllEqual(tensor, [tensor_id, 0.0])
+
+    tensor, tensor_id = debug_summary(constant_op.constant([3.0, 4.0]))
+    self.assertAllEqual(tensor, [tensor_id, 0.0])
+
+    tensor, tensor_id = debug_summary(
+        constant_op.constant(np.array([3.0, -np.inf])))
+    self.assertAllEqual(tensor, [tensor_id, 1.0])
+
+    tensor, tensor_id = debug_summary(
+        constant_op.constant(np.array([[0, 0], [np.nan, 0]])))
+    self.assertAllEqual(tensor, [tensor_id, 1.0])
+
+    tensor, tensor_id = debug_summary(
+        constant_op.constant(np.array([[0, 0], [np.nan, np.inf]])))
+    self.assertAllEqual(tensor, [tensor_id, 1.0])
+
+    tensor, tensor_id = debug_summary(
+        constant_op.constant(np.array([[0, np.inf], [np.nan, -np.inf]])))
+    self.assertAllEqual(tensor, [tensor_id, 1.0])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDebugNumericSummaryV2OpCurtHealthValuesLarge(self):
+
+    def debug_summary(x):
+      return self.evaluate(
+          gen_debug_ops.debug_numeric_summary_v2(
+              x,
+              tensor_debug_mode=(debug_event_pb2.TensorDebugMode.CURT_HEALTH),
+              tensor_id=x._id,
+              output_dtype=dtypes.float64)), x._id
+
+    x = np.zeros([100, 100], dtype=np.float16)
+    x[32, 47] = np.nan
+    tensor, tensor_id = debug_summary(constant_op.constant(x))
+    self.assertAllEqual(tensor, [tensor_id, 1.0])
+    x = np.zeros([97, 97], dtype=np.float32)
+    x[50, 83] = -np.inf
+    tensor, tensor_id = debug_summary(constant_op.constant(x))
+    self.assertAllEqual(tensor, [tensor_id, 1.0])
+    x[1, 41] = np.nan
+    tensor, tensor_id = debug_summary(constant_op.constant(x))
+    self.assertAllEqual(tensor, [tensor_id, 1.0])
+    x = np.zeros([9701], dtype=np.float64)
+    x[9700] = np.nan
+    tensor, tensor_id = debug_summary(constant_op.constant(x))
+    self.assertAllEqual(tensor, [tensor_id, 1.0])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDebugNumericSummaryV2OpCurtHealthConsistency(self):
+
+    def debug_summary(x):
+      return self.evaluate(
+          gen_debug_ops.debug_numeric_summary_v2(
+              x,
+              tensor_debug_mode=(debug_event_pb2.TensorDebugMode.CURT_HEALTH),
+              tensor_id=x._id,
+              output_dtype=dtypes.float64)), x._id
+
+    x = np.zeros([100, 100], dtype=np.float16)
+    x[43, 99] = np.nan
+    c = constant_op.constant(x)
+    tensor_1, tensor_id_1 = debug_summary(c)
+    tensor_2, tensor_id_2 = debug_summary(c)
+    self.assertAllEqual(tensor_1, tensor_2)
+    self.assertEqual(tensor_id_1, tensor_id_2)
+
+    x = np.zeros([100, 100, 50], dtype=np.float64)
+    x[0, 0, 1] = np.inf
+    c = constant_op.constant(x)
+    tensor_1, tensor_id_1 = debug_summary(c)
+    tensor_2, tensor_id_2 = debug_summary(c)
+    self.assertAllEqual(tensor_1, tensor_2)
+    self.assertEqual(tensor_id_1, tensor_id_2)
+
+    c = constant_op.constant(np.ones((100, 200), np.double))
+    tensor_1, tensor_id_1 = debug_summary(c)
+    tensor_2, tensor_id_2 = debug_summary(c)
+    self.assertAllEqual(tensor_1, tensor_2)
+    self.assertEqual(tensor_id_1, tensor_id_2)
+
 
 if __name__ == "__main__":
   ops.enable_eager_execution()

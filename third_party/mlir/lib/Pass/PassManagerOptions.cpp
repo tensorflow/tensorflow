@@ -104,16 +104,17 @@ static llvm::ManagedStatic<llvm::Optional<PassManagerOptions>> options;
 
 /// Add an IR printing instrumentation if enabled by any 'print-ir' flags.
 void PassManagerOptions::addPrinterInstrumentation(PassManager &pm) {
-  std::function<bool(Pass *)> shouldPrintBeforePass, shouldPrintAfterPass;
+  std::function<bool(Pass *, Operation *)> shouldPrintBeforePass;
+  std::function<bool(Pass *, Operation *)> shouldPrintAfterPass;
 
   // Handle print-before.
   if (printBeforeAll) {
     // If we are printing before all, then just return true for the filter.
-    shouldPrintBeforePass = [](Pass *) { return true; };
+    shouldPrintBeforePass = [](Pass *, Operation *) { return true; };
   } else if (printBefore.hasAnyOccurrences()) {
     // Otherwise if there are specific passes to print before, then check to see
     // if the pass info for the current pass is included in the list.
-    shouldPrintBeforePass = [&](Pass *pass) {
+    shouldPrintBeforePass = [&](Pass *pass, Operation *) {
       auto *passInfo = pass->lookupPassInfo();
       return passInfo && printBefore.contains(passInfo);
     };
@@ -122,11 +123,11 @@ void PassManagerOptions::addPrinterInstrumentation(PassManager &pm) {
   // Handle print-after.
   if (printAfterAll) {
     // If we are printing after all, then just return true for the filter.
-    shouldPrintAfterPass = [](Pass *) { return true; };
+    shouldPrintAfterPass = [](Pass *, Operation *) { return true; };
   } else if (printAfter.hasAnyOccurrences()) {
     // Otherwise if there are specific passes to print after, then check to see
     // if the pass info for the current pass is included in the list.
-    shouldPrintAfterPass = [&](Pass *pass) {
+    shouldPrintAfterPass = [&](Pass *pass, Operation *) {
       auto *passInfo = pass->lookupPassInfo();
       return passInfo && printAfter.contains(passInfo);
     };

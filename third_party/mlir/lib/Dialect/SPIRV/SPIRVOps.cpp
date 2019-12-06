@@ -377,6 +377,34 @@ static unsigned getBitWidth(Type type) {
   llvm_unreachable("unhandled bit width computation for type");
 }
 
+/// Walks the given type hierarchy with the given indices, potentially down
+/// to component granularity, to select an element type. Returns null type and
+/// emits errors with the given loc on failure.
+static Type getElementType(Type type, ArrayAttr indices, Location loc) {
+  if (!indices.size()) {
+    emitError(loc, "expected at least one index");
+    return nullptr;
+  }
+
+  int32_t index;
+  for (auto indexAttr : indices) {
+    index = indexAttr.dyn_cast<IntegerAttr>().getInt();
+    if (auto cType = type.dyn_cast<spirv::CompositeType>()) {
+      if (index < 0 || static_cast<uint64_t>(index) >= cType.getNumElements()) {
+        emitError(loc, "index ") << index << " out of bounds for " << type;
+        return nullptr;
+      }
+      type = cType.getElementType(index);
+    } else {
+      emitError(loc, "cannot extract from non-composite type ")
+          << type << " with index " << index;
+      return nullptr;
+    }
+  }
+
+  return type;
+}
+
 /// Returns true if the given `block` only contains one `spv._merge` op.
 static inline bool isMergeBlock(Block &block) {
   return !block.empty() && std::next(block.begin()) == block.end() &&
@@ -1094,28 +1122,11 @@ static void print(spirv::CompositeExtractOp compositeExtractOp,
 }
 
 static LogicalResult verify(spirv::CompositeExtractOp compExOp) {
-  auto resultType = compExOp.composite()->getType();
   auto indicesArrayAttr = compExOp.indices().dyn_cast<ArrayAttr>();
-
-  if (!indicesArrayAttr.size()) {
-    return compExOp.emitOpError(
-        "expected at least one index for spv.CompositeExtractOp");
-  }
-
-  int32_t index;
-  for (auto indexAttr : indicesArrayAttr) {
-    index = indexAttr.dyn_cast<IntegerAttr>().getInt();
-    if (auto cType = resultType.dyn_cast<spirv::CompositeType>()) {
-      if (index < 0 || static_cast<uint64_t>(index) >= cType.getNumElements()) {
-        return compExOp.emitOpError("index ")
-               << index << " out of bounds for " << resultType;
-      }
-      resultType = cType.getElementType(index);
-    } else {
-      return compExOp.emitError("cannot extract from non-composite type ")
-             << resultType << " with index " << index;
-    }
-  }
+  auto resultType = getElementType(compExOp.composite()->getType(),
+                                   indicesArrayAttr, compExOp.getLoc());
+  if (!resultType)
+    return failure();
 
   if (resultType != compExOp.getType()) {
     return compExOp.emitOpError("invalid result type: expected ")
@@ -1133,6 +1144,60 @@ OpFoldResult spirv::CompositeExtractOp::fold(ArrayRef<Attribute> operands) {
       },
       indices());
   return extractCompositeElement(operands[0], indexVector);
+}
+
+//===----------------------------------------------------------------------===//
+// spv.CompositeInsert
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseCompositeInsertOp(OpAsmParser &parser,
+                                          OperationState &state) {
+  SmallVector<OpAsmParser::OperandType, 2> operands;
+  Type objectType, compositeType;
+  Attribute indicesAttr;
+  auto loc = parser.getCurrentLocation();
+
+  return failure(
+      parser.parseOperandList(operands, 2) ||
+      parser.parseAttribute(indicesAttr, kIndicesAttrName, state.attributes) ||
+      parser.parseColonType(objectType) ||
+      parser.parseKeywordType("into", compositeType) ||
+      parser.resolveOperands(operands, {objectType, compositeType}, loc,
+                             state.operands) ||
+      parser.addTypesToList(compositeType, state.types));
+}
+
+static LogicalResult verify(spirv::CompositeInsertOp compositeInsertOp) {
+  auto indicesArrayAttr = compositeInsertOp.indices().dyn_cast<ArrayAttr>();
+  auto objectType =
+      getElementType(compositeInsertOp.composite()->getType(), indicesArrayAttr,
+                     compositeInsertOp.getLoc());
+  if (!objectType)
+    return failure();
+
+  if (objectType != compositeInsertOp.object()->getType()) {
+    return compositeInsertOp.emitOpError("object operand type should be ")
+           << objectType << ", but found "
+           << compositeInsertOp.object()->getType();
+  }
+
+  if (compositeInsertOp.composite()->getType() != compositeInsertOp.getType()) {
+    return compositeInsertOp.emitOpError("result type should be the same as "
+                                         "the composite type, but found ")
+           << compositeInsertOp.composite()->getType() << " vs "
+           << compositeInsertOp.getType();
+  }
+
+  return success();
+}
+
+static void print(spirv::CompositeInsertOp compositeInsertOp,
+                  OpAsmPrinter &printer) {
+  printer << spirv::CompositeInsertOp::getOperationName() << " "
+          << *compositeInsertOp.object() << ", "
+          << *compositeInsertOp.composite() << compositeInsertOp.indices()
+          << " : " << compositeInsertOp.object()->getType() << " into "
+          << compositeInsertOp.composite()->getType();
 }
 
 //===----------------------------------------------------------------------===//

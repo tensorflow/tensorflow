@@ -1439,7 +1439,7 @@ void OpEmitter::genVerifier() {
   auto sizeAttr = getAttrOfType<DenseIntElementsAttr>("{0}");
   auto numElements = sizeAttr.getType().cast<ShapedType>().getNumElements();
   if (numElements != {1}) {{
-    return emitOpError("'{0}' attribute for specifiying {2} segments "
+    return emitOpError("'{0}' attribute for specifying {2} segments "
                        "must have {1} elements");
   }
   )";

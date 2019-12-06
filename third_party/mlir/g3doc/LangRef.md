@@ -760,9 +760,15 @@ TODO: Need to decide on a representation for quantized integers
 Syntax:
 
 ``` {.ebnf}
-memref-type ::= `memref` `<` dimension-list-ranked tensor-memref-element-type
-                (`,` layout-specification)? |
-                (`,` memory-space)? `>`
+
+memref-type ::= ranked-memref-type | unranked-memref-type
+
+ranked-memref-type ::= `memref` `<` dimension-list-ranked tensor-memref-element-type
+                      (`,` layout-specification)? |
+                      (`,` memory-space)? `>`
+
+unranked-memref-type ::= `memref` `<*x` tensor-memref-element-type
+                         (`,` memory-space)? `>`
 
 stride-list ::= `[` (dimension (`,` dimension)*)? `]`
 strided-layout ::= `offset:` dimension `,` `strides: ` stride-list
@@ -774,9 +780,48 @@ A `memref` type is a reference to a region of memory (similar to a buffer
 pointer, but more powerful). The buffer pointed to by a memref can be allocated,
 aliased and deallocated. A memref can be used to read and write data from/to the
 memory region which it references. Memref types use the same shape specifier as
-tensor types, but do not allow unknown rank. Note that `memref<f32>`, `memref<0
-x f32>`, `memref<1 x 0 x f32>`, and `memref<0 x 1 x f32>` are all different
-types.
+tensor types. Note that `memref<f32>`, `memref<0 x f32>`, `memref<1 x 0 x f32>`,
+and `memref<0 x 1 x f32>` are all different types.
+
+A `memref` is allowed to have an unknown rank (e.g. `memref<*xf32>`). The
+purpose of unranked memrefs is to allow external library functions to receive
+memref arguments of any rank without versioning the functions based on the rank.
+Other uses of this type are disallowed or will have undefined behavior.
+
+##### Codegen of Unranked Memref
+
+Using unranked memref in codegen besides the case mentioned above is highly
+discouraged. Codegen is concerned with generating loop nests and specialized
+instructions for high-performance, unranked memref is concerned with hiding the
+rank and thus, the number of enclosing loops required to iterate over the data.
+However, if there is a need to code-gen unranked memref, one possible path is to
+cast into a static ranked type based on the dynamic rank. Another possible path
+is to emit a single while loop conditioned on a linear index and perform
+delinearization of the linear index to a dynamic array containing the (unranked)
+indices. While this is possible, it is expected to not be a good idea to perform
+this during codegen as the cost of the translations is expected to be
+prohibitive and optimizations at this level are not expected to be worthwhile.
+If expressiveness is the main concern, irrespective of performance, passing
+unranked memrefs to an external C++ library and implementing rank-agnostic logic
+there is expected to be significantly simpler.
+
+Unranked memrefs may provide expressiveness gains in the future and help bridge
+the gap with unranked tensors. Unranked memrefs will not be expected to be
+exposed to codegen but one may query the rank of an unranked memref (a special
+op will be needed for this purpose) and perform a switch and cast to a ranked
+memref as a prerequisite to codegen.
+
+Example ```mlir {.mlir} // With static ranks, we need a function for each
+possible argument type %A = alloc() : memref<16x32xf32> %B = alloc() :
+memref<16x32x64xf32> call @helper_2D(%A) : (memref<16x32xf32>)->() call
+@helper_3D(%B) : (memref<16x32x64xf32>)->()
+
+// With unknown rank, the functions can be unified under one unranked type %A =
+alloc() : memref<16x32xf32> %B = alloc() : memref<16x32x64xf32> // Remove rank
+info %A_u = memref_cast %A : memref<16x32xf32> -> memref<*xf32> %B_u =
+memref_cast %B : memref<16x32x64xf32> -> memref<*xf32> // call same function
+with dynamic ranks call @helper(%A_u) : (memref<*xf32>)->() call @helper(%B_u) :
+(memref<*xf32>)->() ```
 
 The core syntax and representation of a layout specification is a
 [semi-affine map](Dialects/Affine.md#semi-affine-maps). Additionally, syntactic

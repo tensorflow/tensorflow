@@ -78,8 +78,7 @@ class Conv(Layer):
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `strides` value != 1.
     activation: Activation function to use.
-      If you don't specify anything, no activation is applied
-      (ie. 'linear' activation: `a(x) = x`).
+      If you don't specify anything, no activation is applied.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
     bias_initializer: An initializer for the bias vector. If None, the default
@@ -341,6 +340,17 @@ class Conv1D(Conv):
   `(10, 128)` for sequences of 10 vectors of 128-dimensional vectors,
   or `(None, 128)` for variable-length sequences of 128-dimensional vectors.
 
+  Examples:
+
+  >>> # The inputs are 128-length vectors with 10 timesteps, and the batch size
+  >>> # is 4.
+  >>> input_shape = (4, 10, 128)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.Conv1D(
+  ... 32, 3, activation='relu',input_shape=input_shape)(x)
+  >>> print(y.shape)
+  (4, 8, 32)
+
   Arguments:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
@@ -351,8 +361,8 @@ class Conv1D(Conv):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"`, `"causal"` or `"same"` (case-insensitive).
-      `"causal"` results in causal (dilated) convolutions, e.g. output[t]
-      does not depend on input[t+1:]. Useful when modeling temporal data
+      `"causal"` results in causal (dilated) convolutions, e.g. `output[t]`
+      does not depend on `input[t+1:]`. Useful when modeling temporal data
       where the model should not violate the temporal order.
       See [WaveNet: A Generative Model for Raw Audio, section
         2.1](https://arxiv.org/abs/1609.03499).
@@ -363,11 +373,13 @@ class Conv1D(Conv):
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `strides` value != 1.
     activation: Activation function to use.
-      If you don't specify anything, no activation is applied
-      (ie. "linear" activation: `a(x) = x`) (see `keras.activations`).
+      If you don't specify anything, no activation is applied (
+      see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
-    kernel_initializer: Initializer for the `kernel` weights matrix.
-    bias_initializer: Initializer for the bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix (
+      see `keras.initializers`).
+    bias_initializer: Initializer for the bias vector (
+      see `keras.initializers`).
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix (see `keras.regularizers`).
     bias_regularizer: Regularizer function applied to the bias vector (
@@ -380,25 +392,19 @@ class Conv1D(Conv):
     bias_constraint: Constraint function applied to the bias vector (
       see `keras.constraints`).
 
-  Examples:
-    ```python
-    # Small convolutional model for 128-length vectors with 6 timesteps
-    # model.input_shape == (None, 6, 128)
-    
-    model = Sequential()
-    model.add(Conv1D(32, 3, 
-              activation='relu', 
-              input_shape=(6, 128)))
-    
-    # now: model.output_shape == (None, 4, 32)
-    ```
-
   Input shape:
     3D tensor with shape: `(batch_size, steps, input_dim)`
 
   Output shape:
     3D tensor with shape: `(batch_size, new_steps, filters)`
       `steps` value might have changed due to padding or strides.
+
+  Returns:
+    A tensor of rank 3 representing
+    `activation(conv1d(inputs, kernel) + bias)`.
+
+  Raises:
+    ValueError: when both `strides` > 1 and `dilation_rate` > 1.
   """
 
   def __init__(self,
@@ -456,29 +462,30 @@ class Conv2D(Conv):
 
   Examples:
 
-  >>> # Small convolutional model for 128x128 RGB images with `channels_last`
-  >>> input_shape = (32, 128, 128, 3)
+  >>> # The inputs are 28x28 RGB images with `channels_last` and the batch
+  >>> # size is 4.
+  >>> input_shape = (4, 28, 28, 3)
   >>> x = tf.random.normal(input_shape)
   >>> y = tf.keras.layers.Conv2D(
   ... 2, 3, activation='relu', input_shape=input_shape)(x)
   >>> print(y.shape)
-  (32, 126, 126, 2)
+  (4, 26, 26, 2)
 
   >>> # With `dilation_rate` as 2.
-  >>> input_shape = (32, 128, 128, 3)
+  >>> input_shape = (4, 28, 28, 3)
   >>> x = tf.random.normal(input_shape)
   >>> y = tf.keras.layers.Conv2D(
   ... 2, 3, activation='relu', dilation_rate=2, input_shape=input_shape)(x)
   >>> print(y.shape)
-  (32, 124, 124, 2)
+  (4, 24, 24, 2)
 
   >>> # With `padding` as "same".
-  >>> input_shape = (32, 128, 128, 3)
+  >>> input_shape = (4, 28, 28, 3)
   >>> x = tf.random.normal(input_shape)
   >>> y = tf.keras.layers.Conv2D(
   ... 2, 3, activation='relu', padding="same", input_shape=input_shape)(x)
   >>> print(y.shape)
-  (32, 128, 128, 2)
+  (4, 28, 28, 2)
 
 
   Arguments:
@@ -512,14 +519,13 @@ class Conv2D(Conv):
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any stride value != 1.
     activation: Activation function to use.
-      If you don't specify anything, no activation is applied
-      (ie. "linear" activation: `a(x) = x`). Check `keras.activations` for
-      available activation functions (see `keras.activations`).
+      If you don't specify anything, no activation is applied (
+      see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
-    kernel_initializer: Initializer for the `kernel` weights matrix. Check
-      `keras.initializers` for available initializers.
-    bias_initializer: Initializer for the bias vector. Check
-      `keras.initializers` for available initializers.
+    kernel_initializer: Initializer for the `kernel` weights matrix (
+      see `keras.initializers`).
+    bias_initializer: Initializer for the bias vector (
+      see `keras.initializers`).
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix (see `keras.regularizers`).
     bias_regularizer: Regularizer function applied to the bias vector (
@@ -534,15 +540,15 @@ class Conv2D(Conv):
 
   Input shape:
     4D tensor with shape:
-    `(samples, channels, rows, cols)` if data_format='channels_first'
+    `(batch_size, channels, rows, cols)` if data_format='channels_first'
     or 4D tensor with shape:
-    `(samples, rows, cols, channels)` if data_format='channels_last'.
+    `(batch_size, rows, cols, channels)` if data_format='channels_last'.
 
   Output shape:
     4D tensor with shape:
-    `(samples, filters, new_rows, new_cols)` if data_format='channels_first'
+    `(batch_size, filters, new_rows, new_cols)` if data_format='channels_first'
     or 4D tensor with shape:
-    `(samples, new_rows, new_cols, filters)` if data_format='channels_last'.
+    `(batch_size, new_rows, new_cols, filters)` if data_format='channels_last'.
     `rows` and `cols` values might have changed due to padding.
 
   Returns:
@@ -550,8 +556,8 @@ class Conv2D(Conv):
     `activation(conv2d(inputs, kernel) + bias)`.
 
   Raises:
-      ValueError: if `padding` is "causal".
-      ValueError: when both `strides` > 1 and `dilation_rate` > 1.
+    ValueError: if `padding` is "causal".
+    ValueError: when both `strides` > 1 and `dilation_rate` > 1.
   """
 
   def __init__(self,
@@ -608,6 +614,17 @@ class Conv3D(Conv):
   with a single channel,
   in `data_format="channels_last"`.
 
+  Examples:
+
+  >>> # The inputs are 28x28x28 volumes with a single channel, and the
+  >>> # batch size is 4
+  >>> input_shape =(4, 28, 28, 28, 1)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.Conv3D(
+  ... 2, 3, activation='relu', input_shape=input_shape)(x)
+  >>> print(y.shape)
+  (4, 26, 26, 26, 2)
+
   Arguments:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
@@ -640,11 +657,13 @@ class Conv3D(Conv):
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any stride value != 1.
     activation: Activation function to use.
-      If you don't specify anything, no activation is applied
-      (ie. "linear" activation: `a(x) = x`) (see `keras.activations`).
+      If you don't specify anything, no activation is applied (
+      see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
-    kernel_initializer: Initializer for the `kernel` weights matrix.
-    bias_initializer: Initializer for the bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix (
+      see `keras.initializers`).
+    bias_initializer: Initializer for the bias vector (
+      see `keras.initializers`).
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix (
       see `keras.regularizers`).
@@ -660,21 +679,29 @@ class Conv3D(Conv):
 
   Input shape:
     5D tensor with shape:
-    `(samples, channels, conv_dim1, conv_dim2, conv_dim3)` if
+    `(batch_size, channels, conv_dim1, conv_dim2, conv_dim3)` if
       data_format='channels_first'
     or 5D tensor with shape:
-    `(samples, conv_dim1, conv_dim2, conv_dim3, channels)` if
+    `(batch_size, conv_dim1, conv_dim2, conv_dim3, channels)` if
       data_format='channels_last'.
 
   Output shape:
     5D tensor with shape:
-    `(samples, filters, new_conv_dim1, new_conv_dim2, new_conv_dim3)` if
+    `(batch_size, filters, new_conv_dim1, new_conv_dim2, new_conv_dim3)` if
       data_format='channels_first'
     or 5D tensor with shape:
-    `(samples, new_conv_dim1, new_conv_dim2, new_conv_dim3, filters)` if
+    `(batch_size, new_conv_dim1, new_conv_dim2, new_conv_dim3, filters)` if
       data_format='channels_last'.
     `new_conv_dim1`, `new_conv_dim2` and `new_conv_dim3` values might have
       changed due to padding.
+
+  Returns:
+    A tensor of rank 5 representing
+    `activation(conv3d(inputs, kernel) + bias)`.
+
+  Raises:
+    ValueError: if `padding` is "causal".
+    ValueError: when both `strides` > 1 and `dilation_rate` > 1.
   """
 
   def __init__(self,
@@ -771,8 +798,8 @@ class Conv2DTranspose(Conv2D):
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any stride value != 1.
     activation: Activation function to use.
-      If you don't specify anything, no activation is applied
-      (ie. "linear" activation: `a(x) = x`) (see `keras.activations`).
+      If you don't specify anything, no activation is applied (
+      see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix (
       see `keras.initializers`).
@@ -791,37 +818,37 @@ class Conv2DTranspose(Conv2D):
 
   Input shape:
     4D tensor with shape:
-    `(batch, channels, rows, cols)` if data_format='channels_first'
+    `(batch_size, channels, rows, cols)` if data_format='channels_first'
     or 4D tensor with shape:
-    `(batch, rows, cols, channels)` if data_format='channels_last'.
+    `(batch_size, rows, cols, channels)` if data_format='channels_last'.
 
   Output shape:
     4D tensor with shape:
-    `(batch, filters, new_rows, new_cols)` if data_format='channels_first'
+    `(batch_size, filters, new_rows, new_cols)` if data_format='channels_first'
     or 4D tensor with shape:
-    `(batch, new_rows, new_cols, filters)` if data_format='channels_last'.
+    `(batch_size, new_rows, new_cols, filters)` if data_format='channels_last'.
     `rows` and `cols` values might have changed due to padding.
     If `output_padding` is specified:
     ```
-    new_rows = ((rows - 1) * strides[0] + kernel_size[0]
-                - 2 * padding[0] + output_padding[0])
-    new_cols = ((cols - 1) * strides[1] + kernel_size[1]
-                - 2 * padding[1] + output_padding[1])
+    new_rows = ((rows - 1) * strides[0] + kernel_size[0] - 2 * padding[0] +
+    output_padding[0])
+    new_cols = ((cols - 1) * strides[1] + kernel_size[1] - 2 * padding[1] +
+    output_padding[1])
     ```
-
-  References:
-    - [A guide to convolution arithmetic for deep
-      learning](https://arxiv.org/abs/1603.07285v1)
-    - [Deconvolutional
-      Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf)
 
   Returns:
     A tensor of rank 4 representing
     `activation(conv2dtranspose(inputs, kernel) + bias)`.
 
   Raises:
-      ValueError: if `padding` is "causal".
-      ValueError: when both `strides` > 1 and `dilation_rate` > 1.
+    ValueError: if `padding` is "causal".
+    ValueError: when both `strides` > 1 and `dilation_rate` > 1.
+
+  References:
+    - [A guide to convolution arithmetic for deep
+      learning](https://arxiv.org/abs/1603.07285v1)
+    - [Deconvolutional
+      Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf)
   """
 
   def __init__(self,
@@ -1061,8 +1088,8 @@ class Conv3DTranspose(Conv3D):
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any stride value != 1.
     activation: Activation function to use.
-      If you don't specify anything, no activation is applied
-      (ie. "linear" activation: `a(x) = x`) (see `keras.activations`).
+      If you don't specify anything, no activation is applied (
+      see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix.
     bias_initializer: Initializer for the bias vector.
@@ -1081,18 +1108,35 @@ class Conv3DTranspose(Conv3D):
 
   Input shape:
     5D tensor with shape:
-    `(batch, channels, depth, rows, cols)` if data_format='channels_first'
+    `(batch_size, channels, depth, rows, cols)` if data_format='channels_first'
     or 5D tensor with shape:
-    `(batch, depth, rows, cols, channels)` if data_format='channels_last'.
+    `(batch_size, depth, rows, cols, channels)` if data_format='channels_last'.
 
   Output shape:
     5D tensor with shape:
-    `(batch, filters, new_depth, new_rows, new_cols)` if
+    `(batch_size, filters, new_depth, new_rows, new_cols)` if
       data_format='channels_first'
     or 5D tensor with shape:
-    `(batch, new_depth, new_rows, new_cols, filters)` if
+    `(batch_size, new_depth, new_rows, new_cols, filters)` if
       data_format='channels_last'.
     `depth` and `rows` and `cols` values might have changed due to padding.
+    If `output_padding` is specified::
+    ```
+    new_depth = ((depth - 1) * strides[0] + kernel_size[0] - 2 * padding[0] +
+    output_padding[0])
+    new_rows = ((rows - 1) * strides[1] + kernel_size[1] - 2 * padding[1] +
+    output_padding[1])
+    new_cols = ((cols - 1) * strides[2] + kernel_size[2] - 2 * padding[2] +
+    output_padding[2])
+    ```
+
+  Returns:
+    A tensor of rank 5 representing
+    `activation(conv3dtranspose(inputs, kernel) + bias)`.
+
+  Raises:
+    ValueError: if `padding` is "causal".
+    ValueError: when both `strides` > 1 and `dilation_rate` > 1.
 
   References:
     - [A guide to convolution arithmetic for deep
@@ -1329,8 +1373,8 @@ class SeparableConv(Conv):
       each input channel. The total number of depthwise convolution output
       channels will be equal to `num_filters_in * depth_multiplier`.
     activation: Activation function to use.
-      If you don't specify anything, no activation is applied
-      (ie. 'linear' activation: `a(x) = x`) (see `keras.activations`).
+      If you don't specify anything, no activation is applied (
+      see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias.
     depthwise_initializer: An initializer for the depthwise convolution kernel.
     pointwise_initializer: An initializer for the pointwise convolution kernel.
@@ -1531,13 +1575,15 @@ class SeparableConv1D(SeparableConv):
       each input channel. The total number of depthwise convolution output
       channels will be equal to `num_filters_in * depth_multiplier`.
     activation: Activation function to use.
-      If you don't specify anything, no activation is applied
-      (ie. 'linear' activation: `a(x) = x`) (see `keras.activations`).
+      If you don't specify anything, no activation is applied (
+      see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias.
-    depthwise_initializer: An initializer for the depthwise convolution kernel.
-    pointwise_initializer: An initializer for the pointwise convolution kernel.
+    depthwise_initializer: An initializer for the depthwise convolution kernel (
+      see `keras.initializers`).
+    pointwise_initializer: An initializer for the pointwise convolution kernel (
+      see `keras.initializers`).
     bias_initializer: An initializer for the bias vector. If None, the default
-      initializer will be used.
+      initializer will be used (see `keras.initializers`).
     depthwise_regularizer: Optional regularizer for the depthwise
       convolution kernel (see `keras.regularizers`).
     pointwise_regularizer: Optional regularizer for the pointwise
@@ -1562,6 +1608,26 @@ class SeparableConv1D(SeparableConv):
     trainable: Boolean, if `True` the weights of this layer will be marked as
       trainable (and listed in `layer.trainable_weights`).
     name: A string, the name of the layer.
+
+  Input shape:
+    3D tensor with shape:
+    `(batch_size, channels, steps)` if data_format='channels_first'
+    or 5D tensor with shape:
+    `(batch_size, steps, channels)` if data_format='channels_last'.
+
+  Output shape:
+    3D tensor with shape:
+    `(batch_size, filters, new_steps)` if data_format='channels_first'
+    or 3D tensor with shape:
+    `(batch_size,  new_steps, filters)` if data_format='channels_last'.
+    `new_steps` value might have changed due to padding or strides.
+
+  Returns:
+    A tensor of rank 3 representing
+    `activation(separableconv1d(inputs, kernel) + bias)`.
+
+  Raises:
+    ValueError: when both `strides` > 1 and `dilation_rate` > 1.
   """
 
   def __init__(self,
@@ -1700,12 +1766,15 @@ class SeparableConv2D(SeparableConv):
       The total number of depthwise convolution output
       channels will be equal to `filters_in * depth_multiplier`.
     activation: Activation function to use.
-      If you don't specify anything, no activation is applied
-      (ie. "linear" activation: `a(x) = x`) (see `keras.activations`).
+      If you don't specify anything, no activation is applied (
+      see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
-    depthwise_initializer: Initializer for the depthwise kernel matrix.
-    pointwise_initializer: Initializer for the pointwise kernel matrix.
-    bias_initializer: Initializer for the bias vector.
+    depthwise_initializer: Initializer for the depthwise kernel matrix (
+      see `keras.initializers`).
+    pointwise_initializer: Initializer for the pointwise kernel matrix (
+      see `keras.initializers`).
+    bias_initializer: Initializer for the bias vector (
+      see `keras.initializers`).
     depthwise_regularizer: Regularizer function applied to
       the depthwise kernel matrix (see `keras.regularizers`).
     pointwise_regularizer: Regularizer function applied to
@@ -1726,16 +1795,24 @@ class SeparableConv2D(SeparableConv):
 
   Input shape:
     4D tensor with shape:
-    `(batch, channels, rows, cols)` if data_format='channels_first'
+    `(batch_size, channels, rows, cols)` if data_format='channels_first'
     or 4D tensor with shape:
-    `(batch, rows, cols, channels)` if data_format='channels_last'.
+    `(batch_size, rows, cols, channels)` if data_format='channels_last'.
 
   Output shape:
     4D tensor with shape:
-    `(batch, filters, new_rows, new_cols)` if data_format='channels_first'
+    `(batch_size, filters, new_rows, new_cols)` if data_format='channels_first'
     or 4D tensor with shape:
-    `(batch, new_rows, new_cols, filters)` if data_format='channels_last'.
+    `(batch_size, new_rows, new_cols, filters)` if data_format='channels_last'.
     `rows` and `cols` values might have changed due to padding.
+
+  Returns:
+    A tensor of rank 4 representing
+    `activation(separableconv2d(inputs, kernel) + bias)`.
+
+  Raises:
+    ValueError: if `padding` is "causal".
+    ValueError: when both `strides` > 1 and `dilation_rate` > 1.
   """
 
   def __init__(self,
@@ -1845,11 +1922,13 @@ class DepthwiseConv2D(Conv2D):
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be 'channels_last'.
     activation: Activation function to use.
-      If you don't specify anything, no activation is applied
-      (ie. 'linear' activation: `a(x) = x`) (see `keras.activations`).
+      If you don't specify anything, no activation is applied (
+      see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
-    depthwise_initializer: Initializer for the depthwise kernel matrix.
-    bias_initializer: Initializer for the bias vector.
+    depthwise_initializer: Initializer for the depthwise kernel matrix (
+      see `keras.initializers`).
+    bias_initializer: Initializer for the bias vector (
+      see `keras.initializers`).
     depthwise_regularizer: Regularizer function applied to
       the depthwise kernel matrix (see `keras.regularizers`).
     bias_regularizer: Regularizer function applied to the bias vector (
@@ -1875,6 +1954,14 @@ class DepthwiseConv2D(Conv2D):
     or 4D tensor with shape:
     `[batch, new_rows, new_cols, filters]` if data_format='channels_last'.
     `rows` and `cols` values might have changed due to padding.
+
+  Returns:
+    A tensor of rank 4 representing
+    `activation(depthwiseconv2d(inputs, kernel) + bias)`.
+
+  Raises:
+    ValueError: if `padding` is "causal".
+    ValueError: when both `strides` > 1 and `dilation_rate` > 1.
   """
 
   def __init__(self,

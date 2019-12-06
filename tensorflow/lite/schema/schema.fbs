@@ -185,6 +185,7 @@ table Tensor {
 // ones, but not by much. Moreover, while custom operators accept an opaque
 // object containing configuration parameters, builtins have a predetermined
 // set of acceptable options.
+
 enum BuiltinOperator : byte {
   ADD = 0,
   AVERAGE_POOL_2D = 1,
@@ -317,6 +318,7 @@ enum BuiltinOperator : byte {
   NON_MAX_SUPPRESSION_V5 = 121,
   SCATTER_ND = 122
 }
+
 
 // Options for the builtin operators.
 union BuiltinOptions {

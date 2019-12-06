@@ -1086,6 +1086,13 @@ void ModulePrinter::printType(Type type) {
     os << '>';
     return;
   }
+  case StandardTypes::UnrankedMemRef: {
+    auto v = type.cast<UnrankedMemRefType>();
+    os << "memref<*x";
+    printType(v.getElementType());
+    os << '>';
+    return;
+  }
   case StandardTypes::Complex:
     os << "complex<";
     printType(type.cast<ComplexType>().getElementType());
@@ -1109,7 +1116,7 @@ void ModulePrinter::printType(Type type) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-/// This class provides the main specialication of the DialectAsmPrinter that is
+/// This class provides the main specialization of the DialectAsmPrinter that is
 /// used to provide support for print attributes and types. This hooks allows
 /// for dialects to hook into the main ModulePrinter.
 struct CustomDialectAsmPrinter : public DialectAsmPrinter {

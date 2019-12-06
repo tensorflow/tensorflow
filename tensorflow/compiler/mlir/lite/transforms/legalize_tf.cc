@@ -68,6 +68,7 @@ struct LegalizeTF : public FunctionPass<LegalizeTF> {
 // TODO(antiagainst): Define this pattern in a table-driven manner once variadic
 // operands are properly supported in declarative rewrite rule specification.
 
+DECL_CONVERT_OP(Assert);
 DECL_CONVERT_OP(Concat);
 DECL_CONVERT_OP(ConcatV2);
 DECL_CONVERT_OP(MatMul);
@@ -374,6 +375,14 @@ PatternMatchResult ConvertTFMatrixDiagV3Op::matchAndRewrite(
   return matchFailure();
 }
 
+// TF Lite doesn't support Assert, we just drop the assert from the graph.
+PatternMatchResult ConvertTFAssertOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  op->dropAllReferences();
+  op->erase();
+  return matchSuccess();
+}
+
 void LegalizeTF::runOnFunction() {
   OwningRewritePatternList patterns;
   auto* ctx = &getContext();
@@ -385,7 +394,8 @@ void LegalizeTF::runOnFunction() {
       .insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
               ConvertTFMatrixDiagV2Op, ConvertTFMatrixDiagV3Op, ConvertTFPackOp,
               ConvertTFReshapeOp, ConvertTFSplitOp, ConvertTFSplitVOp,
-              ConvertTFStridedSliceOp, ConvertTFUnpackOp>(ctx);
+              ConvertTFStridedSliceOp, ConvertTFUnpackOp, ConvertTFAssertOp>(
+          ctx);
   applyPatternsGreedily(func, patterns);
 }
 

@@ -286,7 +286,7 @@ void Operation::destroy() {
 /// Return the context this operation is associated with.
 MLIRContext *Operation::getContext() { return location->getContext(); }
 
-/// Return the dialact this operation is associated with, or nullptr if the
+/// Return the dialect this operation is associated with, or nullptr if the
 /// associated dialect is not registered.
 Dialect *Operation::getDialect() {
   if (auto *abstractOp = getAbstractOperation())

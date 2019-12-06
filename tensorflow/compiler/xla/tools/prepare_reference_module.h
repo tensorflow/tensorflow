@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/stream_executor/lib/status.h"
+#include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
 
@@ -33,8 +34,11 @@ namespace xla {
 // platforms.
 StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
     const HloModule& test_module,
+    const ::stream_executor::Platform::Id& test_platform_id,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {},
-    const std::function<Status(HloModule*)>& module_modifier_hook = {});
+    const std::function<Status(const HloModule&,
+                               const ::stream_executor::Platform::Id&,
+                               HloModule*)>& module_modifier_hook = {});
 
 }  // namespace xla
 

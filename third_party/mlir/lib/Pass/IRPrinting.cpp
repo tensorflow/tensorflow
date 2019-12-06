@@ -27,19 +27,8 @@ using namespace mlir::detail;
 namespace {
 class IRPrinterInstrumentation : public PassInstrumentation {
 public:
-  /// A filter function to decide if the given pass should be printed. Returns
-  /// true if the pass should be printed, false otherwise.
-  using ShouldPrintFn = std::function<bool(Pass *)>;
-
-  IRPrinterInstrumentation(ShouldPrintFn &&shouldPrintBeforePass,
-                           ShouldPrintFn &&shouldPrintAfterPass,
-                           bool printModuleScope, raw_ostream &out)
-      : shouldPrintBeforePass(shouldPrintBeforePass),
-        shouldPrintAfterPass(shouldPrintAfterPass),
-        printModuleScope(printModuleScope), out(out) {
-    assert((shouldPrintBeforePass || shouldPrintAfterPass) &&
-           "expected atleast one valid filter function");
-  }
+  IRPrinterInstrumentation(std::unique_ptr<PassManager::IRPrinterConfig> config)
+      : config(std::move(config)) {}
 
 private:
   /// Instrumentation hooks.
@@ -47,14 +36,8 @@ private:
   void runAfterPass(Pass *pass, Operation *op) override;
   void runAfterPassFailed(Pass *pass, Operation *op) override;
 
-  /// Filter functions for before and after pass execution.
-  ShouldPrintFn shouldPrintBeforePass, shouldPrintAfterPass;
-
-  /// Flag to toggle if the printer should always print at module scope.
-  bool printModuleScope;
-
-  /// The stream to output to.
-  raw_ostream &out;
+  /// Configuration to use.
+  std::unique_ptr<PassManager::IRPrinterConfig> config;
 };
 } // end anonymous namespace
 
@@ -96,45 +79,117 @@ static void printIR(Operation *op, bool printModuleScope, raw_ostream &out,
 
 /// Instrumentation hooks.
 void IRPrinterInstrumentation::runBeforePass(Pass *pass, Operation *op) {
-  // Skip hidden passes and passes that the user filtered out.
-  if (!shouldPrintBeforePass || isHiddenPass(pass) ||
-      !shouldPrintBeforePass(pass))
+  if (isHiddenPass(pass))
     return;
-  out << formatv("*** IR Dump Before {0} ***", pass->getName());
-  printIR(op, printModuleScope, out, OpPrintingFlags());
-  out << "\n\n";
+  config->printBeforeIfEnabled(pass, op, [&](raw_ostream &out) {
+    out << formatv("*** IR Dump Before {0} ***", pass->getName());
+    printIR(op, config->shouldPrintAtModuleScope(), out, OpPrintingFlags());
+    out << "\n\n";
+  });
 }
 
 void IRPrinterInstrumentation::runAfterPass(Pass *pass, Operation *op) {
-  // Skip hidden passes and passes that the user filtered out.
-  if (!shouldPrintAfterPass || isHiddenPass(pass) ||
-      !shouldPrintAfterPass(pass))
+  if (isHiddenPass(pass))
     return;
-  out << formatv("*** IR Dump After {0} ***", pass->getName());
-  printIR(op, printModuleScope, out, OpPrintingFlags());
-  out << "\n\n";
+  config->printAfterIfEnabled(pass, op, [&](raw_ostream &out) {
+    out << formatv("*** IR Dump After {0} ***", pass->getName());
+    printIR(op, config->shouldPrintAtModuleScope(), out, OpPrintingFlags());
+    out << "\n\n";
+  });
 }
 
 void IRPrinterInstrumentation::runAfterPassFailed(Pass *pass, Operation *op) {
-  // Skip adaptor passes and passes that the user filtered out.
-  if (!shouldPrintAfterPass || isAdaptorPass(pass) ||
-      !shouldPrintAfterPass(pass))
+  if (isAdaptorPass(pass))
     return;
-  out << formatv("*** IR Dump After {0} Failed ***", pass->getName());
-  printIR(op, printModuleScope, out, OpPrintingFlags().printGenericOpForm());
-  out << "\n\n";
+  config->printAfterIfEnabled(pass, op, [&](raw_ostream &out) {
+    out << formatv("*** IR Dump After {0} Failed ***", pass->getName());
+    printIR(op, config->shouldPrintAtModuleScope(), out,
+            OpPrintingFlags().printGenericOpForm());
+    out << "\n\n";
+  });
+}
+
+//===----------------------------------------------------------------------===//
+// IRPrinterConfig
+//===----------------------------------------------------------------------===//
+
+/// Initialize the configuration.
+/// * 'printModuleScope' signals if the module IR should be printed, even
+///   for non module passes.
+PassManager::IRPrinterConfig::IRPrinterConfig(bool printModuleScope)
+    : printModuleScope(printModuleScope) {}
+PassManager::IRPrinterConfig::~IRPrinterConfig() {}
+
+/// A hook that may be overridden by a derived config that checks if the IR
+/// of 'operation' should be dumped *before* the pass 'pass' has been
+/// executed. If the IR should be dumped, 'printCallback' should be invoked
+/// with the stream to dump into.
+void PassManager::IRPrinterConfig::printBeforeIfEnabled(
+    Pass *pass, Operation *operation, PrintCallbackFn printCallback) {
+  // By default, never print.
+}
+
+/// A hook that may be overridden by a derived config that checks if the IR
+/// of 'operation' should be dumped *after* the pass 'pass' has been
+/// executed. If the IR should be dumped, 'printCallback' should be invoked
+/// with the stream to dump into.
+void PassManager::IRPrinterConfig::printAfterIfEnabled(
+    Pass *pass, Operation *operation, PrintCallbackFn printCallback) {
+  // By default, never print.
 }
 
 //===----------------------------------------------------------------------===//
 // PassManager
 //===----------------------------------------------------------------------===//
 
+namespace {
+/// Simple wrapper config that allows for the simpler interface defined above.
+struct BasicIRPrinterConfig : public PassManager::IRPrinterConfig {
+  BasicIRPrinterConfig(
+      std::function<bool(Pass *, Operation *)> shouldPrintBeforePass,
+      std::function<bool(Pass *, Operation *)> shouldPrintAfterPass,
+      bool printModuleScope, raw_ostream &out)
+      : IRPrinterConfig(printModuleScope),
+        shouldPrintBeforePass(shouldPrintBeforePass),
+        shouldPrintAfterPass(shouldPrintAfterPass), out(out) {
+    assert((shouldPrintBeforePass || shouldPrintAfterPass) &&
+           "expected at least one valid filter function");
+  }
+
+  void printBeforeIfEnabled(Pass *pass, Operation *operation,
+                            PrintCallbackFn printCallback) final {
+    if (shouldPrintBeforePass && shouldPrintBeforePass(pass, operation))
+      printCallback(out);
+  }
+
+  void printAfterIfEnabled(Pass *pass, Operation *operation,
+                           PrintCallbackFn printCallback) final {
+    if (shouldPrintAfterPass && shouldPrintAfterPass(pass, operation))
+      printCallback(out);
+  }
+
+  /// Filter functions for before and after pass execution.
+  std::function<bool(Pass *, Operation *)> shouldPrintBeforePass;
+  std::function<bool(Pass *, Operation *)> shouldPrintAfterPass;
+
+  /// The stream to output to.
+  raw_ostream &out;
+};
+} // end anonymous namespace
+
+/// Add an instrumentation to print the IR before and after pass execution,
+/// using the provided configuration.
+void PassManager::enableIRPrinting(std::unique_ptr<IRPrinterConfig> config) {
+  addInstrumentation(
+      std::make_unique<IRPrinterInstrumentation>(std::move(config)));
+}
+
 /// Add an instrumentation to print the IR before and after pass execution.
 void PassManager::enableIRPrinting(
-    std::function<bool(Pass *)> shouldPrintBeforePass,
-    std::function<bool(Pass *)> shouldPrintAfterPass, bool printModuleScope,
-    raw_ostream &out) {
-  addInstrumentation(std::make_unique<IRPrinterInstrumentation>(
+    std::function<bool(Pass *, Operation *)> shouldPrintBeforePass,
+    std::function<bool(Pass *, Operation *)> shouldPrintAfterPass,
+    bool printModuleScope, raw_ostream &out) {
+  enableIRPrinting(std::make_unique<BasicIRPrinterConfig>(
       std::move(shouldPrintBeforePass), std::move(shouldPrintAfterPass),
       printModuleScope, out));
 }

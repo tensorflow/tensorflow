@@ -702,8 +702,10 @@ inline void LstmStepWithAuxInput(
                                      forget_gate_scratch);
 
   // For each batch and cell: update the cell.
-  tensor_utils::VectorVectorCwiseProduct(forget_gate_scratch, cell_state_ptr,
-                                         n_batch * n_cell, cell_state_ptr);
+  if (!is_cell_state_all_zeros) {
+    tensor_utils::VectorVectorCwiseProduct(forget_gate_scratch, cell_state_ptr,
+                                           n_batch * n_cell, cell_state_ptr);
+  }
   if (is_layer_norm_lstm) {
     tensor_utils::MeanStddevNormalization(cell_scratch, cell_scratch, n_cell,
                                           n_batch);

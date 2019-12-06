@@ -33,11 +33,11 @@ using namespace mlir::linalg;
 const StringLiteral mlir::linalg::LinalgTransforms::kLinalgTransformMarker =
     "__internal_linalg_transform__";
 
-LogicalResult mlir::linalg::tileLinalgOpAndSetMarker(PatternRewriter &rewriter,
-                                                     Operation *op,
-                                                     ArrayRef<int64_t> sizes,
-                                                     StringRef linalgMarker) {
-  auto tileRes = tileLinalgOperation(rewriter, op, sizes);
+LogicalResult mlir::linalg::tileLinalgOpAndSetMarker(
+    PatternRewriter &rewriter, Operation *op, ArrayRef<int64_t> sizes,
+    StringRef linalgMarker, ArrayRef<unsigned> permutation) {
+  assert(permutation.empty() || permutation.size() == sizes.size());
+  auto tileRes = tileLinalgOperation(rewriter, op, sizes, permutation);
   if (!tileRes)
     return failure();
   tileRes->op.setAttr(LinalgTransforms::kLinalgTransformMarker,

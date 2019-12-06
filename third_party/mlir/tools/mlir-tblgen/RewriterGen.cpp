@@ -685,7 +685,7 @@ std::string PatternEmitter::handleReplaceWithNativeCodeCall(DagNode tree) {
   }
   for (int i = 0, e = tree.getNumArgs(); i != e; ++i) {
     attrs[i] = handleOpArgument(tree.getArgAsLeaf(i), tree.getArgName(i));
-    LLVM_DEBUG(llvm::dbgs() << "NativeCodeCall argment #" << i
+    LLVM_DEBUG(llvm::dbgs() << "NativeCodeCall argument #" << i
                             << " replacement: " << attrs[i] << "\n");
   }
   return tgfmt(fmt, &fmtCtx, attrs[0], attrs[1], attrs[2], attrs[3], attrs[4],
@@ -769,7 +769,7 @@ std::string PatternEmitter::handleOpCreation(DagNode tree, int resultIndex,
 
   if (isSameOperandsAndResultType || useFirstAttr) {
     // We know how to deduce the result type for ops with these traits and we've
-    // generated builders taking aggregrate parameters. Use those builders to
+    // generated builders taking aggregate parameters. Use those builders to
     // create the ops.
 
     // First prepare local variables for op arguments used in builder call.
@@ -891,7 +891,7 @@ void PatternEmitter::supplyValuesForOpArgs(
   Operator &resultOp = node.getDialectOp(opMap);
   for (int argIndex = 0, numOpArgs = resultOp.getNumArgs();
        argIndex != numOpArgs; ++argIndex) {
-    // Start each argment on its own line.
+    // Start each argument on its own line.
     (os << ",\n").indent(8);
 
     Argument opArg = resultOp.getArg(argIndex);

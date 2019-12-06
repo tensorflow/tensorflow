@@ -278,9 +278,8 @@ static Value *getOrCreateUnrolledOperandSlice(
 // with iteration bounds 'iterationBounds' unrolled to 'targetShape'.
 // An iteration space index map argument 'iterationIndexMapList' must be
 // specified, with a map for each structured op input and a single map for the
-// single result. The last map in the list must be the single result map.
-// Extra operands can be passed to unrolled instances of 'op' using the
-// 'extraOperands' argument.
+// single result. The map at index 'indexMapListResultIndex' in the list must
+// be the single result map.
 //
 // Example:
 //
@@ -310,7 +309,7 @@ static Value *getOrCreateUnrolledOperandSlice(
 static Value *unrollSingleResultStructuredOp(
     Operation *op, ArrayRef<int64_t> iterationBounds,
     std::vector<DenseMap<int64_t, int64_t>> &iterationIndexMapList,
-    ArrayRef<int64_t> targetShape, ArrayRef<Value *> extraOperands,
+    unsigned indexMapListResultIndex, ArrayRef<int64_t> targetShape,
     PatternRewriter &builder) {
   auto shapedType = op->getResult(0)->getType().dyn_cast_or_null<ShapedType>();
   if (!shapedType || !shapedType.hasStaticShape())
@@ -334,7 +333,7 @@ static Value *unrollSingleResultStructuredOp(
   auto numUnrolledInstances = computeMaxLinearIndex(unrollFactors);
   auto basis = computeStrides(unrollFactors);
 
-  auto &resultOperandState = unrolledOperandState[numMaps - 1];
+  auto &resultOperandState = unrolledOperandState[indexMapListResultIndex];
   auto unrolledResultType = VectorType::get(resultOperandState.unrolledShape,
                                             shapedType.getElementType());
 
@@ -360,7 +359,6 @@ static Value *unrollSingleResultStructuredOp(
           iterationIndexMapList[i], caches[i], builder));
     }
     // Create op on sliced vector arguments.
-    operands.append(extraOperands.begin(), extraOperands.end());
     auto resultVector =
         cloneOpWithOperandsAndTypes(builder, op->getLoc(), op, operands,
                                     unrolledResultType)
@@ -368,12 +366,14 @@ static Value *unrollSingleResultStructuredOp(
 
     // Compute linear result index.
     int64_t resultIndex = getUnrolledOperandLinearIndex(
-        resultOperandState, vectorOffsets, iterationIndexMapList[numMaps - 1]);
+        resultOperandState, vectorOffsets,
+        iterationIndexMapList[indexMapListResultIndex]);
     // Update result cache at 'resultIndex'.
-    caches[numMaps - 1][resultIndex] = resultVector;
+    caches[indexMapListResultIndex][resultIndex] = resultVector;
   }
 
-  // Make zero splat into which we will insert results from 'cache[numMaps - 1]'
+  // Make zero splat into which we will insert results from
+  // 'cache[indexMapListResultIndex]'
   auto resultVectorType = op->getResult(0)->getType().cast<VectorType>();
   auto *res = makeSplatZero(op->getLoc(), builder, resultVectorType);
   SmallVector<int64_t, 4> strides(resultOperandState.unrollFactors.size(), 1);
@@ -384,7 +384,8 @@ static Value *unrollSingleResultStructuredOp(
     auto offsets = zipMap([](int64_t v1, int64_t v2) { return v1 * v2; },
                           vectorOffsets, resultOperandState.unrolledShape);
     res = builder.create<vector::InsertStridedSliceOp>(
-        op->getLoc(), caches[numMaps - 1][i], res, offsets, strides);
+        op->getLoc(), caches[indexMapListResultIndex][i], res, offsets,
+        strides);
   }
 
   return res;
@@ -434,13 +435,17 @@ Value * mlir::vector::unrollSingleResultOpMatchingType(PatternRewriter &builder,
     // Get map from iteration space index to lhs/rhs/result shape index.
     std::vector<DenseMap<int64_t, int64_t>> iterationIndexMapList;
     contractionOp.getIterationIndexMap(iterationIndexMapList);
-    // TODO(andydavis) Support unrollable vector masks.
-    SmallVector<Value *, 2> masks(contractionOp.masks().begin(),
-                                  contractionOp.masks().end());
+    if (llvm::size(contractionOp.masks()) == 2) {
+      // Add maps for lhs/rhs vector mask arguments (same lhs/rhs vector shape)
+      iterationIndexMapList.push_back(iterationIndexMapList[0]);
+      iterationIndexMapList.push_back(iterationIndexMapList[1]);
+    }
     // Unroll 'op' 'iterationBounds' to 'targetShape'.
-    return unrollSingleResultStructuredOp(op, iterationBounds,
-                                          iterationIndexMapList, targetShape,
-                                          masks, builder);
+    // TODO(andydavis) Use linalg style 'args_in'/'args_out' to partition
+    // 'iterationIndexMapList' instead of 'indexMapListResultIndex'.
+    return unrollSingleResultStructuredOp(
+        op, iterationBounds, iterationIndexMapList,
+        /*indexMapListResultIndex=*/2, targetShape, builder);
   }
   // TODO(andydavis) Create trivial iteration bounds and index map for
   // elementwise operations and call 'unrollSingleResultStructuredOp'. Remove
@@ -680,6 +685,7 @@ void mlir::populateVectorToVectorConversionPatterns(
     MLIRContext *context, OwningRewritePatternList &patterns,
     ArrayRef<int64_t> coarseVectorShape, ArrayRef<int64_t> fineVectorShape) {
   vector::populateWithGenerated(context, &patterns);
+  vector::populateVectorToVectorCanonicalizationPatterns(patterns, context);
   patterns
       .insert<ConvertMatchingFakeForkFakeJoinOp,
               ConvertFakeForkFromBlockArgsOrTransferReadOp, ConvertFakeJoinOp,

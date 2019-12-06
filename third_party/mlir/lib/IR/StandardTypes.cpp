@@ -390,6 +390,37 @@ ArrayRef<AffineMap> MemRefType::getAffineMaps() const {
 
 unsigned MemRefType::getMemorySpace() const { return getImpl()->memorySpace; }
 
+//===----------------------------------------------------------------------===//
+// UnrankedMemRefType
+//===----------------------------------------------------------------------===//
+
+UnrankedMemRefType UnrankedMemRefType::get(Type elementType,
+                                           unsigned memorySpace) {
+  return Base::get(elementType.getContext(), StandardTypes::UnrankedMemRef,
+                   elementType, memorySpace);
+}
+
+UnrankedMemRefType UnrankedMemRefType::getChecked(Type elementType,
+                                                  unsigned memorySpace,
+                                                  Location location) {
+  return Base::getChecked(location, elementType.getContext(),
+                          StandardTypes::UnrankedMemRef, elementType,
+                          memorySpace);
+}
+
+unsigned UnrankedMemRefType::getMemorySpace() const {
+  return getImpl()->memorySpace;
+}
+
+LogicalResult UnrankedMemRefType::verifyConstructionInvariants(
+    llvm::Optional<Location> loc, MLIRContext *context, Type elementType,
+    unsigned memorySpace) {
+  // Check that memref is formed from allowed types.
+  if (!elementType.isIntOrFloat() && !elementType.isa<VectorType>())
+    return emitOptionalError(*loc, "invalid memref element type");
+  return success();
+}
+
 /// Given MemRef `sizes` that are either static or dynamic, returns the
 /// canonical "contiguous" strides AffineExpr. Strides are multiplicative and
 /// once a dynamic dimension is encountered, all canonical strides become

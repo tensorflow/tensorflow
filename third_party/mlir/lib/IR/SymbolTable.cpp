@@ -283,7 +283,7 @@ static Optional<WalkResult> walkSymbolUses(
         if (walkSymbolRefs(&op, callback).wasInterrupted())
           return WalkResult::interrupt();
 
-        // If this operation has regions, and it as well as its dialect arent't
+        // If this operation has regions, and it as well as its dialect aren't
         // registered then conservatively fail. The operation may define a
         // symbol table, so we can't opaquely know if we should traverse to find
         // nested uses.

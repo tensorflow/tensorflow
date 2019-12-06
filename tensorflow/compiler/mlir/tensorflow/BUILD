@@ -213,6 +213,7 @@ cc_library(
         "transforms/raise_control_flow.cc",
         "transforms/replicate_invariant_op_hoisting.cc",
         "transforms/replicate_to_island.cc",
+        "transforms/resource_device_inference.cc",
         "transforms/resource_op_lifting.cc",
         "transforms/shape_inference.cc",
         "transforms/shape_inference_pass.cc",
@@ -566,7 +567,6 @@ cc_library(
     hdrs = ["utils/error_util.h"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/lib",
         "@llvm//:support",
         "@local_config_mlir//:IR",
     ],

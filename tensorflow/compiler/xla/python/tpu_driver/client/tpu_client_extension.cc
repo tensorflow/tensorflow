@@ -204,6 +204,11 @@ PYBIND11_MODULE(tpu_client_extension, m) {
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("ExecutePerReplica", &PyTpuExecutable::ExecutePerReplica,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"));
+
+  py::class_<TpuDevice, Device, std::shared_ptr<TpuDevice>>(m, "TpuDevice")
+      .def("__repr__", [](const TpuDevice& device) {
+        return absl::StrFormat("TpuDevice(id=%i)", device.id());
+      });
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla
