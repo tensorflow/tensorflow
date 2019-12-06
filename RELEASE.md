@@ -41,6 +41,7 @@ Because of [issues with building on windows](https://github.com/tensorflow/tenso
   * Fix issue where GRU would crash or give incorrect output when a `tf.distribute.Strategy` was used. 
 * `tf.estimator`
   * Added option in `tf.estimator.CheckpointSaverHook` to not save the `GraphDef`.
+  * Moving the checkpoint reader from swig to pybind11.
 * `tf.keras`
   * Export depthwise_conv2d in `tf.keras.backend`.
   * In Keras Layers and Models, Variables in `trainable_weights`, `non_trainable_weights`, and `weights` are explicitly deduplicated.
