@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"testing"
 
+	tspb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core/framework/tensor_shape_go_proto"
+	typb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core/framework/types_go_proto"
 	tfpb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core"
 )
 
@@ -30,9 +32,9 @@ func TestSignatureFromProto(t *testing.T) {
 				Encoding: &tfpb.TensorInfo_Name{
 					Name: "tensor_1",
 				},
-				Dtype: tfpb.DataType_DT_INT8,
-				TensorShape: &tfpb.TensorShapeProto{
-					Dim: []*tfpb.TensorShapeProto_Dim{
+				Dtype: typb.DataType_DT_INT8,
+				TensorShape: &tspb.TensorShapeProto{
+					Dim: []*tspb.TensorShapeProto_Dim{
 						{Size: 1},
 						{Size: 2},
 						{Size: 3},
@@ -43,9 +45,9 @@ func TestSignatureFromProto(t *testing.T) {
 				Encoding: &tfpb.TensorInfo_Name{
 					Name: "tensor_2",
 				},
-				Dtype: tfpb.DataType_DT_FLOAT,
-				TensorShape: &tfpb.TensorShapeProto{
-					Dim: []*tfpb.TensorShapeProto_Dim{
+				Dtype: typb.DataType_DT_FLOAT,
+				TensorShape: &tspb.TensorShapeProto{
+					Dim: []*tspb.TensorShapeProto_Dim{
 						{Size: 4},
 						{Size: 5},
 						{Size: 6},
@@ -58,9 +60,9 @@ func TestSignatureFromProto(t *testing.T) {
 				Encoding: &tfpb.TensorInfo_Name{
 					Name: "tensor_3",
 				},
-				Dtype: tfpb.DataType_DT_STRING,
-				TensorShape: &tfpb.TensorShapeProto{
-					Dim: []*tfpb.TensorShapeProto_Dim{
+				Dtype: typb.DataType_DT_STRING,
+				TensorShape: &tspb.TensorShapeProto{
+					Dim: []*tspb.TensorShapeProto_Dim{
 						{Size: 1},
 						{Size: 2},
 						{Size: 3},
@@ -71,9 +73,9 @@ func TestSignatureFromProto(t *testing.T) {
 				Encoding: &tfpb.TensorInfo_Name{
 					Name: "tensor_4",
 				},
-				Dtype: tfpb.DataType_DT_BOOL,
-				TensorShape: &tfpb.TensorShapeProto{
-					Dim: []*tfpb.TensorShapeProto_Dim{
+				Dtype: typb.DataType_DT_BOOL,
+				TensorShape: &tspb.TensorShapeProto{
+					Dim: []*tspb.TensorShapeProto_Dim{
 						{Size: 4},
 						{Size: 5},
 						{Size: 6},
@@ -142,9 +144,9 @@ func TestTensorInfoFromProto(t *testing.T) {
 		Encoding: &tfpb.TensorInfo_Name{
 			Name: "tensor",
 		},
-		Dtype: tfpb.DataType_DT_INT8,
-		TensorShape: &tfpb.TensorShapeProto{
-			Dim: []*tfpb.TensorShapeProto_Dim{
+		Dtype: typb.DataType_DT_INT8,
+		TensorShape: &tspb.TensorShapeProto{
+			Dim: []*tspb.TensorShapeProto_Dim{
 				{Size: 1},
 				{Size: 2},
 				{Size: 3},
