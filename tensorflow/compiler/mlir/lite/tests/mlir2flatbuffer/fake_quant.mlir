@@ -27,7 +27,7 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
   // CHECK-NEXT:     tensors: [ {
   // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       buffer: 1,
-  // CHECK-NEXT:       name: "Input",
+  // CHECK-NEXT:       name: "arg0",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
   // CHECK-NEXT:       }
@@ -134,7 +134,6 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
   // CHECK-NEXT:   } ]
   // CHECK-NEXT: }
 
-  %0 = "tfl.pseudo_input" (%arg0) : (tensor<4xf32>) -> tensor<4xf32> loc("Input")
-  %1 = "tfl.fake_quant"(%0) {num_bits = 6 : i32, narrow_range = false, minmax = [0.3, 1.4]} : (tensor<4 x f32>) -> tensor<4 x f32>
-  return %1 : tensor<4xf32>
+  %0 = "tfl.fake_quant"(%arg0) {num_bits = 6 : i32, narrow_range = false, minmax = [0.3, 1.4]} : (tensor<4 x f32>) -> tensor<4 x f32>
+  return %0 : tensor<4xf32>
 }

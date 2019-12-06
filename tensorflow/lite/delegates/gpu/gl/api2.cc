@@ -524,9 +524,19 @@ class InferenceBuilderImpl : public InferenceBuilder {
   Status Build(std::unique_ptr<InferenceRunner>* runner) final {
     auto kernels = NewNodeShaderRegistry();
     CompilationOptions compiler_options;
-    compiler_options.allow_precision_loss = options_.allow_precision_loss;
-    compiler_options.fuse_operations = options_.fuse_operations;
-    compiler_options.inline_parameters = options_.inline_parameters;
+    compiler_options.allow_precision_loss =
+        GetPosition(options_, InferencePriority::MAX_PRECISION) > 1;
+    compiler_options.inline_parameters =
+        options_.usage == InferenceUsage::SUSTAINED_SPEED &&
+        GetPosition(options_, InferencePriority::MIN_LATENCY) == 1;
+    if (GetRelativeImportance(options_, InferencePriority::MIN_MEMORY_USAGE,
+                              InferencePriority::MIN_LATENCY) ==
+        PriorityImportance::HIGHER) {
+      // Buffers have far better memory utilization.
+      compiler_options.preferred_obj_type = ObjectType::BUFFER;
+      compiler_options.ref_obj_type = ObjectType::BUFFER;
+    }
+
     auto compiler = NewCompiler(kernels.get(), gpu_info_, compiler_options);
     auto workgroup_calculator = NewDefaultWorkgroupsCalculator(*gpu_info_);
     auto external_objects = absl::make_unique<ObjectManager>();
@@ -633,12 +643,17 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
   Status NewInferenceBuilder(GraphFloat32&& model,
                              const InferenceOptions& options,
                              std::unique_ptr<InferenceBuilder>* builder) final {
+    if (!IsValid(options)) {
+      return InvalidArgumentError("InferenceOptions are invalid.");
+    }
+    InferenceOptions resolved_options = options;
+    ResolveAutoPriority(&resolved_options);
     if (!IsBatchMatchesForAllValues(model)) {
       return InvalidArgumentError(
           "Only identical batch dimension is supported");
     }
     auto builder_impl = absl::make_unique<InferenceBuilderImpl>(
-        env_options_, options, std::move(model), &gpu_info_);
+        env_options_, resolved_options, std::move(model), &gpu_info_);
     RETURN_IF_ERROR(builder_impl->Initialize());
     *builder = std::move(builder_impl);
     return OkStatus();

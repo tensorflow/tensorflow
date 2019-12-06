@@ -45,6 +45,7 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
@@ -428,6 +429,18 @@ class SaveTest(test.TestCase):
             tensor_spec.TensorSpec(None, dtypes.int64)))
     self.assertAllClose({"output_0": 3 * (1 + 4 + 9 + 16)},
                         _import_and_infer(save_dir, {"x": 3}))
+
+  def test_variable_args_cannot_be_used_as_signature(self):
+    @def_function.function(input_signature=[
+        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)])
+    def f(unused_v):
+      return 1
+    root = tracking.AutoTrackable()
+    root.f = f.get_concrete_function()
+    with self.assertRaisesRegexp(ValueError,
+                                 "tf.Variable inputs cannot be exported"):
+      save.save(root, os.path.join(self.get_temp_dir(), "saved_model"),
+                signatures=root.f)
 
 
 class SavingOptionsTest(test.TestCase):

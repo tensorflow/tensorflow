@@ -32,6 +32,8 @@ TEST(RuyTest, TestBigNarrowMuls) {
     TestRCC<TestSetType>(width, 401, 601);
     TestRCC<TestSetType>(587, 443, width);
   }
+  TestRCC<TestSetType>(7, 45984,
+                       5);  // Large enough to trigger row-sum overflows.
   TestRCC<TestSetType>(512, 256, 16);
 }
 

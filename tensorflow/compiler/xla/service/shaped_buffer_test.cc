@@ -28,10 +28,8 @@ namespace xla {
 namespace {
 
 TEST(ShapedBufferTest, ScopedShapeBufferAsShapedBufferB71629047) {
-  TF_ASSERT_OK_AND_ASSIGN(auto platforms,
-                          xla::PlatformUtil::GetSupportedPlatforms());
-  ASSERT_FALSE(platforms.empty());
-  auto* platform = platforms[0];
+  TF_ASSERT_OK_AND_ASSIGN(auto* platform,
+                          xla::PlatformUtil::GetDefaultPlatform());
   TF_ASSERT_OK_AND_ASSIGN(auto executors,
                           xla::PlatformUtil::GetStreamExecutors(platform));
   xla::se::StreamExecutorMemoryAllocator allocator(platform, executors);

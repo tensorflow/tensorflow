@@ -13,9 +13,6 @@ add_llvm_library(MLIRTransforms
   LoopTiling.cpp
   LoopUnrollAndJam.cpp
   LoopUnroll.cpp
-  LowerAffine.cpp
-  LowerVectorTransfers.cpp
-  MaterializeVectors.cpp
   MemRefDataFlowOpt.cpp
   PipelineDataTransfer.cpp
   SimplifyAffineStructures.cpp

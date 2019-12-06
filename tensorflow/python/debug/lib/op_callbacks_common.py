@@ -28,10 +28,17 @@ OP_CALLBACK_SKIP_OPS = (
     b"Exit",
     b"Identity",
     b"If",
+    b"LoopCond",
     b"Merge",
     b"NextIteration",
     b"StatelessIf",
     b"StatefulPartitionedCall",
     b"Switch",
     b"While",
+    # TPU-specific ops begin.
+    b"TPUReplicatedInput",
+    b"TPUReplicateMetadata",
+    b"TPUCompilationResult",
+    b"TPUReplicatedOutput",
+    b"ConfigureDistributedTPU",
 )

@@ -98,9 +98,9 @@ class DirectivesTransformer(converter.Base):
       raise ValueError(
           '"%s" must be used inside a statement' % directive.__name__)
     target = self.get_local(ENCLOSING_LOOP)
-    node_anno = anno.getanno(target, converter.AgAnno.DIRECTIVES, {})
+    node_anno = anno.getanno(target, anno.Basic.DIRECTIVES, {})
     node_anno[directive] = _map_args(call_node, directive)
-    anno.setanno(target, converter.AgAnno.DIRECTIVES, node_anno)
+    anno.setanno(target, anno.Basic.DIRECTIVES, node_anno)
     return call_node
 
   def visit_Name(self, node):

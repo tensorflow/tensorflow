@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 
 #include <ostream>
+#include <utility>
 
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
@@ -35,10 +36,30 @@ limitations under the License.
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
+
+using stream_executor::port::StatusOr;
 
 namespace tensorflow {
 
 namespace {
+// Op def string for TFLite_Detection_PostProcess Op.
+const char kDetectionPostProcessOp[] =
+    "name: 'TFLite_Detection_PostProcess' input_arg: { name: "
+    "'raw_outputs/box_encodings' type: DT_FLOAT } input_arg: { name: "
+    "'raw_outputs/class_predictions' type: DT_FLOAT } input_arg: { name: "
+    "'anchors' type: DT_FLOAT } output_arg: { name: "
+    "'TFLite_Detection_PostProcess' type: DT_FLOAT } output_arg: { name: "
+    "'TFLite_Detection_PostProcess:1' type: DT_FLOAT } output_arg: { name: "
+    "'TFLite_Detection_PostProcess:2' type: DT_FLOAT } output_arg: { name: "
+    "'TFLite_Detection_PostProcess:3' type: DT_FLOAT } attr : { name: "
+    "'h_scale' type: 'float'} attr : { name: 'max_classes_per_detection' "
+    "type: 'int'} attr : { name: 'max_detections' type: 'int'} attr : { "
+    "name: 'nms_iou_threshold' type: 'float'} attr : { name: "
+    "'nms_score_threshold' type: 'float'} attr : { name: 'num_classes' type: "
+    "'int'} attr : { name: 'w_scale' type: 'int'} attr : { name: 'x_scale' "
+    "type: 'int'} attr : { name: 'y_scale' type: 'int'}";
+
 // Converts the toco::IODataType to tensorflow::DataType. Only contains the
 // conversion mapping for constants defined in TFLite Python API.
 DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
@@ -60,6 +81,22 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
     default:
       return DT_INVALID;
   }
+}
+
+StatusOr<std::pair<double, double>> InputStatsToMinMax(double mean, double std,
+                                                       DataType type) {
+  // Only qint8 and quint8 are considered here.
+  double qmin, qmax;
+  if (type == DT_QUINT8) {
+    qmin = 0.0;
+    qmax = 255.0;
+  } else if (type == DT_QINT8) {
+    qmin = -128.0;
+    qmax = 127.0;
+  } else {
+    return errors::InvalidArgument("Only int8 and uint8 are considered.");
+  }
+  return std::make_pair((qmin - mean) / std, (qmax - mean) / std);
 }
 
 // Give a warning for any unused flags that have been specified.
@@ -104,6 +141,28 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
   return Status::OK();
 }
 
+Status RegisterCustomBuiltinOps(const std::vector<string> extra_tf_opdefs) {
+  for (const auto& tf_opdefs_string : extra_tf_opdefs) {
+    tensorflow::OpDef opdef;
+    if (!tensorflow::protobuf::TextFormat::ParseFromString(tf_opdefs_string,
+                                                           &opdef)) {
+      return errors::InvalidArgument("fail to parse extra OpDef");
+    }
+    // Make sure the op is not already registered. If registered continue.
+    const OpRegistrationData* op_reg = nullptr;
+    auto status =
+        tensorflow::OpRegistry::Global()->LookUp(opdef.name(), &op_reg);
+    if (status.ok()) continue;
+
+    tensorflow::OpRegistry::Global()->Register(
+        [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
+          *op_reg_data = tensorflow::OpRegistrationData(opdef);
+          return Status::OK();
+        });
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
@@ -145,12 +204,14 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
     }
     node_shapes.push_back(std::vector<int>(flag.shape().dims().begin(),
                                            flag.shape().dims().end()));
-
-    const double mean_value = flag.mean_value();
-    const double std_value = flag.std_value();
-    const double qmin = 0.0, qmax = 255.0;
-    node_mins.push_back((qmin - mean_value) / std_value);
-    node_maxs.push_back((qmax - mean_value) / std_value);
+    // Currently, only UINT8 and INT8 require inputs stats
+    if (inference_type == DT_QINT8 || inference_type == DT_QUINT8) {
+      TF_ASSIGN_OR_RETURN(
+          auto min_max, InputStatsToMinMax(flag.mean_value(), flag.std_value(),
+                                           inference_type));
+      node_mins.push_back(min_max.first);
+      node_maxs.push_back(min_max.second);
+    }
   }
   TF_RETURN_IF_ERROR(tensorflow::ParseInputArrayInfo(
       node_names, node_dtypes, node_shapes, &specs.inputs));
@@ -176,8 +237,8 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   // Parse output arrays.
   std::vector<string> output_arrays(model_flags.output_arrays().begin(),
                                     model_flags.output_arrays().end());
-  TF_RETURN_IF_ERROR(tensorflow::ParseOutputArrayInfo(
-      output_arrays, &specs.output_arrays, &specs.output_arrays_order));
+  TF_RETURN_IF_ERROR(
+      tensorflow::ParseOutputArrayInfo(output_arrays, &specs.outputs));
 
   // Other flags.
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
@@ -188,6 +249,12 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   specs.graph_as_function = false;
   specs.upgrade_legacy = true;
   WarningUnusedFlags(model_flags, toco_flags);
+
+  // Register any custom OpDefs.
+  std::vector<string> extra_tf_opdefs(toco_flags.custom_opdefs().begin(),
+                                      toco_flags.custom_opdefs().end());
+  extra_tf_opdefs.push_back(kDetectionPostProcessOp);
+  TF_RETURN_IF_ERROR(RegisterCustomBuiltinOps(extra_tf_opdefs));
 
   TF_ASSIGN_OR_RETURN(
       auto module, ConvertGraphdefToMlir(input, debug_info, specs, &context));
@@ -208,8 +275,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
 
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, /*emit_quant_adaptor_ops=*/false,
-      /*lower_tensor_list_ops=*/true, quant_specs, result, &pm);
+      emit_select_tf_ops, emit_custom_ops, quant_specs, result, &pm);
 
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(

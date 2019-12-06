@@ -71,6 +71,8 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lite",
+        "//tensorflow/lite/toco/logging:gen_html",
+        "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
         "@six_archive//:six",
     ],
 )
@@ -78,13 +80,17 @@ py_library(
 py_test(
     name = "tflite_convert_test",
     srcs = ["tflite_convert_test.py"],
-    data = [":tflite_convert"],
+    data = [
+        ":tflite_convert.par",
+        "@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb",
+    ],
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
         "no_pip",
         "no_windows",
+        "noasan",  # b/144707533
     ],
     deps = [
         ":tflite_convert",

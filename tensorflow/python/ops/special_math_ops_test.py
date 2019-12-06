@@ -436,6 +436,16 @@ class EinsumTest(test.TestCase):
     with test.mock.patch.object(
         opt_einsum, 'contract_path',
         wraps=opt_einsum.contract_path) as mock_contract_path:
+
+      # explicitly clear the lru_cache contents for the method
+      #   special_math_ops.get_opt_einsum_contract_path
+      # We need to do this because other tests in this file invoke that method
+      # with the same input args (as input_1 and input_2 above), and if
+      # those tests run before this test, then the call_count for the method
+      # mock_contract_path will not increment.
+      if six.PY3:
+        special_math_ops._get_opt_einsum_contract_path.cache_clear()
+
       self.assertEqual(mock_contract_path.call_count, 0)
       self._check(*input_1)
       self.assertEqual(mock_contract_path.call_count, 1)

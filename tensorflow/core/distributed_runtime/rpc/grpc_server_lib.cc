@@ -437,13 +437,6 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
       std::move(dev_resolver), std::move(param_resolver), worker_cache,
       default_worker_name);
 
-  worker_env_.session_mgr = new SessionMgr(
-      &worker_env_, SessionMgr::WorkerNameFromServerDef(server_def_),
-      std::unique_ptr<WorkerCacheInterface>(worker_cache),
-      [this](const ServerDef& server_def, WorkerCacheInterface** worker_cache) {
-        WorkerCacheFactoryOptions options(server_def);
-        return WorkerCacheFactory(options, worker_cache);
-      });
   master_env_.worker_cache = worker_cache;
   master_env_.collective_executor_mgr = worker_env_.collective_executor_mgr;
   return Status::OK();

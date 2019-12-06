@@ -197,7 +197,8 @@ inline void HybridConvPerChannel(
   const int dilation_height_factor = params.dilation_height_factor;
   const int pad_width = params.padding_values.width;
   const int pad_height = params.padding_values.height;
-
+  const float output_activation_min = params.float_activation_min;
+  const float output_activation_max = params.float_activation_max;
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
@@ -246,7 +247,8 @@ inline void HybridConvPerChannel(
             acc_float += bias_data[out_channel];
           }
           output_data[Offset(output_shape, batch, out_y, out_x, out_channel)] =
-              acc_float;
+              ActivationFunctionWithMinMax(acc_float, output_activation_min,
+                                           output_activation_max);
         }
       }
     }

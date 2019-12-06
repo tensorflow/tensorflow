@@ -1183,6 +1183,12 @@ static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
   mutex_lock lock(plugin_mutex);
   if (plugin_initialized) return;
 
+  LOG(INFO) << "Linked TensorRT version: " << NV_TENSORRT_MAJOR << "."
+            << NV_TENSORRT_MINOR << "." << NV_TENSORRT_PATCH;
+  const int loaded_version = getInferLibVersion();
+  LOG(INFO) << "Loaded TensorRT version: " << loaded_version / 1000 << "."
+            << (loaded_version / 100) % 10 << "." << loaded_version % 100;
+
   plugin_initialized = initLibNvInferPlugins(trt_logger, "");
   if (!plugin_initialized) {
     LOG(ERROR) << "Failed to initialize TensorRT plugins, and conversion may "
@@ -1211,26 +1217,26 @@ static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
 
 // static
 StatusOr<std::unique_ptr<Converter>> Converter::Create(
-    nvinfer1::IBuilder* trt_builder, TrtPrecisionMode precision_mode,
-    bool use_calibration, nvinfer1::ILogger* trt_logger) {
+    TrtPrecisionMode precision_mode, bool use_calibration,
+    nvinfer1::ILogger* trt_logger) {
   std::unique_ptr<Converter> converter = absl::WrapUnique(
-      new Converter(trt_builder, precision_mode, use_calibration, trt_logger));
-  TF_RETURN_IF_ERROR(converter->Init());
+      new Converter(precision_mode, use_calibration, trt_logger));
+  TF_RETURN_IF_ERROR(converter->Init(trt_logger));
   return converter;
 }
 
-Converter::Converter(nvinfer1::IBuilder* trt_builder,
-                     TrtPrecisionMode precision_mode, bool use_calibration,
+Converter::Converter(TrtPrecisionMode precision_mode, bool use_calibration,
                      nvinfer1::ILogger* trt_logger)
-    : trt_builder_(trt_builder),
-      precision_mode_(precision_mode),
-      use_calibration_(use_calibration) {
+    : precision_mode_(precision_mode), use_calibration_(use_calibration) {
   InitializeTrtPlugins(trt_logger);
   this->RegisterOpConverters();
 }
 
-Status Converter::Init() {
-  // Create the network.
+Status Converter::Init(nvinfer1::ILogger* trt_logger) {
+  VLOG(1) << "Creating TensorRT builder";
+  trt_builder_.reset(nvinfer1::createInferBuilder(*trt_logger));
+
+  VLOG(1) << "Creating TensorRT network";
   trt_network_.reset(trt_builder_->createNetwork());
   if (!trt_network_) {
     return errors::Internal("Failed to create TensorRT network object");
@@ -1363,13 +1369,33 @@ Status Converter::RenameAndMarkOutputTensors(
 }
 
 Status Converter::BuildCudaEngine(
-    TrtUniquePtrType<nvinfer1::ICudaEngine>* engine) {
-  VLOG(1) << "Starting engine creation";
+    TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, int max_batch_size,
+    size_t max_workspace_size_bytes, nvinfer1::IGpuAllocator* allocator,
+    TRTInt8Calibrator* calibrator) {
+  VLOG(1) << "Configuring TensorRT builder";
+  trt_builder_->setMaxBatchSize(max_batch_size);
+  trt_builder_->setMaxWorkspaceSize(max_workspace_size_bytes);
+  trt_builder_->setGpuAllocator(allocator);
+  if (precision_mode_ == TrtPrecisionMode::FP16) {
+    trt_builder_->setFp16Mode(true);
+  } else if (precision_mode_ == TrtPrecisionMode::INT8) {
+    // Setting FP16 mode as well allows TRT to also consider FP16 kernels and
+    // use them in situations where they are faster than INT8 or where INT8 is
+    // not supported for a given layer.
+    trt_builder_->setFp16Mode(true);
+    trt_builder_->setInt8Mode(true);
+    if (use_calibration_) {
+      trt_builder_->setInt8Calibrator(calibrator);
+    } else {
+      trt_builder_->setInt8Calibrator(nullptr);
+    }
+  }
+
+  VLOG(1) << "Building TensorRT engine";
   engine->reset(trt_builder_->buildCudaEngine(*network()));
   if (engine->get() == nullptr) {
     return errors::Internal("Failed to build TensorRT engine");
   }
-  VLOG(1) << "Finished conversion";
   return Status::OK();
 }
 
@@ -2828,9 +2854,6 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
 
   // Asymmetric padding on Deconv not supported for now
   if (is_conv3d_backprop_input && attrs.get<string>("padding") == "SAME") {
-    const int tensor_c_idx = c_index - 1;
-    const int num_groups = (group == 0) ? tensor_dim.d[tensor_c_idx] : group;
-
     TRT_ShapedWeights weights =
         params->weight_store->GetTempWeights(weights_drsck);
 
@@ -2862,8 +2885,8 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
     }
   }
 
-  if (params->validation_only)
-    return Status::OK();  // Finished validation checks
+  // Finished validation checks
+  if (params->validation_only) return Status::OK();
 
   // Transpose to NCDHW (NCDHW is required for IConvLayer).
   const bool need_transpose = is_ndhwc;
@@ -5385,7 +5408,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
 
   return Status::OK();
 }
-#endif  // CombinedNonMaxSuppression
+#endif  // IS_TRT_VERSION_GE(5, 1, 0, 0)
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 Status ConvertResize(OpConverterParams* params) {
@@ -5617,37 +5640,13 @@ Status ConvertGraphDefToEngine(
   engine->reset();
   if (convert_successfully) *convert_successfully = false;
 
-  // Create the builder.
-  TrtUniquePtrType<nvinfer1::IBuilder> builder(
-      nvinfer1::createInferBuilder(*trt_logger));
-  builder->setMaxBatchSize(max_batch_size);
-  builder->setMaxWorkspaceSize(max_workspace_size_bytes);
-  builder->setGpuAllocator(allocator);
-  if (precision_mode == TrtPrecisionMode::FP16) {
-    builder->setFp16Mode(true);
-  } else if (precision_mode == TrtPrecisionMode::INT8) {
-    // Setting FP16 mode as well allows TRT to also consider FP16 kernels and
-    // use them in situations where they are faster than INT8 or where INT8 is
-    // not supported for a given layer.
-    builder->setFp16Mode(true);
-    builder->setInt8Mode(true);
-    if (use_calibration) {
-      builder->setInt8Calibrator(calibrator);
-    } else {
-      builder->setInt8Calibrator(nullptr);
-    }
-  }
-
-  // Build the network
-  if (VLOG_IS_ON(1)) {
-    string mode_str;
-    TF_RETURN_IF_ERROR(TrtPrecisionModeToName(precision_mode, &mode_str));
-    VLOG(1) << "Starting engine conversion, precision mode: " << mode_str;
-  }
-  auto statusor = Converter::Create(builder.get(), precision_mode,
-                                    use_calibration, trt_logger);
+  // Creating converter, TensorRT builder and network
+  auto statusor =
+      Converter::Create(precision_mode, use_calibration, trt_logger);
   TF_RETURN_IF_ERROR(statusor.status());
   auto converter = std::move(statusor.ValueOrDie());
+
+  VLOG(1) << "Starting to convert TensorFlow ops to TensorRT layers";
   std::vector<Converter::EngineOutputInfo> output_tensors;
   // Graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {
@@ -5734,7 +5733,10 @@ Status ConvertGraphDefToEngine(
   converter->MaybeApplyQuantizationRanges();
 
   // Build the engine.
-  TF_RETURN_IF_ERROR(converter->BuildCudaEngine(engine));
+  TF_RETURN_IF_ERROR(converter->BuildCudaEngine(
+      engine, max_batch_size, max_workspace_size_bytes, allocator, calibrator));
+
+  VLOG(1) << "Finished conversion";
   return Status::OK();
 }
 

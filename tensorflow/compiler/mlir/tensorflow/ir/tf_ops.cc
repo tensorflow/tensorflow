@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <type_traits>
@@ -36,7 +37,9 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
+#include "mlir/IR/DialectImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
+#include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
@@ -108,12 +111,40 @@ static inline bool HasRankAtMost(Value *value, int64_t rank) {
 static bool AreCastCompatible(Type a, Type b) {
   if (TensorCastOp::areCastCompatible(a, b)) return true;
 
+  // Resource types may optionally contain subtypes information that does not
+  // match. Check subtypes compatibility when possible, otherwise treat them as
+  // compatible.
+  auto a_or_element_type = getElementTypeOrSelf(a);
+  auto b_or_element_type = getElementTypeOrSelf(b);
+
+  auto a_kind = a_or_element_type.getKind();
+  auto b_kind = b_or_element_type.getKind();
+
+  if (a_kind == TensorFlowTypes::RESOURCE &&
+      b_kind == TensorFlowTypes::RESOURCE) {
+    auto a_resource_type = a_or_element_type.dyn_cast<ResourceType>();
+    auto b_resource_type = b_or_element_type.dyn_cast<ResourceType>();
+    bool a_has_subtype = !a_resource_type.getSubtypes().empty();
+    bool b_has_subtype = !b_resource_type.getSubtypes().empty();
+
+    if (!a_has_subtype || !b_has_subtype) return true;
+
+    assert(a_resource_type.getSubtypes().size() <= 1 &&
+           "Resource type must have at most one subtype");
+    assert(b_resource_type.getSubtypes().size() <= 1 &&
+           "Resource type must have at most one subtype");
+
+    return TensorCastOp::areCastCompatible(
+        a_resource_type.getSubtypes().front(),
+        b_resource_type.getSubtypes().front());
+  }
+
   // Variant types may optionally contain subtypes information that need not
   // match.  It is also not possible to compare subtypes for compatibility as
-  // their interpretation depends on the ops operating on them.  So, accept all
+  // their interpretation depends on the ops operating on them. So, accept all
   // pairs of variant types.
-  return getElementTypeOrSelf(a).getKind() == TensorFlowTypes::VARIANT &&
-         getElementTypeOrSelf(b).getKind() == TensorFlowTypes::VARIANT;
+  return a_kind == TensorFlowTypes::VARIANT &&
+         b_kind == TensorFlowTypes::VARIANT;
 }
 
 static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
@@ -131,10 +162,14 @@ static Type DeduceEqualCmpOpType(Builder *builder, Location loc, Value *x,
     if (incompatible_shape_error.getValue()) {
       mlir::emitError(loc, "non-broadcastable operands");
     } else {
-      result_type = UnrankedTensorType::get(builder->getI1Type());
+      return UnrankedTensorType::get(builder->getI1Type());
     }
   }
-  return result_type;
+
+  auto ranked_type = result_type.dyn_cast<RankedTensorType>();
+  if (!ranked_type) return UnrankedTensorType::get(builder->getI1Type());
+
+  return RankedTensorType::get(ranked_type.getShape(), builder->getI1Type());
 }
 
 // Returns dimension index for the given TensorFlow axis that supports negative
@@ -276,6 +311,49 @@ void AddV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// AllOp
+//===----------------------------------------------------------------------===//
+
+// Verifies an reduction op's `input` and reduction `dims`.
+static LogicalResult VerifyReductionInputAndDims(Value *input, Value *dims,
+                                                 Location loc) {
+  auto dims_type = dims->getType().dyn_cast<RankedTensorType>();
+  if (!dims_type) return success();
+  if (dims_type.getRank() > 1)
+    return emitError(loc, "dimensions can only be 0D or 1D tensor");
+
+  auto input_type = input->getType().dyn_cast<RankedTensorType>();
+  if (!input_type) return success();
+  int64_t rank = input_type.getRank();
+
+  DenseIntElementsAttr dims_attr;
+  if (!matchPattern(dims, m_Constant(&dims_attr))) return success();
+  for (const auto &dim_pair : llvm::enumerate(dims_attr)) {
+    int64_t cur_dim = dim_pair.value().getSExtValue();
+    if (cur_dim < -rank || cur_dim >= rank)
+      return emitError(loc)
+             << dim_pair.index() << "-th dimension should be in the range of [-"
+             << rank << ", " << rank << ")";
+  }
+
+  return success();
+}
+
+static LogicalResult Verify(AllOp op) {
+  return VerifyReductionInputAndDims(op.input(), op.reduction_indices(),
+                                     op.getLoc());
+}
+
+//===----------------------------------------------------------------------===//
+// AnyOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(AnyOp op) {
+  return VerifyReductionInputAndDims(op.input(), op.reduction_indices(),
+                                     op.getLoc());
+}
+
+//===----------------------------------------------------------------------===//
 // AssertOp
 //===----------------------------------------------------------------------===//
 
@@ -302,6 +380,24 @@ struct AssertWithTrue : public OpRewritePattern<AssertOp> {
 void AssertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
   results.insert<AssertWithTrue>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// BatchMatMulOp
+//===----------------------------------------------------------------------===//
+
+void BatchMatMulOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<BatchMatMulToMatMul>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// BatchMatMulV2Op
+//===----------------------------------------------------------------------===//
+
+void BatchMatMulV2Op::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<BatchMatMulV2ToMatMul>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -418,14 +514,6 @@ static LogicalResult Verify(OpT op) {
   // TODO(hinsu): Convert variadic length attributes to derived attributes.
   Operation::operand_range values = op.values();
 
-  auto num_values = std::distance(values.begin(), values.end());
-  int64_t attr_N = op.N().getSExtValue();
-  if (num_values != attr_N) {
-    return op.emitOpError()
-           << "requires attribute 'N' to match the number of inputs; expected: "
-           << num_values << " Found: " << attr_N;
-  }
-
   int axis_idx = std::is_same<OpT, ConcatOp>() ? 0 : 1;
   Value *axis = *op.getODSOperands(axis_idx).begin();
   if (!HasRankAtMost(axis, 1)) {
@@ -468,7 +556,7 @@ void ConstOp::build(Builder *builder, OperationState &result, Attribute value) {
   } else if (value.isa<BoolAttr>() || value.isa<FloatAttr>() ||
              value.isa<IntegerAttr>()) {
     // All TensorFlow types must be tensor types. In the build() method,
-    // we want to provide more flexiblity by allowing attributes of scalar
+    // we want to provide more flexibility by allowing attributes of scalar
     // types. But we need to wrap it up with ElementsAttr to construct
     // valid TensorFlow constants.
     type = RankedTensorType::get(/*shape=*/{}, value.getType());
@@ -630,6 +718,21 @@ void DivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// EinsumOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that,
+// * Arity of the op is at most two.
+//
+// TODO(hinsu): Verify einsum equation attribute.
+static LogicalResult Verify(EinsumOp op) {
+  if (op.N() > 2) {
+    return op.emitOpError("supports at most two operands");
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // EmptyTensorListOp
 //===----------------------------------------------------------------------===//
 
@@ -738,6 +841,19 @@ static LogicalResult Verify(FakeQuantWithMinMaxVarsPerChannelOp op) {
     return op.emitOpError(
         "requires num_bits to be between 2 and 16, inclusive");
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// FillOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(FillOp op) {
+  if (!IsOfRankOrUnranked(op.dims(), 1))
+    return op.emitOpError() << "requires dims to be a 1D tensor";
+  if (!IsOfRankOrUnranked(op.value(), 0))
+    return op.emitOpError() << "requires value to be a scalar";
+
   return success();
 }
 
@@ -1003,14 +1119,6 @@ static LogicalResult Verify(OneHotOp op) {
 static LogicalResult Verify(PackOp op) {
   // TODO(hinsu): Convert variadic length attributes to derived attributes.
   Operation::operand_range values = op.values();
-
-  auto num_values = std::distance(values.begin(), values.end());
-  int64_t attr_N = op.N().getSExtValue();
-  if (num_values != attr_N) {
-    return op.emitOpError()
-           << "requires attribute 'N' to match the number of inputs; expected: "
-           << num_values << " Found: " << attr_N;
-  }
 
   if (failed(VerifyTypesCompatibility(values,
                                       /*mask_one_dim=*/false,
@@ -1324,17 +1432,17 @@ void ShapeOp::build(Builder *builder, OperationState &result, Value *input,
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(ShapeNOp op) {
-  const uint64_t n_attr = op.N().getZExtValue();
+  const size_t num_tensors = op.N();
 
-  if (op.getNumOperands() != n_attr)
-    return op.emitOpError() << "requires " << n_attr << " operand(s), got "
+  if (op.getNumOperands() != num_tensors)
+    return op.emitOpError() << "requires " << num_tensors << " operand(s), got "
                             << op.getNumOperands() << " operand(s)";
 
-  if (op.getNumResults() != n_attr)
-    return op.emitOpError() << "requires " << n_attr << " result(s), got "
+  if (op.getNumResults() != num_tensors)
+    return op.emitOpError() << "requires " << num_tensors << " result(s), got "
                             << op.getNumResults() << " result(s)";
 
-  for (auto i : llvm::seq<uint64_t>(0, n_attr)) {
+  for (auto i : llvm::seq<uint64_t>(0, num_tensors)) {
     auto verification = VerifyShapeOperandAndResult(
         op, op.getOperand(i)->getType(), op.getResult(i)->getType(), i);
     if (failed(verification)) return verification;
@@ -1361,6 +1469,22 @@ LogicalResult ShapeNOp::fold(ArrayRef<Attribute> operands,
 // TODO(hinsu): Add canonicalization pattern for ShapeN ops that don't have all
 // static input shapes. Replacing output values corresponding to static input
 // types may enable optimizations in users of the values.
+
+//===----------------------------------------------------------------------===//
+// SizeOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that,
+//
+// * Input type, if is a ranked tensor, has at most INT32_MAX dimensions.
+//
+static LogicalResult Verify(SizeOp op) {
+  if (!HasRankAtMost(op.input(), std::numeric_limits<int32_t>::max()))
+    return op.emitOpError(
+        "requires ranked input tensor to be of rank INT32_MAX or less");
+
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // SliceOp
@@ -1453,6 +1577,129 @@ static LogicalResult Verify(SoftmaxCrossEntropyWithLogitsOp op) {
       (broadcasted_ty.hasRank() && broadcasted_ty.getRank() != 2))
     return op.emitOpError(
         "requires features and labels to be broadcast compatible to rank two");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SplitOp
+//===----------------------------------------------------------------------===//
+
+// Verifies the input and split dimension operands for tf.Split/tf.SplitV.
+// Writes the split dimension's index (adjusted with input rank) via `dim_index`
+// if it's a constant.
+template <class Op>
+LogicalResult VerifySplitInputAndSplitDim(Op op, Optional<int64_t> *dim_index) {
+  *dim_index = llvm::None;
+
+  Value *split_dim = op.split_dim();
+  if (auto split_dim_type = split_dim->getType().dyn_cast<RankedTensorType>())
+    if (split_dim_type.getRank() != 0)
+      return op.emitOpError(
+          "split dimension should be an integer scalar tensor");
+
+  // We can perform further verification if the input tensor to be split has
+  // known rank and the split dimension tensor is a constant.
+
+  auto input_type = op.value()->getType().template dyn_cast<RankedTensorType>();
+  if (!input_type) return success();
+
+  int64_t input_rank = input_type.getRank();
+  if (input_rank == 0)
+    return op.emitOpError("cannot split scalar input tensor");
+
+  DenseIntElementsAttr split_dim_attr;
+  if (!matchPattern(split_dim, m_Constant(&split_dim_attr))) return success();
+
+  int64_t index = (*split_dim_attr.begin()).getSExtValue();
+
+  if (index + input_rank < 0 || index >= input_rank) {
+    return op.emitOpError("split dimension must be in range [-")
+           << input_rank << ", " << input_rank << ")";
+  }
+
+  if (index < 0) index += input_rank;
+  *dim_index = index;
+
+  return success();
+}
+
+static LogicalResult Verify(SplitOp op) {
+  Optional<int64_t> dim_index;
+  if (failed(VerifySplitInputAndSplitDim(op, &dim_index))) return failure();
+  if (!dim_index) return success();
+
+  int64_t input_dim_size =
+      op.value()->getType().cast<RankedTensorType>().getDimSize(*dim_index);
+  if (input_dim_size == ShapedType::kDynamicSize) return success();
+
+  if (input_dim_size % op.getNumResults() != 0)
+    return op.emitOpError("dimension #")
+           << *dim_index << " not divisible by the number of result tensors";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SplitVOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SplitVOp op) {
+  auto split_sizes_type =
+      op.size_splits()->getType().dyn_cast<RankedTensorType>();
+  if (!split_sizes_type) return success();
+
+  if (split_sizes_type.getRank() != 1 ||
+      split_sizes_type.getDimSize(0) != op.getNumResults())
+    return op.emitOpError("split sizes should be a 1D tensor of ")
+           << op.getNumResults() << " elements";
+
+  Optional<int64_t> dim_index = 0;
+  if (failed(VerifySplitInputAndSplitDim(op, &dim_index))) return failure();
+  if (!dim_index) return success();
+
+  int64_t input_dim_size =
+      op.value()->getType().cast<RankedTensorType>().getDimSize(*dim_index);
+  if (input_dim_size == ShapedType::kDynamicSize) return success();
+
+  // If split sizes come from a constant, they must sum to the dimension size
+  // along split_dim, and we can have no more than one dynamic dimension.
+  DenseIntElementsAttr split_sizes_attr;
+  if (!matchPattern(op.size_splits(), m_Constant(&split_sizes_attr)))
+    return success();
+
+  int64_t total_dim_size = 0;  // Total dimension size assigned to splits
+  llvm::Optional<int> dynamic_dim_index;
+
+  SmallVector<int64_t, 4> split_sizes;
+  split_sizes.reserve(
+      split_sizes_attr.getType().cast<ShapedType>().getNumElements());
+
+  for (auto dim : llvm::enumerate(split_sizes_attr)) {
+    int64_t dim_val = dim.value().getSExtValue();
+    split_sizes.push_back(dim_val);
+    if (dim_val == ShapedType::kDynamicSize) {
+      // We cannot have more than one dynamic dimension.
+      if (dynamic_dim_index)
+        return op.emitOpError(
+            "cannot have more than one dynamic dimension in split sizes");
+      dynamic_dim_index = dim.index();
+    } else {
+      total_dim_size += dim_val;
+    }
+  }
+
+  if (!dynamic_dim_index && total_dim_size != input_dim_size)
+    return op.emitOpError(
+               "split sizes must sum up to the dimension size along split "
+               "dimension, found ")
+           << total_dim_size << " vs " << input_dim_size;
+
+  if (dynamic_dim_index && total_dim_size > input_dim_size)
+    return op.emitOpError(
+               "split sizes must sum up to be less than or equal to the "
+               "dimension size along split dimension, found ")
+           << total_dim_size << " vs " << input_dim_size;
 
   return success();
 }
@@ -1571,6 +1818,21 @@ static LogicalResult Verify(TensorListStackOp op) {
       !IsOfRankOrUnranked(op.element_shape(), 1)) {
     return op.emitOpError("requires element_shape operand to be 0D/1D tensor");
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TopKV2Op
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(TopKV2Op op) {
+  if (!HasRankAtLeast(op.input(), 1))
+    return op.emitOpError(
+        "requires input operand to have at least 1 dimension");
+
+  if (!IsOfRankOrUnranked(op.k(), 0))
+    return op.emitOpError("requires k operand to be 0D tensor");
+
   return success();
 }
 
@@ -1839,7 +2101,11 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 }
 
 // Parses a type registered to this dialect.
-Type TensorFlowDialect::parseType(StringRef data, Location loc) const {
+Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {
+  StringRef data;
+  if (parser.parseKeyword(&data)) return Type();
+
+  Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
   auto typeKind = llvm::StringSwitch<unsigned>(data)
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   .Case(name, TensorFlowTypes::enumerant)
@@ -1862,14 +2128,14 @@ Type TensorFlowDialect::parseType(StringRef data, Location loc) const {
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
     case TensorFlowTypes::RESOURCE:
-      return ParseResourceType(data, loc);
+      return ParseResourceType(parser, loc);
     case TensorFlowTypes::VARIANT:
-      return ParseVariantType(data, loc);
+      return ParseVariantType(parser, loc);
   }
 }
 
 // Prints a type registered to this dialect.
-void TensorFlowDialect::printType(Type ty, raw_ostream &os) const {
+void TensorFlowDialect::printType(Type ty, DialectAsmPrinter &os) const {
   assert(ty.isa<TensorFlowType>());
   switch (ty.getKind()) {
     default:
@@ -1889,46 +2155,26 @@ void TensorFlowDialect::printType(Type ty, raw_ostream &os) const {
 
 namespace {
 template <typename TypeWithSubtype>
-Type ParseTypeWithSubtype(MLIRContext *context, StringRef type_with_subtype,
-                          StringRef spec, Location loc) {
-  bool success = spec.consume_front(type_with_subtype);
-  DCHECK(success) << spec.str();
-
+Type ParseTypeWithSubtype(MLIRContext *context, DialectAsmParser &parser,
+                          Location loc) {
   // Default type without inferred subtypes.
-  if (spec.empty()) return TypeWithSubtype::get(context);
-
-  if (!spec.consume_front("<") || !spec.consume_back(">"))
-    return emitError(loc) << "tf." << type_with_subtype
-                          << " delimiter <...> mismatch",
-           nullptr;
+  if (failed(parser.parseOptionalLess())) return TypeWithSubtype::get(context);
 
   // Most types with subtypes have only one subtype.
-  SmallVector<StringRef, 1> subtype_specs;
-  llvm::SplitString(spec, subtype_specs, ",");
-  if (subtype_specs.empty())
-    return emitError(loc) << "invalid type: tf." << type_with_subtype << "<>",
-           nullptr;
-
   SmallVector<TensorType, 1> subtypes;
-  subtypes.reserve(subtype_specs.size());
-  for (StringRef subtype_spec : subtype_specs) {
-    subtype_spec = subtype_spec.trim();
-    Type type = mlir::parseType(subtype_spec, context);
-    if (!type) {
-      return emitError(loc) << "invalid type: " << subtype_spec, nullptr;
-    }
+  do {
+    TensorType tensor_ty;
+    if (parser.parseType(tensor_ty)) return Type();
+    subtypes.push_back(tensor_ty);
+  } while (succeeded(parser.parseOptionalComma()));
 
-    if (TensorType tensor_ty = type.dyn_cast<TensorType>()) {
-      subtypes.push_back(tensor_ty);
-    } else {
-      return emitError(loc) << "expected TensorType. Found: " << type, nullptr;
-    }
-  }
+  if (parser.parseGreater()) return Type();
   return TypeWithSubtype::getChecked(subtypes, context, loc);
 }
 
 template <typename TypeWithSubtype>
-void PrintTypeWithSubtype(StringRef type, TypeWithSubtype ty, raw_ostream &os) {
+void PrintTypeWithSubtype(StringRef type, TypeWithSubtype ty,
+                          DialectAsmPrinter &os) {
   os << type;
   ArrayRef<TensorType> subtypes = ty.getSubtypes();
   if (subtypes.empty()) return;
@@ -1939,22 +2185,23 @@ void PrintTypeWithSubtype(StringRef type, TypeWithSubtype ty, raw_ostream &os) {
 }
 }  // anonymous namespace
 
-Type TensorFlowDialect::ParseResourceType(StringRef spec, Location loc) const {
-  return ParseTypeWithSubtype<ResourceType>(getContext(), "resource", spec,
-                                            loc);
+Type TensorFlowDialect::ParseResourceType(DialectAsmParser &parser,
+                                          Location loc) const {
+  return ParseTypeWithSubtype<ResourceType>(getContext(), parser, loc);
 }
 
 void TensorFlowDialect::PrintResourceType(ResourceType ty,
-                                          raw_ostream &os) const {
+                                          DialectAsmPrinter &os) const {
   return PrintTypeWithSubtype("resource", ty, os);
 }
 
-Type TensorFlowDialect::ParseVariantType(StringRef spec, Location loc) const {
-  return ParseTypeWithSubtype<VariantType>(getContext(), "variant", spec, loc);
+Type TensorFlowDialect::ParseVariantType(DialectAsmParser &parser,
+                                         Location loc) const {
+  return ParseTypeWithSubtype<VariantType>(getContext(), parser, loc);
 }
 
 void TensorFlowDialect::PrintVariantType(VariantType ty,
-                                         raw_ostream &os) const {
+                                         DialectAsmPrinter &os) const {
   return PrintTypeWithSubtype("variant", ty, os);
 }
 

@@ -440,8 +440,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func
     // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
-    // CHECK-SAME: Targs = [tensor<?xi32>]
-    // CHECK-SAME: Tresults = [tensor<?xi32>]
     // CHECK-SAME: device = "/job:worker/replica:0/task:0/device:TPU:0"
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
@@ -483,8 +481,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       // CHECK-SAME: tf.B
       // CHECK-NOT: func = @tpu0_func
       // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[RI_0]], %[[COMPILE_OUTPUT]]#1)
-      // CHECK-SAME: Targs = [tensor<?xi32>]
-      // CHECK-SAME: Tresults = [tensor<?xi32>]
       %2 = "tf_device.launch_func"(%ri_0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
 
       // CHECK: tf_device.return %[[EXECUTE_OUTPUT]]
@@ -553,8 +549,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
     // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
-    // CHECK-SAME: Targs = [tensor<?xi32>]
-    // CHECK-SAME: Tresults = [tensor<?xi32>]
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -598,8 +592,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
     // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
-    // CHECK-SAME: Targs = [tensor<?xi32>]
-    // CHECK-SAME: Tresults = [tensor<?xi32>]
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -644,8 +636,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: tf.E
     // CHECK-NOT: func = @tpu0_func
     // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
-    // CHECK-SAME: Targs = [tensor<?xi32>]
-    // CHECK-SAME: Tresults = [tensor<?xi32>]
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -695,8 +685,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
     // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
-    // CHECK-SAME: Targs = [tensor<?xi32>]
-    // CHECK-SAME: Tresults = [tensor<?xi32>]
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -738,8 +726,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func0
     // CHECK: %[[EXECUTE0_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE0_OUTPUT]]#1)
-    // CHECK-SAME: Targs = [tensor<?xi32>]
-    // CHECK-SAME: Tresults = [tensor<?xi32>]
 
     %2 = "tf_device.launch_func"(%1) {_tpu_replicate = "cluster1", device = "", func = @tpu0_func1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[EXECUTE0_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[EXECUTE0_OUTPUT]])
@@ -751,8 +737,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func1
     // CHECK: %[[EXECUTE1_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[EXECUTE0_OUTPUT]], %[[COMPILE1_OUTPUT]]#1)
-    // CHECK-SAME: Targs = [tensor<?xi32>]
-    // CHECK-SAME: Tresults = [tensor<?xi32>]
 
     %3 = "tf.C"(%2) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE1_OUTPUT]])
@@ -792,8 +776,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func
     // CHECK: %[[EXECUTE0_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE0_OUTPUT]]#1)
-    // CHECK-SAME: Targs = [tensor<?xi32>]
-    // CHECK-SAME: Tresults = [tensor<?xi32>]
 
     %2 = "tf_device.launch_func"(%1) {_tpu_replicate = "cluster1", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[EXECUTE0_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[EXECUTE0_OUTPUT]])
@@ -805,8 +787,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func
     // CHECK: %[[EXECUTE1_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[EXECUTE0_OUTPUT]], %[[COMPILE1_OUTPUT]]#1)
-    // CHECK-SAME: Targs = [tensor<?xi32>]
-    // CHECK-SAME: Tresults = [tensor<?xi32>]
 
     %3 = "tf.C"(%2) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE1_OUTPUT]])
@@ -849,8 +829,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: func @referenced_func0
     // CHECK-SAME: tf.F
     // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
-    // CHECK-SAME: Targs = [tensor<?xi32>]
-    // CHECK-SAME: Tresults = [tensor<?xi32>]
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])

@@ -1,4 +1,4 @@
-load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
     default_visibility = [
@@ -37,8 +37,7 @@ cc_library(
     name = "blocking_counter",
     hdrs = ["blocking_counter.h"],
     deps = [
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:blocking_counter",
     ],
 )
 
@@ -53,13 +52,9 @@ cc_library(
 
 cc_library(
     name = "coding",
-    srcs = ["coding.cc"],
     hdrs = ["coding.h"],
     deps = [
-        "//tensorflow/core/lib/core:raw_coding",
-        "//tensorflow/core/lib/core:stringpiece",
-        "//tensorflow/core/platform:byte_order",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core/platform:coding",
     ],
 )
 
@@ -67,12 +62,7 @@ cc_library(
     name = "errors",
     hdrs = ["errors.h"],
     deps = [
-        ":status",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:strcat",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/core/platform:errors",
     ],
 )
 
@@ -88,33 +78,21 @@ cc_library(
     name = "raw_coding",
     hdrs = ["raw_coding.h"],
     deps = [
-        "//tensorflow/core/platform:byte_order",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core/platform:raw_coding",
     ],
 )
 
 cc_library(
     name = "refcount",
     hdrs = ["refcount.h"],
-    deps = ["//tensorflow/core/platform:logging"],
+    deps = ["//tensorflow/core/platform:refcount"],
 )
 
 cc_library(
     name = "status",
-    srcs = ["status.cc"],
     hdrs = ["status.h"],
     deps = [
-        ":error_codes_proto_cc",
-        "//tensorflow/core:error_codes_proto_impl_cc",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:strcat",
-        "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/platform:stringprintf",
-        "//tensorflow/core/platform:types",
-        "@com_google_absl//absl/base",
+        "//tensorflow/core/platform:status",
     ],
 )
 
@@ -189,8 +167,6 @@ filegroup(
     srcs = [
         "arena.cc",
         "bitmap.cc",
-        "coding.cc",
-        "status.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

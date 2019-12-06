@@ -91,7 +91,7 @@ static void emitOpDocForDialect(const Dialect &dialect,
                                 const std::vector<Operator> &ops,
                                 const std::vector<Type> &types,
                                 raw_ostream &os) {
-  os << "# Dialect '" << dialect.getName() << "' definition\n";
+  os << "# Dialect '" << dialect.getName() << "' definition\n\n";
   emitIfNotEmpty(dialect.getSummary(), os);
   emitIfNotEmpty(dialect.getDescription(), os);
 
@@ -100,7 +100,7 @@ static void emitOpDocForDialect(const Dialect &dialect,
 
   // TODO(antiagainst): Add link between use and def for types
   if (!types.empty())
-    os << "## Type definition\n";
+    os << "## Type definition\n\n";
   for (auto type : types) {
     os << "### " << type.getDescription() << "\n";
     emitDescription(type.getTypeDescription(), os);
@@ -108,7 +108,7 @@ static void emitOpDocForDialect(const Dialect &dialect,
   }
 
   if (!ops.empty())
-    os << "## Operation definition\n";
+    os << "## Operation definition\n\n";
   for (auto op : ops) {
     os << "### " << op.getOperationName() << " (" << op.getQualCppClassName()
        << ")";
@@ -116,13 +116,13 @@ static void emitOpDocForDialect(const Dialect &dialect,
     // Emit summary & description of operator.
     if (op.hasSummary())
       os << "\n" << op.getSummary() << "\n";
-    os << "\n#### Description:\n";
+    os << "\n#### Description:\n\n";
     if (op.hasDescription())
       mlir::tblgen::emitDescription(op.getDescription(), os);
 
     // Emit operands & type of operand. All operands are numbered, some may be
     // named too.
-    os << "\n#### Operands:\n";
+    os << "\n#### Operands:\n\n";
     for (const auto &operand : op.getOperands()) {
       os << "1. ";
       if (!operand.name.empty())
@@ -135,7 +135,7 @@ static void emitOpDocForDialect(const Dialect &dialect,
     // Emit attributes.
     // TODO: Attributes are only documented by TableGen name, with no further
     // info. This should be improved.
-    os << "\n#### Attributes:\n";
+    os << "\n#### Attributes:\n\n";
     if (op.getNumAttributes() > 0) {
       os << "| Attribute | MLIR Type | Description |\n"
          << "| :-------: | :-------: | ----------- |\n";
@@ -147,7 +147,7 @@ static void emitOpDocForDialect(const Dialect &dialect,
     }
 
     // Emit results.
-    os << "\n#### Results:\n";
+    os << "\n#### Results:\n\n";
     for (unsigned i = 0, e = op.getNumResults(); i < e; ++i) {
       os << "1. ";
       auto name = op.getResultName(i);

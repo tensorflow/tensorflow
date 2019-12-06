@@ -211,6 +211,7 @@ int tblgen::SymbolInfoMap::SymbolInfo::getStaticValueCount() const {
 
 std::string
 tblgen::SymbolInfoMap::SymbolInfo::getVarDecl(StringRef name) const {
+  LLVM_DEBUG(llvm::dbgs() << "getVarDecl for '" << name << "': ");
   switch (kind) {
   case Kind::Attr: {
     auto type =
@@ -563,7 +564,8 @@ void tblgen::Pattern::collectBoundSymbols(DagNode tree, SymbolInfoMap &infoMap,
       // We can only bind symbols to op arguments in source pattern. Those
       // symbols are referenced in result patterns.
       auto treeArgName = tree.getArgName(i);
-      if (!treeArgName.empty()) {
+      // `$_` is a special symbol meaning ignore the current argument.
+      if (!treeArgName.empty() && treeArgName != "_") {
         LLVM_DEBUG(llvm::dbgs() << "found symbol bound to op argument: "
                                 << treeArgName << '\n');
         if (!infoMap.bindOpArgument(treeArgName, op, i)) {

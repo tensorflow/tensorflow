@@ -42,6 +42,9 @@ Connect the Arducam pins as follows:
 
 ### Install the Arduino_TensorFlowLite library
 
+Download the current nightly build of the library:
+[person_detection.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/person_detection/tensorflow_lite.zip)
+
 This example application is included as part of the official TensorFlow Lite
 Arduino library. To install it, open the Arduino library manager in
 `Tools -> Manage Libraries...` and search for `Arduino_TensorFlowLite`.

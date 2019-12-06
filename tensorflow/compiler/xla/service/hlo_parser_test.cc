@@ -1641,7 +1641,7 @@ ENTRY MinMaxValues {
   x.u16 = u16[2]{0} constant({0, 65535})
   x.u32 = u32[2]{0} constant({0, 4294967295})
   x.f16 = f16[2]{0} constant({-65504, 65504})
-  x.bf16 = bf16[2]{0} constant({-3.38953e+38, 3.38953e+38})
+  x.bf16 = bf16[2]{0} constant({-3.39e+38, 3.39e+38})
   x.f32 = f32[2]{0} constant({-3.40282e+38, 3.40282e+38})
   x.f64 = f64[2]{0} constant({-1.79769e+308, 1.79769e+308})
   x.c64 = c64[2]{0} constant({(-3.40282e+38, 3.40282e+38), (3.40282e+38, -3.40282e+38)})
@@ -1932,7 +1932,7 @@ TEST_F(HloParserTest, ConstantF16Overflow) {
       R"(HloModule ConstantF16Overflow_module
 
 ENTRY %ConstantF16Overflow.v4 () -> f16[] {
-  ROOT %constant = f16[] constant(-65505)
+  ROOT %constant = f16[] constant(-65520)
 }
 
 )";
@@ -1968,7 +1968,7 @@ TEST_F(HloParserTest, ConstantF16OverflowInSparseArray) {
   const string original = R"(
     HloModule test_module
     ENTRY test {
-      ROOT c = f16[5]sparse{10} constant({[0]: 0, [1]: -65505})
+      ROOT c = f16[5]sparse{10} constant({[0]: 0, [1]: -65520})
     })";
   ExpectHasSubstr(
       ParseAndReturnUnverifiedModule(original).status().error_message(),

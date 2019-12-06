@@ -63,53 +63,26 @@ string CanonicalPlatformName(const string& platform_name) {
   return lowercase_platform_name;
 }
 
+StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
+  return se::MultiPlatformManager::PlatformsWithFilter(
+      [](const se::Platform* platform) {
+        auto compiler_status = Compiler::GetForPlatform(platform);
+        bool supported = compiler_status.ok();
+        if (!supported) {
+          LOG(INFO) << "platform " << platform->Name() << " present but no "
+                    << "XLA compiler available: "
+                    << compiler_status.status().error_message();
+        }
+        return supported;
+      });
+}
+
 }  // namespace
 
 /* static */ StatusOr<std::vector<se::Platform*>>
 PlatformUtil::GetSupportedPlatforms() {
-  std::vector<se::Platform*> all_platforms =
-      se::MultiPlatformManager::AllPlatforms();
-  if (all_platforms.empty()) {
-    LOG(WARNING) << "no executor platforms available: platform map is empty";
-  }
-
   // Gather all platforms which have an XLA compiler.
-  std::vector<se::Platform*> platforms;
-  for (se::Platform* platform : all_platforms) {
-    auto compiler_status = Compiler::GetForPlatform(platform);
-    if (compiler_status.ok()) {
-      if (!platform->Initialized()) {
-        TF_RETURN_IF_ERROR(platform->Initialize({}));
-      }
-      platforms.push_back(platform);
-    } else {
-      LOG(INFO) << "platform " << platform->Name() << " present but no "
-                << "XLA compiler available: "
-                << compiler_status.status().error_message();
-    }
-  }
-  return platforms;
-}
-
-/* static */ StatusOr<se::Platform*> PlatformUtil::GetSolePlatform() {
-  TF_ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
-  if (platforms.empty()) {
-    return NotFound("no platforms found");
-  } else if (platforms.size() == 1) {
-    se::Platform* platform = platforms[0];
-    if (!platform->Initialized()) {
-      TF_RETURN_IF_ERROR(platform->Initialize({}));
-    }
-    return platform;
-  }
-
-  // Multiple platforms present and we can't pick a reasonable default.
-  string platforms_string = absl::StrJoin(
-      platforms, ", ",
-      [](string* out, const se::Platform* p) { out->append(p->Name()); });
-  return InvalidArgument(
-      "must specify platform because more than one platform found: %s",
-      platforms_string);
+  return xla::GetSupportedPlatforms();
 }
 
 /* static */ StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
@@ -130,9 +103,6 @@ PlatformUtil::GetSupportedPlatforms() {
     }
   }
   if (platform != nullptr) {
-    if (!platform->Initialized()) {
-      TF_RETURN_IF_ERROR(platform->Initialize({}));
-    }
     return platform;
   }
 
@@ -148,47 +118,11 @@ PlatformUtil::GetSupportedPlatforms() {
 
 /*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatform(
     const string& platform_name) {
-  string platform_str = CanonicalPlatformName(platform_name);
-  TF_ASSIGN_OR_RETURN(auto platforms, PlatformUtil::GetSupportedPlatforms());
-  for (se::Platform* platform : platforms) {
-    if (absl::AsciiStrToLower(platform->Name()) == platform_str) {
-      if (!platform->Initialized()) {
-        TF_RETURN_IF_ERROR(platform->Initialize({}));
-      }
-      return platform;
-    }
-  }
-  return InvalidArgument("platform %s not found", platform_name);
-}
-
-/*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatformExceptFor(
-    const string& platform_name) {
-  string platform_str = CanonicalPlatformName(platform_name);
-
-  TF_ASSIGN_OR_RETURN(auto platforms, PlatformUtil::GetSupportedPlatforms());
-  std::vector<se::Platform*> matched;
-  for (se::Platform* platform : platforms) {
-    if (absl::AsciiStrToLower(platform->Name()) != platform_name) {
-      matched.push_back(platform);
-    }
-  }
-  if (matched.empty()) {
-    return InvalidArgument("unable to find platform that is not %s",
-                           platform_name);
-  }
-  if (matched.size() == 1) {
-    auto platform = matched[0];
-    if (!platform->Initialized()) {
-      TF_RETURN_IF_ERROR(platform->Initialize({}));
-    }
-    return platform;
-  }
-  string matched_string = absl::StrJoin(
-      matched, ", ",
-      [](string* out, const se::Platform* p) { out->append(p->Name()); });
-  return InvalidArgument(
-      "found multiple platforms %s, but expected one platform except for %s",
-      matched_string, platform_name);
+  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                      se::MultiPlatformManager::PlatformWithName(
+                          CanonicalPlatformName(platform_name)));
+  TF_RETURN_IF_ERROR(Compiler::GetForPlatform(platform).status());
+  return platform;
 }
 
 // Returns whether the device underlying the given StreamExecutor is supported

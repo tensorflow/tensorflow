@@ -118,7 +118,7 @@ class Module(tracking.AutoTrackable):
       with ops.name_scope_v2(name) as scope_name:
         self._name_scope = ops.name_scope_v2(scope_name)
     else:
-      with ops.name_scope(name) as scope_name:
+      with ops.name_scope(name, skip_on_eager=False) as scope_name:
         self._scope_name = scope_name
 
   @property
@@ -137,7 +137,7 @@ class Module(tracking.AutoTrackable):
       return self._name_scope
     else:
       # In TF1 name_scope is not re-entrant in eager so we cannot memoize it.
-      return ops.name_scope(self._scope_name)
+      return ops.name_scope(self._scope_name, skip_on_eager=False)
 
   @property
   def variables(self):

@@ -13,7 +13,6 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
 )
-# Placeholder for Google-internal load statements.
 
 package(
     default_visibility = [
@@ -21,6 +20,8 @@ package(
     ],
     licenses = ["notice"],  # Apache 2.0
 )
+
+exports_files(["generated_examples_zip_test.cc"])
 
 [gen_zip_test(
     name = "zip_test_%s" % test_name,
@@ -490,13 +491,18 @@ edgetpu_ops = [
     "depthwiseconv",  # high error
     "fully_connected",
     "l2norm",  # high error
+    "maximum",
     "max_pool",
     "mean",
+    "minimum",
     "mul",
     "pad",  # high error
+    "relu",
+    "relu1",
     "relu6",
     "reshape",
     "resize_bilinear",
+    "resize_nearest_neighbor",
     "sigmoid",
     "slice",
     "softmax",
@@ -507,6 +513,8 @@ edgetpu_ops = [
     "sub",
     "sum",  # high error
     "tanh",
+    "transpose",
+    "transpose_conv",
 ]
 
 [gen_zipped_test_file(

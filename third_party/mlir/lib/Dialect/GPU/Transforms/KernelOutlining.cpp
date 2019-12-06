@@ -24,6 +24,7 @@
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/Pass.h"
 
 using namespace mlir;
@@ -56,22 +57,34 @@ static void injectGpuIndexOperations(Location loc, FuncOp kernelFunc) {
   }
 }
 
-// Move all constant arguments of the given kernel function into the function,
-// thereby reducing the number of kernel arguments.
-static gpu::LaunchFuncOp inlineConstants(FuncOp kernelFunc,
-                                         gpu::LaunchFuncOp launch) {
+static bool isInliningBeneficiary(Operation *op) {
+  return isa<ConstantOp>(op) || isa<DimOp>(op);
+}
+
+// Move arguments of the given kernel function into the function if this reduces
+// the number of kernel arguments.
+static gpu::LaunchFuncOp inlineBeneficiaryOps(FuncOp kernelFunc,
+                                              gpu::LaunchFuncOp launch) {
   OpBuilder kernelBuilder(kernelFunc.getBody());
   auto &firstBlock = kernelFunc.getBody().front();
   llvm::SmallVector<Value *, 8> newLaunchArgs;
+  BlockAndValueMapping map;
+  for (int i = 0, e = launch.getNumKernelOperands(); i < e; ++i) {
+    map.map(launch.getKernelOperand(i), kernelFunc.getArgument(i));
+  }
   for (int i = launch.getNumKernelOperands() - 1; i >= 0; --i) {
     auto operandOp = launch.getKernelOperand(i)->getDefiningOp();
-    auto constant = dyn_cast_or_null<ConstantOp>(operandOp);
-    if (!constant) {
+    if (!operandOp || !isInliningBeneficiary(operandOp)) {
       newLaunchArgs.push_back(launch.getKernelOperand(i));
       continue;
     }
-    auto newConstant = kernelBuilder.clone(*operandOp);
-    firstBlock.getArgument(i)->replaceAllUsesWith(newConstant->getResult(0));
+    // Only inline operations that do not create new arguments.
+    if (!llvm::all_of(operandOp->getOperands(),
+                      [map](Value *value) { return map.contains(value); })) {
+      continue;
+    }
+    auto clone = kernelBuilder.clone(*operandOp, map);
+    firstBlock.getArgument(i)->replaceAllUsesWith(clone->getResult(0));
     firstBlock.eraseArgument(i);
   }
   if (newLaunchArgs.size() == launch.getNumKernelOperands())
@@ -125,7 +138,7 @@ static void convertToLaunchFuncOp(gpu::LaunchOp &launchOp, FuncOp kernelFunc) {
   auto launchFuncOp = builder.create<gpu::LaunchFuncOp>(
       launchOp.getLoc(), kernelFunc, launchOp.getGridSizeOperandValues(),
       launchOp.getBlockSizeOperandValues(), kernelOperandValues);
-  inlineConstants(kernelFunc, launchFuncOp);
+  inlineBeneficiaryOps(kernelFunc, launchFuncOp);
   launchOp.erase();
 }
 
@@ -143,7 +156,7 @@ namespace {
 class GpuKernelOutliningPass : public ModulePass<GpuKernelOutliningPass> {
 public:
   void runOnModule() override {
-    ModuleManager moduleManager(getModule());
+    SymbolTable symbolTable(getModule());
     bool modified = false;
     for (auto func : getModule().getOps<FuncOp>()) {
       // Insert just after the function.
@@ -154,8 +167,8 @@ public:
         // Create nested module and insert outlinedFunc. The module will
         // originally get the same name as the function, but may be renamed on
         // insertion into the parent module.
-        auto kernelModule = createKernelModule(outlinedFunc, moduleManager);
-        moduleManager.insert(insertPt, kernelModule);
+        auto kernelModule = createKernelModule(outlinedFunc, symbolTable);
+        symbolTable.insert(kernelModule, insertPt);
 
         // Potentially changes signature, pulling in constants.
         convertToLaunchFuncOp(op, outlinedFunc);
@@ -173,30 +186,32 @@ public:
 private:
   // Returns a module containing kernelFunc and all callees (recursive).
   ModuleOp createKernelModule(FuncOp kernelFunc,
-                              const ModuleManager &parentModuleManager) {
+                              const SymbolTable &parentSymbolTable) {
     auto context = getModule().getContext();
     Builder builder(context);
     auto kernelModule =
         ModuleOp::create(builder.getUnknownLoc(), kernelFunc.getName());
     kernelModule.setAttr(gpu::GPUDialect::getKernelModuleAttrName(),
                          builder.getUnitAttr());
-    ModuleManager moduleManager(kernelModule);
+    SymbolTable symbolTable(kernelModule);
+    symbolTable.insert(kernelFunc);
 
-    llvm::SmallVector<FuncOp, 8> funcsToInsert = {kernelFunc};
-    while (!funcsToInsert.empty()) {
-      FuncOp func = funcsToInsert.pop_back_val();
-      moduleManager.insert(func);
+    llvm::SmallVector<Operation *, 8> symbolDefWorklist = {kernelFunc};
+    while (!symbolDefWorklist.empty()) {
+      if (Optional<SymbolTable::UseRange> symbolUses =
+              SymbolTable::getSymbolUses(symbolDefWorklist.pop_back_val())) {
+        for (SymbolTable::SymbolUse symbolUse : *symbolUses) {
+          StringRef symbolName =
+              symbolUse.getSymbolRef().cast<FlatSymbolRefAttr>().getValue();
+          if (symbolTable.lookup(symbolName))
+            continue;
 
-      // TODO(b/141098412): Support any op with a callable interface.
-      func.walk([&](CallOp call) {
-        auto callee = call.callee();
-        if (moduleManager.lookupSymbol<FuncOp>(callee))
-          return;
-
-        auto calleeFromParent =
-            parentModuleManager.lookupSymbol<FuncOp>(callee);
-        funcsToInsert.push_back(calleeFromParent.clone());
-      });
+          Operation *symbolDefClone =
+              parentSymbolTable.lookup(symbolName)->clone();
+          symbolDefWorklist.push_back(symbolDefClone);
+          symbolTable.insert(symbolDefClone);
+        }
+      }
     }
 
     return kernelModule;

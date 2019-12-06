@@ -43,9 +43,11 @@ constexpr char kNumWorkersAttrName[] = "num_workers";
 constexpr char kIndexAttrName[] = "index";
 constexpr char kAutoShardPolicyAttrName[] = "auto_shard_policy";
 
-constexpr std::array<const char*, 4> kReaderDatasetOps = {
+constexpr std::array<const char*, 6> kReaderDatasetOps = {
     "FixedLengthRecordDataset",
     "FixedLengthRecordDatasetV2",
+    "RecordIODataset",
+    "SSTableDataset",
     "TextLineDataset",
     "TFRecordDataset"
 };

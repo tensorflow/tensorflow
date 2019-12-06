@@ -67,6 +67,10 @@ class _CustomSequenceThatRaisesException(collections.Sequence):
 class NestTest(parameterized.TestCase, test.TestCase):
 
   PointXY = collections.namedtuple("Point", ["x", "y"])  # pylint: disable=invalid-name
+  unsafe_map_pattern = ("nest cannot guarantee that it is safe to map one to "
+                        "the other.")
+  bad_pack_pattern = ("Attempted to pack value:\n  .+\ninto a sequence, but "
+                      "found incompatible type `<(type|class) 'str'>` instead.")
 
   if attr:
     class BadAttr(object):
@@ -144,10 +148,11 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(
         np.array([5]), nest.pack_sequence_as("scalar", [np.array([5])]))
 
-    with self.assertRaisesRegexp(ValueError, "Structure is a scalar"):
+    with self.assertRaisesRegexp(
+        ValueError, self.unsafe_map_pattern):
       nest.pack_sequence_as("scalar", [4, 5])
 
-    with self.assertRaisesRegexp(TypeError, "flat_sequence"):
+    with self.assertRaisesRegexp(TypeError, self.bad_pack_pattern):
       nest.pack_sequence_as([4, 5], "bad_sequence")
 
     with self.assertRaises(ValueError):
@@ -267,8 +272,8 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(structure, unflattened)
 
   def testPackSequenceAs_notIterableError(self):
-    with self.assertRaisesRegexp(TypeError,
-                                 "flat_sequence must be a sequence"):
+    with self.assertRaisesRegexp(
+        TypeError, self.bad_pack_pattern):
       nest.pack_sequence_as("hi", "bye")
 
   def testPackSequenceAs_wrongLengthsError(self):
@@ -1211,6 +1216,14 @@ class NestTest(parameterized.TestCase, test.TestCase):
     seq = _CustomSequenceThatRaisesException()
     with self.assertRaisesRegexp(ValueError, "Cannot get item"):
       nest.flatten(seq)
+
+  def testListToTuple(self):
+    input_sequence = [1, (2, {3: [4, 5, (6,)]}, None, 7, [[[8]]])]
+    expected = (1, (2, {3: (4, 5, (6,))}, None, 7, (((8,),),)))
+    nest.assert_same_structure(
+        nest.list_to_tuple(input_sequence),
+        expected,
+    )
 
 
 class NestBenchmark(test.Benchmark):

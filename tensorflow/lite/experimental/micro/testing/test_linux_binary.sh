@@ -21,19 +21,35 @@
 # for the test to pass.
 
 declare -r ROOT_DIR=`pwd`
-declare -r TEST_TMPDIR=/tmp/test_bluepill_binary/
+declare -r TEST_TMPDIR=/tmp/test_linux_binary/
 declare -r MICRO_LOG_PATH=${TEST_TMPDIR}/$1
 declare -r MICRO_LOG_FILENAME=${MICRO_LOG_PATH}/logs.txt
 mkdir -p ${MICRO_LOG_PATH}
 
-$1 2>&1 | tee ${MICRO_LOG_FILENAME}
+ERROR_MSG="$1: FAIL - '$2' not found in logs."
+print_error_and_exit() {
+  echo ${ERROR_MSG}
+  cat ${MICRO_LOG_FILENAME}
+  exit 1
+}
+
+# This traps the signal from the test binary ($1) and checks if there was a
+# segfault and adds that to the error log (which would otherwise be missing).
+trap 'if [[ $? -eq 139 ]]; then echo "Segmentation fault" >> ${MICRO_LOG_FILENAME}; print_error_and_exit; fi' CHLD
+
+# This trap statement prevents the bash script from segfaulting with a cryptic
+# message like:
+# tensorflow/lite/experimental/micro/testing/test_linux_binary.sh: line 44: 210514 Segmentation fault      $1 > ${MICRO_LOG_FILENAME} 2>&1
+# What we get instead is purely another Segmentation fault text in the output.
+trap '' SEGV
+
+$1 > ${MICRO_LOG_FILENAME} 2>&1
 
 if grep -q "$2" ${MICRO_LOG_FILENAME}
 then
   echo "$1: PASS"
   exit 0
 else
-  echo "$1: FAIL - '$2' not found in logs."
-  exit 1
+  print_error_and_exit
 fi
 

@@ -173,10 +173,10 @@ public:
   llvm::Module &getLLVMModule();
 
   /// Parse a type registered to this dialect.
-  Type parseType(StringRef tyData, Location loc) const override;
+  Type parseType(DialectAsmParser &parser) const override;
 
   /// Print a type registered to this dialect.
-  void printType(Type type, raw_ostream &os) const override;
+  void printType(Type type, DialectAsmPrinter &os) const override;
 
   /// Verify a region argument attribute registered to this dialect.
   /// Returns failure if the verification failed, success otherwise.
@@ -195,7 +195,8 @@ private:
 /// global and use it to compute the address of the first character in the
 /// string (operations inserted at the builder insertion point).
 Value *createGlobalString(Location loc, OpBuilder &builder, StringRef name,
-                          StringRef value, LLVM::LLVMDialect *llvmDialect);
+                          StringRef value, LLVM::Linkage linkage,
+                          LLVM::LLVMDialect *llvmDialect);
 
 } // end namespace LLVM
 } // end namespace mlir

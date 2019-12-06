@@ -46,8 +46,13 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename Device, typename T>
 class MatrixDiagPartOp : public OpKernel {
  public:
-  explicit MatrixDiagPartOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+  explicit MatrixDiagPartOp(OpKernelConstruction* context) : OpKernel(context) {
+    // MatrixDiagPartV3-specific.
+    if (context->HasAttr("align")) {
+      functor::ReadAlignment(context, &left_align_superdiagonal_,
+                             &left_align_subdiagonal_);
+    }
+  }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
@@ -60,7 +65,7 @@ class MatrixDiagPartOp : public OpKernel {
     T padding_value(0);
 
     // MatrixDiagPartV2-specific.
-    if (context->num_inputs() > 1) {
+    if (context->num_inputs() > kNumV1Inputs) {
       auto& diag_index = context->input(1);
       OP_REQUIRES(context,
                   TensorShapeUtils::IsScalar(diag_index.shape()) ||
@@ -132,17 +137,26 @@ class MatrixDiagPartOp : public OpKernel {
     functor::MatrixDiagPart<Device, T>::Compute(
         context, context->eigen_device<Device>(), input_reshaped,
         output_reshaped, lower_diag_index, upper_diag_index, max_diag_len,
-        padding_value);
+        padding_value, left_align_superdiagonal_, left_align_subdiagonal_);
   }
 
  private:
+  bool left_align_superdiagonal_ = true;
+  bool left_align_subdiagonal_ = true;
+  static constexpr int kNumV1Inputs = 1;
   TF_DISALLOW_COPY_AND_ASSIGN(MatrixDiagPartOp);
 };
 
 template <typename Device, typename T>
 class MatrixDiagOp : public OpKernel {
  public:
-  explicit MatrixDiagOp(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit MatrixDiagOp(OpKernelConstruction* context) : OpKernel(context) {
+    // MatrixDiagV3-specific.
+    if (context->HasAttr("align")) {
+      functor::ReadAlignment(context, &left_align_superdiagonal_,
+                             &left_align_subdiagonal_);
+    }
+  }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& diagonal = context->input(0);
@@ -157,7 +171,7 @@ class MatrixDiagOp : public OpKernel {
     T padding_value(0);
 
     // MatrixDiagOpV2-specific.
-    if (context->num_inputs() > 1) {
+    if (context->num_inputs() > kNumV1Inputs) {
       auto& diag_index = context->input(1);
       OP_REQUIRES(context,
                   TensorShapeUtils::IsScalar(diag_index.shape()) ||
@@ -242,10 +256,13 @@ class MatrixDiagOp : public OpKernel {
     functor::MatrixDiag<Device, T>::Compute(
         context, context->eigen_device<Device>(), diag_reshaped,
         output_reshaped, lower_diag_index, upper_diag_index, max_diag_len,
-        padding_value);
+        padding_value, left_align_superdiagonal_, left_align_subdiagonal_);
   }
 
  private:
+  bool left_align_superdiagonal_ = true;
+  bool left_align_subdiagonal_ = true;
+  static constexpr int kNumV1Inputs = 1;
   TF_DISALLOW_COPY_AND_ASSIGN(MatrixDiagOp);
 };
 
@@ -257,11 +274,18 @@ class MatrixDiagOp : public OpKernel {
       Name("MatrixDiagV2").Device(DEVICE_CPU).TypeConstraint<type>("T"),     \
       MatrixDiagOp<CPUDevice, type>);                                        \
   REGISTER_KERNEL_BUILDER(                                                   \
+      Name("MatrixDiagV3").Device(DEVICE_CPU).TypeConstraint<type>("T"),     \
+      MatrixDiagOp<CPUDevice, type>);                                        \
+  REGISTER_KERNEL_BUILDER(                                                   \
       Name("MatrixDiagPart").Device(DEVICE_CPU).TypeConstraint<type>("T"),   \
       MatrixDiagPartOp<CPUDevice, type>);                                    \
   REGISTER_KERNEL_BUILDER(                                                   \
       Name("MatrixDiagPartV2").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      MatrixDiagPartOp<CPUDevice, type>);                                    \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("MatrixDiagPartV3").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       MatrixDiagPartOp<CPUDevice, type>);
+
 TF_CALL_POD_TYPES(REGISTER_MATRIX_DIAG);
 #undef REGISTER_MATRIX_DIAG
 
@@ -280,6 +304,28 @@ TF_CALL_POD_TYPES(REGISTER_BATCH_MATRIX_DIAG);
 
 // Implementation of the functor specialization for CPU.
 namespace functor {
+
+void ReadAlignment(OpKernelConstruction* context,
+                   bool* left_align_superdiagonal,
+                   bool* left_align_subdiagonal) {
+  string align;
+  OP_REQUIRES_OK(context, context->GetAttr("align", &align));
+
+  *left_align_superdiagonal = align == "LEFT_LEFT" || align == "LEFT_RIGHT";
+  *left_align_subdiagonal = align == "LEFT_LEFT" || align == "RIGHT_LEFT";
+}
+
+std::pair<int, int> ComputeDiagLenAndContentOffset(
+    int diag_index, int max_diag_len, int num_rows, int num_cols,
+    bool left_align_superdiagonal, bool left_align_subdiagonal) {
+  const bool left_align = (diag_index >= 0 && left_align_superdiagonal) ||
+                          (diag_index <= 0 && left_align_subdiagonal);
+  const int diag_len = std::min(num_rows + std::min(0, diag_index),
+                                num_cols - std::max(0, diag_index));
+  const int content_offset = (left_align) ? 0 : (max_diag_len - diag_len);
+  return {diag_len, content_offset};
+}
+
 template <typename T>
 struct MatrixDiag<CPUDevice, T> {
   static void Compute(OpKernelContext* context, const CPUDevice& device,
@@ -287,16 +333,21 @@ struct MatrixDiag<CPUDevice, T> {
                       typename TTypes<T, 3>::Tensor& output,
                       const Eigen::Index lower_diag_index,
                       const Eigen::Index upper_diag_index,
-                      const Eigen::Index max_diag_len, const T padding_value) {
+                      const Eigen::Index max_diag_len, const T padding_value,
+                      const bool left_align_superdiagonal,
+                      const bool left_align_subdiagonal) {
     // 10 in cost_per_batch is from existing heuristic.
     // TODO(penporn): Tune for the best constant in cost_per_batch.
     const Eigen::Index num_batches = output.dimension(0);
-    const Eigen::Index cost_per_batch =
-        10 * output.dimension(1) * output.dimension(2);
+    const Eigen::Index num_rows = output.dimension(1);
+    const Eigen::Index num_cols = output.dimension(2);
+    const Eigen::Index cost_per_batch = 10 * num_rows * num_cols;
 
-    auto compute_shard = [&output, &diag, &lower_diag_index, &upper_diag_index,
-                          &max_diag_len, &padding_value](Eigen::Index begin,
-                                                         Eigen::Index end) {
+    auto compute_shard = [&output, &num_rows, &num_cols, &diag,
+                          &lower_diag_index, &upper_diag_index, &max_diag_len,
+                          &padding_value, &left_align_superdiagonal,
+                          &left_align_subdiagonal](Eigen::Index begin,
+                                                   Eigen::Index end) {
       const int num_diags = upper_diag_index - lower_diag_index + 1;
       const int diag_elements_in_batch = num_diags * max_diag_len;
       Eigen::Index diag_batch_base_index = begin * diag_elements_in_batch;
@@ -305,8 +356,12 @@ struct MatrixDiag<CPUDevice, T> {
           for (Eigen::Index j = 0; j < output.dimension(2); ++j) {
             const int diag_index = j - i;
             const int diag_index_in_input = upper_diag_index - diag_index;
+            int diag_len, content_offset;
+            std::tie(diag_len, content_offset) = ComputeDiagLenAndContentOffset(
+                diag_index, max_diag_len, num_rows, num_cols,
+                left_align_superdiagonal, left_align_subdiagonal);
             const int index_in_the_diagonal =
-                j - std::max<Eigen::Index>(diag_index, 0);
+                j - std::max<Eigen::Index>(diag_index, 0) + content_offset;
             if (lower_diag_index <= diag_index &&
                 diag_index <= upper_diag_index) {
               output(batch, i, j) = diag(diag_batch_base_index +
@@ -334,7 +389,9 @@ struct MatrixDiagPart<CPUDevice, T> {
                       typename TTypes<T>::Tensor& output,
                       const Eigen::Index lower_diag_index,
                       const Eigen::Index upper_diag_index,
-                      const Eigen::Index max_diag_len, const T padding_value) {
+                      const Eigen::Index max_diag_len, const T padding_value,
+                      const bool left_align_superdiagonal,
+                      const bool left_align_subdiagonal) {
     // 10 in cost_per_batch is from existing heuristic.
     // TODO(penporn): Tune for the best constant in cost_per_batch.
     const Eigen::Index num_diags = upper_diag_index - lower_diag_index + 1;
@@ -346,24 +403,32 @@ struct MatrixDiagPart<CPUDevice, T> {
 
     auto compute_shard = [&output, &input, &num_rows, &num_cols,
                           &upper_diag_index, &max_diag_len, &num_diags,
-                          &output_elements_in_batch, &padding_value](
+                          &output_elements_in_batch, &padding_value,
+                          &left_align_superdiagonal, &left_align_subdiagonal](
                              Eigen::Index begin, Eigen::Index end) {
       Eigen::Index output_base_index = begin * output_elements_in_batch;
       for (Eigen::Index batch = begin; batch < end; ++batch) {
         for (Eigen::Index m = 0; m < num_diags; ++m) {
-          const Eigen::Index d = upper_diag_index - m;
-          Eigen::Index n = 0;
-          // Make two separate cases to save some index calculations.
-          if (d >= 0) {
-            for (; n < std::min(num_rows, num_cols - d); ++n) {
-              output(output_base_index + n) = input(batch, n, n + d);
-            }
-          } else {
-            for (; n < std::min(num_rows + d, num_cols); ++n) {
-              output(output_base_index + n) = input(batch, n - d, n);
-            }
+          const Eigen::Index diag_index = upper_diag_index - m;
+          Eigen::Index y_offset = std::max<Eigen::Index>(0, -diag_index);
+          Eigen::Index x_offset = std::max<Eigen::Index>(0, diag_index);
+          int diag_len, content_offset;
+          std::tie(diag_len, content_offset) = ComputeDiagLenAndContentOffset(
+              diag_index, max_diag_len, num_rows, num_cols,
+              left_align_superdiagonal, left_align_subdiagonal);
+
+          // Fills the diagonal.
+          for (Eigen::Index n = 0; n < diag_len; ++n) {
+            output(output_base_index + content_offset + n) =
+                input(batch, n + y_offset, n + x_offset);
           }
-          for (; n < max_diag_len; ++n) {  // Padding.
+
+          // Padding.
+          const bool left_align = (content_offset == 0);
+          const Eigen::Index padding_start = (left_align) ? diag_len : 0;
+          const Eigen::Index padding_end =
+              (left_align) ? max_diag_len : content_offset;
+          for (Eigen::Index n = padding_start; n < padding_end; ++n) {
             output(output_base_index + n) = padding_value;
           }
           output_base_index += max_diag_len;
@@ -391,7 +456,8 @@ namespace functor {
       typename TTypes<T, 3>::Tensor& output,                                   \
       const Eigen::Index lower_diag_index,                                     \
       const Eigen::Index upper_diag_index, const Eigen::Index max_diag_len,    \
-      const T padding_value);                                                  \
+      const T padding_value, const bool left_align_superdiagonal,              \
+      const bool left_align_subdiagonal);                                      \
   extern template struct MatrixDiag<GPUDevice, T>;                             \
   template <>                                                                  \
   void MatrixDiagPart<GPUDevice, T>::Compute(                                  \
@@ -399,7 +465,8 @@ namespace functor {
       typename TTypes<T, 3>::ConstTensor& input,                               \
       typename TTypes<T>::Tensor& output, const Eigen::Index lower_diag_index, \
       const Eigen::Index upper_diag_index, const Eigen::Index max_diag_len,    \
-      const T padding_value);                                                  \
+      const T padding_value, const bool left_align_superdiagonal,              \
+      const bool left_align_subdiagonal);                                      \
   extern template struct MatrixDiagPart<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
@@ -422,10 +489,24 @@ TF_CALL_complex128(DECLARE_GPU_SPEC);
                               .HostMemory("num_cols")                      \
                               .HostMemory("padding_value"),                \
                           MatrixDiagOp<GPUDevice, type>);                  \
+  REGISTER_KERNEL_BUILDER(Name("MatrixDiagV3")                             \
+                              .Device(DEVICE_GPU)                          \
+                              .TypeConstraint<type>("T")                   \
+                              .HostMemory("k")                             \
+                              .HostMemory("num_rows")                      \
+                              .HostMemory("num_cols")                      \
+                              .HostMemory("padding_value"),                \
+                          MatrixDiagOp<GPUDevice, type>);                  \
   REGISTER_KERNEL_BUILDER(                                                 \
       Name("MatrixDiagPart").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       MatrixDiagPartOp<GPUDevice, type>);                                  \
   REGISTER_KERNEL_BUILDER(Name("MatrixDiagPartV2")                         \
+                              .Device(DEVICE_GPU)                          \
+                              .TypeConstraint<type>("T")                   \
+                              .HostMemory("k")                             \
+                              .HostMemory("padding_value"),                \
+                          MatrixDiagPartOp<GPUDevice, type>);              \
+  REGISTER_KERNEL_BUILDER(Name("MatrixDiagPartV3")                         \
                               .Device(DEVICE_GPU)                          \
                               .TypeConstraint<type>("T")                   \
                               .HostMemory("k")                             \

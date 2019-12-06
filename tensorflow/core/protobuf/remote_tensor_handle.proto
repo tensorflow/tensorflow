@@ -2,12 +2,18 @@ syntax = "proto3";
 
 package tensorflow.eager;
 
+import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 
 option cc_enable_arenas = true;
 option java_outer_classname = "RemoteTensorHandleProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+
+message ResourceDtypeAndShape {
+  DataType dtype = 1;
+  TensorShapeProto shape = 2;
+}
 
 message RemoteTensorHandle {
   // The ID of the operation that produced this tensor.
@@ -22,4 +28,6 @@ message RemoteTensorHandle {
   string op_device = 4;
   // Tensor type.
   DataType dtype = 5;
+  // Optional data types and shapes of a remote resource variable.
+  repeated ResourceDtypeAndShape resource_dtypes_and_shapes = 6;
 }

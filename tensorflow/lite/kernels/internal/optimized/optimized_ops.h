@@ -38,7 +38,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "fixedpoint/fixedpoint.h"
 #include "profiling/instrumentation.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
@@ -194,6 +194,71 @@ MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
   const int cols = flatsize / rows;
   return MatrixMap<Scalar>(data, rows, cols);
 }
+
+// TODO(renjieliu): Refactor this to merge with other
+// MultiplyByQuantizedMultipler.
+#ifdef USE_NEON
+inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
+    int32x4x4_t input_val, int32 quantized_multiplier, int shift) {
+  using gemmlowp::RoundingDivideByPOT;
+  using gemmlowp::SaturatingRoundingDoublingHighMul;
+  const int left_shift = shift > 0 ? shift : 0;
+  const int right_shift = shift > 0 ? 0 : -shift;
+  int32x4x4_t result;
+  // The vector type support for SaturatingRoundingDoublingHighMulth in gemmlowp
+  // is limited to NEON.
+#ifdef GEMMLOWP_NEON
+  const int32x4_t left_shifted_one_dup = vdupq_n_s32(1 << left_shift);
+  result.val[0] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[0], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+  result.val[1] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[1], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+  result.val[2] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[2], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+  result.val[3] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[3], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+#else
+  for (int i = 0; i < 4; ++i) {
+    int32_t vals[4];
+    vals[0] = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(
+            vgetq_lane_s32(input_val.val[i], 0) * (1 << left_shift),
+            quantized_multiplier),
+        right_shift);
+    vals[1] = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(
+            vgetq_lane_s32(input_val.val[i], 1) * (1 << left_shift),
+            quantized_multiplier),
+        right_shift);
+    vals[2] = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(
+            vgetq_lane_s32(input_val.val[i], 2) * (1 << left_shift),
+            quantized_multiplier),
+        right_shift);
+    vals[3] = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(
+            vgetq_lane_s32(input_val.val[i], 3) * (1 << left_shift),
+            quantized_multiplier),
+        right_shift);
+
+    result.val[i] = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+  }
+#endif
+  return result;
+}
+#endif
 
 inline void AddBiasAndEvalActivationFunction(float output_activation_min,
                                              float output_activation_max,
@@ -849,9 +914,8 @@ inline uint32x4_t RoundToNearestUnsigned(const float32x4_t input) {
 
 inline void MeanImpl(const tflite::MeanParams& op_params,
                      const RuntimeShape& input_shape, const uint8_t* input_data,
-                     int32 input_zero_point, float input_scale,
+                     int32 multiplier, int32 shift, int32 bias,
                      const RuntimeShape& output_shape, uint8_t* output_data,
-                     int32 output_zero_point, float output_scale,
                      int start_depth, int end_depth) {
   gemmlowp::ScopedProfilingLabel label("Mean4D/Uint8/MeanImpl");
 
@@ -862,7 +926,6 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
   const int output_width = output_shape.Dims(2);
   const int input_height = input_shape.Dims(1);
   const int input_width = input_shape.Dims(2);
-  const float num_elements_in_axis = input_width * input_height;
 
   TFLITE_CHECK_EQ(op_params.axis_count, 2);
   TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
@@ -870,83 +933,103 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
   TFLITE_CHECK_EQ(output_height, 1);
   TFLITE_CHECK_EQ(output_width, 1);
 
-  const bool ordinary_mean =
-      (input_zero_point == output_zero_point && input_scale == output_scale);
-  float scale = 0.0f, bias = 0.0f;
-  if (!ordinary_mean) {
-    scale = input_scale / output_scale;
-    bias = -input_zero_point * scale + 0.5;
-  }
+  constexpr int32_t kMinValue = std::numeric_limits<uint8_t>::min();
+  constexpr int32_t kMaxValue = std::numeric_limits<uint8_t>::max();
 
 #ifdef USE_NEON
-  const float32x4_t num_elements_dup = vdupq_n_f32(num_elements_in_axis);
-  // This is only an approximation as NEON does not offer division instruction.
-  const float32x4_t scale_dup = vdupq_n_f32(scale);
-  const float32x4_t num_elements_reverse = vrecpeq_f32(num_elements_dup);
-  float32x4_t zero_point_with_bias_dup = vdupq_n_f32(output_zero_point + bias);
+  const int32x4_t bias_dup = vdupq_n_s32(bias);
+  const int32x4_t min_dup = vdupq_n_s32(kMinValue);
+  const int32x4_t max_dup = vdupq_n_s32(kMaxValue);
 #endif  // USE_NEON
 
   for (int out_b = 0; out_b < output_batch; ++out_b) {
     int out_d = start_depth;
 #ifdef USE_NEON
 
-    for (; out_d < end_depth - 8; out_d += 8) {
-      float32x4_t temp_sum_1 = vdupq_n_f32(0);
-      float32x4_t temp_sum_2 = vdupq_n_f32(0);
+    for (; out_d <= end_depth - 16; out_d += 16) {
+      int32x4x4_t temp_sum;
+      temp_sum.val[0] = vdupq_n_s32(0);
+      temp_sum.val[1] = vdupq_n_s32(0);
+      temp_sum.val[2] = vdupq_n_s32(0);
+      temp_sum.val[3] = vdupq_n_s32(0);
       for (int in_h = 0; in_h < input_height; ++in_h) {
         for (int in_w = 0; in_w < input_width; ++in_w) {
           const uint8_t* input_data_ptr =
               input_data + Offset(input_shape, out_b, in_h, in_w, out_d);
-          uint8x8_t input_data_val = vld1_u8(input_data_ptr);
-          int16x8_t input_data_val_shift =
-              vreinterpretq_s16_u16(vmovl_u8(input_data_val));
-          float32x4_t input_float_1 =
-              vcvtq_f32_s32(vmovl_s16(vget_high_s16(input_data_val_shift)));
-          float32x4_t input_float_2 =
-              vcvtq_f32_s32(vmovl_s16(vget_low_s16(input_data_val_shift)));
-          temp_sum_1 = vaddq_f32(temp_sum_1, input_float_1);
-          temp_sum_2 = vaddq_f32(temp_sum_2, input_float_2);
+          uint8x16_t input_data_val = vld1q_u8(input_data_ptr);
+
+          int16x8_t input_data_low_shift =
+              vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(input_data_val)));
+          int16x8_t input_data_high_shift =
+              vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(input_data_val)));
+
+          int32x4_t input_low_low =
+              vmovl_s16(vget_low_s16(input_data_low_shift));
+          int32x4_t input_high_low =
+              vmovl_s16(vget_high_s16(input_data_low_shift));
+          int32x4_t input_low_high =
+              vmovl_s16(vget_low_s16(input_data_high_shift));
+          int32x4_t input_high_high =
+              vmovl_s16(vget_high_s16(input_data_high_shift));
+
+          temp_sum.val[0] = vaddq_s32(temp_sum.val[0], input_low_low);
+          temp_sum.val[1] = vaddq_s32(temp_sum.val[1], input_high_low);
+          temp_sum.val[2] = vaddq_s32(temp_sum.val[2], input_low_high);
+          temp_sum.val[3] = vaddq_s32(temp_sum.val[3], input_high_high);
         }
       }
 
-      const float32x4_t mean_1 =
-          DivideSumForMeanImpl(temp_sum_1, num_elements_reverse, ordinary_mean,
-                               scale_dup, zero_point_with_bias_dup);
-      const float32x4_t mean_2 =
-          DivideSumForMeanImpl(temp_sum_2, num_elements_reverse, ordinary_mean,
-                               scale_dup, zero_point_with_bias_dup);
+      temp_sum =
+          MultiplyByQuantizedMultiplier4Rows(temp_sum, multiplier, shift);
 
-      uint32x4_t casted_mean_1 = RoundToNearestUnsigned(mean_1);
-      uint16x4_t narrow_range_mean_1 = vmovn_u32(casted_mean_1);
-      uint32x4_t casted_mean_2 = RoundToNearestUnsigned(mean_2);
-      uint16x4_t narrow_range_mean_2 = vmovn_u32(casted_mean_2);
-      uint16x8_t combined_mean =
-          vcombine_u16(narrow_range_mean_2, narrow_range_mean_1);
-      uint8x8_t narrowed_combined_mean = vmovn_u16(combined_mean);
+      temp_sum.val[0] = vaddq_s32(temp_sum.val[0], bias_dup);
+      temp_sum.val[1] = vaddq_s32(temp_sum.val[1], bias_dup);
+      temp_sum.val[2] = vaddq_s32(temp_sum.val[2], bias_dup);
+      temp_sum.val[3] = vaddq_s32(temp_sum.val[3], bias_dup);
+
+      temp_sum.val[0] = vminq_s32(vmaxq_s32(temp_sum.val[0], min_dup), max_dup);
+      temp_sum.val[1] = vminq_s32(vmaxq_s32(temp_sum.val[1], min_dup), max_dup);
+      temp_sum.val[2] = vminq_s32(vmaxq_s32(temp_sum.val[2], min_dup), max_dup);
+      temp_sum.val[3] = vminq_s32(vmaxq_s32(temp_sum.val[3], min_dup), max_dup);
+
+      uint16x4_t narrowed_low_low =
+          vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[0]));
+      uint16x4_t narrowed_high_low =
+          vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[1]));
+      uint16x4_t narrowed_low_high =
+          vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[2]));
+      uint16x4_t narrowed_high_high =
+          vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[3]));
+
+      uint16x8_t combined_low =
+          vcombine_u16(narrowed_low_low, narrowed_high_low);
+      uint16x8_t combined_high =
+          vcombine_u16(narrowed_low_high, narrowed_high_high);
+
+      uint8x8_t narrowed_low = vmovn_u16(combined_low);
+      uint8x8_t narrowed_high = vmovn_u16(combined_high);
+
+      uint8x16_t combined_output = vcombine_u8(narrowed_low, narrowed_high);
+
       uint8_t* output_data_ptr =
           output_data + Offset(output_shape, out_b, 0, 0, out_d);
-      vst1_u8(output_data_ptr, narrowed_combined_mean);
+      vst1q_u8(output_data_ptr, combined_output);
     }
 #endif  // USE_NEON
 
     for (; out_d < end_depth; ++out_d) {
-      float temp_value = 0;
+      int acc = 0;
       for (int in_h = 0; in_h < input_height; ++in_h) {
         for (int in_w = 0; in_w < input_width; ++in_w) {
-          temp_value +=
-              input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
+          acc += input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
         }
       }
 
-      temp_value = temp_value / num_elements_in_axis;
-      if (ordinary_mean) {
-        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-            static_cast<uint8_t>(round(temp_value));
-      } else {
-        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-            static_cast<uint8_t>(round(temp_value * scale + bias)) +
-            output_zero_point;
-      }
+      acc = MultiplyByQuantizedMultiplier(acc, multiplier, shift);
+      acc += bias;
+      acc = std::min(std::max(acc, kMinValue), kMaxValue);
+      output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
+          static_cast<uint8_t>(acc);
     }
   }
 }
@@ -954,40 +1037,36 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
 struct MeanWorkerTask : cpu_backend_threadpool::Task {
   MeanWorkerTask(const tflite::MeanParams& op_params,
                  const RuntimeShape& input_shape, const uint8_t* input_data,
-                 int32 input_zero_point, float input_scale,
+                 int32 multiplier, int32 shift, int32 bias,
                  const RuntimeShape& output_shape, uint8_t* output_data,
-                 int32 output_zero_point, float output_scale, int start_height,
-                 int end_height)
-      : op_params_(op_params),
-        input_shape_(input_shape),
-        input_data_(input_data),
-        input_zero_point_(input_zero_point),
-        input_scale_(input_scale),
-        output_shape_(output_shape),
-        output_data_(output_data),
-        output_zero_point_(output_zero_point),
-        output_scale_(output_scale),
-        start_height_(start_height),
-        end_height_(end_height) {}
+                 int start_height, int end_height)
+      : op_params(op_params),
+        input_shape(input_shape),
+        input_data(input_data),
+        multiplier(multiplier),
+        shift(shift),
+        bias(bias),
+        output_shape(output_shape),
+        output_data(output_data),
+        start_height(start_height),
+        end_height(end_height) {}
 
   void Run() override {
-    MeanImpl(op_params_, input_shape_, input_data_, input_zero_point_,
-             input_scale_, output_shape_, output_data_, output_zero_point_,
-             output_scale_, start_height_, end_height_);
+    MeanImpl(op_params, input_shape, input_data, multiplier, shift, bias,
+             output_shape, output_data, start_height, end_height);
   }
 
  private:
-  const tflite::MeanParams& op_params_;
-  const RuntimeShape& input_shape_;
-  const uint8_t* input_data_;
-  int32 input_zero_point_;
-  float input_scale_;
-  const RuntimeShape& output_shape_;
-  uint8_t* output_data_;
-  int32 output_zero_point_;
-  float output_scale_;
-  int start_height_;
-  int end_height_;
+  const tflite::MeanParams& op_params;
+  const RuntimeShape& input_shape;
+  const uint8_t* input_data;
+  int32 multiplier;
+  int32 shift;
+  int32 bias;
+  const RuntimeShape& output_shape;
+  uint8_t* output_data;
+  int start_height;
+  int end_height;
 };
 
 inline void Mean(const tflite::MeanParams& op_params,
@@ -1015,6 +1094,18 @@ inline void Mean(const tflite::MeanParams& op_params,
   TFLITE_CHECK_EQ(output_height, 1);
   TFLITE_CHECK_EQ(output_width, 1);
 
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const float num_elements_in_axis = input_width * input_height;
+
+  int32 bias =
+      output_zero_point -
+      static_cast<int32>(input_zero_point * input_scale / output_scale);
+  float real_scale = input_scale / (num_elements_in_axis * output_scale);
+
+  int32 multiplier, shift;
+  QuantizeMultiplier(real_scale, &multiplier, &shift);
+
   constexpr int kMinDepthPerThread = 8;
   int thread_count = output_depth / kMinDepthPerThread;
   thread_count = thread_count > 0 ? thread_count : 1;
@@ -1022,9 +1113,8 @@ inline void Mean(const tflite::MeanParams& op_params,
       std::min(thread_count, cpu_backend_context->max_num_threads());
 
   if (capped_thread_count == 1) {
-    MeanImpl(op_params, input_shape, input_data, input_zero_point, input_scale,
-             output_shape, output_data, output_zero_point, output_scale, 0,
-             output_depth);
+    MeanImpl(op_params, input_shape, input_data, multiplier, shift, bias,
+             output_shape, output_data, 0, output_depth);
   } else {
     // Instead parrallel for batch, we loop for the output_depth since batch
     // is typical 1.
@@ -1037,9 +1127,8 @@ inline void Mean(const tflite::MeanParams& op_params,
       // Try to distribute the tasks as even as possible.
       int depth_end = depth_start +
                       (output_depth - depth_start) / (capped_thread_count - i);
-      tasks.emplace_back(op_params, input_shape, input_data, input_zero_point,
-                         input_scale, output_shape, output_data,
-                         output_zero_point, output_scale, depth_start,
+      tasks.emplace_back(op_params, input_shape, input_data, multiplier, shift,
+                         bias, output_shape, output_data, depth_start,
                          depth_end);
       depth_start = depth_end;
     }
@@ -5370,6 +5459,7 @@ void Col2im(const T* col_data, const int depth, const int height,
             const int width, const int filter_h, const int filter_w,
             const int pad_t, const int pad_l, const int pad_b, const int pad_r,
             const int stride_h, const int stride_w, T* im_data) {
+  gemmlowp::ScopedProfilingLabel label("Col2im");
   int height_col = (height + pad_t + pad_b - filter_h) / stride_h + 1;
   int width_col = (width + pad_l + pad_r - filter_w) / stride_w + 1;
   int h_pad = -pad_t;
@@ -5404,7 +5494,7 @@ inline void TransposeConvV2(
     const float* hwoi_ordered_filter_data, const RuntimeShape& output_shape,
     float* output_data, const RuntimeShape& col2im_shape, float* col2im_data,
     CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("TransposeConvV2");
+  gemmlowp::ScopedProfilingLabel label("TransposeConvV2/float");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(hwoi_ordered_filter_shape.DimensionsCount(), 4);
   const int batch_size = input_shape.Dims(0);
@@ -5462,6 +5552,255 @@ inline void TransposeConvV2(
            output_data_p);
     output_data_p += output_offset;
   }
+}
+
+inline void Quantize(int32_t multiplier, int32_t shift, int32_t total_size,
+                     int32_t output_zp, int32_t* scratch, uint8_t* output) {
+  gemmlowp::ScopedProfilingLabel label("Quantize/uint8");
+  int i = 0;
+  const int32_t output_min = std::numeric_limits<uint8_t>::min();
+  const int32_t output_max = std::numeric_limits<uint8_t>::max();
+
+#ifdef USE_NEON
+  const int32x4_t output_zp_dup = vdupq_n_s32(output_zp);
+  const int32x4_t max_val_dup = vdupq_n_s32(output_max);
+  const int32x4_t min_val_dup = vdupq_n_s32(output_min);
+
+  using gemmlowp::RoundingDivideByPOT;
+  using gemmlowp::SaturatingRoundingDoublingHighMul;
+
+  for (; i <= total_size - 16; i += 16) {
+    int32x4x4_t scratch_val;
+    scratch_val.val[0] = vld1q_s32(scratch + i);
+    scratch_val.val[1] = vld1q_s32(scratch + i + 4);
+    scratch_val.val[2] = vld1q_s32(scratch + i + 8);
+    scratch_val.val[3] = vld1q_s32(scratch + i + 12);
+
+    int32x4x4_t temp_val =
+        MultiplyByQuantizedMultiplier4Rows(scratch_val, multiplier, shift);
+
+    temp_val.val[0] = vaddq_s32(temp_val.val[0], output_zp_dup);
+    temp_val.val[1] = vaddq_s32(temp_val.val[1], output_zp_dup);
+    temp_val.val[2] = vaddq_s32(temp_val.val[2], output_zp_dup);
+    temp_val.val[3] = vaddq_s32(temp_val.val[3], output_zp_dup);
+
+    temp_val.val[0] =
+        vmaxq_s32(vminq_s32(temp_val.val[0], max_val_dup), min_val_dup);
+    temp_val.val[1] =
+        vmaxq_s32(vminq_s32(temp_val.val[1], max_val_dup), min_val_dup);
+    temp_val.val[2] =
+        vmaxq_s32(vminq_s32(temp_val.val[2], max_val_dup), min_val_dup);
+    temp_val.val[3] =
+        vmaxq_s32(vminq_s32(temp_val.val[3], max_val_dup), min_val_dup);
+
+    const uint16x8_t result_1 =
+        vcombine_u16(vqmovn_u32(vreinterpretq_u32_s32(temp_val.val[0])),
+                     vqmovn_u32(vreinterpretq_u32_s32(temp_val.val[1])));
+    const uint16x8_t result_2 =
+        vcombine_u16(vqmovn_u32(vreinterpretq_u32_s32(temp_val.val[2])),
+                     vqmovn_u32(vreinterpretq_u32_s32(temp_val.val[3])));
+    const uint8x16_t result =
+        vcombine_u8(vqmovn_u16(result_1), vqmovn_u16(result_2));
+    vst1q_u8(output + i, result);
+  }
+#endif
+  for (; i < total_size; ++i) {
+    int32_t temp = MultiplyByQuantizedMultiplier(scratch[i], multiplier, shift);
+    temp += output_zp;
+    if (temp > output_max) {
+      temp = output_max;
+    }
+    if (temp < output_min) {
+      temp = output_min;
+    }
+    output[i] = static_cast<uint8_t>(temp);
+  }
+}
+
+inline void Quantize(const int32_t* multiplier, const int32_t* shift,
+                     int32_t channel_size, int32_t total_size,
+                     int32_t output_zp, int32_t output_min, int32_t output_max,
+                     int32_t* scratch, int8_t* output) {
+  gemmlowp::ScopedProfilingLabel label("Quantize/int8");
+
+  // Here we're trying to quantize the raw accumulators:
+  //        output_channels
+  //       data data data data data
+  // rows  data data data data data
+  //       data data data data data
+  //          ....
+  //
+  // In order to minimize the reload of the multipliers & shifts, once we load
+  // the multipliers & shifts, we load & quantize the raw accumualtrs for every
+  // row.
+#ifdef USE_NEON
+  const int32x4_t output_offset_vec = vdupq_n_s32(output_zp);
+  const int32x4_t output_activation_min_vec = vdupq_n_s32(output_min);
+  const int32x4_t output_activation_max_vec = vdupq_n_s32(output_max);
+  const int32x4_t ones = vdupq_n_s32(1);
+  const int32x4_t minus_ones = vdupq_n_s32(-1);
+  const int32x4_t zeros = vdupq_n_s32(0);
+#endif
+
+  TFLITE_DCHECK_EQ(total_size % channel_size, 0);
+  const int32_t rows = total_size / channel_size;
+
+  int c = 0;
+
+  while (c < channel_size) {
+    int target_output_depth = channel_size;
+#ifdef USE_NEON
+    using gemmlowp::RoundingDivideByPOT;
+    for (; c <= channel_size - 4; c += 4) {
+      int32x4_t out_shift = vld1q_s32(shift + c);
+      const bool out_shift_all_less_than_zero =
+          (vgetq_lane_s32(out_shift, 0) < 0) &&
+          (vgetq_lane_s32(out_shift, 1) < 0) &&
+          (vgetq_lane_s32(out_shift, 2) < 0) &&
+          (vgetq_lane_s32(out_shift, 3) < 0);
+      const bool out_shift_all_greater_equal_than_zero =
+          (vgetq_lane_s32(out_shift, 0) >= 0) &&
+          (vgetq_lane_s32(out_shift, 1) >= 0) &&
+          (vgetq_lane_s32(out_shift, 2) >= 0) &&
+          (vgetq_lane_s32(out_shift, 3) >= 0);
+      if (!out_shift_all_less_than_zero &&
+          !out_shift_all_greater_equal_than_zero) {
+        // Fallback to general path.
+        // Then go ahead for next 4.
+        target_output_depth = c + 4;
+        break;
+      }
+      int32x4_t out_mul = vld1q_s32(multiplier + c);
+      for (int n = 0; n < rows; ++n) {
+        int loc = n * channel_size + c;
+        int32x4_t acc = vld1q_s32(scratch + loc);
+        if (out_shift_all_less_than_zero) {  // output_shift all < 0 case.
+          acc = vqrdmulhq_s32(acc, out_mul);
+          int32x4_t negative_out_shift = vmulq_n_s32(out_shift, -1);
+          int32x4_t mask =
+              vaddq_s32(vshlq_s32(ones, negative_out_shift), minus_ones);
+          int32x4_t remainder = vandq_s32(acc, mask);
+          int32x4_t shifted_right_mask = vshlq_s32(mask, minus_ones);
+          int32x4_t temp =
+              vandq_s32(vreinterpretq_s32_u32(vcltq_s32(acc, zeros)), ones);
+          int32x4_t threshold = vaddq_s32(shifted_right_mask, temp);
+          temp = vandq_s32(
+              vreinterpretq_s32_u32(vcgtq_s32(remainder, threshold)), ones);
+          int32x4_t shifted_right_acc = vshlq_s32(acc, out_shift);
+          acc = vaddq_s32(shifted_right_acc, temp);
+        } else {  // output_shift all > 0 case.
+          int32x4_t multiplier_power_of_two = vshlq_s32(ones, out_shift);
+          acc = vmulq_s32(acc, multiplier_power_of_two);
+          acc = vqrdmulhq_s32(acc, out_mul);
+        }
+        // Add the output offset.
+        acc = vaddq_s32(acc, output_offset_vec);
+        // Apply the activation function.
+        acc = vmaxq_s32(acc, output_activation_min_vec);
+        acc = vminq_s32(acc, output_activation_max_vec);
+        // Saturating cast to int8 and store to destination.
+        const int16x4_t acc_s16 = vqmovn_s32(acc);
+        const int16x8_t res_s16 = vcombine_s16(acc_s16, acc_s16);
+        const int8x8_t res_s8 = vqmovn_s16(res_s16);
+        vst1_lane_s8(output + loc + 0, res_s8, 0);
+        vst1_lane_s8(output + loc + 1, res_s8, 1);
+        vst1_lane_s8(output + loc + 2, res_s8, 2);
+        vst1_lane_s8(output + loc + 3, res_s8, 3);
+      }
+    }
+
+#endif  // USE_NEON
+    // Handle leftover values, one by one. This is very slow.
+    for (; c < target_output_depth; c++) {
+      for (int n = 0; n < rows; ++n) {
+        int loc = n * channel_size + c;
+        int32 acc = scratch[loc];
+        acc = MultiplyByQuantizedMultiplier(acc, multiplier[c], shift[c]);
+        acc += output_zp;
+        acc = std::max(acc, output_min);
+        acc = std::min(acc, output_max);
+        output[loc] = static_cast<int8>(acc);
+      }
+    }
+  }
+}
+
+// TransposeConvV2 expect the weights in HWOI order.
+inline void TransposeConvV2(
+    const ConvParams& params, const RuntimeShape& input_shape,
+    const uint8_t* input_data, const RuntimeShape& hwoi_ordered_filter_shape,
+    const uint8_t* hwoi_ordered_filter_data, const RuntimeShape& output_shape,
+    uint8_t* output_data, const RuntimeShape& col2im_shape,
+    int32_t* col2im_data, int32_t* scratch_data,
+    CpuBackendContext* cpu_backend_context) {
+  gemmlowp::ScopedProfilingLabel label("TransposeConvV2/uint8");
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(hwoi_ordered_filter_shape.DimensionsCount(), 4);
+  const int batch_size = input_shape.Dims(0);
+  TFLITE_DCHECK(col2im_data);
+  TFLITE_DCHECK(hwoi_ordered_filter_data);
+
+  const int input_image_size = input_shape.Dims(1) * input_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
+  const int output_image_size = output_height * output_width;
+  const int input_depth =
+      MatchingDim(input_shape, 3, hwoi_ordered_filter_shape, 3);
+  const int output_depth =
+      MatchingDim(output_shape, 3, hwoi_ordered_filter_shape, 2);
+  const int input_offset = input_image_size * input_depth;
+  const int output_offset = output_image_size * output_depth;
+
+  const int filter_height = hwoi_ordered_filter_shape.Dims(0);
+  const int filter_width = hwoi_ordered_filter_shape.Dims(1);
+  const int padding_top = params.padding_values.height;
+  const int padding_bottom =
+      params.padding_values.height + params.padding_values.height_offset;
+  const int padding_left = params.padding_values.width;
+  const int padding_right =
+      params.padding_values.width + params.padding_values.width_offset;
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
+
+  const int hwoi_ordered_filter_total_size =
+      filter_height * filter_width * output_depth;
+
+  cpu_backend_gemm::MatrixParams<uint8_t> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = hwoi_ordered_filter_total_size;
+  lhs_params.cols = input_depth;
+  lhs_params.zero_point = -params.weights_offset;
+
+  int32_t* scratch_data_p = scratch_data;
+  std::fill_n(scratch_data, output_offset * batch_size, static_cast<int32>(0));
+  for (int i = 0; i < batch_size; ++i) {
+    cpu_backend_gemm::MatrixParams<uint8_t> rhs_params;
+    rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+    rhs_params.rows = input_depth;
+    rhs_params.cols = input_image_size;
+    rhs_params.zero_point = -params.input_offset;
+
+    cpu_backend_gemm::MatrixParams<int32_t> dst_params;
+    dst_params.order = cpu_backend_gemm::Order::kColMajor;
+    dst_params.rows = hwoi_ordered_filter_total_size;
+    dst_params.cols = input_image_size;
+
+    cpu_backend_gemm::GemmParams<int32_t, int32_t> gemm_params;
+    cpu_backend_gemm::Gemm(lhs_params, hwoi_ordered_filter_data, rhs_params,
+                           input_data + input_offset * i, dst_params,
+                           col2im_data, gemm_params, cpu_backend_context);
+
+    Col2im(col2im_data, output_depth, output_height, output_width,
+           filter_height, filter_width, padding_top, padding_left,
+           padding_bottom, padding_right, stride_height, stride_width,
+           scratch_data_p);
+
+    scratch_data_p += output_offset;
+  }
+
+  Quantize(params.output_multiplier, params.output_shift,
+           output_shape.FlatSize(), params.output_offset, scratch_data,
+           output_data);
 }
 
 // Integer-only version of ResizeNearestNeighbor. Since scales are represented
@@ -5544,117 +5883,6 @@ inline void Requantize(const input_type* input_data, int32_t size,
                             output_zeropoint, output_data);
 }
 
-#ifdef USE_NEON
-
-// TODO(jaesung): Merge duplicated implementations in optimized_ops.h and
-// neon_tensor_utils.cc.
-inline void MultiplyByQuantizedMultiplier4Rows(
-    const int32x4_t input_val_1, const int32x4_t input_val_2,
-    const int32x4_t input_val_3, const int32x4_t input_val_4,
-    const int32_t multiplier, const int32_t left_shifted_one,
-    const int32_t right_shift, int32x4_t* result_val_1, int32x4_t* result_val_2,
-    int32x4_t* result_val_3, int32x4_t* result_val_4) {
-  using gemmlowp::RoundingDivideByPOT;
-  using gemmlowp::SaturatingRoundingDoublingHighMul;
-
-// The vector type support for SaturatingRoundingDoublingHighMulth in gemmlowp
-// is limited to NEON.
-#ifdef GEMMLOWP_NEON
-  int32x4_t left_shifted_one_dup = vdupq_n_s32(left_shifted_one);
-  *result_val_1 = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vmulq_s32(input_val_1, left_shifted_one_dup), multiplier),
-      right_shift);
-  *result_val_2 = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vmulq_s32(input_val_2, left_shifted_one_dup), multiplier),
-      right_shift);
-  *result_val_3 = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vmulq_s32(input_val_3, left_shifted_one_dup), multiplier),
-      right_shift);
-  *result_val_4 = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vmulq_s32(input_val_4, left_shifted_one_dup), multiplier),
-      right_shift);
-#else
-  int32_t vals[4];
-  vals[0] = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vgetq_lane_s32(input_val_1, 0) * left_shifted_one, multiplier),
-      right_shift);
-  vals[1] = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vgetq_lane_s32(input_val_1, 1) * left_shifted_one, multiplier),
-      right_shift);
-  vals[2] = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vgetq_lane_s32(input_val_1, 2) * left_shifted_one, multiplier),
-      right_shift);
-  vals[3] = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vgetq_lane_s32(input_val_1, 3) * left_shifted_one, multiplier),
-      right_shift);
-  *result_val_1 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
-
-  vals[0] = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vgetq_lane_s32(input_val_2, 0) * left_shifted_one, multiplier),
-      right_shift);
-  vals[1] = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vgetq_lane_s32(input_val_2, 1) * left_shifted_one, multiplier),
-      right_shift);
-  vals[2] = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vgetq_lane_s32(input_val_2, 2) * left_shifted_one, multiplier),
-      right_shift);
-  vals[3] = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vgetq_lane_s32(input_val_2, 3) * left_shifted_one, multiplier),
-      right_shift);
-  *result_val_2 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
-
-  vals[0] = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vgetq_lane_s32(input_val_3, 0) * left_shifted_one, multiplier),
-      right_shift);
-  vals[1] = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vgetq_lane_s32(input_val_3, 1) * left_shifted_one, multiplier),
-      right_shift);
-  vals[2] = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vgetq_lane_s32(input_val_3, 2) * left_shifted_one, multiplier),
-      right_shift);
-  vals[3] = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vgetq_lane_s32(input_val_3, 3) * left_shifted_one, multiplier),
-      right_shift);
-  *result_val_3 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
-
-  vals[0] = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vgetq_lane_s32(input_val_4, 0) * left_shifted_one, multiplier),
-      right_shift);
-  vals[1] = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vgetq_lane_s32(input_val_4, 1) * left_shifted_one, multiplier),
-      right_shift);
-  vals[2] = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vgetq_lane_s32(input_val_4, 2) * left_shifted_one, multiplier),
-      right_shift);
-  vals[3] = RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(
-          vgetq_lane_s32(input_val_4, 3) * left_shifted_one, multiplier),
-      right_shift);
-  *result_val_4 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
-#endif
-}
-
-#endif
-
 template <>
 inline void Requantize<int8_t, uint8_t>(const int8_t* input_data, int32_t size,
                                         int32_t effective_scale_multiplier,
@@ -5675,48 +5903,44 @@ inline void Requantize<int8_t, uint8_t>(const int8_t* input_data, int32_t size,
   const int32x4_t min_val_dup = vdupq_n_s32(kMinOutput);
   const int32x4_t max_val_dup = vdupq_n_s32(kMaxOutput);
 
-  // Left shift & right shift unconditionally.
-  const int32_t left_shifted_one =
-      effective_scale_shift > 0 ? 1 << effective_scale_shift : 1;
-  const int32_t right_shift =
-      effective_scale_shift > 0 ? 0 : -effective_scale_shift;
-
   for (; i <= size - 16; i += 16) {
     const int8x16_t input_vec = vld1q_s8(input_data + i);
     const int16x8_t first_half = vmovl_s8(vget_low_s8(input_vec));
     const int16x8_t second_half = vmovl_s8(vget_high_s8(input_vec));
-    int32x4_t input_val_1 = vmovl_s16(vget_low_s16(first_half));
-    int32x4_t input_val_2 = vmovl_s16(vget_high_s16(first_half));
-    int32x4_t input_val_3 = vmovl_s16(vget_low_s16(second_half));
-    int32x4_t input_val_4 = vmovl_s16(vget_high_s16(second_half));
-    input_val_1 = vaddq_s32(input_val_1, input_zero_point_dup);
-    input_val_2 = vaddq_s32(input_val_2, input_zero_point_dup);
-    input_val_3 = vaddq_s32(input_val_3, input_zero_point_dup);
-    input_val_4 = vaddq_s32(input_val_4, input_zero_point_dup);
+    int32x4x4_t input;
+    input.val[0] = vmovl_s16(vget_low_s16(first_half));
+    input.val[1] = vmovl_s16(vget_high_s16(first_half));
+    input.val[2] = vmovl_s16(vget_low_s16(second_half));
+    input.val[3] = vmovl_s16(vget_high_s16(second_half));
+    input.val[0] = vaddq_s32(input.val[0], input_zero_point_dup);
+    input.val[1] = vaddq_s32(input.val[1], input_zero_point_dup);
+    input.val[2] = vaddq_s32(input.val[2], input_zero_point_dup);
+    input.val[3] = vaddq_s32(input.val[3], input_zero_point_dup);
 
-    int32x4_t result_val_1, result_val_2, result_val_3, result_val_4;
-    MultiplyByQuantizedMultiplier4Rows(
-        input_val_1, input_val_2, input_val_3, input_val_4,
-        effective_scale_multiplier, left_shifted_one, right_shift,
-        &result_val_1, &result_val_2, &result_val_3, &result_val_4);
+    int32x4x4_t result = MultiplyByQuantizedMultiplier4Rows(
+        input, effective_scale_multiplier, effective_scale_shift);
 
-    result_val_1 = vaddq_s32(result_val_1, output_zero_point_dup);
-    result_val_2 = vaddq_s32(result_val_2, output_zero_point_dup);
-    result_val_3 = vaddq_s32(result_val_3, output_zero_point_dup);
-    result_val_4 = vaddq_s32(result_val_4, output_zero_point_dup);
-    result_val_1 = vmaxq_s32(vminq_s32(result_val_1, max_val_dup), min_val_dup);
-    result_val_2 = vmaxq_s32(vminq_s32(result_val_2, max_val_dup), min_val_dup);
-    result_val_3 = vmaxq_s32(vminq_s32(result_val_3, max_val_dup), min_val_dup);
-    result_val_4 = vmaxq_s32(vminq_s32(result_val_4, max_val_dup), min_val_dup);
+    result.val[0] = vaddq_s32(result.val[0], output_zero_point_dup);
+    result.val[1] = vaddq_s32(result.val[1], output_zero_point_dup);
+    result.val[2] = vaddq_s32(result.val[2], output_zero_point_dup);
+    result.val[3] = vaddq_s32(result.val[3], output_zero_point_dup);
+    result.val[0] =
+        vmaxq_s32(vminq_s32(result.val[0], max_val_dup), min_val_dup);
+    result.val[1] =
+        vmaxq_s32(vminq_s32(result.val[1], max_val_dup), min_val_dup);
+    result.val[2] =
+        vmaxq_s32(vminq_s32(result.val[2], max_val_dup), min_val_dup);
+    result.val[3] =
+        vmaxq_s32(vminq_s32(result.val[3], max_val_dup), min_val_dup);
 
     const uint32x4_t result_val_1_unsigned =
-        vreinterpretq_u32_s32(result_val_1);
+        vreinterpretq_u32_s32(result.val[0]);
     const uint32x4_t result_val_2_unsigned =
-        vreinterpretq_u32_s32(result_val_2);
+        vreinterpretq_u32_s32(result.val[1]);
     const uint32x4_t result_val_3_unsigned =
-        vreinterpretq_u32_s32(result_val_3);
+        vreinterpretq_u32_s32(result.val[2]);
     const uint32x4_t result_val_4_unsigned =
-        vreinterpretq_u32_s32(result_val_4);
+        vreinterpretq_u32_s32(result.val[3]);
 
     const uint16x4_t narrowed_val_1 = vqmovn_u32(result_val_1_unsigned);
     const uint16x4_t narrowed_val_2 = vqmovn_u32(result_val_2_unsigned);
@@ -5728,9 +5952,9 @@ inline void Requantize<int8_t, uint8_t>(const int8_t* input_data, int32_t size,
         vcombine_u16(narrowed_val_3, narrowed_val_4);
     const uint8x8_t narrowed_first_half = vqmovn_u16(output_first_half);
     const uint8x8_t narrowed_second_half = vqmovn_u16(output_second_half);
-    const uint8x16_t result =
+    const uint8x16_t narrowed_result =
         vcombine_u8(narrowed_first_half, narrowed_second_half);
-    vst1q_u8(output_data + i, result);
+    vst1q_u8(output_data + i, narrowed_result);
   }
 
 #endif
@@ -5766,57 +5990,49 @@ inline void Requantize<uint8_t, int8_t>(const uint8_t* input_data, int32_t size,
   const int32x4_t min_val_dup = vdupq_n_s32(kMinOutput);
   const int32x4_t max_val_dup = vdupq_n_s32(kMaxOutput);
 
-  // Left shift & right shift unconditionally.
-  const int32_t left_shifted_one =
-      effective_scale_shift > 0 ? 1 << effective_scale_shift : 1;
-  const int32_t right_shift =
-      effective_scale_shift > 0 ? 0 : -effective_scale_shift;
-
   for (; i <= size - 16; i += 16) {
     const uint8x16_t input_vec = vld1q_u8(input_data + i);
     const uint16x8_t first_half = vmovl_u8(vget_low_u8(input_vec));
     const uint16x8_t second_half = vmovl_u8(vget_high_u8(input_vec));
-    int32x4_t input_val_1 =
-        vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(first_half)));
-    int32x4_t input_val_2 =
-        vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(first_half)));
-    int32x4_t input_val_3 =
-        vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(second_half)));
-    int32x4_t input_val_4 =
-        vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(second_half)));
-    input_val_1 = vaddq_s32(input_val_1, input_zero_point_dup);
-    input_val_2 = vaddq_s32(input_val_2, input_zero_point_dup);
-    input_val_3 = vaddq_s32(input_val_3, input_zero_point_dup);
-    input_val_4 = vaddq_s32(input_val_4, input_zero_point_dup);
+    int32x4x4_t input;
+    input.val[0] = vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(first_half)));
+    input.val[1] = vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(first_half)));
+    input.val[2] = vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(second_half)));
+    input.val[3] = vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(second_half)));
+    input.val[0] = vaddq_s32(input.val[0], input_zero_point_dup);
+    input.val[1] = vaddq_s32(input.val[1], input_zero_point_dup);
+    input.val[2] = vaddq_s32(input.val[2], input_zero_point_dup);
+    input.val[3] = vaddq_s32(input.val[3], input_zero_point_dup);
 
-    int32x4_t result_val_1, result_val_2, result_val_3, result_val_4;
-    MultiplyByQuantizedMultiplier4Rows(
-        input_val_1, input_val_2, input_val_3, input_val_4,
-        effective_scale_multiplier, left_shifted_one, right_shift,
-        &result_val_1, &result_val_2, &result_val_3, &result_val_4);
+    int32x4x4_t result = MultiplyByQuantizedMultiplier4Rows(
+        input, effective_scale_multiplier, effective_scale_shift);
 
-    result_val_1 = vaddq_s32(result_val_1, output_zero_point_dup);
-    result_val_2 = vaddq_s32(result_val_2, output_zero_point_dup);
-    result_val_3 = vaddq_s32(result_val_3, output_zero_point_dup);
-    result_val_4 = vaddq_s32(result_val_4, output_zero_point_dup);
-    result_val_1 = vmaxq_s32(vminq_s32(result_val_1, max_val_dup), min_val_dup);
-    result_val_2 = vmaxq_s32(vminq_s32(result_val_2, max_val_dup), min_val_dup);
-    result_val_3 = vmaxq_s32(vminq_s32(result_val_3, max_val_dup), min_val_dup);
-    result_val_4 = vmaxq_s32(vminq_s32(result_val_4, max_val_dup), min_val_dup);
+    result.val[0] = vaddq_s32(result.val[0], output_zero_point_dup);
+    result.val[1] = vaddq_s32(result.val[1], output_zero_point_dup);
+    result.val[2] = vaddq_s32(result.val[2], output_zero_point_dup);
+    result.val[3] = vaddq_s32(result.val[3], output_zero_point_dup);
+    result.val[0] =
+        vmaxq_s32(vminq_s32(result.val[0], max_val_dup), min_val_dup);
+    result.val[1] =
+        vmaxq_s32(vminq_s32(result.val[1], max_val_dup), min_val_dup);
+    result.val[2] =
+        vmaxq_s32(vminq_s32(result.val[2], max_val_dup), min_val_dup);
+    result.val[3] =
+        vmaxq_s32(vminq_s32(result.val[3], max_val_dup), min_val_dup);
 
-    const int16x4_t narrowed_val_1 = vqmovn_s32(result_val_1);
-    const int16x4_t narrowed_val_2 = vqmovn_s32(result_val_2);
-    const int16x4_t narrowed_val_3 = vqmovn_s32(result_val_3);
-    const int16x4_t narrowed_val_4 = vqmovn_s32(result_val_4);
+    const int16x4_t narrowed_val_1 = vqmovn_s32(result.val[0]);
+    const int16x4_t narrowed_val_2 = vqmovn_s32(result.val[1]);
+    const int16x4_t narrowed_val_3 = vqmovn_s32(result.val[2]);
+    const int16x4_t narrowed_val_4 = vqmovn_s32(result.val[3]);
     const int16x8_t output_first_half =
         vcombine_s16(narrowed_val_1, narrowed_val_2);
     const int16x8_t output_second_half =
         vcombine_s16(narrowed_val_3, narrowed_val_4);
     const int8x8_t narrowed_first_half = vqmovn_s16(output_first_half);
     const int8x8_t narrowed_second_half = vqmovn_s16(output_second_half);
-    const int8x16_t result =
+    const int8x16_t narrowed_result =
         vcombine_s8(narrowed_first_half, narrowed_second_half);
-    vst1q_s8(output_data + i, result);
+    vst1q_s8(output_data + i, narrowed_result);
   }
 
 #endif
@@ -5852,53 +6068,50 @@ inline void Requantize<int8_t, int8_t>(const int8_t* input_data, int32_t size,
   const int32x4_t min_val_dup = vdupq_n_s32(kMinOutput);
   const int32x4_t max_val_dup = vdupq_n_s32(kMaxOutput);
 
-  // Left shift & right shift unconditionally.
-  int32_t left_shifted_one =
-      effective_scale_shift > 0 ? 1 << effective_scale_shift : 1;
-  int32_t right_shift = effective_scale_shift > 0 ? 0 : -effective_scale_shift;
-
   for (; i <= size - 16; i += 16) {
     const int8x16_t input_vec = vld1q_s8(input_data + i);
     const int16x8_t first_half = vmovl_s8(vget_low_s8(input_vec));
     const int16x8_t second_half = vmovl_s8(vget_high_s8(input_vec));
-    int32x4_t input_val_1 = vmovl_s16(vget_low_s16(first_half));
-    int32x4_t input_val_2 = vmovl_s16(vget_high_s16(first_half));
-    int32x4_t input_val_3 = vmovl_s16(vget_low_s16(second_half));
-    int32x4_t input_val_4 = vmovl_s16(vget_high_s16(second_half));
+    int32x4x4_t input;
+    input.val[0] = vmovl_s16(vget_low_s16(first_half));
+    input.val[1] = vmovl_s16(vget_high_s16(first_half));
+    input.val[2] = vmovl_s16(vget_low_s16(second_half));
+    input.val[3] = vmovl_s16(vget_high_s16(second_half));
 
-    input_val_1 = vaddq_s32(input_val_1, input_zero_point_dup);
-    input_val_2 = vaddq_s32(input_val_2, input_zero_point_dup);
-    input_val_3 = vaddq_s32(input_val_3, input_zero_point_dup);
-    input_val_4 = vaddq_s32(input_val_4, input_zero_point_dup);
+    input.val[0] = vaddq_s32(input.val[0], input_zero_point_dup);
+    input.val[1] = vaddq_s32(input.val[1], input_zero_point_dup);
+    input.val[2] = vaddq_s32(input.val[2], input_zero_point_dup);
+    input.val[3] = vaddq_s32(input.val[3], input_zero_point_dup);
 
-    int32x4_t result_val_1, result_val_2, result_val_3, result_val_4;
-    MultiplyByQuantizedMultiplier4Rows(
-        input_val_1, input_val_2, input_val_3, input_val_4,
-        effective_scale_multiplier, left_shifted_one, right_shift,
-        &result_val_1, &result_val_2, &result_val_3, &result_val_4);
+    int32x4x4_t result = MultiplyByQuantizedMultiplier4Rows(
+        input, effective_scale_multiplier, effective_scale_shift);
 
-    result_val_1 = vaddq_s32(result_val_1, output_zero_point_dup);
-    result_val_2 = vaddq_s32(result_val_2, output_zero_point_dup);
-    result_val_3 = vaddq_s32(result_val_3, output_zero_point_dup);
-    result_val_4 = vaddq_s32(result_val_4, output_zero_point_dup);
-    result_val_1 = vmaxq_s32(vminq_s32(result_val_1, max_val_dup), min_val_dup);
-    result_val_2 = vmaxq_s32(vminq_s32(result_val_2, max_val_dup), min_val_dup);
-    result_val_3 = vmaxq_s32(vminq_s32(result_val_3, max_val_dup), min_val_dup);
-    result_val_4 = vmaxq_s32(vminq_s32(result_val_4, max_val_dup), min_val_dup);
+    result.val[0] = vaddq_s32(result.val[0], output_zero_point_dup);
+    result.val[1] = vaddq_s32(result.val[1], output_zero_point_dup);
+    result.val[2] = vaddq_s32(result.val[2], output_zero_point_dup);
+    result.val[3] = vaddq_s32(result.val[3], output_zero_point_dup);
+    result.val[0] =
+        vmaxq_s32(vminq_s32(result.val[0], max_val_dup), min_val_dup);
+    result.val[1] =
+        vmaxq_s32(vminq_s32(result.val[1], max_val_dup), min_val_dup);
+    result.val[2] =
+        vmaxq_s32(vminq_s32(result.val[2], max_val_dup), min_val_dup);
+    result.val[3] =
+        vmaxq_s32(vminq_s32(result.val[3], max_val_dup), min_val_dup);
 
-    const int16x4_t narrowed_val_1 = vqmovn_s32(result_val_1);
-    const int16x4_t narrowed_val_2 = vqmovn_s32(result_val_2);
-    const int16x4_t narrowed_val_3 = vqmovn_s32(result_val_3);
-    const int16x4_t narrowed_val_4 = vqmovn_s32(result_val_4);
+    const int16x4_t narrowed_val_1 = vqmovn_s32(result.val[0]);
+    const int16x4_t narrowed_val_2 = vqmovn_s32(result.val[1]);
+    const int16x4_t narrowed_val_3 = vqmovn_s32(result.val[2]);
+    const int16x4_t narrowed_val_4 = vqmovn_s32(result.val[3]);
     const int16x8_t output_first_half =
         vcombine_s16(narrowed_val_1, narrowed_val_2);
     const int16x8_t output_second_half =
         vcombine_s16(narrowed_val_3, narrowed_val_4);
     const int8x8_t narrowed_first_half = vqmovn_s16(output_first_half);
     const int8x8_t narrowed_second_half = vqmovn_s16(output_second_half);
-    const int8x16_t result =
+    const int8x16_t narrowed_result =
         vcombine_s8(narrowed_first_half, narrowed_second_half);
-    vst1q_s8(output_data + i, result);
+    vst1q_s8(output_data + i, narrowed_result);
   }
 
 #endif
@@ -5932,51 +6145,44 @@ inline void Requantize<uint8_t, uint8_t>(
   const int32x4_t min_val_dup = vdupq_n_s32(kMinOutput);
   const int32x4_t max_val_dup = vdupq_n_s32(kMaxOutput);
 
-  // Left shift & right shift unconditionally.
-  int32_t left_shifted_one =
-      effective_scale_shift > 0 ? 1 << effective_scale_shift : 1;
-  int32_t right_shift = effective_scale_shift > 0 ? 0 : -effective_scale_shift;
-
   for (; i <= size - 16; i += 16) {
     const uint8x16_t input_vec = vld1q_u8(input_data + i);
     const uint16x8_t first_half = vmovl_u8(vget_low_u8(input_vec));
     const uint16x8_t second_half = vmovl_u8(vget_high_u8(input_vec));
-    int32x4_t input_val_1 =
-        vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(first_half)));
-    int32x4_t input_val_2 =
-        vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(first_half)));
-    int32x4_t input_val_3 =
-        vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(second_half)));
-    int32x4_t input_val_4 =
-        vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(second_half)));
-    input_val_1 = vaddq_s32(input_val_1, input_zero_point_dup);
-    input_val_2 = vaddq_s32(input_val_2, input_zero_point_dup);
-    input_val_3 = vaddq_s32(input_val_3, input_zero_point_dup);
-    input_val_4 = vaddq_s32(input_val_4, input_zero_point_dup);
+    int32x4x4_t input;
+    input.val[0] = vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(first_half)));
+    input.val[1] = vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(first_half)));
+    input.val[2] = vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(second_half)));
+    input.val[3] = vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(second_half)));
+    input.val[0] = vaddq_s32(input.val[0], input_zero_point_dup);
+    input.val[1] = vaddq_s32(input.val[1], input_zero_point_dup);
+    input.val[2] = vaddq_s32(input.val[2], input_zero_point_dup);
+    input.val[3] = vaddq_s32(input.val[3], input_zero_point_dup);
 
-    int32x4_t result_val_1, result_val_2, result_val_3, result_val_4;
-    MultiplyByQuantizedMultiplier4Rows(
-        input_val_1, input_val_2, input_val_3, input_val_4,
-        effective_scale_multiplier, left_shifted_one, right_shift,
-        &result_val_1, &result_val_2, &result_val_3, &result_val_4);
+    int32x4x4_t result = MultiplyByQuantizedMultiplier4Rows(
+        input, effective_scale_multiplier, effective_scale_shift);
 
-    result_val_1 = vaddq_s32(result_val_1, output_zero_point_dup);
-    result_val_2 = vaddq_s32(result_val_2, output_zero_point_dup);
-    result_val_3 = vaddq_s32(result_val_3, output_zero_point_dup);
-    result_val_4 = vaddq_s32(result_val_4, output_zero_point_dup);
-    result_val_1 = vmaxq_s32(vminq_s32(result_val_1, max_val_dup), min_val_dup);
-    result_val_2 = vmaxq_s32(vminq_s32(result_val_2, max_val_dup), min_val_dup);
-    result_val_3 = vmaxq_s32(vminq_s32(result_val_3, max_val_dup), min_val_dup);
-    result_val_4 = vmaxq_s32(vminq_s32(result_val_4, max_val_dup), min_val_dup);
+    result.val[0] = vaddq_s32(result.val[0], output_zero_point_dup);
+    result.val[1] = vaddq_s32(result.val[1], output_zero_point_dup);
+    result.val[2] = vaddq_s32(result.val[2], output_zero_point_dup);
+    result.val[3] = vaddq_s32(result.val[3], output_zero_point_dup);
+    result.val[0] =
+        vmaxq_s32(vminq_s32(result.val[0], max_val_dup), min_val_dup);
+    result.val[1] =
+        vmaxq_s32(vminq_s32(result.val[1], max_val_dup), min_val_dup);
+    result.val[2] =
+        vmaxq_s32(vminq_s32(result.val[2], max_val_dup), min_val_dup);
+    result.val[3] =
+        vmaxq_s32(vminq_s32(result.val[3], max_val_dup), min_val_dup);
 
     const uint32x4_t result_val_1_unsigned =
-        vreinterpretq_u32_s32(result_val_1);
+        vreinterpretq_u32_s32(result.val[0]);
     const uint32x4_t result_val_2_unsigned =
-        vreinterpretq_u32_s32(result_val_2);
+        vreinterpretq_u32_s32(result.val[1]);
     const uint32x4_t result_val_3_unsigned =
-        vreinterpretq_u32_s32(result_val_3);
+        vreinterpretq_u32_s32(result.val[2]);
     const uint32x4_t result_val_4_unsigned =
-        vreinterpretq_u32_s32(result_val_4);
+        vreinterpretq_u32_s32(result.val[3]);
 
     const uint16x4_t narrowed_val_1 = vqmovn_u32(result_val_1_unsigned);
     const uint16x4_t narrowed_val_2 = vqmovn_u32(result_val_2_unsigned);
@@ -5988,9 +6194,9 @@ inline void Requantize<uint8_t, uint8_t>(
         vcombine_u16(narrowed_val_3, narrowed_val_4);
     const uint8x8_t narrowed_first_half = vqmovn_u16(output_first_half);
     const uint8x8_t narrowed_second_half = vqmovn_u16(output_second_half);
-    const uint8x16_t result =
+    const uint8x16_t narrowed_result =
         vcombine_u8(narrowed_first_half, narrowed_second_half);
-    vst1q_u8(output_data + i, result);
+    vst1q_u8(output_data + i, narrowed_result);
   }
 
 #endif

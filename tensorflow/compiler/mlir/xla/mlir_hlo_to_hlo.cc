@@ -30,15 +30,19 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
+using ::stream_executor::port::StatusOr;
 using ::tensorflow::int16;
 using ::tensorflow::int32;
 using ::tensorflow::int64;
@@ -48,9 +52,47 @@ using ::tensorflow::uint32;
 using ::tensorflow::uint64;
 using ::tensorflow::uint8;
 
+// Passes through everything except for unique_ptr, on which it calls get().
+// This exists to allow the generated code to call XLA functions that take a raw
+// pointer. In particular, PrecisionConfig is passed to xla::Dot and xla::Conv
+// as a pointer and there is otherwise no way to avoid a memory leak.
+template <typename T>
+T Unwrap(T t) {
+  return t;
+}
+
+template <typename T>
+T* Unwrap(const std::unique_ptr<T>& t) {
+  return t.get();
+}
+
+// Convert APInt into an int.
+// TODO(hpucha): This should be consolidated into a general place.
+static int ConvertAPInt(llvm::APInt i) { return i.getSExtValue(); }
+
+// Convert APFloat to double.
+static double ConvertAPFloat(llvm::APFloat value) {
+  const auto& semantics = value.getSemantics();
+  bool losesInfo = false;
+  if (&semantics != &llvm::APFloat::IEEEdouble())
+    value.convert(llvm::APFloat::IEEEdouble(),
+                  llvm::APFloat::rmNearestTiesToEven, &losesInfo);
+  return value.convertToDouble();
+}
+
+static absl::string_view ConvertStringRef(mlir::StringRef value) {
+  return {value.data(), value.size()};
+}
+
 static std::vector<int64> ConvertDenseIntAttr(mlir::DenseIntElementsAttr attr) {
   auto values = attr.getValues<int64>();
   return {values.begin(), values.end()};
+}
+
+static std::vector<int64> ConvertDenseIntAttr(
+    llvm::Optional<mlir::DenseIntElementsAttr> attr) {
+  if (!attr) return {};
+  return ConvertDenseIntAttr(*attr);
 }
 
 // Converts the broadcast_dimensions attribute into a vector of dimension
@@ -81,16 +123,36 @@ static std::vector<std::pair<int64, int64>> Convert_padding(
   return out;
 }
 
-// Converts the broadcast_sizes attribute into a vector of dimension sizes.
-static std::vector<int64> Convert_broadcast_sizes(
-    mlir::DenseIntElementsAttr broadcast_sizes) {
-  return ConvertDenseIntAttr(broadcast_sizes);
+static std::vector<xla::ReplicaGroup> Convert_replica_groups(
+    mlir::DenseIntElementsAttr groups) {
+  int64_t num_groups = groups.getType().getDimSize(0);
+  int64_t group_size = groups.getType().getDimSize(1);
+
+  std::vector<xla::ReplicaGroup> result;
+  result.reserve(num_groups);
+  for (uint64_t i = 0; i < num_groups; ++i) {
+    xla::ReplicaGroup group;
+    for (uint64_t j = 0; j < group_size; ++j) {
+      group.add_replica_ids(groups.getValue<int64_t>({i, j}));
+    }
+    result.push_back(group);
+  }
+  return result;
 }
 
-static std::vector<int64> Convert_permutation(
-    mlir::DenseIntElementsAttr permutation) {
-  return ConvertDenseIntAttr(permutation);
-}
+#define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)   \
+  static std::vector<int64> Convert_##attribute( \
+      mlir::DenseIntElementsAttr attribute) {    \
+    return ConvertDenseIntAttr(attribute);       \
+  }
+
+I64_ELEMENTS_ATTR_TO_VECTOR(broadcast_sizes);
+I64_ELEMENTS_ATTR_TO_VECTOR(permutation);
+I64_ELEMENTS_ATTR_TO_VECTOR(start_indices);
+I64_ELEMENTS_ATTR_TO_VECTOR(limit_indices);
+I64_ELEMENTS_ATTR_TO_VECTOR(strides);
+
+#undef I64_ELEMENTS_ATTR_TO_VECTOR
 
 static std::vector<int64> Convert_ArrayRef(llvm::ArrayRef<int64_t> values) {
   return {values.begin(), values.end()};
@@ -190,6 +252,14 @@ static xla::ConvolutionDimensionNumbers Convert_convolution_dimension_numbers(
   return output;
 }
 
+xla::ChannelHandle Convert_channel_handle(mlir::xla_hlo::ChannelHandle attr) {
+  xla::ChannelHandle channel_handle;
+  channel_handle.set_handle(ConvertAPInt(attr.handle().getValue()));
+  channel_handle.set_type(static_cast<xla::ChannelHandle::ChannelType>(
+      ConvertAPInt(attr.type().getValue())));
+  return channel_handle;
+}
+
 // Converts the comparison_direction string attribute into the XLA enum. The
 // string is assumed to correspond to exactly one of the allowed strings
 // representing the enum. This should have been checked in the op verify method.
@@ -199,32 +269,30 @@ static xla::ComparisonDirection Convert_comparison_direction(
       .ValueOrDie();
 }
 
-// Passes through everything except for unique_ptr, on which it calls get().
-// This exists to allow the generated code to call XLA functions that take a raw
-// pointer. In particular, PrecisionConfig is passed to xla::Dot and xla::Conv
-// as a pointer and there is otherwise no way to avoid a memory leak.
-template <typename T>
-T Unwrap(T t) {
-  return t;
-}
+static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
+    mlir::xla_hlo::ScatterDimensionNumbers input) {
+  xla::ScatterDimensionNumbers output;
 
-template <typename T>
-T* Unwrap(const std::unique_ptr<T>& t) {
-  return t.get();
-}
+  auto update_window_dims = ConvertDenseIntAttr(input.update_window_dims());
+  std::copy(update_window_dims.begin(), update_window_dims.end(),
+            tensorflow::protobuf::RepeatedFieldBackInserter(
+                output.mutable_update_window_dims()));
 
-// Convert APInt into an int.
-// TODO(hpucha): This should be consolidated into a general place.
-static int ConvertAPInt(llvm::APInt i) { return i.getSExtValue(); }
+  auto inserted_window_dims = ConvertDenseIntAttr(input.inserted_window_dims());
+  std::copy(inserted_window_dims.begin(), inserted_window_dims.end(),
+            tensorflow::protobuf::RepeatedFieldBackInserter(
+                output.mutable_inserted_window_dims()));
 
-// Convert APFloat to double.
-static double ConvertAPFloat(llvm::APFloat value) {
-  const auto& semantics = value.getSemantics();
-  bool losesInfo = false;
-  if (&semantics != &llvm::APFloat::IEEEdouble())
-    value.convert(llvm::APFloat::IEEEdouble(),
-                  llvm::APFloat::rmNearestTiesToEven, &losesInfo);
-  return value.convertToDouble();
+  auto scatter_dims_to_operand_dims =
+      ConvertDenseIntAttr(input.scatter_dims_to_operand_dims());
+  std::copy(scatter_dims_to_operand_dims.begin(),
+            scatter_dims_to_operand_dims.end(),
+            tensorflow::protobuf::RepeatedFieldBackInserter(
+                output.mutable_scatter_dims_to_operand_dims()));
+
+  output.set_index_vector_dim(
+      ConvertAPInt(input.index_vector_dim().getValue()));
+  return output;
 }
 
 namespace mlir {
@@ -234,15 +302,23 @@ class ConvertToHloModule {
   using ValueLoweringMap = llvm::DenseMap<Value*, xla::XlaOp>;
   using FunctionLoweringMap = llvm::DenseMap<mlir::FuncOp, xla::XlaComputation>;
 
+  // If use_tuple_args is true, then the entry function's arguments are
+  // converted to a tuple and passed as a single parameter.
+  // Similarly, if return tuple is true, then the entry function's return values
+  // are converted to a tuple even when there is only a single return value.
+  // Multiple return values are always converted to a tuple and returned as a
+  // single value.
   explicit ConvertToHloModule(mlir::ModuleOp module, bool use_tuple_args,
-                              bool always_return_tuple)
+                              bool return_tuple)
       : module_(module),
         module_builder_("main"),
         use_tuple_args_(use_tuple_args),
-        always_return_tuple_(always_return_tuple) {}
+        return_tuple_(return_tuple) {}
 
   // Perform the lowering to XLA. This function returns failure if an error was
   // encountered.
+  //
+  // TODO(hinsu): Check for dynamic shapes and exit instead of crashing.
   LogicalResult Run() {
     for (auto func : module_.getOps<FuncOp>()) {
       if (func.empty()) continue;
@@ -261,6 +337,7 @@ class ConvertToHloModule {
   // Lower a single `Block` to a `XlaComputation`
   LogicalResult LowerBasicBlockAsFunction(Block* block,
                                           xla::XlaBuilder* builder,
+                                          bool is_entry_function,
                                           xla::XlaComputation* result);
 
   ::xla::HloModuleProto ConsumeMainProto() {
@@ -268,8 +345,14 @@ class ConvertToHloModule {
         .proto();
   }
 
+  // Lower function call to HLO call instruction
+  LogicalResult LowerFunctionCall(
+      mlir::CallOp* call_op, xla::XlaBuilder* builder,
+      ConvertToHloModule::ValueLoweringMap* value_lowering);
+
  private:
-  LogicalResult Lower(mlir::Operation* inst, xla::XlaBuilder* builder,
+  LogicalResult Lower(mlir::Operation* inst, bool is_entry_function,
+                      xla::XlaBuilder* builder,
                       ConvertToHloModule::ValueLoweringMap* value_lowering,
                       xla::XlaComputation* result);
 
@@ -286,7 +369,7 @@ class ConvertToHloModule {
   bool use_tuple_args_;
 
   // Whether to always return a tuple.
-  bool always_return_tuple_;
+  bool return_tuple_;
 
   // Unique suffix to give to the name of the next lowered region.
   size_t region_id_ = 0;
@@ -318,6 +401,26 @@ namespace mlir {
 namespace xla_hlo {
 namespace {
 
+LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaComputation computation;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.computation(),
+                                                     &computation))) {
+    return failure();
+  }
+  auto replica_groups = Convert_replica_groups(op.replica_groups());
+  if (!op.channel_id().hasValue()) {
+    value_map[op] =
+        xla::AllReduce(value_map[op.operand()], computation, replica_groups,
+                       /*channel_id=*/absl::nullopt);
+    return success();
+  }
+  auto channel_id = Convert_channel_handle(op.channel_id().getValue());
+  value_map[op] = xla::AllReduce(value_map[op.operand()], computation,
+                                 replica_groups, channel_id);
+  return success();
+}
+
 LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   auto type = op.getType().dyn_cast<RankedTensorType>();
   if (!type) return failure();
@@ -332,6 +435,24 @@ LogicalResult ExportXlaOp(ConcatenateOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::ConcatInDim(ctx.builder, GetTuple(op.val(), ctx),
                                    op.dimension().getSExtValue());
+  return success();
+}
+
+LogicalResult ExportXlaOp(ConditionalOp op, OpLoweringContext ctx) {
+  xla::XlaComputation true_branch;
+  xla::XlaComputation false_branch;
+  auto& value_map = *ctx.values;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.true_branch(),
+                                                     &true_branch)) ||
+      failed(ctx.converter->LowerRegionAsComputation(&op.false_branch(),
+                                                     &false_branch))) {
+    return failure();
+  }
+
+  value_map[op] =
+      xla::Conditional(value_map[op.pred()], value_map[op.true_arg()],
+                       true_branch, value_map[op.false_arg()], false_branch);
+
   return success();
 }
 
@@ -355,14 +476,14 @@ LogicalResult ExportXlaOp(ConvOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::ConvertElementType(
+      value_map[op.operand()],
+      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+  return success();
 }
 
 LogicalResult ExportXlaOp(CopyOp op, OpLoweringContext ctx) {
-  return failure();
-}
-
-LogicalResult ExportXlaOp(CrossReplicaSumOp op, OpLoweringContext ctx) {
   return failure();
 }
 
@@ -380,13 +501,6 @@ LogicalResult ExportXlaOp(GatherOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(GetTupleElementOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  value_map[op] = xla::GetTupleElement(value_map[op.getOperand()],
-                                       op.index().getSExtValue());
-  return success();
-}
-
 LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::Iota(ctx.builder, xla::TypeToShape(op.getType()),
@@ -394,7 +508,22 @@ LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(PadOp op, OpLoweringContext ctx) { return failure(); }
+LogicalResult ExportXlaOp(PadOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::PaddingConfig padding_config;
+  auto edge_padding_low = ConvertDenseIntAttr(op.edge_padding_low());
+  auto edge_padding_high = ConvertDenseIntAttr(op.edge_padding_high());
+  auto interior_padding = ConvertDenseIntAttr(op.interior_padding());
+  for (xla::int64 i = 0; i < edge_padding_low.size(); ++i) {
+    auto* dims = padding_config.add_dimensions();
+    dims->set_edge_padding_low(edge_padding_low[i]);
+    dims->set_edge_padding_high(edge_padding_high[i]);
+    dims->set_interior_padding(interior_padding[i]);
+  }
+  value_map[op] = xla::Pad(value_map[op.getOperand(0)],
+                           value_map[op.getOperand(1)], padding_config);
+  return success();
+}
 
 LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
@@ -417,11 +546,27 @@ LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(ReduceWindowOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  xla::XlaComputation body;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.body(), &body))) {
+    return failure();
+  }
+  value_map[op] = xla::ReduceWindowWithGeneralPadding(
+      value_map[op.operand()], value_map[op.init_value()], body,
+      ConvertDenseIntAttr(op.window_dimensions()),
+      ConvertDenseIntAttr(op.window_strides()),
+      ConvertDenseIntAttr(op.base_dilations()),
+      ConvertDenseIntAttr(op.window_dilations()),
+      Convert_padding(op.padding()));
+  return success();
 }
 
 LogicalResult ExportXlaOp(ReshapeOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::Reshape(value_map[op.operand()],
+                               xla::TypeToShape(op.getType()).dimensions());
+
+  return success();
 }
 
 LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
@@ -438,15 +583,59 @@ LogicalResult ExportXlaOp(ReverseOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(RngUniformOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::RngUniform(value_map[op.a()], value_map[op.b()],
+                                  xla::TypeToShape(op.getType()));
+  return success();
+}
+
+LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaComputation update_computation;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.update_computation(),
+                                                     &update_computation))) {
+    return failure();
+  }
+  xla::ScatterDimensionNumbers dimension_numbers =
+      Convert_scatter_dimension_numbers(op.scatter_dimension_numbers());
+  value_map[op] = xla::Scatter(
+      value_map[op.operand()], value_map[op.scatter_indices()],
+      value_map[op.updates()], update_computation, dimension_numbers,
+      op.indices_are_sorted(), op.unique_indices());
+  return success();
 }
 
 LogicalResult ExportXlaOp(SelectAndScatterOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  xla::XlaComputation select;
+  xla::XlaComputation scatter;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.select(), &select)) ||
+      failed(
+          ctx.converter->LowerRegionAsComputation(&op.scatter(), &scatter))) {
+    return failure();
+  }
+  value_map[op] = xla::SelectAndScatterWithGeneralPadding(
+      value_map[op.operand()], select,
+      ConvertDenseIntAttr(op.window_dimensions()),
+      ConvertDenseIntAttr(op.window_strides()), Convert_padding(op.padding()),
+      value_map[op.source()], value_map[op.init_value()], scatter);
+  return success();
 }
 
 LogicalResult ExportXlaOp(SliceOp op, OpLoweringContext ctx) {
   return failure();
+}
+
+LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
+  xla::XlaComputation comparator;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.comparator(),
+                                                     &comparator)))
+    return failure();
+
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::Sort(GetTuple(op.operands(), ctx), comparator,
+                            op.dimension().getSExtValue(), op.is_stable());
+  return success();
 }
 
 LogicalResult ExportXlaOp(TupleOp op, OpLoweringContext ctx) {
@@ -455,8 +644,23 @@ LogicalResult ExportXlaOp(TupleOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(UnaryEinsumOp op, OpLoweringContext ctx) {
+  // Intentional as UnaryEinsumOp is always lowered to the EinsumOp with two
+  // operands.
   return failure();
+}
+
+LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
+  xla::XlaComputation condition;
+  xla::XlaComputation body;
+  auto& value_map = *ctx.values;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.body(), &body)) ||
+      failed(ctx.converter->LowerRegionAsComputation(&op.cond(), &condition))) {
+    return failure();
+  }
+
+  value_map[op] = xla::While(condition, body, value_map[op.getOperand()]);
+  return success();
 }
 
 }  // namespace
@@ -499,7 +703,7 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(Type type, ElementsAttr attr) {
 }
 
 LogicalResult ConvertToHloModule::Lower(
-    mlir::Operation* inst, xla::XlaBuilder* builder,
+    mlir::Operation* inst, bool is_entry_function, xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering,
     xla::XlaComputation* result) {
   if (succeeded(ExportXlaOperator(inst, {value_lowering, this, builder}))) {
@@ -508,6 +712,11 @@ LogicalResult ConvertToHloModule::Lower(
 
   auto& value_map = *value_lowering;
   ElementsAttr const_attr;
+
+  if (auto call_op = dyn_cast<mlir::CallOp>(inst)) {
+    return LowerFunctionCall(&call_op, builder, &value_map);
+  }
+
   // TODO(jpienaar): This doesn't support layouts yet.
   if (matchPattern(inst, m_Constant(&const_attr))) {
     auto literal_or =
@@ -523,7 +732,7 @@ LogicalResult ConvertToHloModule::Lower(
     // values returned, then create a tuple, else return value directly.
     xla::XlaOp return_value;
     unsigned num_return_values = inst->getNumOperands();
-    if (always_return_tuple_ || num_return_values > 1) {
+    if ((return_tuple_ && is_entry_function) || num_return_values > 1) {
       std::vector<xla::XlaOp> returns(num_return_values);
       for (unsigned i = 0, e = inst->getNumOperands(); i != e; ++i) {
         returns[i] = value_map[inst->getOperand(i)];
@@ -549,9 +758,40 @@ LogicalResult ConvertToHloModule::Lower(
   return failure();
 }
 
+LogicalResult ConvertToHloModule::LowerFunctionCall(
+    mlir::CallOp* call_op, xla::XlaBuilder* builder,
+    ConvertToHloModule::ValueLoweringMap* value_lowering) {
+  auto& value_map = *value_lowering;
+  mlir::FuncOp callee = module_.lookupSymbol<mlir::FuncOp>(call_op->callee());
+  if (failed(RunOnFunction(callee))) return failure();
+  std::vector<xla::XlaOp> operands;
+  for (auto operand : call_op->getOperands()) {
+    operands.push_back(value_map[operand]);
+  }
+  // Each call to xla::Call would insert a copy of the computation to
+  // the HLO. Thus each callsite would have a unique callee in the
+  // exported HLO. HLO syntactically does not require all calls to have unique
+  // callees, but eventually before lowering call graph is "flattened" to
+  // make that true. This is done before lowering because buffer assignment
+  // needs this invariant.
+  xla::XlaOp call_result =
+      xla::Call(builder, lowered_computation_[callee], operands);
+  // Use GetTupleElement for multiple outputs
+  unsigned num_results = call_op->getNumResults();
+  if (num_results > 1) {
+    for (unsigned i = 0; i != num_results; ++i) {
+      value_map[call_op->getResult(i)] = xla::GetTupleElement(call_result, i);
+    }
+  } else if (num_results == 1) {
+    value_map[call_op->getResult(0)] = call_result;
+  }
+  return success();
+}
+
 LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
+  if (lowered_computation_.count(f)) return success();
   if (f.getBlocks().size() != 1) {
-    return f.emitError("only single block Function suppored");
+    return f.emitError("only single block Function supported");
   }
 
   // Create a sub-builder if this is not the main function.
@@ -562,7 +802,8 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
   auto& builder = entry_function ? module_builder_ : *builder_up;
 
   xla::XlaComputation computation;
-  if (failed(LowerBasicBlockAsFunction(&f.front(), &builder, &computation))) {
+  if (failed(LowerBasicBlockAsFunction(&f.front(), &builder, entry_function,
+                                       &computation))) {
     return failure();
   }
   lowered_computation_[f] = std::move(computation);
@@ -570,7 +811,8 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
 }
 
 LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
-    Block* block, xla::XlaBuilder* builder, xla::XlaComputation* result) {
+    Block* block, xla::XlaBuilder* builder, bool is_entry_function,
+    xla::XlaComputation* result) {
   auto& bb = *block;
   // Mapping from the Value to lowered XlaOp. The code below lowers in
   // program order and will fail if an operand is unseen. This can be improved.
@@ -578,7 +820,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
 
   // If using tuples as input, then there is only one input parameter that is a
   // tuple.
-  if (use_tuple_args_) {
+  if (is_entry_function && use_tuple_args_) {
     std::vector<xla::Shape> arg_shapes;
     arg_shapes.reserve(bb.getNumArguments());
     for (auto& arg : bb.getArguments())
@@ -599,7 +841,8 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
   }
 
   for (auto& inst : bb)
-    if (failed(Lower(&inst, builder, &lowering, result))) return failure();
+    if (failed(Lower(&inst, is_entry_function, builder, &lowering, result)))
+      return failure();
 
   return success();
 }
@@ -608,15 +851,16 @@ LogicalResult ConvertToHloModule::LowerRegionAsComputation(
     mlir::Region* region, xla::XlaComputation* func) {
   std::unique_ptr<xla::XlaBuilder> builder =
       module_builder_.CreateSubBuilder(absl::StrCat("region_", region_id_++));
-  return LowerBasicBlockAsFunction(&region->front(), builder.get(), func);
+  return LowerBasicBlockAsFunction(&region->front(), builder.get(),
+                                   /*is_entry_function=*/false, func);
 }
 
 }  // namespace
 
 Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
-                           bool use_tuple_args, bool always_return_tuple) {
+                           bool use_tuple_args, bool return_tuple) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
-  ConvertToHloModule converter(module, use_tuple_args, always_return_tuple);
+  ConvertToHloModule converter(module, use_tuple_args, return_tuple);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
   auto hlo_module = converter.ConsumeMainProto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);

@@ -287,7 +287,7 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllToAllToBF16) {
   replica_groups[0].add_replica_ids(1);
   HloInstruction* a2a = builder.AddInstruction(HloInstruction::CreateAllToAll(
       ShapeUtil::MakeTupleShape({bf16_shape, bf16_shape}), {a, a},
-      replica_groups));
+      replica_groups, absl::nullopt));
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_TRUE(Normalize(module.get()));
@@ -316,7 +316,7 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllToAllToF32) {
   replica_groups[0].add_replica_ids(1);
   HloInstruction* a2a = builder.AddInstruction(HloInstruction::CreateAllToAll(
       ShapeUtil::MakeTupleShape({bf16_shape, f32_shape}), {a, a},
-      replica_groups));
+      replica_groups, absl::nullopt));
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_TRUE(Normalize(module.get()));

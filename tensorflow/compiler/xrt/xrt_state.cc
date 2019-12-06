@@ -218,17 +218,25 @@ void XRTTupleAllocation::ReleaseBuffers() {
 }
 
 /*static*/ Status XRTTupleAllocation::CreateFromBuffer(
-    const xla::ShapedBuffer& shaped_buffer, xla::Backend* backend,
+    const xla::ShapedBuffer& shaped_buffer, const xla::Shape& on_host_shape,
+    const xla::Shape& on_device_shape, xla::Backend* backend,
     int device_ordinal, XRTTupleAllocation** allocation) {
   auto allocator = backend->memory_allocator();
 
-  *allocation = new XRTTupleAllocation(device_ordinal, allocator,
-                                       shaped_buffer.on_host_shape(),
-                                       shaped_buffer.on_device_shape());
+  *allocation = new XRTTupleAllocation(device_ordinal, allocator, on_host_shape,
+                                       on_device_shape);
   (*allocation)
       ->InitializeFromShapedBuffer(shaped_buffer, allocator, device_ordinal);
   (*allocation)->SetDeviceMemorySize();
   return Status::OK();
+}
+
+/*static*/ Status XRTTupleAllocation::CreateFromBuffer(
+    const xla::ShapedBuffer& shaped_buffer, xla::Backend* backend,
+    int device_ordinal, XRTTupleAllocation** allocation) {
+  return CreateFromBuffer(shaped_buffer, shaped_buffer.on_host_shape(),
+                          shaped_buffer.on_device_shape(), backend,
+                          device_ordinal, allocation);
 }
 
 Status XRTTupleAllocation::ToLiteral(xla::Backend* backend,

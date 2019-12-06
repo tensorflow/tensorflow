@@ -19,14 +19,14 @@
 // CHECK-NEXT:       shape: [  ],
 // CHECK-NEXT:       type: INT32,
 // CHECK-NEXT:       buffer: 1,
-// CHECK-NEXT:       name: "tfl.pseudo_input",
+// CHECK-NEXT:       name: "arg0",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 1 ],
 // CHECK-NEXT:       buffer: 2,
-// CHECK-NEXT:       name: "tfl.pseudo_input1",
+// CHECK-NEXT:       name: "arg1",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
@@ -193,14 +193,11 @@
 // CHECK-NEXT: }
 
 func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
-  %0 = "tfl.pseudo_input"(%arg0) : (tensor<i32>) -> tensor<i32>
-  %1 = "tfl.pseudo_input"(%arg1) : (tensor<1xf32>) -> tensor<1xf32>
-
-  // While %0 is greater than zero, element wise add %1 with itself.
-  %2:2 = "tf.While"(%0, %1) {
+  // While %arg0 is greater than zero, element wise add %arg1 with itself.
+  %0:2 = "tf.While"(%arg0, %arg1) {
     cond = @cond, body = @body, is_stateless = false
   } : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>)
-  return %2#1 : tensor<1xf32>
+  return %0#1 : tensor<1xf32>
 }
 
 func @cond(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>) -> tensor<i1> {

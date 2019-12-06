@@ -573,9 +573,9 @@ static bool srcAppearsBeforeDstInAncestralBlock(
       getCommonBlock(srcAccess, dstAccess, srcDomain, numCommonLoops);
   // Check the dominance relationship between the respective ancestors of the
   // src and dst in the Block of the innermost among the common loops.
-  auto *srcInst = commonBlock->findAncestorInstInBlock(*srcAccess.opInst);
+  auto *srcInst = commonBlock->findAncestorOpInBlock(*srcAccess.opInst);
   assert(srcInst != nullptr);
-  auto *dstInst = commonBlock->findAncestorInstInBlock(*dstAccess.opInst);
+  auto *dstInst = commonBlock->findAncestorOpInBlock(*dstAccess.opInst);
   assert(dstInst != nullptr);
 
   // Determine whether dstInst comes after srcInst.

@@ -18,69 +18,30 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import glob
 import os
-import tempfile
 
 import numpy as np
 
 from tensorflow.core.protobuf import debug_event_pb2
+from tensorflow.python.debug.lib import debug_events_reader
 from tensorflow.python.debug.lib import debug_events_writer
+from tensorflow.python.debug.lib import dumping_callback_test_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
-from tensorflow.python.lib.io import file_io
-from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import gen_debug_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
-# TODO(cais): Refactor into own module when necessary.
-class DebugEventsDir(object):
-
-  def __init__(self, dump_root):
-    if not os.path.isdir(dump_root):
-      raise ValueError("Specified dump_root is not a directory: %s" % dump_root)
-    metadata_paths = glob.glob(os.path.join(dump_root, "*.metadata"))
-    if not metadata_paths:
-      raise ValueError("Cannot find any metadata file in directory: %s" %
-                       dump_root)
-    elif len(metadata_paths) > 1:
-      raise ValueError(
-          "Unexpected: Found multiple (%d) metadata in directory: %s" %
-          (len(metadata_paths), dump_root))
-    self._metadata_path = metadata_paths[0]
-    self._prefix = metadata_paths[0][:-len(".metadata")]
-
-    self._graph_execution_traces_path = ("%s.graph_execution_traces" %
-                                         self._prefix)
-
-  def metadata_iterator(self):
-    for r in tf_record.tf_record_iterator(self._metadata_path):
-      yield debug_event_pb2.DebugEvent.FromString(r)
-
-  # TODO(cais): Add source_files_iterator()
-  # TODO(cais): Add stack_frames_iterator()
-  # TODO(cais): Add graphs_iterator()
-  # TODO(cais): Add execution_iterator()
-
-  def graph_execution_traces_iterator(self):
-    if not os.path.isfile(self._graph_execution_traces_path):
-      raise ValueError("DebugEvent data file does not exist: %s" %
-                       self._graph_execution_traces_path)
-    for r in tf_record.tf_record_iterator(self._graph_execution_traces_path):
-      yield debug_event_pb2.DebugEvent.FromString(r)
-
-
-class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
+class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
   def setUp(self):
     super(DebugIdentityV2OpTest, self).setUp()
-    self.dump_root = tempfile.mkdtemp()
     # Testing using a small circular-buffer size.
     self.circular_buffer_size = 4
     self.writer = debug_events_writer.DebugEventsWriter(
@@ -88,8 +49,6 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
     self.writer.Close()
-    if os.path.isdir(self.dump_root):
-      file_io.delete_recursively(self.dump_root)
     super(DebugIdentityV2OpTest, self).tearDown()
 
   @test_util.run_in_graph_and_eager_modes
@@ -125,55 +84,55 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
       self.assertAllClose(
           write_debug_trace(x), [9.0 + np.sqrt(3.0), 16.0 + 2.0])
 
-    debug_events_dir = DebugEventsDir(self.dump_root)
-    metadata_iter = debug_events_dir.metadata_iterator()
-    # Check that the .metadata DebugEvents data file has been created, even
-    # before FlushExecutionFiles() is called.
-    debug_event = next(metadata_iter)
-    self.assertGreater(debug_event.wall_time, 0)
-    self.assertTrue(debug_event.debug_metadata.tensorflow_version)
-    self.assertTrue(
-        debug_event.debug_metadata.file_version.startswith("debug.Event:"))
-
-    graph_trace_iter = debug_events_dir.graph_execution_traces_iterator()
-    # Before FlushExecutionFiles() is called, the .graph_execution_traces file
-    # ought to be empty.
-    with self.assertRaises(StopIteration):
-      next(graph_trace_iter)
-
-    # Flush the circular buffer.
-    self.writer.FlushExecutionFiles()
-    graph_trace_iter = debug_events_dir.graph_execution_traces_iterator()
-
-    # The circular buffer has a size of 4. So only the data from the
-    # last two iterations should have been written to self.dump_root.
-    for _ in range(2):
-      debug_event = next(graph_trace_iter)
+    with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
+      metadata_iter = reader.metadata_iterator()
+      # Check that the .metadata DebugEvents data file has been created, even
+      # before FlushExecutionFiles() is called.
+      debug_event = next(metadata_iter)
       self.assertGreater(debug_event.wall_time, 0)
-      trace = debug_event.graph_execution_trace
-      self.assertEqual(trace.tfdbg_context_id, "deadbeaf")
-      self.assertEqual(trace.op_name, "Square")
-      self.assertEqual(trace.output_slot, 0)
-      self.assertEqual(trace.tensor_debug_mode,
-                       debug_event_pb2.TensorDebugMode.FULL_TENSOR)
-      tensor_value = tensor_util.MakeNdarray(trace.tensor_proto)
-      self.assertAllClose(tensor_value, [9.0, 16.0])
+      self.assertTrue(debug_event.debug_metadata.tensorflow_version)
+      self.assertTrue(
+          debug_event.debug_metadata.file_version.startswith("debug.Event:"))
 
-      debug_event = next(graph_trace_iter)
-      self.assertGreater(debug_event.wall_time, 0)
-      trace = debug_event.graph_execution_trace
-      self.assertEqual(trace.tfdbg_context_id, "beafdead")
-      self.assertEqual(trace.op_name, "Sqrt")
-      self.assertEqual(trace.output_slot, 0)
-      self.assertEqual(trace.tensor_debug_mode,
-                       debug_event_pb2.TensorDebugMode.FULL_TENSOR)
-      tensor_value = tensor_util.MakeNdarray(trace.tensor_proto)
-      self.assertAllClose(tensor_value, [np.sqrt(3.0), 2.0])
+      graph_trace_iter = reader.graph_execution_traces_iterator()
+      # Before FlushExecutionFiles() is called, the .graph_execution_traces file
+      # ought to be empty.
+      with self.assertRaises(StopIteration):
+        next(graph_trace_iter)
 
-    # Only the graph-execution trace of the last iteration should be written
-    # to self.dump_root.
-    with self.assertRaises(StopIteration):
-      next(graph_trace_iter)
+      # Flush the circular buffer.
+      self.writer.FlushExecutionFiles()
+      graph_trace_iter = reader.graph_execution_traces_iterator()
+
+      # The circular buffer has a size of 4. So only the data from the
+      # last two iterations should have been written to self.dump_root.
+      for _ in range(2):
+        debug_event = next(graph_trace_iter)
+        self.assertGreater(debug_event.wall_time, 0)
+        trace = debug_event.graph_execution_trace
+        self.assertEqual(trace.tfdbg_context_id, "deadbeaf")
+        self.assertEqual(trace.op_name, "Square")
+        self.assertEqual(trace.output_slot, 0)
+        self.assertEqual(trace.tensor_debug_mode,
+                         debug_event_pb2.TensorDebugMode.FULL_TENSOR)
+        tensor_value = tensor_util.MakeNdarray(trace.tensor_proto)
+        self.assertAllClose(tensor_value, [9.0, 16.0])
+
+        debug_event = next(graph_trace_iter)
+        self.assertGreater(debug_event.wall_time, 0)
+        trace = debug_event.graph_execution_trace
+        self.assertEqual(trace.tfdbg_context_id, "beafdead")
+        self.assertEqual(trace.op_name, "Sqrt")
+        self.assertEqual(trace.output_slot, 0)
+        self.assertEqual(trace.tensor_debug_mode,
+                         debug_event_pb2.TensorDebugMode.FULL_TENSOR)
+        tensor_value = tensor_util.MakeNdarray(trace.tensor_proto)
+        self.assertAllClose(tensor_value, [np.sqrt(3.0), 2.0])
+
+      # Only the graph-execution trace of the last iteration should be written
+      # to self.dump_root.
+      with self.assertRaises(StopIteration):
+        next(graph_trace_iter)
 
   @test_util.run_in_graph_and_eager_modes
   def testControlFlow(self):
@@ -200,28 +159,28 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
     self.evaluate(collatz(x))
 
     self.writer.FlushExecutionFiles()
-    debug_events_dir = DebugEventsDir(self.dump_root)
-    graph_trace_iter = debug_events_dir.graph_execution_traces_iterator()
-    try:
-      x_values = []
-      timestamp = 0
-      while True:
-        debug_event = next(graph_trace_iter)
-        self.assertGreater(debug_event.wall_time, timestamp)
-        timestamp = debug_event.wall_time
-        trace = debug_event.graph_execution_trace
-        self.assertEqual(trace.tfdbg_context_id, "deadbeaf")
-        self.assertEqual(trace.op_name, "x")
-        self.assertEqual(trace.output_slot, 0)
-        self.assertEqual(trace.tensor_debug_mode,
-                         debug_event_pb2.TensorDebugMode.FULL_TENSOR)
-        x_values.append(int(tensor_util.MakeNdarray(trace.tensor_proto)))
-    except StopIteration:
-      pass
+    with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
+      graph_trace_iter = reader.graph_execution_traces_iterator()
+      try:
+        x_values = []
+        timestamp = 0
+        while True:
+          debug_event = next(graph_trace_iter)
+          self.assertGreater(debug_event.wall_time, timestamp)
+          timestamp = debug_event.wall_time
+          trace = debug_event.graph_execution_trace
+          self.assertEqual(trace.tfdbg_context_id, "deadbeaf")
+          self.assertEqual(trace.op_name, "x")
+          self.assertEqual(trace.output_slot, 0)
+          self.assertEqual(trace.tensor_debug_mode,
+                           debug_event_pb2.TensorDebugMode.FULL_TENSOR)
+          x_values.append(int(tensor_util.MakeNdarray(trace.tensor_proto)))
+      except StopIteration:
+        pass
 
-    # Due to the circular buffer, only the last 4 iterations of
-    # [10, 5, 16, 8, 4, 2] should have been written.
-    self.assertAllEqual(x_values, [16, 8, 4, 2])
+      # Due to the circular buffer, only the last 4 iterations of
+      # [10, 5, 16, 8, 4, 2] should have been written.
+      self.assertAllEqual(x_values, [16, 8, 4, 2])
 
   @test_util.run_in_graph_and_eager_modes
   def testTwoDumpRoots(self):
@@ -248,20 +207,186 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
     another_writer.Close()
 
     for debug_root in (self.dump_root, another_dump_root):
-      debug_events_dir = DebugEventsDir(debug_root)
-      graph_trace_iter = debug_events_dir.graph_execution_traces_iterator()
+      with debug_events_reader.DebugEventsReader(debug_root) as reader:
+        graph_trace_iter = reader.graph_execution_traces_iterator()
 
-      debug_event = next(graph_trace_iter)
-      trace = debug_event.graph_execution_trace
-      self.assertEqual(trace.tfdbg_context_id, "deadbeaf")
-      self.assertEqual(trace.op_name, "")
-      self.assertEqual(trace.tensor_debug_mode,
-                       debug_event_pb2.TensorDebugMode.FULL_TENSOR)
-      tensor_value = tensor_util.MakeNdarray(trace.tensor_proto)
-      self.assertAllClose(tensor_value, [9.0, 16.0])
+        debug_event = next(graph_trace_iter)
+        trace = debug_event.graph_execution_trace
+        self.assertEqual(trace.tfdbg_context_id, "deadbeaf")
+        self.assertEqual(trace.op_name, "")
+        self.assertEqual(trace.tensor_debug_mode,
+                         debug_event_pb2.TensorDebugMode.FULL_TENSOR)
+        tensor_value = tensor_util.MakeNdarray(trace.tensor_proto)
+        self.assertAllClose(tensor_value, [9.0, 16.0])
 
-      with self.assertRaises(StopIteration):
-        next(graph_trace_iter)
+        with self.assertRaises(StopIteration):
+          next(graph_trace_iter)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDebugNumericSummaryV2OpReduceInfNanThreeSlots(self):
+
+    def debug_summary(x):
+      return self.evaluate(gen_debug_ops.debug_numeric_summary_v2(
+          x, tensor_debug_mode=(
+              debug_event_pb2.TensorDebugMode.REDUCE_INF_NAN_THREE_SLOTS)))
+
+    self.assertAllEqual(
+        debug_summary(constant_op.constant([])), [0.0, 0.0, 0.0])
+    self.assertAllEqual(
+        debug_summary(constant_op.constant(42.0)), [0.0, 0.0, 0.0])
+    self.assertAllEqual(
+        debug_summary(constant_op.constant([3.0, 4.0])), [0.0, 0.0, 0.0])
+    self.assertAllEqual(
+        debug_summary(constant_op.constant(np.array([3.0, -np.inf]))),
+        [-np.inf, 0.0, 0.0])
+    self.assertAllEqual(
+        debug_summary(constant_op.constant(np.array([[0, 0], [np.nan, 0]]))),
+        [0.0, 0.0, np.nan])
+    self.assertAllEqual(
+        debug_summary(
+            constant_op.constant(np.array([[0, 0], [np.nan, np.inf]]))),
+        [0.0, np.inf, np.nan])
+    self.assertAllEqual(
+        debug_summary(
+            constant_op.constant(np.array([[0, np.inf], [np.nan, -np.inf]]))),
+        [-np.inf, np.inf, np.nan])
+
+    x = np.zeros([100, 100], dtype=np.float16)
+    x[32, 47] = np.nan
+    self.assertAllEqual(
+        debug_summary(constant_op.constant(x)), [0.0, 0.0, np.nan])
+    x = np.zeros([97, 97], dtype=np.float32)
+    x[50, 83] = -np.inf
+    self.assertAllEqual(
+        debug_summary(constant_op.constant(x)), [-np.inf, 0.0, 0.0])
+    x[1, 41] = np.nan
+    self.assertAllEqual(
+        debug_summary(constant_op.constant(x)), [-np.inf, 0.0, np.nan])
+    x = np.zeros([9701], dtype=np.float64)
+    x[9700] = np.nan
+    self.assertAllEqual(
+        debug_summary(constant_op.constant(x)), [0.0, 0.0, np.nan])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDebugNumericSummaryV2OpLargeTensorIDError(self):
+    modes = [
+        debug_event_pb2.TensorDebugMode.CURT_HEALTH,
+    ]
+    # Maximum allowed tensor_id
+    tensor_id = np.power(2, 53)
+    for mode in modes:
+      self.evaluate(
+          gen_debug_ops.debug_numeric_summary_v2(
+              constant_op.constant(42.0),
+              tensor_debug_mode=mode,
+              tensor_id=tensor_id,
+              output_dtype=dtypes.float64))
+    # Incrementing by one should error
+    tensor_id += 1
+    for mode in modes:
+      with self.assertRaises(errors.InvalidArgumentError):
+        self.evaluate(
+            gen_debug_ops.debug_numeric_summary_v2(
+                constant_op.constant(42.0),
+                tensor_debug_mode=mode,
+                tensor_id=tensor_id,
+                output_dtype=dtypes.float64))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDebugNumericSummaryV2OpCurtHealthValuesSmall(self):
+
+    def debug_summary(x):
+      return self.evaluate(
+          gen_debug_ops.debug_numeric_summary_v2(
+              x,
+              tensor_debug_mode=(debug_event_pb2.TensorDebugMode.CURT_HEALTH),
+              tensor_id=x._id,
+              output_dtype=dtypes.float64)), x._id
+
+    tensor, tensor_id = debug_summary(constant_op.constant([]))
+    self.assertAllEqual(tensor, [tensor_id, 0.0])
+
+    tensor, tensor_id = debug_summary(constant_op.constant(42.0))
+    self.assertAllEqual(tensor, [tensor_id, 0.0])
+
+    tensor, tensor_id = debug_summary(constant_op.constant([3.0, 4.0]))
+    self.assertAllEqual(tensor, [tensor_id, 0.0])
+
+    tensor, tensor_id = debug_summary(
+        constant_op.constant(np.array([3.0, -np.inf])))
+    self.assertAllEqual(tensor, [tensor_id, 1.0])
+
+    tensor, tensor_id = debug_summary(
+        constant_op.constant(np.array([[0, 0], [np.nan, 0]])))
+    self.assertAllEqual(tensor, [tensor_id, 1.0])
+
+    tensor, tensor_id = debug_summary(
+        constant_op.constant(np.array([[0, 0], [np.nan, np.inf]])))
+    self.assertAllEqual(tensor, [tensor_id, 1.0])
+
+    tensor, tensor_id = debug_summary(
+        constant_op.constant(np.array([[0, np.inf], [np.nan, -np.inf]])))
+    self.assertAllEqual(tensor, [tensor_id, 1.0])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDebugNumericSummaryV2OpCurtHealthValuesLarge(self):
+
+    def debug_summary(x):
+      return self.evaluate(
+          gen_debug_ops.debug_numeric_summary_v2(
+              x,
+              tensor_debug_mode=(debug_event_pb2.TensorDebugMode.CURT_HEALTH),
+              tensor_id=x._id,
+              output_dtype=dtypes.float64)), x._id
+
+    x = np.zeros([100, 100], dtype=np.float16)
+    x[32, 47] = np.nan
+    tensor, tensor_id = debug_summary(constant_op.constant(x))
+    self.assertAllEqual(tensor, [tensor_id, 1.0])
+    x = np.zeros([97, 97], dtype=np.float32)
+    x[50, 83] = -np.inf
+    tensor, tensor_id = debug_summary(constant_op.constant(x))
+    self.assertAllEqual(tensor, [tensor_id, 1.0])
+    x[1, 41] = np.nan
+    tensor, tensor_id = debug_summary(constant_op.constant(x))
+    self.assertAllEqual(tensor, [tensor_id, 1.0])
+    x = np.zeros([9701], dtype=np.float64)
+    x[9700] = np.nan
+    tensor, tensor_id = debug_summary(constant_op.constant(x))
+    self.assertAllEqual(tensor, [tensor_id, 1.0])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDebugNumericSummaryV2OpCurtHealthConsistency(self):
+
+    def debug_summary(x):
+      return self.evaluate(
+          gen_debug_ops.debug_numeric_summary_v2(
+              x,
+              tensor_debug_mode=(debug_event_pb2.TensorDebugMode.CURT_HEALTH),
+              tensor_id=x._id,
+              output_dtype=dtypes.float64)), x._id
+
+    x = np.zeros([100, 100], dtype=np.float16)
+    x[43, 99] = np.nan
+    c = constant_op.constant(x)
+    tensor_1, tensor_id_1 = debug_summary(c)
+    tensor_2, tensor_id_2 = debug_summary(c)
+    self.assertAllEqual(tensor_1, tensor_2)
+    self.assertEqual(tensor_id_1, tensor_id_2)
+
+    x = np.zeros([100, 100, 50], dtype=np.float64)
+    x[0, 0, 1] = np.inf
+    c = constant_op.constant(x)
+    tensor_1, tensor_id_1 = debug_summary(c)
+    tensor_2, tensor_id_2 = debug_summary(c)
+    self.assertAllEqual(tensor_1, tensor_2)
+    self.assertEqual(tensor_id_1, tensor_id_2)
+
+    c = constant_op.constant(np.ones((100, 200), np.double))
+    tensor_1, tensor_id_1 = debug_summary(c)
+    tensor_2, tensor_id_2 = debug_summary(c)
+    self.assertAllEqual(tensor_1, tensor_2)
+    self.assertEqual(tensor_id_1, tensor_id_2)
 
 
 if __name__ == "__main__":

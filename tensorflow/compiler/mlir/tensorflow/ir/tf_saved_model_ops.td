@@ -15,14 +15,10 @@ limitations under the License.
 
 // This is the definition file for the TensorFlow SavedModel dialect.
 
-#ifdef SAVED_MODEL_DIALECT
-#else
+#ifndef SAVED_MODEL_DIALECT
 #define SAVED_MODEL_DIALECT
 
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 //===----------------------------------------------------------------------===//
 // Dialect definition
@@ -81,6 +77,8 @@ def TfSavedModel_Dialect : Dialect {
     `tf_saved_model.bound_input = @some_symbol_name` references a
     `tf_saved_model.global_tensor` that is bound to that function argument
     and implicitly passed in when the function is invoked from a user-level API.
+    TODO(silvasean): Consider replacing tf_saved_model.bound_input arg attrs
+    with "get_global @some_global_tensor" in the function body.
   }];
 
   let cppNamespace = "tf_saved_model";
@@ -111,13 +109,23 @@ def TfSavedModel_GlobalTensorOp : TfSavedModel_Op<"global_tensor"> {
 
     The `value` attribute contains the tensor's value (or initial value, in the
     case it is mutable).
+
+    The `type` attribute contains the tensor's type, which for the case of
+    mutable tensors might be more general than just the fixed static shape of
+    the `value` attribute. For example, a global tensor might be unranked such
+    as `tensor<*xf32>`, or a more complex shape such as `tensor<4x?x27xf32>`.
+    The shape of `value` must be compatible with the shape of `type` in the
+    sense of `tf.TensorShape` compatibility. And the element types must match.
   }];
 
   let arguments = (ins
     StrAttr:$sym_name,
     ElementsAttr:$value,
+    TypeAttr:$type,
     UnitAttr:$is_mutable
   );
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 #endif // SAVED_MODEL_DIALECT

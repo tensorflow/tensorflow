@@ -125,6 +125,23 @@ extern tflite::ErrorReporter* reporter;
     }                                                                         \
   } while (false)
 
+// TODO(wangtz): Making it more generic once needed.
+#define TF_LITE_MICRO_ARRAY_ELEMENT_EXPECT_NEAR(arr1, idx1, arr2, idx2, \
+                                                epsilon)                \
+  do {                                                                  \
+    auto delta = ((arr1)[(idx1)] > (arr2)[(idx2)])                      \
+                     ? ((arr1)[(idx1)] - (arr2)[(idx2)])                \
+                     : ((arr2)[(idx2)] - (arr1)[(idx1)]);               \
+    if (delta > epsilon) {                                              \
+      micro_test::reporter->Report(                                     \
+          #arr1 "[%d] (%f) near " #arr2 "[%d] (%f) failed at %s:%d",    \
+          static_cast<int>(idx1), static_cast<float>((arr1)[(idx1)]),   \
+          static_cast<int>(idx2), static_cast<float>((arr2)[(idx2)]),   \
+          __FILE__, __LINE__);                                          \
+      micro_test::did_test_fail = true;                                 \
+    }                                                                   \
+  } while (false)
+
 #define TF_LITE_MICRO_EXPECT_NEAR(x, y, epsilon)                              \
   do {                                                                        \
     auto delta = ((x) > (y)) ? ((x) - (y)) : ((y) - (x));                     \

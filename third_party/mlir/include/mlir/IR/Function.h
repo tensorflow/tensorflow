@@ -66,6 +66,12 @@ public:
   void print(OpAsmPrinter &p);
   LogicalResult verify();
 
+  /// Erase a single argument at `argIndex`.
+  void eraseArgument(unsigned argIndex) { eraseArguments({argIndex}); }
+  /// Erases the arguments listed in `argIndices`.
+  /// `argIndices` is allowed to have duplicates and can be in any order.
+  void eraseArguments(ArrayRef<unsigned> argIndices);
+
   /// Returns the type of this function.
   FunctionType getType() {
     return getAttrOfType<TypeAttr>(getTypeAttrName())
@@ -77,10 +83,20 @@ public:
   /// operation and it is up to the caller to ensure that this is legal for this
   /// function, and to restore invariants:
   ///  - the entry block args must be updated to match the function params.
-  ///  - the arguments attributes may need an update: if the new type has less
-  ///    parameters we drop the extra attributes, if there are more parameters
-  ///    they won't have any attributes.
+  ///  - the argument/result attributes may need an update: if the new type has
+  ///  less parameters we drop the extra attributes, if there are more
+  ///  parameters they won't have any attributes.
   void setType(FunctionType newType) {
+    SmallVector<char, 16> nameBuf;
+    auto oldType = getType();
+    for (int i = newType.getNumInputs(), e = oldType.getNumInputs(); i < e;
+         i++) {
+      removeAttr(getArgAttrName(i, nameBuf));
+    }
+    for (int i = newType.getNumResults(), e = oldType.getNumResults(); i < e;
+         i++) {
+      removeAttr(getResultAttrName(i, nameBuf));
+    }
     setAttr(getTypeAttrName(), TypeAttr::get(newType));
   }
 
@@ -119,7 +135,7 @@ public:
   /// to. This may return null in the case of an external callable object, e.g.
   /// an external function.
   Region *getCallableRegion(CallInterfaceCallable callable) {
-    assert(callable.get<SymbolRefAttr>().getValue() == getName());
+    assert(callable.get<SymbolRefAttr>().getLeafReference() == getName());
     return isExternal() ? nullptr : &getBody();
   }
 

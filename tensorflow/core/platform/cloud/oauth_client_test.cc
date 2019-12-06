@@ -14,16 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/oauth_client.h"
+
 #include <fstream>
+
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/base64.h"
-#include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/platform/base64.h"
 #include "tensorflow/core/platform/cloud/http_request_fake.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/scanner.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -33,7 +35,7 @@ constexpr char kTestData[] = "core/platform/cloud/testdata/";
 
 constexpr char kTokenJson[] = R"(
     {
-      "access_token":"1/fFAGRNJru1FTz70BzhT3Zg",
+      "access_token":"WITH_FAKE_ACCESS_TOKEN_TEST_SHOULD_BE_HAPPY",
       "expires_in":3920,
       "token_type":"Bearer"
     })";
@@ -54,7 +56,7 @@ TEST(OAuthClientTest, ParseOAuthResponse) {
   uint64 expiration_timestamp;
   TF_EXPECT_OK(OAuthClient().ParseOAuthResponse(kTokenJson, request_timestamp,
                                                 &token, &expiration_timestamp));
-  EXPECT_EQ("1/fFAGRNJru1FTz70BzhT3Zg", token);
+  EXPECT_EQ("WITH_FAKE_ACCESS_TOKEN_TEST_SHOULD_BE_HAPPY", token);
   EXPECT_EQ(4020, expiration_timestamp);
 }
 
@@ -62,7 +64,7 @@ TEST(OAuthClientTest, GetTokenFromRefreshTokenJson) {
   const string credentials_json = R"(
       {
         "client_id": "test_client_id",
-        "client_secret": "test_client_secret",
+        "client_secret": "@@@test_client_secret@@@",
         "refresh_token": "test_refresh_token",
         "type": "authorized_user"
       })";
@@ -73,7 +75,7 @@ TEST(OAuthClientTest, GetTokenFromRefreshTokenJson) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/oauth2/v3/token\n"
       "Post body: client_id=test_client_id&"
-      "client_secret=test_client_secret&"
+      "client_secret=@@@test_client_secret@@@&"
       "refresh_token=test_refresh_token&grant_type=refresh_token\n",
       kTokenJson)});
   FakeEnv env;
@@ -85,7 +87,7 @@ TEST(OAuthClientTest, GetTokenFromRefreshTokenJson) {
   TF_EXPECT_OK(client.GetTokenFromRefreshTokenJson(
       json, "https://www.googleapis.com/oauth2/v3/token", &token,
       &expiration_timestamp));
-  EXPECT_EQ("1/fFAGRNJru1FTz70BzhT3Zg", token);
+  EXPECT_EQ("WITH_FAKE_ACCESS_TOKEN_TEST_SHOULD_BE_HAPPY", token);
   EXPECT_EQ(13920, expiration_timestamp);
 }
 
@@ -111,7 +113,7 @@ TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
   TF_EXPECT_OK(client.GetTokenFromServiceAccountJson(
       json, "https://www.googleapis.com/oauth2/v3/token",
       "https://test-token-scope.com", &token, &expiration_timestamp));
-  EXPECT_EQ("1/fFAGRNJru1FTz70BzhT3Zg", token);
+  EXPECT_EQ("WITH_FAKE_ACCESS_TOKEN_TEST_SHOULD_BE_HAPPY", token);
   EXPECT_EQ(13920, expiration_timestamp);
 
   // Now look at the JWT claim that was sent to the OAuth server.

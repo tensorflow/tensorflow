@@ -161,13 +161,14 @@ TfLiteStatus BenchmarkModel::Run() {
   LogParams();
 
   const auto start_mem_usage = profiling::memory::GetMemoryUsage();
-
   int64_t initialization_start_us = profiling::time::NowMicros();
   TF_LITE_ENSURE_STATUS(Init());
+  const auto init_end_mem_usage = profiling::memory::GetMemoryUsage();
   int64_t initialization_end_us = profiling::time::NowMicros();
   int64_t startup_latency_us = initialization_end_us - initialization_start_us;
+  const auto init_mem_usage = init_end_mem_usage - start_mem_usage;
   TFLITE_LOG(INFO) << "Initialized session in " << startup_latency_us / 1e3
-                   << "ms";
+                   << "ms.";
 
   TF_LITE_ENSURE_STATUS(PrepareInputData());
 
@@ -185,17 +186,19 @@ TfLiteStatus BenchmarkModel::Run() {
   Stat<int64_t> inference_time_us =
       Run(params_.Get<int32_t>("num_runs"), params_.Get<float>("min_secs"),
           params_.Get<float>("max_secs"), REGULAR, &status);
+  const auto overall_mem_usage =
+      profiling::memory::GetMemoryUsage() - start_mem_usage;
+  listeners_.OnBenchmarkEnd({startup_latency_us, input_bytes, warmup_time_us,
+                             inference_time_us, init_mem_usage,
+                             overall_mem_usage});
 
-  const auto mem_usage = profiling::memory::GetMemoryUsage() - start_mem_usage;
-
-  TFLITE_LOG(INFO) << "Memory usage: max resident set size = "
-                   << mem_usage.max_rss_kb / 1024.0 << " MB";
-  TFLITE_LOG(INFO) << "Memory usage: total malloc-ed memory = "
-                   << mem_usage.total_allocated_bytes / 1024.0 / 1024.0
-                   << " MB";
-
-  listeners_.OnBenchmarkEnd(
-      {startup_latency_us, input_bytes, warmup_time_us, inference_time_us});
+  TFLITE_LOG(INFO)
+      << "Note: as the benchmark tool itself affects memory footprint, the "
+         "following is only APPROXIMATE to the actual memory footprint of the "
+         "model at runtime. Take the information at your discretion.";
+  TFLITE_LOG(INFO) << "Peak memory footprint (MB): init="
+                   << init_mem_usage.max_rss_kb / 1024.0
+                   << " overall=" << overall_mem_usage.max_rss_kb / 1024.0;
 
   return status;
 }

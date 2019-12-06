@@ -71,7 +71,7 @@ class TracingCallbackTest(
   def tearDown(self):
     if os.path.isdir(self.dump_root):
       shutil.rmtree(self.dump_root, ignore_errors=True)
-    dumping_callback.disable_dumping()
+    dumping_callback.disable_dump_debug_info()
     super(TracingCallbackTest, self).tearDown()
 
   def testInvalidTensorDebugModeCausesError(self):
@@ -79,11 +79,11 @@ class TracingCallbackTest(
         ValueError,
         r"Invalid value in tensor_debug_mode \(\'NONSENSICAL\'\).*"
         r"Valid options.*NO_TENSOR.*"):
-      dumping_callback.enable_dumping(
+      dumping_callback.enable_dump_debug_info(
           self.dump_root, tensor_debug_mode="NONSENSICAL")
 
   def testDisablingTracingCallbackWithoutEnablingFirstIsTolerated(self):
-    dumping_callback.disable_dumping()
+    dumping_callback.disable_dump_debug_info()
 
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
@@ -91,7 +91,7 @@ class TracingCallbackTest(
   )
   def testPureEagerOpExecution(self, tensor_debug_mode):
     """Test catching Infinity in eager op execution: float32."""
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
 
     x = constant_op.constant(10.0)
@@ -112,84 +112,84 @@ class TracingCallbackTest(
 
     # Before FlushExecutionFiles() is called, the .execution file should be
     # empty.
-    reader = debug_events_reader.DebugEventsDir(self.dump_root)
-    execution_iter = reader.execution_iterator()
-    with self.assertRaises(StopIteration):
-      next(execution_iter)
+    with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
+      execution_iter = reader.execution_iterator()
+      with self.assertRaises(StopIteration):
+        next(execution_iter)
 
-    # After the flushing, the .execution file should hold the appropriate
-    # contents.
-    writer.FlushExecutionFiles()
-    execution_iter = reader.execution_iterator()
-    prev_wall_time = 1
-    executed_op_types = []
-    tensor_values = collections.defaultdict(lambda: [])
-    for debug_event in execution_iter:
-      self.assertGreaterEqual(debug_event.wall_time, prev_wall_time)
-      prev_wall_time = debug_event.wall_time
-      execution = debug_event.execution
-      executed_op_types.append(execution.op_type)
-      self.assertTrue(execution.input_tensor_ids)
-      self.assertTrue(execution.output_tensor_ids)
-      if tensor_debug_mode == "NO_TENSOR":
-        # Due to the NO_TENSOR tensor debug mode, tensor_protos ought to
-        # be empty.
-        self.assertFalse(execution.tensor_protos)
-      elif tensor_debug_mode == "FULL_TENSOR":
-        # Under the FULL_TENSOR mode, the value of the tensor should be
-        # available through `tensor_protos`.
-        tensor_value = float(
-            tensor_util.MakeNdarray(execution.tensor_protos[0]))
-        tensor_values[execution.op_type].append(tensor_value)
-      # Verify the code_location field.
-      self.assertTrue(execution.code_location.stack_frame_ids)
-      for stack_frame_id in execution.code_location.stack_frame_ids:
-        self.assertIn(stack_frame_id, stack_frame_by_id)
-    if tensor_debug_mode == "FULL_TENSOR":
-      self.assertAllClose(tensor_values["Greater"], [1, 1, 1, 1, 1, 1, 0])
-      self.assertAllClose(tensor_values["RealDiv"], [5, 8, 4, 2, 1])
-      self.assertAllClose(tensor_values["Mul"], [15])
-      self.assertAllClose(tensor_values["AddV2"], [16])
+      # After the flushing, the .execution file should hold the appropriate
+      # contents.
+      writer.FlushExecutionFiles()
+      execution_iter = reader.execution_iterator()
+      prev_wall_time = 1
+      executed_op_types = []
+      tensor_values = collections.defaultdict(lambda: [])
+      for debug_event in execution_iter:
+        self.assertGreaterEqual(debug_event.wall_time, prev_wall_time)
+        prev_wall_time = debug_event.wall_time
+        execution = debug_event.execution
+        executed_op_types.append(execution.op_type)
+        self.assertTrue(execution.input_tensor_ids)
+        self.assertTrue(execution.output_tensor_ids)
+        if tensor_debug_mode == "NO_TENSOR":
+          # Due to the NO_TENSOR tensor debug mode, tensor_protos ought to
+          # be empty.
+          self.assertFalse(execution.tensor_protos)
+        elif tensor_debug_mode == "FULL_TENSOR":
+          # Under the FULL_TENSOR mode, the value of the tensor should be
+          # available through `tensor_protos`.
+          tensor_value = float(
+              tensor_util.MakeNdarray(execution.tensor_protos[0]))
+          tensor_values[execution.op_type].append(tensor_value)
+        # Verify the code_location field.
+        self.assertTrue(execution.code_location.stack_frame_ids)
+        for stack_frame_id in execution.code_location.stack_frame_ids:
+          self.assertIn(stack_frame_id, stack_frame_by_id)
+      if tensor_debug_mode == "FULL_TENSOR":
+        self.assertAllClose(tensor_values["Greater"], [1, 1, 1, 1, 1, 1, 0])
+        self.assertAllClose(tensor_values["RealDiv"], [5, 8, 4, 2, 1])
+        self.assertAllClose(tensor_values["Mul"], [15])
+        self.assertAllClose(tensor_values["AddV2"], [16])
 
-    self.assertEqual(
-        executed_op_types,
-        [
-            "Greater",
-            "FloorMod",
-            "Equal",
-            "RealDiv",  # 10 --> 5
-            "Greater",
-            "FloorMod",
-            "Equal",
-            "Mul",
-            "AddV2",  # 5 --> 16
-            "Greater",
-            "FloorMod",
-            "Equal",
-            "RealDiv",  # 16 --> 8
-            "Greater",
-            "FloorMod",
-            "Equal",
-            "RealDiv",  # 8 --> 4
-            "Greater",
-            "FloorMod",
-            "Equal",
-            "RealDiv",  # 4 --> 2
-            "Greater",
-            "FloorMod",
-            "Equal",
-            "RealDiv",  # 2 --> 1
-            "Greater"
-        ])
+      self.assertEqual(
+          executed_op_types,
+          [
+              "Greater",
+              "FloorMod",
+              "Equal",
+              "RealDiv",  # 10 --> 5
+              "Greater",
+              "FloorMod",
+              "Equal",
+              "Mul",
+              "AddV2",  # 5 --> 16
+              "Greater",
+              "FloorMod",
+              "Equal",
+              "RealDiv",  # 16 --> 8
+              "Greater",
+              "FloorMod",
+              "Equal",
+              "RealDiv",  # 8 --> 4
+              "Greater",
+              "FloorMod",
+              "Equal",
+              "RealDiv",  # 4 --> 2
+              "Greater",
+              "FloorMod",
+              "Equal",
+              "RealDiv",  # 2 --> 1
+              "Greater"
+          ])
 
-    # Due to the pure eager op execution, the .graph file and the
-    # .graph_execution_traces file ought to be empty.
-    graphs_iterator = reader.graphs_iterator()
-    with self.assertRaises(StopIteration):
-      next(graphs_iterator)
-    graph_trace_iter = reader.graph_execution_traces_iterator()
-    with self.assertRaises(StopIteration):
-      next(graph_trace_iter)
+      # Due to the pure eager op execution, the .graph file and the
+      # .graph_execution_traces file ought to be empty.
+      graphs_iterator = reader.graphs_iterator()
+      with self.assertRaises(StopIteration):
+        next(graphs_iterator)
+      graph_trace_iter = reader.graph_execution_traces_iterator()
+      with self.assertRaises(StopIteration):
+        next(graph_trace_iter)
 
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
@@ -197,7 +197,7 @@ class TracingCallbackTest(
   )
   @test_util.run_in_graph_and_eager_modes
   def testNestedFunctionExecutionWithoutControlFlow(self, tensor_debug_mode):
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
 
     @def_function.function
@@ -219,12 +219,13 @@ class TracingCallbackTest(
       # Session.run() in v1 graph mode, so doesn't get logged to the
       # .execution file.
       executed_op_types, _, _, _, _ = self._readAndCheckExecutionFile()
+      executed_op_types = [op_type for op_type in executed_op_types
+                           if "sin1p_log_sum" in op_type]
       self.assertLen(executed_op_types, 1)
-      self.assertIn("sin1p_log_sum", executed_op_types[0])
 
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
     (context_ids, op_types,
-     op_name_to_op_type) = self._readAndCheckGraphsFile(stack_frame_by_id)
+     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
     self.assertIn("AddV2", op_types)
     self.assertIn("Log", op_types)
     self.assertIn("Sin", op_types)
@@ -248,12 +249,156 @@ class TracingCallbackTest(
                           np.sin(np.log(5.0) + 1.0))  # Sin op.
 
   @parameterized.named_parameters(
+      ("AddV2", "AddV2"),
+      ("Log", "Log"),
+      ("AddV2AndLog", "(AddV2|Log)"),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def testOpRegex(self, op_regex):
+    writer = dumping_callback.enable_dump_debug_info(
+        self.dump_root, tensor_debug_mode="FULL_TENSOR",
+        op_regex=op_regex)
+
+    @def_function.function
+    def log_sum(x, y):
+      return math_ops.log(x + y)
+
+    @def_function.function
+    def sin1p_log_sum(x, y):
+      return math_ops.sin(1.0 + log_sum(x, y))
+
+    x = constant_op.constant(2.0)
+    y = constant_op.constant(3.0)
+    self.assertAllClose(
+        self.evaluate(sin1p_log_sum(x, y)), np.sin(1.0 + np.log(5.0)))
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+
+    stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
+    (context_ids, op_types,
+     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
+    self.assertIn("AddV2", op_types)
+    self.assertIn("Log", op_types)
+    self.assertIn("Sin", op_types)
+
+    (op_names, _, _,
+     tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
+    executed_op_types = [op_name_to_op_type[op_name] for op_name in op_names]
+
+    if op_regex == "AddV2":
+      self.assertEqual(executed_op_types, ["AddV2", "AddV2"])
+      self.assertLen(tensor_values, 2)
+      self.assertAllClose(tensor_values[0], 5.0)  # 1st AddV2 op.
+      self.assertAllClose(tensor_values[1], np.log(5.0) + 1.0)  # 2nd AddV2 op.
+    elif op_regex == "Log":
+      self.assertEqual(executed_op_types, ["Log"])
+      self.assertLen(tensor_values, 1)
+      self.assertAllClose(tensor_values[0], np.log(5.0))  # Log op.
+    else:  # "(AddV2|Log)"
+      self.assertEqual(executed_op_types, ["AddV2", "Log", "AddV2"])
+      self.assertLen(tensor_values, 3)
+      self.assertAllClose(tensor_values[0], 5.0)  # 1st AddV2 op.
+      self.assertAllClose(tensor_values[1], np.log(5.0))  # Log op.
+      self.assertAllClose(tensor_values[2], np.log(5.0) + 1.0)  # 2nd AddV2 op.
+
+  def testIncorrectTensorDTypeArgFormatLeadsToError(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        r".*expected.*list.*tuple.*callable.*but received.*\{\}"):
+      dumping_callback.enable_dump_debug_info(self.dump_root,
+                                              tensor_dtypes=dict())
+    with self.assertRaisesRegexp(
+        ValueError,
+        r".*expected.*list.*tuple.*callable.*but received.*"):
+      dumping_callback.enable_dump_debug_info(self.dump_root,
+                                              tensor_dtypes="float32")
+    with self.assertRaisesRegexp(
+        ValueError,
+        r".*expected.*list.*tuple.*callable.*but received.*"):
+      dumping_callback.enable_dump_debug_info(
+          self.dump_root, tensor_dtypes=dtypes.float32)
+    with self.assertRaises(TypeError):
+      dumping_callback.enable_dump_debug_info(self.dump_root, tensor_dtypes=[
+          lambda dtype: dtype.is_floating, lambda dtype: dtype.is_integer])
+
+  @parameterized.named_parameters(
+      ("float", [dtypes.float32], None),
+      ("float_only_sum", ["float32"], "Sum"),
+      ("float_no_sum", (dtypes.float32,), "(?!Sum)"),
+      ("int", [dtypes.int32], None),
+      ("int_via_lambda", lambda dtype: dtype.is_integer, None),
+      ("exclude_Sum", None, "(?!Sum)"),
+      ("All", None, None),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorDTypesAndOpRegexFilters(self,
+                                        tensor_dtypes,
+                                        op_regex):
+    writer = dumping_callback.enable_dump_debug_info(
+        self.dump_root, tensor_debug_mode="FULL_TENSOR",
+        tensor_dtypes=tensor_dtypes,
+        op_regex=op_regex)
+
+    @def_function.function
+    def unique_sum(xs):
+      """Sum over the unique values, for testing."""
+      unique_xs, indices = array_ops.unique(xs)
+      return math_ops.reduce_sum(unique_xs), indices
+
+    xs = constant_op.constant([2., 6., 8., 1., 2.], dtype=dtypes.float32)
+    y, indices = self.evaluate(unique_sum(xs))
+    self.assertAllClose(y, 17.)
+    self.assertAllEqual(indices, [0, 1, 2, 3, 0])
+
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+    stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
+    (context_ids, _,
+     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
+    (op_names, _, _,
+     tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
+    executed_op_types = [op_name_to_op_type[op_name] for op_name in op_names]
+
+    if tensor_dtypes == [dtypes.float32] and not op_regex:
+      self.assertEqual(executed_op_types, ["Unique", "Sum"])
+      self.assertLen(tensor_values, 2)
+      self.assertAllClose(tensor_values[0], [2., 6., 8., 1.])  # Unique values.
+      self.assertAllClose(tensor_values[1], 17.)  # Sum.
+    elif tensor_dtypes == ["float32"] and op_regex == "Sum":
+      self.assertEqual(executed_op_types, ["Sum"])
+      self.assertLen(tensor_values, 1)
+      self.assertAllClose(tensor_values[0], 17.)  # Sum.
+    elif tensor_dtypes == (dtypes.float32,) and op_regex == "(?!Sum)":
+      self.assertEqual(executed_op_types, ["Unique"])
+      self.assertLen(tensor_values, 1)
+      self.assertAllClose(tensor_values[0], [2., 6., 8., 1.])  # Unique values.
+    elif tensor_dtypes == [dtypes.int32] and not op_regex:
+      self.assertEqual(executed_op_types, ["Unique"])
+      self.assertLen(tensor_values, 1)
+      self.assertAllEqual(tensor_values[0], [0, 1, 2, 3, 0])  # Unique indices.
+    elif callable(tensor_dtypes) and not op_regex:
+      self.assertEqual(executed_op_types, ["Unique"])
+      self.assertLen(tensor_values, 1)
+      self.assertAllEqual(tensor_values[0], [0, 1, 2, 3, 0])  # Unique indices.
+    elif not tensor_dtypes and op_regex == "(?!Sum)":
+      self.assertEqual(executed_op_types, ["Unique", "Unique"])
+      self.assertLen(tensor_values, 2)
+      self.assertAllClose(tensor_values[0], [2., 6., 8., 1.])  # Unique values.
+      self.assertAllEqual(tensor_values[1], [0, 1, 2, 3, 0])  # Unique indices.
+    else:  # "All".
+      self.assertEqual(executed_op_types, ["Unique", "Unique", "Sum"])
+      self.assertLen(tensor_values, 3)
+      self.assertAllClose(tensor_values[0], [2., 6., 8., 1.])  # Unique values.
+      self.assertAllEqual(tensor_values[1], [0, 1, 2, 3, 0])  # Unique indices.
+      self.assertAllClose(tensor_values[2], 17.)  # Sum.
+
+  @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
       ("FullTensor", "FULL_TENSOR"),
   )
   @test_util.run_in_graph_and_eager_modes
   def testFunctionExecutionWithControlFlow(self, tensor_debug_mode):
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
 
     @def_function.function
@@ -272,7 +417,7 @@ class TracingCallbackTest(
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
 
     # Verify the content of the .graphs file.
-    context_ids, op_types, op_name_to_op_type = (
+    context_ids, op_types, op_name_to_op_type, _ = (
         self._readAndCheckGraphsFile(stack_frame_by_id))
     self.assertIn("Less", op_types)
     self.assertIn("Mul", op_types)
@@ -280,70 +425,71 @@ class TracingCallbackTest(
 
     # Before FlushExecutionFiles() is called, the .execution and
     # .graph_execution_traces files should be both empty.
-    reader = debug_events_reader.DebugEventsDir(self.dump_root)
-    execution_iter = reader.execution_iterator()
-    graph_execution_traces_iter = reader.graph_execution_traces_iterator()
-    with self.assertRaises(StopIteration):
-      next(execution_iter)
-    with self.assertRaises(StopIteration):
-      next(graph_execution_traces_iter)
+    with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
+      execution_iter = reader.execution_iterator()
+      graph_execution_traces_iter = reader.graph_execution_traces_iterator()
+      with self.assertRaises(StopIteration):
+        next(execution_iter)
+      with self.assertRaises(StopIteration):
+        next(graph_execution_traces_iter)
 
-    # TODO(cais): Backport execution instrumentation to tf.Session.
-    writer.FlushExecutionFiles()
-    # After the flushing, the .execution file should hold the appropriate
-    # contents.
-    if context.executing_eagerly():
-      (executed_op_types, input_tensor_ids, output_tensor_ids,
-       tensor_debug_modes, tensor_values) = self._readAndCheckExecutionFile()
-      # NOTE(b/142486213): Execution of the TF function happens with
-      # Session.run() in v1 graph mode, hence it doesn't get logged to the
-      # .execution file.
-      self.assertLen(executed_op_types, 1)
-      self.assertIn("iterative_doubling", executed_op_types[0])
-      self.assertLen(input_tensor_ids[0], 2)
-      self.assertLen(output_tensor_ids[0], 1)
-      self.assertEqual(tensor_debug_modes[0],
-                       debug_event_pb2.TensorDebugMode.Value(tensor_debug_mode))
-      if tensor_debug_mode == "FULL_TENSOR":
-        self.assertAllClose(tensor_values, [[8.0]])
+      # TODO(cais): Backport execution instrumentation to tf.Session.
+      writer.FlushExecutionFiles()
+      # After the flushing, the .execution file should hold the appropriate
+      # contents.
+      if context.executing_eagerly():
+        (executed_op_types, input_tensor_ids, output_tensor_ids,
+         tensor_debug_modes, tensor_values) = self._readAndCheckExecutionFile()
+        # NOTE(b/142486213): Execution of the TF function happens with
+        # Session.run() in v1 graph mode, hence it doesn't get logged to the
+        # .execution file.
+        self.assertLen(executed_op_types, 1)
+        self.assertIn("iterative_doubling", executed_op_types[0])
+        self.assertLen(input_tensor_ids[0], 2)
+        self.assertLen(output_tensor_ids[0], 1)
+        self.assertEqual(
+            tensor_debug_modes[0],
+            debug_event_pb2.TensorDebugMode.Value(tensor_debug_mode))
+        if tensor_debug_mode == "FULL_TENSOR":
+          self.assertAllClose(tensor_values, [[8.0]])
 
-    (op_names, _, output_slots,
-     tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
-    executed_op_types = [op_name_to_op_type[op_name] for op_name in op_names]
-    # The Less op should have been executed 5 times.
-    self.assertEqual(executed_op_types.count("Less"), 5)
-    # The last executed op should be Less.
-    self.assertEqual(executed_op_types[-1], "Less")
-    # The Mul op should have been executed 4 times.
-    self.assertEqual(executed_op_types.count("Mul"), 4)
-    # The AddV2 op should have been run, but we refrain from asserting on how
-    # many times it's executed.
-    self.assertIn("AddV2", executed_op_types)
-    for output_slot in output_slots:
-      self.assertEqual(output_slot, 0)
-    if tensor_debug_mode == "NO_TENSOR":
-      # Under the default NO_TENSOR tensor-debug mode, the tensor_proto ought to
-      # be an empty float32 tensor.
-      for tensor_value in tensor_values:
-        self.assertEqual(tensor_value.dtype, np.float32)
-        self.assertEqual(tensor_value.shape, (0,))
-    elif tensor_debug_mode == "FULL_TENSOR":
-      less_values = [
-          tensor_values[i]
-          for i, op_type in enumerate(executed_op_types)
-          if op_type == "Less"
-      ]
-      self.assertAllClose(less_values, [True, True, True, True, False])
-      mul_values = [
-          tensor_values[i]
-          for i, op_type in enumerate(executed_op_types)
-          if op_type == "Mul"
-      ]
-      self.assertAllClose(mul_values, [1.0, 2.0, 4.0, 8.0])
+      (op_names, _, output_slots,
+       tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
+      executed_op_types = [op_name_to_op_type[op_name] for op_name in op_names]
+      # The Less op should have been executed 5 times.
+      self.assertEqual(executed_op_types.count("Less"), 5)
+      # The last executed op should be Less.
+      self.assertEqual(executed_op_types[-1], "Less")
+      # The Mul op should have been executed 4 times.
+      self.assertEqual(executed_op_types.count("Mul"), 4)
+      # The AddV2 op should have been run, but we refrain from asserting on how
+      # many times it's executed.
+      self.assertIn("AddV2", executed_op_types)
+      for output_slot in output_slots:
+        self.assertEqual(output_slot, 0)
+      if tensor_debug_mode == "NO_TENSOR":
+        # Under the default NO_TENSOR tensor-debug mode, the tensor_proto ought
+        # to be an empty float32 tensor.
+        for tensor_value in tensor_values:
+          self.assertEqual(tensor_value.dtype, np.float32)
+          self.assertEqual(tensor_value.shape, (0,))
+      elif tensor_debug_mode == "FULL_TENSOR":
+        less_values = [
+            tensor_values[i]
+            for i, op_type in enumerate(executed_op_types)
+            if op_type == "Less"
+        ]
+        self.assertAllClose(less_values, [True, True, True, True, False])
+        mul_values = [
+            tensor_values[i]
+            for i, op_type in enumerate(executed_op_types)
+            if op_type == "Mul"
+        ]
+        self.assertAllClose(mul_values, [1.0, 2.0, 4.0, 8.0])
 
   def testCallingEnableTracingTwiceWithTheSameDumpRootIsIdempotent(self):
-    dumping_callback.enable_dumping(self.dump_root)
-    writer = dumping_callback.enable_dumping(self.dump_root)
+    dumping_callback.enable_dump_debug_info(self.dump_root)
+    writer = dumping_callback.enable_dump_debug_info(self.dump_root)
 
     x = constant_op.constant([10.0, 12.0, 10.0])
     for _ in range(2):
@@ -352,22 +498,22 @@ class TracingCallbackTest(
     writer.FlushNonExecutionFiles()
     writer.FlushExecutionFiles()
 
-    reader = debug_events_reader.DebugEventsDir(self.dump_root)
-    execution_iter = reader.execution_iterator()
-    for _ in range(2):
-      debug_event = next(execution_iter)
-      self.assertGreater(debug_event.wall_time, 0)
-      execution = debug_event.execution
-      self.assertEqual(execution.op_type, "Unique")
-      self.assertEqual(execution.num_outputs, 2)
-      self.assertTrue(execution.code_location)
-    with self.assertRaises(StopIteration):
-      next(execution_iter)
+    with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
+      execution_iter = reader.execution_iterator()
+      for _ in range(2):
+        debug_event = next(execution_iter)
+        self.assertGreater(debug_event.wall_time, 0)
+        execution = debug_event.execution
+        self.assertEqual(execution.op_type, "Unique")
+        self.assertEqual(execution.num_outputs, 2)
+        self.assertTrue(execution.code_location)
+      with self.assertRaises(StopIteration):
+        next(execution_iter)
 
   def testCallingEnableTracingTwiceWithDifferentDumpRootsOverwrites(self):
-    dumping_callback.enable_dumping(self.dump_root)
+    dumping_callback.enable_dump_debug_info(self.dump_root)
     new_dump_root = self.dump_root + "_new_dump_root"
-    writer = dumping_callback.enable_dumping(new_dump_root)
+    writer = dumping_callback.enable_dump_debug_info(new_dump_root)
 
     x = constant_op.constant([10.0, 12.0, 10.0])
     for _ in range(2):
@@ -376,30 +522,31 @@ class TracingCallbackTest(
     writer.FlushNonExecutionFiles()
     writer.FlushExecutionFiles()
 
-    reader = debug_events_reader.DebugEventsDir(new_dump_root)
-    execution_iter = reader.execution_iterator()
-    for _ in range(2):
-      debug_event = next(execution_iter)
-      self.assertGreater(debug_event.wall_time, 0)
-      execution = debug_event.execution
-      self.assertEqual(execution.op_type, "Unique")
-      self.assertEqual(execution.num_outputs, 2)
-      self.assertTrue(execution.code_location)
-    with self.assertRaises(StopIteration):
-      next(execution_iter)
+    with debug_events_reader.DebugEventsReader(new_dump_root) as reader:
+      execution_iter = reader.execution_iterator()
+      for _ in range(2):
+        debug_event = next(execution_iter)
+        self.assertGreater(debug_event.wall_time, 0)
+        execution = debug_event.execution
+        self.assertEqual(execution.op_type, "Unique")
+        self.assertEqual(execution.num_outputs, 2)
+        self.assertTrue(execution.code_location)
+      with self.assertRaises(StopIteration):
+        next(execution_iter)
 
-    old_dump_root_reader = debug_events_reader.DebugEventsDir(self.dump_root)
-    execution_iter = old_dump_root_reader.execution_iterator()
-    # The old dump root shouldn't have been written to.
-    with self.assertRaises(StopIteration):
-      next(execution_iter)
+      with debug_events_reader.DebugEventsReader(
+          self.dump_root) as old_dump_root_reader:
+        execution_iter = old_dump_root_reader.execution_iterator()
+        # The old dump root shouldn't have been written to.
+        with self.assertRaises(StopIteration):
+          next(execution_iter)
 
   def testCallingEnableRepeatedlyWithDifferentTensorDebugMode(self):
-    """Assert that calling enable_dumping() with different tensor-debug modes.
+    """Assert that calling enable_dump_debug_info() with different tensor-debug modes.
 
     It should lead to overwriting of the previously-configured mode.
     """
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode="NO_TENSOR")
 
     @def_function.function
@@ -410,7 +557,7 @@ class TracingCallbackTest(
     writer.FlushNonExecutionFiles()
     writer.FlushExecutionFiles()
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
-    context_ids, _, _ = self._readAndCheckGraphsFile(stack_frame_by_id)
+    context_ids, _, _, _ = self._readAndCheckGraphsFile(stack_frame_by_id)
     _, _, _, _, tensor_values = self._readAndCheckExecutionFile()
     self.assertEqual(tensor_values, [[]])
     (_, _, _,
@@ -422,7 +569,7 @@ class TracingCallbackTest(
 
     with self.assertRaisesRegexp(
         ValueError, r"already.*NO_TENSOR.*FULL_TENSOR.*not be honored"):
-      dumping_callback.enable_dumping(
+      dumping_callback.enable_dump_debug_info(
           self.dump_root, tensor_debug_mode="FULL_TENSOR")
 
   @parameterized.named_parameters(
@@ -430,9 +577,9 @@ class TracingCallbackTest(
       ("FullTensor", "FULL_TENSOR"),
   )
   def testDisableTracingWorks(self, tensor_debug_mode):
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
-    dumping_callback.disable_dumping()
+    dumping_callback.disable_dump_debug_info()
 
     x = constant_op.constant([10.0, 12.0, 10.0])
     for _ in range(2):
@@ -441,24 +588,25 @@ class TracingCallbackTest(
     writer.FlushNonExecutionFiles()
     writer.FlushExecutionFiles()
 
-    reader = debug_events_reader.DebugEventsDir(self.dump_root)
-    source_files_iter = reader.source_files_iterator()
-    stack_frames_iter = reader.stack_frames_iterator()
-    execution_iter = reader.execution_iterator()
-    # No source-file, stack-frame or execution data should have been dumped.
-    with self.assertRaises(StopIteration):
-      next(source_files_iter)
-    with self.assertRaises(StopIteration):
-      next(stack_frames_iter)
-    with self.assertRaises(StopIteration):
-      next(execution_iter)
+    with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
+      source_files_iter = reader.source_files_iterator()
+      stack_frames_iter = reader.stack_frames_iterator()
+      execution_iter = reader.execution_iterator()
+      # No source-file, stack-frame or execution data should have been dumped.
+      with self.assertRaises(StopIteration):
+        next(source_files_iter)
+      with self.assertRaises(StopIteration):
+        next(stack_frames_iter)
+      with self.assertRaises(StopIteration):
+        next(execution_iter)
 
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
       ("FullTensor", "FULL_TENSOR"),
   )
-  def testMultiThreadedExecution(self, tensor_debug_mode):
-    writer = dumping_callback.enable_dumping(
+  def testMultiThreadedExecutionWithSameSetting(self, tensor_debug_mode):
+    """Dumping from multiple threads using the same setting."""
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
     x = variables.Variable(10.0, dtype=dtypes.float32)
     y = variables.Variable(3.0, dtype=dtypes.float32)
@@ -484,15 +632,15 @@ class TracingCallbackTest(
     writer.FlushExecutionFiles()
 
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
-    reader = debug_events_reader.DebugEventsDir(self.dump_root)
-    execution_iter = reader.execution_iterator()
-    prev_wall_time = 1
-    for debug_event in execution_iter:
-      self.assertGreaterEqual(debug_event.wall_time, prev_wall_time)
-      prev_wall_time = debug_event.wall_time
+    with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
+      execution_iter = reader.execution_iterator()
+      prev_wall_time = 1
+      for debug_event in execution_iter:
+        self.assertGreaterEqual(debug_event.wall_time, prev_wall_time)
+        prev_wall_time = debug_event.wall_time
 
     (context_ids, _,
-     op_name_to_op_type) = self._readAndCheckGraphsFile(stack_frame_by_id)
+     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
 
     (op_names, _, output_slots,
      tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
@@ -514,13 +662,122 @@ class TracingCallbackTest(
       ]
       self.assertAllClose(mul_values, [6.0, 6.0, 6.0, 6.0])
 
+  def testMultiThreadedDumpingWithDifferentSettings(self):
+    dump_root_1 = os.path.join(self.dump_root, "dump_root_1")
+    dump_root_2 = os.path.join(self.dump_root, "dump_root_2")
+    v1 = variables.Variable(10.0, dtype=dtypes.float32)
+    v2 = variables.Variable(3.0, dtype=dtypes.float32)
+
+    def add_negative_v1_squared_to_itself():
+      writer = dumping_callback.enable_dump_debug_info(
+          dump_root_1, tensor_debug_mode="FULL_TENSOR")
+      # Run in a loop to facilitate interleaving between threads.
+      for _ in range(3):
+        v1.assign_add(-(v1 ** 2.0))
+      writer.FlushNonExecutionFiles()
+      writer.FlushExecutionFiles()
+
+    def add_negative_v2_squared_to_itself():
+      writer = dumping_callback.enable_dump_debug_info(
+          dump_root_2, tensor_debug_mode="FULL_TENSOR")
+      v2_squared = v2 ** 2.0
+      # Since dumping is disabled before the Neg op is called, no tensor data
+      # should be dumped from the op, but this shouldn't affect the dumping of
+      # the tensor data from the Neg op in `add_negative_v1_squared_to_itself`.
+      # Both behavior is checked below.
+      dumping_callback.disable_dump_debug_info()
+      negative_v2_squared = -v2_squared
+      v2.assign_add(negative_v2_squared)
+      writer.FlushNonExecutionFiles()
+      writer.FlushExecutionFiles()
+
+    # v2 is mutated on a sub-thread.
+    sub_thread = threading.Thread(target=add_negative_v2_squared_to_itself)
+    sub_thread.start()
+    add_negative_v1_squared_to_itself()  # v1 is mutated on the main thread.
+    sub_thread.join()
+    # 10 - 10 * 10 = -90.
+    # -90 - (-90 * -90) = -8190.
+    # -8190 - (-8190 * -8190) = -67084290.
+    self.assertAllClose(v1.read_value(), -67084290.0)
+    self.assertAllClose(v2.read_value(), -6.0)
+
+    (executed_op_types, _, _, _,
+     tensor_values) = self._readAndCheckExecutionFile(dump_root=dump_root_1)
+    v1_squared_values = [
+        tensor_values[i] for i, op_type in enumerate(executed_op_types)
+        if op_type == "Pow"]
+    negative_v1_squared_values = [
+        tensor_values[i] for i, op_type in enumerate(executed_op_types)
+        if op_type == "Neg"]
+    self.assertAllClose(v1_squared_values, [[100.0], [8100.0], [67076100.0]])
+    self.assertAllClose(
+        negative_v1_squared_values, [[-100.0], [-8100.0], [-67076100.0]])
+
+    (executed_op_types, _, _, _,
+     tensor_values) = self._readAndCheckExecutionFile(dump_root=dump_root_2)
+    self.assertNotIn("Neg", executed_op_types)
+    v2_squared_values = tensor_values[executed_op_types.index("Pow")]
+    self.assertAllClose(v2_squared_values, [9.0])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNestedContextIsCapturedByGraphOpCreationHistory(self):
+    writer = dumping_callback.enable_dump_debug_info(
+        self.dump_root, tensor_debug_mode="NO_TENSOR")
+
+    @def_function.function
+    def iterative_doubling(x, times):
+      i = constant_op.constant(0, dtype=dtypes.int32)
+      while i < times:
+        x = x * 2.0 - 1.0
+        i += 1
+      return x
+
+    x = constant_op.constant(2.0, dtype=dtypes.float32)
+    times = constant_op.constant(4, dtype=dtypes.int32)
+    # 2 * 2 - 1 = 3; 3 * 2 - 1 = 5; 5 * 2 - 1 = 9; 9 * 2 - 1 = 17.
+    self.assertAllClose(self.evaluate(iterative_doubling(x, times)), 17.0)
+
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+
+    stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
+    (_, _, op_name_to_op_type,
+     op_name_to_context_id) = self._readAndCheckGraphsFile(stack_frame_by_id)
+
+    less_op_names = [op_name for op_name in op_name_to_op_type
+                     if op_name_to_op_type[op_name] == "Less"]
+    less_context_ids = [op_name_to_context_id[op_name]
+                        for op_name in less_op_names]
+    mul_op_names = [op_name for op_name in op_name_to_op_type
+                    if op_name_to_op_type[op_name] == "Mul"]
+    mul_context_ids = [op_name_to_context_id[op_name]
+                       for op_name in mul_op_names]
+    sub_op_names = [op_name for op_name in op_name_to_op_type
+                    if op_name_to_op_type[op_name] == "Sub"]
+    sub_context_ids = [op_name_to_context_id[op_name]
+                       for op_name in sub_op_names]
+    self.assertLen(less_context_ids, 1)
+    self.assertLen(mul_context_ids, 1)
+    self.assertLen(sub_context_ids, 1)
+    self.assertTrue(less_context_ids[0])
+    self.assertTrue(mul_context_ids[0])
+    self.assertTrue(sub_context_ids[0])
+    # The Less op is from the while-loop cond context and hence should have
+    # a different innermost context ID from the mul and sub ops, which are both
+    # from the while-loop body context.
+    self.assertNotEqual(less_context_ids[0], mul_context_ids[0])
+    self.assertNotEqual(less_context_ids[0], sub_context_ids[0])
+    # The Mul and Sub ops are from the same innermost context.
+    self.assertEqual(mul_context_ids[0], sub_context_ids[0])
+
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
       ("FullTensor", "FULL_TENSOR"),
   )
   @test_util.run_in_graph_and_eager_modes
   def testSimpleKerasRecurrentModelPredict(self, tensor_debug_mode):
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
     model = _create_simple_recurrent_keras_model([3, 4])
     batch_size = 5
@@ -532,7 +789,7 @@ class TracingCallbackTest(
 
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
     (context_ids, op_types,
-     op_name_to_op_type) = self._readAndCheckGraphsFile(stack_frame_by_id)
+     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
     # Simply assert that graph are recorded and refrain from asserting on the
     # internal details of the Keras model.
     self.assertTrue(context_ids)
@@ -584,7 +841,7 @@ class TracingCallbackTest(
   )
   @test_util.run_in_graph_and_eager_modes
   def testSimpleKerasRecurrentModelFit(self, tensor_debug_mode):
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
     model = _create_simple_recurrent_keras_model([3, 4])
     xs = np.ones([5, 3, 4])
@@ -599,7 +856,7 @@ class TracingCallbackTest(
 
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
     (context_ids, op_types,
-     op_name_to_op_type) = self._readAndCheckGraphsFile(stack_frame_by_id)
+     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
     # Simply assert that graph are recorded and refrain from asserting on the
     # internal details of the Keras model.
     self.assertTrue(context_ids)
@@ -648,7 +905,7 @@ class TracingCallbackTest(
   def testMobiletNetV2Fit(self, tensor_debug_mode):
     """Test training Keras MobileNetV2 works with dumping."""
     # Use a large circular-buffer to make sure we capture all the executed ops.
-    writer = dumping_callback.enable_dumping(
+    writer = dumping_callback.enable_dump_debug_info(
         self.dump_root,
         tensor_debug_mode=tensor_debug_mode,
         circular_buffer_size=100000)
@@ -672,7 +929,7 @@ class TracingCallbackTest(
 
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
     (context_ids, op_types,
-     op_name_to_op_type) = self._readAndCheckGraphsFile(stack_frame_by_id)
+     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
     # Simply assert that graph are recorded and refrain from asserting on the
     # internal details of the Keras model.
     self.assertTrue(context_ids)

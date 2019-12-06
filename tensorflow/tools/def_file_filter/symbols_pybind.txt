@@ -21,6 +21,7 @@ tensorflow::swig::RegisterType
 [util_port] # util_port
 tensorflow::IsGoogleCudaEnabled
 tensorflow::IsBuiltWithROCm
+tensorflow::IsBuiltWithNvcc
 tensorflow::GpuSupportsHalfMatMulAndConv
 tensorflow::IsMklEnabled
 
@@ -55,7 +56,15 @@ tensorflow::EventsWriter::Close
 [py_func_lib] # py_func
 tensorflow::InitializePyTrampoline
 
-[framework_internal_impl] # op_def_registry
+[framework_internal_impl] # op_def_registry, dtypes
+tensorflow::BaseType
+tensorflow::DataTypeString
+tensorflow::DataTypeIsComplex
+tensorflow::DataTypeIsFloating
+tensorflow::DataTypeIsInteger
+tensorflow::DataTypeIsQuantized
+tensorflow::DataTypeIsUnsigned
+tensorflow::DataTypeSize
 tensorflow::OpRegistry::Global
 tensorflow::OpRegistry::LookUpOpDef
 tensorflow::RemoveNonDeprecationDescriptionsFromOpDef
@@ -71,7 +80,8 @@ tensorflow::DeviceFactory::AddDevices
 tensorflow::SessionOptions::SessionOptions
 tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 
-[protos_all]  # device_lib
+[protos_all]  # device_lib, dtypes
+tensorflow::DataType_IsValid
 tensorflow::ConfigProto::ConfigProto
 tensorflow::ConfigProto::ParseFromString
 tensorflow::DeviceAttributes::SerializeToString
@@ -79,12 +89,6 @@ tensorflow::DeviceAttributes::SerializeToString
 [py_exception_registry] # py_exception_registry
 tensorflow::PyExceptionRegistry::Init
 tensorflow::PyExceptionRegistry::Lookup
-
-[python_scoped_annotation] # scoped_annotation
-tensorflow::profiler::PythonScopedAnnotation::Init
-tensorflow::profiler::PythonScopedAnnotation::Enter
-tensorflow::profiler::PythonScopedAnnotation::Exit
-tensorflow::profiler::PythonScopedAnnotation::IsEnabled
 
 [kernel_registry] # kernel_registry
 tensorflow::swig::TryFindKernelClass
@@ -97,12 +101,25 @@ toco::TocoGetPotentiallySupportedOps
 tensorflow::graph_transforms::TransformGraph
 tensorflow::graph_transforms::ParseTransformParameters
 
-[python_traceme] # traceme
-tensorflow::profiler::PythonTraceMe::Init
-tensorflow::profiler::PythonTraceMe::Enter
-tensorflow::profiler::PythonTraceMe::Exit
-tensorflow::profiler::PythonTraceMe::IsEnabled
+[checkpoint_reader] # py_checkpoint_reader
+tensorflow::checkpoint::CheckpointReader
+tensorflow::checkpoint::CheckpointReader::Init
+tensorflow::checkpoint::CheckpointReader::DebugString
+tensorflow::checkpoint::CheckpointReader::GetVariableToShapeMap
+tensorflow::checkpoint::CheckpointReader::GetVariableToDataTypeMap
+tensorflow::checkpoint::CheckpointReader::GetTensor
+tensorflow::checkpoint::CheckpointReader::HasTensor
 
-[traceme_recorder] # traceme
-tensorflow::profiler::internal::g_trace_level
+[tensor_bundle] # py_checkpoint_reader
+tensorflow::BundleReader::BundleReader
+tensorflow::BundleReader::~BundleReader
 
+[ndarray_tensor] # py_checkpoint_reader
+tensorflow::TensorToNdarray
+
+[safe_ptr] # py_checkpoint_reader
+tensorflow::detail::PyDecrefDeleter
+tensorflow::make_safe
+
+[python_op_gen] # python_op_gen
+tensorflow::GetPythonWrappers

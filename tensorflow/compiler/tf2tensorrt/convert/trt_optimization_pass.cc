@@ -183,9 +183,11 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   // generated funcdefs! This is fragile but we don't have any other option
   // until framework fixes it.
   if (item.id != "tf_graph") {
-    LOG(WARNING) << name_
-                 << " is probably called on funcdef! This optimizer must *NOT* "
-                    "be called on function objects.";
+    VLOG(1) << "Called TRTOptimization Pass " << name_
+            << " on a grappler item with id=" << item.id
+            << ", which is probably a function object (funcdef). "
+            << "Skipping optimization because TensorRTOptimizer "
+            << "should not be called on function objects.";
     *optimized_graph = item.graph;
     return Status::OK();
   }

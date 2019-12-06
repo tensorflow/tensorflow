@@ -204,20 +204,14 @@ def _SumGrad(op, grad):
 
   input_shape = array_ops.shape(op.inputs[0])
 
-  if compat.forward_compatible(2019, 10, 23):
-    if not op.get_attr("keep_dims"):
-      with ops.colocate_with(input_shape):
-        # TODO(apassos) remove this once device placement for eager ops makes
-        # more sense.
-        output_shape_kept_dims = math_ops.reduced_shape(input_shape,
-                                                        op.inputs[1])
-      grad = array_ops.reshape(grad, output_shape_kept_dims)
-    return [array_ops.broadcast_to(grad, input_shape), None]
-  with ops.colocate_with(input_shape):
-    output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
-    tile_scaling = _safe_shape_div(input_shape, output_shape_kept_dims)
-  grad = array_ops.reshape(grad, output_shape_kept_dims)
-  return [array_ops.tile(grad, tile_scaling), None]
+  if not op.get_attr("keep_dims"):
+    with ops.colocate_with(input_shape):
+      # TODO(apassos) remove this once device placement for eager ops makes
+      # more sense.
+      output_shape_kept_dims = math_ops.reduced_shape(input_shape,
+                                                      op.inputs[1])
+    grad = array_ops.reshape(grad, output_shape_kept_dims)
+  return [array_ops.broadcast_to(grad, input_shape), None]
 
 
 def _MinOrMaxGrad(op, grad):
@@ -284,18 +278,12 @@ def _ProdGrad(op, grad):
   # Reshape reduction indices for the case where the parameter is a scalar
   reduction_indices = array_ops.reshape(op.inputs[1], [-1])
 
-  if compat.forward_compatible(2019, 9, 23):
-    # Expand grad to full input shape
-    if not op.get_attr("keep_dims"):
-      output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
-      grad = array_ops.reshape(grad, output_shape_kept_dims)
-
-    grad = array_ops.broadcast_to(grad, input_shape)
-  else:
+  # Expand grad to full input shape
+  if not op.get_attr("keep_dims"):
     output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
-    tile_scaling = _safe_shape_div(input_shape, output_shape_kept_dims)
     grad = array_ops.reshape(grad, output_shape_kept_dims)
-    grad = array_ops.tile(grad, tile_scaling)
+
+  grad = array_ops.broadcast_to(grad, input_shape)
 
   # Pack all reduced dimensions into a single one, so we can perform the
   # cumprod ops. If the reduction dims list is empty, it defaults to float32,
@@ -442,9 +430,14 @@ def _GatherDropNegatives(params,
     is_positive = math_ops.greater_equal(ids, 0)
     # tf.where(condition, x, y) requires condition to have the same shape as x
     # and y.
-    # todo(philjd): remove this if tf.where supports broadcasting (#9284)
-    for _ in range(gathered.shape.ndims - is_positive.shape.ndims):
-      is_positive = array_ops.expand_dims(is_positive, -1)
+    is_positive_shape = array_ops.shape(is_positive)
+    broadcastable_shape = array_ops.concat(
+        [is_positive_shape,
+         array_ops.ones([array_ops.rank(gathered)
+                         - array_ops.rank(is_positive)],
+                        dtype=is_positive_shape.dtype)],
+        axis=0)
+    is_positive = array_ops.reshape(is_positive, broadcastable_shape)
     is_positive = (
         is_positive & array_ops.ones_like(gathered, dtype=dtypes.bool))
   # replace gathered params of negative indices with 0

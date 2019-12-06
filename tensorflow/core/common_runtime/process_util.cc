@@ -34,10 +34,15 @@ namespace tensorflow {
 
 namespace {
 
+// Use environment setting if specified (init once)
+int32 GetEnvNumInterOpThreads() {
+  static int32 env_num_threads = NumInterOpThreadsFromEnvironment();
+  return env_num_threads;
+}
+
 int32 DefaultNumInterOpThreads() {
 #ifndef __ANDROID__
-  // Use environment setting if specified (init once)
-  static int env_num_threads = NumInterOpThreadsFromEnvironment();
+  int32 env_num_threads = GetEnvNumInterOpThreads();
   if (env_num_threads > 0) {
     return env_num_threads;
   }
@@ -121,6 +126,9 @@ int32 DefaultNumIntraOpThreads() {
 int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32 inter_op = options.config.inter_op_parallelism_threads();
   if (inter_op > 0) return inter_op;
+  const int32 env_inter_op = GetEnvNumInterOpThreads();
+  if (env_inter_op > 0) return env_inter_op;
+
 #ifdef INTEL_MKL
   if (!DisableMKL()) {
     // MKL library executes ops in parallel using OMP threads.

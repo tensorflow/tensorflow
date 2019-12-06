@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
@@ -52,6 +53,26 @@ static bool IsOk(const Status& s) {
   if (s.ok()) return true;
   VLOG(2) << s.error_message();
   return false;
+}
+
+// Update node_def's device attribute (if any) to use a local device, that is
+// /job:localhost/replica:0/task:0/{DEVICE_TYPE}:{DEVICE_ID}.
+// This is because EvaluateOperation only has access to local devices but the
+// given node may carry a device assignment to a remote device. In that case,
+// evaluation would fail even if we have a device of same type locally. By
+// altering device assignment to a local one, we could successfully evaluate in
+// that case.
+void ForceUseLocalhostDevice(NodeDef* node_def) {
+  DeviceNameUtils::ParsedName parsed_name;
+
+  if (!DeviceNameUtils::ParseFullName(node_def->device(), &parsed_name)) return;
+
+  if (parsed_name.has_job) parsed_name.job = "localhost";
+  if (parsed_name.has_replica) parsed_name.replica = 0;
+  if (parsed_name.has_task) parsed_name.task = 0;
+
+  *node_def->mutable_device() =
+      DeviceNameUtils::ParsedNameToString(parsed_name);
 }
 
 mlir::LogicalResult EvaluateOperation(
@@ -82,6 +103,9 @@ mlir::LogicalResult EvaluateOperation(
       inst, node_name.c_str(), /*ignore_unregistered_attrs=*/true);
   RETURN_FAILURE_IF_ERROR(node_def_or.status());
   const auto& node_def = node_def_or.ValueOrDie();
+
+  ForceUseLocalhostDevice(node_def.get());
+
   TFE_Op* op = TFE_NewOp(context, node_def->op().c_str(), status);
   RETURN_FAILURE_IF_ERROR(status);
   auto clean_op = MakeCleanup([op] { TFE_DeleteOp(op); });

@@ -20,6 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LogicalResult.h"
@@ -46,6 +47,12 @@ static llvm::cl::opt<bool>
                                   "process each chunk independently"),
                    llvm::cl::init(false));
 
+static llvm::cl::opt<bool> verifyDiagnostics(
+    "verify-diagnostics",
+    llvm::cl::desc("Check that emitted diagnostics match "
+                   "expected-* lines on the corresponding line"),
+    llvm::cl::init(false));
+
 int main(int argc, char **argv) {
   llvm::InitLLVM y(argc, argv);
 
@@ -69,11 +76,24 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  /// Processes the memory buffer with a new MLIRContext.
+  // Processes the memory buffer with a new MLIRContext.
   auto processBuffer = [&](std::unique_ptr<llvm::MemoryBuffer> ownedBuffer,
                            raw_ostream &os) {
     MLIRContext context;
-    return (*translationRequested)(std::move(ownedBuffer), os, &context);
+    llvm::SourceMgr sourceMgr;
+    sourceMgr.AddNewSourceBuffer(std::move(ownedBuffer), llvm::SMLoc());
+
+    if (!verifyDiagnostics) {
+      SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, &context);
+      return (*translationRequested)(sourceMgr, os, &context);
+    }
+
+    // In the diagnostic verification flow, we ignore whether the translation
+    // failed (in most cases, it is expected to fail). Instead, we check if the
+    // diagnostics were produced as expected.
+    SourceMgrDiagnosticVerifierHandler sourceMgrHandler(sourceMgr, &context);
+    (*translationRequested)(sourceMgr, os, &context);
+    return sourceMgrHandler.verify();
   };
 
   if (splitInputFile) {

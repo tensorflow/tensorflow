@@ -357,17 +357,17 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     x = keras.layers.Dropout(0.5)(x, training=True)
     model = keras.models.Model(inp, x)
     # Would be `dropout/cond/Merge` by default
-    self.assertTrue(model.output.op.name.endswith('dropout/mul_1'))
+    self.assertIn('dropout', model.output.op.name)
 
     # Test that argument is kept when applying the model
     inp2 = keras.layers.Input(shape=(2,))
     out2 = model(inp2)
-    self.assertTrue(out2.op.name.endswith('dropout/mul_1'))
+    self.assertIn('dropout', out2.op.name)
 
     # Test that argument is kept after loading a model
     config = model.get_config()
     model = keras.models.Model.from_config(config)
-    self.assertTrue(model.output.op.name.endswith('dropout/mul_1'))
+    self.assertIn('dropout', model.output.op.name)
 
   def test_node_construction(self):
     # test basics
@@ -1573,6 +1573,31 @@ class NestedNetworkTest(test.TestCase):
 
     self.assertLen(model.get_updates_for(ph), 2)
     self.assertLen(model.get_updates_for(None), 0)
+
+  def test_dict_mapping_input(self):
+
+    class ReturnFirst(keras.layers.Layer):
+
+      def call(self, inputs):
+        b, _ = inputs
+        return b
+
+    # Checks that inputs are put in same order as the
+    # Model was constructed with.
+    b = keras.Input(shape=(10,), name='b')
+    a = keras.Input(shape=(10,), name='a')
+    outputs = ReturnFirst()([b, a])
+
+    b_val = array_ops.ones((10, 10))
+    a_val = array_ops.zeros((10, 10))
+
+    model = keras.Model([b, a], outputs)
+    res = model({'a': a_val, 'b': b_val})
+    self.assertAllClose(self.evaluate(res), self.evaluate(b_val))
+
+    reversed_model = keras.Model([a, b], outputs)
+    res = reversed_model({'a': a_val, 'b': b_val})
+    self.assertAllClose(self.evaluate(res), self.evaluate(b_val))
 
 
 @keras_parameterized.run_all_keras_modes

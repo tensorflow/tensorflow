@@ -70,6 +70,7 @@ MICROLITE_LIBS := -lm
 # these settings are for the target compiler.
 CXXFLAGS := -O3 -DNDEBUG
 CXXFLAGS += -std=c++11 -g -DTF_LITE_STATIC_MEMORY
+CXXFLAGS += -fno-rtti
 CCFLAGS := -DNDEBUG -g -DTF_LITE_STATIC_MEMORY
 LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
@@ -92,7 +93,7 @@ MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/experimental/micro/*.cc) \
 $(wildcard tensorflow/lite/experimental/micro/kernels/*.cc) \
 $(wildcard tensorflow/lite/experimental/micro/memory_planner/*.cc) \
-tensorflow/lite/c/c_api_internal.c \
+tensorflow/lite/c/common.c \
 tensorflow/lite/core/api/error_reporter.cc \
 tensorflow/lite/core/api/flatbuffer_conversions.cc \
 tensorflow/lite/core/api/op_resolver.cc \
@@ -109,7 +110,7 @@ $(wildcard tensorflow/lite/experimental/micro/memory_planner/*.h) \
 LICENSE \
 tensorflow/core/public/version.h \
 tensorflow/lite/c/builtin_op_data.h \
-tensorflow/lite/c/c_api_internal.h \
+tensorflow/lite/c/common.h \
 tensorflow/lite/core/api/error_reporter.h \
 tensorflow/lite/core/api/flatbuffer_conversions.h \
 tensorflow/lite/core/api/op_resolver.h \
@@ -123,6 +124,7 @@ tensorflow/lite/kernels/internal/reference/arg_min_max.h \
 tensorflow/lite/kernels/internal/reference/binary_function.h \
 tensorflow/lite/kernels/internal/reference/ceil.h \
 tensorflow/lite/kernels/internal/reference/comparisons.h \
+tensorflow/lite/kernels/internal/reference/concatenation.h \
 tensorflow/lite/kernels/internal/reference/conv.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
@@ -133,7 +135,10 @@ tensorflow/lite/kernels/internal/reference/integer_ops/add.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/mul.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/softmax.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
+tensorflow/lite/kernels/internal/reference/mul.h \
 tensorflow/lite/kernels/internal/reference/neg.h \
 tensorflow/lite/kernels/internal/reference/pooling.h \
 tensorflow/lite/kernels/internal/reference/prelu.h \
@@ -145,6 +150,7 @@ tensorflow/lite/kernels/internal/reference/logistic.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h \
 tensorflow/lite/kernels/internal/round.h \
+tensorflow/lite/kernels/internal/scoped_profiling_label_wrapper.h \
 tensorflow/lite/kernels/internal/strided_slice_logic.h \
 tensorflow/lite/kernels/internal/tensor.h \
 tensorflow/lite/kernels/internal/tensor_ctypes.h \
@@ -155,6 +161,7 @@ tensorflow/lite/kernels/padding.h \
 tensorflow/lite/schema/schema_generated.h \
 tensorflow/lite/string_type.h \
 tensorflow/lite/string_util.h \
+tensorflow/lite/type_to_tflitetype.h \
 tensorflow/lite/version.h
 
 THIRD_PARTY_CC_HDRS := \
@@ -246,17 +253,17 @@ MICROLITE_LIB_OBJS += $(addprefix $(OBJDIR), \
 $(patsubst %.S,%.o,$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(THIRD_PARTY_CC_SRCS)))))
 
 # For normal manually-created TensorFlow C++ source files.
-$(OBJDIR)%.o: %.cc third_party_downloads
+$(OBJDIR)%.o: %.cc $(THIRD_PARTY_TARGETS)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # For normal manually-created TensorFlow C source files.
-$(OBJDIR)%.o: %.c third_party_downloads
+$(OBJDIR)%.o: %.c $(THIRD_PARTY_TARGETS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 
 # For normal manually-created TensorFlow ASM source files.
-$(OBJDIR)%.o: %.S third_party_downloads
+$(OBJDIR)%.o: %.S $(THIRD_PARTY_TARGETS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 

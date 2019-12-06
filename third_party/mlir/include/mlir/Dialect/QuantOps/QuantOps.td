@@ -19,14 +19,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef DIALECT_QUANTOPS_QUANT_OPS_
-#else
+#ifndef DIALECT_QUANTOPS_QUANT_OPS_
 #define DIALECT_QUANTOPS_QUANT_OPS_
-#ifdef OP_BASE
-#else
+
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/QuantOps/QuantPredicates.td"
-#endif // OP_BASE
 
 def quant_Dialect : Dialect {
   let name = "quant";

@@ -26,62 +26,46 @@ using std::chrono::system_clock;
 namespace tensorflow {
 
 namespace {
+typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
+}
 
-class WindowsEnvTime : public EnvTime {
- public:
-  WindowsEnvTime() : GetSystemTimePreciseAsFileTime_(NULL) {
-    // GetSystemTimePreciseAsFileTime function is only available in the latest
-    // versions of Windows. For that reason, we try to look it up in
-    // kernel32.dll at runtime and use an alternative option if the function
-    // is not available.
+uint64 EnvTime::NowNanos() {
+  static FnGetSystemTimePreciseAsFileTime precise_time_function =
+      []() -> FnGetSystemTimePreciseAsFileTime {
     HMODULE module = GetModuleHandleW(L"kernel32.dll");
     if (module != NULL) {
-      auto func = (FnGetSystemTimePreciseAsFileTime)GetProcAddress(
+      return (FnGetSystemTimePreciseAsFileTime)GetProcAddress(
           module, "GetSystemTimePreciseAsFileTime");
-      GetSystemTimePreciseAsFileTime_ = func;
+    } else {
+      return NULL;
     }
+  }();
+
+  if (precise_time_function != NULL) {
+    // GetSystemTimePreciseAsFileTime function is only available in latest
+    // versions of Windows, so we need to check for its existence here.
+    // All std::chrono clocks on Windows proved to return values that may
+    // repeat, which is not good enough for some uses.
+    constexpr int64_t kUnixEpochStartTicks = 116444736000000000i64;
+
+    // This interface needs to return system time and not just any time
+    // because it is often used as an argument to TimedWait() on condition
+    // variable.
+    FILETIME system_time;
+    precise_time_function(&system_time);
+
+    LARGE_INTEGER li;
+    li.LowPart = system_time.dwLowDateTime;
+    li.HighPart = system_time.dwHighDateTime;
+    // Subtract unix epoch start
+    li.QuadPart -= kUnixEpochStartTicks;
+
+    constexpr int64_t kFtToNanoSec = 100;
+    li.QuadPart *= kFtToNanoSec;
+    return li.QuadPart;
   }
-
-  uint64 NowNanos() const override {
-    if (GetSystemTimePreciseAsFileTime_ != NULL) {
-      // GetSystemTimePreciseAsFileTime function is only available in latest
-      // versions of Windows, so we need to check for its existence here.
-      // All std::chrono clocks on Windows proved to return values that may
-      // repeat, which is not good enough for some uses.
-      constexpr int64_t kUnixEpochStartTicks = 116444736000000000i64;
-
-      // This interface needs to return system time and not just any time
-      // because it is often used as an argument to TimedWait() on condition
-      // variable.
-      FILETIME system_time;
-      GetSystemTimePreciseAsFileTime_(&system_time);
-
-      LARGE_INTEGER li;
-      li.LowPart = system_time.dwLowDateTime;
-      li.HighPart = system_time.dwHighDateTime;
-      // Subtract unix epoch start
-      li.QuadPart -= kUnixEpochStartTicks;
-
-      constexpr int64_t kFtToNanoSec = 100;
-      li.QuadPart *= kFtToNanoSec;
-      return li.QuadPart;
-    }
-    return duration_cast<nanoseconds>(system_clock::now().time_since_epoch())
-        .count();
-  }
-
-  void SleepForMicroseconds(int64 micros) { Sleep(micros / 1000); }
-
- private:
-  typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
-  FnGetSystemTimePreciseAsFileTime GetSystemTimePreciseAsFileTime_;
-};
-
-}  // namespace
-
-EnvTime* EnvTime::Default() {
-  static EnvTime* default_time_env = new WindowsEnvTime;
-  return default_time_env;
+  return duration_cast<nanoseconds>(system_clock::now().time_since_epoch())
+      .count();
 }
 
 }  // namespace tensorflow

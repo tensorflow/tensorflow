@@ -24,14 +24,17 @@ int led = LED_BUILTIN;
 // Track whether the function has run at least once
 bool initialized = false;
 
-// Modifies the brightness of the LED based on the computed y_value
+// Adjusts brightness of an LED to represent the current y value
 void HandleOutput(tflite::ErrorReporter* error_reporter, float x_value,
                   float y_value) {
+  // Track whether the function has run at least once
+  static bool is_initialized = false;
+
   // Do this only once
-  if (!initialized) {
+  if (!is_initialized) {
     // Set the LED pin to output
-    pinMode(led, OUTPUT);
-    initialized = true;
+    pinMode(LED_BUILTIN, OUTPUT);
+    is_initialized = true;
   }
 
   // Calculate the brightness of the LED such that y=-1 is fully off
@@ -40,7 +43,7 @@ void HandleOutput(tflite::ErrorReporter* error_reporter, float x_value,
 
   // Set the brightness of the LED. If the specified pin does not support PWM,
   // this will result in the LED being on when y > 127, off otherwise.
-  analogWrite(led, brightness);
+  analogWrite(LED_BUILTIN, brightness);
 
   // Log the current brightness value for display in the Arduino plotter
   error_reporter->Report("%d\n", brightness);

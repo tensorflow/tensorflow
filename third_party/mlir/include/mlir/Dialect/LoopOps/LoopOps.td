@@ -19,19 +19,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef LOOP_OPS
-#else
+#ifndef LOOP_OPS
 #define LOOP_OPS
 
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-#ifdef MLIR_LOOPLIKEINTERFACE
-#else
 include "mlir/Transforms/LoopLikeInterface.td"
-#endif
 
 def Loop_Dialect : Dialect {
   let name = "loop";

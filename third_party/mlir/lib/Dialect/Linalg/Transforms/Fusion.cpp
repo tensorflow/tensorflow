@@ -87,7 +87,7 @@ static LinalgOp cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
     auto map = maps[idx];
     LLVM_DEBUG(dbgs() << "map: " << map << "\n");
     Value *view = en.value();
-    SmallVector<SubViewOp::Range, 8> viewRanges(map.getNumResults());
+    SmallVector<SubViewOp::Range, 4> viewRanges(map.getNumResults());
     for (auto en2 : llvm::enumerate(map.getResults())) {
       unsigned d = en2.index();
       // loopToOperandRangesMaps are permutations-only.
@@ -97,15 +97,19 @@ static LinalgOp cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
                         << "\t"
                         << "loopPos: " << loopPos << "\t" << viewRanges[d]);
     }
-    // TODO(ntv): opportunities for folding/CSE here rather than build new IR.
-    SmallVector<Value *, 12> subViewOperands;
-    subViewOperands.reserve(viewRanges.size() * 3);
+    // Construct a new subview for the tile.
+    unsigned rank = viewRanges.size();
+    SmallVector<Value *, 4> offsets, sizes, strides;
+    offsets.reserve(rank);
+    sizes.reserve(rank);
+    strides.reserve(rank);
     for (auto r : viewRanges) {
-      subViewOperands.push_back(r.min);
-      subViewOperands.push_back(r.max);
-      subViewOperands.push_back(r.step);
+      offsets.push_back(r.offset);
+      sizes.push_back(r.size);
+      strides.push_back(r.stride);
     }
-    clonedViews.push_back(b.create<SubViewOp>(loc, view, subViewOperands));
+    clonedViews.push_back(
+        b.create<SubViewOp>(loc, view, offsets, sizes, strides));
   }
   auto operands = getAssumedNonViewOperands(op);
   clonedViews.append(operands.begin(), operands.end());
@@ -175,7 +179,7 @@ static LinalgOp fuse(Value *producedView, LinalgOp producer, LinalgOp consumer,
   // This defines a subset of the loop ranges that we need to complete later.
   for (auto en : llvm::enumerate(producerMap.getResults())) {
     unsigned posInProducerLoop = en.value().cast<AffineDimExpr>().getPosition();
-    loopRanges[posInProducerLoop] = subView.getRange(en.index());
+    loopRanges[posInProducerLoop] = subView.getRanges()[en.index()];
   }
 
   OpBuilder b(consumer.getOperation());
@@ -184,7 +188,7 @@ static LinalgOp fuse(Value *producedView, LinalgOp producer, LinalgOp consumer,
   // producer map for `producerIdx`, we need to explicitly compute the view that
   // defines the loop ranges using the `producer`.
   for (unsigned i = 0, nLoops = loopRanges.size(); i < nLoops; ++i) {
-    if (loopRanges[i].min)
+    if (loopRanges[i].offset)
       LLVM_DEBUG(llvm::dbgs()
                  << "existing LoopRange: " << loopRanges[i] << "\n");
     else {
@@ -201,17 +205,11 @@ static LinalgOp fuse(Value *producedView, LinalgOp producer, LinalgOp consumer,
 
 // Encode structural fusion safety preconditions.
 // Some of these will be lifted in the future with better analysis.
-static bool isStructurallyFusableProducer(LinalgOp producer, Value *readView,
+static bool isStructurallyFusableProducer(LinalgOp producer,
+                                          Value *consumedView,
                                           LinalgOp consumer) {
   if (producer.getNumOutputs() != 1) {
     LLVM_DEBUG(dbgs() << "\nNot structurally fusable (multi-output)");
-    return false;
-  }
-  // Must be a subview or a slice to guarantee there are loops we can fuse into.
-  auto subView = dyn_cast_or_null<SubViewOp>(readView->getDefiningOp());
-  auto slice = dyn_cast_or_null<SliceOp>(readView->getDefiningOp());
-  if (!subView && !slice) {
-    LLVM_DEBUG(dbgs() << "\nNot structurally fusable (not a subview or slice)");
     return false;
   }
   // Only fuse when the producer block dominates.
@@ -226,12 +224,45 @@ static bool isStructurallyFusableProducer(LinalgOp producer, Value *readView,
   return true;
 }
 
+bool mlir::linalg::isProducerLastWriteOfView(const LinalgDependenceGraph &graph,
+                                             LinalgOp consumer,
+                                             Value *consumedView,
+                                             LinalgOp producer) {
+  // Make some simple structural checks that alleviate the need for more
+  // complex analyses.
+  if (!isStructurallyFusableProducer(producer, consumedView, consumer)) {
+    LLVM_DEBUG(dbgs() << "\n***Not static last write due to structure:\t"
+                      << *producer.getOperation());
+    return false;
+  }
+  // Check for any interleaved write to consumedView.
+  if (!graph.findCoveringWrites(producer, consumer, consumedView).empty()) {
+    LLVM_DEBUG(dbgs() << "\n***Not fusable due to interleaved write:\t"
+                      << *producer.getOperation());
+    return false;
+  }
+  return true;
+}
+
+bool mlir::linalg::isFusableInto(const LinalgDependenceGraph &graph,
+                                 LinalgOp consumer, Value *consumedView,
+                                 LinalgOp producer) {
+  if (!isProducerLastWriteOfView(graph, consumer, consumedView, producer))
+    return false;
+  // Check for any fusion-preventing dependence to any view read/written that
+  // would violate dependences.
+  if (!graph.findCoveringDependences(producer, consumer).empty()) {
+    LLVM_DEBUG(dbgs() << "\n***Not fusable due to an interleaved dependence:\t"
+                      << *producer.getOperation());
+    return false;
+  }
+  return true;
+}
+
 // Only consider RAW atm.
-Optional<FusionInfo> mlir::linalg::fuseProducerOf(OpBuilder &b,
-                                                  LinalgOp consumer,
-                                                  unsigned consumerIdx,
-                                                  LinalgDependenceGraph &graph,
-                                                  OperationFolder *folder) {
+Optional<FusionInfo> mlir::linalg::fuseProducerOf(
+    OpBuilder &b, LinalgOp consumer, unsigned consumerIdx,
+    const LinalgDependenceGraph &graph, OperationFolder *folder) {
   LLVM_DEBUG(dbgs() << "\nStart examining consumer: "
                     << *consumer.getOperation());
   for (auto dependence : graph.getDependencesInto(
@@ -241,8 +272,8 @@ Optional<FusionInfo> mlir::linalg::fuseProducerOf(OpBuilder &b,
     auto producer = cast<LinalgOp>(dependence.dependentOpView.op);
 
     // Check that the dependence is indeed on the input `consumerIdx` view.
-    auto *readView = dependence.indexingView;
-    if (consumer.getInput(consumerIdx) != readView)
+    auto *consumedView = dependence.indexingView;
+    if (consumer.getInput(consumerIdx) != consumedView)
       continue;
 
     // Consumer consumes this view, `isStructurallyFusableProducer` also checks
@@ -254,16 +285,17 @@ Optional<FusionInfo> mlir::linalg::fuseProducerOf(OpBuilder &b,
                       << " view: " << *producedView
                       << " output index: " << producerIdx);
 
-    // Make some simple structural checks that alleviate the need for more
-    // complex analyses.
-    if (!isStructurallyFusableProducer(producer, readView, consumer)) {
-      LLVM_DEBUG(dbgs() << "\n***Not fusable:\t" << *producer.getOperation());
+    // Must be a subview or a slice to guarantee there are loops we can fuse
+    // into.
+    auto subView = dyn_cast_or_null<SubViewOp>(consumedView->getDefiningOp());
+    auto slice = dyn_cast_or_null<SliceOp>(consumedView->getDefiningOp());
+    if (!subView && !slice) {
+      LLVM_DEBUG(dbgs() << "\nNot fusable (not a subview or slice)");
       continue;
     }
 
-    // Check for fusion-preventing write that would violate dependences.
-    // `view` is a producer write that cannot bypass any other write or read.
-    if (!graph.findCoveringDependences(producer, consumer).empty())
+    // Simple fusability checks.
+    if (!isFusableInto(graph, consumer, consumedView, producer))
       continue;
 
     // Fuse `producer` just before `consumer`.

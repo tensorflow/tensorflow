@@ -31,7 +31,9 @@ from tensorflow.python.platform import test
 FLAGS = flags.FLAGS
 
 # Number of steps to train model.
-TRAIN_STEPS = 1
+# Dial to 0 means no training at all, all the weights will be just using their
+# initial values. This can help make the test smaller.
+TRAIN_STEPS = 0
 
 CONFIG = tf.ConfigProto(device_count={"GPU": 0})
 
@@ -58,7 +60,8 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     super(BidirectionalSequenceRnnTest, self).setUp()
     # Import MNIST dataset
     data_dir = tempfile.mkdtemp(dir=FLAGS.test_tmpdir)
-    self.mnist = input_data.read_data_sets(data_dir, one_hot=True)
+    self.mnist = input_data.read_data_sets(
+        data_dir, fake_data=True, one_hot=True)
 
   def buildRnnLayer(self):
     return tf.keras.layers.StackedRNNCells([
@@ -92,8 +95,8 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     """
     # Weights and biases for output softmax layer.
     out_weights = tf.Variable(
-        tf.random_normal([self.num_units * 2, self.n_classes]))
-    out_bias = tf.Variable(tf.random_normal([self.n_classes]))
+        tf.random.normal([self.num_units * 2, self.n_classes]))
+    out_bias = tf.Variable(tf.random.normal([self.n_classes]))
 
     batch_size = self.batch_size
     if is_inference:
@@ -165,8 +168,10 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     sess.run(init)
     for _ in range(TRAIN_STEPS):
       batch_x, batch_y = self.mnist.train.next_batch(
-          batch_size=self.batch_size, shuffle=False)
+          batch_size=self.batch_size, shuffle=False, fake_data=True)
 
+      batch_x = np.array(batch_x)
+      batch_y = np.array(batch_y)
       batch_x = batch_x.reshape((self.batch_size, self.time_steps,
                                  self.n_input))
       sess.run(opt, feed_dict={x: batch_x, y: batch_y})
@@ -228,7 +233,8 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
       - Expected output.
 
     """
-    b1, _ = self.mnist.train.next_batch(batch_size=1)
+    b1, _ = self.mnist.train.next_batch(batch_size=1, fake_data=True)
+    b1 = np.array(b1, dtype=np.dtype("float32"))
     sample_input = np.reshape(b1, (1, self.time_steps, self.n_input))
 
     expected_output = sess.run(output_class, feed_dict={x: sample_input})

@@ -264,6 +264,16 @@ int GreedyMemoryPlanner::GetMaximumMemorySize() {
 
 void GreedyMemoryPlanner::PrintMemoryPlan(ErrorReporter* error_reporter) {
   CalculateOffsetsIfNeeded();
+
+  for (int i = 0; i < buffer_count_; ++i) {
+    error_reporter->Report(
+        "Planner buffer ID: %d, calculated offset: %d, size required: %d, "
+        "first_time_created: %d, "
+        "last_time_used: %d",
+        i, buffer_offsets_[i], requirements_[i].size,
+        requirements_[i].first_time_used, requirements_[i].last_time_used);
+  }
+
   constexpr int kLineWidth = 80;
   int max_size = kLineWidth;
   int max_time = 0;

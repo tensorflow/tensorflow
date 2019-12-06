@@ -23,9 +23,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cord.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_statistics.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/platform.h"
@@ -60,7 +59,7 @@ class FileSystem {
   ///
   /// The ownership of the returned RandomAccessFile is passed to the caller
   /// and the object should be deleted when is not used.
-  virtual Status NewRandomAccessFile(
+  virtual tensorflow::Status NewRandomAccessFile(
       const string& fname, std::unique_ptr<RandomAccessFile>* result) = 0;
 
   /// \brief Creates an object that writes to a new file with the specified
@@ -75,8 +74,8 @@ class FileSystem {
   ///
   /// The ownership of the returned WritableFile is passed to the caller
   /// and the object should be deleted when is not used.
-  virtual Status NewWritableFile(const string& fname,
-                                 std::unique_ptr<WritableFile>* result) = 0;
+  virtual tensorflow::Status NewWritableFile(
+      const string& fname, std::unique_ptr<WritableFile>* result) = 0;
 
   /// \brief Creates an object that either appends to an existing file, or
   /// writes to a new file (if the file does not exist to begin with).
@@ -89,8 +88,8 @@ class FileSystem {
   ///
   /// The ownership of the returned WritableFile is passed to the caller
   /// and the object should be deleted when is not used.
-  virtual Status NewAppendableFile(const string& fname,
-                                   std::unique_ptr<WritableFile>* result) = 0;
+  virtual tensorflow::Status NewAppendableFile(
+      const string& fname, std::unique_ptr<WritableFile>* result) = 0;
 
   /// \brief Creates a readonly region of memory with the file context.
   ///
@@ -102,11 +101,11 @@ class FileSystem {
   ///
   /// The ownership of the returned ReadOnlyMemoryRegion is passed to the caller
   /// and the object should be deleted when is not used.
-  virtual Status NewReadOnlyMemoryRegionFromFile(
+  virtual tensorflow::Status NewReadOnlyMemoryRegionFromFile(
       const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) = 0;
 
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
-  virtual Status FileExists(const string& fname) = 0;
+  virtual tensorflow::Status FileExists(const string& fname) = 0;
 
   /// Returns true if all the listed files exist, false otherwise.
   /// if status is not null, populate the vector with a detailed status
@@ -117,8 +116,8 @@ class FileSystem {
   /// \brief Returns the immediate children in the given directory.
   ///
   /// The returned paths are relative to 'dir'.
-  virtual Status GetChildren(const string& dir,
-                             std::vector<string>* result) = 0;
+  virtual tensorflow::Status GetChildren(const string& dir,
+                                         std::vector<string>* result) = 0;
 
   /// \brief Given a pattern, stores in *results the set of paths that matches
   /// that pattern. *results is cleared.
@@ -142,21 +141,22 @@ class FileSystem {
   ///  * OK - no errors
   ///  * UNIMPLEMENTED - Some underlying functions (like GetChildren) are not
   ///                    implemented
-  virtual Status GetMatchingPaths(const string& pattern,
-                                  std::vector<string>* results) = 0;
+  virtual tensorflow::Status GetMatchingPaths(const string& pattern,
+                                              std::vector<string>* results) = 0;
 
   /// \brief Obtains statistics for the given path.
-  virtual Status Stat(const string& fname, FileStatistics* stat) = 0;
+  virtual tensorflow::Status Stat(const string& fname,
+                                  FileStatistics* stat) = 0;
 
   /// \brief Deletes the named file.
-  virtual Status DeleteFile(const string& fname) = 0;
+  virtual tensorflow::Status DeleteFile(const string& fname) = 0;
 
   /// \brief Creates the specified directory.
   /// Typical return codes:
   ///  * OK - successfully created the directory.
   ///  * ALREADY_EXISTS - directory with name dirname already exists.
   ///  * PERMISSION_DENIED - dirname is not writable.
-  virtual Status CreateDir(const string& dirname) = 0;
+  virtual tensorflow::Status CreateDir(const string& dirname) = 0;
 
   /// \brief Creates the specified directory and all the necessary
   /// subdirectories.
@@ -164,10 +164,10 @@ class FileSystem {
   ///  * OK - successfully created the directory and sub directories, even if
   ///         they were already created.
   ///  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
-  virtual Status RecursivelyCreateDir(const string& dirname);
+  virtual tensorflow::Status RecursivelyCreateDir(const string& dirname);
 
   /// \brief Deletes the specified directory.
-  virtual Status DeleteDir(const string& dirname) = 0;
+  virtual tensorflow::Status DeleteDir(const string& dirname) = 0;
 
   /// \brief Deletes the specified directory and all subdirectories and files
   /// underneath it. This is accomplished by traversing the directory tree
@@ -193,18 +193,20 @@ class FileSystem {
   ///  * PERMISSION_DENIED - dirname or some descendant is not writable
   ///  * UNIMPLEMENTED - Some underlying functions (like Delete) are not
   ///                    implemented
-  virtual Status DeleteRecursively(const string& dirname,
-                                   int64* undeleted_files,
-                                   int64* undeleted_dirs);
+  virtual tensorflow::Status DeleteRecursively(const string& dirname,
+                                               int64* undeleted_files,
+                                               int64* undeleted_dirs);
 
   /// \brief Stores the size of `fname` in `*file_size`.
-  virtual Status GetFileSize(const string& fname, uint64* file_size) = 0;
+  virtual tensorflow::Status GetFileSize(const string& fname,
+                                         uint64* file_size) = 0;
 
   /// \brief Overwrites the target if it exists.
-  virtual Status RenameFile(const string& src, const string& target) = 0;
+  virtual tensorflow::Status RenameFile(const string& src,
+                                        const string& target) = 0;
 
   /// \brief Copy the src to target.
-  virtual Status CopyFile(const string& src, const string& target);
+  virtual tensorflow::Status CopyFile(const string& src, const string& target);
 
   /// \brief Translate an URI to a filename for the FileSystem implementation.
   ///
@@ -221,27 +223,27 @@ class FileSystem {
   ///  * NOT_FOUND - The path entry does not exist.
   ///  * PERMISSION_DENIED - Insufficient permissions.
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
-  virtual Status IsDirectory(const string& fname);
+  virtual tensorflow::Status IsDirectory(const string& fname);
 
   /// \brief Flushes any cached filesystem objects from memory.
   virtual void FlushCaches();
 
   FileSystem() {}
 
-  virtual ~FileSystem();
+  virtual ~FileSystem() = default;
 };
 
 /// A file abstraction for randomly reading the contents of a file.
 class RandomAccessFile {
  public:
   RandomAccessFile() {}
-  virtual ~RandomAccessFile();
+  virtual ~RandomAccessFile() = default;
 
   /// \brief Returns the name of the file.
   ///
   /// This is an optional operation that may not be implemented by every
   /// filesystem.
-  virtual Status Name(StringPiece* result) const {
+  virtual tensorflow::Status Name(StringPiece* result) const {
     return errors::Unimplemented("This filesystem does not support Name()");
   }
 
@@ -260,13 +262,14 @@ class RandomAccessFile {
   /// because of EOF.
   ///
   /// Safe for concurrent use by multiple threads.
-  virtual Status Read(uint64 offset, size_t n, StringPiece* result,
-                      char* scratch) const = 0;
+  virtual tensorflow::Status Read(uint64 offset, size_t n, StringPiece* result,
+                                  char* scratch) const = 0;
 
   // TODO(ebrevdo): Remove this ifdef when absl is updated.
 #if defined(PLATFORM_GOOGLE)
   /// \brief Read up to `n` bytes from the file starting at `offset`.
-  virtual Status Read(uint64 offset, size_t n, absl::Cord* cord) const {
+  virtual tensorflow::Status Read(uint64 offset, size_t n,
+                                  absl::Cord* cord) const {
     return errors::Unimplemented(
         "Read(uint64, size_t, absl::Cord*) is not "
         "implemented");
@@ -284,15 +287,15 @@ class RandomAccessFile {
 class WritableFile {
  public:
   WritableFile() {}
-  virtual ~WritableFile();
+  virtual ~WritableFile() = default;
 
   /// \brief Append 'data' to the file.
-  virtual Status Append(StringPiece data) = 0;
+  virtual tensorflow::Status Append(StringPiece data) = 0;
 
   // TODO(ebrevdo): Remove this ifdef when absl is updated.
 #if defined(PLATFORM_GOOGLE)
   // \brief Append 'data' to the file.
-  virtual Status Append(const absl::Cord& cord) {
+  virtual tensorflow::Status Append(const absl::Cord& cord) {
     return errors::Unimplemented("Append(absl::Cord) is not implemented");
   }
 #endif
@@ -304,7 +307,7 @@ class WritableFile {
   /// Typical return codes (not guaranteed to be exhaustive):
   ///  * OK
   ///  * Other codes, as returned from Flush()
-  virtual Status Close() = 0;
+  virtual tensorflow::Status Close() = 0;
 
   /// \brief Flushes the file and optionally syncs contents to filesystem.
   ///
@@ -316,13 +319,13 @@ class WritableFile {
   /// eventually flush the contents.  If the OS or machine crashes
   /// after a successful flush, the contents may or may not be
   /// persisted, depending on the implementation.
-  virtual Status Flush() = 0;
+  virtual tensorflow::Status Flush() = 0;
 
   // \brief Returns the name of the file.
   ///
   /// This is an optional operation that may not be implemented by every
   /// filesystem.
-  virtual Status Name(StringPiece* result) const {
+  virtual tensorflow::Status Name(StringPiece* result) const {
     return errors::Unimplemented("This filesystem does not support Name()");
   }
 
@@ -332,14 +335,14 @@ class WritableFile {
   /// of the file have been persisted to the filesystem; if the OS
   /// or machine crashes after a successful Sync, the contents should
   /// be properly saved.
-  virtual Status Sync() = 0;
+  virtual tensorflow::Status Sync() = 0;
 
   /// \brief Retrieves the current write position in the file, or -1 on
   /// error.
   ///
   /// This is an optional operation, subclasses may choose to return
   /// errors::Unimplemented.
-  virtual Status Tell(int64* position) {
+  virtual tensorflow::Status Tell(int64* position) {
     *position = -1;
     return errors::Unimplemented("This filesystem does not support Tell()");
   }
@@ -370,15 +373,35 @@ class ReadOnlyMemoryRegion {
 /// [scheme://]<filename>.
 /// File system implementations are registered using the REGISTER_FILE_SYSTEM
 /// macro, providing the 'scheme' as the key.
+///
+/// There are two `Register` methods: one using `Factory` for legacy filesystems
+/// (deprecated mechanism of subclassing `FileSystem` and using
+/// `REGISTER_FILE_SYSTEM` macro), and one using `std::unique_ptr<FileSystem>`
+/// for the new modular approach.
+///
+/// Note that the new API expects a pointer to `ModularFileSystem` but this is
+/// not checked as there should be exactly one caller to the API and doing the
+/// check results in a circular dependency between `BUILD` targets.
+///
+/// Plan is to completely remove the filesystem registration from `Env` and
+/// incorporate it into `ModularFileSystem` class (which will be renamed to be
+/// the only `FileSystem` class and marked as `final`). But this will happen at
+/// a later time, after we convert all filesystems to the new API.
+///
+/// TODO(mihaimaruseac): After all filesystems are converted, remove old
+/// registration and update comment.
 class FileSystemRegistry {
  public:
   typedef std::function<FileSystem*()> Factory;
 
-  virtual ~FileSystemRegistry();
-  virtual Status Register(const string& scheme, Factory factory) = 0;
-  virtual FileSystem* Lookup(const string& scheme) = 0;
-  virtual Status GetRegisteredFileSystemSchemes(
-      std::vector<string>* schemes) = 0;
+  virtual ~FileSystemRegistry() = default;
+  virtual tensorflow::Status Register(const std::string& scheme,
+                                      Factory factory) = 0;
+  virtual tensorflow::Status Register(
+      const std::string& scheme, std::unique_ptr<FileSystem> filesystem) = 0;
+  virtual FileSystem* Lookup(const std::string& scheme) = 0;
+  virtual tensorflow::Status GetRegisteredFileSystemSchemes(
+      std::vector<std::string>* schemes) = 0;
 };
 
 }  // namespace tensorflow

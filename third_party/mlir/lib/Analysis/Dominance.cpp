@@ -115,7 +115,7 @@ bool DominanceInfo::properlyDominates(Operation *a, Operation *b) {
     return a->isBeforeInBlock(b);
 
   // Traverse up b's hierarchy to check if b's block is contained in a's.
-  if (auto *bAncestor = aBlock->findAncestorInstInBlock(*b)) {
+  if (auto *bAncestor = aBlock->findAncestorOpInBlock(*b)) {
     // Since we already know that aBlock != bBlock, here bAncestor != b.
     // a and bAncestor are in the same block; check if 'a' dominates
     // bAncestor.
@@ -128,13 +128,12 @@ bool DominanceInfo::properlyDominates(Operation *a, Operation *b) {
 
 /// Return true if value A properly dominates operation B.
 bool DominanceInfo::properlyDominates(Value *a, Operation *b) {
-  if (auto *aInst = a->getDefiningOp()) {
+  if (auto *aOp = a->getDefiningOp()) {
     // The values defined by an operation do *not* dominate any nested
     // operations.
-    if (aInst->getParentRegion() != b->getParentRegion() &&
-        aInst->isAncestor(b))
+    if (aOp->getParentRegion() != b->getParentRegion() && aOp->isAncestor(b))
       return false;
-    return properlyDominates(aInst, b);
+    return properlyDominates(aOp, b);
   }
 
   // block arguments properly dominate all operations in their own block, so
@@ -170,7 +169,7 @@ bool PostDominanceInfo::properlyPostDominates(Operation *a, Operation *b) {
     return b->isBeforeInBlock(a);
 
   // Traverse up b's hierarchy to check if b's block is contained in a's.
-  if (auto *bAncestor = a->getBlock()->findAncestorInstInBlock(*b))
+  if (auto *bAncestor = a->getBlock()->findAncestorOpInBlock(*b))
     // Since we already know that aBlock != bBlock, here bAncestor != b.
     // a and bAncestor are in the same block; check if 'a' postdominates
     // bAncestor.

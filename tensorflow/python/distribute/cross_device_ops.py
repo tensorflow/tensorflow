@@ -287,6 +287,9 @@ class CrossDeviceOps(object):
     Reduce each first element in `value_destination_pairs` to each second
     element which indicates the destinations.
 
+    This can be faster than multiple individual `reduce`s because we can
+    fuse several tensors into one or multiple packs before reduction.
+
     Args:
       reduce_op: An instance of `tf.distribute.ReduceOp` that indicates how
         the `per_replica_value` will be reduced.

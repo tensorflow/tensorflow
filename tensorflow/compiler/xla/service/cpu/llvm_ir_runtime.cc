@@ -51,7 +51,7 @@ void RewriteCalls(
     std::function<llvm::Value*(llvm::IRBuilder<>* b, llvm::Value* input,
                                int32 vector_width)>
         fn_body_generator,
-    int32 vector_width, bool enable_fast_math) {
+    int32 vector_width, llvm::FastMathFlags fast_math_flags) {
   llvm::Function* fn = module->getFunction(fn_name);
   if (fn == nullptr) {
     // If the function declaration is not present in the module, there can't be
@@ -75,8 +75,6 @@ void RewriteCalls(
 
   llvm::BasicBlock* fn_body = llvm::BasicBlock::Create(*context, "body", fn);
   llvm::IRBuilder<> b(fn_body);
-  llvm::FastMathFlags fast_math_flags;
-  fast_math_flags.setFast(enable_fast_math);
   b.setFastMathFlags(fast_math_flags);
 
   llvm::Value* input = &*fn->arg_begin();
@@ -349,11 +347,12 @@ llvm::Value* GenerateVF32Log(llvm::IRBuilder<>* b, llvm::Value* input,
 }
 }  // namespace
 
-void RewriteIRRuntimeFunctions(llvm::Module* module, bool enable_fast_math) {
+void RewriteIRRuntimeFunctions(llvm::Module* module,
+                               llvm::FastMathFlags fast_math_flags) {
   // Curry some params to RewriteCalls.
   auto rewrite_calls =
       std::bind(RewriteCalls, module, std::placeholders::_1,
-                std::placeholders::_2, std::placeholders::_3, enable_fast_math);
+                std::placeholders::_2, std::placeholders::_3, fast_math_flags);
 
   rewrite_calls("tanhf", GenerateVF32Tanh, /*vector_width=*/1);
   rewrite_calls("llvm.tanh.f32", GenerateVF32Tanh, /*vector_width=*/1);

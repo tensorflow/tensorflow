@@ -23,10 +23,24 @@ namespace mlir {
 namespace TFTPU {
 
 // Run all the passes involved in transforming the graph before execution so
-// that it is suitable for targeting TPUs.
-tensorflow::Status TPUBridge(ModuleOp module);
+// that it is suitable for targeting TPUs. When enable_logging is true, enables
+// tensorflow::BridgeLogger.
+tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging);
 
 }  // namespace TFTPU
+
+namespace TF {
+
+// Runs all passes involved in transforming or optimizing an MLIR graph without
+// any target specialization. When enable_logging is true, enables
+// tensorflow::BridgeLogger. When enable_inliner is true, enables the inliner
+// pass.
+tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
+                                                 bool enable_logging,
+                                                 bool enable_inliner);
+
+}  // namespace TF
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_BRIDGE_H_

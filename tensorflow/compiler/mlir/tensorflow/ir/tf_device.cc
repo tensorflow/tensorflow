@@ -26,11 +26,13 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SMLoc.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
@@ -147,7 +149,7 @@ ParseResult ParseReplicateOp(OpAsmParser* parser, OperationState* state) {
   Region& body = *state->addRegion();
   if (ParseReplicateOpOperands(parser, state, &operands, &region_args,
                                &region_arg_types) ||
-      parser->parseOptionalAttributeDict(state->attributes) ||
+      parser->parseOptionalAttrDict(state->attributes) ||
       SetOperands(loc, parser, state, operands, region_arg_types, &n) ||
       parser->parseRegion(body, region_args, region_arg_types))
     return failure();

@@ -75,10 +75,10 @@ public:
   static constexpr unsigned MaxStorageBits = 32;
 
   static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, unsigned flags,
-                               Type storageType, Type expressedType,
-                               int64_t storageTypeMin, int64_t storageTypeMax);
+  verifyConstructionInvariants(Optional<Location> loc, MLIRContext *context,
+                               unsigned flags, Type storageType,
+                               Type expressedType, int64_t storageTypeMin,
+                               int64_t storageTypeMax);
 
   /// Support method to enable LLVM-style type casting.
   static bool classof(Type type) {
@@ -238,10 +238,10 @@ public:
 
   /// Verifies construction invariants and issues errors/warnings.
   static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, unsigned flags,
-                               Type storageType, Type expressedType,
-                               int64_t storageTypeMin, int64_t storageTypeMax);
+  verifyConstructionInvariants(Optional<Location> loc, MLIRContext *context,
+                               unsigned flags, Type storageType,
+                               Type expressedType, int64_t storageTypeMin,
+                               int64_t storageTypeMax);
 };
 
 /// Represents a family of uniform, quantized types.
@@ -298,7 +298,7 @@ public:
 
   /// Verifies construction invariants and issues errors/warnings.
   static LogicalResult verifyConstructionInvariants(
-      llvm::Optional<Location> loc, MLIRContext *context, unsigned flags,
+      Optional<Location> loc, MLIRContext *context, unsigned flags,
       Type storageType, Type expressedType, double scale, int64_t zeroPoint,
       int64_t storageTypeMin, int64_t storageTypeMax);
 

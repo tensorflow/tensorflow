@@ -37,6 +37,8 @@ namespace TFDevice {
 
 namespace {
 
+constexpr char kDTypeAttr[] = "dtype";
+
 // This pass lifts resource variable operations outside of device computation.
 // This is useful because a lot of accelerator devices can not interact with
 // resource variables directly..
@@ -75,8 +77,9 @@ struct ResourceOpLiftingPass : public FunctionPass<ResourceOpLiftingPass> {
   void runOnFunction() override;
 };
 
-// Rewrites `tf.AssignAddVariableOp` into a primitive resource/computation ops.
-// Specifically:
+// Rewrites composite variable op `tf.AssignAddVariableOp` or
+// `tf.AssignSubVariableOp` into primitive resource/computation ops.
+// For example:
 //
 // tf.AssignAddVariableOp(%res, %0)
 //
@@ -85,39 +88,93 @@ struct ResourceOpLiftingPass : public FunctionPass<ResourceOpLiftingPass> {
 // %res_val = tf.ReadVariableOp(%res)
 // %1 = tf.AddV2(%res_val, %0)
 // tf.AssignVariableOp(%res, %1)
-LogicalResult RewriteAssignAddVariableOp(TF::AssignAddVariableOp assign_add_op,
-                                         OpBuilder* builder) {
+//
+template <typename T>
+LogicalResult RewriteCompositeAssignVariableOp(T src_op, OpBuilder* builder) {
   // Read mangled dtype, which indicates type of data stored in resource
   // variable. It can then be used to construct type needed for both
   // ReadVariableOp and AssignVariableOp.
   StringAttr mangled_dtype_attr =
-      assign_add_op.getAttrOfType<StringAttr>("dtype");
+      src_op.template getAttrOfType<StringAttr>(kDTypeAttr);
   std::string type_string = mangled_dtype_attr.getValue();
   tensorflow::DataType dtype_proto;
   auto s =
       tensorflow::mangling_util::DemangleDataType(type_string, &dtype_proto);
-  if (!s.ok()) return assign_add_op.emitError() << s.error_message();
+  if (!s.ok()) return src_op.emitError() << s.error_message();
 
   Type type;
   s = tensorflow::ConvertDataType(dtype_proto, *builder, &type);
-  if (!s.ok()) return assign_add_op.emitError() << s.error_message();
+  if (!s.ok()) return src_op.emitError() << s.error_message();
   type = UnrankedTensorType::get(type);
 
-  builder->setInsertionPoint(assign_add_op);
+  builder->setInsertionPoint(src_op);
 
   auto read_variable_op = builder->create<TF::ReadVariableOp>(
-      assign_add_op.getLoc(), type, assign_add_op.resource());
-  read_variable_op.setAttr(builder->getIdentifier("dtype"), mangled_dtype_attr);
+      src_op.getLoc(), type, src_op.resource());
+  read_variable_op.setAttr(builder->getIdentifier(kDTypeAttr),
+                           mangled_dtype_attr);
 
-  auto add_op = builder->create<TF::AddV2Op>(
-      assign_add_op.getLoc(), read_variable_op.value(), assign_add_op.value());
+  Value* result;
+  if (std::is_same<T, TF::AssignAddVariableOp>()) {
+    result = builder->create<TF::AddV2Op>(
+        src_op.getLoc(), read_variable_op.value(), src_op.value());
+  } else {
+    result = builder->create<TF::SubOp>(
+        src_op.getLoc(), read_variable_op.value(), src_op.value());
+  }
 
   auto assign_variable_op = builder->create<TF::AssignVariableOp>(
-      assign_add_op.getLoc(), assign_add_op.resource(), add_op.z());
-  assign_variable_op.setAttr(builder->getIdentifier("dtype"),
+      src_op.getLoc(), src_op.resource(), result);
+  assign_variable_op.setAttr(builder->getIdentifier(kDTypeAttr),
                              mangled_dtype_attr);
 
-  assign_add_op.erase();
+  src_op.erase();
+  return success();
+}
+
+// Rewrites `tf.ResourceApplyGradientDescent` into primitive resource and
+// computation ops.
+//
+// Specifically:
+//
+// tf.ResourceApplyGradientDescent(%var, %alpha, %delta)
+//
+// Becomes
+//
+// %old_var_val = tf.ReadVariableOp(%var)
+// %gradient_update = tf.Mul(%alpha, %delta)
+// %new_var_val = tf.Sub(%old_var_val, %gradient_update)
+// tf.AssignVariableOp(%var, %new_var_val)
+LogicalResult RewriteResourceApplyGradientDescentOp(
+    TF::ResourceApplyGradientDescentOp op, OpBuilder* builder) {
+  Type type = op.alpha()->getType();
+  auto t = UnrankedTensorType::get(type.cast<TensorType>().getElementType());
+
+  tensorflow::DataType data_type;
+  auto s = tensorflow::ConvertToDataType(type, &data_type);
+  if (!s.ok()) return op.emitError() << s.error_message();
+
+  std::string mangled_data_type =
+      tensorflow::mangling_util::MangleDataType(data_type);
+  auto mangled_dtype_attr = builder->getStringAttr(mangled_data_type);
+
+  builder->setInsertionPoint(op);
+  auto read_variable_op =
+      builder->create<TF::ReadVariableOp>(op.getLoc(), t, op.var());
+  read_variable_op.setAttr(builder->getIdentifier(kDTypeAttr),
+                           mangled_dtype_attr);
+
+  auto mul_op =
+      builder->create<TF::MulOp>(op.getLoc(), t, op.alpha(), op.delta());
+  auto sub_op = builder->create<TF::SubOp>(
+      op.getLoc(), t, read_variable_op.value(), mul_op.z());
+  auto assign_variable_op =
+      builder->create<TF::AssignVariableOp>(op.getLoc(), op.var(), sub_op.z());
+  assign_variable_op.setAttr(builder->getIdentifier(kDTypeAttr),
+                             mangled_dtype_attr);
+
+  op.erase();
+
   return success();
 }
 
@@ -131,8 +188,15 @@ LogicalResult RewriteAssignAddVariableOp(TF::AssignAddVariableOp assign_add_op,
 LogicalResult MaybeRewriteCompositeResourceStore(Operation* op,
                                                  OpBuilder* builder) {
   if (auto assign_add_op = dyn_cast<TF::AssignAddVariableOp>(op)) {
-    return RewriteAssignAddVariableOp(assign_add_op, builder);
+    return RewriteCompositeAssignVariableOp(assign_add_op, builder);
+  } else if (auto assign_sub_op = dyn_cast<TF::AssignSubVariableOp>(op)) {
+    return RewriteCompositeAssignVariableOp(assign_sub_op, builder);
+  } else if (auto resource_apply_gradient_descent_op =
+                 dyn_cast<TF::ResourceApplyGradientDescentOp>(op)) {
+    return RewriteResourceApplyGradientDescentOp(
+        resource_apply_gradient_descent_op, builder);
   }
+
   return success();
 }
 

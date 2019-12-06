@@ -153,16 +153,11 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
 
   // Construct (potentially temporary) mins and maxes on which to apply maps
   // that define tile subviews.
-  SmallVector<Value *, 8> mins, maxes;
+  SmallVector<Value *, 8> lbs, subViewSizes;
   for (unsigned idx = 0, idxIvs = 0, e = tileSizes.size(); idx < e; ++idx) {
-    if (isZero(tileSizes[idx])) {
-      mins.push_back(constant_index(folder, 0));
-      maxes.push_back(viewSizes[idx]);
-    } else {
-      ValueHandle lb(ivs[idxIvs++]), step(tileSizes[idx]);
-      mins.push_back(lb);
-      maxes.push_back(lb + step);
-    }
+    bool isTiled = !isZero(tileSizes[idx]);
+    lbs.push_back(isTiled ? ivs[idxIvs++] : (Value *)constant_index(folder, 0));
+    subViewSizes.push_back(isTiled ? tileSizes[idx] : viewSizes[idx]);
   }
 
   auto *op = linalgOp.getOperation();
@@ -182,51 +177,55 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
     }
 
     // Construct a new subview for the tile.
-    SmallVector<SubViewOp::Range, 4> subViewRangeOperands;
-    subViewRangeOperands.reserve(rank * 3);
+    SmallVector<Value *, 4> offsets, sizes, strides;
+    offsets.reserve(rank);
+    sizes.reserve(rank);
+    strides.reserve(rank);
     for (unsigned r = 0; r < rank; ++r) {
       if (!isTiled(map.getSubMap({r}), tileSizes)) {
-        subViewRangeOperands.push_back(
-            SubViewOp::Range{constant_index(folder, 0), dim(view, r),
-                             constant_index(folder, 1)});
+        offsets.push_back(constant_index(folder, 0));
+        sizes.push_back(dim(view, r));
+        strides.push_back(constant_index(folder, 1));
         continue;
       }
 
-      auto m = map.getSubMap({r});
-      auto *min = applyMapToValues(b, loc, m, mins, folder).front();
-      auto *max = applyMapToValues(b, loc, m, maxes, folder).front();
       // Tiling creates a new slice at the proper index, the slice step is 1
       // (i.e. the slice view does not subsample, stepping occurs in the loop).
-      subViewRangeOperands.push_back(
-          SubViewOp::Range{min, max, constant_index(folder, 1)});
+      auto m = map.getSubMap({r});
+      auto *offset = applyMapToValues(b, loc, m, lbs, folder).front();
+      offsets.push_back(offset);
+      auto *size = applyMapToValues(b, loc, m, subViewSizes, folder).front();
+      sizes.push_back(size);
+      strides.push_back(constant_index(folder, 1));
     }
-    SmallVector<Value *, 12> subViewOperands;
-    subViewOperands.reserve(subViewRangeOperands.size() * 3);
-    for (auto r : subViewRangeOperands) {
-      subViewOperands.push_back(r.min);
-      subViewOperands.push_back(r.max);
-      subViewOperands.push_back(r.step);
-    }
-    res.push_back(b.create<SubViewOp>(loc, view, subViewOperands));
+    // TODO(b/144419024) Atm std.subview is not guaranteed in-bounds. Depending
+    // on the semantics we attach to it, we may need to use min(size, dim) here
+    // and canonicalize later.
+    res.push_back(b.create<SubViewOp>(loc, view, offsets, sizes, strides));
   }
 
   // Traverse the mins/maxes and erase those that don't have uses left.
   // This is a special type of folding that we only apply when `folder` is
   // defined.
-  if (folder) {
-    mins.append(maxes.begin(), maxes.end());
-    for (auto *v : mins)
+  if (folder)
+    for (auto *v : llvm::concat<Value *>(lbs, subViewSizes))
       if (v->use_empty())
         v->getDefiningOp()->erase();
-  }
 
   return res;
 }
 
-llvm::Optional<TiledLinalgOp>
-mlir::linalg::tileLinalgOp(OpBuilder &b, LinalgOp op,
-                           ArrayRef<Value *> tileSizes,
-                           OperationFolder *folder) {
+void applyPermutationToLoopRanges(SmallVector<SubViewOp::Range, 4> &loopRanges,
+                                  ArrayRef<unsigned> permutation) {
+  SmallVector<SubViewOp::Range, 4> auxVec(loopRanges.size());
+  for (unsigned i = 0; i < permutation.size(); ++i)
+    auxVec[i] = loopRanges[permutation[i]];
+  loopRanges = auxVec;
+}
+
+llvm::Optional<TiledLinalgOp> mlir::linalg::tileLinalgOp(
+    OpBuilder &b, LinalgOp op, ArrayRef<Value *> tileSizes,
+    ArrayRef<unsigned> permutation, OperationFolder *folder) {
   // 1. Enforce the convention that "tiling by zero" skips tiling a particular
   // dimension. This convention is significantly simpler to handle instead of
   // adjusting affine maps to account for missing dimensions.
@@ -234,6 +233,15 @@ mlir::linalg::tileLinalgOp(OpBuilder &b, LinalgOp op,
                  op.getNumWindowLoops() ==
              tileSizes.size() &&
          "expected matching number of tile sizes and loops");
+
+  // If permutation is empty, use the identity. Build the permutation map
+  // otherwise.
+  auto invPermutationMap = AffineMap::getMultiDimIdentityMap(
+      tileSizes.size(), ScopedContext::getContext());
+  if (!permutation.empty())
+    invPermutationMap = inversePermutation(
+        AffineMap::getPermutationMap(permutation, ScopedContext::getContext()));
+
   OpBuilder::InsertionGuard g(b);
   b.setInsertionPoint(op);
   ScopedContext scope(b, op.getLoc());
@@ -247,6 +255,8 @@ mlir::linalg::tileLinalgOp(OpBuilder &b, LinalgOp op,
   auto loopRanges =
       makeTiledLoopRanges(b, scope.getLocation(), viewSizesToLoopsMap,
                           viewSizes, tileSizes, folder);
+  if (!permutation.empty())
+    applyPermutationToLoopRanges(loopRanges, permutation);
 
   // 3. Create the tiled loops.
   LinalgOp res = op;
@@ -256,6 +266,15 @@ mlir::linalg::tileLinalgOp(OpBuilder &b, LinalgOp op,
     auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
     SmallVector<Value *, 4> ivValues(ivs.begin(), ivs.end());
+
+    // If we have to apply a permutation to the tiled loop nest, we have to
+    // reorder the induction variables This permutation is the right one
+    // assuming that loopRanges have previously been permuted by
+    // (i,j,k)->(k,i,j) So this permutation should be the inversePermutation of
+    // that one: (d0,d1,d2)->(d2,d0,d1)
+    if (!permutation.empty())
+      ivValues = applyMapToValues(b, loc, invPermutationMap, ivValues, folder);
+
     auto views =
         makeTiledViews(b, loc, op, ivValues, tileSizes, viewSizes, folder);
     auto operands = getAssumedNonViewOperands(op);
@@ -272,10 +291,9 @@ mlir::linalg::tileLinalgOp(OpBuilder &b, LinalgOp op,
   return TiledLinalgOp{res, loops};
 }
 
-llvm::Optional<TiledLinalgOp>
-mlir::linalg::tileLinalgOp(OpBuilder &b, LinalgOp op,
-                           ArrayRef<int64_t> tileSizes,
-                           OperationFolder *folder) {
+llvm::Optional<TiledLinalgOp> mlir::linalg::tileLinalgOp(
+    OpBuilder &b, LinalgOp op, ArrayRef<int64_t> tileSizes,
+    ArrayRef<unsigned> permutation, OperationFolder *folder) {
   if (tileSizes.empty())
     return llvm::None;
 
@@ -305,14 +323,15 @@ mlir::linalg::tileLinalgOp(OpBuilder &b, LinalgOp op,
       tileSizeValues.push_back(constant_index(folder, 0));
   }
 
-  return tileLinalgOp(b, op, tileSizeValues, folder);
+  return tileLinalgOp(b, op, tileSizeValues, permutation, folder);
 }
 
 static void tileLinalgOps(FuncOp f, ArrayRef<int64_t> tileSizes) {
   OpBuilder b(f);
   OperationFolder folder(f.getContext());
   f.walk([tileSizes, &b, &folder](LinalgOp op) {
-    auto opLoopsPair = tileLinalgOp(b, op, tileSizes, &folder);
+    auto opLoopsPair =
+        tileLinalgOp(b, op, tileSizes, /*permutation=*/{}, &folder);
     // If tiling occurred successfully, erase old op.
     if (opLoopsPair)
       op.erase();

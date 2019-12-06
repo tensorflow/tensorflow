@@ -20,14 +20,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef DIALECT_FXPMATHOPS_FXPMATH_OPS_
-#else
+#ifndef DIALECT_FXPMATHOPS_FXPMATH_OPS_
 #define DIALECT_FXPMATHOPS_FXPMATH_OPS_
-#ifdef OP_BASE
-#else
-include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
+include "mlir/IR/OpBase.td"
 include "mlir/Dialect/QuantOps/QuantPredicates.td"
 
 def fxpmath_Dialect : Dialect {

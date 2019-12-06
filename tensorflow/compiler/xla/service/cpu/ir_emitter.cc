@@ -1406,6 +1406,7 @@ Status IrEmitter::HandleAllReduceSingleReplica(HloInstruction* crs) {
 Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
   CHECK_GE(crs->operand_count(), 1);
   PrimitiveType datatype = crs->operand(0)->shape().element_type();
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(crs));
 
   bool is_datatype_supported = [&] {
     // TODO(cheshire): Fix duplication wrt. cpu_runtime
@@ -1510,6 +1511,7 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
 }
 
 Status IrEmitter::HandleReplicaId(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
   llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
   llvm::FunctionType* replica_id_function_ty =
       llvm::FunctionType::get(b_.getVoidTy(),

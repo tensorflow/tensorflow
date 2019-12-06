@@ -1,3 +1,5 @@
+load("@local_config_mlir//:tblgen.bzl", "gentbl")
+
 licenses(["notice"])
 
 package(default_visibility = [":test_friends"])
@@ -9,12 +11,40 @@ package_group(
     packages = ["//..."],
 )
 
-load("@local_config_mlir//:tblgen.bzl", "gentbl")
-
 cc_library(
     name = "IRProducingAPITest",
     hdrs = ["APITest.h"],
     includes = ["."],
+)
+
+gentbl(
+    name = "TestLinalgTransformPatternsIncGen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/DeclarativeTransforms/TestLinalgTransformPatterns.h.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "lib/DeclarativeTransforms/TestLinalgTransformPatterns.td",
+    td_srcs = [
+        "@local_config_mlir//:LinalgTransformPatternsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "TestLinalgTilePermuteTransformPatternsIncGen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/DeclarativeTransforms/TestLinalgTilePermutePatterns.h.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "lib/DeclarativeTransforms/TestLinalgTilePermutePatterns.td",
+    td_srcs = [
+        "@local_config_mlir//:LinalgTransformPatternsTdFiles",
+    ],
 )
 
 gentbl(
@@ -30,6 +60,14 @@ gentbl(
             "lib/TestDialect/TestOps.cpp.inc",
         ),
         (
+            "-gen-enum-decls",
+            "lib/TestDialect/TestOpEnums.h.inc",
+        ),
+        (
+            "-gen-enum-defs",
+            "lib/TestDialect/TestOpEnums.cpp.inc",
+        ),
+        (
             "-gen-rewriters",
             "lib/TestDialect/TestPatterns.inc",
         ),
@@ -37,7 +75,8 @@ gentbl(
     tblgen = "@local_config_mlir//:mlir-tblgen",
     td_file = "lib/TestDialect/TestOps.td",
     td_srcs = [
-        "@local_config_mlir//:include/mlir/IR/OpBase.td",
+        "@local_config_mlir//:OpBaseTdFiles",
+        "@local_config_mlir//:include/mlir/IR/OpAsmInterface.td",
         "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.td",
         "@local_config_mlir//:include/mlir/Analysis/InferTypeOpInterface.td",
     ],
@@ -53,9 +92,13 @@ cc_library(
     hdrs = [
         "lib/TestDialect/TestDialect.h",
     ],
-    includes = ["lib/TestDialect"],
+    includes = [
+        "lib/DeclarativeTransforms",
+        "lib/TestDialect",
+    ],
     deps = [
         ":TestOpsIncGen",
+        "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:Dialect",
         "@local_config_mlir//:IR",
@@ -69,9 +112,11 @@ cc_library(
 cc_library(
     name = "TestIR",
     srcs = [
+        "lib/IR/TestFunc.cpp",
         "lib/IR/TestSymbolUses.cpp",
     ],
     deps = [
+        ":TestDialect",
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
@@ -100,21 +145,28 @@ cc_library(
         "lib/Transforms/TestCallGraph.cpp",
         "lib/Transforms/TestConstantFold.cpp",
         "lib/Transforms/TestInlining.cpp",
+        "lib/Transforms/TestLinalgTilePermuteTransforms.cpp",
+        "lib/Transforms/TestLinalgTransforms.cpp",
         "lib/Transforms/TestLoopFusion.cpp",
         "lib/Transforms/TestLoopMapping.cpp",
         "lib/Transforms/TestLoopParametricTiling.cpp",
         "lib/Transforms/TestMemRefStrideCalculation.cpp",
         "lib/Transforms/TestOpaqueLoc.cpp",
+        "lib/Transforms/TestVectorToLoopsConversion.cpp",
+        "lib/Transforms/TestVectorToVectorConversion.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
     ],
     includes = ["lib/TestDialect"],
     deps = [
         ":TestDialect",
+        ":TestLinalgTilePermuteTransformPatternsIncGen",
+        ":TestLinalgTransformPatternsIncGen",
         "@llvm//:support",
         "@local_config_mlir//:AffineOps",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:EDSC",
         "@local_config_mlir//:IR",
+        "@local_config_mlir//:Linalg",
         "@local_config_mlir//:LoopOps",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
@@ -122,6 +174,8 @@ cc_library(
         "@local_config_mlir//:TransformUtils",
         "@local_config_mlir//:Transforms",
         "@local_config_mlir//:VectorOps",
+        "@local_config_mlir//:VectorToLLVM",
+        "@local_config_mlir//:VectorToLoops",
     ],
     alwayslink = 1,
 )

@@ -19,14 +19,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef AFFINE_OPS_BASE
-#else
+#ifndef AFFINE_OPS_BASE
 #define AFFINE_OPS_BASE
 
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 // Attributes containing affine maps.
 def AffineMapAttr : Attr<

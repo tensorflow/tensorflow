@@ -205,7 +205,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 3);
   AddBuiltin(BuiltinOperator_SIN, Register_SIN());
   AddBuiltin(BuiltinOperator_COS, Register_COS());
-  AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSE_CONV());
+  AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSE_CONV(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_TILE, Register_TILE());
   AddBuiltin(BuiltinOperator_SUM, Register_SUM(),
              /* min_version */ 1,
@@ -273,6 +275,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              Register_NON_MAX_SUPPRESSION_V4());
   AddBuiltin(BuiltinOperator_NON_MAX_SUPPRESSION_V5,
              Register_NON_MAX_SUPPRESSION_V5());
+  AddBuiltin(BuiltinOperator_SCATTER_ND, Register_SCATTER_ND());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

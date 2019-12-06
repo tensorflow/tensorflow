@@ -54,7 +54,8 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
       auto op = cast<LinalgOp>(generic_op.getOperation());
       for (const Value* result : op.getOutputs()) {
         if (!func_args.count(result)) continue;
-        if (linalg::tileLinalgOp(b, op, tile_sizes, &folder)) {
+        if (linalg::tileLinalgOp(b, op, tile_sizes, /*permutation=*/{},
+                                 &folder)) {
           generic_op.erase();
           return;
         }

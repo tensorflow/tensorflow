@@ -82,7 +82,7 @@ inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::MaxOp>(
   Type element_type = lhs->getType();
   if (element_type.isa<IntegerType>()) {
     auto lhs_gt_rhs = b.create<ScalarIOp<CompareOp>>(
-        lhlo_op.getLoc(), CmpIPredicate::SGT, lhs, rhs);
+        lhlo_op.getLoc(), CmpIPredicate::sgt, lhs, rhs);
     return b.create<::mlir::SelectOp>(lhlo_op.getLoc(), lhs_gt_rhs, lhs, rhs);
   }
   if (element_type.isa<FloatType>()) {
@@ -102,7 +102,7 @@ inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::MinOp>(
   Type element_type = lhs->getType();
   if (element_type.isa<IntegerType>()) {
     auto lhs_lt_rhs = b.create<ScalarIOp<CompareOp>>(
-        lhlo_op.getLoc(), CmpIPredicate::SLT, lhs, rhs);
+        lhlo_op.getLoc(), CmpIPredicate::slt, lhs, rhs);
     return b.create<::mlir::SelectOp>(lhlo_op.getLoc(), lhs_lt_rhs, lhs, rhs);
   }
   if (element_type.isa<FloatType>()) {
@@ -135,15 +135,16 @@ inline CmpFPredicate getFloatCmpPredicate(StringRef xla_comparison_direction) {
       .Default(CmpFPredicate::NumPredicates);
 }
 
-inline CmpIPredicate getIntCmpPredicate(StringRef xla_comparison_direction) {
-  return llvm::StringSwitch<CmpIPredicate>(xla_comparison_direction)
-      .Case("EQ", CmpIPredicate::EQ)
-      .Case("NE", CmpIPredicate::NE)
-      .Case("GE", CmpIPredicate::SGE)
-      .Case("GT", CmpIPredicate::SGT)
-      .Case("LE", CmpIPredicate::SLE)
-      .Case("LT", CmpIPredicate::SLT)
-      .Default(CmpIPredicate::NumPredicates);
+inline Optional<CmpIPredicate> getIntCmpPredicate(
+    StringRef xla_comparison_direction) {
+  return llvm::StringSwitch<Optional<CmpIPredicate>>(xla_comparison_direction)
+      .Case("EQ", CmpIPredicate::eq)
+      .Case("NE", CmpIPredicate::ne)
+      .Case("GE", CmpIPredicate::sge)
+      .Case("GT", CmpIPredicate::sgt)
+      .Case("LE", CmpIPredicate::sle)
+      .Case("LT", CmpIPredicate::slt)
+      .Default(llvm::None);
 }
 
 template <>
@@ -154,9 +155,11 @@ inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::CompareOp>(
   const auto& rhs = block_args[1];
   Type element_type = lhs->getType();
   if (element_type.isa<IntegerType>()) {
-    return b.create<ScalarIOp<CompareOp>>(
-        lhlo_op.getLoc(), getIntCmpPredicate(lhlo_op.comparison_direction()),
-        lhs, rhs);
+    Optional<CmpIPredicate> predicate =
+        getIntCmpPredicate(lhlo_op.comparison_direction());
+    assert(predicate.hasValue() && "expected valid comparision direction");
+    return b.create<ScalarIOp<CompareOp>>(lhlo_op.getLoc(),
+                                          predicate.getValue(), lhs, rhs);
   }
   if (element_type.isa<FloatType>()) {
     return b.create<ScalarFOp<CompareOp>>(

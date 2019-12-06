@@ -282,18 +282,19 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
     next_element = self.getNext(dataset, requires_initialization=True)
 
     for i in range(num_output):
-      next_ = self.evaluate(next_element())
+      value = self.evaluate(next_element())
       if check_elements:
-        self.assertAllEqual(np.array([i] * i, dtype=np.int64), next_)
+        self.assertAllEqual(np.array([i] * i, dtype=np.int64), value)
       handle = self.getHandle(aggregator)
       for dataset_name in dataset_names:
         if function_processing_time:
           self.assertStatisticsHasCount(
               handle, r"(.*)::execution_time$", float(i + 1), greater_than=True)
-        self.assertStatisticsContains(
-            handle, self.regexForNodeName(dataset_name, "thread_utilization"))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
+    for dataset_name in dataset_names:
+      self.assertStatisticsContains(
+          handle, self.regexForNodeName(dataset_name, "thread_utilization"))
     if function_processing_time:
       handle = self.getHandle(aggregator)
       for dataset_name in dataset_names:

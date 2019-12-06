@@ -24,7 +24,7 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/eigen_support.h"
 // b/131835803 forces us to include multithreaded_conv.h before optimized_ops.h
@@ -668,20 +668,10 @@ void EvalHybridPerChannel(TfLiteContext* context, TfLiteNode* node,
 
   for (int b = 0; b < batch_size; ++b) {
     const int offset = b * input_size;
-    auto tensor_data = GetTensorData<float>(input) + offset;
-    auto minmax = std::minmax_element(tensor_data, tensor_data + input_size);
-    double min_value = *minmax.first;
-    double max_value = *minmax.second;
-    min_value = 0.0 < min_value ? 0.0 : min_value;
-    max_value = 0.0 > max_value ? 0.0 : max_value;
-    QuantizationParams quantization_params =
-        ChooseQuantizationParams<int8>(min_value, max_value);
-    input_offset_ptr[b] = quantization_params.zero_point;
-    scaling_factors_ptr[b] = quantization_params.scale;
     tensor_utils::AsymmetricQuantizeFloats(
         GetTensorData<float>(input) + offset, input_size,
-        quantized_input_ptr_batch + offset, scaling_factors_ptr[b],
-        input_offset_ptr[b]);
+        quantized_input_ptr_batch + offset, &scaling_factors_ptr[b],
+        &input_offset_ptr[b]);
   }
 
   int8_t* im2col_ptr = nullptr;

@@ -19,8 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 #define OP_BASE
 
 //===----------------------------------------------------------------------===//
@@ -221,6 +220,9 @@ def IsTensorTypePred : CPred<"$_self.isa<TensorType>()">;
 
 // Whether a type is a MemRefType.
 def IsMemRefTypePred : CPred<"$_self.isa<MemRefType>()">;
+
+// Whether a type is an  IsUnrankedMemRefType
+def IsUnrankedMemRefTypePred : CPred<"$_self.isa<UnrankedMemRefType>()">;
 
 // Whether a type is a ShapedType.
 def IsShapedTypePred : CPred<"$_self.isa<ShapedType>()">;
@@ -487,6 +489,10 @@ class 2DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [2]>;
 class 3DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [3]>;
 class 4DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [4]>;
 
+// Unranked Memref type
+def AnyUnrankedMemRef : 
+    ShapedContainerType<[AnyType], 
+                        IsUnrankedMemRefTypePred, "unranked.memref">;
 // Memref type.
 
 // Memrefs are blocks of data with fixed type and rank.
@@ -494,6 +500,8 @@ class MemRefOf<list<Type> allowedTypes> :
     ShapedContainerType<allowedTypes, IsMemRefTypePred, "memref">;
 
 def AnyMemRef : MemRefOf<[AnyType]>;
+
+def AnyRankedOrUnrankedMemRef: AnyTypeOf<[AnyUnrankedMemRef, AnyMemRef]>;
 
 // Memref declarations handle any memref, independent of rank, size, (static or
 // dynamic), layout, or memory space.
@@ -837,6 +845,16 @@ class IntEnumAttrCaseBase<I intType, string sym, int val> :
 class I32EnumAttrCase<string sym, int val> : IntEnumAttrCaseBase<I32, sym, val>;
 class I64EnumAttrCase<string sym, int val> : IntEnumAttrCaseBase<I64, sym, val>;
 
+// A bit enum case stored with 32-bit IntegerAttr. `val` here is *not* the
+// ordinal number of the bit that is set. It is the 32-bit integer with only
+// one bit set.
+class BitEnumAttrCase<string sym, int val> :
+    EnumAttrCaseInfo<sym, val>,
+    IntegerAttrBase<I32, "case " # sym> {
+  let predicate = CPred<
+    "$_self.cast<IntegerAttr>().getValue().getZExtValue() & " # val # "u">;
+}
+
 // Additional information for an enum attribute.
 class EnumAttrInfo<string name, list<EnumAttrCaseInfo> cases> {
   // The C++ enum class name
@@ -844,10 +862,6 @@ class EnumAttrInfo<string name, list<EnumAttrCaseInfo> cases> {
 
   // List of all accepted cases
   list<EnumAttrCaseInfo> enumerants = cases;
-
-  // Whether to skip automatically generating C++ enum class and utility
-  // functions for this enum attribute with EnumsGen.
-  bit skipAutoGen = 0;
 
   // The following fields are only used by the EnumsGen backend to generate
   // an enum class definition and conversion utility functions.
@@ -933,12 +947,48 @@ class IntEnumAttr<I intType, string name, string description,
 class I32EnumAttr<string name, string description,
                   list<I32EnumAttrCase> cases> :
     IntEnumAttr<I32, name, description, cases> {
+  let returnType = cppNamespace # "::" # name;
   let underlyingType = "uint32_t";
+  let convertFromStorage = "static_cast<" # returnType # ">($_self.getInt())";
+  let constBuilderCall = "$_builder.getI32IntegerAttr(static_cast<int32_t>($0))";
 }
 class I64EnumAttr<string name, string description,
                   list<I64EnumAttrCase> cases> :
     IntEnumAttr<I64, name, description, cases> {
+  let returnType = cppNamespace # "::" # name;
   let underlyingType = "uint64_t";
+  let convertFromStorage = "static_cast<" # returnType # ">($_self.getInt())";
+  let constBuilderCall = "$_builder.getI64IntegerAttr(static_cast<int64_t>($0))";
+}
+
+// A bit enum stored with 32-bit IntegerAttr.
+//
+// Op attributes of this kind are stored as IntegerAttr. Extra verification will
+// be generated on the integer to make sure only allowed bit are set. Besides,
+// helper methods are generated to parse a string separated with a specified
+// delimiter to a symbol and vice versa.
+class BitEnumAttr<string name, string description,
+                  list<BitEnumAttrCase> cases> :
+    EnumAttrInfo<name, cases>, IntegerAttrBase<I32, description> {
+  let predicate = And<[
+    IntegerAttrBase<I32, "">.predicate,
+    // Make sure we don't have unknown bit set.
+    CPred<"!($_self.cast<IntegerAttr>().getValue().getZExtValue() & (~(" #
+          StrJoin<!foreach(case, cases, case.value # "u"), "|">.result #
+          ")))">
+  ]>;
+
+  let returnType = cppNamespace # "::" # name;
+  let underlyingType = "uint32_t";
+  let convertFromStorage = "static_cast<" # returnType # ">($_self.getInt())";
+  let constBuilderCall = "$_builder.getI32IntegerAttr(static_cast<int32_t>($0))";
+
+  // We need to return a string because we may concatenate symbols for multiple
+  // bits together.
+  let symbolToStringFnRetType = "std::string";
+
+  // The delimiter used to separate bit enum cases in strings.
+  string separator = "|";
 }
 
 //===----------------------------------------------------------------------===//
@@ -1107,8 +1157,16 @@ class StructAttr<string name, Dialect dialect,
 def SymbolRefAttr : Attr<CPred<"$_self.isa<SymbolRefAttr>()">,
                         "symbol reference attribute"> {
   let storageType = [{ SymbolRefAttr }];
+  let returnType = [{ SymbolRefAttr }];
+  let constBuilderCall = "$_builder.getSymbolRefAttr($0)";
+  let convertFromStorage = "$_self";
+}
+def FlatSymbolRefAttr : Attr<CPred<"$_self.isa<FlatSymbolRefAttr>()">,
+                                   "flat symbol reference attribute"> {
+  let storageType = [{ FlatSymbolRefAttr }];
   let returnType = [{ StringRef }];
   let constBuilderCall = "$_builder.getSymbolRefAttr($0)";
+  let convertFromStorage = "$_self.getValue()";
 }
 
 def SymbolRefArrayAttr :
@@ -1190,6 +1248,10 @@ class ArrayMinCount<int n> : AttrConstraint<
     CPred<"$_self.cast<ArrayAttr>().size() >= " # n>,
     "with at least " # n # " elements">;
 
+class ArrayCount<int n> : AttrConstraint<
+    CPred<"$_self.cast<ArrayAttr>().size() == " #n>,
+    "with exactly " # n # " elements">;
+
 class IntArrayNthElemEq<int index, int value> : AttrConstraint<
     And<[
       CPred<"$_self.cast<ArrayAttr>().size() > " # index>,
@@ -1208,6 +1270,16 @@ class IntArrayNthElemMinValue<int index, int min> : AttrConstraint<
 
 def IsNullAttr : AttrConstraint<
     CPred<"!$_self">, "empty attribute (for optional attributes)">;
+
+// An attribute constraint on FlatSymbolRefAttr that requires that the
+// reference point to an op of `opClass` within the closest parent with a symbol
+// table.
+// TODO(riverriddle) Add support for nested symbol references.
+class ReferToOp<string opClass> : AttrConstraint<
+    CPred<"isa_and_nonnull<" # opClass # ">("
+            "::mlir::SymbolTable::lookupNearestSymbolFrom("
+              "&$_op, $_self.cast<FlatSymbolRefAttr>().getValue()))">,
+    "referencing to a '" # opClass # "' symbol">;
 
 //===----------------------------------------------------------------------===//
 // Region definitions
@@ -1244,8 +1316,7 @@ class NativeOpTrait<string prop> : OpTrait {
 // the value in `prop` as the trait name and the value in `params` as
 // parameters to construct the native trait class name.
 class ParamNativeOpTrait<string prop, string params>
-    : NativeOpTrait<prop # "<" # params # ">::Impl"> {
-}
+    : NativeOpTrait<prop # "<" # params # ">::Impl">;
 
 // GenInternalOpTrait is an op trait that does not have direct C++ mapping but
 // affects op definition generator internals, like how op builders and
@@ -1285,8 +1356,10 @@ def SameOperandsAndResultElementType :
   NativeOpTrait<"SameOperandsAndResultElementType">;
 // Op is a symbol.
 def Symbol : NativeOpTrait<"Symbol">;
+// Op defines a symbol table.
+def SymbolTable : NativeOpTrait<"SymbolTable">;
 // Op is a terminator.
-def Terminator       : NativeOpTrait<"IsTerminator">;
+def Terminator : NativeOpTrait<"IsTerminator">;
 
 // Op's regions have a single block with the specified terminator.
 class SingleBlockImplicitTerminator<string op>
@@ -1315,6 +1388,18 @@ def SameVariadicOperandSize : GenInternalOpTrait<"SameVariadicOperandSize">;
 // known at runtime. This trait requires all variadic results of an op
 // to have the same array size.
 def SameVariadicResultSize : GenInternalOpTrait<"SameVariadicResultSize">;
+
+// Uses an attribute named `operand_segment_sizes` to specify how many actual
+// operand each ODS-declared operand (variadic or not) corresponds to.
+// This trait is used for ops that have multiple variadic operands but do
+// not know statically their size relationship. The attribute must be a 1D
+// vector that has the same number of elements as the number of ODS declared
+// operands. That means even if some operands are non-variadic, the attribute
+// still need to have an element for its size, which is always 1.
+def AttrSizedOperandSegments : NativeOpTrait<"AttrSizedOperandSegments">;
+// Similar to AttrSizedOperandSegments, but used for results. The attribute
+// should be named as `result_segment_sizes`.
+def AttrSizedResultSegments  : NativeOpTrait<"AttrSizedResultSegments">;
 
 //===----------------------------------------------------------------------===//
 // OpInterface definitions
@@ -1616,6 +1701,12 @@ class TCOpResIsShapedTypePred<int i, int j> : And<[
     SubstLeaves<"$_self", "$_op.getOperand(" # j # ")->getType()",
       IsShapedTypePred>]>;
 
+// Predicate to verify that the i'th result and the j'th operand have the same
+// type.
+class TCresIsSameAsOpBase<int i, int j> :
+    CPred<"$_op.getResult(" # i # ")->getType() == "
+          "$_op.getOperand(" # j # ")->getType()">;
+
 // Basic Predicate to verify that the i'th result and the j'th operand have the
 // same elemental type.
 class TCresVTEtIsSameAsOpBase<int i, int j> :
@@ -1755,8 +1846,8 @@ class Pat<dag pattern, dag result, list<dag> preds = [],
 //
 // * `$_builder` will be replaced by the current `mlir::PatternRewriter`.
 // * `$_self` will be replaced with the entity this transformer is attached to.
-//   E.g., with the definition `def transform : tAttr<$_self...>`, `$_self` in
-//   `transform:$attr` will be replaced by  the value for `$att`.
+//   E.g., with the definition `def transform : NativeCodeCall<"$_self...">`,
+//   `$_self` in `transform:$attr` will be replaced by the value for `$attr`.
 //
 // If used as a DAG node, i.e., `(NativeCodeCall<"..."> <arg0>, ..., <argN>)`,
 // then positional placeholders are also supported; placeholder `$N` in the

@@ -299,8 +299,9 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     self._task_id = None
 
     logging.info(
-        "ParameterServerStrategy with compute_devices = %r, "
-        "variable_device = %r", compute_devices, self._variable_device)
+        "ParameterServerStrategy (CentralStorageStrategy if you are using a "
+        "single machine) with compute_devices = %r, variable_device = %r",
+        compute_devices, self._variable_device)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate(colocate_with_variable, self)

@@ -37,7 +37,13 @@ GCC_HOST_COMPILER_PATH = ('/dt7/usr/bin/gcc')
 NVCC_PATH = '/usr/local/cuda-10.0/bin/nvcc'
 NVCC_VERSION = '10.0'
 NVCC_TEMP_DIR = "C:\\Windows\\Temp\\nvcc_inter_files_tmp_dir"
-supported_cuda_compute_capabilities = [ "3.0", "6.0" ]
+DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,6.0'
+
+# Taken from environment variable for supported TF CUDA Compute Capabilities
+# eg. export TF_CUDA_COMPUTE_CAPABILITIES=3.5,3.7,5.2,6.0,6.1,7.0
+supported_cuda_compute_capabilities = os.environ.get(
+    'TF_CUDA_COMPUTE_CAPABILITIES',
+    DEFAULT_CUDA_COMPUTE_CAPABILITIES).split(',')
 
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))

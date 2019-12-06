@@ -88,16 +88,13 @@ StatusOr<Value*> HloDialectEmitter::EmitComputation(
 Status HloDialectEmitter::DefaultAction(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto res_type, ConvertTensorShapeToType<RankedTensorType>(
                                          instr->shape(), builder_));
-
-  auto name_attr =
-      builder_.getNamedAttr("name", builder_.getStringAttr(instr->name()));
   llvm::SmallVector<Value*, 4> arguments;
   for (auto operand : instr->operands()) {
     arguments.push_back(instruction_to_values_[operand]);
   }
   TF_ASSIGN_OR_RETURN(
       auto inserted, InsertMlirOp(instr->opcode(), builder_, getLocation(instr),
-                                  res_type, arguments, name_attr));
+                                  res_type, arguments, llvm::None));
   instruction_to_values_[instr] = inserted;
   return Status::OK();
 }
@@ -108,12 +105,9 @@ Status HloDialectEmitter::HandleBroadcast(HloInstruction* broadcast) {
   TF_ASSIGN_OR_RETURN(Type res_type, ConvertTensorShapeToType<RankedTensorType>(
                                          broadcast->shape(), builder_));
 
-  auto broadcast_op = builder_.create<hlo::BroadcastInDimOp>(
+  instruction_to_values_[broadcast] = builder_.create<hlo::BroadcastInDimOp>(
       getLocation(broadcast), llvm::makeArrayRef(res_type),
       instruction_to_values_[broadcast->operand(0)], broadcast_dim);
-  broadcast_op.setAttr("name", builder_.getStringAttr(broadcast->name()));
-
-  instruction_to_values_[broadcast] = broadcast_op;
   return Status::OK();
 }
 
@@ -178,18 +172,17 @@ Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
 Status HloDialectEmitter::HandleCompare(HloInstruction* compare) {
   TF_ASSIGN_OR_RETURN(Type res_type, ConvertTensorShapeToType<RankedTensorType>(
                                          compare->shape(), builder_));
-  llvm::SmallVector<NamedAttribute, 2> attributes{
-      builder_.getNamedAttr("name", builder_.getStringAttr(compare->name())),
-      builder_.getNamedAttr("comparison_direction",
-                            builder_.getStringAttr(ComparisonDirectionToString(
-                                compare->comparison_direction())))};
+  auto comparison_direction_attr = builder_.getNamedAttr(
+      "comparison_direction",
+      builder_.getStringAttr(
+          ComparisonDirectionToString(compare->comparison_direction())));
   llvm::SmallVector<Value*, 4> arguments;
   for (auto operand : compare->operands()) {
     arguments.push_back(instruction_to_values_[operand]);
   }
   instruction_to_values_[compare] = builder_.create<hlo::CompareOp>(
       getLocation(compare), llvm::makeArrayRef(res_type), arguments,
-      attributes);
+      comparison_direction_attr);
   return Status::OK();
 }
 
@@ -198,12 +191,8 @@ Status HloDialectEmitter::HandleIota(HloInstruction* iota) {
       static_cast<HloIotaInstruction*>(iota)->iota_dimension());
   TF_ASSIGN_OR_RETURN(Type res_type, ConvertTensorShapeToType<RankedTensorType>(
                                          iota->shape(), builder_));
-
-  auto iota_op =
+  instruction_to_values_[iota] =
       builder_.create<hlo::IotaOp>(getLocation(iota), res_type, iota_dim);
-  iota_op.setAttr("name", builder_.getStringAttr(iota->name()));
-
-  instruction_to_values_[iota] = iota_op;
   return Status::OK();
 }
 

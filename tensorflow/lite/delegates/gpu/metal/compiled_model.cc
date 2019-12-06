@@ -417,9 +417,9 @@ ComputeTaskDescriptorPtr NonLinkableStub(int operation_id, ValueId input_id,
   desc->resize_function = [input_id](const std::map<ValueId, BHWC>& buffers) {
     const auto& dimension = buffers.find(input_id)->second;
     uint3 groups_size{16, 16, 1};
-    uint3 groups_count{AlignByN(dimension.w, groups_size.x),
-                       AlignByN(dimension.h, groups_size.y),
-                       AlignByN(dimension.c, 4)};
+    uint3 groups_count{IntegralDivideRoundUp(dimension.w, groups_size.x),
+                       IntegralDivideRoundUp(dimension.h, groups_size.y),
+                       IntegralDivideRoundUp(dimension.c, 4)};
     return std::make_pair(groups_size, groups_count);
   };
 

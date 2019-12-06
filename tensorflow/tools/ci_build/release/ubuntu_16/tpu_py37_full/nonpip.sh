@@ -20,6 +20,7 @@ source tensorflow/tools/ci_build/release/common.sh
 source tensorflow/tools/ci_build/ctpu/ctpu.sh
 
 install_ubuntu_16_pip_deps pip3.7
+update_bazel_linux
 install_ctpu pip3.7
 ctpu_up -s v2-8 -g tensorflow-windows
 
@@ -38,7 +39,7 @@ yes "" | "$PYTHON_BIN_PATH" configure.py
 tag_filters="tpu,requires-tpu,-no_tpu,-notpu,-no_oss,-no_oss_py37"
 
 bazel test --config=opt \
-  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain \
+  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
   --linkopt=-lrt \
   --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --noincompatible_strict_action_env \

@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 typedef struct ANeuralNetworksMemory ANeuralNetworksMemory;
 
@@ -63,6 +63,12 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // NOTE: when using compilation caching, it is not recommended to use the
     // same delegate instance for multiple models.
     const char* model_token = nullptr;
+
+    // Whether to disallow NNAPI CPU usage. Only effective on Android 10 and
+    // above. The NNAPI CPU typically performs less well than built-in TfLite
+    // kernels, but allowing CPU allows partial acceleration of models. If this
+    // is set to true, NNAPI is only used if the whole model is accelerated.
+    bool disallow_nnapi_cpu = false;
   };
 
   // Uses default options.
@@ -131,6 +137,8 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     std::string cache_dir;
     // The unique token string for NNAPI model.
     std::string model_token;
+    // Whether to disallow NNAPI CPU.
+    bool disallow_nnapi_cpu;
     // Tensor to ANeuralNetworksMemory mapping.
     std::vector<MemoryRegistration> tensor_memory_map;
     // Constains a non zero value if any NNAPI method call

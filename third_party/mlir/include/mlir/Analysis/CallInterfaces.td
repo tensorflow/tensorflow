@@ -21,14 +21,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef MLIR_CALLINTERFACES
-#else
+#ifndef MLIR_CALLINTERFACES
 #define MLIR_CALLINTERFACES
 
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 // `CallInterfaceCallable`: This is a type used to represent a single callable
 // region. A callable is either a symbol, or an SSA value, that is referenced by

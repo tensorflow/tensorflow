@@ -187,7 +187,7 @@ llvm::SmallVector<Value*, 8> CollectClusterResults(
     for (Value* result : op->getResults()) {
       for (Operation* user : result->getUsers()) {
         // Check if user is not an op in the cluster.
-        if (cluster_ops.count(block->findAncestorInstInBlock(*user)) == 0) {
+        if (cluster_ops.count(block->findAncestorOpInBlock(*user)) == 0) {
           results.push_back(result);
           break;
         }
@@ -247,7 +247,7 @@ void UpdateLaunchOpResultExternalUses(tf_device::LaunchOp launch_op,
     Value* old_ret = std::get<0>(ret_vals);
     Value* new_ret = std::get<1>(ret_vals);
     for (auto& use : old_ret->getUses())
-      if (!launch_op_block.findAncestorInstInBlock(*use.getOwner()))
+      if (!launch_op_block.findAncestorOpInBlock(*use.getOwner()))
         use.set(new_ret);
   }
 }

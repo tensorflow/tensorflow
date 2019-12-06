@@ -41,6 +41,8 @@ struct TensorDescriptor {
   bool operator==(const TensorDescriptor& d) const {
     return data_type == d.data_type && storage_type == d.storage_type;
   }
+
+  bool operator!=(const TensorDescriptor& d) const { return !(*this == d); }
 };
 
 std::string ToString(TensorStorageType type);

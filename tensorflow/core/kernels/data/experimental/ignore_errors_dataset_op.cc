@@ -87,14 +87,15 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
+        Status s;
         {
           tf_shared_lock l(mu_);
           if (!input_impl_) {
             *end_of_sequence = true;
             return Status::OK();
           }
-          Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
-          while (!s.ok()) {
+          s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+          while (!s.ok() && !errors::IsCancelled(s)) {
             out_tensors->clear();
             s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
           }
@@ -103,7 +104,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
           mutex_lock l(mu_);
           input_impl_.reset();
         }
-        return Status::OK();
+        return s;
       }
 
      protected:

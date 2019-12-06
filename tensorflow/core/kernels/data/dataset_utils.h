@@ -34,8 +34,8 @@ Status CreateHandle(OpKernelContext* ctx, T* resource,
   ResourceMgr* mgr = ctx->resource_manager();
   TF_RETURN_IF_ERROR(mgr->Create<T>(container_name, unique_name, resource));
 
-  *handle =
-      MakeResourceHandle(ctx, container_name, unique_name, MakeTypeIndex<T>());
+  *handle = MakeResourceHandle(container_name, unique_name, *ctx->device(),
+                               MakeTypeIndex<T>());
   return Status::OK();
 }
 
@@ -114,17 +114,11 @@ class AnonymousResourceOp : public OpKernel {
   bool create_deleter_ = true;
 };
 
-// Returns a GraphDef representation of the given dataset.
-Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
-                  SerializationContext&& serialization_ctx,
-                  GraphDef* graph_def);
-
-// Creates a connection between "child" and "parent" cancellation managers so
-// that parent cancellations are propagated to the child, returning a function
-// that can be used to remove the connection.
-Status ConnectCancellationManagers(CancellationManager* parent,
-                                   CancellationManager* child,
-                                   std::function<void()>* deregister_fn);
+// Registers the given cancellation callback, returning a function that can be
+// used to deregister the callback.
+Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
+                                    std::function<void()> register_fn,
+                                    std::function<void()>* deregister_fn);
 
 // Returns Status::OK() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.

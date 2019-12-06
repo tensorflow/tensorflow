@@ -22,22 +22,15 @@
 
 namespace mlir {
 namespace linalg {
-class BufferAllocOp;
-class BufferDeallocOp;
 class CopyOp;
 class FillOp;
 class RangeOp;
 class SliceOp;
-class ViewOp;
 namespace intrinsics {
-using buffer_alloc = mlir::edsc::intrinsics::ValueBuilder<BufferAllocOp>;
-using buffer_dealloc =
-    mlir::edsc::intrinsics::OperationBuilder<BufferDeallocOp>;
 using copy = mlir::edsc::intrinsics::OperationBuilder<CopyOp>;
 using fill = mlir::edsc::intrinsics::OperationBuilder<FillOp>;
 using range = mlir::edsc::intrinsics::ValueBuilder<RangeOp>;
 using slice = mlir::edsc::intrinsics::ValueBuilder<SliceOp>;
-using view = mlir::edsc::intrinsics::ValueBuilder<ViewOp>;
 } // namespace intrinsics
 } // namespace linalg
 } // namespace mlir

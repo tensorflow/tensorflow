@@ -20,457 +20,365 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "sparse_tensor_slice_dataset";
-constexpr char kOpName[] = "SparseTensorSliceDataset";
+constexpr char kDatasetType[] = "SparseTensorSlice";
 
-class SparseTensorSliceDatasetOpTest : public DatasetOpsTestBase {
- protected:
-  // Creates a new SparseTensorSliceDataset op kernel.
-  Status CreateSparseTensorSliceDatasetKernel(
-      DataType tvalues, std::unique_ptr<OpKernel> *op_kernel) {
-    NodeDef node_def = test::function::NDef(
-        kNodeName, kOpName, {"indices", "values", "dense_shape"},
-        {{"Tvalues", tvalues}});
-    TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
+class SparseTensorSliceDatasetParams : public DatasetParams {
+ public:
+  SparseTensorSliceDatasetParams(Tensor indices, Tensor values,
+                                 Tensor dense_shape, DataType tvalues,
+                                 string node_name)
+      : DatasetParams({tvalues}, {PartialTensorShape({})},
+                      std::move(node_name)),
+        indices_(std::move(indices)),
+        values_(std::move(values)),
+        dense_shape_(std::move(dense_shape)),
+        tvalues_(tvalues) {
+    iterator_prefix_ = "Iterator";
+  }
+
+  std::vector<Tensor> GetInputTensors() const override {
+    return {indices_, values_, dense_shape_};
+  }
+
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    input_names->clear();
+    input_names->emplace_back("indices");
+    input_names->emplace_back("values");
+    input_names->emplace_back("dense_shape");
     return Status::OK();
   }
 
-  // Creates a new SparseTensorSliceDataset op kernel context.
-  Status CreateSparseTensorSliceDatasetContext(
-      OpKernel *const op_kernel, gtl::InlinedVector<TensorValue, 4> *inputs,
-      std::unique_ptr<OpKernelContext> *context) {
-    TF_RETURN_IF_ERROR(CheckOpKernelInput(*op_kernel, *inputs));
-    TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
+  Status GetAttributes(AttributeVector* attr_vector) const override {
+    attr_vector->clear();
+    attr_vector->emplace_back("Tvalues", tvalues_);
     return Status::OK();
   }
+
+  string dataset_type() const override { return kDatasetType; }
+
+ private:
+  Tensor indices_;
+  Tensor values_;
+  Tensor dense_shape_;
+  DataType tvalues_;
 };
 
-struct SparseTensorParam {
-  Tensor indices;
-  Tensor values;
-  Tensor dense_shape;
+class SparseTensorSliceDatasetOpTest : public DatasetOpsTestBase {};
+
+SparseTensorSliceDatasetParams TwoDimsSparseTensorSliceDatasetParams() {
+  return SparseTensorSliceDatasetParams(
+      /*indices=*/CreateTensor<int64>({2, 2}, {0, 0, 1, 1}),
+      /*values=*/CreateTensor<int32>({2}, {888, 999}),
+      /*dense_shape=*/CreateTensor<int64>({2}, {2, 2}),
+      /*tvalues=*/DT_INT32,
+      /*node_name=*/kNodeName);
+}
+
+SparseTensorSliceDatasetParams ThreeDimsSparseTensorSliceDatasetParams() {
+  return SparseTensorSliceDatasetParams(
+      /*indices=*/CreateTensor<int64>({2, 3}, {0, 0, 0, 1, 1, 1}),
+      /*values=*/CreateTensor<double>({2}, {888.0, 999.0}),
+      /*dense_shape=*/CreateTensor<int64>({3}, {2, 2, 2}),
+      /*tvalues=*/DT_DOUBLE,
+      /*node_name=*/kNodeName);
+}
+
+SparseTensorSliceDatasetParams FourDimsSparseTensorSliceDatasetParams() {
+  return SparseTensorSliceDatasetParams(
+      /*indices=*/CreateTensor<int64>({2, 4}, {0, 0, 0, 0, 1, 1, 1, 1}),
+      /*values=*/CreateTensor<tstring>({2}, {"a", "b"}),
+      /*dense_shape=*/CreateTensor<int64>({4}, {3, 2, 2, 2}),
+      /*tvalues=*/DT_STRING,
+      /*node_name=*/kNodeName);
+}
+
+SparseTensorSliceDatasetParams FiveDimsSparseTensorSliceDatasetParams() {
+  return SparseTensorSliceDatasetParams(
+      /*indices=*/CreateTensor<int64>({2, 5}, {0, 0, 0, 0, 0, 1, 1, 1, 1, 1}),
+      /*values=*/CreateTensor<int32>({2}, {888, 999}),
+      /*dense_shape=*/CreateTensor<int64>({5}, {3, 2, 2, 2, 2}),
+      /*tvalues=*/DT_INT32,
+      /*node_name=*/kNodeName);
+}
+
+template <typename T>
+struct GetNextTestCase {
+  T dataset_params;
+  std::vector<std::vector<Tensor>> expected_outputs;
 };
 
-struct TestCase {
-  SparseTensorParam input_sparse_tensor;
-  std::vector<SparseTensorParam> expected_outputs;
-  std::vector<int> breakpoints;
-};
-
-TestCase TwoDimsTestCase() {
-  return {/*input_sparse_tensor*/
-          {/*indices*/ CreateTensor<int64>({2, 2}, {0, 0, 1, 1}),
-           /*values*/ CreateTensor<int32>({2}, {888, 999}),
-           /*dense_shape*/ CreateTensor<int64>({2}, {2, 2})},
-          /*expected_outputs*/
-          {{/*indices*/ CreateTensor<int64>({1, 1}, {0}),
-            /*values*/ CreateTensor<int32>({1}, {888}),
-            /*dense_shape*/ CreateTensor<int64>({1}, {2})},
-           {/*indices*/ CreateTensor<int64>({1, 1}, {1}),
-            /*values*/ CreateTensor<int32>({1}, {999}),
-            /*dense_shape*/ CreateTensor<int64>({1}, {2})}},
-          /*breakpoints*/ {0, 1, 2}};
+std::vector<GetNextTestCase<SparseTensorSliceDatasetParams>>
+GetNextTestCases() {
+  return {{/*dataset_params=*/TwoDimsSparseTensorSliceDatasetParams(),
+           /*expected_outputs=*/
+           {{/*indices*/ CreateTensor<int64>({1, 1}, {0}),
+             /*values*/ CreateTensor<int32>({1}, {888}),
+             /*dense_shape*/ CreateTensor<int64>({1}, {2})},
+            {/*indices*/ CreateTensor<int64>({1, 1}, {1}),
+             /*values*/ CreateTensor<int32>({1}, {999}),
+             /*dense_shape*/ CreateTensor<int64>({1}, {2})}}},
+          {/*dataset_params=*/ThreeDimsSparseTensorSliceDatasetParams(),
+           /*expected_outputs=*/
+           {{/*indices*/ CreateTensor<int64>({1, 2}, {0, 0}),
+             /*values*/ CreateTensor<double>({1}, {888.0}),
+             /*dense_shape*/ CreateTensor<int64>({2}, {2, 2})},
+            {{/*indices*/ CreateTensor<int64>({1, 2}, {1, 1})},
+             {/*values*/ CreateTensor<double>({1}, {999.0})},
+             {/*dense_shape*/ CreateTensor<int64>({2}, {2, 2})}}}},
+          {/*dataset_params=*/FourDimsSparseTensorSliceDatasetParams(),
+           /*expected_outputs=*/
+           {{/*indices*/ CreateTensor<int64>({1, 3}, {0, 0, 0}),
+             /*values*/ CreateTensor<tstring>({1}, {"a"}),
+             /*dense_shape*/
+             CreateTensor<int64>({3}, {2, 2, 2})},
+            {/*indices*/ CreateTensor<int64>({1, 3}, {1, 1, 1}),
+             /*values*/ CreateTensor<tstring>({1}, {"b"}),
+             /*dense_shape*/
+             CreateTensor<int64>({3}, {2, 2, 2})},
+            {/*indices*/ CreateTensor<int64>({0, 3}, {}),
+             /*values*/ CreateTensor<tstring>({0}, {}),
+             /*dense_shape*/
+             CreateTensor<int64>({3}, {2, 2, 2})}}},
+          {/*dataset_params=*/FiveDimsSparseTensorSliceDatasetParams(),
+           /*expected_outputs=*/{
+               {/*indices*/ CreateTensor<int64>({1, 4}, {0, 0, 0, 0}),
+                /*values*/ CreateTensor<int32>({1}, {888}),
+                /*dense_shape*/
+                CreateTensor<int64>({4}, {2, 2, 2, 2})},
+               {/*indices*/ CreateTensor<int64>({1, 4}, {1, 1, 1, 1}),
+                /*values*/ CreateTensor<int32>({1}, {999}),
+                /*dense_shape*/
+                CreateTensor<int64>({4}, {2, 2, 2, 2})},
+               {/*indices*/ CreateTensor<int64>({0, 4}, {}),
+                /*values*/ CreateTensor<int32>({0}, {}),
+                /*dense_shape*/
+                CreateTensor<int64>({4}, {2, 2, 2, 2})}}}};
 }
 
-TestCase ThreeDimsTestCase() {
-  return {/*input_sparse_tensor*/
-          {/*indices*/ CreateTensor<int64>({2, 3}, {0, 0, 0, 1, 1, 1}),
-           /*values*/ CreateTensor<double>({2}, {888.0, 999.0}),
-           /*dense_shape*/ CreateTensor<int64>({3}, {2, 2, 2})},
-          /*expected_outputs*/
-          {{/*indices*/ CreateTensor<int64>({1, 2}, {0, 0}),
-            /*values*/ CreateTensor<double>({1}, {888.0}),
-            /*dense_shape*/ CreateTensor<int64>({2}, {2, 2})},
-           {{/*indices*/ CreateTensor<int64>({1, 2}, {1, 1})},
-            {/*values*/ CreateTensor<double>({1}, {999.0})},
-            {/*dense_shape*/ CreateTensor<int64>({2}, {2, 2})}}},
-          /*breakpoints*/ {0, 1, 2}};
-}
-
-TestCase FourDimsTestCase() {
-  return {/*input_sparse_tensor*/
-          {/*indices*/ CreateTensor<int64>({2, 4}, {0, 0, 0, 0, 1, 1, 1, 1}),
-           /*values*/ CreateTensor<tstring>({2}, {"a", "b"}),
-           /*dense_shape*/
-           CreateTensor<int64>({4}, {3, 2, 2, 2})},
-          /*expected_outputs*/
-          {{/*indices*/ CreateTensor<int64>({1, 3}, {0, 0, 0}),
-            /*values*/ CreateTensor<tstring>({1}, {"a"}),
-            /*dense_shape*/
-            CreateTensor<int64>({3}, {2, 2, 2})},
-           {/*indices*/ CreateTensor<int64>({1, 3}, {1, 1, 1}),
-            /*values*/ CreateTensor<tstring>({1}, {"b"}),
-            /*dense_shape*/
-            CreateTensor<int64>({3}, {2, 2, 2})},
-           {/*indices*/ CreateTensor<int64>({0, 3}, {}),
-            /*values*/ CreateTensor<tstring>({0}, {}),
-            /*dense_shape*/
-            CreateTensor<int64>({3}, {2, 2, 2})}},
-          /*breakpoints*/ {0, 1, 3}};
-}
-
-TestCase FiveDimsTestCase() {
-  return {
-      /*input_sparse_tensor*/
-      {/*indices*/ CreateTensor<int64>({2, 5}, {0, 0, 0, 0, 0, 1, 1, 1, 1, 1}),
-       /*values*/ CreateTensor<int32>({2}, {888, 999}),
-       /*dense_shape*/
-       CreateTensor<int64>({5}, {3, 2, 2, 2, 2})},
-      /*expected_outputs*/
-      {{/*indices*/ CreateTensor<int64>({1, 4}, {0, 0, 0, 0}),
-        /*values*/ CreateTensor<int32>({1}, {888}),
-        /*dense_shape*/
-        CreateTensor<int64>({4}, {2, 2, 2, 2})},
-       {/*indices*/ CreateTensor<int64>({1, 4}, {1, 1, 1, 1}),
-        /*values*/ CreateTensor<int32>({1}, {999}),
-        /*dense_shape*/
-        CreateTensor<int64>({4}, {2, 2, 2, 2})},
-       {/*indices*/ CreateTensor<int64>({0, 4}, {}),
-        /*values*/ CreateTensor<int32>({0}, {}),
-        /*dense_shape*/
-        CreateTensor<int64>({4}, {2, 2, 2, 2})}},
-      /*breakpoints*/ {0, 1, 3}};
-}
-
-class ParameterizedSparseTensorSliceDatasetOpTest
+class ParameterizedGetNextTest
     : public SparseTensorSliceDatasetOpTest,
-      public ::testing::WithParamInterface<TestCase> {};
+      public ::testing::WithParamInterface<
+          GetNextTestCase<SparseTensorSliceDatasetParams>> {};
 
-TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, GetNext) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
+TEST_P(ParameterizedGetNextTest, GetNext) {
+  auto test_case = GetParam();
+  TF_ASSERT_OK(Initialize(test_case.dataset_params));
 
-  const TestCase &test_case = GetParam();
-  SparseTensorParam input_sparse_tensor = test_case.input_sparse_tensor;
-  std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
-  DataType tvalues = input_sparse_tensor.values.dtype();
-  gtl::InlinedVector<TensorValue, 4> inputs = {
-      TensorValue(&input_sparse_tensor.indices),
-      TensorValue(&input_sparse_tensor.values),
-      TensorValue(&input_sparse_tensor.dense_shape)};
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
-      dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(CreateIteratorContext(dataset_kernel_ctx.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
-  auto expected_outputs_it = expected_outputs.begin();
+  auto expected_outputs_it = test_case.expected_outputs.begin();
   while (!end_of_sequence) {
-    TF_EXPECT_OK(
-        iterator->GetNext(iterator_ctx.get(), &out_tensors, &end_of_sequence));
+    TF_EXPECT_OK(iterator_->GetNext(iterator_ctx_.get(), &out_tensors,
+                                    &end_of_sequence));
     if (!end_of_sequence) {
-      TF_EXPECT_OK(ExpectEqual(out_tensors[0], expected_outputs_it->indices));
-      TF_EXPECT_OK(ExpectEqual(out_tensors[1], expected_outputs_it->values));
-      TF_EXPECT_OK(
-          ExpectEqual(out_tensors[2], expected_outputs_it->dense_shape));
+      TF_EXPECT_OK(ExpectEqual(out_tensors[0], expected_outputs_it->at(0)));
+      TF_EXPECT_OK(ExpectEqual(out_tensors[1], expected_outputs_it->at(1)));
+      TF_EXPECT_OK(ExpectEqual(out_tensors[2], expected_outputs_it->at(2)));
       expected_outputs_it++;
     }
   }
-  EXPECT_EQ(expected_outputs_it, expected_outputs.end());
+  EXPECT_EQ(expected_outputs_it, test_case.expected_outputs.end());
+}
+
+INSTANTIATE_TEST_CASE_P(SparseTensorSliceDatasetOpTest,
+                        ParameterizedGetNextTest,
+                        ::testing::ValuesIn(GetNextTestCases()));
+
+TEST_F(SparseTensorSliceDatasetOpTest, DatasetTypeString) {
+  auto dataset_params = TwoDimsSparseTensorSliceDatasetParams();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckDatasetTypeString(name_utils::OpName(kDatasetType)));
 }
 
 TEST_F(SparseTensorSliceDatasetOpTest, DatasetNodeName) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  const TestCase &test_case = TwoDimsTestCase();
-  SparseTensorParam input_sparse_tensor = test_case.input_sparse_tensor;
-  std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
-  DataType tvalues = input_sparse_tensor.values.dtype();
-  gtl::InlinedVector<TensorValue, 4> inputs = {
-      TensorValue(&input_sparse_tensor.indices),
-      TensorValue(&input_sparse_tensor.values),
-      TensorValue(&input_sparse_tensor.dense_shape)};
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
-      dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  EXPECT_EQ(dataset->node_name(), kNodeName);
+  auto dataset_params = TwoDimsSparseTensorSliceDatasetParams();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckDatasetNodeName(dataset_params.node_name()));
 }
 
-TEST_F(SparseTensorSliceDatasetOpTest, DatasetTypeString) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  const TestCase &test_case = TwoDimsTestCase();
-  SparseTensorParam input_sparse_tensor = test_case.input_sparse_tensor;
-  std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
-  DataType tvalues = input_sparse_tensor.values.dtype();
-  gtl::InlinedVector<TensorValue, 4> inputs = {
-      TensorValue(&input_sparse_tensor.indices),
-      TensorValue(&input_sparse_tensor.values),
-      TensorValue(&input_sparse_tensor.dense_shape)};
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
-      dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  EXPECT_EQ(dataset->type_string(), kOpName);
+std::vector<DatasetOutputDtypesTestCase<SparseTensorSliceDatasetParams>>
+DatasetOutputDtypesTestCases() {
+  return {{/*dataset_params=*/TwoDimsSparseTensorSliceDatasetParams(),
+           /*expected_output_dtypes=*/{DT_INT64, DT_INT32, DT_INT64}},
+          {/*dataset_params=*/ThreeDimsSparseTensorSliceDatasetParams(),
+           /*expected_output_dtypes=*/{DT_INT64, DT_DOUBLE, DT_INT64}},
+          {/*dataset_params=*/FourDimsSparseTensorSliceDatasetParams(),
+           /*expected_output_dtypes=*/{DT_INT64, DT_STRING, DT_INT64}},
+          {/*dataset_params=*/FiveDimsSparseTensorSliceDatasetParams(),
+           /*expected_output_dtypes=*/{DT_INT64, DT_INT32, DT_INT64}}};
 }
 
-TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, DatasetOutputDtypes) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
+DATASET_OUTPUT_DTYPES_TEST_P(SparseTensorSliceDatasetOpTest,
+                             SparseTensorSliceDatasetParams,
+                             DatasetOutputDtypesTestCases())
 
-  const TestCase &test_case = GetParam();
-  SparseTensorParam input_sparse_tensor = test_case.input_sparse_tensor;
-  std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
-  DataType tvalues = input_sparse_tensor.values.dtype();
-  gtl::InlinedVector<TensorValue, 4> inputs = {
-      TensorValue(&input_sparse_tensor.indices),
-      TensorValue(&input_sparse_tensor.values),
-      TensorValue(&input_sparse_tensor.dense_shape)};
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
-      dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  DataTypeVector expected_output_dtypes = {
-      expected_outputs[0].indices.dtype(), expected_outputs[0].values.dtype(),
-      expected_outputs[0].dense_shape.dtype()};
-  TF_EXPECT_OK(
-      VerifyTypesMatch(dataset->output_dtypes(), expected_output_dtypes));
+std::vector<DatasetOutputShapesTestCase<SparseTensorSliceDatasetParams>>
+DatasetOutputShapesTestCases() {
+  return {{/*dataset_params=*/TwoDimsSparseTensorSliceDatasetParams(),
+           /*expected_output_shapes=*/{PartialTensorShape({1, 1}),
+                                       PartialTensorShape({1}),
+                                       PartialTensorShape({1})}},
+          {/*dataset_params=*/ThreeDimsSparseTensorSliceDatasetParams(),
+           /*expected_output_shapes=*/{PartialTensorShape({1, 2}),
+                                       PartialTensorShape({1}),
+                                       PartialTensorShape({2})}},
+          {/*dataset_params=*/FourDimsSparseTensorSliceDatasetParams(),
+           /*expected_output_shapes=*/{PartialTensorShape({1, 3}),
+                                       PartialTensorShape({1}),
+                                       PartialTensorShape({3})}},
+          {/*dataset_params=*/FiveDimsSparseTensorSliceDatasetParams(),
+           /*expected_output_shapes=*/{PartialTensorShape({1, 4}),
+                                       PartialTensorShape({1}),
+                                       PartialTensorShape({4})}}};
 }
 
-TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, DatasetOutputShapes) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
+DATASET_OUTPUT_SHAPES_TEST_P(SparseTensorSliceDatasetOpTest,
+                             SparseTensorSliceDatasetParams,
+                             DatasetOutputShapesTestCases())
 
-  const TestCase &test_case = GetParam();
-  SparseTensorParam input_sparse_tensor = test_case.input_sparse_tensor;
-  std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
-  DataType tvalues = input_sparse_tensor.values.dtype();
-  gtl::InlinedVector<TensorValue, 4> inputs = {
-      TensorValue(&input_sparse_tensor.indices),
-      TensorValue(&input_sparse_tensor.values),
-      TensorValue(&input_sparse_tensor.dense_shape)};
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
-      dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  std::vector<PartialTensorShape> expected_output_shapes = {
-      expected_outputs[0].indices.shape(), expected_outputs[0].values.shape(),
-      expected_outputs[0].dense_shape.shape()};
-  TF_EXPECT_OK(
-      VerifyShapesCompatible(dataset->output_shapes(), expected_output_shapes));
+std::vector<CardinalityTestCase<SparseTensorSliceDatasetParams>>
+CardinalityTestCases() {
+  return {{/*dataset_params=*/TwoDimsSparseTensorSliceDatasetParams(),
+           /*expected_cardinality=*/2},
+          {/*dataset_params=*/ThreeDimsSparseTensorSliceDatasetParams(),
+           /*expected_cardinality=*/2},
+          {/*dataset_params=*/FourDimsSparseTensorSliceDatasetParams(),
+           /*expected_cardinality=*/3},
+          {/*dataset_params=*/FiveDimsSparseTensorSliceDatasetParams(),
+           /*expected_cardinality=*/3}};
 }
 
-TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, Cardinality) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
+DATASET_CARDINALITY_TEST_P(SparseTensorSliceDatasetOpTest,
+                           SparseTensorSliceDatasetParams,
+                           CardinalityTestCases())
 
-  const TestCase &test_case = TwoDimsTestCase();
-  SparseTensorParam input_sparse_tensor = test_case.input_sparse_tensor;
-  std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
-  DataType tvalues = input_sparse_tensor.values.dtype();
-  gtl::InlinedVector<TensorValue, 4> inputs = {
-      TensorValue(&input_sparse_tensor.indices),
-      TensorValue(&input_sparse_tensor.values),
-      TensorValue(&input_sparse_tensor.dense_shape)};
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
-      dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  EXPECT_EQ(dataset->Cardinality(), expected_outputs.size());
+std::vector<IteratorOutputDtypesTestCase<SparseTensorSliceDatasetParams>>
+IteratorOutputDtypesTestCases() {
+  return {{/*dataset_params=*/TwoDimsSparseTensorSliceDatasetParams(),
+           /*expected_output_dtypes=*/{DT_INT64, DT_INT32, DT_INT64}},
+          {/*dataset_params=*/ThreeDimsSparseTensorSliceDatasetParams(),
+           /*expected_output_dtypes=*/{DT_INT64, DT_DOUBLE, DT_INT64}},
+          {/*dataset_params=*/FourDimsSparseTensorSliceDatasetParams(),
+           /*expected_output_dtypes=*/{DT_INT64, DT_STRING, DT_INT64}},
+          {/*dataset_params=*/FiveDimsSparseTensorSliceDatasetParams(),
+           /*expected_output_dtypes=*/{DT_INT64, DT_INT32, DT_INT64}}};
 }
 
-TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, IteratorOutputDtypes) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
+ITERATOR_OUTPUT_DTYPES_TEST_P(SparseTensorSliceDatasetOpTest,
+                              SparseTensorSliceDatasetParams,
+                              IteratorOutputDtypesTestCases())
 
-  const TestCase &test_case = GetParam();
-  SparseTensorParam input_sparse_tensor = test_case.input_sparse_tensor;
-  std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
-  DataType tvalues = input_sparse_tensor.values.dtype();
-  gtl::InlinedVector<TensorValue, 4> inputs = {
-      TensorValue(&input_sparse_tensor.indices),
-      TensorValue(&input_sparse_tensor.values),
-      TensorValue(&input_sparse_tensor.dense_shape)};
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
-      dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(CreateIteratorContext(dataset_kernel_ctx.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
-  DataTypeVector expected_output_dtypes = {
-      expected_outputs[0].indices.dtype(), expected_outputs[0].values.dtype(),
-      expected_outputs[0].dense_shape.dtype()};
-  TF_EXPECT_OK(
-      VerifyTypesMatch(iterator->output_dtypes(), expected_output_dtypes));
+std::vector<IteratorOutputShapesTestCase<SparseTensorSliceDatasetParams>>
+IteratorOutputShapesTestCases() {
+  return {{/*dataset_params=*/TwoDimsSparseTensorSliceDatasetParams(),
+           /*expected_output_shapes=*/{PartialTensorShape({1, 1}),
+                                       PartialTensorShape({1}),
+                                       PartialTensorShape({1})}},
+          {/*dataset_params=*/ThreeDimsSparseTensorSliceDatasetParams(),
+           /*expected_output_shapes=*/{PartialTensorShape({1, 2}),
+                                       PartialTensorShape({1}),
+                                       PartialTensorShape({2})}},
+          {/*dataset_params=*/FourDimsSparseTensorSliceDatasetParams(),
+           /*expected_output_shapes=*/{PartialTensorShape({1, 3}),
+                                       PartialTensorShape({1}),
+                                       PartialTensorShape({3})}},
+          {/*dataset_params=*/FiveDimsSparseTensorSliceDatasetParams(),
+           /*expected_output_shapes=*/{PartialTensorShape({1, 4}),
+                                       PartialTensorShape({1}),
+                                       PartialTensorShape({4})}}};
 }
 
-TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, IteratorOutputShapes) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
+ITERATOR_OUTPUT_SHAPES_TEST_P(SparseTensorSliceDatasetOpTest,
+                              SparseTensorSliceDatasetParams,
+                              IteratorOutputShapesTestCases())
 
-  const TestCase &test_case = GetParam();
-  SparseTensorParam input_sparse_tensor = test_case.input_sparse_tensor;
-  std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
-  DataType tvalues = input_sparse_tensor.values.dtype();
-  gtl::InlinedVector<TensorValue, 4> inputs = {
-      TensorValue(&input_sparse_tensor.indices),
-      TensorValue(&input_sparse_tensor.values),
-      TensorValue(&input_sparse_tensor.dense_shape)};
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
-      dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(CreateIteratorContext(dataset_kernel_ctx.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
-  std::vector<PartialTensorShape> expected_output_shapes = {
-      expected_outputs[0].indices.shape(), expected_outputs[0].values.shape(),
-      expected_outputs[0].dense_shape.shape()};
-  TF_EXPECT_OK(VerifyShapesCompatible(iterator->output_shapes(),
-                                      expected_output_shapes));
+TEST_F(SparseTensorSliceDatasetOpTest, IteratorPrefix) {
+  auto dataset_params = TwoDimsSparseTensorSliceDatasetParams();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
+      kDatasetType, dataset_params.iterator_prefix())));
 }
 
-TEST_F(SparseTensorSliceDatasetOpTest, IteratorOutputPrefix) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
+template <typename T>
+struct IteratorSaveAndRestoreTestCase {
+  T dataset_params;
+  std::vector<int> breakpoints;
+  std::vector<std::vector<Tensor>> expected_outputs;
+};
 
-  const TestCase &test_case = TwoDimsTestCase();
-  SparseTensorParam input_sparse_tensor = test_case.input_sparse_tensor;
-  std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
-  DataType tvalues = input_sparse_tensor.values.dtype();
-  gtl::InlinedVector<TensorValue, 4> inputs = {
-      TensorValue(&input_sparse_tensor.indices),
-      TensorValue(&input_sparse_tensor.values),
-      TensorValue(&input_sparse_tensor.dense_shape)};
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
-      dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(CreateIteratorContext(dataset_kernel_ctx.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
-  EXPECT_EQ(iterator->prefix(), strings::StrCat("Iterator::SparseTensorSlice"));
+std::vector<IteratorSaveAndRestoreTestCase<SparseTensorSliceDatasetParams>>
+IteratorSaveAndRestoreTestCases() {
+  return {{/*dataset_params=*/TwoDimsSparseTensorSliceDatasetParams(),
+           /*breakpoints=*/{0, 1, 2},
+           /*expected_outputs=*/
+           {{/*indices*/ CreateTensor<int64>({1, 1}, {0}),
+             /*values*/ CreateTensor<int32>({1}, {888}),
+             /*dense_shape*/ CreateTensor<int64>({1}, {2})},
+            {/*indices*/ CreateTensor<int64>({1, 1}, {1}),
+             /*values*/ CreateTensor<int32>({1}, {999}),
+             /*dense_shape*/ CreateTensor<int64>({1}, {2})}}},
+          {/*dataset_params=*/ThreeDimsSparseTensorSliceDatasetParams(),
+           /*breakpoints=*/{0, 1, 2},
+           /*expected_outputs=*/
+           {{/*indices*/ CreateTensor<int64>({1, 2}, {0, 0}),
+             /*values*/ CreateTensor<double>({1}, {888.0}),
+             /*dense_shape*/ CreateTensor<int64>({2}, {2, 2})},
+            {{/*indices*/ CreateTensor<int64>({1, 2}, {1, 1})},
+             {/*values*/ CreateTensor<double>({1}, {999.0})},
+             {/*dense_shape*/ CreateTensor<int64>({2}, {2, 2})}}}},
+          {/*dataset_params=*/FourDimsSparseTensorSliceDatasetParams(),
+           /*breakpoints=*/{0, 1, 3},
+           /*expected_outputs=*/
+           {{/*indices*/ CreateTensor<int64>({1, 3}, {0, 0, 0}),
+             /*values*/ CreateTensor<tstring>({1}, {"a"}),
+             /*dense_shape*/
+             CreateTensor<int64>({3}, {2, 2, 2})},
+            {/*indices*/ CreateTensor<int64>({1, 3}, {1, 1, 1}),
+             /*values*/ CreateTensor<tstring>({1}, {"b"}),
+             /*dense_shape*/
+             CreateTensor<int64>({3}, {2, 2, 2})},
+            {/*indices*/ CreateTensor<int64>({0, 3}, {}),
+             /*values*/ CreateTensor<tstring>({0}, {}),
+             /*dense_shape*/
+             CreateTensor<int64>({3}, {2, 2, 2})}}},
+          {/*dataset_params=*/FiveDimsSparseTensorSliceDatasetParams(),
+           /*breakpoints=*/{0, 1, 2},
+           /*expected_outputs=*/
+           {{/*indices*/ CreateTensor<int64>({1, 4}, {0, 0, 0, 0}),
+             /*values*/ CreateTensor<int32>({1}, {888}),
+             /*dense_shape*/
+             CreateTensor<int64>({4}, {2, 2, 2, 2})},
+            {/*indices*/ CreateTensor<int64>({1, 4}, {1, 1, 1, 1}),
+             /*values*/ CreateTensor<int32>({1}, {999}),
+             /*dense_shape*/
+             CreateTensor<int64>({4}, {2, 2, 2, 2})},
+            {/*indices*/ CreateTensor<int64>({0, 4}, {}),
+             /*values*/ CreateTensor<int32>({0}, {}),
+             /*dense_shape*/
+             CreateTensor<int64>({4}, {2, 2, 2, 2})}}}};
 }
 
-TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, Roundtrip) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
+class ParameterizedIteratorSaveAndRestoreTest
+    : public SparseTensorSliceDatasetOpTest,
+      public ::testing::WithParamInterface<
+          IteratorSaveAndRestoreTestCase<SparseTensorSliceDatasetParams>> {};
 
-  const TestCase &test_case = GetParam();
-  SparseTensorParam input_sparse_tensor = test_case.input_sparse_tensor;
-  std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
-  std::vector<int> breakpoints = test_case.breakpoints;
-  DataType tvalues = input_sparse_tensor.values.dtype();
-  gtl::InlinedVector<TensorValue, 4> inputs = {
-      TensorValue(&input_sparse_tensor.indices),
-      TensorValue(&input_sparse_tensor.values),
-      TensorValue(&input_sparse_tensor.dense_shape)};
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
-      dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(CreateIteratorContext(dataset_kernel_ctx.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
+TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {
+  auto test_case = GetParam();
+  TF_ASSERT_OK(Initialize(test_case.dataset_params));
 
   std::unique_ptr<SerializationContext> serialization_ctx;
   TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
 
   int cur_iteration = 0;
   bool end_of_sequence = false;
-  int64 num_slices = input_sparse_tensor.dense_shape.dim_size(0);
+  int64 num_slices = dataset_->Cardinality();
   std::vector<Tensor> out_tensors;
 
-  for (int breakpoint : breakpoints) {
+  for (int breakpoint : test_case.breakpoints) {
     while (cur_iteration < breakpoint) {
-      TF_EXPECT_OK(iterator->GetNext(iterator_ctx.get(), &out_tensors,
-                                     &end_of_sequence));
+      TF_EXPECT_OK(iterator_->GetNext(iterator_ctx_.get(), &out_tensors,
+                                      &end_of_sequence));
       cur_iteration++;
     }
 
@@ -478,12 +386,12 @@ TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, Roundtrip) {
       EXPECT_FALSE(end_of_sequence);
     } else if (breakpoint <= num_slices) {
       for (int i = 0; i < out_tensors.size(); ++i) {
-        TF_EXPECT_OK(ExpectEqual(out_tensors[0],
-                                 expected_outputs[cur_iteration - 1].indices));
-        TF_EXPECT_OK(ExpectEqual(out_tensors[1],
-                                 expected_outputs[cur_iteration - 1].values));
         TF_EXPECT_OK(ExpectEqual(
-            out_tensors[2], expected_outputs[cur_iteration - 1].dense_shape));
+            out_tensors[0], test_case.expected_outputs[cur_iteration - 1][0]));
+        TF_EXPECT_OK(ExpectEqual(
+            out_tensors[1], test_case.expected_outputs[cur_iteration - 1][1]));
+        TF_EXPECT_OK(ExpectEqual(
+            out_tensors[2], test_case.expected_outputs[cur_iteration - 1][2]));
       }
     } else {
       EXPECT_TRUE(end_of_sequence);
@@ -491,19 +399,18 @@ TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, Roundtrip) {
 
     VariantTensorData data;
     VariantTensorDataWriter writer(&data);
-    TF_ASSERT_OK(iterator->Save(serialization_ctx.get(), &writer));
+    TF_ASSERT_OK(iterator_->Save(serialization_ctx.get(), &writer));
     TF_ASSERT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(RestoreIterator(iterator_ctx.get(), &reader, "Iterator",
-                                 *dataset, &iterator));
+    TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
+                                 test_case.dataset_params.iterator_prefix(),
+                                 *dataset_, &iterator_));
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(SparseTensorSliceDatasetOpTest,
-                         ParameterizedSparseTensorSliceDatasetOpTest,
-                         ::testing::ValuesIn(std::vector<TestCase>(
-                             {TwoDimsTestCase(), ThreeDimsTestCase(),
-                              FourDimsTestCase(), FiveDimsTestCase()})));
+INSTANTIATE_TEST_CASE_P(SparseTensorSliceDatasetOpTest,
+                        ParameterizedIteratorSaveAndRestoreTest,
+                        ::testing::ValuesIn(IteratorSaveAndRestoreTestCases()));
 
 }  // namespace
 }  // namespace data

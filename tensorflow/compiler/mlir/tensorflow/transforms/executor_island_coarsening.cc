@@ -108,7 +108,7 @@ llvm::Optional<IslandOp> GetResultCandidateToMergeWith(IslandOp island) {
   Block& graph_body = llvm::cast<GraphOp>(graph_op).GetBody();
   for (Value* result : island.outputs()) {
     for (Operation* user : result->getUsers()) {
-      Operation* def = graph_body.findAncestorInstInBlock(*user);
+      Operation* def = graph_body.findAncestorOpInBlock(*user);
       DCHECK_NE(def, nullptr);
       if (!candidate || def->isBeforeInBlock(candidate)) candidate = def;
     }
@@ -148,7 +148,7 @@ llvm::SmallVector<IslandResult, 8> GetNewIslandResultsAndForwardResults(
     Value* inner_op_result = std::get<0>(ret_vals);
     Value* island_result = std::get<1>(ret_vals);
     for (auto& use : llvm::make_early_inc_range(island_result->getUses())) {
-      if (child_body.findAncestorInstInBlock(*use.getOwner())) {
+      if (child_body.findAncestorOpInBlock(*use.getOwner())) {
         // Forward result from inner op.
         use.set(inner_op_result);
       } else if (!result_captured) {

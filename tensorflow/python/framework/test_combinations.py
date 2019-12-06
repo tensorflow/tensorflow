@@ -400,6 +400,9 @@ class NamedObject(object):
   def __call__(self, *args, **kwargs):
     return self._obj(*args, **kwargs)
 
+  def __iter__(self):
+    return self._obj.__iter__()
+
   def __repr__(self):
     return self._name
 

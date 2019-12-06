@@ -27,7 +27,8 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/grpc_services.h"
+#include "tensorflow/core/profiler/profiler_analysis.grpc.pb.h"
+#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 #include "tensorflow/core/profiler/rpc/client/dump_tpu_profile.h"
 #include "tensorflow/core/util/events_writer.h"
 

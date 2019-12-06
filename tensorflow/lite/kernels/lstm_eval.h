@@ -20,7 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 namespace tflite {
 namespace ops {
@@ -176,7 +177,7 @@ TfLiteStatus EvalQuantized(
     TfLiteTensor* activation_state, TfLiteTensor* cell_state,
     TfLiteTensor* output, TfLiteTensor* scratch0, TfLiteTensor* scratch1,
     TfLiteTensor* scratch2, TfLiteTensor* scratch3, TfLiteTensor* scratch4,
-    TfLiteTensor* scratch5);
+    TfLiteTensor* scratch5, CpuBackendContext* context);
 
 }  // namespace lstm_eval
 }  // namespace builtin

@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_BUILTIN_OP_KERNELS_H_
 #define TENSORFLOW_LITE_KERNELS_BUILTIN_OP_KERNELS_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 namespace ops {
@@ -147,6 +147,7 @@ TfLiteRegistration* Register_IF();
 TfLiteRegistration* Register_WHILE();
 TfLiteRegistration* Register_NON_MAX_SUPPRESSION_V4();
 TfLiteRegistration* Register_NON_MAX_SUPPRESSION_V5();
+TfLiteRegistration* Register_SCATTER_ND();
 
 }  // namespace builtin
 }  // namespace ops

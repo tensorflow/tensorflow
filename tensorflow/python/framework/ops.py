@@ -439,29 +439,32 @@ class Tensor(_TensorLike):
     for more details of what a shape represents.
 
     The inferred shape of a tensor is used to provide shape
-    information without having to launch the graph in a session. This
-    can be used for debugging, and providing early error messages. For
+    information without having to execute the underlying kernel. This
+    can be used for debugging and providing early error messages. For
     example:
 
     ```python
-    c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    >>> c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    >>> print(c.shape) # will be TensorShape([2, 3])
+    (2, 3)
 
-    print(c.shape)
-    ==> TensorShape([Dimension(2), Dimension(3)])
-
-    d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
-
-    print(d.shape)
-    ==> TensorShape([Dimension(4), Dimension(2)])
+    >>> d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
+    >>> print(d.shape)
+    (4, 2)
 
     # Raises a ValueError, because `c` and `d` do not have compatible
     # inner dimensions.
-    e = tf.matmul(c, d)
+    >>> e = tf.matmul(c, d)
+    Traceback (most recent call last):
+        ...
+    tensorflow.python.framework.errors_impl.InvalidArgumentError: Matrix
+    size-incompatible: In[0]: [2,3], In[1]: [4,2] [Op:MatMul] name: MatMul/
 
-    f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
+    # This works because we have compatible shapes.
+    >>> f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
+    >>> print(f.shape)
+    (3, 4)
 
-    print(f.shape)
-    ==> TensorShape([Dimension(3), Dimension(4)])
     ```
 
     In some cases, the inferred shape may have unknown dimensions. If
@@ -470,7 +473,7 @@ class Tensor(_TensorLike):
     inferred shape.
 
     Returns:
-      A `TensorShape` representing the shape of this tensor.
+      A `tf.TensorShape` representing the shape of this tensor.
 
     """
     if self._shape_val is None:
@@ -570,7 +573,7 @@ class Tensor(_TensorLike):
     return self.shape.ndims
 
   def get_shape(self):
-    """Alias of Tensor.shape."""
+    """Alias of `tf.Tensor.shape`."""
     return self.shape
 
   def set_shape(self, shape):
@@ -916,20 +919,29 @@ class _EagerTensorBase(Tensor):
     return dtypes._INTERN_TABLE[self._datatype_enum()]  # pylint: disable=protected-access
 
   def numpy(self):
-    """Returns a numpy array or a scalar with the same contents as the Tensor.
+    """Copy of the contents of this Tensor into a NumPy array or scalar.
 
-    TODO(ashankar,agarwal): Perhaps this should NOT reference the underlying
-    buffer but instead always explicitly copy? Note that currently it may or may
-    not copy based on whether the numpy data is properly aligned or not.
+    Unlike NumPy arrays, Tensors are immutable, so this method has to copy
+    the contents to ensure safety. Use `memoryview` to get a readonly
+    view of the contents without doing a copy:
+
+    >>> t = tf.constant([42])
+    >>> np.array(memoryview(t))
+    array([42], dtype=int32)
+
+    Note that `memoryview` is only zero-copy for Tensors on CPU. If a Tensor
+    is on GPU, it will have to be transferred to CPU first in order for
+    `memoryview` to work.
 
     Returns:
-      A numpy array or a scalar. Numpy array may share memory with the
-      Tensor object. Any changes to one may be reflected in the other. A scalar
-      value is returned when self has rank 0.
+      A NumPy array of the same shape and dtype or a NumPy scalar, if this
+      Tensor has rank 0.
 
     Raises:
-      ValueError: if the type of this Tensor is not representable in numpy.
+      ValueError: If the dtype of this Tensor does not have a compatible
+        NumPy dtype.
     """
+    # TODO(slebedev): Consider avoiding a copy for non-CPU or remote tensors.
     maybe_arr = self._numpy()  # pylint: disable=protected-access
     return maybe_arr.copy() if isinstance(maybe_arr, np.ndarray) else maybe_arr
 
@@ -1197,18 +1209,26 @@ def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
   objects. It accepts `Tensor` objects, numpy arrays, Python lists,
   and Python scalars. For example:
 
-  ```python
-  import numpy as np
+  >>> def my_func(arg):
+  ...   arg = tf.convert_to_tensor(arg, dtype=tf.float32)
+  ...   return arg
 
-  def my_func(arg):
-    arg = tf.convert_to_tensor(arg, dtype=tf.float32)
-    return tf.matmul(arg, arg) + arg
-
-  # The following calls are equivalent.
-  value_1 = my_func(tf.constant([[1.0, 2.0], [3.0, 4.0]]))
-  value_2 = my_func([[1.0, 2.0], [3.0, 4.0]])
-  value_3 = my_func(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32))
-  ```
+  >>> # The following calls are equivalent.
+  >>> value_1 = my_func(tf.constant([[1.0, 2.0], [3.0, 4.0]]))
+  >>> print(value_1)
+  tf.Tensor(
+    [[1. 2.]
+     [3. 4.]], shape=(2, 2), dtype=float32)
+  >>> value_2 = my_func([[1.0, 2.0], [3.0, 4.0]])
+  >>> print(value_2)
+  tf.Tensor(
+    [[1. 2.]
+     [3. 4.]], shape=(2, 2), dtype=float32)
+  >>> value_3 = my_func(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32))
+  >>> print(value_3)
+  tf.Tensor(
+    [[1. 2.]
+     [3. 4.]], shape=(2, 2), dtype=float32)
 
   This function can be useful when composing a new operation in Python
   (such as `my_func` in the example above). All standard Python op
@@ -5033,10 +5053,16 @@ def device(device_name_or_function):
 def device_v2(device_name):
   """Specifies the device for ops created/executed in this context.
 
-  `device_name` can be fully specified, as in "/job:worker/task:1/device:cpu:0",
-  or partially specified, containing only a subset of the "/"-separated
-  fields. Any fields which are specified override device annotations from outer
-  scopes. For example:
+  This function specifies the device to be used for ops created/executed in a
+  particular context. Nested contexts will inherit and also create/execute
+  their ops on the specified device. If a specific device is not required,
+  consider not using this function so that a device can be automatically
+  assigned.  In general the use of this function is optional. `device_name` can
+  be fully specified, as in "/job:worker/task:1/device:cpu:0", or partially
+  specified, containing only a subset of the "/"-separated fields. Any fields
+  which are specified will override device annotations from outer scopes.
+
+  For example:
 
   ```python
   with tf.device('/job:foo'):
@@ -5447,15 +5473,14 @@ def init_scope():
     (3) The gradient tape is paused while the scope is active.
 
   When eager execution is enabled, code inside an init_scope block runs with
-  eager execution enabled even when defining graph functions via
-  tf.contrib.eager.defun. For example:
+  eager execution enabled even when tracing a `tf.function`. For example:
 
   ```python
   tf.compat.v1.enable_eager_execution()
 
-  @tf.contrib.eager.defun
+  @tf.function
   def func():
-    # A defun-decorated function constructs TensorFlow graphs,
+    # A function constructs TensorFlow graphs,
     # it does not execute eagerly.
     assert not tf.executing_eagerly()
     with tf.init_scope():
@@ -5487,8 +5512,9 @@ def init_scope():
     outer_graph = None
     outer_device_stack = None
     try:
-      with outer_context(), name_scope(scope), control_dependencies(
-          None), tape.stop_recording():
+      with outer_context(), name_scope(
+          scope, skip_on_eager=False), control_dependencies(
+              None), tape.stop_recording():
         context_manager = NullContextmanager
         context_manager_input = None
         if not context.executing_eagerly():
@@ -6132,7 +6158,7 @@ def get_all_collection_keys():
   return get_default_graph().get_all_collection_keys()
 
 
-def name_scope(name, default_name=None, values=None):
+def name_scope(name, default_name=None, values=None, skip_on_eager=True):
   """Internal-only entry point for `name_scope*`.
 
   Internal ops do not use the public API and instead rely on
@@ -6148,6 +6174,11 @@ def name_scope(name, default_name=None, values=None):
     name: The name argument that is passed to the op function.
     default_name: The default name to use if the `name` argument is `None`.
     values: The list of `Tensor` arguments that are passed to the op function.
+    skip_on_eager: Indicates to return NullContextmanager if executing eagerly.
+      By default this is True since naming tensors and operations in eager mode
+      have little use and cause unecessary performance overhead. However, it is
+      important to preseve variable names since they are often useful for
+      debugging and saved models.
 
   Returns:
     `name_scope*` context manager.
@@ -6167,6 +6198,10 @@ def name_scope(name, default_name=None, values=None):
     # pylint: enable=unidiomatic-typecheck
     if graph_value is not None:
       return graph_value.graph.name_scope(name)
+
+  if skip_on_eager:
+    return NullContextmanager()
+
   return name_scope_v2(name or "")
 
 
@@ -6283,7 +6318,8 @@ class name_scope_v1(object):  # pylint: disable=invalid-name
     Raises:
       TypeError: if `default_name` is passed in but not a string.
     """
-    self._name_scope = name_scope(name, default_name, values)
+    self._name_scope = name_scope(
+        name, default_name, values, skip_on_eager=False)
     self._name = default_name if name is None else name
 
   def __enter__(self):
@@ -6589,3 +6625,36 @@ def raise_from_not_ok_status(e, name):
   # pylint: disable=protected-access
   six.raise_from(core._status_to_exception(e.code, message), None)
   # pylint: enable=protected-access
+
+
+def add_exit_callback_to_default_func_graph(fn):
+  """Add a callback to run when the default function graph goes out of scope.
+
+  Usage:
+
+  ```python
+  @tf.function
+  def fn(x, v):
+    expensive = expensive_object(v)
+    add_exit_callback_to_default_func_graph(lambda: expensive.release())
+    return g(x, expensive)
+
+  fn(x=tf.constant(...), v=...)
+  # `expensive` has been released.
+  ```
+
+  Args:
+    fn: A callable that takes no arguments and whose output is ignored.
+      To be executed when exiting func graph scope.
+
+  Raises:
+    RuntimeError: If executed when the current defualt graph is not a FuncGraph,
+      or not currently executing in function creation mode (e.g., if inside
+      an init_scope).
+  """
+  default_graph = get_default_graph()
+  if not default_graph._building_function:  # pylint: disable=protected-access
+    raise RuntimeError(
+        "Cannot add scope exit callbacks when not building a function.  "
+        "Default graph: {}".format(default_graph))
+  default_graph._add_scope_exit_callback(fn)  # pylint: disable=protected-access

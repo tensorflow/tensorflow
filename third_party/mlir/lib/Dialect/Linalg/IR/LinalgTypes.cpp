@@ -20,9 +20,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
-#include "mlir/IR/Dialect.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/StandardTypes.h"
 #include "mlir/Parser.h"
 #include "mlir/Support/LLVM.h"
 
@@ -107,62 +108,55 @@ Optional<int64_t> mlir::linalg::BufferType::getBufferSize() {
   return getImpl()->getBufferSize();
 }
 
-Type mlir::linalg::LinalgDialect::parseType(StringRef spec,
-                                            Location loc) const {
-  StringRef origSpec = spec;
+Type mlir::linalg::LinalgDialect::parseType(DialectAsmParser &parser) const {
+  // Parse the main keyword for the type.
+  StringRef keyword;
+  if (parser.parseKeyword(&keyword))
+    return Type();
   MLIRContext *context = getContext();
-  if (spec == "range")
-    return RangeType::get(getContext());
-  else if (spec.consume_front("buffer")) {
-    if (spec.consume_front("<") && spec.consume_back(">")) {
-      StringRef sizeSpec, typeSpec;
-      std::tie(sizeSpec, typeSpec) = spec.split('x');
-      if (typeSpec.empty()) {
-        emitError(loc, "expected 'x' followed by element type");
-        return Type();
-      }
-      // Check for '?'
-      int64_t bufferSize = -1;
-      if (!sizeSpec.consume_front("?")) {
-        if (sizeSpec.consumeInteger(10, bufferSize)) {
-          emitError(loc, "expected buffer size to be an unsigned integer");
-          return Type();
-        }
-      }
-      if (!sizeSpec.empty()) {
-        emitError(loc, "unexpected token '") << sizeSpec << "'";
-      }
 
-      typeSpec = typeSpec.trim();
-      auto t = mlir::parseType(typeSpec, context);
-      if (!t) {
-        emitError(loc, "invalid type specification: '") << typeSpec << "'";
-        return Type();
-      }
-      return (bufferSize == -1 ? BufferType::get(getContext(), t)
-                               : BufferType::get(getContext(), t, bufferSize));
+  // Handle 'range' types.
+  if (keyword == "range")
+    return RangeType::get(context);
+
+  // Handle 'buffer' types.
+  if (keyword == "buffer") {
+    llvm::SMLoc dimensionLoc;
+    SmallVector<int64_t, 1> size;
+    Type type;
+    if (parser.parseLess() || parser.getCurrentLocation(&dimensionLoc) ||
+        parser.parseDimensionList(size) || parser.parseType(type) ||
+        parser.parseGreater())
+      return Type();
+
+    if (size.size() != 1) {
+      parser.emitError(dimensionLoc, "expected single element in size list");
+      return Type();
     }
+
+    return (size.front() == -1 ? BufferType::get(context, type)
+                               : BufferType::get(context, type, size.front()));
   }
-  return (emitError(loc, "unknown Linalg type: " + origSpec), Type());
+
+  parser.emitError(parser.getNameLoc(), "unknown Linalg type: " + keyword);
+  return Type();
 }
 
-
-/// BufferType prints as "buffer<element_type>".
-static void print(BufferType bt, raw_ostream &os) {
+/// BufferType prints as "buffer<size x element_type>".
+static void print(BufferType bt, DialectAsmPrinter &os) {
   os << "buffer<";
-  auto bs = bt.getBufferSize();
-  if (bs) {
+  if (Optional<int64_t> bs = bt.getBufferSize())
     os << bs.getValue();
-  } else {
+  else
     os << "?";
-  }
   os << "x" << bt.getElementType() << ">";
 }
 
 /// RangeType prints as just "range".
-static void print(RangeType rt, raw_ostream &os) { os << "range"; }
+static void print(RangeType rt, DialectAsmPrinter &os) { os << "range"; }
 
-void mlir::linalg::LinalgDialect::printType(Type type, raw_ostream &os) const {
+void mlir::linalg::LinalgDialect::printType(Type type,
+                                            DialectAsmPrinter &os) const {
   switch (type.getKind()) {
   default:
     llvm_unreachable("Unhandled Linalg type");

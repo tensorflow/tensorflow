@@ -28,10 +28,6 @@ import sys
 import absl
 import tensorflow.compat.v2 as tf
 
-# TODO(cais): Use public API `tf.debugging.enable_dumping()` once it's
-# available.
-from tensorflow.python.debug.lib import dumping_callback
-
 IMAGE_SIZE = 28
 HIDDEN_SIZE = 500
 NUM_LABELS = 10
@@ -131,7 +127,7 @@ def main(_):
   if FLAGS.check_numerics:
     tf.debugging.enable_check_numerics()
   elif FLAGS.dump_dir:
-    dumping_callback.enable_dumping(
+    tf.debugging.experimental.enable_dump_debug_info(
         FLAGS.dump_dir,
         tensor_debug_mode=FLAGS.dump_tensor_debug_mode,
         circular_buffer_size=FLAGS.dump_circular_buffer_size)

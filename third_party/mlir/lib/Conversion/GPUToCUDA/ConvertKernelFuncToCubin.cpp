@@ -117,7 +117,7 @@ std::string GpuKernelToCubinPass::translateModuleToPtx(
     llvm::buffer_ostream pstream(stream);
     llvm::legacy::PassManager codegen_passes;
     target_machine.addPassesToEmitFile(codegen_passes, pstream, nullptr,
-                                       llvm::TargetMachine::CGFT_AssemblyFile);
+                                       llvm::CGFT_AssemblyFile);
     codegen_passes.run(module);
   }
 
