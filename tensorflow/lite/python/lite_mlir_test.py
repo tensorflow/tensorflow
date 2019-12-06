@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
+from six.moves import zip
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
@@ -31,6 +34,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.layers import recurrent
+from tensorflow.python.keras.layers import recurrent_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -41,7 +46,33 @@ from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import tracking
 
 
-class FromSessionTest(test_util.TensorFlowTestCase):
+class TFLiteMLIRTest(test_util.TensorFlowTestCase):
+  """Base case for testing MLIR-based TFLite converter."""
+
+  def _evaluateTFLiteModel(self, tflite_model, input_data):
+    """Evaluates the model on the `input_data`."""
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    for input_tensor, tensor_data in zip(input_details, input_data):
+      interpreter.set_tensor(input_tensor['index'], tensor_data.numpy())
+    interpreter.invoke()
+    return [
+        interpreter.get_tensor(details['index']) for details in output_details
+    ]
+
+  def _getSimpleVariableModel(self):
+    root = tracking.AutoTrackable()
+    root.v1 = variables.Variable(3.)
+    root.v2 = variables.Variable(2.)
+    root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
+    return root
+
+
+class FromSessionTest(TFLiteMLIRTest):
 
   def testFloat(self):
     with ops.Graph().as_default():
@@ -263,29 +294,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
 
-class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
-
-  def _evaluateTFLiteModel(self, tflite_model, input_data):
-    """Evaluates the model on the `input_data`."""
-    interpreter = Interpreter(model_content=tflite_model)
-    interpreter.allocate_tensors()
-
-    input_details = interpreter.get_input_details()
-    output_details = interpreter.get_output_details()
-
-    for input_tensor, tensor_data in zip(input_details, input_data):
-      interpreter.set_tensor(input_tensor['index'], tensor_data.numpy())
-    interpreter.invoke()
-    return [
-        interpreter.get_tensor(details['index']) for details in output_details
-    ]
-
-  def _getSimpleVariableModel(self):
-    root = tracking.AutoTrackable()
-    root.v1 = variables.Variable(3.)
-    root.v2 = variables.Variable(2.)
-    root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
-    return root
+class FromConcreteFunctionTest(TFLiteMLIRTest):
 
   @test_util.run_v2_only
   def testFloat(self):
@@ -450,7 +459,35 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
     np.testing.assert_almost_equal(expected_value, actual_value)
 
 
-class TestFlexMode(test_util.TensorFlowTestCase):
+class FromKerasModelTest(TFLiteMLIRTest, parameterized.TestCase):
+
+  @parameterized.named_parameters(('LSTM', recurrent_v2.LSTM),
+                                  ('SimpleRNN', recurrent.SimpleRNN),
+                                  ('GRU', recurrent_v2.GRU))
+  @test_util.run_v2_only
+  def testKerasRNN(self, rnn_layer):
+    # This test case is similar to `FromConcreteFunctionTest.testKerasLSTM`
+    # above, but it's more concise to pass the Keras model directly.
+    # This relies on TFLiteConverter to rewrite unknown batch size to 1. The
+    # model will fail if resizing the input to non-1 batch size.
+    input_data = constant_op.constant(
+        np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
+    rnn_obj = rnn_layer(units=10, input_shape=(10, 10))
+    model = keras.models.Sequential([rnn_obj])
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter.experimental_enable_mlir_converter = True
+    tflite_model = converter.convert()
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
+
+    # Check values from converted model.
+    expected_value = model.predict(input_data)
+
+    np.testing.assert_almost_equal(expected_value, actual_value, decimal=5)
+
+
+class TestFlexMode(TFLiteMLIRTest):
 
   def testSession(self):
     with ops.Graph().as_default():

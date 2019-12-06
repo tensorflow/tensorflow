@@ -32,13 +32,23 @@ namespace benchmark {
 class BenchmarkTfLiteModel : public BenchmarkModel {
  public:
   struct InputLayerInfo {
+    InputLayerInfo() : has_value_range(false) {}
+
     std::string name;
     std::vector<int> shape;
+
+    // The input value is randomly generated when benchmarking the NN model.
+    // However, the NN model might require the value be limited to a certain
+    // range [low, high] for this particular input layer. For simplicity,
+    // support integer value first.
+    bool has_value_range;
+    int low;
+    int high;
   };
 
   BenchmarkTfLiteModel();
   explicit BenchmarkTfLiteModel(BenchmarkParams params);
-  virtual ~BenchmarkTfLiteModel();
+  ~BenchmarkTfLiteModel() override;
 
   std::vector<Flag> GetFlags() override;
   void LogParams() override;

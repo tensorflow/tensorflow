@@ -117,6 +117,10 @@ tf_module {
     argspec: "args=[\'target_device\', \'source_device\'], varargs=None, keywords=None, defaults=[\'/cpu:0\'], "
   }
   member_method {
+    name: "dense_to_ragged_batch"
+    argspec: "args=[\'batch_size\', \'drop_remainder\', \'row_splits_dtype\'], varargs=None, keywords=None, defaults=[\'False\', \"<dtype: \'int64\'>\"], "
+  }
+  member_method {
     name: "dense_to_sparse_batch"
     argspec: "args=[\'batch_size\', \'row_shape\'], varargs=None, keywords=None, defaults=None"
   }

@@ -71,6 +71,8 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import six
+from six.moves import builtins
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.compat import compat as fwd_compat
@@ -82,6 +84,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -1544,6 +1547,15 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
     return gen_math_ops._range(start, limit, delta, name=name)
 
 
+def _range_tensor_conversion_function(value, dtype=None, name=None,
+                                      as_ref=False):
+  del as_ref
+  return range(value.start, value.stop, value.step, dtype=dtype, name=name)
+
+if six.PY3:
+  ops.register_tensor_conversion_function(builtins.range,
+                                          _range_tensor_conversion_function)
+
 # Reduction operations
 def _ReductionDims(x, axis, reduction_indices=None):  # pylint: disable=invalid-name
   """Returns range(0, rank(x)) if reduction_indices is None."""
@@ -1679,12 +1691,20 @@ def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
   int64 while tensorflow returns the same dtype as the input.
   @end_compatibility
   """
+
+  return reduce_sum_with_dims(input_tensor, axis, keepdims, name,
+                              _ReductionDims(input_tensor, axis))
+
+
+def reduce_sum_with_dims(input_tensor,
+                         axis=None,
+                         keepdims=False,
+                         name=None,
+                         dims=None):
   keepdims = False if keepdims is None else keepdims
   return _may_reduce_to_scalar(
       keepdims, axis,
-      gen_math_ops._sum(
-          input_tensor, _ReductionDims(input_tensor, axis), keepdims,
-          name=name))
+      gen_math_ops._sum(input_tensor, dims, keepdims, name=name))
 
 
 @tf_export("math.reduce_euclidean_norm")
@@ -2322,12 +2342,19 @@ def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
   Equivalent to np.max
   @end_compatibility
   """
+  return reduce_max_with_dims(input_tensor, axis, keepdims, name,
+                              _ReductionDims(input_tensor, axis))
+
+
+def reduce_max_with_dims(input_tensor,
+                         axis=None,
+                         keepdims=False,
+                         name=None,
+                         dims=None):
   keepdims = False if keepdims is None else keepdims
   return _may_reduce_to_scalar(
       keepdims, axis,
-      gen_math_ops._max(
-          input_tensor, _ReductionDims(input_tensor, axis), keepdims,
-          name=name))
+      gen_math_ops._max(input_tensor, dims, keepdims, name=name))
 
 
 @tf_export(v1=["math.reduce_all", "reduce_all"])
@@ -2625,18 +2652,22 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
   keepdims = False if keepdims is None else keepdims
   input_tensor = ops.convert_to_tensor(input_tensor)
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
-    raw_max = reduce_max(input_tensor, axis=axis, keepdims=True)
+    reduce_dim = _ReductionDims(input_tensor, axis)
+    raw_max = reduce_max_with_dims(
+        input_tensor, axis=axis, keepdims=True, dims=reduce_dim)
     my_max = array_ops.stop_gradient(
-        array_ops.where(
+        gen_math_ops.select(
             gen_math_ops.is_finite(raw_max), raw_max,
-            array_ops.zeros_like(raw_max)))
+            gen_array_ops.zeros_like(raw_max)))
     result = gen_math_ops.log(
-        reduce_sum(
+        reduce_sum_with_dims(
             gen_math_ops.exp(gen_math_ops.sub(input_tensor, my_max)),
-            axis,
-            keepdims=keepdims))
+            axis=axis,
+            keepdims=keepdims,
+            dims=reduce_dim))
     if not keepdims:
-      my_max = array_ops.reshape(my_max, array_ops.shape(result))
+      my_max = array_ops.reshape(my_max,
+                                 result._maybe_constant_shape(gen_array_ops))  # pylint: disable=protected-access
     result = gen_math_ops.add(result, my_max)
     return _may_reduce_to_scalar(keepdims, axis, result)
 

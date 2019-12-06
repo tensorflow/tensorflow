@@ -124,6 +124,12 @@ class TensorFlowRefType : public TensorFlowType {
   Type RemoveRef();
 };
 
+// Returns the corresponding TensorFlow or standard type from TensorFlowRef
+// type.
+static inline Type GetDefaultTypeOf(TensorFlowRefType type) {
+  return type.RemoveRef();
+}
+
 #define HANDLE_TF_TYPE(tftype, enumerant, name)                          \
   class tftype##Type : public detail::TensorFlowTypeImpl<tftype##Type> { \
    public:                                                               \
@@ -171,11 +177,11 @@ class TypeWithSubtypeStorage : public TypeStorage {
 //   - `static std::string getTypeName()` that returns the name of the type for
 //     verification logging.
 template <typename Derived>
-class TypeWithSubtype
+class TypeWithSubtypeImpl
     : public Type::TypeBase<Derived, TensorFlowType, TypeWithSubtypeStorage> {
  public:
   using Base = Type::TypeBase<Derived, TensorFlowType, TypeWithSubtypeStorage>;
-  using TFBase = TypeWithSubtype<Derived>;
+  using TFBase = TypeWithSubtypeImpl<Derived>;
   using Base::Base;
 
   static Derived get(ArrayRef<TensorType> subtypes, MLIRContext* context) {
@@ -212,11 +218,33 @@ class TypeWithSubtype
 };
 }  // namespace detail
 
+// TensorFlowTypeWithSubtype class supports all the types with subtypes in
+// TensorFlow dialect.
+class TensorFlowTypeWithSubtype : public TensorFlowType {
+ public:
+  using TensorFlowType::TensorFlowType;
+
+  // Checks if a type is TensorFlow type with subtypes.
+  static bool classof(Type type) {
+    return type.getKind() == TensorFlowTypes::VARIANT ||
+           type.getKind() == TensorFlowTypes::RESOURCE;
+  }
+
+  // Converts a TypeWithSubtype type to the same type but without its subtypes.
+  Type RemoveSubtypes();
+};
+
+// Returns the corresponding TensorFlow type with subtypes but without its
+// subtypes.
+static inline Type GetDefaultTypeOf(TensorFlowTypeWithSubtype type) {
+  return type.RemoveSubtypes();
+}
+
 // TensorFlow resource type is used to support TensorFlow resource variables,
 // which represent shared, persistent state manipulated by a TensorFlow program.
 // ResourceType stores shape and datatype for subtypes unlike most other data
 // types that don't have any associated information.
-class ResourceType : public detail::TypeWithSubtype<ResourceType> {
+class ResourceType : public detail::TypeWithSubtypeImpl<ResourceType> {
  public:
   using TFBase::TFBase;
   static unsigned getTypeKind() { return TensorFlowTypes::RESOURCE; }
@@ -228,7 +256,7 @@ class ResourceType : public detail::TypeWithSubtype<ResourceType> {
 // data types that don't have any associated information. For example, variants
 // encoding TensorList type stores the common shape and dtype of the list
 // elements as the only subtype.
-class VariantType : public detail::TypeWithSubtype<VariantType> {
+class VariantType : public detail::TypeWithSubtypeImpl<VariantType> {
  public:
   using TFBase::TFBase;
   static unsigned getTypeKind() { return TensorFlowTypes::VARIANT; }

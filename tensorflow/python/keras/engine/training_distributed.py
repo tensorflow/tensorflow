@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_lib
@@ -457,7 +456,7 @@ def experimental_tpu_predict_loop(model,
                                                   padding_handler.update_mask)
 
     dataset = dataset.map(padding_handler.pad_batch)
-    dataset = dataset.apply(batching.unbatch())
+    dataset = dataset.unbatch()
     # Upon this point, it is guaranteed that the dataset does not
     # have partial batches. Thus, we set `drop_remainder=True` to
     # get static shape information about the elements in the dataset.

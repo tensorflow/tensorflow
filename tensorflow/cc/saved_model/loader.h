@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_set>
 
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session.h"
 
@@ -63,6 +64,7 @@ struct SavedModelBundle : public SavedModelBundleInterface {
 
   std::unique_ptr<Session> session;
   MetaGraphDef meta_graph_def;
+  std::unique_ptr<GraphDebugInfo> debug_info;
 };
 
 // A version of SavedModelBundle that avoids storing a potentially large

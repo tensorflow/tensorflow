@@ -594,7 +594,7 @@ SourceMgrDiagnosticVerifierHandlerImpl::computeExpectedDiags(
   SmallVector<StringRef, 100> lines;
   buf->getBuffer().split(lines, '\n');
   for (unsigned lineNo = 0, e = lines.size(); lineNo < e; ++lineNo) {
-    SmallVector<StringRef, 3> matches;
+    SmallVector<StringRef, 4> matches;
     if (!expected.match(lines[lineNo], &matches))
       continue;
     // Point to the start of expected-*.

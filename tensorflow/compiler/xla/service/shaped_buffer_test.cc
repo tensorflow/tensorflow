@@ -88,6 +88,10 @@ class TestAllocator : public se::DeviceMemoryAllocator {
 
   bool AllowsAsynchronousDeallocation() const override { return false; }
 
+  StatusOr<se::Stream*> GetStream(int device_ordinal) override {
+    LOG(FATAL) << "Not implemented";
+  }
+
  private:
   std::set<std::pair</*device_ordinal*/ int64, void*>> allocations_;
 };

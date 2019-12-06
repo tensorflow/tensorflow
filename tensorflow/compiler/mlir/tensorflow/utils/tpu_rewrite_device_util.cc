@@ -22,15 +22,9 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
-#include "llvm/Support/FormatVariadic.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -154,36 +148,6 @@ std::string GetTPUCompilationDevice(Device system_device) {
 }
 
 }  // anonymous namespace
-
-mlir::LogicalResult GetDevicesFromAttribute(
-    mlir::Operation* op,
-    llvm::SmallVectorImpl<DeviceNameUtils::ParsedName>* devices) {
-  auto devices_attr = op->getAttr(kDevicesAttr);
-  if (!devices_attr) return mlir::success();
-
-  auto array_attr = devices_attr.dyn_cast<mlir::ArrayAttr>();
-  if (!array_attr)
-    return op->emitOpError(
-        llvm::formatv("bad '{0}' attribute, not an array", kDevicesAttr));
-
-  devices->resize(array_attr.size());
-  for (auto attr_and_idx : llvm::enumerate(array_attr)) {
-    const int idx = attr_and_idx.index();
-    auto string_attr = attr_and_idx.value().dyn_cast<mlir::StringAttr>();
-    if (!string_attr)
-      return op->emitOpError(llvm::formatv(
-          "bad '{0}' attribute at index {1}, not a string", kDevicesAttr, idx));
-
-    if (!DeviceNameUtils::ParseFullName(string_attr.getValue().str(),
-                                        &(*devices)[idx]))
-      return op->emitOpError(
-          llvm::formatv("bad '{0}' attribute at index {1} with value '{2}', "
-                        "not a valid device",
-                        kDevicesAttr, idx, string_attr.getValue()));
-  }
-
-  return mlir::success();
-}
 
 Status GetTPUCompilationAndExecutionDevices(
     Devices devices, int num_replicas, int num_cores_per_replica,

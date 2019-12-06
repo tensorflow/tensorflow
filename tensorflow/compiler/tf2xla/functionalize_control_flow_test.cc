@@ -118,9 +118,10 @@ TEST(FunctionalizeControlFlow, Conditional) {
       auto y = ops::Placeholder(scope.WithOpName("y"), DT_INT32);
       auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32);
       auto less = ops::Less(scope.WithOpName("cond/Less"), y, x);
-      auto if_op = ops::If(scope.WithOpName(op_name), less,
-                           std::initializer_list<Input>{less, y, x}, {DT_INT32},
-                           then_fn, else_fn);
+      auto if_op =
+          ops::If(scope.WithOpName(op_name), less,
+                  std::initializer_list<Input>{less, y, x}, {DT_INT32}, then_fn,
+                  else_fn, ops::If::OutputShapes({PartialTensorShape()}));
       auto id = ops::Identity(scope.WithOpName("cond/Merge"), if_op.output[0]);
       GraphDef expected;
       TF_EXPECT_OK(scope.ToGraphDef(&expected));

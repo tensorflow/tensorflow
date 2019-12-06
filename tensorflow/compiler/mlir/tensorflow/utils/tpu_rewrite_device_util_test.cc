@@ -21,11 +21,6 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -145,69 +140,6 @@ TEST(TPURewriteDeviceUtilTest, NumReplicasNumTPUs) {
   EXPECT_EQ(execution_devices[1], "/job:worker/replica:0/task:0/device:TPU:1");
   EXPECT_EQ(execution_devices[2], "/job:worker/replica:0/task:1/device:TPU:0");
   EXPECT_EQ(execution_devices[3], "/job:worker/replica:0/task:1/device:TPU:1");
-}
-
-TEST(TPURewriteDeviceUtilTest, NoDevicesAttribute) {
-  mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
-
-  llvm::SmallVector<Device, 8> devices;
-  EXPECT_TRUE(
-      mlir::succeeded(GetDevicesFromAttribute(module_ref.get(), &devices)));
-}
-
-TEST(TPURewriteDeviceUtilTest, BadDevicesAttributeType) {
-  mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
-  mlir::Builder builder(module_ref.get());
-  module_ref->setAttr("tf.devices", builder.getBoolAttr(false));
-
-  llvm::SmallVector<Device, 8> devices;
-  EXPECT_TRUE(
-      mlir::failed(GetDevicesFromAttribute(module_ref.get(), &devices)));
-}
-
-TEST(TPURewriteDeviceUtilTest, BadDevicesAttributeArraySubtype) {
-  mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
-  mlir::Builder builder(module_ref.get());
-  module_ref->setAttr("tf.devices", builder.getI32ArrayAttr({8}));
-
-  llvm::SmallVector<Device, 8> devices;
-  EXPECT_TRUE(
-      mlir::failed(GetDevicesFromAttribute(module_ref.get(), &devices)));
-}
-
-TEST(TPURewriteDeviceUtilTest, BadDevicesInDevicesAttribute) {
-  mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
-  mlir::Builder builder(module_ref.get());
-  module_ref->setAttr("tf.devices", builder.getStrArrayAttr({"bad_device"}));
-
-  llvm::SmallVector<Device, 8> devices;
-  EXPECT_TRUE(
-      mlir::failed(GetDevicesFromAttribute(module_ref.get(), &devices)));
-}
-
-TEST(TPURewriteDeviceUtilTest, ValidDeviceInDevicesAttribute) {
-  mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
-  mlir::Builder builder(module_ref.get());
-  module_ref->setAttr(
-      "tf.devices",
-      builder.getStrArrayAttr({"/job:worker/replica:0/task:0/device:CPU:0"}));
-
-  llvm::SmallVector<Device, 8> devices;
-  EXPECT_TRUE(
-      mlir::succeeded(GetDevicesFromAttribute(module_ref.get(), &devices)));
-  ASSERT_EQ(devices.size(), 1);
-  EXPECT_EQ(DeviceNameUtils::ParsedNameToString(devices[0]),
-            "/job:worker/replica:0/task:0/device:CPU:0");
 }
 
 }  // anonymous namespace

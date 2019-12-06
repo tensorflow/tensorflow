@@ -266,6 +266,17 @@ class BASE_HLO_AndOp {
   }];
 }
 
+class BASE_HLO_OrOp {
+  string summary = "Logical or";
+
+  string description = [{
+    Returns `lhs \/ rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
 class BASE_HLO_ReduceOp {
   string summary = "Reduce operator";
 
@@ -374,6 +385,16 @@ class BASE_HLO_SliceOp {
     Slices a portion of the `operand` into a new configuration.
 
     See https://www.tensorflow.org/xla/operation_semantics#slice.
+  }];
+}
+
+class BASE_HLO_DynamicSliceOp {
+  string summary = "Dynamic Slice operator";
+
+  string description = [{
+    Extracts a sub-array from the input array at dynamic start_indices.
+
+    See https://www.tensorflow.org/xla/operation_semantics#dynamicslice.
   }];
 }
 
@@ -562,6 +583,17 @@ class BASE_HLO_TransposeOp {
     `res_dimensions[i] = operand_dimensions[permutation[i]]`
 
     See https://www.tensorflow.org/xla/operation_semantics#transpose.
+  }];
+}
+
+class BASE_HLO_RngUniformOp {
+  string summary = "RNG with uniform distribution.";
+
+  string description = [{
+    Constructs an output of a given shape with random numbers generated following
+    the uniform distribution over the interval `[a,b)`.
+
+    See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
   }];
 }
 

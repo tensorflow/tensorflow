@@ -56,9 +56,9 @@ class SPV_GLSLUnaryOp<string mnemonic, int opcode, Type resultType,
   let verifier = [{ return success(); }];
 }
 
-// Base class for GLSL Unary arithmatic ops where return type matches
+// Base class for GLSL Unary arithmetic ops where return type matches
 // the operand type.
-class SPV_GLSLUnaryArithmaticOp<string mnemonic, int opcode, Type type,
+class SPV_GLSLUnaryArithmeticOp<string mnemonic, int opcode, Type type,
                                 list<OpTrait> traits = []> :
   SPV_GLSLUnaryOp<mnemonic, opcode, type, type, traits>;
 
@@ -83,15 +83,15 @@ class SPV_GLSLBinaryOp<string mnemonic, int opcode, Type resultType,
   let verifier = [{ return success(); }];
 }
 
-// Base class for GLSL Binary arithmatic ops where operand types and
+// Base class for GLSL Binary arithmetic ops where operand types and
 // return type matches.
-class SPV_GLSLBinaryArithmaticOp<string mnemonic, int opcode, Type type,
+class SPV_GLSLBinaryArithmeticOp<string mnemonic, int opcode, Type type,
                                  list<OpTrait> traits = []> :
   SPV_GLSLBinaryOp<mnemonic, opcode, type, type, traits>;
 
 // -----
 
-def SPV_GLSLFAbsOp : SPV_GLSLUnaryArithmaticOp<"FAbs", 4, SPV_Float> {
+def SPV_GLSLFAbsOp : SPV_GLSLUnaryArithmeticOp<"FAbs", 4, SPV_Float> {
   let summary = "Absolute value of operand";
 
   let description = [{
@@ -121,7 +121,7 @@ def SPV_GLSLFAbsOp : SPV_GLSLUnaryArithmaticOp<"FAbs", 4, SPV_Float> {
 
 // -----
 
-def SPV_GLSLSAbsOp : SPV_GLSLUnaryArithmaticOp<"SAbs", 5, SPV_Integer> {
+def SPV_GLSLSAbsOp : SPV_GLSLUnaryArithmeticOp<"SAbs", 5, SPV_Integer> {
   let summary = "Absolute value of operand";
 
   let description = [{
@@ -150,7 +150,7 @@ def SPV_GLSLSAbsOp : SPV_GLSLUnaryArithmaticOp<"SAbs", 5, SPV_Integer> {
 
 // -----
 
-def SPV_GLSLCeilOp : SPV_GLSLUnaryArithmaticOp<"Ceil", 9, SPV_Float> {
+def SPV_GLSLCeilOp : SPV_GLSLUnaryArithmeticOp<"Ceil", 9, SPV_Float> {
   let summary = "Rounds up to the next whole number";
 
   let description = [{
@@ -181,7 +181,7 @@ def SPV_GLSLCeilOp : SPV_GLSLUnaryArithmaticOp<"Ceil", 9, SPV_Float> {
 
 // -----
 
-def SPV_GLSLCosOp : SPV_GLSLUnaryArithmaticOp<"Cos", 14, SPV_Float16or32> {
+def SPV_GLSLCosOp : SPV_GLSLUnaryArithmeticOp<"Cos", 14, SPV_Float16or32> {
   let summary = "Cosine of operand in radians";
 
   let description = [{
@@ -213,7 +213,7 @@ def SPV_GLSLCosOp : SPV_GLSLUnaryArithmaticOp<"Cos", 14, SPV_Float16or32> {
 
 // -----
 
-def SPV_GLSLExpOp : SPV_GLSLUnaryArithmaticOp<"Exp", 27, SPV_Float16or32> {
+def SPV_GLSLExpOp : SPV_GLSLUnaryArithmeticOp<"Exp", 27, SPV_Float16or32> {
   let summary = "Exponentiation of Operand 1";
 
   let description = [{
@@ -245,7 +245,7 @@ def SPV_GLSLExpOp : SPV_GLSLUnaryArithmaticOp<"Exp", 27, SPV_Float16or32> {
 
 // -----
 
-def SPV_GLSLFloorOp : SPV_GLSLUnaryArithmaticOp<"Floor", 8, SPV_Float> {
+def SPV_GLSLFloorOp : SPV_GLSLUnaryArithmeticOp<"Floor", 8, SPV_Float> {
   let summary = "Rounds down to the next whole number";
 
   let description = [{
@@ -276,7 +276,7 @@ def SPV_GLSLFloorOp : SPV_GLSLUnaryArithmaticOp<"Floor", 8, SPV_Float> {
 
 // -----
 
-def SPV_GLSLInverseSqrtOp : SPV_GLSLUnaryArithmaticOp<"InverseSqrt", 32, SPV_Float> {
+def SPV_GLSLInverseSqrtOp : SPV_GLSLUnaryArithmeticOp<"InverseSqrt", 32, SPV_Float> {
   let summary = "Reciprocal of sqrt(operand)";
 
   let description = [{
@@ -306,7 +306,7 @@ def SPV_GLSLInverseSqrtOp : SPV_GLSLUnaryArithmaticOp<"InverseSqrt", 32, SPV_Flo
 
 // -----
 
-def SPV_GLSLLogOp : SPV_GLSLUnaryArithmaticOp<"Log", 28, SPV_Float16or32> {
+def SPV_GLSLLogOp : SPV_GLSLUnaryArithmeticOp<"Log", 28, SPV_Float16or32> {
   let summary = "Natural logarithm of the operand";
 
   let description = [{
@@ -339,7 +339,7 @@ def SPV_GLSLLogOp : SPV_GLSLUnaryArithmaticOp<"Log", 28, SPV_Float16or32> {
 
 // -----
 
-def SPV_GLSLFMaxOp : SPV_GLSLBinaryArithmaticOp<"FMax", 40, SPV_Float> {
+def SPV_GLSLFMaxOp : SPV_GLSLBinaryArithmeticOp<"FMax", 40, SPV_Float> {
   let summary = "Return maximum of two floating-point operands";
 
   let description = [{
@@ -370,7 +370,7 @@ def SPV_GLSLFMaxOp : SPV_GLSLBinaryArithmaticOp<"FMax", 40, SPV_Float> {
 
 // -----
 
-def SPV_GLSLSMaxOp : SPV_GLSLBinaryArithmaticOp<"SMax", 42, SPV_Integer> {
+def SPV_GLSLSMaxOp : SPV_GLSLBinaryArithmeticOp<"SMax", 42, SPV_Integer> {
   let summary = "Return maximum of two signed integer operands";
 
   let description = [{
@@ -400,7 +400,7 @@ def SPV_GLSLSMaxOp : SPV_GLSLBinaryArithmaticOp<"SMax", 42, SPV_Integer> {
 
 // -----
 
-def SPV_GLSLFMinOp : SPV_GLSLBinaryArithmaticOp<"FMin", 37, SPV_Float> {
+def SPV_GLSLFMinOp : SPV_GLSLBinaryArithmeticOp<"FMin", 37, SPV_Float> {
   let summary = "Return minimum of two floating-point operands";
 
   let description = [{
@@ -431,7 +431,7 @@ def SPV_GLSLFMinOp : SPV_GLSLBinaryArithmaticOp<"FMin", 37, SPV_Float> {
 
 // -----
 
-def SPV_GLSLSMinOp : SPV_GLSLBinaryArithmaticOp<"SMin", 39, SPV_Integer> {
+def SPV_GLSLSMinOp : SPV_GLSLBinaryArithmeticOp<"SMin", 39, SPV_Integer> {
   let summary = "Return minimum of two signed integer operands";
 
   let description = [{
@@ -461,7 +461,7 @@ def SPV_GLSLSMinOp : SPV_GLSLBinaryArithmaticOp<"SMin", 39, SPV_Integer> {
 
 // -----
 
-def SPV_GLSLFSignOp : SPV_GLSLUnaryArithmaticOp<"FSign", 6, SPV_Float> {
+def SPV_GLSLFSignOp : SPV_GLSLUnaryArithmeticOp<"FSign", 6, SPV_Float> {
   let summary = "Returns the sign of the operand";
 
   let description = [{
@@ -491,7 +491,7 @@ def SPV_GLSLFSignOp : SPV_GLSLUnaryArithmaticOp<"FSign", 6, SPV_Float> {
 
 // -----
 
-def SPV_GLSLSSignOp : SPV_GLSLUnaryArithmaticOp<"SSign", 7, SPV_Integer> {
+def SPV_GLSLSSignOp : SPV_GLSLUnaryArithmeticOp<"SSign", 7, SPV_Integer> {
   let summary = "Returns the sign of the operand";
 
   let description = [{
@@ -520,7 +520,7 @@ def SPV_GLSLSSignOp : SPV_GLSLUnaryArithmaticOp<"SSign", 7, SPV_Integer> {
 
 // -----
 
-def SPV_GLSLTanhOp : SPV_GLSLUnaryArithmaticOp<"Tanh", 21, SPV_Float16or32> {
+def SPV_GLSLTanhOp : SPV_GLSLUnaryArithmeticOp<"Tanh", 21, SPV_Float16or32> {
   let summary = "Hyperbolic tangent of operand in radians";
 
   let description = [{

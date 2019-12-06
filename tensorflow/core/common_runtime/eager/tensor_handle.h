@@ -123,7 +123,7 @@ class TensorHandle : public core::RefCounted {
   // Symbolic tensor constructor.
   TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype);
 
-  ~TensorHandle() override { VLOG(3) << "Deleting TensorHandle " << this; }
+  ~TensorHandle() override { DVLOG(3) << "Deleting TensorHandle " << this; }
 
   Status Tensor(const tensorflow::Tensor** t);
 

@@ -80,12 +80,12 @@ class HostExecutor : public internal::StreamExecutorInterface {
                             const DeviceMemoryBase &gpu_src,
                             uint64 size) override;
 
-  bool MemZero(Stream *stream, DeviceMemoryBase *location,
-               uint64 size) override;
-  bool Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
-              uint64 size) override;
-  bool Memset32(Stream *stream, DeviceMemoryBase *location, uint32 pattern,
-                uint64 size) override;
+  port::Status MemZero(Stream *stream, DeviceMemoryBase *location,
+                       uint64 size) override;
+  port::Status Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
+                      uint64 size) override;
+  port::Status Memset32(Stream *stream, DeviceMemoryBase *location,
+                        uint32 pattern, uint64 size) override;
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }

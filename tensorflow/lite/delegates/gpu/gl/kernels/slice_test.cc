@@ -42,9 +42,9 @@ TEST(SliceTest, Identity) {
   output.shape = BHWC(1, 1, 2, 2);
 
   SliceAttributes attr;
-  attr.starts = HWC(0, 0, 0);
-  attr.ends = HWC(1, 2, 2);
-  attr.strides = HWC(1, 1, 1);
+  attr.starts = BHWC(0, 0, 0, 0);
+  attr.ends = BHWC(input.shape.b, 1, 2, 2);
+  attr.strides = BHWC(1, 1, 1, 1);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
@@ -65,9 +65,9 @@ TEST(SliceTest, NoStrides) {
   output.shape = BHWC(1, 1, 2, 1);
 
   SliceAttributes attr;
-  attr.starts = HWC(0, 0, 0);
-  attr.ends = HWC(1, 2, 1);
-  attr.strides = HWC(1, 1, 1);
+  attr.starts = BHWC(0, 0, 0, 0);
+  attr.ends = BHWC(input.shape.b, 1, 2, 1);
+  attr.strides = BHWC(1, 1, 1, 1);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
@@ -88,9 +88,9 @@ TEST(SliceTest, NoStridesStartOffset) {
   output.shape = BHWC(1, 1, 1, 2);
 
   SliceAttributes attr;
-  attr.starts = HWC(0, 1, 0);
-  attr.ends = HWC(1, 2, 2);
-  attr.strides = HWC(1, 1, 1);
+  attr.starts = BHWC(0, 0, 1, 0);
+  attr.ends = BHWC(input.shape.b, 1, 2, 2);
+  attr.strides = BHWC(1, 1, 1, 1);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
@@ -111,9 +111,9 @@ TEST(SliceTest, StridesByHeight) {
   output.shape = BHWC(1, 2, 1, 1);
 
   SliceAttributes attr;
-  attr.starts = HWC(0, 0, 0);
-  attr.ends = HWC(4, 1, 1);
-  attr.strides = HWC(2, 1, 1);
+  attr.starts = BHWC(0, 0, 0, 0);
+  attr.ends = BHWC(input.shape.b, 4, 1, 1);
+  attr.strides = BHWC(1, 2, 1, 1);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
@@ -134,9 +134,9 @@ TEST(SliceTest, StridesByWidth) {
   output.shape = BHWC(1, 1, 2, 1);
 
   SliceAttributes attr;
-  attr.starts = HWC(0, 1, 0);
-  attr.ends = HWC(1, 4, 1);
-  attr.strides = HWC(1, 2, 1);
+  attr.starts = BHWC(0, 0, 1, 0);
+  attr.ends = BHWC(input.shape.b, 1, 4, 1);
+  attr.strides = BHWC(1, 1, 2, 1);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
@@ -157,9 +157,9 @@ TEST(SliceTest, StridesByChannels) {
   output.shape = BHWC(1, 1, 1, 2);
 
   SliceAttributes attr;
-  attr.starts = HWC(0, 0, 1);
-  attr.ends = HWC(1, 1, 4);
-  attr.strides = HWC(1, 1, 2);
+  attr.starts = BHWC(0, 0, 0, 1);
+  attr.ends = BHWC(input.shape.b, 1, 1, 4);
+  attr.strides = BHWC(1, 1, 1, 2);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});

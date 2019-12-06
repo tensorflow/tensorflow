@@ -24,13 +24,24 @@
 
 #include "mlir/Analysis/CallGraph.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/Module.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SCCIterator.h"
+#include "llvm/Support/Parallel.h"
 
 using namespace mlir;
+
+static llvm::cl::opt<bool> disableCanonicalization(
+    "mlir-disable-inline-simplify",
+    llvm::cl::desc("Disable running simplifications during inlining"),
+    llvm::cl::ReallyHidden, llvm::cl::init(false));
+
+static llvm::cl::opt<unsigned> maxInliningIterations(
+    "mlir-max-inline-iterations",
+    llvm::cl::desc("Maximum number of iterations when inlining within an SCC"),
+    llvm::cl::ReallyHidden, llvm::cl::init(4));
 
 //===----------------------------------------------------------------------===//
 // CallGraph traversal
@@ -41,8 +52,15 @@ using namespace mlir;
 static void runTransformOnCGSCCs(
     const CallGraph &cg,
     function_ref<void(ArrayRef<CallGraphNode *>)> sccTransformer) {
-  for (auto cgi = llvm::scc_begin(&cg); !cgi.isAtEnd(); ++cgi)
-    sccTransformer(*cgi);
+  std::vector<CallGraphNode *> currentSCCVec;
+  auto cgi = llvm::scc_begin(&cg);
+  while (!cgi.isAtEnd()) {
+    // Copy the current SCC and increment so that the transformer can modify the
+    // SCC without invalidating our iterator.
+    currentSCCVec = *cgi;
+    ++cgi;
+    sccTransformer(currentSCCVec);
+  }
 }
 
 namespace {
@@ -132,9 +150,10 @@ static bool shouldInline(ResolvedCall &resolvedCall) {
   return true;
 }
 
-/// Attempt to inline calls within the given scc.
-static void inlineCallsInSCC(Inliner &inliner,
-                             ArrayRef<CallGraphNode *> currentSCC) {
+/// Attempt to inline calls within the given scc. This function returns
+/// success if any calls were inlined, failure otherwise.
+static LogicalResult inlineCallsInSCC(Inliner &inliner,
+                                      ArrayRef<CallGraphNode *> currentSCC) {
   CallGraph &cg = inliner.cg;
   auto &calls = inliner.calls;
 
@@ -147,10 +166,11 @@ static void inlineCallsInSCC(Inliner &inliner,
                      /*traverseNestedCGNodes=*/false);
   }
   if (calls.empty())
-    return;
+    return failure();
 
   // Try to inline each of the call operations. Don't cache the end iterator
   // here as more calls may be added during inlining.
+  bool inlinedAnyCalls = false;
   for (unsigned i = 0; i != calls.size(); ++i) {
     ResolvedCall &it = calls[i];
     if (!shouldInline(it))
@@ -166,8 +186,82 @@ static void inlineCallsInSCC(Inliner &inliner,
 
     // If the inlining was successful, then erase the call.
     call.erase();
+    inlinedAnyCalls = true;
   }
   calls.clear();
+  return success(inlinedAnyCalls);
+}
+
+/// Canonicalize the nodes within the given SCC with the given set of
+/// canonicalization patterns.
+static void canonicalizeSCC(CallGraph &cg, ArrayRef<CallGraphNode *> currentSCC,
+                            MLIRContext *context,
+                            const OwningRewritePatternList &canonPatterns) {
+  // Collect the sets of nodes to canonicalize.
+  SmallVector<CallGraphNode *, 4> nodesToCanonicalize;
+  for (auto *node : currentSCC) {
+    // Don't canonicalize the external node, it has no valid callable region.
+    if (node->isExternal())
+      continue;
+
+    // Don't canonicalize nodes with children. Nodes with children
+    // require special handling as we may remove the node during
+    // canonicalization. In the future, we should be able to handle this
+    // case with proper node deletion tracking.
+    if (node->hasChildren())
+      continue;
+
+    // We also won't apply canonicalizations for nodes that are not
+    // isolated. This avoids potentially mutating the regions of nodes defined
+    // above, this is also a stipulation of the 'applyPatternsGreedily' driver.
+    auto *region = node->getCallableRegion();
+    if (!region->getParentOp()->isKnownIsolatedFromAbove())
+      continue;
+    nodesToCanonicalize.push_back(node);
+  }
+  if (nodesToCanonicalize.empty())
+    return;
+
+  // Canonicalize each of the nodes within the SCC in parallel.
+  // NOTE: This is simple now, because we don't enable canonicalizing nodes
+  // within children. When we remove this restriction, this logic will need to
+  // be reworked.
+  ParallelDiagnosticHandler canonicalizationHandler(context);
+  llvm::parallel::for_each_n(
+      llvm::parallel::par, /*Begin=*/size_t(0),
+      /*End=*/nodesToCanonicalize.size(), [&](size_t index) {
+        // Set the order for this thread so that diagnostics will be properly
+        // ordered.
+        canonicalizationHandler.setOrderIDForThread(index);
+
+        // Apply the canonicalization patterns to this region.
+        auto *node = nodesToCanonicalize[index];
+        applyPatternsGreedily(*node->getCallableRegion(), canonPatterns);
+
+        // Make sure to reset the order ID for the diagnostic handler, as this
+        // thread may be used in a different context.
+        canonicalizationHandler.eraseOrderIDForThread();
+      });
+}
+
+/// Attempt to inline calls within the given scc, and run canonicalizations with
+/// the given patterns, until a fixed point is reached. This allows for the
+/// inlining of newly devirtualized calls.
+static void inlineSCC(Inliner &inliner, ArrayRef<CallGraphNode *> currentSCC,
+                      MLIRContext *context,
+                      const OwningRewritePatternList &canonPatterns) {
+  // If we successfully inlined any calls, run some simplifications on the
+  // nodes of the scc. Continue attempting to inline until we reach a fixed
+  // point, or a maximum iteration count. We canonicalize here as it may
+  // devirtualize new calls, as well as give us a better cost model.
+  unsigned iterationCount = 0;
+  while (succeeded(inlineCallsInSCC(inliner, currentSCC))) {
+    // If we aren't allowing simplifications or the max iteration count was
+    // reached, then bail out early.
+    if (disableCanonicalization || ++iterationCount >= maxInliningIterations)
+      break;
+    canonicalizeSCC(inliner.cg, currentSCC, context, canonPatterns);
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -180,11 +274,18 @@ namespace {
 struct InlinerPass : public OperationPass<InlinerPass> {
   void runOnOperation() override {
     CallGraph &cg = getAnalysis<CallGraph>();
-    Inliner inliner(&getContext(), cg);
+    auto *context = &getContext();
+
+    // Collect a set of canonicalization patterns to use when simplifying
+    // callable regions within an SCC.
+    OwningRewritePatternList canonPatterns;
+    for (auto *op : context->getRegisteredOperations())
+      op->getCanonicalizationPatterns(canonPatterns, context);
 
     // Run the inline transform in post-order over the SCCs in the callgraph.
+    Inliner inliner(context, cg);
     runTransformOnCGSCCs(cg, [&](ArrayRef<CallGraphNode *> scc) {
-      inlineCallsInSCC(inliner, scc);
+      inlineSCC(inliner, scc, context, canonPatterns);
     });
   }
 };

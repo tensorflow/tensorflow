@@ -57,10 +57,64 @@ bool IsBroadcastableElementsAttrAndType(Type a, Type b) {
   return OpTrait::util::getBroadcastedType(a, b) != Type();
 }
 
-// Returns whether the given `a` and `b` ElementsAttr have broadcast-compatible
-// types.
-bool IsBroadcastableElementsAttrs(Attribute a, Attribute b) {
-  return IsBroadcastableElementsAttrAndType(a.getType(), b.getType());
+bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
+                                bool is_depthwise) {
+  // Make sure the val tensor has shape where all dimensions are 1 except
+  // last one.
+  // Also, val tensor must be of rank 1 or 4 or 0 (scalar).
+  const auto elements = val.dyn_cast<DenseElementsAttr>();
+  const auto elements_shape = elements.getType().getShape();
+  const auto filter_elements = filter.dyn_cast<DenseElementsAttr>();
+  const auto filter_shape = filter_elements.getType().getShape();
+  const auto elements_rank = elements.getType().getRank();
+  if (!elements || !filter_elements) {
+    return false;
+  }
+  for (int i = 0; i < static_cast<int>(elements_shape.size()) - 1; ++i) {
+    if (elements_shape[i] != 1) return false;
+  }
+  if (elements_rank != 1 && elements_rank != 0 && elements_rank != 4) {
+    return false;
+  }
+  auto elements_depth = elements_shape.empty() ? 1 : elements_shape.back();
+  // In TFLite Conv2D uses OHWI format for filter, and 1HWO for Depthwise Conv.
+  // For conv:
+  // Check if last dimension in filter equals the first dimension
+  // For depthwise conv:
+  // Check if the first in filter dimension equals the first dimension.
+  if (filter_shape.empty() ||
+      (is_depthwise ? filter_shape.back() != elements_depth
+                    : filter_shape[0] != elements_depth))
+    return false;
+  return true;
+}
+
+// Expand Attribute 'a' to 4D with all 1s except 1 dimension.
+// Which dimension depends on 'is_depthwise' is true or false.
+ElementsAttr ExpandTo4DForConvImpl(Attribute a, bool is_depthwise) {
+  auto elements = a.dyn_cast<DenseElementsAttr>();
+  auto shape = elements.getType().getShape();
+  if (shape.size() == 4) {
+    return elements;
+  }
+  std::vector<int64_t> shape_data = {1, 1, 1, 1};
+  if (shape.size() == 1 || shape.empty()) {
+    if (is_depthwise)
+      shape_data[3] = shape.empty() ? 1 : shape[0];
+    else
+      shape_data[0] = shape.empty() ? 1 : shape[0];
+  }
+  auto new_shape =
+      RankedTensorType::get(shape_data, elements.getType().getElementType());
+  return elements.reshape(new_shape);
+}
+
+ElementsAttr ExpandTo4DForConv(Attribute a) {
+  return ExpandTo4DForConvImpl(a, false);
+}
+
+ElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
+  return ExpandTo4DForConvImpl(a, true);
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"

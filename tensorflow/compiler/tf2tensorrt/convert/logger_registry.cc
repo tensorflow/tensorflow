@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/logger_registry.h"
 
+#include <unordered_map>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 

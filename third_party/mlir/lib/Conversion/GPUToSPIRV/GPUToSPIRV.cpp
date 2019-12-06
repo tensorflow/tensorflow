@@ -86,18 +86,15 @@ KernelFnConversion::matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
   auto funcOp = cast<FuncOp>(op);
   FuncOp newFuncOp;
   if (!gpu::GPUDialect::isKernel(funcOp)) {
-    return succeeded(lowerFunction(funcOp, operands, &typeConverter, rewriter,
-                                   newFuncOp))
+    return succeeded(lowerFunction(funcOp, &typeConverter, rewriter, newFuncOp))
                ? matchSuccess()
                : matchFailure();
   }
 
-  if (failed(lowerAsEntryFunction(funcOp, operands, &typeConverter, rewriter,
-                                  newFuncOp))) {
+  if (failed(
+          lowerAsEntryFunction(funcOp, &typeConverter, rewriter, newFuncOp))) {
     return matchFailure();
   }
-  newFuncOp.getOperation()->removeAttr(Identifier::get(
-      gpu::GPUDialect::getKernelFuncAttrName(), op->getContext()));
   return matchSuccess();
 }
 
@@ -121,7 +118,7 @@ void GPUToSPIRVPass::runOnModule() {
   auto module = getModule();
 
   SmallVector<Operation *, 4> spirvModules;
-  for (auto funcOp : module.getOps<FuncOp>()) {
+  module.walk([&module, &spirvModules](FuncOp funcOp) {
     if (gpu::GPUDialect::isKernel(funcOp)) {
       OpBuilder builder(module.getBodyRegion());
       // Create a new spirv::ModuleOp for this function, and clone the
@@ -139,7 +136,7 @@ void GPUToSPIRVPass::runOnModule() {
       moduleBuilder.clone(*funcOp.getOperation());
       spirvModules.push_back(spvModule);
     }
-  }
+  });
 
   /// Dialect conversion to lower the functions with the spirv::ModuleOps.
   SPIRVBasicTypeConverter basicTypeConverter;
@@ -163,6 +160,24 @@ void GPUToSPIRVPass::runOnModule() {
   if (failed(applyFullConversion(spirvModules, target, patterns,
                                  &typeConverter))) {
     return signalPassFailure();
+  }
+
+  // After the SPIR-V modules have been generated, some finalization is needed
+  // for the entry functions. For example, adding spv.EntryPoint op,
+  // spv.ExecutionMode op, etc.
+  for (auto *spvModule : spirvModules) {
+    for (auto op :
+         cast<spirv::ModuleOp>(spvModule).getBlock().getOps<FuncOp>()) {
+      if (gpu::GPUDialect::isKernel(op)) {
+        OpBuilder builder(op.getContext());
+        builder.setInsertionPointAfter(op);
+        if (failed(finalizeEntryFunction(op, builder))) {
+          return signalPassFailure();
+        }
+        op.getOperation()->removeAttr(Identifier::get(
+            gpu::GPUDialect::getKernelFuncAttrName(), op.getContext()));
+      }
+    }
   }
 }
 

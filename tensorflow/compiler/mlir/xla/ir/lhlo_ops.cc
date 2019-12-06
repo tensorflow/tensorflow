@@ -47,7 +47,7 @@ limitations under the License.
 namespace mlir {
 namespace xla_lhlo {
 
-XlaLhloDialect::XlaLhloDialect(MLIRContext* context)
+XlaLhloDialect::XlaLhloDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST

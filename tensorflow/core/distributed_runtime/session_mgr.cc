@@ -174,7 +174,8 @@ Status SessionMgr::UpdateSession(
   DeviceMgr* local_device_mgr = worker_session->device_mgr();
   DeviceMgr* remote_device_mgr = worker_session->remote_device_mgr();
   std::vector<Device*> curr_remote_devices = remote_device_mgr->ListDevices();
-  std::vector<std::unique_ptr<tensorflow::Device>> added_remote_devices;
+  std::vector<std::unique_ptr<Device>> added_remote_devices;
+  std::vector<Device*> removed_remote_devices;
 
   std::vector<DeviceAttributes> added_cluster_device_attrs;
   for (const auto& da : cluster_device_attributes) {
@@ -182,15 +183,18 @@ Status SessionMgr::UpdateSession(
     if (!local_device_mgr->LookupDevice(da.name(), &device).ok() &&
         !remote_device_mgr->LookupDevice(da.name(), &device).ok()) {
       added_cluster_device_attrs.emplace_back(da);
+    } else if (device != nullptr &&
+               device->attributes().incarnation() != da.incarnation()) {
+      removed_remote_devices.emplace_back(device);
+      added_cluster_device_attrs.emplace_back(da);
     }
   }
-  std::vector<string> removed_remote_device_names;
   for (Device* device : curr_remote_devices) {
     string task_name;
     DeviceNameUtils::GetTaskName(device->parsed_name(), &task_name);
     if (std::find(updated_remote_workers.begin(), updated_remote_workers.end(),
                   task_name) == updated_remote_workers.end()) {
-      removed_remote_device_names.emplace_back(device->name());
+      removed_remote_devices.emplace_back(device);
     }
   }
   protobuf::RepeatedPtrField<DeviceAttributes> added_cluster_device_attrs_pb(
@@ -201,7 +205,7 @@ Status SessionMgr::UpdateSession(
 
   TF_RETURN_IF_ERROR(worker_session->UpdateWorkerCacheAndDevices(
       std::unique_ptr<WorkerCacheInterface>(worker_cache),
-      std::move(added_remote_devices), removed_remote_device_names));
+      std::move(added_remote_devices), removed_remote_devices));
   return Status::OK();
 }
 

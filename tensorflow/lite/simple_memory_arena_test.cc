@@ -24,32 +24,38 @@ namespace {
 TEST(SimpleMemoryArenaTest, BasicArenaOperations) {
   TfLiteContext context;
   SimpleMemoryArena arena(64);
-  ArenaAllocWithUsageInterval allocs[6];
+  ArenaAlloc allocs[6];
 
-  arena.Allocate(&context, 32, 2047, 1, 3, &allocs[0]);
-  arena.Allocate(&context, 32, 2047, 2, 5, &allocs[1]);
-  arena.Allocate(&context, 32, 2047, 3, 6, &allocs[2]);
-  arena.Allocate(&context, 32, 2047, 5, 6, &allocs[3]);
-  arena.Allocate(&context, 32, 1023, 4, 6, &allocs[4]);
-  arena.Allocate(&context, 32, 1023, 6, 6, &allocs[5]);
+  arena.Allocate(&context, 32, 2047, &allocs[0]);
+  arena.Allocate(&context, 32, 2047, &allocs[1]);
+  arena.Allocate(&context, 32, 2047, &allocs[2]);
+  arena.Deallocate(&context, allocs[0]);
+  arena.Allocate(&context, 32, 1023, &allocs[3]);
+  arena.Allocate(&context, 32, 2047, &allocs[4]);
+  arena.Deallocate(&context, allocs[1]);
+  arena.Allocate(&context, 32, 1023, &allocs[5]);
 
   EXPECT_EQ(allocs[0].offset, 0);
   EXPECT_EQ(allocs[1].offset, 2048);
   EXPECT_EQ(allocs[2].offset, 4096);
   EXPECT_EQ(allocs[3].offset, 0);
   EXPECT_EQ(allocs[4].offset, 6144);
-  EXPECT_EQ(allocs[5].offset, 2048);
+  EXPECT_EQ(allocs[5].offset, 1024);
 }
 
 TEST(SimpleMemoryArenaTest, BasicZeroAlloc) {
   TfLiteContext context;
   SimpleMemoryArena arena(64);
-  ArenaAllocWithUsageInterval alloc;
+  ArenaAlloc alloc;
 
   // Zero-sized allocs should have a 0 offset and size.
-  ASSERT_EQ(arena.Allocate(&context, 32, 0, 1, 2, &alloc), kTfLiteOk);
+  ASSERT_EQ(arena.Allocate(&context, 32, 0, &alloc), kTfLiteOk);
   EXPECT_EQ(alloc.offset, 0);
   EXPECT_EQ(alloc.size, 0);
+
+  // Deallocation of zero-sized allocs should always succeed (even redundantly).
+  ASSERT_EQ(arena.Deallocate(&context, alloc), kTfLiteOk);
+  ASSERT_EQ(arena.Deallocate(&context, alloc), kTfLiteOk);
 
   // The zero-sized alloc should resolve to null.
   char* resolved_ptr = nullptr;
@@ -61,13 +67,15 @@ TEST(SimpleMemoryArenaTest, BasicZeroAlloc) {
 TEST(SimpleMemoryArenaTest, InterleavedZeroAlloc) {
   TfLiteContext context;
   SimpleMemoryArena arena(64);
-  ArenaAllocWithUsageInterval allocs[4];
+  ArenaAlloc allocs[4];
 
   // Interleave some zero and non-zero-sized allocations and deallocations.
-  ASSERT_EQ(arena.Allocate(&context, 32, 2047, 0, 4, &allocs[0]), kTfLiteOk);
-  ASSERT_EQ(arena.Allocate(&context, 32, 0, 1, 2, &allocs[1]), kTfLiteOk);
-  ASSERT_EQ(arena.Allocate(&context, 32, 1023, 1, 2, &allocs[2]), kTfLiteOk);
-  ASSERT_EQ(arena.Allocate(&context, 32, 2047, 3, 4, &allocs[3]), kTfLiteOk);
+  ASSERT_EQ(arena.Allocate(&context, 32, 2047, &allocs[0]), kTfLiteOk);
+  ASSERT_EQ(arena.Allocate(&context, 32, 0, &allocs[1]), kTfLiteOk);
+  ASSERT_EQ(arena.Allocate(&context, 32, 1023, &allocs[2]), kTfLiteOk);
+  ASSERT_EQ(arena.Deallocate(&context, allocs[1]), kTfLiteOk);
+  ASSERT_EQ(arena.Deallocate(&context, allocs[2]), kTfLiteOk);
+  ASSERT_EQ(arena.Allocate(&context, 32, 2047, &allocs[3]), kTfLiteOk);
 
   // Deallocation of a zero-sized alloc should not impact the allocator offsets.
   EXPECT_EQ(allocs[0].offset, 0);
@@ -79,11 +87,11 @@ TEST(SimpleMemoryArenaTest, InterleavedZeroAlloc) {
 TEST(SimpleMemoryArenaTest, TestAfterClear) {
   TfLiteContext context;
   SimpleMemoryArena arena(64);
-  ArenaAllocWithUsageInterval allocs[9];
+  ArenaAlloc allocs[9];
 
-  arena.Allocate(&context, 32, 2047, 0, 2, &allocs[0]);
-  arena.Allocate(&context, 32, 2047, 1, 2, &allocs[1]);
-  arena.Allocate(&context, 32, 2047, 1, 2, &allocs[2]);
+  arena.Allocate(&context, 32, 2047, &allocs[0]);
+  arena.Allocate(&context, 32, 2047, &allocs[1]);
+  arena.Allocate(&context, 32, 2047, &allocs[2]);
   arena.Commit(&context);
 
   EXPECT_EQ(allocs[0].offset, 0);
@@ -93,9 +101,9 @@ TEST(SimpleMemoryArenaTest, TestAfterClear) {
   arena.Clear();
 
   // Test with smaller allocs.
-  arena.Allocate(&context, 32, 1023, 0, 2, &allocs[3]);
-  arena.Allocate(&context, 32, 1023, 1, 2, &allocs[4]);
-  arena.Allocate(&context, 32, 1023, 1, 2, &allocs[5]);
+  arena.Allocate(&context, 32, 1023, &allocs[3]);
+  arena.Allocate(&context, 32, 1023, &allocs[4]);
+  arena.Allocate(&context, 32, 1023, &allocs[5]);
   arena.Commit(&context);
 
   EXPECT_EQ(allocs[3].offset, 0);
@@ -105,9 +113,9 @@ TEST(SimpleMemoryArenaTest, TestAfterClear) {
   arena.Clear();
 
   // Test larger allocs which should require a reallocation.
-  arena.Allocate(&context, 32, 4095, 0, 2, &allocs[6]);
-  arena.Allocate(&context, 32, 4095, 1, 2, &allocs[7]);
-  arena.Allocate(&context, 32, 4095, 1, 2, &allocs[8]);
+  arena.Allocate(&context, 32, 4095, &allocs[6]);
+  arena.Allocate(&context, 32, 4095, &allocs[7]);
+  arena.Allocate(&context, 32, 4095, &allocs[8]);
   arena.Commit(&context);
 
   EXPECT_EQ(allocs[6].offset, 0);

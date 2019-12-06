@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
@@ -48,7 +49,7 @@ TEST(CompileSerializedMlirToXlaHloTest, InvalidSerliazedMlirModule) {
 
 TEST(CompileSerializedMlirToXlaHloTest, Success) {
   string mlir_module = R"(
-    module {
+    module attributes {tf.versions = {producer = 179 : i32}} {
       func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
         %0 = "tf.AddV2"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", name = "add"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
         return %0 : tensor<f32>
@@ -111,6 +112,45 @@ ENTRY %main.6 (arg_tuple.1: (f32[], f32[])) -> (f32[]) {
 
   // Expect no resource updates from computation.
   EXPECT_TRUE(compilation_result.resource_updates.empty());
+}
+
+TEST(CompileSerializedMlirToXlaHloTest, ShapeInference) {
+  string mlir_module = R"(
+    module attributes {tf.versions = {producer = 179 : i32}} {
+      func @main(%arg0: tensor<*xf32>, %arg1: tensor<?x19xf32>) -> tensor<?x19xf32> {
+        %0 = "tf.MatMul"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", transpose_a = false, transpose_b = false} : (tensor<*xf32>, tensor<?x19xf32>) -> tensor<?x19xf32>
+        return %0 : tensor<?x19xf32>
+      }
+    }
+  )";
+
+  std::vector<TensorShape> arg_shapes{TensorShape({10, 17}),
+                                      TensorShape({17, 19})};
+  XlaCompiler::CompilationResult compilation_result;
+
+  Status s = CompileSerializedMlirToXlaHlo(
+      mlir_module, absl::Span<TensorShape>(arg_shapes), TestShapeRepresentation,
+      &compilation_result);
+  TF_ASSERT_OK(s);
+
+  const xla::HloModuleConfig module_config(
+      compilation_result.computation->GetProgramShape().ValueOrDie());
+  auto status_or_hlo_module = xla::HloModule::CreateFromProto(
+      compilation_result.computation->proto(), module_config);
+  ASSERT_TRUE(status_or_hlo_module.ok());
+  string expected_hlo_module_string = R"(HloModule main.6
+
+ENTRY %main.6 (arg_tuple.1: (f32[10,17], f32[17,19])) -> (f32[10,19]) {
+  %arg_tuple.1 = (f32[10,17]{1,0}, f32[17,19]{1,0}) parameter(0)
+  %get-tuple-element.2 = f32[10,17]{1,0} get-tuple-element((f32[10,17]{1,0}, f32[17,19]{1,0}) %arg_tuple.1), index=0
+  %get-tuple-element.3 = f32[17,19]{1,0} get-tuple-element((f32[10,17]{1,0}, f32[17,19]{1,0}) %arg_tuple.1), index=1
+  %dot.4 = f32[10,19]{1,0} dot(f32[10,17]{1,0} %get-tuple-element.2, f32[17,19]{1,0} %get-tuple-element.3), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT %tuple.5 = (f32[10,19]{1,0}) tuple(f32[10,19]{1,0} %dot.4)
+}
+
+)";
+  EXPECT_EQ(status_or_hlo_module.ValueOrDie()->ToString(),
+            expected_hlo_module_string);
 }
 
 }  // namespace

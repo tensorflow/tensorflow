@@ -85,6 +85,18 @@ foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
+// Logical binary op patterns.
+//===----------------------------------------------------------------------===//
+
+class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
+  : Pat<(FromOp I1Tensor:$l, I1Tensor:$r),
+        (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
+
+foreach fromToBinPair = [[TF_LogicalAndOp, HLO_AndOp],
+                         [TF_LogicalOrOp, HLO_OrOp]] in
+  def : DirectLogicalBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
+
+//===----------------------------------------------------------------------===//
 // Compare op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -125,6 +137,9 @@ def GetHLOAxisFromTFAxis : NativeCodeCall<
 
 def HasRankedFirstOperand
   : Constraint<CPred<"(*$0.begin())->getType().isa<RankedTensorType>()">>;
+
+def IsShapedTensor
+  : Constraint<CPred<"$0->getType().isa<RankedTensorType>()">>;
 
 // This pattern converts TensorFlow axis format to HLO axis format which
 // doesn't wrap around like TensorFlow and is always positive. For this
@@ -178,12 +193,38 @@ def : Pat<(TF_Relu6Op AnyStaticShapeTensor:$input),
           (HLO_ClampOp (HLO_ConstOp (ConstantSplat<"0"> $input)), $input,
                        (HLO_ConstOp (ConstantSplat<"6"> $input)))>;
 
+// ReluGrad(gradients, features) = gradients * (features > 0)
+def : Pat<(TF_ReluGradOp AnyStaticShapeTensor:$gradients, AnyStaticShapeTensor:$features),
+          (HLO_SelectOp
+            (HLO_CompareOp $features, (HLO_ConstOp:$zero (ConstantSplat<"0"> $features)),
+              (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_GT),
+            $gradients, $zero)>;
+
 //===----------------------------------------------------------------------===//
 // Relu op patterns.
 //===----------------------------------------------------------------------===//
 
 def : Pat<(TF_SelectOp AnyTensor:$condition, AnyTensor:$lhs, AnyTensor:$rhs),
           (HLO_SelectOp $condition, $lhs, $rhs)>;
+
+
+//===----------------------------------------------------------------------===//
+// Slice op patterns.
+//===----------------------------------------------------------------------===//
+
+def CanBeTranslatedToDynamicSlice : Constraint<CPred<
+  "CanBeTranslatedToDynamicSlice($0, $1, $2.cast<DenseIntElementsAttr>())">>;
+
+def TFSliceSizes2HLOSliceSizes : NativeCodeCall<
+    "TFSliceSizes2HLOSliceSizes($0, $1, $2.cast<DenseIntElementsAttr>(),"
+    "&$_builder)">;
+
+def : Pat<(TF_SliceOp HLO_Tensor:$input, HLO_Tensor:$starting_indices,
+           (TF_ConstOp I64ElementsAttr:$slice_sizes)),
+          (HLO_DynamicSliceOp $input, $starting_indices,
+           (TFSliceSizes2HLOSliceSizes $input, $starting_indices, $slice_sizes)),
+          [(CanBeTranslatedToDynamicSlice $input, $starting_indices,
+            $slice_sizes)]>;
 
 //===----------------------------------------------------------------------===//
 // Unary op patterns.
@@ -217,3 +258,19 @@ foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
   def : Pat<(TfOp:$res AnyStaticShapeTensor:$arg, $ignored),
             (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
 }
+
+//===----------------------------------------------------------------------===//
+// RngUniform.
+//===----------------------------------------------------------------------===//
+def CastElementsToI64: NativeCodeCall<
+  "CastElementsToI64($0->getLoc(), $1, &$_builder)">;
+
+// TODO(misard,phawkins): handle random number generator seeds/states correctly.
+def : Pat<(TF_RandomUniformOp:$old $shape, $seed, $seed2),
+          (HLO_RngUniformOp
+            (HLO_ConstOp
+              (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 0.0)">)),
+            (HLO_ConstOp
+              (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 1.0)">)),
+            (CastElementsToI64 $old, $shape)),
+            [(IsShapedTensor $shape)]>;

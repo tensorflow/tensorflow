@@ -573,7 +573,8 @@ static void print(spirv::AddressOfOp addressOfOp, OpAsmPrinter &printer) {
   printer << spirv::AddressOfOp::getOperationName();
 
   // Print symbol name.
-  printer << " @" << addressOfOp.variable();
+  printer << ' ';
+  printer.printSymbolName(addressOfOp.variable());
 
   // Print the type.
   printer << " : " << addressOfOp.pointer()->getType();
@@ -1029,8 +1030,8 @@ static ParseResult parseEntryPointOp(OpAsmParser &parser,
 
 static void print(spirv::EntryPointOp entryPointOp, OpAsmPrinter &printer) {
   printer << spirv::EntryPointOp::getOperationName() << " \""
-          << stringifyExecutionModel(entryPointOp.execution_model()) << "\" @"
-          << entryPointOp.fn();
+          << stringifyExecutionModel(entryPointOp.execution_model()) << "\" ";
+  printer.printSymbolName(entryPointOp.fn());
   auto interfaceVars = entryPointOp.interface().getValue();
   if (!interfaceVars.empty()) {
     printer << ", ";
@@ -1244,13 +1245,15 @@ static void print(spirv::GlobalVariableOp varOp, OpAsmPrinter &printer) {
   printer << spirv::GlobalVariableOp::getOperationName();
 
   // Print variable name.
-  printer << " @" << varOp.sym_name();
+  printer << ' ';
+  printer.printSymbolName(varOp.sym_name());
   elidedAttrs.push_back(SymbolTable::getSymbolAttrName());
 
   // Print optional initializer
   if (auto initializer = varOp.initializer()) {
-    printer << " " << kInitializerAttrName << "(@" << initializer.getValue()
-            << ")";
+    printer << " " << kInitializerAttrName << '(';
+    printer.printSymbolName(initializer.getValue());
+    printer << ')';
     elidedAttrs.push_back(kInitializerAttrName);
   }
 
@@ -1720,9 +1723,9 @@ static ParseResult parseReferenceOfOp(OpAsmParser &parser,
 }
 
 static void print(spirv::ReferenceOfOp referenceOfOp, OpAsmPrinter &printer) {
-  printer << spirv::ReferenceOfOp::getOperationName() << " @"
-          << referenceOfOp.spec_const() << " : "
-          << referenceOfOp.reference()->getType();
+  printer << spirv::ReferenceOfOp::getOperationName() << ' ';
+  printer.printSymbolName(referenceOfOp.spec_const());
+  printer << " : " << referenceOfOp.reference()->getType();
 }
 
 static LogicalResult verify(spirv::ReferenceOfOp referenceOfOp) {
@@ -1955,8 +1958,9 @@ static ParseResult parseSpecConstantOp(OpAsmParser &parser,
 }
 
 static void print(spirv::SpecConstantOp constOp, OpAsmPrinter &printer) {
-  printer << spirv::SpecConstantOp::getOperationName() << " @"
-          << constOp.sym_name() << " = ";
+  printer << spirv::SpecConstantOp::getOperationName() << ' ';
+  printer.printSymbolName(constOp.sym_name());
+  printer << " = ";
   printer.printAttribute(constOp.default_value());
 }
 

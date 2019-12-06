@@ -290,16 +290,8 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     allocator = &*se_allocator;
   }
 
-  absl::optional<se::Stream> stream_opt;
-  se::Stream* stream = [&] {
-    if (allocator->GetStream()) {
-      return allocator->GetStream();
-    }
-    stream_opt.emplace(stream_exec_);
-    stream_opt->Init();
-    return &stream_opt.value();
-  }();
-
+  TF_ASSIGN_OR_RETURN(se::Stream* const stream,
+                      allocator->GetStream(stream_exec_->device_ordinal()));
   StatusOr<AutotuneResult> result_or(InternalError("Unknown platform."));
   // Check StreamExecutor on which platform it is. ROCm and Cuda implementation
   // have diverged. Secifically, we need to make sure redzone allocator related

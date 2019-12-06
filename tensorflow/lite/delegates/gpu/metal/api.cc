@@ -267,6 +267,7 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::MUL:
     case OperationType::RESIZE:
     case OperationType::SPACE_TO_BATCH:
+    case OperationType::TRANSPOSE:
     case OperationType::UNKNOWN:
       return UnimplementedError("Unsupported op: " + node->operation.type);
   }

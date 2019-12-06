@@ -38,7 +38,7 @@ FLAGS = flags.FLAGS
 # This function needs to take a "create_module_fn", as opposed to just the
 # module itself, because the creation of the module has to be delayed until
 # after absl and tensorflow have run various initialization steps.
-def do_test(create_module_fn, exported_names=None):
+def do_test(create_module_fn, exported_names=None, show_debug_info=False):
   """Runs test.
 
   1. Performs absl and tf "main"-like initialization that must run before almost
@@ -55,6 +55,7 @@ def do_test(create_module_fn, exported_names=None):
       `tf.Module` to be converted and printed.
     exported_names: A set of exported names for the MLIR converter (default is
       "export all").
+    show_debug_info: If true, shows debug locations in the resulting MLIR.
   """
   if exported_names is None:
     exported_names = []
@@ -74,10 +75,12 @@ def do_test(create_module_fn, exported_names=None):
     if len(argv) > 1:
       raise app.UsageError('Too many command-line arguments.')
     save_model_path = FLAGS.save_model_path
-    tf.saved_model.save(create_module_fn(), save_model_path)
+    save_options = tf.saved_model.SaveOptions(save_debug_info=show_debug_info)
+    tf.saved_model.save(
+        create_module_fn(), save_model_path, options=save_options)
     logging.info('Saved model to: %s', save_model_path)
     mlir = pywrap_tensorflow.experimental_convert_saved_model_to_mlir(
-        save_model_path, ','.join(exported_names))
+        save_model_path, ','.join(exported_names), show_debug_info)
     print(mlir)
 
   app.run(app_main)

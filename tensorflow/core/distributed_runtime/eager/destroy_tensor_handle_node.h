@@ -55,8 +55,9 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
     eager::EagerClient* eager_client;
     Status status = ctx_->GetClient(remote_task_, &eager_client);
     if (!status.ok()) {
-      LOG(INFO) << "Unable to destroy remote tensor handle because the target "
-                << remote_task_ << " is no longer available.";
+      LOG_EVERY_N_SEC(INFO, 60)
+          << "Unable to destroy remote tensor handle because the target "
+          << remote_task_ << " is no longer available.";
       done(Status::OK());
       return;
     }
@@ -75,9 +76,10 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
           // 2. Lost connection to remote worker. In this case client will
           //    crash. We don't want to spam user with redundant warning logs.
           if (!s.ok() && ready && s.code() != errors::Code::UNAVAILABLE) {
-            LOG(WARNING) << "Ignoring an error encountered when deleting "
-                            "remote tensors handles: "
-                         << s.ToString();
+            LOG_EVERY_N_SEC(WARNING, 60)
+                << "Ignoring an error encountered when deleting "
+                   "remote tensors handles: "
+                << s.ToString();
           }
           done(Status::OK());
           delete response;

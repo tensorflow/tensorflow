@@ -8,12 +8,6 @@ package(
 )
 
 cc_library(
-    name = "android_required_build_flags",
-    srcs = ["android_required_build_flags.cc"],
-    copts = tflite_copts(),
-)
-
-cc_library(
     name = "csv_writer",
     hdrs = ["csv_writer.h"],
     copts = tflite_copts(),

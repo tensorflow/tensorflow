@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import glob
 import os
-import shutil
 import tempfile
 import threading
 
@@ -28,6 +27,7 @@ from tensorflow.core.protobuf import debug_event_pb2
 from tensorflow.python.debug.lib import debug_events_writer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.platform import googletest
 
@@ -53,7 +53,7 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
     if os.path.isdir(self.dump_root):
-      shutil.rmtree(self.dump_root)
+      file_io.delete_recursively(self.dump_root)
     super(PywrapeventsWriterTest, self).tearDown()
 
   def testMultiThreadedConstructorCallWorks(self):

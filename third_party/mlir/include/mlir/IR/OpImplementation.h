@@ -133,6 +133,12 @@ public:
     }
   }
 
+  /// Print the given string as a symbol reference, i.e. a form representable by
+  /// a SymbolRefAttr. A symbol reference is represented as a string prefixed
+  /// with '@'. The reference is surrounded with ""'s and escaped if it has any
+  /// special or non-printable characters in it.
+  virtual void printSymbolName(StringRef symbolRef) = 0;
+
 private:
   OpAsmPrinter(const OpAsmPrinter &) = delete;
   void operator=(const OpAsmPrinter &) = delete;

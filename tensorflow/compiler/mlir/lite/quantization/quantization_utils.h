@@ -22,12 +22,17 @@ limitations under the License.
 #include <unordered_map>
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:local_config_mlir
+#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:local_config_mlir
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 
 namespace mlir {
@@ -44,13 +49,13 @@ struct OpQuantSpec {
   // Maps the operand index of a bias input to its quantization specifications,
   // including the non-bias operand indexes and the method retrieving
   // quantization parameters from list of parameters of the non-bias operands.
-  // This map is empty if the op doesn't havea bias operand.
+  // This map is empty if the op doesn't have a bias operand.
   std::unordered_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>
       biases_params;
 
   // Quantization parameters for value restricted outputs. This is the
   // "hard-coded" parameters and should be used unconditionally for the
-  // quantized op. This vector is empty if the op doesn't have value resctricted
+  // quantized op. This vector is empty if the op doesn't have value restricted
   // outputs.
   llvm::DenseMap<SignedInteger, QuantParamsForResults> restricted_output_params;
 };
@@ -58,6 +63,62 @@ struct OpQuantSpec {
 // A function signature for getting the particular OpQuantSpec for the provided
 // op.
 typedef std::unique_ptr<OpQuantSpec> (*OpQuantSpecGetter)(Operation* op);
+
+template <typename Q, typename DQ>
+struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
+  ConvertStatsToQDQs(int num_bits, bool narrow_range, bool is_signed,
+                     MLIRContext* context)
+      : OpRewritePattern<quant::StatisticsOp>(context),
+        num_bits(num_bits),
+        narrow_range(narrow_range),
+        is_signed(is_signed) {}
+
+  PatternMatchResult matchAndRewrite(quant::StatisticsOp op,
+                                     PatternRewriter& rewriter) const override {
+    Type expressed = op.getType().cast<ShapedType>().getElementType();
+    quant::QuantizedType quant_type;
+    SmallVector<double, 4> mins, maxs;
+
+    if (op.axisStats().hasValue()) {
+      int stats_num = op.axisStats()->getNumElements();
+      if (stats_num == 0 || stats_num % 2 != 0) return this->matchFailure();
+      auto stats = op.axisStats()->dyn_cast<DenseFPElementsAttr>();
+      if (!stats) return this->matchFailure();
+
+      for (auto it = stats.begin(), e = stats.end(); it != e; ++it) {
+        mins.push_back(FloatAttr::getValueAsDouble(*it++));
+        maxs.push_back(FloatAttr::getValueAsDouble(*it));
+      }
+      quant_type = quant::fakeQuantAttrsToType(
+          op.getLoc(), num_bits, op.axis()->getSExtValue(), mins, maxs,
+          narrow_range, expressed, is_signed);
+    } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
+      double rmin = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
+      double rmax = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
+      quant_type =
+          quant::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
+                                      narrow_range, expressed, is_signed);
+    } else {
+      return this->matchFailure();
+    }
+
+    rewriter.setInsertionPointAfter(op);
+    Type result_type = quant_type.castFromExpressedType(op.getType());
+    auto q = rewriter.create<Q>(op.getLoc(), result_type, op.arg(),
+                                rewriter.getTypeAttr(result_type));
+    auto dq = rewriter.create<DQ>(op.getLoc(), op.getType(), q);
+    op.getResult()->replaceAllUsesWith(dq);
+    q.getOperation()->replaceUsesOfWith(dq, op.arg());
+    op.erase();
+
+    return this->matchSuccess();
+  }
+
+ private:
+  int num_bits;
+  bool narrow_range;
+  bool is_signed;
+};
 
 // A base rewrite pattern which matches any N-in-M-out operations with
 // quantization parameters propagated to at least one of its operands. The
@@ -195,8 +256,8 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
     // This is a positive value, and will be applied on zero points and fixed
     // point ranges.
     int64_t offset =
-        QType::getDefaultMininumForInteger(/*isSigned=*/false, num_bits) -
-        QType::getDefaultMininumForInteger(/*isSigned=*/true, num_bits);
+        QType::getDefaultMinimumForInteger(/*isSigned=*/false, num_bits) -
+        QType::getDefaultMinimumForInteger(/*isSigned=*/true, num_bits);
 
     auto flags = quant::QuantizationFlags::Signed;
     QType new_qtype;

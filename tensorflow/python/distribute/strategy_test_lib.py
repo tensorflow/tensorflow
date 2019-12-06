@@ -396,16 +396,17 @@ class DistributionTestBase(test.TestCase):
       global_step_values = self.evaluate(global_step_tensors)
       self.assertEqual((1,) * len(global_step_tensors), global_step_values)
 
-  def _test_numpy_dataset(self, strategy):
-    with strategy.scope(), self.cached_session() as sess:
+  def _test_numpy_dataset(self, strategy, session=None):
+    cached_session = session or self.cached_session()
+    with strategy.scope(), cached_session as sess:
       x = np.asarray([[1, 2], [6, 12], [2, 4], [5, 10], [3, 6], [4, 8]])
       y = np.asarray([5, 4, 3, 2, 1, 0])
       batch_size = 6
       if not strategy.extended._global_batch_size:  # pylint: disable=protected-access
         batch_size = batch_size // strategy.num_replicas_in_sync
 
-      ds = strategy.extended.experimental_make_numpy_dataset((x, y),
-                                                             session=sess)
+      ds = strategy.extended.experimental_make_numpy_dataset(
+          (x, y), session=sess or self.cached_session())
       ds = ds.repeat(2)  # 2 epochs
       # We need to use the drop_remainder argument to get a known static
       # input shape which is required for TPUs.

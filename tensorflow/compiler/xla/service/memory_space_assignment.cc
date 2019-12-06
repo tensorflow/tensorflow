@@ -53,24 +53,24 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
           << ", min prefetch interval = " << min_prefetch_interval_
           << ", max prefetch interval = " << max_prefetch_interval_;
 
+  AddInputAndOutputRequiredAssignments();
+
   for (auto& interval : sorted_buffer_intervals) {
     if (!interval.need_allocation) {
       continue;
     }
 
     // Skip if we have already allocated for this buffer.
-    const HloBuffer& buffer =
-        alias_analysis_.GetBufferContainingValue(*interval.buffer);
-    if (allocation_map_->contains(&buffer)) {
+    if (allocation_map_->contains(interval.buffer)) {
       continue;
     }
 
     // If the buffer is a tuple, don't use this algorithm for now. The buffers
-    // that are pointed to by the tuple will still use this algorithm.
-    // TODO(berkin): Because tuples are cheap to place in the alternate memory
-    // (they are just pointers) we don't need to use prefetch/evict logic.
-    if (buffer.values()[0]->shape().IsTuple()) {
-      VLOG(4) << "Keeping buffer " << buffer.ToString()
+    // that are pointed to by the tuple will still use this algorithm.  Because
+    // tuples are cheap to place in the alternate memory (they are just
+    // pointers) we don't need to use prefetch/evict logic.
+    if (interval.buffer->shape().IsTuple()) {
+      VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
               << " in default mem because it is a tuple.";
       continue;
     }
@@ -89,9 +89,6 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       }
     }
 
-    MemorySpaceAssignment::AllocationSequence* allocation_sequence =
-        &(*allocation_map_)[&buffer];
-
     // At this point, none of the colocated buffers contain any phi buffers.
     for (const BufferInterval* colocated_interval : colocated_intervals) {
       if (keep_in_default_memory) {
@@ -99,6 +96,8 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       }
       const HloValue* value = colocated_interval->buffer;
       const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+      MemorySpaceAssignment::AllocationSequence* allocation_sequence =
+          &(*allocation_map_)[value];
       int64 definition_time =
           instruction_schedule.at(value->defining_instruction());
       // Sort the uses by the use time.
@@ -141,7 +140,7 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
 
   if (VLOG_IS_ON(3)) {
     for (const auto& alloc_pair : *allocation_map_) {
-      VLOG(3) << "Allocation for " << alloc_pair.first->ToString();
+      VLOG(3) << "Allocation for " << alloc_pair.first->ToShortString();
       for (const auto& alloc : alloc_pair.second) {
         std::string addr_str = ": default";
         if (alloc->memory_space() == MemorySpace::kAlternate) {
@@ -155,6 +154,52 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
   }
 
   return result_;
+}
+
+void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
+  // Go through the parameters and outputs and pin them to default memory by
+  // adding a required assignment.
+  // TODO(berkin): If these values are already marked alternate memory, use
+  // those instead.
+  const HloDataflowAnalysis& dataflow_analysis =
+      alias_analysis_.dataflow_analysis();
+  const HloModule& module = dataflow_analysis.module();
+  const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+  HloComputation* entry_computation = module.entry_computation();
+  for (HloInstruction* parameter_instruction :
+       entry_computation->parameter_instructions()) {
+    int64 parameter_instruction_time =
+        instruction_schedule.at(parameter_instruction);
+    ShapeUtil::ForEachSubshape(
+        parameter_instruction->shape(),
+        [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+          for (const HloValue* value :
+               dataflow_analysis.GetValueSet(parameter_instruction, index)
+                   .values()) {
+            VLOG(3) << "Adding required assignment for parameter value = "
+                    << value->ToShortString()
+                    << " time = " << parameter_instruction_time;
+            required_assignments_[value].push_back(
+                {/*memory_space=*/MemorySpace::kDefault,
+                 /*time=*/parameter_instruction_time});
+          }
+        });
+  }
+  HloInstruction* root_instruction = entry_computation->root_instruction();
+  int64 root_instruction_time = instruction_schedule.at(root_instruction);
+  ShapeUtil::ForEachSubshape(
+      root_instruction->shape(),
+      [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+        for (const HloValue* value :
+             dataflow_analysis.GetValueSet(root_instruction, index).values()) {
+          VLOG(3) << "Adding required assignment for output value = "
+                  << value->ToShortString()
+                  << " time = " << root_instruction_time;
+          required_assignments_[value].push_back(
+              {/*memory_space=*/MemorySpace::kDefault,
+               /*time=*/root_instruction_time});
+        }
+      });
 }
 
 void AlternateMemoryBestFitHeap::CommitPendingChunks() {
@@ -214,8 +259,37 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
                   : "");
   CHECK_LE(start_time, end_time);
 
+  // There could be a requirement to pin this buffer to default memory either at
+  // the definition site (e.g., parameters) or at the use site (e.g., outputs).
+  // If there is a definition requirement, then we're allowed to prefetch, but
+  // if it's a use requirement, we cannot prefetch the buffer. If the use
+  // expects the buffer to be in default memory, we cannot prefetch it because
+  // if we did, it would be in alternate memory instead.
+  bool definition_requires_buffer_in_default_mem = false;
+  bool use_requires_buffer_in_default_mem = false;
+  auto required_assignment_it = required_assignments_.find(buffer);
+  if (required_assignment_it != required_assignments_.end()) {
+    for (const RequiredMemoryAssignment& required_assignment :
+         required_assignment_it->second) {
+      VLOG(3) << "Required assignment at time = " << required_assignment.time;
+      // TODO(berkin): Handle memory requirements for alternate memory space.
+      if (required_assignment.memory_space == MemorySpace::kDefault) {
+        if (required_assignment.time == start_time) {
+          definition_requires_buffer_in_default_mem = true;
+          VLOG(3) << "Definition requires buffer in default memory.";
+        }
+        if (required_assignment.time == end_time) {
+          use_requires_buffer_in_default_mem = true;
+          VLOG(3) << "Use requires buffer in default memory.";
+        }
+      }
+    }
+  }
+
   // First try keeping the allocation entirely in the alternate memory.
-  if (TryAllocatingInAlternateMemoryNoCopy(
+  if (!definition_requires_buffer_in_default_mem &&
+      !use_requires_buffer_in_default_mem &&
+      TryAllocatingInAlternateMemoryNoCopy(
           start_time, end_time, last_use_time, defining_position, use,
           alternate_mem_interval, non_bitcast_operand, allocations)) {
     return true;
@@ -298,6 +372,15 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
     allocations->push_back(absl::make_unique<MemorySpaceAssignment::Allocation>(
         non_bitcast_operand, defining_position, MemorySpace::kDefault,
         kDummyChunk, start_time, end_time));
+  }
+
+  // If the use requires the buffer to be in default memory, don't try to
+  // prefetch.
+  if (use_requires_buffer_in_default_mem) {
+    VLOG(4)
+        << "Not trying to prefetch because use requires buffer in default mem.";
+    allocations->back()->AddUse(use);
+    return true;
   }
 
   // Try partially placing the buffer in the alternate space. The time that is
@@ -537,6 +620,7 @@ MemorySpaceAssignment::Run(
 
   TF_RETURN_IF_ERROR(memory_space_assignment.Process());
   memory_space_assignment.ScheduleAsynchronousCopies();
+  TF_RETURN_IF_ERROR(memory_space_assignment.SimplifyGraph());
   TF_RETURN_IF_ERROR(memory_space_assignment.FixSchedule());
 
   VLOG(4) << "Module after memory space assignment: ";
@@ -566,20 +650,71 @@ Status MemorySpaceAssignment::Allocation::Process(
   // space if placed in the alternate memory.
   if (memory_space_ == MemorySpace::kAlternate) {
     memory_space_assignment->AddPositionInAlternateMemorySpace(
-        defining_position_);
+        defining_position());
   }
   return Status::OK();
+}
+
+StatusOr<HloInstruction*> MemorySpaceAssignment::Allocation::ReplaceTupleWith(
+    HloInstruction* new_instruction, HloInstruction* tuple,
+    ShapeIndex shape_index) {
+  const Shape& tuple_shape = tuple->shape();
+  CHECK(tuple->shape().IsTuple())
+      << "ReplaceTupleWith was called for a non-tuple. Tuple = "
+      << tuple->ToString()
+      << ", new_instruction = " << new_instruction->ToString()
+      << ", shape_index = " << shape_index.ToString();
+
+  HloComputation* computation = new_instruction->parent();
+  std::vector<HloInstruction*> tuple_args(tuple_shape.tuple_shapes_size());
+  for (int64 i = 0; i < tuple_shape.tuple_shapes_size(); ++i) {
+    const Shape& subshape = tuple_shape.tuple_shapes(i);
+    if (i == shape_index[0]) {
+      // If the subshape is still a tuple, recurse and pass a new shape index
+      // for the one level deeper.
+      if (subshape.IsTuple()) {
+        HloInstruction* get_tuple_element = computation->AddInstruction(
+            HloInstruction::CreateGetTupleElement(subshape, tuple, i));
+        TF_ASSIGN_OR_RETURN(tuple_args[i],
+                            ReplaceTupleWith(new_instruction, get_tuple_element,
+                                             ShapeIndex(shape_index.begin() + 1,
+                                                        shape_index.end())));
+      } else {
+        tuple_args[i] = new_instruction;
+      }
+    } else {
+      HloInstruction* get_tuple_element = computation->AddInstruction(
+          HloInstruction::CreateGetTupleElement(subshape, tuple, i));
+      tuple_args[i] = get_tuple_element;
+    }
+  }
+  return computation->AddInstruction(HloInstruction::CreateTuple(tuple_args));
 }
 
 Status MemorySpaceAssignment::CopyAllocation::Process(
     MemorySpaceAssignment* memory_space_assignment) {
   // Copy allocations need to insert asynchronous copy nodes.
-  HloInstruction* producing_instruction = instruction();
+  HloInstruction* producing_instruction = defining_position().instruction;
   CHECK_NE(producing_instruction, nullptr);
 
-  Shape shape = producing_instruction->shape();
+  Shape shape = defining_position().shape();
+  CHECK(shape.IsArray()) << "CopyAllocation shape is not an array. Shape = "
+                         << shape.ToString()
+                         << " position = " << defining_position().shape();
   HloComputation* computation = producing_instruction->parent();
 
+  // If the instruction we're copying from is a tuple, we (recursively) create
+  // kGetTupleElement instructions and copy that value. Asynchronous copies only
+  // support array types.
+  if (!producing_instruction->shape().IsArray()) {
+    producing_instruction = defining_position().instruction;
+    for (int64 index : defining_position().index) {
+      producing_instruction =
+          computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+              producing_instruction->shape().tuple_shapes(index),
+              producing_instruction, index));
+    }
+  }
   copy_start_ = computation->AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {})}),
       HloOpcode::kCopyStart, producing_instruction));
@@ -588,14 +723,26 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
   // Update the allocation with the copy done instruction so that if there
   // are further copies from it, it can find the correct instruction.
   instruction_ = copy_done_;
-  // Also update the defining position. Note that the output of CopyDone is
-  // actually defined in the item {0} of CopyStart.
-  defining_position_ = HloPosition{copy_start_, {0}};
+
+  // Also update the defining position.
+  defining_position_ = HloPosition{copy_done_, {}};
 
   // Replace all the uses with the new copy instruction.
   for (HloUse use : uses_) {
-    TF_RETURN_IF_ERROR(
-        use.instruction->ReplaceOperandWith(use.operand_number, copy_done_));
+    // If the operand is a tuple, we need to descend to the actual instruction
+    // we want to replace.
+    HloInstruction* replacement_instruction;
+    if (use.instruction->operand(use.operand_number)->shape().IsTuple()) {
+      TF_ASSIGN_OR_RETURN(
+          replacement_instruction,
+          ReplaceTupleWith(copy_done_,
+                           use.instruction->mutable_operand(use.operand_number),
+                           use.operand_index));
+    } else {
+      replacement_instruction = copy_done_;
+    }
+    TF_RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
+        use.operand_number, replacement_instruction));
   }
 
   // Replace all the bitcasts with the new copy instruction. Note that if there
@@ -678,6 +825,61 @@ Status MemorySpaceAssignment::Process() {
           CHECK(shape->IsArray()) << "Coloring a shape that is not an array: "
                                   << position.ToString();
           shape->mutable_layout()->set_memory_space(alternate_memory_space_);
+        }
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+void PresetAssignments::RemoveAssignmentForInstruction(
+    const HloInstruction* instruction) {
+  for (auto& position_and_chunk : chunks_) {
+    const HloPosition& position = position_and_chunk.first;
+    if (position.instruction == instruction) {
+      VLOG(3) << "Removing instruction from preset assignments.";
+      // Swap the removed position and chunk with the back and pop back.
+      position_and_chunk = chunks_.back();
+      chunks_.pop_back();
+      break;
+    }
+  }
+}
+
+Status MemorySpaceAssignment::SimplifyGraph() {
+  for (HloComputation* computation : module_->MakeNonfusionComputations()) {
+    // We perform limited DCE and forward the tuple operand in patterns like
+    // GetTupleElement(Tuple(a, b), 0). This is mostly because memory space
+    // assignment is ran late in compilation (after DCE and arithmetic
+    // simplification passes) and we don't want to generate redundant code.  Run
+    // to fixed point.
+    bool computation_modified = true;
+    while (computation_modified) {
+      computation_modified = false;
+      VLOG(4) << "Running simplify graph loop over " << computation->name();
+      for (HloInstruction* instruction :
+           computation->MakeInstructionPostOrder()) {
+        if (computation->IsSafelyRemovable(instruction) &&
+            instruction->user_count() == 0 && !instruction->HasSideEffect() &&
+            instruction != computation->root_instruction()) {
+          VLOG(4) << "Instruction removed: " << instruction->ToString();
+          // Ensure the exported preset assignments don't contain a refence to
+          // the removed instruction.
+          preset_assignments_->RemoveAssignmentForInstruction(instruction);
+          TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+          computation_modified = true;
+        } else if (instruction->opcode() == HloOpcode::kGetTupleElement) {
+          HloInstruction* operand = instruction->mutable_operand(0);
+          if (operand->opcode() == HloOpcode::kTuple) {
+            HloInstruction* forwarded_instruction =
+                operand->mutable_operand(instruction->tuple_index());
+            VLOG(4) << "Replacing uses of " << instruction->ToString()
+                    << " with " << forwarded_instruction->ToString();
+            TF_RETURN_IF_ERROR(
+                instruction->ReplaceAllUsesWith(forwarded_instruction));
+            computation_modified = true;
+          }
         }
       }
     }
@@ -802,22 +1004,13 @@ Status MemorySpaceAssignment::FixSchedule() {
 
     absl::flat_hash_set<HloInstruction*> inserted_instructions;
 
-    // Schedule the computations only if needed (if there are unscheduled
-    // instructions in the computation).
-    if (computation->instruction_count() ==
-        schedule.sequence(computation).size()) {
-      VLOG(4) << "Skip scheduling " << computation->name()
-              << " because it is already scheduled.";
-      continue;
-    }
-
     VLOG(4) << "Scheduling: " << computation->ToString();
 
     for (int64 instruction_index = 0;
          instruction_index < sequence.instructions().size();
          ++instruction_index) {
       HloInstruction* instruction = sequence.instructions()[instruction_index];
-      if (instruction->parent() != computation) {
+      if (!computation->ContainsInstruction(instruction)) {
         continue;
       }
       auto insts_before_iter = schedule_before_.find(instruction_index);
@@ -840,6 +1033,10 @@ Status MemorySpaceAssignment::FixSchedule() {
         }
       }
     }
+    // For rare cases where the original sequence is empty, ensure the root
+    // instruction and its dependencies are scheduled.
+    EnsureInstructionAndOperandsInserted(computation->root_instruction(),
+                                         &new_sequence, &inserted_instructions);
     CHECK_EQ(new_sequence.size(), computation->instruction_count())
         << "New sequence for computation " << computation->name() << " has "
         << new_sequence.size() << " instructions, expects "

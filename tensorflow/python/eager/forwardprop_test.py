@@ -247,8 +247,12 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testMultipleWatchesAdd(self):
     x = constant_op.constant(-2.)
+    with self.assertRaisesRegexp(ValueError, "multiple times"):
+      with forwardprop.ForwardAccumulator(
+          [x, x], [1., 2.]):
+        pass
     with forwardprop.ForwardAccumulator(
-        [x, x], [1., 2.]) as acc:
+        [x], [3.]) as acc:
       self.assertAllClose(3., acc.jvp(x))
       acc._watch(x, constant_op.constant(10.))
       self.assertAllClose(13., acc.jvp(x))

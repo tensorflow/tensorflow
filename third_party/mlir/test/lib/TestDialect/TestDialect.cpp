@@ -235,6 +235,14 @@ OpFoldResult TestOpWithRegionFold::fold(ArrayRef<Attribute> operands) {
   return operand();
 }
 
+LogicalResult TestOpWithVariadicResultsAndFolder::fold(
+    ArrayRef<Attribute> operands, SmallVectorImpl<OpFoldResult> &results) {
+  for (Value *input : this->operands()) {
+    results.push_back(input);
+  }
+  return success();
+}
+
 SmallVector<Type, 2> mlir::OpWithInferTypeInterfaceOp::inferReturnTypes(
     llvm::Optional<Location> location, ArrayRef<Value *> operands,
     ArrayRef<NamedAttribute> attributes, ArrayRef<Region> regions) {

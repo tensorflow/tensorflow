@@ -66,6 +66,20 @@ cc_library(
 )
 
 cc_library(
+    name = "TestIR",
+    srcs = [
+        "lib/IR/TestSymbolUses.cpp",
+    ],
+    deps = [
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "TestPass",
     srcs = [
         "lib/Pass/TestPassManager.cpp",
@@ -89,6 +103,7 @@ cc_library(
         "lib/Transforms/TestLoopMapping.cpp",
         "lib/Transforms/TestLoopParametricTiling.cpp",
         "lib/Transforms/TestMemRefStrideCalculation.cpp",
+        "lib/Transforms/TestOpaqueLoc.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
     ],
     includes = ["lib/TestDialect"],

@@ -17,43 +17,16 @@ limitations under the License.
 
 #include <string>
 
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_os_ostream.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/core/graph/graph_constructor.h"
-#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
-
-// Collects all devices known to the system by name and adds them as an array
-// attribute of string attributes to the module. Device names added are in the
-// following form:
-//   /job:<name>/replica:<replica>/task:<task>/device:<type>:<device_num>
-static void AddDevicesToModule(mlir::ModuleOp module,
-                               const DeviceSet* device_set) {
-  if (!device_set) return;
-
-  // Collect devices as strings in TensorFlow device name form.
-  llvm::SmallVector<std::string, 8> devices;
-  devices.reserve(device_set->devices().size());
-  for (Device* device : device_set->devices())
-    devices.push_back(
-        DeviceNameUtils::ParsedNameToString(device->parsed_name()));
-
-  llvm::SmallVector<llvm::StringRef, 8> device_refs(devices.begin(),
-                                                    devices.end());
-  mlir::Builder builder(module);
-  module.setAttr("tf.devices", builder.getStrArrayAttr(device_refs));
-}
 
 // Dumps the MLIR module to disk.
 // This require the TF_DUMP_GRAPH_PREFIX to be set to a path that exist (or can
@@ -125,7 +98,7 @@ Status MlirBridgePass::Run(const GraphOptimizationPassOptions& options) {
                       ConvertGraphToMlir(**options.graph, debug_info,
                                          *options.flib_def, specs, &context));
 
-  AddDevicesToModule(*module, options.device_set);
+  AddDevicesToOp(*module, options.device_set);
 
   if (VLOG_IS_ON(1)) DumpModule(*module, "mlir_bridge_before_");
 

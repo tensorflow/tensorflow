@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -222,7 +223,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       // NOTE: We do not synchronize the following access to
       // num_parallel_calls_ to minimize the tracing overhead.
       int64 parallelism = num_parallel_calls_->value;
-      return strings::StrCat(prefix(), "#parallelism=", parallelism, "#");
+      return strings::StrCat(
+          prefix(), "#parallelism=", parallelism,
+          ",cycle_length=", dataset()->cycle_length_,
+          ",block_length=", dataset()->block_length_,
+          ",autotune=", dataset()->num_parallel_calls_ == model::kAutotune,
+          ",deterministic=", !sloppy_, "#");
     }
 
     Status Initialize(IteratorContext* ctx) override {

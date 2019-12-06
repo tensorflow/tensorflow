@@ -152,18 +152,9 @@ void loop() {
     return;
   }
 
-  // The output from the model is a vector containing the scores for each
-  // kind of prediction, so figure out what the highest scoring category was.
+  // Obtain a pointer to the output tensor
   TfLiteTensor* output = interpreter->output(0);
-  uint8_t top_category_score = 0;
-  for (int category_index = 0; category_index < kCategoryCount;
-       ++category_index) {
-    const uint8_t category_score = output->data.uint8[category_index];
-    if (category_score > top_category_score) {
-      top_category_score = category_score;
-    }
-  }
-
+  // Determine whether a command was recognized based on the output of inference
   const char* found_command = nullptr;
   uint8_t score = 0;
   bool is_new_command = false;

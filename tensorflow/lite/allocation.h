@@ -19,11 +19,11 @@ limitations under the License.
 
 #include <cstdio>
 #include <cstdlib>
-#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/simple_memory_arena.h"
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {

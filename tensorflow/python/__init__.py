@@ -52,6 +52,7 @@ from tensorflow.python import _pywrap_tfprof
 from tensorflow.python import _pywrap_events_writer
 from tensorflow.python import _pywrap_util_port
 from tensorflow.python import _pywrap_stat_summarizer
+from tensorflow.python import _pywrap_py_exception_registry
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
@@ -156,6 +157,7 @@ from tensorflow.python.ops import rnn_cell
 
 # TensorFlow Debugger (tfdbg).
 from tensorflow.python.debug.lib import check_numerics_callback
+from tensorflow.python.ops import gen_debug_ops
 
 # XLA JIT compiler APIs.
 from tensorflow.python.compiler.xla import jit

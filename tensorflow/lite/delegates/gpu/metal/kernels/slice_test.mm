@@ -57,16 +57,16 @@ using ::tflite::gpu::metal::SingleOpModel;
   output.shape = BHWC(1, 1, 2, 2);
 
   SliceAttributes attr;
-  attr.starts = HWC(0, 0, 0);
-  attr.ends = HWC(1, 2, 2);
-  attr.strides = HWC(1, 1, 1);
+  attr.starts = BHWC(0, 0, 0, 0);
+  attr.ends = BHWC(input.shape.b, 1, 2, 2);
+  attr.strides = BHWC(1, 1, 1, 1);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1, 2, 3, 4}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testSliceNoStrides {
@@ -81,16 +81,16 @@ using ::tflite::gpu::metal::SingleOpModel;
   output.shape = BHWC(1, 1, 2, 1);
 
   SliceAttributes attr;
-  attr.starts = HWC(0, 0, 0);
-  attr.ends = HWC(1, 2, 1);
-  attr.strides = HWC(1, 1, 1);
+  attr.starts = BHWC(0, 0, 0, 0);
+  attr.ends = BHWC(input.shape.b, 1, 2, 1);
+  attr.strides = BHWC(1, 1, 1, 1);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1, 3}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testSliceNoStridesStartOffset {
@@ -105,16 +105,16 @@ using ::tflite::gpu::metal::SingleOpModel;
   output.shape = BHWC(1, 1, 1, 2);
 
   SliceAttributes attr;
-  attr.starts = HWC(0, 1, 0);
-  attr.ends = HWC(1, 2, 2);
-  attr.strides = HWC(1, 1, 1);
+  attr.starts = BHWC(0, 0, 1, 0);
+  attr.ends = BHWC(input.shape.b, 1, 2, 2);
+  attr.strides = BHWC(1, 1, 1, 1);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({3, 4}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testSliceStridesByHeight {
@@ -129,16 +129,16 @@ using ::tflite::gpu::metal::SingleOpModel;
   output.shape = BHWC(1, 2, 1, 1);
 
   SliceAttributes attr;
-  attr.starts = HWC(0, 0, 0);
-  attr.ends = HWC(4, 1, 1);
-  attr.strides = HWC(2, 1, 1);
+  attr.starts = BHWC(0, 0, 0, 0);
+  attr.ends = BHWC(input.shape.b, 4, 1, 1);
+  attr.strides = BHWC(1, 2, 1, 1);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1, 3}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testSliceStridesByWidth {
@@ -153,16 +153,16 @@ using ::tflite::gpu::metal::SingleOpModel;
   output.shape = BHWC(1, 1, 2, 1);
 
   SliceAttributes attr;
-  attr.starts = HWC(0, 1, 0);
-  attr.ends = HWC(1, 4, 1);
-  attr.strides = HWC(1, 2, 1);
+  attr.starts = BHWC(0, 0, 1, 0);
+  attr.ends = BHWC(input.shape.b, 1, 4, 1);
+  attr.strides = BHWC(1, 1, 2, 1);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({2, 4}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testSliceStridesByChannels {
@@ -177,16 +177,16 @@ using ::tflite::gpu::metal::SingleOpModel;
   output.shape = BHWC(1, 1, 1, 2);
 
   SliceAttributes attr;
-  attr.starts = HWC(0, 0, 1);
-  attr.ends = HWC(1, 1, 4);
-  attr.strides = HWC(1, 1, 2);
+  attr.starts = BHWC(0, 0, 0, 1);
+  attr.ends = BHWC(input.shape.b, 1, 1, 4);
+  attr.strides = BHWC(1, 1, 1, 2);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({2, 4}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 @end

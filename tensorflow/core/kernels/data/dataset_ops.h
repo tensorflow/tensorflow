@@ -25,6 +25,8 @@ namespace data {
 class DatasetToGraphOp : public OpKernel {
  public:
   static constexpr const char* const kAllowStateful = "allow_stateful";
+  static constexpr const char* const kStripDeviceAssignment =
+      "strip_device_assignment";
 
   explicit DatasetToGraphOp(OpKernelConstruction* ctx);
 
@@ -32,6 +34,7 @@ class DatasetToGraphOp : public OpKernel {
 
  private:
   bool allow_stateful_ops_ = false;
+  bool strip_device_assignment_ = false;
 };
 
 class DatasetCardinalityOp : public OpKernel {

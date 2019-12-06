@@ -83,12 +83,8 @@ std::string GetConcatKernelCode(
         // We can read more at once inside of loop in case depth % 2 == 0
         // it should be better for reading latency hiding
         c += "  for (int i = 0; i < " + GetSrcDepthSizeVar(i) + "; i += 2) {\n";
-        c += "    FLT4 result0 = " +
-             srcs[i].Read3D("X", "Y", "i", TextureAddressMode::DONT_CARE) +
-             ";\n";
-        c += "    FLT4 result1 = " +
-             srcs[i].Read3D("X", "Y", "i + 1", TextureAddressMode::DONT_CARE) +
-             ";\n";
+        c += "    FLT4 result0 = " + srcs[i].Read3D("X", "Y", "i") + ";\n";
+        c += "    FLT4 result1 = " + srcs[i].Read3D("X", "Y", "i + 1") + ";\n";
         c += "    " + dst.GetAddress("dst_adr0", "X", "Y", "Z") + "\n";
         c += "    " + dst.GetAddress("dst_adr1", "X", "Y", "Z + 1") + "\n";
         const LinkingContext context_0{"result0", "X", "Y", "Z"};
@@ -101,9 +97,7 @@ std::string GetConcatKernelCode(
         c += "  }\n";
       } else {
         c += "  for (int i = 0; i < " + GetSrcDepthSizeVar(i) + "; ++i) {\n";
-        c += "    FLT4 result = " +
-             srcs[i].Read3D("X", "Y", "i", TextureAddressMode::DONT_CARE) +
-             ";\n";
+        c += "    FLT4 result = " + srcs[i].Read3D("X", "Y", "i") + ";\n";
         const LinkingContext context{"result", "X", "Y", "Z"};
         c += PostProcess(linked_operations, context);
         c += "    " + dst.Write3D("result", "X", "Y", "Z");
@@ -122,9 +116,7 @@ std::string GetConcatKernelCode(
         const int channels_in_group = std::min(4, channels[i] - d * 4);
         const std::string temp_name = "t" + std::to_string(read_index);
         c += "  FLT4 " + temp_name + " = ";
-        c += srcs[i].Read3D("X", "Y", std::to_string(d),
-                            TextureAddressMode::DONT_CARE) +
-             ";\n";
+        c += srcs[i].Read3D("X", "Y", std::to_string(d)) + ";\n";
         for (int ch = 0; ch < channels_in_group; ++ch) {
           c += "  result" + postfix[out_channel] + " = ";
           c += temp_name + postfix[ch] + ";\n";

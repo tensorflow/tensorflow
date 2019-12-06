@@ -273,7 +273,7 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   // from under us, while the ScopedRef is live.
   class XRTGenericDeviceAccessor::ScopedRef device_ref;
   TF_RETURN_IF_ERROR(
-      XRTGenericDeviceAccessor::InitScopedRef(context, 0, &device_ref));
+      XRTGenericDeviceAccessor::InitScopedRef(context, &device_ref));
 
   int rng_seed = config_proto.rng_seed();
   if (rng_seed == 0) {
@@ -353,7 +353,7 @@ Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
   // from under us, while the ScopedRef is live.
   class XRTGenericDeviceAccessor::ScopedRef device_ref;
   TF_RETURN_IF_ERROR(
-      XRTGenericDeviceAccessor::InitScopedRef(context, 0, &device_ref));
+      XRTGenericDeviceAccessor::InitScopedRef(context, &device_ref));
 
   int rng_seed = config.rng_seed();
   if (rng_seed == 0) {

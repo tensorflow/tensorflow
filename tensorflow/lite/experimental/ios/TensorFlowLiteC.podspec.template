@@ -4,7 +4,7 @@ Pod::Spec.new do |s|
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
-  s.source           = { :http => "${TFL_DOWNLOAD_URL_PREFIX}/TensorFlowLiteC-#{s.version}.tar.gz" }
+  s.source           = { :http => "${TFL_DOWNLOAD_URL}" }
   s.summary          = 'TensorFlow Lite'
   s.description      = <<-DESC
 

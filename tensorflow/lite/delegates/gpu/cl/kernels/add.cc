@@ -55,14 +55,10 @@ std::string Add::GetElementWiseCode(
   c += "    " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
   if (src_depthes_[0] != dst_depth_) {
     c += "  if (Z < " + std::to_string(src_depthes_[0]) + ") {\n";
-    c += "    src += " +
-         src_tensor.Read3D("X", "Y", "Z", TextureAddressMode::DONT_CARE) +
-         ";\n";
+    c += "    src += " + src_tensor.Read3D("X", "Y", "Z") + ";\n";
     c += "  }\n";
   } else {
-    c += "  src += " +
-         src_tensor.Read3D("X", "Y", "Z", TextureAddressMode::DONT_CARE) +
-         ";\n";
+    c += "  src += " + src_tensor.Read3D("X", "Y", "Z") + ";\n";
   }
   const LinkingContext context{"src", "X", "Y", "Z"};
   c += "  " + GetCoreCode(context);
@@ -117,15 +113,13 @@ std::string Add::GetCoreCode(const LinkingContext& context) const {
                       src_depthes_[i], ") {\n");
       absl::StrAppend(
           &result, "  ", context.var_name, " += ",
-          src_tensor.Read3D(context.x_coord, context.y_coord, context.z_coord,
-                            TextureAddressMode::DONT_CARE) +
+          src_tensor.Read3D(context.x_coord, context.y_coord, context.z_coord) +
               ";\n");
       absl::StrAppend(&result, "  }\n");
     } else {
       absl::StrAppend(
           &result, "  ", context.var_name, " += ",
-          src_tensor.Read3D(context.x_coord, context.y_coord, context.z_coord,
-                            TextureAddressMode::DONT_CARE) +
+          src_tensor.Read3D(context.x_coord, context.y_coord, context.z_coord) +
               ";\n");
     }
   }

@@ -343,7 +343,7 @@ def _parse_example_raw(serialized, names, params, name):
     raise ValueError("Must provide at least one feature key")
   with ops.name_scope(name, "ParseExample", [serialized, names]):
     names = [] if names is None else names
-    if compat.forward_compatible(2019, 10, 16) or params.ragged_keys:
+    if compat.forward_compatible(2019, 10, 30) or params.ragged_keys:
       serialized = ops.convert_to_tensor(serialized, name="serialized")
       if params.ragged_keys and serialized.shape.ndims is None:
         raise ValueError("serialized must have statically-known rank to "
@@ -465,7 +465,7 @@ def parse_single_example_v2_unoptimized(
   any_ragged_features = any(
       isinstance(f, RaggedFeature)
       for f in features.values())
-  if compat.forward_compatible(2019, 10, 16) or any_ragged_features:
+  if compat.forward_compatible(2019, 10, 30) or any_ragged_features:
     with ops.name_scope(name, "ParseSingleExample",
                         [serialized, example_names]):
       serialized = ops.convert_to_tensor(serialized, name="serialized")

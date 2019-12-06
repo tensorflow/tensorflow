@@ -21,7 +21,7 @@ package_group(
         "//...",
         "//learning/brain/swift/swift_mlir/...",
         "//learning/glassbox/evaluation/compiler/...",
-        "//tensorflow/compiler/tf2xla/...",
+        "//tensorflow/core/tfrt_delegate/...",
         "//third_party/tf_runtime_google/...",
     ],
 )
@@ -543,6 +543,7 @@ cc_library(
     deps = [
         ":GPUOpsIncGen",
         ":IR",
+        ":LLVMDialect",
         ":StandardOps",
         ":Support",
     ],
@@ -634,7 +635,6 @@ cc_library(
     srcs = [
         "lib/Conversion/GPUToCUDA/ConvertKernelFuncToCubin.cpp",
         "lib/Conversion/GPUToCUDA/ConvertLaunchFuncToCudaCalls.cpp",
-        "lib/Conversion/GPUToCUDA/GenerateCubinAccessors.cpp",
     ],
     hdrs = ["include/mlir/Conversion/GPUToCUDA/GPUToCUDAPass.h"],
     includes = ["include"],
@@ -663,9 +663,9 @@ cc_library(
         ":GPUDialect",
         ":IR",
         ":Pass",
-        ":SPIRVConversions",
         ":SPIRVDialect",
         ":StandardOps",
+        ":StandardToSPIRVConversions",
     ],
     alwayslink = 1,
 )
@@ -989,7 +989,27 @@ cc_library(
 )
 
 cc_library(
-    name = "SPIRVConversions",
+    name = "SPIRVTransforms",
+    srcs = [
+        "lib/Dialect/SPIRV/Transforms/DecorateSPIRVCompositeTypeLayoutPass.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Dialect/SPIRV/Passes.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":Pass",
+        ":SPIRVDialect",
+        ":Support",
+        ":Transforms",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "StandardToSPIRVConversions",
     srcs = [
         "lib/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.cpp",
         "lib/Conversion/StandardToSPIRV/ConvertStandardToSPIRVPass.cpp",
@@ -1387,6 +1407,7 @@ cc_library(
     deps = [
         ":GPUDialect",
         ":IR",
+        ":LLVMDialect",
         ":LLVMIRModuleTranslation",
         ":NVVMConversionIncGen",
         ":NVVMDialect",
@@ -1410,6 +1431,7 @@ cc_library(
     deps = [
         ":GPUDialect",
         ":IR",
+        ":LLVMDialect",
         ":LLVMIRModuleTranslation",
         ":ROCDLConversionIncGen",
         ":ROCDLDialect",
@@ -1492,8 +1514,8 @@ cc_library(
         ":Parser",
         ":Pass",
         ":QuantizerTransforms",
-        ":SPIRVConversions",
         ":SPIRVDialectRegistration",
+        ":StandardToSPIRVConversions",
         ":Support",
         ":Transforms",
         ":VectorToLLVMTransforms",
@@ -1548,31 +1570,31 @@ cc_library(
     ],
 )
 
-cc_binary(
-    name = "mlir-translate",
-    deps = [
-        ":tools/mlir-translate/mlir-translate",
-    ],
-)
-
 cc_library(
-    name = "tools/mlir-translate/mlir-translate",
+    name = "MlirTranslateMain",
     srcs = ["tools/mlir-translate/mlir-translate.cpp"],
     deps = [
         ":IR",
-        ":LoopDialectRegistration",
         ":Parser",
+        ":Support",
+        ":TranslateClParser",
+        ":Translation",
+        "@llvm//:support",
+    ],
+)
+
+cc_binary(
+    name = "mlir-translate",
+    deps = [
+        ":LoopDialectRegistration",
+        ":MlirTranslateMain",
         ":SPIRVDialectRegistration",
         ":SPIRVTranslateRegistration",
         ":StandardDialectRegistration",
-        ":Support",
         ":TargetLLVMIR",
         ":TargetNVVMIR",
         ":TargetROCDLIR",
-        ":TranslateClParser",
-        ":Translation",
         ":VectorDialectRegistration",
-        "@llvm//:support",
     ],
 )
 
@@ -1608,12 +1630,14 @@ cc_binary(
         ":QuantOps",
         ":QuantOpsDialectRegistration",
         ":ROCDLDialect",
+        ":SPIRVTransforms",
         ":StandardDialectRegistration",
         ":Transforms",
         ":VectorDialectRegistration",
         "//test:TestDialect",
         "//test:TestTransforms",
         "@llvm//:support",
+        "@local_config_mlir//test:TestIR",
         "@local_config_mlir//test:TestPass",
     ],
 )

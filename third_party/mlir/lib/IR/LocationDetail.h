@@ -134,6 +134,37 @@ struct NameLocationStorage : public AttributeStorage {
   Location child;
 };
 
+struct OpaqueLocationStorage : public AttributeStorage {
+  OpaqueLocationStorage(uintptr_t underlyingLocation, ClassID *classId,
+                        Location fallbackLocation)
+      : underlyingLocation(underlyingLocation), classId(classId),
+        fallbackLocation(fallbackLocation) {}
+
+  /// The hash key used for uniquing.
+  using KeyTy = std::tuple<uintptr_t, ClassID *, Location>;
+  bool operator==(const KeyTy &key) const {
+    return key == KeyTy(underlyingLocation, classId, fallbackLocation);
+  }
+
+  /// Construct a new storage instance.
+  static OpaqueLocationStorage *construct(AttributeStorageAllocator &allocator,
+                                          const KeyTy &key) {
+    return new (allocator.allocate<OpaqueLocationStorage>())
+        OpaqueLocationStorage(std::get<0>(key), std::get<1>(key),
+                              std::get<2>(key));
+  }
+
+  /// Pointer to the corresponding object.
+  uintptr_t underlyingLocation;
+
+  /// A unique pointer for each type of underlyingLocation.
+  ClassID *classId;
+
+  /// An additional location that can be used if the external one is not
+  /// suitable.
+  Location fallbackLocation;
+};
+
 } // end namespace detail
 } // end namespace mlir
 

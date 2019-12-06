@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace tflite {
 namespace ops {
-namespace custom {
+namespace builtin {
 namespace if_kernel {
 
 struct OpData {
@@ -196,6 +196,6 @@ TfLiteRegistration* Register_IF() {
   return &r;
 }
 
-}  // namespace custom
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

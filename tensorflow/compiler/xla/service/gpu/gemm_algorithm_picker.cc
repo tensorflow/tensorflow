@@ -242,15 +242,8 @@ static StatusOr<bool> RunOnInstruction(HloInstruction* instr,
   if (allocator == nullptr) {
     allocator = executor->GetAllocator();
   }
-  absl::optional<se::Stream> stream_opt;
-  se::Stream* stream = [&]() {
-    if (allocator->GetStream()) {
-      return allocator->GetStream();
-    }
-    stream_opt.emplace(executor);
-    stream_opt->Init();
-    return &stream_opt.value();
-  }();
+  TF_ASSIGN_OR_RETURN(se::Stream* const stream,
+                      allocator->GetStream(executor->device_ordinal()));
 
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
   se::RedzoneAllocator input_output_allocator(

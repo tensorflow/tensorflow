@@ -58,8 +58,9 @@ std::string GetMaxUnoolingKernelCode(
   c += "  int Z = get_global_id(2);\n";
   c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) return;\n";
   if (op_def.batch_support) {
-    c += "  int B = get_global_id(0) % dst_size.w;\n";
-    c += "  int X0 = get_global_id(0) / dst_size.w;\n";
+    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int X0 = linear_id / dst_size.w;\n";
+    c += "  int B = linear_id % dst_size.w;\n";
     c += "  int src_x0 = (X0 + padding.x) / stride.x;\n";
     c += "  int src_x = src_x0 * dst_size.w + B;\n";
   } else {
@@ -73,10 +74,8 @@ std::string GetMaxUnoolingKernelCode(
     c += "  FLT4 src = (FLT4)(0.0f);\n";
     c += "  int4 ind = (int4)(0);\n";
     c += "  if (!outside) {\n";
-    c += "    src = " + src.Read("src_adr", TextureAddressMode::DONT_CARE) +
-         ";\n";
-    c += "    ind = convert_int4(" +
-         src_ind.Read("src_adr", TextureAddressMode::DONT_CARE) + ");\n";
+    c += "    src = " + src.Read("src_adr") + ";\n";
+    c += "    ind = convert_int4(" + src_ind.Read("src_adr") + ");\n";
     c += "  }\n";
   } else {
     c += "  FLT4 src = " + src.Read("src_adr", address_mode) + ";\n";

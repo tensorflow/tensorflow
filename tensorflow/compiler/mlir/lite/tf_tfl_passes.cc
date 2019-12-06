@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -36,6 +37,11 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
                                 mlir::PassManager* pass_manager) {
   pass_manager->addPass(mlir::tf_executor::CreateSwitchFoldPass());
   pass_manager->addPass(mlir::CreateTFExecutorToControlDialectConversion());
+  if (!pass_config.quant_specs.serialized_quant_stats.empty()) {
+    pass_manager->addPass(
+        mlir::quant::CreateImportQuantStatsPassForTFControlDialect(
+            pass_config.quant_specs.serialized_quant_stats));
+  }
   pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
   if (pass_config.lower_tensor_list_ops) {
     // Execute this pass before `CanonicalizerPass` in case some TensorList

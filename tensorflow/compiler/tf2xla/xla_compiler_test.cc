@@ -1543,6 +1543,8 @@ TEST_F(XlaCompilerTest, TokenInputAndOutput) {
   side_effecting_op.set_op("DummySideEffectingOp");
   AddNodeAttr(kXlaTokenInputNodesAttrName,
               std::vector<string>{kXlaTokenArgNodeName}, &side_effecting_op);
+  AddNodeAttr(kXlaOriginalOutsideCompilationNodeName, side_effecting_op.name(),
+              &side_effecting_op);
   Status status;
   graph->AddNode(side_effecting_op, &status);
   TF_ASSERT_OK(status);

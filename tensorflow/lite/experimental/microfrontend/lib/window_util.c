@@ -21,6 +21,11 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+// Some platforms don't have M_PI
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 void WindowFillConfigWithDefaults(struct WindowConfig* config) {
   config->size_ms = 25;
   config->step_size_ms = 10;

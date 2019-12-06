@@ -144,7 +144,8 @@ def replicate(dataset, devices):
   with ops.colocate_with(dataset._variant_tensor):
     dataset = dataset._apply_options()
     allow_stateful = dataset.options().experimental_allow_stateful
-    graph_def = dataset._as_serialized_graph(allow_stateful=allow_stateful)
+    graph_def = dataset._as_serialized_graph(
+        allow_stateful=allow_stateful, strip_device_assignment=True)
   for device in devices:
     ds = _RemoteDataset(graph_def, device, dataset.element_spec)
     datasets[device] = ds

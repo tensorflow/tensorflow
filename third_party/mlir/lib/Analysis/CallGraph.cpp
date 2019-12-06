@@ -66,6 +66,11 @@ void CallGraphNode::addChildEdge(CallGraphNode *child) {
   addEdge(child, Edge::Kind::Child);
 }
 
+/// Returns true if this node has any child edges.
+bool CallGraphNode::hasChildren() const {
+  return llvm::any_of(edges, [](const Edge &edge) { return edge.isChild(); });
+}
+
 /// Add an edge to 'node' with the given kind.
 void CallGraphNode::addEdge(CallGraphNode *node, Edge::Kind kind) {
   edges.insert({node, kind});
@@ -74,6 +79,11 @@ void CallGraphNode::addEdge(CallGraphNode *node, Edge::Kind kind) {
 //===----------------------------------------------------------------------===//
 // CallGraph
 //===----------------------------------------------------------------------===//
+
+/// Recursively compute the callgraph edges for the given operation. Computed
+/// edges are placed into the given callgraph object.
+static void computeCallGraph(Operation *op, CallGraph &cg,
+                             CallGraphNode *parentNode);
 
 /// Compute the set of callgraph nodes that are created by regions nested within
 /// 'op'.
@@ -89,6 +99,23 @@ static void computeCallables(Operation *op, CallGraph &cg,
   }
 }
 
+/// Recursively compute the callgraph edges within the given region. Computed
+/// edges are placed into the given callgraph object.
+static void computeCallGraph(Region &region, CallGraph &cg,
+                             CallGraphNode *parentNode) {
+  // Iterate over the nested operations twice:
+  /// One to fully create nodes in the for each callable region of a nested
+  /// operation;
+  for (auto &block : region)
+    for (auto &nested : block)
+      computeCallables(&nested, cg, parentNode);
+
+  /// And another to recursively compute the callgraph.
+  for (auto &block : region)
+    for (auto &nested : block)
+      computeCallGraph(&nested, cg, parentNode);
+}
+
 /// Recursively compute the callgraph edges for the given operation. Computed
 /// edges are placed into the given callgraph object.
 static void computeCallGraph(Operation *op, CallGraph &cg,
@@ -101,17 +128,7 @@ static void computeCallGraph(Operation *op, CallGraph &cg,
     CallGraphNode *nestedParentNode;
     if (!isCallable || !(nestedParentNode = cg.lookupNode(&region)))
       nestedParentNode = parentNode;
-
-    // Iterate over the nested operations twice:
-    /// One to fully create nodes in the for each callable region of a nested
-    /// operation;
-    for (auto &block : region)
-      for (auto &nested : block)
-        computeCallables(&nested, cg, nestedParentNode);
-    /// And another to recursively compute the callgraph.
-    for (auto &block : region)
-      for (auto &nested : block)
-        computeCallGraph(&nested, cg, nestedParentNode);
+    computeCallGraph(region, cg, nestedParentNode);
   }
 
   // If there is no parent node, we ignore this operation. Even if this
@@ -183,6 +200,9 @@ CallGraphNode *CallGraph::resolveCallable(CallInterfaceCallable callable,
   // If we don't have a valid direct region, this is an external call.
   return getExternalNode();
 }
+
+//===----------------------------------------------------------------------===//
+// Printing
 
 /// Dump the the graph in a human readable format.
 void CallGraph::dump() const { print(llvm::errs()); }

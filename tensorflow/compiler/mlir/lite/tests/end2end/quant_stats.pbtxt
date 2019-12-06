@@ -1,0 +1,107 @@
+# RUN: tf_tfl_translate -tf-input-arrays=input0,input1 -tf-input-shapes=4:4 -tf-input-data-types=DT_FLOAT,DT_FLOAT -tf-output-arrays=Add -tf-inference-type=DT_QUINT8 -tf-input-min-values='-2,-3' -tf-input-max-values='2,3' --quant-stats=%s.stats %s -o - --output-mlir 2>&1
+#| FileCheck --check-prefix=MLIR %s
+# RUN: tf_tfl_translate -tf-input-arrays=input0,input1 -tf-input-shapes=4:4 -tf-input-data-types=DT_FLOAT,DT_FLOAT -tf-output-arrays=Add -tf-inference-type=DT_QUINT8 -tf-input-min-values='-2,-3' -tf-input-max-values='2,3' --quant-stats=%s.stats %s -o - | flatbuffer_to_string -
+#| FileCheck %s
+
+node {
+  name: "Add"
+  op: "Add"
+  input: "input0"
+  input: "input1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "input0"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "input1"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+versions {
+  producer: 27
+}
+
+# MLIR-LABEL: func @main(%arg0: tensor<4x!quant.uniform<u8:f32, 0.015686274509803921:128>>, %arg1: tensor<4x!quant.uniform<u8:f32, 0.023529411764705882:128>>) -> tensor<4x!quant.uniform<u8:f32, 0.0078431372549019607:128>>
+# MLIR-NEXT:    attributes  {tf.entry_function = {inputs = "input0,input1", outputs = "Add"}} {
+# MLIR-NEXT:    %[[input0:.*]] = "tfl.pseudo_input"(%arg1) : (tensor<4x!quant.uniform<u8:f32, 0.023529411764705882:128>>) -> tensor<4x!quant.uniform<u8:f32, 0.023529411764705882:128>>
+# MLIR-NEXT:    %[[input1:.*]] = "tfl.pseudo_input"(%arg0) : (tensor<4x!quant.uniform<u8:f32, 0.015686274509803921:128>>) -> tensor<4x!quant.uniform<u8:f32, 0.015686274509803921:128>>
+# MLIR-NEXT:    %[[add:.*]] = "tfl.add"(%[[input1]], %[[input0]]) {fused_activation_function = "NONE"} : (tensor<4x!quant.uniform<u8:f32, 0.015686274509803921:128>>, tensor<4x!quant.uniform<u8:f32, 0.023529411764705882:128>>) -> tensor<4x!quant.uniform<u8:f32, 0.0078431372549019607:128>>
+# MLIR-NEXT:    return %[[add]] : tensor<4x!quant.uniform<u8:f32, 0.0078431372549019607:128>>
+# MLIR-NEXT:  }
+
+
+# CHECK-LABEL: {
+# CHECK-NEXT:  version: 3,
+# CHECK-NEXT:  operator_codes: [ {
+# CHECK-NEXT:    version: 1
+# CHECK-NEXT:  } ],
+# CHECK-NEXT:    subgraphs: [ {
+# CHECK-NEXT:      tensors: [ {
+# CHECK-NEXT:        shape: [ 4 ],
+# CHECK-NEXT:        type: UINT8,
+# CHECK-NEXT:        buffer: 1,
+# CHECK-NEXT:        name: "input1",
+# CHECK-NEXT:        quantization: {
+# CHECK-NEXT:          scale: [ 0.023529 ],
+# CHECK-NEXT:          zero_point: [ 128 ]
+# CHECK-NEXT:        }
+# CHECK-NEXT:      }, {
+# CHECK-NEXT:        shape: [ 4 ],
+# CHECK-NEXT:        type: UINT8,
+# CHECK-NEXT:        buffer: 2,
+# CHECK-NEXT:        name: "input0",
+# CHECK-NEXT:        quantization: {
+# CHECK-NEXT:          scale: [ 0.015686 ],
+# CHECK-NEXT:          zero_point: [ 128 ]
+# CHECK-NEXT:        }
+# CHECK-NEXT:      }, {
+# CHECK-NEXT:        shape: [ 4 ],
+# CHECK-NEXT:        type: UINT8,
+# CHECK-NEXT:        buffer: 3,
+# CHECK-NEXT:        name: "Add",
+# CHECK-NEXT:        quantization: {
+# CHECK-NEXT:          scale: [ 0.007843 ],
+# CHECK-NEXT:          zero_point: [ 128 ]
+# CHECK-NEXT:        }
+# CHECK-NEXT:      } ],
+# CHECK-NEXT:      inputs: [ 1, 0 ],
+# CHECK-NEXT:      outputs: [ 2 ],
+# CHECK-NEXT:      operators: [ {
+# CHECK-NEXT:        inputs: [ 1, 0 ],
+# CHECK-NEXT:        outputs: [ 2 ],
+# CHECK-NEXT:        builtin_options_type: AddOptions,
+# CHECK-NEXT:        builtin_options: {
+# CHECK-EMPTY
+# CHECK-NEXT:        }
+# CHECK-NEXT:      } ],
+# CHECK-NEXT:      name: "main"
+# CHECK-NEXT:    } ],
+# CHECK-NEXT:    description: "MLIR Converted.",
+# CHECK-NEXT:    buffers: [ {
+# CHECK-EMPTY
+# CHECK-NEXT:    }, {
+# CHECK-EMPTY
+# CHECK-NEXT:    }, {
+# CHECK-EMPTY
+# CHECK-NEXT:    }, {
+# CHECK-EMPTY
+# CHECK-NEXT:    } ]
+# CHECK-NEXT:  }

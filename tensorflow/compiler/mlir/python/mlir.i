@@ -80,6 +80,7 @@ string ImportGraphDef(const string &proto, const string &pass_pipeline, TF_Statu
 string ExperimentalConvertSavedModelToMlir(
     const string &saved_model_path,
     const string &exported_names_str,
+    bool show_debug_info,
     TF_Status* status) {
   // Load the saved model into a SavedModelBundle.
 
@@ -101,17 +102,15 @@ string ExperimentalConvertSavedModelToMlir(
 
   std::vector<string> exported_names =
       absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
-  // TODO(silvasean): Use SaveOptions.save_debug_info to get debug info.
-  GraphDebugInfo debug_info;
   mlir::MLIRContext context;
-  auto module_or = ConvertSavedModelToMlir(bundle, debug_info, &context,
+  auto module_or = ConvertSavedModelToMlir(bundle, &context,
       absl::Span<std::string>(exported_names));
   if (!module_or.status().ok()) {
     Set_TF_Status_from_Status(status, module_or.status());
     return "// error";
   }
 
-  return MlirModuleToString(*module_or.ConsumeValueOrDie());
+  return MlirModuleToString(*module_or.ConsumeValueOrDie(), show_debug_info);
 }
 
 }  // namespace swig
@@ -135,6 +134,7 @@ static string ImportGraphDef(const string &graphdef,
 static string ExperimentalConvertSavedModelToMlir(
     const string &saved_model_path,
     const string &exported_names,
+    bool show_debug_info,
     TF_Status* status);
 }  // namespace swig
 }  // namespace tensorflow
@@ -144,10 +144,12 @@ def import_graphdef(graphdef, pass_pipeline):
   return ImportGraphDef(str(graphdef).encode('utf-8'), pass_pipeline.encode('utf-8')).decode('utf-8');
 
 def experimental_convert_saved_model_to_mlir(saved_model_path,
-                                             exported_names):
+                                             exported_names,
+                                             show_debug_info):
   return ExperimentalConvertSavedModelToMlir(
     str(saved_model_path).encode('utf-8'),
-    str(exported_names).encode('utf-8')
+    str(exported_names).encode('utf-8'),
+    show_debug_info
   ).decode('utf-8');
 %}
 

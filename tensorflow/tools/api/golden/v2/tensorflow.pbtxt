@@ -109,6 +109,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "autodiff"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "autograph"
     mtype: "<type \'module\'>"
   }

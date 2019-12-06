@@ -26,6 +26,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.platform import test
 
 
@@ -108,7 +109,7 @@ class GRULayerTest(keras_parameterized.TestCase):
         test_samples=0,
         input_shape=(timesteps, embedding_dim),
         num_classes=units)
-    y_train = keras.utils.to_categorical(y_train, units)
+    y_train = np_utils.to_categorical(y_train, units)
 
     inputs = keras.layers.Input(shape=[timesteps, embedding_dim])
     gru_layer = keras.layers.GRU(units,

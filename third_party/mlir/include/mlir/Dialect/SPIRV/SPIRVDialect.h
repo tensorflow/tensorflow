@@ -38,6 +38,9 @@ public:
   /// Checks if the given `type` is valid in SPIR-V dialect.
   static bool isValidType(Type type);
 
+  /// Checks if the given `scalar type` is valid in SPIR-V dialect.
+  static bool isValidScalarType(Type type);
+
   /// Returns the attribute name to use when specifying decorations on results
   /// of operations.
   static std::string getAttributeName(Decoration decoration);

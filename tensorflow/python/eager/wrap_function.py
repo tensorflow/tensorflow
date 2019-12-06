@@ -204,12 +204,14 @@ def _lift_unlifted_variables(graph, variable_holder):
         mutable_collection[index] = lifted_variables.get(id(current), current)
         if not resource_variable_ops.is_resource_variable(
             mutable_collection[index]):
-          logging.warning(
+          logging.log_first_n(
+              logging.WARN,
               "Unable to create a python object for variable {} because it is "
               "a reference variable. It may not be visible to training APIs. "
               "If this is a problem, consider rebuilding the SavedModel after "
               "running tf.compat.v1.enable_resource_variables().".format(
-                  mutable_collection[index]))
+                  mutable_collection[index]),
+              5)
 
 
 # TODO(allenl): make this trackable

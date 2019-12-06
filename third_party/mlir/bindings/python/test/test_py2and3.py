@@ -297,6 +297,15 @@ class EdscTest:
     #       CHECK: func @foo_0()
     #       CHECK: %{{.*}} = constant 0 : index
 
+  def testIndexCast(self):
+    self.setUp()
+    with self.module.function_context("testIndexCast", [], []):
+      index = E.constant_index(0)
+      E.index_cast(index, self.module.make_scalar_type("i", 32))
+    printWithCurrentFunctionName(str(self.module))
+    # CHECK-LABEL: testIndexCast
+    #       CHECK: index_cast %{{.*}} : index to i32
+
   def testIndexedValue(self):
     self.setUp()
     memrefType = self.module.make_memref_type(self.f32Type, [10, 42])

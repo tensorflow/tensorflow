@@ -1578,6 +1578,34 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, 'ndarray'):
       g.watch(np.array(1.))
 
+  def testWatchedVariablesAfterNonPersistentGradientCall(self):
+    with backprop.GradientTape(persistent=False) as tape:
+      x = resource_variable_ops.ResourceVariable(1.0)
+      tape.watch(x)
+    tape.gradient(x, x)
+    self.assertEqual((x,), tape.watched_variables())
+
+  def testWatchedVariablesOnlyHasVariablesFromLastTape(self):
+    with backprop.GradientTape(persistent=False) as tape:
+      x = resource_variable_ops.ResourceVariable(1.0)
+      tape.watch(x)
+    with backprop.GradientTape(persistent=False) as tape:
+      z = resource_variable_ops.ResourceVariable(2.0)
+      tape.watch(z)
+    tape.gradient(z, z)
+    self.assertEqual((z,), tape.watched_variables())
+
+  def testWatchedVariablesRespectReset(self):
+    with backprop.GradientTape(persistent=False) as tape:
+      x = resource_variable_ops.ResourceVariable(1.0)
+      tape.watch(x)
+      self.assertEqual((x,), tape.watched_variables())
+      tape.reset()
+      z = resource_variable_ops.ResourceVariable(2.0)
+      tape.watch(z)
+      self.assertEqual((z,), tape.watched_variables())
+    tape.gradient(z, z)
+    self.assertEqual((z,), tape.watched_variables())
 
 class JacobianTest(test.TestCase):
 

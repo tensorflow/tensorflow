@@ -78,6 +78,7 @@ void Region::cloneInto(Region *dest, BlockAndValueMapping &mapper) {
 void Region::cloneInto(Region *dest, Region::iterator destPos,
                        BlockAndValueMapping &mapper) {
   assert(dest && "expected valid region to clone into");
+  assert(this != dest && "cannot clone region into itself");
 
   // If the list is empty there is nothing to clone.
   if (empty())

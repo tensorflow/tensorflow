@@ -136,8 +136,9 @@ def make_sequential_keras_model(initializer="ones"):
 def run_benchmark(func, num_iters, execution_mode=None):
   ctx = context.context()
   with context.execution_mode(execution_mode):
-    # call func to maybe warm up the GPU
-    func()
+    # call func to warm up
+    for _ in xrange(100):
+      func()
     if execution_mode == context.ASYNC:
       ctx.executor.wait()
     start = time.time()
@@ -763,6 +764,18 @@ class MicroBenchmarks(test.Benchmark):
 
   def benchmark_forwardprop_of_defun_matmul_100_by_784_CPU(self):
     self._benchmark_forwardprop_of_defun_matmul_CPU(shape=(100, 784))
+
+  def _benchmark_tf_reduce_logsum_exp(self, device=CPU):
+    with context.device(device):
+      x = constant_op.constant([[1, 0.], [0., 0.]])
+      func = lambda: math_ops.reduce_logsumexp(x)
+      self._run(func, 3000)
+
+  def benchmark_tf_reduce_logsumexp_CPU(self):
+    self._benchmark_tf_reduce_logsum_exp()
+
+  def benchmark_tf_reduce_logsumexp_GPU(self):
+    self._benchmark_tf_reduce_logsum_exp(device=GPU)
 
   def benchmark_defun_without_signature(self):
 

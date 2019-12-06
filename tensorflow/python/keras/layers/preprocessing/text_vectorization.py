@@ -22,8 +22,6 @@ import json
 
 import numpy as np
 
-from builtins import range as builtin_range
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -172,7 +170,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     self._split = split
     self._ngrams_arg = ngrams
     if isinstance(ngrams, int):
-      self._ngrams = tuple(builtin_range(1, ngrams + 1))
+      self._ngrams = tuple(range(1, ngrams + 1))
     else:
       self._ngrams = ngrams
 
@@ -244,7 +242,7 @@ class TextVectorization(CombinerPreprocessingLayer):
                          (value_name, expected_type, values.dtype))
 
   def _convert_to_ndarray(self, x):
-    return np.array(x) if isinstance(x, (list, builtin_range)) else x
+    return np.array(x) if isinstance(x, (list, tuple)) else x
 
   def compute_output_shape(self, input_shape):
     if self._output_mode != INT:
@@ -366,7 +364,7 @@ class TextVectorization(CombinerPreprocessingLayer):
 
     start_index = self._reserved_values + (
         self._get_table_size() if append else 0)
-    values = builtin_range(start_index, len(vocab) + start_index)
+    values = np.arange(start_index, len(vocab) + start_index, dtype=np.int64)
 
     vocab = self._convert_to_ndarray(vocab)
     self._assert_same_type(dtypes.string, vocab, "vocab")

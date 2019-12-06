@@ -698,7 +698,7 @@ def _handle_or_self(x):
   return x
 
 
-@tf_export("GradientTape")
+@tf_export("GradientTape", "autodiff.GradientTape", v1=["GradientTape"])
 class GradientTape(object):
   """Record operations for automatic differentiation.
 
@@ -802,6 +802,7 @@ class GradientTape(object):
     self._tape = None
     self._persistent = persistent
     self._watch_accessed_variables = watch_accessed_variables
+    self._watched_variables = ()
     self._recording = False
     self._created_eagerly = context.executing_eagerly()
     if self._created_eagerly:
@@ -941,7 +942,9 @@ class GradientTape(object):
 
   def watched_variables(self):
     """Returns variables watched by this tape in order of construction."""
-    return self._tape.watched_variables()
+    if self._tape is not None:
+      self._watched_variables = self._tape.watched_variables()
+    return self._watched_variables
 
   def gradient(self,
                target,
@@ -1026,6 +1029,8 @@ class GradientTape(object):
         unconnected_gradients=unconnected_gradients)
 
     if not self._persistent:
+      # Keep track of watched variables before setting tape to None
+      self._watched_variables = self._tape.watched_variables()
       self._tape = None
 
     grad = nest.pack_sequence_as(sources, flat_grad)

@@ -1022,6 +1022,18 @@ ParseResult Parser::parseStrideList(SmallVectorImpl<int64_t> &dimensions) {
 // Attribute parsing.
 //===----------------------------------------------------------------------===//
 
+/// Return the symbol reference referred to by the given token, that is known to
+/// be an @-identifier.
+static std::string extractSymbolReference(Token tok) {
+  assert(tok.is(Token::at_identifier) && "expected valid @-identifier");
+  StringRef nameStr = tok.getSpelling().drop_front();
+
+  // Check to see if the reference is a string literal, or a bare identifier.
+  if (nameStr.front() == '"')
+    return tok.getStringValue();
+  return nameStr;
+}
+
 /// Parse an arbitrary attribute.
 ///
 ///  attribute-value ::= `unit`
@@ -1139,9 +1151,9 @@ Attribute Parser::parseAttribute(Type type) {
 
   // Parse a symbol reference attribute.
   case Token::at_identifier: {
-    auto nameStr = getTokenSpelling();
+    std::string nameStr = extractSymbolReference(getToken());
     consumeToken(Token::at_identifier);
-    return builder.getSymbolRefAttr(nameStr.drop_front());
+    return builder.getSymbolRefAttr(nameStr);
   }
 
   // Parse a 'unit' attribute.
@@ -3542,9 +3554,11 @@ public:
   /// attribute named 'attrName'.
   ParseResult parseSymbolName(StringAttr &result, StringRef attrName,
                               SmallVectorImpl<NamedAttribute> &attrs) override {
-    if (parser.getToken().isNot(Token::at_identifier))
+    Token atToken = parser.getToken();
+    if (atToken.isNot(Token::at_identifier))
       return failure();
-    result = getBuilder().getStringAttr(parser.getTokenSpelling().drop_front());
+
+    result = getBuilder().getStringAttr(extractSymbolReference(atToken));
     attrs.push_back(getBuilder().getNamedAttr(attrName, result));
     parser.consumeToken();
     return success();

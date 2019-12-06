@@ -93,8 +93,12 @@ public:
       operations.pop_back();
   }
 
-  /// Blocks are maintained in a Region.
-  Region *getParent();
+  /// Provide a 'getParent' method for ilist_node_with_parent methods.
+  /// We mark it as a const function because ilist_node_with_parent specifically
+  /// requires a 'getParent() const' method. Once ilist_node removes this
+  /// constraint, we should drop the const to fit the rest of the MLIR const
+  /// model.
+  Region *getParent() const;
 
   /// Returns the closest surrounding operation that contains this block.
   Operation *getParentOp();
@@ -227,7 +231,7 @@ public:
         : llvm::mapped_iterator<op_filter_iterator<OpT>, OpT (*)(Operation &)>(
               it, &unwrap) {}
 
-    /// Allow implict conversion to the underlying block iterator.
+    /// Allow implicit conversion to the underlying block iterator.
     operator Block::iterator() const { return this->wrapped(); }
   };
 

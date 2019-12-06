@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.debug.lib import check_numerics_callback
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -35,6 +36,7 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras import optimizer_v2
 from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -521,9 +523,56 @@ class CheckNumericsCallbackTest(test_util.TensorFlowTestCase):
     history = model.fit(xs, ys, epochs=epochs, verbose=0)
     self.assertEqual(len(history.history["loss"]), epochs)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testNestedFunctionGradientCall(self):
+    """Catching inf in the inner nested tf.function during backprop."""
+    check_numerics_callback.enable_check_numerics()
+
+    x = constant_op.constant(1.0 - 1e-8, dtype=dtypes.float32)
+
+    @def_function.function
+    def asinp1(x):
+      # asin()'s gradient overflows at the value close to 1.0.
+      return math_ops.asin(x) + 1.0
+
+    @def_function.function
+    def loss(x):
+      return math_ops.square(asinp1(x))
+
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = loss(x)
+      message = self._assertRaisesInvalidArgumentErrorAndGetMessage(
+          lambda: self.evaluate(tape.gradient(y, x)))
+      # Check the content of the error message.
+      # Assume the op Reciprocal or Xdivy is used in the gradient function for
+      # asin().
+      self.assertTrue((re.search(r"graph op.*\"Reciprocal\"", message) or
+                       re.search(r"graph op.*\"Xdivy\"", message)))
+      self.assertTrue(re.search(r"dtype.*float32", message))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testExpectedNaNOpOutputs(self):
+    """Test calling operations with benign NaN output."""
+    check_numerics_callback.enable_check_numerics()
+
+    # Empty input tensor
+    x = constant_op.constant(1, dtype=dtypes.float32, shape=[0, 1, 1, 1])
+    scale = constant_op.constant([1], dtype=dtypes.float32)
+    offset = constant_op.constant([1], dtype=dtypes.float32)
+
+    # Calling fused_batch_norm with an empty input should output a NaN in the
+    # latter four outputs without triggering the check_numerics callback
+    batch_norm_res = gen_nn_ops._fused_batch_norm(
+        x=x, scale=scale, offset=offset, mean=[], variance=[])
+
+    _, batch_mean, batch_variance, _, _ = self.evaluate(batch_norm_res)
+
+    self.assertTrue(np.isnan(batch_mean.squeeze()))
+    self.assertTrue(np.isnan(batch_variance.squeeze()))
+
   # TODO(cais): Tests for Infs and NaNs during distributed execution.
   # TODO(cais): Benchmark the slowdown due to callbacks and inserted nodes.
-
 
 if __name__ == "__main__":
   ops.enable_eager_execution()

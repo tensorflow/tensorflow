@@ -45,6 +45,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -357,6 +358,12 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   See the `tf.function` documentation for details.
   """
 
+  @deprecated_args(
+      None,
+      "A variable's value can be manually cached by calling "
+      "tf.Variable.read_value() under a tf.device scope. The caching_device "
+      "argument does not work properly.",
+      "caching_device")
   def __init__(self,
                initial_value=None,
                trainable=None,

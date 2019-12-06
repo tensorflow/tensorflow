@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file declares the entry points for serialize and deserialze SPIR-V
+// This file declares the entry points for serialize and deserialize SPIR-V
 // binary modules.
 //
 //===----------------------------------------------------------------------===//

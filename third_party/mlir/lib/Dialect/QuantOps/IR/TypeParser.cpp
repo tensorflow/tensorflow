@@ -519,9 +519,9 @@ bool TypeParser::parseStorageRange(IntegerType storageType, bool isSigned,
                                    int64_t &storageTypeMin,
                                    int64_t &storageTypeMax) {
 
-  int64_t defaultIntegerMin = QuantizedType::getDefaultMininumForInteger(
+  int64_t defaultIntegerMin = QuantizedType::getDefaultMinimumForInteger(
       isSigned, storageType.getWidth());
-  int64_t defaultIntegerMax = QuantizedType::getDefaultMaxinumForInteger(
+  int64_t defaultIntegerMax = QuantizedType::getDefaultMaximumForInteger(
       isSigned, storageType.getWidth());
   if (consumeIf(TokenKind::l_angle)) {
     // Explicit storage min and storage max.
@@ -639,9 +639,9 @@ static void printStorageType(QuantizedType type, raw_ostream &out) {
 
   // storageTypeMin and storageTypeMax if not default.
   int64_t defaultIntegerMin =
-      QuantizedType::getDefaultMininumForInteger(isSigned, storageWidth);
+      QuantizedType::getDefaultMinimumForInteger(isSigned, storageWidth);
   int64_t defaultIntegerMax =
-      QuantizedType::getDefaultMaxinumForInteger(isSigned, storageWidth);
+      QuantizedType::getDefaultMaximumForInteger(isSigned, storageWidth);
   if (defaultIntegerMin != type.getStorageTypeMin() ||
       defaultIntegerMax != type.getStorageTypeMax()) {
     out << "<" << type.getStorageTypeMin() << ":" << type.getStorageTypeMax()

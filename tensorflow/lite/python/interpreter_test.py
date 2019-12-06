@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -335,7 +336,8 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
     if sys.platform == 'darwin': return
     destructions = []
     def register_destruction(x):
-      destructions.append(x if isinstance(x, str) else x.decode('utf-8'))
+      destructions.append(
+          x if isinstance(x, str) else six.ensure_text(x, 'utf-8'))
       return 0
     # Make a wrapper for the callback so we can send this to ctypes
     delegate = interpreter_wrapper.load_delegate(self._delegate_file)

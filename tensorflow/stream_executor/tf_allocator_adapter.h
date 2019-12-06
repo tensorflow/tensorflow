@@ -54,7 +54,7 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
   // (This attribute has no effect on CPU.)
   bool AllowsAsynchronousDeallocation() const override { return true; }
 
-  Stream *GetStream() const override { return stream_; }
+  port::StatusOr<Stream *> GetStream(int device_ordinal) override;
 
  private:
   tensorflow::Allocator *wrapped_;
@@ -100,6 +100,10 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
   // requirements, this code may need to change.
   // (This attribute has no effect on CPU.)
   bool AllowsAsynchronousDeallocation() const override { return true; }
+
+  port::StatusOr<Stream *> GetStream(int device_ordinal) override {
+    return per_device_allocators_[device_ordinal].GetStream(device_ordinal);
+  }
 
  private:
   std::vector<TfAllocatorAdapter> per_device_allocators_;

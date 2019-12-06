@@ -28,6 +28,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 
@@ -223,9 +224,11 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
   def _get_dataset(self):
     if tf2.enabled():
-      return dataset_ops.DatasetV2.range(10).batch(2)
+      return dataset_ops.DatasetV2.range(10).\
+        map(lambda x: math_ops.cast(x, dtypes.int32)).batch(2)
     else:
-      return dataset_ops.Dataset.range(10).batch(2)
+      return dataset_ops.Dataset.range(10).\
+        map(lambda x: math_ops.cast(x, dtypes.int32)).batch(2)
 
   def _validate_outputs(self, actual_results):
     expected_results = [[i, i+1] for i in range(0, 10, 2)]
@@ -278,4 +281,3 @@ class GradientTapeTest(test.TestCase, parameterized.TestCase):
 
 if __name__ == "__main__":
   test.main()
-

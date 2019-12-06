@@ -231,7 +231,7 @@ def convert(recursive=False, optional_features=None, user_requested=True):
           user_requested=user_requested,
           optional_features=optional_features)
       try:
-        return converted_call(f, options, args, kwargs)
+        return converted_call(f, args, kwargs, options=options)
       except Exception as e:  # pylint:disable=broad-except
         if hasattr(e, 'ag_error_metadata'):
           raise e.ag_error_metadata.to_exception(e)
@@ -368,18 +368,27 @@ def _errors_are_normally_possible(entity, error):
   return False
 
 
-def converted_call(f, options, args, kwargs, caller_fn_scope=None):
+def converted_call(f, args, kwargs, caller_fn_scope=None, options=None):
   """Compiles a function call inline.
 
   For internal use only.
 
+  Note: The argument list is optimized for readability of generated code, which
+  may looks something like this:
+
+    ag__.converted_call(f, (arg1, arg2), None, fscope)
+    ag__.converted_call(f, (), dict(arg1=val1, **kwargs), fscope)
+    ag__.converted_call(f, (arg1, arg2) + varargs, dict(**kwargs), lscope)
+
   Args:
     f: The function to convert.
-    options: converter.ConversionOptions
     args: Tuple, the original positional arguments of f
-    kwargs: Dict, the original keyword arguments of f
+    kwargs: Optional[Dict], the original keyword arguments of f
     caller_fn_scope: Optional[function_wrappers.FunctionScope], the function
       scope of the converted function in which this call was originally made.
+    options: Optional[converter.ConversionOptions], conversion options. If not
+      specified, the value of caller_fn_scope.callopts is used. Either options
+      or caller_fn_scope must be present.
 
   Returns:
     Any, the result of executing a possibly-converted `f` with the given
@@ -387,6 +396,11 @@ def converted_call(f, options, args, kwargs, caller_fn_scope=None):
   """
   logging.log(1, 'Converted call: %s\n    args: %s\n    kwargs: %s\n', f, args,
               kwargs)
+
+  if options is None:
+    if caller_fn_scope is None:
+      raise ValueError('either caller_fn_scope or options must have a value')
+    options = caller_fn_scope.callopts
 
   if conversion.check_cached_unconverted(f, options):
     return _call_unconverted(f, args, kwargs, options, False)

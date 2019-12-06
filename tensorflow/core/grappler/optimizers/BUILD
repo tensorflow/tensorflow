@@ -618,7 +618,6 @@ cc_library(
         "//tensorflow/core/grappler/utils:tpu",
         "//tensorflow/core/grappler/verifiers:graph_verifier",
         "//tensorflow/core/grappler/verifiers:structure_verifier",
-        "//tensorflow/core/lib/gtl:map_util",
         "@com_google_absl//absl/strings",
     ],
 )

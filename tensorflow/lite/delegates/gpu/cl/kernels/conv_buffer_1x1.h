@@ -51,15 +51,22 @@ class ConvBuffer1x1 : public GPUOperation {
   Status Compile(const CreationContext& creation_context) override;
 
  private:
+  ConvBuffer1x1(const OperationDef& definition, int flt4_x_count,
+                int flt4_y_count, int flt8_x_count, int flt8_y_count);
   friend Status CreateConvBuffer1x1(const CreationContext& creation_context,
                                     const OperationDef& definition,
                                     const Convolution2DAttributes& attr,
                                     ConvBuffer1x1* result);
-  ConvBuffer1x1(const OperationDef& definition,
-                const Convolution2DAttributes& attr, int flt4_x_count,
-                int flt4_y_count, int flt8_x_count, int flt8_y_count);
-  template <DataType T>
+  friend Status CreateConvBuffer1x1(const CreationContext& creation_context,
+                                    const OperationDef& definition,
+                                    const FullyConnectedAttributes& attr,
+                                    ConvBuffer1x1* result);
 
+  template <DataType T>
+  Status UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                    const ::tflite::gpu::Tensor<Linear, T>& biases,
+                    CLContext* context);
+  template <DataType T>
   Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                        CLContext* context);
 
@@ -81,6 +88,19 @@ class ConvBuffer1x1 : public GPUOperation {
 
   int3 work_group_size_;
 };
+
+template <DataType T>
+Status ConvBuffer1x1::UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                                 const ::tflite::gpu::Tensor<Linear, T>& biases,
+                                 CLContext* context) {
+  RETURN_IF_ERROR(UploadWeights(weights, context));
+  LinearStorageCreateInfo create_info;
+  create_info.storage_type = LinearStorageType::BUFFER;
+  create_info.data_type = definition_.GetDataType();
+  create_info.aligned_size = weights.shape.o;
+  RETURN_IF_ERROR(CreateLinearStorage(create_info, biases, context, &biases_));
+  return OkStatus();
+}
 
 template <DataType T>
 Status ConvBuffer1x1::UploadWeights(
@@ -114,6 +134,11 @@ bool IsConvBuffer1x1Supported(const OperationDef& definition,
 Status CreateConvBuffer1x1(const CreationContext& creation_context,
                            const OperationDef& definition,
                            const Convolution2DAttributes& attr,
+                           ConvBuffer1x1* result);
+
+Status CreateConvBuffer1x1(const CreationContext& creation_context,
+                           const OperationDef& definition,
+                           const FullyConnectedAttributes& attr,
                            ConvBuffer1x1* result);
 
 }  // namespace cl

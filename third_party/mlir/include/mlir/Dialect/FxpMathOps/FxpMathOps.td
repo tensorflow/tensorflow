@@ -177,7 +177,7 @@ def fxpmath_RoundingDivideByPotISOp :
 //
 // Math ops on real numbers which may have a representation in quantized
 // arithmetic. It is expected that eligible ops are lowered from a source
-// dialect to this set of ops prior to the process of converting a compuation
+// dialect to this set of ops prior to the process of converting a computation
 // to a quantized form. It is a non-goal of these ops to preserve enough
 // information to convert back to the higher level, source dialect.
 //

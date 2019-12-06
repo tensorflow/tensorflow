@@ -47,12 +47,11 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
 // Given a SavedModel, returns a MLIR module containing the functions, expressed
 // with tf_executor dialect.
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
-    const SavedModelBundle& saved_model, const GraphDebugInfo& debug_info,
-    mlir::MLIRContext* context, absl::Span<std::string> exported_names,
-    bool add_default_attributes = true);
+    const SavedModelBundle& saved_model, mlir::MLIRContext* context,
+    absl::Span<std::string> exported_names, bool add_default_attributes = true);
 
 // Serialize a MLIR module to a string.
-std::string MlirModuleToString(mlir::ModuleOp m);
+std::string MlirModuleToString(mlir::ModuleOp m, bool show_debug_info = false);
 
 }  // namespace tensorflow
 

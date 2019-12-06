@@ -260,6 +260,26 @@ void DebugEventsWriter::WriteGraphExecutionTrace(
   }
 }
 
+void DebugEventsWriter::WriteGraphExecutionTrace(const string& tfdbg_context_id,
+                                                 const string& op_name,
+                                                 int32 output_slot,
+                                                 int32 tensor_debug_mode,
+                                                 const Tensor& tensor_value) {
+  std::unique_ptr<GraphExecutionTrace> trace(new GraphExecutionTrace());
+  trace->set_tfdbg_context_id(tfdbg_context_id);
+  if (!op_name.empty()) {
+    trace->set_op_name(op_name);
+  }
+  if (output_slot > 0) {
+    trace->set_output_slot(output_slot);
+  }
+  if (tensor_debug_mode > 0) {
+    trace->set_tensor_debug_mode(TensorDebugMode(tensor_debug_mode));
+  }
+  tensor_value.AsProtoTensorContent(trace->mutable_tensor_proto());
+  WriteGraphExecutionTrace(trace.release());
+}
+
 void DebugEventsWriter::WriteSerializedNonExecutionDebugEvent(
     const string& debug_event_str, DebugEventFileType type) {
   std::unique_ptr<SingleDebugEventFileWriter>* writer = nullptr;

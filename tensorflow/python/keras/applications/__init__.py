@@ -25,7 +25,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import engine
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
-from tensorflow.python.keras import utils
+from tensorflow.python.keras.utils import all_utils
 from tensorflow.python.util import tf_inspect
 
 
@@ -45,7 +45,7 @@ def keras_modules_injection(base_fun):
     if 'layers' not in kwargs:
       kwargs['layers'] = layers
     kwargs['models'] = models
-    kwargs['utils'] = utils
+    kwargs['utils'] = all_utils
     return base_fun(*args, **kwargs)
   return wrapper
 

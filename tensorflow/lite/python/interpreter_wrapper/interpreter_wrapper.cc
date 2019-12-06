@@ -110,7 +110,7 @@ bool RegisterCustomOpByName(const char* registerer_name,
 #else
       dlsym(RTLD_DEFAULT, registerer_name)
 #endif  // defined(_WIN32)
-      );
+  );
 
   // Fail in an informative way if the function was not found.
   if (registerer == nullptr) {
@@ -313,7 +313,7 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value) {
   if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
     PyErr_Format(PyExc_ValueError,
                  "Cannot set tensor:"
-                 " Got tensor of type %s"
+                 " Got value of type %s"
                  " but expected type %s for input %d, name: %s ",
                  TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
                  TfLiteTypeGetName(tensor->type), i, tensor->name);
@@ -429,9 +429,9 @@ PyObject* InterpreterWrapper::GetTensor(int i) const {
 
     PyArrayObject* py_array = reinterpret_cast<PyArrayObject*>(py_object);
     PyObject** data = reinterpret_cast<PyObject**>(PyArray_DATA(py_array));
-    auto num_strings = GetStringCount(tensor->data.raw);
+    auto num_strings = GetStringCount(tensor);
     for (int j = 0; j < num_strings; ++j) {
-      auto ref = GetString(tensor->data.raw, j);
+      auto ref = GetString(tensor, j);
 
       PyObject* bytes = PyBytes_FromStringAndSize(ref.str, ref.len);
       if (bytes == nullptr) {
@@ -482,7 +482,7 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     PyObject* data, const std::vector<std::string>& registerers,
     std::string* error_msg) {
-  char * buf = nullptr;
+  char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
 

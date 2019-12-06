@@ -107,8 +107,12 @@ struct TestRegionRewriteBlockMovement : public ConversionPattern {
                   ConversionPatternRewriter &rewriter) const final {
     // Inline this region into the parent region.
     auto &parentRegion = *op->getParentRegion();
-    rewriter.inlineRegionBefore(op->getRegion(0), parentRegion,
-                                parentRegion.end());
+    if (op->getAttr("legalizer.should_clone"))
+      rewriter.cloneRegionBefore(op->getRegion(0), parentRegion,
+                                 parentRegion.end());
+    else
+      rewriter.inlineRegionBefore(op->getRegion(0), parentRegion,
+                                  parentRegion.end());
 
     // Drop this operation.
     rewriter.replaceOp(op, llvm::None);

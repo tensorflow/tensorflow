@@ -17,11 +17,13 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/Parser.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
@@ -165,6 +167,58 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
   return Status::OK();
 }
 
+// Refine MLIR types based on new shape information.
+Status RefineShapes(absl::Span<TensorShape> arg_shapes, mlir::ModuleOp module) {
+  auto versions = module.getAttrOfType<::mlir::DictionaryAttr>("tf.versions");
+  if (!versions) {
+    return errors::Internal(
+        "Missing 'tf.versions' attribute on the module, abort.\n");
+  }
+  auto producer = versions.get("producer").dyn_cast<mlir::IntegerAttr>();
+  if (!producer) {
+    return errors::Internal(
+        "Missing 'producer' attribute on the module, abort.\n");
+  }
+
+  llvm::SmallVector<int64_t, 16> shape_backing;
+  llvm::SmallVector<llvm::ArrayRef<int64_t>, 4> arg_shapes_copy;
+  {
+    // Convert arg_shapes to a mlir friendly format.
+    size_t count = 0;
+    for (const TensorShape& shape : arg_shapes) {
+      count += shape.dims();
+    }
+    shape_backing.resize(count);
+    arg_shapes_copy.reserve(arg_shapes.size());
+    size_t offset = 0;
+    for (const TensorShape& shape : arg_shapes) {
+      size_t start = offset;
+      for (tensorflow::TensorShapeDim dim : shape) {
+        shape_backing[offset] = dim.size;
+        ++offset;
+      }
+      if (offset == start) {
+        arg_shapes_copy.push_back(llvm::ArrayRef<int64_t>());
+      } else {
+        arg_shapes_copy.push_back(
+            llvm::ArrayRef<int64_t>(&shape_backing[start], offset - start));
+      }
+    }
+  }
+
+  auto main_func = module.lookupSymbol<mlir::FuncOp>("main");
+
+  mlir::StatusScopedDiagnosticHandler error_handler(module.getContext());
+  mlir::LogicalResult result = mlir::TF::InferShapeForFunction(
+      main_func, arg_shapes_copy, producer.getInt());
+
+  if (failed(result)) {
+    return error_handler.Combine(
+        errors::Internal("MLIR Shape refinement failed"));
+  }
+  return Status::OK();
+}
+
 }  //  namespace
 
 Status CompileSerializedMlirToXlaHlo(
@@ -177,6 +231,9 @@ Status CompileSerializedMlirToXlaHlo(
   TF_RETURN_IF_ERROR(
       ParseMlirModule(mlir_module_string, &mlir_context, &mlir_module));
   auto module_op = mlir_module.get();
+
+  // Use arg_shapes to improve the mlir type information of `main` in module_op.
+  TF_RETURN_IF_ERROR(RefineShapes(arg_shapes, module_op));
 
   // Convert MLIR module to XLA HLO proto contained in XlaComputation.
   compilation_result->computation = std::make_shared<xla::XlaComputation>();

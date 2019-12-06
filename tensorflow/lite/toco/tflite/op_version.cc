@@ -204,6 +204,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kElu, 1}, "1.14.0"},
           {{OperatorType::kRound, 1}, "1.14.0"},
           {{OperatorType::kRelu, 1}, "1.5.0"},
+          {{OperatorType::kRelu, 2}, kPendingReleaseOpVersion},
           {{OperatorType::kRelu1, 1}, "1.5.0"},
           {{OperatorType::kPRelu, 1}, "1.8.0"},
           {{OperatorType::kExp, 1}, "1.7.0"},

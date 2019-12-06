@@ -19,11 +19,11 @@ from __future__ import print_function
 
 import json
 import os
-import shutil
 import tempfile
 
 from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 
@@ -37,7 +37,7 @@ class CLIConfigTest(test_util.TensorFlowTestCase):
     super(CLIConfigTest, self).setUp()
 
   def tearDown(self):
-    shutil.rmtree(self._tmp_dir)
+    file_io.delete_recursively(self._tmp_dir)
     super(CLIConfigTest, self).tearDown()
 
   def testConstructCLIConfigWithoutFile(self):

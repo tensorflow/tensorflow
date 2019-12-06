@@ -1118,6 +1118,8 @@ class StaticVocabularyTable(LookupInterface):
       if initializer.value_dtype != dtypes.int64:
         raise TypeError("Invalid value dtype, expected %s but got %s." %
                         (dtypes.int64, initializer.value_dtype))
+      if isinstance(initializer, trackable_base.Trackable):
+        self._initializer = self._track_trackable(initializer, "_initializer")
       self._table = HashTable(initializer, default_value=-1)
       name = name or self._table.name
     else:

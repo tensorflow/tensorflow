@@ -33,7 +33,7 @@ namespace detail {
 struct PassInstrumentorImpl;
 } // end namespace detail
 
-/// PassInstrumentation provdes several entry points into the pass manager
+/// PassInstrumentation provides several entry points into the pass manager
 /// infrastructure. Instrumentations should be added directly to a PassManager
 /// before running a pipeline.
 class PassInstrumentation {

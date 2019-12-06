@@ -81,10 +81,10 @@ using ::tflite::gpu::metal::SingleOpModel;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 1, 1, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({2, 4, 2, 4, 1, 1, 4, 8, 4, 8, 1, 1, 3, 5, 3, 5, 1, 1},
                           model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testTransposeConvO1H2W2I1Stride1x1Adjacent2x2 {
@@ -120,11 +120,11 @@ using ::tflite::gpu::metal::SingleOpModel;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 1, 1, 1, 1, 1, 1, 1, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1, 3, 3, 2, 0, 0, 4, 10, 10, 6, 0, 0, 4, 10, 10, 6, 0, 0,
                            3, 7, 7, 4, 0, 0, 0, 0,  0,  0, 0, 0, 0, 0,  0,  0, 0, 0},
                           model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testTransposeConvO1H3W3I1Stride1x1Adjacent1x1 {
@@ -160,10 +160,10 @@ using ::tflite::gpu::metal::SingleOpModel;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 1, 1, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status =
       CompareVectors({7, 11, 7, 1, 7, 11, 7, 1, 4, 6, 4, 1, 1, 1, 1, 1}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testTransposeConvO2H1W1I2Stride1x1Dilation1x1 {
@@ -199,9 +199,9 @@ using ::tflite::gpu::metal::SingleOpModel;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 1, 1, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({4, 8, 1, 1, 4, 8, 1, 1, 1, 1, 1, 1}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testTransposeConvO1H1W1I1Stride2x2Dilation1x1 {
@@ -238,11 +238,11 @@ using ::tflite::gpu::metal::SingleOpModel;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 0, 2, 0, 0, 0, 4, 0, 8}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0,
                            0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0},
                           model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 @end

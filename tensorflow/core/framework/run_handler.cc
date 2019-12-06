@@ -379,11 +379,26 @@ class RunHandlerThreadPool {
     thread_data_[tid].thread_work_sources.resize(0);
     thread_data_[tid].thread_work_sources.emplace_back(
         thread_work_sources[start_request_idx]);
-    for (int i = 0; i < thread_work_sources.size(); ++i) {
-      if (i != start_request_idx) {
-        thread_data_[tid].thread_work_sources.emplace_back(
-            thread_work_sources[i]);
+    // The number of shards for the queue. Threads in each shard will prioritize
+    // different thread_work_sources. Increase the number of shards could
+    // decrease the contention in the queue.
+    // For example, when num_shards == 1:
+    // thread_work_sources are ordered as start_request_idx, 0, 1, 2, 3, 4 ...
+    // for all threads.
+    // When num_shards == 2:
+    // thread_work_sources are order as start_request_idx, 0, 2, 4 ... 1, 3,
+    // 5... for half of the threads and start_request_idx, 1, 3, 5 ... 0, 2,
+    // 4... for the other half of the threads.
+    int num_shards = ParamFromEnvWithDefault("TF_RUN_HANDLER_QUEUE_SHARDS", 1);
+    int token = tid % num_shards;
+    for (int i = 0; i < num_shards; ++i) {
+      for (int j = token; j < thread_work_sources.size(); j += num_shards) {
+        if (j != start_request_idx) {
+          thread_data_[tid].thread_work_sources.emplace_back(
+              thread_work_sources[j]);
+        }
       }
+      token = (token + 1) % num_shards;
     }
     thread_data_[tid].sources_not_empty.notify_all();
   }

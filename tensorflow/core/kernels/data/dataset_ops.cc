@@ -27,22 +27,10 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/traversal.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace data {
-
-/* static */ constexpr const char* const DatasetToGraphOp::kAllowStateful;
-/* static */ constexpr const char* const DatasetFromGraphOp::kGraphDef;
-/* static */ constexpr const char* const DatasetFromGraphOp::kHandle;
-
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
-DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-  if (ctx->HasAttr(kAllowStateful)) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kAllowStateful, &allow_stateful_ops_));
-  }
-}
-
 namespace {
 Status FindStatefulOps(const GraphDef& graph_def,
                        std::vector<string>* stateful_op_names) {
@@ -72,6 +60,24 @@ Status FindStatefulOps(const GraphDef& graph_def,
 }
 }  // namespace
 
+/* static */ constexpr const char* const DatasetToGraphOp::kAllowStateful;
+/* static */ constexpr const char* const
+    DatasetToGraphOp::kStripDeviceAssignment;
+/* static */ constexpr const char* const DatasetFromGraphOp::kGraphDef;
+/* static */ constexpr const char* const DatasetFromGraphOp::kHandle;
+
+// See documentation in ../../ops/dataset_ops.cc for a high-level
+// description of the following op.
+DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  if (ctx->HasAttr(kAllowStateful)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kAllowStateful, &allow_stateful_ops_));
+  }
+  if (ctx->HasAttr(kStripDeviceAssignment)) {
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr(kStripDeviceAssignment, &strip_device_assignment_));
+  }
+}
+
 void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
@@ -94,6 +100,18 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
           << absl::StrJoin(stateful_op_names, ", ");
     }
   }
+
+  if (strip_device_assignment_) {
+    auto library = graph_def.mutable_library();
+    for (auto& function : (*library->mutable_function())) {
+      for (auto& node : (*function.mutable_node_def())) {
+        if (!node.device().empty()) {
+          *node.mutable_device() = DeviceNameUtils::LocalName(node.device());
+        }
+      }
+    }
+  }
+
   Tensor* result;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));
   result->scalar<tstring>()() = graph_def.SerializeAsString();

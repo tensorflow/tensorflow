@@ -50,7 +50,7 @@ static inline void ApplyTimeWeightsBiasAndActivation(
     const TfLiteTensor* weights_time, const TfLiteTensor* bias,
     TfLiteFusedActivation activation, TfLiteTensor* activation_state,
     TfLiteTensor* scratch, TfLiteTensor* output) {
-  // Compute matmul(state, weights_time).
+  // Compute matmul(activation_state, weights_time).
   // The rightmost column is used to save temporary output (with the size of
   // num_filters). This is achieved by starting at
   // GetTensorData<float>(activation_state), and having the stride equal to
@@ -137,7 +137,8 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
                           const TfLiteTensor* weights_time,
                           const TfLiteTensor* bias,
                           const TfLiteSVDFParams* params, TfLiteTensor* scratch,
-                          TfLiteTensor* state, TfLiteTensor* output) {
+                          TfLiteTensor* activation_state,
+                          TfLiteTensor* output) {
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];
   const int input_size = input->dims->data[1];
@@ -145,12 +146,12 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
   const int num_units = num_filters / rank;
   const int memory_size = weights_time->dims->data[1];
 
-  // Clear the activation (state's leftmost column).
+  // Clear the activation (activation_state's leftmost column).
   // TODO(ghodrat): Add a test which initialize activation_state with invalid
   // values in leftmost column and make sure it passes.
   for (int b = 0; b < batch_size; ++b) {
     float* state_ptr_batch =
-        GetTensorData<float>(state) + b * memory_size * num_filters;
+        GetTensorData<float>(activation_state) + b * memory_size * num_filters;
     for (int c = 0; c < num_filters; ++c) {
       float* state_ptr = state_ptr_batch + c * memory_size;
       state_ptr[memory_size - 1] = 0.0f;
@@ -158,14 +159,15 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
   }
 
   // Compute conv1d(inputs, weights_feature).
-  // The state's rightmost column is used to save current cycle activation. This
-  // is achieved by starting at GetTensorData<float>(state)[memory_size - 1] and
-  // having the stride equal to memory_size.
+  // The activation_state's rightmost column is used to save current cycle
+  // activation. This is achieved by starting at
+  // GetTensorData<float>(activation_state)[memory_size - 1] and having the
+  // stride equal to memory_size.
 
   // Perform batched matrix vector multiply accumulate operation:
   const float* matrix = GetTensorData<float>(weights_feature);
   const float* vector = GetTensorData<float>(input);
-  float* result = &GetTensorData<float>(state)[memory_size - 1];
+  float* result = &GetTensorData<float>(activation_state)[memory_size - 1];
   float* result_in_batch = result;
   for (int i = 0; i < batch_size; ++i) {
     const float* matrix_ptr = matrix;
@@ -180,9 +182,9 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
     }
   }
 
-  ApplyTimeWeightsBiasAndActivation(batch_size, memory_size, num_filters,
-                                    num_units, rank, weights_time, bias,
-                                    params->activation, state, scratch, output);
+  ApplyTimeWeightsBiasAndActivation(
+      batch_size, memory_size, num_filters, num_units, rank, weights_time, bias,
+      params->activation, activation_state, scratch, output);
 }
 
 inline void EvalHybridSVDF(
@@ -190,7 +192,8 @@ inline void EvalHybridSVDF(
     const TfLiteTensor* weights_feature, const TfLiteTensor* weights_time,
     const TfLiteTensor* bias, const TfLiteSVDFParams* params,
     TfLiteTensor* scratch, TfLiteTensor* scaling_factors,
-    TfLiteTensor* input_quantized, TfLiteTensor* state, TfLiteTensor* output) {
+    TfLiteTensor* input_quantized, TfLiteTensor* activation_state,
+    TfLiteTensor* output) {
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];
   const int input_size = input->dims->data[1];
@@ -219,13 +222,13 @@ inline void EvalHybridSVDF(
   // Initialize the weights scale.
   const float weights_feature_scale = weights_feature->params.scale;
 
-  // Clear the activation (state's leftmost column).
-  // TODO(ghodrat): Add a test which initialize state with invalid values in
-  // the leftmost column and make sure it passes.
+  // Clear the activation (activation_state's leftmost column).
+  // TODO(ghodrat): Add a test which initialize activation_state with invalid
+  // values in the leftmost column and make sure it passes.
   // TODO(kreeger): Use a port of tensor_utils when ready (b/140272187).
   for (int b = 0; b < batch_size; ++b) {
     float* state_ptr_batch =
-        GetTensorData<float>(state) + b * memory_size * num_filters;
+        GetTensorData<float>(activation_state) + b * memory_size * num_filters;
     for (int c = 0; c < num_filters; ++c) {
       float* state_ptr = state_ptr_batch + c * memory_size;
       state_ptr[memory_size - 1] = 0.0;
@@ -251,13 +254,11 @@ inline void EvalHybridSVDF(
     }
 
     // Compute conv1d(inputs, weights_feature).
-    // The rightmost column of state is used to save the current cycle
-    // activation.
-    // This is achieved by starting at
-    // GetTensorData<float>(state)[memory_size - 1] and having the stride equal
-    // to memory_size.
-    // (Matrix batch vector multiply accumulate)
-    float* result = &GetTensorData<float>(state)[memory_size - 1];
+    // The rightmost column of activation_state is used to save the current
+    // cycle activation. This is achieved by starting at
+    // GetTensorData<float>(activation_state)[memory_size - 1] and having the
+    // stride equal to memory_size. (Matrix batch vector multiply accumulate)
+    float* result = &GetTensorData<float>(activation_state)[memory_size - 1];
     for (int i = 0; i < batch_size;
          ++i, quantized_input_ptr_batch += input_size) {
       const float batch_scaling_factor = scaling_factors_ptr[i];
@@ -277,9 +278,9 @@ inline void EvalHybridSVDF(
 
   // TODO(alanchiao): can optimize hybrid case ~5% by unrolling loop in applying
   // time weights so that the inner loop multiplies eight elements at a time.
-  ApplyTimeWeightsBiasAndActivation(batch_size, memory_size, num_filters,
-                                    num_units, rank, weights_time, bias,
-                                    params->activation, state, scratch, output);
+  ApplyTimeWeightsBiasAndActivation(
+      batch_size, memory_size, num_filters, num_units, rank, weights_time, bias,
+      params->activation, activation_state, scratch, output);
 }
 
 }  // namespace
@@ -419,7 +420,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // the input values from the Weights Time tensor to the float weights time
     // scratch tensor.
     // TODO(kreeger): Consider doing this at model conversion time?
-    TfLiteTensor* float_weights_time_scratch = GetTemporary(context, node, 3);
     const int8_t* weights_time_ptr;
     if (weights_time->type == kTfLiteUInt8) {
       weights_time_ptr =
@@ -428,9 +428,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       weights_time_ptr = GetTensorData<int8_t>(weights_time);
     }
     SymmetricDequantize(weights_time_ptr,
-                        NumElements(float_weights_time_scratch),
+                        NumElements(scratch_float_weights_time),
                         weights_time->params.scale,
-                        GetTensorData<float>(float_weights_time_scratch));
+                        GetTensorData<float>(scratch_float_weights_time));
   } else {
     // Validate Input Tensor dtypes:
     TF_LITE_ENSURE_EQ(context, weights_feature->type, kTfLiteFloat32);

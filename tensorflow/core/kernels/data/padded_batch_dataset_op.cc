@@ -175,6 +175,12 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
+    string BuildTraceMeName() override {
+      return strings::StrCat(prefix(), "#batch_size=", dataset()->batch_size_,
+                             ",drop_remainder=", dataset()->drop_remainder_,
+                             "#");
+    }
+
     Status Initialize(IteratorContext* ctx) override {
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }

@@ -63,15 +63,16 @@ static bool isHiddenPass(Pass *pass) {
   return isAdaptorPass(pass) || isa<VerifierPass>(pass);
 }
 
-static void printIR(Operation *op, bool printModuleScope, raw_ostream &out) {
+static void printIR(Operation *op, bool printModuleScope, raw_ostream &out,
+                    OpPrintingFlags flags) {
   // Check to see if we are printing the top-level module.
   auto module = dyn_cast<ModuleOp>(op);
   if (module && !op->getBlock())
-    return module.print(out << "\n");
+    return module.print(out << "\n", flags);
 
   // Otherwise, check to see if we are not printing at module scope.
   if (!printModuleScope)
-    return op->print(out << "\n");
+    return op->print(out << "\n", flags);
 
   // Otherwise, we are printing at module scope.
   out << " ('" << op->getName() << "' operation";
@@ -88,9 +89,9 @@ static void printIR(Operation *op, bool printModuleScope, raw_ostream &out) {
   // Check to see if the top-level operation is actually a module in the case of
   // invalid-ir.
   if (auto module = dyn_cast<ModuleOp>(topLevelOp))
-    module.print(out);
+    module.print(out, flags);
   else
-    topLevelOp->print(out);
+    topLevelOp->print(out, flags);
 }
 
 /// Instrumentation hooks.
@@ -100,7 +101,7 @@ void IRPrinterInstrumentation::runBeforePass(Pass *pass, Operation *op) {
       !shouldPrintBeforePass(pass))
     return;
   out << formatv("*** IR Dump Before {0} ***", pass->getName());
-  printIR(op, printModuleScope, out);
+  printIR(op, printModuleScope, out, OpPrintingFlags());
   out << "\n\n";
 }
 
@@ -110,7 +111,7 @@ void IRPrinterInstrumentation::runAfterPass(Pass *pass, Operation *op) {
       !shouldPrintAfterPass(pass))
     return;
   out << formatv("*** IR Dump After {0} ***", pass->getName());
-  printIR(op, printModuleScope, out);
+  printIR(op, printModuleScope, out, OpPrintingFlags());
   out << "\n\n";
 }
 
@@ -120,7 +121,7 @@ void IRPrinterInstrumentation::runAfterPassFailed(Pass *pass, Operation *op) {
       !shouldPrintAfterPass(pass))
     return;
   out << formatv("*** IR Dump After {0} Failed ***", pass->getName());
-  printIR(op, printModuleScope, out);
+  printIR(op, printModuleScope, out, OpPrintingFlags().printGenericOpForm());
   out << "\n\n";
 }
 

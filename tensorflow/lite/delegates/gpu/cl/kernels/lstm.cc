@@ -26,18 +26,10 @@ namespace cl {
 namespace {
 
 std::string GetLSTMCode(const OperationDef& op_def, const CLDevice& device) {
-  TensorCodeGenerator::SizeVariablesNames state_size;
-  state_size.batch_size = "BATCH_SIZE";
-  state_size.width = "1";
-  state_size.height = "1";
-  state_size.channels = "";
-  state_size.depth = "state_size.w";
-  TensorCodeGenerator::SizeVariablesNames src_size;
-  src_size.batch_size = "BATCH_SIZE";
-  src_size.width = "1";
-  src_size.height = "1";
-  src_size.channels = "";
-  src_size.depth = "src_size.w";
+  const TensorCodeGenerator::SizeVariablesNames state_size(
+      "1", "1", "state_size.w", "BATCH_SIZE");
+  const TensorCodeGenerator::SizeVariablesNames src_size("1", "1", "src_size.w",
+                                                         "BATCH_SIZE");
 
   TensorCodeGenerator intermediate("src_data", src_size, op_def.src_tensors[0]);
   TensorCodeGenerator prev_state("prev_state", state_size,
@@ -45,8 +37,6 @@ std::string GetLSTMCode(const OperationDef& op_def, const CLDevice& device) {
 
   TensorCodeGenerator activation("dst_data", state_size, op_def.dst_tensors[0]);
   TensorCodeGenerator new_state("new_state", state_size, op_def.dst_tensors[1]);
-
-  const auto address_mode = TextureAddressMode::DONT_CARE;
 
   std::string c = GetCommonDefines(op_def.precision);
 
@@ -62,25 +52,21 @@ std::string GetLSTMCode(const OperationDef& op_def, const CLDevice& device) {
   c += "  int B = get_global_id(0);\n";
   c += "  int Z = get_global_id(1);\n";
   c += "  if (Z >= state_size.w || B >= BATCH_SIZE) return;\n";
-  c += "  FLT4 prev_st = " +
-       prev_state.Read4D("0", "0", "Z", "B", address_mode) + ";\n";
-  c += "  FLT4 r0 = " + intermediate.Read4D("0", "0", "Z", "B", address_mode) +
+  c += "  FLT4 prev_st = " + prev_state.Read4D("0", "0", "Z", "B") + ";\n";
+  c += "  FLT4 r0 = " + intermediate.Read4D("0", "0", "Z", "B") + ";\n";
+  c += "  FLT4 r1 = " + intermediate.Read4D("0", "0", "Z + state_size.w", "B") +
        ";\n";
-  c += "  FLT4 r1 = " +
-       intermediate.Read4D("0", "0", "Z + state_size.w", "B", address_mode) +
-       ";\n";
-  c +=
-      "  FLT4 r2 = " +
-      intermediate.Read4D("0", "0", "Z + state_size.w * 2", "B", address_mode) +
-      ";\n";
-  c +=
-      "  FLT4 r3 = " +
-      intermediate.Read4D("0", "0", "Z + state_size.w * 3", "B", address_mode) +
-      ";\n";
-  c += "  FLT4 input_gate  = 1.0f / (1.0f + exp(-1.0f * r0));\n";
+  c += "  FLT4 r2 = " +
+       intermediate.Read4D("0", "0", "Z + state_size.w * 2", "B") + ";\n";
+  c += "  FLT4 r3 = " +
+       intermediate.Read4D("0", "0", "Z + state_size.w * 3", "B") + ";\n";
+  c += "  FLT4 input_gate  = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp((FLT4)(-1.0f) "
+       "* r0));\n";
   c += "  FLT4 new_input   = tanh(r1);\n";
-  c += "  FLT4 forget_gate = 1.0f / (1.0f + exp(-1.0f * r2));\n";
-  c += "  FLT4 output_gate = 1.0f / (1.0f + exp(-1.0f * r3));\n";
+  c += "  FLT4 forget_gate = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp((FLT4)(-1.0f) "
+       "* r2));\n";
+  c += "  FLT4 output_gate = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp((FLT4)(-1.0f) "
+       "* r3));\n";
   c += "  FLT4 new_st = input_gate * new_input + forget_gate * prev_st;\n";
   c += "  FLT4 activation = output_gate * tanh(new_st);\n";
   c += "  " + activation.Write4D("activation", "0", "0", "Z", "B");

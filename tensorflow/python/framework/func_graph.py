@@ -48,15 +48,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util.lazy_loader import LazyLoader
-
-# This is to avoid a circular dependency:
-# function -> func_graph
-function = LazyLoader("function", globals(),
-                      "tensorflow.python.eager.function")
-def_function = LazyLoader(
-    "def_function", globals(),
-    "tensorflow.python.eager.def_function")
 
 WHITELIST_COLLECTIONS = [
     ops.GraphKeys.GLOBAL_VARIABLES,
@@ -631,7 +622,7 @@ class FuncGraph(ops.Graph):
     return tensor
 
   def _capture_helper(self, tensor, name, shape=None):
-    capture = self._captures.get(ops.tensor_id(tensor))
+    capture = self._captures.get(id(tensor))
     if capture is None:
       placeholder = _create_substitute_placeholder(
           tensor, name=name, dtype=tensor.dtype, shape=shape)
@@ -655,18 +646,22 @@ class FuncGraph(ops.Graph):
       tensor: Tensor to captures.
       placeholder: Provided placeholder for the tensor.
     """
-    self._captures[ops.tensor_id(tensor)] = (tensor, placeholder)
+    self._captures[id(tensor)] = (tensor, placeholder)
     self.inputs.append(placeholder)
+
+  def replace_capture(self, tensor, placeholder):
+    """Replace already existing capture."""
+    self._captures[id(tensor)] = (tensor, placeholder)
 
   def reset_captures(self, capture_list):
     """Set the captures with the provided list of captures & placeholder."""
     self._captures = py_collections.OrderedDict()
     for tensor, placeholder in capture_list:
-      self._captures[ops.tensor_id(tensor)] = (tensor, placeholder)
+      self._captures[id(tensor)] = (tensor, placeholder)
 
   def pop_capture(self, tensor):
     """Remove the capture and return the generated placeholder."""
-    capture = self._captures.pop(ops.tensor_id(tensor), None)
+    capture = self._captures.pop(id(tensor), None)
     if capture is None:
       return None
 
@@ -684,13 +679,13 @@ class FuncGraph(ops.Graph):
 
   def capture_distributed_variable(self, variable, placeholder):
     """Add given distributed variable to captures with given placeholder."""
-    self._captures[ops.tensor_id(variable)] = (variable, placeholder)
+    self._captures[id(variable)] = (variable, placeholder)
     tape.record_operation("captured_value", [placeholder], [variable],
                           backward_function=lambda x: [x],
                           forward_function=lambda x: [x])
 
   def capture_eager_tensor(self, tensor, name):
-    capture = self._captures.get(ops.tensor_id(tensor))
+    capture = self._captures.get(id(tensor))
     if capture is None:
       # We clear all control dependencies and place the Const op on the same
       # device as the source tensor. The device placement may be relaxed at
@@ -705,6 +700,10 @@ class FuncGraph(ops.Graph):
                           backward_function=lambda x: [x],
                           forward_function=lambda x: [x])
     return graph_const
+
+  def captured(self, tensor):
+    """Check if the specified tensor has been captured."""
+    return id(tensor) in self._captures
 
   @property
   def external_captures(self):
@@ -728,11 +727,11 @@ class FuncGraph(ops.Graph):
 
   @property
   def variable_captures(self):
-    """Map of tensor ids of variable handles to variables which are captured."""
+    """Map of python object ids of variables to variables which are captured."""
     return {
-        ops.tensor_id(self._captures[ops.tensor_id(v.handle)][1]): v
+        id(self._captures[id(v)][1]): v
         for v in self.variables
-        if ops.tensor_id(v.handle) in self._captures
+        if id(v) in self._captures
     }
 
   def mark_as_unsaveable(self, error_message):
@@ -923,11 +922,13 @@ def func_graph_from_py_func(name,
           try:
             return autograph.converted_call(
                 original_func,
-                autograph.ConversionOptions(
+                args,
+                kwargs,
+                options=autograph.ConversionOptions(
                     recursive=True,
                     optional_features=autograph_options,
                     user_requested=True,
-                ), args, kwargs)
+                ))
           except Exception as e:  # pylint:disable=broad-except
             if hasattr(e, "ag_error_metadata"):
               raise e.ag_error_metadata.to_exception(e)
@@ -1092,6 +1093,12 @@ def _get_defun_inputs_from_args(args, names, flat_shapes=None):
       args, names, structure=args, flat_shapes=flat_shapes)
 
 
+def _get_composite_tensor_spec(x):
+  """Returns the TypeSpec for x if it's a composite tensor, or x otherwise."""
+  return (x._type_spec  # pylint: disable=protected-access
+          if isinstance(x, composite_tensor.CompositeTensor) else x)
+
+
 def _get_defun_inputs(args, names, structure, flat_shapes=None):
   """Maps python function args to graph-construction inputs.
 
@@ -1135,6 +1142,12 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
              flat_shapes))
     shapes_iter = iter(flat_shapes)
   for arg_value, name in zip(args, names):
+
+    # Replace any composite tensors with their TypeSpecs.  This is important
+    # for ensuring that shape information that's not preserved by the TypeSpec
+    # (such as the number of values in a SparseTensor) gets properly masked.
+    arg_value = nest.map_structure(_get_composite_tensor_spec, arg_value)
+
     flattened = nest.flatten(arg_value, expand_composites=True)
     tensor_specs = [
         arg for arg in flattened if isinstance(arg, tensor_spec.TensorSpec)

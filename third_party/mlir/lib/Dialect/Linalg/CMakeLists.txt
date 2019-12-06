@@ -21,5 +21,6 @@ add_dependencies(MLIRLinalg
   MLIRAnalysis
   MLIRLinalgOpsIncGen
   MLIRLinalgLibraryOpsIncGen
+  MLIRStandardOps
   MLIRStandardToLLVM
   )

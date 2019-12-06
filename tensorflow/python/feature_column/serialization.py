@@ -28,7 +28,7 @@ from tensorflow.python.util.lazy_loader import LazyLoader
 # Prevent circular dependencies with Keras serialization.
 generic_utils = LazyLoader(
     'generic_utils', globals(),
-    'tensorflow.python.keras.utils')
+    'tensorflow.python.keras.utils.generic_utils')
 
 _FEATURE_COLUMNS = [
     fc_lib.BucketizedColumn, fc_lib.CrossedColumn, fc_lib.EmbeddingColumn,

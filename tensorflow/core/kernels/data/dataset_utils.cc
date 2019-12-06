@@ -20,8 +20,10 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -522,6 +524,32 @@ Status HashNode(const GraphDef& graph, const NodeDef& node, uint64* hash) {
   std::vector<std::string> visited;
   absl::flat_hash_map<std::string, uint64> cache;
   return HashNodeImpl(graph, node, hash, &visited, &cache);
+}
+
+Status HashTensor(const Tensor& tensor, uint64* hash) {
+  const tstring* s = nullptr;
+  // Hash tensor type.
+  *hash = Hash64CombineUnordered(*hash, tensor.dtype());
+  // Hash tensor shape.
+  for (int i = 0; i < tensor.shape().dims(); ++i) {
+    *hash = Hash64CombineUnordered(*hash, tensor.shape().dim_size(i));
+  }
+  // Hash tensor data.
+  switch (tensor.dtype()) {
+    case DT_RESOURCE:
+    case DT_VARIANT:
+      return errors::Unimplemented("Hashing ", DataTypeString(tensor.dtype()),
+                                   " is not supported.");
+    case DT_STRING:
+      s = tensor.flat<tstring>().data();
+      for (int i = 0; i < tensor.NumElements(); ++i, ++s) {
+        *hash = Hash64CombineUnordered(*hash, Hash64(s->data(), s->size()));
+      }
+      break;
+    default:
+      *hash = Hash64(tensor.tensor_data().data(), tensor.tensor_data().size());
+  }
+  return Status::OK();
 }
 
 Status HashGraph(const GraphDef& graph_def, uint64* hash) {

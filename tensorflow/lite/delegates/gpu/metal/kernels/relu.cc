@@ -53,7 +53,7 @@ std::vector<ComputeTaskDescriptorPtr> ReLU(int id, ValueId input_id,
   desc->uniform_buffers = {
       {"constant float2&",
        [attr](const std::map<ValueId, BHWC>& buffers) {
-         return VectorToUint8Vector(std::vector<float>{attr.alpha, attr.clip});
+         return GetByteBuffer(std::vector<float>{attr.alpha, attr.clip});
        }},
   };
   return {desc};

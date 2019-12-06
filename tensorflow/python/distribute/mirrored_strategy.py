@@ -536,7 +536,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           value_list.append(v)
       return value_list
 
-    return distribute_lib.create_mirrored_variable(
+    return values.create_mirrored_variable(
         self._container_strategy(), device_map, logical_device,
         _real_mirrored_creator, values.MirroredVariable,
         values.SyncOnReadVariable, *args, **kwargs)

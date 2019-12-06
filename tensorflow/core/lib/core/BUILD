@@ -2,7 +2,13 @@ load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
 
 package(
     default_visibility = [
-        "//tensorflow:__subpackages__",
+        "//tensorflow/core/lib/core:__pkg__",
+        "//tensorflow/core/lib/gtl:__pkg__",
+        "//tensorflow/core/lib/hash:__pkg__",
+        "//tensorflow/core/lib/io:__pkg__",
+        "//tensorflow/core/lib/random:__pkg__",
+        "//tensorflow/core/lib/strings:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -135,6 +141,7 @@ tf_proto_library(
     protodeps = [
         "//tensorflow/core:error_codes_proto_impl",
     ],
+    visibility = ["//tensorflow/core:__subpackages__"],
     exports = ["//tensorflow/core:error_codes_proto_impl"],
 )
 

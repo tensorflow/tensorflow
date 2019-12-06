@@ -214,6 +214,8 @@ class EagerExecutor {
   const std::unique_ptr<Thread> thread_;
 };
 
+inline bool EagerExecutor::Async() const { return thread_ != nullptr; }
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_EXECUTOR_H_

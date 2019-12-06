@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import shutil
 import tempfile
 
 import numpy as np
@@ -36,6 +35,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core
@@ -175,7 +175,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def tearDown(self):
     ops.reset_default_graph()
     if os.path.isdir(self._tmp_dir):
-      shutil.rmtree(self._tmp_dir)
+      file_io.delete_recursively(self._tmp_dir)
 
   def testConstructWrapper(self):
     local_cli_wrapper.LocalCLIDebugWrapperSession(

@@ -132,7 +132,7 @@ int main(int argc, char **argv) {
 
   StatusOr<mlir::OwningModuleRef> module =
       tensorflow::LoadFromGraphdefOrMlirSource(
-          input_file_name, input_mlir, use_splatted_constant, extra_opdefs,
+          input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
           debug_info_file, input_arrays, input_dtypes, input_shapes,
           output_arrays,
           /*prune_unused_nodes=*/true, &source_mgr, &context);
@@ -160,6 +160,17 @@ int main(int argc, char **argv) {
       llvm::errs() << "Unknown weight quantization " << weight_quantization;
       return kTrFailure;
     }
+  }
+
+  if (!quant_stats_file_name.empty()) {
+    std::string error_message;
+    auto file = mlir::openInputFile(quant_stats_file_name, &error_message);
+    if (!file) {
+      llvm::errs() << "fail to open quant stats file: "
+                   << quant_stats_file_name;
+      return kTrFailure;
+    }
+    quant_specs.serialized_quant_stats = file->getBuffer().str();
   }
 
   mlir::TFL::PassConfig pass_config(quant_specs);

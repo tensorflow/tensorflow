@@ -524,7 +524,8 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
     def dataset_fn(ctx=None):
       ctx = ctx or distribute_lib.InputContext()
       batch_size = ctx.get_per_replica_batch_size(global_batch_size)
-      row_lengths = np.mod(np.arange(20), 4)  # Deal with partial batches.
+      # Use 20 which isn't divisible by 8 to test partial batch behavior.
+      row_lengths = np.mod(np.arange(20), 4).astype(np.int64)
       ragged_tensor = ragged_tensor_lib.RaggedTensor.from_row_lengths(
           np.repeat(np.arange(20, dtype=np.float32), row_lengths), row_lengths)
       dataset = dataset_ops.DatasetV2.from_tensor_slices({

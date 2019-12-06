@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -40,6 +41,8 @@ from tensorflow.python.platform import test
 _sample_diags = np.array([[2, 1, 4, 0], [1, 3, 2, 2], [0, 1, -1, 1]])
 _sample_rhs = np.array([1, 2, 3, 4])
 _sample_result = np.array([-9, 5, -4, 4])
+
+FORWARD_COMPATIBLE_DATE = (2019, 10, 18)
 
 # Flag, indicating that test should be run only with partial_pivoting=True
 FLAG_REQUIRES_PIVOTING = "FLAG_REQUIRES_PIVOT"
@@ -299,10 +302,13 @@ class TridiagonalSolveOpTest(test.TestCase):
   # Tests with transpose and adjoint
 
   def testTransposeRhs(self):
+    expected = np.array([_sample_result, 2 * _sample_result])
+    if compat.forward_compatible(*FORWARD_COMPATIBLE_DATE):
+      expected = expected.T
     self._testWithLists(
         diags=_sample_diags,
         rhs=np.array([_sample_rhs, 2 * _sample_rhs]),
-        expected=np.array([_sample_result, 2 * _sample_result]),
+        expected=expected,
         transpose_rhs=True)
 
   def testConjugateRhs(self):
@@ -314,21 +320,28 @@ class TridiagonalSolveOpTest(test.TestCase):
         conjugate_rhs=True)
 
   def testAdjointRhs(self):
+    expected = np.array(
+        [_sample_result * (1 - 1j), _sample_result * (1 + 2j)])
+    if compat.forward_compatible(*FORWARD_COMPATIBLE_DATE):
+      expected = expected.T
     self._testWithLists(
         diags=_sample_diags,
         rhs=np.array([_sample_rhs * (1 + 1j), _sample_rhs * (1 - 2j)]),
-        expected=np.array(
-            [_sample_result * (1 - 1j), _sample_result * (1 + 2j)]),
+        expected=expected,
         transpose_rhs=True,
         conjugate_rhs=True)
 
   def testTransposeRhsWithBatching(self):
+    expected = np.array(
+        [[_sample_result, 2 * _sample_result],
+         [-3 * _sample_result, -4 * _sample_result]])
+    if compat.forward_compatible(*FORWARD_COMPATIBLE_DATE):
+      expected = expected.transpose(0, 2, 1)
     self._testWithLists(
         diags=np.array([_sample_diags, -_sample_diags]),
         rhs=np.array([[_sample_rhs, 2 * _sample_rhs],
                       [3 * _sample_rhs, 4 * _sample_rhs]]),
-        expected=np.array([[_sample_result, 2 * _sample_result],
-                           [-3 * _sample_result, -4 * _sample_result]]),
+        expected=expected,
         transpose_rhs=True)
 
   def testTransposeRhsWithRhsAsVector(self):

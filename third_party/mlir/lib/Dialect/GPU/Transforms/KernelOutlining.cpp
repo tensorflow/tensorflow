@@ -144,27 +144,30 @@ class GpuKernelOutliningPass : public ModulePass<GpuKernelOutliningPass> {
 public:
   void runOnModule() override {
     ModuleManager moduleManager(getModule());
+    bool modified = false;
     for (auto func : getModule().getOps<FuncOp>()) {
       // Insert just after the function.
       Block::iterator insertPt(func.getOperation()->getNextNode());
       func.walk([&](gpu::LaunchOp op) {
         FuncOp outlinedFunc = outlineKernelFunc(op);
 
-        // Potentially renames outlinedFunc to make symbol unique.
-        moduleManager.insert(insertPt, outlinedFunc);
+        // Create nested module and insert outlinedFunc. The module will
+        // originally get the same name as the function, but may be renamed on
+        // insertion into the parent module.
+        auto kernelModule = createKernelModule(outlinedFunc, moduleManager);
+        moduleManager.insert(insertPt, kernelModule);
 
         // Potentially changes signature, pulling in constants.
         convertToLaunchFuncOp(op, outlinedFunc);
-
-        // Create clone and move body from outlinedFunc.
-        auto kernelFunc = outlinedFunc.cloneWithoutRegions();
-        kernelFunc.getBody().takeBody(outlinedFunc.getBody());
-
-        // Create nested module and insert kernelFunc.
-        auto kernelModule = createKernelModule(kernelFunc, moduleManager);
-        getModule().insert(insertPt, kernelModule);
+        modified = true;
       });
     }
+
+    // If any new module was inserted in this module, annotate this module as
+    // a container module.
+    if (modified)
+      getModule().setAttr(gpu::GPUDialect::getContainerModuleAttrName(),
+                          UnitAttr::get(&getContext()));
   }
 
 private:
@@ -172,9 +175,11 @@ private:
   ModuleOp createKernelModule(FuncOp kernelFunc,
                               const ModuleManager &parentModuleManager) {
     auto context = getModule().getContext();
-    auto kernelModule = ModuleOp::create(UnknownLoc::get(context));
+    Builder builder(context);
+    auto kernelModule =
+        ModuleOp::create(builder.getUnknownLoc(), kernelFunc.getName());
     kernelModule.setAttr(gpu::GPUDialect::getKernelModuleAttrName(),
-                         UnitAttr::get(context));
+                         builder.getUnitAttr());
     ModuleManager moduleManager(kernelModule);
 
     llvm::SmallVector<FuncOp, 8> funcsToInsert = {kernelFunc};

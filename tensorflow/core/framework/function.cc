@@ -166,6 +166,7 @@ class FunctionInstantiationHelper {
 
   // Builds index for nodes that can be used as node's input arguments.
   Status BuildInputArgIndex(const OpDef::ArgDef& arg_def, AttrSlice attr_values,
+                            const FunctionDef::ArgAttrs* arg_attrs,
                             bool ints_on_device) {
     bool is_type_list;
     DataTypeVector dtypes;
@@ -193,6 +194,11 @@ class FunctionInstantiationHelper {
       DataType dtype = arg_def.is_ref() ? MakeRefType(dtypes[i]) : dtypes[i];
       AddAttr("T", dtype, gnode);
       AddAttr("index", arg_index, gnode);
+      if (arg_attrs) {
+        for (const auto& arg_attr : arg_attrs->attr()) {
+          AddAttr(arg_attr.first, arg_attr.second, gnode->mutable_attr());
+        }
+      }
       result_.arg_types.push_back(dtypes[i]);
       ++arg_index;
     }
@@ -707,8 +713,13 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
 
   FunctionInstantiationHelper helper(get_function, result);
   Status s;
-  for (const OpDef::ArgDef& arg_def : sig.input_arg()) {
-    s = helper.BuildInputArgIndex(arg_def, attr_values, ints_on_device);
+  for (int i = 0, e = sig.input_arg_size(); i < e; ++i) {
+    const OpDef::ArgDef& arg_def = sig.input_arg(i);
+    auto it = fdef.arg_attr().find(i);
+    const FunctionDef::ArgAttrs* arg_attrs =
+        it != fdef.arg_attr().end() ? &it->second : nullptr;
+    s = helper.BuildInputArgIndex(arg_def, attr_values, arg_attrs,
+                                  ints_on_device);
     if (!s.ok()) {
       errors::AppendToMessage(&s, "In ", Print(arg_def));
       return s;

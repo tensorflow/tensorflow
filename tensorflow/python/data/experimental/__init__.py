@@ -49,6 +49,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@cardinality
 @@choose_from_datasets
 @@copy_to_device
+@@dense_to_ragged_batch
 @@dense_to_sparse_batch
 @@enumerate_dataset
 @@from_variant
@@ -86,6 +87,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
+from tensorflow.python.data.experimental.ops.batching import dense_to_ragged_batch
 from tensorflow.python.data.experimental.ops.batching import dense_to_sparse_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch_with_legacy_function

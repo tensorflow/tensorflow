@@ -24,6 +24,8 @@ ROOT_DIR=${SCRIPT_DIR}/../../../../../..
 cd ${ROOT_DIR}
 pwd
 
+python -m pip install six
+
 make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
   clean clean_downloads
 

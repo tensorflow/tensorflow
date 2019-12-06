@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -38,6 +39,12 @@ class DatasetHashUtilsTest : public ::testing::Test {
   uint64 GetHash(const GraphDef& graph, const NodeDef& node) {
     uint64 hash = 0;
     TF_CHECK_OK(HashNode(graph, node, &hash));
+    return hash;
+  }
+
+  uint64 GetHash(const Tensor& tensor) {
+    uint64 hash = 0;
+    TF_CHECK_OK(HashTensor(tensor, &hash));
     return hash;
   }
 };
@@ -808,6 +815,50 @@ TEST_F(DatasetHashUtilsTest, HashNodeWithControlDependencyLoopDifferentNames) {
                   .Finalize(n6));
 
   EXPECT_EQ(GetHash(gd1, *n3), GetHash(gd2, *n6));
+}
+
+TEST_F(DatasetHashUtilsTest, HashInt32Tensor) {
+  Tensor s1(42);
+  Tensor s2(42);
+  Tensor s3(43);
+
+  EXPECT_EQ(GetHash(s1), GetHash(s2));
+  EXPECT_NE(GetHash(s1), GetHash(s3));
+
+  Tensor v1(DT_INT32, TensorShape({2}));
+  v1.vec<int32>()(0) = 0;
+  v1.vec<int32>()(1) = 1;
+  Tensor v2(DT_INT32, TensorShape({2}));
+  v2.vec<int32>()(0) = 0;
+  v2.vec<int32>()(1) = 1;
+  Tensor v3(DT_INT32, TensorShape({2}));
+  v3.vec<int32>()(0) = 0;
+  v3.vec<int32>()(1) = 2;
+
+  EXPECT_EQ(GetHash(v1), GetHash(v2));
+  EXPECT_NE(GetHash(v1), GetHash(v3));
+}
+
+TEST_F(DatasetHashUtilsTest, HashStringTensor) {
+  Tensor s1("hello");
+  Tensor s2("hello");
+  Tensor s3("world");
+
+  EXPECT_EQ(GetHash(s1), GetHash(s2));
+  EXPECT_NE(GetHash(s1), GetHash(s3));
+
+  Tensor v1(DT_STRING, TensorShape({2}));
+  v1.vec<tstring>()(0) = "hello";
+  v1.vec<tstring>()(1) = "world";
+  Tensor v2(DT_STRING, TensorShape({2}));
+  v2.vec<tstring>()(0) = "hello";
+  v2.vec<tstring>()(1) = "world";
+  Tensor v3(DT_STRING, TensorShape({2}));
+  v3.vec<tstring>()(0) = "hello";
+  v3.vec<tstring>()(1) = "universe";
+
+  EXPECT_EQ(GetHash(v1), GetHash(v2));
+  EXPECT_NE(GetHash(v1), GetHash(v3));
 }
 
 }  // namespace

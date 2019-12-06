@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Compiles a serialized MLIR module into XLA HLO, generates all accompnaying
+// Compiles a serialized MLIR module into XLA HLO, generates all accompanying
 // metadata and stores them in CompilationResult.
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, absl::Span<TensorShape> arg_shapes,

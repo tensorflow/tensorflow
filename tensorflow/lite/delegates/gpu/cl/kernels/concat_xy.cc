@@ -63,8 +63,7 @@ std::string GetConcatKernelCode(
   for (int i = 0; i < tensors_count; ++i) {
     const std::string size_name = "src_size_" + std::to_string(i);
     c += "  if (X < " + size_name + ".x && Y < " + size_name + ".y) { \n";
-    c += "    FLT4 result = " +
-         srcs[i].Read3D("X", "Y", "Z", TextureAddressMode::DONT_CARE) + ";\n";
+    c += "    FLT4 result = " + srcs[i].Read3D("X", "Y", "Z") + ";\n";
     c += "    int dst_x = X + " + size_name + ".z;\n";
     c += "    int dst_y = Y + " + size_name + ".w;\n";
     const LinkingContext context{"result", "dst_x", "dst_y", "Z"};

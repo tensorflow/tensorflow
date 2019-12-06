@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import shutil
 import tempfile
 
 from tensorflow.core.protobuf import config_pb2
@@ -29,6 +28,7 @@ from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -58,7 +58,7 @@ class SessionDebugGrapplerInteractionTest(test_util.TensorFlowTestCase):
   def tearDown(self):
     ops.reset_default_graph()
     if os.path.isdir(self._dump_root):
-      shutil.rmtree(self._dump_root)
+      file_io.delete_recursively(self._dump_root)
     super(SessionDebugGrapplerInteractionTest, self).tearDown()
 
   def testArithmeticOptimizationActive(self):

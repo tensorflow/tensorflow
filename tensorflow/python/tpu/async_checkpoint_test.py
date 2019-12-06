@@ -146,6 +146,7 @@ class AsyncCheckpointingTest(test.TestCase):
     mock_listener.after_save.assert_called()
 
 
+v2_compat.disable_v2_behavior()
+
 if __name__ == '__main__':
-  v2_compat.disable_v2_behavior()
   test.main()

@@ -110,7 +110,7 @@ static void emitAttributeSerialization(const Attribute &attr,
 }
 
 /// Generates code to serialize the operands of a SPV_Op `op` into `os`. The
-/// generated querries the SSA-ID if operand is a SSA-Value, or serializes the
+/// generated queries the SSA-ID if operand is a SSA-Value, or serializes the
 /// attributes. The `operands` vector is updated appropriately. `elidedAttrs`
 /// updated as well to include the serialized attributes.
 static void emitOperandSerialization(const Operator &op, ArrayRef<SMLoc> loc,
@@ -606,7 +606,7 @@ static bool emitSerializationFns(const RecordKeeper &recordKeeper,
       serFn(serFnString), deserFn(deserFnString), utils(utilsString);
   auto attrClass = recordKeeper.getClass("Attr");
 
-  // Emit the serialization and deserialization functions simulataneously.
+  // Emit the serialization and deserialization functions simultaneously.
   declareOpcodeFn(utils);
   StringRef opVar("op");
   StringRef opcode("opcode"), words("words");

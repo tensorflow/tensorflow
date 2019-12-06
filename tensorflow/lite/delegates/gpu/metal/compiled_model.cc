@@ -410,7 +410,7 @@ ComputeTaskDescriptorPtr NonLinkableStub(int operation_id, ValueId input_id,
       {"constant int2& size",
        [input_id](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(input_id)->second;
-         return VectorToUint8Vector(std::vector<int>{dimension.w, dimension.h});
+         return GetByteBuffer(std::vector<int>{dimension.w, dimension.h});
        }},
   };
 

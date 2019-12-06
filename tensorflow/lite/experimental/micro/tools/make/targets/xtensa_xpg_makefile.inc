@@ -5,6 +5,8 @@ ifeq ($(TARGET), xtensa-xpg)
   # TODO(kreeger): Enable the ability to pass a different core:
   PLATFORM_ARGS = \
     --xtensa-core=hifi3_bd5 \
+    -g -O2 \
+    -fmessage-length=0 \
     -clang
 
   TARGET_TOOLCHAIN_PREFIX := xt-

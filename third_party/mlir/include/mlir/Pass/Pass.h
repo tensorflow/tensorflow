@@ -69,6 +69,13 @@ public:
   /// this is a generic OperationPass.
   llvm::Optional<StringRef> getOpName() const { return opName; }
 
+  /// Prints out the pass in the textual representation of pipelines. If this is
+  /// an adaptor pass, print with the op_name(sub_pass,...) format.
+  /// Note: The default implementation uses the class name and does not respect
+  /// options used to construct the pass. Override this method to allow for your
+  /// pass to be to be round-trippable to the textual format.
+  virtual void printAsTextualPipeline(raw_ostream &os);
+
 protected:
   explicit Pass(const PassID *passID,
                 llvm::Optional<StringRef> opName = llvm::None)

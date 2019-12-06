@@ -65,7 +65,7 @@ public:
   Optional<StringRef> getName();
 
   /// Print the this module in the custom top-level form.
-  void print(raw_ostream &os);
+  void print(raw_ostream &os, OpPrintingFlags flags = llvm::None);
   void dump();
 
   //===--------------------------------------------------------------------===//
@@ -124,7 +124,7 @@ public:
 
 /// A class used to manage the symbols held by a module. This class handles
 /// ensures that symbols inserted into a module have a unique name, and provides
-/// efficent named lookup to held symbols.
+/// efficient named lookup to held symbols.
 class ModuleManager {
 public:
   ModuleManager(ModuleOp module) : module(module), symbolTable(module) {}

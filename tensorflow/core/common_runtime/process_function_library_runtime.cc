@@ -351,8 +351,8 @@ Status SetArgShape(
 Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
     const std::vector<string>& input_devices,
     const std::vector<string>& output_devices, const DeviceSet& device_set,
-    const std::vector<Node*>& arg_nodes,
-    const std::vector<Node*>& ret_nodes) const {
+    const std::vector<Node*>& arg_nodes, const std::vector<Node*>& ret_nodes,
+    Device* default_device) const {
   // If output_devices are not specified, we want to set the output device
   // based on the device of the output producing node. The output producing
   // node can be an arg node because functions can simply return their
@@ -424,8 +424,12 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
           std::vector<Device*> matching_devices;
           device_set.FindMatchingDevices(parsed, &matching_devices);
           if (matching_devices.empty()) {
-            return errors::InvalidArgument(
-                "Unable to find any devices for spec ", *src_device);
+            if (default_device != nullptr) {
+              matching_devices.push_back(default_device);
+            } else {
+              return errors::InvalidArgument(
+                  "Unable to find any devices for spec ", *src_device);
+            }
           } else if (matching_devices.size() != 1) {
             // Convert a vector of devices to a string.
             // Using absl::StrJoin did not work in Android builds.
@@ -619,11 +623,26 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     options.graph_collector->CollectRawGraph(def);
   }
 
+  Device* default_device = nullptr;
+  if (options.default_device_to_target && !options.target.empty()) {
+    // Make the `target` device the default device if nothing else is hard
+    // coded. This allows the same function definition to be specialized to
+    // different devices depending on the `PartitionedCallOp` device.
+    FunctionLibraryRuntime* flr = GetFLR(options.target);
+    if (flr == nullptr) {
+      return errors::InvalidArgument(
+          "Cannot instantiate multi-device function with target device ",
+          options.target);
+    }
+    default_device = flr->device();
+  }
+
   TF_RETURN_IF_ERROR(
       SetArgShape(options.input_resource_dtypes_and_shapes, arg_nodes));
-  TF_RETURN_IF_ERROR(PinArgsAndRets(options.input_devices,
-                                    options.output_devices, device_set_,
-                                    arg_nodes, ret_nodes));
+  TF_RETURN_IF_ERROR(PinArgsAndRets(
+      options.input_devices, options.output_devices, device_set_, arg_nodes,
+      ret_nodes,
+      options.config_proto.allow_soft_placement() ? default_device : nullptr));
 
   auto data = absl::make_unique<MultiDeviceFunctionData>(
       function_name, function_key, ret_node_names.size(),
@@ -642,20 +661,6 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   DumpGraph("Before running PRE_PLACEMENT passes", graph.get());
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
-
-  Device* default_device = nullptr;
-  if (options.default_device_to_target && !options.target.empty()) {
-    // Make the `target` device the default device if nothing else is hard
-    // coded. This allows the same function definition to be specialized to
-    // different devices depending on the `PartitionedCallOp` device.
-    FunctionLibraryRuntime* flr = GetFLR(options.target);
-    if (flr == nullptr) {
-      return errors::InvalidArgument(
-          "Cannot instantiate multi-device function with target device ",
-          options.target);
-    }
-    default_device = flr->device();
-  }
 
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.

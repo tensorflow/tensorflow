@@ -32,6 +32,40 @@ using namespace mlir::detail;
 
 #define DEBUG_TYPE "dialect-conversion"
 
+/// Recursively collect all of the operations to convert from within 'region'.
+static LogicalResult
+computeConversionSet(llvm::iterator_range<Region::iterator> region,
+                     Location regionLoc, std::vector<Operation *> &toConvert) {
+  if (llvm::empty(region))
+    return success();
+
+  // Traverse starting from the entry block.
+  SmallVector<Block *, 16> worklist(1, &*region.begin());
+  DenseSet<Block *> visitedBlocks;
+  visitedBlocks.insert(worklist.front());
+  while (!worklist.empty()) {
+    auto *block = worklist.pop_back_val();
+
+    // Compute the conversion set of each of the nested operations.
+    for (auto &op : *block) {
+      toConvert.emplace_back(&op);
+      for (auto &region : op.getRegions())
+        computeConversionSet(region.getBlocks(), region.getLoc(), toConvert);
+    }
+
+    // Recurse to children that haven't been visited.
+    for (Block *succ : block->getSuccessors())
+      if (visitedBlocks.insert(succ).second)
+        worklist.push_back(succ);
+  }
+
+  // Check that all blocks in the region were visited.
+  if (llvm::any_of(llvm::drop_begin(region, 1),
+                   [&](Block &block) { return !visitedBlocks.count(&block); }))
+    return emitError(regionLoc, "unreachable blocks were not converted");
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Multi-Level Value Mapper
 //===----------------------------------------------------------------------===//
@@ -250,6 +284,7 @@ void ArgConverter::applySignatureConversion(
   // Remap each of the original arguments as determined by the signature
   // conversion.
   auto &newArgMapping = argMapping[block];
+  OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPointToStart(block);
   for (unsigned i = 0; i != origArgCount; ++i) {
     ArrayRef<Value *> remappedValues;
@@ -310,9 +345,10 @@ namespace {
 /// This is useful when saving and undoing a set of rewrites.
 struct RewriterState {
   RewriterState(unsigned numCreatedOperations, unsigned numReplacements,
-                unsigned numBlockActions)
+                unsigned numBlockActions, unsigned numDeadOperations)
       : numCreatedOperations(numCreatedOperations),
-        numReplacements(numReplacements), numBlockActions(numBlockActions) {}
+        numReplacements(numReplacements), numBlockActions(numBlockActions),
+        numDeadOperations(numDeadOperations) {}
 
   /// The current number of created operations.
   unsigned numCreatedOperations;
@@ -322,6 +358,9 @@ struct RewriterState {
 
   /// The current number of block actions performed.
   unsigned numBlockActions;
+
+  /// The current number of dead operations.
+  unsigned numDeadOperations;
 };
 } // end anonymous namespace
 
@@ -340,7 +379,7 @@ struct ConversionPatternRewriterImpl {
 
   /// The kind of the block action performed during the rewrite.  Actions can be
   /// undone if the conversion fails.
-  enum class BlockActionKind { Split, Move, TypeConversion };
+  enum class BlockActionKind { Create, Move, Split, TypeConversion };
 
   /// Original position of the given block in its parent region.  We cannot use
   /// a region iterator because it could have been invalidated by other region
@@ -353,13 +392,16 @@ struct ConversionPatternRewriterImpl {
   /// The storage class for an undoable block action (one of BlockActionKind),
   /// contains the information necessary to undo this action.
   struct BlockAction {
+    static BlockAction getCreate(Block *block) {
+      return {BlockActionKind::Create, block, {}};
+    }
+    static BlockAction getMove(Block *block, BlockPosition originalPos) {
+      return {BlockActionKind::Move, block, {originalPos}};
+    }
     static BlockAction getSplit(Block *block, Block *originalBlock) {
       BlockAction action{BlockActionKind::Split, block, {}};
       action.originalBlock = originalBlock;
       return action;
-    }
-    static BlockAction getMove(Block *block, BlockPosition originalPos) {
-      return {BlockActionKind::Move, block, {originalPos}};
     }
     static BlockAction getTypeConversion(Block *block) {
       return BlockAction{BlockActionKind::TypeConversion, block, {}};
@@ -422,9 +464,18 @@ struct ConversionPatternRewriterImpl {
   void notifyRegionIsBeingInlinedBefore(Region &region, Region &parent,
                                         Region::iterator before);
 
+  /// Notifies that the blocks of a region were cloned into another.
+  void
+  notifyRegionWasClonedBefore(llvm::iterator_range<Region::iterator> &blocks,
+                              Location origRegionLoc);
+
   /// Remap the given operands to those with potentially different types.
   void remapValues(Operation::operand_range operands,
                    SmallVectorImpl<Value *> &remapped);
+
+  /// Returns true if the given operation is dead, and does not need to be
+  /// converted.
+  bool isOpDead(Operation *op) const;
 
   // Mapping between replaced values that differ in type. This happens when
   // replacing a value with one of a different type.
@@ -434,20 +485,28 @@ struct ConversionPatternRewriterImpl {
   ArgConverter argConverter;
 
   /// Ordered vector of all of the newly created operations during conversion.
-  SmallVector<Operation *, 4> createdOps;
+  std::vector<Operation *> createdOps;
 
   /// Ordered vector of any requested operation replacements.
   SmallVector<OpReplacement, 4> replacements;
 
   /// Ordered list of block operations (creations, splits, motions).
   SmallVector<BlockAction, 4> blockActions;
+
+  /// A set of operations that have been erased/replaced. This is not meant to
+  /// be an exhaustive list of all operations, but the minimal set that can be
+  /// used to detect if a given operation is `dead`. For example, we may add the
+  /// operations that define non-empty regions to the set, but not any of the
+  /// others. This simplifies the amount of memory needed as we can query if the
+  /// parent operation was erased.
+  llvm::SetVector<Operation *> deadOps;
 };
 } // end namespace detail
 } // end namespace mlir
 
 RewriterState ConversionPatternRewriterImpl::getCurrentState() {
   return RewriterState(createdOps.size(), replacements.size(),
-                       blockActions.size());
+                       blockActions.size(), deadOps.size());
 }
 
 void ConversionPatternRewriterImpl::resetState(RewriterState state) {
@@ -461,8 +520,14 @@ void ConversionPatternRewriterImpl::resetState(RewriterState state) {
   replacements.resize(state.numReplacements);
 
   // Pop all of the newly created operations.
-  while (createdOps.size() != state.numCreatedOperations)
-    createdOps.pop_back_val()->erase();
+  while (createdOps.size() != state.numCreatedOperations) {
+    createdOps.back()->erase();
+    createdOps.pop_back();
+  }
+
+  // Pop all of the recorded dead operations that are no longer valid.
+  while (deadOps.size() != state.numDeadOperations)
+    deadOps.pop_back();
 }
 
 void ConversionPatternRewriterImpl::undoBlockActions(
@@ -470,11 +535,14 @@ void ConversionPatternRewriterImpl::undoBlockActions(
   for (auto &action :
        llvm::reverse(llvm::drop_begin(blockActions, numActionsToKeep))) {
     switch (action.kind) {
-    // Merge back the block that was split out.
-    case BlockActionKind::Split: {
-      action.originalBlock->getOperations().splice(
-          action.originalBlock->end(), action.block->getOperations());
-      action.block->dropAllUses();
+    // Delete the created block.
+    case BlockActionKind::Create: {
+      // Unlink all of the operations within this block, they will be deleted
+      // separately.
+      auto &blockOps = action.block->getOperations();
+      while (!blockOps.empty())
+        blockOps.remove(blockOps.begin());
+      action.block->dropAllDefinedValueUses();
       action.block->erase();
       break;
     }
@@ -484,6 +552,14 @@ void ConversionPatternRewriterImpl::undoBlockActions(
       originalRegion->getBlocks().splice(
           std::next(originalRegion->begin(), action.originalPosition.position),
           action.block->getParent()->getBlocks(), action.block);
+      break;
+    }
+    // Merge back the block that was split out.
+    case BlockActionKind::Split: {
+      action.originalBlock->getOperations().splice(
+          action.originalBlock->end(), action.block->getOperations());
+      action.block->dropAllUses();
+      action.block->erase();
       break;
     }
     // Undo the type conversion.
@@ -570,6 +646,17 @@ void ConversionPatternRewriterImpl::replaceOp(
 
   // Record the requested operation replacement.
   replacements.emplace_back(op, newValues);
+
+  // Walk this operation and collect nested operations that define non-empty
+  // regions. We mark such operations as 'dead' so that we know we don't have to
+  // convert them, or their nested ops.
+  if (op->getNumRegions() != 0) {
+    op->walk([&](Operation *op) {
+      if (llvm::any_of(op->getRegions(),
+                       [](Region &region) { return !region.empty(); }))
+        deadOps.insert(op);
+    });
+  }
 }
 
 void ConversionPatternRewriterImpl::notifySplitBlock(Block *block,
@@ -586,11 +673,30 @@ void ConversionPatternRewriterImpl::notifyRegionIsBeingInlinedBefore(
   }
 }
 
+void ConversionPatternRewriterImpl::notifyRegionWasClonedBefore(
+    llvm::iterator_range<Region::iterator> &blocks, Location origRegionLoc) {
+  for (Block &block : blocks)
+    blockActions.push_back(BlockAction::getCreate(&block));
+
+  // Compute the conversion set for the inlined region.
+  auto result = computeConversionSet(blocks, origRegionLoc, createdOps);
+
+  // This original region has already had its conversion set computed, so there
+  // shouldn't be any new failures.
+  (void)result;
+  assert(succeeded(result) && "expected region to have no unreachable blocks");
+}
+
 void ConversionPatternRewriterImpl::remapValues(
     Operation::operand_range operands, SmallVectorImpl<Value *> &remapped) {
   remapped.reserve(llvm::size(operands));
   for (Value *operand : operands)
     remapped.push_back(mapping.lookupOrDefault(operand));
+}
+
+bool ConversionPatternRewriterImpl::isOpDead(Operation *op) const {
+  // Check to see if this operation or its parent were erased.
+  return deadOps.count(op) || deadOps.count(op->getParentOp());
 }
 
 //===----------------------------------------------------------------------===//
@@ -649,6 +755,20 @@ void ConversionPatternRewriter::inlineRegionBefore(Region &region,
                                                    Region::iterator before) {
   impl->notifyRegionIsBeingInlinedBefore(region, parent, before);
   PatternRewriter::inlineRegionBefore(region, parent, before);
+}
+
+/// PatternRewriter hook for cloning blocks of one region into another.
+void ConversionPatternRewriter::cloneRegionBefore(
+    Region &region, Region &parent, Region::iterator before,
+    BlockAndValueMapping &mapping) {
+  if (region.empty())
+    return;
+  PatternRewriter::cloneRegionBefore(region, parent, before, mapping);
+
+  // Collect the range of the cloned blocks.
+  auto clonedBeginIt = mapping.lookup(&region.front())->getIterator();
+  auto clonedBlocks = llvm::make_range(clonedBeginIt, before);
+  impl->notifyRegionWasClonedBefore(clonedBlocks, region.getLoc());
 }
 
 /// PatternRewriter hook for creating a new operation.
@@ -794,6 +914,13 @@ OperationLegalizer::legalize(Operation *op,
     return success();
   }
 
+  // Check to see if the operation is dead and doesn't need to be converted.
+  if (rewriter.getImpl().isOpDead(op)) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "-- Success : Operation marked dead during conversion\n");
+    return success();
+  }
+
   // Otherwise, we need to apply a legalization pattern to this operation.
   auto it = legalizerPatterns.find(op->getName());
   if (it == legalizerPatterns.end()) {
@@ -844,14 +971,15 @@ OperationLegalizer::legalizePattern(Operation *op, RewritePattern *pattern,
     return cleanupFailure();
   }
 
-  // If the pattern moved any blocks, try to legalize their types. This ensures
-  // that the types of the block arguments are legal for the region they were
-  // moved into.
+  // If the pattern moved or created any blocks, try to legalize their types.
+  // This ensures that the types of the block arguments are legal for the region
+  // they were moved into.
   for (unsigned i = curState.numBlockActions,
                 e = rewriterImpl.blockActions.size();
        i != e; ++i) {
     auto &action = rewriterImpl.blockActions[i];
-    if (action.kind != ConversionPatternRewriterImpl::BlockActionKind::Move)
+    if (action.kind ==
+        ConversionPatternRewriterImpl::BlockActionKind::TypeConversion)
       continue;
 
     // Convert the block signature.
@@ -1042,10 +1170,6 @@ private:
   /// Converts an operation with the given rewriter.
   LogicalResult convert(ConversionPatternRewriter &rewriter, Operation *op);
 
-  /// Recursively collect all of the operations to convert from within 'region'.
-  LogicalResult computeConversionSet(Region &region,
-                                     std::vector<Operation *> &toConvert);
-
   /// Converts the type signatures of the blocks nested within 'op'.
   LogicalResult convertBlockSignatures(ConversionPatternRewriter &rewriter,
                                        Operation *op);
@@ -1074,39 +1198,6 @@ OperationConverter::convertBlockSignatures(ConversionPatternRewriter &rewriter,
       if (failed(rewriter.getImpl().convertBlockSignature(&block)))
         return failure();
   }
-  return success();
-}
-
-LogicalResult
-OperationConverter::computeConversionSet(Region &region,
-                                         std::vector<Operation *> &toConvert) {
-  if (region.empty())
-    return success();
-
-  // Traverse starting from the entry block.
-  SmallVector<Block *, 16> worklist(1, &region.front());
-  DenseSet<Block *> visitedBlocks;
-  visitedBlocks.insert(&region.front());
-  while (!worklist.empty()) {
-    auto *block = worklist.pop_back_val();
-
-    // Compute the conversion set of each of the nested operations.
-    for (auto &op : *block) {
-      toConvert.emplace_back(&op);
-      for (auto &region : op.getRegions())
-        computeConversionSet(region, toConvert);
-    }
-
-    // Recurse to children that haven't been visited.
-    for (Block *succ : block->getSuccessors())
-      if (visitedBlocks.insert(succ).second)
-        worklist.push_back(succ);
-  }
-
-  // Check that all blocks in the region were visited.
-  if (llvm::any_of(llvm::drop_begin(region.getBlocks(), 1),
-                   [&](Block &block) { return !visitedBlocks.count(&block); }))
-    return emitError(region.getLoc(), "unreachable blocks were not converted");
   return success();
 }
 
@@ -1151,7 +1242,8 @@ OperationConverter::convertOperations(ArrayRef<Operation *> ops,
   for (auto *op : ops) {
     toConvert.emplace_back(op);
     for (auto &region : op->getRegions())
-      if (failed(computeConversionSet(region, toConvert)))
+      if (failed(computeConversionSet(region.getBlocks(), region.getLoc(),
+                                      toConvert)))
         return failure();
   }
 

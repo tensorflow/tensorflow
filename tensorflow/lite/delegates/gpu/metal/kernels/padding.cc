@@ -130,7 +130,7 @@ std::vector<ComputeTaskDescriptorPtr> Padding(int id, ValueId input_id,
              attr.prepended.c,
              0,
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 

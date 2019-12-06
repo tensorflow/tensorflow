@@ -22,6 +22,7 @@ py_library(
     name = "sparse",
     srcs = [
         "__init__.py",
+        "conjugate_gradient.py",
         "sparse.py",
         "sparse_csr_matrix_grad.py",
         "sparse_csr_matrix_ops.py",

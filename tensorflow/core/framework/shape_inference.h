@@ -27,9 +27,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class ShapeRefiner;
-class ShapeRefinerTest;
-
 namespace grappler {
 class GraphProperties;
 class SymbolicShapeManager;
@@ -72,7 +69,6 @@ class DimensionHandle {
   friend class InferenceContext;
   friend class ShapeInferenceTest;
   friend class ShapeInferenceTestutil;
-  friend class ::tensorflow::ShapeRefinerTest;
   friend class ::tensorflow::grappler::GraphProperties;
   friend class ::tensorflow::grappler::SymbolicShapeManager;
 
@@ -111,7 +107,6 @@ class ShapeHandle {
   friend class InferenceContext;
   friend class ShapeInferenceTest;
   friend class ShapeInferenceTestutil;
-  friend class ::tensorflow::ShapeRefinerTest;
   friend class ::tensorflow::grappler::SymbolicShapeManager;
 
   // Intentionally copyable.
@@ -166,9 +161,7 @@ class InferenceContext {
   // known from analysis of the graph.
   // <input_tensors_as_shapes> can have fewer elements than <input_shapes>.
   // Values of <input_tensors_as_shapes> do not need to outlive the context.
-  //
-  // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
-  InferenceContext(int graph_def_version, const NodeDef* node_def,
+  InferenceContext(int graph_def_version, const NodeDef& node_def,
                    const OpDef& op_def,
                    const std::vector<ShapeHandle>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors,
@@ -184,11 +177,8 @@ class InferenceContext {
   // partially known from analysis of the graph. <input_tensors_as_shapes>
   // can have fewer elements than <input_shapes>. Values of
   // <input_tensors_as_shapes> do not need to outlive the context.
-  //
-  // REQUIRES: <node_def> is not NULL, and must outlive the
-  // InferenceContext.
   InferenceContext(
-      int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
+      int graph_def_version, const NodeDef& node_def, const OpDef& op_def,
       const std::vector<PartialTensorShape>& input_shapes,
       const std::vector<const Tensor*>& input_tensors,
       const std::vector<PartialTensorShape>& input_tensors_as_shapes,
@@ -311,7 +301,7 @@ class InferenceContext {
   Status output(StringPiece output_name,
                 std::vector<ShapeHandle>* output) const;
 
-  AttrSlice attrs() const { return AttrSlice(*node_def_); }
+  AttrSlice attrs() const { return AttrSlice(node_def_); }
 
   // idx can be negative for an offset from end of dimensions.
   // idx must be in the range [-1 * s.rank, s.rank).
@@ -331,7 +321,6 @@ class InferenceContext {
   }
 
   static int32 Rank(ShapeHandle s) {
-    DCHECK(s.IsSet());
     return s.IsSet() ? s->rank_ : kUnknownRank;
   }
   static bool RankKnown(ShapeHandle s) {
@@ -656,9 +645,6 @@ class InferenceContext {
 
   friend class ::tensorflow::grappler::GraphProperties;
 
-  // Friend for user-defined function shape inference purposes.
-  friend class ::tensorflow::ShapeRefiner;
-
   friend class ShapeInferenceTest;      // For testing Relax functions.
   friend class ShapeInferenceTestutil;  // For testing shapes.
 
@@ -669,8 +655,6 @@ class InferenceContext {
                     const std::vector<ShapeHandle>& input_tensors_as_shapes);
   void PostInputInit(std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
                          input_handle_data);
-
-  DimensionHandle GetDimension(const DimensionOrConstant& d);
 
   Status ReturnUnknownShape(ShapeHandle* out) {
     *out = UnknownShape();
@@ -746,7 +730,7 @@ class InferenceContext {
       output_handle_shapes_and_types_;
 
   const int graph_def_version_;
-  const NodeDef* node_def_;
+  const NodeDef& node_def_;
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
 
@@ -793,7 +777,7 @@ inline DimensionOrConstant::DimensionOrConstant(int64 val) : val(val) {
 
 template <class T>
 Status InferenceContext::GetAttr(StringPiece attr_name, T* value) const {
-  return GetNodeAttr(*node_def_, attr_name, value);
+  return GetNodeAttr(node_def_, attr_name, value);
 }
 
 }  // namespace shape_inference

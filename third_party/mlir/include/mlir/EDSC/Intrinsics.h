@@ -244,7 +244,7 @@ OperationHandle br(BlockHandle *bh, ArrayRef<ValueHandle *> captures,
 /// `falseOperand` if `cond` evaluates to `false`).
 ///
 /// Prerequisites:
-///   All Handles have captured previouly constructed IR objects.
+///   All Handles have captured previously constructed IR objects.
 OperationHandle cond_br(ValueHandle cond, BlockHandle trueBranch,
                         ArrayRef<ValueHandle> trueOperands,
                         BlockHandle falseBranch,

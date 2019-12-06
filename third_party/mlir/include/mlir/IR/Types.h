@@ -48,7 +48,7 @@ struct OpaqueTypeStorage;
 /// Types are constructed and uniqued via the 'detail::TypeUniquer' class.
 ///
 /// Derived type classes are expected to implement several required
-/// implementaiton hooks:
+/// implementation hooks:
 ///  * Required:
 ///    - static bool kindof(unsigned kind);
 ///      * Returns if the provided type kind corresponds to an instance of the

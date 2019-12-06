@@ -50,6 +50,7 @@ from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.optimizer_v2 import nadam
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -556,7 +557,7 @@ class OptimizerTest(test.TestCase):
         test_samples=10,
         input_shape=(input_dim,),
         num_classes=num_classes)
-    y = keras.utils.to_categorical(y)
+    y = np_utils.to_categorical(y)
 
     num_hidden = 1
     model = testing_utils.get_small_sequential_mlp(
@@ -635,7 +636,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           test_samples=10,
           input_shape=(input_dim,),
           num_classes=num_classes)
-      y = keras.utils.to_categorical(y)
+      y = np_utils.to_categorical(y)
 
       num_hidden = 5
       model_v1 = testing_utils.get_small_sequential_mlp(
@@ -723,7 +724,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           test_samples=10,
           input_shape=(input_dim,),
           num_classes=num_classes)
-      y = keras.utils.to_categorical(y)
+      y = np_utils.to_categorical(y)
 
       num_hidden = 5
       model_k_v1 = testing_utils.get_small_sequential_mlp(
@@ -784,7 +785,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           test_samples=10,
           input_shape=(input_dim,),
           num_classes=num_classes)
-      y = keras.utils.to_categorical(y)
+      y = np_utils.to_categorical(y)
 
       num_hidden = 5
       model_k_v1 = testing_utils.get_small_sequential_mlp(

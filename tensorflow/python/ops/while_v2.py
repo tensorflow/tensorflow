@@ -914,8 +914,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
       with self._forward_cond_graph.as_default():
         self._forward_cond_graph.capture(tensor)
       with self._forward_graph.as_default():
-        already_captured = ops.tensor_id(
-            tensor) in self._forward_graph._captures
+        already_captured = self._forward_graph.captured(tensor)
         if not already_captured:
           self.extra_inputs.append(tensor)
         tensor = self._forward_graph.capture(tensor)

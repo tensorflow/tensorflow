@@ -114,7 +114,7 @@ TEST(BitcastOpTest, TestShapeInference_LargerShape) {
                   .Attr("T", DT_INT64)
                   .Input(FakeInput(DT_INT64))
                   .Finalize(&def));
-  shape_inference::InferenceContext c(0, &def, op_def, {S({3, 4})}, {}, {}, {});
+  shape_inference::InferenceContext c(0, def, op_def, {S({3, 4})}, {}, {}, {});
   std::vector<shape_inference::ShapeHandle> input_shapes;
   TF_CHECK_OK(c.input("input", &input_shapes));
   ASSERT_EQ("[3,4]", c.DebugString(input_shapes[0]));
@@ -132,7 +132,7 @@ TEST(BitcastOpTest, TestShapeInference_SmallerShape) {
                   .Attr("T", DT_INT8)
                   .Input(FakeInput(DT_INT8))
                   .Finalize(&def));
-  shape_inference::InferenceContext c(0, &def, op_def, {S({3, 4, 8})}, {}, {},
+  shape_inference::InferenceContext c(0, def, op_def, {S({3, 4, 8})}, {}, {},
                                       {});
   std::vector<shape_inference::ShapeHandle> input_shapes;
   TF_CHECK_OK(c.input("input", &input_shapes));
@@ -151,7 +151,7 @@ TEST(BitcastOpTest, TestShapeInference_SameShape) {
                   .Attr("T", DT_FLOAT)
                   .Input(FakeInput(DT_FLOAT))
                   .Finalize(&def));
-  shape_inference::InferenceContext c(0, &def, op_def, {S({3, 4})}, {}, {}, {});
+  shape_inference::InferenceContext c(0, def, op_def, {S({3, 4})}, {}, {}, {});
   std::vector<shape_inference::ShapeHandle> input_shapes;
   TF_CHECK_OK(c.input("input", &input_shapes));
   ASSERT_EQ("[3,4]", c.DebugString(input_shapes[0]));

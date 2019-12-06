@@ -2322,7 +2322,6 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
   }
 };
 
-// Fold Transpose into matrix multiplication.
 class FoldConjugateIntoTranspose : public ArithmeticOptimizerStage {
  public:
   explicit FoldConjugateIntoTranspose(const GraphOptimizerContext& ctx,

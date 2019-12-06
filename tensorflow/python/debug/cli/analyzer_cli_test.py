@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import shutil
 import tempfile
 
 import numpy as np
@@ -38,6 +37,7 @@ from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.debug.lib import source_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -636,8 +636,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
   @classmethod
   def tearDownClass(cls):
     # Tear down temporary dump directory.
-    shutil.rmtree(cls._dump_root)
-    shutil.rmtree(cls._dump_root_for_unique)
+    file_io.delete_recursively(cls._dump_root)
+    file_io.delete_recursively(cls._dump_root_for_unique)
 
   def testMeasureTensorListColumnWidthsGivesRightAnswerForEmptyData(self):
     timestamp_col_width, dump_size_col_width, op_type_col_width = (
@@ -1665,7 +1665,7 @@ class AnalyzerCLIPrintLargeTensorTest(test_util.TensorFlowTestCase):
   @classmethod
   def tearDownClass(cls):
     # Tear down temporary dump directory.
-    shutil.rmtree(cls._dump_root)
+    file_io.delete_recursively(cls._dump_root)
 
   def testPrintLargeTensorWithoutAllOption(self):
     out = self._registry.dispatch_command(
@@ -1745,7 +1745,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
   @classmethod
   def tearDownClass(cls):
     # Tear down temporary dump directory.
-    shutil.rmtree(cls._dump_root)
+    file_io.delete_recursively(cls._dump_root)
 
   def testNodeInfoWithControlDependencies(self):
     # Call node_info on a node with control inputs.
@@ -2061,7 +2061,7 @@ class AnalyzerCLIWhileLoopTest(test_util.TensorFlowTestCase):
   @classmethod
   def tearDownClass(cls):
     # Tear down temporary dump directory.
-    shutil.rmtree(cls._dump_root)
+    file_io.delete_recursively(cls._dump_root)
 
   def testMultipleDumpsPrintTensorNoNumber(self):
     output = self._registry.dispatch_command("pt", ["while/Identity:0"])

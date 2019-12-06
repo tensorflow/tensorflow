@@ -29,14 +29,12 @@ int ElementCount(const TfLiteIntArray& dims);
 uint8_t FloatToAsymmetricQuantizedUInt8(const float value, const float scale,
                                         const int zero_point);
 
-uint8_t FloatToSymmetricQuantizedUInt8(const float value, const float scale,
-                                       const int zero_point);
+uint8_t FloatToSymmetricQuantizedUInt8(const float value, const float scale);
 
 int8_t FloatToAsymmetricQuantizedInt8(const float value, const float scale,
                                       const int zero_point);
 
-int8_t FloatToSymmetricQuantizedInt8(const float value, const float scale,
-                                     const int zero_point);
+int8_t FloatToSymmetricQuantizedInt8(const float value, const float scale);
 
 // Converts a float value into a signed thirty-two-bit quantized value.  Note
 // that values close to max int and min int may see significant error due to

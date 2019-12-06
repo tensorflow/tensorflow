@@ -1179,11 +1179,6 @@ Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
 
 namespace {
 
-bool IsScalarAddComputation(HloComputation* computation) {
-  return Match(computation->root_instruction(),
-               m::AddAnyOrder(m::Parameter(0), m::Parameter(1))
-                   .WithShape(m::Shape().IsEffectiveScalar()));
-}
 
 }  // namespace
 
@@ -1194,13 +1189,8 @@ Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
 
   // Note the replica_count == 1 case is handled via device-to-device copy
   // below.
-  bool should_use_nccl_thunk =
-      hlo_module_config_.replica_count() > 1 &&
-      crs->IsCrossReplicaAllReduce() &&
-      crs->operand_count() == 1 &&  // One array to reduce.
-      crs->operand(0)->shape().element_type() == F32 &&
-      // Check the computation is a summation.
-      IsScalarAddComputation(crs->to_apply());
+  bool should_use_nccl_thunk = hlo_module_config_.replica_count() > 1 &&
+                               NcclAllReduceThunk::CanImplement(crs);
 
   if (should_use_nccl_thunk) {
     CHECK(crs->operand(0)->shape().IsArray())

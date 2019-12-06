@@ -530,7 +530,15 @@ UNARY_TEST_BF16(Tan, {
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erf, { Run(Erf, std::erf); })
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erfc, { Run(Erfc, std::erfc); })
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(ErfInv, { Run(ErfInv, HostErfInv); })
+
+UNARY_TEST_F32(ErfInv, { Run(ErfInv, HostErfInv); })
+
+UNARY_TEST_F16(ErfInv, {
+  Run(ErfInv, HostErfInv, [](Eigen::half) { return ErrorSpec{0.002, 0.002}; });
+})
+
+UNARY_TEST_BF16(ErfInv, { Run(ErfInv, HostErfInv); })
+
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Digamma, {
   ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
   if (platform_ != "Host" && platform_ != "CUDA") {

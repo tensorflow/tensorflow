@@ -236,6 +236,7 @@ cc_library(
     deps = [
         ":backend_configs",
         ":buffer_allocations",
+        ":cudnn_batchnorm_runner",
         ":elemental_ir_emitter",
         ":gpu_constants",
         ":gpu_conv_runner",
@@ -405,6 +406,7 @@ tf_cuda_library(
         ":buffer_allocations",
         ":hlo_execution_profiler",
         ":thunk",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla:refcounting_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
@@ -505,6 +507,7 @@ cc_library(
         ":backend_configs",
         ":buffer_allocations",
         ":cusolver_context",
+        ":cudnn_batchnorm_runner",
         ":gpu_conv_runner",
         ":gpu_debug_info_manager",
         ":gpu_types",
@@ -675,6 +678,28 @@ cc_library(
     name = "gpu_conv_runner",
     srcs = ["gpu_conv_runner.cc"],
     hdrs = ["gpu_conv_runner.h"],
+    deps = [
+        ":backend_configs",
+        ":ir_emission_utils",
+        ":stream_executor_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "cudnn_batchnorm_runner",
+    srcs = ["cudnn_batchnorm_runner.cc"],
+    hdrs = ["cudnn_batchnorm_runner.h"],
     deps = [
         ":backend_configs",
         ":ir_emission_utils",
@@ -1219,6 +1244,7 @@ cc_library(
     ],
     deps = [
         ":gpu_compiler",
+        ":gpu_conv_algorithm_picker",
         ":gpu_conv_padding_legalization",
         ":gpu_conv_rewriter",
         ":gpu_layout_assignment",
@@ -1231,12 +1257,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_verifier",
-        "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:rocm_rocdl_path",
     ],
 )

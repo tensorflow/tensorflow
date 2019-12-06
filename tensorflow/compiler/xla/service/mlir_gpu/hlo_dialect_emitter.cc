@@ -47,7 +47,6 @@ StatusOr<Value*> InsertMlirOp(
   switch (opcode) {
     case HloOpcode::kAdd:
       return {func_builder.create<hlo::AddOp>(loc, rets, args, attrs)};
-
     case HloOpcode::kMultiply:
       return {func_builder.create<hlo::MulOp>(loc, rets, args, attrs)};
     case HloOpcode::kSubtract:
@@ -60,6 +59,8 @@ StatusOr<Value*> InsertMlirOp(
       return {func_builder.create<hlo::MinOp>(loc, rets, args, attrs)};
     case HloOpcode::kMaximum:
       return {func_builder.create<hlo::MaxOp>(loc, rets, args, attrs)};
+    case HloOpcode::kExp:
+      return {func_builder.create<hlo::ExpOp>(loc, rets, args, attrs)};
     default:
       return tensorflow::errors::Internal(absl::StrCat(
           "Opcode ", HloOpcodeString(opcode), " is not supported."));
@@ -96,8 +97,11 @@ StatusOr<::mlir::TensorType> ConvertTensorType(const Shape& shape,
 
 }  // namespace
 
-Status HloDialectEmitter::EmitComputation(const HloComputation& computation) {
-  return computation.root_instruction()->Accept(this);
+StatusOr<Value*> HloDialectEmitter::EmitComputation(
+    const HloComputation& computation) {
+  const auto root = computation.root_instruction();
+  TF_RETURN_IF_ERROR(root->Accept(this));
+  return instruction_to_values_[root];
 }
 
 Status HloDialectEmitter::DefaultAction(HloInstruction* instr) {
@@ -120,9 +124,7 @@ Status HloDialectEmitter::DefaultAction(HloInstruction* instr) {
 
 Status HloDialectEmitter::HandleParameter(HloInstruction* param) {
   auto argValue = arguments_[param->parameter_number()];
-  auto tensorValue =
-      builder_.create<::mlir::TensorLoadOp>(builder_.getUnknownLoc(), argValue);
-  instruction_to_values_[param] = tensorValue;
+  instruction_to_values_[param] = argValue;
   return Status::OK();
 }
 
@@ -181,11 +183,45 @@ Status HloDialectEmitter::HandleConstant(HloInstruction* constant) {
   return Status::OK();
 }
 
-Status HloDialectEmitter::FinishVisit(HloInstruction* root) {
-  auto result_value = instruction_to_values_[root];
-  auto result_memref = arguments_.back();
-  builder_.create<::mlir::TensorStoreOp>(builder_.getUnknownLoc(), result_value,
-                                         result_memref);
+Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
+  llvm::SmallVector<Value*, 4> operands;
+  for (auto operand : reduce->operands()) {
+    operands.push_back(instruction_to_values_.at(operand));
+  }
+  const unsigned num_inputs = operands.size() / 2;
+  TF_ASSIGN_OR_RETURN(const auto return_type,
+                      ConvertTensorType(reduce->shape(), builder_));
+  const auto& dimensions = reduce->dimensions();
+  const auto dimensionsAttr =
+      ::mlir::DenseIntElementsAttr::get(
+          builder_.getTensorType(dimensions.size(),
+                                 builder_.getIntegerType(64)),
+          llvm::makeArrayRef(dimensions))
+          .cast<::mlir::DenseIntElementsAttr>();
+  auto reduceOp = builder_.create<hlo::ReduceOp>(
+      builder_.getUnknownLoc(), return_type,
+      llvm::makeArrayRef(operands).take_front(num_inputs),
+      llvm::makeArrayRef(operands).take_back(num_inputs), dimensionsAttr);
+  {
+    auto computation = reduce->to_apply();
+    auto block = new mlir::Block();
+    llvm::SmallVector<Value*, 4> arguments;
+    arguments.reserve(computation->num_parameters());
+    for (auto parameter : computation->parameter_instructions()) {
+      TF_ASSIGN_OR_RETURN(auto param_type,
+                          ConvertTensorType(parameter->shape(), builder_));
+      arguments.push_back(block->addArgument(param_type));
+    }
+    reduceOp.body().push_back(block);
+    HloDialectEmitter emitter(&reduceOp.body(), arguments);
+    TF_ASSIGN_OR_RETURN(auto result, emitter.EmitComputation(*computation));
+    OpBuilder body_builder(block);
+    body_builder.setInsertionPointToEnd(block);
+    body_builder.create<hlo::ReturnOp>(builder_.getUnknownLoc(),
+                                       ArrayRef<Value*>{result});
+  }
+  // TODO(b/137624192) Add support for multiple results.
+  instruction_to_values_[reduce] = reduceOp.getResult(0);
   return Status::OK();
 }
 

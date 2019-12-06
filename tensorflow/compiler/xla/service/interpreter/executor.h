@@ -90,17 +90,17 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
     return false;
   }
 
-  bool MemZero(Stream *stream, DeviceMemoryBase *location,
-               uint64 size) override {
-    return false;
+  port::Status MemZero(Stream *stream, DeviceMemoryBase *location,
+                       uint64 size) override {
+    return port::InternalError("Interpreter can not memzero");
   }
-  bool Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
-              uint64 size) override {
-    return false;
+  port::Status Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
+                      uint64 size) override {
+    return port::InternalError("Interpreter can not memset");
   }
-  bool Memset32(Stream *stream, DeviceMemoryBase *location, uint32 pattern,
-                uint64 size) override {
-    return false;
+  port::Status Memset32(Stream *stream, DeviceMemoryBase *location,
+                        uint32 pattern, uint64 size) override {
+    return port::InternalError("Interpreter can not memset");
   }
 
   // No "synchronize all activity" implemented for this platform at the moment.

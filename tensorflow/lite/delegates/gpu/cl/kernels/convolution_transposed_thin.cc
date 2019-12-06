@@ -32,9 +32,14 @@ std::string GenerateConvolutionTransposedCode(
     const OperationDef& op_def, int src_depth, int dst_channels,
     const int2& kernel_size, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
+  const TensorCodeGenerator::SizeVariablesNames src_size(
+      "src_size.x", "src_size.y", "src_size.z", "src_size.w");
+  const TensorCodeGenerator::SizeVariablesNames dst_size(
+      "dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w");
+  TensorCodeGenerator src_tensor("src_data", src_size, op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", dst_size, op_def.dst_tensors[0]);
 
+  const std::string batch_id = op_def.batch_support ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
   const std::string channel_x = dst_channels == 1 ? "" : ".x";
   const std::vector<std::string> postfix = {channel_x, ".y", ".z", ".w"};
@@ -64,14 +69,19 @@ std::string GenerateConvolutionTransposedCode(
   c += "    int4 dst_size,             \n";
   c += "    FLT4 bias_value            \n";
   c += ") {\n";
-  c += "  int X = get_global_id(0);\n";
+  if (op_def.batch_support) {
+    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int X = linear_id / dst_size.w;\n";
+    c += "  int B = linear_id % dst_size.w;\n";
+  } else {
+    c += "  int X = get_global_id(0);\n";
+  }
   c += "  int Y = get_global_id(1);\n";
   c += "  if (X >= src_size.x || Y >= src_size.y) return;\n";
   c += "  " + accum_type + " r[" + std::to_string(kernel_size.y) + "][" +
        std::to_string(kernel_size.x) + "];\n";
   c += "  {\n";
-  c += "  FLT4 src = " +
-       src_tensor.Read3D("X", "Y", "0", TextureAddressMode::DONT_CARE) + ";\n";
+  c += "  FLT4 src = " + src_tensor.Read4D("X", "Y", "0", batch_id) + ";\n";
   int index = 0;
   for (int y = 0; y < kernel_size.y; ++y) {
     for (int x = 0; x < kernel_size.x; ++x) {
@@ -90,14 +100,13 @@ std::string GenerateConvolutionTransposedCode(
   c += "  }\n";
   for (int i = 1; i < src_depth; ++i) {
     if (op_def.precision != CalculationsPrecision::F32_F16) {
-      c += "  if (X < src_size.x + " + std::to_string(i + 1) + ") {\n";
+      c += "  if (X > " + std::to_string(-i) +
+           ") {  // always true, to reduce registers usage\n";
     } else {
       c += "  {\n";
     }
     c += "  FLT4 src = " +
-         src_tensor.Read3D("X", "Y", std::to_string(i),
-                           TextureAddressMode::DONT_CARE) +
-         ";\n";
+         src_tensor.Read4D("X", "Y", std::to_string(i), batch_id) + ";\n";
     for (int y = 0; y < kernel_size.y; ++y) {
       for (int x = 0; x < kernel_size.x; ++x) {
         std::string r_s =
@@ -112,27 +121,24 @@ std::string GenerateConvolutionTransposedCode(
     c += "  }\n";
   }
   c += "  X *= " + std::to_string(kernel_size.x) + ";\n";
-  c += "  Y *= " + std::to_string(kernel_size.x) + ";\n";
+  c += "  Y *= " + std::to_string(kernel_size.y) + ";\n";
   for (int y = 0; y < kernel_size.y; ++y) {
     for (int x = 0; x < kernel_size.x; ++x) {
-      if (op_def.precision != CalculationsPrecision::F32_F16) {
-        c += "  if (X + " + std::to_string(x) + " < dst_size.x && ";
-        c += "Y + " + std::to_string(y) + " < dst_size.y) {\n";
-      } else {
-        c += "  {\n";
-      }
+      const std::string x_coord = "X + " + std::to_string(x);
+      const std::string y_coord = "Y + " + std::to_string(y);
+      c += "  if (" + x_coord + " < dst_size.x && " + y_coord +
+           " < dst_size.y) {\n";
       c += "    FLT4 result = bias_value;\n";
       for (int d = 0; d < dst_channels; ++d) {
         c += "    result" + channel[d] + " += r[" + std::to_string(y) + "][" +
              std::to_string(x) + "]" + postfix[d] + ";\n";
       }
-      const LinkingContext context{"result", "X + " + std::to_string(x),
-                                   "Y + " + std::to_string(y), "0"};
+      const std::string x_3dcoord =
+          op_def.batch_support ? "(" + x_coord + ") * dst_size.w + B" : x_coord;
+      const LinkingContext context{"result", x_3dcoord, y_coord, "0"};
       c += PostProcess(linked_operations, context);
       c += "    " +
-           dst_tensor.Write3D("result", context.x_coord, context.y_coord,
-                              context.z_coord) +
-           "\n";
+           dst_tensor.Write4D("result", x_coord, y_coord, "0", batch_id) + "\n";
       c += "  }\n";
     }
   }
@@ -204,14 +210,14 @@ Status ConvolutionTransposedThin::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_buf_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHDB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(bias_value_));
   return OkStatus();
 }
 
 int3 ConvolutionTransposedThin::GetGridSize() const {
-  const int grid_x = src_[0]->Width();
+  const int grid_x = src_[0]->Width() * dst_[0]->Batch();
   const int grid_y = src_[0]->Height();
   const int grid_z = 1;
   return int3(grid_x, grid_y, grid_z);
@@ -231,7 +237,8 @@ bool IsConvolutionTransposedThinSupported(
     const CLDevice& device, const ConvolutionTransposedAttributes& attr) {
   return attr.weights.shape.o <= 4 && attr.weights.shape.w == attr.stride.w &&
          attr.weights.shape.h == attr.stride.h &&
-         attr.padding.prepended.w == 0 && attr.padding.prepended.h == 0;
+         attr.padding.prepended.w == 0 && attr.padding.prepended.h == 0 &&
+         attr.padding.appended.w == 0 && attr.padding.appended.h == 0;
 }
 
 Status CreateConvolutionTransposedThin(

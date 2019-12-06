@@ -1868,6 +1868,17 @@ class EmbeddedComputationsTest(ComputationTest):
       result = xla_client.execute_with_python_values(compiled_c)
       self.assertEqual(result, item)
 
+  def testInfeedTuple(self):
+    to_infeed = (NumpyArrayS32([1, 2, 3, 4]), NumpyArrayS32([[7], [8]]))
+    c = self._NewComputation()
+    c.GetTupleElement(c.Infeed(xla_client.shape_from_pyval(to_infeed)), 0)
+    compiled_c = c.Build().Compile()
+    xla_client.transfer_to_infeed(to_infeed)
+
+    result = xla_client.execute_with_python_values(compiled_c)
+    np.testing.assert_equal(result[0], to_infeed[0])
+    np.testing.assert_equal(result[1], to_infeed[1])
+
   def testInfeedThenOutfeedS32(self):
     to_round_trip = NumpyArrayS32([1, 2, 3, 4])
     c = self._NewComputation()

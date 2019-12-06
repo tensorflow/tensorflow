@@ -282,6 +282,8 @@ java_test(
     srcs = ["src/test/java/org/tensorflow/lite/TensorTest.java"],
     data = [
         "src/testdata/add.bin",
+        "src/testdata/int32.bin",
+        "src/testdata/int64.bin",
     ],
     javacopts = JAVACOPTS,
     tags = [

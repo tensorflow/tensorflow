@@ -117,7 +117,7 @@ Benchmark::~Benchmark() {
   }
 }
 
-void Benchmark::Run(int iters) { RunWithArgs({}, {}, iters); }
+void Benchmark::Run(int iters) { RunWithRendezvousArgs({}, {}, iters); }
 
 string GetRendezvousKey(const Node* node) {
   string send_device;
@@ -133,22 +133,11 @@ string GetRendezvousKey(const Node* node) {
                                recv_device, tensor_name, FrameAndIter(0, 0));
 }
 
-void Benchmark::RunWithArgs(
-    const std::vector<std::pair<const Node*, Tensor>>& inputs,
-    const std::vector<const Node*>& outputs, int iters) {
+void Benchmark::RunWithRendezvousArgs(
+    const std::vector<std::pair<string, Tensor>>& inputs,
+    const std::vector<string>& outputs, int iters) {
   if (!device_ || iters == 0) {
     return;
-  }
-  // Gets inputs' and outputs' rendezvous keys.
-  std::vector<std::pair<string, Tensor>> in;
-  in.reserve(inputs.size());
-  for (const auto& p : inputs) {
-    in.push_back({GetRendezvousKey(p.first), p.second});
-  }
-  std::vector<string> out;
-  out.reserve(outputs.size());
-  for (const auto& n : outputs) {
-    out.push_back(GetRendezvousKey(n));
   }
   Tensor unused;  // In benchmark, we don't care the return value.
   bool is_dead;
@@ -161,13 +150,13 @@ void Benchmark::RunWithArgs(
   };
   static const int kWarmupRuns = 3;
   for (int i = 0; i < kWarmupRuns; ++i) {
-    for (const auto& p : in) {
+    for (const auto& p : inputs) {
       Rendezvous::ParsedKey parsed;
       TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
       TF_CHECK_OK(rendez_->Send(parsed, Rendezvous::Args(), p.second, false));
     }
     TF_CHECK_OK(exec_->Run(args));
-    for (const string& key : out) {
+    for (const string& key : outputs) {
       Rendezvous::ParsedKey parsed;
       TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
       TF_CHECK_OK(rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead));
@@ -178,13 +167,13 @@ void Benchmark::RunWithArgs(
 
   testing::StartTiming();
   while (iters-- > 0) {
-    for (const auto& p : in) {
+    for (const auto& p : inputs) {
       Rendezvous::ParsedKey parsed;
       TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
       TF_CHECK_OK(rendez_->Send(parsed, Rendezvous::Args(), p.second, false));
     }
     TF_CHECK_OK(exec_->Run(args));
-    for (const string& key : out) {
+    for (const string& key : outputs) {
       Rendezvous::ParsedKey parsed;
       TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
       TF_CHECK_OK(rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead));

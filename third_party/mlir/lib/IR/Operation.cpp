@@ -25,7 +25,9 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/TypeUtilities.h"
 #include <numeric>
+
 using namespace mlir;
 
 /// Form the OperationName for an op with the specified string.  This either is
@@ -746,33 +748,13 @@ LogicalResult OpTrait::impl::verifyAtLeastNResults(Operation *op,
   return success();
 }
 
-/// Returns success if the given two types have the same shape. That is,
-/// they are both scalars (not shaped), or they are both shaped types and at
-/// least one is unranked or they have the same shape. The element type does not
-/// matter.
-static LogicalResult verifyShapeMatch(Type type1, Type type2) {
-  auto sType1 = type1.dyn_cast<ShapedType>();
-  auto sType2 = type2.dyn_cast<ShapedType>();
-
-  // Either both or neither type should be shaped.
-  if (!sType1)
-    return success(!sType2);
-  if (!sType2)
-    return failure();
-
-  if (!sType1.hasRank() || !sType2.hasRank())
-    return success();
-
-  return success(sType1.getShape() == sType2.getShape());
-}
-
 LogicalResult OpTrait::impl::verifySameOperandsShape(Operation *op) {
   if (failed(verifyAtLeastNOperands(op, 1)))
     return failure();
 
   auto type = op->getOperand(0)->getType();
   for (auto opType : llvm::drop_begin(op->getOperandTypes(), 1)) {
-    if (failed(verifyShapeMatch(opType, type)))
+    if (failed(verifyCompatibleShape(opType, type)))
       return op->emitOpError() << "requires the same shape for all operands";
   }
   return success();
@@ -785,12 +767,12 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
 
   auto type = op->getOperand(0)->getType();
   for (auto resultType : op->getResultTypes()) {
-    if (failed(verifyShapeMatch(resultType, type)))
+    if (failed(verifyCompatibleShape(resultType, type)))
       return op->emitOpError()
              << "requires the same shape for all operands and results";
   }
   for (auto opType : llvm::drop_begin(op->getOperandTypes(), 1)) {
-    if (failed(verifyShapeMatch(opType, type)))
+    if (failed(verifyCompatibleShape(opType, type)))
       return op->emitOpError()
              << "requires the same shape for all operands and results";
   }
@@ -800,17 +782,10 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
 LogicalResult OpTrait::impl::verifySameOperandsElementType(Operation *op) {
   if (failed(verifyAtLeastNOperands(op, 1)))
     return failure();
+  auto elementType = getElementTypeOrSelf(op->getOperand(0));
 
-  auto type = op->getOperand(0)->getType().dyn_cast<ShapedType>();
-  if (!type)
-    return op->emitOpError("requires shaped type results");
-  auto elementType = type.getElementType();
-
-  for (auto operandType : llvm::drop_begin(op->getOperandTypes(), 1)) {
-    auto shapedType = operandType.dyn_cast<ShapedType>();
-    if (!shapedType)
-      return op->emitOpError("requires shaped type operands");
-    if (shapedType.getElementType() != elementType)
+  for (auto operand : llvm::drop_begin(op->getOperands(), 1)) {
+    if (getElementTypeOrSelf(operand) != elementType)
       return op->emitOpError("requires the same element type for all operands");
   }
 
@@ -823,27 +798,18 @@ OpTrait::impl::verifySameOperandsAndResultElementType(Operation *op) {
       failed(verifyAtLeastNResults(op, 1)))
     return failure();
 
-  auto type = op->getResult(0)->getType().dyn_cast<ShapedType>();
-  if (!type)
-    return op->emitOpError("requires shaped type results");
-  auto elementType = type.getElementType();
+  auto elementType = getElementTypeOrSelf(op->getResult(0));
 
   // Verify result element type matches first result's element type.
   for (auto result : drop_begin(op->getResults(), 1)) {
-    auto resultType = result->getType().dyn_cast<ShapedType>();
-    if (!resultType)
-      return op->emitOpError("requires shaped type results");
-    if (resultType.getElementType() != elementType)
+    if (getElementTypeOrSelf(result) != elementType)
       return op->emitOpError(
           "requires the same element type for all operands and results");
   }
 
   // Verify operand's element type matches first result's element type.
   for (auto operand : op->getOperands()) {
-    auto operandType = operand->getType().dyn_cast<ShapedType>();
-    if (!operandType)
-      return op->emitOpError("requires shaped type operands");
-    if (operandType.getElementType() != elementType)
+    if (getElementTypeOrSelf(operand) != elementType)
       return op->emitOpError(
           "requires the same element type for all operands and results");
   }
@@ -857,13 +823,16 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultType(Operation *op) {
     return failure();
 
   auto type = op->getResult(0)->getType();
+  auto elementType = getElementTypeOrSelf(type);
   for (auto resultType : llvm::drop_begin(op->getResultTypes(), 1)) {
-    if (resultType != type)
+    if (getElementTypeOrSelf(resultType) != elementType ||
+        failed(verifyCompatibleShape(resultType, type)))
       return op->emitOpError()
              << "requires the same type for all operands and results";
   }
   for (auto opType : op->getOperandTypes()) {
-    if (opType != type)
+    if (getElementTypeOrSelf(opType) != elementType ||
+        failed(verifyCompatibleShape(opType, type)))
       return op->emitOpError()
              << "requires the same type for all operands and results";
   }

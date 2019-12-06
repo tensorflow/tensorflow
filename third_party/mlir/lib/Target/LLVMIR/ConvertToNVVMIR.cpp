@@ -23,8 +23,8 @@
 #include "mlir/Target/NVVMIR.h"
 
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
-#include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 #include "mlir/Translation.h"
@@ -66,11 +66,13 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(ModuleOp m) {
   ModuleTranslation translation(m);
   auto llvmModule =
       LLVM::ModuleTranslation::translateModule<ModuleTranslation>(m);
+  if (!llvmModule)
+    return llvmModule;
 
   // Insert the nvvm.annotations kernel so that the NVVM backend recognizes the
   // function as a kernel.
-  for (FuncOp func : m.getOps<FuncOp>()) {
-    if (!func.getAttrOfType<UnitAttr>(gpu::GPUDialect::getKernelFuncAttrName()))
+  for (auto func : m.getOps<LLVM::LLVMFuncOp>()) {
+    if (!gpu::GPUDialect::isKernel(func))
       continue;
 
     auto *llvmFunc = llvmModule->getFunction(func.getName());

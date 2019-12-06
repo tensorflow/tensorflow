@@ -105,7 +105,9 @@ public:
   MLIRContext *getContext() { return getOperation()->getContext(); }
 
   /// Print the operation to the given stream.
-  void print(raw_ostream &os) { state->print(os); }
+  void print(raw_ostream &os, OpPrintingFlags flags = llvm::None) {
+    state->print(os, flags);
+  }
 
   /// Dump this operation.
   void dump() { state->dump(); }
@@ -645,7 +647,7 @@ public:
 };
 
 /// This class provides verification for ops that are known to have the same
-/// operand element type.
+/// operand element type (or the type itself if it is scalar).
 ///
 template <typename ConcreteType>
 class SameOperandsElementType
@@ -657,7 +659,7 @@ public:
 };
 
 /// This class provides verification for ops that are known to have the same
-/// operand and result element type.
+/// operand and result element type (or the type itself if it is scalar).
 ///
 template <typename ConcreteType>
 class SameOperandsAndResultElementType
@@ -1139,13 +1141,17 @@ private:
   Concept *impl;
 };
 
-// These functions are out-of-line implementations of the methods in BinaryOp,
-// which avoids them being template instantiated/duplicated.
+// These functions are out-of-line implementations of the methods in UnaryOp and
+// BinaryOp, which avoids them being template instantiated/duplicated.
 namespace impl {
+ParseResult parseOneResultOneOperandTypeOp(OpAsmParser &parser,
+                                           OperationState &result);
+
 void buildBinaryOp(Builder *builder, OperationState &result, Value *lhs,
                    Value *rhs);
 ParseResult parseOneResultSameOperandTypeOp(OpAsmParser &parser,
                                             OperationState &result);
+
 // Prints the given binary `op` in custom assembly form if both the two operands
 // and the result have the same time. Otherwise, prints the generic assembly
 // form.

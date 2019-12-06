@@ -189,8 +189,11 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       // NOTE: We do not synchronize the following access to
       // num_parallel_calls_ to minimize the tracing overhead.
       int64 parallelism = num_parallel_calls_->value;
-      return strings::StrCat(prefix(), "#", kParallelism, "=", parallelism,
-                             "#");
+      return strings::StrCat(
+          prefix(), "#parallelism=", parallelism,
+          ",autotune=", dataset()->num_parallel_calls_ == model::kAutotune,
+          ",batch_size=", dataset()->batch_size_,
+          ",drop_remainder=", dataset()->drop_remainder_, "#");
     }
 
     Status Initialize(IteratorContext* ctx) override {

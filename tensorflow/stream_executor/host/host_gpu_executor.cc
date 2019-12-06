@@ -101,34 +101,34 @@ bool HostExecutor::MemcpyDeviceToDevice(Stream *stream,
   return true;
 }
 
-bool HostExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
-                           uint64 size) {
+port::Status HostExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
+                                   uint64 size) {
   void *gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size]() { memset(gpu_mem, 0, size); });
-  return true;
+  return port::Status::OK();
 }
 
-bool HostExecutor::Memset(Stream *stream, DeviceMemoryBase *location,
-                          uint8 pattern, uint64 size) {
+port::Status HostExecutor::Memset(Stream *stream, DeviceMemoryBase *location,
+                                  uint8 pattern, uint64 size) {
   void *gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
-  return true;
+  return port::Status::OK();
 }
 
-bool HostExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
-                            uint32 pattern, uint64 size) {
+port::Status HostExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
+                                    uint32 pattern, uint64 size) {
   void *gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
-  return true;
+  return port::Status::OK();
 }
 
 port::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,

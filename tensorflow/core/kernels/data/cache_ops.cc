@@ -32,14 +32,12 @@ const char kMemoryCache[] = "MemoryCache";
 
 string MemoryCache::DebugString() const { return kMemoryCache; }
 
-void MemoryCache::Complete() {
+void MemoryCache::Complete(std::vector<std::vector<Tensor>>&& cache) {
   mutex_lock l(mu_);
-  completed_ = true;
-}
-
-bool MemoryCache::IsClaimed() {
-  tf_shared_lock l(mu_);
-  return claimed_;
+  if (!completed_) {
+    cache_ = std::move(cache);
+    completed_ = true;
+  }
 }
 
 bool MemoryCache::IsCompleted() {
@@ -47,18 +45,8 @@ bool MemoryCache::IsCompleted() {
   return completed_;
 }
 
-bool MemoryCache::MaybeClaim() {
-  mutex_lock l(mu_);
-  if (!claimed_) {
-    claimed_ = true;
-    return true;
-  }
-  return false;
-}
-
 void MemoryCache::Reset() {
   mutex_lock l(mu_);
-  claimed_ = false;
   completed_ = false;
   cache_.clear();
 }
@@ -67,11 +55,6 @@ const std::vector<Tensor>& MemoryCache::at(int64 index) {
   tf_shared_lock l(mu_);
   DCHECK(index < cache_.size());
   return cache_[index];
-}
-
-void MemoryCache::emplace_back(std::vector<Tensor> element) {
-  mutex_lock l(mu_);
-  cache_.emplace_back(std::move(element));
 }
 
 size_t MemoryCache::size() {

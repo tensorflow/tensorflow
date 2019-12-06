@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,8 +21,11 @@ from __future__ import print_function
 
 import os
 import tempfile
+
 from absl.testing import parameterized
 import numpy as np
+import six
+from six.moves import range
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
@@ -1132,7 +1136,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     # Check the add node in the inlined function is included.
     func = sess.graph.as_graph_def().library.function[0].signature.name
-    self.assertIn(('add@' + func), converter._debug_info.traces)
+    self.assertIn(('add@' + six.ensure_str(func)), converter._debug_info.traces)
 
 
 class FromFrozenGraphFile(test_util.TensorFlowTestCase):

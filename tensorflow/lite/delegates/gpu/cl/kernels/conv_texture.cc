@@ -42,8 +42,9 @@ std::string GenerateConvCode(
                                  {"dst_size.x", "dst_size.y", "dst_size.z"},
                                  op_def.dst_tensors[0]);
 
-  const bool is_image_buffer =
-      op_def.src_tensors[0].storage_type == TensorStorageType::IMAGE_BUFFER;
+  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
+  const bool is_buffer = src_tensor_type == TensorStorageType::IMAGE_BUFFER ||
+                         src_tensor_type == TensorStorageType::BUFFER;
 
   std::vector<std::string> xs(block_size.x);
   for (int x = 0; x < block_size.x; ++x) {
@@ -139,36 +140,53 @@ std::string GenerateConvCode(
     for (int y = 0; y < block_size.y; ++y) {
       c += "  cy" + ys[y] + " = y * dilation.y + yc" + ys[y] + ";\n";
     }
-    if (is_image_buffer) {
+    if (is_buffer) {
       for (int y = 0; y < block_size.y; ++y) {
         c += "  bool in_y" + ys[y] + " = cy" + ys[y] + " >= 0 && cy" + ys[y] +
              " < src_size.y;\n";
+        if (src_tensor_type == TensorStorageType::BUFFER) {
+          c += "    cy" + ys[y] + " = clamp(cy" + ys[y] +
+               ", 0, src_size.y - 1);\n";
+        }
       }
     }
     c += "  for (int x = 0; x < kernel_size.x; ++x) {\n";
     for (int x = 0; x < block_size.x; ++x) {
       c += "  cx" + xs[x] + " = x * dilation.x + xc" + xs[x] + ";\n";
     }
-    if (is_image_buffer) {
+    if (is_buffer) {
       for (int x = 0; x < block_size.x; ++x) {
         c += "  bool in_x" + xs[x] + " = cx" + xs[x] + " >= 0 && cx" + xs[x] +
              " < src_size.x;\n";
+        if (src_tensor_type == TensorStorageType::BUFFER) {
+          c += "    cx" + xs[x] + " = clamp(cx" + xs[x] +
+               ", 0, src_size.x - 1);\n";
+        }
       }
       for (int x = 0; x < block_size.x; ++x) {
         for (int y = 0; y < block_size.y; ++y) {
           const std::string id = std::to_string(y * block_size.x + x);
-          c += absl::Substitute(
-              "  int addr_$0 = select(-1, cy$2 * src_size.x + cx$1, (in_x$1 && "
-              "in_y$2));\n",
-              y * block_size.x + x, x, y);
-          c += absl::Substitute(
-              "  int dz_$0 = select(0, src_size.x * src_size.y, (in_x$1 && "
-              "in_y$2));\n",
-              y * block_size.x + x, x, y);
+          if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
+            c += absl::Substitute(
+                "  int addr_$0 = select(-1, cy$2 * src_size.x + cx$1, (in_x$1 "
+                "&& "
+                "in_y$2));\n",
+                y * block_size.x + x, x, y);
+            c += absl::Substitute(
+                "  int dz_$0 = select(0, src_size.x * src_size.y, (in_x$1 && "
+                "in_y$2));\n",
+                y * block_size.x + x, x, y);
+          } else {
+            c += absl::Substitute("  int addr_$0 = cy$2 * src_size.x + cx$1;\n",
+                                  y * block_size.x + x, x, y);
+          }
         }
       }
+      if (src_tensor_type == TensorStorageType::BUFFER) {
+        c += "  int dz = src_size.x * src_size.y;\n";
+      }
     }
-  } else if (is_image_buffer) {
+  } else if (is_buffer) {
     for (int y = 0; y < block_size.y; ++y) {
       c += "  bool in_y" + ys[y] + " = yc" + ys[y] + " >= 0 && yc" + ys[y] +
            " < src_size.y;\n";
@@ -180,23 +198,42 @@ std::string GenerateConvCode(
     for (int x = 0; x < block_size.x; ++x) {
       for (int y = 0; y < block_size.y; ++y) {
         const std::string id = std::to_string(y * block_size.x + x);
-        const std::string inside = std::to_string(y * block_size.x + x);
-        c += absl::Substitute(
-            "  int addr_$0 = select(-1, yc$2 * src_size.x + xc$1, (in_x$1 && "
-            "in_y$2));\n",
-            y * block_size.x + x, x, y);
-        c += absl::Substitute(
-            "  int dz_$0 = select(0, src_size.x * src_size.y, (in_x$1 && "
-            "in_y$2));\n",
-            y * block_size.x + x, x, y);
+        if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
+          c += absl::Substitute(
+              "  int addr_$0 = select(-1, yc$2 * src_size.x + xc$1, (in_x$1 && "
+              "in_y$2));\n",
+              y * block_size.x + x, x, y);
+          c += absl::Substitute(
+              "  int dz_$0 = select(0, src_size.x * src_size.y, (in_x$1 && "
+              "in_y$2));\n",
+              y * block_size.x + x, x, y);
+        } else {
+          c += absl::Substitute("  int addr_$0 = yc$2 * src_size.x + xc$1;\n",
+                                y * block_size.x + x, x, y);
+        }
       }
+    }
+    if (src_tensor_type == TensorStorageType::BUFFER) {
+      c += "  int dz = src_size.x * src_size.y;\n";
     }
   }
   c += "  for (int s = 0; s < src_size.z; ++s) {\n";
-  if (is_image_buffer) {
-    for (int index = 0; index < block_size.x * block_size.y; ++index) {
-      const std::string id = std::to_string(index);
-      c += "    FLT4 src" + id + " = " + src_tensor.Read("addr_" + id) + ";\n";
+  if (is_buffer) {
+    if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
+      for (int index = 0; index < block_size.x * block_size.y; ++index) {
+        const std::string id = std::to_string(index);
+        c +=
+            "    FLT4 src" + id + " = " + src_tensor.Read("addr_" + id) + ";\n";
+      }
+    } else {
+      for (int x = 0; x < block_size.x; ++x) {
+        for (int y = 0; y < block_size.y; ++y) {
+          const std::string id = std::to_string(y * block_size.x + x);
+          c += "    FLT4 src" + id + " = " + src_tensor.Read("addr_" + id) +
+               " * (FLT)(in_x" + xs[x] + " && in_y" + ys[y] + "); addr_" + id +
+               " += dz;\n";
+        }
+      }
     }
   }
   for (int z = 0; z < block_size.z; ++z) {
@@ -208,7 +245,7 @@ std::string GenerateConvCode(
 )",
                           fc, z * 4 + 0, z * 4 + 1, z * 4 + 2, z * 4 + 3);
   }
-  if (!is_image_buffer) {
+  if (!is_buffer) {
     const auto mode = GetFastestZeroMode(device);
     for (int x = 0; x < block_size.x; ++x) {
       for (int y = 0; y < block_size.y; ++y) {
@@ -228,10 +265,12 @@ std::string GenerateConvCode(
   if (!is1x1) {
     c += "    filter_offset++;\n";
   }
-  if (is_image_buffer) {
-    for (int index = 0; index < block_size.x * block_size.y; ++index) {
-      const std::string id = std::to_string(index);
-      c += "     addr_" + id + " += dz_" + id + ";\n";
+  if (is_buffer) {
+    if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
+      for (int index = 0; index < block_size.x * block_size.y; ++index) {
+        const std::string id = std::to_string(index);
+        c += "     addr_" + id + " += dz_" + id + ";\n";
+      }
     }
   }
   c += "  }\n";  // src_size.z

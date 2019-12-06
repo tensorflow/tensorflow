@@ -28,7 +28,7 @@ except ImportError:
   pass
 
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import utils
+from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
@@ -132,7 +132,7 @@ def save_img(path,
 
 
 @keras_export('keras.preprocessing.image.Iterator')
-class Iterator(image.Iterator, utils.Sequence):
+class Iterator(image.Iterator, data_utils.Sequence):
   pass
 
 

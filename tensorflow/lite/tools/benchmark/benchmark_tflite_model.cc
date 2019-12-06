@@ -128,11 +128,11 @@ std::vector<std::string> Split(const std::string& str, const char delim) {
   return results;
 }
 
+// Fill random integer values between [low, high]
 template <typename T>
-void FillRandomValue(T* ptr, int num_elements,
-                     const std::function<T()>& random_func) {
+void FillRandomIntValues(T* ptr, int num_elements, int low, int high) {
   for (int i = 0; i < num_elements; ++i) {
-    *ptr++ = random_func();
+    *ptr++ = static_cast<T>(rand() % (high - low + 1) + low);
   }
 }
 
@@ -151,6 +151,7 @@ void FillRandomString(tflite::DynamicBuffer* buffer,
 
 TfLiteStatus PopulateInputLayerInfo(
     const std::string& names_string, const std::string& shapes_string,
+    const std::string& value_ranges_string,
     std::vector<BenchmarkTfLiteModel::InputLayerInfo>* info) {
   info->clear();
   std::vector<std::string> names = Split(names_string, ',');
@@ -186,6 +187,45 @@ TfLiteStatus PopulateInputLayerInfo(
     }
   }
 
+  // Populate input value range if it's specified.
+  std::vector<std::string> value_ranges = Split(value_ranges_string, ':');
+  std::vector<int> tmp_range;
+  for (const auto val : value_ranges) {
+    std::vector<std::string> name_range = Split(val, '#');
+    if (name_range.size() != 2) {
+      TFLITE_LOG(FATAL) << "Wrong input value range item specified: " << val;
+    }
+
+    // Ensure the specific input layer name exists.
+    const std::string& input_name = name_range[0];
+    int layer_info_idx = -1;
+    for (int i = 0; i < info->size(); ++i) {
+      if (info->at(i).name == input_name) {
+        layer_info_idx = i;
+        break;
+      }
+    }
+    TFLITE_BENCHMARK_CHECK((layer_info_idx != -1))
+        << "Cannot find the corresponding input_layer name(" << input_name
+        << ") in --input_layer as " << names_string;
+
+    // Parse the range value.
+    const std::string& input_range_str = name_range[1];
+    tmp_range.clear();
+    TFLITE_BENCHMARK_CHECK(
+        util::SplitAndParse(input_range_str, ',', &tmp_range))
+        << "Incorrect input value range string specified: " << input_range_str;
+    if (tmp_range.size() != 2 && tmp_range[0] > tmp_range[1]) {
+      TFLITE_LOG(FATAL)
+          << "Wrong low and high value of the input value range specified: "
+          << input_range_str;
+    }
+
+    info->at(layer_info_idx).has_value_range = true;
+    info->at(layer_info_idx).low = tmp_range[0];
+    info->at(layer_info_idx).high = tmp_range[1];
+  }
+
   return kTfLiteOk;
 }
 
@@ -206,6 +246,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("input_layer",
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("input_layer_shape",
+                          BenchmarkParam::Create<std::string>(""));
+  default_params.AddParam("input_layer_value_range",
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("nnapi_execution_preference",
@@ -255,6 +297,13 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
     CreateFlag<std::string>("graph", &params_, "graph file name"),
     CreateFlag<std::string>("input_layer", &params_, "input layer names"),
     CreateFlag<std::string>("input_layer_shape", &params_, "input layer shape"),
+    CreateFlag<std::string>(
+        "input_layer_value_range", &params_,
+        "A map-like string representing value range for integer input layers. "
+        "Each item is separated by ':', and the item value is a pair of input "
+        "layer name and integer-only range values (both low and high are "
+        "inclusive), the name and the range is separated by '#', the low/high "
+        "are separated by ',' e.g. input1#1,2:input2#0,254"),
     CreateFlag<bool>("use_nnapi", &params_, "use nnapi delegate api"),
     CreateFlag<std::string>(
         "nnapi_execution_preference", &params_,
@@ -289,6 +338,9 @@ void BenchmarkTfLiteModel::LogParams() {
                    << params_.Get<std::string>("input_layer") << "]";
   TFLITE_LOG(INFO) << "Input shapes: ["
                    << params_.Get<std::string>("input_layer_shape") << "]";
+  TFLITE_LOG(INFO) << "Input value ranges: ["
+                   << params_.Get<std::string>("input_layer_value_range")
+                   << "]";
 #if defined(__ANDROID__)
   TFLITE_LOG(INFO) << "Use nnapi : [" << params_.Get<bool>("use_nnapi") << "]";
   if (!params_.Get<std::string>("nnapi_execution_preference").empty()) {
@@ -332,9 +384,11 @@ TfLiteStatus BenchmarkTfLiteModel::ValidateParams() {
         << "Please specify the name of your TF Lite input file with --graph";
     return kTfLiteError;
   }
-  return PopulateInputLayerInfo(params_.Get<std::string>("input_layer"),
-                                params_.Get<std::string>("input_layer_shape"),
-                                &inputs_);
+
+  return PopulateInputLayerInfo(
+      params_.Get<std::string>("input_layer"),
+      params_.Get<std::string>("input_layer_shape"),
+      params_.Get<std::string>("input_layer_value_range"), &inputs_);
 }
 
 uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
@@ -352,9 +406,16 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
   const size_t input_size = interpreter_inputs.size();
   CleanUp();
 
+  // Note the corresponding relation between 'interpreter_inputs' and 'inputs_'
+  // (i.e. the specified input layer info) has been checked in
+  // BenchmarkTfLiteModel::Init() before calling this function. So, we simply
+  // use the corresponding input layer info to initializethe input data value
+  // properly.
+
   for (int j = 0; j < input_size; ++j) {
     int i = interpreter_inputs[j];
     TfLiteTensor* t = interpreter_->tensor(i);
+    const auto& input_info = inputs_[j];
     std::vector<int> sizes = TfLiteIntArrayToVector(t->dims);
     int num_elements = 1;
     for (int i = 0; i < sizes.size(); ++i) {
@@ -364,7 +425,7 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
     if (t->type == kTfLiteFloat32) {
       t_data.bytes = sizeof(float) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      FillRandomValue<float>(t_data.data.f, num_elements, []() {
+      std::generate_n(t_data.data.f, num_elements, []() {
         return static_cast<float>(rand()) / RAND_MAX - 0.5f;
       });
     } else if (t->type == kTfLiteFloat16) {
@@ -373,13 +434,12 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
 #if __GNUC__ && \
     (__clang__ || __ARM_FP16_FORMAT_IEEE || __ARM_FP16_FORMAT_ALTERNATIVE)
       // __fp16 is available on Clang or when __ARM_FP16_FORMAT_* is defined.
-      FillRandomValue<TfLiteFloat16>(
-          t_data.data.f16, num_elements, []() -> TfLiteFloat16 {
-            __fp16 f16_value = static_cast<float>(rand()) / RAND_MAX - 0.5f;
-            TfLiteFloat16 f16_placeholder_value;
-            memcpy(&f16_placeholder_value, &f16_value, sizeof(TfLiteFloat16));
-            return f16_placeholder_value;
-          });
+      std::generate_n(t_data.data.f16, num_elements, []() -> TfLiteFloat16 {
+        __fp16 f16_value = static_cast<float>(rand()) / RAND_MAX - 0.5f;
+        TfLiteFloat16 f16_placeholder_value;
+        memcpy(&f16_placeholder_value, &f16_value, sizeof(TfLiteFloat16));
+        return f16_placeholder_value;
+      });
 #else
       TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
                         << " of type FLOAT16 on this platform.";
@@ -387,35 +447,35 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
     } else if (t->type == kTfLiteInt64) {
       t_data.bytes = sizeof(int64_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      FillRandomValue<int64_t>(t_data.data.i64, num_elements, []() {
-        return static_cast<int64_t>(rand()) % 100;
-      });
+      int low = input_info.has_value_range ? input_info.low : 0;
+      int high = input_info.has_value_range ? input_info.high : 99;
+      FillRandomIntValues<int64_t>(t_data.data.i64, num_elements, low, high);
     } else if (t->type == kTfLiteInt32) {
       // TODO(yunluli): This is currently only used for handling embedding input
       // for speech models. Generalize if necessary.
       t_data.bytes = sizeof(int32_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      FillRandomValue<int32_t>(t_data.data.i32, num_elements, []() {
-        return static_cast<int32_t>(rand()) % 100;
-      });
+      int low = input_info.has_value_range ? input_info.low : 0;
+      int high = input_info.has_value_range ? input_info.high : 99;
+      FillRandomIntValues<int32_t>(t_data.data.i32, num_elements, low, high);
     } else if (t->type == kTfLiteInt16) {
       t_data.bytes = sizeof(int16_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      FillRandomValue<int16_t>(t_data.data.i16, num_elements, []() {
-        return static_cast<int16_t>(rand()) % 100;
-      });
+      int low = input_info.has_value_range ? input_info.low : 0;
+      int high = input_info.has_value_range ? input_info.high : 99;
+      FillRandomIntValues<int16_t>(t_data.data.i16, num_elements, low, high);
     } else if (t->type == kTfLiteUInt8) {
       t_data.bytes = sizeof(uint8_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      FillRandomValue<uint8_t>(t_data.data.uint8, num_elements, []() {
-        return static_cast<uint8_t>(rand()) % 255;
-      });
+      int low = input_info.has_value_range ? input_info.low : 0;
+      int high = input_info.has_value_range ? input_info.high : 254;
+      FillRandomIntValues<uint8_t>(t_data.data.uint8, num_elements, low, high);
     } else if (t->type == kTfLiteInt8) {
       t_data.bytes = sizeof(int8_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
-      FillRandomValue<int8_t>(t_data.data.int8, num_elements, []() {
-        return static_cast<int8_t>(rand()) % 255 - 127;
-      });
+      int low = input_info.has_value_range ? input_info.low : -127;
+      int high = input_info.has_value_range ? input_info.high : 127;
+      FillRandomIntValues<int8_t>(t_data.data.int8, num_elements, low, high);
     } else if (t->type == kTfLiteString) {
       // TODO(haoliang): No need to cache string tensors right now.
     } else {

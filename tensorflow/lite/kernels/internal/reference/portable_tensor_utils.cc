@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,17 +32,35 @@ limitations under the License.
 namespace tflite {
 namespace tensor_utils {
 
+namespace {
+const int32_t kInt16Max = std::numeric_limits<int16_t>::max();
+const int32_t kInt16Min = std::numeric_limits<int16_t>::min();
+}  // namespace
+
 float PortableClip(float f, float abs_limit) {
   float result = (abs_limit < f) ? abs_limit : f;
   result = (-abs_limit > result) ? -abs_limit : result;
   return result;
 }
 
-bool PortableIsZeroVector(const float* vector, int v_size) {
+template <typename T>
+bool PortableIsZeroVectorImpl(const T* vector, int v_size, T zero_value) {
   for (int i = 0; i < v_size; ++i) {
-    if (*vector++ != 0.0f) return false;
+    if (*vector++ != zero_value) {
+      return false;
+    }
   }
   return true;
+}
+
+bool PortableIsZeroVector(const float* vector, int v_size) {
+  static const float zero = 0.0f;
+  return PortableIsZeroVectorImpl(vector, v_size, zero);
+}
+
+bool PortableIsZeroVector(const int8_t* vector, int v_size) {
+  static const int8_t zero = 0;
+  return PortableIsZeroVectorImpl(vector, v_size, zero);
 }
 
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
@@ -232,8 +250,6 @@ void PortableApplyLayerNorm(const int16_t* input,
                             const int32_t* bias, int32_t layer_norm_scale_a,
                             int32_t layer_norm_scale_b, int32_t variance_limit,
                             int n_batch, int n_input, int16_t* output) {
-  const int32_t int16_max = std::numeric_limits<int16_t>::max();
-  const int32_t int16_min = std::numeric_limits<int16_t>::min();
   static const int kOverflowGuard = 1 << 20;
   for (int i = 0; i < n_batch; ++i) {
     int64_t sum = 0;
@@ -271,7 +287,7 @@ void PortableApplyLayerNorm(const int16_t* input,
           static_cast<int32>((val3 > 0 ? val3 + 512 : val3 - 512) / 1024);
       int32 val5 = MultiplyByQuantizedMultiplier(val4, layer_norm_scale_a,
                                                  layer_norm_scale_b + 12);
-      val5 = std::min(std::max(int16_min, val5), int16_max);
+      val5 = std::min(std::max(kInt16Min, val5), kInt16Max);
       output[index] = static_cast<int16_t>(val5);
     }
   }
@@ -281,9 +297,11 @@ void PortableMatrixScalarMultiplyAccumulate(const int8_t* matrix,
                                             int32_t scalar, int32_t n_row,
                                             int32_t n_col, int32_t* output) {
   for (int i = 0; i < n_row; ++i) {
+    int32_t row_sum = 0;
     for (int j = 0; j < n_col; ++j) {
-      output[i] += matrix[i * n_col + j] * scalar;
+      row_sum += *matrix++;
     }
+    output[i] += row_sum * scalar;
   }
 }
 
@@ -376,13 +394,11 @@ void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
 
 void PortableCwiseAdd(const int16_t* input_1, const int16_t* input_2,
                       int n_batch, int n_input, int16_t* output) {
-  const int32 int16_max = std::numeric_limits<int16>::max();
-  const int32 int16_min = std::numeric_limits<int16>::min();
   for (int batch = 0; batch < n_batch; ++batch) {
     for (int i = 0; i < n_input; ++i) {
       const int index = batch * n_input + i;
       int32_t sum = input_1[index] + input_2[index];
-      const int32 sum_clamped = std::min(int16_max, std::max(int16_min, sum));
+      const int32 sum_clamped = std::min(kInt16Max, std::max(kInt16Min, sum));
       output[index] = static_cast<int16_t>(sum_clamped);
     }
   }

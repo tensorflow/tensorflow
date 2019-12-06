@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +23,9 @@ import argparse
 import os
 import sys
 
+import six
+from six.moves import zip
+
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
@@ -32,13 +36,13 @@ from tensorflow.python.platform import app
 
 def _parse_array(values, type_fn=str):
   if values is not None:
-    return [type_fn(val) for val in values.split(",") if val]
+    return [type_fn(val) for val in six.ensure_str(values).split(",") if val]
   return None
 
 
 def _parse_set(values):
   if values is not None:
-    return set([item for item in values.split(",") if item])
+    return set([item for item in six.ensure_str(values).split(",") if item])
   return None
 
 
@@ -81,9 +85,9 @@ def _get_toco_converter(flags):
   if flags.input_shapes:
     input_shapes_list = [
         _parse_array(shape, type_fn=int)
-        for shape in flags.input_shapes.split(":")
+        for shape in six.ensure_str(flags.input_shapes).split(":")
     ]
-    input_shapes = dict(zip(input_arrays, input_shapes_list))
+    input_shapes = dict(list(zip(input_arrays, input_shapes_list)))
   output_arrays = _parse_array(flags.output_arrays)
 
   converter_kwargs = {
@@ -152,7 +156,7 @@ def _convert_tf1_model(flags):
                        "--std_dev_values and --mean_values with multiple input "
                        "tensors in order to map between names and "
                        "values.".format(",".join(input_arrays)))
-    converter.quantized_input_stats = dict(zip(input_arrays, quant_stats))
+    converter.quantized_input_stats = dict(list(zip(input_arrays, quant_stats)))
   if (flags.default_ranges_min is not None) and (flags.default_ranges_max is
                                                  not None):
     converter.default_ranges_stats = (flags.default_ranges_min,
@@ -171,7 +175,7 @@ def _convert_tf1_model(flags):
   if flags.target_ops:
     ops_set_options = lite.OpsSet.get_options()
     converter.target_spec.supported_ops = set()
-    for option in flags.target_ops.split(","):
+    for option in six.ensure_str(flags.target_ops).split(","):
       if option not in ops_set_options:
         raise ValueError("Invalid value for --target_ops. Options: "
                          "{0}".format(",".join(ops_set_options)))
@@ -201,7 +205,7 @@ def _convert_tf1_model(flags):
   # Convert model.
   output_data = converter.convert()
   with open(flags.output_file, "wb") as f:
-    f.write(output_data)
+    f.write(six.ensure_binary(output_data))
 
 
 def _convert_tf2_model(flags):
@@ -226,7 +230,7 @@ def _convert_tf2_model(flags):
   # Convert the model.
   tflite_model = converter.convert()
   with open(flags.output_file, "wb") as f:
-    f.write(tflite_model)
+    f.write(six.ensure_binary(tflite_model))
 
 
 def _check_tf1_flags(flags, unparsed):
@@ -245,7 +249,7 @@ def _check_tf1_flags(flags, unparsed):
 
   # Check unparsed flags for common mistakes based on previous TOCO.
   def _get_message_unparsed(flag, orig_flag, new_flag):
-    if flag.startswith(orig_flag):
+    if six.ensure_str(flag).startswith(orig_flag):
       return "\n  Use {0} instead of {1}".format(new_flag, orig_flag)
     return ""
 

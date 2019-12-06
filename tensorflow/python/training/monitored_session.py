@@ -332,7 +332,8 @@ def _create_monitored_session_with_worker_context(
     log_step_count_steps=100,
     max_wait_secs=7200,
     save_checkpoint_steps=None,
-    summary_dir=None):
+    summary_dir=None,
+    save_graph_def=True):
   all_hooks = []
   if hooks:
     all_hooks.extend(hooks)
@@ -406,14 +407,16 @@ def _create_monitored_session_with_worker_context(
                 checkpoint_dir,
                 save_steps=save_checkpoint_steps,
                 save_secs=save_checkpoint_secs,
-                scaffold=scaffold))
+                scaffold=scaffold,
+                save_graph_def=save_graph_def))
       elif tmpdir:
         all_hooks.append(
             basic_session_run_hooks.CheckpointSaverHook(
                 os.path.join(checkpoint_dir, tmpdir),
                 save_steps=save_checkpoint_steps,
                 save_secs=save_checkpoint_secs,
-                scaffold=scaffold))
+                scaffold=scaffold,
+                save_graph_def=save_graph_def))
 
   logging.info('all_hooks %r', all_hooks)
   session_creator = worker_context.session_creator(
@@ -443,7 +446,8 @@ def MonitoredTrainingSession(
     log_step_count_steps=100,
     max_wait_secs=7200,
     save_checkpoint_steps=USE_DEFAULT,
-    summary_dir=None):
+    summary_dir=None,
+    save_graph_def=True):
   """Creates a `MonitoredSession` for training.
 
   For a chief, this utility sets proper session initializer/restorer. It also
@@ -497,6 +501,10 @@ def MonitoredTrainingSession(
       `save_checkpoint_secs` is used. Default not enabled.
     summary_dir: A string.  Optional path to a directory where to save
       summaries. If None, checkpoint_dir is used instead.
+    save_graph_def: Whether to save the GraphDef and MetaGraphDef to
+      `checkpoint_dir`. The GraphDef is saved after the session is created as
+      `graph.pbtxt`. MetaGraphDefs are saved out for every checkpoint as
+      `model.ckpt-*.meta`.
 
   Returns:
     A `MonitoredSession` object.
@@ -536,7 +544,8 @@ def MonitoredTrainingSession(
         log_step_count_steps=log_step_count_steps,
         max_wait_secs=max_wait_secs,
         save_checkpoint_steps=save_checkpoint_steps,
-        summary_dir=summary_dir)
+        summary_dir=summary_dir,
+        save_graph_def=save_graph_def)
 
   if not is_chief:
     session_creator = WorkerSessionCreator(
@@ -584,7 +593,8 @@ def MonitoredTrainingSession(
               checkpoint_dir,
               save_steps=save_checkpoint_steps,
               save_secs=save_checkpoint_secs,
-              scaffold=scaffold))
+              scaffold=scaffold,
+              save_graph_def=save_graph_def))
 
   if hooks:
     all_hooks.extend(hooks)

@@ -92,7 +92,7 @@ std::vector<ComputeTaskDescriptorPtr> Upsample(
              output_dimension.w,
              output_dimension.h,
          };
-         return VectorToUint8Vector(sizes);
+         return GetByteBuffer(sizes);
        }},
       {"constant float2& scale",
        [input_id, output_id, attr](const std::map<ValueId, BHWC>& buffers) {
@@ -104,7 +104,7 @@ std::vector<ComputeTaskDescriptorPtr> Upsample(
              CalculateResizeScale(input_dimensions.h, output_dimensions.h,
                                   attr),
          };
-         return VectorToUint8Vector(sizes);
+         return GetByteBuffer(sizes);
        }},
   };
 

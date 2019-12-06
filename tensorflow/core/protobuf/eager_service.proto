@@ -133,7 +133,10 @@ message KeepAliveRequest {
   fixed64 context_id = 1;
 }
 
-message KeepAliveResponse {}
+message KeepAliveResponse {
+  // If the requested context_id is on the remote host, set the context view ID.
+  fixed64 context_view_id = 1;
+}
 
 message CloseContextRequest {
   fixed64 context_id = 1;
@@ -210,7 +213,11 @@ service EagerService {
 
   // Contexts are always created with a deadline and no RPCs within a deadline
   // will trigger a context garbage collection. KeepAlive calls can be used to
-  // delay this.
+  // delay this. It can also be used to validate the existance of a context ID
+  // on remote eager worker. If the context is on remote worker, return the same
+  // ID and the current context view ID. This is useful for checking if the
+  // remote worker (potentially with the same task name and hostname / port) is
+  // replaced with a new process.
   rpc KeepAlive(KeepAliveRequest) returns (KeepAliveResponse);
 
   // Closes the context. No calls to other methods using the existing context ID

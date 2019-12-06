@@ -173,6 +173,9 @@ private:
   /// Gets type for a given result <id>.
   Type getType(uint32_t id) { return typeMap.lookup(id); }
 
+  /// Get the type associated with the result <id> of an OpUndef.
+  Type getUndefType(uint32_t id) { return undefMap.lookup(id); }
+
   /// Returns true if the given `type` is for SPIR-V void type.
   bool isVoidType(Type type) const { return type.isa<NoneType>(); }
 
@@ -306,6 +309,13 @@ private:
                                    ArrayRef<uint32_t> operands,
                                    bool deferInstructions = true);
 
+  /// Processes a OpUndef instruction. Adds a spv.Undef operation at the current
+  /// insertion point.
+  LogicalResult processUndef(ArrayRef<uint32_t> operands);
+
+  /// Processes an OpBitcast instruction.
+  LogicalResult processBitcast(ArrayRef<uint32_t> words);
+
   /// Method to dispatch to the specialized deserialization function for an
   /// operation in SPIR-V dialect that is a mirror of an instruction in the
   /// SPIR-V spec. This is auto-generated from ODS. Dispatch is handled for
@@ -395,6 +405,9 @@ private:
 
   // Result <id> to value mapping.
   DenseMap<uint32_t, Value *> valueMap;
+
+  // Mapping from result <id> to undef value of a type.
+  DenseMap<uint32_t, Type> undefMap;
 
   // Result <id> to name mapping.
   DenseMap<uint32_t, StringRef> nameMap;
@@ -785,8 +798,9 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
     return failure();
   }
   if (opcode == spirv::Opcode::OpFunctionEnd) {
-    LLVM_DEBUG(llvm::dbgs() << "[fn] completed function " << fnName << " (type="
-                            << fnType << ", id=" << operands[1] << ")\n");
+    LLVM_DEBUG(llvm::dbgs()
+               << "[fn] completed function '" << fnName << "' (type=" << fnType
+               << ", id=" << operands[1] << ")\n");
     return processFunctionEnd(instOperands);
   }
   if (opcode != spirv::Opcode::OpLabel) {
@@ -813,7 +827,7 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
     return failure();
   }
 
-  LLVM_DEBUG(llvm::dbgs() << "[fn] completed function " << fnName << " (type="
+  LLVM_DEBUG(llvm::dbgs() << "[fn] completed function '" << fnName << "' (type="
                           << fnType << ", id=" << operands[1] << ")\n");
   return processFunctionEnd(instOperands);
 }
@@ -1641,8 +1655,8 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
   Region &body = op->getRegion(0);
 
   BlockAndValueMapping mapper;
-  // All references to the old merge block should be directed to the loop
-  // merge block in the LoopOp's region.
+  // All references to the old merge block should be directed to the
+  // selection/loop merge block in the SelectionOp/LoopOp's region.
   mapper.map(mergeBlock, &body.back());
 
   collectBlocksInConstruct();
@@ -1673,13 +1687,12 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
   // block in this loop construct.
   OpBuilder builder(body);
   for (auto *block : constructBlocks) {
-    assert(block->getNumArguments() == 0 &&
-           "block in loop construct should not have arguments");
-
-    // Create an block and insert it before the loop merge block in the
-    // LoopOp's region.
+    // Create a block and insert it before the selection/loop merge block in the
+    // SelectionOp/LoopOp's region.
     auto *newBlock = builder.createBlock(&body.back());
     mapper.map(block, newBlock);
+    LLVM_DEBUG(llvm::dbgs() << "[cf] cloned block " << newBlock
+                            << " from block " << block << "\n");
 
     for (auto &op : *block)
       newBlock->push_back(op.clone(mapper));
@@ -1714,15 +1727,38 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
   }
 
   // All the blocks cloned into the SelectionOp/LoopOp's region can now be
-  // deleted.
+  // cleaned up.
+  LLVM_DEBUG(llvm::dbgs() << "[cf] cleaning up blocks after clone\n");
+  // First we need to drop all uses on ops inside all blocks. This is needed
+  // because we can have blocks referencing SSA values from one another.
   for (auto *block : constructBlocks)
-    block->erase();
+    block->dropAllReferences();
+
+  // Then erase all blocks except the old header block.
+  for (auto *block : constructBlocks) {
+    // The structured selection/loop's entry block does not have arguments.
+    // If the function's header block is also part of the structured control
+    // flow, we cannot just simply erase it because it may contain arguments
+    // matching the function signature and used by the cloned blocks.
+    if (block->isEntryBlock() && isa<FuncOp>(block->getParentOp())) {
+      LLVM_DEBUG(llvm::dbgs() << "[cf] changing entry block " << block
+                              << " to only contain a spv.Branch op\n");
+      // Still keep the function entry block for the potential block arguments,
+      // but replace all ops inside with a branch to the merge block.
+      block->clear();
+      builder.setInsertionPointToEnd(block);
+      builder.create<spirv::BranchOp>(location, mergeBlock);
+    } else {
+      LLVM_DEBUG(llvm::dbgs() << "[cf] erasing block " << block << "\n");
+      block->erase();
+    }
+  }
 
   return success();
 }
 
 LogicalResult Deserializer::structurizeControlFlow() {
-  LLVM_DEBUG(llvm::dbgs() << "[cf] structurizing control flow\n");
+  LLVM_DEBUG(llvm::dbgs() << "[cf] start structurizing control flow\n");
 
   while (!blockMergeInfo.empty()) {
     auto *headerBlock = blockMergeInfo.begin()->first;
@@ -1771,6 +1807,9 @@ Value *Deserializer::getValue(uint32_t id) {
         opBuilder.getSymbolRefAttr(constOp.getOperation()));
     return referenceOfOp.reference();
   }
+  if (auto undef = getUndefType(id)) {
+    return opBuilder.create<spirv::UndefOp>(unknownLoc, undef);
+  }
   return valueMap.lookup(id);
 }
 
@@ -1813,6 +1852,8 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
   // First dispatch all the instructions whose opcode does not correspond to
   // those that have a direct mirror in the SPIR-V dialect
   switch (opcode) {
+  case spirv::Opcode::OpBitcast:
+    return processBitcast(operands);
   case spirv::Opcode::OpCapability:
     return processCapability(operands);
   case spirv::Opcode::OpExtension:
@@ -1890,10 +1931,94 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
     return processSelectionMerge(operands);
   case spirv::Opcode::OpLoopMerge:
     return processLoopMerge(operands);
+  case spirv::Opcode::OpUndef:
+    return processUndef(operands);
   default:
     break;
   }
   return dispatchToAutogenDeserialization(opcode, operands);
+}
+
+LogicalResult Deserializer::processUndef(ArrayRef<uint32_t> operands) {
+  if (operands.size() != 2) {
+    return emitError(unknownLoc, "OpUndef instruction must have two operands");
+  }
+  auto type = getType(operands[0]);
+  if (!type) {
+    return emitError(unknownLoc, "unknown type <id> with OpUndef instruction");
+  }
+  undefMap[operands[1]] = type;
+  return success();
+}
+
+// TODO(b/130356985): This method is copied from the auto-generated
+// deserialization function for OpBitcast instruction. This is to avoid
+// generating a Bitcast operations for cast from signed integer to unsigned
+// integer and viceversa. MLIR doesn't have native support for this so they both
+// end up mapping to the same type right now which is illegal according to
+// OpBitcast semantics (and enforced by the SPIR-V dialect).
+LogicalResult Deserializer::processBitcast(ArrayRef<uint32_t> words) {
+  SmallVector<Type, 1> resultTypes;
+  size_t wordIndex = 0;
+  (void)wordIndex;
+  uint32_t valueID = 0;
+  (void)valueID;
+  {
+    if (wordIndex >= words.size()) {
+      return emitError(
+          unknownLoc,
+          "expected result type <id> while deserializing spirv::BitcastOp");
+    }
+    auto ty = getType(words[wordIndex]);
+    if (!ty) {
+      return emitError(unknownLoc, "unknown type result <id> : ")
+             << words[wordIndex];
+    }
+    resultTypes.push_back(ty);
+    wordIndex++;
+    if (wordIndex >= words.size()) {
+      return emitError(
+          unknownLoc,
+          "expected result <id> while deserializing spirv::BitcastOp");
+    }
+  }
+  valueID = words[wordIndex++];
+  SmallVector<Value *, 4> operands;
+  SmallVector<NamedAttribute, 4> attributes;
+  if (wordIndex < words.size()) {
+    auto arg = getValue(words[wordIndex]);
+    if (!arg) {
+      return emitError(unknownLoc, "unknown result <id> : ")
+             << words[wordIndex];
+    }
+    operands.push_back(arg);
+    wordIndex++;
+  }
+  if (wordIndex != words.size()) {
+    return emitError(unknownLoc,
+                     "found more operands than expected when deserializing "
+                     "spirv::BitcastOp, only ")
+           << wordIndex << " of " << words.size() << " processed";
+  }
+  if (resultTypes[0] == operands[0]->getType() &&
+      resultTypes[0].isa<IntegerType>()) {
+    // TODO(b/130356985): This check is added to ignore error in Op verification
+    // due to both signed and unsigned integers mapping to the same
+    // type. Without this check this method is same as what is auto-generated.
+    valueMap[valueID] = operands[0];
+    return success();
+  }
+
+  auto op = opBuilder.create<spirv::BitcastOp>(unknownLoc, resultTypes,
+                                               operands, attributes);
+  (void)op;
+  valueMap[valueID] = op.getResult();
+
+  if (decorations.count(valueID)) {
+    auto attrs = decorations[valueID].getAttrs();
+    attributes.append(attrs.begin(), attrs.end());
+  }
+  return success();
 }
 
 LogicalResult Deserializer::processExtInst(ArrayRef<uint32_t> operands) {
