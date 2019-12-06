@@ -1124,6 +1124,55 @@ TEST_F(QuantizeCustomOpTest, VerifyMixedQuantization) {
   }
 }
 
+class QuantizeUnpackTest : public QuantizeModelTest {
+ protected:
+  QuantizeUnpackTest() {
+    input_model_ = ReadModel(internal::kModelWithUnpack);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizeUnpackTest, VerifyUnpack) {
+  auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
+
+  ASSERT_EQ(kTfLiteOk, status);
+
+  const auto subgraph = model_.subgraphs[0].get();
+  auto op = subgraph->operators[1].get();
+
+  auto float_graph = readonly_model_->subgraphs()->Get(0);
+
+  ASSERT_EQ(model_.operator_codes[op->opcode_index].get()->builtin_code,
+            BuiltinOperator_UNPACK);
+
+  // Get unpack input and output tensors
+  auto unpack_input = subgraph->tensors[op->inputs[0]].get();
+  auto unpack_output_0 = subgraph->tensors[op->outputs[0]].get();
+  auto unpack_output_1 = subgraph->tensors[op->outputs[1]].get();
+
+  // Verify Unpack input is quantized.
+  ASSERT_EQ(float_graph->tensors()->Get(op->inputs[0])->type(),
+            TensorType_FLOAT32);
+  EXPECT_EQ(unpack_input->type, TensorType_INT8);
+
+  // The model should only have one input and 2 outputs.
+  EXPECT_EQ(subgraph->inputs.size(), 1);
+  EXPECT_EQ(subgraph->outputs.size(), 2);
+
+  // Ensure quantization parameters before and after unpack
+  // are preserved after quantization for all outputs of
+  // unpack.
+  EXPECT_FLOAT_EQ(unpack_input->quantization->scale[0],
+                  unpack_output_0->quantization->scale[0]);
+  EXPECT_FLOAT_EQ(unpack_input->quantization->scale[0],
+                  unpack_output_1->quantization->scale[0]);
+  EXPECT_FLOAT_EQ(unpack_input->quantization->zero_point[0],
+                  unpack_output_0->quantization->zero_point[0]);
+  EXPECT_FLOAT_EQ(unpack_input->quantization->zero_point[0],
+                  unpack_output_1->quantization->zero_point[0]);
+}
+
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite

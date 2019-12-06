@@ -11,7 +11,7 @@ cc_library(
     hdrs = ["numpy.h"],
     deps = [
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
     ],
@@ -27,7 +27,7 @@ cc_library(
         ":python_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
         "//third_party/python_runtime:headers",

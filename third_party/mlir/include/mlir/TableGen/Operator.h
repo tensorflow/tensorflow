@@ -103,6 +103,7 @@ public:
   llvm::iterator_range<attribute_iterator> getAttributes() const;
 
   int getNumAttributes() const { return attributes.size(); }
+  int getNumNativeAttributes() const { return numNativeAttributes; }
 
   // Op attribute accessors.
   NamedAttribute &getAttribute(int index) { return attributes[index]; }
@@ -136,10 +137,10 @@ public:
   Argument getArg(int index) const;
   StringRef getArgName(int index) const;
 
-  // Returns true if this op has the given MLIR C++ `trait`.
+  // Returns the trait wrapper for the given MLIR C++ `trait`.
   // TODO: We should add a C++ wrapper class for TableGen OpTrait instead of
   // requiring the raw MLIR trait here.
-  bool hasTrait(llvm::StringRef trait) const;
+  const OpTrait *getTrait(llvm::StringRef trait) const;
 
   // Returns the number of regions.
   unsigned getNumRegions() const;

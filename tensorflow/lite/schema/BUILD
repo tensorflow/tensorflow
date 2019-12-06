@@ -54,6 +54,7 @@ py_test(
 )
 
 exports_files([
+    "schema.fbs",
     "schema_v0.fbs",
     "schema_v1.fbs",
     "schema_v2.fbs",
@@ -88,12 +89,6 @@ flatbuffer_cc_library(
         "--gen-object-api",
     ],
     out_prefix = "reflection/",
-)
-
-# Generic schema for model metadata.
-flatbuffer_cc_library(
-    name = "metadata_schema_fbs",
-    srcs = ["metadata_schema.fbs"],
 )
 
 # Schema test to make sure we don't introduce backward incompatible changes

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/resource/static_hashtable.h"
 
+#include <memory>
 #include "tensorflow/lite/experimental/resource/lookup_interfaces.h"
 
 namespace tflite {
@@ -25,7 +26,11 @@ template <typename KeyType, typename ValueType>
 TfLiteStatus StaticHashtable<KeyType, ValueType>::Lookup(
     TfLiteContext* context, const TfLiteTensor* keys, TfLiteTensor* values,
     const TfLiteTensor* default_value) {
-  TF_LITE_ENSURE(context, is_initialized_);
+  if (!is_initialized_) {
+    context->ReportError(context,
+                         "hashtable need to be initialized before using");
+    return kTfLiteError;
+  }
   const int size =
       MatchingFlatSize(GetTensorShape(keys), GetTensorShape(values));
 
@@ -80,7 +85,7 @@ LookupInterface* CreateStaticHashtableWithGivenKey(TfLiteType key_type,
                                                    TfLiteType value_type) {
   switch (value_type) {
     case kTfLiteInt32:
-      return new StaticHashtable<KeyType, int32>(key_type, value_type);
+      return new StaticHashtable<KeyType, std::int32_t>(key_type, value_type);
     case kTfLiteString:
       return new StaticHashtable<KeyType, std::string>(key_type, value_type);
     case kTfLiteFloat32:
@@ -94,7 +99,8 @@ LookupInterface* CreateStaticHashtable(TfLiteType key_type,
                                        TfLiteType value_type) {
   switch (key_type) {
     case kTfLiteInt32:
-      return CreateStaticHashtableWithGivenKey<int32>(key_type, value_type);
+      return CreateStaticHashtableWithGivenKey<std::int32_t>(key_type,
+                                                             value_type);
     case kTfLiteString:
       return CreateStaticHashtableWithGivenKey<std::string>(key_type,
                                                             value_type);
@@ -112,9 +118,8 @@ void CreateHashtableResourceIfNotAvailable(ResourceMap* resources,
   if (resources->count(resource_id) != 0) {
     return;
   }
-  resources->emplace(resource_id,
-                     tflite::resource::internal::CreateStaticHashtable(
-                         key_dtype, value_dtype));
+  auto* hashtable = internal::CreateStaticHashtable(key_dtype, value_dtype);
+  resources->emplace(resource_id, std::unique_ptr<LookupInterface>(hashtable));
 }
 
 LookupInterface* GetHashtableResource(ResourceMap* resources, int resource_id) {

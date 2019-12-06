@@ -24,6 +24,7 @@ package_group(
         "//learning/brain/research/sair/...",
         "//learning/brain/swift/swift_mlir/...",
         "//learning/glassbox/evaluation/compiler/...",
+        "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt_delegate/...",
         "//tensorflow/lite/experimental/tf_runtime/...",
         "//third_party/tf_runtime_google/...",
@@ -78,7 +79,7 @@ cc_library(
         "lib/IR/Diagnostics.cpp",
         "lib/IR/Dialect.cpp",
         "lib/IR/Function.cpp",
-        "lib/IR/FunctionSupport.cpp",
+        "lib/IR/FunctionImplementation.cpp",
         "lib/IR/IntegerSet.cpp",
         "lib/IR/IntegerSetDetail.h",
         "lib/IR/Location.cpp",
@@ -113,6 +114,7 @@ cc_library(
         "include/mlir/IR/DialectImplementation.h",
         "include/mlir/IR/DialectInterface.h",
         "include/mlir/IR/Function.h",
+        "include/mlir/IR/FunctionImplementation.h",
         "include/mlir/IR/FunctionSupport.h",
         "include/mlir/IR/Identifier.h",
         "include/mlir/IR/IntegerSet.h",
@@ -156,6 +158,7 @@ cc_library(
         "lib/Pass/PassDetail.h",
         "lib/Pass/PassManagerOptions.cpp",
         "lib/Pass/PassRegistry.cpp",
+        "lib/Pass/PassStatistics.cpp",
         "lib/Pass/PassTiming.cpp",
     ],
     hdrs = [
@@ -194,13 +197,11 @@ cc_library(
     includes = ["include"],
     deps = [
         ":AffineOps",
-        ":Analysis",
         ":IR",
         ":LoopOps",
         ":StandardOps",
         ":Support",
         ":TransformUtils",
-        ":VectorOps",
         "@llvm//:support",
     ],
 )
@@ -473,15 +474,22 @@ cc_library(
     name = "VectorOps",
     srcs = [
         "lib/Dialect/VectorOps/VectorOps.cpp",
+        "lib/Dialect/VectorOps/VectorToVector.cpp",
     ],
     hdrs = [
+        "include/mlir/Dialect/VectorOps/Utils.h",
         "include/mlir/Dialect/VectorOps/VectorOps.h",
+        "include/mlir/Dialect/VectorOps/VectorTransforms.h",
     ],
     includes = ["include"],
     deps = [
+        ":EDSC",
         ":IR",
+        ":StandardOps",
         ":Support",
         ":VectorOpsIncGen",
+        ":VectorTransformPatterns",
+        "@llvm//:support",
     ],
 )
 
@@ -755,6 +763,7 @@ cc_library(
         ":SPIRVDialect",
         ":SPIRVLowering",
         ":StandardToSPIRVConversions",
+        ":Support",
         ":Transforms",
     ],
     alwayslink = 1,
@@ -943,12 +952,16 @@ filegroup(
     srcs = [
         "include/mlir/Analysis/CallInterfaces.td",
         "include/mlir/Dialect/SPIRV/SPIRVArithmeticOps.td",
+        "include/mlir/Dialect/SPIRV/SPIRVAtomicOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVBase.td",
         "include/mlir/Dialect/SPIRV/SPIRVBitOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVCastOps.td",
+        "include/mlir/Dialect/SPIRV/SPIRVCompositeOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVControlFlowOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.td",
+        "include/mlir/Dialect/SPIRV/SPIRVGroupOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVLogicalOps.td",
+        "include/mlir/Dialect/SPIRV/SPIRVNonUniformOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVStructureOps.td",
         ":OpBaseTdFiles",
@@ -988,6 +1001,23 @@ gentbl(
 )
 
 gentbl(
+    name = "SPIRVCanonicalizationIncGen",
+    strip_include_prefix = "lib/Dialect/SPIRV",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/Dialect/SPIRV/SPIRVCanonicalization.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "lib/Dialect/SPIRV/SPIRVCanonicalization.td",
+    td_srcs = [
+        ":SPIRVOpsTdFiles",
+        "lib/Dialect/SPIRV/SPIRVCanonicalization.td",
+    ],
+)
+
+gentbl(
     name = "StandardToSPIRVGen",
     strip_include_prefix = "lib/Conversion/StandardToSPIRV",
     tbl_outs = [
@@ -998,6 +1028,26 @@ gentbl(
     ],
     tblgen = ":mlir-tblgen",
     td_file = "lib/Conversion/StandardToSPIRV/StandardToSPIRV.td",
+    td_srcs = [
+        ":SPIRVOpsTdFiles",
+        ":StdOpsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "SPIRVLoweringStructGen",
+    tbl_outs = [
+        (
+            "-gen-struct-attr-decls",
+            "include/mlir/Dialect/SPIRV/SPIRVLowering.h.inc",
+        ),
+        (
+            "-gen-struct-attr-defs",
+            "include/mlir/Dialect/SPIRV/SPIRVLowering.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/SPIRV/SPIRVLowering.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
         ":StdOpsTdFiles",
@@ -1055,6 +1105,7 @@ cc_library(
     deps = [
         ":IR",
         ":Parser",
+        ":SPIRVCanonicalizationIncGen",
         ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
         ":Support",
@@ -1064,28 +1115,14 @@ cc_library(
 )
 
 cc_library(
-    name = "SPIRVTransforms",
-    srcs = [
-        "lib/Dialect/SPIRV/Transforms/DecorateSPIRVCompositeTypeLayoutPass.cpp",
-    ],
-    hdrs = [
-        "include/mlir/Dialect/SPIRV/Passes.h",
-    ],
-    includes = ["include"],
-    deps = [
-        ":Pass",
-        ":SPIRVDialect",
-        ":Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "SPIRVLowering",
     srcs = [
         "lib/Dialect/SPIRV/SPIRVLowering.cpp",
+        "lib/Dialect/SPIRV/Transforms/DecorateSPIRVCompositeTypeLayoutPass.cpp",
+        "lib/Dialect/SPIRV/Transforms/LowerABIAttributesPass.cpp",
     ],
     hdrs = [
+        "include/mlir/Dialect/SPIRV/Passes.h",
         "include/mlir/Dialect/SPIRV/SPIRVLowering.h",
     ],
     includes = [
@@ -1093,7 +1130,10 @@ cc_library(
     ],
     deps = [
         ":IR",
+        ":Pass",
         ":SPIRVDialect",
+        ":SPIRVLoweringStructGen",
+        ":StandardOps",
         ":Support",
         ":Transforms",
         "@llvm//:support",
@@ -1106,6 +1146,7 @@ cc_library(
     srcs = [
         "lib/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.cpp",
         "lib/Conversion/StandardToSPIRV/ConvertStandardToSPIRVPass.cpp",
+        "lib/Conversion/StandardToSPIRV/LegalizeStandardForSPIRV.cpp",
     ],
     hdrs = [
         "include/mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.h",
@@ -1245,7 +1286,6 @@ cc_library(
         "lib/Transforms/LoopTiling.cpp",
         "lib/Transforms/LoopUnroll.cpp",
         "lib/Transforms/LoopUnrollAndJam.cpp",
-        "lib/Transforms/MaterializeVectors.cpp",
         "lib/Transforms/MemRefDataFlowOpt.cpp",
         "lib/Transforms/PipelineDataTransfer.cpp",
         "lib/Transforms/SimplifyAffineStructures.cpp",
@@ -1269,6 +1309,7 @@ cc_library(
         ":StandardOps",
         ":Support",
         ":TransformUtils",
+        ":VectorAnalysis",
         ":VectorOps",
         "@llvm//:support",
     ],
@@ -1423,7 +1464,6 @@ cc_library(
         "lib/Analysis/TestMemRefDependenceCheck.cpp",
         "lib/Analysis/TestParallelismDetection.cpp",
         "lib/Analysis/Utils.cpp",
-        "lib/Analysis/VectorAnalysis.cpp",
         "lib/Analysis/Verifier.cpp",
     ],
     hdrs = [
@@ -1438,7 +1478,6 @@ cc_library(
         "include/mlir/Analysis/Passes.h",
         "include/mlir/Analysis/SliceAnalysis.h",
         "include/mlir/Analysis/Utils.h",
-        "include/mlir/Analysis/VectorAnalysis.h",
         "include/mlir/Analysis/Verifier.h",
     ],
     includes = ["include"],
@@ -1449,6 +1488,23 @@ cc_library(
         ":InferTypeOpInterfaceIncGen",
         ":LoopOps",
         ":Pass",
+        ":StandardOps",
+        ":Support",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "VectorAnalysis",
+    srcs = [
+        "lib/Analysis/VectorAnalysis.cpp",
+    ],
+    includes = ["include"],
+    deps = [
+        ":AffineOps",
+        ":Analysis",
+        ":IR",
         ":StandardOps",
         ":Support",
         ":VectorOps",
@@ -1633,11 +1689,11 @@ cc_library(
         ":Pass",
         ":QuantizerTransforms",
         ":SPIRVDialectRegistration",
-        ":SPIRVTransforms",
         ":StandardToSPIRVConversions",
         ":Support",
         ":Transforms",
-        ":VectorConversions",
+        ":VectorToLLVM",
+        ":VectorToLoops",
         ":ViewOpGraph",
         ":ViewRegionGraph",
         "@llvm//:support",
@@ -2170,7 +2226,7 @@ cc_library(
         ":StandardOps",
         ":Support",
         ":Transforms",
-        ":VectorConversions",
+        ":VectorToLLVM",
         "@llvm//:core",
         "@llvm//:support",
     ],
@@ -2184,8 +2240,8 @@ cc_library(
         "lib/Dialect/Linalg/IR/LinalgOps.cpp",
         "lib/Dialect/Linalg/IR/LinalgTypes.cpp",
         "lib/Dialect/Linalg/Transforms/Fusion.cpp",
+        "lib/Dialect/Linalg/Transforms/LinalgToLoops.cpp",
         "lib/Dialect/Linalg/Transforms/LinalgTransforms.cpp",
-        "lib/Dialect/Linalg/Transforms/LowerToLoops.cpp",
         "lib/Dialect/Linalg/Transforms/Promotion.cpp",
         "lib/Dialect/Linalg/Transforms/Tiling.cpp",
         "lib/Dialect/Linalg/Utils/Utils.cpp",
@@ -2340,18 +2396,15 @@ gentbl(
 )
 
 cc_library(
-    name = "VectorConversions",
+    name = "VectorToLLVM",
     srcs = [
-        "lib/Conversion/VectorConversions/VectorToLLVM.cpp",
-        "lib/Conversion/VectorConversions/VectorToLoops.cpp",
-        "lib/Conversion/VectorConversions/VectorToVector.cpp",  # TODO(transforms?)
+        "lib/Conversion/VectorToLLVM/ConvertVectorToLLVM.cpp",
     ],
     hdrs = [
-        "include/mlir/Conversion/VectorConversions/VectorConversions.h",
+        "include/mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h",
     ],
     includes = ["include"],
     deps = [
-        ":Analysis",
         ":EDSC",
         ":IR",
         ":LLVMDialect",
@@ -2361,7 +2414,31 @@ cc_library(
         ":Support",
         ":Transforms",
         ":VectorOps",
-        ":VectorTransformPatterns",
+        "@llvm//:core",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "VectorToLoops",
+    srcs = [
+        "lib/Conversion/VectorToLoops/ConvertVectorToLoops.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Conversion/VectorToLoops/ConvertVectorToLoops.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":EDSC",
+        ":IR",
+        ":LLVMDialect",
+        ":LLVMTransforms",
+        ":Pass",
+        ":StandardOps",
+        ":Support",
+        ":Transforms",
+        ":VectorOps",
         "@llvm//:core",
         "@llvm//:support",
     ],

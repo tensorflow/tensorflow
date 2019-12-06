@@ -34,6 +34,9 @@ class Type;
 } // namespace llvm
 
 namespace mlir {
+
+class UnrankedMemRefType;
+
 namespace LLVM {
 class LLVMDialect;
 class LLVMType;
@@ -116,6 +119,10 @@ private:
   //   2. as many index types as memref has dynamic dimensions.
   Type convertMemRefType(MemRefType type);
 
+  // Convert an unranked memref type to an LLVM type that captures the
+  // runtime rank and a pointer to the static ranked memref desc
+  Type convertUnrankedMemRefType(UnrankedMemRefType type);
+
   // Convert a 1D vector type into an LLVM vector type.
   Type convertVectorType(VectorType type);
 
@@ -128,9 +135,33 @@ private:
 };
 
 /// Helper class to produce LLVM dialect operations extracting or inserting
+/// values to a struct.
+class StructBuilder {
+public:
+  /// Construct a helper for the given value.
+  explicit StructBuilder(Value *v);
+  /// Builds IR creating an `undef` value of the descriptor type.
+  static StructBuilder undef(OpBuilder &builder, Location loc,
+                             Type descriptorType);
+
+  /*implicit*/ operator Value *() { return value; }
+
+protected:
+  // LLVM value
+  Value *value;
+  // Cached struct type.
+  Type structType;
+
+protected:
+  /// Builds IR to extract a value from the struct at position pos
+  Value *extractPtr(OpBuilder &builder, Location loc, unsigned pos);
+  /// Builds IR to set a value in the struct at position pos
+  void setPtr(OpBuilder &builder, Location loc, unsigned pos, Value *ptr);
+};
+/// Helper class to produce LLVM dialect operations extracting or inserting
 /// elements of a MemRef descriptor. Wraps a Value pointing to the descriptor.
 /// The Value may be null, in which case none of the operations are valid.
-class MemRefDescriptor {
+class MemRefDescriptor : public StructBuilder {
 public:
   /// Construct a helper for the given descriptor value.
   explicit MemRefDescriptor(Value *descriptor);
@@ -169,22 +200,28 @@ public:
   /// Returns the (LLVM) type this descriptor points to.
   LLVM::LLVMType getElementType();
 
-  /*implicit*/ operator Value *() { return value; }
-
 private:
-  Value *extractPtr(OpBuilder &builder, Location loc, unsigned pos);
-  void setPtr(OpBuilder &builder, Location loc, unsigned pos, Value *ptr);
-
-  // Cached descriptor type.
-  Type structType;
-
   // Cached index type.
   Type indexType;
-
-  // Actual descriptor.
-  Value *value;
 };
 
+class UnrankedMemRefDescriptor : public StructBuilder {
+public:
+  /// Construct a helper for the given descriptor value.
+  explicit UnrankedMemRefDescriptor(Value *descriptor);
+  /// Builds IR creating an `undef` value of the descriptor type.
+  static UnrankedMemRefDescriptor undef(OpBuilder &builder, Location loc,
+                                        Type descriptorType);
+
+  /// Builds IR extracting the rank from the descriptor
+  Value *rank(OpBuilder &builder, Location loc);
+  /// Builds IR setting the rank in the descriptor
+  void setRank(OpBuilder &builder, Location loc, Value *value);
+  /// Builds IR extracting ranked memref descriptor ptr
+  Value *memRefDescPtr(OpBuilder &builder, Location loc);
+  /// Builds IR setting ranked memref descriptor ptr
+  void setMemRefDescPtr(OpBuilder &builder, Location loc, Value *value);
+};
 /// Base class for operation conversions targeting the LLVM IR dialect. Provides
 /// conversion patterns with an access to the containing LLVMLowering for the
 /// purpose of type conversions.

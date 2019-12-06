@@ -90,8 +90,8 @@ def : Pat<(TF_SquaredDifferenceOp ComplexTensor: $lhs, ComplexTensor:$rhs),
 
 class BinaryNoNanPat<Op FromOp, Op ToOp>
   : Pat<(FromOp $l, $r),
-        (TF_SelectV2Op
-	   (TF_EqualOp $r, (TF_ConstOp:$zero (GetScalarOfType<0> $r)),
+        (TF_SelectV2Op (TF_EqualOp $r,
+                                   (TF_ConstOp:$zero (GetScalarOfType<0> $r)),
                        /*incompatible_shape_error*/ConstBoolAttrTrue),
            $zero, (ToOp $l, $r))>;
 
@@ -134,6 +134,17 @@ def LowerL2LossOp :
 def : Pat<(TF_PadOp TensorOf<[AnyInteger, AnyFloat]>:$input, $paddings),
           (TF_PadV2Op $input, $paddings,
              (TF_ConstOp (GetScalarOfType<0> $input)))>;
+
+//===----------------------------------------------------------------------===//
+// Rsqrt op patterns.
+//===----------------------------------------------------------------------===//
+
+// RsqrtGrad(lhs, rhs) = (lhs * lhs * lhs) * (rhs / -2)
+def : Pat<(TF_RsqrtGradOp $lhs, $rhs),
+          (TF_MulOp (TF_MulOp (TF_MulOp $lhs, $lhs), $lhs),
+                    (TF_DivOp $rhs,
+                              (TF_ConstOp (GetScalarOfType<-2> $rhs))))>;
+
 
 //===----------------------------------------------------------------------===//
 // TanhGrad op patterns.

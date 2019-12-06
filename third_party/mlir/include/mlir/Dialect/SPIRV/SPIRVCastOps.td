@@ -23,9 +23,7 @@
 #ifndef SPIRV_CAST_OPS
 #define SPIRV_CAST_OPS
 
-#ifndef SPIRV_BASE
-include "mlir/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
+include "mlir/Dialect/SPIRV/SPIRVBase.td"
 
 class SPV_CastOp<string mnemonic, Type resultType, Type operandType,
                  list<OpTrait> traits = []> :

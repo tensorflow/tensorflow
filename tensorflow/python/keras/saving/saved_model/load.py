@@ -57,7 +57,7 @@ training_lib = LazyLoader(
     "training_lib", globals(),
     "tensorflow.python.keras.engine.training")
 training_lib_v1 = LazyLoader(
-    "training_lib", globals(),
+    "training_lib_v1", globals(),
     "tensorflow.python.keras.engine.training_v1")
 # pylint:enable=g-inconsistent-quotes
 

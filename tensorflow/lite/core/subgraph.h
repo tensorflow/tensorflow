@@ -21,7 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
@@ -94,16 +94,17 @@ class Subgraph {
   inline TfLiteStatus SetTensorParametersReadOnly(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantization quantization,
-      const char* buffer, size_t bytes,
-      const Allocation* allocation = nullptr) {
+      const char* buffer, size_t bytes, const Allocation* allocation = nullptr,
+      TfLiteSparsity* sparsity = nullptr) {
     return SetTensorParametersReadOnly(tensor_index, type, name, dims.size(),
                                        dims.data(), quantization, buffer, bytes,
-                                       allocation);
+                                       allocation, sparsity);
   }
   TfLiteStatus SetTensorParametersReadOnly(
       int tensor_index, TfLiteType type, const char* name, const size_t rank,
       const int* dims, TfLiteQuantization quantization, const char* buffer,
-      size_t bytes, const Allocation* allocation = nullptr);
+      size_t bytes, const Allocation* allocation = nullptr,
+      TfLiteSparsity* sparsity = nullptr);
 
   // Set description of inputs/outputs/data/fptrs for node `node_index`.
   // This variant assumes an external buffer has been allocated of size

@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_MICRO_INTERPRETER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_MICRO_INTERPRETER_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/experimental/micro/micro_allocator.h"
@@ -119,7 +119,8 @@ class MicroInterpreter {
   const Model* model_;
   const OpResolver& op_resolver_;
   ErrorReporter* error_reporter_;
-  TfLiteContext context_;
+  // Explicitly initialize TfLiteContext POD struct.
+  TfLiteContext context_ = {};
   MicroAllocator allocator_;
   bool tensors_allocated_;
 

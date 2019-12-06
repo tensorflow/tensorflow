@@ -187,6 +187,11 @@ class RandomCropTest(keras_parameterized.TestCase):
         self._run_test(expected_height, expected_width)
 
   def test_training_with_mock(self):
+    if test.is_built_with_rocm():
+      # TODO(rocm):
+      # re-enable this test once ROCm adds support for
+      # the StatefulUniformFullInt Op (on the GPU)
+      self.skipTest('Feature not supported on ROCm')
     np.random.seed(1337)
     height, width = 3, 4
     height_offset = np.random.randint(low=0, high=3)
@@ -207,6 +212,11 @@ class RandomCropTest(keras_parameterized.TestCase):
       ('random_crop_4_by_6', 4, 6),
       ('random_crop_3_by_2', 3, 2))
   def test_random_crop_output_shape(self, expected_height, expected_width):
+    if test.is_built_with_rocm():
+      # TODO(rocm):
+      # re-enable this test once ROCm adds support for
+      # the StatefulUniformFullInt Op (on the GPU)
+      self.skipTest('Feature not supported on ROCm')
     with CustomObjectScope({'RandomCrop': image_preprocessing.RandomCrop}):
       self._run_test(expected_height, expected_width)
 

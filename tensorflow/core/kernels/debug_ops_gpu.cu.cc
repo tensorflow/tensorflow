@@ -33,13 +33,32 @@ namespace {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-// A CUDA kernel that fills a length-2 vector according to whether any of the
-// input data contains infinity or NaN. The first element is filled with
-// infinity of any of the elements is +/- infinity. The second element is
-// filled with NaN if any of the elements is NaN.
-template <typename T>
-__global__ void ReduceInfNanTwoSlotsKernel(const T* __restrict__ data, int size,
-                                           float output[2]) {
+// A CUDA kernel that fills the second element of a vector according
+// to whether any of the input data contains infinity or NaN.
+template <typename Tin, typename Tout>
+__global__ void CurtHealthKernel(const Tin* __restrict__ data, int size,
+                                 Tout output[1]) {
+  const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+  const int32 total_thread_count = gridDim.x * blockDim.x;
+
+  int32 offset = thread_id;
+
+  while (offset < size) {
+    if (isinf(data[offset]) || isnan(data[offset])) {
+      output[0] = 1.0;
+    }
+    offset += total_thread_count;
+  }
+}
+
+// A CUDA kernel that fills a length-3 vector according to whether any of the
+// input data contains negative infinity, positive infinity, or NaN. The first
+// element is filled with -infinity if any of the elements is -infinity.
+// The second element is filled with +infinity if any of the elements is
+// +infinity. The last is filled with NaN if any of the elements is NaN.
+template <typename Tin, typename Tout>
+__global__ void ReduceInfNanThreeSlotsKernel(const Tin* __restrict__ data,
+                                             int size, Tout output[3]) {
   const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
   const int32 total_thread_count = gridDim.x * blockDim.x;
 
@@ -47,14 +66,14 @@ __global__ void ReduceInfNanTwoSlotsKernel(const T* __restrict__ data, int size,
 
   while (offset < size) {
     if (isinf(data[offset])) {
-      if (data[offset] < static_cast<T>(0.f)) {
-        output[0] = -std::numeric_limits<double>::infinity();
+      if (data[offset] < static_cast<Tin>(0.f)) {
+        output[0] = -std::numeric_limits<Tout>::infinity();
       } else {
-        output[1] = std::numeric_limits<double>::infinity();
+        output[1] = std::numeric_limits<Tout>::infinity();
       }
     }
     if (isnan(data[offset])) {
-      output[2] = std::numeric_limits<double>::quiet_NaN();
+      output[2] = std::numeric_limits<Tout>::quiet_NaN();
     }
     offset += total_thread_count;
   }
@@ -62,22 +81,46 @@ __global__ void ReduceInfNanTwoSlotsKernel(const T* __restrict__ data, int size,
 
 }  // namespace
 
-template <typename T>
-struct ReduceInfNanTwoSlotsLaunch {
-  void Run(const GPUDevice& d, const T* data, int size, float output[2]) {
+template <typename Tin, typename Tout>
+struct CurtHealthLaunch {
+  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[1]) {
     const int32 block_size = d.maxGpuThreadsPerBlock();
     const int32 num_blocks =
         (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
         block_size;
 
-    TF_CHECK_OK(GpuLaunchKernel(ReduceInfNanTwoSlotsKernel<T>, num_blocks,
+    TF_CHECK_OK(GpuLaunchKernel(CurtHealthKernel<Tin, Tout>, num_blocks,
                                 block_size, 0, d.stream(), data, size, output));
   }
 };
 
-template struct ReduceInfNanTwoSlotsLaunch<Eigen::half>;
-template struct ReduceInfNanTwoSlotsLaunch<float>;
-template struct ReduceInfNanTwoSlotsLaunch<double>;
+template struct CurtHealthLaunch<Eigen::half, float>;
+template struct CurtHealthLaunch<float, float>;
+template struct CurtHealthLaunch<double, float>;
+template struct CurtHealthLaunch<Eigen::half, double>;
+template struct CurtHealthLaunch<float, double>;
+template struct CurtHealthLaunch<double, double>;
+
+template <typename Tin, typename Tout>
+struct ReduceInfNanThreeSlotsLaunch {
+  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[3]) {
+    const int32 block_size = d.maxGpuThreadsPerBlock();
+    const int32 num_blocks =
+        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
+        block_size;
+
+    TF_CHECK_OK(GpuLaunchKernel(ReduceInfNanThreeSlotsKernel<Tin, Tout>,
+                                num_blocks, block_size, 0, d.stream(), data,
+                                size, output));
+  }
+};
+
+template struct ReduceInfNanThreeSlotsLaunch<Eigen::half, float>;
+template struct ReduceInfNanThreeSlotsLaunch<float, float>;
+template struct ReduceInfNanThreeSlotsLaunch<double, float>;
+template struct ReduceInfNanThreeSlotsLaunch<Eigen::half, double>;
+template struct ReduceInfNanThreeSlotsLaunch<float, double>;
+template struct ReduceInfNanThreeSlotsLaunch<double, double>;
 
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -54,11 +54,21 @@ public:
 /// attribute gpu.kernel) within a spv.module.
 class KernelFnConversion final : public SPIRVOpLowering<FuncOp> {
 public:
-  using SPIRVOpLowering<FuncOp>::SPIRVOpLowering;
+  KernelFnConversion(MLIRContext *context, SPIRVTypeConverter &converter,
+                     ArrayRef<int64_t> workGroupSize,
+                     PatternBenefit benefit = 1)
+      : SPIRVOpLowering<FuncOp>(context, converter, benefit) {
+    auto config = workGroupSize.take_front(3);
+    workGroupSizeAsInt32.assign(config.begin(), config.end());
+    workGroupSizeAsInt32.resize(3, 1);
+  }
 
   PatternMatchResult
   matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override;
+
+private:
+  SmallVector<int32_t, 3> workGroupSizeAsInt32;
 };
 
 } // namespace
@@ -163,24 +173,37 @@ PatternMatchResult LaunchConfigConversion<SourceOp, builtin>::matchAndRewrite(
 PatternMatchResult
 KernelFnConversion::matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
                                     ConversionPatternRewriter &rewriter) const {
-  FuncOp newFuncOp;
   if (!gpu::GPUDialect::isKernel(funcOp)) {
     return matchFailure();
   }
 
-  if (failed(spirv::lowerAsEntryFunction(funcOp, &typeConverter, rewriter,
-                                         newFuncOp))) {
+  SmallVector<spirv::InterfaceVarABIAttr, 4> argABI;
+  for (auto argNum : llvm::seq<unsigned>(0, funcOp.getNumArguments())) {
+    argABI.push_back(spirv::getInterfaceVarABIAttr(
+        0, argNum, spirv::StorageClass::StorageBuffer, rewriter.getContext()));
+  }
+
+  auto context = rewriter.getContext();
+  auto entryPointAttr =
+      spirv::getEntryPointABIAttr(workGroupSizeAsInt32, context);
+  FuncOp newFuncOp = spirv::lowerAsEntryFunction(
+      funcOp, typeConverter, rewriter, argABI, entryPointAttr);
+  if (!newFuncOp) {
     return matchFailure();
   }
+  newFuncOp.removeAttr(Identifier::get(gpu::GPUDialect::getKernelFuncAttrName(),
+                                       rewriter.getContext()));
   return matchSuccess();
 }
 
 namespace mlir {
 void populateGPUToSPIRVPatterns(MLIRContext *context,
                                 SPIRVTypeConverter &typeConverter,
-                                OwningRewritePatternList &patterns) {
+                                OwningRewritePatternList &patterns,
+                                ArrayRef<int64_t> workGroupSize) {
+  patterns.insert<KernelFnConversion>(context, typeConverter, workGroupSize);
   patterns.insert<
-      ForOpConversion, KernelFnConversion,
+      ForOpConversion,
       LaunchConfigConversion<gpu::BlockDimOp, spirv::BuiltIn::WorkgroupSize>,
       LaunchConfigConversion<gpu::BlockIdOp, spirv::BuiltIn::WorkgroupId>,
       LaunchConfigConversion<gpu::GridDimOp, spirv::BuiltIn::NumWorkgroups>,

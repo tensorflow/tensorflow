@@ -72,7 +72,7 @@ class WindowDatasetParams : public DatasetParams {
   bool drop_remainder_;
 };
 
-class WindowDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class WindowDatasetOpTest : public DatasetOpsTestBase {};
 
 // Test case 1: size=2, shift=2, stride=1, drop_remainder=false.
 WindowDatasetParams WindowDatasetParams1() {

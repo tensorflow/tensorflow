@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <memory>
 
 namespace tflite {
 namespace resource {
@@ -81,7 +82,8 @@ void CreateResourceVariableIfNotAvailable(ResourceMap* resources,
   if (resources->count(resource_id) != 0) {
     return;
   }
-  resources->emplace(resource_id, new ResourceVariable());
+  resources->emplace(
+      resource_id, std::unique_ptr<ResourceVariable>(new ResourceVariable()));
 }
 
 ResourceVariable* GetResourceVariable(ResourceMap* resources, int resource_id) {

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
@@ -89,6 +89,11 @@ MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
       reinterpret_cast<TfLiteTensor*>(memory_allocator_.AllocateFromTail(
           sizeof(TfLiteTensor) * context_->tensors_size,
           alignof(TfLiteTensor)));
+  if (context_->tensors == nullptr) {
+    error_reporter_->Report(
+        "Failed to allocate memory for context->tensors, %d bytes required",
+        sizeof(TfLiteTensor) * context_->tensors_size);
+  }
 
   // Null all inputs so we can later perform a null check to avoid re-allocating
   // registered pre-allocated inputs.
@@ -230,6 +235,12 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
   TensorInfo* tensor_info =
       reinterpret_cast<TensorInfo*>(tmp_allocator.AllocateFromTail(
           sizeof(TensorInfo) * tensors_size, alignof(TensorInfo)));
+  if (tensor_info == nullptr) {
+    error_reporter_->Report(
+        "Failed to allocate memory for tensor_info, %d bytes required",
+        sizeof(TfLiteTensor) * context_->tensors_size);
+    return kTfLiteError;
+  }
 
   // Set up the runtime data structures for all tensors.
   for (size_t i = 0; i < tensors_size; ++i) {

@@ -22,6 +22,7 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Transforms/FoldUtils.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "llvm/ADT/StringSwitch.h"
 
 using namespace mlir;
 
@@ -303,6 +304,8 @@ SmallVector<Type, 2> mlir::OpWithInferTypeInterfaceOp::inferReturnTypes(
 
 // Static initialization for Test dialect registration.
 static mlir::DialectRegistration<mlir::TestDialect> testDialect;
+
+#include "TestOpEnums.cpp.inc"
 
 #define GET_OP_CLASSES
 #include "TestOps.cpp.inc"

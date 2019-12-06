@@ -204,20 +204,14 @@ def _SumGrad(op, grad):
 
   input_shape = array_ops.shape(op.inputs[0])
 
-  if compat.forward_compatible(2019, 10, 23):
-    if not op.get_attr("keep_dims"):
-      with ops.colocate_with(input_shape):
-        # TODO(apassos) remove this once device placement for eager ops makes
-        # more sense.
-        output_shape_kept_dims = math_ops.reduced_shape(input_shape,
-                                                        op.inputs[1])
-      grad = array_ops.reshape(grad, output_shape_kept_dims)
-    return [array_ops.broadcast_to(grad, input_shape), None]
-  with ops.colocate_with(input_shape):
-    output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
-    tile_scaling = _safe_shape_div(input_shape, output_shape_kept_dims)
-  grad = array_ops.reshape(grad, output_shape_kept_dims)
-  return [array_ops.tile(grad, tile_scaling), None]
+  if not op.get_attr("keep_dims"):
+    with ops.colocate_with(input_shape):
+      # TODO(apassos) remove this once device placement for eager ops makes
+      # more sense.
+      output_shape_kept_dims = math_ops.reduced_shape(input_shape,
+                                                      op.inputs[1])
+    grad = array_ops.reshape(grad, output_shape_kept_dims)
+  return [array_ops.broadcast_to(grad, input_shape), None]
 
 
 def _MinOrMaxGrad(op, grad):

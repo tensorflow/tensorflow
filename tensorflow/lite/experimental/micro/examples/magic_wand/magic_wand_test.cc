@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/magic_wand/angle_micro_features_data.h"
-#include "tensorflow/lite/experimental/micro/examples/magic_wand/circle_micro_features_data.h"
 #include "tensorflow/lite/experimental/micro/examples/magic_wand/magic_wand_model_data.h"
+#include "tensorflow/lite/experimental/micro/examples/magic_wand/ring_micro_features_data.h"
+#include "tensorflow/lite/experimental/micro/examples/magic_wand/slope_micro_features_data.h"
 #include "tensorflow/lite/experimental/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
@@ -89,7 +89,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteFloat32, input->type);
 
   // Provide an input value
-  const float* ring_features_data = g_circle_micro_f9643d42_nohash_4_data;
+  const float* ring_features_data = g_ring_micro_f9643d42_nohash_4_data;
   error_reporter->Report("%d", input->bytes);
   for (int i = 0; i < (input->bytes / sizeof(float)); ++i) {
     input->data.f[i] = ring_features_data[i];
@@ -127,7 +127,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   TF_LITE_MICRO_EXPECT_GT(ring_score, negative_score);
 
   // Now test with a different input, from a recording of "Slope".
-  const float* slope_features_data = g_angle_micro_f2e59fea_nohash_1_data;
+  const float* slope_features_data = g_slope_micro_f2e59fea_nohash_1_data;
   for (int i = 0; i < (input->bytes / sizeof(float)); ++i) {
     input->data.f[i] = slope_features_data[i];
   }

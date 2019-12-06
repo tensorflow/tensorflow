@@ -22,12 +22,8 @@
 #ifndef LINALG_TRANSFORMS
 #define LINALG_TRANSFORMS
 
-#ifndef LINALG_OPS
 include "mlir/Dialect/Linalg/IR/LinalgOps.td"
-#endif // LINALG_OPS
-#ifndef LINALG_LIBRARY_OPS
 include "mlir/Dialect/Linalg/IR/LinalgLibraryOps.td"
-#endif // LINALG_LIBRARY_OPS
 
 def HasNoLinalgTransformMarker : CPred<[{
   !$0.getAttrOfType<StringAttr>(LinalgTransforms::kLinalgTransformMarker)
@@ -61,9 +57,24 @@ class TileAndFuseLinalgOp<
 // In the future, tile sizes should be derived from op properties + machine
 // description but we do not need to wait on this to start having useful
 // patterns.
-class TileLinalgOp<list<int> sizes, string value> : NativeCodeCall<
+// `permutation` is an optional parameter to specify the ordering of the
+// tiled loops. If provided, it must be a list of integers with the same number
+// of elements as `sizes`.
+class TileLinalgOp<list<int> sizes, string value, list<int> permutation=[]> : NativeCodeCall<
   "if (failed(tileLinalgOpAndSetMarker($_builder, $0, {" #
-  StrJoinInt<sizes>.result # "}, \"" # value # "\")))" #
+  StrJoinInt<sizes>.result # "}, \"" # value # "\", {" #
+  StrJoinInt<permutation>.result # "})))" #
+  "  return matchFailure();">;
+
+//===----------------------------------------------------------------------===//
+// Linalg to loop patterns.
+//===----------------------------------------------------------------------===//
+class LinalgOpToLoops<string OpType> : NativeCodeCall<
+  "if (failed(linalgOpToLoops<" # OpType # ">($_builder, $0))) " #
+  "  return matchFailure();">;
+
+class LinalgOpToAffineLoops<string OpType> : NativeCodeCall<
+  "if (failed(linalgOpToAffineLoops<" # OpType # ">($_builder, $0))) " #
   "  return matchFailure();">;
 
 #endif // LINALG_TRANSFORMS

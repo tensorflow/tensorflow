@@ -3,7 +3,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # Platform specific build config
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
 

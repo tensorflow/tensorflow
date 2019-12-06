@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -20,9 +21,11 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/eigen_support.h"
+// NOLINTNEXTLINE - This header file should't go to the top.
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 // NOLINTNEXTLINE - This header file should't go to the top.
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/transpose_conv.h"
@@ -422,6 +425,7 @@ void EvalQuantized(TfLiteContext* context,
   }
 }
 
+template <KernelType kernel_type>
 void EvalQuantizedPerChannel(TfLiteContext* context,
                              const TfLiteTransposeConvParams* params,
                              OpData* data, const TfLiteTensor* input,
@@ -444,15 +448,29 @@ void EvalQuantizedPerChannel(TfLiteContext* context,
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
 
-  // TODO(b/143380105): Need to add optimized kernel for int8 quantized
-  // transpose conv.
-  reference_integer_ops::TransposeConv(
-      op_params, data->per_channel_output_multiplier.data(),
-      data->per_channel_output_shift.data(), GetTensorShape(input),
-      GetTensorData<int8>(input), GetTensorShape(weights),
-      GetTensorData<int8>(weights), GetTensorShape(output),
-      GetTensorData<int8>(output), GetTensorShape(col2im),
-      GetTensorData<int8>(col2im), GetTensorData<int32_t>(scratch_buffer));
+  switch (kernel_type) {
+    case kReference: {
+      reference_integer_ops::TransposeConv(
+          op_params, data->per_channel_output_multiplier.data(),
+          data->per_channel_output_shift.data(), GetTensorShape(input),
+          GetTensorData<int8>(input), GetTensorShape(weights),
+          GetTensorData<int8>(weights), GetTensorShape(output),
+          GetTensorData<int8>(output), GetTensorShape(col2im),
+          GetTensorData<int8>(col2im), GetTensorData<int32_t>(scratch_buffer));
+      break;
+    }
+    case kGenericOptimized: {
+      optimized_integer_ops::TransposeConvV2(
+          op_params, data->per_channel_output_multiplier.data(),
+          data->per_channel_output_shift.data(), GetTensorShape(input),
+          GetTensorData<int8>(input), GetTensorShape(transposed_weights),
+          GetTensorData<int8>(transposed_weights), GetTensorShape(output),
+          GetTensorData<int8>(output), GetTensorShape(col2im),
+          GetTensorData<int32>(col2im), GetTensorData<int32>(scratch_buffer),
+          CpuBackendContext::GetFromContext(context));
+      break;
+    }
+  }
 }
 
 template <KernelType kernel_type>
@@ -535,9 +553,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       if (data->weights_are_transposed && !IsConstantTensor(weights)) {
         ResizeAndTransposeWeights(context, weights, transposed_weights);
       }
-      EvalQuantizedPerChannel(context, params, data, input, weights,
-                              transposed_weights, col2im, output,
-                              scratch_buffer);
+      EvalQuantizedPerChannel<kernel_type>(context, params, data, input,
+                                           weights, transposed_weights, col2im,
+                                           output, scratch_buffer);
       break;
     }
     default:

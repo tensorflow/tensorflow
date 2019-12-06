@@ -25,9 +25,10 @@
 
 using namespace mlir;
 
-Type VulkanLayoutUtils::decorateType(spirv::StructType structType,
-                                     VulkanLayoutUtils::Size &size,
-                                     VulkanLayoutUtils::Size &alignment) {
+spirv::StructType
+VulkanLayoutUtils::decorateType(spirv::StructType structType,
+                                VulkanLayoutUtils::Size &size,
+                                VulkanLayoutUtils::Size &alignment) {
   if (structType.getNumElements() == 0) {
     return structType;
   }

@@ -47,7 +47,6 @@ using ::mlir::Identifier;
 using ::mlir::Location;
 using ::mlir::MemRefType;
 using ::mlir::ModuleOp;
-using ::mlir::NamedAttribute;
 using ::mlir::OpBuilder;
 using ::mlir::Type;
 using ::mlir::Value;
@@ -171,11 +170,9 @@ Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
   OpBuilder func_builder(function.getBody());
   llvm::SmallVector<Value*, 4> arg_values{function.args_begin(),
                                           function.args_end()};
-  llvm::SmallVector<NamedAttribute, 10> attributes{
-      builder_.getNamedAttr("name", builder_.getStringAttr(instr->name()))};
   TF_RETURN_IF_ERROR(InsertMlirOp(instr->opcode(), func_builder,
                                   getLocation(instr), ArrayRef<Type>{},
-                                  arg_values, attributes));
+                                  arg_values, llvm::None));
   return Status::OK();
 }
 
@@ -185,21 +182,17 @@ Status LhloDialectEmitter::HandleBroadcast(HloInstruction* broadcast) {
 
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*broadcast));
   OpBuilder func_builder(function.getBody());
-  auto broadcast_op = func_builder.create<lhlo::BroadcastInDimOp>(
+  func_builder.create<lhlo::BroadcastInDimOp>(
       getLocation(broadcast), function.getArgument(0), function.getArgument(1),
       broadcast_dim);
-  broadcast_op.setAttr("name", builder_.getStringAttr(broadcast->name()));
   return Status::OK();
 }
 
 Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*fusion));
   OpBuilder func_builder(function.getBody());
-  auto attribute =
-      builder_.getNamedAttr("name", builder_.getStringAttr(fusion->name()));
-
   auto fusion_op =
-      func_builder.create<lhlo::FusionOp>(getLocation(fusion), attribute);
+      func_builder.create<lhlo::FusionOp>(getLocation(fusion), llvm::None);
 
   // Load the HLO argument tensors from the corresponding buffers. The last
   // argument is for the result, so no need to load it.
@@ -241,7 +234,6 @@ Status LhloDialectEmitter::HandleReduce(HloInstruction* reduce) {
       CreateDenseIntElementsAttrFromVector(reduce->dimensions(), builder_);
   auto reduce_op = builder.create<lhlo::ReduceOp>(loc, inputs, init_values,
                                                   results, dimensions_attr);
-  reduce_op.setAttr("name", builder_.getStringAttr(reduce->name()));
   reduce_op.ensureTerminator(reduce_op.body(), builder, getLocation(reduce));
 
   OpBuilder body_builder(reduce_op.body());
@@ -281,18 +273,17 @@ Status LhloDialectEmitter::HandleParameter(HloInstruction* parameter) {
 }
 
 Status LhloDialectEmitter::HandleCompare(HloInstruction* compare) {
-  llvm::SmallVector<NamedAttribute, 2> attributes{
-      builder_.getNamedAttr("name", builder_.getStringAttr(compare->name())),
-      builder_.getNamedAttr("comparison_direction",
-                            builder_.getStringAttr(ComparisonDirectionToString(
-                                compare->comparison_direction())))};
+  auto comparison_direction_attr = builder_.getNamedAttr(
+      "comparison_direction",
+      builder_.getStringAttr(
+          ComparisonDirectionToString(compare->comparison_direction())));
 
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*compare));
   OpBuilder func_builder(function.getBody());
   llvm::SmallVector<Value*, 4> arg_values{function.args_begin(),
                                           function.args_end()};
   func_builder.create<lhlo::CompareOp>(getLocation(compare), llvm::None,
-                                       arg_values, attributes);
+                                       arg_values, comparison_direction_attr);
   return Status::OK();
 }
 
@@ -302,9 +293,8 @@ Status LhloDialectEmitter::HandleIota(HloInstruction* iota) {
 
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*iota));
   OpBuilder func_builder(function.getBody());
-  auto iota_op = func_builder.create<lhlo::IotaOp>(getLocation(iota), iota_dim,
-                                                   function.getArgument(0));
-  iota_op.setAttr("name", builder_.getStringAttr(iota->name()));
+  func_builder.create<lhlo::IotaOp>(getLocation(iota), iota_dim,
+                                    function.getArgument(0));
   return Status::OK();
 }
 

@@ -69,14 +69,30 @@ struct PassManagerOptions {
   llvm::cl::opt<bool> passTiming{
       "pass-timing",
       llvm::cl::desc("Display the execution times of each pass")};
-  llvm::cl::opt<PassTimingDisplayMode> passTimingDisplayMode{
+  llvm::cl::opt<PassDisplayMode> passTimingDisplayMode{
       "pass-timing-display",
       llvm::cl::desc("Display method for pass timing data"),
-      llvm::cl::init(PassTimingDisplayMode::Pipeline),
+      llvm::cl::init(PassDisplayMode::Pipeline),
       llvm::cl::values(
-          clEnumValN(PassTimingDisplayMode::List, "list",
+          clEnumValN(PassDisplayMode::List, "list",
                      "display the results in a list sorted by total time"),
-          clEnumValN(PassTimingDisplayMode::Pipeline, "pipeline",
+          clEnumValN(PassDisplayMode::Pipeline, "pipeline",
+                     "display the results with a nested pipeline view"))};
+
+  //===--------------------------------------------------------------------===//
+  // Pass Statistics
+  //===--------------------------------------------------------------------===//
+  llvm::cl::opt<bool> passStatistics{
+      "pass-statistics", llvm::cl::desc("Display the statistics of each pass")};
+  llvm::cl::opt<PassDisplayMode> passStatisticsDisplayMode{
+      "pass-statistics-display",
+      llvm::cl::desc("Display method for pass statistics"),
+      llvm::cl::init(PassDisplayMode::Pipeline),
+      llvm::cl::values(
+          clEnumValN(
+              PassDisplayMode::List, "list",
+              "display the results in a merged list sorted by pass name"),
+          clEnumValN(PassDisplayMode::Pipeline, "pipeline",
                      "display the results with a nested pipeline view"))};
 
   /// Add a pass timing instrumentation if enabled by 'pass-timing' flags.
@@ -88,16 +104,17 @@ static llvm::ManagedStatic<llvm::Optional<PassManagerOptions>> options;
 
 /// Add an IR printing instrumentation if enabled by any 'print-ir' flags.
 void PassManagerOptions::addPrinterInstrumentation(PassManager &pm) {
-  std::function<bool(Pass *)> shouldPrintBeforePass, shouldPrintAfterPass;
+  std::function<bool(Pass *, Operation *)> shouldPrintBeforePass;
+  std::function<bool(Pass *, Operation *)> shouldPrintAfterPass;
 
   // Handle print-before.
   if (printBeforeAll) {
     // If we are printing before all, then just return true for the filter.
-    shouldPrintBeforePass = [](Pass *) { return true; };
+    shouldPrintBeforePass = [](Pass *, Operation *) { return true; };
   } else if (printBefore.hasAnyOccurrences()) {
     // Otherwise if there are specific passes to print before, then check to see
     // if the pass info for the current pass is included in the list.
-    shouldPrintBeforePass = [&](Pass *pass) {
+    shouldPrintBeforePass = [&](Pass *pass, Operation *) {
       auto *passInfo = pass->lookupPassInfo();
       return passInfo && printBefore.contains(passInfo);
     };
@@ -106,11 +123,11 @@ void PassManagerOptions::addPrinterInstrumentation(PassManager &pm) {
   // Handle print-after.
   if (printAfterAll) {
     // If we are printing after all, then just return true for the filter.
-    shouldPrintAfterPass = [](Pass *) { return true; };
+    shouldPrintAfterPass = [](Pass *, Operation *) { return true; };
   } else if (printAfter.hasAnyOccurrences()) {
     // Otherwise if there are specific passes to print after, then check to see
     // if the pass info for the current pass is included in the list.
-    shouldPrintAfterPass = [&](Pass *pass) {
+    shouldPrintAfterPass = [&](Pass *pass, Operation *) {
       auto *passInfo = pass->lookupPassInfo();
       return passInfo && printAfter.contains(passInfo);
     };
@@ -145,6 +162,10 @@ void mlir::applyPassManagerCLOptions(PassManager &pm) {
   // Disable multi-threading.
   if ((*options)->disableThreads)
     pm.disableMultithreading();
+
+  // Enable statistics dumping.
+  if ((*options)->passStatistics)
+    pm.enableStatistics((*options)->passStatisticsDisplayMode);
 
   // Add the IR printing instrumentation.
   (*options)->addPrinterInstrumentation(pm);

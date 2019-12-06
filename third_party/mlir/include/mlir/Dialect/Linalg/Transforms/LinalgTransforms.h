@@ -32,23 +32,8 @@ namespace linalg {
 
 // Marker used as attribute name in generated Linalg rewriting transformations.
 struct LinalgTransforms {
-  static constexpr StringRef kLinalgTransformMarker =
-      "__internal_linalg_transform__";
+  static const StringLiteral kLinalgTransformMarker;
 };
-
-// Declarative transformation used in tablegen patterns.
-// Tiles `op` by `sizes` and sets the attribute `kLinalgTransformMarker` to
-// `linalgMarker`.
-LogicalResult tileLinalgOpAndSetMarker(PatternRewriter &rewriter, Operation *op,
-                                       ArrayRef<int64_t> sizes,
-                                       StringRef linalgMarker);
-
-// Declarative transformation used in tablegen patterns.
-// Tiles `op` by `sizes`, fuses the producers of `operandIndicesToFuse` and sets
-// the attribute `kLinalgTransformMarker` to `linalgMarker`.
-LogicalResult tileAndFuseLinalgOpAndSetMarker(
-    PatternRewriter &rewriter, Operation *op, ArrayRef<int64_t> sizes,
-    ArrayRef<int64_t> operandIndicesToFuse, StringRef linalgMarker);
 
 namespace detail {
 // Implementation detail of isProducedByOpOfType avoids the need for explicit
@@ -65,6 +50,42 @@ bool isProducedByOpOfType(Operation *consumerOp, Value *consumedView) {
   return detail::isProducedByOpOfTypeImpl(
       consumerOp, consumedView, [](Operation *op) { return isa<OpTy>(op); });
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// The following Declarative Rewrite Rule (DRR) helpers are used in rewrite
+// patterns. As such, they must not call into `rewriter.erase/replace` APIs and
+// it is the responsibility of the enclosing PatternRewriter to erase on
+// success.
+////////////////////////////////////////////////////////////////////////////////
+
+/// Tiles `op` by `sizes` permuting the looops according to `permutation`
+/// and sets the attribute `kLinalgTransformMarker` to `linalgMarker`.
+/// The permutation is expressed as a list of integers that specify
+/// the new ordering of the loop nest. The length of `permutation`
+/// must be equal to the length of `tileSizes`.
+/// E.g. the permutation `(i,j,k) -> (j,k,i)` will be expressed with
+/// `permutation = [1,2,0]`. All values in `permutation` must be
+/// integers, in the range 0..`tileSizes.size()` without duplications
+/// (i.e. `[1,1,2]` is an invalid permutation). An empty list
+/// states for the identity permutation.
+LogicalResult tileLinalgOpAndSetMarker(PatternRewriter &rewriter, Operation *op,
+                                       ArrayRef<int64_t> sizes,
+                                       StringRef linalgMarker,
+                                       ArrayRef<unsigned> permutation);
+
+// Tiles `op` by `sizes`, fuses the producers of `operandIndicesToFuse` and sets
+// the attribute `kLinalgTransformMarker` to `linalgMarker`.
+LogicalResult tileAndFuseLinalgOpAndSetMarker(
+    PatternRewriter &rewriter, Operation *op, ArrayRef<int64_t> sizes,
+    ArrayRef<int64_t> operandIndicesToFuse, StringRef linalgMarker);
+
+// Emits a loop nest of `loop.for` with the proper body for `op`.
+template <typename ConcreteOp>
+LogicalResult linalgOpToLoops(PatternRewriter &rewriter, Operation *op);
+
+// Emits a loop nest of `affine.for` with the proper body for `op`.
+template <typename ConcreteOp>
+LogicalResult linalgOpToAffineLoops(PatternRewriter &rewriter, Operation *op);
 
 } // namespace linalg
 } // namespace mlir

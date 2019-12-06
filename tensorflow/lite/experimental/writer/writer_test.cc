@@ -41,10 +41,11 @@ int main(int argc, char* argv[]) {
   writer.GetBuffer(&output_buffer, &output_buffer_size);
 
   // Verify the generated model.
+  std::unique_ptr<tflite::Interpreter> new_interpreter;
   model = tflite::FlatBufferModel::BuildFromBuffer(
       reinterpret_cast<char*>(output_buffer.get()), output_buffer_size);
-  tflite::InterpreterBuilder(*model, builtin_op_resolver)(&interpreter);
-  if (interpreter->AllocateTensors() != kTfLiteOk) {
+  tflite::InterpreterBuilder(*model, builtin_op_resolver)(&new_interpreter);
+  if (new_interpreter->AllocateTensors() != kTfLiteOk) {
     fprintf(stderr, "AllocateTensors failed on the round-tripped model.\n");
     return 1;
   }

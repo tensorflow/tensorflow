@@ -23,12 +23,12 @@ cc_library(
 cc_library(
     name = "sample_feature_data",
     srcs = [
-        "angle_micro_features_data.cc",
-        "circle_micro_features_data.cc",
+        "ring_micro_features_data.cc",
+        "slope_micro_features_data.cc",
     ],
     hdrs = [
-        "angle_micro_features_data.h",
-        "circle_micro_features_data.h",
+        "ring_micro_features_data.h",
+        "slope_micro_features_data.h",
     ],
 )
 
@@ -68,7 +68,7 @@ cc_library(
         "accelerometer_handler.h",
     ],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
     ],
 )
@@ -80,7 +80,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":accelerometer_handler",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
@@ -121,7 +121,7 @@ cc_library(
         "output_handler.h",
     ],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
     ],
 )
@@ -133,7 +133,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":output_handler",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],

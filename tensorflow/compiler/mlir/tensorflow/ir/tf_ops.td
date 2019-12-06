@@ -28,10 +28,7 @@ limitations under the License.
 #define TF_OPS
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
-
-#ifndef MLIR_CALLINTERFACES
 include "mlir/Analysis/CallInterfaces.td"
-#endif // MLIR_CALLINTERFACES
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
   let results = (outs
@@ -197,6 +194,42 @@ retained with length 1.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_LegacyCallOp : TF_Op<"LegacyCall",
+                            [CallOpInterface, NoSideEffect]> {
+  let summary =
+    "returns `f(inputs)`, where `f` is a function.";
+
+  let description = [{
+    The LegacyCall operation represents a direct call to a function that is
+    within the same symbol scope as the call and is mapped to a GraphDef node
+    with the function name as the op name. Unlike a PartitionedCall which
+    represents asynchronously executing a function across multiple devices, a
+    LegacyCall represents a function call with the only attribute
+    _diable_call_shape_inference.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+
+    FlatSymbolRefAttr:$f,
+    DefaultValuedAttr<BoolAttr, "false">:$_disable_call_shape_inference
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  let extraClassDeclaration = [{
+    // Gets the argument operands to the called function.
+    operand_range getArgOperands() { return args(); }
+
+    // Returns the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getAttrOfType<SymbolRefAttr>("f");
+    }
+  }];
 }
 
 def TF_PartitionedCallOp : TF_Op<"PartitionedCall",

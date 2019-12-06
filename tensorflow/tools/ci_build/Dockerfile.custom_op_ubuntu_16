@@ -60,6 +60,12 @@ RUN add-apt-repository ppa:jonathonf/python-3.6 && \
     python3.6 -m pip install pip --upgrade && \
     update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.6 0
 
+# Install python 3.7
+RUN /install/install_python37.sh
+
+# Install pip3.5
+RUN wget https://bootstrap.pypa.io/get-pip.py && python3.5 get-pip.py && rm get-pip.py
+
 RUN /install/install_pip_packages.sh
 RUN /install/install_auditwheel.sh
 

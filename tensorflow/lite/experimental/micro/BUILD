@@ -43,7 +43,7 @@ cc_library(
     deps = [
         ":micro_utils",
         "//tensorflow/lite:type_to_tflitetype",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/micro/memory_planner:greedy_memory_planner",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -60,7 +60,7 @@ cc_library(
         "micro_utils.h",
     ],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
 )
 

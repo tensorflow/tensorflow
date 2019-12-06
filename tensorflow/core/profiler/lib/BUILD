@@ -52,7 +52,6 @@ tf_cuda_library(
 
 cc_library(
     name = "traceme",
-    srcs = ["traceme.cc"],
     hdrs = ["traceme.h"],
     visibility = ["//visibility:public"],
     deps = [
@@ -89,7 +88,6 @@ filegroup(
         "profiler_utils.cc",
         "profiler_utils.h",
         "scoped_annotation.h",
-        "traceme.cc",
         "traceme.h",
     ],
     visibility = ["//visibility:public"],

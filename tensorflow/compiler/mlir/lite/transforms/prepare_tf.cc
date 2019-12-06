@@ -400,7 +400,7 @@ class ConvertTFDepthwiseConv2dNative
   }
 };
 
-// StridedSlice can have complicated atributes like begin_axis_mask,
+// StridedSlice can have complicated attributes like begin_axis_mask,
 // end_axis_mask, ellipsis_axis_mask, new_axis_mask, shrink_axis_mask. These
 // masks will complicate the strided_slice computation logic, we can simplify
 // the logic by inserting a reshape op to pad the inputs so strided_slice can
