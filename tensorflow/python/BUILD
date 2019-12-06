@@ -243,6 +243,7 @@ py_library(
             "**/*test.py",
             "**/benchmark.py",  # In platform_benchmark.
             "**/analytics.py",  # In platform_analytics.
+            "**/device_context.py",  # In platform_device_context.
         ],
     ) + ["platform/build_info.py"],
     srcs_version = "PY2AND3",
@@ -273,6 +274,16 @@ py_library(
     name = "platform_analytics",
     srcs = ["platform/analytics.py"],
     srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "platform_device_context",
+    srcs = ["platform/device_context.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":control_flow_ops",
+        ":framework",
+    ],
 )
 
 py_library(
@@ -3805,6 +3816,7 @@ py_library(
         ":nn_grad",
         ":nn_ops",
         ":nn_ops_gen",
+        ":platform_device_context",
         ":rnn",
         ":sparse_ops",
         ":util",
