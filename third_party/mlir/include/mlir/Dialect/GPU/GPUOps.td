@@ -42,6 +42,145 @@ def GPU_BlockIdOp : GPU_IndexOp<"block_id">;
 def GPU_GridDimOp : GPU_IndexOp<"grid_dim">;
 def GPU_ThreadIdOp : GPU_IndexOp<"thread_id">;
 
+def GPU_GPUFuncOp : GPU_Op<"func", [FunctionLike, IsolatedFromAbove, Symbol]> {
+  let summary = "Function executable on a GPU";
+
+  let description = [{
+    Defines a function that can be executed on a GPU. This supports memory
+    attribution and its body has a particular execution model.
+
+    GPU functions are either kernels (as indicated by the `kernel` attribute) or
+    regular functions. The former can be launched from the host side, while the
+    latter are device side only.
+
+    The memory attribution defines SSA values that correspond to memory buffers
+    allocated in the memory hierarchy of the GPU (see below).
+
+    The operation has one attached region that corresponds to the body of the
+    function. The region arguments consist of the function arguments without
+    modification, followed by buffers defined in memory annotations. The body of
+    a GPU function, when launched, is executed by multiple work items. There are
+    no guarantees on the order in which work items execute, or on the connection
+    between them. In particular, work items are not necessarily executed in
+    lock-step. Synchronization ops such as "gpu.barrier" should be used to
+    coordinate work items. Declarations of GPU functions, i.e. not having the
+    body region, are not supported.
+
+    Syntax:
+
+    ``` {.ebnf}
+    op ::= `gpu.func` symbol-ref-id `(` argument-list `)` (`->`
+    function-result-list)?
+           memory-attribution `kernel`? function-attributes? region
+
+    memory-attribution ::= (`workgroup` `(` ssa-id-and-type-list `)`)?
+                           (`private` `(` ssa-id-and-type-list `)`)?
+    ```
+
+    Example:
+
+    ```mlir
+    gpu.func @foo(%arg0: index)
+        workgroup(%workgroup: memref<32xf32, 3>)
+        private(%private: memref<1xf32, 5>)
+        kernel
+        attributes {qux: "quux"} {
+      gpu.return
+    }
+    ```
+
+    The generic form illustrates the concept
+
+    ```mlir
+    "gpu.func"(%arg: index) {sym_name: "foo", kernel, qux: "quux"} ({
+    ^bb0(%arg0: index, %workgroup: memref<32xf32, 3>,
+         %private: memref<1xf32, 5>):
+      "gpu.return"() : () -> ()
+    }) : (index) -> ()
+    ```
+
+    Note the non-default memory spaces used in memref types in memory
+    attribution.
+  }];
+
+  let regions = (region AnyRegion:$body);
+
+  let skipDefaultBuilders = 1;
+
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &result, StringRef name, "
+              "FunctionType type, ArrayRef<Type> workgroupAttributions, "
+              "ArrayRef<Type> privateAttributions, "
+              "ArrayRef<NamedAttribute> attrs">
+  ];
+
+  let extraClassDeclaration = [{
+    /// Returns `true` if the GPU function defined by this Op is a kernel, i.e.
+    /// it is intended to be launched from host.
+    bool isKernel() {
+      return getAttrOfType<UnitAttr>(GPUDialect::getKernelFuncAttrName()) !=
+             nullptr;
+    }
+
+    /// Returns the type of the function this Op defines.
+    FunctionType getType() {
+      return getTypeAttr().getValue().cast<FunctionType>();
+    }
+
+    /// Returns the number of buffers located in the workgroup memory.
+    unsigned getNumWorkgroupAttributions() {
+      return getAttrOfType<IntegerAttr>(getNumWorkgroupAttributionsAttrName())
+          .getInt();
+    }
+
+    /// Returns a list of block arguments that correspond to buffers located in
+    /// the workgroup memory
+    ArrayRef<BlockArgument *> getWorkgroupAttributions() {
+      auto begin =
+          std::next(getBody().front().args_begin(), getType().getNumInputs());
+      auto end = std::next(begin, getNumWorkgroupAttributions());
+      return {begin, end};
+    }
+
+    /// Returns a list of block arguments that correspond to buffers located in
+    /// the private memory.
+    ArrayRef<BlockArgument *> getPrivateAttributions() {
+      auto begin =
+          std::next(getBody().front().args_begin(),
+                    getType().getNumInputs() + getNumWorkgroupAttributions());
+      return {begin, getBody().front().args_end()};
+    }
+
+    /// Returns the name of the attribute containing the number of buffers
+    /// located in the workgroup memory.
+    static StringRef getNumWorkgroupAttributionsAttrName() {
+      return "workgroup_attibutions";
+    }
+
+    // FunctionLike trait needs access to the functions below.
+    friend class OpTrait::FunctionLike<GPUFuncOp>;
+
+    /// Hooks for the input/output type enumeration in FunctionLike .
+    unsigned getNumFuncArguments() { return getType().getNumInputs(); }
+    unsigned getNumFuncResults() { return getType().getNumResults(); }
+
+    /// Returns the keywords used in the custom syntax for this Op.
+    static StringRef getWorkgroupKeyword() { return "workgroup"; }
+    static StringRef getPrivateKeyword() { return "private"; }
+    static StringRef getKernelKeyword() { return "kernel"; }
+
+    /// Hook for FunctionLike verifier.
+    LogicalResult verifyType();
+
+    /// Verifies the body of the function.
+    LogicalResult verifyBody();
+  }];
+
+  // let verifier = [{ return ::verifFuncOpy(*this); }];
+  let printer = [{ printGPUFuncOp(p, *this); }];
+  let parser = [{ return parseGPUFuncOp(parser, result); }];
+}
+
 def GPU_ReturnOp : GPU_Op<"return", [Terminator]>, Arguments<(ins)>,
     Results<(outs)> {
   let summary = "Terminator for GPU launch regions.";

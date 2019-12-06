@@ -607,7 +607,7 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAllReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const std::vector<ReplicaGroup>& replica_groups,
+      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id);
 
   // An all-to-all op takes N array operands of the same shape and scatters them

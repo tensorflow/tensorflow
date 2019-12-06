@@ -639,10 +639,12 @@ PYBIND11_MODULE(xla_extension, m) {
   py::module ops = m.def_submodule("ops", "XLA operations");
 
   ops.def("AfterAll", &AfterAll);
-  ops.def("AllReduce",
-          static_cast<XlaOp (*)(
-              XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
-              const absl::optional<ChannelHandle>&)>(&AllReduce));
+  ops.def(
+      "AllReduce",
+      static_cast<XlaOp (*)(
+          XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
+          const absl::optional<ChannelHandle>&, const absl::optional<Shape>&)>(
+          &AllReduce));
   ops.def("AllToAll", &AllToAll);
   ops.def("CollectivePermute", &CollectivePermute);
   ops.def("CreateToken", &CreateToken);

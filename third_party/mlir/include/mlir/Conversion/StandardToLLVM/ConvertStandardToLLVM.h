@@ -168,6 +168,13 @@ public:
   /// Builds IR creating an `undef` value of the descriptor type.
   static MemRefDescriptor undef(OpBuilder &builder, Location loc,
                                 Type descriptorType);
+  /// Builds IR creating a MemRef descriptor that represents `type` and
+  /// populates it with static shape and stride information extracted from the
+  /// type.
+  static MemRefDescriptor fromStaticShape(OpBuilder &builder, Location loc,
+                                          LLVMTypeConverter &typeConverter,
+                                          MemRefType type, Value *memory);
+
   /// Builds IR extracting the allocated pointer from the descriptor.
   Value *allocatedPtr(OpBuilder &builder, Location loc);
   /// Builds IR inserting the allocated pointer into the descriptor.
@@ -184,18 +191,23 @@ public:
 
   /// Builds IR inserting the offset into the descriptor.
   void setOffset(OpBuilder &builder, Location loc, Value *offset);
+  void setConstantOffset(OpBuilder &builder, Location loc, uint64_t offset);
 
   /// Builds IR extracting the pos-th size from the descriptor.
   Value *size(OpBuilder &builder, Location loc, unsigned pos);
 
   /// Builds IR inserting the pos-th size into the descriptor
   void setSize(OpBuilder &builder, Location loc, unsigned pos, Value *size);
+  void setConstantSize(OpBuilder &builder, Location loc, unsigned pos,
+                       uint64_t size);
 
   /// Builds IR extracting the pos-th size from the descriptor.
   Value *stride(OpBuilder &builder, Location loc, unsigned pos);
 
   /// Builds IR inserting the pos-th stride into the descriptor
   void setStride(OpBuilder &builder, Location loc, unsigned pos, Value *stride);
+  void setConstantStride(OpBuilder &builder, Location loc, unsigned pos,
+                         uint64_t stride);
 
   /// Returns the (LLVM) type this descriptor points to.
   LLVM::LLVMType getElementType();

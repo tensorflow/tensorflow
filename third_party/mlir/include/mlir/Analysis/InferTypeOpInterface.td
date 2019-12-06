@@ -37,7 +37,7 @@ def InferTypeOpInterface : OpInterface<"InferTypeOpInterface"> {
   }];
 
   let methods = [
-    InterfaceMethod<
+    StaticInterfaceMethod<
       /*desc=*/[{Returns the return types that an op would generate.
 
       The method takes an optional location which, if set, will be used to

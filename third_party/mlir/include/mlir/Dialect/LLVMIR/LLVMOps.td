@@ -553,7 +553,8 @@ def LLVM_GlobalOp
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, LLVMType type, "
               "bool isConstant, Linkage linkage, StringRef name, "
-              "Attribute value, ArrayRef<NamedAttribute> attrs = {}">
+              "Attribute value, unsigned addrSpace = 0, "
+              "ArrayRef<NamedAttribute> attrs = {}">
   ];
 
   let extraClassDeclaration = [{

@@ -1034,7 +1034,7 @@ class ComputationBuilder(object):
     """
     replica_groups_protos = _get_replica_groups_protos(replica_groups)
     return ops.AllReduce(operand, computation.computation,
-                         replica_groups_protos, None)
+                         replica_groups_protos, None, None)
 
   def AllToAll(self,
                operand,

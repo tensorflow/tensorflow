@@ -46,7 +46,7 @@ bool GPUDialect::isKernel(Operation *op) {
 
 GPUDialect::GPUDialect(MLIRContext *context)
     : Dialect(getDialectName(), context) {
-  addOperations<LaunchOp, LaunchFuncOp, GPUFuncOp,
+  addOperations<LaunchOp, LaunchFuncOp,
 #define GET_OP_LIST
 #include "mlir/Dialect/GPU/GPUOps.cpp.inc"
                 >();
@@ -164,14 +164,6 @@ static LogicalResult verifyAllReduce(gpu::AllReduceOp allReduce) {
   }
   return success();
 }
-
-// Namespace avoids ambiguous ReturnOpOperandAdaptor.
-namespace mlir {
-namespace gpu {
-#define GET_OP_CLASSES
-#include "mlir/Dialect/GPU/GPUOps.cpp.inc"
-} // namespace gpu
-} // namespace mlir
 
 //===----------------------------------------------------------------------===//
 // LaunchOp
@@ -639,7 +631,7 @@ parseAttributions(OpAsmParser &parser, StringRef keyword,
 /// <operation> ::= `gpu.func` symbol-ref-id `(` argument-list `)`
 ///                 (`->` function-result-list)? memory-attribution `kernel`?
 ///                 function-attributes? region
-ParseResult GPUFuncOp::parse(OpAsmParser &parser, OperationState &result) {
+static ParseResult parseGPUFuncOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 8> entryArgs;
   SmallVector<SmallVector<NamedAttribute, 2>, 1> argAttrs;
   SmallVector<SmallVector<NamedAttribute, 2>, 1> resultAttrs;
@@ -667,26 +659,26 @@ ParseResult GPUFuncOp::parse(OpAsmParser &parser, OperationState &result) {
   // not to the functiont type.
   Builder &builder = parser.getBuilder();
   auto type = builder.getFunctionType(argTypes, resultTypes);
-  result.addAttribute(getTypeAttrName(), TypeAttr::get(type));
+  result.addAttribute(GPUFuncOp::getTypeAttrName(), TypeAttr::get(type));
 
   // Parse workgroup memory attributions.
-  if (failed(parseAttributions(parser, getWorkgroupKeyword(), entryArgs,
-                               argTypes)))
+  if (failed(parseAttributions(parser, GPUFuncOp::getWorkgroupKeyword(),
+                               entryArgs, argTypes)))
     return failure();
 
   // Store the number of operands we just parsed as the number of workgroup
   // memory attributions.
   unsigned numWorkgroupAttrs = argTypes.size() - type.getNumInputs();
-  result.addAttribute(getNumWorkgroupAttributionsAttrName(),
+  result.addAttribute(GPUFuncOp::getNumWorkgroupAttributionsAttrName(),
                       builder.getI64IntegerAttr(numWorkgroupAttrs));
 
   // Parse private memory attributions.
-  if (failed(
-          parseAttributions(parser, getPrivateKeyword(), entryArgs, argTypes)))
+  if (failed(parseAttributions(parser, GPUFuncOp::getPrivateKeyword(),
+                               entryArgs, argTypes)))
     return failure();
 
   // Parse the kernel attribute if present.
-  if (succeeded(parser.parseOptionalKeyword(getKernelKeyword())))
+  if (succeeded(parser.parseOptionalKeyword(GPUFuncOp::getKernelKeyword())))
     result.addAttribute(GPUDialect::getKernelFuncAttrName(),
                         builder.getUnitAttr());
 
@@ -712,24 +704,25 @@ static void printAttributions(OpAsmPrinter &p, StringRef keyword,
   p << ')';
 }
 
-void GPUFuncOp::print(OpAsmPrinter &p) {
-  p << getOperationName() << ' ';
-  p.printSymbolName(getName());
+/// Prints a GPU Func op.
+void printGPUFuncOp(OpAsmPrinter &p, GPUFuncOp op) {
+  p << GPUFuncOp::getOperationName() << ' ';
+  p.printSymbolName(op.getName());
 
-  FunctionType type = getType();
-  impl::printFunctionSignature(p, this->getOperation(), type.getInputs(),
+  FunctionType type = op.getType();
+  impl::printFunctionSignature(p, op.getOperation(), type.getInputs(),
                                /*isVariadic=*/false, type.getResults());
 
-  printAttributions(p, getWorkgroupKeyword(), getWorkgroupAttributions());
-  printAttributions(p, getPrivateKeyword(), getPrivateAttributions());
-  if (isKernel())
-    p << ' ' << getKernelKeyword();
+  printAttributions(p, op.getWorkgroupKeyword(), op.getWorkgroupAttributions());
+  printAttributions(p, op.getPrivateKeyword(), op.getPrivateAttributions());
+  if (op.isKernel())
+    p << ' ' << op.getKernelKeyword();
 
-  impl::printFunctionAttributes(p, this->getOperation(), type.getNumInputs(),
+  impl::printFunctionAttributes(p, op.getOperation(), type.getNumInputs(),
                                 type.getNumResults(),
-                                {getNumWorkgroupAttributionsAttrName(),
+                                {op.getNumWorkgroupAttributionsAttrName(),
                                  GPUDialect::getKernelFuncAttrName()});
-  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+  p.printRegion(op.getBody(), /*printEntryBlockArgs=*/false);
 }
 
 /// Hook for FunctionLike verifier.
@@ -762,3 +755,11 @@ LogicalResult GPUFuncOp::verifyBody() {
 
   return success();
 }
+
+// Namespace avoids ambiguous ReturnOpOperandAdaptor.
+namespace mlir {
+namespace gpu {
+#define GET_OP_CLASSES
+#include "mlir/Dialect/GPU/GPUOps.cpp.inc"
+} // namespace gpu
+} // namespace mlir

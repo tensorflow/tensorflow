@@ -202,11 +202,11 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
     # Before FlushExecutionFiles() is called. No data should have been written
     # to the file.
-    executed_op_types, _, _, _, _ = self._readAndCheckExecutionFile()
+    executed_op_types, _, _, _, _, _ = self._readAndCheckExecutionFile()
     self.assertFalse(executed_op_types)
 
     writer.FlushExecutionFiles()
-    executed_op_types, _, _, _, _ = self._readAndCheckExecutionFile()
+    executed_op_types, _, _, _, _, _ = self._readAndCheckExecutionFile()
     for i, executed_op_type in enumerate(executed_op_types):
       self.assertEqual(
           executed_op_type,
@@ -222,7 +222,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
       writer.WriteExecution(execution)
     writer.FlushExecutionFiles()
 
-    executed_op_types, _, _, _, _ = self._readAndCheckExecutionFile()
+    executed_op_types, _, _, _, _, _ = self._readAndCheckExecutionFile()
     self.assertLen(executed_op_types, num_execution_events)
     for i, executed_op_type in enumerate(executed_op_types):
       self.assertEqual(executed_op_type, "OpType%d" % i)
@@ -302,7 +302,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
     writer.FlushExecutionFiles()
 
     # Verify the content of the .execution file.
-    executed_op_types, _, _, _, _ = self._readAndCheckExecutionFile()
+    executed_op_types, _, _, _, _, _ = self._readAndCheckExecutionFile()
     self.assertLen(executed_op_types, circular_buffer_size)
     self.assertLen(executed_op_types, len(set(executed_op_types)))
 
