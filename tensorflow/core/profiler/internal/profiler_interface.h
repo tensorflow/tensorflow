@@ -76,16 +76,6 @@ class ProfilerInterface {
 };
 
 }  // namespace profiler
-
-using ProfilerFactory = std::unique_ptr<profiler::ProfilerInterface> (*)(
-    const profiler::ProfilerOptions&);
-
-void RegisterProfilerFactory(ProfilerFactory factory);
-
-void CreateProfilers(
-    const profiler::ProfilerOptions& options,
-    std::vector<std::unique_ptr<profiler::ProfilerInterface>>* result);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_

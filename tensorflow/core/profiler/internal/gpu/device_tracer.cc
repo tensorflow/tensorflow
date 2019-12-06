@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/gpu/cupti_tracer.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_wrapper.h"
 #include "tensorflow/core/profiler/internal/parse_annotation.h"
+#include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -372,8 +373,6 @@ Status GpuTracer::CollectData(XSpace* space) {
   return errors::Unimplemented("Collect data into XSpace not yet implemented");
 }
 
-}  // namespace profiler
-
 // Not in anonymous namespace for testing purposes.
 std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer(
     const profiler::ProfilerOptions& options) {
@@ -394,6 +393,7 @@ auto register_gpu_tracer_factory = [] {
   return 0;
 }();
 
+}  // namespace profiler
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA

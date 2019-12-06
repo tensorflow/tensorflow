@@ -405,9 +405,20 @@ tf_cc_test(
 
 cc_library(
     name = "profiler_interface",
-    srcs = ["profiler_interface.cc"],
     hdrs = ["profiler_interface.h"],
     deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "profiler_factory",
+    srcs = ["profiler_factory.cc"],
+    hdrs = ["profiler_factory.h"],
+    deps = [
+        ":profiler_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
@@ -419,7 +430,8 @@ filegroup(
     srcs = [
         "annotation_stack.cc",
         "annotation_stack.h",
-        "profiler_interface.cc",
+        "profiler_factory.cc",
+        "profiler_factory.h",
         "profiler_interface.h",
         "traceme_recorder.cc",
         "traceme_recorder.h",

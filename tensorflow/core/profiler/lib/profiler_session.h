@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
@@ -41,7 +42,9 @@ class ProfilerSession {
 
   tensorflow::Status Status() LOCKS_EXCLUDED(mutex_);
 
-  tensorflow::Status CollectData(RunMetadata* run_metadata);
+  tensorflow::Status CollectData(RunMetadata* run_metadata)
+      LOCKS_EXCLUDED(mutex_);
+
   tensorflow::Status SerializeToString(string* content) LOCKS_EXCLUDED(mutex_);
 
  private:

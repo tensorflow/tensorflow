@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 
-#include <cstddef>
-#include <string>
+#include <stddef.h>
+
 #include <vector>
 
 #include "absl/strings/str_split.h"
@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_utils.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -38,7 +39,7 @@ namespace {
 // If the "op_type" is missing, returns the node_name.
 // This is done so all ops with the same type appear in the same color in trace
 // viewer.
-inline std::string EventName(absl::string_view node_name) {
+inline string EventName(absl::string_view node_name) {
   // NOTE: open source device tracer now append cupti kernel name after
   // annotation as node_name, @@ is used as separator. kernel name is
   // demangled and possibly contains "::" patterns.
@@ -52,10 +53,10 @@ inline std::string EventName(absl::string_view node_name) {
         absl::StrSplit(annotation_stack.back(), '#');
     std::vector<absl::string_view> parts =
         absl::StrSplit(annotation_parts.front(), ':');
-    return std::string(parts.back());
+    return string(parts.back());
   } else {
     std::vector<absl::string_view> parts = absl::StrSplit(node_name, ':');
-    return std::string(parts.back());
+    return string(parts.back());
   }
 }
 
