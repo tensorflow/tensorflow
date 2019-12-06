@@ -96,32 +96,6 @@ void custom_am_bsp_low_power_init(void) {
   // Disable the RTC.
   // am_hal_rtc_osc_disable();
 
-#ifdef AM_BSP_NUM_LEDS
-  //
-  // Initialize the LEDs.
-  // On the apollo3_evb, when the GPIO outputs are disabled (the default at
-  // power up), the FET gates are floating and
-  // partially illuminating the LEDs.
-  //
-  uint32_t ux, ui32GPIONumber;
-  for (ux = 0; ux < AM_BSP_NUM_LEDS; ux++) {
-    ui32GPIONumber = am_bsp_psLEDs[ux].ui32GPIONumber;
-
-    //
-    // Configure the pin as a push-pull GPIO output
-    // (aka AM_DEVICES_LED_POL_DIRECT_DRIVE_M).
-    //
-    am_hal_gpio_pinconfig(ui32GPIONumber, g_AM_HAL_GPIO_OUTPUT);
-
-    //
-    // Turn off the LED.
-    //
-    am_hal_gpio_state_write(ui32GPIONumber,
-                            AM_HAL_GPIO_OUTPUT_TRISTATE_DISABLE);
-    am_hal_gpio_state_write(ui32GPIONumber, AM_HAL_GPIO_OUTPUT_CLEAR);
-  }
-#endif  // AM_BSP_NUM_LEDS
-
 }  // am_bsp_low_power_init()
 
 // Make sure the CPU is running as fast as possible.
@@ -254,10 +228,6 @@ extern "C" void power_down_sequence(void) {
   am_util_delay_ms(200);  // Debounce Delay
   am_hal_gpio_interrupt_clear(AM_HAL_GPIO_BIT(AM_BSP_GPIO_BUTTON0));
   am_hal_gpio_interrupt_enable(AM_HAL_GPIO_BIT(AM_BSP_GPIO_BUTTON0));
-
-  for (int ix = 0; ix < AM_BSP_NUM_LEDS; ix++) {
-    am_devices_led_off(am_bsp_psLEDs, ix);
-  }
 
   am_hal_sysctrl_sleep(AM_HAL_SYSCTRL_SLEEP_DEEP);
   // Apollo3 will be < 3uA in deep sleep
@@ -392,13 +362,6 @@ TfLiteStatus InitAudioRecording(tflite::ErrorReporter* error_reporter) {
   am_hal_sysctrl_fpu_stacking_enable(true);
   error_reporter->Report("FPU Enabled.");
 
-  // Configure the LEDs.
-  am_devices_led_array_init(am_bsp_psLEDs, AM_BSP_NUM_LEDS);
-  // Turn the LEDs off
-  for (int ix = 0; ix < AM_BSP_NUM_LEDS; ix++) {
-    am_devices_led_off(am_bsp_psLEDs, ix);
-  }
-
   // Ensure the CPU is running as fast as possible.
   // enable_burst_mode(error_reporter);
 
@@ -421,9 +384,6 @@ TfLiteStatus InitAudioRecording(tflite::ErrorReporter* error_reporter) {
   pdm_start_dma(g_pdm_dma_error_reporter);
 
   error_reporter->Report("\nPDM DMA Threshold = %d", PDMn(0)->FIFOTHR);
-
-  // Turn on LED 0 to indicate PDM initialized
-  am_devices_led_on(am_bsp_psLEDs, 0);
 
   return kTfLiteOk;
 }
