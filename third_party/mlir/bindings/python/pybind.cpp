@@ -110,6 +110,10 @@ struct PythonValueHandle {
     return ValueHandle::create<CallIndirectOp>(value, argValues);
   }
 
+  PythonType type() const {
+    return PythonType(value.getType().getAsOpaquePointer());
+  }
+
   mlir::edsc::ValueHandle value;
 };
 
@@ -951,7 +955,7 @@ PYBIND11_MODULE(pybind, m) {
       .def("affine_constant_map", &PythonMLIRModule::affineConstantMap,
            "Returns an affine map with single constant result.")
       .def("affine_map", &PythonMLIRModule::affineMap, "Returns an affine map.",
-           py::arg("dimCount"), py::arg("symbolCount"), py::arg("resuls"))
+           py::arg("dimCount"), py::arg("symbolCount"), py::arg("results"))
       .def("__str__", &PythonMLIRModule::getIR,
            "Get the string representation of the module");
 
@@ -1034,7 +1038,8 @@ PYBIND11_MODULE(pybind, m) {
         .def("__or__",
              [](PythonValueHandle lhs, PythonValueHandle rhs)
                  -> PythonValueHandle { return lhs.value || rhs.value; })
-        .def("__call__", &PythonValueHandle::call);
+        .def("__call__", &PythonValueHandle::call)
+        .def("type", &PythonValueHandle::type);
   }
 
   py::class_<PythonBlockAppender>(
