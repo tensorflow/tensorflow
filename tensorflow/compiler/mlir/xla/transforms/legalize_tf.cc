@@ -127,8 +127,8 @@ static llvm::Optional<int64_t> GetIntegerHLOAxisFromTFAxis(Value *value,
 
 /// Returns a `ConvertOp` that casts the elements to a i64 type while retaining
 /// the shape of the input value.
-static ConvertOp CastElementsToI64(Location loc, Value *value,
-                                   PatternRewriter *rewriter) {
+static ConvertOp CastValueToI64(Location loc, Value *value,
+                                PatternRewriter *rewriter) {
   return rewriter->create<ConvertOp>(loc, value, rewriter->getIntegerType(64));
 }
 
@@ -419,7 +419,8 @@ static DenseIntElementsAttr TFSliceSizes2HLOSliceSizes(
     Builder *builder) {
   DenseIntElementsAttr constant_start_indices;
   if (!matchPattern(start_indices, m_Constant(&constant_start_indices))) {
-    return slice_sizes;
+    return xla::ConvertElementsAttr(slice_sizes, builder->getIntegerType(64))
+        .cast<DenseIntElementsAttr>();
   }
 
   auto input_ty = input->getType().dyn_cast<RankedTensorType>();

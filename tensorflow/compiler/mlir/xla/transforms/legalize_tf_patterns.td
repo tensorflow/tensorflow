@@ -29,6 +29,9 @@ def FeatureDimension : NativeCodeCall<
 def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
 
+def CastValueToI64: NativeCodeCall<
+  "CastValueToI64($0->getLoc(), $1, &$_builder)">;
+
 def : Pattern<
     (TF_FusedBatchNormOp:$root $x, $scale, $offset, $mean, $variance, $epsilon,
                                $data_format, FalseBoolAttr:$is_training),
@@ -345,9 +348,9 @@ def TFSliceSizes2HLOSliceSizes : NativeCodeCall<
     "TFSliceSizes2HLOSliceSizes($0, $1, $2.cast<DenseIntElementsAttr>(),"
     "&$_builder)">;
 
-def : Pat<(TF_SliceOp HLO_Tensor:$input, HLO_Tensor:$starting_indices,
-           (TF_ConstOp I64ElementsAttr:$slice_sizes)),
-          (HLO_DynamicSliceOp $input, $starting_indices,
+def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
+           (TF_ConstOp $slice_sizes)),
+          (HLO_DynamicSliceOp $input, (CastValueToI64 $op, $starting_indices),
            (TFSliceSizes2HLOSliceSizes $input, $starting_indices, $slice_sizes)),
           [(CanBeTranslatedToDynamicSlice $input, $starting_indices,
             $slice_sizes)]>;
@@ -410,8 +413,6 @@ foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
 //===----------------------------------------------------------------------===//
 // RngUniform.
 //===----------------------------------------------------------------------===//
-def CastElementsToI64: NativeCodeCall<
-  "CastElementsToI64($0->getLoc(), $1, &$_builder)">;
 
 // TODO(misard,phawkins): handle random number generator seeds/states correctly.
 def : Pat<(TF_RandomUniformOp:$old $shape, $seed, $seed2),
@@ -420,5 +421,5 @@ def : Pat<(TF_RandomUniformOp:$old $shape, $seed, $seed2),
               (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 0.0)">)),
             (HLO_ConstOp
               (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 1.0)">)),
-            (CastElementsToI64 $old, $shape)),
+            (CastValueToI64 $old, $shape)),
             [(IsShapedTensor $shape)]>;
