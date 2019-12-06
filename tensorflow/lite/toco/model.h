@@ -1199,6 +1199,8 @@ struct SqueezeOperator : Operator {
 //   inputs[0]: required: the output shape
 //   inputs[1]: required: the weights
 //   inputs[2]: required: the input activations array
+//   inputs[3]: optional: the bias vector, specifying the biases for each output
+//                        channel.
 //   NOTE: The input activations is NOT the first input.
 //
 //
@@ -1211,6 +1213,7 @@ struct TransposeConvOperator : Operator {
     OUTPUT_SHAPE = 0,
     WEIGHTS = 1,
     DATA_INPUT = 2,
+    BIAS = 3,
   };
 
   TransposeConvOperator() : Operator(OperatorType::kTransposeConv) {}

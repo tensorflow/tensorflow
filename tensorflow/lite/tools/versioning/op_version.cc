@@ -161,6 +161,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_TRANSPOSE_CONV:
+      // If the op has 4 inputs, it is version 3.
+      if (op_sig.input_types.size() == 4) {
+        return 3;
+      }
       // If the op takes int8 input, it is version 2.
       if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;

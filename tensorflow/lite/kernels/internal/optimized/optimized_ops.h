@@ -5552,20 +5552,41 @@ void Col2im(const T* col_data, const int depth, const int height,
   }
 }
 
+template <typename T>
+void BiasAdd(T* im_data, const T* bias_data, const int batch_size,
+             const int height, const int width, const int depth) {
+  if (bias_data) {
+    for (int n = 0; n < batch_size; ++n) {
+      for (int h = 0; h < height; ++h) {
+        for (int w = 0; w < width; ++w) {
+          for (int d = 0; d < depth; ++d) {
+            im_data[d] += bias_data[d];
+          }
+          im_data += depth;
+        }
+      }
+    }
+  }
+}
+
 // TransposeConvV2 expect the weights in HWOI order.
 inline void TransposeConvV2(
     const ConvParams& params, const RuntimeShape& input_shape,
     const float* input_data, const RuntimeShape& hwoi_ordered_filter_shape,
-    const float* hwoi_ordered_filter_data, const RuntimeShape& output_shape,
-    float* output_data, const RuntimeShape& col2im_shape, float* col2im_data,
+    const float* hwoi_ordered_filter_data, const RuntimeShape& bias_shape,
+    const float* bias_data, const RuntimeShape& output_shape,
+    float* const output_data, const RuntimeShape& col2im_shape, float* col2im_data,
     CpuBackendContext* cpu_backend_context) {
   ruy::profiler::ScopeLabel label("TransposeConvV2/float");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(hwoi_ordered_filter_shape.DimensionsCount(), 4);
-  const int batch_size = input_shape.Dims(0);
+  TFLITE_DCHECK_EQ(bias_shape.Dims(0), output_shape.Dims(3));
   TFLITE_DCHECK(col2im_data);
   TFLITE_DCHECK(hwoi_ordered_filter_data);
+  TFLITE_DCHECK(bias_data);
 
+  const int batch_size =
+      MatchingDim(input_shape, 0, output_shape, 0);
   const int input_image_size = input_shape.Dims(1) * input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
@@ -5617,6 +5638,9 @@ inline void TransposeConvV2(
            output_data_p);
     output_data_p += output_offset;
   }
+  output_data_p = output_data;
+  BiasAdd(output_data_p, bias_data, batch_size, output_height,
+          output_width, output_depth);
 }
 
 inline void Quantize(int32_t multiplier, int32_t shift, int32_t total_size,
@@ -5777,17 +5801,21 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
 inline void TransposeConvV2(
     const ConvParams& params, const RuntimeShape& input_shape,
     const uint8_t* input_data, const RuntimeShape& hwoi_ordered_filter_shape,
-    const uint8_t* hwoi_ordered_filter_data, const RuntimeShape& output_shape,
+    const uint8_t* hwoi_ordered_filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
     uint8_t* output_data, const RuntimeShape& col2im_shape,
     int32_t* col2im_data, int32_t* scratch_data,
     CpuBackendContext* cpu_backend_context) {
   ruy::profiler::ScopeLabel label("TransposeConvV2/uint8");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(hwoi_ordered_filter_shape.DimensionsCount(), 4);
-  const int batch_size = input_shape.Dims(0);
+  TFLITE_DCHECK_EQ(bias_shape.Dims(0), output_shape.Dims(3));
   TFLITE_DCHECK(col2im_data);
   TFLITE_DCHECK(hwoi_ordered_filter_data);
+  TFLITE_DCHECK(bias_data);
 
+  const int batch_size =
+      MatchingDim(input_shape, 0, output_shape, 0);
   const int input_image_size = input_shape.Dims(1) * input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
@@ -5845,6 +5873,9 @@ inline void TransposeConvV2(
 
     scratch_data_p += output_offset;
   }
+  scratch_data_p = scratch_data;
+  BiasAdd(scratch_data_p, bias_data, batch_size, output_height,
+          output_width, output_depth);
 
   Quantize(params.output_multiplier, params.output_shift,
            output_shape.FlatSize(), params.output_offset, scratch_data,

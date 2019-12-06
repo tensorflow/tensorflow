@@ -2351,7 +2351,8 @@ void Transpose(const TransposeParams& params,
 inline void TransposeConv(
     const ConvParams& params, const RuntimeShape& input_shape,
     const float* input_data, const RuntimeShape& filter_shape,
-    const float* filter_data, const RuntimeShape& output_shape,
+    const float* filter_data, const RuntimeShape& bias_shape,
+    const float* bias_data, const RuntimeShape& output_shape,
     float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
@@ -2372,6 +2373,9 @@ inline void TransposeConv(
   const int filter_width = filter_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  if (bias_data) {
+    TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
+  }
 
   // Although transpose convolution simplifies to convolution with transposed
   // weights for strides of 1, non-unitary striding complicates matters. To
@@ -2419,6 +2423,18 @@ inline void TransposeConv(
       }
     }
   }
+  if (bias_data) {
+    for (int batch = 0; batch < batches; ++batch) {
+      for (int out_y = 0; out_y < output_height; ++out_y) {
+        for (int out_x = 0; out_x < output_width; ++out_x) {
+          for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
+            output_data[Offset(output_shape, batch, out_y, out_x,
+                                      out_channel)] += bias_data[out_channel];
+          }
+        }
+      }
+    }
+  }
 }
 
 inline void TransposeConv(const ConvParams& params,
@@ -2426,6 +2442,8 @@ inline void TransposeConv(const ConvParams& params,
                           const uint8* input_data,
                           const RuntimeShape& filter_shape,
                           const uint8* filter_data,
+                          const RuntimeShape& bias_shape,
+                          const int32* bias_data,
                           const RuntimeShape& output_shape, uint8* output_data,
                           const RuntimeShape& im2col_shape, uint8* im2col_data,
                           int32* scratch_buffer) {
@@ -2456,6 +2474,9 @@ inline void TransposeConv(const ConvParams& params,
   const int32 output_activation_min = params.quantized_activation_min;
   const int32 output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (bias_data) {
+    TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
+  }
 
   const int num_elements = output_shape.FlatSize();
   // We need to initialize scratch_buffer to all 0s, as we apply the same
@@ -2497,14 +2518,25 @@ inline void TransposeConv(const ConvParams& params,
       }
     }
   }
-  for (int i = 0; i < num_elements; ++i) {
-    int32 acc = scratch_buffer[i];
-    acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
-    acc += output_offset;
-    // Clamp the output before converting back to uint8.
-    acc = std::max(acc, output_activation_min);
-    acc = std::min(acc, output_activation_max);
-    output_data[i] = static_cast<uint8>(acc);
+  for (int batch = 0; batch < batches; ++batch) {
+    for (int out_y = 0; out_y < output_height; ++out_y) {
+      for (int out_x = 0; out_x < output_width; ++out_x) {
+        for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
+          int32 acc = scratch_buffer[Offset(output_shape, batch, out_y, out_x,
+                                            out_channel)];
+          if (bias_data) {
+            acc += bias_data[out_channel];
+          }
+          int32 scaled_acc = MultiplyByQuantizedMultiplier(
+                acc, output_multiplier, output_shift);
+          scaled_acc += output_offset;
+          scaled_acc = std::max(scaled_acc, output_activation_min);
+          scaled_acc = std::min(scaled_acc, output_activation_max);
+          output_data[Offset(output_shape, batch, out_y, out_x, out_channel)] =
+              static_cast<uint8>(scaled_acc);
+        }
+      }
+    }
   }
 }
 

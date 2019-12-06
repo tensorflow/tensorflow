@@ -30,7 +30,8 @@ int GetOutputDepthFromWeights(const Model& model, const Operator& op) {
   const string& weights_name = op.inputs[1];
   const auto& weights_shape = model.GetArray(weights_name).shape();
   if (op.type == OperatorType::kConv ||
-      op.type == OperatorType::kFullyConnected) {
+      op.type == OperatorType::kFullyConnected ||
+      op.type == OperatorType::kTransposeConv) {
     return weights_shape.dims(0);
   }
   if (op.type == OperatorType::kDepthwiseConv) {
@@ -40,8 +41,19 @@ int GetOutputDepthFromWeights(const Model& model, const Operator& op) {
   return 0;
 }
 
+bool CheckOpInputSize(const Operator& op) {
+  if (op.type == OperatorType::kConv ||
+      op.type == OperatorType::kFullyConnected ||
+      op.type == OperatorType::kDepthwiseConv) {
+        return (op.inputs.size() >= 3);
+  } else if (op.type == OperatorType::kTransposeConv) {
+        return (op.inputs.size() >= 4);
+  }
+  return true;
+}
+
 bool ProcessLinearOperator(Model* model, Operator* op) {
-  if (op->inputs.size() >= 3) {
+  if (CheckOpInputSize(*op)) {
     return false;
   }
   const string& output_name = op->outputs[0];
@@ -68,7 +80,8 @@ bool ProcessLinearOperator(Model* model, Operator* op) {
   auto* op = model->operators[op_index].get();
   if (op->type == OperatorType::kConv ||
       op->type == OperatorType::kDepthwiseConv ||
-      op->type == OperatorType::kFullyConnected) {
+      op->type == OperatorType::kFullyConnected ||
+      op->type == OperatorType::kTransposeConv) {
     if (ProcessLinearOperator(model, op)) {
       AddMessageF("Added bias vector to %s as %s", LogName(*op), op->inputs[2]);
       *modified = true;
