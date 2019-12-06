@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_PROFILER_SESSION_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_PROFILER_SESSION_H_
 
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"

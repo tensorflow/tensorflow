@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_FACTORY_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_FACTORY_H_
 
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 
 namespace tensorflow {
