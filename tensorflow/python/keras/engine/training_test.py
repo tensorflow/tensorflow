@@ -18,8 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import io
 import logging
+import re
 import sys
 
 from absl.testing import parameterized
@@ -752,6 +754,125 @@ class TrainingTest(keras_parameterized.TestCase):
         'input_b': input_b_np
     })
     self.assertEqual(len(out), 2)
+
+  def _make_sequence_input_functions(self, input_type):
+    # train and test
+    xy_namedtuple = collections.namedtuple('xy_namedtuple', ['x', 'y'])
+
+    # predict
+    x_namedtuple = collections.namedtuple('x_namedtuple', ['x'])
+
+    if input_type == 'dataset':
+      dataset = dataset_ops.Dataset.range(16).map(
+          lambda _: array_ops.ones(shape=(1,)))
+
+      xy_dataset = dataset_ops.Dataset.zip((dataset, dataset)).batch(4)
+      x_dataset = dataset.batch(4)
+      def xy_function(use_namedtuple):
+        return xy_dataset.map(xy_namedtuple) if use_namedtuple else xy_dataset
+
+      def x_function(use_namedtuple):
+        return x_dataset.map(x_namedtuple) if use_namedtuple else x_dataset
+
+      return xy_function, x_function
+
+    elif input_type == 'generator':
+      def xy_generator(use_namedtuple):
+        x, y = np.ones((4, 1)), np.ones((4, 1))
+        for _ in range(4):
+          if use_namedtuple:
+            yield xy_namedtuple(x, y)
+          else:
+            yield x, y
+
+      def x_generator(use_namedtuple):
+        x = np.ones((4, 1))
+        for _ in range(4):
+          if use_namedtuple:
+            yield x_namedtuple(x)
+          else:
+            yield x
+
+      return xy_generator, x_generator
+
+    elif input_type == 'sequence':
+      class XYSequence(data_utils.Sequence):
+
+        def __init__(self, use_namedtuple):
+          self._use_namedtuple = use_namedtuple
+          super(XYSequence, self).__init__()
+
+        def __getitem__(self, idx):
+          x, y = np.ones((4, 1)), np.ones((4, 1))
+          if self._use_namedtuple:
+            return xy_namedtuple(x, y)
+          return x, y
+
+        def __len__(self):
+          return 4
+
+      class XSequence(data_utils.Sequence):
+
+        def __init__(self, use_namedtuple):
+          self._use_namedtuple = use_namedtuple
+          super(XSequence, self).__init__()
+
+        def __getitem__(self, idx):
+          x = np.ones((4, 1))
+          if self._use_namedtuple:
+            return x_namedtuple(x)
+          return x
+
+        def __len__(self):
+          return 4
+
+      return XYSequence, XSequence
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  @keras_parameterized.run_with_all_model_types
+  @parameterized.named_parameters(
+      ('dataset', 'dataset'),
+      ('generator', 'generator'),
+      ('sequence', 'sequence'),
+  )
+  def test_sequence_input_types(self, input_type):
+    """Ensure that namedtuples and tuples are plumbed identically."""
+    if not testing_utils.should_run_tf_function():
+      self.skipTest('Improved checking is only present in data_adapter.')
+
+    xy_function, x_function = self._make_sequence_input_functions(input_type)
+    fit_kwargs, evaluate_kwargs, predict_kwargs = {}, {}, {}
+    if input_type == 'generator':
+      fit_kwargs['steps_per_epoch'] = 4
+      evaluate_kwargs['steps'] = 4
+      predict_kwargs['steps'] = 4
+
+    model = testing_utils.get_small_mlp(1, 1, 1)
+    model.compile(
+        loss='mse',
+        optimizer='sgd',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    model.fit(xy_function(use_namedtuple=False), **fit_kwargs)
+    model.evaluate(xy_function(use_namedtuple=False), **evaluate_kwargs)
+    model.predict(x_function(use_namedtuple=False), **predict_kwargs)
+
+    xy_pattern = re.escape(
+        "Received namedtuple (<class '__main__.xy_namedtuple'>) with fields "
+        "`('x', 'y')` as input.")
+    x_pattern = re.escape(
+        "Received namedtuple (<class '__main__.x_namedtuple'>) with fields "
+        "`('x',)` as input.")
+
+    with self.assertRaisesRegex(ValueError, xy_pattern):
+      model.fit(xy_function(use_namedtuple=True), **fit_kwargs)
+
+    with self.assertRaisesRegex(ValueError, xy_pattern):
+      model.evaluate(xy_function(use_namedtuple=True), **evaluate_kwargs)
+
+    with self.assertRaisesRegex(ValueError, x_pattern):
+      model.predict(x_function(use_namedtuple=True), **predict_kwargs)
 
   @keras_parameterized.run_all_keras_modes
   @keras_parameterized.run_with_all_model_types
