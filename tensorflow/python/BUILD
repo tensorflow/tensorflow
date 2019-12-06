@@ -3551,24 +3551,26 @@ py_library(
         ":loss_scale",
         ":unconnected_gradients",
         ":util",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:backprop",
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "loss_scaling_gradient_tape_test",
     size = "medium",
     srcs = ["training/experimental/loss_scaling_gradient_tape_test.py"],
-    python_version = "PY3",
-    deps = [
+    additional_deps = [
         ":client_testlib",
         ":constant_op",
+        ":framework_test_combinations_lib",
         ":loss_scale",
         ":loss_scaling_gradient_tape",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/eager:def_function",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 
