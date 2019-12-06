@@ -238,15 +238,15 @@ class VectorExtractElementOpConversion : public LLVMOpLowering {
 public:
   explicit VectorExtractElementOpConversion(MLIRContext *context,
                                             LLVMTypeConverter &typeConverter)
-      : LLVMOpLowering(vector::ExtractElementOp::getOperationName(), context,
+      : LLVMOpLowering(vector::ExtractOp::getOperationName(), context,
                        typeConverter) {}
 
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
-    auto adaptor = vector::ExtractElementOpOperandAdaptor(operands);
-    auto extractOp = cast<vector::ExtractElementOp>(op);
+    auto adaptor = vector::ExtractOpOperandAdaptor(operands);
+    auto extractOp = cast<vector::ExtractOp>(op);
     auto vectorType = extractOp.vector()->getType().cast<VectorType>();
     auto resultType = extractOp.getResult()->getType();
     auto llvmResultType = lowering.convertType(resultType);
