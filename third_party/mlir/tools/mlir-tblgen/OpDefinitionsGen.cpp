@@ -993,18 +993,22 @@ void OpEmitter::genUseOperandAsResultTypeCollectiveParamBuilder() {
 
 void OpEmitter::genInferedTypeCollectiveParamBuilder() {
   // TODO(jpienaar): Expand to support regions.
-  std::string params =
-      (Twine("Builder *, OperationState &") + builderOpState +
-       ", ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes")
-          .str();
-  auto &m = opClass.newMethod("void", "build", params, OpMethod::MP_Static);
+  const char *params =
+      "Builder *builder, OperationState &{0}, "
+      "ArrayRef<Value*> operands, ArrayRef<NamedAttribute> attributes";
+  auto &m =
+      opClass.newMethod("void", "build", formatv(params, builderOpState).str(),
+                        OpMethod::MP_Static);
   auto &body = m.body();
-
-  body << "  " << builderOpState << ".addOperands(operands);\n\n";
-  body << "  " << builderOpState << ".addAttributes(attributes);\n";
-  body << "  " << builderOpState << ".addTypes(" << opClass.getClassName()
-       << "::inferReturnTypes(" << builderOpState
-       << ".location, operands, attributes, /*regions=*/{}));\n";
+  body << formatv(R"(
+    SmallVector<Type, 2> inferedReturnTypes;
+    if (succeeded({0}::inferReturnTypes({1}.location, operands, attributes,
+                  /*regions=*/{{}, inferedReturnTypes)))
+      build(builder, tblgen_state, inferedReturnTypes, operands, attributes);
+    else
+      llvm::report_fatal_error("Failed to infer result type(s).");
+  )",
+                  opClass.getClassName(), builderOpState);
 }
 
 void OpEmitter::genUseOperandAsResultTypeSeparateParamBuilder() {

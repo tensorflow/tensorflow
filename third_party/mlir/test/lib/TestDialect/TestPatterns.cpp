@@ -74,10 +74,13 @@ struct ReturnTypeOpMatch : public RewritePattern {
                                      PatternRewriter &rewriter) const final {
     if (auto retTypeFn = dyn_cast<InferTypeOpInterface>(op)) {
       SmallVector<Value *, 4> values(op->getOperands());
-      auto res = retTypeFn.inferReturnTypes(op->getLoc(), values,
-                                            op->getAttrs(), op->getRegions());
-      SmallVector<Type, 1> result_types(op->getResultTypes());
-      if (!retTypeFn.isCompatibleReturnTypes(res, result_types))
+      SmallVector<Type, 2> inferedReturnTypes;
+      if (failed(retTypeFn.inferReturnTypes(op->getLoc(), values,
+                                            op->getAttrs(), op->getRegions(),
+                                            inferedReturnTypes)))
+        return matchFailure();
+      SmallVector<Type, 1> resultTypes(op->getResultTypes());
+      if (!retTypeFn.isCompatibleReturnTypes(inferedReturnTypes, resultTypes))
         return op->emitOpError(
                    "inferred type incompatible with return type of operation"),
                matchFailure();
