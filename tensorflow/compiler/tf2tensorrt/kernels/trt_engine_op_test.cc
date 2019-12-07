@@ -49,7 +49,8 @@ using ::testing::ElementsAre;
 
 class TRTEngineOpTestBase : public OpsTestBase {
  public:
-  void AddSimpleTrtOp(DataType dtype, int max_cached_engines_count = 1) {
+  void AddSimpleTrtOp(DataType dtype, int max_cached_engines_count = 1,
+                      allow_build_at_runtime = true) {
     // Create the GPU device.
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("GPU", {}, "/job:worker/replica:0/task:0"));
@@ -88,6 +89,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
                      .Attr("precision_mode", "FP32")
                      .Attr("use_calibration", false)
                      .Attr("_use_implicit_batch", true)
+                     .Attr("allow_build_at_runtime", allow_build_at_runtime)
                      .Attr("OutT", {dtype})
                      .Finalize(OpsTestBase::node_def()));
     TF_ASSERT_OK(InitOpWithFunctionLibrary());
@@ -167,6 +169,25 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
   EXPECT_EQ(1, cache->count({TensorShape({2, 2})}));
   EXPECT_EQ(1, cache->count({TensorShape({3, 2})}));
   EXPECT_EQ(1, cache->count({TensorShape({10, 10})}));
+}
+
+TEST_F(TRTEngineOpTestBase, AllowBuildAtRuntime) {
+  TRTEngineOpTestBase::AddSimpleTrtOp(DT_FLOAT, /*max_cached_engines_count=*/1,
+                                      /*allow_build_at_runtime*/false);
+
+  // Execute the op
+  TRTEngineOpTestBase::AddSimpleInput<float>(TensorShape({2, 2}));
+  TF_ASSERT_OK(OpsTestBase::RunOpKernel());
+
+  // Get the engine cache.
+  TRTEngineCacheResource* cache_resource = nullptr;
+  TF_ASSERT_OK(
+      device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
+  core::ScopedUnref sc(cache_resource);
+
+  // It should not contain any engine.
+  auto cache = &cache_resource->cache_;
+  EXPECT_EQ(0, cache->size());
 }
 
 template <typename T>
