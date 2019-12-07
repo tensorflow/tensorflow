@@ -15248,8 +15248,15 @@ func StringLengthUnit(value string) StringLengthAttr {
 //
 // Computes the length of each string given in the input tensor.
 //
+// >>> strings = tf.constant(['Hello','TensorFlow', '\U0001F642'])
+// >>> tf.strings.length(strings).numpy() # default counts bytes
+// array([ 5, 10, 4], dtype=int32)
+// >>> tf.strings.length(strings, unit="UTF8_CHAR").numpy()
+// array([ 5, 10, 1], dtype=int32)
+//
+//
 // Arguments:
-//	input: The string for which to compute the length.
+//	input: The strings for which to compute the length for each element.
 //
 // Returns Integer tensor that has the same shape as `input`. The output contains the
 // element-wise string lengths of `input`.
