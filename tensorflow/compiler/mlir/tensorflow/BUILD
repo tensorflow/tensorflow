@@ -192,6 +192,37 @@ cc_library(
     alwayslink = 1,
 )
 
+gentbl(
+    name = "decompose_resource_ops_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "transforms/generated_decompose_resource_ops.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "transforms/decompose_resource_ops.td",
+    td_srcs = [
+        ":tensorflow_ops_td_files",
+        "@local_config_mlir//:StdOpsTdFiles",
+    ],
+)
+
+cc_library(
+    name = "decompose_resource_ops",
+    srcs = [
+        "transforms/decompose_resource_ops.cc",
+    ],
+    hdrs = [
+        "transforms/decompose_resource_ops.h",
+    ],
+    deps = [
+        ":decompose_resource_ops_inc_gen",
+        ":tensorflow",
+        "@local_config_mlir//:IR",
+    ],
+)
+
 cc_library(
     name = "tensorflow_passes",
     srcs = [
@@ -199,6 +230,7 @@ cc_library(
         "transforms/bridge_pass.cc",
         "transforms/cluster_formation.cc",
         "transforms/cluster_outlining.cc",
+        "transforms/decompose_resource_ops_pass.cc",
         "transforms/delete_unused_funcs.cc",
         "transforms/executor_island_coarsening.cc",
         "transforms/fold_switch.cc",
@@ -237,6 +269,8 @@ cc_library(
         ":bridge_logger",
         ":convert_tensor",
         ":convert_type",
+        ":decompose_resource_ops",
+        ":decompose_resource_ops_inc_gen",
         ":device_util",
         ":error_util",
         ":export_tf_dialect_op",
