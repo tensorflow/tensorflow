@@ -760,23 +760,6 @@ class ScopedDropoutDescriptor {
                  << ToString(status);
     }
 
-    DeviceMemory<uint8> state_memory;
-    if (state_allocator) {
-      size_t state_sizes_in_bytes = 0;
-      status = wrap::miopenDropoutGetStatesSize(miopen_handle,
-                                                &state_sizes_in_bytes);
-      if (status != miopenStatusSuccess) {
-        LOG(FATAL) << "could not query miopen dropout state size: "
-                   << ToString(status);
-      }
-      auto allocated = state_allocator->AllocateBytes(state_sizes_in_bytes);
-      if (!allocated.ok() ||
-          (state_memory = allocated.ValueOrDie()) == nullptr) {
-        LOG(ERROR) << "Failed to allocate dropout workspace";
-        return;
-      }
-    }
-
     // Note that we hard code rng_mode now because there is only one node
     // available, and this option is not part of user API. In the future we may
     // consider exposing this as a field in DropoutDescriptor
@@ -786,7 +769,7 @@ class ScopedDropoutDescriptor {
     // generated random mask
     status = wrap::miopenRestoreDropoutDescriptor(
         handle_, miopen_handle, dropout_descriptor.rate(),
-        state_memory.opaque(), state_memory.size(), dropout_descriptor.seed(),
+        nullptr, 0, dropout_descriptor.seed(),
         /*use_mask=*/true, /*state_evo=*/false,
         /*rng_mode=*/miopenRNGType_t::MIOPEN_RNG_PSEUDO_XORWOW);
     if (status != miopenStatusSuccess) {
