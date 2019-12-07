@@ -92,9 +92,6 @@ class Loss(object):
     losses_utils.ReductionV2.validate(reduction)
     self.reduction = reduction
     self.name = name
-    # SUM_OVER_BATCH is only allowed in losses managed by `fit` or
-    # CannedEstimators.
-    self._allow_sum_over_batch_size = False
 
   def __call__(self, y_true, y_pred, sample_weight=None):
     """Invokes the `Loss` instance.
@@ -158,10 +155,9 @@ class Loss(object):
 
   def _get_reduction(self):
     """Handles `AUTO` reduction cases and returns the reduction value."""
-    if (not self._allow_sum_over_batch_size and
-        distribution_strategy_context.has_strategy() and
-        (self.reduction == losses_utils.ReductionV2.AUTO or
-         self.reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE)):
+    if distribution_strategy_context.has_strategy() and (
+        self.reduction == losses_utils.ReductionV2.AUTO or
+        self.reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE):
       raise ValueError(
           'Please use `tf.keras.losses.Reduction.SUM` or '
           '`tf.keras.losses.Reduction.NONE` for loss reduction when losses are '
