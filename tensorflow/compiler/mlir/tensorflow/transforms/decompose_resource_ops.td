@@ -47,3 +47,17 @@ def DecomposeAssignSubVariableOp :
       )
     )
   >;
+
+// This decomposition is only correct inside XLA as it ignores use_locking
+// attribute.
+def DecomposeResourceApplyGradientDescentOp :
+  Pat<
+    (TF_ResourceApplyGradientDescentOp:$src_op $resource, $alpha, $delta, $_),
+    (TF_AssignVariableOp
+      $resource,
+      (TF_SubOp
+        (CreateTFReadVariableOp $src_op, $alpha, $resource),
+        (TF_MulOp $alpha, $delta)
+      )
+    )
+  >;
