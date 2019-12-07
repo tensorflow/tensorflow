@@ -61,8 +61,8 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.16.0, < 2.0',
     'opt_einsum >= 2.3.2',
     'protobuf >= 3.8.0',
-    'tensorboard >= 2.0.0, < 2.1.0',
-    'tensorflow_estimator >= 2.0.0, < 2.1.0',
+    'tensorboard >= 2.1.0, < 2.2.0',
+    'tensorflow_estimator >= 2.1.0rc0, < 2.2.0',
     'termcolor >= 1.1.0',
     'wrapt >= 1.11.1',
     # python3 requires wheel 0.26
