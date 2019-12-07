@@ -318,6 +318,7 @@ def ConvOp : LinalgLibrary_Op<"conv", [NInputsAndOutputs<2, 1>]> {
                        q]
     ```
   }];
+
   // TODO(ntv) padding.
   // Following the TF source of truth above, strides and dilations are integer
   // attributes of the same rank as the number of window dimensions.

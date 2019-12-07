@@ -39,18 +39,21 @@ class Linalg_Op<string mnemonic, list<OpTrait> traits = []> :
   let parser = [{ return ::parse$cppClass(parser, result); }];
 }
 
-def RangeOp :
+def Linalg_RangeOp :
     Linalg_Op<"range", [NoSideEffect]>,
     Arguments<(ins Index:$min, Index:$max, Index:$step)>,
     Results<(outs Range)> {
-  let summary = "Create a range type value, used to create views";
+  let summary = "Create a `range` type value, used to create `view`s";
   let description = [{
-    The `linalg.range` op creates a linalg.range from 3 values of type `index`
-    that represent the min, max and step values of the range.
+    The `linalg.range` op creates a `!linalg.range` from 3 values of type
+    `index` that represent the min, max and step values of the `range`. This
+    type does not pass function boundaries at the moment.
 
     Example:
 
+    ```mlir
       %3 = linalg.range %0:%1:%2 : !linalg.range
+    ````
   }];
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Value *min, Value *max, "
@@ -64,40 +67,48 @@ def RangeOp :
   let verifier = ?;
 }
 
-def SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
+def Linalg_SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
     Arguments<(ins AnyStridedMemRef:$view, Variadic<AnyTypeOf<[Range, Index]>>:$indexings)>,
     Results<(outs AnyStridedMemRef)> {
-  let summary = "Produce a linalg.view which is a subview of a base view.";
+  let summary = "Produce a rank-reduced `subview` of a base `view`.";
   let description = [{
-    The "linalg.slice" op produces a linalg.view which is a subview of a given
-    base view. This allows defining a subregion within the underlying buffer to
-    operate on only a subset of the buffer.
+    The `linalg.slice` op allows defining a subregion of a smaller rank than the
+    operand `view` within the underlying buffer.
 
-    A "linalg.slice" op takes a view and a variadic number of indexings and
-    produces a linalg.view of the same elemental type. An indexing is either:
-      1. a linalg.range, in which case it does not reduce the rank of the parent
-         view.
-      2. an index, in which case it reduces the rank of the parent view by one.
+    A `linalg.slice` op takes a view and a variadic number of indexings and
+    produces a `view` of the same elemental type. An indexing is either:
+      1. a `linalg.range`, in which case it does not reduce the rank of the
+         parent `view` along the corresponding dimension.
+      2. an `index`, in which case it reduces the rank of the parent view by
+         one.
 
-    If an indexing extends past the size of the view, the slice operation
-    automatically truncates it to be within the bounds.
+    If an indexing extends past the size of the `view`, this is undefined
+    behavior. Ideally the `linalg.slice` operation would automatically truncate
+    it to be within bounds but there are tradeoffs involved now that `std.view`
+    is a standard op.
 
     Examples:
 
-      1. rank-preserving slice:
+      1. rank-preserving `slice`:
 
-        %4 = linalg.slice %0[%1, %2] : memref<?x?xf32, stride_specification>,
-          !linalg.range, !linalg.range, memref<?x?xf32, stride_specification>
+      ```mlir
+        %4 = linalg.slice %0[%1, %2] : memref<?x?xf32, stride_spec>,
+          !linalg.range, !linalg.range, memref<?x?xf32, stride_spec>
+       ```
 
-      2. rank-reducing slice (from 2-D to 1-D):
+      2. rank-reducing `slice` (from 2-D to 1-D):
 
-        %4 = linalg.slice %0[%1, %2] : memref<?x?xf32, stride_specification>,
-          index, !linalg.range, memref<?x?xf32, stride_specification>
+      ```mlir
+        %4 = linalg.slice %0[%1, %2] : memref<?x?xf32, stride_spec>,
+          index, !linalg.range, memref<?x?xf32, stride_spec>
+      ```
 
-      3. rank-reducing slice (from 2-D to 0-D):
+      3. rank-reducing `slice` (from 2-D to 0-D):
 
-        %4 = linalg.slice %0[%1, %2] : memref<?x?xf32, stride_specification>,
-          index, index, memref<?x?xf32, stride_specification>
+      ```mlir
+        %4 = linalg.slice %0[%1, %2] : memref<?x?xf32, stride_spec>,
+          index, index, memref<?x?xf32, stride_spec>
+      ```
   }];
 
   let builders = [OpBuilder<
@@ -126,18 +137,20 @@ def SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
   }];
 }
 
-def TransposeOp : Linalg_Op<"transpose", [NoSideEffect]>,
+def Linalg_TransposeOp : Linalg_Op<"transpose", [NoSideEffect]>,
     Arguments<(ins AnyStridedMemRef:$view, AffineMapAttr:$permutation)>,
     Results<(outs AnyStridedMemRef)> {
   let summary = "transpose operation produces a new strided memref (metadata-only)";
   let description = [{
-    The "linalg.transpose" op produces a strided memref whose sizes and strides
-    are a permutation of the original. This is a pure metadata transformation.
+    The `linalg.transpose` op produces a strided memref whose sizes and strides
+    are a permutation of the original `view`. This is a pure metadata
+    transformation.
 
     Example:
 
-       %1 = linalg.transpose %0 (i, j) -> (j, i) :
-        memref<?x?xf32, stride_specification>
+    ```mlir
+       %1 = linalg.transpose %0 (i, j) -> (j, i) : memref<?x?xf32, stride_spec>
+    ```
   }];
 
   let builders = [OpBuilder<
@@ -158,16 +171,19 @@ def TransposeOp : Linalg_Op<"transpose", [NoSideEffect]>,
   }];
 }
 
-def YieldOp : Linalg_Op<"yield", [NativeOpTrait<"IsTerminator">]>,
+def Linalg_YieldOp : Linalg_Op<"yield", [NativeOpTrait<"IsTerminator">]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "Linalg yield operation";
   let description = [{
-    "linalg.yield" is a special terminator operation for blocks inside regions
-    in linalg ops. It returns values to the immediately enclosing linalg op.
+    `linalg.yield` is a special terminator operation for blocks inside regions
+    in `linalg` generic ops. It returns values to the immediately enclosing
+    `linalg` generic op.
 
     Example:
 
+    ```mlir
        linalg.yield %f0, %f1 : f32, f32
+    ```
   }];
 }
 
