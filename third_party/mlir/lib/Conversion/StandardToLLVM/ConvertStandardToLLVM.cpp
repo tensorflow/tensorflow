@@ -1118,8 +1118,7 @@ struct CallOpInterfaceLowering : public LLVMLegalizationPattern<CallOpType> {
 
     // If < 2 results, packing did not do anything and we can just return.
     if (numResults < 2) {
-      SmallVector<Value *, 4> results(newOp.getResults());
-      rewriter.replaceOp(op, results);
+      rewriter.replaceOp(op, newOp.getResults());
       return this->matchSuccess();
     }
 

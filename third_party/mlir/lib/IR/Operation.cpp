@@ -740,6 +740,42 @@ Operation *Operation::clone() {
 }
 
 //===----------------------------------------------------------------------===//
+// ValueRange
+//===----------------------------------------------------------------------===//
+
+ValueRange::ValueRange(ArrayRef<Value *> values)
+    : owner(values.data()), count(values.size()) {}
+ValueRange::ValueRange(llvm::iterator_range<OperandIterator> values)
+    : count(llvm::size(values)) {
+  if (count != 0) {
+    auto begin = values.begin();
+    owner = &begin.getObject()->getOpOperand(begin.getIndex());
+  }
+}
+ValueRange::ValueRange(llvm::iterator_range<ResultIterator> values)
+    : count(llvm::size(values)) {
+  if (count != 0) {
+    auto begin = values.begin();
+    owner = &begin.getObject()->getOpResult(begin.getIndex());
+  }
+}
+
+ValueRange::Iterator::Iterator(OwnerT owner, unsigned curIndex)
+    : indexed_accessor_iterator<Iterator, OwnerT, Value *, Value *, Value *>(
+          owner, curIndex) {}
+
+Value *ValueRange::Iterator::operator*() const {
+  // Operands access the held value via 'get'.
+  if (OpOperand *operand = object.dyn_cast<OpOperand *>())
+    return operand[index].get();
+  // An OpResult is a value, so we can return it directly.
+  if (OpResult *result = object.dyn_cast<OpResult *>())
+    return &result[index];
+  // Otherwise, this is a raw value array so just index directly.
+  return object.get<Value *const *>()[index];
+}
+
+//===----------------------------------------------------------------------===//
 // OpState trait class.
 //===----------------------------------------------------------------------===//
 

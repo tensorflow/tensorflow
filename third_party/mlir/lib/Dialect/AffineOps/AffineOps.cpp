@@ -863,14 +863,11 @@ void AffineDmaStartOp::build(Builder *builder, OperationState &result,
 
 void AffineDmaStartOp::print(OpAsmPrinter &p) {
   p << "affine.dma_start " << *getSrcMemRef() << '[';
-  SmallVector<Value *, 8> operands(getSrcIndices());
-  p.printAffineMapOfSSAIds(getSrcMapAttr(), operands);
+  p.printAffineMapOfSSAIds(getSrcMapAttr(), getSrcIndices());
   p << "], " << *getDstMemRef() << '[';
-  operands.assign(getDstIndices().begin(), getDstIndices().end());
-  p.printAffineMapOfSSAIds(getDstMapAttr(), operands);
+  p.printAffineMapOfSSAIds(getDstMapAttr(), getDstIndices());
   p << "], " << *getTagMemRef() << '[';
-  operands.assign(getTagIndices().begin(), getTagIndices().end());
-  p.printAffineMapOfSSAIds(getTagMapAttr(), operands);
+  p.printAffineMapOfSSAIds(getTagMapAttr(), getTagIndices());
   p << "], " << *getNumElements();
   if (isStrided()) {
     p << ", " << *getStride();
@@ -1827,11 +1824,8 @@ ParseResult AffineLoadOp::parse(OpAsmParser &parser, OperationState &result) {
 
 void AffineLoadOp::print(OpAsmPrinter &p) {
   p << "affine.load " << *getMemRef() << '[';
-  AffineMapAttr mapAttr = getAttrOfType<AffineMapAttr>(getMapAttrName());
-  if (mapAttr) {
-    SmallVector<Value *, 2> operands(getMapOperands());
-    p.printAffineMapOfSSAIds(mapAttr, operands);
-  }
+  if (AffineMapAttr mapAttr = getAttrOfType<AffineMapAttr>(getMapAttrName()))
+    p.printAffineMapOfSSAIds(mapAttr, getMapOperands());
   p << ']';
   p.printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{getMapAttrName()});
   p << " : " << getMemRefType();
@@ -1922,11 +1916,8 @@ ParseResult AffineStoreOp::parse(OpAsmParser &parser, OperationState &result) {
 void AffineStoreOp::print(OpAsmPrinter &p) {
   p << "affine.store " << *getValueToStore();
   p << ", " << *getMemRef() << '[';
-  AffineMapAttr mapAttr = getAttrOfType<AffineMapAttr>(getMapAttrName());
-  if (mapAttr) {
-    SmallVector<Value *, 2> operands(getMapOperands());
-    p.printAffineMapOfSSAIds(mapAttr, operands);
-  }
+  if (AffineMapAttr mapAttr = getAttrOfType<AffineMapAttr>(getMapAttrName()))
+    p.printAffineMapOfSSAIds(mapAttr, getMapOperands());
   p << ']';
   p.printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{getMapAttrName()});
   p << " : " << getMemRefType();

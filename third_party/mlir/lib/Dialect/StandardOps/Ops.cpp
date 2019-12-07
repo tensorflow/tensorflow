@@ -477,7 +477,7 @@ struct SimplifyBrToBlockWithSinglePred : public OpRewritePattern<BranchOp> {
       return matchFailure();
 
     // Merge the successor into the current block and erase the branch.
-    rewriter.mergeBlocks(succ, opParent, llvm::to_vector<1>(op.getOperands()));
+    rewriter.mergeBlocks(succ, opParent, op.getOperands());
     rewriter.eraseOp(op);
     return matchSuccess();
   }

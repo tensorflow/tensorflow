@@ -798,6 +798,64 @@ inline auto Operation::getResultTypes() -> result_type_range {
   return {result_type_begin(), result_type_end()};
 }
 
+/// This class provides an abstraction over the different types of ranges over
+/// Value*s. In many cases, this prevents the need to explicitly materialize a
+/// SmallVector/std::vector. This class should be used in places that are not
+/// suitable for a more derived type(e.g. ArrayRef) or a template range
+/// parameter.
+class ValueRange {
+  /// The type representing the owner of this range. This is either a list of
+  /// values, operands, or results.
+  using OwnerT = llvm::PointerUnion<Value *const *, OpOperand *, OpResult *>;
+
+public:
+  ValueRange(const ValueRange &) = default;
+  ValueRange(ValueRange &&) = default;
+
+  template <typename Arg,
+            typename = typename std::enable_if_t<
+                std::is_constructible<ArrayRef<Value *>, Arg>::value>>
+  ValueRange(Arg &&arg)
+      : ValueRange(ArrayRef<Value *>(std::forward<Arg>(arg))) {}
+  ValueRange(const std::initializer_list<Value *> &values)
+      : ValueRange(ArrayRef<Value *>(values)) {}
+  ValueRange(ArrayRef<Value *> values = llvm::None);
+  ValueRange(iterator_range<OperandIterator> values);
+  ValueRange(iterator_range<ResultIterator> values);
+
+  /// An iterator element of this range.
+  class Iterator : public indexed_accessor_iterator<Iterator, OwnerT, Value *,
+                                                    Value *, Value *> {
+  public:
+    Value *operator*() const;
+
+  private:
+    Iterator(OwnerT owner, unsigned curIndex);
+
+    /// Allow access to the constructor.
+    friend ValueRange;
+  };
+
+  Iterator begin() const { return Iterator(owner, 0); }
+  Iterator end() const { return Iterator(owner, count); }
+  Value *operator[](unsigned index) const {
+    assert(index < size() && "invalid index for value range");
+    return *std::next(begin(), index);
+  }
+
+  /// Return the size of this range.
+  size_t size() const { return count; }
+
+  /// Return if the range is empty.
+  bool empty() const { return size() == 0; }
+
+private:
+  /// The object that owns the provided range of values.
+  OwnerT owner;
+  /// The size from the owning range.
+  unsigned count;
+};
+
 } // end namespace mlir
 
 namespace llvm {
