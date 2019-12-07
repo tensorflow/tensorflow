@@ -137,6 +137,19 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(fn(constant_op.constant(1.0)), 2.0)
 
+  def testFunctionMultipleVariableInitializer(self):
+
+    state = []
+
+    @def_function.function
+    def fn(x):
+      if not state:
+        state.append(variables.Variable(lambda: 2.0))
+        state.append(variables.Variable(lambda: 5.0))
+      return state[0] * x, state[1] * x
+
+    self.assertAllEqual(fn(constant_op.constant(1.0)), [2.0, 5.0])
+
   def testFunctionInitializationFunction(self):
 
     state = []
