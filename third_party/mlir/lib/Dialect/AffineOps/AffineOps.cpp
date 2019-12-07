@@ -173,7 +173,8 @@ static bool isDimOpValidSymbol(DimOp dimOp) {
 
 // Value can be used as a symbol if it is a constant, or it is defined at
 // the top level, or it is a result of affine apply operation with symbol
-// arguments.
+// arguments, or a result of the dim op on a memref satisfying certain
+// constraints.
 bool mlir::isValidSymbol(Value *value) {
   // The value must be an index type.
   if (!value->getType().isIndex())
@@ -747,6 +748,8 @@ template <typename AffineOpTy>
 struct SimplifyAffineOp : public OpRewritePattern<AffineOpTy> {
   using OpRewritePattern<AffineOpTy>::OpRewritePattern;
 
+  /// Replace the affine op with another instance of it with the supplied
+  /// map and mapOperands.
   void replaceAffineOp(PatternRewriter &rewriter, AffineOpTy affineOp,
                        AffineMap map, ArrayRef<Value *> mapOperands) const;
 
@@ -2038,6 +2041,10 @@ OpFoldResult AffineMinOp::fold(ArrayRef<Attribute> operands) {
     return {};
   return results[minIndex];
 }
+
+//===----------------------------------------------------------------------===//
+// TableGen'd op method definitions
+//===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "mlir/Dialect/AffineOps/AffineOps.cpp.inc"
