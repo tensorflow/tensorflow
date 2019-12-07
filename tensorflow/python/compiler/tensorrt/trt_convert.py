@@ -530,6 +530,7 @@ class TrtGraphConverter(object):
         maximum_cached_engines=maximum_cached_engines,
         use_calibration=use_calibration,
         max_batch_size=max_batch_size,
+        allow_build_at_runtime=True)
     _check_conversion_params(self._conversion_params)
 
   def _run_conversion(self):
