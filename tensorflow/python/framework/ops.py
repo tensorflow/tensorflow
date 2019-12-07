@@ -3103,8 +3103,16 @@ class Graph(object):
               op = func_graph.get_operation_by_name(node.name)
             except KeyError:
               continue
+            outputs = op.outputs
+
+            if op.type == "StatefulPartitionedCall":
+              # Filter out any extra outputs (possibly added by function
+              # backpropagation rewriting).
+              num_outputs = len(node.attr["Tout"].list.type)
+              outputs = outputs[:num_outputs]
+
             node.attr["_output_shapes"].list.shape.extend(
-                [output.get_shape().as_proto() for output in op.outputs])
+                [output.get_shape().as_proto() for output in outputs])
 
     return graph, self._version
 
