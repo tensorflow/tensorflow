@@ -86,11 +86,11 @@ public:
   static void build(Builder *builder, OperationState &result, FuncOp kernelFunc,
                     Value *gridSizeX, Value *gridSizeY, Value *gridSizeZ,
                     Value *blockSizeX, Value *blockSizeY, Value *blockSizeZ,
-                    ArrayRef<Value *> kernelOperands);
+                    ValueRange kernelOperands);
 
   static void build(Builder *builder, OperationState &result, FuncOp kernelFunc,
                     KernelDim3 gridSize, KernelDim3 blockSize,
-                    ArrayRef<Value *> kernelOperands);
+                    ValueRange kernelOperands);
 
   /// The kernel function specified by the operation's `kernel` attribute.
   StringRef kernel();

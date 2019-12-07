@@ -969,7 +969,7 @@ void OpEmitter::genUseOperandAsResultTypeCollectiveParamBuilder() {
   // Signature
   std::string params =
       std::string("Builder *, OperationState &") + builderOpState +
-      ", ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes";
+      ", ValueRange operands, ArrayRef<NamedAttribute> attributes";
   auto &m = opClass.newMethod("void", "build", params, OpMethod::MP_Static);
   auto &body = m.body();
 
@@ -995,7 +995,7 @@ void OpEmitter::genInferedTypeCollectiveParamBuilder() {
   // TODO(jpienaar): Expand to support regions.
   const char *params =
       "Builder *builder, OperationState &{0}, "
-      "ArrayRef<Value*> operands, ArrayRef<NamedAttribute> attributes";
+      "ValueRange operands, ArrayRef<NamedAttribute> attributes";
   auto &m =
       opClass.newMethod("void", "build", formatv(params, builderOpState).str(),
                         OpMethod::MP_Static);
@@ -1036,7 +1036,7 @@ void OpEmitter::genUseOperandAsResultTypeSeparateParamBuilder() {
 void OpEmitter::genUseAttrAsResultTypeBuilder() {
   std::string params =
       std::string("Builder *, OperationState &") + builderOpState +
-      ", ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes";
+      ", ValueRange operands, ArrayRef<NamedAttribute> attributes";
   auto &m = opClass.newMethod("void", "build", params, OpMethod::MP_Static);
   auto &body = m.body();
 
@@ -1134,10 +1134,10 @@ void OpEmitter::genCollectiveParamBuilder() {
   int numVariadicOperands = op.getNumVariadicOperands();
   int numNonVariadicOperands = numOperands - numVariadicOperands;
   // Signature
-  std::string params =
-      std::string("Builder *, OperationState &") + builderOpState +
-      ", ArrayRef<Type> resultTypes, ArrayRef<Value *> operands, "
-      "ArrayRef<NamedAttribute> attributes";
+  std::string params = std::string("Builder *, OperationState &") +
+                       builderOpState +
+                       ", ArrayRef<Type> resultTypes, ValueRange operands, "
+                       "ArrayRef<NamedAttribute> attributes";
   auto &m = opClass.newMethod("void", "build", params, OpMethod::MP_Static);
   auto &body = m.body();
 
@@ -1234,8 +1234,7 @@ void OpEmitter::buildParamList(std::string &paramList,
     auto argument = op.getArg(i);
     if (argument.is<tblgen::NamedTypeConstraint *>()) {
       const auto &operand = op.getOperand(numOperands);
-      paramList.append(operand.isVariadic() ? ", ArrayRef<Value *> "
-                                            : ", Value *");
+      paramList.append(operand.isVariadic() ? ", ValueRange " : ", Value *");
       paramList.append(getArgumentName(op, numOperands));
       ++numOperands;
     } else {

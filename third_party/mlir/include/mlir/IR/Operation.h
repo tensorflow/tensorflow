@@ -222,9 +222,7 @@ public:
   /// Replace the current operands of this operation with the ones provided in
   /// 'operands'. If the operands list is not resizable, the size of 'operands'
   /// must be less than or equal to the current number of operands.
-  void setOperands(ArrayRef<Value *> operands) {
-    getOperandStorage().setOperands(this, operands);
-  }
+  void setOperands(ValueRange operands);
 
   unsigned getNumOperands() { return getOperandStorage().size(); }
 
@@ -811,12 +809,15 @@ class ValueRange {
 public:
   ValueRange(const ValueRange &) = default;
   ValueRange(ValueRange &&) = default;
+  ValueRange &operator=(const ValueRange &) = default;
 
   template <typename Arg,
             typename = typename std::enable_if_t<
-                std::is_constructible<ArrayRef<Value *>, Arg>::value>>
+                std::is_constructible<ArrayRef<Value *>, Arg>::value &&
+                !std::is_convertible<Arg, Value *>::value>>
   ValueRange(Arg &&arg)
       : ValueRange(ArrayRef<Value *>(std::forward<Arg>(arg))) {}
+  ValueRange(Value *const &value) : ValueRange(&value, /*count=*/1) {}
   ValueRange(const std::initializer_list<Value *> &values)
       : ValueRange(ArrayRef<Value *>(values)) {}
   ValueRange(ArrayRef<Value *> values = llvm::None);
@@ -849,7 +850,16 @@ public:
   /// Return if the range is empty.
   bool empty() const { return size() == 0; }
 
+  /// Drop the first N elements, and keep M elements.
+  ValueRange slice(unsigned n, unsigned m) const;
+  /// Drop the first n elements.
+  ValueRange drop_front(unsigned n = 1) const;
+  /// Drop the last n elements.
+  ValueRange drop_back(unsigned n = 1) const;
+
 private:
+  ValueRange(OwnerT owner, unsigned count) : owner(owner), count(count) {}
+
   /// The object that owns the provided range of values.
   OwnerT owner;
   /// The size from the owning range.

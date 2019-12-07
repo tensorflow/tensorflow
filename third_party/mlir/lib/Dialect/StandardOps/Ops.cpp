@@ -73,8 +73,7 @@ struct StdInlinerInterface : public DialectInlinerInterface {
 
     // Replace the return with a branch to the dest.
     OpBuilder builder(op);
-    builder.create<BranchOp>(op->getLoc(), newDest,
-                             llvm::to_vector<4>(returnOp.getOperands()));
+    builder.create<BranchOp>(op->getLoc(), newDest, returnOp.getOperands());
     op->erase();
   }
 
@@ -595,9 +594,8 @@ struct SimplifyIndirectCallWithKnownCallee
 
     // Replace with a direct call.
     SmallVector<Type, 8> callResults(indirectCall.getResultTypes());
-    SmallVector<Value *, 8> callOperands(indirectCall.getArgOperands());
     rewriter.replaceOpWithNewOp<CallOp>(indirectCall, calledFn, callResults,
-                                        callOperands);
+                                        indirectCall.getArgOperands());
     return matchSuccess();
   }
 };
@@ -1007,15 +1005,13 @@ struct SimplifyConstCondBranchPred : public OpRewritePattern<CondBranchOp> {
                                      PatternRewriter &rewriter) const override {
     if (matchPattern(condbr.getCondition(), m_NonZero())) {
       // True branch taken.
-      rewriter.replaceOpWithNewOp<BranchOp>(
-          condbr, condbr.getTrueDest(),
-          llvm::to_vector<4>(condbr.getTrueOperands()));
+      rewriter.replaceOpWithNewOp<BranchOp>(condbr, condbr.getTrueDest(),
+                                            condbr.getTrueOperands());
       return matchSuccess();
     } else if (matchPattern(condbr.getCondition(), m_Zero())) {
       // False branch taken.
-      rewriter.replaceOpWithNewOp<BranchOp>(
-          condbr, condbr.getFalseDest(),
-          llvm::to_vector<4>(condbr.getFalseOperands()));
+      rewriter.replaceOpWithNewOp<BranchOp>(condbr, condbr.getFalseDest(),
+                                            condbr.getFalseOperands());
       return matchSuccess();
     }
     return matchFailure();
@@ -1442,10 +1438,10 @@ OpFoldResult DivIUOp::fold(ArrayRef<Attribute> operands) {
 // ---------------------------------------------------------------------------
 
 void DmaStartOp::build(Builder *builder, OperationState &result,
-                       Value *srcMemRef, ArrayRef<Value *> srcIndices,
-                       Value *destMemRef, ArrayRef<Value *> destIndices,
+                       Value *srcMemRef, ValueRange srcIndices,
+                       Value *destMemRef, ValueRange destIndices,
                        Value *numElements, Value *tagMemRef,
-                       ArrayRef<Value *> tagIndices, Value *stride,
+                       ValueRange tagIndices, Value *stride,
                        Value *elementsPerStride) {
   result.addOperands(srcMemRef);
   result.addOperands(srcIndices);
@@ -1593,7 +1589,7 @@ void DmaStartOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // ---------------------------------------------------------------------------
 
 void DmaWaitOp::build(Builder *builder, OperationState &result,
-                      Value *tagMemRef, ArrayRef<Value *> tagIndices,
+                      Value *tagMemRef, ValueRange tagIndices,
                       Value *numElements) {
   result.addOperands(tagMemRef);
   result.addOperands(tagIndices);
@@ -2609,8 +2605,8 @@ static Type inferSubViewResultType(MemRefType memRefType) {
 }
 
 void mlir::SubViewOp::build(Builder *b, OperationState &result, Value *source,
-                            ArrayRef<Value *> offsets, ArrayRef<Value *> sizes,
-                            ArrayRef<Value *> strides, Type resultType,
+                            ValueRange offsets, ValueRange sizes,
+                            ValueRange strides, Type resultType,
                             ArrayRef<NamedAttribute> attrs) {
   if (!resultType)
     resultType = inferSubViewResultType(source->getType().cast<MemRefType>());
@@ -2879,13 +2875,11 @@ public:
         staticShape, subViewType.getElementType(), subViewType.getAffineMaps(),
         subViewType.getMemorySpace());
     auto newSubViewOp = rewriter.create<SubViewOp>(
-        subViewOp.getLoc(), subViewOp.source(),
-        llvm::to_vector<4>(subViewOp.offsets()), ArrayRef<Value *>(),
-        llvm::to_vector<4>(subViewOp.strides()), newMemRefType);
+        subViewOp.getLoc(), subViewOp.source(), subViewOp.offsets(),
+        ArrayRef<Value *>(), subViewOp.strides(), newMemRefType);
     // Insert a memref_cast for compatibility of the uses of the op.
     rewriter.replaceOpWithNewOp<MemRefCastOp>(
-        llvm::to_vector<4>(subViewOp.sizes()), subViewOp, newSubViewOp,
-        subViewOp.getType());
+        subViewOp.sizes(), subViewOp, newSubViewOp, subViewOp.getType());
     return matchSuccess();
   }
 };
@@ -2930,15 +2924,12 @@ public:
     MemRefType newMemRefType =
         MemRefType::get(subViewType.getShape(), subViewType.getElementType(),
                         layoutMap, subViewType.getMemorySpace());
-    auto newSubViewOp =
-        rewriter.create<SubViewOp>(subViewOp.getLoc(), subViewOp.source(),
-                                   llvm::to_vector<4>(subViewOp.offsets()),
-                                   llvm::to_vector<4>(subViewOp.sizes()),
-                                   ArrayRef<Value *>(), newMemRefType);
+    auto newSubViewOp = rewriter.create<SubViewOp>(
+        subViewOp.getLoc(), subViewOp.source(), subViewOp.offsets(),
+        subViewOp.sizes(), ArrayRef<Value *>(), newMemRefType);
     // Insert a memref_cast for compatibility of the uses of the op.
     rewriter.replaceOpWithNewOp<MemRefCastOp>(
-        llvm::to_vector<4>(subViewOp.strides()), subViewOp, newSubViewOp,
-        subViewOp.getType());
+        subViewOp.strides(), subViewOp, newSubViewOp, subViewOp.getType());
     return matchSuccess();
   }
 };
@@ -2987,12 +2978,10 @@ public:
                         layoutMap, subViewType.getMemorySpace());
     auto newSubViewOp = rewriter.create<SubViewOp>(
         subViewOp.getLoc(), subViewOp.source(), ArrayRef<Value *>(),
-        llvm::to_vector<4>(subViewOp.sizes()),
-        llvm::to_vector<4>(subViewOp.strides()), newMemRefType);
+        subViewOp.sizes(), subViewOp.strides(), newMemRefType);
     // Insert a memref_cast for compatibility of the uses of the op.
     rewriter.replaceOpWithNewOp<MemRefCastOp>(
-        llvm::to_vector<4>(subViewOp.offsets()), subViewOp, newSubViewOp,
-        subViewOp.getType());
+        subViewOp.offsets(), subViewOp, newSubViewOp, subViewOp.getType());
     return matchSuccess();
   }
 };

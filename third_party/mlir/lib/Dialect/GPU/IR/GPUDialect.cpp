@@ -169,7 +169,7 @@ static LogicalResult verifyAllReduce(gpu::AllReduceOp allReduce) {
 // LaunchOp
 //===----------------------------------------------------------------------===//
 
-static SmallVector<Type, 4> getValueTypes(ArrayRef<Value *> values) {
+static SmallVector<Type, 4> getValueTypes(ValueRange values) {
   SmallVector<Type, 4> types;
   types.reserve(values.size());
   for (Value *v : values)
@@ -180,7 +180,7 @@ static SmallVector<Type, 4> getValueTypes(ArrayRef<Value *> values) {
 void LaunchOp::build(Builder *builder, OperationState &result, Value *gridSizeX,
                      Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
                      Value *blockSizeY, Value *blockSizeZ,
-                     ArrayRef<Value *> operands) {
+                     ValueRange operands) {
   // Add grid and block sizes as op operands, followed by the data operands.
   result.addOperands(
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
@@ -277,7 +277,7 @@ LogicalResult verify(LaunchOp op) {
 //   (%size-x = %ssa-use, %size-y = %ssa-use, %size-z = %ssa-use)
 // where %size-* and %iter-* will correspond to the body region arguments.
 static void printSizeAssignment(OpAsmPrinter &p, KernelDim3 size,
-                                ArrayRef<Value *> operands, KernelDim3 ids) {
+                                ValueRange operands, KernelDim3 ids) {
   p << '(' << *ids.x << ", " << *ids.y << ", " << *ids.z << ") in (";
   p << *size.x << " = " << *operands[0] << ", ";
   p << *size.y << " = " << *operands[1] << ", ";
@@ -285,13 +285,12 @@ static void printSizeAssignment(OpAsmPrinter &p, KernelDim3 size,
 }
 
 void printLaunchOp(OpAsmPrinter &p, LaunchOp op) {
-  SmallVector<Value *, 12> operandContainer(op.operand_begin(),
-                                            op.operand_end());
-  ArrayRef<Value *> operands(operandContainer);
+  ValueRange operands = op.getOperands();
 
   // Print the launch configuration.
   p << LaunchOp::getOperationName() << ' ' << op.getBlocksKeyword();
-  printSizeAssignment(p, op.getGridSize(), operands.take_front(3),
+  printSizeAssignment(p, op.getGridSize(),
+                      operands.drop_back(operands.size() - 3),
                       op.getBlockIds());
   p << ' ' << op.getThreadsKeyword();
   printSizeAssignment(p, op.getBlockSize(), operands.slice(3, 3),
@@ -501,7 +500,7 @@ void LaunchFuncOp::build(Builder *builder, OperationState &result,
                          ::mlir::FuncOp kernelFunc, Value *gridSizeX,
                          Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
                          Value *blockSizeY, Value *blockSizeZ,
-                         ArrayRef<Value *> kernelOperands) {
+                         ValueRange kernelOperands) {
   // Add grid and block sizes as op operands, followed by the data operands.
   result.addOperands(
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
@@ -516,8 +515,7 @@ void LaunchFuncOp::build(Builder *builder, OperationState &result,
 
 void LaunchFuncOp::build(Builder *builder, OperationState &result,
                          ::mlir::FuncOp kernelFunc, KernelDim3 gridSize,
-                         KernelDim3 blockSize,
-                         ArrayRef<Value *> kernelOperands) {
+                         KernelDim3 blockSize, ValueRange kernelOperands) {
   build(builder, result, kernelFunc, gridSize.x, gridSize.y, gridSize.z,
         blockSize.x, blockSize.y, blockSize.z, kernelOperands);
 }

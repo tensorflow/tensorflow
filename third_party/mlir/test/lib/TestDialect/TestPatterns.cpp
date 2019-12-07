@@ -230,8 +230,7 @@ struct TestSplitReturnType : public ConversionPattern {
     // results directly.
     auto *defOp = operands[0]->getDefiningOp();
     if (auto packerOp = llvm::dyn_cast_or_null<TestCastOp>(defOp)) {
-      SmallVector<Value *, 2> returnOperands(packerOp.getOperands());
-      rewriter.replaceOpWithNewOp<TestReturnOp>(op, returnOperands);
+      rewriter.replaceOpWithNewOp<TestReturnOp>(op, packerOp.getOperands());
       return matchSuccess();
     }
 

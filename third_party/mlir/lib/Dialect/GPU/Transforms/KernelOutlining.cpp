@@ -133,11 +133,9 @@ static FuncOp outlineKernelFunc(gpu::LaunchOp launchOp) {
 // constant region arguments inlined.
 static void convertToLaunchFuncOp(gpu::LaunchOp &launchOp, FuncOp kernelFunc) {
   OpBuilder builder(launchOp);
-  SmallVector<Value *, 4> kernelOperandValues(
-      launchOp.getKernelOperandValues());
   auto launchFuncOp = builder.create<gpu::LaunchFuncOp>(
       launchOp.getLoc(), kernelFunc, launchOp.getGridSizeOperandValues(),
-      launchOp.getBlockSizeOperandValues(), kernelOperandValues);
+      launchOp.getBlockSizeOperandValues(), launchOp.getKernelOperandValues());
   inlineBeneficiaryOps(kernelFunc, launchFuncOp);
   launchOp.erase();
 }

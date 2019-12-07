@@ -290,7 +290,7 @@ LogicalResult TestOpWithVariadicResultsAndFolder::fold(
 }
 
 LogicalResult mlir::OpWithInferTypeInterfaceOp::inferReturnTypes(
-    llvm::Optional<Location> location, ArrayRef<Value *> operands,
+    llvm::Optional<Location> location, ValueRange operands,
     ArrayRef<NamedAttribute> attributes, ArrayRef<Region> regions,
     SmallVectorImpl<Type> &inferedReturnTypes) {
   if (operands[0]->getType() != operands[1]->getType()) {

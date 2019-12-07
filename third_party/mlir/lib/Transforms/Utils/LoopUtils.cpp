@@ -73,9 +73,8 @@ void mlir::getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
   }
 
   unsigned step = forOp.getStep();
-
-  SmallVector<Value *, 4> lbOperands(forOp.getLowerBoundOperands());
-  auto lb = b.create<AffineApplyOp>(forOp.getLoc(), lbMap, lbOperands);
+  auto lb = b.create<AffineApplyOp>(forOp.getLoc(), lbMap,
+                                    forOp.getLowerBoundOperands());
 
   // For each upper bound expr, get the range.
   // Eg: affine.for %i = lb to min (ub1, ub2),

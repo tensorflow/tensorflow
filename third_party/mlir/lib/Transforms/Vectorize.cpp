@@ -775,7 +775,7 @@ void VectorizationState::registerReplacement(Value *key, Value *value) {
 
 // Apply 'map' with 'mapOperands' returning resulting values in 'results'.
 static void computeMemoryOpIndices(Operation *op, AffineMap map,
-                                   ArrayRef<Value *> mapOperands,
+                                   ValueRange mapOperands,
                                    SmallVectorImpl<Value *> &results) {
   OpBuilder builder(op);
   for (auto resultExpr : map.getResults()) {
@@ -822,15 +822,14 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
   // as needed by various targets.
   if (auto load = dyn_cast<AffineLoadOp>(opInst)) {
     OpBuilder b(opInst);
-    SmallVector<Value *, 4> mapOperands(load.getMapOperands());
+    ValueRange mapOperands = load.getMapOperands();
     SmallVector<Value *, 8> indices;
     indices.reserve(load.getMemRefType().getRank());
     if (load.getAffineMap() !=
         b.getMultiDimIdentityMap(load.getMemRefType().getRank())) {
       computeMemoryOpIndices(opInst, load.getAffineMap(), mapOperands, indices);
     } else {
-      indices.append(load.getMapOperands().begin(),
-                     load.getMapOperands().end());
+      indices.append(mapOperands.begin(), mapOperands.end());
     }
     auto permutationMap =
         makePermutationMap(opInst, indices, state->strategy->loopToVectorDim);
@@ -1052,7 +1051,7 @@ static Operation *vectorizeOneOperation(Operation *opInst,
     auto *value = store.getValueToStore();
     auto *vectorValue = vectorizeOperand(value, opInst, state);
 
-    SmallVector<Value *, 4> mapOperands(store.getMapOperands());
+    ValueRange mapOperands = store.getMapOperands();
     SmallVector<Value *, 8> indices;
     indices.reserve(store.getMemRefType().getRank());
     if (store.getAffineMap() !=
@@ -1060,8 +1059,7 @@ static Operation *vectorizeOneOperation(Operation *opInst,
       computeMemoryOpIndices(opInst, store.getAffineMap(), mapOperands,
                              indices);
     } else {
-      indices.append(store.getMapOperands().begin(),
-                     store.getMapOperands().end());
+      indices.append(mapOperands.begin(), mapOperands.end());
     }
 
     auto permutationMap =

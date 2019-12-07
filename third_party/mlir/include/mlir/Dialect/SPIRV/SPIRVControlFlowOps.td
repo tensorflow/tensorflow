@@ -59,7 +59,7 @@ def SPV_BranchOp : SPV_Op<"Branch", [InFunctionScope, Terminator]> {
   let builders = [
     OpBuilder<
       "Builder *, OperationState &state, "
-      "Block *successor, ArrayRef<Value *> arguments = {}", [{
+      "Block *successor, ValueRange arguments = {}", [{
         state.addSuccessor(successor, arguments);
       }]
     >
@@ -133,8 +133,8 @@ def SPV_BranchConditionalOp : SPV_Op<"BranchConditional",
   let builders = [
     OpBuilder<
       "Builder *builder, OperationState &state, Value *condition, "
-      "Block *trueBlock, ArrayRef<Value *> trueArguments, "
-      "Block *falseBlock, ArrayRef<Value *> falseArguments, "
+      "Block *trueBlock, ValueRange trueArguments, "
+      "Block *falseBlock, ValueRange falseArguments, "
       "Optional<std::pair<uint32_t, uint32_t>> weights = {}",
       [{
         state.addOperands(condition);

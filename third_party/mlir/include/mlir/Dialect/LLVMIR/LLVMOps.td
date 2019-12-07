@@ -38,7 +38,7 @@ class LLVM_Builder<string builder> {
 
 def LLVM_OneResultOpBuilder : OpBuilder<
   "Builder *, OperationState &result, Type resultType, "
-  "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
+  "ValueRange operands, ArrayRef<NamedAttribute> attributes = {}",
   [{
     if (resultType) result.addTypes(resultType);
     result.addOperands(operands);
@@ -48,7 +48,7 @@ def LLVM_OneResultOpBuilder : OpBuilder<
   }]>;
 
 def LLVM_ZeroResultOpBuilder : OpBuilder<
-  "Builder *, OperationState &result, ArrayRef<Value *> operands, "
+  "Builder *, OperationState &result, ValueRange operands, "
   "ArrayRef<NamedAttribute> attributes = {}",
   [{
     result.addOperands(operands);
@@ -71,7 +71,7 @@ class LLVM_OneResultOp<string mnemonic, list<OpTrait> traits = []> :
 // to indicate no result.
 def LLVM_VoidResultTypeOpBuilder : OpBuilder<
   "Builder *builder, OperationState &result, Type resultType, "
-  "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
+  "ValueRange operands, ArrayRef<NamedAttribute> attributes = {}",
   [{
     auto llvmType = resultType.dyn_cast<LLVM::LLVMType>(); (void)llvmType;
     assert(llvmType && "result must be an LLVM type");
@@ -94,9 +94,9 @@ class LLVM_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
   let builders = [
     OpBuilder<
       "Builder *, OperationState &result, "
-      "ArrayRef<Value *> properOperands, "
+      "ValueRange properOperands, "
       "ArrayRef<Block *> destinations, "
-      "ArrayRef<ArrayRef<Value *>> operands, "
+      "ArrayRef<ValueRange> operands, "
       "ArrayRef<NamedAttribute> attributes = {}",
       [{
         result.addOperands(properOperands);
@@ -110,11 +110,11 @@ class LLVM_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
     >,
     OpBuilder<
       "Builder *builder, OperationState &result, "
-      "ArrayRef<Value *> properOperands, "
+      "ValueRange properOperands, "
       "ArrayRef<Block *> destinations, "
       "ArrayRef<NamedAttribute> attributes = {}",
     [{
-        SmallVector<ArrayRef<Value *>, 2> operands(destinations.size(), {});
+        SmallVector<ValueRange, 2> operands(destinations.size(), {});
         build(builder, result, properOperands,
             destinations, operands, attributes);
       }]

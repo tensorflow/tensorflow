@@ -113,7 +113,7 @@ def Linalg_SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
 
   let builders = [OpBuilder<
     "Builder *b, OperationState &result, Value *base, "
-    "ArrayRef<Value *> indexings">];
+    "ValueRange indexings">];
 
   let extraClassDeclaration = [{
     enum { FirstIndexingOperand = 1 };

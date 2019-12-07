@@ -269,7 +269,7 @@ def GPU_LaunchOp : GPU_Op<"launch", [IsolatedFromAbove]>,
     OpBuilder<"Builder *builder, OperationState &result, Value *gridSizeX,"
               "Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,"
               "Value *blockSizeY, Value *blockSizeZ,"
-              "ArrayRef<Value *> operands">
+              "ValueRange operands">
   ];
 
   let hasCanonicalizer = 1;

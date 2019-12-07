@@ -48,6 +48,7 @@ class Region;
 class RewritePattern;
 class Type;
 class Value;
+class ValueRange;
 
 /// This is an adaptor from a list of values to named operands of OpTy.  In a
 /// generic operation context, e.g., in dialect conversions, an ordered array of
@@ -279,11 +280,7 @@ public:
                  MutableArrayRef<std::unique_ptr<Region>> regions = {},
                  bool resizableOperandList = false);
 
-  void addOperands(ArrayRef<Value *> newOperands) {
-    assert(successors.empty() &&
-           "Non successor operands should be added first.");
-    operands.append(newOperands.begin(), newOperands.end());
-  }
+  void addOperands(ValueRange newOperands);
 
   void addTypes(ArrayRef<Type> newTypes) {
     types.append(newTypes.begin(), newTypes.end());
@@ -304,12 +301,7 @@ public:
     attributes.append(newAttributes.begin(), newAttributes.end());
   }
 
-  void addSuccessor(Block *successor, ArrayRef<Value *> succOperands) {
-    successors.push_back(successor);
-    // Insert a sentinel operand to mark a barrier between successor operands.
-    operands.push_back(nullptr);
-    operands.append(succOperands.begin(), succOperands.end());
-  }
+  void addSuccessor(Block *successor, ValueRange succOperands);
 
   /// Create a region that should be attached to the operation.  These regions
   /// can be filled in immediately without waiting for Operation to be
@@ -398,7 +390,7 @@ public:
 
   /// Replace the operands contained in the storage with the ones provided in
   /// 'operands'.
-  void setOperands(Operation *owner, ArrayRef<Value *> operands);
+  void setOperands(Operation *owner, ValueRange operands);
 
   /// Erase an operand held by the storage.
   void eraseOperand(unsigned index);

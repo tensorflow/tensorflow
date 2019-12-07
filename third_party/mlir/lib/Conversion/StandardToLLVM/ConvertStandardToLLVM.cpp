@@ -1550,8 +1550,9 @@ struct OneToOneLLVMTerminatorLowering
                   ArrayRef<Block *> destinations,
                   ArrayRef<ArrayRef<Value *>> operands,
                   ConversionPatternRewriter &rewriter) const override {
+    SmallVector<ValueRange, 2> operandRanges(operands.begin(), operands.end());
     rewriter.replaceOpWithNewOp<TargetOp>(op, properOperands, destinations,
-                                          operands, op->getAttrs());
+                                          operandRanges, op->getAttrs());
     return this->matchSuccess();
   }
 };

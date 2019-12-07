@@ -228,7 +228,7 @@ verifyDimAndSymbolIdentifiers(OpTy &op, Operation::operand_range operands,
 //===----------------------------------------------------------------------===//
 
 void AffineApplyOp::build(Builder *builder, OperationState &result,
-                          AffineMap map, ArrayRef<Value *> operands) {
+                          AffineMap map, ValueRange operands) {
   result.addOperands(operands);
   result.types.append(map.getNumResults(), builder->getIndexType());
   result.addAttribute("map", AffineMapAttr::get(map));
@@ -841,10 +841,10 @@ struct MemRefCastFolder : public RewritePattern {
 // TODO(b/133776335) Check that map operands are loop IVs or symbols.
 void AffineDmaStartOp::build(Builder *builder, OperationState &result,
                              Value *srcMemRef, AffineMap srcMap,
-                             ArrayRef<Value *> srcIndices, Value *destMemRef,
-                             AffineMap dstMap, ArrayRef<Value *> destIndices,
+                             ValueRange srcIndices, Value *destMemRef,
+                             AffineMap dstMap, ValueRange destIndices,
                              Value *tagMemRef, AffineMap tagMap,
-                             ArrayRef<Value *> tagIndices, Value *numElements,
+                             ValueRange tagIndices, Value *numElements,
                              Value *stride, Value *elementsPerStride) {
   result.addOperands(srcMemRef);
   result.addAttribute(getSrcMapAttrName(), AffineMapAttr::get(srcMap));
@@ -1010,7 +1010,7 @@ void AffineDmaStartOp::getCanonicalizationPatterns(
 // TODO(b/133776335) Check that map operands are loop IVs or symbols.
 void AffineDmaWaitOp::build(Builder *builder, OperationState &result,
                             Value *tagMemRef, AffineMap tagMap,
-                            ArrayRef<Value *> tagIndices, Value *numElements) {
+                            ValueRange tagIndices, Value *numElements) {
   result.addOperands(tagMemRef);
   result.addAttribute(getTagMapAttrName(), AffineMapAttr::get(tagMap));
   result.addOperands(tagIndices);
@@ -1084,9 +1084,8 @@ void AffineDmaWaitOp::getCanonicalizationPatterns(
 //===----------------------------------------------------------------------===//
 
 void AffineForOp::build(Builder *builder, OperationState &result,
-                        ArrayRef<Value *> lbOperands, AffineMap lbMap,
-                        ArrayRef<Value *> ubOperands, AffineMap ubMap,
-                        int64_t step) {
+                        ValueRange lbOperands, AffineMap lbMap,
+                        ValueRange ubOperands, AffineMap ubMap, int64_t step) {
   assert(((!lbMap && lbOperands.empty()) ||
           lbOperands.size() == lbMap.getNumInputs()) &&
          "lower bound operand count does not match the affine map");
@@ -1479,7 +1478,7 @@ AffineBound AffineForOp::getUpperBound() {
                      ubMap);
 }
 
-void AffineForOp::setLowerBound(ArrayRef<Value *> lbOperands, AffineMap map) {
+void AffineForOp::setLowerBound(ValueRange lbOperands, AffineMap map) {
   assert(lbOperands.size() == map.getNumInputs());
   assert(map.getNumResults() >= 1 && "bound map has at least one result");
 
@@ -1492,7 +1491,7 @@ void AffineForOp::setLowerBound(ArrayRef<Value *> lbOperands, AffineMap map) {
   setAttr(getLowerBoundAttrName(), AffineMapAttr::get(map));
 }
 
-void AffineForOp::setUpperBound(ArrayRef<Value *> ubOperands, AffineMap map) {
+void AffineForOp::setUpperBound(ValueRange ubOperands, AffineMap map) {
   assert(ubOperands.size() == map.getNumInputs());
   assert(map.getNumResults() >= 1 && "bound map has at least one result");
 
@@ -1718,13 +1717,13 @@ void AffineIfOp::setIntegerSet(IntegerSet newSet) {
   setAttr(getConditionAttrName(), IntegerSetAttr::get(newSet));
 }
 
-void AffineIfOp::setConditional(IntegerSet set, ArrayRef<Value *> operands) {
+void AffineIfOp::setConditional(IntegerSet set, ValueRange operands) {
   setIntegerSet(set);
   getOperation()->setOperands(operands);
 }
 
 void AffineIfOp::build(Builder *builder, OperationState &result, IntegerSet set,
-                       ArrayRef<Value *> args, bool withElseRegion) {
+                       ValueRange args, bool withElseRegion) {
   result.addOperands(args);
   result.addAttribute(getConditionAttrName(), IntegerSetAttr::get(set));
   Region *thenRegion = result.addRegion();
@@ -1772,7 +1771,7 @@ void AffineIfOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 void AffineLoadOp::build(Builder *builder, OperationState &result,
-                         AffineMap map, ArrayRef<Value *> operands) {
+                         AffineMap map, ValueRange operands) {
   assert(operands.size() == 1 + map.getNumInputs() && "inconsistent operands");
   result.addOperands(operands);
   if (map)
@@ -1782,8 +1781,7 @@ void AffineLoadOp::build(Builder *builder, OperationState &result,
 }
 
 void AffineLoadOp::build(Builder *builder, OperationState &result,
-                         Value *memref, AffineMap map,
-                         ArrayRef<Value *> mapOperands) {
+                         Value *memref, AffineMap map, ValueRange mapOperands) {
   assert(map.getNumInputs() == mapOperands.size() && "inconsistent index info");
   result.addOperands(memref);
   result.addOperands(mapOperands);
@@ -1793,7 +1791,7 @@ void AffineLoadOp::build(Builder *builder, OperationState &result,
 }
 
 void AffineLoadOp::build(Builder *builder, OperationState &result,
-                         Value *memref, ArrayRef<Value *> indices) {
+                         Value *memref, ValueRange indices) {
   auto memrefType = memref->getType().cast<MemRefType>();
   auto rank = memrefType.getRank();
   // Create identity map for memrefs with at least one dimension or () -> ()
@@ -1871,7 +1869,7 @@ void AffineLoadOp::getCanonicalizationPatterns(
 
 void AffineStoreOp::build(Builder *builder, OperationState &result,
                           Value *valueToStore, Value *memref, AffineMap map,
-                          ArrayRef<Value *> mapOperands) {
+                          ValueRange mapOperands) {
   assert(map.getNumInputs() == mapOperands.size() && "inconsistent index info");
   result.addOperands(valueToStore);
   result.addOperands(memref);
@@ -1882,7 +1880,7 @@ void AffineStoreOp::build(Builder *builder, OperationState &result,
 // Use identity map.
 void AffineStoreOp::build(Builder *builder, OperationState &result,
                           Value *valueToStore, Value *memref,
-                          ArrayRef<Value *> indices) {
+                          ValueRange indices) {
   auto memrefType = memref->getType().cast<MemRefType>();
   auto rank = memrefType.getRank();
   // Create identity map for memrefs with at least one dimension or () -> ()
