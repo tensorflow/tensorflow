@@ -1910,7 +1910,7 @@ def grayscale_to_rgb(images, name=None):
   Returns:
     The converted grayscale image(s).
 
-Usage Example:
+  Usage Example:
     ```python
     original = tf.random.normal(shape=(1, 1, 1))
     converted = tf.image.grayscale_to_rgb(original)
