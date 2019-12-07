@@ -347,7 +347,7 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
             "//tensorflow/core/platform:env",
             "//tensorflow/core/platform:macros",
             "//tensorflow/core/platform:types",
-            "//tensorflow/core:util_reporter",
+            "//tensorflow/core/util:reporter",
         ],
         "tags": ["no_oss", "manual"],
         "visibility": ["//visibility:private"],
