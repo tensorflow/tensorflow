@@ -624,7 +624,7 @@ pipeline. This display mode is available in mlir-opt via
 `-pass-timing-display=list`.
 
 ```shell
-$ mlir-opt foo.mlir -disable-pass-threading -cse -canonicalize -convert-std-to-llvm -pass-timing -pass-timing-display=list
+$ mlir-opt foo.mlir -disable-pass-threading -pass-pipeline='func(cse,canonicalize)' -convert-std-to-llvm -pass-timing -pass-timing-display=list
 
 ===-------------------------------------------------------------------------===
                       ... Pass execution timing report ...
@@ -649,7 +649,7 @@ the most time, and can also be used to identify when analyses are being
 invalidated and recomputed. This is the default display mode.
 
 ```shell
-$ mlir-opt foo.mlir -disable-pass-threading -cse -canonicalize -convert-std-to-llvm -pass-timing
+$ mlir-opt foo.mlir -disable-pass-threading -pass-pipeline='func(cse,canonicalize)' -convert-std-to-llvm -pass-timing
 
 ===-------------------------------------------------------------------------===
                       ... Pass execution timing report ...
@@ -680,7 +680,7 @@ perceived time, or clock time, whereas the `User Time` will display the total
 cpu time.
 
 ```shell
-$ mlir-opt foo.mlir -cse -canonicalize -convert-std-to-llvm -pass-timing
+$ mlir-opt foo.mlir -pass-pipeline='func(cse,canonicalize)' -convert-std-to-llvm -pass-timing
 
 ===-------------------------------------------------------------------------===
                       ... Pass execution timing report ...
@@ -716,7 +716,7 @@ this instrumentation:
     *   Print the IR before every pass in the pipeline.
 
 ```shell
-$ mlir-opt foo.mlir -cse -print-ir-before=cse
+$ mlir-opt foo.mlir -pass-pipeline='func(cse)' -print-ir-before=cse
 
 *** IR Dump Before CSE ***
 func @simple_constant() -> (i32, i32) {
@@ -732,7 +732,28 @@ func @simple_constant() -> (i32, i32) {
     *   Print the IR after every pass in the pipeline.
 
 ```shell
-$ mlir-opt foo.mlir -cse -print-ir-after=cse
+$ mlir-opt foo.mlir -pass-pipeline='func(cse)' -print-ir-after=cse
+
+*** IR Dump After CSE ***
+func @simple_constant() -> (i32, i32) {
+  %c1_i32 = constant 1 : i32
+  return %c1_i32, %c1_i32 : i32, i32
+}
+```
+
+*   `print-ir-after-change`
+    *   Only print the IR after a pass if the pass mutated the IR. This helps to
+        reduce the number of IR dumps for "uninteresting" passes.
+    *   Note: Changes are detected by comparing a hash of the operation before
+        and after the pass. This adds additional run-time to compute the hash of
+        the IR, and in some rare cases may result in false-positives depending
+        on the collision rate of the hash algorithm used.
+    *   Note: This option should be used in unison with one of the other
+        'print-ir-after' options above, as this option alone does not enable
+        printing.
+
+```shell
+$ mlir-opt foo.mlir -pass-pipeline='func(cse,cse)' -print-ir-after=cse -print-ir-after-change
 
 *** IR Dump After CSE ***
 func @simple_constant() -> (i32, i32) {
@@ -748,7 +769,7 @@ func @simple_constant() -> (i32, i32) {
         is disabled(`-disable-pass-threading`)
 
 ```shell
-$ mlir-opt foo.mlir -disable-pass-threading -cse -print-ir-after=cse -print-ir-module-scope
+$ mlir-opt foo.mlir -disable-pass-threading -pass-pipeline='func(cse)' -print-ir-after=cse -print-ir-module-scope
 
 *** IR Dump After CSE ***  ('func' operation: @bar)
 func @bar(%arg0: f32, %arg1: f32) -> f32 {
