@@ -89,7 +89,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
                      .Attr("precision_mode", "FP32")
                      .Attr("use_calibration", false)
                      .Attr("_use_implicit_batch", true)
-                     .Attr("allow_build_at_runtime", allow_build_at_runtime)
+                     .Attr("_allow_build_at_runtime", allow_build_at_runtime)
                      .Attr("OutT", {dtype})
                      .Finalize(OpsTestBase::node_def()));
     TF_ASSERT_OK(InitOpWithFunctionLibrary());

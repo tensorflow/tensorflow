@@ -465,7 +465,7 @@ Status CreateTRTNode(const ConversionParams& params,
           .Attr("precision_mode", prec_string)
           .Attr("use_calibration", info.use_calibration)
           .Attr("_use_implicit_batch", params.use_implicit_batch)
-          .Attr("allow_build_at_runtime", info.allow_build_at_runtime)
+          .Attr("_allow_build_at_runtime", info.allow_build_at_runtime)
           .Attr("OutT", out_types)
           .Finalize(&trt_node);
   if (!status.ok()) {
