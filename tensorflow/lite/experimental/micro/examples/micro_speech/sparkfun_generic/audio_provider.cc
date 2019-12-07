@@ -13,11 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Apollo3 EVB specific features compile options:
-// USE AM_BSP_NUM_LEDS : LED initialization and management per EVB target (# of
+// AM_BSP_NUM_LEDS : LED initialization and management per EVB target (# of
 // LEDs defined in EVB BSP) 
-// USE_TIME_STAMP : Enable timers and time stamping for debug and performance 
-// profiling (customize per application)
 
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.h"
 
@@ -64,23 +61,6 @@ bool g_is_audio_initialized = false;
 // Globals
 //
 //*****************************************************************************
-#if USE_TIME_STAMP
-// Select the CTIMER number to use for timing.
-// The entire 32-bit timer is used.
-#define SELFTEST_TIMERNUM 0
-
-// Timer configuration.
-static am_hal_ctimer_config_t g_sContTimer = {
-    // Create 32-bit timer
-    1,
-
-    // Set up TimerA.
-    (AM_HAL_CTIMER_FN_CONTINUOUS | AM_HAL_CTIMER_HFRC_12MHZ),
-
-    // Set up Timer0B.
-    0};
-
-#endif  // USE_TIME_STAMP
 
 // ARPIT TODO : Implement low power configuration
 void custom_am_bsp_low_power_init(void) {
@@ -316,16 +296,6 @@ TfLiteStatus InitAudioRecording(tflite::ErrorReporter* error_reporter) {
 
   // Ensure the CPU is running as fast as possible.
   // enable_burst_mode(error_reporter);
-
-#if USE_TIME_STAMP
-  //
-  // Set up and start the timer.
-  //
-  am_hal_ctimer_stop(SELFTEST_TIMERNUM, AM_HAL_CTIMER_BOTH);
-  am_hal_ctimer_clear(SELFTEST_TIMERNUM, AM_HAL_CTIMER_BOTH);
-  am_hal_ctimer_config(SELFTEST_TIMERNUM, &g_sContTimer);
-  am_hal_ctimer_start(SELFTEST_TIMERNUM, AM_HAL_CTIMER_TIMERA);
-#endif  // USE_TIME_STAMP
 
   // Configure, turn on PDM
   pdm_init();
