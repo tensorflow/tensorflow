@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tensorflow/stream_executor/cuda/cuda_helpers.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 
@@ -220,31 +221,32 @@ Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
   if (filtered_results.empty()) {
     return errors::NotFound("No algorithm worked!");
   }
+  std::vector<AutotuneResult> filtered_results_no_scratch;
+  absl::c_copy_if(
+      filtered_results, std::back_inserter(filtered_results_no_scratch),
+      [](const AutotuneResult& result) { return result.scratch_bytes() == 0; });
 
-  const auto best_result = absl::c_min_element(
-      filtered_results,
-      [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-        return proto_utils::FromDurationProto(lhs.run_time()) <
-               proto_utils::FromDurationProto(rhs.run_time());
-      });
-
-  const auto best_result_no_scratch = absl::c_min_element(
-      filtered_results,
-      [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-        return std::make_tuple(lhs.scratch_bytes(),
-                               proto_utils::FromDurationProto(lhs.run_time())) <
-               std::make_tuple(rhs.scratch_bytes(),
-                               proto_utils::FromDurationProto(rhs.run_time()));
-      });
-
-  algo->set_algorithm({best_result->conv().algorithm(),
-                       best_result->conv().tensor_ops_enabled()});
-  if (best_result_no_scratch != filtered_results.end() &&
-      best_result_no_scratch->scratch_bytes() == 0) {
-    algo->set_algorithm_no_scratch(
-        {best_result_no_scratch->conv().algorithm(),
-         best_result_no_scratch->conv().tensor_ops_enabled()});
+  auto selected_result = filtered_results.begin();
+  auto selected_result_no_scratch = filtered_results_no_scratch.begin();
+  if (!se::cuda::RequireCuDNNDeterminism()) {
+    auto compare_run_times = [](const AutotuneResult& lhs,
+                                const AutotuneResult& rhs) {
+      return proto_utils::FromDurationProto(lhs.run_time()) <
+             proto_utils::FromDurationProto(rhs.run_time());
+    };
+    selected_result = absl::c_min_element(filtered_results, compare_run_times);
+    selected_result_no_scratch = absl::c_min_element(
+        filtered_results_no_scratch, compare_run_times);
   }
+
+  algo->set_algorithm({selected_result->conv().algorithm(),
+                       selected_result->conv().tensor_ops_enabled()});
+  if (selected_result_no_scratch != filtered_results_no_scratch.end()) {
+    algo->set_algorithm_no_scratch(
+        {selected_result_no_scratch->conv().algorithm(),
+         selected_result_no_scratch->conv().tensor_ops_enabled()});
+  }
+
   return Status::OK();
 }
 

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tensorflow/stream_executor/cuda/cuda_helpers.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 
 namespace xla {
@@ -536,43 +537,41 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     }
   }
 
-  // For now, we ignore WRONG_RESULT failures because false-positives are
-  // possible (e.g. perhaps the reference algorithm is the one that's
-  // incorrect!).  But we don't ignore REDZONE_MODIFIED failures because they're
-  // quite severe and can be detected with high accuracy.
-  auto has_failure = [](const AutotuneResult& r) {
-    return r.has_failure() &&
-           r.failure().kind() != AutotuneResult::WRONG_RESULT;
-  };
-
   // Choose the fastest convolution that doesn't produce a REDZONE_MODIFIED
   // error.
   //
   // TODO(jlebar): We ought to be able to detect redzone reads by noticing NaNs
   // in the output of the conv and skip those.
   //
-  // The successful one should have a smaller key, since we are doing
-  // min_element. If they are both unsuccessful, keep the earlier one in
-  // the vector by comparing pointers.
-  auto result_comparison_key = [&has_failure](const AutotuneResult& r) {
-    return std::make_tuple(
-        has_failure(r),
-        tensorflow::proto_utils::FromDurationProto(r.run_time()));
-  };
-  const auto& best_result = absl::c_min_element(
-      profile_results,
-      [&](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-        return result_comparison_key(lhs) < result_comparison_key(rhs);
+  // For now, we ignore WRONG_RESULT failures because false-positives are
+  // possible (e.g. perhaps the reference algorithm is the one that's
+  // incorrect!).  But we don't ignore REDZONE_MODIFIED failures because they're
+  // quite severe and can be detected with high accuracy.
+  std::vector<AutotuneResult> filtered_results;
+  absl::c_copy_if(
+      profile_results, std::back_inserter(filtered_results),
+      [](const AutotuneResult& r) {
+        return !(r.has_failure() &&
+                 r.failure().kind() != AutotuneResult::WRONG_RESULT);
       });
-
-  if (best_result != profile_results.end() && !has_failure(*best_result)) {
-    return *best_result;
+  if (filtered_results.empty()) {
+    return InternalError(
+        "All algorithms tried for convolution %s failed. Falling back to "
+        "default algorithm. ",
+        instr->ToString());
   }
 
-  return InternalError(
-      "All algorithms tried for convolution %s failed.  Falling back to "
-      "default algorithm.",
-      instr->ToString());
+  auto selected_result = filtered_results.begin();
+  if (!se::cuda::RequireCuDNNDeterminism()) {
+    selected_result = absl::c_min_element(
+        filtered_results,
+        [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
+          return tensorflow::proto_utils::FromDurationProto(lhs.run_time()) <
+                 tensorflow::proto_utils::FromDurationProto(rhs.run_time());
+        });
+  }
+
+  return *selected_result;
 }
 
 StatusOr<tensorflow::AutotuneResult>

@@ -22,4 +22,14 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/gpu/gpu_helpers.h"
 
+namespace stream_executor {
+namespace cuda {
+
+// A helper function to decide whether to enable deterministic cuDNN
+// functionality.
+bool RequireCuDNNDeterminism();
+
+} // namespace cuda
+} // namespace stream_executor
+
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_HELPERS_H_
