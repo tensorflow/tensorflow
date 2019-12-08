@@ -17,6 +17,7 @@
 
 #include "mlir/Dialect/StandardOps/Ops.h"
 
+#include "mlir/Dialect/CommonFolders.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
@@ -233,54 +234,6 @@ struct MemRefCastFolder : public RewritePattern {
     rewriter.updatedRootInPlace(op);
   }
 };
-
-/// Performs const folding `calculate` with element-wise behavior on the two
-/// attributes in `operands` and returns the result if possible.
-template <class AttrElementT,
-          class ElementValueT = typename AttrElementT::ValueType,
-          class CalculationT =
-              std::function<ElementValueT(ElementValueT, ElementValueT)>>
-Attribute constFoldBinaryOp(ArrayRef<Attribute> operands,
-                            const CalculationT &calculate) {
-  assert(operands.size() == 2 && "binary op takes two operands");
-  if (!operands[0] || !operands[1])
-    return {};
-  if (operands[0].getType() != operands[1].getType())
-    return {};
-
-  if (operands[0].isa<AttrElementT>() && operands[1].isa<AttrElementT>()) {
-    auto lhs = operands[0].cast<AttrElementT>();
-    auto rhs = operands[1].cast<AttrElementT>();
-
-    return AttrElementT::get(lhs.getType(),
-                             calculate(lhs.getValue(), rhs.getValue()));
-  } else if (operands[0].isa<SplatElementsAttr>() &&
-             operands[1].isa<SplatElementsAttr>()) {
-    // Both operands are splats so we can avoid expanding the values out and
-    // just fold based on the splat value.
-    auto lhs = operands[0].cast<SplatElementsAttr>();
-    auto rhs = operands[1].cast<SplatElementsAttr>();
-
-    auto elementResult = calculate(lhs.getSplatValue<ElementValueT>(),
-                                   rhs.getSplatValue<ElementValueT>());
-    return DenseElementsAttr::get(lhs.getType(), elementResult);
-  } else if (operands[0].isa<ElementsAttr>() &&
-             operands[1].isa<ElementsAttr>()) {
-    // Operands are ElementsAttr-derived; perform an element-wise fold by
-    // expanding the values.
-    auto lhs = operands[0].cast<ElementsAttr>();
-    auto rhs = operands[1].cast<ElementsAttr>();
-
-    auto lhsIt = lhs.getValues<ElementValueT>().begin();
-    auto rhsIt = rhs.getValues<ElementValueT>().begin();
-    SmallVector<ElementValueT, 4> elementResults;
-    elementResults.reserve(lhs.getNumElements());
-    for (size_t i = 0, e = lhs.getNumElements(); i < e; ++i, ++lhsIt, ++rhsIt)
-      elementResults.push_back(calculate(*lhsIt, *rhsIt));
-    return DenseElementsAttr::get(lhs.getType(), elementResults);
-  }
-  return {};
-}
 } // end anonymous namespace.
 
 //===----------------------------------------------------------------------===//
