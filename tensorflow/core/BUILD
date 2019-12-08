@@ -2170,7 +2170,6 @@ cc_library(
             "lib/png/**/*",
         ],
     ) + [
-        "//tensorflow/core/platform:legacy_platform_lib_srcs",
         "//tensorflow/core/platform:legacy_lib_internal_srcs",
     ],
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
@@ -2287,6 +2286,8 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:setround",
+        "//tensorflow/core/platform:stacktrace",
+        "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",

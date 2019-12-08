@@ -12,7 +12,6 @@ load(
     _tf_additional_env_hdrs = "tf_additional_env_hdrs",
     _tf_additional_lib_deps = "tf_additional_lib_deps",
     _tf_additional_lib_hdrs = "tf_additional_lib_hdrs",
-    _tf_additional_lib_srcs = "tf_additional_lib_srcs",
     _tf_additional_monitoring_hdrs = "tf_additional_monitoring_hdrs",
     _tf_additional_proto_hdrs = "tf_additional_proto_hdrs",
     _tf_additional_rpc_deps = "tf_additional_rpc_deps",
@@ -47,7 +46,6 @@ tf_additional_device_tracer_srcs = _tf_additional_device_tracer_srcs
 tf_additional_env_hdrs = _tf_additional_env_hdrs
 tf_additional_lib_deps = _tf_additional_lib_deps
 tf_additional_lib_hdrs = _tf_additional_lib_hdrs
-tf_additional_lib_srcs = _tf_additional_lib_srcs
 tf_additional_monitoring_hdrs = _tf_additional_monitoring_hdrs
 tf_additional_proto_hdrs = _tf_additional_proto_hdrs
 tf_additional_rpc_deps = _tf_additional_rpc_deps

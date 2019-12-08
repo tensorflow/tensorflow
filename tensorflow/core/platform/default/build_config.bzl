@@ -569,29 +569,6 @@ def tf_additional_lib_hdrs(exclude = []):
         ], exclude = exclude),
     })
 
-def tf_additional_lib_srcs(exclude = []):
-    windows_srcs = native.glob([
-        "default/*.cc",
-        "windows/*.cc",
-        "posix/error.cc",
-    ], exclude = exclude + [
-        "default/env.cc",
-        "default/env_time.cc",
-        "default/load_library.cc",
-        "default/net.cc",
-        "default/port.cc",
-        "default/posix_file_system.cc",
-        "default/subprocess.cc",
-        "default/stacktrace_handler.cc",
-    ])
-    return select({
-        clean_dep("//tensorflow:windows"): windows_srcs,
-        "//conditions:default": native.glob([
-            "default/*.cc",
-            "posix/*.cc",
-        ], exclude = exclude),
-    })
-
 def tf_additional_monitoring_hdrs():
     return []
 
