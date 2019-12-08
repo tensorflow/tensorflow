@@ -104,7 +104,8 @@ from tensorflow.python.util.tf_export import tf_export
 nextafter = gen_math_ops.next_after
 
 
-@tf_export("linspace")
+@tf_export('linspace', v1=['lin_space', 'linspace'])
+@deprecated_endpoints('lin_space')
 def linspace_nd(start, stop, num, name=None, axis=0):
   r"""Generates evenly-spaced values in an interval along a given axis.
 
