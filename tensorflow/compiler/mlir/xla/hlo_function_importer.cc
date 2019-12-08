@@ -266,32 +266,20 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       MakeAndReturn(CompareOp);
     }
     case HloOpcode::kGather: {
-      const auto& gather_dimensions = instruction->gather_dimension_numbers();
-      std::vector<int64_t> offset_dims(gather_dimensions.offset_dims().begin(),
-                                       gather_dimensions.offset_dims().end());
+      auto gather_instruction = static_cast<HloGatherInstruction*>(instruction);
+      attributes.push_back(ConvertGatherDimensionNumbers(
+          gather_instruction->gather_dimension_numbers()));
 
       std::vector<int64_t> slice_sizes(
-          instruction->gather_slice_sizes().begin(),
-          instruction->gather_slice_sizes().end());
+          gather_instruction->gather_slice_sizes().begin(),
+          gather_instruction->gather_slice_sizes().end());
+      attributes.push_back(
+          builder_->getNamedAttr("slice_sizes", Convert(slice_sizes)));
+      attributes.push_back(builder_->getNamedAttr(
+          "indices_are_sorted",
+          builder_->getBoolAttr(gather_instruction->indices_are_sorted())));
 
-      std::vector<int64_t> collapsed_slice_dims(
-          gather_dimensions.collapsed_slice_dims().begin(),
-          gather_dimensions.collapsed_slice_dims().end());
-
-      std::vector<int64_t> start_index_map(
-          gather_dimensions.start_index_map().begin(),
-          gather_dimensions.start_index_map().end());
-
-      // TODO(b/132057942): Change to explicitly passing an integer instead of
-      // call getI64IntegerAttr here.
-      return func_builder
-          ->create<mlir::xla_hlo::GatherOp>(
-              loc, result_type, operands[0], operands[1],
-              func_builder->getI64IntegerAttr(
-                  gather_dimensions.index_vector_dim()),
-              Convert(offset_dims), Convert(slice_sizes),
-              Convert(collapsed_slice_dims), Convert(start_index_map))
-          .getOperation();
+      MakeAndReturn(GatherOp);
     }
     case HloOpcode::kDynamicUpdateSlice: {
       return func_builder
@@ -704,6 +692,21 @@ mlir::NamedAttribute HloFunctionImporter::ConvertConvDimensionNumbers(
       builder_->getI64IntegerAttr(dnums.output_batch_dimension()),
       builder_->getI64IntegerAttr(dnums.kernel_output_feature_dimension()),
       Convert(output_spatial_dims), context_);
+  return builder_->getNamedAttr("dimension_numbers", attr);
+}
+
+mlir::NamedAttribute HloFunctionImporter::ConvertGatherDimensionNumbers(
+    const xla::GatherDimensionNumbers& dnums) {
+  std::vector<int64_t> offset_dims(dnums.offset_dims().begin(),
+                                   dnums.offset_dims().end());
+  std::vector<int64_t> collapsed_slice_dims(
+      dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());
+  std::vector<int64_t> start_index_map(dnums.start_index_map().begin(),
+                                       dnums.start_index_map().end());
+  auto attr = mlir::xla_hlo::GatherDimensionNumbers::get(
+      Convert(offset_dims), Convert(collapsed_slice_dims),
+      Convert(start_index_map),
+      builder_->getI64IntegerAttr(dnums.index_vector_dim()), context_);
   return builder_->getNamedAttr("dimension_numbers", attr);
 }
 
