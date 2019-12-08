@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/stream_executor/temporary_device_memory.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
@@ -157,7 +158,7 @@ class DropoutOp : public OpKernel {
     se::DeviceMemoryBase mask_tensor_host =
         se::DeviceMemoryBase(mask_tensor.data());
 
-    auto mask_tensor_device =
+    std::unique_ptr<se::TemporaryDeviceMemory<bool>> mask_tensor_device =
         stream->AllocateTemporaryArray<bool>(mask_tensor.size())
             .ConsumeValueOrDie();
     se::DeviceMemoryBase* mask_tensor_device_mutable =
@@ -317,7 +318,7 @@ class DropoutGradOp : public OpKernel {
     se::DeviceMemoryBase mask_tensor_host =
         se::DeviceMemoryBase(mask_tensor.data());
 
-    auto mask_tensor_device =
+    std::unique_ptr<se::TemporaryDeviceMemory<bool>> mask_tensor_device =
         stream->AllocateTemporaryArray<bool>(mask_tensor.size())
             .ConsumeValueOrDie();
     se::DeviceMemoryBase* mask_tensor_device_mutable =
