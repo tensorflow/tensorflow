@@ -2146,6 +2146,53 @@ class ConvertTopKV2Op : public OpRewritePattern<TF::TopKV2Op> {
   }
 };
 
+// Converts tf.Unpack to a series of XLA HLO slice ops.
+//
+// Each slice takes one element along the dimension to unpack and takes the full
+// range for all other dimenions. Each slice is then reshaped to drop the
+// dimension to unpack (which is always of size 1).
+// TODO(antiagainst): consider changing this into a TF internal lowering pass.
+class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::UnpackOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto value_type = op.value()->getType().cast<RankedTensorType>();
+    if (!value_type) return matchFailure();
+
+    int64_t value_rank = value_type.getRank();
+    int64_t axis = op.axis().getSExtValue();
+    if (axis < 0) axis += value_rank;
+
+    // Parameters for constructing each slice.
+    SmallVector<int64_t, 4> begin_indices(value_rank, 0);
+    auto end_indices = llvm::to_vector<4>(value_type.getShape());
+    SmallVector<int64_t, 4> strides(value_rank, 1);
+
+    // All HLO slice+reshape results used to replace the original tf.Unpack op.
+    SmallVector<Value *, 4> results;
+    results.reserve(op.getNumResults());
+
+    for (int i = 0; i < op.getNumResults(); ++i) {
+      begin_indices[axis] = i;
+      end_indices[axis] = i + 1;
+
+      auto slice_op = rewriter.create<xla_hlo::SliceOp>(
+          op.getLoc(), op.value(), GetI64ElementsAttr(begin_indices, &rewriter),
+          GetI64ElementsAttr(end_indices, &rewriter),
+          GetI64ElementsAttr(strides, &rewriter));
+      // Reshape to drop the axis dimension.
+      auto reshape_op = rewriter.create<xla_hlo::ReshapeOp>(
+          op.getLoc(), op.getType(i), slice_op);
+      results.push_back(reshape_op);
+    }
+
+    rewriter.replaceOp(op, results);
+    return matchSuccess();
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
 LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
@@ -2165,8 +2212,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertMaxPoolOp, ConvertRangeOp, ConvertSigmoidOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
-      ConvertStridedSliceOp, ConvertTopKV2Op, ConvertMeanOp, ConvertSumOp,
-      ConvertMaxOp, ConvertAllOp, ConvertAnyOp, ConvertTileOp,
+      ConvertStridedSliceOp, ConvertTopKV2Op, ConvertUnpackOp, ConvertMeanOp,
+      ConvertSumOp, ConvertMaxOp, ConvertAllOp, ConvertAnyOp, ConvertTileOp,
       ConvertMaxPoolGradOp, ConvertOneHotOp, ConvertConv2DBackpropInputOp,
       ConvertConv2DBackpropFilterOp>(op->getContext());
 
