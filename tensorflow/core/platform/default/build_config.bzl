@@ -587,12 +587,6 @@ def tf_additional_monitoring_hdrs():
 def tf_additional_env_hdrs():
     return []
 
-def tf_additional_proto_hdrs():
-    return [
-        "default/integral_types.h",
-        "default/logging.h",
-    ]
-
 def tf_additional_all_protos():
     return [clean_dep("//tensorflow/core:protos_all")]
 

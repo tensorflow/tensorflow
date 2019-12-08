@@ -11,7 +11,6 @@ load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_lib_hdrs",
-    "tf_additional_proto_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
     "tf_fingerprint_deps",
@@ -765,12 +764,6 @@ cc_binary(
 filegroup(
     name = "legacy_platform_lib_hdrs",
     srcs = tf_additional_lib_hdrs(),
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_proto_hdrs",
-    srcs = tf_additional_proto_hdrs(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
