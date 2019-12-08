@@ -434,11 +434,11 @@ def make_csv_dataset_v2(
   >>> 
   >>> batch_size = 32
   >>> train_dataset = tf.data.experimental.make_csv_dataset(
-     train_dataset_fp,
-     batch_size,
-     column_names=column_names,
-     label_name=label_name,
-     num_epochs=1)
+  ... train_dataset_fp,
+  ... batch_size,
+  ... column_names=column_names,
+  ... label_name=label_name,
+  ... num_epochs=1)
   ```
   """
   if num_parallel_reads is None:
