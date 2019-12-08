@@ -31,11 +31,31 @@ Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(
   StatefulNnApiDelegate::Options options = StatefulNnApiDelegate::Options();
   options.execution_preference =
       (StatefulNnApiDelegate::Options::ExecutionPreference)preference;
-  options.accelerator_name = env->GetStringUTFChars(accelerator_name, NULL);
-  options.cache_dir = env->GetStringUTFChars(cache_dir, NULL);
-  options.model_token = env->GetStringUTFChars(model_token, NULL);
+  if (accelerator_name) {
+    options.accelerator_name = env->GetStringUTFChars(accelerator_name, NULL);
+  }
+  if (cache_dir) {
+    options.cache_dir = env->GetStringUTFChars(cache_dir, NULL);
+  }
+  if (model_token) {
+    options.model_token = env->GetStringUTFChars(model_token, NULL);
+  }
 
-  return reinterpret_cast<jlong>(new StatefulNnApiDelegate(options));
+  auto delegate = new StatefulNnApiDelegate(options);
+
+  if (options.accelerator_name) {
+    env->ReleaseStringUTFChars(accelerator_name, options.accelerator_name);
+  }
+
+  if (options.cache_dir) {
+    env->ReleaseStringUTFChars(cache_dir, options.accelerator_name);
+  }
+
+  if (options.model_token) {
+    env->ReleaseStringUTFChars(model_token, options.accelerator_name);
+  }
+
+  return reinterpret_cast<jlong>(delegate);
 }
 
 JNIEXPORT void JNICALL
