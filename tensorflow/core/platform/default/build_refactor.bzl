@@ -656,3 +656,6 @@ def tf_logging_deps():
 
 def tf_monitoring_deps():
     return [":monitoring_impl"]
+
+def tf_legacy_srcs_no_runtime_google():
+    return []
