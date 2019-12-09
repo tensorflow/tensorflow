@@ -3,6 +3,21 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
+load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_cupti_test_flags", "tf_additional_lib_deps", "tf_proto_library", "tf_proto_library_py", "tf_protos_grappler")  # @unused
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_plugin_deps")
+load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
+load(
+    "//third_party/ngraph:build_defs.bzl",
+    "if_ngraph",
+)
+
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
     "//third_party/cloud_tpu/convergence_tools:__subpackages__",
@@ -18,20 +33,6 @@ visibility = [
     # TODO(aselle): to pass open source test.
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
 ]
-
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-load("//tensorflow/core/platform:default/build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_cupti_test_flags", "tf_additional_lib_deps", "tf_proto_library", "tf_proto_library_py", "tf_protos_grappler")  # @unused
-load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static", "tf_additional_plugin_deps")
-load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
-load(
-    "//third_party/ngraph:build_defs.bzl",
-    "if_ngraph",
-)
 
 package(
     default_visibility = visibility,
@@ -242,6 +243,7 @@ py_library(
             "**/*test.py",
             "**/benchmark.py",  # In platform_benchmark.
             "**/analytics.py",  # In platform_analytics.
+            "**/device_context.py",  # In platform_device_context.
         ],
     ) + ["platform/build_info.py"],
     srcs_version = "PY2AND3",
@@ -272,6 +274,16 @@ py_library(
     name = "platform_analytics",
     srcs = ["platform/analytics.py"],
     srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "platform_device_context",
+    srcs = ["platform/device_context.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":control_flow_ops",
+        ":framework",
+    ],
 )
 
 py_library(
@@ -400,13 +412,26 @@ cc_library(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_pywrap_bfloat16",
+    srcs = ["lib/core/bfloat16_wrapper.cc"],
+    hdrs = ["lib/core/bfloat16.h"],
+    module_name = "_pywrap_bfloat16",
+    deps = [
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
 cc_library(
     name = "ndarray_tensor_bridge",
     srcs = ["lib/core/ndarray_tensor_bridge.cc"],
     hdrs = ["lib/core/ndarray_tensor_bridge.h"],
-    visibility = visibility + [
-        "//learning/deepmind/courier:__subpackages__",
-    ],
+    visibility = tf_external_workspace_visible(
+        visibility + [
+            "//learning/deepmind/courier:__subpackages__",
+        ],
+    ),
     deps = [
         ":bfloat16_lib",
         ":numpy_lib",
@@ -421,7 +446,7 @@ cc_library(
     srcs = ["lib/core/py_exception_registry.cc"],
     hdrs = ["lib/core/py_exception_registry.h"],
     deps = [
-        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_headers",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//third_party/python_runtime:headers",
@@ -432,6 +457,7 @@ cc_library(
     name = "pybind11_absl",
     hdrs = ["lib/core/pybind11_absl.h"],
     features = ["-parse_headers"],
+    visibility = tf_external_workspace_visible(visibility),
     deps = [
         "//tensorflow/core/platform:stringpiece",
         "@pybind11",
@@ -442,6 +468,7 @@ cc_library(
     name = "pybind11_lib",
     hdrs = ["lib/core/pybind11_lib.h"],
     features = ["-parse_headers"],
+    visibility = tf_external_workspace_visible(visibility),
     deps = [
         "@pybind11",
     ],
@@ -454,9 +481,10 @@ cc_library(
         "//tensorflow/c:headers",
     ],
     features = ["-parse_headers"],
+    visibility = tf_external_workspace_visible(visibility),
     deps = [
         ":py_exception_registry",
-        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_headers",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//third_party/python_runtime:headers",
@@ -468,6 +496,7 @@ cc_library(
     name = "pybind11_proto",
     hdrs = ["lib/core/pybind11_proto.h"],
     features = ["-parse_headers"],
+    visibility = tf_external_workspace_visible(visibility),
     deps = [
         "@com_google_absl//absl/strings",
         "@pybind11",
@@ -769,9 +798,9 @@ cc_library(
     name = "ndarray_tensor",
     srcs = ["lib/core/ndarray_tensor.cc"],
     hdrs = ["lib/core/ndarray_tensor.h"],
-    visibility = visibility + [
+    visibility = tf_external_workspace_visible(visibility + [
         "//learning/deepmind/courier:__subpackages__",
-    ],
+    ]),
     deps = [
         ":bfloat16_lib",
         ":ndarray_tensor_bridge",
@@ -1140,11 +1169,25 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
+tf_python_pybind_extension(
+    name = "_dtypes",
+    srcs = ["framework/dtypes.cc"],
+    module_name = "_dtypes",
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/eigen3",
+        "@pybind11",
+    ],
+)
+
 py_library(
     name = "dtypes",
     srcs = ["framework/dtypes.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":_dtypes",
+        ":_pywrap_bfloat16",
         ":pywrap_tensorflow",
         "//tensorflow/core:protos_all_py",
     ],
@@ -3625,24 +3668,26 @@ py_library(
         ":loss_scale",
         ":unconnected_gradients",
         ":util",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:backprop",
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "loss_scaling_gradient_tape_test",
     size = "medium",
     srcs = ["training/experimental/loss_scaling_gradient_tape_test.py"],
-    python_version = "PY3",
-    deps = [
+    additional_deps = [
         ":client_testlib",
         ":constant_op",
+        ":framework_test_combinations_lib",
         ":loss_scale",
         ":loss_scaling_gradient_tape",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/eager:def_function",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 
@@ -3674,9 +3719,9 @@ py_library(
     srcs = ["ops/math_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "constant_op",
         ":array_ops",
         ":common_shapes",
+        ":constant_op",
         ":control_flow_ops_gen",
         ":data_flow_ops_gen",
         ":dtypes",
@@ -3771,6 +3816,7 @@ py_library(
         ":nn_grad",
         ":nn_ops",
         ":nn_ops_gen",
+        ":platform_device_context",
         ":rnn",
         ":sparse_ops",
         ":util",
@@ -4779,6 +4825,18 @@ cuda_py_test(
     python_version = "PY3",
 )
 
+py_test(
+    name = "tensor_array_ops_test",
+    size = "small",
+    srcs = ["ops/tensor_array_ops_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+    ],
+)
+
 cuda_py_test(
     name = "special_math_ops_test",
     size = "medium",
@@ -5429,7 +5487,6 @@ tf_py_wrap_cc(
         "grappler/cost_analyzer.i",
         "grappler/item.i",
         "grappler/tf_optimizer.i",
-        "lib/core/bfloat16.i",
         "lib/core/strings.i",
         "lib/io/file_io.i",
         "lib/io/py_record_reader.i",
@@ -5495,6 +5552,30 @@ tf_py_wrap_cc(
 # ** Targets for Windows build (start) **
 # We need the following targets to expose symbols from _pywrap_tensorflow.dll
 
+WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS = [
+    ":cpp_python_util",  # util
+    ":py_func_lib",  # py_func
+    ":model_analyzer_lib",  # model_analyzer
+    "//tensorflow/core:util_port",  # util_port
+    "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
+    "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
+    "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
+    "//tensorflow/core:framework_internal_impl",  # op_def_registry
+    "//tensorflow/core:lib_internal_impl",  # device_lib
+    "//tensorflow/core:core_cpu_impl",  # device_lib
+    ":py_exception_registry",  # py_exception_registry
+    ":kernel_registry",  # kernel_registry
+    "//tensorflow/lite/toco/python:toco_python_api",  # toco
+    "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
+    "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
+    ":ndarray_tensor",  # checkpoint_reader
+    ":numpy_lib",  # checkpoint_reader
+    ":safe_ptr",  # checkpoint_reader
+    ":python_op_gen",  # python_op_gen
+    ":bfloat16_lib",  # bfloat16
+    "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
+]
+
 # Filter the DEF file to reduce the number of symbols to 64K or less.
 # Note that we also write the name of the pyd file into DEF file so that
 # the dynamic libraries of custom ops can find it at runtime.
@@ -5505,7 +5586,7 @@ genrule(
             "//tensorflow:tensorflow_def_file",
             ":pybind_symbol_target_libs_file",
             "//tensorflow/tools/def_file_filter:symbols_pybind",
-        ],
+        ] + WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS,
         "//conditions:default": [],
     }),
     outs = ["pywrap_tensorflow_filtered_def_file.def"],
@@ -5527,28 +5608,7 @@ genrule(
 # Write to a file a list of all cc_library targets that we need for exporting symbols on Windows.
 genrule(
     name = "pybind_symbol_target_libs_file",
-    srcs = [
-        ":cpp_python_util",  # util
-        ":py_func_lib",  # py_func
-        ":model_analyzer_lib",  # model_analyzer
-        "//tensorflow/core:util_port",  # util_port
-        "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
-        "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
-        "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
-        "//tensorflow/core:framework_internal_impl",  # op_def_registry
-        "//tensorflow/core:lib_internal_impl",  # device_lib
-        "//tensorflow/core:core_cpu_impl",  # device_lib
-        ":py_exception_registry",  # py_exception_registry
-        ":kernel_registry",  # kernel_registry
-        "//tensorflow/lite/toco/python:toco_python_api",  # toco
-        "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
-        "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
-        ":ndarray_tensor",  # checkpoint_reader
-        ":numpy_lib",  # checkpoint_reader
-        ":safe_ptr",  # checkpoint_reader
-        ":python_op_gen",  # python_op_gen
-        "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
-    ],
+    srcs = WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS,
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({
         "//tensorflow:windows": """
@@ -5571,17 +5631,20 @@ filegroup(
 cc_import(
     name = "_pywrap_tensorflow_internal_linux",
     shared_library = "//tensorflow/python:lib_pywrap_tensorflow_internal.so",
+    visibility = tf_external_workspace_visible(visibility),
 )
 
 cc_import(
     name = "_pywrap_tensorflow_internal_macos",
     shared_library = "//tensorflow/python:lib_pywrap_tensorflow_internal.dylib",
+    visibility = tf_external_workspace_visible(visibility),
 )
 
 cc_import(
     name = "_pywrap_tensorflow_internal_windows",
     interface_library = "//tensorflow/python:pywrap_tensorflow_import_lib_file",
     shared_library = "//tensorflow/python:_pywrap_tensorflow_internal.dll",
+    visibility = tf_external_workspace_visible(visibility),
 )
 
 # Rename the import library for _pywrap_tensorflow_internal.pyd to _pywrap_tensorflow_internal.lib
@@ -7034,29 +7097,6 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
     ],
-)
-
-cuda_py_test(
-    name = "matmul_benchmark_test",
-    size = "medium",
-    srcs = ["ops/matmul_benchmark_test.py"],
-    additional_deps = [
-        ":math_ops",
-        ":random_ops",
-        ":client",
-        ":client_testlib",
-        ":control_flow_ops",
-        ":framework_for_generated_wrappers",
-        ":platform",
-        ":platform_benchmark",
-        ":matmul_benchmark",
-        ":variables",
-        "//third_party/py/numpy",
-        "//tensorflow/core:protos_all_py",
-    ],
-    main = "ops/matmul_benchmark_test.py",
-    python_version = "PY3",
-    tags = ["no_pip"],
 )
 
 cuda_py_test(

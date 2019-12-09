@@ -1,4 +1,4 @@
-load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library_cc")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library_cc")
 load(
     "//tensorflow/compiler/xla/python/tpu_driver:platform/external/tools.bzl",
     "external_deps",
@@ -29,6 +29,11 @@ tf_proto_library_cc(
         "//tensorflow/compiler/xla/service:hlo_proto",
     ],
     use_grpc_namespace = True,
+)
+
+cc_library(
+    name = "c_api",
+    hdrs = ["c_api.h"],
 )
 
 cc_library(

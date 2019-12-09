@@ -197,6 +197,12 @@ cc_library(
 )
 
 cc_library(
+    name = "tf_status_headers",
+    hdrs = ["tf_status.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "tf_file_statistics",
     hdrs = ["tf_file_statistics.h"],
     visibility = ["//visibility:public"],

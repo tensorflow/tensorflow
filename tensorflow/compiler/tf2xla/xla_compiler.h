@@ -147,6 +147,9 @@ class XlaCompiler {
     // The name of this argument, used for debugging.
     string name;
 
+    // The name of TensorFlow _Arg node, used for debugging.
+    string node_name;
+
     // For a kResource, what kind of resource is it?
     XlaResource::Kind resource_kind = XlaResource::kInvalid;
 

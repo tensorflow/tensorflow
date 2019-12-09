@@ -64,7 +64,7 @@ using TranslateFromMLIRFunction =
 using TranslateFunction = std::function<LogicalResult(
     llvm::SourceMgr &sourceMgr, llvm::raw_ostream &output, MLIRContext *)>;
 
-/// Use Translate[ToMLIR|FromMLIR]Registration as a global initialiser that
+/// Use Translate[ToMLIR|FromMLIR]Registration as a global initializer that
 /// registers a function and associates it with name. This requires that a
 /// translation has not been registered to a given name.
 ///

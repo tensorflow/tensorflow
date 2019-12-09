@@ -12,6 +12,11 @@ package_group(
     ],
 )
 
+exports_files(
+    ["benchmark_c_api.h"],
+    visibility = ["//tensorflow/lite/tools/benchmark/experimental/c:benchmark"],
+)
+
 cc_library(
     name = "benchmark_c_api",
     srcs = ["benchmark_c_api.cc"],

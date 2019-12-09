@@ -298,11 +298,9 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
               math_ops.log(l1_norm / maxnorm) / math_ops.log(const(2.0))), 0)
       u3, v3 = _matrix_exp_pade3(matrix)
       u5, v5 = _matrix_exp_pade5(matrix)
-      u7, v7 = _matrix_exp_pade7(matrix / math_ops.pow(
-          constant_op.constant(2.0, dtype=matrix.dtype),
-          math_ops.cast(
-              squarings,
-              matrix.dtype))[..., array_ops.newaxis, array_ops.newaxis])
+      u7, v7 = _matrix_exp_pade7(matrix / math_ops.cast(
+          math_ops.pow(const(2.0), squarings),
+          matrix.dtype)[..., array_ops.newaxis, array_ops.newaxis])
       conds = (4.258730016922831e-001, 1.880152677804762e+000)
       u = _nest_where(conds, (u3, u5, u7))
       v = _nest_where(conds, (v3, v5, v7))
@@ -315,11 +313,9 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
       u5, v5 = _matrix_exp_pade5(matrix)
       u7, v7 = _matrix_exp_pade7(matrix)
       u9, v9 = _matrix_exp_pade9(matrix)
-      u13, v13 = _matrix_exp_pade13(matrix / math_ops.pow(
-          constant_op.constant(2.0, dtype=matrix.dtype),
-          math_ops.cast(
-              squarings,
-              matrix.dtype))[..., array_ops.newaxis, array_ops.newaxis])
+      u13, v13 = _matrix_exp_pade13(matrix / math_ops.cast(
+          math_ops.pow(const(2.0), squarings),
+          matrix.dtype)[..., array_ops.newaxis, array_ops.newaxis])
       conds = (1.495585217958292e-002, 2.539398330063230e-001,
                9.504178996162932e-001, 2.097847961257068e+000)
       u = _nest_where(conds, (u3, u5, u7, u9, u13))

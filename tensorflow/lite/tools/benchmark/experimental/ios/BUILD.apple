@@ -25,6 +25,10 @@ ios_static_framework(
 # Used for building TensorFlowLiteBenchmarkC_framework framework.
 build_test(
     name = "framework_build_test",
+    tags = [
+        "nomsan",  # b/145205324
+        "notsan",  # b/145205324
+    ],
     targets = [
         ":TensorFlowLiteBenchmarkC_framework",
     ],

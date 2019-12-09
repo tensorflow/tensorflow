@@ -232,12 +232,12 @@ module {
 
 // -----
 
-// Single device with non-continous instructions in original block.
+// Single device with non-continuous instructions in original block.
 
 module {
-  // CHECK-LABEL: func @noncontinoussinglecluster
+  // CHECK-LABEL: func @noncontinuoussinglecluster
   // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
-  func @noncontinoussinglecluster(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  func @noncontinuoussinglecluster(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = tf_executor.graph {
       %1:2 = tf_executor.island {
 

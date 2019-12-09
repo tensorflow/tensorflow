@@ -172,11 +172,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "6d8ed482addd14892d7b0bd98fec2c02f18fdab97775bda68c3f2a99ffb190fb",
-        strip_prefix = "eigen-eigen-66be6c76fc01",
+        sha256 = "7ab6bfe4d63543d29390ccd60b31dc09248023986068974dccfba11be6906fda",
+        strip_prefix = "eigen-8056a05b5485442ebc5c087a25f8ee027eb9a338",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/66be6c76fc01.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/66be6c76fc01.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/8056a05b5485442ebc5c087a25f8ee027eb9a338/eigen-8056a05b5485442ebc5c087a25f8ee027eb9a338.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/8056a05b5485442ebc5c087a25f8ee027eb9a338/eigen-8056a05b5485442ebc5c087a25f8ee027eb9a338.tar.gz",
         ],
     )
 
@@ -845,6 +845,16 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/download.tensorflow.org/data/ovic_2019_04_30.zip",
             "https://storage.googleapis.com/download.tensorflow.org/data/ovic_2019_04_30.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "rules_cc",
+        sha256 = "cf3b76a90c86c0554c5b10f4b160f05af71d252026b71362c4674e2fb9936cf9",
+        strip_prefix = "rules_cc-01d4a48911d5e7591ecb1c06d3b8af47fe872371",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_cc/archive/01d4a48911d5e7591ecb1c06d3b8af47fe872371.zip",
+            "https://github.com/bazelbuild/rules_cc/archive/01d4a48911d5e7591ecb1c06d3b8af47fe872371.zip",
         ],
     )
 

@@ -22,6 +22,7 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Transforms/FoldUtils.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "llvm/ADT/StringSwitch.h"
 
 using namespace mlir;
 
@@ -288,21 +289,23 @@ LogicalResult TestOpWithVariadicResultsAndFolder::fold(
   return success();
 }
 
-SmallVector<Type, 2> mlir::OpWithInferTypeInterfaceOp::inferReturnTypes(
-    llvm::Optional<Location> location, ArrayRef<Value *> operands,
-    ArrayRef<NamedAttribute> attributes, ArrayRef<Region> regions) {
+LogicalResult mlir::OpWithInferTypeInterfaceOp::inferReturnTypes(
+    llvm::Optional<Location> location, ValueRange operands,
+    ArrayRef<NamedAttribute> attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferedReturnTypes) {
   if (operands[0]->getType() != operands[1]->getType()) {
-    if (location)
-      mlir::emitError(*location)
-          << "operand type mismatch " << operands[0]->getType() << " vs "
-          << operands[1]->getType();
-    return {nullptr};
+    return emitOptionalError(location, "operand type mismatch ",
+                             operands[0]->getType(), " vs ",
+                             operands[1]->getType());
   }
-  return {operands[0]->getType()};
+  inferedReturnTypes.assign({operands[0]->getType()});
+  return success();
 }
 
 // Static initialization for Test dialect registration.
 static mlir::DialectRegistration<mlir::TestDialect> testDialect;
+
+#include "TestOpEnums.cpp.inc"
 
 #define GET_OP_CLASSES
 #include "TestOps.cpp.inc"

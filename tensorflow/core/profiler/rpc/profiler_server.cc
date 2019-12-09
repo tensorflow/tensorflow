@@ -19,10 +19,10 @@ limitations under the License.
 #include <utility>
 
 #include "grpcpp/grpcpp.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/grpc_services.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -31,7 +31,7 @@ namespace tensorflow {
 std::unique_ptr<Thread> StartProfilerServer(int32 port) {
   Env* env = Env::Default();
   return WrapUnique(env->StartThread({}, "profiler server", [port]() {
-    string server_address = strings::StrCat("0.0.0.0:", port);
+    string server_address = absl::StrCat("0.0.0.0:", port);
     std::unique_ptr<grpc::ProfilerService::Service> service =
         CreateProfilerService();
     ::grpc::ServerBuilder builder;

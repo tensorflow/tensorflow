@@ -25,10 +25,10 @@ py_library(
         "anno.py",
         "ast_util.py",
         "cfg.py",
-        "compiler.py",
         "error_utils.py",
         "errors.py",
         "inspect_utils.py",
+        "loader.py",
         "origin_info.py",
         "parser.py",
         "pretty_printer.py",
@@ -83,8 +83,8 @@ py_test(
 )
 
 py_test(
-    name = "compiler_test",
-    srcs = ["compiler_test.py"],
+    name = "loader_test",
+    srcs = ["loader_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [

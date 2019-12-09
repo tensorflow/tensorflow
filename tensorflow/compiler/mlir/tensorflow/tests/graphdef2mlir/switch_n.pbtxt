@@ -2,11 +2,11 @@
 
 # CHECK: tf_executor.SwitchN
 # CHECK-SAME: of 3 : tensor<i32>
-# CHECK-SAME: T = "tfdtype$DT_INT32"
+# CHECK-SAME: T = i32
 # CHECK-SAME: name = "Case/branch_index/_3"
 # CHECK: tf_executor.SwitchN
 # CHECK-SAME: of 2 : tensor<f32>
-# CHECK-SAME: T = "tfdtype$DT_FLOAT"
+# CHECK-SAME: T = f32
 # CHECK-SAME: name = "Case/Case/input_0/_7"
 
 node {

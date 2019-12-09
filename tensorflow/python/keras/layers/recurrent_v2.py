@@ -64,6 +64,23 @@ class GRUCell(recurrent.GRUCell):
   This class processes one step within the whole time sequence input, whereas
   `tf.keras.layer.GRU` processes the whole sequence.
 
+  For example:
+
+  >>> inputs = tf.random.normal([32, 10, 8])
+  >>> rnn = tf.keras.layers.RNN(tf.keras.layers.GRUCell(4))
+  >>> output = rnn(inputs)
+  >>> print(output.shape)
+  (32, 4)
+  >>> rnn = tf.keras.layers.RNN(
+  ...    tf.keras.layers.GRUCell(4),
+  ...    return_sequences=True,
+  ...    return_state=True)
+  >>> whole_sequence_output, final_state = rnn(inputs)
+  >>> print(whole_sequence_output.shape)
+  (32, 10, 4)
+  >>> print(final_state.shape)
+  (32, 4)
+
   Arguments:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use. Default: hyperbolic tangent
@@ -114,24 +131,6 @@ class GRUCell(recurrent.GRUCell):
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. Only relevant when `dropout` or
       `recurrent_dropout` is used.
-
-  Examples:
-
-  ```python
-  inputs = np.random.random([32, 10, 8]).astype(np.float32)
-  rnn = tf.keras.layers.RNN(tf.keras.layers.GRUCell(4))
-
-  output = rnn(inputs)  # The output has shape `[32, 4]`.
-
-  rnn = tf.keras.layers.RNN(
-      tf.keras.layers.GRUCell(4),
-      return_sequences=True,
-      return_state=True)
-
-  # whole_sequence_output has shape `[32, 10, 4]`.
-  # final_state has shape `[32, 4]`.
-  whole_sequence_output, final_state = rnn(inputs)
-  ```
   """
 
   def __init__(self,
@@ -206,6 +205,20 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
   inference on CPU. Thus it has separate biases for `kernel` and
   `recurrent_kernel`. To use this variant, set `'reset_after'=True` and
   `recurrent_activation='sigmoid'`.
+
+  For example:
+
+  >>> inputs = tf.random.normal([32, 10, 8])
+  >>> gru = tf.keras.layers.GRU(4)
+  >>> output = gru(inputs)
+  >>> print(output.shape)
+  (32, 4)
+  >>> gru = tf.keras.layers.GRU(4, return_sequences=True, return_state=True)
+  >>> whole_sequence_output, final_state = gru(inputs)
+  >>> print(whole_sequence_output.shape)
+  (32, 10, 4)
+  >>> print(final_state.shape)
+  (32, 4)
 
   Arguments:
     units: Positive integer, dimensionality of the output space.
@@ -289,21 +302,6 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     initial_state: List of initial state tensors to be passed to the first
       call of the cell  (optional, defaults to `None` which causes creation
       of zero-filled initial state tensors).
-
-  Examples:
-
-  ```python
-  inputs = np.random.random([32, 10, 8]).astype(np.float32)
-  gru = tf.keras.layers.GRU(4)
-
-  output = gru(inputs)  # The output has shape `[32, 4]`.
-
-  gru = tf.keras.layers.GRU(4, return_sequences=True, return_state=True)
-
-  # whole_sequence_output has shape `[32, 10, 4]`.
-  # final_state has shape `[32, 4]`.
-  whole_sequence_output, final_state = gru(inputs)
-  ```
   """
 
   def __init__(self,
@@ -775,6 +773,25 @@ class LSTMCell(recurrent.LSTMCell):
   This class processes one step within the whole time sequence input, whereas
   `tf.keras.layer.LSTM` processes the whole sequence.
 
+  For example:
+
+  >>> inputs = tf.random.normal([32, 10, 8])
+  >>> rnn = tf.keras.layers.RNN(tf.keras.layers.LSTMCell(4))
+  >>> output = rnn(inputs)
+  >>> print(output.shape)
+  (32, 4)
+  >>> rnn = tf.keras.layers.RNN(
+  ...    tf.keras.layers.LSTMCell(4),
+  ...    return_sequences=True,
+  ...    return_state=True)
+  >>> whole_seq_output, final_memory_state, final_carry_state = rnn(inputs)
+  >>> print(whole_seq_output.shape)
+  (32, 10, 4)
+  >>> print(final_memory_state.shape)
+  (32, 4)
+  >>> print(final_carry_state.shape)
+  (32, 4)
+
   Arguments:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use. Default: hyperbolic tangent
@@ -826,24 +843,6 @@ class LSTMCell(recurrent.LSTMCell):
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. Only relevant when `dropout` or
       `recurrent_dropout` is used.
-
-  Examples:
-
-  ```python
-  inputs = np.random.random([32, 10, 8]).astype(np.float32)
-  rnn = tf.keras.layers.RNN(tf.keras.layers.LSTMCell(4))
-
-  output = rnn(inputs)  # The output has shape `[32, 4]`.
-
-  rnn = tf.keras.layers.RNN(
-      tf.keras.layers.LSTMCell(4),
-      return_sequences=True,
-      return_state=True)
-
-  # whole_sequence_output has shape `[32, 10, 4]`.
-  # final_memory_state and final_carry_state both have shape `[32, 4]`.
-  whole_sequence_output, final_memory_state, final_carry_state = rnn(inputs)
-  ```
   """
 
   def __init__(self,
@@ -907,6 +906,22 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
   4. `unroll` is `False`
   5. `use_bias` is `True`
   6. Inputs are not masked or strictly right padded.
+
+  For example:
+
+  >>> inputs = tf.random.normal([32, 10, 8])
+  >>> lstm = tf.keras.layers.LSTM(4)
+  >>> output = lstm(inputs)
+  >>> print(output.shape)
+  (32, 4)
+  >>> lstm = tf.keras.layers.LSTM(4, return_sequences=True, return_state=True)
+  >>> whole_seq_output, final_memory_state, final_carry_state = lstm(inputs)
+  >>> print(whole_seq_output.shape)
+  (32, 10, 4)
+  >>> print(final_memory_state.shape)
+  (32, 4)
+  >>> print(final_carry_state.shape)
+  (32, 4)
 
   Arguments:
     units: Positive integer, dimensionality of the output space.
@@ -983,21 +998,6 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     initial_state: List of initial state tensors to be passed to the first
       call of the cell (optional, defaults to `None` which causes creation
       of zero-filled initial state tensors).
-
-  Examples:
-
-  ```python
-  inputs = np.random.random([32, 10, 8]).astype(np.float32)
-  lstm = tf.keras.layers.LSTM(4)
-
-  output = lstm(inputs)  # The output has shape `[32, 4]`.
-
-  lstm = tf.keras.layers.LSTM(4, return_sequences=True, return_state=True)
-
-  # whole_sequence_output has shape `[32, 10, 4]`.
-  # final_memory_state and final_carry_state both have shape `[32, 4]`.
-  whole_sequence_output, final_memory_state, final_carry_state = lstm(inputs)
-  ```
   """
 
   def __init__(self,

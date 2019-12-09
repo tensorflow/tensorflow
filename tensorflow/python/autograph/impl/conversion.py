@@ -52,7 +52,7 @@ from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.core import unsupported_features_checker
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
-from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import loader
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
@@ -236,7 +236,7 @@ def _wrap_into_dynamic_factory(nodes, entity_name, factory_factory_name,
         entity_defs
         entity_name.ag_source_map = ag_source_map__
         entity_name.ag_module = ag_module__
-        entity_name.autograph_info__ = {}
+        entity_name = ag__.autograph_artifact(entity_name)
         return entity_name
       return factory_name
   """
@@ -282,8 +282,7 @@ def _convert_with_cache(entity, program_ctx, free_nonglobal_var_names):
                                        free_nonglobal_var_names,
                                        entity_info.future_features)
 
-    module, _, source_map = compiler.ast_to_object(
-        nodes, include_source_map=True)
+    module, _, source_map = loader.load_ast(nodes, include_source_map=True)
     module_name = module.__name__
 
     converted_entity_info = _ConvertedEntityFactoryInfo(
@@ -519,8 +518,7 @@ def convert_entity_to_ast(o, program_ctx):
         'supported for now.' % (o, type(o)))
 
   if logging.has_verbosity(2):
-    logging.log(2, 'Compiled output of %s:\n\n%s\n', o,
-                compiler.ast_to_source(nodes))
+    logging.log(2, 'Compiled output of %s:\n\n%s\n', o, parser.unparse(nodes))
   if logging.has_verbosity(4):
     for n in nodes:
       logging.log(4, 'Compiled AST of %s:\n\n%s\n\n', o,

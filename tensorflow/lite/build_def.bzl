@@ -153,6 +153,7 @@ def tflite_cc_shared_object(
         linkstatic = 1,
         deps = [],
         visibility = None,
+        per_os_targets = False,
         tags = None):
     """Builds a shared object for TFLite."""
     tf_cc_shared_object(
@@ -164,6 +165,7 @@ def tflite_cc_shared_object(
         deps = deps,
         visibility = visibility,
         tags = tags,
+        per_os_targets = per_os_targets,
     )
 
 def tf_to_tflite(name, src, options, out):
@@ -270,7 +272,8 @@ def generated_test_models():
         "exp",
         "embedding_lookup",
         "expand_dims",
-        "eye",
+        # TODO(b/145885576): Re-enable.
+        # "eye",
         "fill",
         "floor",
         "floor_div",
@@ -299,8 +302,9 @@ def generated_test_models():
         "logical_or",
         "logical_xor",
         "lstm",
-        "matrix_diag",
-        "matrix_set_diag",
+        # TODO(b/145885576): Re-enable.
+        # "matrix_diag",
+        # "matrix_set_diag",
         "max_pool",
         "maximum",
         "mean",

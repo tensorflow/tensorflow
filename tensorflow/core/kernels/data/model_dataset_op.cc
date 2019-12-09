@@ -179,8 +179,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
       void OptimizeThread(const std::shared_ptr<IteratorContext>& ctx) {
         int64 last_optimization_ms = 0;
         int64 optimization_period_ms = 10;
-        int64 current_time_ms =
-            ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
+        int64 current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
         while (true) {
           {
             mutex_lock l(mu_);
@@ -191,8 +190,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
                              current_time_ms;
               VLOG(2) << "Waiting for " << wait_ms << " ms.";
               cond_var_.wait_for(l, std::chrono::milliseconds(wait_ms));
-              current_time_ms =
-                  ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
+              current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
             }
             if (cancelled_) return;
           }
@@ -204,7 +202,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
             optimization_period_ms = std::min(optimization_period_ms << 1,
                                               kOptimizationPeriodThresholdMs);
           }
-          current_time_ms = ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
+          current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
           last_optimization_ms = current_time_ms;
         }
       }

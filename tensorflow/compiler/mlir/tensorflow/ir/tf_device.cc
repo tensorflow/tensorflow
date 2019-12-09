@@ -26,11 +26,13 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SMLoc.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
@@ -330,8 +332,7 @@ struct DropEmptyLaunch : public OpRewritePattern<LaunchOp> {
     if (&block.front() != &block.back()) return matchFailure();
 
     // Map launch results to return operands.
-    llvm::SmallVector<Value*, 8> new_rets(block.front().getOperands());
-    rewriter.replaceOp(op, new_rets);
+    rewriter.replaceOp(op, block.front().getOperands());
 
     return matchSuccess();
   }

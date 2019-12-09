@@ -61,10 +61,7 @@ def _build_function_page(page_info):
   """Given a FunctionPageInfo object Return the page as an md string."""
   parts = ['# %s\n\n' % page_info.full_name]
 
-  if len(page_info.aliases) > 1:
-    parts.append('### Aliases:\n\n')
-    parts.extend('* `%s`\n' % name for name in page_info.aliases)
-    parts.append('\n')
+  parts.append(_build_aliases(page_info.aliases))
 
   if page_info.signature is not None:
     parts.append(_build_signature(page_info))
@@ -105,10 +102,7 @@ def _build_class_page(page_info):
       method for method in page_info.methods
       if method.short_name not in constructor_names)
 
-  if len(page_info.aliases) > 1:
-    parts.append('### Aliases:\n\n')
-    parts.extend('* Class `%s`\n' % name for name in page_info.aliases)
-    parts.append('\n')
+  parts.append(_build_aliases(page_info.aliases))
 
   if page_info.defined_in is not None:
     parts.append('\n\n')
@@ -203,10 +197,7 @@ def _build_module_page(page_info):
   """Given a ClassPageInfo object Return the page as an md string."""
   parts = ['# Module: {full_name}\n\n'.format(full_name=page_info.full_name)]
 
-  if len(page_info.aliases) > 1:
-    parts.append('### Aliases:\n\n')
-    parts.extend('* Module `%s`\n' % name for name in page_info.aliases)
-    parts.append('\n')
+  parts.append(_build_aliases(page_info.aliases))
 
   if page_info.defined_in is not None:
     parts.append('\n\n')
@@ -323,3 +314,14 @@ def _build_function_details(function_details):
     parts.append(''.join(sub))
 
   return '\n'.join(parts)
+
+
+def _build_aliases(aliases):
+  aliases = sorted(aliases, key=lambda x: ('compat.v' in x, x))
+  parts = []
+  if len(aliases) > 1:
+    parts.append('**Aliases**: ')
+    parts.extend(', '.join('`{}`'.format(name) for name in aliases))
+    parts.append('\n\n')
+
+  return ''.join(parts)

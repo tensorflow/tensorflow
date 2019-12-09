@@ -199,7 +199,9 @@ void TraceMeRecorder::RegisterThread(int32 tid, ThreadLocalRecorder* thread) {
 void TraceMeRecorder::UnregisterThread(TraceMeRecorder::ThreadEvents&& events) {
   mutex_lock lock(mutex_);
   threads_.erase(events.thread.tid);
-  orphaned_events_.push_back(std::move(events));
+  if (!events.events.empty()) {
+    orphaned_events_.push_back(std::move(events));
+  }
 }
 
 // This method is performance critical and should be kept fast. It is called
@@ -211,7 +213,10 @@ TraceMeRecorder::Events TraceMeRecorder::Clear() {
   std::swap(orphaned_events_, result);
   for (const auto& entry : threads_) {
     auto* recorder = entry.second;
-    result.push_back(recorder->Clear());
+    TraceMeRecorder::ThreadEvents events = recorder->Clear();
+    if (!events.events.empty()) {
+      result.push_back(std::move(events));
+    }
   }
   return result;
 }
@@ -244,6 +249,18 @@ TraceMeRecorder::Events TraceMeRecorder::StopRecording() {
     events = Clear();
   }
   return events;
+}
+
+/*static*/ uint64 TraceMeRecorder::NewActivityId() {
+  // Activity IDs: To avoid contention over a counter, the top 32 bits identify
+  // the originating thread, the bottom 32 bits name the event within a thread.
+  // IDs may be reused after 4 billion events on one thread, or 4 billion
+  // threads.
+  static std::atomic<uint32> thread_counter(1);  // avoid kUntracedActivity
+  const thread_local static uint32 thread_id =
+      thread_counter.fetch_add(1, std::memory_order_relaxed);
+  thread_local static uint32 per_thread_activity_id = 0;
+  return static_cast<uint64>(thread_id) << 32 | per_thread_activity_id++;
 }
 
 }  // namespace profiler

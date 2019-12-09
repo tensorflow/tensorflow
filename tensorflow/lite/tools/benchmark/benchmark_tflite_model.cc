@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdlib>
 #include <iostream>
 #include <memory>
+#include <random>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -80,9 +81,15 @@ class ProfilingListener : public BenchmarkListener {
       : interpreter_(interpreter), profiler_(max_num_entries) {
     TFLITE_BENCHMARK_CHECK(interpreter);
     interpreter_->SetProfiler(&profiler_);
+
+    // We start profiling here in order to catch events that are recorded during
+    // the benchmark run preparation stage where TFLite interpreter is
+    // initialized and model graph is prepared.
     profiler_.Reset();
     profiler_.StartProfiling();
   }
+
+  void OnBenchmarkStart(const BenchmarkParams& params) override;
 
   void OnSingleRunStart(RunType run_type) override;
 
@@ -93,7 +100,8 @@ class ProfilingListener : public BenchmarkListener {
  private:
   Interpreter* interpreter_;
   profiling::BufferedProfiler profiler_;
-  profiling::ProfileSummarizer summarizer_;
+  profiling::ProfileSummarizer run_summarizer_;
+  profiling::ProfileSummarizer init_summarizer_;
 };
 
 // Dumps gemmlowp profiling events if gemmlowp profiling is enabled.
@@ -104,29 +112,39 @@ class GemmlowpProfilingListener : public BenchmarkListener {
   void OnBenchmarkEnd(const BenchmarkResults& results) override;
 };
 
+void ProfilingListener::OnBenchmarkStart(const BenchmarkParams& params) {
+  // At this point, we have completed the prepration for benchmark runs
+  // including TFLite interpreter initialization etc. So we are going to process
+  // profiling events recorded during this stage.
+  profiler_.StopProfiling();
+  auto profile_events = profiler_.GetProfileEvents();
+  init_summarizer_.ProcessProfiles(profile_events, *interpreter_);
+  profiler_.Reset();
+}
+
 void ProfilingListener::OnSingleRunStart(RunType run_type) {
-  // Note: we have started profiling when this listener is created. In order
-  // not to count events during the WARMUP phase, we need to stop profiling and
-  // process already-recorded profile events when the WARMUP run starts and
-  // restart profiling at the REGULAR run.
-  if (run_type == WARMUP) {
-    OnSingleRunEnd();
-  } else if (run_type == REGULAR) {
+  if (run_type == REGULAR) {
     profiler_.Reset();
     profiler_.StartProfiling();
   }
 }
 
 void ProfilingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
-  if (summarizer_.HasProfiles()) {
-    TFLITE_LOG(INFO) << summarizer_.GetOutputString();
+  if (init_summarizer_.HasProfiles()) {
+    TFLITE_LOG(INFO) << "Profiling Info for Benchmark Initialization:";
+    TFLITE_LOG(INFO) << init_summarizer_.GetOutputString();
+  }
+  if (run_summarizer_.HasProfiles()) {
+    TFLITE_LOG(INFO)
+        << "Operator-wise Profiling Info for Regular Benchmark Runs:";
+    TFLITE_LOG(INFO) << run_summarizer_.GetOutputString();
   }
 }
 
 void ProfilingListener::OnSingleRunEnd() {
   profiler_.StopProfiling();
   auto profile_events = profiler_.GetProfileEvents();
-  summarizer_.ProcessProfiles(profile_events, *interpreter_);
+  run_summarizer_.ProcessProfiles(profile_events, *interpreter_);
 }
 
 void GemmlowpProfilingListener::OnBenchmarkStart(
@@ -290,11 +308,9 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   return default_params;
 }
 
-BenchmarkTfLiteModel::BenchmarkTfLiteModel()
-    : BenchmarkTfLiteModel(DefaultParams()) {}
-
 BenchmarkTfLiteModel::BenchmarkTfLiteModel(BenchmarkParams params)
-    : BenchmarkModel(std::move(params)) {}
+    : BenchmarkModel(std::move(params)),
+      random_engine_(std::random_device()()) {}
 
 void BenchmarkTfLiteModel::CleanUp() {
   // Free up any pre-allocated tensor data during PrepareInputData.
@@ -453,22 +469,16 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
     }
     InputTensorData t_data;
     if (t->type == kTfLiteFloat32) {
-      t_data = InputTensorData::Create<float>(num_elements, []() {
-        return static_cast<float>(rand()) / RAND_MAX - 0.5f;
-      });
+      t_data = CreateInputTensorData<float>(
+          num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
     } else if (t->type == kTfLiteFloat16) {
 // TODO(b/138843274): Remove this preprocessor guard when bug is fixed.
 #if TFLITE_ENABLE_FP16_CPU_BENCHMARKS
 #if __GNUC__ && \
     (__clang__ || __ARM_FP16_FORMAT_IEEE || __ARM_FP16_FORMAT_ALTERNATIVE)
       // __fp16 is available on Clang or when __ARM_FP16_FORMAT_* is defined.
-      t_data = InputTensorData::Create<TfLiteFloat16>(
-          num_elements, []() -> TfLiteFloat16 {
-            __fp16 f16_value = static_cast<float>(rand()) / RAND_MAX - 0.5f;
-            TfLiteFloat16 f16_placeholder_value;
-            memcpy(&f16_placeholder_value, &f16_value, sizeof(TfLiteFloat16));
-            return f16_placeholder_value;
-          });
+      t_data = CreateInputTensorData<__fp16>(
+          num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
 #else
       TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
                         << " of type FLOAT16 on this platform.";
@@ -484,33 +494,30 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
     } else if (t->type == kTfLiteInt64) {
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 99;
-      t_data = InputTensorData::Create<int64_t>(num_elements, [=]() {
-        return static_cast<int64_t>(rand() % (high - low + 1) + low);
-      });
+      t_data = CreateInputTensorData<int64_t>(
+          num_elements, std::uniform_int_distribution<int64_t>(low, high));
     } else if (t->type == kTfLiteInt32) {
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 99;
-      t_data = InputTensorData::Create<int32_t>(num_elements, [=]() {
-        return static_cast<int32_t>(rand() % (high - low + 1) + low);
-      });
+      t_data = CreateInputTensorData<int32_t>(
+          num_elements, std::uniform_int_distribution<int32_t>(low, high));
     } else if (t->type == kTfLiteInt16) {
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 99;
-      t_data = InputTensorData::Create<int16_t>(num_elements, [=]() {
-        return static_cast<int16_t>(rand() % (high - low + 1) + low);
-      });
+      t_data = CreateInputTensorData<int16_t>(
+          num_elements, std::uniform_int_distribution<int16_t>(low, high));
     } else if (t->type == kTfLiteUInt8) {
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 254;
-      t_data = InputTensorData::Create<uint8_t>(num_elements, [=]() {
-        return static_cast<uint8_t>(rand() % (high - low + 1) + low);
-      });
+      // std::uniform_int_distribution is specified not to support char types.
+      t_data = CreateInputTensorData<uint8_t>(
+          num_elements, std::uniform_int_distribution<uint32_t>(low, high));
     } else if (t->type == kTfLiteInt8) {
       int low = has_value_range ? low_range : -127;
       int high = has_value_range ? high_range : 127;
-      t_data = InputTensorData::Create<int8_t>(num_elements, [=]() {
-        return static_cast<int8_t>(rand() % (high - low + 1) + low);
-      });
+      // std::uniform_int_distribution is specified not to support char types.
+      t_data = CreateInputTensorData<int8_t>(
+          num_elements, std::uniform_int_distribution<int32_t>(low, high));
     } else if (t->type == kTfLiteString) {
       // TODO(haoliang): No need to cache string tensors right now.
     } else {
@@ -553,8 +560,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     return kTfLiteError;
   }
   TFLITE_LOG(INFO) << "Loaded model " << graph;
-  model_->error_reporter();
-  TFLITE_LOG(INFO) << "resolved reporter";
 
   auto resolver = GetOpResolver();
 
@@ -564,6 +569,12 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     TFLITE_LOG(ERROR) << "Failed to construct interpreter";
     return kTfLiteError;
   }
+
+  // Install profilers if necessary right after interpreter is created so that
+  // any memory allocations inside the TFLite runtime could be recorded if the
+  // installed profiler profile memory usage information.
+  profiling_listener_ = MayCreateProfilingListener();
+  if (profiling_listener_) AddListener(profiling_listener_.get());
 
   interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
@@ -602,8 +613,8 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
 
   if (!inputs_.empty()) {
     TFLITE_BENCHMARK_CHECK_EQ(inputs_.size(), interpreter_inputs.size())
-        << "Inputs mismatch: Model inputs #:" << interpreter_inputs.size()
-        << " expected: " << inputs_.size();
+        << "Inputs mismatch: Model inputs #:" << inputs_.size()
+        << " expected: " << interpreter_inputs.size();
   }
 
   // Check if the tensor names match, and log a warning if it doesn't.
@@ -627,16 +638,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     if (t->type != kTfLiteString) {
       interpreter_->ResizeInputTensor(i, input.shape);
     }
-  }
-
-  // Install profilers if necessary but *before* any memory allocations inside
-  // the TFLite interpreter because the installed profiler might profile memory
-  // usage information.
-  if (params_.Get<bool>("enable_op_profiling")) {
-    profiling_listener_.reset(new ProfilingListener(
-        interpreter_.get(),
-        params_.Get<int32_t>("max_profiling_buffer_entries")));
-    AddListener(profiling_listener_.get());
   }
 
   if (interpreter_->AllocateTensors() != kTfLiteOk) {
@@ -764,6 +765,14 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
   auto resolver = new tflite::ops::builtin::BuiltinOpResolver();
   RegisterSelectedOps(resolver);
   return std::unique_ptr<tflite::OpResolver>(resolver);
+}
+
+std::unique_ptr<BenchmarkListener>
+BenchmarkTfLiteModel::MayCreateProfilingListener() const {
+  if (!params_.Get<bool>("enable_op_profiling")) return nullptr;
+  return std::unique_ptr<BenchmarkListener>(new ProfilingListener(
+      interpreter_.get(),
+      params_.Get<int32_t>("max_profiling_buffer_entries")));
 }
 
 TfLiteStatus BenchmarkTfLiteModel::RunImpl() { return interpreter_->Invoke(); }

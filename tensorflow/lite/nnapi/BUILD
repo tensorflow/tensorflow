@@ -68,7 +68,7 @@ cc_library(
     deps = [
         ":nnapi_implementation",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
 )
 

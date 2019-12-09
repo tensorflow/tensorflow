@@ -31,6 +31,8 @@
 #include "mlir/EDSC/Intrinsics.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
 #include "mlir/ExecutionEngine/OptUtils.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
@@ -62,6 +64,8 @@ struct PythonExpr;
 struct PythonFunctionContext;
 struct PythonStmt;
 struct PythonBlock;
+struct PythonAffineExpr;
+struct PythonAffineMap;
 
 struct PythonType {
   PythonType() : type{nullptr} {}
@@ -104,6 +108,10 @@ struct PythonValueHandle {
     for (auto arg : args)
       argValues.push_back(arg.value.getValue());
     return ValueHandle::create<CallIndirectOp>(value, argValues);
+  }
+
+  PythonType type() const {
+    return PythonType(value.getType().getAsOpaquePointer());
   }
 
   mlir::edsc::ValueHandle value;
@@ -149,7 +157,7 @@ struct PythonMLIRModule {
   PythonMLIRModule()
       : mlirContext(),
         module(mlir::ModuleOp::create(mlir::UnknownLoc::get(&mlirContext))),
-        moduleManager(*module) {}
+        symbolTable(*module) {}
 
   PythonType makeMemRefType(PythonType elemType, std::vector<int64_t> sizes) {
     return ::makeMemRefType(mlir_context_t{&mlirContext}, elemType,
@@ -190,6 +198,28 @@ struct PythonMLIRModule {
 
   // Create a boolean attribute.
   PythonAttribute boolAttr(bool value);
+
+  // Creates an Array attribute.
+  PythonAttribute arrayAttr(const std::vector<PythonAttribute> &values);
+
+  // Creates an AffineMap attribute.
+  PythonAttribute affineMapAttr(PythonAffineMap value);
+
+  // Creates an affine constant expression.
+  PythonAffineExpr affineConstantExpr(int64_t value);
+
+  // Creates an affine symbol expression.
+  PythonAffineExpr affineSymbolExpr(unsigned position);
+
+  // Creates an affine dimension expression.
+  PythonAffineExpr affineDimExpr(unsigned position);
+
+  // Creates a single constant result affine map.
+  PythonAffineMap affineConstantMap(int64_t value);
+
+  // Creates an affine map.
+  PythonAffineMap affineMap(unsigned dimCount, unsigned symbolCount,
+                            const std::vector<PythonAffineExpr> &results);
 
   // Compile the module save the execution engine. "optLevel" and
   // "codegenOptLevel" contain the levels of optimization to run (0 to 3) for
@@ -244,7 +274,7 @@ struct PythonMLIRModule {
   }
 
   PythonFunction getNamedFunction(const std::string &name) {
-    return moduleManager.lookupSymbol<FuncOp>(name);
+    return symbolTable.lookup<FuncOp>(name);
   }
 
   PythonFunctionContext
@@ -256,7 +286,7 @@ private:
   mlir::MLIRContext mlirContext;
   // One single module in a python-exposed MLIRContext for now.
   mlir::OwningModuleRef module;
-  mlir::ModuleManager moduleManager;
+  mlir::SymbolTable symbolTable;
 
   // An execution engine and an associated target machine. The latter must
   // outlive the former since it may be used by the transformation layers.
@@ -467,14 +497,15 @@ struct PythonAttribute {
   PythonAttribute(const PythonAttribute &other) = default;
   operator mlir_attr_t() { return attr; }
 
+  operator Attribute() const { return Attribute::getFromOpaquePointer(attr); }
+
   std::string str() const {
     if (!attr)
       return "##null attr##";
 
     std::string res;
     llvm::raw_string_ostream os(res);
-    Attribute::getFromOpaquePointer(reinterpret_cast<const void *>(attr))
-        .print(os);
+    Attribute().print(os);
     return res;
   }
 
@@ -530,6 +561,48 @@ struct PythonAttributedType {
 private:
   PythonType type;
   std::unordered_map<std::string, PythonAttribute> attrs;
+};
+
+// Wraps mlir::AffineExpr.
+struct PythonAffineExpr {
+  PythonAffineExpr() : affine_expr() {}
+  PythonAffineExpr(const AffineExpr &a) : affine_expr(a) {}
+  PythonAffineExpr(const PythonAffineExpr &other) = default;
+
+  operator AffineExpr() const { return affine_expr; }
+  operator AffineExpr &() { return affine_expr; }
+
+  AffineExpr get() const { return affine_expr; }
+
+  std::string str() const {
+    std::string res;
+    llvm::raw_string_ostream os(res);
+    affine_expr.print(os);
+    return res;
+  }
+
+private:
+  AffineExpr affine_expr;
+};
+
+// Wraps mlir::AffineMap.
+struct PythonAffineMap {
+  PythonAffineMap() : affine_map() {}
+  PythonAffineMap(const AffineMap &a) : affine_map(a) {}
+  PythonAffineMap(const PythonAffineMap &other) = default;
+
+  operator AffineMap() const { return affine_map; }
+  operator AffineMap &() { return affine_map; }
+
+  std::string str() const {
+    std::string res;
+    llvm::raw_string_ostream os(res);
+    affine_map.print(os);
+    return res;
+  }
+
+private:
+  AffineMap affine_map;
 };
 
 struct PythonIndexedValue {
@@ -623,7 +696,7 @@ PythonMLIRModule::declareFunction(const std::string &name,
       UnknownLoc::get(&mlirContext), name,
       mlir::Type::getFromOpaquePointer(funcType).cast<FunctionType>(), attrs,
       inputAttrs);
-  moduleManager.insert(func);
+  symbolTable.insert(func);
   return func;
 }
 
@@ -638,6 +711,42 @@ PythonAttribute PythonMLIRModule::integerAttr(PythonType type, int64_t value) {
 
 PythonAttribute PythonMLIRModule::boolAttr(bool value) {
   return PythonAttribute(::makeBoolAttr(&mlirContext, value));
+}
+
+PythonAttribute
+PythonMLIRModule::arrayAttr(const std::vector<PythonAttribute> &values) {
+  std::vector<mlir::Attribute> mlir_attributes(values.begin(), values.end());
+  auto array_attr = ArrayAttr::get(
+      llvm::ArrayRef<mlir::Attribute>(mlir_attributes), &mlirContext);
+  return PythonAttribute(array_attr.getAsOpaquePointer());
+}
+
+PythonAttribute PythonMLIRModule::affineMapAttr(PythonAffineMap value) {
+  return PythonAttribute(AffineMapAttr::get(value).getAsOpaquePointer());
+}
+
+PythonAffineExpr PythonMLIRModule::affineConstantExpr(int64_t value) {
+  return PythonAffineExpr(getAffineConstantExpr(value, &mlirContext));
+}
+
+PythonAffineExpr PythonMLIRModule::affineSymbolExpr(unsigned position) {
+  return PythonAffineExpr(getAffineSymbolExpr(position, &mlirContext));
+}
+
+PythonAffineExpr PythonMLIRModule::affineDimExpr(unsigned position) {
+  return PythonAffineExpr(getAffineDimExpr(position, &mlirContext));
+}
+
+PythonAffineMap PythonMLIRModule::affineConstantMap(int64_t value) {
+  return PythonAffineMap(AffineMap::getConstantMap(value, &mlirContext));
+}
+
+PythonAffineMap
+PythonMLIRModule::affineMap(unsigned dimCount, unsigned SymbolCount,
+                            const std::vector<PythonAffineExpr> &results) {
+  std::vector<AffineExpr> mlir_results(results.begin(), results.end());
+  return PythonAffineMap(AffineMap::get(
+      dimCount, SymbolCount, llvm::ArrayRef<AffineExpr>(mlir_results)));
 }
 
 PYBIND11_MODULE(pybind, m) {
@@ -801,6 +910,12 @@ PYBIND11_MODULE(pybind, m) {
           "integerAttr", &PythonMLIRModule::integerAttr,
           "Creates an mlir::IntegerAttr of the given type with the given value "
           "in the context associated with this MLIR module.")
+      .def("arrayAttr", &PythonMLIRModule::arrayAttr,
+           "Creates an mlir::ArrayAttr of the given type with the given values "
+           "in the context associated with this MLIR module.")
+      .def("affineMapAttr", &PythonMLIRModule::affineMapAttr,
+           "Creates an mlir::AffineMapAttr of the given type with the given "
+           "value in the context associated with this MLIR module.")
       .def("declare_function", &PythonMLIRModule::declareFunction,
            "Declares a new mlir::FuncOp in the current mlir::ModuleOp.  The "
            "function arguments can have attributes.  The function has no "
@@ -831,6 +946,16 @@ PYBIND11_MODULE(pybind, m) {
       .def("get_engine_address", &PythonMLIRModule::getEngineAddress,
            "Returns the address of the compiled ExecutionEngine. This is used "
            "for in-process execution.")
+      .def("affine_constant_expr", &PythonMLIRModule::affineConstantExpr,
+           "Returns an affine constant expression.")
+      .def("affine_symbol_expr", &PythonMLIRModule::affineSymbolExpr,
+           "Returns an affine symbol expression.")
+      .def("affine_dim_expr", &PythonMLIRModule::affineDimExpr,
+           "Returns an affine dim expression.")
+      .def("affine_constant_map", &PythonMLIRModule::affineConstantMap,
+           "Returns an affine map with single constant result.")
+      .def("affine_map", &PythonMLIRModule::affineMap, "Returns an affine map.",
+           py::arg("dimCount"), py::arg("symbolCount"), py::arg("results"))
       .def("__str__", &PythonMLIRModule::getIR,
            "Get the string representation of the module");
 
@@ -913,7 +1038,8 @@ PYBIND11_MODULE(pybind, m) {
         .def("__or__",
              [](PythonValueHandle lhs, PythonValueHandle rhs)
                  -> PythonValueHandle { return lhs.value || rhs.value; })
-        .def("__call__", &PythonValueHandle::call);
+        .def("__call__", &PythonValueHandle::call)
+        .def("type", &PythonValueHandle::type);
   }
 
   py::class_<PythonBlockAppender>(
@@ -940,6 +1066,68 @@ PYBIND11_MODULE(pybind, m) {
       .def(py::init<PythonValueHandle>())
       .def("load", &PythonIndexedValue::load)
       .def("store", &PythonIndexedValue::store);
+
+  py::class_<PythonAffineExpr>(m, "AffineExpr",
+                               "A wrapper around mlir::AffineExpr")
+      .def(py::init<PythonAffineExpr>())
+      .def("__add__",
+           [](PythonAffineExpr lhs, int64_t rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get() + rhs);
+           })
+      .def("__add__",
+           [](PythonAffineExpr lhs, PythonAffineExpr rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get() + rhs.get());
+           })
+      .def("__neg__",
+           [](PythonAffineExpr lhs) -> PythonAffineExpr {
+             return PythonAffineExpr(-lhs.get());
+           })
+      .def("__sub__",
+           [](PythonAffineExpr lhs, int64_t rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get() - rhs);
+           })
+      .def("__sub__",
+           [](PythonAffineExpr lhs, PythonAffineExpr rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get() - rhs.get());
+           })
+      .def("__mul__",
+           [](PythonAffineExpr lhs, int64_t rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get() * rhs);
+           })
+      .def("__mul__",
+           [](PythonAffineExpr lhs, PythonAffineExpr rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get() * rhs.get());
+           })
+      .def("__floordiv__",
+           [](PythonAffineExpr lhs, uint64_t rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get().floorDiv(rhs));
+           })
+      .def("__floordiv__",
+           [](PythonAffineExpr lhs, PythonAffineExpr rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get().floorDiv(rhs.get()));
+           })
+      .def("ceildiv",
+           [](PythonAffineExpr lhs, uint64_t rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get().ceilDiv(rhs));
+           })
+      .def("ceildiv",
+           [](PythonAffineExpr lhs, PythonAffineExpr rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get().ceilDiv(rhs.get()));
+           })
+      .def("__mod__",
+           [](PythonAffineExpr lhs, uint64_t rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get() % rhs);
+           })
+      .def("__mod__",
+           [](PythonAffineExpr lhs, PythonAffineExpr rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get() % rhs.get());
+           })
+      .def("__str__", &PythonAffineExpr::str);
+
+  py::class_<PythonAffineMap>(m, "AffineMap",
+                              "A wrapper around mlir::AffineMap")
+      .def(py::init<PythonAffineMap>())
+      .def("__str__", &PythonAffineMap::str);
 }
 
 } // namespace python

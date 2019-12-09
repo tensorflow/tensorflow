@@ -463,34 +463,6 @@ class InferenceRunnerImpl : public InferenceRunner {
   bool output_to_cpu_ = false;
 };
 
-int GetPosition(const InferenceOptions& options, InferencePriority p) {
-  if (options.priority1 == p) return 1;
-  if (options.priority2 == p) return 2;
-  if (options.priority3 == p) return 3;
-  return 4;  // least important
-}
-
-enum class PriorityImportance {
-  UNKNOWN,
-  HIGHER,
-  LOWER,
-};
-
-// If both p1 and p2 are not present in options, return UNKNOWN
-// If p1 is present, but p2 is not, return HIGHER
-// If p2 is present, but p1 is not, return LOWER
-// If both are present, and p1 is more important, return HIGHER, otherwise,
-// LOWER.
-PriorityImportance GetRelativeImportance(const InferenceOptions& options,
-                                         InferencePriority p1,
-                                         InferencePriority p2) {
-  int p1_position = GetPosition(options, p1);
-  int p2_position = GetPosition(options, p2);
-  if (p1_position == p2_position) return PriorityImportance::UNKNOWN;
-  return p1_position < p2_position ? PriorityImportance::HIGHER
-                                   : PriorityImportance::LOWER;
-}
-
 class InferenceBuilderImpl : public InferenceBuilder {
  public:
   InferenceBuilderImpl(const InferenceEnvironmentOptions& env_options,
@@ -671,12 +643,17 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
   Status NewInferenceBuilder(GraphFloat32&& model,
                              const InferenceOptions& options,
                              std::unique_ptr<InferenceBuilder>* builder) final {
+    if (!IsValid(options)) {
+      return InvalidArgumentError("InferenceOptions are invalid.");
+    }
+    InferenceOptions resolved_options = options;
+    ResolveAutoPriority(&resolved_options);
     if (!IsBatchMatchesForAllValues(model)) {
       return InvalidArgumentError(
           "Only identical batch dimension is supported");
     }
     auto builder_impl = absl::make_unique<InferenceBuilderImpl>(
-        env_options_, options, std::move(model), &gpu_info_);
+        env_options_, resolved_options, std::move(model), &gpu_info_);
     RETURN_IF_ERROR(builder_impl->Initialize());
     *builder = std::move(builder_impl);
     return OkStatus();

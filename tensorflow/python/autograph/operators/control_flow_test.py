@@ -50,7 +50,10 @@ class ForLoopTest(test.TestCase):
         body=lambda i, s: (s * 10 + i,),
         get_state=lambda: (),
         set_state=lambda _: None,
-        init_vars=(0,))
+        init_vars=(0,),
+        basic_symbol_names=('s',),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual(self.evaluate(s), (1234,))
 
   def test_range_tensor(self):
@@ -60,7 +63,10 @@ class ForLoopTest(test.TestCase):
         body=lambda i, s: (s * 10 + i,),
         get_state=lambda: (),
         set_state=lambda _: None,
-        init_vars=(0,))
+        init_vars=(0,),
+        basic_symbol_names=('s',),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual(self.evaluate(s), (1234,))
 
   def test_range_tensor_random_delta(self):
@@ -71,7 +77,10 @@ class ForLoopTest(test.TestCase):
         body=lambda i, s: (s * 10 + i,),
         get_state=lambda: (),
         set_state=lambda _: None,
-        init_vars=(0,))
+        init_vars=(0,),
+        basic_symbol_names=('s',),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual(self.evaluate(s), (1234,))
 
   def test_range_tensor_explicit_limit_delta(self):
@@ -81,7 +90,10 @@ class ForLoopTest(test.TestCase):
         body=lambda i, s: (s * 100 + i,),
         get_state=lambda: (),
         set_state=lambda _: None,
-        init_vars=(0,))
+        init_vars=(0,),
+        basic_symbol_names=('s',),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual(self.evaluate(s), (-171207,))
 
   def test_range_tensor_random_negative_delta(self):
@@ -92,7 +104,10 @@ class ForLoopTest(test.TestCase):
         body=lambda i, s: (s * 100 + i,),
         get_state=lambda: (),
         set_state=lambda _: None,
-        init_vars=(0,))
+        init_vars=(0,),
+        basic_symbol_names=('s',),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual(self.evaluate(s), (171207,))
 
   def test_range_tensor_negative_delta(self):
@@ -102,7 +117,10 @@ class ForLoopTest(test.TestCase):
         body=lambda i, s: (s * 100 + i,),
         get_state=lambda: (),
         set_state=lambda _: None,
-        init_vars=(0,))
+        init_vars=(0,),
+        basic_symbol_names=('s',),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual(self.evaluate(s), (171207,))
 
   def test_tensor_with_extra_test_only_python_state(self):
@@ -128,7 +146,10 @@ class ForLoopTest(test.TestCase):
         extra_test=lambda: state.field_1 < 6,
         get_state=get_state,
         set_state=set_state,
-        init_vars=())
+        init_vars=(),
+        basic_symbol_names=(),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual(self.evaluate(state.field_1), 6)
     self.assertEqual(self.evaluate(state.field_2), 6)
 
@@ -139,7 +160,10 @@ class ForLoopTest(test.TestCase):
         body=lambda i, s: (s * 10 + i,),
         get_state=None,
         set_state=None,
-        init_vars=(0,))
+        init_vars=(0,),
+        basic_symbol_names=('s',),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual(s, (1234,))
 
   def test_tf_dataset(self):
@@ -149,7 +173,10 @@ class ForLoopTest(test.TestCase):
         body=lambda i, s: (s * 10 + i,),
         get_state=lambda: (),
         set_state=lambda _: None,
-        init_vars=(constant_op.constant(0, dtype=dtypes.int64),))
+        init_vars=(constant_op.constant(0, dtype=dtypes.int64),),
+        basic_symbol_names=('s',),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual(self.evaluate(s), (1234,))
 
   def test_dataset_with_extra_test(self):
@@ -159,7 +186,10 @@ class ForLoopTest(test.TestCase):
         body=lambda i, s: (s + i,),
         get_state=lambda: (),
         set_state=lambda _: None,
-        init_vars=(constant_op.constant(0, dtype=dtypes.int64),))
+        init_vars=(constant_op.constant(0, dtype=dtypes.int64),),
+        basic_symbol_names=('s',),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual(self.evaluate(s), (3,))
 
   def test_dataset_with_extra_test_and_state(self):
@@ -181,7 +211,10 @@ class ForLoopTest(test.TestCase):
         body=body,
         get_state=get_state,
         set_state=set_state,
-        init_vars=(constant_op.constant(0, dtype=dtypes.int64),))
+        init_vars=(constant_op.constant(0, dtype=dtypes.int64),),
+        basic_symbol_names=('s',),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual(self.evaluate(s), (3,))
     self.assertEqual(self.evaluate(state[0]), (3,))
 
@@ -197,7 +230,10 @@ class ForLoopTest(test.TestCase):
         body=guarded_body,
         get_state=lambda: (),
         set_state=lambda _: None,
-        init_vars=(constant_op.constant(0, dtype=dtypes.int64),))
+        init_vars=(constant_op.constant(0, dtype=dtypes.int64),),
+        basic_symbol_names=('s',),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual(self.evaluate(s), (3,))
 
   def test_tf_dataset_no_loop_vars(self):
@@ -217,7 +253,10 @@ class ForLoopTest(test.TestCase):
           body=stateless_with_side_effects,
           get_state=lambda: (),
           set_state=lambda _: None,
-          init_vars=())
+          init_vars=(),
+          basic_symbol_names=('i',),
+          composite_symbol_names=(),
+          opts={})
 
     self.evaluate(test_fn())
     self.assertEqual(self.evaluate(v.read_value()), 1234)
@@ -233,7 +272,10 @@ class ForLoopTest(test.TestCase):
           body=lambda i, s: (s * 10 + i,),
           get_state=lambda: (),
           set_state=lambda _: None,
-          init_vars=(constant_op.constant(0, dtype=dtypes.int64),))
+          init_vars=(constant_op.constant(0, dtype=dtypes.int64),),
+          basic_symbol_names=('s',),
+          composite_symbol_names=(),
+          opts={})
     s, = test_fn()
     self.assertAllEqual(s, 1234)
 
@@ -253,7 +295,10 @@ class ForLoopTest(test.TestCase):
           body=stateless_with_side_effects,
           get_state=lambda: (),
           set_state=lambda _: None,
-          init_vars=())
+          init_vars=(),
+          basic_symbol_names=('i',),
+          composite_symbol_names=(),
+          opts={})
 
     self.evaluate(test_fn())
     self.assertEqual(self.evaluate(v.read_value()), 1234)
@@ -265,7 +310,10 @@ class ForLoopTest(test.TestCase):
         body=lambda i, s: (s * 10 + i[0],),
         get_state=lambda: (),
         set_state=lambda _: None,
-        init_vars=(0,))
+        init_vars=(0,),
+        basic_symbol_names=('s',),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual(self.evaluate(s), (123,))
 
   def test_tf_ragged_tensor_higher_dimensional(self):
@@ -279,7 +327,10 @@ class ForLoopTest(test.TestCase):
         body=lambda i, s: (s * 10 + i[0][0],),
         get_state=lambda: (),
         set_state=lambda _: None,
-        init_vars=(0,))
+        init_vars=(0,),
+        basic_symbol_names=('s',),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual(self.evaluate(s), (12,))
 
   def test_tf_ragged_tensor_no_loop_vars(self):
@@ -298,7 +349,10 @@ class ForLoopTest(test.TestCase):
           body=stateless_with_side_effects,
           get_state=lambda: (),
           set_state=lambda _: None,
-          init_vars=())
+          init_vars=(),
+          basic_symbol_names=(),
+          composite_symbol_names=(),
+          opts={})
 
     self.evaluate(test_fn())
     # Note: 123 = ((0*10 + 1)*10+2)*10+3 (first element of each row).
@@ -315,7 +369,10 @@ class WhileLoopTest(test.TestCase):
         body=lambda i, s: (i + 1, s + i),
         get_state=lambda: (),
         set_state=lambda _: None,
-        init_vars=(0, 0))
+        init_vars=(0, 0),
+        basic_symbol_names=('i', 's'),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual((5, 10), self.evaluate(results))
 
   def test_tensor_with_tf_side_effects_in_cond(self):
@@ -334,7 +391,10 @@ class WhileLoopTest(test.TestCase):
           body=lambda i: (i + 1,),
           get_state=lambda: (),
           set_state=lambda _: None,
-          init_vars=(0,))
+          init_vars=(0,),
+          basic_symbol_names=('i',),
+          composite_symbol_names=(),
+          opts={})
 
     results = test_fn()
 
@@ -364,7 +424,10 @@ class WhileLoopTest(test.TestCase):
         body=body,
         get_state=get_state,
         set_state=set_state,
-        init_vars=(0, 0))
+        init_vars=(0, 0),
+        basic_symbol_names=('i',),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual(self.evaluate(s), (5, 10))
     self.assertEqual(self.evaluate(state.field), 10)
 
@@ -375,7 +438,10 @@ class WhileLoopTest(test.TestCase):
         body=lambda i, s: (i + 1, s + i),
         get_state=lambda: (),
         set_state=lambda _: None,
-        init_vars=(0, constant_op.constant(0)))
+        init_vars=(0, constant_op.constant(0)),
+        basic_symbol_names=('i', 's'),
+        composite_symbol_names=(),
+        opts={})
     result_i, result_s = results
     self.assertEqual(5, result_i)
     self.assertEqual(10, self.evaluate(result_s))
@@ -387,7 +453,10 @@ class WhileLoopTest(test.TestCase):
         body=lambda i, s: (i + 1, s + i),
         get_state=None,
         set_state=None,
-        init_vars=(0, 0))
+        init_vars=(0, 0),
+        basic_symbol_names=('i', 's'),
+        composite_symbol_names=(),
+        opts={})
     self.assertEqual((5, 10), results)
 
   def test_python_infinite_loop(self):
@@ -399,7 +468,10 @@ class WhileLoopTest(test.TestCase):
               body=lambda i: (i + 1,),
               get_state=None,
               set_state=None,
-              init_vars=(0,))
+              init_vars=(0,),
+              basic_symbol_names=('i',),
+              composite_symbol_names=(),
+              opts={})
 
   def test_python_long_loop_unroll_warning(self):
     if __debug__:
@@ -415,7 +487,10 @@ class WhileLoopTest(test.TestCase):
                 body=lambda i, _: (i + 1, gen_math_ops.add(i, 1),),
                 get_state=None,
                 set_state=None,
-                init_vars=(0, None))
+                init_vars=(0, None),
+                basic_symbol_names=('i',),
+                composite_symbol_names=(),
+                opts={})
           self.assertTrue(re.match(
               r'.*ops.*loop.*large.*iterations.*Add.*',
               out_capturer.getvalue()))
@@ -432,7 +507,9 @@ class IfStmtTest(test.TestCase):
           body=lambda: constant_op.constant(1),
           orelse=lambda: constant_op.constant(-1),
           get_state=lambda: (),
-          set_state=lambda _: None)
+          set_state=lambda _: None,
+          basic_symbol_names=('_',),
+          composite_symbol_names=())
 
     self.assertEqual(1, self.evaluate(test_fn(constant_op.constant(True))))
     self.assertEqual(-1, self.evaluate(test_fn(constant_op.constant(False))))
@@ -445,7 +522,9 @@ class IfStmtTest(test.TestCase):
           body=lambda: (constant_op.constant(1), constant_op.constant(2)),
           orelse=lambda: (constant_op.constant(-1), constant_op.constant(-2)),
           get_state=lambda: (),
-          set_state=lambda _: None)
+          set_state=lambda _: None,
+          basic_symbol_names=('_',),
+          composite_symbol_names=())
 
     self.assertEqual((1, 2), self.evaluate(test_fn(constant_op.constant(True))))
     self.assertEqual((-1, -2),
@@ -459,7 +538,9 @@ class IfStmtTest(test.TestCase):
           body=lambda: 1,
           orelse=lambda: -1,
           get_state=lambda: (),
-          set_state=lambda _: None)
+          set_state=lambda _: None,
+          basic_symbol_names=('_',),
+          composite_symbol_names=())
 
     self.assertEqual(1, test_fn(True))
     self.assertEqual(-1, test_fn(False))
@@ -472,7 +553,9 @@ class IfStmtTest(test.TestCase):
           body=lambda: (1, 2),
           orelse=lambda: (-1, -2),
           get_state=lambda: (),
-          set_state=lambda _: None)
+          set_state=lambda _: None,
+          basic_symbol_names=('_',),
+          composite_symbol_names=())
 
     self.assertEqual((1, 2), test_fn(True))
     self.assertEqual((-1, -2), test_fn(False))

@@ -133,10 +133,10 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
 // quantization parameters are annotated by the Q/DQ op pairs. Each
 // matched pattern are rewritten by its quantized alternatives.
 //
-// The concret pattern, extends from this base pattern, can specify whether it
+// The concrete pattern, extends from this base pattern, can specify whether it
 // allows "hybrid" operands or results. These "hybrid" operands and results
 // don't have quantization parameters propagated to, so will be in float in the
-// quantized results. The concret pattern should define the following two
+// quantized results. The concrete pattern should define the following two
 // functions:
 //
 //   bool AllowHybridOperand() const
