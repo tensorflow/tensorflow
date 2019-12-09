@@ -4,6 +4,7 @@ TensorFlow 2.1 will be the last TF release supporting Python 2. Python 2 support
 
 ## Major Features and Improvements
 * The `tensorflow` pip package now includes GPU support by default (same as `tensorflow-gpu`) for both Linux and Windows. This runs on machines with and without NVIDIA GPUs. `tensorflow-gpu` is still available, and CPU-only packages can be downloaded at `tensorflow-cpu` for users who are concerned about package size.
+* The `tensorflow` pip package is built with CUDA 10.1 and cuDNN 7.6.
 * `tf.keras`
   * `Model.fit_generator`, `Model.evaluate_generator`, `Model.predict_generator`, `Model.train_on_batch`, `Model.test_on_batch`, and `Model.predict_on_batch` methods now respect the `run_eagerly` property, and will correctly run using tf.function by default.
   * `Model.fit_generator`, `Model.evaluate_generator`, and `Model.predict_generator` are deprecated endpoints. They are subsumed by `Model.fit`, `Model.evaluate`, and `Model.predict` which now support generators and Sequences.
