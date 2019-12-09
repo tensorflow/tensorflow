@@ -607,7 +607,7 @@ Status LayoutAssignment::AddMandatoryConstraints(
           body_layout.result_shape(), instruction));
     } else if (instruction->opcode() == HloOpcode::kConditional) {
       // Find the conditional branch with the most instructions and force all
-      // other computations to match that layout. A potentially better decison
+      // other computations to match that layout. A potentially better decision
       // could count the number FLOPs or how constrained the layouts are.
       int64 largest_branch = 0;
       int64 largest_instruction_count =

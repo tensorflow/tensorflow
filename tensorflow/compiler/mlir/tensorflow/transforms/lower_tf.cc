@@ -84,7 +84,7 @@ DenseIntElementsAttr GetBiasAddGradReductionIndices(int64_t rank,
   tensorflow::TensorFormat format;
   if (!FormatFromString(data_format.getValue().str(), &format)) return {};
 
-  // Reudce along all dimensions except the feature dimension.
+  // Reduce along all dimensions except the feature dimension.
   int64_t feature_dim = GetTensorFeatureDimIndex(rank, format);
   llvm::SmallVector<int64_t, 4> dims_to_reduce(rank - 1);
   std::iota(dims_to_reduce.begin(), dims_to_reduce.begin() + feature_dim, 0);

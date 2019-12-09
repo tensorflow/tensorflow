@@ -230,7 +230,7 @@ static StatusOr<std::vector<const HloInstruction*>> ComputeOperandToValueMap(
       has_failed = true;
       continue;
     }
-    // host_index is the argument positon to the surrounding function that
+    // host_index is the argument position to the surrounding function that
     // contains the launch. This index corresponds to HLO operand indices
     // by construction.
     auto host_index = launchop_operand->getArgNumber();

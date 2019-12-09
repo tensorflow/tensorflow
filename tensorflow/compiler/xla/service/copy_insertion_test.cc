@@ -1177,7 +1177,7 @@ TEST_F(WhileCopyInsertionTest, InitPointsToNonDistinct) {
 
   InsertCopies(module_.get());
 
-  // The entry computation requires two copies to resolve the non-disinctness of
+  // The entry computation requires two copies to resolve the non-distinctness of
   // two init elements and the constant passed in as one of the init
   // elements. Either element can be copied for the distinctness issue.
   EXPECT_EQ(CountCopies(*module_->entry_computation()), 2);
@@ -1996,7 +1996,7 @@ void BM_ParallelWhiles(int num_iters, int num_whiles) {
     tensorflow::testing::StopTiming();
 
     // Each body receives of copy of two of the parameters (the corresponding
-    // elements in the body are modifed), and there is one copy in each body.
+    // elements in the body are modified), and there is one copy in each body.
     ASSERT_EQ(CountCopies(module), 3 * num_whiles);
   }
 }

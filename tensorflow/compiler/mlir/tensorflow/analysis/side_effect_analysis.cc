@@ -122,7 +122,7 @@ void ResourceAliasAnalysis::AnalyzeFunction(FuncOp func_op) {
                                 std::get<1>(operand_and_result));
       }
     } else if (auto replicate = llvm::dyn_cast<tf_device::ReplicateOp>(op)) {
-      // The nested block for RepliateOp is handled separately in side-effect
+      // The nested block for ReplicateOp is handled separately in side-effect
       // analysis. Inside that block, we can still treat its block arguments as
       // different resources.
       for (auto arg : replicate.GetBody().getArguments()) {
@@ -305,7 +305,7 @@ void SideEffectAnalysis::AnalyzeRegion(
   // region, and tracking resource accesses in per_resource_access_info_.
 
   // Returns whether an access to `resource` can skip control edges from
-  // prevoius accesses to unknown resources, due to that earlier accesses to
+  // previous accesses to unknown resources, due to that earlier accesses to
   // `resource` already indirectly tracked previous accesses to uknown
   // resources. `read_only` specifies the type of access of the current op being
   // considered.

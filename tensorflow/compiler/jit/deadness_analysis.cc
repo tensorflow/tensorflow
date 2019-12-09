@@ -96,7 +96,7 @@ limitations under the License.
 // Symbolic > NonSymbolic.  The lattice has height = 2 so two iterations are
 // sufficient to converge.
 //
-// We first do an optimisitc analysis and, if it does not converge, we then fall
+// We first do an optimistic analysis and, if it does not converge, we then fall
 // back to a pessimistic analysis.  The optimistic analysis assigns the same
 // symbolic predicate to all the merge nodes whose preceding enter nodes have
 // the same frame name on the first iteration.  On the second iteration, if all
@@ -1255,7 +1255,7 @@ Status DeadnessAnalysisImpl::GetFrameBasedTopologicalOrder(
     } else if (IsRootExit(node)) {
       ++num_exits_for_frame[cf.frame_name];
     }
-    // Edge NextIteration->Merge is counted before starting the traveral to
+    // Edge NextIteration->Merge is counted before starting the traversal to
     // break the backedges.
     if (IsMerge(node)) {
       for (const Edge* e : node->in_edges()) {
@@ -1458,7 +1458,7 @@ Status DeadnessAnalysisImpl::PopulateFrame(absl::Span<Node* const> topo,
 
   for (Node* n : topo) {
     // The nodes added to should_revisit in the previous loop need to be
-    // revisited now.  Reprocesing these initial nodes may add *their* consumers
+    // revisited now.  Reprocessing these initial nodes may add *their* consumers
     // to should_revisit, and these newly added nodes will also be processed by
     // this very same loop.  Since we're traversing the graph in topological
     // order (producers before consumers) and HandleNode(n) can only ever add

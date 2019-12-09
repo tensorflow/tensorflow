@@ -125,7 +125,7 @@ class TRTEngineOp : public AsyncOpKernel {
   // Verify that the input shapes are consistent and can be handled by this op.
   Status VerifyInputShapes(const std::vector<TensorShape>& shapes);
 
-  // Return engine batch in cached_engne_batch_sizes_ which is closest to input
+  // Return engine batch in cached_engine_batch_sizes_ which is closest to input
   // batch.
   Status GetEngineInputShapes(
       const CacheType& cache,

@@ -32,7 +32,7 @@ namespace xla {
 
 enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
 
-// Atempts to match computation to one of the possible cases in ReductionKind.
+// Attempts to match computation to one of the possible cases in ReductionKind.
 absl::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
 

@@ -161,7 +161,7 @@ Status GetEngineInfo(const Graph* g,
     const int node_id = node->id();
     const string& node_name = node->name();
 
-    // Create input connections. Sort edges first to make determnistic since
+    // Create input connections. Sort edges first to make deterministic since
     // in_edges is a set of pointers.
     std::vector<const Edge*> in_edges(node->in_edges().begin(),
                                       node->in_edges().end());
@@ -186,7 +186,7 @@ Status GetEngineInfo(const Graph* g,
         // If it doesn't have any edges, TF will prune it out.
         //
         // Note that the segmenter already ensure that the constant data input
-        // is valid and suppported by the engine.
+        // is valid and supported by the engine.
         if (!added_const_nodes.insert(input_node).second) {
           // Already added before.
           continue;
@@ -209,7 +209,7 @@ Status GetEngineInfo(const Graph* g,
             node_id, edge->dst_input(), /*input_edge=*/true, port);
       }
     }
-    // Create output connections. Sort edges first to make determnistic since
+    // Create output connections. Sort edges first to make deterministic since
     // out_edges is a set of pointers.
     std::vector<const Edge*> out_edges(node->out_edges().begin(),
                                        node->out_edges().end());

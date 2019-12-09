@@ -1195,7 +1195,7 @@ Status MemorySpaceAssignment::SimplifyGraph() {
             instruction->user_count() == 0 && !instruction->HasSideEffect() &&
             instruction != computation->root_instruction()) {
           VLOG(4) << "Instruction removed: " << instruction->ToString();
-          // Ensure the exported preset assignments don't contain a refence to
+          // Ensure the exported preset assignments don't contain a reference to
           // the removed instruction.
           preset_assignments_->RemoveAssignmentForInstruction(instruction);
           // Instead of deleting the instruction from the schedule, replace it

@@ -522,7 +522,7 @@ StatusOr<string> CompileToPtx(llvm::Module* module, GpuVersion gpu_version,
     std::unique_ptr<llvm::TargetMachine> target_machine = NVPTXGetTargetMachine(
         default_target_triple, *compute_capability, hlo_module_config);
 
-    // Link with libdeivce, and optimize the LLVM module.
+    // Link with libdevice, and optimize the LLVM module.
     TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
         module, gpu_version, hlo_module_config, libdevice_dir_path,
         NVPTXTargetModuleLinker, default_target_triple, target_machine.get(),

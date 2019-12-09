@@ -132,7 +132,7 @@ xla::XlaOp Einsum(
 // the input.
 xla::XlaOp EinsumDiagonal(XlaOp x, absl::Span<const int64> config);
 
-// Same as above but supporting numeric labels on dimensins. So "ab,cb->ac"
+// Same as above but supporting numeric labels on dimensions. So "ab,cb->ac"
 // becomes:
 //   x_config = {0, 1}
 //   y_config = {2, 1}

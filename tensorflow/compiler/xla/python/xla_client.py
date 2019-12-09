@@ -1526,7 +1526,7 @@ class ComputationBuilder(object):
           ConvWithGeneralPadding.
       feature_group_count: number of feature groups for grouped convolution.
       batch_group_count: number of batch groups for grouped convolution.
-    Returns: a XlaOp representing the ConvGenralDilated operation.
+    Returns: a XlaOp representing the ConvGeneralDilated operation.
     """
     if dimension_numbers is None:
       dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))

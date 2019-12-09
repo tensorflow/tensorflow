@@ -1171,7 +1171,7 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule5) {
   //
   // If a copy to alternate memory is inserted before foo, and if the size of
   // the while body is less than max prefetch interval so that the copy-done is
-  // kept in the alternate memory, then we end up refering to the copy-done in
+  // kept in the alternate memory, then we end up referring to the copy-done in
   // the root instruction of the while loop body. I.e.,
   //
   // cs = copy-start(a)
