@@ -368,6 +368,8 @@ def SPV_ISubOp : SPV_ArithmeticBinaryOp<"ISub", SPV_Integer, []> {
 
     ```
   }];
+
+  let hasFolder = 1;
 }
 
 // -----

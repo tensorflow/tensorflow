@@ -22,6 +22,7 @@
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 
 #include "mlir/Analysis/CallInterfaces.h"
+#include "mlir/Dialect/CommonFolders.h"
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
 #include "mlir/IR/Builders.h"
@@ -1753,11 +1754,17 @@ static LogicalResult verify(spirv::GroupNonUniformBallotOp ballotOp) {
 
 OpFoldResult spirv::IAddOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 2 && "spv.IAdd expects two operands");
-  // lhs + 0 = lhs
+  // x + 0 = x
   if (matchPattern(operand2(), m_Zero()))
     return operand1();
 
-  return nullptr;
+  // According to the SPIR-V spec:
+  //
+  // The resulting value will equal the low-order N bits of the correct result
+  // R, where N is the component width and R is computed with enough precision
+  // to avoid overflow and underflow.
+  return constFoldBinaryOp<IntegerAttr>(operands,
+                                        [](APInt a, APInt b) { return a + b; });
 }
 
 //===----------------------------------------------------------------------===//
@@ -1766,14 +1773,38 @@ OpFoldResult spirv::IAddOp::fold(ArrayRef<Attribute> operands) {
 
 OpFoldResult spirv::IMulOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 2 && "spv.IMul expects two operands");
-  // lhs * 0 == 0
+  // x * 0 == 0
   if (matchPattern(operand2(), m_Zero()))
     return operand2();
-  // lhs * 1 = lhs
+  // x * 1 = x
   if (matchPattern(operand2(), m_One()))
     return operand1();
 
-  return nullptr;
+  // According to the SPIR-V spec:
+  //
+  // The resulting value will equal the low-order N bits of the correct result
+  // R, where N is the component width and R is computed with enough precision
+  // to avoid overflow and underflow.
+  return constFoldBinaryOp<IntegerAttr>(operands,
+                                        [](APInt a, APInt b) { return a * b; });
+}
+
+//===----------------------------------------------------------------------===//
+// spv.ISub
+//===----------------------------------------------------------------------===//
+
+OpFoldResult spirv::ISubOp::fold(ArrayRef<Attribute> operands) {
+  // x - x = 0
+  if (operand1() == operand2())
+    return Builder(getContext()).getIntegerAttr(getType(), 0);
+
+  // According to the SPIR-V spec:
+  //
+  // The resulting value will equal the low-order N bits of the correct result
+  // R, where N is the component width and R is computed with enough precision
+  // to avoid overflow and underflow.
+  return constFoldBinaryOp<IntegerAttr>(operands,
+                                        [](APInt a, APInt b) { return a - b; });
 }
 
 //===----------------------------------------------------------------------===//

@@ -1121,6 +1121,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":CommonFolders",
         ":IR",
         ":Parser",
         ":SPIRVCanonicalizationIncGen",
