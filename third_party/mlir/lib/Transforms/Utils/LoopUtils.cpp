@@ -1235,11 +1235,10 @@ static AffineForOp generatePointWiseCopy(Location loc, Value *memref,
                   memIndicesStart);
 
     // Construct the subscript for the slow memref being copied.
-    SmallVector<Value *, 2> operands = {memBase, forOp.getInductionVar()};
     auto memIndex = b.create<AffineApplyOp>(
         loc,
         AffineMap::get(2, 0, b.getAffineDimExpr(0) + b.getAffineDimExpr(1)),
-        operands);
+        ValueRange({memBase, forOp.getInductionVar()}));
     memIndices.push_back(memIndex);
   }
 

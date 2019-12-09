@@ -75,8 +75,8 @@ public:
   /// and use pointers to struct to avoid the complexity of the
   /// platform-specific C/C++ ABI lowering related to struct argument passing.
   SmallVector<Value *, 4> promoteMemRefDescriptors(Location loc,
-                                                   ArrayRef<Value *> opOperands,
-                                                   ArrayRef<Value *> operands,
+                                                   ValueRange opOperands,
+                                                   ValueRange operands,
                                                    OpBuilder &builder);
 
   /// Promote the LLVM struct representation of one MemRef descriptor to stack

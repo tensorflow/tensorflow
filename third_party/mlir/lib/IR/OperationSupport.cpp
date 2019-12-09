@@ -36,7 +36,7 @@ OperationState::OperationState(Location location, OperationName name)
     : location(location), name(name) {}
 
 OperationState::OperationState(Location location, StringRef name,
-                               ArrayRef<Value *> operands, ArrayRef<Type> types,
+                               ValueRange operands, ArrayRef<Type> types,
                                ArrayRef<NamedAttribute> attributes,
                                ArrayRef<Block *> successors,
                                MutableArrayRef<std::unique_ptr<Region>> regions,

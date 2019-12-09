@@ -274,7 +274,7 @@ public:
 
   OperationState(Location location, OperationName name);
 
-  OperationState(Location location, StringRef name, ArrayRef<Value *> operands,
+  OperationState(Location location, StringRef name, ValueRange operands,
                  ArrayRef<Type> types, ArrayRef<NamedAttribute> attributes,
                  ArrayRef<Block *> successors = {},
                  MutableArrayRef<std::unique_ptr<Region>> regions = {},
