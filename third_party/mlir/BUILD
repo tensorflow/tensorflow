@@ -760,6 +760,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":GPUDialect",
+        ":IR",
         ":LoopOps",
         ":Pass",
         ":SPIRVDialect",
