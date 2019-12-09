@@ -106,6 +106,7 @@ cc_library(
         "include/mlir/IR/Attributes.h",
         "include/mlir/IR/Block.h",
         "include/mlir/IR/BlockAndValueMapping.h",
+        "include/mlir/IR/BlockSupport.h",
         "include/mlir/IR/Builders.h",
         "include/mlir/IR/Diagnostics.h",
         "include/mlir/IR/Dialect.h",
