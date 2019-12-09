@@ -3138,6 +3138,66 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # Cancellation after the function executes is a no-op.
     c_mgr.start_cancel()
 
+  def testAddFunctionCallback(self):
+    functions = []
+    def function_callback(f):
+      functions.append(f)
+
+    @def_function.function
+    def plus_one(x):
+      return x + 1
+
+    try:
+      function.add_function_callback(function_callback)
+      x_float32 = numpy.array(3.0, dtype=numpy.float32)
+      self.assertAllClose(plus_one(x_float32), 4.0)
+      self.assertLen(functions, 1)
+      # Function is already created. Executing it again should not invoke the
+      # function callback.
+      self.assertAllClose(plus_one(x_float32), 4.0)
+      self.assertLen(functions, 1)
+      # Signature change leads to a new Function being built.
+      x_float64 = numpy.array(3.0, dtype=numpy.float64)
+      self.assertAllClose(plus_one(x_float64), 4.0)
+      self.assertLen(functions, 2)
+    finally:
+      function.clear_function_callbacks()
+
+  def testRemoveFunctionCallback(self):
+    functions_1 = []
+    def function_callback_1(f):
+      functions_1.append(f)
+
+    functions_2 = []
+    def function_callback_2(f):
+      functions_2.append(f)
+
+    @def_function.function
+    def plus_one(x):
+      return x + 1
+
+    try:
+      function.add_function_callback(function_callback_1)
+      function.add_function_callback(function_callback_2)
+      self.assertAllClose(plus_one(numpy.array(3.0, dtype=numpy.float32)), 4.0)
+      self.assertLen(functions_1, 1)
+      self.assertLen(functions_2, 1)
+      function.remove_function_callback(function_callback_1)
+      # The 1st callback should not be invokved after remove_function_callback()
+      # is called.
+      self.assertAllClose(plus_one(numpy.array(3.0, dtype=numpy.float64)), 4.0)
+      self.assertLen(functions_1, 1)
+      self.assertLen(functions_2, 2)
+    finally:
+      function.clear_function_callbacks()
+
+  def testClearFunctionCallbacks(self):
+    function.add_function_callback(lambda f: None)
+    function.add_function_callback(lambda f: None)
+    self.assertLen(function._function_callbacks, 2)
+    function.clear_function_callbacks()
+    self.assertEmpty(function._function_callbacks)  # pylint:disable=protected-access
+
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
