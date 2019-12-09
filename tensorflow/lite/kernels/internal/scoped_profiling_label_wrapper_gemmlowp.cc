@@ -12,26 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_SCOPED_PROFILING_LABEL_WRAPPER_H_
-#define TENSORFLOW_LITE_KERNELS_INTERNAL_SCOPED_PROFILING_LABEL_WRAPPER_H_
+
+#include "profiling/instrumentation.h"
+#include "tensorflow/lite/kernels/internal/scoped_profiling_label_wrapper.h"
 
 namespace tflite {
 
-// This class uses the PIMPL pattern to enable a stub implementation for micro
-// platforms and a full gemlowp implementation otherwise.
-class ScopedProfilingLabelWrapper {
+class ScopedProfilingLabelWrapper::ScopedProfilingLabelImpl {
  public:
-  explicit ScopedProfilingLabelWrapper(const char* label);
-
-  ~ScopedProfilingLabelWrapper();
+  explicit ScopedProfilingLabelImpl(const char* label) : gemmlowp_(label) {}
 
  private:
-  class ScopedProfilingLabelImpl;
-  // Using a raw pointer instead of unique_ptr because we need to also build for
-  // embedded platforms.
-  ScopedProfilingLabelImpl* impl_;
+  gemmlowp::ScopedProfilingLabel gemmlowp_;
 };
 
-}  // namespace tflite
+ScopedProfilingLabelWrapper::ScopedProfilingLabelWrapper(const char* label)
+    : impl_(new ScopedProfilingLabelImpl(label)) {}
 
-#endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_SCOPED_PROFILING_LABEL_WRAPPER_H_
+ScopedProfilingLabelWrapper::~ScopedProfilingLabelWrapper() { delete impl_; }
+
+}  // namespace tflite

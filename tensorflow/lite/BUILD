@@ -15,6 +15,14 @@ exports_files(glob([
     "models/testdata/*",
 ]))
 
+# Config setting to determine if we are building for embedded platforms.
+config_setting(
+    name = "micro",
+    define_values = {
+        "micro": "true",
+    },
+)
+
 config_setting(
     name = "mips",
     values = {

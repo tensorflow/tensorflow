@@ -49,11 +49,15 @@ cc_library(
 
 cc_library(
     name = "scoped_profiling_label_wrapper",
+    srcs = select({
+        "//tensorflow/lite:micro": ["scoped_profiling_label_wrapper_stub.cc"],
+        "//conditions:default": ["scoped_profiling_label_wrapper_gemmlowp.cc"],
+    }),
     hdrs = ["scoped_profiling_label_wrapper.h"],
     copts = tflite_copts(),
-    deps = [
-        "@gemmlowp//:profiler",
-    ],
+    # TODO(b/145820877): Add in a select statement once we can figure out a way
+    # to make it play nicely with copybara.
+    deps = ["@gemmlowp//:profiler"],
 )
 
 cc_library(
