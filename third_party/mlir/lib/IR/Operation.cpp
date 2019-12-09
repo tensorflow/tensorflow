@@ -750,60 +750,41 @@ Operation *Operation::clone() {
 //===----------------------------------------------------------------------===//
 
 ValueRange::ValueRange(ArrayRef<Value *> values)
-    : owner(values.data()), count(values.size()) {}
+    : ValueRange(values.data(), values.size()) {}
 ValueRange::ValueRange(llvm::iterator_range<OperandIterator> values)
-    : count(llvm::size(values)) {
-  if (count != 0) {
+    : ValueRange(nullptr, llvm::size(values)) {
+  if (!empty()) {
     auto begin = values.begin();
-    owner = &begin.getObject()->getOpOperand(begin.getIndex());
+    base = &begin.getBase()->getOpOperand(begin.getIndex());
   }
 }
 ValueRange::ValueRange(llvm::iterator_range<ResultIterator> values)
-    : count(llvm::size(values)) {
-  if (count != 0) {
+    : ValueRange(nullptr, llvm::size(values)) {
+  if (!empty()) {
     auto begin = values.begin();
-    owner = &begin.getObject()->getOpResult(begin.getIndex());
+    base = &begin.getBase()->getOpResult(begin.getIndex());
   }
 }
 
-/// Drop the first N elements, and keep M elements.
-ValueRange ValueRange::slice(unsigned n, unsigned m) const {
-  assert(n + m <= size() && "Invalid specifier");
-  OwnerT newOwner;
+/// See `detail::indexed_accessor_range_base` for details.
+ValueRange::OwnerT ValueRange::offset_base(const OwnerT &owner,
+                                           ptrdiff_t index) {
   if (OpOperand *operand = owner.dyn_cast<OpOperand *>())
-    newOwner = operand + n;
-  else if (OpResult *result = owner.dyn_cast<OpResult *>())
-    newOwner = result + n;
-  else
-    newOwner = owner.get<Value *const *>() + n;
-  return ValueRange(newOwner, m);
+    return operand + index;
+  if (OpResult *result = owner.dyn_cast<OpResult *>())
+    return result + index;
+  return owner.get<Value *const *>() + index;
 }
-
-/// Drop the first n elements.
-ValueRange ValueRange::drop_front(unsigned n) const {
-  assert(size() >= n && "Dropping more elements than exist");
-  return slice(n, size() - n);
-}
-
-/// Drop the last n elements.
-ValueRange ValueRange::drop_back(unsigned n) const {
-  assert(size() >= n && "Dropping more elements than exist");
-  return ValueRange(owner, size() - n);
-}
-
-ValueRange::Iterator::Iterator(OwnerT owner, unsigned curIndex)
-    : indexed_accessor_iterator<Iterator, OwnerT, Value *, Value *, Value *>(
-          owner, curIndex) {}
-
-Value *ValueRange::Iterator::operator*() const {
+/// See `detail::indexed_accessor_range_base` for details.
+Value *ValueRange::dereference_iterator(const OwnerT &owner, ptrdiff_t index) {
   // Operands access the held value via 'get'.
-  if (OpOperand *operand = object.dyn_cast<OpOperand *>())
+  if (OpOperand *operand = owner.dyn_cast<OpOperand *>())
     return operand[index].get();
   // An OpResult is a value, so we can return it directly.
-  if (OpResult *result = object.dyn_cast<OpResult *>())
+  if (OpResult *result = owner.dyn_cast<OpResult *>())
     return &result[index];
   // Otherwise, this is a raw value array so just index directly.
-  return object.get<Value *const *>()[index];
+  return owner.get<Value *const *>()[index];
 }
 
 //===----------------------------------------------------------------------===//

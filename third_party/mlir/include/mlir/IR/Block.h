@@ -460,9 +460,9 @@ public:
                                   Block *>(object, index) {}
 
   SuccessorIterator(const SuccessorIterator &other)
-      : SuccessorIterator(other.object, other.index) {}
+      : SuccessorIterator(other.base, other.index) {}
 
-  Block *operator*() const { return this->object->getSuccessor(this->index); }
+  Block *operator*() const { return this->base->getSuccessor(this->index); }
 
   /// Get the successor number in the terminator.
   unsigned getSuccessorIndex() const { return this->index; }
