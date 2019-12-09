@@ -754,8 +754,7 @@ struct ConvertWhile : public ConversionPattern {
     cloned.removeAttr("T");
     UpdateFunctionTypes(cloned);
 
-    SmallVector<Value *, 8> results(cloned.getResults());
-    rewriter.replaceOp(op, results);
+    rewriter.replaceOp(op, cloned.getResults());
     return matchSuccess();
   }
 };

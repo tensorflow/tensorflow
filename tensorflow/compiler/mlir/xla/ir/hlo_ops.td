@@ -405,8 +405,8 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
   let results = (outs Variadic<HLO_TensorOrTuple>);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState &state, ArrayRef<Value *> operands, "
-    "ArrayRef<Value *> init_values, DenseIntElementsAttr dimensions"
+    "Builder *, OperationState &state, ValueRange operands, "
+    "ValueRange init_values, DenseIntElementsAttr dimensions"
   >];
 
   let hasFolder = 1;
@@ -445,7 +445,7 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
 
   let builders = [OpBuilder<
                   "Builder *builder, OperationState &results, "
-                  "ArrayRef<Value*> values">];
+                  "ValueRange values">];
 
   // TupleOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -884,7 +884,7 @@ def HLO_SortOp : HLO_Op<"sort", [NoSideEffect]>, BASE_HLO_SortOp {
   let regions = (region SizedRegion<1>:$comparator);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &state, ArrayRef<Value *> operands, "
+    "Builder *builder, OperationState &state, ValueRange operands, "
     "int64_t dimension, bool is_stable"
   >];
 

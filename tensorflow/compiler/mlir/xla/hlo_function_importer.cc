@@ -182,13 +182,12 @@ tensorflow::Status HloFunctionImporter::ImportInstructions(
   // Setup the return type (HLO only supports a single return value).
   TF_ASSIGN_OR_RETURN(auto result,
                       GetMlirValue(computation->root_instruction()));
-  llvm::SmallVector<Value*, 1> return_values({result});
 
   // Create terminator op depending on the parent op of this region.
   if (llvm::isa<FuncOp>(block->getParentOp())) {
-    builder.create<mlir::ReturnOp>(loc, makeArrayRef(return_values));
+    builder.create<mlir::ReturnOp>(loc, result);
   } else {
-    builder.create<mlir::xla_hlo::ReturnOp>(loc, makeArrayRef(return_values));
+    builder.create<mlir::xla_hlo::ReturnOp>(loc, result);
   }
   return tensorflow::Status::OK();
 }

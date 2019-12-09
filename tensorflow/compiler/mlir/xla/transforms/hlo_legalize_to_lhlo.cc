@@ -124,7 +124,7 @@ class HloToLhloOpConverter : public ConversionPattern {
     rewriter.create<LhloOpTy>(op->getLoc(), llvm::None, buffer_args,
                               op->getAttrs());
     rewriter.replaceOp(op, ArrayRef<Value*>(buffer_args).slice(operands.size()),
-                       llvm::to_vector<4>(original_results));
+                       original_results);
     return matchSuccess();
   }
 };
@@ -179,7 +179,7 @@ struct HloToLHloReduceConverter
     rewriter.create<xla_lhlo::TerminatorOp>(loc);
 
     rewriter.replaceOp(op, ArrayRef<Value*>(buffer_args).slice(operands.size()),
-                       llvm::to_vector<4>(original_results));
+                       original_results);
 
     return matchSuccess();
   }
@@ -193,7 +193,7 @@ class HloToLhloTensorLoadConverter : public ConversionPattern {
   PatternMatchResult matchAndRewrite(
       Operation* op, ArrayRef<Value*> operands,
       ConversionPatternRewriter& rewriter) const final {
-    rewriter.replaceOp(op, operands, llvm::to_vector<4>(op->getResults()));
+    rewriter.replaceOp(op, operands, op->getResults());
     return matchSuccess();
   }
 };

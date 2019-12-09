@@ -330,9 +330,8 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
 
   // Create terminator for replicate op and move launch into replicate.
   builder.setInsertionPointToEnd(&replicate_op.GetBody());
-  auto return_op = builder.create<tf_device::ReturnOp>(
-      replicate_op.getLoc(),
-      llvm::SmallVector<Value*, 8>(launch_op.getResults()));
+  auto return_op = builder.create<tf_device::ReturnOp>(replicate_op.getLoc(),
+                                                       launch_op.getResults());
   launch_op.getOperation()->moveBefore(return_op);
 
   return success();

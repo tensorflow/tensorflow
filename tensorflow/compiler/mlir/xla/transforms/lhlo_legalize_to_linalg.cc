@@ -112,7 +112,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
     rewriter.setInsertionPointToEnd(block);
     Operation* op = MapLhloOpToStdScalarOp<LhloOp>(
         llvm::cast<LhloOp>(lhlo_op), bodyResultTypes, bodyArgs, rewriter);
-    rewriter.create<linalg::YieldOp>(loc, llvm::to_vector<1>(op->getResults()));
+    rewriter.create<linalg::YieldOp>(loc, op->getResults());
     rewriter.eraseOp(lhlo_op);
     return ConversionPattern::matchSuccess();
   }

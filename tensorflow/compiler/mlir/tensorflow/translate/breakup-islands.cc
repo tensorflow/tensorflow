@@ -130,8 +130,7 @@ tf_executor::IslandOp CreateIsland(ArrayRef<Type> result_types,
   OpBuilder island_builder(original_island);
   island_builder.setInsertionPointToEnd(block);
   if (sub_op) {
-    island_builder.create<tf_executor::YieldOp>(
-        loc, llvm::to_vector<4>(sub_op->getResults()));
+    island_builder.create<tf_executor::YieldOp>(loc, sub_op->getResults());
   } else {
     island_builder.create<tf_executor::YieldOp>(loc, ArrayRef<Value*>{});
   }

@@ -689,7 +689,7 @@ class ConvertEinsumOp : public OpRewritePattern<TF::EinsumOp> {
       rewriter.replaceOpWithNewOp<UnaryEinsumOp>(
           op, op.getType(), *op.inputs().begin(), equation);
     } else if (op.N() == 2) {
-      auto inputs = llvm::to_vector<2>(op.inputs());
+      ValueRange inputs = op.inputs();
       rewriter.replaceOpWithNewOp<EinsumOp>(op, op.getType(), inputs[0],
                                             inputs[1], equation);
     } else {

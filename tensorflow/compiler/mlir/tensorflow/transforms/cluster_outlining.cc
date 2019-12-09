@@ -44,8 +44,8 @@ struct ClusterOutliningPass : public ModulePass<ClusterOutliningPass> {
 
 void ReplaceLaunchReturnWithReturn(tf_device::ReturnOp launch_return_op,
                                    OpBuilder* builder) {
-  llvm::SmallVector<Value*, 4> operands(launch_return_op.getOperands());
-  builder->create<ReturnOp>(launch_return_op.getLoc(), operands);
+  builder->create<ReturnOp>(launch_return_op.getLoc(),
+                            launch_return_op.getOperands());
   launch_return_op.erase();
 }
 

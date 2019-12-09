@@ -1224,11 +1224,9 @@ Status ImporterBase::ConvertFunctionArgAndRets(
   builder_.setInsertionPointToEnd(&graph_op.body().front());
   builder_.create<mlir::tf_executor::FetchOp>(graph_op.getLoc(),
                                               inst_to_return);
-  inst_to_return.assign(graph_op.getResults().begin(),
-                        graph_op.getResults().end());
   builder_.setInsertionPointToEnd(bb);
   builder_.create<mlir::ReturnOp>(mlir::UnknownLoc::get(context_),
-                                  inst_to_return);
+                                  graph_op.getResults());
   return Status::OK();
 }
 
@@ -1416,8 +1414,8 @@ mlir::Operation* ImporterBase::createOperation(
   }
 
   // Add the terminator for the island
-  mlir::SmallVector<mlir::Value*, 8> ret_vals(inner_op->getResults());
-  island_builder.create<mlir::tf_executor::YieldOp>(result.location, ret_vals);
+  island_builder.create<mlir::tf_executor::YieldOp>(result.location,
+                                                    inner_op->getResults());
   return island.getOperation();
 }
 
@@ -2510,8 +2508,7 @@ Status CreateSavedModelIR(
             /*config=*/builder.getStringAttr(""),
             /*config_proto=*/builder.getStringAttr(""),
             /*executor_type=*/builder.getStringAttr(""));
-        body_builder.create<mlir::ReturnOp>(
-            func.getLoc(), llvm::to_vector<4>(call.getResults()));
+        body_builder.create<mlir::ReturnOp>(func.getLoc(), call.getResults());
       }
       func.setAttr(
           "tf_saved_model.exported_names",
