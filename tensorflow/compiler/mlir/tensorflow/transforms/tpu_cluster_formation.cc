@@ -34,10 +34,12 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
@@ -57,8 +59,6 @@ constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kNameAttr[] = "name";
 constexpr char kNumReplicasAttr[] = "num_replicas";
-constexpr char kTPUReplicatedInputOp[] = "tf.TPUReplicatedInput";
-constexpr char kTPUReplicatedOutputOp[] = "tf.TPUReplicatedOutput";
 
 constexpr char kBadTPUReplicateAttrMsg[] =
     "requires '_tpu_replicate' string attribute";
@@ -275,9 +275,8 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
   mlir::visitUsedValuesDefinedAbove(
       launch_op.body(), launch_op.body(), [&](mlir::OpOperand* operand) {
         Operation* def = operand->get()->getDefiningOp();
-        if (def && def->getName().getStringRef() == kTPUReplicatedInputOp) {
+        if (def && llvm::isa<TF::TPUReplicatedInputOp>(def))
           replicated_input_ops.insert(def);
-        }
       });
 
   // Check if number of operands of each used TPUReplicatedInput op matches
@@ -305,10 +304,10 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
     int idx = result_and_idx.index();
     for (auto& use : result->getUses()) {
       Operation* def = use.getOwner();
-      if (!def || def->getName().getStringRef() != kTPUReplicatedOutputOp)
+      if (!def || !llvm::isa<TF::TPUReplicatedOutputOp>(def))
         return launch_op.emitError()
                << "requires output of " << launch_op.getOperationName()
-               << " to lead to a '" << kTPUReplicatedOutputOp << "' op";
+               << " to lead to a 'tf.TPUReplicatedOutput' op";
 
       if (def->getNumResults() != num_replicas)
         return def->emitOpError() << "requires " << num_replicas << " results";
@@ -427,8 +426,8 @@ void TPUClusterFormation::runOnFunction() {
 
   // Remove TPUReplicatedInput and TPUReplicatedOutput nodes.
   auto remove_result = getFunction().walk([&](Operation* op) {
-    auto op_name = op->getName().getStringRef();
-    if (op_name != kTPUReplicatedInputOp && op_name != kTPUReplicatedOutputOp)
+    if (!llvm::isa<TF::TPUReplicatedInputOp>(op) &&
+        !llvm::isa<TF::TPUReplicatedOutputOp>(op))
       return WalkResult::advance();
 
     // Forward operand to result. When `num_replicas` attribute is 1, no
@@ -440,7 +439,8 @@ void TPUClusterFormation::runOnFunction() {
     // Leftover TPUReplicatedInput/TPUReplicatedOutput that are not of
     // `num_replicas` to 1.
     if (!op->use_empty()) {
-      op->emitOpError() << "expects " << op_name << " to have no uses";
+      op->emitOpError() << "expects " << op->getName().getStringRef()
+                        << " to have no uses";
       return WalkResult::interrupt();
     }
 
