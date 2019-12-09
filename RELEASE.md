@@ -315,7 +315,7 @@ If you are experiencing any issues because of this change, please inform us (fil
   * Changed API to optimize TensorRT enginges during graph optimization. This is now
     done by calling `converter.build()` where previously `is_dynamic_op=False` would
     be set.
-  * `converter.convert()` no longer returns a `tf.function`. Now the funtion must be
+  * `converter.convert()` no longer returns a `tf.function`. Now the function must be
     accessed from the saved model.
   * The `converter.calibrate()` method has been removed. To trigger calibration, a
     `calibration_input_fn` should be provided to `converter.convert()`.
@@ -715,7 +715,7 @@ Weweler, Zantares, zjjott, 卜居, 王振华 (Wang Zhenhua), 黄鑫
 
 *   Updates `png_archive` dependency to 1.6.37 to not be affected by
     CVE-2019-7317, CVE-2018-13785, and CVE-2018-14048.
-*   Updates `sqlite` depenency to 3.28.0 to not be affected by CVE-2018-20506,
+*   Updates `sqlite` dependency to 3.28.0 to not be affected by CVE-2018-20506,
     CVE-2018-20346, and CVE-2018-20505.
 
 # Release 1.12.2
@@ -901,9 +901,9 @@ Weweler, Zantares, zjjott, 卜居, 王振华 (Wang Zhenhua), 黄鑫
         compilation as a second return argument.
     *   XLA HLO graphs can now be rendered as SVG/HTML.
 *   Estimator
-    *   Replace all occurences of `tf.contrib.estimator.BaselineEstimator` with
+    *   Replace all occurrences of `tf.contrib.estimator.BaselineEstimator` with
         `tf.estimator.BaselineEstimator`
-    *   Replace all occurences of
+    *   Replace all occurrences of
         `tf.contrib.estimator.DNNLinearCombinedEstimator` with
         `tf.estimator.DNNLinearCombinedEstimator`
     *   Replace all occurrences of `tf.contrib.estimator.DNNEstimator` with
@@ -915,7 +915,7 @@ Weweler, Zantares, zjjott, 卜居, 王振华 (Wang Zhenhua), 黄鑫
         `tf.estimator.Estimator.experimental_export_all_saved_models`.
     *   Update `regression_head` to the new Head API for Canned Estimator V2.
     *   Switch `multi_class_head` to Head API for Canned Estimator V2.
-    *   Replace all occurences of `tf.contrib.estimator.InMemoryEvaluatorHook`
+    *   Replace all occurrences of `tf.contrib.estimator.InMemoryEvaluatorHook`
         and `tf.contrib.estimator.make_stop_at_checkpoint_step_hook` with
         `tf.estimator.experimental.InMemoryEvaluatorHook` and
         `tf.estimator.experimental.make_stop_at_checkpoint_step_hook`
