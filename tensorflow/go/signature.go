@@ -16,7 +16,7 @@ limitations under the License.
 
 package tensorflow
 
-import tfpb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core/framework"
+import tfpb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core"
 
 // #include "tensorflow/c/c_api.h"
 import "C"

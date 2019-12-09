@@ -57,7 +57,7 @@ cc_library(
         "//conditions:default": ["-lrt"],
     }),
     deps = [
-        ":nnapi_lib",
+        "//tensorflow/lite/nnapi:nnapi_lib",
     ],
 )
 
@@ -76,29 +76,7 @@ cc_test(
     name = "nnapi_implementation_test",
     srcs = ["nnapi_implementation_test.cc"],
     deps = [
-        ":nnapi_implementation",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "nnapi_handler",
-    srcs = ["nnapi_handler.cc"],
-    hdrs = ["nnapi_handler.h"],
-    deps = [
-        ":nnapi_implementation",
-        ":nnapi_lib",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/lite:framework",
-    ],
-)
-
-cc_test(
-    name = "nnapi_handler_test",
-    srcs = ["nnapi_handler_test.cc"],
-    deps = [
-        ":nnapi_handler",
-        ":nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
         "@com_google_googletest//:gtest_main",
     ],
 )

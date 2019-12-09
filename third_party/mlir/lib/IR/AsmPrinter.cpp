@@ -733,6 +733,19 @@ static void printSymbolReference(StringRef symbolRef, raw_ostream &os) {
   os << '"';
 }
 
+// Print out a valid ElementsAttr that is succinct and can represent any
+// potential shape/type, for use when eliding a large ElementsAttr.
+//
+// We choose to use an opaque ElementsAttr literal with conspicuous content to
+// hopefully alert readers to the fact that this has been elided.
+//
+// Unfortunately, neither of the strings of an opaque ElementsAttr literal will
+// accept the string "elided". The first string must be a registered dialect
+// name and the latter must be a hex constant.
+static void printElidedElementsAttr(raw_ostream &os) {
+  os << R"(opaque<"", "0xDEADBEEF">)";
+}
+
 void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
   if (!attr) {
     os << "<<NULL ATTRIBUTE>>";
@@ -836,19 +849,20 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
   }
   case StandardAttributes::OpaqueElements: {
     auto eltsAttr = attr.cast<OpaqueElementsAttr>();
+    if (printerFlags.shouldElideElementsAttr(eltsAttr)) {
+      printElidedElementsAttr(os);
+      break;
+    }
     os << "opaque<\"" << eltsAttr.getDialect()->getNamespace() << "\", ";
-    os << '"' << "0x";
-
-    // Check for large ElementsAttr elision.
-    if (printerFlags.shouldElideElementsAttr(eltsAttr))
-      os << "...";
-    else
-      os << llvm::toHex(eltsAttr.getValue());
-    os << "\">";
+    os << '"' << "0x" << llvm::toHex(eltsAttr.getValue()) << "\">";
     break;
   }
   case StandardAttributes::DenseElements: {
     auto eltsAttr = attr.cast<DenseElementsAttr>();
+    if (printerFlags.shouldElideElementsAttr(eltsAttr)) {
+      printElidedElementsAttr(os);
+      break;
+    }
     os << "dense<";
     printDenseElementsAttr(eltsAttr);
     os << '>';
@@ -856,6 +870,11 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
   }
   case StandardAttributes::SparseElements: {
     auto elementsAttr = attr.cast<SparseElementsAttr>();
+    if (printerFlags.shouldElideElementsAttr(elementsAttr.getIndices()) ||
+        printerFlags.shouldElideElementsAttr(elementsAttr.getValues())) {
+      printElidedElementsAttr(os);
+      break;
+    }
     os << "sparse<";
     printDenseElementsAttr(elementsAttr.getIndices());
     os << ", ";
@@ -913,13 +932,6 @@ void ModulePrinter::printDenseElementsAttr(DenseElementsAttr attr) {
   // Special case for 0-d and splat tensors.
   if (attr.isSplat()) {
     printEltFn(attr, os, 0);
-    return;
-  }
-
-  // Check for large elements attr elision. We explicitly check *after* splat,
-  // as the splat printing is already elided.
-  if (printerFlags.shouldElideElementsAttr(attr)) {
-    os << "...";
     return;
   }
 
@@ -1074,6 +1086,13 @@ void ModulePrinter::printType(Type type) {
     os << '>';
     return;
   }
+  case StandardTypes::UnrankedMemRef: {
+    auto v = type.cast<UnrankedMemRefType>();
+    os << "memref<*x";
+    printType(v.getElementType());
+    os << '>';
+    return;
+  }
   case StandardTypes::Complex:
     os << "complex<";
     printType(type.cast<ComplexType>().getElementType());
@@ -1097,7 +1116,7 @@ void ModulePrinter::printType(Type type) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-/// This class provides the main specialication of the DialectAsmPrinter that is
+/// This class provides the main specialization of the DialectAsmPrinter that is
 /// used to provide support for print attributes and types. This hooks allows
 /// for dialects to hook into the main ModulePrinter.
 struct CustomDialectAsmPrinter : public DialectAsmPrinter {
@@ -1467,10 +1486,10 @@ public:
   /// SSA values in namesToUse.  This may only be used for IsolatedFromAbove
   /// operations.  If any entry in namesToUse is null, the corresponding
   /// argument name is left alone.
-  void shadowRegionArgs(Region &region, ArrayRef<Value *> namesToUse) override;
+  void shadowRegionArgs(Region &region, ValueRange namesToUse) override;
 
   void printAffineMapOfSSAIds(AffineMapAttr mapAttr,
-                              ArrayRef<Value *> operands) override {
+                              ValueRange operands) override {
     AffineMap map = mapAttr.getValue();
     unsigned numDims = map.getNumDims();
     auto printValueName = [&](unsigned pos, bool isSymbol) {
@@ -1832,8 +1851,7 @@ void OperationPrinter::printValueIDImpl(Value *value, bool printResultNo,
 /// SSA values in namesToUse.  This may only be used for IsolatedFromAbove
 /// operations.  If any entry in namesToUse is null, the corresponding
 /// argument name is left alone.
-void OperationPrinter::shadowRegionArgs(Region &region,
-                                        ArrayRef<Value *> namesToUse) {
+void OperationPrinter::shadowRegionArgs(Region &region, ValueRange namesToUse) {
   assert(!region.empty() && "cannot shadow arguments of an empty region");
   assert(region.front().getNumArguments() == namesToUse.size() &&
          "incorrect number of names passed in");

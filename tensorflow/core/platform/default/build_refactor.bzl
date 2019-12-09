@@ -75,10 +75,10 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
             "@com_google_absl//absl/time",
             "@com_google_absl//absl/types:optional",
             "//third_party/eigen3",
-            "//tensorflow/core/lib/core:blocking_counter",
             "//tensorflow/core/lib/core:error_codes_proto_cc",
             "//tensorflow/core/lib/core:stringpiece",
             "//tensorflow/core/platform",
+            "//tensorflow/core/platform:blocking_counter",
             "//tensorflow/core/platform:context",
             "//tensorflow/core/platform:cord",
             "//tensorflow/core/platform:denormal",
@@ -170,6 +170,17 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
             "//tensorflow/core/platform:env_time",
             "//tensorflow/core/platform:macros",
             "//tensorflow/core/platform:types",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
+    "monitoring": {
+        "name": "monitoring_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:monitoring.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/monitoring.cc",
         ],
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
@@ -318,6 +329,25 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
             "//tensorflow/core/platform:net",
             "//tensorflow/core/platform:strcat",
             "//tensorflow/core/platform:types",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
+    "test_benchmark": {
+        "name": "test_benchmark_impl",
+        "testonly": True,
+        "srcs": [
+            "//tensorflow/core/platform:default/test_benchmark.cc",
+        ],
+        "hdrs": [
+            "//tensorflow/core/platform:default/test_benchmark.h",
+        ],
+        "deps": [
+            "//tensorflow/core/platform",
+            "//tensorflow/core/platform:env",
+            "//tensorflow/core/platform:macros",
+            "//tensorflow/core/platform:types",
+            "//tensorflow/core:util_reporter",
         ],
         "tags": ["no_oss", "manual"],
         "visibility": ["//visibility:private"],
@@ -623,3 +653,9 @@ def tf_platform_helper_deps(name):
 
 def tf_logging_deps():
     return [":logging_impl"]
+
+def tf_monitoring_deps():
+    return [":monitoring_impl"]
+
+def tf_legacy_srcs_no_runtime_google():
+    return []

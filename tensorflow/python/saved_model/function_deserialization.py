@@ -447,11 +447,15 @@ def _list_function_deps(fdef, library_function_names):
   return deps
 
 
+_FUNCTION_WARPPER_NAME_REGEX = r"^%s(.*)_\d+$" % (
+    function_lib._INFERENCE_PREFIX)  # pylint:disable=protected-access
+
+
 def _clean_function_name(name):
   """Vanity function to keep the function names comprehensible."""
   # Note: each time a function is wrapped into `function_lib.ConcreteFunction`
   # its name becomes "__inference_<orig>_xyz".
-  match = re.search(r"^__inference_(.*)_\d+$", name)
+  match = re.search(_FUNCTION_WARPPER_NAME_REGEX, name)
   if match:
     return match.group(1)
   else:

@@ -67,8 +67,6 @@ void FunctionalToExecutorDialectConversion::runOnFunction() {
     LLVM_DEBUG(llvm::dbgs() << "Expect function to end with return\n");
     return;
   }
-  llvm::SmallVector<Value*, 4> args =
-      llvm::to_vector<4>(return_op.getOperands());
   // Build GraphOp.
   OpBuilder builder(&body, body.begin());
   auto graph_op = builder.create<tf_executor::GraphOp>(
@@ -79,10 +77,10 @@ void FunctionalToExecutorDialectConversion::runOnFunction() {
       loc, getFunction().getType().getResults(),
       tf_executor::ControlType::get(&getContext()), ArrayRef<Value*>());
   // Create Fetch.
-  auto to_fetch = llvm::to_vector<4>(island.getResults());
+  ValueRange to_fetch = island.getResults();
   if (to_fetch.size() != 1) {
     // Drop control result for fetch.
-    to_fetch.pop_back();
+    to_fetch = to_fetch.drop_back();
   }
   builder.create<tf_executor::FetchOp>(loc, to_fetch);
   // Build Island.
@@ -91,7 +89,7 @@ void FunctionalToExecutorDialectConversion::runOnFunction() {
       island.body().front().begin(), body.getOperations(), copy_range.begin(),
       copy_range.end());
   builder.setInsertionPointToEnd(&island.body().front());
-  builder.create<tf_executor::YieldOp>(loc, args);
+  builder.create<tf_executor::YieldOp>(loc, return_op.getOperands());
   for (auto item : llvm::enumerate(graph_op.getResults())) {
     return_op.setOperand(item.index(), item.value());
   }

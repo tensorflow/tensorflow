@@ -405,8 +405,8 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
   let results = (outs Variadic<HLO_TensorOrTuple>);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState &state, ArrayRef<Value *> operands, "
-    "ArrayRef<Value *> init_values, DenseIntElementsAttr dimensions"
+    "Builder *, OperationState &state, ValueRange operands, "
+    "ValueRange init_values, DenseIntElementsAttr dimensions"
   >];
 
   let hasFolder = 1;
@@ -437,9 +437,6 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
   let builders = [OpBuilder<
                   "Builder *builder, OperationState &results, "
                   "Value* value, int32_t index">];
-
-  // GetTupleElementOp has special conversion logic to HLO.
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
@@ -448,7 +445,7 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
 
   let builders = [OpBuilder<
                   "Builder *builder, OperationState &results, "
-                  "ArrayRef<Value*> values">];
+                  "ValueRange values">];
 
   // TupleOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -730,6 +727,43 @@ def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]>, BASE_HLO_DotGeneral
   let results = (outs HLO_Tensor);
 }
 
+def BASE_EinsumOp {
+  string summary = "Einsum operator";
+
+  string description = [{
+    Returns a tensor whose elements are defined by equation, which is written
+    in a shorthand form inspired by the Einstein summation convention.
+  }];
+}
+
+def HLO_EinsumOp: HLO_Op<"einsum", [NoSideEffect]> {
+  let arguments = (ins
+    HLO_Tensor:$lhs,
+    HLO_Tensor:$rhs,
+    StrAttr:$einsum_config
+  );
+
+  let results = (outs HLO_Tensor);
+
+  // TODO(hinsu): Canonicalize to lower this client side HLO op to server
+  // side HLO ops.
+}
+
+def HLO_UnaryEinsumOp: HLO_Op<"unary_einsum", [NoSideEffect]> {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    StrAttr:$einsum_config
+  );
+
+  let results = (outs HLO_Tensor);
+
+  let hasCanonicalizer = 1;
+
+  // UnarayEinsumOp is unconditionally canonicalized to the binary EinsumOp so
+  // the HLO converter shouldn't be invoked.
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]>, BASE_HLO_FftOp {
   let arguments = (ins
     HLO_Tensor:$operand,
@@ -743,21 +777,25 @@ def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]>, BASE_HLO_FftOp {
   let hasCustomHLOConverter = 1;
 }
 
+def GatherDimensionNumbers : StructAttr<"GatherDimensionNumbers", HLO_Dialect,
+      [StructFieldAttr<"offset_dims", I64ElementsAttr>,
+      StructFieldAttr<"collapsed_slice_dims", I64ElementsAttr>,
+      StructFieldAttr<"start_index_map", I64ElementsAttr>,
+      StructFieldAttr<"index_vector_dim", I64Attr>]> {
+  let description = "Structure of dimension information for gather";
+}
+
 def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]>, BASE_HLO_GatherOp {
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_IntTensor:$start_indices,
-    I64Attr:$index_vector_dim,
-    I64ElementsAttr:$offset_dims,
+    GatherDimensionNumbers:$dimension_numbers,
     I64ElementsAttr:$slice_sizes,
-    I64ElementsAttr:$collapsed_slice_dims,
-    I64ElementsAttr:$start_index_map
+    DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted
   );
 
   let results = (outs HLO_Tensor);
 
-  // TODO(b/129422361) Attributes are not supported by the codegen. The
-  // optional argument (dimensions) needs to be added as an attribute.
   let hasCustomHLOConverter = 1;
 }
 
@@ -831,6 +869,26 @@ def HLO_SelectAndScatterOp: HLO_Op<"select_and_scatter",
 
   let results = (outs HLO_Tensor);
 
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_SortOp : HLO_Op<"sort", [NoSideEffect]>, BASE_HLO_SortOp {
+  let arguments = (ins
+    Variadic<HLO_Tensor>:$operands,
+    DefaultValuedAttr<I64Attr, "-1">:$dimension,
+    DefaultValuedAttr<BoolAttr, "false">:$is_stable
+  );
+
+  let results = (outs HLO_TensorOrTuple);
+
+  let regions = (region SizedRegion<1>:$comparator);
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &state, ValueRange operands, "
+    "int64_t dimension, bool is_stable"
+  >];
+
+  // TODO(b/129422361): SortOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
 

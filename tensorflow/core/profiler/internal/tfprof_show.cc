@@ -18,7 +18,8 @@ limitations under the License.
 #include <memory>
 #include <set>
 
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/regexp.h"
 
@@ -32,19 +33,19 @@ const GraphNodeProto& TFShow::Show(const string& prefix, const Options& opts) {
   } else {
     const ShowNode* ret = ShowInternal(opts, nullptr);
     if (opts.output_type == kOutput[1]) {
-      printf("%s", (prefix + ret->formatted_str).c_str());
+      absl::PrintF("%s", (prefix + ret->formatted_str));
       fflush(stdout);
     } else if (opts.output_type == kOutput[2]) {
       Status s = WriteStringToFile(Env::Default(),
                                    opts.output_options.at(kFileOpts[0]),
                                    prefix + ret->formatted_str);
       if (!s.ok()) {
-        fprintf(stderr, "%s\n", s.ToString().c_str());
+        absl::FPrintF(stderr, "%s\n", s.ToString());
       }
     } else if (opts.output_type == kOutput[3] ||
                opts.output_type == kOutput[4]) {
     } else {
-      fprintf(stderr, "Unknown output type: %s\n", opts.output_type.c_str());
+      absl::FPrintF(stderr, "Unknown output type: %s\n", opts.output_type);
     }
     return ret->proto();
   }
@@ -59,7 +60,7 @@ bool TFShow::LookUpCheckPoint(const string& name,
   TF_Status* status = TF_NewStatus();
   ckpt_reader_->GetTensor(name, &out_tensor, status);
   if (TF_GetCode(status) != TF_OK) {
-    fprintf(stderr, "%s\n", TF_Message(status));
+    absl::FPrintF(stderr, "%s\n", TF_Message(status));
     TF_DeleteStatus(status);
     return false;
   }
@@ -227,17 +228,16 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
     std::vector<string> shape_vec;
     for (const auto& s : node->node->input_shapes()) {
       if (s.second.empty()) {
-        shape_vec.push_back(strings::Printf("%d:unknown", s.first));
+        shape_vec.push_back(absl::StrFormat("%d:unknown", s.first));
       } else {
-        shape_vec.push_back(strings::Printf(
-            "%d:%s", s.first, absl::StrJoin(s.second, "x").c_str()));
+        shape_vec.push_back(
+            absl::StrFormat("%d:%s", s.first, absl::StrJoin(s.second, "x")));
       }
     }
     info.push_back(absl::StrJoin(shape_vec, "|"));
   }
 
-  return strings::Printf("%s (%s)", node->name().c_str(),
-                         absl::StrJoin(info, ", ").c_str());
+  return absl::StrFormat("%s (%s)", node->name(), absl::StrJoin(info, ", "));
 }
 
 string TFShow::FormatLegend(const Options& opts) const {
@@ -285,8 +285,7 @@ string TFShow::FormatLegend(const Options& opts) const {
   if (opts.select.find(kShown[8]) != opts.select.end()) {
     legends.push_back("input shapes");
   }
-  return strings::Printf("node name | %s\n",
-                         absl::StrJoin(legends, " | ").c_str());
+  return absl::StrFormat("node name | %s\n", absl::StrJoin(legends, " | "));
 }
 
 }  // namespace tfprof

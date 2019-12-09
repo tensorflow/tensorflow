@@ -39,7 +39,6 @@ TEST(TensorHandle_ShapeTest, AsyncShape) {
                   .ok());
 
   EXPECT_TRUE(async_th->CopyInferenceShape(sync_th).ok());
-  EXPECT_FALSE(async_th->IsReady());
 
   TensorShape sync_shape;
   TensorShape async_shape;

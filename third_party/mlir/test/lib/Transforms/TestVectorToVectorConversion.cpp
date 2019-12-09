@@ -18,7 +18,7 @@
 
 #include <type_traits>
 
-#include "mlir/Conversion/VectorConversions/VectorConversions.h"
+#include "mlir/Dialect/VectorOps/VectorTransforms.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/Passes.h"

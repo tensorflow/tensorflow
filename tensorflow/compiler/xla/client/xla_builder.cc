@@ -2112,7 +2112,8 @@ XlaOp XlaBuilder::CrossReplicaSum(
 
 XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
                             absl::Span<const ReplicaGroup> replica_groups,
-                            const absl::optional<ChannelHandle>& channel_id) {
+                            const absl::optional<ChannelHandle>& channel_id,
+                            const absl::optional<Shape>& shape_with_layout) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
@@ -2136,9 +2137,31 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
       operand_shapes.push_back(operand_shape);
       operands.push_back(operand);
     }
-    TF_ASSIGN_OR_RETURN(Shape shape,
+
+    TF_ASSIGN_OR_RETURN(Shape inferred_shape,
                         ShapeInference::InferAllReduceShape(operand_shapes));
-    *instr.mutable_shape() = shape.ToProto();
+    if (shape_with_layout) {
+      if (!LayoutUtil::HasLayout(*shape_with_layout)) {
+        return InvalidArgument("shape_with_layout must have the layout set: %s",
+                               shape_with_layout->ToString());
+      }
+      if (!ShapeUtil::Compatible(*shape_with_layout, *operand_shape)) {
+        return InvalidArgument(
+            "Provided shape_with_layout must be compatible with the "
+            "operand shape: %s vs %s",
+            shape_with_layout->ToString(), operand_shape->ToString());
+      }
+      instr.set_constrain_layout(true);
+      if (operand_shape->IsTuple() && !inferred_shape.IsTuple()) {
+        // For a single-element tuple, take the tuple element shape.
+        TF_RET_CHECK(shape_with_layout->tuple_shapes_size() == 1);
+        *instr.mutable_shape() = shape_with_layout->tuple_shapes(0).ToProto();
+      } else {
+        *instr.mutable_shape() = shape_with_layout->ToProto();
+      }
+    } else {
+      *instr.mutable_shape() = inferred_shape.ToProto();
+    }
 
     for (const ReplicaGroup& group : replica_groups) {
       *instr.add_replica_groups() = group;
@@ -2153,10 +2176,10 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
     TF_ASSIGN_OR_RETURN(
         auto all_reduce,
         AddInstruction(std::move(instr), HloOpcode::kAllReduce, operands));
-    if (operand_shape->IsTuple() && !shape.IsTuple()) {
+    if (operand_shape->IsTuple() && !inferred_shape.IsTuple()) {
       // For a single-element tuple, wrap the result into a tuple.
       TF_RET_CHECK(operand_shapes.size() == 1);
-      TF_RET_CHECK(ShapeUtil::Compatible(*operand_shapes[0], shape));
+      TF_RET_CHECK(ShapeUtil::Compatible(*operand_shapes[0], inferred_shape));
       return Tuple({all_reduce});
     }
     return all_reduce;
@@ -3282,9 +3305,10 @@ XlaOp CrossReplicaSum(const XlaOp operand,
 
 XlaOp AllReduce(const XlaOp operand, const XlaComputation& computation,
                 absl::Span<const ReplicaGroup> replica_groups,
-                const absl::optional<ChannelHandle>& channel_id) {
+                const absl::optional<ChannelHandle>& channel_id,
+                const absl::optional<Shape>& shape_with_layout) {
   return operand.builder()->AllReduce(operand, computation, replica_groups,
-                                      channel_id);
+                                      channel_id, shape_with_layout);
 }
 
 XlaOp AllToAll(const XlaOp operand, int64 split_dimension,

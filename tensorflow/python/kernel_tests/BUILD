@@ -3028,6 +3028,7 @@ cuda_py_test(
 cuda_py_test(
     name = "rnn_test",
     size = "medium",
+    timeout = "long",
     srcs = ["rnn_test.py"],
     additional_deps = [
         "//third_party/py/numpy",

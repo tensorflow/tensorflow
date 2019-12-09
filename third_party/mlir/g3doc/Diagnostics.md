@@ -197,6 +197,55 @@ destroyed.
 }  // The diagnostic is automatically reported here.
 ```
 
+## Diagnostic Configuration Options
+
+Several options are provided to help control and enhance the behavior of
+diagnostics. These options are listed below:
+
+### Print Operation On Diagnostic
+
+Command Line Flag: `-mlir-print-op-on-diagnostic`
+
+When a diagnostic is emitted on an operation, via `Operation::emitError/...`,
+the textual form of that operation is printed and attached as a note to the
+diagnostic. This option is useful for understanding the current form of an
+operation that may be invalid, especially when debugging verifier failures. An
+example output is shown below:
+
+```shell
+test.mlir:3:3: error: 'module_terminator' op expects parent op 'module'
+  "module_terminator"() : () -> ()
+  ^
+test.mlir:3:3: note: see current operation: "module_terminator"() : () -> ()
+  "module_terminator"() : () -> ()
+  ^
+```
+
+### Print StackTrace On Diagnostic
+
+Command Line Flag: `-mlir-print-stacktrace-on-diagnostic`
+
+When a diagnostic is emitted, attach the current stack trace as a note to the
+diagnostic. This option is useful for understanding which part of the compiler
+generated certain diagnostics. An example output is shown below:
+
+```shell
+test.mlir:3:3: error: 'module_terminator' op expects parent op 'module'
+  "module_terminator"() : () -> ()
+  ^
+test.mlir:3:3: note: diagnostic emitted with trace:
+ #0 0x000055dd40543805 llvm::sys::PrintStackTrace(llvm::raw_ostream&) llvm/lib/Support/Unix/Signals.inc:553:11
+ #1 0x000055dd3f8ac162 emitDiag(mlir::Location, mlir::DiagnosticSeverity, llvm::Twine const&) /lib/IR/Diagnostics.cpp:292:7
+ #2 0x000055dd3f8abe8e mlir::emitError(mlir::Location, llvm::Twine const&) /lib/IR/Diagnostics.cpp:304:10
+ #3 0x000055dd3f998e87 mlir::Operation::emitError(llvm::Twine const&) /lib/IR/Operation.cpp:324:29
+ #4 0x000055dd3f99d21c mlir::Operation::emitOpError(llvm::Twine const&) /lib/IR/Operation.cpp:652:10
+ #5 0x000055dd3f96b01c mlir::OpTrait::HasParent<mlir::ModuleOp>::Impl<mlir::ModuleTerminatorOp>::verifyTrait(mlir::Operation*) /mlir/IR/OpDefinition.h:897:18
+ #6 0x000055dd3f96ab38 mlir::Op<mlir::ModuleTerminatorOp, mlir::OpTrait::ZeroOperands, mlir::OpTrait::ZeroResult, mlir::OpTrait::HasParent<mlir::ModuleOp>::Impl, mlir::OpTrait::IsTerminator>::BaseVerifier<mlir::OpTrait::HasParent<mlir::ModuleOp>::Impl<mlir::ModuleTerminatorOp>, mlir::OpTrait::IsTerminator<mlir::ModuleTerminatorOp> >::verifyTrait(mlir::Operation*) /mlir/IR/OpDefinition.h:1052:29
+ #  ...
+  "module_terminator"() : () -> ()
+  ^
+```
+
 ## Common Diagnostic Handlers
 
 To interface with the diagnostics infrastructure, users will need to register a

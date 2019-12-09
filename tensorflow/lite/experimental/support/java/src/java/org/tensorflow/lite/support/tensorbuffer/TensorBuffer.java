@@ -61,10 +61,7 @@ public abstract class TensorBuffer {
    * TensorBuffer tensorBuffer = TensorBuffer.createFixedSize(shape, DataType.UINT8);
    * </pre>
    *
-   * <p>The size of a fixed-size TensorBuffer cannot be changed once it is created. However, loading
-   * arraies or data buffers of the same buffer size but different shapes is allowed.
-   *
-   * <p>TODO(b/139782181): Shall we make it fixed-size or fixed-shape?
+   * <p>The size of a fixed-size TensorBuffer cannot be changed once it is created.
    *
    * @param shape The shape of the {@link TensorBuffer} to be created.
    * @param dataType The dataType of the {@link TensorBuffer} to be created.
@@ -87,7 +84,7 @@ public abstract class TensorBuffer {
    * Creates an empty dynamic {@link TensorBuffer} with specified {@link DataType}. The shape of the
    * created {@link TensorBuffer} is {0}.
    *
-   * <p>Dynamic TensorBuffers will reallocate memory when Loading arraies or data buffers of
+   * <p>Dynamic TensorBuffers will reallocate memory when loading arrays or data buffers of
    * different buffer sizes.
    *
    * @param dataType The dataType of the {@link TensorBuffer} to be created.
@@ -326,7 +323,7 @@ public abstract class TensorBuffer {
       allocateMemory(shape);
     } else {
       // Make sure the new shape fits the buffer size when TensorBuffer has fixed size.
-      SupportPreconditions.checkArgument(flatSize == computeFlatSize(shape));
+      SupportPreconditions.checkArgument(Arrays.equals(shape, this.shape));
       this.shape = shape.clone();
     }
   }

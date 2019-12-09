@@ -193,7 +193,7 @@ def SPV_BitFieldSExtractOp : SPV_BitFieldExtractOp<"BitFieldSExtract", []> {
     ``` {.ebnf}
     integer-scalar-vector-type ::= integer-type |
                                   `vector<` integer-literal `x` integer-type `>`
-    bitfield-exctact-s-op ::= ssa-id `=` `spv.BitFieldSExtract` ssa-use
+    bitfield-extract-s-op ::= ssa-id `=` `spv.BitFieldSExtract` ssa-use
                                          `,` ssa-use `,` ssa-use
                                          `:` integer-scalar-vector-type
                                          `,` integer-type `,` integer-type
@@ -222,7 +222,7 @@ def SPV_BitFieldUExtractOp : SPV_BitFieldExtractOp<"BitFieldUExtract", []> {
     ``` {.ebnf}
     integer-scalar-vector-type ::= integer-type |
                                   `vector<` integer-literal `x` integer-type `>`
-    bitfield-exctact-u-op ::= ssa-id `=` `spv.BitFieldUExtract` ssa-use
+    bitfield-extract-u-op ::= ssa-id `=` `spv.BitFieldUExtract` ssa-use
                                          `,` ssa-use `,` ssa-use
                                          `:` integer-scalar-vector-type
                                          `,` integer-type `,` integer-type

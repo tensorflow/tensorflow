@@ -71,6 +71,10 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   // Allow subclasses to create a customized Op resolver during init.
   virtual std::unique_ptr<tflite::OpResolver> GetOpResolver() const;
 
+  // Create a BenchmarkListener that's specifically for TFLite profiling if
+  // necessary.
+  virtual std::unique_ptr<BenchmarkListener> MayCreateProfilingListener() const;
+
   void CleanUp();
 
   std::unique_ptr<tflite::FlatBufferModel> model_;
@@ -90,8 +94,9 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
     InputTensorData tmp;
     tmp.bytes = sizeof(T) * num_elements;
     T* raw = new T[num_elements];
-    std::generate_n(raw, num_elements,
-                    [&]() { return distribution(random_engine_); });
+    std::generate_n(raw, num_elements, [&]() {
+      return static_cast<T>(distribution(random_engine_));
+    });
     // Now initialize the type-erased unique_ptr (with custom deleter) from
     // 'raw'.
     tmp.data = std::unique_ptr<void, void (*)(void*)>(
@@ -102,8 +107,8 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
 
   std::vector<InputLayerInfo> inputs_;
   std::vector<InputTensorData> inputs_data_;
-  std::unique_ptr<BenchmarkListener> profiling_listener_;
-  std::unique_ptr<BenchmarkListener> gemmlowp_profiling_listener_;
+  std::unique_ptr<BenchmarkListener> profiling_listener_ = nullptr;
+  std::unique_ptr<BenchmarkListener> gemmlowp_profiling_listener_ = nullptr;
   TfLiteDelegatePtrMap delegates_;
 
   std::mt19937 random_engine_;

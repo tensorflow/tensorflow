@@ -284,6 +284,7 @@ tf_py_test(
     size = "small",
     srcs = ["iterator_cluster_test.py"],
     additional_deps = [
+        ":test_base",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
@@ -397,6 +398,7 @@ tf_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/ops/ragged",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(

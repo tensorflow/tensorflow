@@ -23,6 +23,8 @@ package_group(
     ],
 )
 
+exports_files(["ir/hlo_ops.td"])
+
 filegroup(
     name = "hlo_ops_td_files",
     srcs = [
@@ -404,7 +406,9 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/stream_executor/lib",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",

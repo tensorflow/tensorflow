@@ -34,16 +34,31 @@ def make_transpose_tests(options):
       "input_shape": [[2, 2, 3]],
       "perm": [[0, 1, 2], [0, 2, 1]],
       "constant_perm": [True, False],
+      "fully_quantize": [False],
   }, {
       "dtype": [tf.float32],
       "input_shape": [[1, 2, 3, 4]],
       "perm": [[0, 1, 2, 3], [3, 0, 1, 2]],
       "constant_perm": [True, False],
+      "fully_quantize": [False],
   }, {
       "dtype": [tf.float32],
       "input_shape": [[1, 2, 3, 4, 5]],
       "perm": [[4, 3, 2, 1, 0]],
       "constant_perm": [True, False],
+      "fully_quantize": [False],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[2, 2, 3]],
+      "perm": [[0, 1, 2], [0, 2, 1]],
+      "constant_perm": [True],
+      "fully_quantize": [True],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1, 2, 3, 4]],
+      "perm": [[0, 1, 2, 3], [3, 0, 1, 2]],
+      "constant_perm": [True],
+      "fully_quantize": [True],
   }]
 
   def build_graph(parameters):
@@ -66,7 +81,8 @@ def make_transpose_tests(options):
 
   def build_inputs(parameters, sess, inputs, outputs):
     values = [
-        create_tensor_data(parameters["dtype"], parameters["input_shape"])
+        create_tensor_data(parameters["dtype"], parameters["input_shape"],
+                           min_value=-1, max_value=1)
     ]
     if not parameters["constant_perm"]:
       values.append(np.array(parameters["perm"]))

@@ -9,6 +9,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["logging.h"])
+
 common_copts = ["-Wall"] + tflite_copts()
 
 cc_library(

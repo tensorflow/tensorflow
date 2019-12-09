@@ -15,11 +15,11 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/VectorOps/Utils.h"
 #include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IntegerSet.h"

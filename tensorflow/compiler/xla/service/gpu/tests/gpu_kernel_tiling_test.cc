@@ -600,7 +600,7 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
 )",
 #else
                      R"(
-; CHECK-LABEL: define void @reduce
+; CHECK-LABEL: define void @
 ; CHECK: atomicrmw fadd float
 ; CHECK: }
 )",

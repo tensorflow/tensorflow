@@ -29,6 +29,9 @@ def FeatureDimension : NativeCodeCall<
 def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
 
+def CastValueToI64: NativeCodeCall<
+  "CastValueToI64($0->getLoc(), $1, &$_builder)">;
+
 def : Pattern<
     (TF_FusedBatchNormOp:$root $x, $scale, $offset, $mean, $variance, $epsilon,
                                $data_format, FalseBoolAttr:$is_training),
@@ -44,12 +47,21 @@ def : Pattern<
      (HasNoUseOf:$root__3), (HasNoUseOf:$root__4)]>;
 
 //===----------------------------------------------------------------------===//
+// Assert op pattern.
+//===----------------------------------------------------------------------===//
+
+// HLO and XLA doesn't support Assertions.
+def LowerAssert : Pattern<(TF_AssertOp $condition, $data, $summarize), []>;
+
+//===----------------------------------------------------------------------===//
 // Bias op patterns.
 //===----------------------------------------------------------------------===//
 def BiasAddFeatureDimension : NativeCodeCall<
     "getBiasFeatureDimension($_builder, $0, $1)">;
 
-def : Pat<(TF_BiasAddOp AnyStaticShapeTensor:$input, $bias, $data_format),
+// $input needs to be a ranked tensor to identify index of the feature
+// dimension depending on the data_format 'NHWC' or 'NCHW'.
+def : Pat<(TF_BiasAddOp AnyRankedTensor:$input, $bias, $data_format),
           (HLO_AddOp $input, $bias,
               (BiasAddFeatureDimension $data_format, $input))>;
 
@@ -237,7 +249,7 @@ def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis)),
 //===----------------------------------------------------------------------===//
 
 def CastElementsToI64Elements : NativeCodeCall<
-  "::xla::ConvertElementsAttr("
+  "xla::ConvertElementsAttr("
     "$0, $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
 
 def : Pat<(TF_CrossReplicaSumOp $input, (TF_ConstOp $group_assignment)),
@@ -256,25 +268,21 @@ def : Pat<(TF_RFFTOp $input, (TF_ConstOp I32ElementsAttr:$fft_length)),
 // Pad op patterns.
 //===----------------------------------------------------------------------===//
 
-def ZeroPaddingAttr : NativeCodeCall <
-  "DenseIntElementsAttr::get("
-    "RankedTensorType::get($0.getType().getShape()[0],"
-    "                      getElementTypeOrSelf($0.getType())), "
-    "{$_builder.getZeroAttr(getElementTypeOrSelf($0.getType()))})">;
-
 class SliceDenseIntElementsAttrColumn2D<string column> : NativeCodeCall<
-  "SliceDenseIntElementsAttrColumn2D("
-    "&$_builder, $0, " # column # " )">;
+  "SliceDenseIntElementsAttrColumn2D($0, " # column # " )">;
 
 class SliceDenseIntElementsAttr<string index, string axis> : NativeCodeCall<
-  "SliceDenseIntElementsAttr(&$_builder, $0, " # index # ", " # axis # ")">;
+  "SliceDenseIntElementsAttr($0, " # index # ", " # axis # ")">;
 
+// Interior padding attribute based on the TF padding.
+def GetInteriorPadding : NativeCodeCall <
+  "GetInteriorPadding($0)">;
 
-def : Pat<(TF_PadV2Op $input, (TF_ConstOp I64ElementsAttr:$padding), $c),
+def : Pat<(TF_PadV2Op $input, (TF_ConstOp $padding), $c),
           (HLO_PadOp $input, $c,
            (SliceDenseIntElementsAttrColumn2D<"0"> $padding),
            (SliceDenseIntElementsAttrColumn2D<"1"> $padding),
-           (ZeroPaddingAttr $padding))>;
+           (GetInteriorPadding $padding))>;
 
 //===----------------------------------------------------------------------===//
 // Identity op patterns.
@@ -302,7 +310,7 @@ def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
 //===----------------------------------------------------------------------===//
 
 def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
-          [(AnyStaticShapeTensor $res), (HLO_Tensor $res)]>;
+          [(HLO_Tensor $res)]>;
 
 //===----------------------------------------------------------------------===//
 // Relu op patterns.
@@ -320,11 +328,21 @@ def : Pat<(TF_Relu6Op AnyStaticShapeTensor:$input),
                        (HLO_ConstOp (ConstantSplat<"6"> $input)))>;
 
 // ReluGrad(gradients, features) = gradients * (features > 0)
-def : Pat<(TF_ReluGradOp AnyStaticShapeTensor:$gradients, AnyStaticShapeTensor:$features),
+//
+// $gradients needs to be of static shape so that on_true and on_false operands
+// of SelectOp have same shape.
+//
+// $features needs to be ranked for computation of the broadcast dimensions for
+// CompareOp.
+//
+// TODO(hinsu): Relax $gradients static shape requirement when there is a way
+// to create splat tensor of dynamic shape in HLO.
+def : Pat<(TF_ReluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$features),
           (HLO_SelectOp
-            (HLO_CompareOp $features, (HLO_ConstOp:$zero (ConstantSplat<"0"> $features)),
+            (HLO_CompareOp $features,
+              (HLO_ConstOp (GetScalarOfType<0> $features)),
               (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_GT),
-            $gradients, $zero)>;
+            $gradients, (HLO_ConstOp (ConstantSplat<"0"> $gradients)))>;
 
 //===----------------------------------------------------------------------===//
 // Slice op patterns.
@@ -337,9 +355,9 @@ def TFSliceSizes2HLOSliceSizes : NativeCodeCall<
     "TFSliceSizes2HLOSliceSizes($0, $1, $2.cast<DenseIntElementsAttr>(),"
     "&$_builder)">;
 
-def : Pat<(TF_SliceOp HLO_Tensor:$input, HLO_Tensor:$starting_indices,
-           (TF_ConstOp I64ElementsAttr:$slice_sizes)),
-          (HLO_DynamicSliceOp $input, $starting_indices,
+def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
+           (TF_ConstOp $slice_sizes)),
+          (HLO_DynamicSliceOp $input, (CastValueToI64 $op, $starting_indices),
            (TFSliceSizes2HLOSliceSizes $input, $starting_indices, $slice_sizes)),
           [(CanBeTranslatedToDynamicSlice $input, $starting_indices,
             $slice_sizes)]>;
@@ -387,19 +405,21 @@ foreach Mapping = [
 def : Pat<(TF_CastOp HLO_Tensor:$arg, ConstBoolAttrFalse),
           (HLO_ConvertOp $arg)>;
 
-def : Pat<(TF_TransposeOp:$res $arg, (TF_ConstOp I64ElementsAttr:$permutation)),
-          (HLO_TransposeOp $arg, (CastIntElementsAttr $permutation))>;
+def : Pat<(TF_TransposeOp:$res $arg, (TF_ConstOp $permutation)),
+          (HLO_TransposeOp $arg, (CastElementsToI64Elements $permutation))>;
 
+// Result of the following ops changing tensor shape needs to have static
+// shape as HLO doesn't yet support dynamic reshaping ops.
+//
+// TODO(hinsu): Update once HLO supports dynamic reshaping ops.
 foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
-  def : Pat<(TfOp:$res AnyStaticShapeTensor:$arg, $ignored),
+  def : Pat<(TfOp:$res $arg, $ignored),
             (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
 }
 
 //===----------------------------------------------------------------------===//
 // RngUniform.
 //===----------------------------------------------------------------------===//
-def CastElementsToI64: NativeCodeCall<
-  "CastElementsToI64($0->getLoc(), $1, &$_builder)">;
 
 // TODO(misard,phawkins): handle random number generator seeds/states correctly.
 def : Pat<(TF_RandomUniformOp:$old $shape, $seed, $seed2),
@@ -408,5 +428,5 @@ def : Pat<(TF_RandomUniformOp:$old $shape, $seed, $seed2),
               (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 0.0)">)),
             (HLO_ConstOp
               (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 1.0)">)),
-            (CastElementsToI64 $old, $shape)),
+            (CastValueToI64 $old, $shape)),
             [(IsShapedTensor $shape)]>;

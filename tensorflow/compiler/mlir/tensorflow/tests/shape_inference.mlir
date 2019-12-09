@@ -1,6 +1,17 @@
 // RUN: tf-opt %s -tf-shape-inference -verify-diagnostics | FileCheck %s -dump-input=fail -color
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 130 : i32}} {
+// CHECK-LABEL: func @main(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32>
+  func @main(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<*xi32> {
+ // CHECK: %[[ARG0:.*]] = "tf.Cast"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
+ // CHECK: %[[ARG1:.*]] = "tf.Cast"(%arg1) : (tensor<1xi32>) -> tensor<1xi32>
+ // CHECK: %[[RESULT:.*]] = "tf.AddV2"(%[[ARG0]], %[[ARG1]]) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
+ // CHECK: return %[[RESULT]] : tensor<1xi32>
+    %0 = "tf.Cast"(%arg0) : (tensor<1xi32>) -> tensor<*xi32>
+    %1 = "tf.Cast"(%arg1) : (tensor<1xi32>) -> tensor<*xi32>
+    %2 = "tf.AddV2"(%0, %1) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+    return %2 : tensor<*xi32>
+  }
 
 // CHECK-LABEL: func @simple_chain
   func @simple_chain(%arg0: tensor<1xf32>) -> tensor<*xf32> {
