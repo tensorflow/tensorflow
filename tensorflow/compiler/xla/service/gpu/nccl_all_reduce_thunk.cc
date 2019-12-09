@@ -30,13 +30,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
-<<<<<<< HEAD
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/include/rccl/rccl.h"
 #endif
-=======
 #include "tensorflow/compiler/xla/layout_util.h"
->>>>>>> upstream/master
 #include "tensorflow/compiler/xla/refcounting_hash_map.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"

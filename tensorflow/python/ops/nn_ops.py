@@ -44,11 +44,8 @@ from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
-<<<<<<< HEAD
 from tensorflow.python.platform import build_info
-=======
 from tensorflow.python.platform import device_context
->>>>>>> upstream/master
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.compat import collections_abc
