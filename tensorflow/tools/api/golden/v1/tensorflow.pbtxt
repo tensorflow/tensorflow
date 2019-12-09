@@ -549,10 +549,6 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "pywrap_tensorflow"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "qint16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -1558,11 +1554,11 @@ tf_module {
   }
   member_method {
     name: "lin_space"
-    argspec: "args=[\'start\', \'stop\', \'num\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'start\', \'stop\', \'num\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'0\'], "
   }
   member_method {
     name: "linspace"
-    argspec: "args=[\'start\', \'stop\', \'num\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'start\', \'stop\', \'num\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'0\'], "
   }
   member_method {
     name: "load_file_system_library"

@@ -746,7 +746,7 @@ tf_module {
   }
   member_method {
     name: "linspace"
-    argspec: "args=[\'start\', \'stop\', \'num\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'start\', \'stop\', \'num\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'0\'], "
   }
   member_method {
     name: "load_library"
