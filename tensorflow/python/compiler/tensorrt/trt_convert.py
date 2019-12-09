@@ -1239,7 +1239,6 @@ def create_inference_graph(
       a template to create a TRT-enabled ConfigProto for conversion. If not
       specified, a default ConfigProto will be used.
 
-
   Returns:
     A GraphDef transformed from input_graph_def (or the SavedModel graph def
     loaded from input_saved_model_dir, if input_graph_def is not present), where
