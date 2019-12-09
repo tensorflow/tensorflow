@@ -532,7 +532,7 @@ class Subgraph {
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
-  TfLiteContext context_;
+  TfLiteContext context_ = {};
 
   // A pointer to the external contexts (kTfLiteMaxExternalContexts) array that
   // sits inside the associated TFLite interpreter instance.
