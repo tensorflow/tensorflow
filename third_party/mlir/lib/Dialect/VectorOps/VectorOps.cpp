@@ -403,7 +403,7 @@ static LogicalResult verify(vector::ExtractOp op) {
   for (auto en : llvm::enumerate(positionAttr)) {
     auto attr = en.value().dyn_cast<IntegerAttr>();
     if (!attr || attr.getInt() < 0 ||
-        attr.getInt() > op.getVectorType().getDimSize(en.index()))
+        attr.getInt() >= op.getVectorType().getDimSize(en.index()))
       return op.emitOpError("expected position attribute #")
              << (en.index() + 1)
              << " to be a non-negative integer smaller than the corresponding "
@@ -517,7 +517,7 @@ static LogicalResult verify(InsertOp op) {
   for (auto en : llvm::enumerate(positionAttr)) {
     auto attr = en.value().dyn_cast<IntegerAttr>();
     if (!attr || attr.getInt() < 0 ||
-        attr.getInt() > destVectorType.getDimSize(en.index()))
+        attr.getInt() >= destVectorType.getDimSize(en.index()))
       return op.emitOpError("expected position attribute #")
              << (en.index() + 1)
              << " to be a non-negative integer smaller than the corresponding "
