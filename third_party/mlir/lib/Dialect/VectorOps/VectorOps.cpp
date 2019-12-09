@@ -22,6 +22,7 @@
 
 #include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
@@ -246,9 +247,10 @@ static LogicalResult verify(ContractionOp op) {
 }
 
 ArrayRef<StringRef> ContractionOp::getTraitAttrNames() {
-  static constexpr StringRef names[2] = {getIndexingMapsAttrName(),
-                                         getIteratorTypesAttrName()};
-  return ArrayRef<StringRef>(names);
+  static constexpr StringLiteral names[2] = {getIndexingMapsAttrName(),
+                                             getIteratorTypesAttrName()};
+  ArrayRef<StringLiteral> res{names};
+  return ArrayRef<StringRef>{res.begin(), res.end()};
 }
 
 static int64_t getResultIndex(AffineMap map, AffineExpr targetExpr) {

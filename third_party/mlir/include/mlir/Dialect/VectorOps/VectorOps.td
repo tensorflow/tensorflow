@@ -131,12 +131,6 @@ def Vector_ContractionOp :
     "Builder *builder, OperationState &result, Value *lhs, Value *rhs, "
     "Value *acc, ArrayAttr indexingMaps, ArrayAttr iteratorTypes">];
   let extraClassDeclaration = [{
-    static constexpr StringLiteral getIndexingMapsAttrName() {
-      return "indexing_maps";
-    }
-    static constexpr StringLiteral getIteratorTypesAttrName() {
-      return "iterator_types";
-    }
     VectorType getLhsType() {
       return lhs()->getType().cast<VectorType>();
     }
@@ -159,12 +153,6 @@ def Vector_ContractionOp :
     }
     ArrayRef<StringRef> getTraitAttrNames();
     SmallVector<AffineMap, 4> getIndexingMaps();
-    static StringRef getReductionIteratorTypeName() {
-      return "reduction";
-    }
-    static StringRef getParallelIteratorTypeName() {
-      return "parallel";
-    }
     static unsigned getAccOperandIndex() { return 2; }
 
     // Returns the bounds of each dimension in the iteration space spanned

@@ -12,7 +12,6 @@ package_group(
     packages = ["//..."],
 )
 
-# Before adding a project here, please read go/mlir-sla
 # In particular the OWNERS file of the dependent project should be updated.
 # TODO(b/140669524): Use proper MLIR tests instead of end-to-end tests for
 # tf_runtime and tf_runtime_google.
@@ -343,6 +342,21 @@ cc_library(
 )
 
 cc_library(
+    name = "DialectUtils",
+    srcs = [
+    ],
+    hdrs = [
+        "include/mlir/Dialect/Utils/StructuredOpsUtils.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":Support",
+        "@llvm//:support",
+    ],
+)
+
+cc_library(
     name = "AffineOps",
     srcs = [
         "include/mlir/Transforms/InliningUtils.h",
@@ -484,6 +498,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":DialectUtils",
         ":EDSC",
         ":IR",
         ":StandardOps",
