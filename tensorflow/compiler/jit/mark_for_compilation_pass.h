@@ -58,7 +58,7 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
                   RecursiveCompilabilityChecker::UncompilableNodesMap*
                       uncompilable_node_info = nullptr);
 
-absl::flat_hash_map<string, std::vector<string>> *CreateWhitelist();
+absl::flat_hash_map<string, std::vector<string>> *GetWhitelistTable();
 
 namespace testing {
 // DO NOT USE IN PRODUCTION.

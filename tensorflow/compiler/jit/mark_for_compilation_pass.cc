@@ -1077,8 +1077,8 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
 }
 
 absl::flat_hash_set<string> GetOrCreateWhitelist() {
-  static absl::flat_hash_map<string, std::vector<string>>* whitelist_table =
-      tensorflow::CreateWhitelist();
+  absl::flat_hash_map<string, std::vector<string>>* whitelist_table =
+    tensorflow::GetWhitelistTable();
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
   absl::flat_hash_set<string> whitelist;
 
@@ -1761,9 +1761,9 @@ Status MarkForCompilationPass::RunForTest(
   return MarkForCompilation(options, debug_options);
 }
 
-absl::flat_hash_map<string, std::vector<string>>* CreateWhitelist() {
+absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
   // Table format: category name: {list of TF operations in that category}
-  absl::flat_hash_map<string, std::vector<string>>* result =
+  static absl::flat_hash_map<string, std::vector<string>>* result =
       new absl::flat_hash_map<string, std::vector<string>>{
           // Unary
           {"PW",
