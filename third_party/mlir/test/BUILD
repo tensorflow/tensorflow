@@ -113,6 +113,7 @@ cc_library(
     name = "TestIR",
     srcs = [
         "lib/IR/TestFunc.cpp",
+        "lib/IR/TestMatchers.cpp",
         "lib/IR/TestSymbolUses.cpp",
     ],
     deps = [
@@ -120,6 +121,7 @@ cc_library(
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
+        "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
     ],
     alwayslink = 1,

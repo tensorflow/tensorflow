@@ -26,7 +26,6 @@
 
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/StandardTypes.h"
-#include <type_traits>
 
 namespace mlir {
 
@@ -134,29 +133,77 @@ template <typename OpClass> struct op_matcher {
   bool match(Operation *op) { return isa<OpClass>(op); }
 };
 
-} // end namespace detail
+/// Trait to check whether T provides a 'match' method with type
+/// `OperationOrValue`.
+template <typename T, typename OperationOrValue>
+using has_operation_or_value_matcher_t =
+    decltype(std::declval<T>().match(std::declval<OperationOrValue>()));
 
-/// Entry point for matching a pattern over a Value.
-template <typename Pattern>
-inline bool matchPattern(Value *value, const Pattern &pattern) {
-  // TODO: handle other cases
-  if (auto *op = value->getDefiningOp())
-    return const_cast<Pattern &>(pattern).match(op);
+/// Statically switch to a Value matcher.
+template <typename MatcherClass>
+typename std::enable_if_t<is_detected<detail::has_operation_or_value_matcher_t,
+                                      MatcherClass, Value *>::value,
+                          bool>
+matchOperandOrValueAtIndex(Operation *op, unsigned idx, MatcherClass &matcher) {
+  return matcher.match(op->getOperand(idx));
+}
+
+/// Statically switch to an Operation matcher.
+template <typename MatcherClass>
+typename std::enable_if_t<is_detected<detail::has_operation_or_value_matcher_t,
+                                      MatcherClass, Operation *>::value,
+                          bool>
+matchOperandOrValueAtIndex(Operation *op, unsigned idx, MatcherClass &matcher) {
+  if (auto defOp = op->getOperand(idx)->getDefiningOp())
+    return matcher.match(defOp);
   return false;
 }
 
-/// Entry point for matching a pattern over an Operation.
-template <typename Pattern>
-inline bool matchPattern(Operation *op, const Pattern &pattern) {
-  return const_cast<Pattern &>(pattern).match(op);
+/// Terminal matcher, always returns true.
+struct AnyValueMatcher {
+  bool match(Value *op) const { return true; }
+};
+
+/// Binds to a specific value and matches it.
+struct PatternMatcherValue {
+  PatternMatcherValue(Value *val) : value(val) {}
+  bool match(Value *val) const { return val == value; }
+  Value *value;
+};
+
+template <typename TupleT, class CallbackT, std::size_t... Is>
+constexpr void enumerateImpl(TupleT &&tuple, CallbackT &&callback,
+                             std::index_sequence<Is...>) {
+  (void)std::initializer_list<int>{
+      0,
+      (callback(std::integral_constant<std::size_t, Is>{}, std::get<Is>(tuple)),
+       0)...};
 }
 
-/// Matches a constant holding a scalar/vector/tensor integer (splat) and
-/// writes the integer value to bind_value.
-inline detail::constant_int_op_binder
-m_ConstantInt(IntegerAttr::ValueType *bind_value) {
-  return detail::constant_int_op_binder(bind_value);
+template <typename... Tys, typename CallbackT>
+constexpr void enumerate(std::tuple<Tys...> &tuple, CallbackT &&callback) {
+  detail::enumerateImpl(tuple, std::forward<CallbackT>(callback),
+                        std::make_index_sequence<sizeof...(Tys)>{});
 }
+
+/// RecursivePatternMatcher that composes.
+template <typename OpType, typename... OperandMatchers>
+struct RecursivePatternMatcher {
+  RecursivePatternMatcher(OperandMatchers... matchers)
+      : operandMatchers(matchers...) {}
+  bool match(Operation *op) {
+    if (!isa<OpType>(op) || op->getNumOperands() != sizeof...(OperandMatchers))
+      return false;
+    bool res = true;
+    enumerate(operandMatchers, [&](size_t index, auto &matcher) {
+      res &= matchOperandOrValueAtIndex(op, index, matcher);
+    });
+    return res;
+  }
+  std::tuple<OperandMatchers...> operandMatchers;
+};
+
+} // end namespace detail
 
 /// Matches a value from a constant foldable operation and writes the value to
 /// bind_value.
@@ -185,6 +232,38 @@ inline detail::constant_int_value_matcher<0> m_Zero() {
 inline detail::constant_int_not_value_matcher<0> m_NonZero() {
   return detail::constant_int_not_value_matcher<0>();
 }
+
+/// Entry point for matching a pattern over a Value.
+template <typename Pattern>
+inline bool matchPattern(Value *value, const Pattern &pattern) {
+  // TODO: handle other cases
+  if (auto *op = value->getDefiningOp())
+    return const_cast<Pattern &>(pattern).match(op);
+  return false;
+}
+
+/// Entry point for matching a pattern over an Operation.
+template <typename Pattern>
+inline bool matchPattern(Operation *op, const Pattern &pattern) {
+  return const_cast<Pattern &>(pattern).match(op);
+}
+
+/// Matches a constant holding a scalar/vector/tensor integer (splat) and
+/// writes the integer value to bind_value.
+inline detail::constant_int_op_binder
+m_ConstantInt(IntegerAttr::ValueType *bind_value) {
+  return detail::constant_int_op_binder(bind_value);
+}
+
+template <typename OpType, typename... Matchers>
+auto m_Op(Matchers... matchers) {
+  return detail::RecursivePatternMatcher<OpType, Matchers...>(matchers...);
+}
+
+namespace matchers {
+inline auto m_any() { return detail::AnyValueMatcher(); }
+inline auto m_val(Value *v) { return detail::PatternMatcherValue(v); }
+} // namespace matchers
 
 } // end namespace mlir
 
