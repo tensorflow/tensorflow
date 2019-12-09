@@ -884,8 +884,6 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     []
     >>> list(Dataset.range(5, 1, -2).as_numpy_iterator())
     [5, 3]
-    >>> list(Dataset.range(5, output_type=tf.int32).as_numpy_iterator())
-    [0, 1, 2, 3, 4]
     >>> list(Dataset.range(2, 5, output_type=tf.int32).as_numpy_iterator())
     [2, 3, 4]
     >>> list(Dataset.range(1, 5, 2, output_type=tf.float32).as_numpy_iterator())
