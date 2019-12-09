@@ -119,7 +119,8 @@ class MicroInterpreter {
   const Model* model_;
   const OpResolver& op_resolver_;
   ErrorReporter* error_reporter_;
-  TfLiteContext context_;
+  // Explicitly initialize TfLiteContext POD struct.
+  TfLiteContext context_ = {};
   MicroAllocator allocator_;
   bool tensors_allocated_;
 

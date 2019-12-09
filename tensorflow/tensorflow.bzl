@@ -4,6 +4,7 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_dynamic_kernels",
     "if_static",
+    "register_extension_info",
     "tf_additional_grpc_deps_py",
     "tf_additional_xla_deps_py",
     "tf_exec_compatible_with",
@@ -46,9 +47,6 @@ load(
     "//third_party/ngraph:build_defs.bzl",
     "if_ngraph",
 )
-
-def register_extension_info(**kwargs):
-    pass
 
 # version for the shared libraries, can
 # not contain rc or alpha, only numbers.
@@ -168,6 +166,12 @@ def if_emscripten(a):
     return select({
         clean_dep("//tensorflow:emscripten"): a,
         "//conditions:default": [],
+    })
+
+def if_chromiumos(a, otherwise = []):
+    return select({
+        clean_dep("//tensorflow:chromiumos"): a,
+        "//conditions:default": otherwise,
     })
 
 def if_macos(a, otherwise = []):

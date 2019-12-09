@@ -11,6 +11,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["src/testdata/add.bin"])
+
 JAVA_SRCS = glob([
     "src/main/java/org/tensorflow/lite/*.java",
     "src/main/java/org/tensorflow/lite/annotations/*.java",
@@ -23,6 +25,12 @@ JAVA_SRCS = glob([
 aar_with_jni(
     name = "tensorflow-lite",
     android_library = ":tensorflowlite",
+    headers = [
+        "//tensorflow/lite:builtin_ops.h",
+        "//tensorflow/lite/c:c_api.h",
+        "//tensorflow/lite/c:c_api_experimental.h",
+        "//tensorflow/lite/c:common.h",
+    ],
 )
 
 # EXPERIMENTAL: AAR target for using TensorFlow ops with TFLite. Note that this
@@ -47,6 +55,9 @@ aar_with_jni(
 aar_with_jni(
     name = "tensorflow-lite-gpu",
     android_library = ":tensorflowlite_gpu",
+    headers = [
+        "//tensorflow/lite/delegates/gpu:delegate.h",
+    ],
 )
 
 android_library(
@@ -347,7 +358,12 @@ cc_library(
 
 tflite_jni_binary(
     name = "libtensorflowlite_jni.so",
+    linkscript = ":tflite_version_script.lds",
     deps = [
+        # Note that we explicitly include the C API here for convenience, as it
+        # allows bundling of the C lib w/ AAR distribution.
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/delegates/nnapi/java/src/main/native",
         "//tensorflow/lite/java/src/main/native",
     ],
@@ -364,6 +380,7 @@ tflite_jni_binary(
 # EXPERIMENTAL: Native target that supports GPU acceleration.
 tflite_jni_binary(
     name = "libtensorflowlite_gpu_jni.so",
+    linkscript = ":gpu_version_script.lds",
     deps = [
         "//tensorflow/lite/delegates/gpu/java/src/main/native",
     ],

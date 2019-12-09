@@ -23,12 +23,12 @@ cc_library(
 cc_library(
     name = "sample_feature_data",
     srcs = [
-        "angle_micro_features_data.cc",
-        "circle_micro_features_data.cc",
+        "ring_micro_features_data.cc",
+        "slope_micro_features_data.cc",
     ],
     hdrs = [
-        "angle_micro_features_data.h",
-        "circle_micro_features_data.h",
+        "ring_micro_features_data.h",
+        "slope_micro_features_data.h",
     ],
 )
 

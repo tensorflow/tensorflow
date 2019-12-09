@@ -552,59 +552,40 @@ def tf_platform_srcs(files):
         "//conditions:default": native.glob(posix_set),
     })
 
-def tf_additional_lib_hdrs(exclude = []):
-    windows_hdrs = native.glob([
-        "default/*.h",
-        "windows/*.h",
-        "posix/error.h",
-    ], exclude = exclude + [
-        "default/subprocess.h",
-        "default/posix_file_system.h",
-    ])
-    return select({
-        clean_dep("//tensorflow:windows"): windows_hdrs,
-        "//conditions:default": native.glob([
-            "default/*.h",
-            "posix/*.h",
-        ], exclude = exclude),
-    })
-
-def tf_additional_lib_srcs(exclude = []):
-    windows_srcs = native.glob([
-        "default/*.cc",
-        "windows/*.cc",
-        "posix/error.cc",
-    ], exclude = exclude + [
-        "default/env.cc",
-        "default/env_time.cc",
-        "default/load_library.cc",
-        "default/net.cc",
-        "default/port.cc",
-        "default/posix_file_system.cc",
-        "default/subprocess.cc",
-        "default/stacktrace_handler.cc",
-    ])
-    return select({
-        clean_dep("//tensorflow:windows"): windows_srcs,
-        "//conditions:default": native.glob([
-            "default/*.cc",
-            "posix/*.cc",
-        ], exclude = exclude),
+def tf_additional_lib_hdrs():
+    return [
+        "//tensorflow/core/platform:default/context.h",
+        "//tensorflow/core/platform:default/cord.h",
+        "//tensorflow/core/platform:default/dynamic_annotations.h",
+        "//tensorflow/core/platform:default/integral_types.h",
+        "//tensorflow/core/platform:default/logging.h",
+        "//tensorflow/core/platform:default/mutex.h",
+        "//tensorflow/core/platform:default/mutex_data.h",
+        "//tensorflow/core/platform:default/notification.h",
+        "//tensorflow/core/platform:default/stacktrace.h",
+        "//tensorflow/core/platform:default/strong_hash.h",
+        "//tensorflow/core/platform:default/test_benchmark.h",
+        "//tensorflow/core/platform:default/tracing_impl.h",
+        "//tensorflow/core/platform:default/unbounded_work_queue.h",
+    ] + select({
+        "//tensorflow:windows": [
+            "//tensorflow/core/platform:windows/intrinsics_port.h",
+            "//tensorflow/core/platform:windows/stacktrace.h",
+            "//tensorflow/core/platform:windows/subprocess.h",
+            "//tensorflow/core/platform:windows/wide_char.h",
+            "//tensorflow/core/platform:windows/windows_file_system.h",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core/platform:default/posix_file_system.h",
+            "//tensorflow/core/platform:default/subprocess.h",
+        ],
     })
 
 def tf_additional_monitoring_hdrs():
     return []
 
-def tf_additional_monitoring_srcs():
-    return [
-        "default/monitoring.cc",
-    ]
-
-def tf_additional_proto_hdrs():
-    return [
-        "default/integral_types.h",
-        "default/logging.h",
-    ]
+def tf_additional_env_hdrs():
+    return []
 
 def tf_additional_all_protos():
     return [clean_dep("//tensorflow/core:protos_all")]

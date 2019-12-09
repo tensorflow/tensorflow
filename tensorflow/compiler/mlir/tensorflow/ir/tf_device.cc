@@ -332,8 +332,7 @@ struct DropEmptyLaunch : public OpRewritePattern<LaunchOp> {
     if (&block.front() != &block.back()) return matchFailure();
 
     // Map launch results to return operands.
-    llvm::SmallVector<Value*, 8> new_rets(block.front().getOperands());
-    rewriter.replaceOp(op, new_rets);
+    rewriter.replaceOp(op, block.front().getOperands());
 
     return matchSuccess();
   }

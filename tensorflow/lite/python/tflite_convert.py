@@ -205,9 +205,10 @@ def _convert_tf1_model(flags):
   if flags.conversion_summary_dir:
     converter.conversion_summary_dir = flags.conversion_summary_dir
 
-  # TODO(b/145312675): Enable the new converter by default. It requires to
-  # add a new command line argument like `experimental_legacy_converter`.
-  converter.experimental_new_converter = flags.experimental_new_converter
+  if flags.experimental_new_converter:
+    converter.experimental_new_converter = True
+  if flags.experimental_legacy_converter:
+    converter.experimental_new_converter = False
 
   # Convert model.
   output_data = converter.convert()
@@ -231,9 +232,10 @@ def _convert_tf2_model(flags):
     model = keras.models.load_model(flags.keras_model_file)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
 
-  # TODO(b/145312675): Enable the new converter by default. It requires to
-  # add a new command line argument like `experimental_legacy_converter`.
-  converter.experimental_new_converter = flags.experimental_new_converter
+  if flags.experimental_new_converter:
+    converter.experimental_new_converter = True
+  if flags.experimental_legacy_converter:
+    converter.experimental_new_converter = False
 
   # Convert the model.
   tflite_model = converter.convert()
@@ -308,6 +310,10 @@ def _check_tf1_flags(flags, unparsed):
                      "--experimental_new_converter")
   if flags.custom_opdefs and not flags.allow_custom_ops:
     raise ValueError("--custom_opdefs must be used with --allow_custom_ops")
+  if flags.experimental_new_converter and flags.experimental_legacy_converter:
+    raise ValueError(
+        "--experimental_new_converter and experimental_legacy_converter "
+        "cannot be used together")
 
 
 def _check_tf2_flags(flags):
@@ -322,6 +328,10 @@ def _check_tf2_flags(flags):
   if not flags.keras_model_file and not flags.saved_model_dir:
     raise ValueError("one of the arguments --saved_model_dir "
                      "--keras_model_file is required")
+  if flags.experimental_new_converter and flags.experimental_legacy_converter:
+    raise ValueError(
+        "--experimental_new_converter and experimental_legacy_converter "
+        "cannot be used together")
 
 
 def _get_tf1_flags(parser):
@@ -554,12 +564,20 @@ def _get_parser(use_v2_converter):
   else:
     _get_tf1_flags(parser)
 
-  # Enable MLIR-TFLite converter.
+  # Note: When neither of the following command line argument is passed,
+  # it will use the default behavior defined in `lite.py`.
+  # Enable MLIR-based TFLite converter.
   parser.add_argument(
       "--experimental_new_converter",
       action="store_true",
       help=("Experimental flag, subject to change. Enables MLIR-based "
             "conversion instead of TOCO conversion."))
+  # Explicitly disable the MLIR-based TFLite converter.
+  parser.add_argument(
+      "--experimental_legacy_converter",
+      action="store_true",
+      help=("Experimental flag, subject to change. Disable MLIR-based "
+            "conversion and use the legacy converter."))
   return parser
 
 

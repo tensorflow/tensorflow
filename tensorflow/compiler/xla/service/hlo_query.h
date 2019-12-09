@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 
 namespace xla {
 
@@ -71,6 +72,10 @@ bool MatchBinaryInstructionOperandOpcode(HloOpcode opcode,
                                          HloInstruction* instruction,
                                          HloInstruction** matching_operand,
                                          HloInstruction** other_operand);
+
+// Returns whether the module contains all-reduce instructions with constrained
+// layout.
+bool ContainsLayoutConstrainedAllReduce(const HloModule& module);
 
 }  // namespace hlo_query
 }  // namespace xla

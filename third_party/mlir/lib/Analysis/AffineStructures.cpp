@@ -1525,7 +1525,7 @@ void FlatAffineConstraints::removeRedundantInequalities() {
 
 std::pair<AffineMap, AffineMap> FlatAffineConstraints::getLowerAndUpperBound(
     unsigned pos, unsigned offset, unsigned num, unsigned symStartPos,
-    ArrayRef<AffineExpr> localExprs, MLIRContext *context) {
+    ArrayRef<AffineExpr> localExprs, MLIRContext *context) const {
   assert(pos + offset < getNumDimIds() && "invalid dim start pos");
   assert(symStartPos >= (pos + offset) && "invalid sym start pos");
   assert(getNumLocalIds() == localExprs.size() &&

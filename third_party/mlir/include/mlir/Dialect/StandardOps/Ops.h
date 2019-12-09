@@ -178,9 +178,9 @@ public:
   using Op::Op;
 
   static void build(Builder *builder, OperationState &result, Value *srcMemRef,
-                    ArrayRef<Value *> srcIndices, Value *destMemRef,
-                    ArrayRef<Value *> destIndices, Value *numElements,
-                    Value *tagMemRef, ArrayRef<Value *> tagIndices,
+                    ValueRange srcIndices, Value *destMemRef,
+                    ValueRange destIndices, Value *numElements,
+                    Value *tagMemRef, ValueRange tagIndices,
                     Value *stride = nullptr,
                     Value *elementsPerStride = nullptr);
 
@@ -303,7 +303,7 @@ public:
   using Op::Op;
 
   static void build(Builder *builder, OperationState &result, Value *tagMemRef,
-                    ArrayRef<Value *> tagIndices, Value *numElements);
+                    ValueRange tagIndices, Value *numElements);
 
   static StringRef getOperationName() { return "std.dma_wait"; }
 

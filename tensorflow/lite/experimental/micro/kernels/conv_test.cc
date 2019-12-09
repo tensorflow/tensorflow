@@ -43,9 +43,9 @@ static TfLiteConvParams common_conv_params = {
     kTfLitePaddingValid,  // padding
     2,                    // stride_width
     2,                    // stride_height
+    kTfLiteActNone,       // activation
     1,                    // dilation_width_factor
     1,                    // dilation_height_factor
-    kTfLiteActNone,       // activation
 };
 
 template <typename T>
@@ -328,9 +328,9 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannel) {
 
 TF_LITE_MICRO_TEST(Kernel1x1QuantizedPerChannel) {
   // conv params:
-  // padding, stride_<width,height>, dilation_<width, height>, activation
-  TfLiteConvParams conv_params = {kTfLitePaddingValid, 1, 1, 1, 1,
-                                  kTfLiteActNone};
+  // padding, stride_<width,height>, activation, dilation_<width, height>
+  TfLiteConvParams conv_params = {kTfLitePaddingValid, 1, 1,
+                                  kTfLiteActNone,      1, 1};
   const int kInputShape[] = {4, 1, 2, 2, 4};  // [len,N,H,W,C]
   const int kInputElements =
       kInputShape[1] * kInputShape[2] * kInputShape[3] * kInputShape[4];

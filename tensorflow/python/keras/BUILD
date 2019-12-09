@@ -450,7 +450,6 @@ py_library(
         "layers/cudnn_recurrent.py",
         "layers/dense_attention.py",
         "layers/embeddings.py",
-        "layers/image_preprocessing.py",
         "layers/kernelized.py",
         "layers/local.py",
         "layers/merge.py",
@@ -458,6 +457,7 @@ py_library(
         "layers/normalization.py",
         "layers/normalization_v2.py",
         "layers/pooling.py",
+        "layers/preprocessing/image_preprocessing.py",
         "layers/preprocessing/normalization.py",
         "layers/preprocessing/normalization_v1.py",
         "layers/preprocessing/text_vectorization.py",
@@ -766,7 +766,7 @@ cuda_py_test(
 cuda_py_test(
     name = "image_preprocessing_test",
     size = "medium",
-    srcs = ["layers/image_preprocessing_test.py"],
+    srcs = ["layers/preprocessing/image_preprocessing_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",

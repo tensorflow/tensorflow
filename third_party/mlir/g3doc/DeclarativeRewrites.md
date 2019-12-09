@@ -50,7 +50,7 @@ features:
 *   Matching and generating ops with block arguments.
 *   Matching multi-result ops in nested patterns.
 *   Matching and generating variadic operand/result ops in nested patterns.
-*   Packing and unpacking variaidc operands/results during generation.
+*   Packing and unpacking variadic operands/results during generation.
 *   [`NativeCodeCall`](#native-code-call-transforming-the-generated-op)
     returning more than one results.
 
@@ -259,9 +259,9 @@ def : Pat<(AOp $input, $attr), (COp (AOp $input, $attr) $attr)>;
 
 `AOp` is generated via a nested result pattern; DRR won't be able to deduce the
 result type for it. A custom builder for `AOp` should be defined and it should
-deduce the result type by itself. The builder should have the a separate
-parameter for each operand and attribute and deduce the result type internally
-by itself. For example, for the above `AOp`, a possible builder is:
+deduce the result type by itself. The builder should have the separate parameter
+for each operand and attribute and deduce the result type internally by itself.
+For example, for the above `AOp`, a possible builder is:
 
 ```c++
 
@@ -311,9 +311,10 @@ def DOp : Op<"d_op"> {
 def : Pat<(AOp $input, $ignored_attr), (DOp (BOp:$b_result) $b_result)>;
 ```
 
-In this pattern, a `AOp` is matched and replaced with a `DOp` whose two operands
-are from the result of a single `BOp`. This is only possible by binding the
-result of the `BOp` to a name and reuse it for the second operand of the `DOp`
+In this pattern, an `AOp` is matched and replaced with a `DOp` whose two
+operands are from the result of a single `BOp`. This is only possible by binding
+the result of the `BOp` to a name and reuse it for the second operand of the
+`DOp`
 
 #### `NativeCodeCall`: transforming the generated op
 

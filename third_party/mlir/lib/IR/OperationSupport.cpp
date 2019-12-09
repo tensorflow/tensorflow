@@ -50,6 +50,18 @@ OperationState::OperationState(Location location, StringRef name,
     this->regions.push_back(std::move(r));
 }
 
+void OperationState::addOperands(ValueRange newOperands) {
+  assert(successors.empty() && "Non successor operands should be added first.");
+  operands.append(newOperands.begin(), newOperands.end());
+}
+
+void OperationState::addSuccessor(Block *successor, ValueRange succOperands) {
+  successors.push_back(successor);
+  // Insert a sentinel operand to mark a barrier between successor operands.
+  operands.push_back(nullptr);
+  operands.append(succOperands.begin(), succOperands.end());
+}
+
 Region *OperationState::addRegion() {
   regions.emplace_back(new Region);
   return regions.back().get();
@@ -66,7 +78,7 @@ void OperationState::addRegion(std::unique_ptr<Region> &&region) {
 /// Replace the operands contained in the storage with the ones provided in
 /// 'operands'.
 void detail::OperandStorage::setOperands(Operation *owner,
-                                         ArrayRef<Value *> operands) {
+                                         ValueRange operands) {
   // If the number of operands is less than or equal to the current amount, we
   // can just update in place.
   if (operands.size() <= numOperands) {

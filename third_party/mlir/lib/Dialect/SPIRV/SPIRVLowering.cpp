@@ -71,7 +71,7 @@ mlir::spirv::getEntryPointABIAttr(ArrayRef<int32_t> localSize,
 Type SPIRVTypeConverter::getIndexType(MLIRContext *context) {
   // Convert to 32-bit integers for now. Might need a way to control this in
   // future.
-  // TODO(ravishankarm): It is porbably better to make it 64-bit integers. To
+  // TODO(ravishankarm): It is probably better to make it 64-bit integers. To
   // this some support is needed in SPIR-V dialect for Conversion
   // instructions. The Vulkan spec requires the builtins like
   // GlobalInvocationID, etc. to be 32-bit (unsigned) integers which should be
@@ -189,7 +189,7 @@ static spirv::GlobalVariableOp getBuiltinVariable(spirv::ModuleOp &moduleOp,
   return nullptr;
 }
 
-/// Gets name of global variable for a buitlin.
+/// Gets name of global variable for a builtin.
 static std::string getBuiltinVarName(spirv::BuiltIn builtin) {
   return std::string("__builtin_var_") + stringifyBuiltIn(builtin).str() + "__";
 }
@@ -230,7 +230,7 @@ getOrInsertBuiltinVariable(spirv::ModuleOp &moduleOp, Location loc,
 }
 
 /// Gets the global variable associated with a builtin and add
-/// it if it doesnt exist.
+/// it if it doesn't exist.
 Value *mlir::spirv::getBuiltinVariableValue(Operation *op,
                                             spirv::BuiltIn builtin,
                                             OpBuilder &builder) {

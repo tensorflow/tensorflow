@@ -54,11 +54,21 @@ public:
 /// attribute gpu.kernel) within a spv.module.
 class KernelFnConversion final : public SPIRVOpLowering<FuncOp> {
 public:
-  using SPIRVOpLowering<FuncOp>::SPIRVOpLowering;
+  KernelFnConversion(MLIRContext *context, SPIRVTypeConverter &converter,
+                     ArrayRef<int64_t> workGroupSize,
+                     PatternBenefit benefit = 1)
+      : SPIRVOpLowering<FuncOp>(context, converter, benefit) {
+    auto config = workGroupSize.take_front(3);
+    workGroupSizeAsInt32.assign(config.begin(), config.end());
+    workGroupSizeAsInt32.resize(3, 1);
+  }
 
   PatternMatchResult
   matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override;
+
+private:
+  SmallVector<int32_t, 3> workGroupSizeAsInt32;
 };
 
 } // namespace
@@ -172,10 +182,10 @@ KernelFnConversion::matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
     argABI.push_back(spirv::getInterfaceVarABIAttr(
         0, argNum, spirv::StorageClass::StorageBuffer, rewriter.getContext()));
   }
-  // TODO(ravishankarm) : For now set this to {32, 1, 1}. This is incorrect. The
-  // actual workgroup size needs to be plumbed through.
+
   auto context = rewriter.getContext();
-  auto entryPointAttr = spirv::getEntryPointABIAttr({32, 1, 1}, context);
+  auto entryPointAttr =
+      spirv::getEntryPointABIAttr(workGroupSizeAsInt32, context);
   FuncOp newFuncOp = spirv::lowerAsEntryFunction(
       funcOp, typeConverter, rewriter, argABI, entryPointAttr);
   if (!newFuncOp) {
@@ -189,9 +199,11 @@ KernelFnConversion::matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
 namespace mlir {
 void populateGPUToSPIRVPatterns(MLIRContext *context,
                                 SPIRVTypeConverter &typeConverter,
-                                OwningRewritePatternList &patterns) {
+                                OwningRewritePatternList &patterns,
+                                ArrayRef<int64_t> workGroupSize) {
+  patterns.insert<KernelFnConversion>(context, typeConverter, workGroupSize);
   patterns.insert<
-      ForOpConversion, KernelFnConversion,
+      ForOpConversion,
       LaunchConfigConversion<gpu::BlockDimOp, spirv::BuiltIn::WorkgroupSize>,
       LaunchConfigConversion<gpu::BlockIdOp, spirv::BuiltIn::WorkgroupId>,
       LaunchConfigConversion<gpu::GridDimOp, spirv::BuiltIn::NumWorkgroups>,

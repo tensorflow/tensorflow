@@ -40,13 +40,13 @@ tensorflow/lite/experimental/micro/examples/magic_wand/gesture_predictor.h \
 magic_wand_TEST_SRCS := \
 tensorflow/lite/experimental/micro/examples/magic_wand/magic_wand_test.cc \
 tensorflow/lite/experimental/micro/examples/magic_wand/magic_wand_model_data.cc \
-tensorflow/lite/experimental/micro/examples/magic_wand/angle_micro_features_data.cc \
-tensorflow/lite/experimental/micro/examples/magic_wand/circle_micro_features_data.cc
+tensorflow/lite/experimental/micro/examples/magic_wand/slope_micro_features_data.cc \
+tensorflow/lite/experimental/micro/examples/magic_wand/ring_micro_features_data.cc
 
 magic_wand_TEST_HDRS := \
 tensorflow/lite/experimental/micro/examples/magic_wand/magic_wand_model_data.h \
-tensorflow/lite/experimental/micro/examples/magic_wand/angle_micro_features_data.h \
-tensorflow/lite/experimental/micro/examples/magic_wand/circle_micro_features_data.h
+tensorflow/lite/experimental/micro/examples/magic_wand/slope_micro_features_data.h \
+tensorflow/lite/experimental/micro/examples/magic_wand/ring_micro_features_data.h
 
 magic_wand_SRCS := \
 tensorflow/lite/experimental/micro/examples/magic_wand/main.cc \

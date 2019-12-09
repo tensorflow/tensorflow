@@ -23,7 +23,7 @@ int continuous_count = 0;
 int last_predict = -1;
 
 // Return the result of the last prediction
-// 0: wing("W"), 1: ring("O"), 2: slope("angle"), 3: unknown
+// 0: wing, 1: ring, 2: slope, 3: unknown
 int PredictGesture(float* output) {
   // Find whichever output has a probability > 0.8 (they sum to 1)
   int this_predict = -1;

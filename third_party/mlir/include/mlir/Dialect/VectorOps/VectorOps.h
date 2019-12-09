@@ -28,6 +28,8 @@
 #include "mlir/IR/StandardTypes.h"
 
 namespace mlir {
+class MLIRContext;
+class OwningRewritePatternList;
 namespace vector {
 
 /// Dialect for Ops on higher-dimensional vector types.
@@ -36,6 +38,10 @@ public:
   VectorOpsDialect(MLIRContext *context);
   static StringRef getDialectNamespace() { return "vector"; }
 };
+
+/// Collect a set of vector-to-vector canonicalization patterns.
+void populateVectorToVectorCanonicalizationPatterns(
+    OwningRewritePatternList &patterns, MLIRContext *context);
 
 #define GET_OP_CLASSES
 #include "mlir/Dialect/VectorOps/VectorOps.h.inc"

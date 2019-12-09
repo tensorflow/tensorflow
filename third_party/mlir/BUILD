@@ -158,6 +158,7 @@ cc_library(
         "lib/Pass/PassDetail.h",
         "lib/Pass/PassManagerOptions.cpp",
         "lib/Pass/PassRegistry.cpp",
+        "lib/Pass/PassStatistics.cpp",
         "lib/Pass/PassTiming.cpp",
     ],
     hdrs = [
@@ -454,6 +455,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":CallOpInterfacesIncGen",
+        ":CommonFolders",
         ":IR",
         ":StandardOpsIncGen",
         ":Support",
@@ -484,6 +486,7 @@ cc_library(
     deps = [
         ":EDSC",
         ":IR",
+        ":StandardOps",
         ":Support",
         ":VectorOpsIncGen",
         ":VectorTransformPatterns",
@@ -698,6 +701,7 @@ cc_library(
         ":NVVMDialect",
         ":Pass",
         ":Transforms",
+        "@llvm//:support",
     ],
     alwayslink = 1,
 )
@@ -761,6 +765,7 @@ cc_library(
         ":SPIRVDialect",
         ":SPIRVLowering",
         ":StandardToSPIRVConversions",
+        ":Support",
         ":Transforms",
     ],
     alwayslink = 1,
@@ -949,9 +954,11 @@ filegroup(
     srcs = [
         "include/mlir/Analysis/CallInterfaces.td",
         "include/mlir/Dialect/SPIRV/SPIRVArithmeticOps.td",
+        "include/mlir/Dialect/SPIRV/SPIRVAtomicOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVBase.td",
         "include/mlir/Dialect/SPIRV/SPIRVBitOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVCastOps.td",
+        "include/mlir/Dialect/SPIRV/SPIRVCompositeOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVControlFlowOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVGroupOps.td",
@@ -1281,7 +1288,6 @@ cc_library(
         "lib/Transforms/LoopTiling.cpp",
         "lib/Transforms/LoopUnroll.cpp",
         "lib/Transforms/LoopUnrollAndJam.cpp",
-        "lib/Transforms/MaterializeVectors.cpp",
         "lib/Transforms/MemRefDataFlowOpt.cpp",
         "lib/Transforms/PipelineDataTransfer.cpp",
         "lib/Transforms/SimplifyAffineStructures.cpp",
@@ -1310,6 +1316,20 @@ cc_library(
         "@llvm//:support",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "CommonFolders",
+    srcs = [
+    ],
+    hdrs = [
+        "include/mlir/Dialect/CommonFolders.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        "@llvm//:support",
+    ],
 )
 
 cc_library(

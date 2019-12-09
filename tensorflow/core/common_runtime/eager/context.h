@@ -265,10 +265,18 @@ class EagerContext : public core::RefCounted {
   FunctionLibraryDefinition* FuncLibDef() { return &func_lib_def_; }
 
 #if !defined(IS_MOBILE_PLATFORM)
-  Status GetClient(Device* device, eager::EagerClient** client);
+  // Assign the EagerClient pointer to `client` based on the given device / task
+  // name, and increment the refcount of the client. The reference ownership is
+  // transferred to the caller, and the unref should automatically happen when
+  // destructing the RefCountPtr object at the caller's side.
+  // `client` must not be initialized or holding a reference of another object
+  // before calling this method.
+  Status GetClient(Device* device,
+                   core::RefCountPtr<eager::EagerClient>* client);
   Status GetClient(const DeviceNameUtils::ParsedName& device_name,
-                   eager::EagerClient** client);
-  Status GetClient(const string& remote_task, eager::EagerClient** client);
+                   core::RefCountPtr<eager::EagerClient>* client);
+  Status GetClient(const string& remote_task,
+                   core::RefCountPtr<eager::EagerClient>* client);
 
   uint64 GetContextId();
   uint64 GetContextViewId();

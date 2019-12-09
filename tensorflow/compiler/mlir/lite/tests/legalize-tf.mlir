@@ -1280,3 +1280,13 @@ func @conv2d_backprop_unsupported_data_format(%arg0: tensor<4xi32>, %arg1: tenso
   // CHECK-LABEL: conv2d_backprop_unsupported_data_format
   // CHECK: tf.Conv2DBackpropInput
 }
+
+func @assert_remove(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi1> {
+  %0 = "tf.LessEqual"(%arg0, %arg1) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
+  "tf.Assert"(%0, %arg1) {summarize = 3} : (tensor<1xi1>, tensor<1xi32>) -> ()
+  return %0 : tensor<1xi1>
+  // CHECK-LABEL: assert_remove
+  // CHECK: tfl.less_equal
+  // CHECK-NOT: Assert
+  // CHECK: return
+}

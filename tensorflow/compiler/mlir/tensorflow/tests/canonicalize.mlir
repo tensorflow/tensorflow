@@ -382,3 +382,10 @@ func @nonIdentityTranspose(%arg0: tensor<2x3x4x5x6xf32>) -> tensor<2x3x4x6x5xf32
   // CHECK: %1 = "tf.Transpose"(%arg0, %0) : (tensor<2x3x4x5x6xf32>, tensor<5xi32>) -> tensor<2x3x4x6x5xf32>
   // CHECK: return %1
 }
+
+// CHECK-LABEL: func @addN
+func @addN(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: return %arg0
+  %0 = "tf.AddN"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}

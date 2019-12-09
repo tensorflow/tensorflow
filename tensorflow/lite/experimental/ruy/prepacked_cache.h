@@ -69,10 +69,7 @@ enum CachePolicy { kNoCache, kCacheLHSOnGemV };
 // The implementation is "low effort" in the following ways:
 //  - we just linearly search for the oldest entry when doing an ejection
 //  - the ejection policy is very simple: if the new size would be above the
-// .  threshold, we will eject one entry when adding an entry. Therefore,
-//    there are no guarantees on maximum cache size since one may
-//    insert an item larger than the ejection threshold (it will be ejected on
-//    the next insert, but inserts always succeed).
+// .  threshold, we will eject entries until the size is below the threshold.
 // Current use cases (RNNs with GEMV operations) indicate that ejection is rare
 // and memory constraints are tight, so we devote no additional storage to the
 // LRU mechanism and accept O(n) search to eject oldest entry. In practice,
@@ -105,6 +102,12 @@ class PrepackedCache {
 
   // Returns the total size (in bytes) of data held in this cache.
   int TotalSize() const { return cache_size_; }
+
+  // All calls to get current TimePoints go through here.
+  // TODO(b/145625614) Profile timestamps on relevant models to see if
+  // this level of granularity is sufficient. CoarseNow is cheap so
+  // it would be nice to keep it.
+  TimePoint CacheNow() const { return CoarseNow(); }
 
   // Performs the memory allocation for the `data` and `sums` members of a
   // PrepackedMatrix.

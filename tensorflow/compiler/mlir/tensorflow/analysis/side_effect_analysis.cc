@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
@@ -99,12 +100,13 @@ void ResourceAliasAnalysis::AnalyzeFunction(FuncOp func_op) {
   auto forward_input_to_output = [&](Value* operand, Value* result) {
     if (!mlir::getElementTypeOrSelf(result->getType()).isa<TF::ResourceType>())
       return;
+    auto& result_ids = resource_value_to_ids_[result];
     auto operand_it = resource_value_to_ids_.find(operand);
     assert(operand_it != resource_value_to_ids_.end() &&
            "A resource-type output does not have the corresponding "
            "resource-type input.");
-    resource_value_to_ids_[result].insert(operand_it->getSecond().begin(),
-                                          operand_it->getSecond().end());
+    result_ids.insert(operand_it->getSecond().begin(),
+                      operand_it->getSecond().end());
   };
   // TODO(yuanzx): Consider control-flow ops.
   func_op.walk([&](Operation* op) {
@@ -118,6 +120,16 @@ void ResourceAliasAnalysis::AnalyzeFunction(FuncOp func_op) {
            llvm::zip(op->getOperands(), op->getResults())) {
         forward_input_to_output(std::get<0>(operand_and_result),
                                 std::get<1>(operand_and_result));
+      }
+    } else if (auto replicate = llvm::dyn_cast<tf_device::ReplicateOp>(op)) {
+      // The nested block for RepliateOp is handled separately in side-effect
+      // analysis. Inside that block, we can still treat its block arguments as
+      // different resources.
+      for (auto arg : replicate.GetBody().getArguments()) {
+        if (mlir::getElementTypeOrSelf(arg->getType())
+                .isa<TF::ResourceType>()) {
+          resource_value_to_ids_[arg].insert(next_unique_id++);
+        }
       }
     } else {
       for (auto result : op->getResults()) {
@@ -261,9 +273,36 @@ void SideEffectAnalysis::AddPredecessorsForAccess(int64_t resource_id,
 
 void SideEffectAnalysis::AnalyzeFunction(
     FuncOp func_op, const ResourceAliasAnalysis& alias_analysis) {
-  // This function populates control_predecessors_ and control_successors_ by
-  // walking through func_op's body, and tracking resource accesses in
-  // per_resource_access_info_.
+  // AnalyzeRegion() recursively analyzes the function body, and only populates
+  // control_predecessors_.
+  AnalyzeRegion(&func_op.getBody(), alias_analysis);
+  // Populate sorted_control_predecessors_ and sorted_control_successors_ based
+  // on control_predecessors.
+  for (auto& entry : control_predecessors_) {
+    auto op = entry.getFirst();
+    auto& sorted_predecessors = sorted_control_predecessors_[op];
+    for (auto predecessor : entry.getSecond()) {
+      sorted_predecessors.push_back(predecessor);
+      sorted_control_successors_[predecessor].push_back(op);
+    }
+  }
+  control_predecessors_.clear();
+  for (auto& entry : sorted_control_predecessors_) {
+    llvm::sort(entry.getSecond(), [](Operation* a, Operation* b) {
+      return a->isBeforeInBlock(b);
+    });
+  }
+  for (auto& entry : sorted_control_successors_) {
+    llvm::sort(entry.getSecond(), [](Operation* a, Operation* b) {
+      return a->isBeforeInBlock(b);
+    });
+  }
+}
+
+void SideEffectAnalysis::AnalyzeRegion(
+    Region* region, const ResourceAliasAnalysis& alias_analysis) {
+  // This function populates control_predecessors_ by walking through the
+  // region, and tracking resource accesses in per_resource_access_info_.
 
   // Returns whether an access to `resource` can skip control edges from
   // prevoius accesses to unknown resources, due to that earlier accesses to
@@ -284,82 +323,93 @@ void SideEffectAnalysis::AnalyzeFunction(
                      (it->second.tracked_last_unknown_read || no_unknown_read);
   };
 
-  func_op.walk([&](Operation* op) {
-    // We do not need explicit control edges for declaration ops.
-    if (OpIsDeclaration(op, alias_analysis)) return;
-
-    auto resource_op_info = GetResourceInfoForOp(op);
-    if (!resource_op_info && op->hasNoSideEffect()) return;
-
-    llvm::SmallDenseSet<int64_t, 8> resources =
-        resource_op_info ? FindAccessedResources(op, alias_analysis)
-                         : UnknownResourceSet();
-    assert(!resources.empty());
-    const bool is_unknown = resources.count(kUnknownResourceId) > 0;
-    const bool read_only = OpIsReadOnly(op);
-    bool indirectly_tracked_unknown_access = false;
-    // First add edges from known resources.
-    if (is_unknown) {
-      for (auto& entry : per_resource_access_info_) {
-        if (entry.getFirst() == kUnknownResourceId) continue;
-        AddPredecessorsForAccess(entry.getFirst(), op, read_only);
-        indirectly_tracked_unknown_access |=
-            unknown_access_indirectly_tracked_by_resource(entry.getFirst(),
-                                                          read_only);
+  // We explicitly iterates through the regions and blocks, in order to handle
+  // different nested regions separately.
+  for (auto& block : *region) {
+    for (auto& op : block) {
+      if (op.getNumRegions() > 0) {
+        llvm::SmallVector<SideEffectAnalysis, 4> child_analyses;
+        for (auto& child_region : op.getRegions()) {
+          child_analyses.emplace_back();
+          child_analyses.back().AnalyzeRegion(&child_region, alias_analysis);
+        }
+        ConsumeChildAnalyses(std::move(child_analyses));
       }
-    } else {
-      for (int64_t resource : resources) {
-        AddPredecessorsForAccess(resource, op, read_only);
-        indirectly_tracked_unknown_access |=
-            unknown_access_indirectly_tracked_by_resource(resource, read_only);
-        // Update access info for known resources.
-        TrackAccess(resource, op, read_only);
-      }
-    }
-    // If not indirectly tracked, add edges from the unknown resource.
-    if (!indirectly_tracked_unknown_access) {
-      AddPredecessorsForAccess(kUnknownResourceId, op, read_only);
-    }
-    if (is_unknown) {
-      // Update access info for unknown resource.
-      TrackAccess(kUnknownResourceId, op, read_only);
-    }
-  });
 
-  // Populate control_successors_ based on control_predecessors_.
-  for (auto& entry : control_predecessors_) {
-    auto op = entry.getFirst();
-    for (auto predecessor : entry.getSecond()) {
-      control_successors_[predecessor].insert(op);
+      // We do not need explicit control edges for declaration ops.
+      if (OpIsDeclaration(&op, alias_analysis)) continue;
+
+      auto resource_op_info = GetResourceInfoForOp(&op);
+      if (!resource_op_info && op.hasNoSideEffect()) continue;
+
+      llvm::SmallDenseSet<int64_t, 8> resources =
+          resource_op_info ? FindAccessedResources(&op, alias_analysis)
+                           : UnknownResourceSet();
+      assert(!resources.empty());
+      const bool is_unknown = resources.count(kUnknownResourceId) > 0;
+      const bool read_only = OpIsReadOnly(&op);
+      bool indirectly_tracked_unknown_access = false;
+      // First add edges from known resources.
+      if (is_unknown) {
+        for (auto& entry : per_resource_access_info_) {
+          if (entry.getFirst() == kUnknownResourceId) continue;
+          AddPredecessorsForAccess(entry.getFirst(), &op, read_only);
+          indirectly_tracked_unknown_access |=
+              unknown_access_indirectly_tracked_by_resource(entry.getFirst(),
+                                                            read_only);
+        }
+      } else {
+        for (int64_t resource : resources) {
+          AddPredecessorsForAccess(resource, &op, read_only);
+          indirectly_tracked_unknown_access |=
+              unknown_access_indirectly_tracked_by_resource(resource,
+                                                            read_only);
+          // Update access info for known resources.
+          TrackAccess(resource, &op, read_only);
+        }
+      }
+      // If not indirectly tracked, add edges from the unknown resource.
+      if (!indirectly_tracked_unknown_access) {
+        AddPredecessorsForAccess(kUnknownResourceId, &op, read_only);
+      }
+      if (is_unknown) {
+        // Update access info for unknown resource.
+        TrackAccess(kUnknownResourceId, &op, read_only);
+      }
     }
   }
 }
 
-llvm::SmallVector<Operation*, 8> SideEffectAnalysis::DirectControlPredecessors(
+void SideEffectAnalysis::ConsumeChildAnalyses(
+    llvm::SmallVector<SideEffectAnalysis, 4>&& children) {
+  for (auto& child : children) {
+    for (auto& entry : child.control_predecessors_) {
+      control_predecessors_[entry.getFirst()] = std::move(entry.getSecond());
+    }
+  }
+}
+
+llvm::SmallVector<Operation*, 4> SideEffectAnalysis::DirectControlPredecessors(
     Operation* op, llvm::function_ref<bool(Operation*)> filter) const {
-  llvm::SmallVector<Operation*, 8> result;
-  auto it = control_predecessors_.find(op);
-  if (it == control_predecessors_.end()) return result;
+  llvm::SmallVector<Operation*, 4> result;
+  auto it = sorted_control_predecessors_.find(op);
+  if (it == sorted_control_predecessors_.end()) return result;
   result.reserve(it->getSecond().size());
   for (auto predecessor : it->getSecond()) {
     if (!filter || filter(predecessor)) result.push_back(predecessor);
   }
-  llvm::sort(result,
-             [](Operation* a, Operation* b) { return a->isBeforeInBlock(b); });
   return result;
 }
 
-llvm::SmallVector<Operation*, 8> SideEffectAnalysis::DirectControlSuccessors(
+llvm::SmallVector<Operation*, 4> SideEffectAnalysis::DirectControlSuccessors(
     Operation* op, llvm::function_ref<bool(Operation*)> filter) const {
-  llvm::SmallVector<Operation*, 8> result;
-  auto it = control_successors_.find(op);
-  if (it == control_successors_.end()) return result;
+  llvm::SmallVector<Operation*, 4> result;
+  auto it = sorted_control_successors_.find(op);
+  if (it == sorted_control_successors_.end()) return result;
   result.reserve(it->getSecond().size());
   for (auto successor : it->getSecond()) {
     if (!filter || filter(successor)) result.push_back(successor);
   }
-  llvm::sort(result,
-             [](Operation* a, Operation* b) { return a->isBeforeInBlock(b); });
   return result;
 }
 

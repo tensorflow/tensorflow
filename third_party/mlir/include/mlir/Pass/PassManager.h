@@ -21,6 +21,9 @@
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/iterator.h"
+
+#include <vector>
 
 namespace llvm {
 class Any;
@@ -53,6 +56,13 @@ public:
   OpPassManager(const OpPassManager &rhs);
   ~OpPassManager();
   OpPassManager &operator=(const OpPassManager &rhs);
+
+  /// Iterator over the passes in this pass manager.
+  using pass_iterator =
+      llvm::pointee_iterator<std::vector<std::unique_ptr<Pass>>::iterator>;
+  pass_iterator begin();
+  pass_iterator end();
+  llvm::iterator_range<pass_iterator> getPasses() { return {begin(), end()}; }
 
   /// Run the held passes over the given operation.
   LogicalResult run(Operation *op, AnalysisManager am);
@@ -93,6 +103,9 @@ public:
   /// the correctness of per-pass overrides of Pass::printAsTextualPipeline.
   void printAsTextualPipeline(raw_ostream &os);
 
+  /// Merge the pass statistics of this class into 'other'.
+  void mergeStatisticsInto(OpPassManager &other);
+
 private:
   OpPassManager(OperationName name, bool disableThreads, bool verifyPasses);
 
@@ -107,10 +120,10 @@ private:
 // PassManager
 //===----------------------------------------------------------------------===//
 
-/// An enum describing the different display modes for the pass timing
-/// information within the pass manager.
-enum class PassTimingDisplayMode {
-  // In this mode the results are displayed in a list sorted by total time,
+/// An enum describing the different display modes for the information within
+/// the pass manager.
+enum class PassDisplayMode {
+  // In this mode the results are displayed in a list sorted by total,
   // with each pass/analysis instance aggregated into one unique result.
   List,
 
@@ -146,28 +159,101 @@ public:
   /// Add the provided instrumentation to the pass manager.
   void addInstrumentation(std::unique_ptr<PassInstrumentation> pi);
 
-  /// Add an instrumentation to print the IR before and after pass execution.
+  //===--------------------------------------------------------------------===//
+  // IR Printing
+
+  /// A configuration struct provided to the IR printer instrumentation.
+  class IRPrinterConfig {
+  public:
+    using PrintCallbackFn = function_ref<void(raw_ostream &)>;
+
+    /// Initialize the configuration.
+    /// * 'printModuleScope' signals if the top-level module IR should always be
+    ///   printed. This should only be set to true when multi-threading is
+    ///   disabled, otherwise we may try to print IR that is being modified
+    ///   asynchronously.
+    /// * 'printAfterOnlyOnChange' signals that when printing the IR after a
+    ///   pass, in the case of a non-failure, we should first check if any
+    ///   potential mutations were made. This allows for reducing the number of
+    ///   logs that don't contain meaningful changes.
+    explicit IRPrinterConfig(bool printModuleScope = false,
+                             bool printAfterOnlyOnChange = false);
+    virtual ~IRPrinterConfig();
+
+    /// A hook that may be overridden by a derived config that checks if the IR
+    /// of 'operation' should be dumped *before* the pass 'pass' has been
+    /// executed. If the IR should be dumped, 'printCallback' should be invoked
+    /// with the stream to dump into.
+    virtual void printBeforeIfEnabled(Pass *pass, Operation *operation,
+                                      PrintCallbackFn printCallback);
+
+    /// A hook that may be overridden by a derived config that checks if the IR
+    /// of 'operation' should be dumped *after* the pass 'pass' has been
+    /// executed. If the IR should be dumped, 'printCallback' should be invoked
+    /// with the stream to dump into.
+    virtual void printAfterIfEnabled(Pass *pass, Operation *operation,
+                                     PrintCallbackFn printCallback);
+
+    /// Returns true if the IR should always be printed at the top-level scope.
+    bool shouldPrintAtModuleScope() const { return printModuleScope; }
+
+    /// Returns true if the IR should only printed after a pass if the IR
+    /// "changed".
+    bool shouldPrintAfterOnlyOnChange() const { return printAfterOnlyOnChange; }
+
+  private:
+    /// A flag that indicates if the IR should be printed at module scope.
+    bool printModuleScope;
+
+    /// A flag that indicates that the IR after a pass should only be printed if
+    /// a change is detected.
+    bool printAfterOnlyOnChange;
+  };
+
+  /// Add an instrumentation to print the IR before and after pass execution,
+  /// using the provided configuration.
+  void enableIRPrinting(std::unique_ptr<IRPrinterConfig> config);
+
+  /// Add an instrumentation to print the IR before and after pass execution,
+  /// using the provided fields to generate a default configuration:
   /// * 'shouldPrintBeforePass' and 'shouldPrintAfterPass' correspond to filter
-  ///   functions that take a 'Pass *'. These function should return true if the
-  ///   IR should be printed or not.
-  /// * 'printModuleScope' signals if the module IR should be printed, even for
-  ///   non module passes.
+  ///   functions that take a 'Pass *' and `Operation *`. These function should
+  ///   return true if the IR should be printed or not.
+  /// * 'printModuleScope' signals if the module IR should be printed, even
+  ///   for non module passes.
+  /// * 'printAfterOnlyOnChange' signals that when printing the IR after a
+  ///   pass, in the case of a non-failure, we should first check if any
+  ///   potential mutations were made.
   /// * 'out' corresponds to the stream to output the printed IR to.
-  void enableIRPrinting(std::function<bool(Pass *)> shouldPrintBeforePass,
-                        std::function<bool(Pass *)> shouldPrintAfterPass,
-                        bool printModuleScope, raw_ostream &out);
+  void enableIRPrinting(
+      std::function<bool(Pass *, Operation *)> shouldPrintBeforePass,
+      std::function<bool(Pass *, Operation *)> shouldPrintAfterPass,
+      bool printModuleScope, bool printAfterOnlyOnChange, raw_ostream &out);
+
+  //===--------------------------------------------------------------------===//
+  // Pass Timing
 
   /// Add an instrumentation to time the execution of passes and the computation
   /// of analyses.
   /// Note: Timing should be enabled after all other instrumentations to avoid
   /// any potential "ghost" timing from other instrumentations being
   /// unintentionally included in the timing results.
-  void enableTiming(
-      PassTimingDisplayMode displayMode = PassTimingDisplayMode::Pipeline);
+  void enableTiming(PassDisplayMode displayMode = PassDisplayMode::Pipeline);
+
+  /// Prompts the pass manager to print the statistics collected for each of the
+  /// held passes after each call to 'run'.
+  void
+  enableStatistics(PassDisplayMode displayMode = PassDisplayMode::Pipeline);
 
 private:
+  /// Dump the statistics of the passes within this pass manager.
+  void dumpStatistics();
+
   /// Flag that specifies if pass timing is enabled.
   bool passTiming : 1;
+
+  /// Flag that specifies if pass statistics should be dumped.
+  Optional<PassDisplayMode> passStatisticsMode;
 
   /// A manager for pass instrumentations.
   std::unique_ptr<PassInstrumentor> instrumentor;

@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import grouping
+from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.ops import threadpool
@@ -215,11 +216,11 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       optimized_it = dataset_ops.make_initializable_iterator(optimized_dataset)
 
     self.assertGreaterEqual(len(w), 1)
-    expected = ("tf.data static optimizations are not compatible with "
-                "tf.Variable. The following optimizations will be disabled: %s."
-                " To enable optimizations, use resource variables instead by "
+    expected = ("tf.data graph rewrites are not compatible with "
+                "tf.Variable. The following rewrites will be disabled: %s."
+                " To enable rewrites, use resource variables instead by "
                 "calling `tf.enable_resource_variables()` at the start of the "
-                "program." % (", ".join(options._static_optimizations())))
+                "program." % (", ".join(options._graph_rewrites())))
     self.assertTrue(any([expected in str(warning) for warning in w]))
 
     # Check that outputs are the same in the optimized and unoptimized cases,
@@ -249,10 +250,10 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         "shuffle_and_repeat_fusion",
     ]
     self.assertEqual(
-        set(options._static_optimizations()), set(expected_optimizations))
+        set(options._graph_rewrites()), set(expected_optimizations))
 
   def testOptimizationDisableDefault(self):
-    """Tests that we can disable all static optimizations enabled by default.
+    """Tests that we can disable all graph optimizations enabled by default.
 
     If the `apply_default_optimizations` optimization options flag is False,
     only explicitly enabled optimizations will be applied.
@@ -266,7 +267,27 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         "noop_elimination",
     ]
     self.assertEqual(
-        set(options._static_optimizations()), set(expected_optimizations))
+        set(options._graph_rewrites()), set(expected_optimizations))
+
+  def testAutotuningDefaults(self):
+    options = dataset_ops.Options()
+
+    # Check defaults
+    autotune, algorithm, cpu_budget = options._autotune_settings()
+    self.assertTrue(autotune)
+    self.assertEqual(algorithm,
+                     optimization_options._AutotuneAlgorithm.HILL_CLIMB)
+    self.assertEqual(cpu_budget, 0)
+
+  def testAutotuningBufferSizes(self):
+    options = dataset_ops.Options()
+    options.experimental_optimization.autotune_buffers = True
+    self.assertIn("inject_prefetch", options._graph_rewrites())
+    autotune, algorithm, cpu_budget = options._autotune_settings()
+    self.assertTrue(autotune)
+    self.assertEqual(algorithm,
+                     optimization_options._AutotuneAlgorithm.GRADIENT_DESCENT)
+    self.assertEqual(cpu_budget, 0)
 
 
 if __name__ == "__main__":

@@ -828,6 +828,18 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
                                           'filepath for ModelCheckpoint.'):
       model.fit(train_ds, epochs=1, callbacks=[callback])
 
+  def test_ModelCheckpoint_with_bad_path_placeholders(self):
+    (model, train_ds, callback,
+     filepath) = self._get_dummy_resource_for_model_checkpoint_testing()
+
+    temp_dir = self.get_temp_dir()
+    filepath = os.path.join(temp_dir, 'chkpt_{epoch:02d}_{mape:.2f}.h5')
+    callback = keras.callbacks.ModelCheckpoint(filepath=filepath)
+
+    with self.assertRaisesRegexp(KeyError, 'Failed to format this callback '
+                                           'filepath.*'):
+      model.fit(train_ds, epochs=1, callbacks=[callback])
+
   def test_EarlyStopping(self):
     with self.cached_session():
       np.random.seed(123)

@@ -87,10 +87,11 @@ class TracingCallbackTest(
 
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
+      ("CurtHealth", "CURT_HEALTH"),
       ("FullTensor", "FULL_TENSOR"),
   )
   def testPureEagerOpExecution(self, tensor_debug_mode):
-    """Test catching Infinity in eager op execution: float32."""
+    """Test dumping data from eager op execution: float32."""
     writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
 
@@ -129,12 +130,22 @@ class TracingCallbackTest(
         prev_wall_time = debug_event.wall_time
         execution = debug_event.execution
         executed_op_types.append(execution.op_type)
+        # No graph IDs should have been logged for eager op executions.
+        self.assertFalse(execution.graph_id)
         self.assertTrue(execution.input_tensor_ids)
         self.assertTrue(execution.output_tensor_ids)
         if tensor_debug_mode == "NO_TENSOR":
           # Due to the NO_TENSOR tensor debug mode, tensor_protos ought to
           # be empty.
           self.assertFalse(execution.tensor_protos)
+        elif tensor_debug_mode == "CURT_HEALTH":
+          self.assertLen(execution.tensor_protos, 1)
+          if execution.op_type in ("AddV2", "Mul", "RealDiv"):
+            # 1st element: -1 is the unset tensor_id for eager op execution.
+            # 2nd element: 0 means there is no inf or nan.
+            self.assertAllClose(
+                tensor_util.MakeNdarray(execution.tensor_protos[0]),
+                [-1.0, 0.0])
         elif tensor_debug_mode == "FULL_TENSOR":
           # Under the FULL_TENSOR mode, the value of the tensor should be
           # available through `tensor_protos`.
@@ -193,6 +204,7 @@ class TracingCallbackTest(
 
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
+      ("CurtHealth", "CURT_HEALTH"),
       ("FullTensor", "FULL_TENSOR"),
   )
   @test_util.run_in_graph_and_eager_modes
@@ -218,17 +230,31 @@ class TracingCallbackTest(
       # NOTE(b/142486213): Execution of the TF function happens with
       # Session.run() in v1 graph mode, so doesn't get logged to the
       # .execution file.
-      executed_op_types, _, _, _, _ = self._readAndCheckExecutionFile()
+      (executed_op_types, executed_graph_ids,
+       _, _, _, _) = self._readAndCheckExecutionFile()
       executed_op_types = [op_type for op_type in executed_op_types
                            if "sin1p_log_sum" in op_type]
       self.assertLen(executed_op_types, 1)
 
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
-    (context_ids, op_types,
-     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
+    (context_ids, op_types, op_name_to_op_type,
+     op_name_to_context_id) = self._readAndCheckGraphsFile(stack_frame_by_id)
+
     self.assertIn("AddV2", op_types)
     self.assertIn("Log", op_types)
     self.assertIn("Sin", op_types)
+    if context.executing_eagerly():
+      # Check the correctness of the ID of the executed graph ID.
+      sin_op_name = [op_name for op_name in op_name_to_op_type
+                     if op_name_to_op_type[op_name] == "Sin"]
+      self.assertLen(sin_op_name, 1)
+      sin_context_id = op_name_to_context_id[sin_op_name[0]]
+      # The executed "op" is a FuncGraph, and its graph ID should have been
+      # recorded properly and be the ID of the graph that the Sin op belongs to.
+      executed_graph_ids = [
+          executed_graph_ids[i] for i, op_type
+          in enumerate(executed_op_types) if "sin1p_log_sum" in op_type]
+      self.assertEqual(executed_graph_ids[0], sin_context_id)
 
     (op_names, _, _,
      tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
@@ -241,12 +267,87 @@ class TracingCallbackTest(
       for tensor_value in tensor_values:
         self.assertEqual(tensor_value.dtype, np.float32)
         self.assertEqual(tensor_value.shape, (0,))
+    elif tensor_debug_mode == "CURT_HEALTH":
+      for tensor_value in tensor_values:
+        self.assertLen(tensor_value, 2)
+        # 1st element: tensor_id, should be >= 0.
+        # TODO(cais): Assert on detailed value once Function-graph association
+        # is in place.
+        self.assertGreaterEqual(tensor_value[0], 0)
+        # 2nd element: 0 means there is no inf or nan.
+        self.assertEqual(tensor_value[1], 0)
     elif tensor_debug_mode == "FULL_TENSOR":
       self.assertAllClose(tensor_values[0], 5.0)  # 1st AddV2 op.
       self.assertAllClose(tensor_values[1], np.log(5.0))  # Log op.
       self.assertAllClose(tensor_values[2], np.log(5.0) + 1.0)  # 2nd AddV2 op.
       self.assertAllClose(tensor_values[3],
                           np.sin(np.log(5.0) + 1.0))  # Sin op.
+
+  def testCapturingExecutedGraphIdsOfTwoCompilationsOfSameFunction(self):
+    """Test correct executed IDs of two FuncGraphs from the same Py function."""
+    writer = dumping_callback.enable_dump_debug_info(
+        self.dump_root, tensor_debug_mode="NO_TENSOR")
+
+    @def_function.function
+    def ceil_times_two(x):
+      return math_ops.ceil(x) * 2.0
+
+    x_float32 = np.array(3.5, dtype=np.float32)
+    x_float64 = np.array(4.5, dtype=np.float64)
+    # Four executions, with two different FuncGraphs, which should lead
+    # to two unique executed graph IDs (see assertion below).
+    self.assertAllClose(ceil_times_two(x_float32), 8.0)
+    self.assertAllClose(ceil_times_two(x_float64), 10.0)
+    self.assertAllClose(ceil_times_two(x_float32), 8.0)
+    self.assertAllClose(ceil_times_two(x_float64), 10.0)
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+
+    (executed_op_types, executed_graph_ids,
+     _, _, _, _) = self._readAndCheckExecutionFile()
+    self.assertLen(executed_op_types, 4)
+    for executed_op_type in executed_op_types:
+      self.assertStartsWith(executed_op_type, "__inference_ceil_times_two_")
+    self.assertLen(executed_graph_ids, 4)
+    self.assertEqual(executed_graph_ids[0], executed_graph_ids[2])
+    self.assertEqual(executed_graph_ids[1], executed_graph_ids[3])
+    self.assertLen(set(executed_graph_ids), 2)
+
+  def testCapturingExecutedGraphIdsOfDuplicateFunctionNames(self):
+    """Two FuncGraphs compiled from Python functions with identical names."""
+    writer = dumping_callback.enable_dump_debug_info(
+        self.dump_root, tensor_debug_mode="NO_TENSOR")
+
+    class TestClass(object):
+
+      @def_function.function
+      def ceil_times_two(self, x):
+        return math_ops.ceil(x) * 2.0
+
+    # The `ceil_times_two` method of the two objects will be compiled
+    # into separate FuncGraphs.
+    test_object_1 = TestClass()
+    test_object_2 = TestClass()
+
+    x = np.array(3.5, dtype=np.float32)
+    # Four executions, with two different FuncGraphs, which should lead
+    # to two unique executed graph IDs (see assertion below).
+    self.assertAllClose(test_object_1.ceil_times_two(x), 8.0)
+    self.assertAllClose(test_object_2.ceil_times_two(x), 8.0)
+    self.assertAllClose(test_object_1.ceil_times_two(x), 8.0)
+    self.assertAllClose(test_object_2.ceil_times_two(x), 8.0)
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+
+    (executed_op_types, executed_graph_ids,
+     _, _, _, _) = self._readAndCheckExecutionFile()
+    self.assertLen(executed_op_types, 4)
+    for executed_op_type in executed_op_types:
+      self.assertStartsWith(executed_op_type, "__inference_ceil_times_two_")
+    self.assertLen(executed_graph_ids, 4)
+    self.assertEqual(executed_graph_ids[0], executed_graph_ids[2])
+    self.assertEqual(executed_graph_ids[1], executed_graph_ids[3])
+    self.assertLen(set(executed_graph_ids), 2)
 
   @parameterized.named_parameters(
       ("AddV2", "AddV2"),
@@ -438,7 +539,7 @@ class TracingCallbackTest(
       # After the flushing, the .execution file should hold the appropriate
       # contents.
       if context.executing_eagerly():
-        (executed_op_types, input_tensor_ids, output_tensor_ids,
+        (executed_op_types, _, input_tensor_ids, output_tensor_ids,
          tensor_debug_modes, tensor_values) = self._readAndCheckExecutionFile()
         # NOTE(b/142486213): Execution of the TF function happens with
         # Session.run() in v1 graph mode, hence it doesn't get logged to the
@@ -473,6 +574,15 @@ class TracingCallbackTest(
         for tensor_value in tensor_values:
           self.assertEqual(tensor_value.dtype, np.float32)
           self.assertEqual(tensor_value.shape, (0,))
+      elif tensor_debug_mode == "CURT_TENSOR":
+        for tensor_value in tensor_values:
+          self.assertLen(tensor_value, 2)
+          # 1st element: tensor_id, should be >= 0.
+          # TODO(cais): Assert on detailed value once Function-graph association
+          # is in place.
+          self.assertGreaterEqual(tensor_value[0], 0)
+          # 2nd element: 0 means there is no inf or nan.
+          self.assertEqual(tensor_value[1], 0)
       elif tensor_debug_mode == "FULL_TENSOR":
         less_values = [
             tensor_values[i]
@@ -558,7 +668,7 @@ class TracingCallbackTest(
     writer.FlushExecutionFiles()
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
     context_ids, _, _, _ = self._readAndCheckGraphsFile(stack_frame_by_id)
-    _, _, _, _, tensor_values = self._readAndCheckExecutionFile()
+    _, _, _, _, _, tensor_values = self._readAndCheckExecutionFile()
     self.assertEqual(tensor_values, [[]])
     (_, _, _,
      tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
@@ -602,6 +712,7 @@ class TracingCallbackTest(
 
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
+      ("CurtHealth", "CURT_HEALTH"),
       ("FullTensor", "FULL_TENSOR"),
   )
   def testMultiThreadedExecutionWithSameSetting(self, tensor_debug_mode):
@@ -654,6 +765,15 @@ class TracingCallbackTest(
       for tensor_value in tensor_values:
         self.assertEqual(tensor_value.dtype, np.float32)
         self.assertEqual(tensor_value.shape, (0,))
+    elif tensor_debug_mode == "CURT_HEALTH":
+      for tensor_value in tensor_values:
+        self.assertLen(tensor_value, 2)
+        # 1st element: tensor_id, should be >= 0.
+        # TODO(cais): Assert on detailed value once Function-graph association
+        # is in place.
+        self.assertGreaterEqual(tensor_value[0], 0)
+        # 2nd element: 0 means there is no inf or nan.
+        self.assertEqual(tensor_value[1], 0)
     elif tensor_debug_mode == "FULL_TENSOR":
       mul_values = [
           tensor_values[i]
@@ -702,7 +822,7 @@ class TracingCallbackTest(
     self.assertAllClose(v1.read_value(), -67084290.0)
     self.assertAllClose(v2.read_value(), -6.0)
 
-    (executed_op_types, _, _, _,
+    (executed_op_types, _, _, _, _,
      tensor_values) = self._readAndCheckExecutionFile(dump_root=dump_root_1)
     v1_squared_values = [
         tensor_values[i] for i, op_type in enumerate(executed_op_types)
@@ -714,7 +834,7 @@ class TracingCallbackTest(
     self.assertAllClose(
         negative_v1_squared_values, [[-100.0], [-8100.0], [-67076100.0]])
 
-    (executed_op_types, _, _, _,
+    (executed_op_types, _, _, _, _,
      tensor_values) = self._readAndCheckExecutionFile(dump_root=dump_root_2)
     self.assertNotIn("Neg", executed_op_types)
     v2_squared_values = tensor_values[executed_op_types.index("Pow")]
@@ -800,7 +920,7 @@ class TracingCallbackTest(
       # NOTE(b/142486213): Execution of the TF function happens with
       # Session.run() in v1 graph mode, hence it doesn't get logged to the
       # .execution file.
-      (executed_op_types, _, _, _,
+      (executed_op_types, _, _, _, _,
        tensor_values) = self._readAndCheckExecutionFile()
       self.assertTrue(executed_op_types)
 
@@ -867,7 +987,7 @@ class TracingCallbackTest(
       # NOTE(b/142486213): Execution of the TF function happens with
       # Session.run() in v1 graph mode, hence it doesn't get logged to the
       # .execution file.
-      (executed_op_types, _, _, _,
+      (executed_op_types, _, _, _, _,
        tensor_values) = self._readAndCheckExecutionFile()
       self.assertTrue(executed_op_types)
       if tensor_debug_mode == "NO_TENSOR":
@@ -940,7 +1060,7 @@ class TracingCallbackTest(
       # NOTE(b/142486213): Execution of the TF function happens with
       # Session.run() in v1 graph mode, hence it doesn't get logged to the
       # .execution file.
-      executed_op_types, _, _, _, _ = self._readAndCheckExecutionFile()
+      executed_op_types, _, _, _, _, _ = self._readAndCheckExecutionFile()
       self.assertTrue(executed_op_types)
 
     (op_names, _, _,

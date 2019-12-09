@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tflite {
 namespace {
-const int kStackDataAllocatorSize = 128;
+const size_t kStackDataAllocatorSize = 128;
 class StackDataAllocator : public BuiltinDataAllocator {
  public:
   void* Allocate(size_t size) override {
@@ -68,7 +68,6 @@ MicroInterpreter::MicroInterpreter(const Model* model,
     : model_(model),
       op_resolver_(op_resolver),
       error_reporter_(error_reporter),
-      context_(),
       allocator_(&context_, model_, tensor_arena, tensor_arena_size,
                  error_reporter_),
       tensors_allocated_(false) {
@@ -92,7 +91,7 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   // NOTE: This requires that the flatbuffer is held in memory which can be
   // modified by this process.
   if (!FLATBUFFERS_LITTLEENDIAN) {
-    for (int t = 0; t < tensors_size(); ++t) {
+    for (size_t t = 0; t < tensors_size(); ++t) {
       TfLiteTensor* thisTensor = &context_.tensors[t];
       if (thisTensor->allocation_type == kTfLiteMmapRo)
         CorrectTensorEndianness(thisTensor);

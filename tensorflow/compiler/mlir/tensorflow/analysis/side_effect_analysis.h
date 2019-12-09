@@ -32,6 +32,9 @@ namespace TF {
 
 // An analysis that runs on a function and maps each resource-type value to a
 // set of unique int64_t IDs representing the possible resources it could alias.
+//
+// If there are nested regions, each region is handled separately. This means
+// cross-region aliasing cannot be checked by this analysis.
 class ResourceAliasAnalysis {
  public:
   explicit ResourceAliasAnalysis(Operation* op);
@@ -63,8 +66,12 @@ class ResourceAliasAnalysis {
 // interfering with all known resource op accesses. It distinguishes accesses
 // based on whether they are read-only, and read-only ops do not interfer with
 // each other.
+//
+// If there are nested regions, each region is handled separately, and control
+// dependencies are only tracked for ops under the same parent op.
 class SideEffectAnalysis {
  public:
+  explicit SideEffectAnalysis() = default;
   explicit SideEffectAnalysis(Operation* op);
   SideEffectAnalysis(SideEffectAnalysis&& other) = default;
   ~SideEffectAnalysis() = default;
@@ -72,22 +79,31 @@ class SideEffectAnalysis {
   // Returns a vector of ops that are direct control predecessors of `op`,
   // sorted in program order. If `filter` is provided, only predecessors that
   // pass the filter (returning true) will be included.
-  llvm::SmallVector<Operation*, 8> DirectControlPredecessors(
+  llvm::SmallVector<Operation*, 4> DirectControlPredecessors(
       Operation* op,
       llvm::function_ref<bool(Operation*)> filter = nullptr) const;
 
   // Returns a vector of ops that are direct control successors of `op`, sorted
   // in program order. If `filter` is provided, only successors that pass the
   // filter (returning true) will be included.
-  llvm::SmallVector<Operation*, 8> DirectControlSuccessors(
+  llvm::SmallVector<Operation*, 4> DirectControlSuccessors(
       Operation* op,
       llvm::function_ref<bool(Operation*)> filter = nullptr) const;
 
  private:
-  // Runs the analysis on `func_op` and populates control_predecessors_ and
-  // control_successors_.
+  // Runs the analysis on `func_op` and populates sorted_control_predecessors_
+  // and sorted_control_successors_.
   void AnalyzeFunction(FuncOp func_op,
                        const ResourceAliasAnalysis& alias_analysis);
+
+  // Runs the analysis on `region` and populates control_predecessors_.
+  void AnalyzeRegion(Region* region,
+                     const ResourceAliasAnalysis& alias_analysis);
+
+  // Moves the control_predecessors_ fields in `children` analyses to this
+  // current analysis.
+  void ConsumeChildAnalyses(
+      llvm::SmallVector<SideEffectAnalysis, 4>&& children);
 
   // Updates control_predecessors_ for `op` that is being visted, on the given
   // `resource_id`.
@@ -98,11 +114,14 @@ class SideEffectAnalysis {
   void TrackAccess(int64_t resource_id, Operation* op, bool read_only);
 
   // Maps from an op to its control predecessors.
-  llvm::SmallDenseMap<Operation*, llvm::SmallPtrSet<Operation*, 8>, 8>
+  llvm::SmallDenseMap<Operation*, llvm::SmallPtrSet<Operation*, 4>, 8>
       control_predecessors_;
-  // Maps from an op to its control successors.
-  llvm::SmallDenseMap<Operation*, llvm::SmallPtrSet<Operation*, 8>, 8>
-      control_successors_;
+  // Maps from an op to its control predecessors sorted in program order.
+  llvm::SmallDenseMap<Operation*, llvm::SmallVector<Operation*, 4>, 8>
+      sorted_control_predecessors_;
+  // Maps from an op to its control successors sorted in program order.
+  llvm::SmallDenseMap<Operation*, llvm::SmallVector<Operation*, 4>, 8>
+      sorted_control_successors_;
 
   // Internal per-resource data structure when we build the dependencies.
   struct PerResourceAcessInfo {

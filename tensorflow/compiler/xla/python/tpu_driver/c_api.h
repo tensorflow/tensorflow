@@ -13,11 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MAGIC_WAND_ANGLE_MICRO_FEATURES_DATA_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MAGIC_WAND_ANGLE_MICRO_FEATURES_DATA_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_C_API_H_
+#define TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_C_API_H_
 
-extern const int g_angle_micro_f2e59fea_nohash_1_length;
-extern const int g_angle_micro_f2e59fea_nohash_1_dim;
-extern const float g_angle_micro_f2e59fea_nohash_1_data[];
+#define TPUDRIVER_CAPI_EXPORT __attribute__((visibility("default")))
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MAGIC_WAND_ANGLE_MICRO_FEATURES_DATA_H_
+extern "C" {
+
+TPUDRIVER_CAPI_EXPORT extern void TpuDriver_Initialize();
+
+TPUDRIVER_CAPI_EXPORT extern void TpuDriver_Open(const char* worker);
+
+TPUDRIVER_CAPI_EXPORT extern const char* TpuDriver_Version(void);
+}
+
+#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_C_API_H_

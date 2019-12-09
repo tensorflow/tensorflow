@@ -44,12 +44,13 @@ multiclass FuseActFnIntoConvOpPat<dag ActFnOp, dag ActFnAttr> {
                                    $multiplier)>;
 }
 
-// TODO(hinsu): Also fuse ops corresponding to RELU_N1_TO_1 and SIGN_BIT fused
+// TODO(hinsu): Also fuse ops corresponding to SIGN_BIT fused
 // activation functions.
 // Currently we're not fusing tanh, sigmoid, hard_swish and other activations
 // those cannot be simply translated into clamping.
 foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
-                     [TFL_Relu6Op, TFL_AF_Relu6]] in
+                     [TFL_Relu6Op, TFL_AF_Relu6],
+                     [TFL_Relu1Op, TFL_AF_Relu1]] in
   defm : FuseActFnIntoConvOpPat<actFnPair[0], actFnPair[1]>;
 
 
@@ -291,3 +292,18 @@ def : Pat<(TFL_MaximumOp (TFL_MinimumOp $input,
            (ConstantOp $NegOne)),
           (TFL_Relu1Op $input),
           [(ValueEquals<"-1"> $NegOne), (ValueEquals<"1"> $One)]>;
+
+// Multi-pattern consisting of matching stand-alone op or op followed by relu.
+multiclass FusedBinaryActivationFuncOpPat<dag BinaryOp> {
+  foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
+                       [TFL_Relu6Op, TFL_AF_Relu6],
+                       [TFL_Relu1Op, TFL_AF_Relu1]] in {
+    def : Pat<(actFnPair[0] (BinaryOp $lhs, $rhs, TFL_AF_None)),
+              (BinaryOp $lhs, $rhs, actFnPair[1])>;
+  }
+}
+
+// Instantiated FusedBinary patterns for the from-to pairs of ops.
+foreach BinaryOps = [TFL_AddOp, TFL_DivOp,
+                     TFL_MulOp, TFL_SubOp] in
+  defm : FusedBinaryActivationFuncOpPat<BinaryOps>;

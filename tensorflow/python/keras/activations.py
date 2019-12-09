@@ -260,8 +260,8 @@ def sigmoid(x):
 
   >>> a = tf.constant([-20, -1.0, 0.0, 1.0, 20], dtype = tf.float32)
   >>> b = tf.keras.activations.sigmoid(a)
-  >>> b.numpy() > 0.0
-  array([False,  True,  True,  True,  True])
+  >>> b.numpy() >= 0.0
+  array([ True,  True,  True,  True,  True])
 
   Arguments:
       x: Input tensor.

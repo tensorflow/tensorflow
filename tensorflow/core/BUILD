@@ -67,6 +67,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
     "if_android",
+    "if_chromiumos",
     "if_emscripten",
     "if_ios",
     "if_mobile",
@@ -105,6 +106,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_additional_core_deps",
+    "tf_additional_env_hdrs",
     "tf_additional_lib_deps",
     "tf_additional_monitoring_hdrs",
     "tf_additional_test_deps",
@@ -398,7 +400,7 @@ filegroup(
         "//tensorflow/core/platform:file_statistics.h",
         "//tensorflow/core/platform:file_system.h",
         "//tensorflow/core/platform:path.h",
-    ],
+    ] + tf_additional_env_hdrs(),
     visibility = ["//visibility:private"],
 )
 
@@ -464,7 +466,6 @@ cc_library(
         "//tensorflow/core/lib/core:legacy_lib_proto_parsing_headers",
         "//tensorflow/core/lib/strings:legacy_lib_proto_parsing_headers",
         "//tensorflow/core/platform:init_main.h",
-        "//tensorflow/core/platform:legacy_proto_hdrs",
         "//tensorflow/core/platform:logging.h",
         "//tensorflow/core/platform:macros.h",
         "//tensorflow/core/platform:platform.h",
@@ -1569,7 +1570,6 @@ filegroup(
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
-        "//tensorflow/core/platform:legacy_srcs_no_runtime",
         "//tensorflow/core/profiler:mobile_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
         "//tensorflow/core/util/sparse:mobile_srcs_no_runtime_group",
@@ -1604,6 +1604,9 @@ filegroup(
             "common_runtime/eager/*",
             "common_runtime/gpu_device_factory.*",
         ],
+    ) + if_chromiumos(
+        ["//tensorflow/core/platform:legacy_srcs_no_runtime_google"],
+        otherwise = ["//tensorflow/core/platform:legacy_srcs_no_runtime"],
     ),
     visibility = ["//visibility:private"],
 )
@@ -2166,8 +2169,6 @@ cc_library(
             "lib/png/**/*",
         ],
     ) + [
-        "//tensorflow/core/platform:legacy_monitoring_srcs",
-        "//tensorflow/core/platform:legacy_platform_lib_srcs",
         "//tensorflow/core/platform:legacy_lib_internal_srcs",
     ],
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
@@ -2255,6 +2256,7 @@ cc_library(
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/lib/strings:stringprintf",
         "//tensorflow/core/platform:abi",
+        "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:coding",
         "//tensorflow/core/platform:context",
@@ -2270,6 +2272,7 @@ cc_library(
         "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:load_library",
         "//tensorflow/core/platform:logger",
+        "//tensorflow/core/platform:monitoring",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:notification",
         "//tensorflow/core/platform:net",
@@ -2283,6 +2286,8 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:setround",
+        "//tensorflow/core/platform:stacktrace",
+        "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
@@ -2695,6 +2700,8 @@ tf_cuda_library(
         "@com_google_absl//absl/time",
         "//third_party/eigen3",
         "//tensorflow/core/framework:attr_value_proto_text",
+        "//tensorflow/core/framework:bfloat16",
+        "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:traceme",
@@ -2772,7 +2779,7 @@ tf_cuda_library(
     deps = [":framework_lite"],
 )
 
-# TODO(josh11b): Is this needed, or can we just use ":protos_all"?
+# TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
 cc_library(
     name = "protos_cc",
     visibility = ["//visibility:public"],

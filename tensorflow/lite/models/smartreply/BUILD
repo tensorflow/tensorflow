@@ -12,7 +12,7 @@ exports_files(["LICENSE"])
 
 gen_selected_ops(
     name = "smartreply_ops",
-    model = "@tflite_smartreply//:smartreply.tflite",
+    model = ["@tflite_smartreply//:smartreply.tflite"],
 )
 
 cc_library(

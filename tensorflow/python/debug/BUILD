@@ -726,7 +726,7 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     python_version = "PY3",
-    shard_count = 8,
+    shard_count = 4,
     tags = [
         "guitar",
         "multi_and_single_gpu",

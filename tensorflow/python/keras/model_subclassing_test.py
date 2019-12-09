@@ -135,8 +135,8 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     num_classes = 2
     input_dim = 50
 
-    model = model_util.SimpleTestModel(
-        num_classes=num_classes, use_dp=True, use_bn=True)
+    model = testing_utils.SmallSubclassMLP(
+        num_hidden=32, num_classes=num_classes, use_dp=True, use_bn=True)
 
     self.assertFalse(model.built, 'Model should not have been built')
     self.assertFalse(model.weights, ('Model should have no weights since it '
@@ -212,8 +212,8 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     input_dim = 50
     batch_size = None
 
-    model = model_util.SimpleTestModel(
-        num_classes=num_classes, use_dp=True, use_bn=True)
+    model = testing_utils.SmallSubclassMLP(
+        num_hidden=32, num_classes=num_classes, use_dp=True, use_bn=True)
 
     self.assertFalse(model.built, 'Model should not have been built')
     self.assertFalse(model.weights, ('Model should have no weights since it '
@@ -229,8 +229,8 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     input_dim = tensor_shape.Dimension(50)
     batch_size = tensor_shape.Dimension(None)
 
-    model = model_util.SimpleTestModel(
-        num_classes=num_classes, use_dp=True, use_bn=True)
+    model = testing_utils.SmallSubclassMLP(
+        num_hidden=32, num_classes=num_classes, use_dp=True, use_bn=True)
 
     self.assertFalse(model.built, 'Model should not have been built')
     self.assertFalse(model.weights, ('Model should have no weights since it '
@@ -338,7 +338,8 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
         self.contents += msg + '\n'
 
     # Single-io
-    model = model_util.SimpleTestModel(num_classes=4, use_bn=True, use_dp=True)
+    model = testing_utils.SmallSubclassMLP(
+        num_hidden=32, num_classes=4, use_bn=True, use_dp=True)
     model._set_inputs(np.ones((3, 4)))  # need to build model first
     print_fn = ToString()
     model.summary(print_fn=print_fn)
@@ -481,7 +482,6 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
       self.assertEqual(1, len(model.get_updates_for(x)))
 
 
-
 class GraphSpecificModelSubclassingTests(test.TestCase):
 
   @test_util.run_deprecated_v1
@@ -491,8 +491,8 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
     input_dim = 50
 
     with self.cached_session():
-      model = model_util.SimpleTestModel(
-          num_classes=num_classes, use_dp=True, use_bn=True)
+      model = testing_utils.SmallSubclassMLP(
+          num_hidden=32, num_classes=num_classes, use_dp=True, use_bn=True)
       model.compile(loss='mse', optimizer='rmsprop')
 
       x = array_ops.ones((num_samples, input_dim))
