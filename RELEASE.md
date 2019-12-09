@@ -17,6 +17,7 @@ TensorFlow 2.1 will be the last TF release supporting Python 2. Python 2 support
   * Keras reference implementations for many popular models are available in the TensorFlow [Model Garden](https://github.com/tensorflow/models/tree/master/official).
 * `tf.data`
   * Changes rebatching for `tf.data datasets` + distribution strategies for better performance.   Note that the dataset also behaves slightly differently, in that the rebatched dataset cardinality will always be a multiple of the number of replicas.
+* The `tensorflow` pip package is built with CUDA 10.1 and cuDNN 7.6.
 * `TensorRT`
   * [TensorRT 6.0](https://developer.nvidia.com/tensorrt#tensorrt-whats-new) is now supported and enabled by default. This adds support for more TensorFlow ops including Conv3D, Conv3DBackpropInputV2, AvgPool3D, MaxPool3D, ResizeBilinear, and ResizeNearestNeighbor. In addition, the TensorFlow-TensorRT python conversion API is exported as `tf.experimental.tensorrt.Converter`.
 
