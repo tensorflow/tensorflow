@@ -439,6 +439,8 @@ def make_csv_dataset_v2(
   ... column_names=column_names,
   ... label_name=label_name,
   ... num_epochs=1)
+  >>> features, labels = next(iter(train_dataset))
+  >>> print(features)
   ```
   """
   if num_parallel_reads is None:
