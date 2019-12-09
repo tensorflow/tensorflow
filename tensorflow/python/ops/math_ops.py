@@ -1879,22 +1879,24 @@ def reduce_mean_v1(input_tensor,
                    keep_dims=None):
   """Computes the mean of elements across dimensions of a tensor.
 
-  Reduces `input_tensor` along the dimensions given in `axis`.
+  Reduces `input_tensor` along the dimensions given in `axis` by computing the
+  mean of elements across the dimensions in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` is None, all dimensions are reduced, and a
-  tensor with a single element is returned.
+  If `axis` is None, all dimensions are reduced, and a tensor with a single
+  element is returned.
 
   For example:
 
-  ```python
-  x = tf.constant([[1., 1.], [2., 2.]])
-  tf.reduce_mean(x)  # 1.5
-  tf.reduce_mean(x, 0)  # [1.5, 1.5]
-  tf.reduce_mean(x, 1)  # [1.,  2.]
-  ```
+  >>> x = tf.constant([[1., 1.], [2., 2.]])
+  >>> tf.reduce_mean(x)
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.5>
+  >>> tf.reduce_mean(x, 0)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([1.5, 1.5], dtype=float32)>
+  >>> tf.reduce_mean(x, 1)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([1., 2.], dtype=float32)>
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -1917,12 +1919,12 @@ def reduce_mean_v1(input_tensor,
   hand, `tf.reduce_mean` has an aggressive type inference from `input_tensor`,
   for example:
 
-  ```python
-  x = tf.constant([1, 0, 1, 0])
-  tf.reduce_mean(x)  # 0
-  y = tf.constant([1., 0., 1., 0.])
-  tf.reduce_mean(y)  # 0.5
-  ```
+  >>> x = tf.constant([1, 0, 1, 0])
+  >>> tf.reduce_mean(x)
+  <tf.Tensor: shape=(), dtype=int32, numpy=0>
+  >>> y = tf.constant([1., 0., 1., 0.])
+  >>> tf.reduce_mean(y)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.5>
 
   @end_compatibility
   """
@@ -1939,22 +1941,24 @@ def reduce_mean_v1(input_tensor,
 def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the mean of elements across dimensions of a tensor.
 
-  Reduces `input_tensor` along the dimensions given in `axis`.
+  Reduces `input_tensor` along the dimensions given in `axis` by computing the
+  mean of elements across the dimensions in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions are retained
+  with length 1.
 
-  If `axis` is None, all dimensions are reduced, and a
-  tensor with a single element is returned.
+  If `axis` is None, all dimensions are reduced, and a tensor with a single
+  element is returned.
 
   For example:
 
-  ```python
-  x = tf.constant([[1., 1.], [2., 2.]])
-  tf.reduce_mean(x)  # 1.5
-  tf.reduce_mean(x, 0)  # [1.5, 1.5]
-  tf.reduce_mean(x, 1)  # [1.,  2.]
-  ```
+  >>> x = tf.constant([[1., 1.], [2., 2.]])
+  >>> tf.reduce_mean(x)
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.5>
+  >>> tf.reduce_mean(x, 0)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([1.5, 1.5], dtype=float32)>
+  >>> tf.reduce_mean(x, 1)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([1., 2.], dtype=float32)>
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -1975,12 +1979,12 @@ def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
   hand, `tf.reduce_mean` has an aggressive type inference from `input_tensor`,
   for example:
 
-  ```python
-  x = tf.constant([1, 0, 1, 0])
-  tf.reduce_mean(x)  # 0
-  y = tf.constant([1., 0., 1., 0.])
-  tf.reduce_mean(y)  # 0.5
-  ```
+  >>> x = tf.constant([1, 0, 1, 0])
+  >>> tf.reduce_mean(x)
+  <tf.Tensor: shape=(), dtype=int32, numpy=0>
+  >>> y = tf.constant([1., 0., 1., 0.])
+  >>> tf.reduce_mean(y)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.5>
 
   @end_compatibility
   """

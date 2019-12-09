@@ -323,6 +323,13 @@ void Operation::replaceUsesOfWith(Value *from, Value *to) {
       operand.set(to);
 }
 
+/// Replace the current operands of this operation with the ones provided in
+/// 'operands'. If the operands list is not resizable, the size of 'operands'
+/// must be less than or equal to the current number of operands.
+void Operation::setOperands(ValueRange operands) {
+  getOperandStorage().setOperands(this, operands);
+}
+
 //===----------------------------------------------------------------------===//
 // Diagnostics
 //===----------------------------------------------------------------------===//
@@ -737,6 +744,67 @@ Operation *Operation::clone(BlockAndValueMapping &mapper) {
 Operation *Operation::clone() {
   BlockAndValueMapping mapper;
   return clone(mapper);
+}
+
+//===----------------------------------------------------------------------===//
+// ValueRange
+//===----------------------------------------------------------------------===//
+
+ValueRange::ValueRange(ArrayRef<Value *> values)
+    : owner(values.data()), count(values.size()) {}
+ValueRange::ValueRange(llvm::iterator_range<OperandIterator> values)
+    : count(llvm::size(values)) {
+  if (count != 0) {
+    auto begin = values.begin();
+    owner = &begin.getObject()->getOpOperand(begin.getIndex());
+  }
+}
+ValueRange::ValueRange(llvm::iterator_range<ResultIterator> values)
+    : count(llvm::size(values)) {
+  if (count != 0) {
+    auto begin = values.begin();
+    owner = &begin.getObject()->getOpResult(begin.getIndex());
+  }
+}
+
+/// Drop the first N elements, and keep M elements.
+ValueRange ValueRange::slice(unsigned n, unsigned m) const {
+  assert(n + m <= size() && "Invalid specifier");
+  OwnerT newOwner;
+  if (OpOperand *operand = owner.dyn_cast<OpOperand *>())
+    newOwner = operand + n;
+  else if (OpResult *result = owner.dyn_cast<OpResult *>())
+    newOwner = result + n;
+  else
+    newOwner = owner.get<Value *const *>() + n;
+  return ValueRange(newOwner, m);
+}
+
+/// Drop the first n elements.
+ValueRange ValueRange::drop_front(unsigned n) const {
+  assert(size() >= n && "Dropping more elements than exist");
+  return slice(n, size() - n);
+}
+
+/// Drop the last n elements.
+ValueRange ValueRange::drop_back(unsigned n) const {
+  assert(size() >= n && "Dropping more elements than exist");
+  return ValueRange(owner, size() - n);
+}
+
+ValueRange::Iterator::Iterator(OwnerT owner, unsigned curIndex)
+    : indexed_accessor_iterator<Iterator, OwnerT, Value *, Value *, Value *>(
+          owner, curIndex) {}
+
+Value *ValueRange::Iterator::operator*() const {
+  // Operands access the held value via 'get'.
+  if (OpOperand *operand = object.dyn_cast<OpOperand *>())
+    return operand[index].get();
+  // An OpResult is a value, so we can return it directly.
+  if (OpResult *result = object.dyn_cast<OpResult *>())
+    return &result[index];
+  // Otherwise, this is a raw value array so just index directly.
+  return object.get<Value *const *>()[index];
 }
 
 //===----------------------------------------------------------------------===//

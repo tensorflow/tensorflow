@@ -408,8 +408,7 @@ ParseResult ParseIslandOp(OpAsmParser &parser, OperationState &result) {
     if (!wrapped_op) return failure();
     OpBuilder builder(parser.getBuilder().getContext());
     builder.setInsertionPointToEnd(&block);
-    builder.create<YieldOp>(wrapped_op->getLoc(),
-                            llvm::to_vector<8>(wrapped_op->getResults()));
+    builder.create<YieldOp>(wrapped_op->getLoc(), wrapped_op->getResults());
     result.location = wrapped_op->getLoc();
   } else if (parser.parseRegion(body, llvm::None, llvm::None)) {
     return failure();
@@ -1065,8 +1064,7 @@ struct DropEmptyGraph : public OpRewritePattern<GraphOp> {
     if (&block.front() != &block.back()) return matchFailure();
 
     // Map graph results to fetch operands.
-    llvm::SmallVector<Value *, 8> new_rets(op.GetFetch().fetches());
-    rewriter.replaceOp(op, new_rets);
+    rewriter.replaceOp(op, op.GetFetch().fetches());
 
     return matchSuccess();
   }

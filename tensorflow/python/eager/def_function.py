@@ -735,8 +735,9 @@ class Function(object):
             continue
         inits.append(init)
 
-      op_map = lift_to_graph.lift_to_graph(
-          inits, ops.get_default_graph(), op_map=op_map)
+      if inits:
+        op_map = lift_to_graph.lift_to_graph(
+            inits, ops.get_default_graph(), op_map=op_map)
       for (v, init), is_initialized in zip(initializers, var_is_initialized):
         with ops.init_scope():
           if is_initialized:

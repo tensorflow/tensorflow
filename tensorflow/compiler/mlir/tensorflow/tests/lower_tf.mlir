@@ -250,3 +250,19 @@ func @ZerosLike_variant(%arg0: tensor<!tf.variant<tensor<2xi32>>>) -> tensor<!tf
   %0 = "tf.ZerosLike"(%arg0) : (tensor<!tf.variant<tensor<2xi32>>>) -> tensor<!tf.variant<tensor<2xi32>>>
   return %0 : tensor<!tf.variant<tensor<2xi32>>>
 }
+
+// CHECK-LABEL: func @addN
+func @addN(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: %[[SUM0:.*]] = "tf.AddV2"(%arg0, %arg1)
+  // CHECK: %[[SUM1:.*]] = "tf.AddV2"(%[[SUM0]], %arg2)
+  // return %[[SUM1]]
+  %0 = "tf.AddN"(%arg0, %arg1, %arg2) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @addN_variant
+func @addN_variant(%arg0: tensor<!tf.variant<tensor<2xf32>>>, %arg1: tensor<!tf.variant<tensor<2xf32>>>, %arg2: tensor<!tf.variant<tensor<2xf32>>>) -> tensor<!tf.variant<tensor<2xf32>>> {
+  // CHECK: tf.AddN
+  %0 = "tf.AddN"(%arg0, %arg1, %arg2) : (tensor<!tf.variant<tensor<2xf32>>>, tensor<!tf.variant<tensor<2xf32>>>, tensor<!tf.variant<tensor<2xf32>>>) -> tensor<!tf.variant<tensor<2xf32>>>
+  return %0 : tensor<!tf.variant<tensor<2xf32>>>
+}

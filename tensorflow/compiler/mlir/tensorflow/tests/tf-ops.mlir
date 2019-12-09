@@ -1795,3 +1795,31 @@ func @testAnyDimOutOfRange(%input: tensor<4x6xi1>) {
   %0 = "tf.Any"(%input, %dims) : (tensor<4x6xi1>, tensor<2xi32>) -> (tensor<*xi1>)
   return
 }
+
+// -----
+
+//===--------------------------------------------------------------------===//
+//  tf.Unpack
+//===--------------------------------------------------------------------===//
+
+func @testUnpackAxisOutOfRange(%input: tensor<2x6xf32>) {
+  // expected-error @+1 {{axis attribute must be in the range of [-2, 2)}}
+  %0:2 = "tf.Unpack"(%input) {axis = 5} : (tensor<2x6xf32>) -> (tensor<6xf32>, tensor<6xf32>)
+  return
+}
+
+// -----
+
+func @testAxisUnknownDim(%input: tensor<?x6xf32>) {
+  // CHECK: tf.Unpack
+  %0:2 = "tf.Unpack"(%input) {axis = 0} : (tensor<?x6xf32>) -> (tensor<6xf32>, tensor<6xf32>)
+  return
+}
+
+// -----
+
+func @testAxisDim(%input: tensor<2x6xf32>) {
+  // expected-error @+1 {{result count must be equal to 6}}
+  %0:2 = "tf.Unpack"(%input) {axis = -1} : (tensor<2x6xf32>) -> (tensor<6xf32>, tensor<6xf32>)
+  return
+}

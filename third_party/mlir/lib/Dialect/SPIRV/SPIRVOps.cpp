@@ -567,8 +567,7 @@ static LogicalResult verifyShiftOp(Operation *op) {
 // spv.AccessChainOp
 //===----------------------------------------------------------------------===//
 
-static Type getElementPtrType(Type type, ArrayRef<Value *> indices,
-                              Location baseLoc) {
+static Type getElementPtrType(Type type, ValueRange indices, Location baseLoc) {
   if (indices.empty()) {
     emitError(baseLoc, "'spv.AccessChain' op expected at least "
                        "one index ");
@@ -626,7 +625,7 @@ static Type getElementPtrType(Type type, ArrayRef<Value *> indices,
 }
 
 void spirv::AccessChainOp::build(Builder *builder, OperationState &state,
-                                 Value *basePtr, ArrayRef<Value *> indices) {
+                                 Value *basePtr, ValueRange indices) {
   auto type = getElementPtrType(basePtr->getType(), indices, state.location);
   assert(type && "Unable to deduce return type based on basePtr and indices");
   build(builder, state, type, basePtr, indices);

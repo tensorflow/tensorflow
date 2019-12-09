@@ -317,12 +317,29 @@ func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 
 // -----
 
-// CHECK-LABEL: HloModule
+// CHECK-LABEL:  HloModule
 func @main(%arg0: tensor<3x4xi32>, %arg1: tensor<4x5xi32>) -> tensor<3x5xi32> {
   // Simple einsum is lowered to HLO dot op.
-  // CHECK: dot(s32[3,4] %{{.*}}, s32[4,5] %{{.*}}), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  // CHECK:  dot(s32[3,4] %{{.*}}, s32[4,5] %{{.*}}), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   %0 = "xla_hlo.einsum"(%arg0, %arg1) {einsum_config = "ab,bc->ac"} : (tensor<3x4xi32>, tensor<4x5xi32>) -> tensor<3x5xi32>
   return %0 : tensor<3x5xi32>
+}
+
+// -----
+
+// CHECK-LABEL:  HloModule
+func @main(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tensor<10x300xf32> {
+  // CHECK:  [[ARG0:%.*]] = f32[200,100,300] parameter(0)
+  // CHECK:  [[ARG1:%.*]] = s32[10,2] parameter(1)
+  // CHECK:  f32[10,300] gather(f32[200,100,300] [[ARG0]], s32[10,2] [[ARG1]])
+  // CHECK-SAME:  offset_dims={1}
+  // CHECK-SAME:  collapsed_slice_dims={0,1}
+  // CHECK-SAME:  start_index_map={0,1}
+  // CHECK-SAME:  index_vector_dim=1
+  // CHECK-SAME:  slice_sizes={1,1,300}
+  // CHECK-SAME:  indices_are_sorted=true
+  %0 = "xla_hlo.gather"(%arg0, %arg1) {dimension_numbers = {collapsed_slice_dims = dense<[0, 1]> : tensor<2xi64>, index_vector_dim = 1 : i64, offset_dims = dense<1> : tensor<1xi64>, start_index_map = dense<[0, 1]> : tensor<2xi64>}, indices_are_sorted = true, name = "gather", slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>} : (tensor<200x100x300xf32>, tensor<10x2xi32>) -> tensor<10x300xf32>
+    return %0 : tensor<10x300xf32>
 }
 
 // -----

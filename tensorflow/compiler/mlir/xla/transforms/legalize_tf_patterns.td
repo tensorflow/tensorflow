@@ -47,6 +47,13 @@ def : Pattern<
      (HasNoUseOf:$root__3), (HasNoUseOf:$root__4)]>;
 
 //===----------------------------------------------------------------------===//
+// Assert op pattern.
+//===----------------------------------------------------------------------===//
+
+// HLO and XLA doesn't support Assertions.
+def LowerAssert : Pattern<(TF_AssertOp $condition, $data, $summarize), []>;
+
+//===----------------------------------------------------------------------===//
 // Bias op patterns.
 //===----------------------------------------------------------------------===//
 def BiasAddFeatureDimension : NativeCodeCall<

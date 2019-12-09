@@ -544,10 +544,7 @@ struct ConvertMatchingFakeForkFakeJoinOp : public RewritePattern {
                          "]: ConvertMatchingFakeForkFakeJoinOp on op: "
                       << *op << " in func:\n");
     LLVM_DEBUG(op->getParentOfType<FuncOp>().print(dbgs()));
-    SmallVector<Value *, 4> forwardedOperands;
-    forwardedOperands.append(definingOp->getOperands().begin(),
-                             definingOp->getOperands().end());
-    rewriter.replaceOp(op, forwardedOperands);
+    rewriter.replaceOp(op, definingOp->getOperands());
     return matchSuccess();
   }
 };

@@ -969,7 +969,7 @@ void OpEmitter::genUseOperandAsResultTypeCollectiveParamBuilder() {
   // Signature
   std::string params =
       std::string("Builder *, OperationState &") + builderOpState +
-      ", ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes";
+      ", ValueRange operands, ArrayRef<NamedAttribute> attributes";
   auto &m = opClass.newMethod("void", "build", params, OpMethod::MP_Static);
   auto &body = m.body();
 
@@ -993,18 +993,22 @@ void OpEmitter::genUseOperandAsResultTypeCollectiveParamBuilder() {
 
 void OpEmitter::genInferedTypeCollectiveParamBuilder() {
   // TODO(jpienaar): Expand to support regions.
-  std::string params =
-      (Twine("Builder *, OperationState &") + builderOpState +
-       ", ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes")
-          .str();
-  auto &m = opClass.newMethod("void", "build", params, OpMethod::MP_Static);
+  const char *params =
+      "Builder *builder, OperationState &{0}, "
+      "ValueRange operands, ArrayRef<NamedAttribute> attributes";
+  auto &m =
+      opClass.newMethod("void", "build", formatv(params, builderOpState).str(),
+                        OpMethod::MP_Static);
   auto &body = m.body();
-
-  body << "  " << builderOpState << ".addOperands(operands);\n\n";
-  body << "  " << builderOpState << ".addAttributes(attributes);\n";
-  body << "  " << builderOpState << ".addTypes(" << opClass.getClassName()
-       << "::inferReturnTypes(" << builderOpState
-       << ".location, operands, attributes, /*regions=*/{}));\n";
+  body << formatv(R"(
+    SmallVector<Type, 2> inferedReturnTypes;
+    if (succeeded({0}::inferReturnTypes({1}.location, operands, attributes,
+                  /*regions=*/{{}, inferedReturnTypes)))
+      build(builder, tblgen_state, inferedReturnTypes, operands, attributes);
+    else
+      llvm::report_fatal_error("Failed to infer result type(s).");
+  )",
+                  opClass.getClassName(), builderOpState);
 }
 
 void OpEmitter::genUseOperandAsResultTypeSeparateParamBuilder() {
@@ -1032,7 +1036,7 @@ void OpEmitter::genUseOperandAsResultTypeSeparateParamBuilder() {
 void OpEmitter::genUseAttrAsResultTypeBuilder() {
   std::string params =
       std::string("Builder *, OperationState &") + builderOpState +
-      ", ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes";
+      ", ValueRange operands, ArrayRef<NamedAttribute> attributes";
   auto &m = opClass.newMethod("void", "build", params, OpMethod::MP_Static);
   auto &body = m.body();
 
@@ -1130,10 +1134,10 @@ void OpEmitter::genCollectiveParamBuilder() {
   int numVariadicOperands = op.getNumVariadicOperands();
   int numNonVariadicOperands = numOperands - numVariadicOperands;
   // Signature
-  std::string params =
-      std::string("Builder *, OperationState &") + builderOpState +
-      ", ArrayRef<Type> resultTypes, ArrayRef<Value *> operands, "
-      "ArrayRef<NamedAttribute> attributes";
+  std::string params = std::string("Builder *, OperationState &") +
+                       builderOpState +
+                       ", ArrayRef<Type> resultTypes, ValueRange operands, "
+                       "ArrayRef<NamedAttribute> attributes";
   auto &m = opClass.newMethod("void", "build", params, OpMethod::MP_Static);
   auto &body = m.body();
 
@@ -1230,8 +1234,7 @@ void OpEmitter::buildParamList(std::string &paramList,
     auto argument = op.getArg(i);
     if (argument.is<tblgen::NamedTypeConstraint *>()) {
       const auto &operand = op.getOperand(numOperands);
-      paramList.append(operand.isVariadic() ? ", ArrayRef<Value *> "
-                                            : ", Value *");
+      paramList.append(operand.isVariadic() ? ", ValueRange " : ", Value *");
       paramList.append(getArgumentName(op, numOperands));
       ++numOperands;
     } else {

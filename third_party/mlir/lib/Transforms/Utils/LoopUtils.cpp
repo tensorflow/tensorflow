@@ -73,9 +73,8 @@ void mlir::getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
   }
 
   unsigned step = forOp.getStep();
-
-  SmallVector<Value *, 4> lbOperands(forOp.getLowerBoundOperands());
-  auto lb = b.create<AffineApplyOp>(forOp.getLoc(), lbMap, lbOperands);
+  auto lb = b.create<AffineApplyOp>(forOp.getLoc(), lbMap,
+                                    forOp.getLowerBoundOperands());
 
   // For each upper bound expr, get the range.
   // Eg: affine.for %i = lb to min (ub1, ub2),
@@ -1236,11 +1235,10 @@ static AffineForOp generatePointWiseCopy(Location loc, Value *memref,
                   memIndicesStart);
 
     // Construct the subscript for the slow memref being copied.
-    SmallVector<Value *, 2> operands = {memBase, forOp.getInductionVar()};
     auto memIndex = b.create<AffineApplyOp>(
         loc,
         AffineMap::get(2, 0, b.getAffineDimExpr(0) + b.getAffineDimExpr(1)),
-        operands);
+        ValueRange({memBase, forOp.getInductionVar()}));
     memIndices.push_back(memIndex);
   }
 

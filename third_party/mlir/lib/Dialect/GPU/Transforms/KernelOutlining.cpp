@@ -115,7 +115,7 @@ static FuncOp outlineKernelFunc(gpu::LaunchOp launchOp) {
   std::string kernelFuncName =
       Twine(launchOp.getParentOfType<FuncOp>().getName(), "_kernel").str();
   FuncOp outlinedFunc = FuncOp::create(loc, kernelFuncName, type);
-  outlinedFunc.getBody().takeBody(launchOp.getBody());
+  outlinedFunc.getBody().takeBody(launchOp.body());
   Builder builder(launchOp.getContext());
   outlinedFunc.setAttr(gpu::GPUDialect::getKernelFuncAttrName(),
                        builder.getUnitAttr());
@@ -133,11 +133,9 @@ static FuncOp outlineKernelFunc(gpu::LaunchOp launchOp) {
 // constant region arguments inlined.
 static void convertToLaunchFuncOp(gpu::LaunchOp &launchOp, FuncOp kernelFunc) {
   OpBuilder builder(launchOp);
-  SmallVector<Value *, 4> kernelOperandValues(
-      launchOp.getKernelOperandValues());
   auto launchFuncOp = builder.create<gpu::LaunchFuncOp>(
       launchOp.getLoc(), kernelFunc, launchOp.getGridSizeOperandValues(),
-      launchOp.getBlockSizeOperandValues(), kernelOperandValues);
+      launchOp.getBlockSizeOperandValues(), launchOp.getKernelOperandValues());
   inlineBeneficiaryOps(kernelFunc, launchFuncOp);
   launchOp.erase();
 }

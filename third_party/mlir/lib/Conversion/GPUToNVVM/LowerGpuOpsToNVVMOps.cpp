@@ -101,8 +101,7 @@ private:
       // Add branch before inserted body, into body.
       block = block->getNextNode();
       rewriter.create<LLVM::BrOp>(loc, ArrayRef<Value *>{},
-                                  llvm::makeArrayRef(block),
-                                  llvm::ArrayRef<Value *>());
+                                  llvm::makeArrayRef(block), ValueRange());
 
       // Replace all gpu.yield ops with branch out of body.
       for (; block != split; block = block->getNextNode()) {
@@ -112,7 +111,7 @@ private:
         rewriter.setInsertionPointToEnd(block);
         rewriter.replaceOpWithNewOp<LLVM::BrOp>(
             terminator, ArrayRef<Value *>{}, llvm::makeArrayRef(split),
-            llvm::makeArrayRef(terminator->getOperand(0)));
+            ValueRange(terminator->getOperand(0)));
       }
 
       // Return accumulator result.
@@ -268,7 +267,7 @@ private:
     rewriter.create<LLVM::CondBrOp>(loc, llvm::makeArrayRef(condition),
                                     ArrayRef<Block *>{thenBlock, elseBlock});
 
-    auto addBranch = [&](ArrayRef<Value *> operands) {
+    auto addBranch = [&](ValueRange operands) {
       rewriter.create<LLVM::BrOp>(loc, ArrayRef<Value *>{},
                                   llvm::makeArrayRef(continueBlock),
                                   llvm::makeArrayRef(operands));

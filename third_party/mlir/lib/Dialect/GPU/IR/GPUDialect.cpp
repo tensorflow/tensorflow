@@ -46,7 +46,7 @@ bool GPUDialect::isKernel(Operation *op) {
 
 GPUDialect::GPUDialect(MLIRContext *context)
     : Dialect(getDialectName(), context) {
-  addOperations<LaunchOp, LaunchFuncOp,
+  addOperations<LaunchFuncOp,
 #define GET_OP_LIST
 #include "mlir/Dialect/GPU/GPUOps.cpp.inc"
                 >();
@@ -169,7 +169,7 @@ static LogicalResult verifyAllReduce(gpu::AllReduceOp allReduce) {
 // LaunchOp
 //===----------------------------------------------------------------------===//
 
-static SmallVector<Type, 4> getValueTypes(ArrayRef<Value *> values) {
+static SmallVector<Type, 4> getValueTypes(ValueRange values) {
   SmallVector<Type, 4> types;
   types.reserve(values.size());
   for (Value *v : values)
@@ -180,7 +180,7 @@ static SmallVector<Type, 4> getValueTypes(ArrayRef<Value *> values) {
 void LaunchOp::build(Builder *builder, OperationState &result, Value *gridSizeX,
                      Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
                      Value *blockSizeY, Value *blockSizeZ,
-                     ArrayRef<Value *> operands) {
+                     ValueRange operands) {
   // Add grid and block sizes as op operands, followed by the data operands.
   result.addOperands(
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
@@ -197,29 +197,27 @@ void LaunchOp::build(Builder *builder, OperationState &result, Value *gridSizeX,
   kernelRegion->push_back(body);
 }
 
-Region &LaunchOp::getBody() { return getOperation()->getRegion(0); }
-
 KernelDim3 LaunchOp::getBlockIds() {
-  assert(!getBody().getBlocks().empty() && "FuncOp body must not be empty.");
-  auto args = getBody().getBlocks().front().getArguments();
+  assert(!body().getBlocks().empty() && "FuncOp body must not be empty.");
+  auto args = body().getBlocks().front().getArguments();
   return KernelDim3{args[0], args[1], args[2]};
 }
 
 KernelDim3 LaunchOp::getThreadIds() {
-  assert(!getBody().getBlocks().empty() && "FuncOp body must not be empty.");
-  auto args = getBody().getBlocks().front().getArguments();
+  assert(!body().getBlocks().empty() && "FuncOp body must not be empty.");
+  auto args = body().getBlocks().front().getArguments();
   return KernelDim3{args[3], args[4], args[5]};
 }
 
 KernelDim3 LaunchOp::getGridSize() {
-  assert(!getBody().getBlocks().empty() && "FuncOp body must not be empty.");
-  auto args = getBody().getBlocks().front().getArguments();
+  assert(!body().getBlocks().empty() && "FuncOp body must not be empty.");
+  auto args = body().getBlocks().front().getArguments();
   return KernelDim3{args[6], args[7], args[8]};
 }
 
 KernelDim3 LaunchOp::getBlockSize() {
-  assert(!getBody().getBlocks().empty() && "FuncOp body must not be empty.");
-  auto args = getBody().getBlocks().front().getArguments();
+  assert(!body().getBlocks().empty() && "FuncOp body must not be empty.");
+  auto args = body().getBlocks().front().getArguments();
   return KernelDim3{args[9], args[10], args[11]};
 }
 
@@ -240,23 +238,24 @@ KernelDim3 LaunchOp::getBlockSizeOperandValues() {
 }
 
 llvm::iterator_range<Block::args_iterator> LaunchOp::getKernelArguments() {
-  auto args = getBody().getBlocks().front().getArguments();
+  auto args = body().getBlocks().front().getArguments();
   return llvm::drop_begin(args, LaunchOp::kNumConfigRegionAttributes);
 }
 
-LogicalResult LaunchOp::verify() {
+LogicalResult verify(LaunchOp op) {
   // Kernel launch takes kNumConfigOperands leading operands for grid/block
   // sizes and transforms them into kNumConfigRegionAttributes region arguments
   // for block/thread identifiers and grid/block sizes.
-  if (!getBody().empty()) {
-    Block &entryBlock = getBody().front();
-    if (entryBlock.getNumArguments() != kNumConfigOperands + getNumOperands())
-      return emitOpError("unexpected number of region arguments");
+  if (!op.body().empty()) {
+    Block &entryBlock = op.body().front();
+    if (entryBlock.getNumArguments() !=
+        LaunchOp::kNumConfigOperands + op.getNumOperands())
+      return op.emitOpError("unexpected number of region arguments");
   }
 
   // Block terminators without successors are expected to exit the kernel region
   // and must be `gpu.launch`.
-  for (Block &block : getBody()) {
+  for (Block &block : op.body()) {
     if (block.empty())
       continue;
     if (block.back().getNumSuccessors() != 0)
@@ -265,8 +264,8 @@ LogicalResult LaunchOp::verify() {
       return block.back()
                  .emitError("expected 'gpu.terminator' or a terminator with "
                             "successors")
-                 .attachNote(getLoc())
-             << "in '" << getOperationName() << "' body region";
+                 .attachNote(op.getLoc())
+             << "in '" << LaunchOp::getOperationName() << "' body region";
     }
   }
 
@@ -278,34 +277,37 @@ LogicalResult LaunchOp::verify() {
 //   (%size-x = %ssa-use, %size-y = %ssa-use, %size-z = %ssa-use)
 // where %size-* and %iter-* will correspond to the body region arguments.
 static void printSizeAssignment(OpAsmPrinter &p, KernelDim3 size,
-                                ArrayRef<Value *> operands, KernelDim3 ids) {
+                                ValueRange operands, KernelDim3 ids) {
   p << '(' << *ids.x << ", " << *ids.y << ", " << *ids.z << ") in (";
   p << *size.x << " = " << *operands[0] << ", ";
   p << *size.y << " = " << *operands[1] << ", ";
   p << *size.z << " = " << *operands[2] << ')';
 }
 
-void LaunchOp::print(OpAsmPrinter &p) {
-  SmallVector<Value *, 12> operandContainer(operand_begin(), operand_end());
-  ArrayRef<Value *> operands(operandContainer);
+void printLaunchOp(OpAsmPrinter &p, LaunchOp op) {
+  ValueRange operands = op.getOperands();
 
   // Print the launch configuration.
-  p << getOperationName() << ' ' << getBlocksKeyword();
-  printSizeAssignment(p, getGridSize(), operands.take_front(3), getBlockIds());
-  p << ' ' << getThreadsKeyword();
-  printSizeAssignment(p, getBlockSize(), operands.slice(3, 3), getThreadIds());
+  p << LaunchOp::getOperationName() << ' ' << op.getBlocksKeyword();
+  printSizeAssignment(p, op.getGridSize(),
+                      operands.drop_back(operands.size() - 3),
+                      op.getBlockIds());
+  p << ' ' << op.getThreadsKeyword();
+  printSizeAssignment(p, op.getBlockSize(), operands.slice(3, 3),
+                      op.getThreadIds());
 
   // From now on, the first kNumConfigOperands operands corresponding to grid
   // and block sizes are irrelevant, so we can drop them.
-  operands = operands.drop_front(kNumConfigOperands);
+  operands = operands.drop_front(LaunchOp::kNumConfigOperands);
 
   // Print the data argument remapping.
-  if (!getBody().empty() && !operands.empty()) {
-    p << ' ' << getArgsKeyword() << '(';
+  if (!op.body().empty() && !operands.empty()) {
+    p << ' ' << op.getArgsKeyword() << '(';
     for (unsigned i = 0, e = operands.size(); i < e; ++i) {
       if (i != 0)
         p << ", ";
-      p << *getBody().front().getArgument(kNumConfigRegionAttributes + i)
+      p << *op.body().front().getArgument(LaunchOp::kNumConfigRegionAttributes +
+                                          i)
         << " = " << *operands[i];
     }
     p << ") ";
@@ -321,8 +323,8 @@ void LaunchOp::print(OpAsmPrinter &p) {
     }
   }
 
-  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
-  p.printOptionalAttrDict(getAttrs());
+  p.printRegion(op.body(), /*printEntryBlockArgs=*/false);
+  p.printOptionalAttrDict(op.getAttrs());
 }
 
 // Parse the size assignment blocks for blocks and threads.  These have the form
@@ -361,10 +363,10 @@ parseSizeAssignment(OpAsmParser &parser,
 //                             (`args` ssa-reassignment `:` type-list)?
 //                             region attr-dict?
 // ssa-reassignment ::= `(` ssa-id `=` ssa-use (`,` ssa-id `=` ssa-use)* `)`
-ParseResult LaunchOp::parse(OpAsmParser &parser, OperationState &result) {
+ParseResult parseLaunchOp(OpAsmParser &parser, OperationState &result) {
   // Sizes of the grid and block.
-  SmallVector<OpAsmParser::OperandType, kNumConfigOperands> sizes(
-      kNumConfigOperands);
+  SmallVector<OpAsmParser::OperandType, LaunchOp::kNumConfigOperands> sizes(
+      LaunchOp::kNumConfigOperands);
   MutableArrayRef<OpAsmParser::OperandType> sizesRef(sizes);
 
   // Actual (data) operands passed to the kernel.
@@ -372,7 +374,7 @@ ParseResult LaunchOp::parse(OpAsmParser &parser, OperationState &result) {
 
   // Region arguments to be created.
   SmallVector<OpAsmParser::OperandType, 16> regionArgs(
-      kNumConfigRegionAttributes);
+      LaunchOp::kNumConfigRegionAttributes);
   MutableArrayRef<OpAsmParser::OperandType> regionArgsRef(regionArgs);
 
   // Parse the size assignment segments: the first segment assigns grid sizes
@@ -380,11 +382,11 @@ ParseResult LaunchOp::parse(OpAsmParser &parser, OperationState &result) {
   // sizes and defines values for thread identifiers.  In the region argument
   // list, identifiers precede sizes, and block-related values precede
   // thread-related values.
-  if (parser.parseKeyword(getBlocksKeyword().data()) ||
+  if (parser.parseKeyword(LaunchOp::getBlocksKeyword().data()) ||
       parseSizeAssignment(parser, sizesRef.take_front(3),
                           regionArgsRef.slice(6, 3),
                           regionArgsRef.slice(0, 3)) ||
-      parser.parseKeyword(getThreadsKeyword().data()) ||
+      parser.parseKeyword(LaunchOp::getThreadsKeyword().data()) ||
       parseSizeAssignment(parser, sizesRef.drop_front(3),
                           regionArgsRef.slice(9, 3),
                           regionArgsRef.slice(3, 3)) ||
@@ -397,7 +399,7 @@ ParseResult LaunchOp::parse(OpAsmParser &parser, OperationState &result) {
   // so is the trailing type list.  Parse it as well and use the parsed types
   // to resolve the operands passed to the kernel arguments.
   SmallVector<Type, 4> dataTypes;
-  if (!parser.parseOptionalKeyword(getArgsKeyword())) {
+  if (!parser.parseOptionalKeyword(LaunchOp::getArgsKeyword())) {
     llvm::SMLoc argsLoc = parser.getCurrentLocation();
 
     regionArgs.push_back({});
@@ -425,14 +427,15 @@ ParseResult LaunchOp::parse(OpAsmParser &parser, OperationState &result) {
   // block/thread identifiers and grid/block sizes, all of the `index` type.
   // Follow the actual kernel arguments.
   Type index = parser.getBuilder().getIndexType();
-  dataTypes.insert(dataTypes.begin(), kNumConfigRegionAttributes, index);
+  dataTypes.insert(dataTypes.begin(), LaunchOp::kNumConfigRegionAttributes,
+                   index);
   Region *body = result.addRegion();
   return failure(parser.parseRegion(*body, regionArgs, dataTypes) ||
                  parser.parseOptionalAttrDict(result.attributes));
 }
 
 void LaunchOp::eraseKernelArgument(unsigned index) {
-  Block &entryBlock = getBody().front();
+  Block &entryBlock = body().front();
   assert(index < entryBlock.getNumArguments() - kNumConfigRegionAttributes &&
          "kernel argument index overflow");
   entryBlock.eraseArgument(kNumConfigRegionAttributes + index);
@@ -447,7 +450,7 @@ class PropagateConstantBounds : public OpRewritePattern<LaunchOp> {
   PatternMatchResult matchAndRewrite(LaunchOp launchOp,
                                      PatternRewriter &rewriter) const override {
     auto origInsertionPoint = rewriter.saveInsertionPoint();
-    rewriter.setInsertionPointToStart(&launchOp.getBody().front());
+    rewriter.setInsertionPointToStart(&launchOp.body().front());
 
     // Traverse operands passed to kernel and check if some of them are known
     // constants.  If so, clone the constant operation inside the kernel region
@@ -497,7 +500,7 @@ void LaunchFuncOp::build(Builder *builder, OperationState &result,
                          ::mlir::FuncOp kernelFunc, Value *gridSizeX,
                          Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
                          Value *blockSizeY, Value *blockSizeZ,
-                         ArrayRef<Value *> kernelOperands) {
+                         ValueRange kernelOperands) {
   // Add grid and block sizes as op operands, followed by the data operands.
   result.addOperands(
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
@@ -512,8 +515,7 @@ void LaunchFuncOp::build(Builder *builder, OperationState &result,
 
 void LaunchFuncOp::build(Builder *builder, OperationState &result,
                          ::mlir::FuncOp kernelFunc, KernelDim3 gridSize,
-                         KernelDim3 blockSize,
-                         ArrayRef<Value *> kernelOperands) {
+                         KernelDim3 blockSize, ValueRange kernelOperands) {
   build(builder, result, kernelFunc, gridSize.x, gridSize.y, gridSize.z,
         blockSize.x, blockSize.y, blockSize.z, kernelOperands);
 }

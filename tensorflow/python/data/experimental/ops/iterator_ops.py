@@ -181,7 +181,6 @@ class CheckpointInputPipelineHook(session_run_hook.SessionRunHook):
     # `checkpoint_dir` is the same as the model checkpoint directory, there are
     # no conflicts during restore.
     self._latest_filename = "checkpoint_" + checkpoint_prefix
-    self._first_run = True
 
   def begin(self):
     # Build a Saver that saves all iterators in the `GLOBAL_ITERATORS`
@@ -195,6 +194,11 @@ class CheckpointInputPipelineHook(session_run_hook.SessionRunHook):
                                                         self._latest_filename)
     # pylint: enable=protected-access
     self._checkpoint_saver_hook.begin()
+
+  def after_create_session(self, session, coord):
+    # If a new session was created, we set _first_run to True so that we can
+    # restore if needed.
+    self._first_run = True
 
   def _restore_or_save_initial_ckpt(self, session):
     # Ideally this should be run in after_create_session but is not for the

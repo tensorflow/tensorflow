@@ -31,6 +31,10 @@ void CreateTPUBridge(OpPassManager &pm) {
   func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
   func_pm.addPass(CreateTPUClusterFormationPass());
   func_pm.addPass(createCanonicalizerPass());
+  // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
+  // because DecomposeResourceOpsPass uses pattern rewriter which hoists
+  // changed constants out of tf_device.Launch.
+  func_pm.addPass(TFDevice::CreateDecomposeResourceOpsPass());
   func_pm.addPass(tf_executor::CreateTFExecutorConstantSinkingPass());
   func_pm.addPass(TFDevice::CreateResourceOpLiftingPass());
 

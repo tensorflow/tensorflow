@@ -302,6 +302,15 @@ void AddOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// AddNOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult AddNOp::fold(ArrayRef<Attribute> operands) {
+  if (operands.size() == 1) return *inputs().begin();
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // AddV2Op
 //===----------------------------------------------------------------------===//
 
@@ -1908,6 +1917,30 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
 void TruncateDivOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<TruncateDivWithSqrtDivisor>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// UnpackOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(UnpackOp op) {
+  auto value_type = op.value()->getType().dyn_cast<RankedTensorType>();
+  if (!value_type) return success();
+
+  int64_t value_rank = value_type.getRank();
+  int64_t axis = op.axis().getSExtValue();
+  if (axis < -value_rank || axis >= value_rank)
+    return op.emitOpError("axis attribute must be in the range of [-")
+           << value_rank << ", " << value_rank << ')';
+
+  axis = GetDimForAxis(axis, value_rank);
+  int64_t dim_size = value_type.getDimSize(axis);
+  if (ShapedType::isDynamic(dim_size)) return success();
+
+  if (dim_size != op.getNumResults())
+    return op.emitOpError("result count must be equal to ") << dim_size;
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

@@ -1536,7 +1536,6 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor",
         "//third_party/eigen3",
-        "@farmhash_archive//:farmhash",
     ],
 )
 
@@ -5341,7 +5340,6 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
-        "@farmhash_archive//:farmhash",
     ],
     alwayslink = 1,
 )

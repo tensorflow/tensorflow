@@ -53,8 +53,7 @@ LogicalResult ReplaceTerminators(Region* region, Block* target_block,
     auto return_op = dyn_cast<xla_hlo::ReturnOp>(block->getTerminator());
     if (!return_op) continue;
     builder->setInsertionPointToEnd(block);
-    builder->create<mlir::BranchOp>(
-        loc, target_block, llvm::to_vector<4>(return_op.getOperands()));
+    builder->create<mlir::BranchOp>(loc, target_block, return_op.getOperands());
     return_op.erase();
   }
 
@@ -196,8 +195,7 @@ LogicalResult LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
         dyn_cast<mlir::xla_hlo::ReturnOp>(new_block->getTerminator());
     if (!return_op) continue;
     builder.setInsertionPointToEnd(new_block);
-    builder.create<mlir::BranchOp>(loc, cond_block,
-                                   llvm::to_vector<4>(return_op.getOperands()));
+    builder.create<mlir::BranchOp>(loc, cond_block, return_op.getOperands());
     return_op.erase();
   }
 

@@ -1110,16 +1110,14 @@ struct CallOpInterfaceLowering : public LLVMLegalizationPattern<CallOpType> {
         return this->matchFailure();
     }
 
-    SmallVector<Value *, 4> opOperands(op->getOperands());
     auto promoted = this->lowering.promoteMemRefDescriptors(
-        op->getLoc(), opOperands, operands, rewriter);
+        op->getLoc(), /*opOperands=*/op->getOperands(), operands, rewriter);
     auto newOp = rewriter.create<LLVM::CallOp>(op->getLoc(), packedResult,
                                                promoted, op->getAttrs());
 
     // If < 2 results, packing did not do anything and we can just return.
     if (numResults < 2) {
-      SmallVector<Value *, 4> results(newOp.getResults());
-      rewriter.replaceOp(op, results);
+      rewriter.replaceOp(op, newOp.getResults());
       return this->matchSuccess();
     }
 
@@ -1551,8 +1549,9 @@ struct OneToOneLLVMTerminatorLowering
                   ArrayRef<Block *> destinations,
                   ArrayRef<ArrayRef<Value *>> operands,
                   ConversionPatternRewriter &rewriter) const override {
+    SmallVector<ValueRange, 2> operandRanges(operands.begin(), operands.end());
     rewriter.replaceOpWithNewOp<TargetOp>(op, properOperands, destinations,
-                                          operands, op->getAttrs());
+                                          operandRanges, op->getAttrs());
     return this->matchSuccess();
   }
 };
@@ -2078,9 +2077,10 @@ Value *LLVMTypeConverter::promoteOneMemRefDescriptor(Location loc,
   return allocated;
 }
 
-SmallVector<Value *, 4> LLVMTypeConverter::promoteMemRefDescriptors(
-    Location loc, ArrayRef<Value *> opOperands, ArrayRef<Value *> operands,
-    OpBuilder &builder) {
+SmallVector<Value *, 4>
+LLVMTypeConverter::promoteMemRefDescriptors(Location loc, ValueRange opOperands,
+                                            ValueRange operands,
+                                            OpBuilder &builder) {
   SmallVector<Value *, 4> promotedOperands;
   promotedOperands.reserve(operands.size());
   for (auto it : llvm::zip(opOperands, operands)) {

@@ -27,6 +27,7 @@ import weakref
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.protobuf import debug_event_pb2
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.debug.lib import debug_events_writer
@@ -59,6 +60,10 @@ def _debug_identity_v2_grad(op, dy):
 def _get_id():
   """Get a short unique ID."""
   return str(uuid.uuid4())
+
+
+def _concrete_tensor_to_proto(tensor):
+  return tensor_util.make_tensor_proto(tensor.numpy())
 
 
 class _DumpingCallback(object):
@@ -276,7 +281,6 @@ class _DumpingCallback(object):
       automatic control dependencies (see `auto_control_deps.py`) instead of
       tensor overriding.
     """
-    del tensor_ids  # Unused currently.
     # TODO(b/144441464, b/144440920, b/144440922): Make use of it.
 
     tensor_debug_mode = self._tensor_debug_mode
@@ -293,7 +297,6 @@ class _DumpingCallback(object):
             instrumented_tensors.append(tensor)
           continue
         if is_v1_graph_mode and not tensor.dtype.is_numpy_compatible:
-
           instrumented_tensors.append(tensor)
           continue
         # Except in V1 graph mode + control flow, debug_identity_v2 trigger auto
@@ -312,6 +315,30 @@ class _DumpingCallback(object):
           # TODO(cais): Evaluate performance optimization options. For the
           # `NO_TENSOR` debug mode, an alternative is to add `debug_tensor` as a
           # control dependency of `tensor.op` without an additional identity op.
+          identity = array_ops.identity(tensor)
+          identity.op._add_control_input(  # pylint: disable=protected-access
+              debug_tensor.op)
+          instrumented_tensors.append(identity)
+      return instrumented_tensors
+    elif tensor_debug_mode == debug_event_pb2.TensorDebugMode.CURT_HEALTH:
+      for output_slot, tensor in enumerate(tensors):
+        if (not self._should_dump_tensor(op_type, tensor.dtype) or
+            not tensor.dtype.is_floating):
+          if is_v1_graph_mode:
+            instrumented_tensors.append(tensor)
+          continue
+        debug_tensor = gen_debug_ops.debug_identity_v2(
+            gen_debug_ops.debug_numeric_summary_v2(
+                tensor,
+                tensor_id=tensor_ids[output_slot],
+                tensor_debug_mode=self._tensor_debug_mode,
+                output_dtype=dtypes.float64),
+            tfdbg_context_id=tfdbg_context_id,
+            op_name=op_name,
+            output_slot=output_slot,
+            tensor_debug_mode=self._tensor_debug_mode,
+            debug_urls=debug_urls)
+        if is_v1_graph_mode:
           identity = array_ops.identity(tensor)
           identity.op._add_control_input(  # pylint: disable=protected-access
               debug_tensor.op)
@@ -377,7 +404,8 @@ class _DumpingCallback(object):
           output_tensor_ids=output_tensor_ids,
           tensor_debug_mode=tensor_debug_mode,
           code_location=self._process_stack_frames())
-    elif tensor_debug_mode == debug_event_pb2.TensorDebugMode.FULL_TENSOR:
+    elif tensor_debug_mode in (debug_event_pb2.TensorDebugMode.CURT_HEALTH,
+                               debug_event_pb2.TensorDebugMode.FULL_TENSOR):
       execution_proto = debug_event_pb2.Execution(
           op_type=op_type,
           num_outputs=len(tensors),
@@ -389,8 +417,20 @@ class _DumpingCallback(object):
       for tensor in tensors:
         if (self._should_dump_tensor(op_type, tensor.dtype) and
             tensor.dtype.is_numpy_compatible):
-          execution_proto.tensor_protos.append(
-              tensor_util.make_tensor_proto(tensor.numpy()))
+          if tensor_debug_mode == debug_event_pb2.TensorDebugMode.CURT_HEALTH:
+            if tensor.dtype.is_floating:
+              tensor_proto = _concrete_tensor_to_proto(
+                  gen_debug_ops.debug_numeric_summary_v2(
+                      tensor,
+                      tensor_debug_mode=tensor_debug_mode,
+                      output_dtype=dtypes.float64))
+            else:
+              # A placeholder for non-floating-type output tensors.
+              tensor_proto = tensor_pb2.TensorProto()
+          elif tensor_debug_mode == debug_event_pb2.TensorDebugMode.FULL_TENSOR:
+            tensor_proto = _concrete_tensor_to_proto(tensor)
+          if tensor_proto:
+            execution_proto.tensor_protos.append(tensor_proto)
       return execution_proto
     else:
       raise NotImplementedError(
@@ -427,6 +467,10 @@ class _DumpingCallback(object):
         return self._instrument_symbolic_tensors(
             outputs, op_type, op_name, context_id, output_tensor_ids)
     else:
+      if compat.as_bytes(op_type) == b"DebugNumericSummaryV2":
+        # TODO(b/140334369): Remove this special casing logic once op_callback.
+        # automatically prevents infinite recursion in eager mode.
+        return None
       context_id = self._func_graph_id_from_func_name(op_type)
       input_ids = [t._id for t in inputs]  # pylint:disable=protected-access
       writer.WriteExecution(self._dump_eager_tensors(
@@ -605,10 +649,12 @@ def enable_dump_debug_info(dump_root,
 
   tensor_debug_mode = debug_event_pb2.TensorDebugMode.Value(tensor_debug_mode)
   if tensor_debug_mode not in (debug_event_pb2.TensorDebugMode.NO_TENSOR,
+                               debug_event_pb2.TensorDebugMode.CURT_HEALTH,
                                debug_event_pb2.TensorDebugMode.FULL_TENSOR):
     raise NotImplementedError(
         "tfdbg dumping: support for tensor debug mode %s is not "
-        "implemented yet" % tensor_debug_mode)
+        "implemented yet" %
+        debug_event_pb2.TensorDebugMode.Name(tensor_debug_mode))
 
   # Validate the types of tensor_dtypes.
   if tensor_dtypes is not None:

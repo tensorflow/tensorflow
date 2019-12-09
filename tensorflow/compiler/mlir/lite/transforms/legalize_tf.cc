@@ -87,7 +87,7 @@ PatternMatchResult ConvertTFConcatOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_concat_op = cast<TF::ConcatOp>(op);
 
-  SmallVector<Value*, 4> values(tf_concat_op.values());
+  auto values = tf_concat_op.values();
   auto output_type = tf_concat_op.output()->getType();
   // Extract axis attribute from constant concat_dims tensor
   ElementsAttr axis;
@@ -106,7 +106,7 @@ PatternMatchResult ConvertTFConcatV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_concat_op = cast<TF::ConcatV2Op>(op);
 
-  SmallVector<Value*, 4> values(tf_concat_op.values());
+  auto values = tf_concat_op.values();
   auto output_type = tf_concat_op.output()->getType();
   // Extract axis attribute from constant axis tensor
   ElementsAttr axis;

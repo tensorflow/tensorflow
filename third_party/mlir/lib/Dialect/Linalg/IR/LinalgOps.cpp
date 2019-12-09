@@ -320,7 +320,7 @@ static ParseResult parseRangeOp(OpAsmParser &parser, OperationState &result) {
 // SliceOp
 //===----------------------------------------------------------------------===//
 void mlir::linalg::SliceOp::build(Builder *b, OperationState &result,
-                                  Value *base, ArrayRef<Value *> indexings) {
+                                  Value *base, ValueRange indexings) {
   result.addOperands(base);
   result.addOperands(indexings);
 

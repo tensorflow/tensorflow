@@ -1486,10 +1486,10 @@ public:
   /// SSA values in namesToUse.  This may only be used for IsolatedFromAbove
   /// operations.  If any entry in namesToUse is null, the corresponding
   /// argument name is left alone.
-  void shadowRegionArgs(Region &region, ArrayRef<Value *> namesToUse) override;
+  void shadowRegionArgs(Region &region, ValueRange namesToUse) override;
 
   void printAffineMapOfSSAIds(AffineMapAttr mapAttr,
-                              ArrayRef<Value *> operands) override {
+                              ValueRange operands) override {
     AffineMap map = mapAttr.getValue();
     unsigned numDims = map.getNumDims();
     auto printValueName = [&](unsigned pos, bool isSymbol) {
@@ -1851,8 +1851,7 @@ void OperationPrinter::printValueIDImpl(Value *value, bool printResultNo,
 /// SSA values in namesToUse.  This may only be used for IsolatedFromAbove
 /// operations.  If any entry in namesToUse is null, the corresponding
 /// argument name is left alone.
-void OperationPrinter::shadowRegionArgs(Region &region,
-                                        ArrayRef<Value *> namesToUse) {
+void OperationPrinter::shadowRegionArgs(Region &region, ValueRange namesToUse) {
   assert(!region.empty() && "cannot shadow arguments of an empty region");
   assert(region.front().getNumArguments() == namesToUse.size() &&
          "incorrect number of names passed in");
