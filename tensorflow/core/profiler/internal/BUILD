@@ -25,6 +25,8 @@ cc_library(
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler:tfprof_options",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -37,6 +39,8 @@ cc_library(
         ":tfprof_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@jsoncpp_git//:jsoncpp",
     ],
 )
@@ -52,6 +56,7 @@ cc_library(
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler:tfprof_options",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -73,6 +78,7 @@ cc_library(
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler:tfprof_options",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -86,13 +92,14 @@ cc_library(
         ":tfprof_show_multi",
         ":tfprof_tensor",
         ":tfprof_utils",
-        "//tensorflow/c:c_api",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler:tfprof_options",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -115,6 +122,8 @@ cc_library(
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler:tfprof_options",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -134,6 +143,7 @@ cc_library(
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler:tfprof_options",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -169,6 +179,8 @@ cc_library(
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler:tfprof_options",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -191,6 +203,8 @@ cc_library(
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler:tfprof_options",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -253,6 +267,8 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core/profiler:tfprof_options",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -275,6 +291,7 @@ cc_library(
         "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler:tfprof_options",
         "//tensorflow/core/profiler/internal/advisor:tfprof_advisor",
+        "@com_google_absl//absl/strings:str_format",
     ],
     alwayslink = 1,
 )
@@ -314,6 +331,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:protos_all_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -399,6 +418,7 @@ tf_cc_test(
     deps = [
         ":traceme_recorder",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
