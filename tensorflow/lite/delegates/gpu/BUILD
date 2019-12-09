@@ -162,6 +162,8 @@ ios_static_framework(
     deps = [":metal_delegate"],
 )
 
+# Note: Support for MacOS is best-effort at the moment.
+# bazel build -c opt --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always --cxxopt=-std=c++14 :tensorflow_lite_gpu_dylib --apple_platform_type=macos
 macos_dylib(
     name = "tensorflow_lite_gpu_dylib",
     minimum_os_version = "10.13",
