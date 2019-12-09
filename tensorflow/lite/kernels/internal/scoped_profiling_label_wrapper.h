@@ -15,23 +15,42 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_SCOPED_PROFILING_LABEL_WRAPPER_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_SCOPED_PROFILING_LABEL_WRAPPER_H_
 
-namespace tflite {
+// gemmlowp itself defines an empty class for ScopedProfilingLabel when
+// GEMMLOWP_PROFILING is not defined. However, that does not work for embedded
+// builds because instrumentation.h depends on pthread and defines a few Mutex
+// classes independent of GEMMLOWP_PROFILING.
+//
+// As a result, we are using GEMMLOWP_PROFILING to either pull in the
+// gemmlowp implementation or use our own empty class.
+//
+// The downside with this approach is that we are using a gemmlowp macro from
+// the TFLite codebase. The upside is that it is much simpler than the
+// alternatives (see history of this file).
 
-// This class uses the PIMPL pattern to enable a stub implementation for micro
-// platforms and a full gemlowp implementation otherwise.
+#ifdef GEMMLOWP_PROFILING
+
+#include "profiling/instrumentation.h"
+
+namespace tflite {
 class ScopedProfilingLabelWrapper {
  public:
-  explicit ScopedProfilingLabelWrapper(const char* label);
-
-  ~ScopedProfilingLabelWrapper();
+  explicit ScopedProfilingLabelWrapper(const char* label)
+      : scoped_profiling_label_(label) {}
 
  private:
-  class ScopedProfilingLabelImpl;
-  // Using a raw pointer instead of unique_ptr because we need to also build for
-  // embedded platforms.
-  ScopedProfilingLabelImpl* impl_;
+  gemmlowp::ScopedProfilingLabel scoped_profiling_label_;
 };
-
 }  // namespace tflite
+
+#else  // GEMMLOWP_PROFILING
+
+namespace tflite {
+class ScopedProfilingLabelWrapper {
+ public:
+  explicit ScopedProfilingLabelWrapper(const char* label) {}
+};
+}  // namespace tflite
+
+#endif  // GEMMLOWP_PROFILING
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_SCOPED_PROFILING_LABEL_WRAPPER_H_
