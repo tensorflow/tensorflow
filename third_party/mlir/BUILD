@@ -2292,6 +2292,7 @@ cc_library(
         ":Support",
         ":TransformUtils",
         ":Transforms",
+        ":VectorOps",
         "@llvm//:core",
         "@llvm//:support",
     ],

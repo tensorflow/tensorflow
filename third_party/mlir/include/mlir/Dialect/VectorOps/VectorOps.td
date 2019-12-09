@@ -127,7 +127,16 @@ def Vector_ContractionOp :
       %5 = vector.contract #contraction_trait %0, %1, %2, %lhs_mask, %rhs_mask
          : vector<7x8x16x15xf32>, vector<8x16x7x5xf32> into vector<8x15x8x5xf32>
   }];
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *lhs, Value *rhs, "
+    "Value *acc, ArrayAttr indexingMaps, ArrayAttr iteratorTypes">];
   let extraClassDeclaration = [{
+    static constexpr StringLiteral getIndexingMapsAttrName() {
+      return "indexing_maps";
+    }
+    static constexpr StringLiteral getIteratorTypesAttrName() {
+      return "iterator_types";
+    }
     VectorType getLhsType() {
       return lhs()->getType().cast<VectorType>();
     }
@@ -148,7 +157,7 @@ def Vector_ContractionOp :
     VectorType getResultType() {
       return getResult()->getType().cast<VectorType>();
     }
-    SmallVector<StringRef, 2> getTraitAttrNames();
+    ArrayRef<StringRef> getTraitAttrNames();
     SmallVector<AffineMap, 4> getIndexingMaps();
     static StringRef getReductionIteratorTypeName() {
       return "reduction";

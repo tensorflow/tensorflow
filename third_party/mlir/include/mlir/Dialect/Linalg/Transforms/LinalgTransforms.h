@@ -87,6 +87,9 @@ LogicalResult linalgOpToLoops(PatternRewriter &rewriter, Operation *op);
 template <typename ConcreteOp>
 LogicalResult linalgOpToAffineLoops(PatternRewriter &rewriter, Operation *op);
 
+// Rewrite a linalg.generic into a suitable vector.contraction op.
+LogicalResult vectorizeGenericOp(PatternRewriter &rewriter, Operation *op);
+
 } // namespace linalg
 } // namespace mlir
 

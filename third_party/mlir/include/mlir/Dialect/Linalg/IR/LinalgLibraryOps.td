@@ -484,9 +484,10 @@ def GenericOp : GenericOpBase<"generic"> {
         The external library is assumed to be dynamically linked and no strong
         compile-time guarantees are provided. In the absence of such a library
         call, linalg.generic will always lower to loops.
-      - iterator_types: an ArrayAttr they type of the enclosing loops; Each element of
-        the list represents and iterator of one of the following types:
-        parallel, reduction, window
+      - iterator_types: an ArrayAttr specifying the type of the enclosing loops.
+        Each element of the list represents and iterator of one of the following
+        types:
+          parallel, reduction, window
       - n_views: a pair of I64Attr representing the number of input (readonly)
         and output (readwrite) views.
 

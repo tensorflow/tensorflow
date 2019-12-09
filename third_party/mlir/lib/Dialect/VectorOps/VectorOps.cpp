@@ -51,6 +51,16 @@ mlir::vector::VectorOpsDialect::VectorOpsDialect(MLIRContext *context)
 // ContractionOp
 //===----------------------------------------------------------------------===//
 
+void vector::ContractionOp::build(Builder *builder, OperationState &result,
+                                  Value *lhs, Value *rhs, Value *acc,
+                                  ArrayAttr indexingMaps,
+                                  ArrayAttr iteratorTypes) {
+  result.addOperands({lhs, rhs, acc});
+  result.addTypes(acc->getType());
+  result.addAttribute(getIndexingMapsAttrName(), indexingMaps);
+  result.addAttribute(getIteratorTypesAttrName(), iteratorTypes);
+}
+
 static ParseResult parseContractionOp(OpAsmParser &parser,
                                       OperationState &result) {
   OpAsmParser::OperandType lhsInfo;
@@ -235,8 +245,10 @@ static LogicalResult verify(ContractionOp op) {
   return success();
 }
 
-SmallVector<StringRef, 2> ContractionOp::getTraitAttrNames() {
-  return SmallVector<StringRef, 2>{"indexing_maps", "iterator_types"};
+ArrayRef<StringRef> ContractionOp::getTraitAttrNames() {
+  static constexpr StringRef names[2] = {getIndexingMapsAttrName(),
+                                         getIteratorTypesAttrName()};
+  return ArrayRef<StringRef>(names);
 }
 
 static int64_t getResultIndex(AffineMap map, AffineExpr targetExpr) {
