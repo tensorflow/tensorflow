@@ -56,8 +56,8 @@ limitations under the License.
 /// TfLiteInterpreterInvoke(interpreter);
 ///
 /// // Extract the output tensor data.
-/// TfLiteTensor* output_tensor =
-//      TfLiteInterpreterGetInputTensor(interpreter, 0);
+/// const TfLiteTensor* output_tensor =
+//      TfLiteInterpreterGetOutputTensor(interpreter, 0);
 /// TfLiteTensorCopyToBuffer(output_tensor, output.data(),
 ///                          output.size() * sizeof(float));
 ///
