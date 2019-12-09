@@ -1877,8 +1877,8 @@ def rgb_to_grayscale(images, name=None):
     
   Usage Example:
     ```python
-    original = tf.random.normal(shape=(1, 1, 3))
-    converted = tf.image.rgb_to_grayscale(original)
+    >>>original = tf.constant([[[1.0], [2.0], [3.0]]])
+    >>>converted = tf.image.rgb_to_grayscale(original)
     ```
   """
   with ops.name_scope(name, 'rgb_to_grayscale', [images]) as name:
@@ -1912,8 +1912,8 @@ def grayscale_to_rgb(images, name=None):
 
   Usage Example:
     ```python
-    original = tf.random.normal(shape=(1, 1, 1))
-    converted = tf.image.grayscale_to_rgb(original)
+    >>>original = tf.constant([[[1.0, 2.0, 3.0]]])
+    >>>converted = tf.image.grayscale_to_rgb(original)
     ```
   """
   with ops.name_scope(name, 'grayscale_to_rgb', [images]) as name:
