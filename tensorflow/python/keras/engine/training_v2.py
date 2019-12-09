@@ -662,6 +662,12 @@ def _process_inputs(model,
       # Then we map using only the tensor standardization portion.
       def map_fn(x, y=None, sample_weights=None):
         """Tensor manipulation portion of standardization for Dataset.map."""
+        if (y is None and sample_weights is None):
+          # namedtuples are forbidden because it is ambiguous if they should be
+          # unpacked. If y or sample_weights is present then `x` was not the
+          # top level structure, and the correct behavior is unambiguous.
+          data_adapter.assert_not_namedtuple(x)
+
         standardized = model._standardize_tensors(
             x, y, sample_weights,
             run_eagerly=False,
