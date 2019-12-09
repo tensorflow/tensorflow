@@ -1519,13 +1519,12 @@ Stream& Stream::ThenDropoutForward(
     const dnn::BatchDescriptor& input_dimensions,
     const DeviceMemory<float>& input_data,
     const dnn::BatchDescriptor& output_dimensions,
-    DeviceMemory<float>* output_data, DeviceMemory<bool>* mask,
-    ScratchAllocator* workspace_allocator) {
+    DeviceMemory<float>* output_data, ScratchAllocator* workspace_allocator) {
   if (ok()) {
     if (dnn::DnnSupport* dnn = parent_->AsDnn()) {
       CheckError(dnn->DoDropoutForward(
           this, dropout_params, noise_dimensions, input_dimensions, input_data,
-          output_dimensions, output_data, mask, workspace_allocator));
+          output_dimensions, output_data, workspace_allocator));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -1539,13 +1538,13 @@ Stream& Stream::ThenDropoutForward(
     const dnn::BatchDescriptor& input_dimensions,
     const DeviceMemory<Eigen::half>& input_data,
     const dnn::BatchDescriptor& output_dimensions,
-    DeviceMemory<Eigen::half>* output_data, DeviceMemory<bool>* mask,
+    DeviceMemory<Eigen::half>* output_data,
     ScratchAllocator* workspace_allocator) {
   if (ok()) {
     if (dnn::DnnSupport* dnn = parent_->AsDnn()) {
       CheckError(dnn->DoDropoutForward(
           this, dropout_params, noise_dimensions, input_dimensions, input_data,
-          output_dimensions, output_data, mask, workspace_allocator));
+          output_dimensions, output_data, workspace_allocator));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -1559,13 +1558,12 @@ Stream& Stream::ThenDropoutBackward(
     const dnn::BatchDescriptor& input_diff_dimensions,
     const DeviceMemory<float>& input_diff_data,
     const dnn::BatchDescriptor& output_dimensions,
-    DeviceMemory<float>* output_data, DeviceMemory<bool>* mask,
-    ScratchAllocator* workspace_allocator) {
+    DeviceMemory<float>* output_data, ScratchAllocator* workspace_allocator) {
   if (ok()) {
     if (dnn::DnnSupport* dnn = parent_->AsDnn()) {
       CheckError(dnn->DoDropoutBackward(this, dropout_params, noise_dimensions,
                                         input_diff_dimensions, input_diff_data,
-                                        output_dimensions, output_data, mask,
+                                        output_dimensions, output_data,
                                         workspace_allocator));
     } else {
       SetErrorAndLogNoDnnSupport();
@@ -1580,13 +1578,13 @@ Stream& Stream::ThenDropoutBackward(
     const dnn::BatchDescriptor& input_diff_dimensions,
     const DeviceMemory<Eigen::half>& input_diff_data,
     const dnn::BatchDescriptor& output_dimensions,
-    DeviceMemory<Eigen::half>* output_data, DeviceMemory<bool>* mask,
+    DeviceMemory<Eigen::half>* output_data,
     ScratchAllocator* workspace_allocator) {
   if (ok()) {
     if (dnn::DnnSupport* dnn = parent_->AsDnn()) {
       CheckError(dnn->DoDropoutBackward(this, dropout_params, noise_dimensions,
                                         input_diff_dimensions, input_diff_data,
-                                        output_dimensions, output_data, mask,
+                                        output_dimensions, output_data,
                                         workspace_allocator));
     } else {
       SetErrorAndLogNoDnnSupport();

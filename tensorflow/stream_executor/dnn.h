@@ -659,13 +659,19 @@ class DropoutDescriptor {
     rate_ = value;
     return *this;
   }
+  DropoutDescriptor& set_mask(const std::vector<uint8>& mask) {
+    mask_ = mask;
+    return *this;
+  }
 
   unsigned long long seed() const { return seed_; }
   float rate() const { return rate_; }
+  std::vector<uint8> mask() const { return mask_; }
 
  private:
   unsigned long long seed_;
   float rate_;
+  std::vector<uint8> mask_;
 };
 
 // A patch of values in the input can be pooled via either a max or an average
@@ -1674,7 +1680,7 @@ class DnnSupport {
       const dnn::BatchDescriptor& input_dimensions,
       const DeviceMemory<float>& input_data,
       const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<float>* output_data, DeviceMemory<bool>* mask,
+      DeviceMemory<float>* output_data,
       ScratchAllocator* workspace_allocator = nullptr) {
     LOG(FATAL) << "DoDropoutForward not implemented for float.";
     return false;
@@ -1686,7 +1692,7 @@ class DnnSupport {
       const dnn::BatchDescriptor& input_dimensions,
       const DeviceMemory<Eigen::half>& input_data,
       const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<Eigen::half>* output_data, DeviceMemory<bool>* mask,
+      DeviceMemory<Eigen::half>* output_data,
       ScratchAllocator* workspace_allocator = nullptr) {
     LOG(FATAL) << "DoDropoutForward not implemented for half.";
     return false;
@@ -1698,7 +1704,7 @@ class DnnSupport {
       const dnn::BatchDescriptor& input_dimensions,
       const DeviceMemory<float>& input_data,
       const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<float>* output_data, DeviceMemory<bool>* mask,
+      DeviceMemory<float>* output_data,
       ScratchAllocator* workspace_allocator = nullptr) {
     LOG(FATAL) << "DoDropoutBackward not implemented for float.";
     return false;
@@ -1710,7 +1716,7 @@ class DnnSupport {
       const dnn::BatchDescriptor& input_dimensions,
       const DeviceMemory<Eigen::half>& input_data,
       const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<Eigen::half>* output_data, DeviceMemory<bool>* mask,
+      DeviceMemory<Eigen::half>* output_data,
       ScratchAllocator* workspace_allocator = nullptr) {
     LOG(FATAL) << "DoDropoutBackward not implemented for half.";
     return false;
