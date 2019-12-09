@@ -127,7 +127,7 @@ public:
   /// of the symbol table, and not the op itself. This function will also return
   /// false if there are any unknown operations that may potentially be symbol
   /// tables. This doesn't necessarily mean that there are no uses, we just
-  /// can't convervatively prove it.
+  /// can't conservatively prove it.
   static bool symbolKnownUseEmpty(StringRef symbol, Operation *from);
 
   /// Attempt to replace all uses of the given symbol 'oldSymbol' with the

@@ -916,10 +916,10 @@ def MixedVResultOp3 : TEST_Op<"mixed_variadic_out3",
       "Builder *builder, OperationState &state, IntegerAttr count",
       [{
         auto i32Type = builder->getIntegerType(32);
-        state.addTypes(i32Type); // $ouput1
+        state.addTypes(i32Type); // $output1
         SmallVector<Type, 4> types(count.getInt(), i32Type);
-        state.addTypes(types); // $ouput2
-        state.addTypes(types); // $ouput3
+        state.addTypes(types); // $output2
+        state.addTypes(types); // $output3
         state.addAttribute("count", count);
       }]>
   ];

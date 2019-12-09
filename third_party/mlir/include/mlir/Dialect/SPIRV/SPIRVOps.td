@@ -392,7 +392,7 @@ def SPV_UndefOp : SPV_Op<"undef", []> {
     ### Custom assembly form
 
     ``` {.ebnf}
-    undef-op ::= `spv.undef` `:` sprirv-type
+    undef-op ::= `spv.undef` `:` spirv-type
     ```
 
     For example:

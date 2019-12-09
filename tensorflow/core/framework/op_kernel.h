@@ -234,12 +234,12 @@ class AsyncOpKernel : public OpKernel {
   // Implementations of ComputeAsync() must ensure that `done` is (eventually)
   // called exactly once to signal the completion of the computation. The
   // implementation of ComputeAsync() must not block on the execution of another
-  // OpKernel. `done` may be called by the current thread, or by another thread
+  // OpKernel. `done` may be called by the current thread, or by another thread.
   // `context` is guaranteed to stay alive until the `done` callback starts.
   //
   // Since it is possible that the unblocking kernel may never run (due to an
   // error or cancellation), in most cases the AsyncOpKernel should implement
-  // cancellation support via `ctx->cancellation_manager()`.
+  // cancellation support via `context->cancellation_manager()`.
   //
   // WARNING: As soon as the `done` callback starts, `context` and `this` may be
   // deleted. No code depending on these objects should execute after the call
@@ -253,12 +253,11 @@ class AsyncOpKernel : public OpKernel {
   void Compute(OpKernelContext* context) final;
 };
 
-// Wraps a tensor that is held by an Op across calls to Compute(). For
-// memory safety when using asynchronous devices like GPUs, the system
-// must be notified when a Tensor is used inside an Op execution. The
-// wrapper ensures that all uses of the Tensor are tracked, because in
-// order to retrieve the Tensor the caller must use AccessTensor which
-// notifies the context.
+// Wraps a tensor that is held by an Op across calls to Compute(). For memory
+// safety when using asynchronous devices like GPUs, the system must be notified
+// when a Tensor is used inside an Op execution. The wrapper ensures that all
+// uses of the Tensor are tracked, because in order to retrieve the Tensor the
+// caller must use AccessTensor which notifies the context.
 class PersistentTensor {
  public:
   PersistentTensor() {}

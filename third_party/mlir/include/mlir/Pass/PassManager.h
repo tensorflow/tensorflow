@@ -97,7 +97,7 @@ public:
   /// Returns the internal implementation instance.
   detail::OpPassManagerImpl &getImpl();
 
-  /// Prints out the passes of the pass mangager as the textual representation
+  /// Prints out the passes of the pass manager as the textual representation
   /// of pipelines.
   /// Note: The quality of the string representation depends entirely on the
   /// the correctness of per-pass overrides of Pass::printAsTextualPipeline.

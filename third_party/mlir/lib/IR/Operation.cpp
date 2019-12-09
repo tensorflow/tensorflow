@@ -136,8 +136,7 @@ Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
                              ArrayRef<Value *> operands,
                              NamedAttributeList attributes,
-                             ArrayRef<Block *> successors,
-                             ArrayRef<std::unique_ptr<Region>> regions,
+                             ArrayRef<Block *> successors, RegionRange regions,
                              bool resizableOperandList) {
   unsigned numRegions = regions.size();
   Operation *op = create(location, name, resultTypes, operands, attributes,

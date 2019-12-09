@@ -464,8 +464,7 @@ void OpClass::writeDeclTo(raw_ostream &os) const {
     os << extraClassDeclaration << "\n";
 
   if (hasPrivateMethod) {
-    os << '\n';
-    os << "private:\n";
+    os << "\nprivate:\n";
     for (const auto &method : methods) {
       if (method.isPrivate()) {
         method.writeDeclTo(os);
@@ -668,29 +667,19 @@ void OpEmitter::emitDef(raw_ostream &os) { opClass.writeDefTo(os); }
 void OpEmitter::genAttrGetters() {
   FmtContext fctx;
   fctx.withBuilder("mlir::Builder(this->getContext())");
-  for (auto &namedAttr : op.getAttributes()) {
-    const auto &name = namedAttr.name;
-    const auto &attr = namedAttr.attr;
 
+  // Emit the derived attribute body.
+  auto emitDerivedAttr = [&](StringRef name, Attribute attr) {
     auto &method = opClass.newMethod(attr.getReturnType(), name);
     auto &body = method.body();
+    body << "  " << attr.getDerivedCodeBody() << "\n";
+  };
 
-    // Emit the derived attribute body.
-    if (attr.isDerivedAttr()) {
-      body << "  " << attr.getDerivedCodeBody() << "\n";
-      continue;
-    }
-
-    // Emit normal emitter.
-
-    // Return the queried attribute with the correct return type.
-    auto attrVal =
-        (attr.hasDefaultValue() || attr.isOptional())
-            ? formatv("this->getAttr(\"{0}\").dyn_cast_or_null<{1}>()", name,
-                      attr.getStorageType())
-            : formatv("this->getAttr(\"{0}\").cast<{1}>()", name,
-                      attr.getStorageType());
-    body << "  auto attr = " << attrVal << ";\n";
+  // Emit with return type specified.
+  auto emitAttrWithReturnType = [&](StringRef name, Attribute attr) {
+    auto &method = opClass.newMethod(attr.getReturnType(), name);
+    auto &body = method.body();
+    body << "  auto attr = " << name << "Attr();\n";
     if (attr.hasDefaultValue()) {
       // Returns the default value if not set.
       // TODO: this is inefficient, we are recreating the attribute for every
@@ -705,6 +694,32 @@ void OpEmitter::genAttrGetters() {
     body << "  return "
          << tgfmt(attr.getConvertFromStorageCall(), &fctx.withSelf("attr"))
          << ";\n";
+  };
+
+  // Generate raw named accessor type. This is a wrapper class that allows
+  // referring to the attributes via accessors instead of having to use
+  // the string interface for better compile time verification.
+  auto emitAttrWithStorageType = [&](StringRef name, Attribute attr) {
+    auto &method =
+        opClass.newMethod(attr.getStorageType(), (name + "Attr").str());
+    auto &body = method.body();
+    body << "  return this->getAttr(\"" << name << "\").";
+    if (attr.isOptional() || attr.hasDefaultValue())
+      body << "dyn_cast_or_null<";
+    else
+      body << "cast<";
+    body << attr.getStorageType() << ">();";
+  };
+
+  for (auto &namedAttr : op.getAttributes()) {
+    const auto &name = namedAttr.name;
+    const auto &attr = namedAttr.attr;
+    if (attr.isDerivedAttr()) {
+      emitDerivedAttr(name, attr);
+    } else {
+      emitAttrWithStorageType(name, attr);
+      emitAttrWithReturnType(name, attr);
+    }
   }
 }
 

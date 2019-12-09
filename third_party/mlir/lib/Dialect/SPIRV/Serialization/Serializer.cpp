@@ -450,7 +450,7 @@ private:
   /// But we don't know the <id> for %val0 and %val1 yet. One way is to visit
   /// all the blocks twice and use the first visit to assign an <id> to each
   /// value. But it's paying the overheads just for OpPhi emission. Instead,
-  /// we still visit the blocks once for emssion. When we emit the OpPhi
+  /// we still visit the blocks once for emission. When we emit the OpPhi
   /// instructions, we use 0 as a placeholder for the <id>s for %val0 and %val1.
   /// At the same time, we record their offsets in the emitted binary (which is
   /// placed inside `functions`) here. And then after emitting all blocks, we

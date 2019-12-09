@@ -71,13 +71,11 @@ public:
   static Operation *create(const OperationState &state);
 
   /// Create a new Operation with the specific fields.
-  static Operation *create(Location location, OperationName name,
-                           ArrayRef<Type> resultTypes,
-                           ArrayRef<Value *> operands,
-                           NamedAttributeList attributes,
-                           ArrayRef<Block *> successors = {},
-                           ArrayRef<std::unique_ptr<Region>> regions = {},
-                           bool resizableOperandList = false);
+  static Operation *
+  create(Location location, OperationName name, ArrayRef<Type> resultTypes,
+         ArrayRef<Value *> operands, NamedAttributeList attributes,
+         ArrayRef<Block *> successors = {}, RegionRange regions = {},
+         bool resizableOperandList = false);
 
   /// The name of an operation is the key identifier for it.
   OperationName getName() { return name; }
@@ -799,7 +797,7 @@ inline auto Operation::getResultTypes() -> result_type_range {
 /// This class provides an abstraction over the different types of ranges over
 /// Value*s. In many cases, this prevents the need to explicitly materialize a
 /// SmallVector/std::vector. This class should be used in places that are not
-/// suitable for a more derived type(e.g. ArrayRef) or a template range
+/// suitable for a more derived type (e.g. ArrayRef) or a template range
 /// parameter.
 class ValueRange {
   /// The type representing the owner of this range. This is either a list of

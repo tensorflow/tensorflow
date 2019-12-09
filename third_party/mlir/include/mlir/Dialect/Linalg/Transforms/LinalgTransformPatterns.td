@@ -31,6 +31,8 @@ def HasNoLinalgTransformMarker : CPred<[{
 
 class HasLinalgTransformMarker<string str> : CPred<[{
   $0.getAttrOfType<StringAttr>(
+    LinalgTransforms::kLinalgTransformMarker) &&
+  $0.getAttrOfType<StringAttr>(
     LinalgTransforms::kLinalgTransformMarker).getValue() == "}] # str # [{"}]>;
 
 class IsProducedByOpOfType<string str> :
@@ -75,6 +77,13 @@ class LinalgOpToLoops<string OpType> : NativeCodeCall<
 
 class LinalgOpToAffineLoops<string OpType> : NativeCodeCall<
   "if (failed(linalgOpToAffineLoops<" # OpType # ">($_builder, $0))) " #
+  "  return matchFailure();">;
+
+//===----------------------------------------------------------------------===//
+// Linalg to vector contraction patterns.
+//===----------------------------------------------------------------------===//
+class LinalgOpToVectorContraction<string OpType> : NativeCodeCall<
+  "if (failed(vectorizeGenericOp($_builder, $0))) " #
   "  return matchFailure();">;
 
 #endif // LINALG_TRANSFORMS

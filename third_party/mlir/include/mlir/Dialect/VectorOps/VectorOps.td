@@ -127,6 +127,9 @@ def Vector_ContractionOp :
       %5 = vector.contract #contraction_trait %0, %1, %2, %lhs_mask, %rhs_mask
          : vector<7x8x16x15xf32>, vector<8x16x7x5xf32> into vector<8x15x8x5xf32>
   }];
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *lhs, Value *rhs, "
+    "Value *acc, ArrayAttr indexingMaps, ArrayAttr iteratorTypes">];
   let extraClassDeclaration = [{
     VectorType getLhsType() {
       return lhs()->getType().cast<VectorType>();
@@ -148,14 +151,9 @@ def Vector_ContractionOp :
     VectorType getResultType() {
       return getResult()->getType().cast<VectorType>();
     }
-    SmallVector<StringRef, 2> getTraitAttrNames();
+    ArrayRef<StringRef> getTraitAttrNames();
     SmallVector<AffineMap, 4> getIndexingMaps();
-    static StringRef getReductionIteratorTypeName() {
-      return "reduction";
-    }
-    static StringRef getParallelIteratorTypeName() {
-      return "parallel";
-    }
+    static unsigned getAccOperandIndex() { return 2; }
 
     // Returns the bounds of each dimension in the iteration space spanned
     // by the iterator types of this operation.
@@ -197,7 +195,7 @@ def Vector_BroadcastOp :
                <duplication>         <potential stretch>
        ```
     The source operand is duplicated over all the missing leading dimensions
-    and streched over the trailing dimensions where the source has a non-equal
+    and stretched over the trailing dimensions where the source has a non-equal
     dimension of 1. These rules imply that any scalar broadcast (k=0) to any
     shaped vector with the same element type is always legal.
 
@@ -649,7 +647,7 @@ def Vector_ConstantMaskOp :
     are set to '0' or '1', based on whether the element indices are contained
     within a hyper-rectangular region specified by the 'mask_dim_sizes'
     array attribute argument. Each element of the 'mask_dim_sizes' array,
-    specifices an exclusive upper bound [0, mask-dim-size-element-value)
+    specifies an exclusive upper bound [0, mask-dim-size-element-value)
     for a unique dimension in the vector result. The conjunction of the ranges
     define a hyper-rectangular region within which elements values are set to 1
     (otherwise element values are set to 0).

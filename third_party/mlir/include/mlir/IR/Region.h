@@ -160,6 +160,59 @@ private:
   Operation *container;
 };
 
+/// This class provides an abstraction over the different types of ranges over
+/// Regions. In many cases, this prevents the need to explicitly materialize a
+/// SmallVector/std::vector. This class should be used in places that are not
+/// suitable for a more derived type (e.g. ArrayRef) or a template range
+/// parameter.
+class RegionRange {
+  /// The type representing the owner of this range. This is either a list of
+  /// values, operands, or results.
+  using OwnerT = llvm::PointerUnion<Region *, const std::unique_ptr<Region> *>;
+
+public:
+  RegionRange(const RegionRange &) = default;
+  RegionRange(RegionRange &&) = default;
+
+  RegionRange(MutableArrayRef<Region> regions = llvm::None);
+
+  template <typename Arg,
+            typename = typename std::enable_if_t<std::is_constructible<
+                ArrayRef<std::unique_ptr<Region>>, Arg>::value>>
+  RegionRange(Arg &&arg)
+      : RegionRange(ArrayRef<std::unique_ptr<Region>>(std::forward<Arg>(arg))) {
+  }
+  RegionRange(ArrayRef<std::unique_ptr<Region>> regions);
+
+  /// An iterator element of this range.
+  class Iterator : public indexed_accessor_iterator<Iterator, OwnerT, Region *,
+                                                    Region *, Region *> {
+  public:
+    Region *operator*() const;
+
+  private:
+    Iterator(OwnerT owner, unsigned curIndex);
+    /// Allow access to the constructor.
+    friend RegionRange;
+  };
+  Iterator begin() const { return Iterator(owner, 0); }
+  Iterator end() const { return Iterator(owner, count); }
+  Region *operator[](unsigned index) const {
+    assert(index < size() && "invalid index for region range");
+    return *std::next(begin(), index);
+  }
+  /// Return the size of this range.
+  size_t size() const { return count; }
+  /// Return if the range is empty.
+  bool empty() const { return size() == 0; }
+
+private:
+  /// The object that owns the provided range of regions.
+  OwnerT owner;
+  /// The size from the owning range.
+  unsigned count;
+};
+
 } // end namespace mlir
 
 #endif // MLIR_IR_REGION_H

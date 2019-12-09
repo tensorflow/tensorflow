@@ -286,7 +286,7 @@ FuncOp mlir::spirv::lowerAsEntryFunction(
   newFuncOp.setType(rewriter.getFunctionType(
       signatureConverter.getConvertedTypes(), llvm::None));
   rewriter.applySignatureConversion(&newFuncOp.getBody(), signatureConverter);
-  rewriter.replaceOp(funcOp.getOperation(), llvm::None);
+  rewriter.eraseOp(funcOp);
 
   // Set the attributes for argument and the function.
   StringRef argABIAttrName = spirv::getInterfaceVarABIAttrName();
