@@ -416,12 +416,24 @@ class DeviceTest(test.TestCase):
 
     self.assertEqual(len(config.get_visible_devices('CPU')), 1)
     self.assertGreater(len(config.get_visible_devices('GPU')), 0)
+
+    # get_visible_devices filters out XLA_* devices.  list_logical_devices does
+    # not, but we can't call it here because it initializes the devices and
+    # calling set_visible_devices after that is disallowed.
+    self.assertEqual(len(config.get_visible_devices('XLA_GPU')), 0)
+
     config.set_visible_devices(cpus[0])
     self.assertEqual(len(config.get_visible_devices('CPU')), 1)
     self.assertEqual(len(config.get_visible_devices('GPU')), 0)
+    self.assertEqual(len(config.list_logical_devices('XLA_GPU')), 0)
 
     with self.assertRaisesRegexp(RuntimeError, 'unknown device'):
       with ops.device('/device:GPU:0'):
+        a = constant_op.constant(1.0)
+        self.evaluate(a)
+
+    with self.assertRaisesRegexp(RuntimeError, 'unknown device'):
+      with ops.device('/device:XLA_GPU:0'):
         a = constant_op.constant(1.0)
         self.evaluate(a)
 
