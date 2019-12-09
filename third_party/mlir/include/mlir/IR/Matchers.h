@@ -261,8 +261,8 @@ auto m_Op(Matchers... matchers) {
 }
 
 namespace matchers {
-inline auto m_any() { return detail::AnyValueMatcher(); }
-inline auto m_val(Value *v) { return detail::PatternMatcherValue(v); }
+inline auto m_Any() { return detail::AnyValueMatcher(); }
+inline auto m_Val(Value *v) { return detail::PatternMatcherValue(v); }
 } // namespace matchers
 
 } // end namespace mlir
