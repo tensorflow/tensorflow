@@ -419,7 +419,7 @@ class HloComputation {
   // the HLO computation with the exception of fusion computation. A parameter
   // instruction is removable for a fusion computation.
   //
-  // Note that IsSafelyRemovable() is a necessarily condition to remove an
+  // Note that IsSafelyRemovable() is a necessary condition to remove an
   // instruction rather than a sufficient condition. For example, instructions
   // with side-effect (e.g., Send, Infeed) may be removed from a computation,
   // but the transformation must guarantee the invariants relevant to the
