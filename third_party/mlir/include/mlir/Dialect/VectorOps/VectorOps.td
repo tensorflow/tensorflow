@@ -165,6 +165,7 @@ def Vector_ContractionOp :
     static StringRef getParallelIteratorTypeName() {
       return "parallel";
     }
+    static unsigned getAccOperandIndex() { return 2; }
 
     // Returns the bounds of each dimension in the iteration space spanned
     // by the iterator types of this operation.
