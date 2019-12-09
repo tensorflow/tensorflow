@@ -1,11 +1,11 @@
 #include "xcore_ops_resolver.h"
 
 // XMOS custom operators
-#include "xcore/maxpool.h"
-#include "xcore/argmax.h"
-#include "xcore/conv2d_deepin_deepout.h"
-#include "xcore/conv2d_shallowin_deepout.h"
-#include "xcore/fc_deepin_shallowout_final.h"
+#include "maxpool.h"
+#include "argmax.h"
+#include "conv2d_deepin_deepout.h"
+#include "conv2d_shallowin_deepout.h"
+#include "fc_deepin_shallowout_final.h"
 
 namespace tflite {
 namespace ops {
