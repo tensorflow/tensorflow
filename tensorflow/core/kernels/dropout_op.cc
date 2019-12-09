@@ -81,6 +81,28 @@ class DropoutOp : public OpKernel {
     dropout_desc.set_rate(static_cast<float>(rate));
     dropout_desc.set_seed(seed);
 
+    // Build random uniform distribution
+    typedef random::UniformDistribution<random::PhiloxRandom, T> Distribution;
+    Distribution dist;
+
+    std::vector<T> random_nums(in0.shape().num_elements());
+    functor::FillPhiloxRandom<Eigen::ThreadPoolDevice, Distribution>()(
+        ctx, ctx->eigen_device<Eigen::ThreadPoolDevice>(),
+        // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change
+        // it just here.
+        generator_.ReserveRandomOutputs(random_nums.size() * sizeof(T), 256),
+        random_nums.data(), random_nums.size(), dist);
+
+    Eigen::Tensor<T, 1> rate_tensor(random_nums.size());
+    rate_tensor.setConstant(rate);
+    Eigen::TensorMap<Eigen::Tensor<T, 1>> random_tensor(random_nums.data(),
+                                                        random_nums.size());
+    Eigen::Tensor<bool, 1> mask_tensor(random_nums.size());
+    mask_tensor = random_tensor >= rate_tensor;
+    std::vector<uint8> mask = std::vector<uint8>(
+        mask_tensor.data(), mask_tensor.data() + mask_tensor.size());
+    dropout_desc.set_mask(mask);
+
     // Allocate output, and exit early if possible
     Tensor* output;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, in0.shape(), &output));
@@ -137,43 +159,11 @@ class DropoutOp : public OpKernel {
     );
     DnnScratchAllocator scratch_allocator(DropoutScratchSize, ctx);
 
-    // Build random uniform distribution
-    typedef random::UniformDistribution<random::PhiloxRandom, T> Distribution;
-    Distribution dist;
-
-    std::vector<T> random_nums(in0.shape().num_elements());
-    functor::FillPhiloxRandom<Eigen::ThreadPoolDevice, Distribution>()(
-        ctx, ctx->eigen_device<Eigen::ThreadPoolDevice>(),
-        // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change
-        // it just here.
-        generator_.ReserveRandomOutputs(random_nums.size() * sizeof(T), 256),
-        random_nums.data(), random_nums.size(), dist);
-
-    Eigen::Tensor<T, 1> rate_tensor(random_nums.size());
-    rate_tensor.setConstant(rate);
-    Eigen::TensorMap<Eigen::Tensor<T, 1>> random_tensor(random_nums.data(),
-                                                        random_nums.size());
-    Eigen::Tensor<bool, 1> mask_tensor(random_nums.size());
-    mask_tensor = random_tensor >= rate_tensor;
-    se::DeviceMemoryBase mask_tensor_host =
-        se::DeviceMemoryBase(mask_tensor.data());
-
-    std::unique_ptr<se::TemporaryDeviceMemory<bool>> mask_tensor_device =
-        stream->AllocateTemporaryArray<bool>(mask_tensor.size())
-            .ConsumeValueOrDie();
-    se::DeviceMemoryBase* mask_tensor_device_mutable =
-        mask_tensor_device->mutable_device_memory();
-    stream->ThenMemcpy(mask_tensor_device_mutable, mask_tensor_host,
-                       mask_tensor.size());
-    se::DeviceMemory<bool> mask_tensor_device_typed =
-        se::DeviceMemory<bool>(*mask_tensor_device_mutable);
-
-    bool status =
-        stream
-            ->ThenDropoutForward(dropout_desc, noise_desc, input_desc,
-                                 input_data, output_desc, &output_data,
-                                 &mask_tensor_device_typed, &scratch_allocator)
-            .ok();
+    bool status = stream
+                      ->ThenDropoutForward(dropout_desc, noise_desc, input_desc,
+                                           input_data, output_desc,
+                                           &output_data, &scratch_allocator)
+                      .ok();
     OP_REQUIRES(ctx, status,
                 errors::Internal("dnn DropoutForward launch failed"));
   }
@@ -241,6 +231,28 @@ class DropoutGradOp : public OpKernel {
     dropout_desc.set_rate(static_cast<float>(rate));
     dropout_desc.set_seed(seed);
 
+    // Build random uniform distribution
+    typedef random::UniformDistribution<random::PhiloxRandom, T> Distribution;
+    Distribution dist;
+
+    std::vector<T> random_nums(in0.shape().num_elements());
+    functor::FillPhiloxRandom<Eigen::ThreadPoolDevice, Distribution>()(
+        ctx, ctx->eigen_device<Eigen::ThreadPoolDevice>(),
+        // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change
+        // it just here.
+        generator_.ReserveRandomOutputs(random_nums.size() * sizeof(T), 256),
+        random_nums.data(), random_nums.size(), dist);
+
+    Eigen::Tensor<T, 1> rate_tensor(random_nums.size());
+    rate_tensor.setConstant(rate);
+    Eigen::TensorMap<Eigen::Tensor<T, 1>> random_tensor(random_nums.data(),
+                                                        random_nums.size());
+    Eigen::Tensor<bool, 1> mask_tensor(random_nums.size());
+    mask_tensor = random_tensor >= rate_tensor;
+    std::vector<uint8> mask = std::vector<uint8>(
+        mask_tensor.data(), mask_tensor.data() + mask_tensor.size());
+    dropout_desc.set_mask(mask);
+
     // Allocate output, and exit early if possible
     Tensor* output;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, in0.shape(), &output));
@@ -297,43 +309,11 @@ class DropoutGradOp : public OpKernel {
     );
     DnnScratchAllocator scratch_allocator(DropoutScratchSize, ctx);
 
-    // Build random uniform distribution
-    typedef random::UniformDistribution<random::PhiloxRandom, T> Distribution;
-    Distribution dist;
-
-    std::vector<T> random_nums(in0.shape().num_elements());
-    functor::FillPhiloxRandom<Eigen::ThreadPoolDevice, Distribution>()(
-        ctx, ctx->eigen_device<Eigen::ThreadPoolDevice>(),
-        // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change
-        // it just here.
-        generator_.ReserveRandomOutputs(random_nums.size() * sizeof(T), 256),
-        random_nums.data(), random_nums.size(), dist);
-
-    Eigen::Tensor<T, 1> rate_tensor(random_nums.size());
-    rate_tensor.setConstant(rate);
-    Eigen::TensorMap<Eigen::Tensor<T, 1>> random_tensor(random_nums.data(),
-                                                        random_nums.size());
-    Eigen::Tensor<bool, 1> mask_tensor(random_nums.size());
-    mask_tensor = random_tensor >= rate_tensor;
-    se::DeviceMemoryBase mask_tensor_host =
-        se::DeviceMemoryBase(mask_tensor.data());
-
-    std::unique_ptr<se::TemporaryDeviceMemory<bool>> mask_tensor_device =
-        stream->AllocateTemporaryArray<bool>(mask_tensor.size())
-            .ConsumeValueOrDie();
-    se::DeviceMemoryBase* mask_tensor_device_mutable =
-        mask_tensor_device->mutable_device_memory();
-    stream->ThenMemcpy(mask_tensor_device_mutable, mask_tensor_host,
-                       mask_tensor.size());
-    se::DeviceMemory<bool> mask_tensor_device_typed =
-        se::DeviceMemory<bool>(*mask_tensor_device_mutable);
-
-    bool status =
-        stream
-            ->ThenDropoutBackward(dropout_desc, noise_desc, input_desc,
-                                  input_data, output_desc, &output_data,
-                                  &mask_tensor_device_typed, &scratch_allocator)
-            .ok();
+    bool status = stream
+                      ->ThenDropoutBackward(dropout_desc, noise_desc,
+                                            input_desc, input_data, output_desc,
+                                            &output_data, &scratch_allocator)
+                      .ok();
     OP_REQUIRES(ctx, status,
                 errors::Internal("dnn DropoutBackward launch failed"));
   }

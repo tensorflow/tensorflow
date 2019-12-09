@@ -602,7 +602,6 @@ class Stream {
                              const DeviceMemory<float>& input_data,
                              const dnn::BatchDescriptor& output_dimensions,
                              DeviceMemory<float>* output_data,
-                             DeviceMemory<bool>* mask,
                              ScratchAllocator* workspace_allocator = nullptr);
 
   Stream& ThenDropoutForward(const dnn::DropoutDescriptor& dropout_params,
@@ -611,7 +610,6 @@ class Stream {
                              const DeviceMemory<Eigen::half>& input_data,
                              const dnn::BatchDescriptor& output_dimensions,
                              DeviceMemory<Eigen::half>* output_data,
-                             DeviceMemory<bool>* mask,
                              ScratchAllocator* workspace_allocator = nullptr);
 
   Stream& ThenDropoutBackward(const dnn::DropoutDescriptor& dropout_params,
@@ -620,7 +618,6 @@ class Stream {
                               const DeviceMemory<float>& input_diff_data,
                               const dnn::BatchDescriptor& output_dimensions,
                               DeviceMemory<float>* output_data,
-                              DeviceMemory<bool>* mask,
                               ScratchAllocator* workspace_allocator = nullptr);
 
   Stream& ThenDropoutBackward(const dnn::DropoutDescriptor& dropout_params,
@@ -629,7 +626,6 @@ class Stream {
                               const DeviceMemory<Eigen::half>& input_diff_data,
                               const dnn::BatchDescriptor& output_dimensions,
                               DeviceMemory<Eigen::half>* output_data,
-                              DeviceMemory<bool>* mask,
                               ScratchAllocator* workspace_allocator = nullptr);
 
   Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
