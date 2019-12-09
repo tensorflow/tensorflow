@@ -464,6 +464,14 @@ def flip_left_right(image):
 
   Raises:
     ValueError: if the shape of `image` not supported.
+    
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> image = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.flip_left_right(image)
+    <tf.Tensor 'flip_left_right/ReverseV2:0' shape=(256, 256, 3) dtype=float32>
+    ```
   """
   return _flip(image, 1, 'flip_left_right')
 
