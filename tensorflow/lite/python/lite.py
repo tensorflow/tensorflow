@@ -76,6 +76,10 @@ from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
+# The default value of `experimental_new_converter`.
+_USE_EXPERIMENTAL_NEW_CONVERTER = False
+
+
 @_tf_export("lite.Optimize")
 class Optimize(enum.Enum):
   """Enum defining the optimizations to apply when generating tflite graphs.
@@ -167,7 +171,7 @@ class TFLiteConverterBase(object):
     self.target_spec = TargetSpec()
     self.optimizations = []
     self.representative_dataset = None
-    self.experimental_new_converter = False
+    self.experimental_new_converter = _USE_EXPERIMENTAL_NEW_CONVERTER
     self.experimental_new_quantizer = False
     # The 'GraphDebugInfo'  contains the stack traces of all the original nodes
     # in the `GraphDef` to the converter.

@@ -103,12 +103,46 @@ void TfLiteQuantizationFree(TfLiteQuantization* quantization) {
   quantization->type = kTfLiteNoQuantization;
 }
 
+void TfLiteSparsityFree(TfLiteSparsity* sparsity) {
+  if (sparsity == NULL) {
+    return;
+  }
+
+  if (sparsity->traversal_order) {
+    TfLiteIntArrayFree(sparsity->traversal_order);
+    sparsity->traversal_order = NULL;
+  }
+
+  if (sparsity->block_map) {
+    TfLiteIntArrayFree(sparsity->block_map);
+    sparsity->block_map = NULL;
+  }
+
+  if (sparsity->dim_metadata) {
+    for (int i = 0; i < sparsity->dim_metadata_size; i++) {
+      TfLiteDimensionMetadata metadata = sparsity->dim_metadata[i];
+      if (metadata.format == kTfLiteDimSparseCSR) {
+        TfLiteIntArrayFree(metadata.array_segments);
+        metadata.array_segments = NULL;
+        TfLiteIntArrayFree(metadata.array_indices);
+        metadata.array_indices = NULL;
+      }
+    }
+    free(sparsity->dim_metadata);
+    sparsity->dim_metadata = NULL;
+  }
+
+  free(sparsity);
+}
+
 void TfLiteTensorFree(TfLiteTensor* t) {
   TfLiteTensorDataFree(t);
   if (t->dims) TfLiteIntArrayFree(t->dims);
   t->dims = NULL;
 
   TfLiteQuantizationFree(&t->quantization);
+  TfLiteSparsityFree(t->sparsity);
+  t->sparsity = NULL;
 }
 
 void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,

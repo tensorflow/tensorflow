@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -131,18 +132,23 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
     }
   } else if (shape.IsArray()) {
     if (allocate_arrays) {
+      // Literals can be used as DMA targets, which can require alignment. We
+      // force a 16-byte minimum alignment.
+      constexpr int kMinimumAlignment = 16;
       if (LayoutUtil::IsSparseArray(shape)) {
         // For sparse arrays, the buffer must be of the size of the maximum
         // number of sparse elements possible.
         const int64 max_sparse_elements =
             LayoutUtil::MaxSparseElements(shape.layout());
-        piece->set_buffer(
-            new char[max_sparse_elements *
-                     ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type())]);
+        piece->set_buffer(static_cast<char*>(tensorflow::port::AlignedMalloc(
+            max_sparse_elements *
+                ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()),
+            kMinimumAlignment)));
         piece->set_sparse_indices(
             new SparseIndexArray(max_sparse_elements, shape.rank()));
       } else {
-        piece->set_buffer(new char[piece->size_bytes()]);
+        piece->set_buffer(static_cast<char*>(tensorflow::port::AlignedMalloc(
+            piece->size_bytes(), kMinimumAlignment)));
       }
     }
   } else {
@@ -174,7 +180,7 @@ void Literal::DeallocateBuffers() {
   root_piece_->ForEachMutableSubpiece(
       [&](const ShapeIndex& index, Piece* piece) {
         if (piece->buffer() != nullptr) {
-          delete[] piece->buffer();
+          tensorflow::port::AlignedFree(piece->buffer());
           delete piece->sparse_indices();
         }
       });
@@ -504,7 +510,7 @@ Status Literal::MoveFrom(Literal&& src_literal,
           dest_index.push_back(i);
         }
         Piece& dest_piece = piece(dest_index);
-        delete[] dest_piece.buffer();
+        tensorflow::port::AlignedFree(dest_piece.buffer());
         dest_piece.set_buffer(src_piece.buffer());
         delete dest_piece.sparse_indices();
         dest_piece.set_sparse_indices(src_piece.sparse_indices());

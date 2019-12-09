@@ -366,6 +366,21 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("devices", &PyLocalClient::devices)
       .def("local_devices", &PyLocalClient::local_devices)
       .def("host_id", &PyLocalClient::host_id)
+      .def("GetDefaultDeviceAssignment",
+           [](PyLocalClient* client, int num_replicas)
+               -> StatusOr<std::vector<std::shared_ptr<Device>>> {
+             TF_ASSIGN_OR_RETURN(
+                 DeviceAssignment device_assignment,
+                 client->GetDefaultDeviceAssignment(num_replicas));
+             std::vector<std::shared_ptr<Device>> result;
+             for (int i = 0; i < num_replicas; ++i) {
+               int device_id = device_assignment(i, 0);
+               auto iter = client->id_to_device().find(device_id);
+               CHECK(iter != client->id_to_device().end()) << device_id;
+               result.push_back(iter->second);
+             }
+             return result;
+           })
       .def("TransferToInfeed",
            [](PyLocalClient* client, const LiteralSlice& literal,
               int device_ordinal) {
@@ -624,10 +639,12 @@ PYBIND11_MODULE(xla_extension, m) {
   py::module ops = m.def_submodule("ops", "XLA operations");
 
   ops.def("AfterAll", &AfterAll);
-  ops.def("AllReduce",
-          static_cast<XlaOp (*)(
-              XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
-              const absl::optional<ChannelHandle>&)>(&AllReduce));
+  ops.def(
+      "AllReduce",
+      static_cast<XlaOp (*)(
+          XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
+          const absl::optional<ChannelHandle>&, const absl::optional<Shape>&)>(
+          &AllReduce));
   ops.def("AllToAll", &AllToAll);
   ops.def("CollectivePermute", &CollectivePermute);
   ops.def("CreateToken", &CreateToken);

@@ -58,11 +58,20 @@ bool isProducedByOpOfType(Operation *consumerOp, Value *consumedView) {
 // success.
 ////////////////////////////////////////////////////////////////////////////////
 
-// Tiles `op` by `sizes` and sets the attribute `kLinalgTransformMarker` to
-// `linalgMarker`.
+/// Tiles `op` by `sizes` permuting the looops according to `permutation`
+/// and sets the attribute `kLinalgTransformMarker` to `linalgMarker`.
+/// The permutation is expressed as a list of integers that specify
+/// the new ordering of the loop nest. The length of `permutation`
+/// must be equal to the length of `tileSizes`.
+/// E.g. the permutation `(i,j,k) -> (j,k,i)` will be expressed with
+/// `permutation = [1,2,0]`. All values in `permutation` must be
+/// integers, in the range 0..`tileSizes.size()` without duplications
+/// (i.e. `[1,1,2]` is an invalid permutation). An empty list
+/// states for the identity permutation.
 LogicalResult tileLinalgOpAndSetMarker(PatternRewriter &rewriter, Operation *op,
                                        ArrayRef<int64_t> sizes,
-                                       StringRef linalgMarker);
+                                       StringRef linalgMarker,
+                                       ArrayRef<unsigned> permutation);
 
 // Tiles `op` by `sizes`, fuses the producers of `operandIndicesToFuse` and sets
 // the attribute `kLinalgTransformMarker` to `linalgMarker`.

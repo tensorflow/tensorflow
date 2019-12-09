@@ -18,7 +18,7 @@ cc_library(
 )
 
 gentbl(
-    name = "TestTransformPatternsIncGen",
+    name = "TestLinalgTransformPatternsIncGen",
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -27,6 +27,21 @@ gentbl(
     ],
     tblgen = "@local_config_mlir//:mlir-tblgen",
     td_file = "lib/DeclarativeTransforms/TestLinalgTransformPatterns.td",
+    td_srcs = [
+        "@local_config_mlir//:LinalgTransformPatternsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "TestLinalgTilePermuteTransformPatternsIncGen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/DeclarativeTransforms/TestLinalgTilePermutePatterns.h.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "lib/DeclarativeTransforms/TestLinalgTilePermutePatterns.td",
     td_srcs = [
         "@local_config_mlir//:LinalgTransformPatternsTdFiles",
     ],
@@ -98,12 +113,15 @@ cc_library(
     name = "TestIR",
     srcs = [
         "lib/IR/TestFunc.cpp",
+        "lib/IR/TestMatchers.cpp",
         "lib/IR/TestSymbolUses.cpp",
     ],
     deps = [
+        ":TestDialect",
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
+        "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
     ],
     alwayslink = 1,
@@ -129,6 +147,7 @@ cc_library(
         "lib/Transforms/TestCallGraph.cpp",
         "lib/Transforms/TestConstantFold.cpp",
         "lib/Transforms/TestInlining.cpp",
+        "lib/Transforms/TestLinalgTilePermuteTransforms.cpp",
         "lib/Transforms/TestLinalgTransforms.cpp",
         "lib/Transforms/TestLoopFusion.cpp",
         "lib/Transforms/TestLoopMapping.cpp",
@@ -142,7 +161,8 @@ cc_library(
     includes = ["lib/TestDialect"],
     deps = [
         ":TestDialect",
-        ":TestTransformPatternsIncGen",
+        ":TestLinalgTilePermuteTransformPatternsIncGen",
+        ":TestLinalgTransformPatternsIncGen",
         "@llvm//:support",
         "@local_config_mlir//:AffineOps",
         "@local_config_mlir//:Analysis",

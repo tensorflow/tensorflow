@@ -73,9 +73,8 @@ void mlir::getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
   }
 
   unsigned step = forOp.getStep();
-
-  SmallVector<Value *, 4> lbOperands(forOp.getLowerBoundOperands());
-  auto lb = b.create<AffineApplyOp>(forOp.getLoc(), lbMap, lbOperands);
+  auto lb = b.create<AffineApplyOp>(forOp.getLoc(), lbMap,
+                                    forOp.getLowerBoundOperands());
 
   // For each upper bound expr, get the range.
   // Eg: affine.for %i = lb to min (ub1, ub2),
@@ -979,7 +978,7 @@ TileLoops mlir::extractFixedOuterLoops(loop::ForOp rootForOp,
 static void
 replaceAllUsesExcept(Value *orig, Value *replacement,
                      const SmallPtrSetImpl<Operation *> &exceptions) {
-  for (auto &use : orig->getUses()) {
+  for (auto &use : llvm::make_early_inc_range(orig->getUses())) {
     if (exceptions.count(use.getOwner()) == 0)
       use.set(replacement);
   }

@@ -723,17 +723,6 @@ Status XlaCompiler::CompileFunction(
 
   std::unique_ptr<Graph> graph = GetGraph(fbody);
 
-  // Clear the "_kernel" attribute if it is set to "host". This is used to
-  // indicate that a computation should happen on the host instead of the
-  // accelerator, but doesn't make sense in XLA.
-  const char* const kKernelAttr = "_kernel";
-  for (Node* n : graph->nodes()) {
-    string value;
-    if (TryGetNodeAttr(n->attrs(), kKernelAttr, &value) && value == "host") {
-      n->ClearAttr(kKernelAttr);
-    }
-  }
-
   // _Arg and _Retval nodes don't exist in the stored subgraph for the function;
   // they are added by the function body looked up.  Therefore, they don't have
   // core assignments here.
@@ -1059,7 +1048,12 @@ Status XlaCompiler::BuildArguments(
     const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
     VLOG(2) << "  XLA arg " << i
             << " shape: " << xla::ShapeUtil::HumanString(arg_shapes[i])
-            << " name: " << arg.name << " TF arg " << input_to_args->at(i);
+            << " name: " << arg.name << " TF arg " << input_to_args->at(i)
+            << " node name: " << arg.node_name
+            << (arg_shardings.find(i) == arg_shardings.end()
+                    ? ""
+                    : absl::StrCat(" sharding: ",
+                                   arg_shardings.at(i).DebugString()));
     XlaExpression& arg_expression = (*arg_expressions)[input_to_args->at(i)];
     switch (arg.kind) {
       case XlaCompiler::Argument::kResource: {

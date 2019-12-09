@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MAGIC_WAND_CIRCLE_MICRO_FEATURES_DATA_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MAGIC_WAND_CIRCLE_MICRO_FEATURES_DATA_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MAGIC_WAND_SLOPE_MICRO_FEATURES_DATA_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MAGIC_WAND_SLOPE_MICRO_FEATURES_DATA_H_
 
-extern const int g_circle_micro_f9643d42_nohash_4_length;
-extern const int g_circle_micro_f9643d42_nohash_4_dim;
-extern const float g_circle_micro_f9643d42_nohash_4_data[];
+extern const int g_slope_micro_f2e59fea_nohash_1_length;
+extern const int g_slope_micro_f2e59fea_nohash_1_dim;
+extern const float g_slope_micro_f2e59fea_nohash_1_data[];
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MAGIC_WAND_CIRCLE_MICRO_FEATURES_DATA_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MAGIC_WAND_SLOPE_MICRO_FEATURES_DATA_H_

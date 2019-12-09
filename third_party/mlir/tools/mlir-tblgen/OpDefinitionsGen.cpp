@@ -541,6 +541,11 @@ private:
   // operand's type as all results' types.
   void genUseOperandAsResultTypeCollectiveParamBuilder();
 
+  // Generates the build() method that takes aggregate operands/attributes
+  // parameters. This build() method uses inferred types as result types.
+  // Requires: The type needs to be inferable via InferTypeOpInterface.
+  void genInferedTypeCollectiveParamBuilder();
+
   // Generates the build() method that takes each operand/attribute as a
   // stand-alone parameter. The generated build() method uses first attribute's
   // type as all result's types.
@@ -964,14 +969,9 @@ void OpEmitter::genUseOperandAsResultTypeCollectiveParamBuilder() {
   // Signature
   std::string params =
       std::string("Builder *, OperationState &") + builderOpState +
-      ", ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes";
+      ", ValueRange operands, ArrayRef<NamedAttribute> attributes";
   auto &m = opClass.newMethod("void", "build", params, OpMethod::MP_Static);
   auto &body = m.body();
-
-  // Result types
-  SmallVector<std::string, 2> resultTypes(numResults, "operands[0]->getType()");
-  body << "  " << builderOpState << ".addTypes({"
-       << llvm::join(resultTypes, ", ") << "});\n\n";
 
   // Operands
   body << "  " << builderOpState << ".addOperands(operands);\n\n";
@@ -984,6 +984,31 @@ void OpEmitter::genUseOperandAsResultTypeCollectiveParamBuilder() {
     for (int i = 0; i < numRegions; ++i)
       m.body() << "  (void)" << builderOpState << ".addRegion();\n";
   }
+
+  // Result types
+  SmallVector<std::string, 2> resultTypes(numResults, "operands[0]->getType()");
+  body << "  " << builderOpState << ".addTypes({"
+       << llvm::join(resultTypes, ", ") << "});\n\n";
+}
+
+void OpEmitter::genInferedTypeCollectiveParamBuilder() {
+  // TODO(jpienaar): Expand to support regions.
+  const char *params =
+      "Builder *builder, OperationState &{0}, "
+      "ValueRange operands, ArrayRef<NamedAttribute> attributes";
+  auto &m =
+      opClass.newMethod("void", "build", formatv(params, builderOpState).str(),
+                        OpMethod::MP_Static);
+  auto &body = m.body();
+  body << formatv(R"(
+    SmallVector<Type, 2> inferedReturnTypes;
+    if (succeeded({0}::inferReturnTypes({1}.location, operands, attributes,
+                  /*regions=*/{{}, inferedReturnTypes)))
+      build(builder, tblgen_state, inferedReturnTypes, operands, attributes);
+    else
+      llvm::report_fatal_error("Failed to infer result type(s).");
+  )",
+                  opClass.getClassName(), builderOpState);
 }
 
 void OpEmitter::genUseOperandAsResultTypeSeparateParamBuilder() {
@@ -1011,7 +1036,7 @@ void OpEmitter::genUseOperandAsResultTypeSeparateParamBuilder() {
 void OpEmitter::genUseAttrAsResultTypeBuilder() {
   std::string params =
       std::string("Builder *, OperationState &") + builderOpState +
-      ", ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes";
+      ", ValueRange operands, ArrayRef<NamedAttribute> attributes";
   auto &m = opClass.newMethod("void", "build", params, OpMethod::MP_Static);
   auto &body = m.body();
 
@@ -1026,15 +1051,17 @@ void OpEmitter::genUseAttrAsResultTypeBuilder() {
   } else {
     resultType = "attr.second.getType()";
   }
-  SmallVector<std::string, 2> resultTypes(op.getNumResults(), resultType);
-  body << "    " << builderOpState << ".addTypes({"
-       << llvm::join(resultTypes, ", ") << "});\n";
-  body << "  }\n";
 
   // Operands
   body << "  " << builderOpState << ".addOperands(operands);\n\n";
   // Attributes
   body << "  " << builderOpState << ".addAttributes(attributes);\n";
+
+  // Result types
+  SmallVector<std::string, 2> resultTypes(op.getNumResults(), resultType);
+  body << "    " << builderOpState << ".addTypes({"
+       << llvm::join(resultTypes, ", ") << "});\n";
+  body << "  }\n";
 }
 
 void OpEmitter::genBuilder() {
@@ -1082,7 +1109,7 @@ void OpEmitter::genBuilder() {
   genCollectiveParamBuilder();
   // 4. one having a stand-alone parameter for each operand and attribute,
   //    use the first operand or attribute's type as all result types
-  // to facilitate different call patterns.
+  //    to facilitate different call patterns.
   if (op.getNumVariadicResults() == 0) {
     if (op.getTrait("OpTrait::SameOperandsAndResultType")) {
       genUseOperandAsResultTypeSeparateParamBuilder();
@@ -1091,6 +1118,11 @@ void OpEmitter::genBuilder() {
     if (op.getTrait("OpTrait::FirstAttrDerivedResultType"))
       genUseAttrAsResultTypeBuilder();
   }
+  // TODO(jpienaar): Subsume this with general checking if type can be infered
+  // automatically.
+  // TODO(jpienaar): Expand to handle regions.
+  if (op.getTrait("InferTypeOpInterface::Trait") && op.getNumRegions() == 0)
+    genInferedTypeCollectiveParamBuilder();
 }
 
 void OpEmitter::genCollectiveParamBuilder() {
@@ -1102,10 +1134,10 @@ void OpEmitter::genCollectiveParamBuilder() {
   int numVariadicOperands = op.getNumVariadicOperands();
   int numNonVariadicOperands = numOperands - numVariadicOperands;
   // Signature
-  std::string params =
-      std::string("Builder *, OperationState &") + builderOpState +
-      ", ArrayRef<Type> resultTypes, ArrayRef<Value *> operands, "
-      "ArrayRef<NamedAttribute> attributes";
+  std::string params = std::string("Builder *, OperationState &") +
+                       builderOpState +
+                       ", ArrayRef<Type> resultTypes, ValueRange operands, "
+                       "ArrayRef<NamedAttribute> attributes";
   auto &m = opClass.newMethod("void", "build", params, OpMethod::MP_Static);
   auto &body = m.body();
 
@@ -1202,8 +1234,7 @@ void OpEmitter::buildParamList(std::string &paramList,
     auto argument = op.getArg(i);
     if (argument.is<tblgen::NamedTypeConstraint *>()) {
       const auto &operand = op.getOperand(numOperands);
-      paramList.append(operand.isVariadic() ? ", ArrayRef<Value *> "
-                                            : ", Value *");
+      paramList.append(operand.isVariadic() ? ", ValueRange " : ", Value *");
       paramList.append(getArgumentName(op, numOperands));
       ++numOperands;
     } else {
@@ -1439,7 +1470,7 @@ void OpEmitter::genVerifier() {
   auto sizeAttr = getAttrOfType<DenseIntElementsAttr>("{0}");
   auto numElements = sizeAttr.getType().cast<ShapedType>().getNumElements();
   if (numElements != {1}) {{
-    return emitOpError("'{0}' attribute for specifiying {2} segments "
+    return emitOpError("'{0}' attribute for specifying {2} segments "
                        "must have {1} elements");
   }
   )";

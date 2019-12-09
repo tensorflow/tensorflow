@@ -177,6 +177,12 @@ public:
     return static_cast<DerivedT &>(*this);
   }
 
+  /// Returns the current index of the iterator.
+  ptrdiff_t getIndex() const { return index; }
+
+  /// Returns the current object of the iterator.
+  const ObjectType &getObject() const { return object; }
+
 protected:
   indexed_accessor_iterator(ObjectType object, ptrdiff_t index)
       : object(object), index(index) {}

@@ -36,10 +36,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-# copybara:strip_begin
-# TODO(b/138808492): Remove code inside copybara
-from tensorflow.python.ops import control_flow_ops
-# copybara:strip_end
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -48,6 +44,7 @@ from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.platform import device_context
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.compat import collections_abc
@@ -927,22 +924,6 @@ convolution_v2.__doc__ = deprecation.rewrite_argument_docstring(
     "filter", "filters")
 
 
-# copybara:strip_begin
-# TODO(b/138808492): Remove code inside copybara
-# to make TPU code and CPU code consistent.
-def _enclosing_tpu_context():
-  # pylint: disable=protected-access
-  run_context = ops.get_default_graph()._get_control_flow_context()
-  # pylint: enable=protected-access
-  while run_context is not None and not isinstance(
-      run_context, control_flow_ops.XLAControlFlowContext):
-    run_context = run_context.outer_context
-  return run_context
-
-
-# copybara:strip_end
-
-
 def convolution_internal(
     input,  # pylint: disable=redefined-builtin
     filters,
@@ -980,28 +961,20 @@ def convolution_internal(
   strides = _get_sequence(strides, n, channel_index, "strides")
   dilations = _get_sequence(dilations, n, channel_index, "dilations")
 
-  # copybara:strip_begin
-  # TODO(b/138808492): Remove code inside copybara
-  # to make TPU code and CPU code consistent.
   scopes = {1: "conv1d", 2: "Conv2D", 3: "Conv3D"}
-  if not call_from_convolution and _enclosing_tpu_context() is not None:
+  if not call_from_convolution and device_context.enclosing_tpu_context(
+  ) is not None:
     scope = scopes[n]
   else:
     scope = "convolution"
-  # copybara:strip_end
-  # copybara:insert scope = "convolution"
 
   with ops.name_scope(name, scope, [input, filters]) as name:
     conv_ops = {1: conv1d, 2: gen_nn_ops.conv2d, 3: gen_nn_ops.conv3d}
 
-    # copybara:strip_begin
-    # TODO(b/138808492): Remove code inside copybara
-    # to make TPU code and CPU code consistent.
-    if _enclosing_tpu_context() is not None or all(i == 1 for i in dilations):
+    if device_context.enclosing_tpu_context() is not None or all(
+        i == 1 for i in dilations):
       # fast path for TPU or if no dilation as gradient only supported on GPU
       # for dilations
-      # copybara:strip_end
-      # copybara:insert if all(i == 1 for i in dilations):
       op = conv_ops[n]
       return op(
           input,
@@ -1120,11 +1093,8 @@ class Convolution(object):
         name=self.name)
 
   def __call__(self, inp, filter):  # pylint: disable=redefined-builtin
-    # copybara:strip_begin
-    # TODO(b/138808492): Remove code inside copybara
-    # to make TPU code and CPU code consistent.
     # TPU convolution supports dilations greater than 1.
-    if _enclosing_tpu_context() is not None:
+    if device_context.enclosing_tpu_context() is not None:
       return convolution_internal(
           inp,
           filter,
@@ -1136,8 +1106,6 @@ class Convolution(object):
           call_from_convolution=False)
     else:
       return self.conv_op(inp, filter)
-    # copybara:strip_end
-    # copybara:insert return self.conv_op(inp, filter)
 
 
 @tf_export(v1=["nn.pool"])

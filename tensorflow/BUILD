@@ -196,6 +196,12 @@ config_setting(
 )
 
 config_setting(
+    name = "chromiumos",
+    values = {"crosstool_top": "//external:android/chromiumos"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_aarch64",
     values = {"cpu": "aarch64"},
     visibility = ["//visibility:public"],
@@ -453,6 +459,7 @@ package_group(
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",
         "//third_party/py/autograph/...",
+        "//third_party/swift/tensorflow/x10/...",
     ],
 )
 

@@ -92,6 +92,12 @@ def SymbolScopeOp : TEST_Op<"symbol_scope",
   let regions = (region SizedRegion<1>:$region);
 }
 
+def SymbolTableRegionOp : TEST_Op<"symbol_table_region", [SymbolTable]> {
+  let summary =  "operation which defines a new symbol table without a "
+                 "restriction on a terminator";
+  let regions = (region SizedRegion<1>:$region);
+}
+
 //===----------------------------------------------------------------------===//
 // Test Operands
 //===----------------------------------------------------------------------===//

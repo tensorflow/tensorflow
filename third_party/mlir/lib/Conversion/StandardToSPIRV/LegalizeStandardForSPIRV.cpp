@@ -68,7 +68,7 @@ public:
 ///          memref<12x42xf32>
 static LogicalResult
 resolveSourceIndices(Location loc, PatternRewriter &rewriter,
-                     SubViewOp subViewOp, ArrayRef<Value *> indices,
+                     SubViewOp subViewOp, ValueRange indices,
                      SmallVectorImpl<Value *> &sourceIndices) {
   // TODO: Aborting when the offsets are static. There might be a way to fold
   // the subview op with load even if the offsets have been canonicalized
@@ -76,7 +76,7 @@ resolveSourceIndices(Location loc, PatternRewriter &rewriter,
   if (subViewOp.getNumOffsets() == 0)
     return failure();
 
-  SmallVector<Value *, 2> opOffsets = llvm::to_vector<2>(subViewOp.offsets());
+  ValueRange opOffsets = subViewOp.offsets();
   SmallVector<Value *, 2> opStrides;
   if (subViewOp.getNumStrides()) {
     // If the strides are dynamic, get the stride operands.
@@ -102,7 +102,7 @@ resolveSourceIndices(Location loc, PatternRewriter &rewriter,
   // subview_offset.
   assert(indices.size() == opStrides.size());
   sourceIndices.resize(indices.size());
-  for (auto index : enumerate(indices)) {
+  for (auto index : llvm::enumerate(indices)) {
     auto offset = opOffsets[index.index()];
     auto stride = opStrides[index.index()];
     auto mul = rewriter.create<MulIOp>(loc, index.value(), stride);
@@ -124,10 +124,9 @@ LoadOpOfSubViewFolder::matchAndRewrite(LoadOp loadOp,
   if (!subViewOp) {
     return matchFailure();
   }
-  SmallVector<Value *, 4> sourceIndices,
-      indices = llvm::to_vector<4>(loadOp.indices());
-  if (failed(resolveSourceIndices(loadOp.getLoc(), rewriter, subViewOp, indices,
-                                  sourceIndices)))
+  SmallVector<Value *, 4> sourceIndices;
+  if (failed(resolveSourceIndices(loadOp.getLoc(), rewriter, subViewOp,
+                                  loadOp.indices(), sourceIndices)))
     return matchFailure();
 
   rewriter.replaceOpWithNewOp<LoadOp>(loadOp, subViewOp.source(),
@@ -147,10 +146,9 @@ StoreOpOfSubViewFolder::matchAndRewrite(StoreOp storeOp,
   if (!subViewOp) {
     return matchFailure();
   }
-  SmallVector<Value *, 4> sourceIndices,
-      indices = llvm::to_vector<4>(storeOp.indices());
+  SmallVector<Value *, 4> sourceIndices;
   if (failed(resolveSourceIndices(storeOp.getLoc(), rewriter, subViewOp,
-                                  indices, sourceIndices)))
+                                  storeOp.indices(), sourceIndices)))
     return matchFailure();
 
   rewriter.replaceOpWithNewOp<StoreOp>(storeOp, storeOp.value(),

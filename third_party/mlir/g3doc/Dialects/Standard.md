@@ -454,6 +454,84 @@ tensor_store %8, %10 : memref<4x?xf32, #layout, memspace0>
 
 ## Unary Operations
 
+### 'absf' operation
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `absf` ssa-use `:` type
+```
+
+Examples:
+
+```mlir {.mlir}
+// Scalar absolute value.
+%a = absf %b : f64
+
+// SIMD vector element-wise absolute value.
+%f = absf %g : vector<4xf32>
+
+// Tensor element-wise absolute value.
+%x = absf %y : tensor<4x?xf8>
+```
+
+The `absf` operation computes the absolute value. It takes one operand and
+returns one result of the same type. This type may be a float scalar type, a
+vector whose element type is float, or a tensor of floats. It has no standard
+attributes.
+
+### 'ceilf' operation
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `ceilf` ssa-use `:` type
+```
+
+Examples:
+
+```mlir {.mlir}
+// Scalar ceiling value.
+%a = ceilf %b : f64
+
+// SIMD vector element-wise ceiling value.
+%f = ceilf %g : vector<4xf32>
+
+// Tensor element-wise ceiling value.
+%x = ceilf %y : tensor<4x?xf8>
+```
+
+The `ceilf` operation computes the ceiling of a given value. It takes one
+operand and returns one result of the same type. This type may be a float
+scalar type, a vector whose element type is float, or a tensor of floats. It
+has no standard attributes.
+
+### 'cos' operation
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `cos` ssa-use `:` type
+```
+
+Examples:
+
+```mlir {.mlir}
+// Scalar cosine value.
+%a = cos %b : f64
+
+// SIMD vector element-wise cosine value.
+%f = cos %g : vector<4xf32>
+
+// Tensor element-wise cosine value.
+%x = cos %y : tensor<4x?xf8>
+```
+
+The `cos` operation computes the cosine of a given value. It takes one operand
+and returns one result of the same type. This type may be a float scalar type,
+a vector whose element type is float, or a tensor of floats. It has no standard
+attributes.
+
 ### 'exp' operation
 
 Syntax:
@@ -478,6 +556,58 @@ Examples:
 The `exp` operation takes one operand and returns one result of the same type.
 This type may be a float scalar type, a vector whose element type is float, or a
 tensor of floats. It has no standard attributes.
+
+### 'negf' operation
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `negf` ssa-use `:` type
+```
+
+Examples:
+
+```mlir {.mlir}
+// Scalar negation value.
+%a = negf %b : f64
+
+// SIMD vector element-wise negation value.
+%f = negf %g : vector<4xf32>
+
+// Tensor element-wise negation value.
+%x = negf %y : tensor<4x?xf8>
+```
+
+The `negf` operation computes the negation of a given value. It takes one
+operand and returns one result of the same type. This type may be a float
+scalar type, a vector whose element type is float, or a tensor of floats. It
+has no standard attributes.
+
+### 'tanh' operation
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `tanh` ssa-use `:` type
+```
+
+Examples:
+
+```mlir {.mlir}
+// Scalar hyperbolic tangent value.
+%a = tanh %b : f64
+
+// SIMD vector element-wise hyperbolic tangent value.
+%f = tanh %g : vector<4xf32>
+
+// Tensor element-wise hyperbolic tangent value.
+%x = tanh %y : tensor<4x?xf8>
+```
+
+The `tanh` operation computes the hyperbolic tangent. It takes one operand and
+returns one result of the same type. This type may be a float scalar type, a
+vector whose element type is float, or a tensor of floats. It has no standard
+attributes.
 
 ## Arithmetic Operations
 
@@ -675,6 +805,32 @@ compiler is multithreaded, and disallowing SSA values to directly reference a
 function simplifies this
 ([rationale](../Rationale.md#multithreading-the-compiler)).
 
+### 'copysign' operation
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `copysign` ssa-use `:` type
+```
+
+Examples:
+
+```mlir {.mlir}
+// Scalar copysign value.
+%a = copysign %b %c : f64
+
+// SIMD vector element-wise copysign value.
+%f = copysign %g %h : vector<4xf32>
+
+// Tensor element-wise copysign value.
+%x = copysign %y %z : tensor<4x?xf8>
+```
+
+The `copysign` returns a value with the magnitude of the first operand and the
+sign of the second operand. It takes two operands and returns one result of the
+same type. This type may be a float scalar type, a vector whose element type is
+float, or a tensor of floats. It has no standard attributes.
+
 ### 'divis' operation
 
 Signed integer division. Rounds towards zero. Treats the leading bit as sign,
@@ -756,12 +912,21 @@ Examples:
 
 // Convert to a type with more known dimensions.
 %4 = memref_cast %3 : memref<?x?xf32> to memref<4x?xf32>
+
+// Convert to a type with unknown rank.
+%5 = memref_cast %3 : memref<?x?xf32> to memref<*xf32>
+
+// Convert to a type with static rank.
+%6 = memref_cast %5 : memref<*xf32> to memref<?x?xf32>
 ```
 
 Convert a memref from one type to an equivalent type without changing any data
-elements. The source and destination types must both be memref types with the
-same element type, same mappings, same address space, and same rank. The
-operation is invalid if converting to a mismatching constant dimension.
+elements. The types are equivalent if 1. they both have the same static rank,
+same element type, same mappings, same address space. The operation is invalid
+if converting to a mismatching constant dimension, or 2. exactly one of the
+operands have an unknown rank, and they both have the same element type and same
+address space. The operation is invalid if both operands are of dynamic rank or
+if converting to a mismatching static rank.
 
 ### 'mulf' operation
 

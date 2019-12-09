@@ -243,6 +243,7 @@ py_library(
             "**/*test.py",
             "**/benchmark.py",  # In platform_benchmark.
             "**/analytics.py",  # In platform_analytics.
+            "**/device_context.py",  # In platform_device_context.
         ],
     ) + ["platform/build_info.py"],
     srcs_version = "PY2AND3",
@@ -273,6 +274,16 @@ py_library(
     name = "platform_analytics",
     srcs = ["platform/analytics.py"],
     srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "platform_device_context",
+    srcs = ["platform/device_context.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":control_flow_ops",
+        ":framework",
+    ],
 )
 
 py_library(
@@ -3657,24 +3668,26 @@ py_library(
         ":loss_scale",
         ":unconnected_gradients",
         ":util",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:backprop",
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "loss_scaling_gradient_tape_test",
     size = "medium",
     srcs = ["training/experimental/loss_scaling_gradient_tape_test.py"],
-    python_version = "PY3",
-    deps = [
+    additional_deps = [
         ":client_testlib",
         ":constant_op",
+        ":framework_test_combinations_lib",
         ":loss_scale",
         ":loss_scaling_gradient_tape",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/eager:def_function",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 
@@ -3803,6 +3816,7 @@ py_library(
         ":nn_grad",
         ":nn_ops",
         ":nn_ops_gen",
+        ":platform_device_context",
         ":rnn",
         ":sparse_ops",
         ":util",
@@ -4809,6 +4823,18 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     python_version = "PY3",
+)
+
+py_test(
+    name = "tensor_array_ops_test",
+    size = "small",
+    srcs = ["ops/tensor_array_ops_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+    ],
 )
 
 cuda_py_test(
@@ -7071,29 +7097,6 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
     ],
-)
-
-cuda_py_test(
-    name = "matmul_benchmark_test",
-    size = "medium",
-    srcs = ["ops/matmul_benchmark_test.py"],
-    additional_deps = [
-        ":math_ops",
-        ":random_ops",
-        ":client",
-        ":client_testlib",
-        ":control_flow_ops",
-        ":framework_for_generated_wrappers",
-        ":platform",
-        ":platform_benchmark",
-        ":matmul_benchmark",
-        ":variables",
-        "//third_party/py/numpy",
-        "//tensorflow/core:protos_all_py",
-    ],
-    main = "ops/matmul_benchmark_test.py",
-    python_version = "PY3",
-    tags = ["no_pip"],
 )
 
 cuda_py_test(

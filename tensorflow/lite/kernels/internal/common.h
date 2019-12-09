@@ -432,12 +432,23 @@ inline int32 GetReciprocal(int32 x, int x_integer_digits,
 inline void GetInvSqrtQuantizedMultiplierExp(int32 input, int reverse_shift,
                                              int32* output_inv_sqrt,
                                              int* output_shift) {
+  TFLITE_DCHECK_GE(input, 0);
+  if (input <= 1) {
+    // Handle the input value 1 separately to avoid overflow in that case
+    // in the general computation below (b/143972021). Also handle 0 as if it
+    // were a 1. 0 is an invalid input here (divide by zero) and 1 is a valid
+    // but rare/unrealistic input value. We can expect both to occur in some
+    // incompletely trained models, but probably not in fully trained models.
+    *output_inv_sqrt = std::numeric_limits<std::int32_t>::max();
+    *output_shift = 0;
+    return;
+  }
+  TFLITE_DCHECK_GT(input, 1);
   *output_shift = 11;
   while (input >= (1 << 29)) {
     input /= 4;
     ++*output_shift;
   }
-  TFLITE_DCHECK_GT(input, 0);
   const unsigned max_left_shift_bits =
       CountLeadingZeros(static_cast<uint32>(input)) - 1;
   const unsigned max_left_shift_bit_pairs = max_left_shift_bits / 2;

@@ -1505,6 +1505,7 @@ cc_library(
     hdrs = ["hlo_query.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "@com_google_absl//absl/container:flat_hash_set",

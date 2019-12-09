@@ -416,7 +416,7 @@ struct ConversionPatternRewriterImpl {
   /// This class represents one requested operation replacement via 'replaceOp'.
   struct OpReplacement {
     OpReplacement() = default;
-    OpReplacement(Operation *op, ArrayRef<Value *> newValues)
+    OpReplacement(Operation *op, ValueRange newValues)
         : op(op), newValues(newValues.begin(), newValues.end()) {}
 
     Operation *op;
@@ -501,8 +501,8 @@ struct ConversionPatternRewriterImpl {
                            TypeConverter::SignatureConversion &conversion);
 
   /// PatternRewriter hook for replacing the results of an operation.
-  void replaceOp(Operation *op, ArrayRef<Value *> newValues,
-                 ArrayRef<Value *> valuesToRemoveIfDead);
+  void replaceOp(Operation *op, ValueRange newValues,
+                 ValueRange valuesToRemoveIfDead);
 
   /// Notifies that a block was split.
   void notifySplitBlock(Block *block, Block *continuation);
@@ -687,9 +687,9 @@ Block *ConversionPatternRewriterImpl::applySignatureConversion(
   return nullptr;
 }
 
-void ConversionPatternRewriterImpl::replaceOp(
-    Operation *op, ArrayRef<Value *> newValues,
-    ArrayRef<Value *> valuesToRemoveIfDead) {
+void ConversionPatternRewriterImpl::replaceOp(Operation *op,
+                                              ValueRange newValues,
+                                              ValueRange valuesToRemoveIfDead) {
   assert(newValues.size() == op->getNumResults());
 
   // Create mappings for each of the new result values.
@@ -769,9 +769,8 @@ ConversionPatternRewriter::ConversionPatternRewriter(MLIRContext *ctx,
 ConversionPatternRewriter::~ConversionPatternRewriter() {}
 
 /// PatternRewriter hook for replacing the results of an operation.
-void ConversionPatternRewriter::replaceOp(
-    Operation *op, ArrayRef<Value *> newValues,
-    ArrayRef<Value *> valuesToRemoveIfDead) {
+void ConversionPatternRewriter::replaceOp(Operation *op, ValueRange newValues,
+                                          ValueRange valuesToRemoveIfDead) {
   LLVM_DEBUG(llvm::dbgs() << "** Replacing operation : " << op->getName()
                           << "\n");
   impl->replaceOp(op, newValues, valuesToRemoveIfDead);
@@ -826,7 +825,7 @@ Block *ConversionPatternRewriter::splitBlock(Block *block,
 
 /// PatternRewriter hook for merging a block into another.
 void ConversionPatternRewriter::mergeBlocks(Block *source, Block *dest,
-                                            ArrayRef<Value *> argValues) {
+                                            ValueRange argValues) {
   // TODO(riverriddle) This requires fixing the implementation of
   // 'replaceUsesOfBlockArgument', which currently isn't undoable.
   llvm_unreachable("block merging updates are currently not supported");

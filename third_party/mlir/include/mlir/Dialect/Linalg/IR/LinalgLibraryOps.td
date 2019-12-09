@@ -137,7 +137,7 @@ def LinalgLibraryInterface : OpInterface<"LinalgOp"> {
       }],
       "Operation *", "create",
       (ins "OpBuilder &":$builder, "Location":$loc,
-           "ArrayRef<Value *>":$operands,
+           "ValueRange":$operands,
            "ArrayRef<NamedAttribute>":$attributes), [{
         return builder.create<ConcreteOp>(loc, ArrayRef<Type>{}, operands,
                                           attributes);
@@ -151,7 +151,7 @@ def LinalgLibraryInterface : OpInterface<"LinalgOp"> {
         is used to abstract away the optional underlying region creation.
       }],
       "Operation *", "clone",
-      (ins "OpBuilder &":$b, "Location":$loc, "ArrayRef<Value *>":$operands), [{
+      (ins "OpBuilder &":$b, "Location":$loc, "ValueRange":$operands), [{
         BlockAndValueMapping map;
         unsigned numRegions = op.getOperation()->getNumRegions();
         Operation *res = create(b, loc, operands, op.getAttrs());
@@ -318,6 +318,7 @@ def ConvOp : LinalgLibrary_Op<"conv", [NInputsAndOutputs<2, 1>]> {
                        q]
     ```
   }];
+
   // TODO(ntv) padding.
   // Following the TF source of truth above, strides and dilations are integer
   // attributes of the same rank as the number of window dimensions.

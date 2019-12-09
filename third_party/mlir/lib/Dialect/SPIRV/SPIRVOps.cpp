@@ -42,6 +42,7 @@ static constexpr const char kBranchWeightAttrName[] = "branch_weights";
 static constexpr const char kCallee[] = "callee";
 static constexpr const char kDefaultValueAttrName[] = "default_value";
 static constexpr const char kExecutionScopeAttrName[] = "execution_scope";
+static constexpr const char kEqualSemanticsAttrName[] = "equal_semantics";
 static constexpr const char kFnNameAttrName[] = "fn";
 static constexpr const char kIndicesAttrName[] = "indices";
 static constexpr const char kInitializerAttrName[] = "initializer";
@@ -50,6 +51,7 @@ static constexpr const char kMemoryScopeAttrName[] = "memory_scope";
 static constexpr const char kSpecConstAttrName[] = "spec_const";
 static constexpr const char kSpecIdAttrName[] = "spec_id";
 static constexpr const char kTypeAttrName[] = "type";
+static constexpr const char kUnequalSemanticsAttrName[] = "unequal_semantics";
 static constexpr const char kValueAttrName[] = "value";
 static constexpr const char kValuesAttrName[] = "values";
 static constexpr const char kVariableAttrName[] = "variable";
@@ -375,6 +377,34 @@ static unsigned getBitWidth(Type type) {
   llvm_unreachable("unhandled bit width computation for type");
 }
 
+/// Walks the given type hierarchy with the given indices, potentially down
+/// to component granularity, to select an element type. Returns null type and
+/// emits errors with the given loc on failure.
+static Type getElementType(Type type, ArrayAttr indices, Location loc) {
+  if (!indices.size()) {
+    emitError(loc, "expected at least one index");
+    return nullptr;
+  }
+
+  int32_t index;
+  for (auto indexAttr : indices) {
+    index = indexAttr.dyn_cast<IntegerAttr>().getInt();
+    if (auto cType = type.dyn_cast<spirv::CompositeType>()) {
+      if (index < 0 || static_cast<uint64_t>(index) >= cType.getNumElements()) {
+        emitError(loc, "index ") << index << " out of bounds for " << type;
+        return nullptr;
+      }
+      type = cType.getElementType(index);
+    } else {
+      emitError(loc, "cannot extract from non-composite type ")
+          << type << " with index " << index;
+      return nullptr;
+    }
+  }
+
+  return type;
+}
+
 /// Returns true if the given `block` only contains one `spv._merge` op.
 static inline bool isMergeBlock(Block &block) {
   return !block.empty() && std::next(block.begin()) == block.end() &&
@@ -537,8 +567,7 @@ static LogicalResult verifyShiftOp(Operation *op) {
 // spv.AccessChainOp
 //===----------------------------------------------------------------------===//
 
-static Type getElementPtrType(Type type, ArrayRef<Value *> indices,
-                              Location baseLoc) {
+static Type getElementPtrType(Type type, ValueRange indices, Location baseLoc) {
   if (indices.empty()) {
     emitError(baseLoc, "'spv.AccessChain' op expected at least "
                        "one index ");
@@ -596,7 +625,7 @@ static Type getElementPtrType(Type type, ArrayRef<Value *> indices,
 }
 
 void spirv::AccessChainOp::build(Builder *builder, OperationState &state,
-                                 Value *basePtr, ArrayRef<Value *> indices) {
+                                 Value *basePtr, ValueRange indices) {
   auto type = getElementPtrType(basePtr->getType(), indices, state.location);
   assert(type && "Unable to deduce return type based on basePtr and indices");
   build(builder, state, type, basePtr, indices);
@@ -747,6 +776,81 @@ static LogicalResult verify(spirv::AddressOfOp addressOfOp) {
     return addressOfOp.emitOpError(
         "result type mismatch with the referenced global variable's type");
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.AtomicCompareExchangeWeak
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseAtomicCompareExchangeWeakOp(OpAsmParser &parser,
+                                                    OperationState &state) {
+  spirv::Scope memoryScope;
+  spirv::MemorySemantics equalSemantics, unequalSemantics;
+  SmallVector<OpAsmParser::OperandType, 3> operandInfo;
+  Type type;
+  if (parseEnumAttribute(memoryScope, parser, state, kMemoryScopeAttrName) ||
+      parseEnumAttribute(equalSemantics, parser, state,
+                         kEqualSemanticsAttrName) ||
+      parseEnumAttribute(unequalSemantics, parser, state,
+                         kUnequalSemanticsAttrName) ||
+      parser.parseOperandList(operandInfo, 3))
+    return failure();
+
+  auto loc = parser.getCurrentLocation();
+  if (parser.parseColonType(type))
+    return failure();
+
+  auto ptrType = type.dyn_cast<spirv::PointerType>();
+  if (!ptrType)
+    return parser.emitError(loc, "expected pointer type");
+
+  if (parser.resolveOperands(
+          operandInfo,
+          {ptrType, ptrType.getPointeeType(), ptrType.getPointeeType()},
+          parser.getNameLoc(), state.operands))
+    return failure();
+
+  return parser.addTypeToList(ptrType.getPointeeType(), state.types);
+}
+
+static void print(spirv::AtomicCompareExchangeWeakOp atomOp,
+                  OpAsmPrinter &printer) {
+  printer << spirv::AtomicCompareExchangeWeakOp::getOperationName() << " \""
+          << stringifyScope(atomOp.memory_scope()) << "\" \""
+          << stringifyMemorySemantics(atomOp.equal_semantics()) << "\" \""
+          << stringifyMemorySemantics(atomOp.unequal_semantics()) << "\" ";
+  printer.printOperands(atomOp.getOperands());
+  printer << " : " << atomOp.pointer()->getType();
+}
+
+static LogicalResult verify(spirv::AtomicCompareExchangeWeakOp atomOp) {
+  // According to the spec:
+  // "The type of Value must be the same as Result Type. The type of the value
+  // pointed to by Pointer must be the same as Result Type. This type must also
+  // match the type of Comparator."
+  if (atomOp.getType() != atomOp.value()->getType())
+    return atomOp.emitOpError("value operand must have the same type as the op "
+                              "result, but found ")
+           << atomOp.value()->getType() << " vs " << atomOp.getType();
+
+  if (atomOp.getType() != atomOp.comparator()->getType())
+    return atomOp.emitOpError(
+               "comparator operand must have the same type as the op "
+               "result, but found ")
+           << atomOp.comparator()->getType() << " vs " << atomOp.getType();
+
+  Type pointeeType =
+      atomOp.pointer()->getType().cast<spirv::PointerType>().getPointeeType();
+  if (atomOp.getType() != pointeeType)
+    return atomOp.emitOpError(
+               "pointer operand's pointee type must have the same "
+               "as the op result type, but found ")
+           << pointeeType << " vs " << atomOp.getType();
+
+  // TODO(antiagainst): Unequal cannot be set to Release or Acquire and Release.
+  // In addition, Unequal cannot be set to a stronger memory-order then Equal.
+
   return success();
 }
 
@@ -1017,28 +1121,11 @@ static void print(spirv::CompositeExtractOp compositeExtractOp,
 }
 
 static LogicalResult verify(spirv::CompositeExtractOp compExOp) {
-  auto resultType = compExOp.composite()->getType();
   auto indicesArrayAttr = compExOp.indices().dyn_cast<ArrayAttr>();
-
-  if (!indicesArrayAttr.size()) {
-    return compExOp.emitOpError(
-        "expected at least one index for spv.CompositeExtractOp");
-  }
-
-  int32_t index;
-  for (auto indexAttr : indicesArrayAttr) {
-    index = indexAttr.dyn_cast<IntegerAttr>().getInt();
-    if (auto cType = resultType.dyn_cast<spirv::CompositeType>()) {
-      if (index < 0 || static_cast<uint64_t>(index) >= cType.getNumElements()) {
-        return compExOp.emitOpError("index ")
-               << index << " out of bounds for " << resultType;
-      }
-      resultType = cType.getElementType(index);
-    } else {
-      return compExOp.emitError("cannot extract from non-composite type ")
-             << resultType << " with index " << index;
-    }
-  }
+  auto resultType = getElementType(compExOp.composite()->getType(),
+                                   indicesArrayAttr, compExOp.getLoc());
+  if (!resultType)
+    return failure();
 
   if (resultType != compExOp.getType()) {
     return compExOp.emitOpError("invalid result type: expected ")
@@ -1056,6 +1143,60 @@ OpFoldResult spirv::CompositeExtractOp::fold(ArrayRef<Attribute> operands) {
       },
       indices());
   return extractCompositeElement(operands[0], indexVector);
+}
+
+//===----------------------------------------------------------------------===//
+// spv.CompositeInsert
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseCompositeInsertOp(OpAsmParser &parser,
+                                          OperationState &state) {
+  SmallVector<OpAsmParser::OperandType, 2> operands;
+  Type objectType, compositeType;
+  Attribute indicesAttr;
+  auto loc = parser.getCurrentLocation();
+
+  return failure(
+      parser.parseOperandList(operands, 2) ||
+      parser.parseAttribute(indicesAttr, kIndicesAttrName, state.attributes) ||
+      parser.parseColonType(objectType) ||
+      parser.parseKeywordType("into", compositeType) ||
+      parser.resolveOperands(operands, {objectType, compositeType}, loc,
+                             state.operands) ||
+      parser.addTypesToList(compositeType, state.types));
+}
+
+static LogicalResult verify(spirv::CompositeInsertOp compositeInsertOp) {
+  auto indicesArrayAttr = compositeInsertOp.indices().dyn_cast<ArrayAttr>();
+  auto objectType =
+      getElementType(compositeInsertOp.composite()->getType(), indicesArrayAttr,
+                     compositeInsertOp.getLoc());
+  if (!objectType)
+    return failure();
+
+  if (objectType != compositeInsertOp.object()->getType()) {
+    return compositeInsertOp.emitOpError("object operand type should be ")
+           << objectType << ", but found "
+           << compositeInsertOp.object()->getType();
+  }
+
+  if (compositeInsertOp.composite()->getType() != compositeInsertOp.getType()) {
+    return compositeInsertOp.emitOpError("result type should be the same as "
+                                         "the composite type, but found ")
+           << compositeInsertOp.composite()->getType() << " vs "
+           << compositeInsertOp.getType();
+  }
+
+  return success();
+}
+
+static void print(spirv::CompositeInsertOp compositeInsertOp,
+                  OpAsmPrinter &printer) {
+  printer << spirv::CompositeInsertOp::getOperationName() << " "
+          << *compositeInsertOp.object() << ", "
+          << *compositeInsertOp.composite() << compositeInsertOp.indices()
+          << " : " << compositeInsertOp.object()->getType() << " into "
+          << compositeInsertOp.composite()->getType();
 }
 
 //===----------------------------------------------------------------------===//

@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 
-#include <cstddef>
-#include <string>
+#include <stddef.h>
+
 #include <vector>
 
 #include "absl/strings/str_split.h"
@@ -24,8 +24,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
+#if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_utils.h"
+#endif
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/trace_events.pb.h"
@@ -38,7 +42,7 @@ namespace {
 // If the "op_type" is missing, returns the node_name.
 // This is done so all ops with the same type appear in the same color in trace
 // viewer.
-inline std::string EventName(absl::string_view node_name) {
+inline string EventName(absl::string_view node_name) {
   // NOTE: open source device tracer now append cupti kernel name after
   // annotation as node_name, @@ is used as separator. kernel name is
   // demangled and possibly contains "::" patterns.
@@ -52,10 +56,10 @@ inline std::string EventName(absl::string_view node_name) {
         absl::StrSplit(annotation_stack.back(), '#');
     std::vector<absl::string_view> parts =
         absl::StrSplit(annotation_parts.front(), ':');
-    return std::string(parts.back());
+    return string(parts.back());
   } else {
     std::vector<absl::string_view> parts = absl::StrSplit(node_name, ':');
-    return std::string(parts.back());
+    return string(parts.back());
   }
 }
 
@@ -193,7 +197,9 @@ Status ProfilerSession::CollectData(RunMetadata* run_metadata) {
 
   if (active_) {
     // Allow another session to start.
+#if !defined(IS_MOBILE_PLATFORM)
     profiler::ReleaseProfilerLock();
+#endif
     active_ = false;
   }
 
@@ -214,7 +220,11 @@ Status ProfilerSession::SerializeToString(string* content) {
 }
 
 ProfilerSession::ProfilerSession(const profiler::ProfilerOptions& options)
+#if !defined(IS_MOBILE_PLATFORM)
     : active_(profiler::AcquireProfilerLock()),
+#else
+    : active_(false),
+#endif
       start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
   if (!active_) {
     status_ = tensorflow::Status(error::UNAVAILABLE,
@@ -224,7 +234,9 @@ ProfilerSession::ProfilerSession(const profiler::ProfilerOptions& options)
 
   LOG(INFO) << "Profiler session started.";
 
+#if !defined(IS_MOBILE_PLATFORM)
   CreateProfilers(options, &profilers_);
+#endif
   status_ = Status::OK();
 
   for (auto& profiler : profilers_) {
@@ -243,7 +255,9 @@ ProfilerSession::~ProfilerSession() {
 
   if (active_) {
     // Allow another session to start.
+#if !defined(IS_MOBILE_PLATFORM)
     profiler::ReleaseProfilerLock();
+#endif
   }
 }
 }  // namespace tensorflow

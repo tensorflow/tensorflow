@@ -15,6 +15,7 @@ then outputs the gesture to the serial port.
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
 -   [Deploy to Adafruit devices](#deploy-to-adafruit)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
+-   [Train your own model](#train-your-own-model)
 
 ## Deploy to Arduino
 
@@ -360,3 +361,8 @@ To understand how TensorFlow Lite does this, you can look at the source in
 It's a fairly small amount of code that creates an interpreter, gets a handle to
 a model that's been compiled into the program, and then invokes the interpreter
 with the model and sample inputs.
+
+## Train your own model
+
+To train your own model, or create a new model for a new set of gestures,
+follow the instructions in [magic_wand/train/README.md](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/magic_wand/train/README.md).

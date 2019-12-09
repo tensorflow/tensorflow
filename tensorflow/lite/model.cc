@@ -416,6 +416,77 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
   return kTfLiteOk;
 }
 
+// TODO(b/145614687): Add sparse tensor verification check in
+// lite/tools/verifier.cc.
+TfLiteStatus InterpreterBuilder::ParseSparsity(
+    const SparsityParameters* src_sparsity, TfLiteSparsity** sparsity_ptr) {
+  if (!src_sparsity) {
+    return kTfLiteOk;
+  }
+
+  auto* sparsity =
+      reinterpret_cast<TfLiteSparsity*>(malloc(sizeof(TfLiteSparsity)));
+  memset(sparsity, 0, sizeof(TfLiteSparsity));
+  *sparsity_ptr = sparsity;
+
+  if (src_sparsity->traversal_order()) {
+    const size_t traversal_order_size = src_sparsity->traversal_order()->size();
+    sparsity->traversal_order = TfLiteIntArrayCreate(traversal_order_size);
+    for (int i = 0; i < traversal_order_size; i++) {
+      sparsity->traversal_order->data[i] =
+          src_sparsity->traversal_order()->Get(i);
+    }
+  }
+
+  if (src_sparsity->block_map()) {
+    const size_t block_map_size = src_sparsity->block_map()->size();
+    sparsity->block_map = TfLiteIntArrayCreate(block_map_size);
+    for (int i = 0; i < block_map_size; i++) {
+      sparsity->block_map->data[i] = src_sparsity->block_map()->Get(i);
+    }
+  }
+
+  if (src_sparsity->dim_metadata()) {
+    const size_t dim_metadata_size = src_sparsity->dim_metadata()->size();
+    sparsity->dim_metadata_size = dim_metadata_size;
+    sparsity->dim_metadata = reinterpret_cast<TfLiteDimensionMetadata*>(
+        malloc(dim_metadata_size * sizeof(TfLiteDimensionMetadata)));
+    memset(sparsity->dim_metadata, 0,
+           dim_metadata_size * sizeof(TfLiteDimensionMetadata));
+
+    for (int i = 0; i < dim_metadata_size; i++) {
+      const auto* src_metadata = src_sparsity->dim_metadata()->Get(i);
+      auto* tgt_metadata = &sparsity->dim_metadata[i];
+
+      tgt_metadata->format =
+          static_cast<TfLiteDimensionType>(src_metadata->format());
+
+      if (tgt_metadata->format == kTfLiteDimDense) {
+        tgt_metadata->dense_size = src_metadata->dense_size();
+      } else if (tgt_metadata->format == kTfLiteDimSparseCSR) {
+        const int array_segments_size = src_metadata->array_segments()->size();
+        tgt_metadata->array_segments =
+            TfLiteIntArrayCreate(array_segments_size);
+        for (int j = 0; j < array_segments_size; j++) {
+          tgt_metadata->array_segments->data[j] =
+              src_metadata->array_segments()->Get(j);
+        }
+        const int array_indices_size = src_metadata->array_indices()->size();
+        tgt_metadata->array_indices = TfLiteIntArrayCreate(array_indices_size);
+        for (int j = 0; j < array_indices_size; j++) {
+          tgt_metadata->array_indices->data[j] =
+              src_metadata->array_indices()->Get(j);
+        }
+      } else {
+        error_reporter_->Report("Unsupported dimension type.");
+        return kTfLiteError;
+      }
+    }
+  }
+
+  return kTfLiteOk;
+}
+
 TfLiteStatus InterpreterBuilder::ParseTensors(
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
     const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
@@ -474,6 +545,13 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       continue;
     }
 
+    const auto* src_sparsity = tensor->sparsity();
+    TfLiteSparsity* sparsity = nullptr;
+    if (ParseSparsity(src_sparsity, &sparsity) != kTfLiteOk) {
+      status = kTfLiteError;
+      continue;
+    }
+
     bool is_variable = tensor->is_variable();
     if (buffer_ptr) {
       if (is_variable) {
@@ -486,12 +564,13 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
 
       if (subgraph->SetTensorParametersReadOnly(
               i, type, get_name(tensor), dims, quantization, buffer_ptr,
-              buffer_size, allocation_) != kTfLiteOk) {
+              buffer_size, allocation_, sparsity) != kTfLiteOk) {
         error_reporter_->Report("Tensor %d is invalidly specified in schema.\n",
                                 i);
         status = kTfLiteError;
       }
     } else {
+      // TODO(b/144999664): Non-constant sparse tensor is not supported now.
       if (subgraph->SetTensorParametersReadWrite(i, type, get_name(tensor),
                                                  dims, quantization,
                                                  is_variable) != kTfLiteOk) {
