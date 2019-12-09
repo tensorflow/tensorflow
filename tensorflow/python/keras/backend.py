@@ -5833,19 +5833,28 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
 
 
 @keras_export('keras.backend.map_fn')
-def map_fn(fn, elems, name=None, dtype=None):
+def map_fn(fn, elems, name=None, parallel_iterations=None, dtype=None):
   """Map the function fn over the elements elems and return the outputs.
 
   Arguments:
       fn: Callable that will be called upon each element in elems
       elems: tensor
       name: A string name for the map node in the graph
+      parallel_iterations: The number of iterations allowed to run
+          in parallel. When graph building, the default value is 10. While executing
+          eagerly, the default value is set to 1.
       dtype: Output data type.
 
   Returns:
       Tensor with dtype `dtype`.
   """
-  return map_fn_lib.map_fn(fn, elems, name=name, dtype=dtype)
+  return map_fn_lib.map_fn(
+      fn,
+      elems,
+      name=name,
+      parallel_iterations=parallel_iterations,
+      dtype=dtype
+  )
 
 
 @keras_export('keras.backend.foldl')
