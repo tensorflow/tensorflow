@@ -933,7 +933,7 @@ static LogicalResult tryIsolateBands(const TileLoops &tileLoops) {
 
 TileLoops mlir::extractFixedOuterLoops(loop::ForOp rootForOp,
                                        ArrayRef<int64_t> sizes) {
-  // Collect prefectly nested loops.  If more size values provided than nested
+  // Collect perfectly nested loops.  If more size values provided than nested
   // loops available, truncate `sizes`.
   SmallVector<loop::ForOp, 4> forOps;
   forOps.reserve(sizes.size());

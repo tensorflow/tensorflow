@@ -190,7 +190,7 @@ public:
   unsigned getSrcMemRefRank() {
     return getSrcMemRef()->getType().cast<MemRefType>().getRank();
   }
-  // Returns the source memerf indices for this DMA operation.
+  // Returns the source memref indices for this DMA operation.
   operand_range getSrcIndices() {
     return {getOperation()->operand_begin() + 1,
             getOperation()->operand_begin() + 1 + getSrcMemRefRank()};

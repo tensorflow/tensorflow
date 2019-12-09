@@ -1236,7 +1236,7 @@ def SubViewOp : Std_Op<"subview", [AttrSizedOperandSegments, NoSideEffect]> {
         : memref<?x?xf32, (d0, d1)[s0, s1, s2] -> (d0 * s1 + d1 * s2 + s0)> to
           memref<4x4xf32, (d0, d1)[r0, r1, r2] -> (d0 * r1 + d1 * r2 + r0)>
 
-      // Note that the subview op does not gaurantee that the result
+      // Note that the subview op does not guarantee that the result
       // memref is "inbounds" w.r.t to base memref. It is upto the client
       // to ensure that the subview is accessed in a manner that is
       // in-bounds.

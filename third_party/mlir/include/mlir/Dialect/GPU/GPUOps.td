@@ -154,7 +154,7 @@ def GPU_GPUFuncOp : GPU_Op<"func", [FunctionLike, IsolatedFromAbove, Symbol]> {
     /// Returns the name of the attribute containing the number of buffers
     /// located in the workgroup memory.
     static StringRef getNumWorkgroupAttributionsAttrName() {
-      return "workgroup_attibutions";
+      return "workgroup_attributions";
     }
 
     // FunctionLike trait needs access to the functions below.
