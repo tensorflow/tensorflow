@@ -87,6 +87,14 @@ Status FileSystem::DeleteRecursively(const string& dirname,
     (*undeleted_dirs)++;
     return exists_status;
   }
+
+  // If given path to a single file, we should just delete it.
+  if (!IsDirectory(dirname).ok()) {
+    Status delete_root_status = DeleteFile(dirname);
+    if (!delete_root_status.ok()) (*undeleted_files)++;
+    return delete_root_status;
+  }
+
   std::deque<string> dir_q;      // Queue for the BFS
   std::vector<string> dir_list;  // List of all dirs discovered
   dir_q.push_back(dirname);
@@ -138,16 +146,32 @@ Status FileSystem::DeleteRecursively(const string& dirname,
 }
 
 Status FileSystem::RecursivelyCreateDir(const string& dirname) {
+  std::cerr << "MM: RecursivelyCreateDir(" << dirname << ")\n";
   StringPiece scheme, host, remaining_dir;
   io::ParseURI(dirname, &scheme, &host, &remaining_dir);
+  std::cerr << "MM: scheme=\"" << scheme << "\", host=\"" << host
+            << "\" remaining_dir=\"" << remaining_dir << "\"\n";
   std::vector<StringPiece> sub_dirs;
   while (!remaining_dir.empty()) {
-    Status status = FileExists(io::CreateURI(scheme, host, remaining_dir));
-    if (status.ok()) {
-      break;
+    std::string current_entry = io::CreateURI(scheme, host, remaining_dir);
+    std::cerr << "MM: current_entry=\"" << current_entry << "\"\n";
+    Status exists_status = FileExists(current_entry);
+    std::cerr << "MM: exists_status=" << exists_status << "\n";
+    if (exists_status.ok()) {
+      // FileExists cannot differentiate between existence of a file or a
+      // directory, hence we need an additional test as we must not assume that
+      // a path to a file is a path to a parent directory.
+      Status directory_status = IsDirectory(current_entry);
+      if (directory_status.ok()) {
+        break;  // We need to start creating directories from here.
+      } else if (directory_status.code() == tensorflow::error::UNIMPLEMENTED) {
+        return directory_status;
+      } else {
+        return errors::FailedPrecondition(remaining_dir, " is not a directory");
+      }
     }
-    if (status.code() != error::Code::NOT_FOUND) {
-      return status;
+    if (exists_status.code() != error::Code::NOT_FOUND) {
+      return exists_status;
     }
     // Basename returns "" for / ending dirs.
     if (!str_util::EndsWith(remaining_dir, "/")) {
