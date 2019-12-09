@@ -187,7 +187,6 @@ led by `ins`:
 let arguments = (ins
   <type-constraint>:$<operand-name>,
   ...
-
   <attr-constraint>:$<attr-name>,
   ...
 );
@@ -199,16 +198,17 @@ hierarchy. Similarly, `<attr-constraint>` is a TableGen `def` from the
 information.
 
 There is no requirements on the relative order of operands and attributes; they
-can mix freely. But it is recommended to put all operands ahead of attributes,
-and use an empty line to separate them to make it more visually distinguishable
-if possible. The relative order of operands themselves matters.
+can mix freely. The relative order of operands themselves matters. From each
+named argument a named getter will be generated that returns the argument with
+the return type (in the case of attributes the return type will be
+constructed from the storage type, while for operands it will be `Value`). Each
+attribute's raw value (e.g., as stored) can also be accessed via generated
+`<name>Attr` getters for use in transformation passes where the more user
+friendly return type is less suitable.
 
 All the arguments should be named to 1) provide documentation, 2) drive
 auto-generation of getter methods, 3) provide a handle to reference for other
 places like constraints.
-
-> * Place attributes after operands if possible
-> * Give operands and attribute proper names
 
 #### Variadic operands
 
