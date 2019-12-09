@@ -311,21 +311,20 @@ ENTRY %Broadcast (x: f32[10]) -> f32[10, 5] {
 )");
 }
 
-// TODO(pifon): Re-enable when Iota can be lowered all the way to GPU.
-// TEST_F(LhloGenTest, Iota) {
-//  CompileAndVerifyIr(R"(
-//  HloModule Iota
-//
-//  ENTRY %Iota() -> s64[10, 5] {
-//   ROOT %iota = s64[10, 5]{1,0} iota(), iota_dimension=0
-// })",
-//                      R"(
-// ;CHECK: func @iota(%[[OUT:.*]]: [[OUT_T:.*]]) {
-// ;CHECK:   "xla_lhlo.iota"(%[[OUT]])
-// ;CHECK:   {iota_dimension = 0 : i64} : ([[OUT_T]]) -> ()
-// ;CHECK: }
-// )");
-// }
+TEST_F(LhloGenTest, Iota) {
+  CompileAndVerifyIr(R"(
+ HloModule Iota
+
+ ENTRY %Iota() -> s64[10, 5] {
+  ROOT %iota = s64[10, 5]{1,0} iota(), iota_dimension=0
+})",
+                     R"(
+;CHECK: func @iota(%[[OUT:.*]]: [[OUT_T:.*]]) {
+;CHECK:   "xla_lhlo.iota"(%[[OUT]])
+;CHECK:   {iota_dimension = 0 : i64} : ([[OUT_T]]) -> ()
+;CHECK: }
+)");
+}
 
 TEST_F(LhloGenTest, AddReduce) {
   CompileAndVerifyIr(R"(
