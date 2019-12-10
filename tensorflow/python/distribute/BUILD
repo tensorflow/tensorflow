@@ -170,7 +170,7 @@ py_test(
     name = "distribute_lib_test",
     size = "small",
     srcs = ["distribute_lib_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_rocm",
@@ -221,7 +221,7 @@ py_test(
     name = "distribute_coordinator_test",
     size = "medium",
     srcs = ["distribute_coordinator_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_oss_py2"],  # b/138443278
     deps = [
@@ -448,7 +448,7 @@ py_test(
     name = "numpy_dataset_test",
     size = "small",
     srcs = ["numpy_dataset_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":numpy_dataset",
@@ -504,7 +504,7 @@ cuda_py_test(
 py_test(
     name = "multi_worker_util_test",
     srcs = ["multi_worker_util_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":multi_worker_util",
@@ -585,7 +585,7 @@ py_library(
 py_test(
     name = "shared_variable_creator_test",
     srcs = ["shared_variable_creator_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":shared_variable_creator",
@@ -659,7 +659,7 @@ py_library(
 py_test(
     name = "strategy_combinations_test",
     srcs = ["strategy_combinations_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     deps = [
         ":combinations",
         ":reduce_util",
