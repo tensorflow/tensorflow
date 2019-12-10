@@ -288,15 +288,7 @@ Status KernelAndDeviceOp::Run(
 
   OpKernelContext context(&params);
 
-  if (kernel_->def().op() == "_Recv") {
-    // TODO(apassos) do not special-case _Recv. Currently the GPU device fails
-    // if trying to run _Recv->Compute(), specifically checking for _Recv. To go
-    // around this we call _Recv->ComputeAsync, to mimic graph mode behavior.
-    AsyncOpKernel* async = kernel_->AsAsync();
-    Notification done;
-    device_->ComputeAsync(async, &context, [&done]() { done.Notify(); });
-    done.WaitForNotification();
-  } else {
+  {
     const string& op_name = kernel_->name();
     // 'ScopedActivity' will trace the OpKernel scheduling time on host.
     profiler::TraceMe activity(
