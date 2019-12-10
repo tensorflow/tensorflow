@@ -459,6 +459,92 @@ static ParseResult parseBroadcastOp(OpAsmParser &parser,
 }
 
 //===----------------------------------------------------------------------===//
+// ShuffleOp
+//===----------------------------------------------------------------------===//
+
+void ShuffleOp::build(Builder *builder, OperationState &result, Value *v1,
+                      Value *v2, ArrayRef<int32_t> mask) {
+  result.addOperands({v1, v2});
+  auto maskAttr = builder->getI32ArrayAttr(mask);
+  result.addTypes(v1->getType());
+  result.addAttribute(getMaskAttrName(), maskAttr);
+}
+
+static void print(OpAsmPrinter &p, ShuffleOp op) {
+  p << op.getOperationName() << " " << *op.v1() << ", " << *op.v2() << " "
+    << op.mask();
+  p.printOptionalAttrDict(op.getAttrs(), {ShuffleOp::getMaskAttrName()});
+  p << " : " << op.v1()->getType() << ", " << op.v2()->getType();
+}
+
+static LogicalResult verify(ShuffleOp op) {
+  VectorType resultType = op.getVectorType();
+  VectorType v1Type = op.getV1VectorType();
+  VectorType v2Type = op.getV2VectorType();
+  // Verify ranks.
+  int64_t resRank = resultType.getRank();
+  int64_t v1Rank = v1Type.getRank();
+  int64_t v2Rank = v2Type.getRank();
+  if (resRank != v1Rank || v1Rank != v2Rank)
+    return op.emitOpError("rank mismatch");
+  // Verify all but leading dimension sizes.
+  for (int64_t r = 1; r < v1Rank; ++r) {
+    int64_t resDim = resultType.getDimSize(r);
+    int64_t v1Dim = v1Type.getDimSize(r);
+    int64_t v2Dim = v2Type.getDimSize(r);
+    if (resDim != v1Dim || v1Dim != v2Dim)
+      return op.emitOpError("dimension mismatch");
+  }
+  // Verify mask length.
+  auto maskAttr = op.mask().getValue();
+  int64_t maskLength = maskAttr.size();
+  if (maskLength != resultType.getDimSize(0))
+    return op.emitOpError("mask length mismatch");
+  // Verify all indices.
+  int64_t indexSize = v1Type.getDimSize(0) + v2Type.getDimSize(0);
+  for (auto en : llvm::enumerate(maskAttr)) {
+    auto attr = en.value().dyn_cast<IntegerAttr>();
+    if (!attr || attr.getInt() < 0 || attr.getInt() >= indexSize)
+      return op.emitOpError("mask index #")
+             << (en.index() + 1) << " out of range";
+  }
+  return success();
+}
+
+static ParseResult parseShuffleOp(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::OperandType v1, v2;
+  Attribute attr;
+  VectorType v1Type, v2Type;
+  if (parser.parseOperand(v1) || parser.parseComma() ||
+      parser.parseOperand(v2) ||
+      parser.parseAttribute(attr, ShuffleOp::getMaskAttrName(),
+                            result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(v1Type) || parser.parseComma() ||
+      parser.parseType(v2Type) ||
+      parser.resolveOperand(v1, v1Type, result.operands) ||
+      parser.resolveOperand(v2, v2Type, result.operands))
+    return failure();
+  // Construct resulting type: leading dimension matches mask length,
+  // all trailing dimensions match the operands.
+  auto maskAttr = attr.dyn_cast<ArrayAttr>();
+  if (!maskAttr)
+    return parser.emitError(parser.getNameLoc(), "missing mask attribute");
+  int64_t maskLength = maskAttr.size();
+  if (maskLength <= 0)
+    return parser.emitError(parser.getNameLoc(), "invalid mask length");
+  int64_t v1Rank = v1Type.getRank();
+  SmallVector<int64_t, 4> shape;
+  shape.reserve(v1Rank);
+  shape.push_back(maskLength);
+  for (int64_t r = 1; r < v1Rank; ++r)
+    shape.push_back(v1Type.getDimSize(r));
+  VectorType resType = VectorType::get(shape, v1Type.getElementType());
+  parser.addTypeToList(resType, result.types);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // InsertOp
 //===----------------------------------------------------------------------===//
 
