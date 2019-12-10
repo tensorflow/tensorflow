@@ -111,6 +111,18 @@ Status KernelAndDeviceOp::Init(const NodeDef& ndef,
     TF_RETURN_IF_ERROR(flr_->CreateKernel(ndef, &k));
   }
   kernel_.reset(k);
+
+  input_alloc_attrs_.resize(kernel_->num_inputs());
+  for (size_t i = 0; i < input_alloc_attrs_.size(); ++i) {
+    input_alloc_attrs_[i].set_on_host(kernel_->input_memory_types()[i] ==
+                                      tensorflow::HOST_MEMORY);
+  }
+  output_alloc_attrs_.resize(kernel_->num_outputs());
+  for (size_t i = 0; i < output_alloc_attrs_.size(); ++i) {
+    output_alloc_attrs_[i].set_on_host(kernel_->output_memory_types()[i] ==
+                                       tensorflow::HOST_MEMORY);
+  }
+
   return Status::OK();
 }
 
@@ -237,17 +249,6 @@ Status KernelAndDeviceOp::Run(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
     std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
-  gtl::InlinedVector<AllocatorAttributes, 4> in_attrs(kernel_->num_inputs());
-  for (size_t i = 0; i < in_attrs.size(); ++i) {
-    in_attrs[i].set_on_host(kernel_->input_memory_types()[i] ==
-                            tensorflow::HOST_MEMORY);
-  }
-  std::vector<AllocatorAttributes> out_attrs(kernel_->num_outputs());
-  for (size_t i = 0; i < out_attrs.size(); ++i) {
-    out_attrs[i].set_on_host(kernel_->output_memory_types()[i] ==
-                             tensorflow::HOST_MEMORY);
-  }
-
   OpKernelContext::Params params;
   params.is_eager = true;
   params.device = device_;
@@ -255,8 +256,8 @@ Status KernelAndDeviceOp::Run(
   params.inputs = inputs.GetTensorValues();
   params.op_kernel = kernel_.get();
   params.resource_manager = device_->resource_manager();
-  params.input_alloc_attrs = &in_attrs;
-  params.output_attr_array = out_attrs.data();
+  params.input_alloc_attrs = &input_alloc_attrs_;
+  params.output_attr_array = output_alloc_attrs_.data();
   params.function_library = flr_;
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
