@@ -496,7 +496,7 @@ def convert_entity_to_ast(o, program_ctx):
             keyed by their symbol name.
 
   Raises:
-    NotImplementedError: if the object conversion is not yet supported.
+    NotImplementedError: if entity is of a type that is not yet supported.
   """
   logging.log(1, 'Converting %s', o)
 
