@@ -109,12 +109,13 @@ nextafter = gen_math_ops.next_after
 def linspace_nd(start, stop, num, name=None, axis=0):
   r"""Generates evenly-spaced values in an interval along a given axis.
 
-  Matches [np.linspace](https://docs.scipy.org/doc/numpy/reference/generated/numpy.linspace.html)'s behaviour.
-  A sequence of `num` evenly-spaced values are generated beginning at `start`.
+  A sequence of `num` evenly-spaced values are generated beginning at `start`
+  along a given `axis`.
   If `num > 1`, the values in the sequence increase by `stop - start / num - 1`,
-  so that the last one is exactly `stop`.
+  so that the last one is exactly `stop`. If `num <= 0`, `ValueError` is raised.
 
-  When `num == 0`, returns a tensor with `0` elements along the given `axis`.
+  Matches [np.linspace](https://docs.scipy.org/doc/numpy/reference/generated/numpy.linspace.html)'s behaviour
+  except when `num == 0`.
 
   For example:
 
@@ -178,7 +179,7 @@ def linspace_nd(start, stop, num, name=None, axis=0):
     delta = (expanded_stop - expanded_start) / n_steps
     # If num < 0, we will throw exception in the range
     # otherwise use the same div for delta
-    range_end = array_ops.where_v2(num_int >= 0, n_steps, -1)
+    range_end = array_ops.where_v2(num_int > 0, n_steps, -1)
     num_range = range(1., range_end, dtype=start.dtype)
     shape_range = range(ndims)
     ones_like_shape_range = array_ops.ones_like(shape_range)
