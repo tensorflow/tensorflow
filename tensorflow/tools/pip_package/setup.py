@@ -58,12 +58,17 @@ REQUIRED_PACKAGES = [
     'google_pasta >= 0.1.6',
     'keras_applications >= 1.0.6',
     'keras_preprocessing >= 1.0.5',
+    # mock comes with unittest.mock for python3, need to install for python2
+    'mock >= 2.0.0;python_version<"3"',
     'numpy >= 1.16.0, < 2.0',
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
     'tensorboard >= 1.14.0, < 1.15.0',
     'tensorflow_estimator >= 1.14.0rc0, < 1.15.0rc0',
     'termcolor >= 1.1.0',
+    # python3 requires wheel 0.26
+    'wheel >= 0.26;python_version>="3"',
+    'wheel;python_version<"3"',
     'wrapt >= 1.11.1',
 ]
 
@@ -79,14 +84,6 @@ if '--project_name' in sys.argv:
   project_name = sys.argv[project_name_idx + 1]
   sys.argv.remove('--project_name')
   sys.argv.pop(project_name_idx)
-
-# python3 requires wheel 0.26
-if sys.version_info.major == 3:
-  REQUIRED_PACKAGES.append('wheel >= 0.26')
-else:
-  REQUIRED_PACKAGES.append('wheel')
-  # mock comes with unittest.mock for python3, need to install for python2
-  REQUIRED_PACKAGES.append('mock >= 2.0.0')
 
 # tf-nightly should depend on tb-nightly
 if 'tf_nightly' in project_name:
