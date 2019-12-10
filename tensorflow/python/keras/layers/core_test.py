@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import textwrap
-
 import numpy as np
 
 from tensorflow.python import keras
@@ -227,6 +225,28 @@ class LambdaLayerTest(keras_parameterized.TestCase):
     self.assertAllEqual(layer._output_shape, (1, 1))
     self.assertAllEqual(layer.mask(1, True), True)
 
+  def test_lambda_with_variable(self):
+
+    def fn(x):
+      return x * variables.Variable(2., name='multiplier')
+
+    layer = keras.layers.Lambda(fn)
+    for _ in range(10):
+      layer(np.ones((10, 10), 'float32'))
+    self.assertLen(layer.trainable_weights, 1)
+    self.assertEqual(layer.trainable_weights[0].name, 'lambda/multiplier:0')
+
+  def test_lambda_with_duplicate_variable_names(self):
+
+    def fn(x):
+      v1 = variables.Variable(2.)
+      v2 = variables.Variable(1.)
+      return x * v1 * v2
+
+    layer = keras.layers.Lambda(fn)
+    with self.assertRaisesRegexp(RuntimeError, 'must have unique names'):
+      layer(np.ones((10, 10), 'float32'))
+
   def test_lambda_with_training_arg(self):
 
     def fn(x, training=True):
@@ -274,25 +294,19 @@ class LambdaLayerTest(keras_parameterized.TestCase):
     expected_out = ragged_factory_ops.constant([[2.0], [3.0, 4.0]])
     self.assertAllClose(out, expected_out)
 
-
 class TestStatefulLambda(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   @keras_parameterized.run_with_all_model_types
   def test_lambda_with_variable_in_model(self):
-    v = variables.Variable(1., trainable=True)
-    def lambda_fn(x, v):
+
+    def lambda_fn(x):
+      # Variable will only get created once.
+      v = variables.Variable(1., trainable=True)
       return x * v
 
-    # While it is generally not advised to mix Variables with Lambda layers, if
-    # the variables are explicitly set as attributes then they are still
-    # tracked. This is consistent with the base Layer behavior.
-    layer = keras.layers.Lambda(lambda_fn, arguments={'v': v})
-    self.assertLen(layer.trainable_weights, 0)
-    layer.v = v
-    self.assertLen(layer.trainable_weights, 1)
-
-    model = testing_utils.get_model_from_layers([layer], input_shape=(10,))
+    model = testing_utils.get_model_from_layers(
+        [keras.layers.Lambda(lambda_fn)], input_shape=(10,))
     model.compile(
         keras.optimizer_v2.gradient_descent.SGD(0.1),
         'mae',
@@ -302,66 +316,6 @@ class TestStatefulLambda(keras_parameterized.TestCase):
     model.fit(x, y, batch_size=2, epochs=2, validation_data=(x, y))
     self.assertLen(model.trainable_weights, 1)
     self.assertAllClose(keras.backend.get_value(model.trainable_weights[0]), 2.)
-
-  @keras_parameterized.run_all_keras_modes
-  @keras_parameterized.run_with_all_model_types
-  def test_creation_inside_lambda(self):
-    def lambda_fn(x):
-      scale = variables.Variable(1., trainable=True, name='scale')
-      shift = variables.Variable(1., trainable=True, name='shift')
-      return x * scale + shift
-
-    expected_error = textwrap.dedent(r'''
-    (    )?The following Variables were created within a Lambda layer \(shift_and_scale\)
-    (    )?but are not tracked by said layer:
-    (    )?  <tf.Variable \'.*shift_and_scale/scale:0\'.+
-    (    )?  <tf.Variable \'.*shift_and_scale/shift:0\'.+
-    (    )?The layer cannot safely ensure proper Variable reuse.+''')
-
-    with self.assertRaisesRegexp(ValueError, expected_error):
-      layer = keras.layers.Lambda(lambda_fn, name='shift_and_scale')
-      model = testing_utils.get_model_from_layers([layer], input_shape=(1,))
-      model(array_ops.ones((4, 1)))
-
-  @keras_parameterized.run_all_keras_modes
-  @keras_parameterized.run_with_all_model_types
-  def test_transitive_variable_creation(self):
-    dense = keras.layers.Dense(1, use_bias=False, kernel_initializer='ones')
-    def bad_lambda_fn(x):
-      return dense(x + 1)  # Dense layer is built on first call
-
-    expected_error = textwrap.dedent(r'''
-    (    )?The following Variables were created within a Lambda layer \(bias_dense\)
-    (    )?but are not tracked by said layer:
-    (    )?  <tf.Variable \'.*bias_dense/dense/kernel:0\'.+
-    (    )?The layer cannot safely ensure proper Variable reuse.+''')
-
-    with self.assertRaisesRegexp(ValueError, expected_error):
-      layer = keras.layers.Lambda(bad_lambda_fn, name='bias_dense')
-      model = testing_utils.get_model_from_layers([layer], input_shape=(1,))
-      model(array_ops.ones((4, 1)))
-
-  @keras_parameterized.run_all_keras_modes
-  @keras_parameterized.run_with_all_model_types
-  def test_warns_on_variable_capture(self):
-    v = variables.Variable(1., trainable=True)
-    def lambda_fn(x):
-      return x * v
-
-    expected_warning = textwrap.dedent(r'''
-    (    )?The following Variables were used a Lambda layer\'s call \(lambda\), but
-    (    )?are not present in its tracked objects:
-    (    )?  <tf.Variable \'.*Variable:0\'.+
-    (    )?It is possible that this is intended behavior.+''')
-
-    layer = keras.layers.Lambda(lambda_fn)
-    def patched_warn(msg):
-      raise ValueError(msg)
-    layer._warn = patched_warn
-
-    with self.assertRaisesRegexp(ValueError, expected_warning):
-      model = testing_utils.get_model_from_layers([layer], input_shape=(1,))
-      model(array_ops.ones((4, 1)))
 
 
 @keras_parameterized.run_all_keras_modes
