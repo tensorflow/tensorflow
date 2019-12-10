@@ -172,7 +172,7 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/nnapi:acceleration_test_util",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels/internal:tensor_utils",
@@ -208,7 +208,7 @@ cc_library(
     deps = [
         ":op_macros",
         "//tensorflow/lite:arena_planner",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:optimized",
     ],
 )
@@ -355,17 +355,6 @@ cc_test(
 )
 
 cc_library(
-    name = "activation_functor",
-    hdrs = [
-        "activation_functor.h",
-    ],
-    copts = tflite_copts(),
-    deps = [
-        "//tensorflow/lite/c:c_api_internal",
-    ],
-)
-
-cc_library(
     name = "op_macros",
     hdrs = [
         "op_macros.h",
@@ -383,7 +372,7 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:round",
         "@flatbuffers",
@@ -418,7 +407,7 @@ cc_library(
     hdrs = ["padding.h"],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
 )
 
@@ -519,7 +508,6 @@ cc_library(
     copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
     visibility = ["//visibility:private"],
     deps = [
-        ":activation_functor",
         ":cpu_backend_context",
         ":eigen_support",
         ":kernel_util",
@@ -528,7 +516,8 @@ cc_library(
         ":padding",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:audio_utils",
         "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -561,7 +550,8 @@ cc_library(
         ":kernel_util",
         ":op_macros",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:tensor",
     ],
 )
@@ -591,7 +581,7 @@ cc_library(
         ":kernel_util",
         ":op_macros",
         "//tensorflow/lite:context",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor",
         "//third_party/fft2d:fft2d_headers",
@@ -608,12 +598,11 @@ cc_library(
     deps = [
         ":cpu_backend_context",
         ":op_macros",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_utils",
-        "//third_party/eigen3",
         "@gemmlowp",
     ],
 )
@@ -630,7 +619,7 @@ cc_library(
     deps = [
         ":builtin_op_kernels",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
     alwayslink = 1,
 )
@@ -646,7 +635,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
 )
 
@@ -1146,7 +1135,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1160,7 +1149,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1174,7 +1163,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1189,7 +1178,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1394,7 +1383,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1506,7 +1495,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1598,7 +1587,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1612,7 +1601,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1626,7 +1615,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1640,7 +1629,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1655,7 +1644,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -1670,7 +1659,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1698,7 +1687,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1883,7 +1872,7 @@ cc_test(
         ":custom_ops",
         ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )

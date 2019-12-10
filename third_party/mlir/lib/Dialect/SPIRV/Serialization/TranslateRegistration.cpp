@@ -86,15 +86,16 @@ LogicalResult serializeModule(ModuleOp module, llvm::raw_ostream &output) {
 
   SmallVector<uint32_t, 0> binary;
 
-  auto spirvModules = module.getOps<spirv::ModuleOp>();
+  SmallVector<spirv::ModuleOp, 1> spirvModules;
+  module.walk([&](spirv::ModuleOp op) { spirvModules.push_back(op); });
 
-  if (spirvModules.begin() == spirvModules.end())
+  if (spirvModules.empty())
     return module.emitError("found no 'spv.module' op");
 
-  if (std::next(spirvModules.begin()) != spirvModules.end())
+  if (spirvModules.size() != 1)
     return module.emitError("found more than one 'spv.module' op");
 
-  if (failed(spirv::serialize(*spirvModules.begin(), binary)))
+  if (failed(spirv::serialize(spirvModules[0], binary)))
     return failure();
 
   output.write(reinterpret_cast<char *>(binary.data()),

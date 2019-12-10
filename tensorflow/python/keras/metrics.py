@@ -88,8 +88,8 @@ class Metric(base_layer.Layer):
   model.add(tf.keras.layers.Dense(64, activation='relu'))
   model.add(tf.keras.layers.Dense(10, activation='softmax'))
 
-  model.compile(optimizer=tf.compat.v1.train.RMSPropOptimizer(0.01),
-                loss=tf.keras.losses.categorical_crossentropy,
+  model.compile(optimizer=tf.keras.optimizers.RMSprop(0.01),
+                loss=tf.keras.losses.CategoricalCrossentropy(),
                 metrics=[tf.keras.metrics.CategoricalAccuracy()])
 
   data = np.random.random((1000, 32))
@@ -97,9 +97,8 @@ class Metric(base_layer.Layer):
 
   dataset = tf.data.Dataset.from_tensor_slices((data, labels))
   dataset = dataset.batch(32)
-  dataset = dataset.repeat()
 
-  model.fit(dataset, epochs=10, steps_per_epoch=30)
+  model.fit(dataset, epochs=10)
   ```
 
   To be implemented by subclasses:
@@ -112,7 +111,7 @@ class Metric(base_layer.Layer):
 
   Example subclass implementation:
 
-  ```
+  ```python
   class BinaryTruePositives(tf.keras.metrics.Metric):
 
     def __init__(self, name='binary_true_positives', **kwargs):
@@ -389,11 +388,10 @@ class Sum(Reduce):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.Sum()
-  m.update_state([1, 3, 5, 7])
-  print('Final result: ', m.result().numpy())  # Final result: 16.0
-  ```
+  >>> m = tf.keras.metrics.Sum()
+  >>> _ = m.update_state([1, 3, 5, 7])
+  >>> m.result().numpy()
+  16.0
 
   Usage with tf.keras API:
 
@@ -465,8 +463,8 @@ class MeanRelativeError(Mean):
   """Computes the mean relative error by normalizing with the given values.
 
   This metric creates two local variables, `total` and `count` that are used to
-  compute the mean relative absolute error. This average is weighted by
-  `sample_weight`, and it is ultimately returned as `mean_relative_error`:
+  compute the mean relative error. This is weighted by `sample_weight`, and
+  it is ultimately returned as `mean_relative_error`:
   an idempotent operation that simply divides `total` by `count`.
 
   If `sample_weight` is `None`, weights default to 1.
@@ -474,15 +472,14 @@ class MeanRelativeError(Mean):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.MeanRelativeError(normalizer=[1, 3, 2, 3])
-  m.update_state([1, 3, 2, 3], [2, 4, 6, 8])
+  >>> m = tf.keras.metrics.MeanRelativeError(normalizer=[1, 3, 2, 3])
+  >>> _ = m.update_state([1, 3, 2, 3], [2, 4, 6, 8])
 
-  # metric = mean(|y_pred - y_true| / normalizer)
-  #        = mean([1, 1, 4, 5] / [1, 3, 2, 3]) = mean([1, 1/3, 2, 5/3])
-  #        = 5/4 = 1.25
-  print('Final result: ', m.result().numpy())  # Final result: 1.25
-  ```
+  >>> # metric = mean(|y_pred - y_true| / normalizer)
+  >>> #        = mean([1, 1, 4, 5] / [1, 3, 2, 3]) = mean([1, 1/3, 2, 5/3])
+  >>> #        = 5/4 = 1.25
+  >>> m.result().numpy()
+  1.25
 
   Usage with tf.keras API:
 
@@ -567,11 +564,17 @@ class MeanMetricWrapper(Mean):
     `y_true` and `y_pred` should have the same shape.
 
     Args:
-      y_true: The ground truth values.
-      y_pred: The predicted values.
-      sample_weight: Optional weighting of each example. Defaults to 1. Can be
-        a `Tensor` whose rank is either 0, or the same rank as `y_true`,
-        and must be broadcastable to `y_true`.
+      y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`.
+      y_pred: The predicted values. shape = `[batch_size, d0, .. dN]`.
+      sample_weight: Optional `sample_weight` acts as a
+        coefficient for the metric. If a scalar is provided, then the metric is
+        simply scaled by the given value. If `sample_weight` is a tensor of size
+        `[batch_size]`, then the metric for each sample of the batch is rescaled
+        by the corresponding element in the `sample_weight` vector. If the shape
+        of `sample_weight` is `[batch_size, d0, .. dN-1]` (or can be broadcasted
+        to this shape), then each metric element of `y_pred` is scaled by the
+        corresponding value of `sample_weight`. (Note on `dN-1`: all metric
+        functions reduce by 1 dimension, usually the last axis (-1)).
 
     Returns:
       Update op.
@@ -598,11 +601,7 @@ class MeanMetricWrapper(Mean):
 
 @keras_export('keras.metrics.Accuracy')
 class Accuracy(MeanMetricWrapper):
-  """Calculates how often predictions matches labels.
-
-  For example, if `y_true` is [1, 2, 3, 4] and `y_pred` is [0, 2, 3, 4]
-  then the accuracy is 3/4 or .75.  If the weights were specified as
-  [1, 1, 0, 0] then the accuracy would be 1/2 or .5.
+  """Calculates how often predictions equals labels.
 
   This metric creates two local variables, `total` and `count` that are used to
   compute the frequency with which `y_pred` matches `y_true`. This frequency is
@@ -615,11 +614,13 @@ class Accuracy(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.Accuracy()
-  >>> _ = m.update_state([1, 2, 3, 4], [0, 2, 3, 4])
+  >>> _ = m.update_state([[1], [2], [3], [4]], [[0], [2], [3], [4]])
   >>> m.result().numpy()
   0.75
+
   >>> m.reset_states()
-  >>> _ = m.update_state([1, 2, 3, 4], [0, 2, 3, 4], sample_weight=[1, 1, 0, 0])
+  >>> _ = m.update_state([[1], [2], [3], [4]], [[0], [2], [3], [4]],
+  ...                    sample_weight=[1, 1, 0, 0])
   >>> m.result().numpy()
   0.5
 
@@ -637,11 +638,7 @@ class Accuracy(MeanMetricWrapper):
 
 @keras_export('keras.metrics.BinaryAccuracy')
 class BinaryAccuracy(MeanMetricWrapper):
-  """Calculates how often predictions matches labels.
-
-  For example, if `y_true` is [1, 1, 0, 0] and `y_pred` is [0.98, 1, 0, 0.6]
-  then the binary accuracy is 3/4 or .75.  If the weights were specified as
-  [1, 0, 0, 1] then the binary accuracy would be 1/2 or .5.
+  """Calculates how often predictions matches binary labels.
 
   This metric creates two local variables, `total` and `count` that are used to
   compute the frequency with which `y_pred` matches `y_true`. This frequency is
@@ -653,11 +650,16 @@ class BinaryAccuracy(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.BinaryAccuracy()
-  m.update_state([1, 1, 0, 0], [0.98, 1, 0, 0.6])
-  print('Final result: ', m.result().numpy())  # Final result: 0.75
-  ```
+  >>> m = tf.keras.metrics.BinaryAccuracy()
+  >>> _ = m.update_state([[1], [1], [0], [0]], [[0.98], [1], [0], [0.6]])
+  >>> m.result().numpy()
+  0.75
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([[1], [1], [0], [0]], [[0.98], [1], [0], [0.6]],
+  ...                    sample_weight=[1, 0, 0, 1])
+  >>> m.result().numpy()
+  0.5
 
   Usage with tf.keras API:
 
@@ -682,12 +684,9 @@ class BinaryAccuracy(MeanMetricWrapper):
 
 @keras_export('keras.metrics.CategoricalAccuracy')
 class CategoricalAccuracy(MeanMetricWrapper):
-  """Calculates how often predictions matches labels.
+  """Calculates how often predictions matches one-hot labels.
 
-  For example, if `y_true` is [[0, 0, 1], [0, 1, 0]] and `y_pred` is
-  [[0.1, 0.9, 0.8], [0.05, 0.95, 0]] then the categorical accuracy is 1/2 or .5.
-  If the weights were specified as [0.7, 0.3] then the categorical accuracy
-  would be .3. You can provide logits of classes as `y_pred`, since argmax of
+  You can provide logits of classes as `y_pred`, since argmax of
   logits and probabilities are same.
 
   This metric creates two local variables, `total` and `count` that are used to
@@ -708,6 +707,13 @@ class CategoricalAccuracy(MeanMetricWrapper):
   ...                     [0.05, 0.95, 0]])
   >>> m.result().numpy()
   0.5
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([[0, 0, 1], [0, 1, 0]], [[0.1, 0.9, 0.8],
+  ...                     [0.05, 0.95, 0]],
+  ...                    sample_weight=[0.7, 0.3])
+  >>> m.result().numpy()
+  0.3
 
   Usage with tf.keras API:
 
@@ -735,10 +741,7 @@ class CategoricalAccuracy(MeanMetricWrapper):
 class SparseCategoricalAccuracy(MeanMetricWrapper):
   """Calculates how often predictions matches integer labels.
 
-  For example, if `y_true` is [[2], [1]] and `y_pred` is
-  [[0.1, 0.9, 0.8], [0.05, 0.95, 0]] then the categorical accuracy is 1/2 or .5.
-  If the weights were specified as [0.7, 0.3] then the categorical accuracy
-  would be .3. You can provide logits of classes as `y_pred`, since argmax of
+  You can provide logits of classes as `y_pred`, since argmax of
   logits and probabilities are same.
 
   This metric creates two local variables, `total` and `count` that are used to
@@ -755,6 +758,12 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
   >>> _ = m.update_state([[2], [1]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
   >>> m.result().numpy()
   0.5
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([[2], [1]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]],
+  ...                    sample_weight=[0.7, 0.3])
+  >>> m.result().numpy()
+  0.3
 
   Usage with tf.keras API:
 
@@ -778,11 +787,18 @@ class TopKCategoricalAccuracy(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.TopKCategoricalAccuracy()
-  m.update_state([[0, 0, 1], [0, 1, 0]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
-  print('Final result: ', m.result().numpy())  # Final result: 1.0
-  ```
+  >>> m = tf.keras.metrics.TopKCategoricalAccuracy(k=1)
+  >>> _ = m.update_state([[0, 0, 1], [0, 1, 0]],
+  ...                    [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
+  >>> m.result().numpy()
+  0.5
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([[0, 0, 1], [0, 1, 0]],
+  ...                    [[0.1, 0.9, 0.8], [0.05, 0.95, 0]],
+  ...                    sample_weight=[0.7, 0.3])
+  >>> m.result().numpy()
+  0.3
 
   Usage with tf.keras API:
 
@@ -811,11 +827,16 @@ class SparseTopKCategoricalAccuracy(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.SparseTopKCategoricalAccuracy()
-  m.update_state([2, 1], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
-  print('Final result: ', m.result().numpy())  # Final result: 1.0
-  ```
+  >>> m = tf.keras.metrics.SparseTopKCategoricalAccuracy(k=1)
+  >>> _ = m.update_state([2, 1], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
+  >>> m.result().numpy()
+  0.5
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([2, 1], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]],
+  ...                    sample_weight=[0.7, 0.3])
+  >>> m.result().numpy()
+  0.3
 
   Usage with tf.keras API:
 
@@ -912,10 +933,6 @@ class _ConfusionMatrixConditionCount(Metric):
 class FalsePositives(_ConfusionMatrixConditionCount):
   """Calculates the number of false positives.
 
-  For example, if `y_true` is [0, 1, 0, 0] and `y_pred` is [0, 0, 1, 1]
-  then the false positives value is 2.  If the weights were specified as
-  [0, 0, 1, 0] then the false positives value would be 1.
-
   If `sample_weight` is given, calculates the sum of the weights of
   false positives. This metric creates one local variable, `accumulator`
   that is used to keep track of the number of false positives.
@@ -925,11 +942,15 @@ class FalsePositives(_ConfusionMatrixConditionCount):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.FalsePositives()
-  m.update_state([0, 1, 0, 0], [0, 0, 1, 1])
-  print('Final result: ', m.result().numpy())  # Final result: 2
-  ```
+  >>> m = tf.keras.metrics.FalsePositives()
+  >>> _ = m.update_state([0, 1, 0, 0], [0, 0, 1, 1])
+  >>> m.result().numpy()
+  2.0
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([0, 1, 0, 0], [0, 0, 1, 1], sample_weight=[0, 0, 1, 0])
+  >>> m.result().numpy()
+  1.0
 
   Usage with tf.keras API:
 
@@ -962,10 +983,6 @@ class FalsePositives(_ConfusionMatrixConditionCount):
 class FalseNegatives(_ConfusionMatrixConditionCount):
   """Calculates the number of false negatives.
 
-  For example, if `y_true` is [0, 1, 1, 1] and `y_pred` is [0, 1, 0, 0]
-  then the false negatives value is 2.  If the weights were specified as
-  [0, 0, 1, 0] then the false negatives value would be 1.
-
   If `sample_weight` is given, calculates the sum of the weights of
   false negatives. This metric creates one local variable, `accumulator`
   that is used to keep track of the number of false negatives.
@@ -975,11 +992,15 @@ class FalseNegatives(_ConfusionMatrixConditionCount):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.FalseNegatives()
-  m.update_state([0, 1, 1, 1], [0, 1, 0, 0])
-  print('Final result: ', m.result().numpy())  # Final result: 2
-  ```
+  >>> m = tf.keras.metrics.FalseNegatives()
+  >>> _ = m.update_state([0, 1, 1, 1], [0, 1, 0, 0])
+  >>> m.result().numpy()
+  2.0
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([0, 1, 1, 1], [0, 1, 0, 0], sample_weight=[0, 0, 1, 0])
+  >>> m.result().numpy()
+  1.0
 
   Usage with tf.keras API:
 
@@ -1012,10 +1033,6 @@ class FalseNegatives(_ConfusionMatrixConditionCount):
 class TrueNegatives(_ConfusionMatrixConditionCount):
   """Calculates the number of true negatives.
 
-  For example, if `y_true` is [0, 1, 0, 0] and `y_pred` is [1, 1, 0, 0]
-  then the true negatives value is 2.  If the weights were specified as
-  [0, 0, 1, 0] then the true negatives value would be 1.
-
   If `sample_weight` is given, calculates the sum of the weights of
   true negatives. This metric creates one local variable, `accumulator`
   that is used to keep track of the number of true negatives.
@@ -1025,11 +1042,15 @@ class TrueNegatives(_ConfusionMatrixConditionCount):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.TrueNegatives()
-  m.update_state([0, 1, 0, 0], [1, 1, 0, 0])
-  print('Final result: ', m.result().numpy())  # Final result: 2
-  ```
+  >>> m = tf.keras.metrics.TrueNegatives()
+  >>> _ = m.update_state([0, 1, 0, 0], [1, 1, 0, 0])
+  >>> m.result().numpy()
+  2.0
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([0, 1, 0, 0], [1, 1, 0, 0], sample_weight=[0, 0, 1, 0])
+  >>> m.result().numpy()
+  1.0
 
   Usage with tf.keras API:
 
@@ -1062,10 +1083,6 @@ class TrueNegatives(_ConfusionMatrixConditionCount):
 class TruePositives(_ConfusionMatrixConditionCount):
   """Calculates the number of true positives.
 
-  For example, if `y_true` is [0, 1, 1, 1] and `y_pred` is [1, 0, 1, 1]
-  then the true positives value is 2.  If the weights were specified as
-  [0, 0, 1, 0] then the true positives value would be 1.
-
   If `sample_weight` is given, calculates the sum of the weights of
   true positives. This metric creates one local variable, `true_positives`
   that is used to keep track of the number of true positives.
@@ -1075,11 +1092,15 @@ class TruePositives(_ConfusionMatrixConditionCount):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.TruePositives()
-  m.update_state([0, 1, 1, 1], [1, 0, 1, 1])
-  print('Final result: ', m.result().numpy())  # Final result: 2
-  ```
+  >>> m = tf.keras.metrics.TruePositives()
+  >>> _ = m.update_state([0, 1, 1, 1], [1, 0, 1, 1])
+  >>> m.result().numpy()
+  2.0
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([0, 1, 1, 1], [1, 0, 1, 1], sample_weight=[0, 0, 1, 0])
+  >>> m.result().numpy()
+  1.0
 
   Usage with tf.keras API:
 
@@ -1112,10 +1133,6 @@ class TruePositives(_ConfusionMatrixConditionCount):
 class Precision(Metric):
   """Computes the precision of the predictions with respect to the labels.
 
-  For example, if `y_true` is [0, 1, 1, 1] and `y_pred` is [1, 0, 1, 1]
-  then the precision value is 2/(2+1) ie. 0.66. If the weights were specified as
-  [0, 0, 1, 0] then the precision value would be 1.
-
   The metric creates two local variables, `true_positives` and `false_positives`
   that are used to compute the precision. This value is ultimately returned as
   `precision`, an idempotent operation that simply divides `true_positives`
@@ -1135,11 +1152,15 @@ class Precision(Metric):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.Precision()
-  m.update_state([0, 1, 1, 1], [1, 0, 1, 1])
-  print('Final result: ', m.result().numpy())  # Final result: 0.66
-  ```
+  >>> m = tf.keras.metrics.Precision()
+  >>> _ = m.update_state([0, 1, 1, 1], [1, 0, 1, 1])
+  >>> m.result().numpy()
+  0.6666667
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([0, 1, 1, 1], [1, 0, 1, 1], sample_weight=[0, 0, 1, 0])
+  >>> m.result().numpy()
+  1.0
 
   Usage with tf.keras API:
 
@@ -1239,10 +1260,6 @@ class Precision(Metric):
 class Recall(Metric):
   """Computes the recall of the predictions with respect to the labels.
 
-  For example, if `y_true` is [0, 1, 1, 1] and `y_pred` is [1, 0, 1, 1]
-  then the recall value is 2/(2+1) ie. 0.66. If the weights were specified as
-  [0, 0, 1, 0] then the recall value would be 1.
-
   This metric creates two local variables, `true_positives` and
   `false_negatives`, that are used to compute the recall. This value is
   ultimately returned as `recall`, an idempotent operation that simply divides
@@ -1261,11 +1278,15 @@ class Recall(Metric):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.Recall()
-  m.update_state([0, 1, 1, 1], [1, 0, 1, 1])
-  print('Final result: ', m.result().numpy())  # Final result: 0.66
-  ```
+  >>> m = tf.keras.metrics.Recall()
+  >>> _ = m.update_state([0, 1, 1, 1], [1, 0, 1, 1])
+  >>> m.result().numpy()
+  0.6666667
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([0, 1, 1, 1], [1, 0, 1, 1], sample_weight=[0, 0, 1, 0])
+  >>> m.result().numpy()
+  1.0
 
   Usage with tf.keras API:
 
@@ -1452,11 +1473,16 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.SensitivityAtSpecificity(0.4, num_thresholds=1)
-  m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
-  print('Final result: ', m.result().numpy())  # Final result: 0.5
-  ```
+  >>> m = tf.keras.metrics.SensitivityAtSpecificity(0.4, num_thresholds=1)
+  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
+  >>> m.result().numpy()
+  0.5
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9],
+  ...                    sample_weight=[1, 0, 0, 1])
+  >>> m.result().numpy()
+  1.0
 
   Usage with tf.keras API:
 
@@ -1533,11 +1559,16 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.SpecificityAtSensitivity(0.8, num_thresholds=1)
-  m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
-  print('Final result: ', m.result().numpy())  # Final result: 1.0
-  ```
+  >>> m = tf.keras.metrics.SpecificityAtSensitivity(0.8, num_thresholds=1)
+  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
+  >>> m.result().numpy()
+  1.0
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9],
+  ...                    sample_weight=[1, 0, 0, 1])
+  >>> m.result().numpy()
+  1.0
 
   Usage with tf.keras API:
 
@@ -1606,11 +1637,16 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.PrecisionAtRecall(0.8, num_thresholds=1)
-  m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
-  print('Final result: ', m.result().numpy())  # Final result: 1.0
-  ```
+  >>> m = tf.keras.metrics.PrecisionAtRecall(0.8, num_thresholds=1)
+  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
+  >>> m.result().numpy()
+  1.0
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9],
+  ...                    sample_weight=[1, 0, 0, 1])
+  >>> m.result().numpy()
+  1.0
 
   Usage with tf.keras API:
 
@@ -1696,17 +1732,20 @@ class AUC(Metric):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.AUC(num_thresholds=3)
-  m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
+  >>> m = tf.keras.metrics.AUC(num_thresholds=3)
+  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
+  >>> # threshold values are [0 - 1e-7, 0.5, 1 + 1e-7]
+  >>> # tp = [2, 1, 0], fp = [2, 0, 0], fn = [0, 1, 2], tn = [0, 2, 2]
+  >>> # recall = [1, 0.5, 0], fp_rate = [1, 0, 0]
+  >>> # auc = ((((1+0.5)/2)*(1-0))+ (((0.5+0)/2)*(0-0))) = 0.75
+  >>> m.result().numpy()
+  0.75
 
-  # threshold values are [0 - 1e-7, 0.5, 1 + 1e-7]
-  # tp = [2, 1, 0], fp = [2, 0, 0], fn = [0, 1, 2], tn = [0, 2, 2]
-  # recall = [1, 0.5, 0], fp_rate = [1, 0, 0]
-  # auc = ((((1+0.5)/2)*(1-0))+ (((0.5+0)/2)*(0-0))) = 0.75
-
-  print('Final result: ', m.result().numpy())  # Final result: 0.75
-  ```
+  >>> m.reset_states()
+  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9],
+  ...                    sample_weight=[1, 0, 0, 1])
+  >>> m.result().numpy()
+  1.0
 
   Usage with tf.keras API:
 
@@ -2079,24 +2118,26 @@ class CosineSimilarity(MeanMetricWrapper):
   cosine similarity = (a . b) / ||a|| ||b||
   [Cosine Similarity](https://en.wikipedia.org/wiki/Cosine_similarity)
 
-  For example, if `y_true` is [0, 1, 1], and `y_pred` is [1, 0, 1], the cosine
-  similarity is 0.5.
-
   This metric keeps the average cosine similarity between `predictions` and
   `labels` over a stream of data.
 
   Usage:
-  ```python
-  m = tf.keras.metrics.CosineSimilarity(axis=1)
-  m.update_state([[0., 1.], [1., 1.]], [[1., 0.], [1., 1.]])
-  # l2_norm(y_true) = [[0., 1.], [1./1.414], 1./1.414]]]
-  # l2_norm(y_pred) = [[1., 0.], [1./1.414], 1./1.414]]]
-  # l2_norm(y_true) . l2_norm(y_pred) = [[0., 0.], [0.5, 0.5]]
-  # result = mean(sum(l2_norm(y_true) . l2_norm(y_pred), axis=1))
-         = ((0. + 0.) +  (0.5 + 0.5)) / 2
 
-  print('Final result: ', m.result().numpy())  # Final result: 0.5
-  ```
+  >>> # l2_norm(y_true) = [[0., 1.], [1./1.414], 1./1.414]]]
+  >>> # l2_norm(y_pred) = [[1., 0.], [1./1.414], 1./1.414]]]
+  >>> # l2_norm(y_true) . l2_norm(y_pred) = [[0., 0.], [0.5, 0.5]]
+  >>> # result = mean(sum(l2_norm(y_true) . l2_norm(y_pred), axis=1))
+  >>> #        = ((0. + 0.) +  (0.5 + 0.5)) / 2
+  >>> m = tf.keras.metrics.CosineSimilarity(axis=1)
+  >>> _ = m.update_state([[0., 1.], [1., 1.]], [[1., 0.], [1., 1.]])
+  >>> m.result().numpy()
+  0.49999997
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([[0., 1.], [1., 1.]], [[1., 0.], [1., 1.]],
+  ...                    sample_weight=[0.3, 0.7])
+  >>> m.result().numpy()
+  0.6999999
 
   Usage with tf.keras API:
 
@@ -2126,21 +2167,25 @@ class CosineSimilarity(MeanMetricWrapper):
 class MeanAbsoluteError(MeanMetricWrapper):
   """Computes the mean absolute error between the labels and predictions.
 
-  For example, if `y_true` is [0., 0., 1., 1.], and `y_pred` is [1., 1., 1., 0.]
-  the mean absolute error is 3/4 (0.75).
-
   Usage:
 
-  >>> m = MeanAbsoluteError()
-  >>> _ = m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  >>> m = tf.keras.metrics.MeanAbsoluteError()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
   >>> m.result().numpy()
-  0.75
+  0.25
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
+  ...                    sample_weight=[1, 0])
+  >>> m.result().numpy()
+  0.5
 
   Usage with tf.keras API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
-  model.compile('sgd', metrics=[tf.keras.metrics.MeanAbsoluteError()])
+  model.compile(
+      'sgd', loss='mse', metrics=[tf.keras.metrics.MeanAbsoluteError()])
   ```
   """
 
@@ -2153,13 +2198,16 @@ class MeanAbsoluteError(MeanMetricWrapper):
 class MeanAbsolutePercentageError(MeanMetricWrapper):
   """Computes the mean absolute percentage error between `y_true` and `y_pred`.
 
-  For example, if `y_true` is [0., 0., 1., 1.], and `y_pred` is [1., 1., 1., 0.]
-  the mean absolute percentage error is 5e+08.
-
   Usage:
 
   >>> m = tf.keras.metrics.MeanAbsolutePercentageError()
-  >>> _ = m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
+  >>> m.result().numpy()
+  250000000.0
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
+  ...                    sample_weight=[1, 0])
   >>> m.result().numpy()
   500000000.0
 
@@ -2167,7 +2215,10 @@ class MeanAbsolutePercentageError(MeanMetricWrapper):
 
   ```python
   model = tf.keras.Model(inputs, outputs)
-  model.compile('sgd', metrics=[tf.keras.metrics.MeanAbsolutePercentageError()])
+  model.compile(
+      'sgd',
+      loss='mse',
+      metrics=[tf.keras.metrics.MeanAbsolutePercentageError()])
   ```
   """
 
@@ -2180,22 +2231,25 @@ class MeanAbsolutePercentageError(MeanMetricWrapper):
 class MeanSquaredError(MeanMetricWrapper):
   """Computes the mean squared error between `y_true` and `y_pred`.
 
-  For example, if `y_true` is [0., 0., 1., 1.], and `y_pred` is [1., 1., 1., 0.]
-  the mean squared error is 3/4 (0.75).
-
   Usage:
 
-  ```python
-  m = tf.keras.metrics.MeanSquaredError()
-  m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
-  print('Final result: ', m.result().numpy())  # Final result: 0.75
-  ```
+  >>> m = tf.keras.metrics.MeanSquaredError()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
+  >>> m.result().numpy()
+  0.25
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
+  ...                    sample_weight=[1, 0])
+  >>> m.result().numpy()
+  0.5
 
   Usage with tf.keras API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
-  model.compile('sgd', metrics=[tf.keras.metrics.MeanSquaredError()])
+  model.compile(
+      'sgd', loss='mse', metrics=[tf.keras.metrics.MeanSquaredError()])
   ```
   """
 
@@ -2208,22 +2262,27 @@ class MeanSquaredError(MeanMetricWrapper):
 class MeanSquaredLogarithmicError(MeanMetricWrapper):
   """Computes the mean squared logarithmic error between `y_true` and `y_pred`.
 
-  For example, if `y_true` is [0., 0., 1., 1.], and `y_pred` is [1., 1., 1., 0.]
-  the mean squared logarithmic error is 0.36034.
-
   Usage:
 
-  ```python
-  m = tf.keras.metrics.MeanSquaredLogarithmicError()
-  m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
-  print('Final result: ', m.result().numpy())  # Final result: 0.36034
-  ```
+  >>> m = tf.keras.metrics.MeanSquaredLogarithmicError()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
+  >>> m.result().numpy()
+  0.12011322
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
+  ...                    sample_weight=[1, 0])
+  >>> m.result().numpy()
+  0.24022643
 
   Usage with tf.keras API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
-  model.compile('sgd', metrics=[tf.keras.metrics.MeanSquaredLogarithmicError()])
+  model.compile(
+      'sgd',
+      loss='mse',
+      metrics=[tf.keras.metrics.MeanSquaredLogarithmicError()])
   ```
   """
 
@@ -2239,25 +2298,24 @@ class Hinge(MeanMetricWrapper):
   `y_true` values are expected to be -1 or 1. If binary (0 or 1) labels are
   provided we will convert them to -1 or 1.
 
-  For example, if `y_true` is [-1., 1., 1.], and `y_pred` is [0.6, -0.7, -0.5]
-  the hinge metric value is 1.6.
-
   Usage:
 
-  ```python
-  m = tf.keras.metrics.Hinge()
-  m.update_state([-1., 1., 1.], [0.6, -0.7, -0.5])
+  >>> m = tf.keras.metrics.Hinge()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]])
+  >>> m.result().numpy()
+  1.3
 
-  # result = max(0, 1-y_true * y_pred) = [1.6 + 1.7 + 1.5] / 3
-
-  print('Final result: ', m.result().numpy())  # Final result: 1.6
-  ```
+  >>> m.reset_states()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
+  ...                    sample_weight=[1, 0])
+  >>> m.result().numpy()
+  1.1
 
   Usage with tf.keras API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
-  model.compile('sgd', metrics=[tf.keras.metrics.Hinge()])
+  model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.Hinge()])
   ```
   """
 
@@ -2272,25 +2330,27 @@ class SquaredHinge(MeanMetricWrapper):
   `y_true` values are expected to be -1 or 1. If binary (0 or 1) labels are
   provided we will convert them to -1 or 1.
 
-  For example, if `y_true` is [-1., 1., 1.], and `y_pred` is [0.6, -0.7, -0.5]
-  the squared hinge metric value is 2.6.
-
   Usage:
 
-  ```python
-  m = tf.keras.metrics.SquaredHinge()
-  m.update_state([-1., 1., 1.], [0.6, -0.7, -0.5])
+  >>> m = tf.keras.metrics.SquaredHinge()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]])
+  >>> m.result().numpy()
+  1.86
 
-  # result = max(0, 1-y_true * y_pred) = [1.6^2 + 1.7^2 + 1.5^2] / 3
-
-  print('Final result: ', m.result().numpy())  # Final result: 2.6
-  ```
+  >>> m.reset_states()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
+  ...                    sample_weight=[1, 0])
+  >>> m.result().numpy()
+  1.46
 
   Usage with tf.keras API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
-  model.compile('sgd', metrics=[tf.keras.metrics.SquaredHinge()])
+  model.compile(
+      'sgd',
+      loss='mse',
+      metrics=[tf.keras.metrics.SquaredHinge()])
   ```
   """
 
@@ -2302,22 +2362,27 @@ class SquaredHinge(MeanMetricWrapper):
 class CategoricalHinge(MeanMetricWrapper):
   """Computes the categorical hinge metric between `y_true` and `y_pred`.
 
-  For example, if `y_true` is [0., 1., 1.], and `y_pred` is [1., 0., 1.]
-  the categorical hinge metric value is 1.0.
-
   Usage:
 
-  ```python
-  m = tf.keras.metrics.CategoricalHinge()
-  m.update_state([0., 1., 1.], [1., 0., 1.])
-  print('Final result: ', m.result().numpy())  # Final result: 1.0
-  ```
+  >>> m = tf.keras.metrics.CategoricalHinge()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]])
+  >>> m.result().numpy()
+  1.4000001
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
+  ...                    sample_weight=[1, 0])
+  >>> m.result().numpy()
+  1.2
 
   Usage with tf.keras API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
-  model.compile('sgd', metrics=[tf.keras.metrics.CategoricalHinge()])
+  model.compile(
+      'sgd',
+      loss='mse',
+      metrics=[tf.keras.metrics.CategoricalHinge()])
   ```
   """
 
@@ -2331,17 +2396,25 @@ class RootMeanSquaredError(Mean):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.RootMeanSquaredError()
-  m.update_state([2., 4., 6.], [1., 3., 2.])
-  print('Final result: ', m.result().numpy())  # Final result: 2.449
-  ```
+  >>> m = tf.keras.metrics.RootMeanSquaredError()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
+  >>> m.result().numpy()
+  0.5
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
+  ...                    sample_weight=[1, 0])
+  >>> m.result().numpy()
+  0.70710677
 
   Usage with tf.keras API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
-  model.compile('sgd', metrics=[tf.keras.metrics.RootMeanSquaredError()])
+  model.compile(
+      'sgd',
+      loss='mse',
+      metrics=[tf.keras.metrics.RootMeanSquaredError()])
   ```
   """
 
@@ -2381,17 +2454,22 @@ class LogCoshError(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.LogCoshError()
-  m.update_state([0., 1., 1.], [1., 0., 1.])
-  print('Final result: ', m.result().numpy())  # Final result: 0.289
-  ```
+  >>> m = tf.keras.metrics.LogCoshError()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
+  >>> m.result().numpy()
+  0.10844523
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
+  ...                    sample_weight=[1, 0])
+  >>> m.result().numpy()
+  0.21689045
 
   Usage with tf.keras API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
-  model.compile('sgd', metrics=[tf.keras.metrics.LogCoshError()])
+  model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.LogCoshError()])
   ```
   """
 
@@ -2407,17 +2485,22 @@ class Poisson(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.Poisson()
-  m.update_state([1, 9, 2], [4, 8, 12])
-  print('Final result: ', m.result().numpy())  # Final result: -4.63
-  ```
+  >>> m = tf.keras.metrics.Poisson()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
+  >>> m.result().numpy()
+  0.49999997
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
+  ...                    sample_weight=[1, 0])
+  >>> m.result().numpy()
+  0.99999994
 
   Usage with tf.keras API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
-  model.compile('sgd', metrics=[tf.keras.metrics.Poisson()])
+  model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.Poisson()])
   ```
   """
 
@@ -2433,17 +2516,22 @@ class KLDivergence(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.KLDivergence()
-  m.update_state([.4, .9, .2], [.5, .8, .12])
-  print('Final result: ', m.result().numpy())  # Final result: -0.043
-  ```
+  >>> m = tf.keras.metrics.KLDivergence()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]])
+  >>> m.result().numpy()
+  0.45814306
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
+  ...                    sample_weight=[1, 0])
+  >>> m.result().numpy()
+  0.9162892
 
   Usage with tf.keras API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
-  model.compile('sgd', metrics=[tf.keras.metrics.KLDivergence()])
+  model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.KLDivergence()])
   ```
   """
 
@@ -2468,17 +2556,21 @@ class MeanIoU(Metric):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.MeanIoU(num_classes=2)
-  m.update_state([0, 0, 1, 1], [0, 1, 0, 1])
+  >>> # cm = [[1, 1],
+  >>> #        [1, 1]]
+  >>> # sum_row = [2, 2], sum_col = [2, 2], true_positives = [1, 1]
+  >>> # iou = true_positives / (sum_row + sum_col - true_positives))
+  >>> # result = (1 / (2 + 2 - 1) + 1 / (2 + 2 - 1)) / 2 = 0.33
+  >>> m = tf.keras.metrics.MeanIoU(num_classes=2)
+  >>> _ = m.update_state([0, 0, 1, 1], [0, 1, 0, 1])
+  >>> m.result().numpy()
+  0.33333334
 
-    # cm = [[1, 1],
-            [1, 1]]
-    # sum_row = [2, 2], sum_col = [2, 2], true_positives = [1, 1]
-    # iou = true_positives / (sum_row + sum_col - true_positives))
-    # result = (1 / (2 + 2 - 1) + 1 / (2 + 2 - 1)) / 2 = 0.33
-  print('Final result: ', m.result().numpy())  # Final result: 0.33
-  ```
+  >>> m.reset_states()
+  >>> _ = m.update_state([0, 0, 1, 1], [0, 1, 0, 1],
+  ...                    sample_weight=[0.3, 0.3, 0.3, 0.1])
+  >>> m.result().numpy()
+  0.23809525
 
   Usage with tf.keras API:
 
@@ -2536,8 +2628,10 @@ class MeanIoU(Metric):
     if y_true.shape.ndims > 1:
       y_true = array_ops.reshape(y_true, [-1])
 
-    if sample_weight is not None and sample_weight.shape.ndims > 1:
-      sample_weight = array_ops.reshape(sample_weight, [-1])
+    if sample_weight is not None:
+      sample_weight = math_ops.cast(sample_weight, self._dtype)
+      if sample_weight.shape.ndims > 1:
+        sample_weight = array_ops.reshape(sample_weight, [-1])
 
     # Accumulate the prediction to current confusion matrix.
     current_cm = confusion_matrix.confusion_matrix(
@@ -2592,14 +2686,15 @@ class MeanTensor(Metric):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.MeanTensor()
-  m.update_state([0, 1, 2, 3])
-  m.update_state([4, 5, 6, 7])
-  print('Result: ', m.result().numpy())  # Result: [2, 3, 4, 5]
-  m.update_state([12, 10, 8, 6], sample_weights= [0, 0.2, 0.5, 1])
-  print('Result: ', m.result().numpy())  # Result: [2, 3.636, 4.8, 5.333]
-  ```
+  >>> m = tf.keras.metrics.MeanTensor()
+  >>> _ = m.update_state([0, 1, 2, 3])
+  >>> _ = m.update_state([4, 5, 6, 7])
+  >>> m.result().numpy()
+  array([2., 3., 4., 5.], dtype=float32)
+
+  >>> _ = m.update_state([12, 10, 8, 6], sample_weight= [0, 0.2, 0.5, 1])
+  >>> m.result().numpy()
+  array([2.       , 3.6363635, 4.8      , 5.3333335], dtype=float32)
   """
 
   def __init__(self, name='mean_tensor', dtype=None):
@@ -2701,22 +2796,16 @@ class BinaryCrossentropy(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.BinaryCrossentropy()
-  m.update_state([1., 0., 1., 0.], [1., 1., 1., 0.])
+  >>> m = tf.keras.metrics.BinaryCrossentropy()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]])
+  >>> m.result().numpy()
+  0.81492424
 
-  # EPSILON = 1e-7, y = y_true, y` = y_pred, Y_MAX = 0.9999999
-  # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
-  # y` = [Y_MAX, Y_MAX, Y_MAX, EPSILON]
-
-  # Metric = -(y log(y` + EPSILON) + (1 - y) log(1 - y` + EPSILON))
-  #        = [-log(Y_MAX + EPSILON), -log(1 - Y_MAX + EPSILON),
-  #           -log(Y_MAX + EPSILON), -log(1)]
-  #        = [(0 + 15.33) / 2, (0 + 0) / 2]
-  # Reduced metric = 7.665 / 2
-
-  print('Final result: ', m.result().numpy())  # Final result: 3.833
-  ```
+  >>> m.reset_states()
+  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
+  ...                    sample_weight=[1, 0])
+  >>> m.result().numpy()
+  0.9162905
 
   Usage with tf.keras API:
 
@@ -2766,22 +2855,25 @@ class CategoricalCrossentropy(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.CategoricalCrossentropy()
-  m.update_state([[0, 1, 0], [0, 0, 1]],
-                 [[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
+  >>> # EPSILON = 1e-7, y = y_true, y` = y_pred
+  >>> # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+  >>> # y` = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+  >>> # xent = -sum(y * log(y'), axis = -1)
+  >>> #      = -((log 0.95), (log 0.1))
+  >>> #      = [0.051, 2.302]
+  >>> # Reduced xent = (0.051 + 2.302) / 2
+  >>> m = tf.keras.metrics.CategoricalCrossentropy()
+  >>> _ = m.update_state([[0, 1, 0], [0, 0, 1]],
+  ...                    [[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
+  >>> m.result().numpy()
+  1.1769392
 
-  # EPSILON = 1e-7, y = y_true, y` = y_pred
-  # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
-  # y` = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
-
-  # xent = -sum(y * log(y'), axis = -1)
-  #      = -((log 0.95), (log 0.1))
-  #      = [0.051, 2.302]
-  # Reduced xent = (0.051 + 2.302) / 2
-
-  print('Final result: ', m.result().numpy())  # Final result: 1.176
-  ```
+  >>> m.reset_states()
+  >>> _ = m.update_state([[0, 1, 0], [0, 0, 1]],
+  ...                    [[0.05, 0.95, 0], [0.1, 0.8, 0.1]],
+  ...                    sample_weight=tf.constant([0.3, 0.7]))
+  >>> m.result().numpy()
+  1.6271976
 
   Usage with tf.keras API:
 
@@ -2835,26 +2927,28 @@ class SparseCategoricalCrossentropy(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.SparseCategoricalCrossentropy()
-  m.update_state(
-    [1, 2],
-    [[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
+  >>> # y_true = one_hot(y_true) = [[0, 1, 0], [0, 0, 1]]
+  >>> # logits = log(y_pred)
+  >>> # softmax = exp(logits) / sum(exp(logits), axis=-1)
+  >>> # softmax = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+  >>> # xent = -sum(y * log(softmax), 1)
+  >>> # log(softmax) = [[-2.9957, -0.0513, -16.1181],
+  >>> #                [-2.3026, -0.2231, -2.3026]]
+  >>> # y_true * log(softmax) = [[0, -0.0513, 0], [0, 0, -2.3026]]
+  >>> # xent = [0.0513, 2.3026]
+  >>> # Reduced xent = (0.0513 + 2.3026) / 2
+  >>> m = tf.keras.metrics.SparseCategoricalCrossentropy()
+  >>> _ = m.update_state([1, 2],
+  ...                    [[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
+  >>> m.result().numpy()
+  1.1769392
 
-  # y_true = one_hot(y_true) = [[0, 1, 0], [0, 0, 1]]
-  # logits = log(y_pred)
-  # softmax = exp(logits) / sum(exp(logits), axis=-1)
-  # softmax = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
-
-  # xent = -sum(y * log(softmax), 1)
-  # log(softmax) = [[-2.9957, -0.0513, -16.1181], [-2.3026, -0.2231, -2.3026]]
-  # y_true * log(softmax) = [[0, -0.0513, 0], [0, 0, -2.3026]]
-
-  # xent = [0.0513, 2.3026]
-  # Reduced xent = (0.0513 + 2.3026) / 2
-
-  print('Final result: ', m.result().numpy())  # Final result: 1.176
-  ```
+  >>> m.reset_states()
+  >>> _ = m.update_state([1, 2],
+  ...                    [[0.05, 0.95, 0], [0.1, 0.8, 0.1]],
+  ...                    sample_weight=tf.constant([0.3, 0.7]))
+  >>> m.result().numpy()
+  1.6271976
 
   Usage with tf.keras API:
 
@@ -2958,6 +3052,17 @@ def accuracy(y_true, y_pred):
 
 @keras_export('keras.metrics.binary_accuracy')
 def binary_accuracy(y_true, y_pred, threshold=0.5):
+  """Calculates how often predictions matches binary labels.
+
+  Args:
+    y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`.
+    y_pred: The predicted values. shape = `[batch_size, d0, .. dN]`.
+    threshold: (Optional) Float representing the threshold for deciding whether
+      prediction values are 1 or 0.
+
+  Returns:
+    Binary accuracy values. shape = `[batch_size, d0, .. dN-1]`
+  """
   threshold = math_ops.cast(threshold, y_pred.dtype)
   y_pred = math_ops.cast(y_pred > threshold, y_pred.dtype)
   return K.mean(math_ops.equal(y_true, y_pred), axis=-1)
@@ -2965,6 +3070,18 @@ def binary_accuracy(y_true, y_pred, threshold=0.5):
 
 @keras_export('keras.metrics.categorical_accuracy')
 def categorical_accuracy(y_true, y_pred):
+  """Calculates how often predictions matches one-hot labels.
+
+  You can provide logits of classes as `y_pred`, since argmax of
+  logits and probabilities are same.
+
+  Args:
+    y_true: One-hot ground truth values.
+    y_pred: The prediction values.
+
+  Returns:
+    Categorical accuracy values.
+  """
   return math_ops.cast(
       math_ops.equal(
           math_ops.argmax(y_true, axis=-1), math_ops.argmax(y_pred, axis=-1)),
@@ -2973,6 +3090,18 @@ def categorical_accuracy(y_true, y_pred):
 
 @keras_export('keras.metrics.sparse_categorical_accuracy')
 def sparse_categorical_accuracy(y_true, y_pred):
+  """Calculates how often predictions matches integer labels.
+
+  You can provide logits of classes as `y_pred`, since argmax of
+  logits and probabilities are same.
+
+  Args:
+    y_true: Integer ground truth values.
+    y_pred: The prediction values.
+
+  Returns:
+    Sparse categorical accuracy values.
+  """
   y_pred_rank = ops.convert_to_tensor(y_pred).shape.ndims
   y_true_rank = ops.convert_to_tensor(y_true).shape.ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
@@ -2991,25 +3120,59 @@ def sparse_categorical_accuracy(y_true, y_pred):
 
 @keras_export('keras.metrics.top_k_categorical_accuracy')
 def top_k_categorical_accuracy(y_true, y_pred, k=5):
+  """Computes how often targets are in the top `K` predictions.
+
+  Args:
+    y_true: The ground truth values.
+    y_pred: The prediction values.
+    k: (Optional) Number of top elements to look at for computing accuracy.
+      Defaults to 5.
+
+  Returns:
+    Top K categorical accuracy value.
+  """
   return math_ops.cast(
       nn.in_top_k(y_pred, math_ops.argmax(y_true, axis=-1), k), K.floatx())
 
 
 @keras_export('keras.metrics.sparse_top_k_categorical_accuracy')
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
+  """Computes how often integer targets are in the top `K` predictions.
+
+  Args:
+    y_true: tensor of true targets.
+    y_pred: tensor of predicted targets.
+    k: (Optional) Number of top elements to look at for computing accuracy.
+      Defaults to 5.
+
+  Returns:
+    Sparse top K categorical accuracy value.
+  """
   y_pred_rank = ops.convert_to_tensor(y_pred).shape.ndims
   y_true_rank = ops.convert_to_tensor(y_true).shape.ndims
-  # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
-  if (y_true_rank is not None) and (y_pred_rank is not None) and (len(
-      K.int_shape(y_true)) == len(K.int_shape(y_pred))):
-    y_true = array_ops.squeeze(y_true, [-1])
+  # Flatten y_pred to (batch_size, num_samples) and y_true to (num_samples,)
+  if (y_true_rank is not None) and (y_pred_rank is not None):
+    if y_pred_rank > 2:
+      y_pred = array_ops.reshape(y_pred, [-1, y_pred.shape[-1]])
+    if y_true_rank > 1:
+      y_true = array_ops.reshape(y_true, [-1])
 
   return math_ops.cast(
       nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k), K.floatx())
 
 
 def cosine_proximity(y_true, y_pred, axis=-1):
-  """Computes the cosine similarity between labels and predictions."""
+  """Computes the cosine similarity between labels and predictions.
+
+  Args:
+    y_true: The ground truth values.
+    y_pred: The prediction values.
+    axis: (Optional) Defaults to -1. The dimension along which the cosine
+      similarity is computed.
+
+  Returns:
+    Cosine similarity value.
+  """
   y_true = nn.l2_normalize(y_true, axis=axis)
   y_pred = nn.l2_normalize(y_pred, axis=axis)
   return math_ops.reduce_sum(y_true * y_pred, axis=axis)

@@ -169,14 +169,17 @@ struct ReductionDimensions {
   std::array<int64, 3> dimensions;
 };
 
-// Given the input shape and dimensions to reduce for a reduction, returns
-// ReductionDimensions.
+// Given the reduction operation, returns ReductionDimensions.
 //
 // Prerequisite: the reduction instruction passes the check
 // IsReductionFromOrToContiguousDimensions, which guarantees either the
 // dimensions to reduce or the dimensions to keep are consecutive.
 ReductionDimensions GetReductionKindAndContiguousComponents(
-    const Shape& input_shape, absl::Span<const int64> dims_to_reduce);
+    const HloInstruction& reduce);
+
+// Get tiling per thread for the given reduction in dimensions [D, H, W].
+std::array<int64, 3> GetReductionTiling(
+    const ReductionDimensions& reduction_dimensions);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,
@@ -199,6 +202,11 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
 // Emits code that determines whether the current thread is thread 0 within
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
+
+// Returns whether the outputs of a fusion with reduction are consistent.
+bool AreFusedReductionOutputsConsistent(
+    absl::Span<const HloInstruction* const> output_instructions,
+    const HloInstruction* first_reduce);
 
 }  // namespace gpu
 }  // namespace xla

@@ -234,3 +234,20 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+tf_cc_test(
+    name = "cpu_vectorization_test",
+    srcs = ["cpu_vectorization_test.cc"],
+    deps = [
+        ":cpu_codegen_test",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+        "@llvm//:arm_code_gen",  # fixdeps: keep
+        "@llvm//:target",
+        "@llvm//:x86_code_gen",  # fixdeps: keep
+    ],
+)

@@ -186,5 +186,5 @@ void mlir::xla_hlo::PopulateGeneralDotOpLoweringPatterns(
 }
 
 static PassRegistration<LegalizeGeneralDot> legalize_pass(
-    "xla-lower-general-dot",
-    "Lower a general dot to a non-batched dot when possible");
+    "test-xla-lower-general-dot",
+    "Tests lowering general dot to a non-batched dot when possible");

@@ -117,6 +117,10 @@ class HloFunctionImporter {
   mlir::NamedAttribute ConvertConvDimensionNumbers(
       const xla::ConvolutionDimensionNumbers& dnums);
 
+  // Converts the gather dimensions to attributes.
+  mlir::NamedAttribute ConvertGatherDimensionNumbers(
+      const xla::GatherDimensionNumbers& dnums);
+
   mlir::MLIRContext* context_;
   mlir::ModuleOp module_;
   mlir::Builder* builder_;

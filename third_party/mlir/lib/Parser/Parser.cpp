@@ -324,7 +324,7 @@ public:
 
   /// Parse an optional trailing location.
   ///
-  ///   trailing-location     ::= location?
+  ///   trailing-location     ::= (`loc` `(` location `)`)?
   ///
   ParseResult parseOptionalTrailingLocation(Location &loc) {
     // If there is a 'loc' we parse a trailing location.
@@ -501,9 +501,19 @@ public:
     return parser.parseToken(Token::l_brace, "expected '{'");
   }
 
+  /// Parse a '{' token if present
+  ParseResult parseOptionalLBrace() override {
+    return success(parser.consumeIf(Token::l_brace));
+  }
+
   /// Parse a `}` token.
   ParseResult parseRBrace() override {
     return parser.parseToken(Token::r_brace, "expected '}'");
+  }
+
+  /// Parse a `}` token if present
+  ParseResult parseOptionalRBrace() override {
+    return success(parser.consumeIf(Token::r_brace));
   }
 
   /// Parse a `:` token.
@@ -594,6 +604,16 @@ public:
   /// Parses a ']' if present.
   ParseResult parseOptionalRSquare() override {
     return success(parser.consumeIf(Token::r_square));
+  }
+
+  /// Parses a '?' if present.
+  ParseResult parseOptionalQuestion() override {
+    return success(parser.consumeIf(Token::question));
+  }
+
+  /// Parses a '*' if present.
+  ParseResult parseOptionalStar() override {
+    return success(parser.consumeIf(Token::star));
   }
 
   /// Returns if the current token corresponds to a keyword.
@@ -1034,8 +1054,13 @@ ParseResult Parser::parseStridedLayout(int64_t &offset,
 
 /// Parse a memref type.
 ///
-///   memref-type ::= `memref` `<` dimension-list-ranked type
-///                   (`,` semi-affine-map-composition)? (`,` memory-space)? `>`
+///   memref-type ::= ranked-memref-type | unranked-memref-type
+///
+///   ranked-memref-type ::= `memref` `<` dimension-list-ranked type
+///                          (`,` semi-affine-map-composition)? (`,`
+///                          memory-space)? `>`
+///
+///   unranked-memref-type ::= `memref` `<*x` type (`,` memory-space)? `>`
 ///
 ///   semi-affine-map-composition ::= (semi-affine-map `,` )* semi-affine-map
 ///   memory-space ::= integer-literal /* | TODO: address-space-id */
@@ -1046,9 +1071,20 @@ Type Parser::parseMemRefType() {
   if (parseToken(Token::less, "expected '<' in memref type"))
     return nullptr;
 
+  bool isUnranked;
   SmallVector<int64_t, 4> dimensions;
-  if (parseDimensionListRanked(dimensions))
-    return nullptr;
+
+  if (consumeIf(Token::star)) {
+    // This is an unranked memref type.
+    isUnranked = true;
+    if (parseXInDimensionList())
+      return nullptr;
+
+  } else {
+    isUnranked = false;
+    if (parseDimensionListRanked(dimensions))
+      return nullptr;
+  }
 
   // Parse the element type.
   auto typeLoc = getToken().getLoc();
@@ -1073,6 +1109,8 @@ Type Parser::parseMemRefType() {
       consumeToken(Token::integer);
       parsedMemorySpace = true;
     } else {
+      if (isUnranked)
+        return emitError("cannot have affine map for unranked memref type");
       if (parsedMemorySpace)
         return emitError("expected memory space to be last in memref type");
       if (getToken().is(Token::kw_offset)) {
@@ -1110,6 +1148,10 @@ Type Parser::parseMemRefType() {
     if (parseToken(Token::greater, "expected ',' or '>' in memref type"))
       return nullptr;
   }
+
+  if (isUnranked)
+    return UnrankedMemRefType::getChecked(elementType, memorySpace,
+                                          getEncodedSourceLocation(typeLoc));
 
   return MemRefType::getChecked(dimensions, elementType, affineMapComposition,
                                 memorySpace, getEncodedSourceLocation(typeLoc));
@@ -2881,7 +2923,7 @@ ParseResult AffineParser::parseAffineMapOfSSAIds(AffineMap &map) {
     return failure();
   // Parsed a valid affine map.
   if (exprs.empty())
-    map = AffineMap();
+    map = AffineMap::get(getContext());
   else
     map = AffineMap::get(numDimOperands, dimsAndSymbols.size() - numDimOperands,
                          exprs);
@@ -2892,7 +2934,8 @@ ParseResult AffineParser::parseAffineMapOfSSAIds(AffineMap &map) {
 ///
 ///  affine-map ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
 ///
-///  multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
+///  multi-dim-affine-expr ::= `(` `)`
+///  multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)`
 AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
                                             unsigned numSymbols) {
   parseToken(Token::l_paren, "expected '(' at start of affine map range");
@@ -2908,8 +2951,11 @@ AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
   // Parse a multi-dimensional affine expression (a comma-separated list of
   // 1-d affine expressions); the list cannot be empty. Grammar:
   // multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
-  if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, false))
+  if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, true))
     return AffineMap();
+
+  if (exprs.empty())
+    return AffineMap::get(getContext());
 
   // Parsed a valid affine map.
   return AffineMap::get(numDims, numSymbols, exprs);
@@ -3495,10 +3541,14 @@ Value *OperationParser::createForwardRefPlaceholder(SMLoc loc, Type type) {
 
 /// Parse an operation.
 ///
-///  operation ::=
-///    operation-result? string '(' ssa-use-list? ')' attribute-dict?
-///    `:` function-type trailing-location?
-///  operation-result ::= ssa-id ((`:` integer-literal) | (`,` ssa-id)*) `=`
+///  operation         ::= op-result-list?
+///                        (generic-operation | custom-operation)
+///                        trailing-location?
+///  generic-operation ::= string-literal '(' ssa-use-list? ')' attribute-dict?
+///                        `:` function-type
+///  custom-operation  ::= bare-id custom-operation-format
+///  op-result-list    ::= op-result (`,` op-result)* `=`
+///  op-result         ::= ssa-id (`:` integer-literal)
 ///
 ParseResult OperationParser::parseOperation() {
   auto loc = getToken().getLoc();

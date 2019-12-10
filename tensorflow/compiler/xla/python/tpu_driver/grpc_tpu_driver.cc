@@ -183,15 +183,15 @@ class GrpcTpuStream {
       int32_t core_id, MemoryRegion region,
       absl::Span<BufferHandle* const> children,
       absl::Span<Event* const> wait_for);
-  std::unique_ptr<Event> Deallocate(std::unique_ptr<BufferHandle> handle,
+  std::shared_ptr<Event> Deallocate(std::unique_ptr<BufferHandle> handle,
                                     absl::Span<Event* const> wait_for);
 
-  std::unique_ptr<Event> TransferToDevice(const void* src, BufferHandle* dst,
+  std::shared_ptr<Event> TransferToDevice(const void* src, BufferHandle* dst,
                                           absl::Span<Event* const> wait_for);
-  std::unique_ptr<Event> TransferFromDevice(const BufferHandle* src, void* dst,
+  std::shared_ptr<Event> TransferFromDevice(const BufferHandle* src, void* dst,
                                             absl::Span<Event* const> wait_for);
 
-  std::unique_ptr<Event> TransferFromDeviceToDevice(
+  std::shared_ptr<Event> TransferFromDeviceToDevice(
       const BufferHandle* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for);
 
@@ -201,10 +201,10 @@ class GrpcTpuStream {
   std::unique_ptr<LoadedProgramHandle> LoadProgram(
       int32_t core_id, const CompiledProgramHandle* handle,
       absl::Span<Event* const> wait_for);
-  std::unique_ptr<Event> UnloadProgram(
+  std::shared_ptr<Event> UnloadProgram(
       std::unique_ptr<LoadedProgramHandle> handle,
       absl::Span<Event* const> wait_for);
-  std::unique_ptr<Event> ExecuteProgram(
+  std::shared_ptr<Event> ExecuteProgram(
       LoadedProgramHandle* program, absl::Span<BufferHandle* const> inputs,
       absl::Span<BufferHandle* const> outputs,
       const xla::DeviceAssignmentProto& device_assignment,
@@ -215,10 +215,13 @@ class GrpcTpuStream {
   friend class GrpcTpuDriver;
 
   struct EventInfo {
+    bool all_deps_done = false;
     bool done = false;     // response received
     bool deleted = false;  // deleted by the user
     Status status;
     absl::InlinedVector<std::function<void(Status)>, 1> callbacks;
+    // Most events should have <= 2 requirement events.
+    absl::InlinedVector<EventId, 2> deps;
   };
 
   struct TransferInfo {
@@ -310,8 +313,10 @@ class GrpcTpuStream {
 
 class GrpcTpuDriver : public TpuDriver {
  public:
-  explicit GrpcTpuDriver(const TpuDriverConfig& config, int32_t client_id)
-      : config_(config), client_id_(client_id) {
+  explicit GrpcTpuDriver(const TpuDriverConfig& config,
+                         std::shared_ptr<::grpc::ChannelCredentials> creds,
+                         int32_t client_id)
+      : config_(config), creds_(creds), client_id_(client_id) {
     SystemInfo system_info;
     QuerySystemInfo(&system_info);
     for (auto& chip_info : system_info.tpu_chip()) {
@@ -327,18 +332,12 @@ class GrpcTpuDriver : public TpuDriver {
   }
 
   ~GrpcTpuDriver() override {
-    auto stub = CreateTpuDriverStub(config_);
-    ::grpc::ClientContext ctx;
-    ctx.set_fail_fast(false);
-    ctx.set_deadline(std::chrono::system_clock::now() +
-                     std::chrono::seconds(10));
-    CloseRequest req;
-    req.set_client_id(client_id_);
-    CloseResponse resp;
-    ::grpc::Status status = stub->Close(&ctx, req, &resp);
+    if (closed_) {
+      return;
+    }
+    auto status = Close();
     if (!status.ok()) {
-      LOG(ERROR) << "Failed to close the gRPC driver: " << status.error_code()
-                 << ": " << status.error_details();
+      LOG(ERROR) << status;
     }
   }
 
@@ -362,44 +361,31 @@ class GrpcTpuDriver : public TpuDriver {
     return streams_[core_id]->AllocateTuple(core_id, region, children,
                                             wait_for);
   }
-  std::unique_ptr<Event> Deallocate(
+  std::shared_ptr<Event> Deallocate(
       std::unique_ptr<BufferHandle> handle,
       absl::Span<Event* const> wait_for) override {
     auto* stream = static_cast<GrpcBufferHandle*>(handle.get())->stream();
     return stream->Deallocate(std::move(handle), wait_for);
   }
 
-  std::unique_ptr<Event> TransferToDevice(
+  std::shared_ptr<Event> TransferToDevice(
       const void* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for) override {
     auto* stream = static_cast<GrpcBufferHandle*>(dst)->stream();
     return stream->TransferToDevice(src, dst, wait_for);
   }
-  std::unique_ptr<Event> TransferFromDevice(
+  std::shared_ptr<Event> TransferFromDevice(
       const BufferHandle* src, void* dst,
       absl::Span<Event* const> wait_for) override {
     auto* stream = static_cast<const GrpcBufferHandle*>(src)->stream();
     return stream->TransferFromDevice(src, dst, wait_for);
   }
 
-  std::unique_ptr<Event> TransferFromDeviceToDevice(
+  std::shared_ptr<Event> TransferFromDeviceToDevice(
       const BufferHandle* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for) override {
     auto* stream = static_cast<const GrpcBufferHandle*>(src)->stream();
     return stream->TransferFromDeviceToDevice(src, dst, wait_for);
-  }
-
-  // TODO(b/140198941): Add infeed/outfeed functionality.
-  std::unique_ptr<Event> TransferToInfeed(const void* src, int64_t num_bytes,
-                                          absl::Span<Event* const> wait_for) {
-    LOG(FATAL) << "Unimplemented";
-    return nullptr;
-  }
-  // TODO(b/140198941): Add infeed/outfeed functionality.
-  std::unique_ptr<Event> TransferFromOutfeed(
-      void* dst, int64_t num_bytes, absl::Span<Event* const> wait_for) {
-    LOG(FATAL) << "Unimplemented";
-    return nullptr;
   }
 
   std::unique_ptr<CompiledProgramHandle> CompileProgram(
@@ -413,14 +399,14 @@ class GrpcTpuDriver : public TpuDriver {
       absl::Span<Event* const> wait_for) override {
     return streams_[core_id]->LoadProgram(core_id, handle, wait_for);
   }
-  std::unique_ptr<Event> UnloadProgram(
+  std::shared_ptr<Event> UnloadProgram(
       std::unique_ptr<LoadedProgramHandle> handle,
       absl::Span<Event* const> wait_for) override {
     auto* stream =
         static_cast<const GrpcLoadedProgramHandle*>(handle.get())->stream();
     return stream->UnloadProgram(std::move(handle), wait_for);
   }
-  std::unique_ptr<Event> ExecuteProgram(
+  std::shared_ptr<Event> ExecuteProgram(
       LoadedProgramHandle* program, absl::Span<BufferHandle* const> inputs,
       absl::Span<BufferHandle* const> outputs,
       const xla::DeviceAssignmentProto& device_assignment,
@@ -434,20 +420,24 @@ class GrpcTpuDriver : public TpuDriver {
   EventId NewOperationId() { return EventId{client_id_, ++operation_id_}; }
 
   static std::unique_ptr<grpc::CloudTpuDriver::Stub> CreateTpuDriverStub(
-      const TpuDriverConfig& config);
+      const TpuDriverConfig& config,
+      std::shared_ptr<::grpc::ChannelCredentials> creds);
 
-  uint32 client_id() const { return client_id_; }
+  uint32_t client_id() const { return client_id_; }
 
  private:
+  Status Close();
   std::unique_ptr<GrpcTpuStream> AllocateStream(int32_t core_id);
 
   const TpuDriverConfig config_;
+  std::shared_ptr<::grpc::ChannelCredentials> creds_;
   const uint32_t client_id_;
   // Map from stream IDs to streams.
   absl::flat_hash_map<int32_t, std::unique_ptr<GrpcTpuStream>> streams_;
   std::unique_ptr<GrpcTpuStream> host_stream_;
   // Shared by all streams.
   std::atomic<uint64_t> operation_id_{0};
+  std::atomic<bool> closed_{false};
 };  // namespace
 
 GrpcEvent::~GrpcEvent() { stream_->DeleteEvent(id_); }
@@ -504,13 +494,22 @@ GrpcTpuStream::~GrpcTpuStream() {
 void GrpcTpuStream::InitializeRequest(StreamRequest::Entry* req,
                                       absl::Span<Event* const> wait_for) {
   auto operation_id = driver_->NewOperationId();
+  EventInfo event_info;
+
   req->set_operation_id(operation_id.AsInt());
-  for (auto* event : wait_for) {
-    auto grpc_event = static_cast<const GrpcEvent*>(event);
-    req->add_wait_for_id(grpc_event->id().AsInt());
+  if (wait_for.empty()) {
+    event_info.all_deps_done = true;
+  } else {
+    event_info.deps.reserve(wait_for.size());
+    for (auto* event : wait_for) {
+      auto grpc_event = static_cast<const GrpcEvent*>(event);
+      req->add_wait_for_id(grpc_event->id().AsInt());
+      event_info.deps.push_back(grpc_event->id());
+    }
   }
+
   absl::MutexLock lock(&events_mutex_);
-  events_[EventId::FromInt(req->operation_id())] = EventInfo();
+  events_[operation_id] = event_info;
 }
 
 void GrpcTpuStream::UpdateEventStatus(EventId id, Status status) {
@@ -564,16 +563,46 @@ void GrpcTpuStream::DeleteEvent(EventId id) {
 
 absl::optional<Status> GrpcTpuStream::WaitForEvent(EventId id,
                                                    absl::Duration duration) {
-  absl::MutexLock lock(&events_mutex_);
+  events_mutex_.Lock();
+  auto it = events_.find(id);
+
+  if (it == events_.end()) {
+    // This event has already been marked as done and deleted. Assume success.
+    events_mutex_.Unlock();
+    return Status::OK();
+  }
+
+  if (!it->second.all_deps_done) {
+    absl::InlinedVector<EventId, 2> deps = it->second.deps;
+    events_mutex_.Unlock();
+    for (auto dep : deps) {
+      // If a requirement event timed out, no point in any further waiting.
+      if (!WaitForEvent(dep, duration)) {
+        return absl::nullopt;
+      }
+    }
+    events_mutex_.Lock();
+  }
+
+  // Set the flag here, as we're guaranteed they have all completed at this
+  // point. This helps terminate recursion on a chain of completed events as
+  // soon as possible, at this event.
+  it = events_.find(id);
+  if (it != events_.end()) {
+    it->second.all_deps_done = true;
+  }
+
   auto done = [this, id]() {
     events_mutex_.AssertHeld();
     return !events_.contains(id) || events_[id].done;
   };
-
   if (events_mutex_.AwaitWithTimeout(absl::Condition(&done), duration)) {
-    return events_.contains(id) ? events_[id].status : Status();
+    auto status = events_.contains(id) ? events_[id].status : Status::OK();
+    events_mutex_.Unlock();
+    return status;
   }
-  return absl::optional<Status>();
+  events_mutex_.Unlock();
+  return absl::nullopt;
 }
 
 void GrpcTpuStream::AddEventCallback(EventId id,
@@ -697,7 +726,7 @@ std::unique_ptr<BufferHandle> GrpcTpuStream::Allocate(
   req->mutable_alloc()->set_region(region);
   req->mutable_alloc()->set_num_bytes(num_bytes);
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return absl::make_unique<GrpcBufferHandle>(event->id(), std::move(event),
                                              num_bytes);
@@ -713,7 +742,7 @@ std::unique_ptr<BufferHandle> GrpcTpuStream::Allocate(
   req->mutable_alloc()->set_region(region);
   *req->mutable_alloc()->mutable_shape() = shape;
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return absl::make_unique<GrpcBufferHandle>(
       event->id(), std::move(event), ComputeBytesFromShape(shape), shape);
@@ -733,12 +762,12 @@ std::unique_ptr<BufferHandle> GrpcTpuStream::AllocateTuple(
     req->mutable_alloc_tuple()->add_children(grpc_child->id().AsInt());
   }
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return absl::make_unique<GrpcBufferHandle>(event->id(), std::move(event), 0);
 }
 
-std::unique_ptr<Event> GrpcTpuStream::Deallocate(
+std::shared_ptr<Event> GrpcTpuStream::Deallocate(
     std::unique_ptr<BufferHandle> handle, absl::Span<Event* const> wait_for) {
   auto req = absl::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
@@ -746,12 +775,12 @@ std::unique_ptr<Event> GrpcTpuStream::Deallocate(
   auto grpc_handle = static_cast<GrpcBufferHandle*>(handle.get());
   req->mutable_dealloc()->set_handle(grpc_handle->id().AsInt());
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return event;
 }
 
-std::unique_ptr<Event> GrpcTpuStream::TransferToDevice(
+std::shared_ptr<Event> GrpcTpuStream::TransferToDevice(
     const void* src, BufferHandle* dst, absl::Span<Event* const> wait_for) {
   auto req = absl::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
@@ -761,12 +790,12 @@ std::unique_ptr<Event> GrpcTpuStream::TransferToDevice(
   req->mutable_transfer_to()->set_target_handle(
       static_cast<GrpcBufferHandle*>(dst)->id().AsInt());
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return event;
 }
 
-std::unique_ptr<Event> GrpcTpuStream::TransferFromDevice(
+std::shared_ptr<Event> GrpcTpuStream::TransferFromDevice(
     const BufferHandle* src, void* dst, absl::Span<Event* const> wait_for) {
   auto req = absl::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
@@ -779,12 +808,12 @@ std::unique_ptr<Event> GrpcTpuStream::TransferFromDevice(
     TransferInfo info(dst, const_cast<BufferHandle*>(src)->size_in_bytes());
     transfers_.insert(std::make_pair(event_id, info));
   }
-  auto event = absl::make_unique<GrpcEvent>(event_id, this);
+  auto event = std::make_shared<GrpcEvent>(event_id, this);
   AddWriteRequest(std::move(req));
   return event;
 }
 
-std::unique_ptr<Event> GrpcTpuStream::TransferFromDeviceToDevice(
+std::shared_ptr<Event> GrpcTpuStream::TransferFromDeviceToDevice(
     const BufferHandle* src, BufferHandle* dst,
     absl::Span<Event* const> wait_for) {
   auto req = absl::make_unique<StreamRequest::Entry>();
@@ -797,7 +826,7 @@ std::unique_ptr<Event> GrpcTpuStream::TransferFromDeviceToDevice(
   req->mutable_transfer_from_to()->set_target_handle(
       static_cast<const GrpcBufferHandle*>(dst)->id().AsInt());
   EventId event_id = EventId::FromInt(req->operation_id());
-  auto event = absl::make_unique<GrpcEvent>(event_id, this);
+  auto event = std::make_shared<GrpcEvent>(event_id, this);
   AddWriteRequest(std::move(req));
   return event;
 }
@@ -813,7 +842,7 @@ std::unique_ptr<CompiledProgramHandle> GrpcTpuStream::CompileProgram(
   EventId event_id = EventId::FromInt(req->operation_id());
 
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
 
   auto handle = absl::make_unique<GrpcCompiledProgramHandle>(event->id(),
                                                              std::move(event));
@@ -836,7 +865,7 @@ std::unique_ptr<LoadedProgramHandle> GrpcTpuStream::LoadProgram(
   req->mutable_load()->set_core_id(core_id);
   auto grpc_handle = static_cast<const GrpcCompiledProgramHandle*>(handle);
   if (grpc_handle->id().client_id != driver_->client_id()) {
-    auto event = absl::make_unique<ErrorEvent>(
+    auto event = std::make_shared<ErrorEvent>(
         xla::InvalidArgument("Invalid program handle (wrong client id). Did "
                              "you restart the server or use a stale handle?"));
     return absl::make_unique<GrpcLoadedProgramHandle>(event->id(),
@@ -844,13 +873,13 @@ std::unique_ptr<LoadedProgramHandle> GrpcTpuStream::LoadProgram(
   }
   req->mutable_load()->set_compiled_program_handle(grpc_handle->id().AsInt());
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return absl::make_unique<GrpcLoadedProgramHandle>(event->id(),
                                                     std::move(event));
 }
 
-std::unique_ptr<Event> GrpcTpuStream::UnloadProgram(
+std::shared_ptr<Event> GrpcTpuStream::UnloadProgram(
     std::unique_ptr<LoadedProgramHandle> handle,
     absl::Span<Event* const> wait_for) {
   auto req = absl::make_unique<StreamRequest::Entry>();
@@ -859,12 +888,12 @@ std::unique_ptr<Event> GrpcTpuStream::UnloadProgram(
   req->mutable_unload()->set_loaded_program_handle(
       static_cast<GrpcLoadedProgramHandle*>(handle.get())->id().AsInt());
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return event;
 }
 
-std::unique_ptr<Event> GrpcTpuStream::ExecuteProgram(
+std::shared_ptr<Event> GrpcTpuStream::ExecuteProgram(
     LoadedProgramHandle* program, absl::Span<BufferHandle* const> inputs,
     absl::Span<BufferHandle* const> outputs,
     const xla::DeviceAssignmentProto& device_assignment,
@@ -873,7 +902,7 @@ std::unique_ptr<Event> GrpcTpuStream::ExecuteProgram(
   InitializeRequest(req.get(), wait_for);
   auto program_handle = static_cast<GrpcLoadedProgramHandle*>(program);
   if (program_handle->id().client_id != driver_->client_id()) {
-    return absl::make_unique<ErrorEvent>(
+    return std::make_shared<ErrorEvent>(
         xla::InvalidArgument("Invalid program handle (wrong client id). Did "
                              "you restart the server or use a stale handle?"));
   }
@@ -884,7 +913,7 @@ std::unique_ptr<Event> GrpcTpuStream::ExecuteProgram(
   for (BufferHandle* input : inputs) {
     auto* grpc_handle = static_cast<GrpcBufferHandle*>(input);
     if (grpc_handle->id().client_id != driver_->client_id()) {
-      return absl::make_unique<ErrorEvent>(xla::InvalidArgument(
+      return std::make_shared<ErrorEvent>(xla::InvalidArgument(
           "Invalid input buffer (wrong client id). Did you restart the server "
           "or use a stale handle?"));
     }
@@ -894,7 +923,7 @@ std::unique_ptr<Event> GrpcTpuStream::ExecuteProgram(
   for (BufferHandle* output : outputs) {
     auto* grpc_handle = static_cast<GrpcBufferHandle*>(output);
     if (grpc_handle->id().client_id != driver_->client_id()) {
-      return absl::make_unique<ErrorEvent>(xla::InvalidArgument(
+      return std::make_shared<ErrorEvent>(xla::InvalidArgument(
           "Invalid output buffer (wrong client id). Did you restart the server "
           "or use a stale handle?"));
     }
@@ -907,21 +936,22 @@ std::unique_ptr<Event> GrpcTpuStream::ExecuteProgram(
     *req->mutable_execute()->mutable_device_assignment() = device_assignment;
   }
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return event;
 }
 
 /*static*/ std::unique_ptr<grpc::CloudTpuDriver::Stub>
-GrpcTpuDriver::CreateTpuDriverStub(const TpuDriverConfig& config) {
-  auto creds = ::grpc::InsecureChannelCredentials();
+GrpcTpuDriver::CreateTpuDriverStub(
+    const TpuDriverConfig& config,
+    std::shared_ptr<::grpc::ChannelCredentials> creds) {
   ::grpc::ChannelArguments args;
   args.SetMaxReceiveMessageSize(std::numeric_limits<int>::max());
   args.SetMaxSendMessageSize(std::numeric_limits<int>::max());
 
   // Send at least 20 keep-alives before giving up.
-  int keepalive_timeout_ms = config.keepalive_timeout_secs * 1000;
-  int keepalive_interval_ms = config.keepalive_timeout_secs / 20;
+  int keepalive_timeout_ms = config.grpc().keepalive_timeout_secs() * 1000;
+  int keepalive_interval_ms = keepalive_timeout_ms / 20;
 
   grpc_arg client_arg_vals[] = {
       {.type = GRPC_ARG_INTEGER,
@@ -948,14 +978,14 @@ GrpcTpuDriver::CreateTpuDriverStub(const TpuDriverConfig& config) {
   args.SetChannelArgs(&client_args);
 
   // strips out 'grpc://'
-  auto worker_addr = absl::StripPrefix(config.worker, kGrpcProtocol);
+  auto worker_addr = absl::StripPrefix(config.worker(), kGrpcProtocol);
   std::shared_ptr<::grpc::Channel> channel =
       ::grpc::CreateCustomChannel(std::string(worker_addr), creds, args);
   return grpc::CloudTpuDriver::NewStub(channel);
 }
 
 std::unique_ptr<GrpcTpuStream> GrpcTpuDriver::AllocateStream(int32_t id) {
-  auto stub = CreateTpuDriverStub(config_);
+  auto stub = CreateTpuDriverStub(config_, creds_);
   ::grpc::ClientContext ctx;
   ctx.set_fail_fast(false);
   ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(10));
@@ -963,7 +993,7 @@ std::unique_ptr<GrpcTpuStream> GrpcTpuDriver::AllocateStream(int32_t id) {
 }
 
 void GrpcTpuDriver::QuerySystemInfo(SystemInfo* system_info) {
-  auto stub = CreateTpuDriverStub(config_);
+  auto stub = CreateTpuDriverStub(config_, creds_);
   ::grpc::ClientContext ctx;
   ctx.set_fail_fast(false);
   ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(10));
@@ -973,40 +1003,94 @@ void GrpcTpuDriver::QuerySystemInfo(SystemInfo* system_info) {
   ::grpc::Status status = stub->QuerySystemInfo(&ctx, req, &resp);
   if (!status.ok()) {
     LOG(ERROR) << "QuerySystemInfo request failed: " << status.error_code()
-               << ":" << status.error_details();
+               << ": " << status.error_message() << ": "
+               << status.error_details();
     return;
   }
   *system_info = resp.system_info();
 }
 
 Status GrpcTpuDriver::Reset() {
-  return xla::Unimplemented("GRPC driver reset is not implemented yet.");
+  auto stub = CreateTpuDriverStub(config_, creds_);
+  ::grpc::ClientContext ctx;
+  ctx.set_fail_fast(false);
+  ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(10));
+  ResetRequest req;
+  ResetResponse resp;
+  ::grpc::Status status = stub->Reset(&ctx, req, &resp);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to reset the gRPC driver: " << status.error_code()
+               << ": " << status.error_message() << ": "
+               << status.error_details();
+    return xla::Status(tensorflow::error::Code(status.error_code()),
+                       absl::StrCat("Failed to reset TPU driver. Error was: ",
+                                    status.error_message(),
+                                    ". Details: ", status.error_details()));
+  }
+  streams_.clear();
+  host_stream_.reset();
+  return Close();
+}
+
+Status GrpcTpuDriver::Close() {
+  auto stub = CreateTpuDriverStub(config_, creds_);
+  ::grpc::ClientContext ctx;
+  ctx.set_fail_fast(false);
+  ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(10));
+  CloseRequest req;
+  req.set_client_id(client_id_);
+  CloseResponse resp;
+  ::grpc::Status status = stub->Close(&ctx, req, &resp);
+  if (!status.ok()) {
+    return xla::Status(tensorflow::error::Code(status.error_code()),
+                       absl::StrCat("Failed to close TPU driver. Error was: ",
+                                    status.error_message(),
+                                    ". Details: ", status.error_details()));
+  }
+  closed_ = true;
+  return Status::OK();
+}
+}  // namespace
+
+xla::StatusOr<std::unique_ptr<TpuDriver>> CreateGrpcTpuDriver(
+    const TpuDriverConfig& config,
+    std::shared_ptr<::grpc::ChannelCredentials> creds) {
+  auto stub = GrpcTpuDriver::CreateTpuDriverStub(config, creds);
+  ::grpc::ClientContext ctx;
+  ctx.set_fail_fast(false);
+  ctx.set_deadline(
+      std::chrono::system_clock::now() +
+      std::chrono::seconds(config.grpc().connection_timeout_secs()));
+  OpenRequest req;
+  OpenResponse resp;
+  ::grpc::Status status = stub->Open(&ctx, req, &resp);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to open the gRPC driver: " << status.error_code()
+               << ": " << status.error_message() << ": "
+               << status.error_details();
+    return xla::Status(
+        tensorflow::error::Code(status.error_code()),
+        absl::StrCat(
+            "Failed to connect to remote server at address: ", config.worker(),
+            ". Error from gRPC: ", status.error_message(),
+            ". Details: ", status.error_details()));
+  }
+  return std::unique_ptr<TpuDriver>(
+      new GrpcTpuDriver(config, creds, resp.client_id()));
 }
 
 REGISTER_TPU_DRIVER(
     "grpc://",
     [](const TpuDriverConfig& config)
         -> xla::StatusOr<std::unique_ptr<TpuDriver>> {
-      auto stub = GrpcTpuDriver::CreateTpuDriverStub(config);
-      ::grpc::ClientContext ctx;
-      ctx.set_fail_fast(false);
-      ctx.set_deadline(std::chrono::system_clock::now() +
-                       std::chrono::seconds(config.connection_timeout_secs));
-      OpenRequest req;
-      OpenResponse resp;
-      ::grpc::Status status = stub->Open(&ctx, req, &resp);
-      if (!status.ok()) {
-        LOG(ERROR) << "Failed to open the gRPC driver: " << status.error_code()
-                   << ": " << status.error_details();
-        return xla::Status(
-            tensorflow::error::Code(status.error_code()),
-            absl::StrCat("Failed to connect to remote server at address: ",
-                         config.worker,
-                         ". Error from gRPC: ", status.error_details()));
+      if (absl::StartsWith(config.worker(), "grpc://localhost")) {
+        LOG(INFO) << "Using local credentials for localhost: connection.";
+        return CreateGrpcTpuDriver(
+            config, ::grpc::experimental::LocalCredentials(LOCAL_TCP));
+      } else {
+        return CreateGrpcTpuDriver(config,
+                                   ::grpc::InsecureChannelCredentials());
       }
-      return std::unique_ptr<TpuDriver>(
-          new GrpcTpuDriver(config, resp.client_id()));
     });
 
-}  // namespace
 }  // namespace tpu_driver

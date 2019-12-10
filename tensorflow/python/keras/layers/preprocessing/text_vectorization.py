@@ -245,6 +245,11 @@ class TextVectorization(CombinerPreprocessingLayer):
       raise ValueError("`output_sequence_length` must not be set if "
                        "`output_mode` is not 'int'.")
 
+    # If max_tokens is set, the value must be greater than 1 - otherwise we
+    # are creating a 0-element vocab, which doesn't make sense.
+    if max_tokens is not None and max_tokens < 1:
+      raise ValueError("max_tokens must be > 1.")
+
     self._max_tokens = max_tokens
 
     # In INT mode, we have two reserved values (PAD and OOV). However, non-INT
@@ -257,8 +262,9 @@ class TextVectorization(CombinerPreprocessingLayer):
     self._oov_value = 1 if output_mode == INT else 0
 
     # We always reduce the max token number by 1 to account for the OOV token
-    # if it is set. The PAD marker isn't really a token (it's the absence of a
-    # token) so we don't account for it here.
+    # if it is set. Keras' use of the reserved number 0 for padding tokens,
+    # if the output is in INT mode, does not really count as a 'token' for
+    # vocabulary purposes, so we only reduce vocab size by 1 here.
     self._max_vocab_size = max_tokens - 1 if max_tokens is not None else None
 
     self._standardize = standardize
@@ -272,7 +278,8 @@ class TextVectorization(CombinerPreprocessingLayer):
     self._output_mode = output_mode
     self._output_sequence_length = output_sequence_length
     self._pad_to_max = pad_to_max_tokens
-    self._has_vocab = False
+    self._vocab_size = 0
+    self._called = False
 
     super(TextVectorization, self).__init__(
         combiner=_TextVectorizationCombiner(
@@ -317,17 +324,27 @@ class TextVectorization(CombinerPreprocessingLayer):
     return self._table.size().numpy()
 
   def _clear_table(self):
+    if (self._output_mode in [BINARY, COUNT, TFIDF] and self._called and
+        not self._pad_to_max):
+      raise RuntimeError(("When using TextVectorization in {mode} mode, the "
+                          "vocabulary cannot be changed after the layer is "
+                          "called.").format(mode=self._output_mode))
     keys, _ = self._table.export()
     self._table.remove(keys)
-    self._has_vocab = False
+    self._vocab_size = 0
 
   def _insert_table_data(self, keys, values):
+    if (self._output_mode in [BINARY, COUNT, TFIDF] and self._called and
+        not self._pad_to_max):
+      raise RuntimeError(("When using TextVectorization in {mode} mode, the "
+                          "vocabulary cannot be changed after the layer is "
+                          "called.").format(mode=self._output_mode))
     if len(values) != len(keys):
       raise RuntimeError("Size mismatch between values and key arrays. "
                          "Keys had size %s, values had size %s." %
                          (len(keys), len(values)))
     self._table.insert(keys, values)
-    self._has_vocab = True
+    self._vocab_size += len(keys)
 
   def _to_numpy(self, preprocessed_data):
     """Converts preprocessed inputs into numpy arrays."""
@@ -402,7 +419,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     super(TextVectorization, self).adapt(preprocessed_inputs, reset_state)
 
   def get_vocabulary(self):
-    if not self._has_vocab:
+    if self.vocab_size == 0:
       return []
 
     keys, values = self._get_table_data()
@@ -520,7 +537,7 @@ class TextVectorization(CombinerPreprocessingLayer):
       # simplify storing the value back into the TF variable.
       K.set_value(self._tf_idf_weights, df_data)
 
-    if not append and self._has_vocab:
+    if not append and self._vocab_size > 0:
       self._clear_table()
 
     self._insert_table_data(vocab, values)
@@ -536,7 +553,9 @@ class TextVectorization(CombinerPreprocessingLayer):
           "dimension of the input array must be 1, got shape "
           "{}".format(input_shape))
 
-    self._final_vocab_size = self._get_table_size()
+    # This handles a corner case where, if restored from weights or SavedModel,
+    # the layer might not have accurate vocab size information.
+    self._vocab_size = self._get_table_size()
     super(TextVectorization, self).build(input_shape)
 
   def _set_state_variables(self, updates):
@@ -589,6 +608,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     return inputs
 
   def call(self, inputs):
+    self._called = True
     inputs = self._preprocess(inputs)
 
     # If we're not doing any output processing, return right away.
@@ -631,7 +651,7 @@ class TextVectorization(CombinerPreprocessingLayer):
         return output_tensor
 
     out_depth = self._max_tokens if self._pad_to_max else (
-        self._final_vocab_size + self._reserved_values)
+        self._vocab_size + self._reserved_values)
 
     if self._output_mode == BINARY:
       bool_one_hot_data = array_ops.one_hot(

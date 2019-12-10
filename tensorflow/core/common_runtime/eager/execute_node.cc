@@ -25,7 +25,7 @@ Status ExecuteNodeArgs::Init(
   // below when we insert a copy of the Tensor into protected_tensors, and will
   // be decremented once execution is complete.
   const int n_inputs = op_inputs.size();
-  gtl::InlinedVector<TensorValue, 4> input_vector(n_inputs);
+  int num_protected_tensors = 0;
   int first_index_that_needs_protecting = -1;  // Used to avoid second loop
   if (n_inputs > 0) {
     TensorHandle* const* op_inputs_array = &op_inputs[0];
@@ -34,8 +34,11 @@ Status ExecuteNodeArgs::Init(
       TensorHandle* in = op_inputs_array[i];
       if (!in->IsRemote()) {
         TF_RETURN_IF_ERROR(in->TensorValue(&tensor_args_array[i]));
-        if (first_index_that_needs_protecting < 0 && !in->RefCountIsOne()) {
-          first_index_that_needs_protecting = i;
+        if (!in->RefCountIsOne()) {
+          if (first_index_that_needs_protecting < 0) {
+            first_index_that_needs_protecting = i;
+          }
+          ++num_protected_tensors;
         }
       } else {
         if (!has_remote_inputs_) {
@@ -44,13 +47,16 @@ Status ExecuteNodeArgs::Init(
       }
     }
 
+    protected_tensors_.reserve(num_protected_tensors);
     if (first_index_that_needs_protecting >= 0) {
-      for (int i = first_index_that_needs_protecting; i < n_inputs; ++i) {
+      for (int i = first_index_that_needs_protecting;
+           num_protected_tensors && (i < n_inputs); ++i) {
         TensorHandle* in = op_inputs_array[i];
         if (!in->IsRemote() && !in->RefCountIsOne()) {
           const Tensor* input_tensor = nullptr;
           TF_RETURN_IF_ERROR(op_inputs_array[i]->Tensor(&input_tensor));
           protected_tensors_.emplace_back(TensorReference(*input_tensor));
+          --num_protected_tensors;
         }
       }
     }

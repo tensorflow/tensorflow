@@ -160,6 +160,88 @@ class TensorLikeDataAdapterTest(DataAdapterTestBase):
                        run_eagerly=testing_utils.should_run_eagerly())
     self.model.fit(self.numpy_input, self.numpy_target, batch_size=5)
 
+  def test_can_handle_pandas(self):
+    try:
+      import pandas as pd  # pylint: disable=g-import-not-at-top
+    except ImportError:
+      self.skipTest('Skipping test because pandas is not installed.')
+    self.assertTrue(self.adapter_cls.can_handle(pd.DataFrame(self.numpy_input)))
+    self.assertTrue(
+        self.adapter_cls.can_handle(pd.DataFrame(self.numpy_input)[0]))
+    self.assertTrue(
+        self.adapter_cls.can_handle(
+            pd.DataFrame(self.numpy_input),
+            pd.DataFrame(self.numpy_input)[0]))
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_training_pandas(self):
+    try:
+      import pandas as pd  # pylint: disable=g-import-not-at-top
+    except ImportError:
+      self.skipTest('Skipping test because pandas is not installed.')
+    input_a = keras.Input(shape=(3,), name='input_a')
+    input_b = keras.Input(shape=(3,), name='input_b')
+    input_c = keras.Input(shape=(1,), name='input_b')
+
+    x = keras.layers.Dense(4, name='dense_1')(input_a)
+    y = keras.layers.Dense(3, name='dense_2')(input_b)
+    z = keras.layers.Dense(1, name='dense_3')(input_c)
+
+    model_1 = keras.Model(inputs=input_a, outputs=x)
+    model_2 = keras.Model(inputs=[input_a, input_b], outputs=[x, y])
+    model_3 = keras.Model(inputs=input_c, outputs=z)
+
+    model_1.compile(optimizer='rmsprop', loss='mse')
+    model_2.compile(optimizer='rmsprop', loss='mse')
+
+    input_a_np = np.random.random((10, 3))
+    input_b_np = np.random.random((10, 3))
+    input_a_df = pd.DataFrame(input_a_np)
+    input_b_df = pd.DataFrame(input_b_np)
+
+    output_a_df = pd.DataFrame(np.random.random((10, 4)))
+    output_b_df = pd.DataFrame(np.random.random((10, 3)))
+
+    model_1.fit(input_a_df,
+                output_a_df)
+    model_2.fit([input_a_df, input_b_df],
+                [output_a_df, output_b_df])
+    model_1.fit([input_a_df],
+                [output_a_df])
+    model_1.fit({'input_a': input_a_df},
+                output_a_df)
+    model_2.fit({'input_a': input_a_df, 'input_b': input_b_df},
+                [output_a_df, output_b_df])
+
+    model_1.evaluate(input_a_df,
+                     output_a_df)
+    model_2.evaluate([input_a_df, input_b_df],
+                     [output_a_df, output_b_df])
+    model_1.evaluate([input_a_df],
+                     [output_a_df])
+    model_1.evaluate({'input_a': input_a_df},
+                     output_a_df)
+    model_2.evaluate({'input_a': input_a_df, 'input_b': input_b_df},
+                     [output_a_df, output_b_df])
+
+    # Verify predicting on pandas vs numpy returns the same result
+    predict_1_pandas = model_1.predict(input_a_df)
+    predict_2_pandas = model_2.predict([input_a_df, input_b_df])
+    predict_3_pandas = model_3.predict(input_a_df[0])
+
+    predict_1_numpy = model_1.predict(input_a_np)
+    predict_2_numpy = model_2.predict([input_a_np, input_b_np])
+    predict_3_numpy = model_3.predict(np.asarray(input_a_df[0]))
+
+    self.assertAllClose(predict_1_numpy, predict_1_pandas)
+    self.assertAllClose(predict_2_numpy, predict_2_pandas)
+    self.assertAllClose(predict_3_numpy, predict_3_pandas)
+
+    # Extra ways to pass in dataframes
+    model_1.predict([input_a_df])
+    model_1.predict({'input_a': input_a_df})
+    model_2.predict({'input_a': input_a_df, 'input_b': input_b_df})
+
   def test_can_handle(self):
     self.assertTrue(self.adapter_cls.can_handle(self.tensor_input))
     self.assertTrue(

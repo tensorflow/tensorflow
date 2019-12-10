@@ -10,5 +10,6 @@ target_link_libraries(MLIRGPUtoSPIRVTransforms
   MLIRSPIRV
   MLIRStandardOps
   MLIRStandardToSPIRVTransforms
+  MLIRSupport
   MLIRTransforms
   )

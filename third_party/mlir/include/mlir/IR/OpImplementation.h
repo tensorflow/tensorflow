@@ -95,15 +95,14 @@ public:
   /// SSA values in namesToUse.  This may only be used for IsolatedFromAbove
   /// operations.  If any entry in namesToUse is null, the corresponding
   /// argument name is left alone.
-  virtual void shadowRegionArgs(Region &region,
-                                ArrayRef<Value *> namesToUse) = 0;
+  virtual void shadowRegionArgs(Region &region, ValueRange namesToUse) = 0;
 
   /// Prints an affine map of SSA ids, where SSA id names are used in place
   /// of dims/symbols.
   /// Operand values must come from single-result sources, and be valid
   /// dimensions/symbol identifiers according to mlir::isValidDim/Symbol.
   virtual void printAffineMapOfSSAIds(AffineMapAttr mapAttr,
-                                      ArrayRef<Value *> operands) = 0;
+                                      ValueRange operands) = 0;
 
   /// Print an optional arrow followed by a type list.
   void printOptionalArrowTypeList(ArrayRef<Type> types) {
@@ -318,6 +317,13 @@ public:
     return parseAttribute(result, Type(), attrName, attrs);
   }
 
+  /// Parse an attribute of a specific kind and type.
+  template <typename AttrType>
+  ParseResult parseAttribute(AttrType &result, StringRef attrName,
+                             SmallVectorImpl<NamedAttribute> &attrs) {
+    return parseAttribute(result, Type(), attrName, attrs);
+  }
+
   /// Parse an arbitrary attribute of a given type and return it in result. This
   /// also adds the attribute to the specified attribute list with the specified
   /// name.
@@ -339,7 +345,7 @@ public:
     // Check for the right kind of attribute.
     result = attr.dyn_cast<AttrType>();
     if (!result)
-      return emitError(loc, "invalid kind of constant specified");
+      return emitError(loc, "invalid kind of attribute specified");
 
     return success();
   }
@@ -593,6 +599,10 @@ private:
 // Dialect OpAsm interface.
 //===--------------------------------------------------------------------===//
 
+/// A functor used to set the name of the start of a result group of an
+/// operation. See 'getAsmResultNames' below for more details.
+using OpAsmSetValueNameFn = function_ref<void(Value *, StringRef)>;
+
 class OpAsmDialectInterface
     : public DialectInterface::Base<OpAsmDialectInterface> {
 public:
@@ -614,10 +624,18 @@ public:
   virtual void
   getTypeAliases(SmallVectorImpl<std::pair<Type, StringRef>> &aliases) const {}
 
-  /// Get a special name to use when printing the given operation. The desired
-  /// name should be streamed into 'os'.
-  virtual void getOpResultName(Operation *op, raw_ostream &os) const {}
+  /// Get a special name to use when printing the given operation. See
+  /// OpAsmInterface.td#getAsmResultNames for usage details and documentation.
+  virtual void getAsmResultNames(Operation *op,
+                                 OpAsmSetValueNameFn setNameFn) const {}
 };
+
+//===--------------------------------------------------------------------===//
+// Operation OpAsm interface.
+//===--------------------------------------------------------------------===//
+
+/// The OpAsmOpInterface, see OpAsmInterface.td for more details.
+#include "mlir/IR/OpAsmInterface.h.inc"
 
 } // end namespace mlir
 

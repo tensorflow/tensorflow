@@ -102,7 +102,7 @@ def create_source_map(nodes, code, filepath):
     Dict[LineLocation, OriginInfo], mapping locations in code to locations
     indicated by origin annotations in node.
   """
-  reparsed_nodes = parser.parse_str(code, preamble_len=0, single_node=False)
+  reparsed_nodes = parser.parse(code, preamble_len=0, single_node=False)
   for node in reparsed_nodes:
     resolve(node, code, filepath, node.lineno, node.col_offset)
 

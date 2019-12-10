@@ -1,0 +1,17 @@
+// This proto describes the types of hardware profiled by the TensorFlow
+// profiler.
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+// Types of hardware profiled.
+enum HardwareType {
+  // Unknown hardware.
+  UNKNOWN_HARDWARE = 0;
+  // CPU only without any hardware accelerator.
+  CPU_ONLY = 1;
+  // GPU.
+  GPU = 2;
+  // TPU.
+  TPU = 3;
+}

@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -71,6 +72,16 @@ T GetRawValue(T val) {
   return val;
 }
 uint16 GetRawValue(Eigen::half val) { return val.x; }
+
+bool LiteralProtoHasValues(const LiteralProto& proto) {
+  return proto.preds_size() || !proto.s8s().empty() || !proto.u8s().empty() ||
+         proto.s32s_size() || proto.s64s_size() || proto.u32s_size() ||
+         proto.u64s_size() || proto.f32s_size() || proto.f64s_size() ||
+         proto.c64s_size() || proto.c128s_size() ||
+         proto.tuple_literals_size() || !proto.f16s().empty() ||
+         !proto.bf16s().empty() || !proto.u16s().empty() ||
+         !proto.s16s().empty() || proto.sparse_indices_size();
+}
 
 }  // namespace
 
@@ -121,18 +132,23 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
     }
   } else if (shape.IsArray()) {
     if (allocate_arrays) {
+      // Literals can be used as DMA targets, which can require alignment. We
+      // force a 16-byte minimum alignment.
+      constexpr int kMinimumAlignment = 16;
       if (LayoutUtil::IsSparseArray(shape)) {
         // For sparse arrays, the buffer must be of the size of the maximum
         // number of sparse elements possible.
         const int64 max_sparse_elements =
             LayoutUtil::MaxSparseElements(shape.layout());
-        piece->set_buffer(
-            new char[max_sparse_elements *
-                     ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type())]);
+        piece->set_buffer(static_cast<char*>(tensorflow::port::AlignedMalloc(
+            max_sparse_elements *
+                ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()),
+            kMinimumAlignment)));
         piece->set_sparse_indices(
             new SparseIndexArray(max_sparse_elements, shape.rank()));
       } else {
-        piece->set_buffer(new char[piece->size_bytes()]);
+        piece->set_buffer(static_cast<char*>(tensorflow::port::AlignedMalloc(
+            piece->size_bytes(), kMinimumAlignment)));
       }
     }
   } else {
@@ -164,7 +180,7 @@ void Literal::DeallocateBuffers() {
   root_piece_->ForEachMutableSubpiece(
       [&](const ShapeIndex& index, Piece* piece) {
         if (piece->buffer() != nullptr) {
-          delete[] piece->buffer();
+          tensorflow::port::AlignedFree(piece->buffer());
           delete piece->sparse_indices();
         }
       });
@@ -288,7 +304,7 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
 }
 
 /* static */ StatusOr<Literal> MutableLiteralBase::CreateFromProto(
-    const LiteralProto& proto) {
+    const LiteralProto& proto, bool prohibit_empty_literal) {
   if (!proto.has_shape()) {
     return InvalidArgument("LiteralProto has no shape");
   }
@@ -328,7 +344,13 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
         }
 
         CHECK(piece->subshape().IsArray());
-        TF_RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
+
+        // When prohibit_empty_literal is false (allowing literal with no
+        // values), only copy from proto if the literal proto has values. This
+        // mode is used for a learned cost model.
+        if (prohibit_empty_literal || LiteralProtoHasValues(*proto_element)) {
+          TF_RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
+        }
 
         return Status::OK();
       }));
@@ -488,7 +510,7 @@ Status Literal::MoveFrom(Literal&& src_literal,
           dest_index.push_back(i);
         }
         Piece& dest_piece = piece(dest_index);
-        delete[] dest_piece.buffer();
+        tensorflow::port::AlignedFree(dest_piece.buffer());
         dest_piece.set_buffer(src_piece.buffer());
         delete dest_piece.sparse_indices();
         dest_piece.set_sparse_indices(src_piece.sparse_indices());

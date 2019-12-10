@@ -96,9 +96,12 @@ def set_random_seed(seed):
     1. If neither the graph-level nor the operation seed is set:
       A random seed is used for this op.
     2. If the graph-level seed is set, but the operation seed is not:
-      The system deterministically (determined by the current graph size) picks
-      an operation seed in conjunction with the graph-level seed so that it gets
-      a unique random sequence.
+      The system deterministically picks an operation seed in conjunction with
+      the graph-level seed so that it gets a unique random sequence. Within the
+      same version of tensorflow and user code, this sequence is deterministic.
+      However across different versions, this sequence might change. If the
+      code depends on particular seeds to work, specify both graph-level
+      and operation-level seeds explicitly.
     3. If the graph-level seed is not set, but the operation seed is set:
       A default graph-level seed and the specified operation seed are used to
       determine the random sequence.
@@ -198,9 +201,13 @@ def set_seed(seed):
 
     1. If neither the global seed nor the operation seed is set: A randomly
       picked seed is used for this op.
-    2. If the operation seed is not set but the global seed is set: The system
-      picks an operation seed from a stream of seeds determined by the global
-      seed.
+    2. If the graph-level seed is set, but the operation seed is not:
+      The system deterministically picks an operation seed in conjunction with
+      the graph-level seed so that it gets a unique random sequence. Within the
+      same version of tensorflow and user code, this sequence is deterministic.
+      However across different versions, this sequence might change. If the
+      code depends on particular seeds to work, specify both graph-level
+      and operation-level seeds explicitly.
     3. If the operation seed is set, but the global seed is not set:
       A default global seed and the specified operation seed are used to
       determine the random sequence.
@@ -308,5 +315,4 @@ def set_seed(seed):
   Args:
     seed: integer.
   """
-  # TODO(go/tf2-random): change doc, update to match design doc
   set_random_seed(seed)

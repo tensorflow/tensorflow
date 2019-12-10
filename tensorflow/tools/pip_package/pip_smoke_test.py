@@ -82,7 +82,6 @@ DEPENDENCY_BLACKLIST = [
     "//tensorflow/core:image_testdata",
     "//tensorflow/core:lmdb_testdata",
     "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
-    "//tensorflow/python/data/experimental/ops:testing",
     "//tensorflow/python/debug:grpc_tensorflow_server.par",
     "//tensorflow/python/feature_column:vocabulary_testdata",
     "//tensorflow/python:framework/test_file_system.so",

@@ -315,7 +315,8 @@ void PatternEmitter::emitOperandMatch(DagNode tree, int argIndex, int depth,
 
   // Capture the value
   auto name = tree.getArgName(argIndex);
-  if (!name.empty()) {
+  // `$_` is a special symbol to ignore op argument matching.
+  if (!name.empty() && name != "_") {
     // We need to subtract the number of attributes before this operand to get
     // the index in the operand list.
     auto numPrevAttrs = std::count_if(
@@ -329,6 +330,7 @@ void PatternEmitter::emitOperandMatch(DagNode tree, int argIndex, int depth,
 
 void PatternEmitter::emitAttributeMatch(DagNode tree, int argIndex, int depth,
                                         int indent) {
+
   Operator &op = tree.getDialectOp(opMap);
   auto *namedAttr = op.getArg(argIndex).get<NamedAttribute *>();
   const auto &attr = namedAttr->attr;
@@ -340,10 +342,10 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int argIndex, int depth,
       attr.getStorageType(), namedAttr->name);
 
   // TODO(antiagainst): This should use getter method to avoid duplication.
-  if (attr.hasDefaultValueInitializer()) {
+  if (attr.hasDefaultValue()) {
     os.indent(indent) << "if (!tblgen_attr) tblgen_attr = "
                       << tgfmt(attr.getConstBuilderTemplate(), &fmtCtx,
-                               attr.getDefaultValueInitializer())
+                               attr.getDefaultValue())
                       << ";\n";
   } else if (attr.isOptional()) {
     // For a missing attribute that is optional according to definition, we
@@ -371,7 +373,8 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int argIndex, int depth,
 
   // Capture the value
   auto name = tree.getArgName(argIndex);
-  if (!name.empty()) {
+  // `$_` is a special symbol to ignore op argument matching.
+  if (!name.empty() && name != "_") {
     os.indent(indent) << formatv("{0} = tblgen_attr;\n", name);
   }
 
@@ -682,7 +685,7 @@ std::string PatternEmitter::handleReplaceWithNativeCodeCall(DagNode tree) {
   }
   for (int i = 0, e = tree.getNumArgs(); i != e; ++i) {
     attrs[i] = handleOpArgument(tree.getArgAsLeaf(i), tree.getArgName(i));
-    LLVM_DEBUG(llvm::dbgs() << "NativeCodeCall argment #" << i
+    LLVM_DEBUG(llvm::dbgs() << "NativeCodeCall argument #" << i
                             << " replacement: " << attrs[i] << "\n");
   }
   return tgfmt(fmt, &fmtCtx, attrs[0], attrs[1], attrs[2], attrs[3], attrs[4],
@@ -761,12 +764,12 @@ std::string PatternEmitter::handleOpCreation(DagNode tree, int resultIndex,
   // special cases listed below, DRR needs to supply types for all results
   // when building an op.
   bool isSameOperandsAndResultType =
-      resultOp.hasTrait("OpTrait::SameOperandsAndResultType");
-  bool useFirstAttr = resultOp.hasTrait("OpTrait::FirstAttrDerivedResultType");
+      resultOp.getTrait("OpTrait::SameOperandsAndResultType");
+  bool useFirstAttr = resultOp.getTrait("OpTrait::FirstAttrDerivedResultType");
 
   if (isSameOperandsAndResultType || useFirstAttr) {
     // We know how to deduce the result type for ops with these traits and we've
-    // generated builders taking aggregrate parameters. Use those builders to
+    // generated builders taking aggregate parameters. Use those builders to
     // create the ops.
 
     // First prepare local variables for op arguments used in builder call.
@@ -780,7 +783,7 @@ std::string PatternEmitter::handleOpCreation(DagNode tree, int resultIndex,
   }
 
   bool isBroadcastable =
-      resultOp.hasTrait("OpTrait::BroadcastableTwoOperandsOneResult");
+      resultOp.getTrait("OpTrait::BroadcastableTwoOperandsOneResult");
   bool usePartialResults = valuePackName != resultValue;
 
   if (isBroadcastable || usePartialResults || depth > 0 || resultIndex < 0) {
@@ -888,7 +891,7 @@ void PatternEmitter::supplyValuesForOpArgs(
   Operator &resultOp = node.getDialectOp(opMap);
   for (int argIndex = 0, numOpArgs = resultOp.getNumArgs();
        argIndex != numOpArgs; ++argIndex) {
-    // Start each argment on its own line.
+    // Start each argument on its own line.
     (os << ",\n").indent(8);
 
     Argument opArg = resultOp.getArg(argIndex);

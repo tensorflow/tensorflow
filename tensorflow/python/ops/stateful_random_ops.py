@@ -598,22 +598,30 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
     ```python
     counts = [10., 20.]
     # Probability of success.
-    probs = [0.8, 0.9]
+    probs = [0.8]
 
     rng = tf.random.experimental.Generator.from_seed(seed=234)
     binomial_samples = rng.binomial(shape=[2], counts=counts, probs=probs)
+
+
+    counts = ... # Shape [3, 1, 2]
+    probs = ...  # Shape [1, 4, 2]
+    shape = [3, 4, 3, 4, 2]
+    rng = tf.random.experimental.Generator.from_seed(seed=1717)
+    # Sample shape will be [3, 4, 3, 4, 2]
+    binomial_samples = rng.binomial(shape=shape, counts=counts, probs=probs)
     ```
 
 
     Args:
       shape: A 1-D integer Tensor or Python array. The shape of the output
         tensor.
-      counts: A 0/1-D Tensor or Python value. The counts of the binomial
-        distribution.  Must be broadcastable with the leftmost dimension
-        defined by `shape`.
-      probs: A 0/1-D Tensor or Python value. The probability of success for the
-        binomial distribution.  Must be broadcastable with the leftmost
-        dimension defined by `shape`.
+      counts: Tensor. The counts of the binomial distribution. Must be
+        broadcastable with `probs`, and broadcastable with the rightmost
+        dimensions of `shape`.
+      probs: Tensor. The probability of success for the
+        binomial distribution. Must be broadcastable with `counts` and
+        broadcastable with the rightmost dimensions of `shape`.
       dtype: The type of the output. Default: tf.int32
       name: A name for the operation (optional).
 

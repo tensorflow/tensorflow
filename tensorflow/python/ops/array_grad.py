@@ -710,6 +710,15 @@ def _CheckNumericsGrad(op, grad):
       op.get_attr("message"))
 
 
+@ops.RegisterGradient("CheckNumericsV2")
+def _CheckNumericsV2Grad(op, grad):
+  """Gradient for check_numerics op."""
+  return array_ops.check_numerics_v2(
+      grad,
+      "Not a number (NaN) or infinity (Inf) values detected in gradient. %s" %
+      op.get_attr("message"))
+
+
 @ops.RegisterGradient("PlaceholderWithDefault")
 @ops.RegisterGradient("Identity")
 def _IdGrad(_, grad):

@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// Defines, utilities and base classes to use while targeting SPIR-V dialect.
+// Defines utilities to use while targeting SPIR-V dialect.
 //
 //===----------------------------------------------------------------------===//
 
@@ -23,38 +23,30 @@
 #define MLIR_DIALECT_SPIRV_SPIRVLOWERING_H
 
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/Support/StringExtras.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/SetVector.h"
 
 namespace mlir {
 
-/// Type conversion from Standard Types to SPIR-V Types.
-class SPIRVBasicTypeConverter : public TypeConverter {
-public:
-  /// Converts types to SPIR-V supported types.
-  virtual Type convertType(Type t);
-};
-
-/// Converts a function type according to the requirements of a SPIR-V entry
-/// function. The arguments need to be converted to spv.GlobalVariables of
-/// spv.ptr types so that they could be bound by the runtime.
+/// Type conversion from standard types to SPIR-V types for shader interface.
+///
+/// For composite types, this converter additionally performs type wrapping to
+/// satisfy shader interface requirements: shader interface types must be
+/// pointers to structs.
 class SPIRVTypeConverter final : public TypeConverter {
 public:
-  explicit SPIRVTypeConverter(SPIRVBasicTypeConverter *basicTypeConverter)
-      : basicTypeConverter(basicTypeConverter) {}
+  using TypeConverter::TypeConverter;
 
-  /// Converts types to SPIR-V types using the basic type converter.
-  Type convertType(Type t) override;
+  /// Converts the given standard `type` to SPIR-V correspondence.
+  Type convertType(Type type) override;
 
-  /// Gets the basic type converter.
-  Type convertBasicType(Type t) { return basicTypeConverter->convertType(t); }
-
-private:
-  SPIRVBasicTypeConverter *basicTypeConverter;
+  /// Gets the SPIR-V correspondence for the standard index type.
+  static Type getIndexType(MLIRContext *context);
 };
 
-/// Base class to define a conversion pattern to translate Ops into SPIR-V.
+/// Base class to define a conversion pattern to lower `SourceOp` into SPIR-V.
 template <typename SourceOp>
 class SPIRVOpLowering : public OpConversionPattern<SourceOp> {
 public:
@@ -64,11 +56,10 @@ public:
         typeConverter(typeConverter) {}
 
 protected:
-  /// Type lowering class.
   SPIRVTypeConverter &typeConverter;
-
-private:
 };
+
+#include "mlir/Dialect/SPIRV/SPIRVLowering.h.inc"
 
 namespace spirv {
 /// Returns a value that represents a builtin variable value within the SPIR-V
@@ -77,14 +68,26 @@ Value *getBuiltinVariableValue(Operation *op, spirv::BuiltIn builtin,
                                OpBuilder &builder);
 
 /// Legalizes a function as an entry function.
-LogicalResult lowerAsEntryFunction(FuncOp funcOp,
-                                   SPIRVTypeConverter *typeConverter,
-                                   ConversionPatternRewriter &rewriter,
-                                   FuncOp &newFuncOp);
+FuncOp lowerAsEntryFunction(FuncOp funcOp, SPIRVTypeConverter &typeConverter,
+                            ConversionPatternRewriter &rewriter,
+                            ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo,
+                            spirv::EntryPointABIAttr entryPointInfo);
 
-/// Finalizes entry function legalization. Inserts the spv.EntryPoint and
-/// spv.ExecutionMode ops.
-LogicalResult finalizeEntryFunction(FuncOp newFuncOp, OpBuilder &builder);
+/// Attribute name for specifying argument ABI information.
+StringRef getInterfaceVarABIAttrName();
+
+/// Get the InterfaceVarABIAttr given its fields.
+InterfaceVarABIAttr getInterfaceVarABIAttr(unsigned descriptorSet,
+                                           unsigned binding,
+                                           spirv::StorageClass storageClass,
+                                           MLIRContext *context);
+
+/// Attribute name for specifying entry point information.
+StringRef getEntryPointABIAttrName();
+
+/// Get the EntryPointABIAttr given its fields.
+EntryPointABIAttr getEntryPointABIAttr(ArrayRef<int32_t> localSize,
+                                       MLIRContext *context);
 
 } // namespace spirv
 } // namespace mlir

@@ -85,6 +85,21 @@ def : Pat<(TF_SquaredDifferenceOp ComplexTensor: $lhs, ComplexTensor:$rhs),
           (TF_MulOp (TF_SubOp:$diff $lhs, $rhs), (TF_ConjOp $diff))>;
 
 //===----------------------------------------------------------------------===//
+// DivNoNan and MulNonNan op patterns.
+//===----------------------------------------------------------------------===//
+
+class BinaryNoNanPat<Op FromOp, Op ToOp>
+  : Pat<(FromOp $l, $r),
+        (TF_SelectV2Op (TF_EqualOp $r,
+                                   (TF_ConstOp:$zero (GetScalarOfType<0> $r)),
+                       /*incompatible_shape_error*/ConstBoolAttrTrue),
+           $zero, (ToOp $l, $r))>;
+
+foreach fromToBinPair = [[TF_DivNoNanOp, TF_DivOp],
+                         [TF_MulNoNanOp, TF_MulOp]] in
+  def : BinaryNoNanPat<fromToBinPair[0], fromToBinPair[1]>;
+
+//===----------------------------------------------------------------------===//
 // Fill op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -119,3 +134,40 @@ def LowerL2LossOp :
 def : Pat<(TF_PadOp TensorOf<[AnyInteger, AnyFloat]>:$input, $paddings),
           (TF_PadV2Op $input, $paddings,
              (TF_ConstOp (GetScalarOfType<0> $input)))>;
+
+//===----------------------------------------------------------------------===//
+// Rsqrt op patterns.
+//===----------------------------------------------------------------------===//
+
+// RsqrtGrad(lhs, rhs) = (lhs * lhs * lhs) * (rhs / -2)
+def : Pat<(TF_RsqrtGradOp $lhs, $rhs),
+          (TF_MulOp (TF_MulOp (TF_MulOp $lhs, $lhs), $lhs),
+                    (TF_DivOp $rhs,
+                              (TF_ConstOp (GetScalarOfType<-2> $rhs))))>;
+
+
+//===----------------------------------------------------------------------===//
+// TanhGrad op patterns.
+//===----------------------------------------------------------------------===//
+
+// grad = dy * (1 - y**2)
+
+// TODO(hinsu): Support complex input types.
+def LowerTanhGradOp :
+  Pat<(TF_TanhGradOp TF_FpTensor:$y, TF_FpTensor:$dy),
+      (TF_MulOp $dy,
+                (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $y)),
+                          (TF_SquareOp $y)))>;
+
+//===----------------------------------------------------------------------===//
+// ZerosLike op patterns.
+//===----------------------------------------------------------------------===//
+
+def CreateTFShapeOp : NativeCodeCall<
+    "$_builder.create<TF::ShapeOp>($0->getLoc(), $1, $2)">;
+
+// TODO(hinsu): Support inputs of TensorList types.
+def LowerZerosLikeOp :
+  Pat<(TF_ZerosLikeOp:$src_op TensorOf<[AnyInteger, AnyFloat]>:$input),
+      (TF_BroadcastToOp (TF_ConstOp (GetScalarOfType<0> $input)),
+                        (CreateTFShapeOp $src_op, $input, /*use 32bit*/ConstBoolAttrFalse))>;

@@ -5,7 +5,7 @@ module attributes {tf_saved_model.semantics} {
   // Test case: Simple case of inlining.
 
   // CHECK-NOT: tf_saved_model.global_tensor
-  "tf_saved_model.global_tensor"() { sym_name = "c", value = dense<1.0> : tensor<f32> } : () -> ()
+  "tf_saved_model.global_tensor"() { sym_name = "c", type = tensor<f32>, value = dense<1.0> : tensor<f32> } : () -> ()
 
   // CHECK: func @f()
   func @f(%arg0: tensor<f32> {tf_saved_model.bound_input = @c})
@@ -23,7 +23,7 @@ module attributes {tf_saved_model.semantics} {
   // Test case: Do not inline mutable global tensors.
 
   // CHECK: tf_saved_model.global_tensor
-  "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", value = dense<1.0> : tensor<f32> } : () -> ()
+  "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<f32>, value = dense<1.0> : tensor<f32> } : () -> ()
 
   // CHECK: func @f(%arg0: tensor<f32> {tf_saved_model.bound_input = @v})
   func @f(%arg0: tensor<f32> {tf_saved_model.bound_input = @v})

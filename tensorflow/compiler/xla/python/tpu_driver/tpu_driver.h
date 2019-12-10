@@ -37,6 +37,9 @@
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
+// This API is EXPERIMENTAL and under active developement. It is subject to
+// change without notice.
+
 namespace tpu_driver {
 
 uint64_t ComputeBytesFromShape(const xla::ShapeProto& shape);
@@ -49,8 +52,9 @@ class Event {
  public:
   virtual ~Event() {}
 
-  // Block until the event completes and returns the result status.
+  // Blocks until the event completes and returns the result status.
   virtual xla::Status Await() = 0;
+  // Returns an empty result if the wait times out.
   virtual absl::optional<xla::Status> AwaitWithTimeout(
       absl::Duration duration) = 0;
 
@@ -149,11 +153,13 @@ class TpuDriver {
   virtual ~TpuDriver() {}
 
   virtual void QuerySystemInfo(SystemInfo* system_info) = 0;
-  // Synchronous. Reset the state of the TPU driver. All running programs
-  // will be terminated and all allocations reset.
+  // Synchronous. Reset the state of the TPU driver. After Reset(), this TPU
+  // driver object is no longer usable. Users must destroy this object and
+  // create a new one.
   //
-  // All events and buffer handles created prior to Reset() will be invalid,
-  // and any use will result in undefined behavior.
+  // All running programs will be terminated and all allocations reset. All
+  // events and buffer handles created prior to Reset() will be invalid, and any
+  // use will result in undefined behavior.
   virtual xla::Status Reset() = 0;
 
   virtual std::unique_ptr<BufferHandle> Allocate(
@@ -176,7 +182,7 @@ class TpuDriver {
       int32_t core_id, MemoryRegion region,
       absl::Span<BufferHandle* const> children,
       absl::Span<Event* const> wait_for) = 0;
-  virtual std::unique_ptr<Event> Deallocate(
+  virtual std::shared_ptr<Event> Deallocate(
       std::unique_ptr<BufferHandle> handle,
       absl::Span<Event* const> wait_for) = 0;
 
@@ -198,14 +204,14 @@ class TpuDriver {
    *
    * `TransferFromDevice` will write out the shape back in this order as well.
    */
-  virtual std::unique_ptr<Event> TransferToDevice(
+  virtual std::shared_ptr<Event> TransferToDevice(
       const void* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for) = 0;
-  virtual std::unique_ptr<Event> TransferFromDevice(
+  virtual std::shared_ptr<Event> TransferFromDevice(
       const BufferHandle* src, void* dst,
       absl::Span<Event* const> wait_for) = 0;
 
-  virtual std::unique_ptr<Event> TransferFromDeviceToDevice(
+  virtual std::shared_ptr<Event> TransferFromDeviceToDevice(
       const BufferHandle* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for) = 0;
 
@@ -215,27 +221,16 @@ class TpuDriver {
   virtual std::unique_ptr<LoadedProgramHandle> LoadProgram(
       int32_t core_id, const CompiledProgramHandle* handle,
       absl::Span<Event* const> wait_for) = 0;
-  virtual std::unique_ptr<Event> UnloadProgram(
+  virtual std::shared_ptr<Event> UnloadProgram(
       std::unique_ptr<LoadedProgramHandle> handle,
       absl::Span<Event* const> wait_for) = 0;
-  virtual std::unique_ptr<Event> ExecuteProgram(
+  virtual std::shared_ptr<Event> ExecuteProgram(
       LoadedProgramHandle* program, absl::Span<BufferHandle* const> inputs,
       absl::Span<BufferHandle* const> outputs,
       const xla::DeviceAssignmentProto& device_assignment,
       absl::Span<Event* const> wait_for) = 0;
 
   virtual std::unique_ptr<TpuLinearizer> GetLinearizer() { return nullptr; }
-};
-
-struct TpuDriverConfig {
-  std::string worker;
-
-  // Time in seconds before the initial connection to the server will timeout.
-  int64_t connection_timeout_secs = 10;
-
-  // Time in seconds the server may be unresponsive before terminating the
-  // connection.
-  int64_t keepalive_timeout_secs = 30;
 };
 
 class TpuDriverRegistry {

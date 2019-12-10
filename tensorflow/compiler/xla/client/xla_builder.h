@@ -276,6 +276,9 @@ class XlaBuilder {
   // Returns the shape of the given op.
   StatusOr<Shape> GetShape(XlaOp op) const;
 
+  // Returns the shape of the given op.
+  StatusOr<const Shape*> GetShapePtr(XlaOp op) const;
+
   // Returns the (inferred) result for the current computation's shape. This
   // assumes the root instruction is the last added instruction.
   StatusOr<ProgramShape> GetProgramShape() const;
@@ -511,7 +514,8 @@ class XlaBuilder {
   XlaOp AllReduce(
       XlaOp operand, const XlaComputation& computation,
       absl::Span<const ReplicaGroup> replica_groups = {},
-      const absl::optional<ChannelHandle>& channel_id = absl::nullopt);
+      const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
+      const absl::optional<Shape>& shape_with_layout = absl::nullopt);
 
   XlaOp AllToAll(XlaOp operand, int64 split_dimension, int64 concat_dimension,
                  int64 split_count,
@@ -702,6 +706,10 @@ class XlaBuilder {
 
   // The instructions of this computation.
   std::vector<HloInstructionProto> instructions_;
+
+  // An cache for the HloInstructionProto shapes, to avoid recreating Shape
+  // objects from protos and to support the GetShapePtr() API.
+  std::vector<std::unique_ptr<Shape>> instruction_shapes_;
 
   // Dynamic parameter configuration of this computation.
   DynamicParameterBinding dynamic_parameter_binding_;
@@ -915,7 +923,8 @@ class XlaBuilder {
                                absl::Span<const ReplicaGroup> replica_groups);
   friend XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                          absl::Span<const ReplicaGroup> replica_groups,
-                         const absl::optional<ChannelHandle>& channel_id);
+                         const absl::optional<ChannelHandle>& channel_id,
+                         const absl::optional<Shape>& shape_with_layout);
   friend XlaOp AllToAll(XlaOp operand, int64 split_dimension,
                         int64 concat_dimension, int64 split_count,
                         const std::vector<ReplicaGroup>& replica_groups);
@@ -1659,10 +1668,14 @@ XlaOp CrossReplicaSum(XlaOp operand,
 // - `channel_id`: for Allreduce nodes from different modules, if they have the
 // same channel_id, they will be 'AllReduce'd. If empty, AllReduce will not be
 // applied cross modules.
-XlaOp AllReduce(
-    XlaOp operand, const XlaComputation& computation,
-    absl::Span<const ReplicaGroup> replica_groups = {},
-    const absl::optional<ChannelHandle>& channel_id = absl::nullopt);
+//
+// - `shape_with_layout`: forces the layout of the AllReduce to the given
+// layout. This is used to guarantee the same layout for a group of AllReduce
+// ops compiled separately.
+XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
+                absl::Span<const ReplicaGroup> replica_groups = {},
+                const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
+                const absl::optional<Shape>& shape_with_layout = absl::nullopt);
 
 // Enqueues an operation that do an Alltoall of the operand cross cores.
 XlaOp AllToAll(XlaOp operand, int64 split_dimension, int64 concat_dimension,

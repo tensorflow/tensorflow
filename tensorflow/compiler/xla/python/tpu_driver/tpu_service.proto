@@ -21,6 +21,8 @@ import "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.proto";
 import "tensorflow/compiler/xla/service/hlo.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
 
+option optimize_for = SPEED;
+
 message StatusMessage {
   required int32 code = 1;
   optional string message = 2;
@@ -134,10 +136,15 @@ message StreamResponse {
   repeated Entry entry = 20;
 }
 
-message OpenRequest {}
+message OpenRequest {
+  // The version number for this client. Versions are bumped in case of
+  // backwards incompatible client-server protocol changes. Servers will reject
+  // clients with an unsupported version.
+  optional int32 client_version = 1 [default = 0];
+}
 
 message OpenResponse {
-  required fixed32 client_id = 1;
+  required uint32 client_id = 1;
 
   // Maximum time this client can be idle before it is GC'ed and all resources
   // released.
@@ -149,6 +156,10 @@ message CloseRequest {
 }
 
 message CloseResponse {}
+
+message ResetRequest {}
+
+message ResetResponse {}
 
 message QuerySystemInfoRequest {}
 
@@ -162,6 +173,9 @@ service CloudTpuDriver {
 
   // Close the driver. Any outstanding requests will be terminated.
   rpc Close(CloseRequest) returns (CloseResponse);
+
+  // Reset the driver. All connected clients will be disconnected.
+  rpc Reset(ResetRequest) returns (ResetResponse);
 
   // Query the driver for current system performance information.
   rpc QuerySystemInfo(QuerySystemInfoRequest) returns (QuerySystemInfoResponse);

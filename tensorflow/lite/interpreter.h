@@ -24,11 +24,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/c_api_internal.h"  // IWYU pragma: export
+#include "tensorflow/lite/c/common.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/experimental/resource_variable/resource_variable.h"
+#include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/stderr_reporter.h"
@@ -522,9 +522,8 @@ class Interpreter {
   // Subgraphs
   std::vector<std::unique_ptr<Subgraph>> subgraphs_;
 
-  // A map of resource variables. Owned by interpreter and shared by multiple
-  // subgraphs.
-  ResourceVariableMap resource_variables_;
+  // A map of resources. Owned by interpreter and shared by multiple subgraphs.
+  resource::ResourceMap resources_;
 };
 
 }  // namespace tflite

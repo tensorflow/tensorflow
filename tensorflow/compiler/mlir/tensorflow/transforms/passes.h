@@ -46,10 +46,20 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass();
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
 
+struct StandardPipelineOptions : public PassOptions<StandardPipelineOptions> {
+  Option<bool> enable_inliner{*this, "enable-inliner",
+                              llvm::cl::desc("Enable inliner."),
+                              llvm::cl::init(false)};
+};
+
 // Propagates the pass manager with the passes involved in transforming or
 // optimizing an MLIR graph without any target specialization.
 // NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
-void CreateTFStandardPipeline(OpPassManager& pm);
+void CreateTFStandardPipeline(OpPassManager& pm,
+                              const StandardPipelineOptions& options);
+
+// Propagates device attributes of resources from callers to callees.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceDeviceInferencePass();
 }  // namespace TF
 
 namespace TFControlFlow {
@@ -71,8 +81,8 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorIslandCoarseningPass();
 // Create a pass to prune tf_executor.graph from dead nodes.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorGraphPruningPass();
 
-// Prune a tf_executor.graph operation from dead nodes.
-void prune_graph(GraphOp graph);
+// Prunes unreachable operations of a tf_executor.graph operation.
+void PruneGraph(GraphOp graph);
 
 // Sink `tf.Const` operations in the LaunchOp region using them. This is
 // performed in order to limit the number of values implicitly captured in this
@@ -88,6 +98,11 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateClusterFormationPass();
 
 // Creates a pass that outlines regions of tf_device.launch operations.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateClusterOutliningPass();
+
+// A pass that decomposes composite resource operations into primitive ones like
+// ReadVariableOp, AssignVariableOp and other computations to facilitate
+// transformations like resource op lifting.
+std::unique_ptr<OpPassBase<FuncOp>> CreateDecomposeResourceOpsPass();
 
 // Creates a pass that lifts operations on external resource variables from
 // device computation nested in `tf_device::LaunchOp` out so that resource
@@ -115,12 +130,17 @@ namespace TFTPU {
 std::unique_ptr<OpPassBase<FuncOp>> CreateTPUClusterFormationPass();
 
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
-// ops
+// ops.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTPURewritePass();
+
+// Creates a pass that merges device variable reads/updates into the surrounded
+// TPUExecute node. This allows the execute node to perform in-place variable
+// updates.
+std::unique_ptr<OpPassBase<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge. NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
-void createTPUBridge(OpPassManager& pm);
+void CreateTPUBridge(OpPassManager& pm);
 
 }  // namespace TFTPU
 

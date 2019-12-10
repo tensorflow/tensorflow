@@ -215,7 +215,6 @@ using select = ValueBuilder<SelectOp>;
 using std_load = ValueBuilder<LoadOp>;
 using std_store = OperationBuilder<StoreOp>;
 using subi = ValueBuilder<SubIOp>;
-using vector_type_cast = ValueBuilder<vector::VectorTypeCastOp>;
 using view = ValueBuilder<ViewOp>;
 
 /// Branches into the mlir::Block* captured by BlockHandle `b` with `operands`.

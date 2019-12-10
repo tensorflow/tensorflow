@@ -349,7 +349,7 @@ def _should_add_batch_index_to_element(strategy, mode):
   # should be added.
   return (mode == ModeKeys.PREDICT
           and dist_utils.is_tpu_strategy(strategy)
-          and strategy.num_replicas_in_sync > 1)
+          and strategy.extended.num_hosts > 1)
 
 
 def train_on_batch(

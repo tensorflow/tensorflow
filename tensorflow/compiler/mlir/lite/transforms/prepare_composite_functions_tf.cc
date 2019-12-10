@@ -51,7 +51,7 @@ class ConvertEmbeddedLookupFunc {
   explicit ConvertEmbeddedLookupFunc(FuncOp func) : func_(func) {}
 
   void RewriteFunc() {
-    func_.setAttr("tf._implements",
+    func_.setAttr(kTFImplements,
                   StringAttr::get("embedding_lookup", func_.getContext()));
     Value* lookup = func_.getArgument(1);
     Value* value = func_.getArgument(0);
@@ -68,11 +68,11 @@ class ConvertEmbeddedLookupFunc {
     if (func_.getNumArguments() != 2) {
       return func_.emitError()
              << "Invalid number of arguments in the embedding "
-                "matmal composite function";
+                "matmul composite function";
     }
     if (func_.getType().getNumResults() != 1) {
       return func_.emitError() << "Invalid number of results in the embedding "
-                                  "matmal composite function";
+                                  "matmul composite function";
     }
     return success();
   }
@@ -98,7 +98,7 @@ class PrepareCompositeFunctionsPass
 
 void PrepareCompositeFunctionsPass::runOnFunction() {
   auto func = getFunction();
-  auto attr = func.getAttrOfType<StringAttr>("tf._implements");
+  auto attr = func.getAttrOfType<StringAttr>(kTFImplements);
   if (!attr) return;
   if (attr.getValue() == "embedding_matmul") {
     func.eraseBody();
@@ -113,19 +113,15 @@ void PrepareCompositeFunctionsPass::runOnFunction() {
   } else if (attr.getValue() == mlir::TFL::kLstmCellSimple) {
     func.eraseBody();
     func.addEntryBlock();
-    // TODO(b/144655815): Extract properties like couple_input_forget_gates
-    // from func attribute.
-    ConvertLSTMCellSimpleToFusedLSTM convert_lstm_cell_simple(func, false);
+    ConvertLSTMCellSimpleToFusedLSTM convert_lstm_cell_simple(func);
     if (failed(convert_lstm_cell_simple.RewriteFunc())) {
       return signalPassFailure();
     }
   } else if (attr.getValue() == mlir::TFL::kLayerNormalizedLstmCellSimple) {
     func.eraseBody();
     func.addEntryBlock();
-    // TODO(b/144655815): Extract properties like couple_input_forget_gates
-    // from func attribute.
     ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM
-        convert_layer_norm_lstm_cell_simple(func, false);
+        convert_layer_norm_lstm_cell_simple(func);
     if (failed(convert_layer_norm_lstm_cell_simple.RewriteFunc())) {
       return signalPassFailure();
     }

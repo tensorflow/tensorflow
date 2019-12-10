@@ -88,6 +88,9 @@ class TraceMeRecorder {
   // Records an event. Non-blocking.
   static void Record(Event event);
 
+  // Returns an activity_id for TraceMe::ActivityStart.
+  static uint64 NewActivityId();
+
  private:
   class ThreadLocalRecorder;
 

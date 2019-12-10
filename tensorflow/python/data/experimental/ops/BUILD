@@ -479,7 +479,6 @@ py_library(
         ":snapshot",
         ":stats_ops",
         ":take_while_ops",
-        ":testing",
         ":threadpool",
         ":unique",
         ":writers",

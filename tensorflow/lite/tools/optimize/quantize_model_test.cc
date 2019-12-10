@@ -1038,6 +1038,65 @@ TEST_F(QuantizeLSTMTest, VerifyLSTM) {
   }
 }
 
+class QuantizeLSTM2Test : public QuantizeModelTest {
+ protected:
+  QuantizeLSTM2Test() {
+    input_model_ = ReadModel(internal::kLstmCalibrated2);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizeLSTM2Test, VerifyLSTM) {
+  // Quantize model.
+  auto status = QuantizeModel(&builder_, &model_, TensorType_FLOAT32,
+                              TensorType_FLOAT32, &error_reporter_);
+  ASSERT_EQ(kTfLiteOk, status);
+
+  // Read expected model.
+  auto expected_fb_model = ReadModel(internal::kLstmQuantized2);
+  auto expected_read_only_model = expected_fb_model->GetModel();
+  ModelT expected_model;
+  expected_read_only_model->UnPackTo(&expected_model);
+
+  // Comparison.
+  ASSERT_EQ(model_.subgraphs.size(), expected_model.subgraphs.size());
+  for (size_t subgraph_idx = 0; subgraph_idx < model_.subgraphs.size();
+       subgraph_idx++) {
+    const auto graph = model_.subgraphs[subgraph_idx].get();
+    const auto expected_graph = expected_model.subgraphs[subgraph_idx].get();
+    ASSERT_EQ(graph->tensors.size(), expected_graph->tensors.size());
+    for (size_t i = 0; i < graph->tensors.size(); i++) {
+      const auto tensor = graph->tensors[i].get();
+      const auto expected_tensor = expected_graph->tensors[i].get();
+      EXPECT_EQ(tensor->buffer, expected_tensor->buffer);
+      EXPECT_EQ(tensor->is_variable, expected_tensor->is_variable);
+      EXPECT_EQ(tensor->shape, expected_tensor->shape);
+      EXPECT_EQ(tensor->name, expected_tensor->name);
+      EXPECT_EQ(tensor->type, expected_tensor->type);
+      const auto quantization_params = tensor->quantization.get();
+      const auto expected_quantization_params =
+          expected_tensor->quantization.get();
+      if (quantization_params != nullptr ||
+          expected_quantization_params != nullptr) {
+        EXPECT_NE(quantization_params, nullptr);
+        EXPECT_NE(expected_quantization_params, nullptr);
+        EXPECT_EQ(quantization_params->scale,
+                  expected_quantization_params->scale);
+        EXPECT_EQ(quantization_params->zero_point,
+                  expected_quantization_params->zero_point);
+      }
+    }
+  }
+  ASSERT_EQ(model_.buffers.size(), expected_model.buffers.size());
+  for (size_t buffer_idx = 0; buffer_idx < model_.buffers.size();
+       ++buffer_idx) {
+    const auto buffer = model_.buffers[buffer_idx].get()->data;
+    const auto expected_buffer = expected_model.buffers[buffer_idx].get()->data;
+    EXPECT_EQ(buffer, expected_buffer);
+  }
+}
+
 class QuantizeFCTest : public QuantizeModelTest {
  protected:
   QuantizeFCTest() {
@@ -1122,6 +1181,55 @@ TEST_F(QuantizeCustomOpTest, VerifyMixedQuantization) {
               op_codes[i]);
     ASSERT_EQ(subgraph->tensors[op->inputs[0]]->type, op_input_types[i]);
   }
+}
+
+class QuantizeUnpackTest : public QuantizeModelTest {
+ protected:
+  QuantizeUnpackTest() {
+    input_model_ = ReadModel(internal::kModelWithUnpack);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizeUnpackTest, VerifyUnpack) {
+  auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
+
+  ASSERT_EQ(kTfLiteOk, status);
+
+  const auto subgraph = model_.subgraphs[0].get();
+  auto op = subgraph->operators[1].get();
+
+  auto float_graph = readonly_model_->subgraphs()->Get(0);
+
+  ASSERT_EQ(model_.operator_codes[op->opcode_index].get()->builtin_code,
+            BuiltinOperator_UNPACK);
+
+  // Get unpack input and output tensors
+  auto unpack_input = subgraph->tensors[op->inputs[0]].get();
+  auto unpack_output_0 = subgraph->tensors[op->outputs[0]].get();
+  auto unpack_output_1 = subgraph->tensors[op->outputs[1]].get();
+
+  // Verify Unpack input is quantized.
+  ASSERT_EQ(float_graph->tensors()->Get(op->inputs[0])->type(),
+            TensorType_FLOAT32);
+  EXPECT_EQ(unpack_input->type, TensorType_INT8);
+
+  // The model should only have one input and 2 outputs.
+  EXPECT_EQ(subgraph->inputs.size(), 1);
+  EXPECT_EQ(subgraph->outputs.size(), 2);
+
+  // Ensure quantization parameters before and after unpack
+  // are preserved after quantization for all outputs of
+  // unpack.
+  EXPECT_FLOAT_EQ(unpack_input->quantization->scale[0],
+                  unpack_output_0->quantization->scale[0]);
+  EXPECT_FLOAT_EQ(unpack_input->quantization->scale[0],
+                  unpack_output_1->quantization->scale[0]);
+  EXPECT_FLOAT_EQ(unpack_input->quantization->zero_point[0],
+                  unpack_output_0->quantization->zero_point[0]);
+  EXPECT_FLOAT_EQ(unpack_input->quantization->zero_point[0],
+                  unpack_output_1->quantization->zero_point[0]);
 }
 
 }  // namespace

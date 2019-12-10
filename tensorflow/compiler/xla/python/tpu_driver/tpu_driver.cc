@@ -88,12 +88,12 @@ uint64_t ByteSizeOfPrimitiveType(xla::PrimitiveType primitive_type) {
 /*static*/ xla::StatusOr<std::unique_ptr<TpuDriver>> TpuDriverRegistry::Open(
     const TpuDriverConfig& config) {
   for (const auto& driver : *GetDriverRegistryMap()) {
-    if (absl::StartsWith(config.worker, driver.first)) {
+    if (absl::StartsWith(config.worker(), driver.first)) {
       return driver.second(config);
     }
   }
   return xla::NotFound("Unable to find driver in registry given worker: %s",
-                       config.worker);
+                       config.worker());
 }
 
 uint64_t ComputeBytesFromShape(const xla::ShapeProto& shape) {

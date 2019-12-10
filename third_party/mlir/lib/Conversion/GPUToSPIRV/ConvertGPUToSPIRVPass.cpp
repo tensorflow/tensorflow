@@ -19,6 +19,7 @@
 // into a spv.module operation
 //
 //===----------------------------------------------------------------------===//
+#include "mlir/Conversion/GPUToSPIRV/ConvertGPUToSPIRVPass.h"
 #include "mlir/Conversion/GPUToSPIRV/ConvertGPUToSPIRV.h"
 #include "mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
@@ -27,6 +28,7 @@
 #include "mlir/Dialect/SPIRV/SPIRVLowering.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassRegistry.h"
 
 using namespace mlir;
 
@@ -41,7 +43,23 @@ namespace {
 ///
 /// 2) Lower the body of the spirv::ModuleOp.
 class GPUToSPIRVPass : public ModulePass<GPUToSPIRVPass> {
+public:
+  GPUToSPIRVPass(ArrayRef<int64_t> workGroupSize)
+      : workGroupSize(workGroupSize.begin(), workGroupSize.end()) {}
   void runOnModule() override;
+
+private:
+  SmallVector<int64_t, 3> workGroupSize;
+};
+
+/// Command line option to specify the workgroup size.
+struct GPUToSPIRVPassOptions : public PassOptions<GPUToSPIRVPassOptions> {
+  List<unsigned> workGroupSize{
+      *this, "workgroup-size",
+      llvm::cl::desc(
+          "Workgroup Sizes in the SPIR-V module for x, followed by y, followed "
+          "by z dimension of the dispatch (others will be ignored)"),
+      llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated};
 };
 } // namespace
 
@@ -49,78 +67,45 @@ void GPUToSPIRVPass::runOnModule() {
   auto context = &getContext();
   auto module = getModule();
 
-  SmallVector<Operation *, 4> spirvModules;
-  module.walk([&module, &spirvModules](FuncOp funcOp) {
-    if (!gpu::GPUDialect::isKernel(funcOp)) {
-      return;
+  SmallVector<Operation *, 1> kernelModules;
+  OpBuilder builder(context);
+  module.walk([&builder, &kernelModules](ModuleOp moduleOp) {
+    if (moduleOp.getAttrOfType<UnitAttr>(
+            gpu::GPUDialect::getKernelModuleAttrName())) {
+      // For each kernel module (should be only 1 for now, but that is not a
+      // requirement here), clone the module for conversion because the
+      // gpu.launch function still needs the kernel module.
+      builder.setInsertionPoint(moduleOp.getOperation());
+      kernelModules.push_back(builder.clone(*moduleOp.getOperation()));
     }
-    OpBuilder builder(module.getBodyRegion());
-    // Create a new spirv::ModuleOp for this function, and clone the
-    // function into it.
-    // TODO : Generalize this to account for different extensions,
-    // capabilities, extended_instruction_sets, other addressing models
-    // and memory models.
-    auto spvModule = builder.create<spirv::ModuleOp>(
-        funcOp.getLoc(),
-        builder.getI32IntegerAttr(
-            static_cast<int32_t>(spirv::AddressingModel::Logical)),
-        builder.getI32IntegerAttr(
-            static_cast<int32_t>(spirv::MemoryModel::GLSL450)),
-        builder.getStrArrayAttr(
-            spirv::stringifyCapability(spirv::Capability::Shader)),
-        builder.getStrArrayAttr(spirv::stringifyExtension(
-            spirv::Extension::SPV_KHR_storage_buffer_storage_class)));
-    // Hardwire the capability to be Shader.
-    OpBuilder moduleBuilder(spvModule.getOperation()->getRegion(0));
-    moduleBuilder.clone(*funcOp.getOperation());
-    spirvModules.push_back(spvModule);
   });
 
-  /// Dialect conversion to lower the functions with the spirv::ModuleOps.
-  SPIRVBasicTypeConverter basicTypeConverter;
-  SPIRVTypeConverter typeConverter(&basicTypeConverter);
+  SPIRVTypeConverter typeConverter;
   OwningRewritePatternList patterns;
-  populateGPUToSPIRVPatterns(context, typeConverter, patterns);
+  populateGPUToSPIRVPatterns(context, typeConverter, patterns, workGroupSize);
   populateStandardToSPIRVPatterns(context, typeConverter, patterns);
 
   ConversionTarget target(*context);
   target.addLegalDialect<spirv::SPIRVDialect>();
-  target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-    // TODO(ravishankarm) : Currently lowering does not support handling
-    // function conversion of non-kernel functions. This is to be added.
+  target.addDynamicallyLegalOp<FuncOp>(
+      [&](FuncOp op) { return typeConverter.isSignatureLegal(op.getType()); });
 
-    // For kernel functions, verify that the signature is void(void).
-    return gpu::GPUDialect::isKernel(op) && op.getNumResults() == 0 &&
-           op.getNumArguments() == 0;
-  });
-
-  if (failed(applyFullConversion(spirvModules, target, patterns,
+  if (failed(applyFullConversion(kernelModules, target, patterns,
                                  &typeConverter))) {
     return signalPassFailure();
   }
-
-  // After the SPIR-V modules have been generated, some finalization is needed
-  // for the entry functions. For example, adding spv.EntryPoint op,
-  // spv.ExecutionMode op, etc.
-  for (auto *spvModule : spirvModules) {
-    for (auto op :
-         cast<spirv::ModuleOp>(spvModule).getBlock().getOps<FuncOp>()) {
-      if (gpu::GPUDialect::isKernel(op)) {
-        OpBuilder builder(op.getContext());
-        builder.setInsertionPointAfter(op);
-        if (failed(spirv::finalizeEntryFunction(op, builder))) {
-          return signalPassFailure();
-        }
-        op.getOperation()->removeAttr(Identifier::get(
-            gpu::GPUDialect::getKernelFuncAttrName(), op.getContext()));
-      }
-    }
-  }
 }
 
-OpPassBase<ModuleOp> *createConvertGPUToSPIRVPass() {
-  return new GPUToSPIRVPass();
+std::unique_ptr<OpPassBase<ModuleOp>>
+mlir::createConvertGPUToSPIRVPass(ArrayRef<int64_t> workGroupSize) {
+  return std::make_unique<GPUToSPIRVPass>(workGroupSize);
 }
 
-static PassRegistration<GPUToSPIRVPass>
-    pass("convert-gpu-to-spirv", "Convert GPU dialect to SPIR-V dialect");
+static PassRegistration<GPUToSPIRVPass, GPUToSPIRVPassOptions>
+    pass("convert-gpu-to-spirv", "Convert GPU dialect to SPIR-V dialect",
+         [](const GPUToSPIRVPassOptions &passOptions) {
+           SmallVector<int64_t, 3> workGroupSize;
+           workGroupSize.assign(passOptions.workGroupSize.begin(),
+                                passOptions.workGroupSize.end());
+           return std::make_unique<GPUToSPIRVPass>(workGroupSize);
+         });

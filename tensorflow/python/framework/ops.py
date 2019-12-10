@@ -439,29 +439,32 @@ class Tensor(_TensorLike):
     for more details of what a shape represents.
 
     The inferred shape of a tensor is used to provide shape
-    information without having to launch the graph in a session. This
-    can be used for debugging, and providing early error messages. For
+    information without having to execute the underlying kernel. This
+    can be used for debugging and providing early error messages. For
     example:
 
     ```python
-    c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    >>> c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    >>> print(c.shape) # will be TensorShape([2, 3])
+    (2, 3)
 
-    print(c.shape)
-    ==> TensorShape([Dimension(2), Dimension(3)])
-
-    d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
-
-    print(d.shape)
-    ==> TensorShape([Dimension(4), Dimension(2)])
+    >>> d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
+    >>> print(d.shape)
+    (4, 2)
 
     # Raises a ValueError, because `c` and `d` do not have compatible
     # inner dimensions.
-    e = tf.matmul(c, d)
+    >>> e = tf.matmul(c, d)
+    Traceback (most recent call last):
+        ...
+    tensorflow.python.framework.errors_impl.InvalidArgumentError: Matrix
+    size-incompatible: In[0]: [2,3], In[1]: [4,2] [Op:MatMul] name: MatMul/
 
-    f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
+    # This works because we have compatible shapes.
+    >>> f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
+    >>> print(f.shape)
+    (3, 4)
 
-    print(f.shape)
-    ==> TensorShape([Dimension(3), Dimension(4)])
     ```
 
     In some cases, the inferred shape may have unknown dimensions. If
@@ -470,7 +473,7 @@ class Tensor(_TensorLike):
     inferred shape.
 
     Returns:
-      A `TensorShape` representing the shape of this tensor.
+      A `tf.TensorShape` representing the shape of this tensor.
 
     """
     if self._shape_val is None:
@@ -570,7 +573,7 @@ class Tensor(_TensorLike):
     return self.shape.ndims
 
   def get_shape(self):
-    """Alias of Tensor.shape."""
+    """Alias of `tf.Tensor.shape`."""
     return self.shape
 
   def set_shape(self, shape):
@@ -1206,18 +1209,26 @@ def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
   objects. It accepts `Tensor` objects, numpy arrays, Python lists,
   and Python scalars. For example:
 
-  ```python
-  import numpy as np
+  >>> def my_func(arg):
+  ...   arg = tf.convert_to_tensor(arg, dtype=tf.float32)
+  ...   return arg
 
-  def my_func(arg):
-    arg = tf.convert_to_tensor(arg, dtype=tf.float32)
-    return tf.matmul(arg, arg) + arg
-
-  # The following calls are equivalent.
-  value_1 = my_func(tf.constant([[1.0, 2.0], [3.0, 4.0]]))
-  value_2 = my_func([[1.0, 2.0], [3.0, 4.0]])
-  value_3 = my_func(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32))
-  ```
+  >>> # The following calls are equivalent.
+  >>> value_1 = my_func(tf.constant([[1.0, 2.0], [3.0, 4.0]]))
+  >>> print(value_1)
+  tf.Tensor(
+    [[1. 2.]
+     [3. 4.]], shape=(2, 2), dtype=float32)
+  >>> value_2 = my_func([[1.0, 2.0], [3.0, 4.0]])
+  >>> print(value_2)
+  tf.Tensor(
+    [[1. 2.]
+     [3. 4.]], shape=(2, 2), dtype=float32)
+  >>> value_3 = my_func(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32))
+  >>> print(value_3)
+  tf.Tensor(
+    [[1. 2.]
+     [3. 4.]], shape=(2, 2), dtype=float32)
 
   This function can be useful when composing a new operation in Python
   (such as `my_func` in the example above). All standard Python op
@@ -3092,8 +3103,16 @@ class Graph(object):
               op = func_graph.get_operation_by_name(node.name)
             except KeyError:
               continue
+            outputs = op.outputs
+
+            if op.type == "StatefulPartitionedCall":
+              # Filter out any extra outputs (possibly added by function
+              # backpropagation rewriting).
+              num_outputs = len(node.attr["Tout"].list.type)
+              outputs = outputs[:num_outputs]
+
             node.attr["_output_shapes"].list.shape.extend(
-                [output.get_shape().as_proto() for output in op.outputs])
+                [output.get_shape().as_proto() for output in outputs])
 
     return graph, self._version
 
@@ -5042,10 +5061,16 @@ def device(device_name_or_function):
 def device_v2(device_name):
   """Specifies the device for ops created/executed in this context.
 
-  `device_name` can be fully specified, as in "/job:worker/task:1/device:cpu:0",
-  or partially specified, containing only a subset of the "/"-separated
-  fields. Any fields which are specified override device annotations from outer
-  scopes. For example:
+  This function specifies the device to be used for ops created/executed in a
+  particular context. Nested contexts will inherit and also create/execute
+  their ops on the specified device. If a specific device is not required,
+  consider not using this function so that a device can be automatically
+  assigned.  In general the use of this function is optional. `device_name` can
+  be fully specified, as in "/job:worker/task:1/device:cpu:0", or partially
+  specified, containing only a subset of the "/"-separated fields. Any fields
+  which are specified will override device annotations from outer scopes.
+
+  For example:
 
   ```python
   with tf.device('/job:foo'):
@@ -6171,6 +6196,9 @@ def name_scope(name, default_name=None, values=None, skip_on_eager=True):
   if not in_eager_mode:
     return internal_name_scope_v1(name, default_name, values)
 
+  if skip_on_eager:
+    return NullContextmanager()
+
   name = default_name if name is None else name
   if values:
     # The presence of a graph tensor in `values` overrides the context.
@@ -6181,9 +6209,6 @@ def name_scope(name, default_name=None, values=None, skip_on_eager=True):
     # pylint: enable=unidiomatic-typecheck
     if graph_value is not None:
       return graph_value.graph.name_scope(name)
-
-  if skip_on_eager:
-    return NullContextmanager()
 
   return name_scope_v2(name or "")
 

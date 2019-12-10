@@ -1847,6 +1847,30 @@ TEST_F(LiteralUtilTest, InvalidProtoNoValues) {
               HasSubstr("Expected 3 elements in LiteralProto"));
 }
 
+TEST_F(LiteralUtilTest, ValidProtoNoValues) {
+  // Proto contains a shape, but no values.
+  LiteralProto proto;
+  *proto.mutable_shape() = ShapeUtil::MakeShape(F32, {3}).ToProto();
+  Status status =
+      Literal::CreateFromProto(proto, /*prohibit_empty_literal=*/false)
+          .status();
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(LiteralUtilTest, ValidProtoWithClearedValues) {
+  auto literal = LiteralUtil::CreateR1<bool>({true, false, true});
+  LiteralProto proto = literal.ToProto();
+  EXPECT_EQ(proto.preds_size(), 3);
+
+  // Clear values.
+  proto.clear_preds();
+  EXPECT_EQ(proto.preds_size(), 0);
+  Status status =
+      Literal::CreateFromProto(proto, /*prohibit_empty_literal=*/false)
+          .status();
+  EXPECT_TRUE(status.ok());
+}
+
 TEST_F(LiteralUtilTest, InvalidProtoNoShape) {
   // Proto contains values, but no shape.
   LiteralProto proto;

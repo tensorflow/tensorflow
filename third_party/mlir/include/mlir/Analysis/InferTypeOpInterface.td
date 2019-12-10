@@ -23,9 +23,7 @@
 #ifndef MLIR_INFERTYPEOPINTERFACE
 #define MLIR_INFERTYPEOPINTERFACE
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 // OpInterface to compute the return type of an operation. The arguments match
 // those in Operation::create with the exception that the location is optional
@@ -39,20 +37,21 @@ def InferTypeOpInterface : OpInterface<"InferTypeOpInterface"> {
   }];
 
   let methods = [
-    InterfaceMethod<
-      /*desc=*/[{Returns the return types that an op would generate.
+    StaticInterfaceMethod<
+      /*desc=*/[{Infer the return types that an op would generate.
 
       The method takes an optional location which, if set, will be used to
       report errors on. The operands and attributes correspond to those with
       which an Operation would be created (e.g., as used in Operation::create)
       and the regions of the op.
       }],
-      /*retTy=*/"SmallVector<Type, 2>",
+      /*retTy=*/"LogicalResult",
       /*methodName=*/"inferReturnTypes",
       /*args=*/(ins "llvm::Optional<Location>":$location,
-                    "ArrayRef<Value*>":$operands,
+                    "ValueRange":$operands,
                     "ArrayRef<NamedAttribute>":$attributes,
-                    "ArrayRef<Region>":$regions)
+                    "RegionRange":$regions,
+                    "SmallVectorImpl<Type>&":$inferedReturnTypes)
     >,
     StaticInterfaceMethod<
       /*desc=*/"Returns whether two array of types are compatible result types"

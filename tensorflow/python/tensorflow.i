@@ -21,8 +21,6 @@ limitations under the License.
 
 %include "tensorflow/python/client/tf_session.i"
 
-%include "tensorflow/python/lib/core/bfloat16.i"
-
 %include "tensorflow/python/lib/io/file_io.i"
 
 %include "tensorflow/python/lib/io/py_record_reader.i"
@@ -32,6 +30,5 @@ limitations under the License.
 %include "tensorflow/python/grappler/item.i"
 %include "tensorflow/python/grappler/tf_optimizer.i"
 %include "tensorflow/python/grappler/cost_analyzer.i"
-%include "tensorflow/python/grappler/model_analyzer.i"
 
 %include "tensorflow/compiler/mlir/python/mlir.i"

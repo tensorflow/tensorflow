@@ -42,13 +42,13 @@ static std::shared_ptr<Device> MakeDevice(const std::string& platform_name,
                                           int id, int local_device_ordinal) {
   CHECK_EQ(platform_name, "tpu");
   CHECK_EQ(id, local_device_ordinal);  // Every device must be local for now.
-  return std::make_shared<TpuDevice>(id, local_device_ordinal);
+  return std::make_shared<TpuDevice>(id, local_device_ordinal, "tpu");
 }
 
 StatusOr<std::shared_ptr<PyTpuClient>> PyTpuClient::Get(
     const std::string& worker) {
   tpu_driver::TpuDriverConfig driver_config;
-  driver_config.worker = worker;
+  driver_config.set_worker(worker);
   auto client_status = tpu_driver::TpuDriverRegistry::Open(driver_config);
 
   if (!client_status.ok()) {
@@ -258,7 +258,7 @@ void PyTpuBuffer::Delete() {
 }
 
 Status PyTpuBuffer::CopyToHostAsync() {
-  std::vector<std::unique_ptr<tpu_driver::Event>> transfer_events;
+  std::vector<std::shared_ptr<tpu_driver::Event>> transfer_events;
   std::shared_ptr<HostValue> host_value = std::make_shared<HostValue>();
 
   {
@@ -380,14 +380,17 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::CopyToDevice(
   }
 
   tpu_driver::TpuDriver* driver = client_->driver();
-  tpu_driver::BufferHandle* src_handle = src_device_buffer->handle.get();
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PyTpuBuffer> dst_buffer,
       CreateBuffer(
           on_host_shape_,
-          [driver, src_handle](tpu_driver::BufferHandle* dst_handle) {
-            return driver->TransferFromDeviceToDevice(src_handle, dst_handle,
-                                                      {});
+          [driver, src_device_buffer](tpu_driver::BufferHandle* dst_handle) {
+            std::vector<tpu_driver::Event*> src_wait_for_use;
+            for (auto& event : src_device_buffer->wait_for_use) {
+              src_wait_for_use.push_back(event.get());
+            }
+            return driver->TransferFromDeviceToDevice(
+                src_device_buffer->handle.get(), dst_handle, src_wait_for_use);
           },
           client_, dst_device_ordinal));
   // TODO(jiawenhao): This may be too pessimistic: it prevents future readers
@@ -456,7 +459,7 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::CreateBuffer(
   // for the initialization event in `wait_for_use` to finish first.
   std::vector<std::shared_ptr<tpu_driver::Event>> wait_for_use;
   if (initializer.has_value()) {
-    std::unique_ptr<tpu_driver::Event> init = initializer.value()(handle.get());
+    std::shared_ptr<tpu_driver::Event> init = initializer.value()(handle.get());
     wait_for_use.push_back(std::move(init));
   }
   auto device_buffer = std::make_shared<TpuSharedBuffer>(
@@ -538,7 +541,7 @@ PyTpuExecutable::ExecuteResult PyTpuExecutable::ExecuteHelper(
 
   xla::DeviceAssignmentProto device_assignment;
   CHECK(device_assignment_.Serialize(&device_assignment).ok());
-  std::unique_ptr<tpu_driver::Event> on_execute_finished =
+  std::shared_ptr<tpu_driver::Event> on_execute_finished =
       client_->driver()->ExecuteProgram(
           executables_[replica].get(), inputs,
           {output_buffer->DeviceBuffer()->handle.get()}, device_assignment,

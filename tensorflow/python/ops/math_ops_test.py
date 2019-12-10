@@ -441,7 +441,17 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     nums, divs = self.floatTestData()
     tf_result = math_ops.realdiv(nums, divs)
     np_result = np.divide(nums, divs)
-    self.assertAllEqual(tf_result, np_result)
+    self.assertAllClose(tf_result, np_result)
+
+  def testDivideType(self):
+    a = array_ops.constant([2], dtype=dtypes.int32)
+    # Since __future__.division is effect, we should always upgrade to float64
+    b = math_ops.divide(a, 1)
+    self.assertEqual(b.dtype, dtypes.float64)
+    self.assertEqual(2.0, self.evaluate(b))
+    c = math_ops.divide(a, 4)
+    self.assertEqual(c.dtype, dtypes.float64)
+    self.assertEqual(0.5, self.evaluate(c))
 
   def testComplexDiv(self):
     foo = array_ops.constant([1. + 3.j])
@@ -498,7 +508,7 @@ class DivNoNanTest(test_util.TensorFlowTestCase):
 
       with test_util.use_gpu():
         tf_result = math_ops.div_no_nan(nums, divs)
-        self.assertAllEqual(tf_result, np_result)
+        self.assertAllClose(tf_result, np_result)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -687,6 +697,43 @@ class RangeTest(test_util.TensorFlowTestCase):
     tensor = ops.convert_to_tensor(values)
     self.assertAllEqual((5,), tensor.get_shape().as_list())
     self.assertAllEqual(values, self.evaluate(tensor))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class ScalarOptimizationTest(test_util.TensorFlowTestCase):
+
+  def testAddZero(self):
+    x = constant_op.constant(1)
+    y = math_ops.add_v2(x, 0)
+    self.assertAllEqual(x, y)
+    self.assertIs(x, y)
+
+    # Optimization not applied
+    y = math_ops.add_v2(x, constant_op.constant(0))
+    self.assertAllEqual(x, y)
+    self.assertIsNot(x, y)
+
+  def testSubtractZero(self):
+    x = constant_op.constant(1)
+    y = math_ops.subtract(x, 0)
+    self.assertAllEqual(x, y)
+    self.assertIs(x, y)
+
+    # Optimization not applied
+    y = math_ops.subtract(x, constant_op.constant(0))
+    self.assertAllEqual(x, y)
+    self.assertIsNot(x, y)
+
+  def testMultiplyOne(self):
+    x = constant_op.constant(1)
+    y = math_ops.multiply(x, 1)
+    self.assertAllEqual(x, y)
+    self.assertIs(x, y)
+
+    # Optimization not applied
+    y = math_ops.multiply(x, constant_op.constant(1))
+    self.assertAllEqual(x, y)
+    self.assertIsNot(x, y)
 
 
 if __name__ == "__main__":

@@ -62,7 +62,7 @@ def main() {
   var b<2, 3> = [1, 2, 3, 4, 5, 6];
 
   # transpose() and print() are the only builtin, the following will transpose
-  # b and perform an element-wise multiplication before printing the result.
+  # a and b and perform an element-wise multiplication before printing the result.
   print(transpose(a) * transpose(b));
 }
 ```
@@ -86,15 +86,15 @@ def main() {
   var b<2, 3> = [1, 2, 3, 4, 5, 6];
 
   # This call will specialize `multiply_transpose` with <2, 3> for both
-  # arguments and deduce a return type of <2, 2> in initialization of `c`.
+  # arguments and deduce a return type of <3, 2> in initialization of `c`.
   var c = multiply_transpose(a, b);
 
   # A second call to `multiply_transpose` with <2, 3> for both arguments will
-  # reuse the previously specialized and inferred version and return `<2, 2>`
+  # reuse the previously specialized and inferred version and return <3, 2>.
   var d = multiply_transpose(b, a);
 
-  # A new call with `<2, 2>` for both dimensions will trigger another
-  # specialization of `multiply_transpose`.
+  # A new call with <3, 2> (instead of <2, 3>) for both dimensions will
+  # trigger another specialization of `multiply_transpose`.
   var e = multiply_transpose(c, d);
 
   # Finally, calling into `multiply_transpose` with incompatible shape will
@@ -145,7 +145,7 @@ Module:
           var: b @test/ast.toy:21:30
           var: c @test/ast.toy:21:33
         ]
-      VarDecl e<> @test/ast.toy:24:3
+      VarDecl f<> @test/ast.toy:24:3
         Call 'multiply_transpose' [ @test/ast.toy:24:11
           Call 'transpose' [ @test/ast.toy:24:30
             var: a @test/ast.toy:24:40

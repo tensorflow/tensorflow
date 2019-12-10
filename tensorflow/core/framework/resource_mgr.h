@@ -108,9 +108,11 @@ class ScopedStepContainer {
 
   ~ScopedStepContainer() { CleanUp(); }
 
-  void CleanUp() {
-    mutex_lock ml(mu_);
+  void CleanUp() NO_THREAD_SAFETY_ANALYSIS {
+    // NOTE(mrry): Avoid acquiring the mutex in the case that the container is
+    // clean.
     if (dirty_) {
+      mutex_lock ml(mu_);
       cleanup_(container_);
       dirty_ = false;
     }
@@ -148,7 +150,7 @@ class ScopedStepContainer {
   const int64 step_id_;
   const std::function<void(const string&)> cleanup_;
   mutex mu_;
-  mutable bool dirty_ GUARDED_BY(mu_);
+  mutable std::atomic<bool> dirty_ GUARDED_BY(mu_);
 };
 
 class ResourceMgr {

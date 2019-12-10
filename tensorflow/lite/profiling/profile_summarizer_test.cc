@@ -141,7 +141,7 @@ TEST(ProfileSummarizerTest, InterpreterPlusProfilingDetails) {
   summarizer.ProcessProfiles(profiler.GetProfileEvents(), *interpreter);
   auto output = summarizer.GetOutputString();
   // TODO(shashishekhar): Add a better test here.
-  ASSERT_TRUE(output.find("SimpleOpEval:Profile") != std::string::npos)
+  ASSERT_TRUE(output.find("SimpleOpEval/Profile") != std::string::npos)
       << output;
 }
 

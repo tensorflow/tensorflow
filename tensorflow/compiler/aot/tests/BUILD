@@ -377,7 +377,7 @@ tf_cc_test(
         ":test_graph_tfmatmulandadd_with_profiling_mlir_bridge",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_profile_printer",
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",

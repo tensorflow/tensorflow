@@ -23,9 +23,7 @@
 #ifndef SPIRV_CAST_OPS
 #define SPIRV_CAST_OPS
 
-#ifndef SPIRV_BASE
-include "mlir/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
+include "mlir/Dialect/SPIRV/SPIRVBase.td"
 
 class SPV_CastOp<string mnemonic, Type resultType, Type operandType,
                  list<OpTrait> traits = []> :
@@ -74,7 +72,7 @@ def SPV_BitcastOp : SPV_Op<"Bitcast", [NoSideEffect]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     bitcast-op ::= ssa-id `=` `spv.Bitcast` ssa-use
                    `:` operand-type `to` result-type
     ```
@@ -98,6 +96,8 @@ def SPV_BitcastOp : SPV_Op<"Bitcast", [NoSideEffect]> {
 
   let parser = [{ return mlir::impl::parseCastOp(parser, result); }];
   let printer = [{ mlir::impl::printCastOp(this->getOperation(), p); }];
+
+  let hasCanonicalizer = 1;
 }
 
 // -----
@@ -118,7 +118,7 @@ def SPV_ConvertFToSOp : SPV_CastOp<"ConvertFToS", SPV_Integer, SPV_Float, []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     convert-f-to-s-op ::= ssa-id `=` `spv.ConvertFToSOp` ssa-use
                           `:` operand-type `to` result-type
     ```
@@ -151,7 +151,7 @@ def SPV_ConvertFToUOp : SPV_CastOp<"ConvertFToU", SPV_Integer, SPV_Float, []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     convert-f-to-u-op ::= ssa-id `=` `spv.ConvertFToUOp` ssa-use
                           `:` operand-type `to` result-type
     ```
@@ -182,7 +182,7 @@ def SPV_ConvertSToFOp : SPV_CastOp<"ConvertSToF", SPV_Float, SPV_Integer, []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     convert-s-to-f-op ::= ssa-id `=` `spv.ConvertSToFOp` ssa-use
                           `:` operand-type `to` result-type
     ```
@@ -213,7 +213,7 @@ def SPV_ConvertUToFOp : SPV_CastOp<"ConvertUToF", SPV_Float, SPV_Integer, []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     convert-u-to-f-op ::= ssa-id `=` `spv.ConvertUToFOp` ssa-use
                           `:` operand-type `to` result-type
     ```
@@ -246,7 +246,7 @@ def SPV_FConvertOp : SPV_CastOp<"FConvert", SPV_Float, SPV_Float, []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     f-convert-op ::= ssa-id `=` `spv.FConvertOp` ssa-use
                      `:` operand-type `to` result-type
     ```
@@ -280,7 +280,7 @@ def SPV_SConvertOp : SPV_CastOp<"SConvert", SPV_Integer, SPV_Integer, []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     s-convert-op ::= ssa-id `=` `spv.SConvertOp` ssa-use
                      `:` operand-type `to` result-type
     ```
@@ -315,7 +315,7 @@ def SPV_UConvertOp : SPV_CastOp<"UConvert", SPV_Integer, SPV_Integer, []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     u-convert-op ::= ssa-id `=` `spv.UConvertOp` ssa-use
                  `:` operand-type `to` result-type
     ```

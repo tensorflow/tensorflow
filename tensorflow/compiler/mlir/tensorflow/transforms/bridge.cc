@@ -26,18 +26,24 @@ limitations under the License.
 namespace mlir {
 namespace TFTPU {
 
-void createTPUBridge(OpPassManager &pm) {
+void CreateTPUBridge(OpPassManager &pm) {
   OpPassManager &func_pm = pm.nest<FuncOp>();
   func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
   func_pm.addPass(CreateTPUClusterFormationPass());
   func_pm.addPass(createCanonicalizerPass());
+  // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
+  // because DecomposeResourceOpsPass uses pattern rewriter which hoists
+  // changed constants out of tf_device.Launch.
+  func_pm.addPass(TFDevice::CreateDecomposeResourceOpsPass());
   func_pm.addPass(tf_executor::CreateTFExecutorConstantSinkingPass());
   func_pm.addPass(TFDevice::CreateResourceOpLiftingPass());
 
+  pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
   pm.addPass(CreateTPURewritePass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
+  pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateToIslandPass());
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
@@ -52,7 +58,7 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging) {
     bridge.addInstrumentation(std::make_unique<tensorflow::BridgeLogger>());
 
   // Populate a passmanager with the list of passes that implement the bridge.
-  createTPUBridge(bridge);
+  CreateTPUBridge(bridge);
 
   // Run the bridge on the module, in case of failure, the `diag_handler`
   // converts MLIR errors emitted to the MLIRContext into a tensorflow::Status.
@@ -67,14 +73,17 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging) {
 namespace TF {
 
 tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
-                                                 bool enable_logging) {
+                                                 bool enable_logging,
+                                                 bool enable_inliner) {
   PassManager bridge(module.getContext());
 
   // Add logger to bridge passmanager.
   if (enable_logging)
     bridge.addInstrumentation(std::make_unique<tensorflow::BridgeLogger>());
 
-  CreateTFStandardPipeline(bridge);
+  StandardPipelineOptions pipeline_options;
+  pipeline_options.enable_inliner.setValue(enable_inliner);
+  CreateTFStandardPipeline(bridge, pipeline_options);
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
   LogicalResult result = bridge.run(module);
   (void)result;

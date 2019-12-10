@@ -155,7 +155,8 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
   uint32_t flags =
       is_signed ? mlir::quant::QuantizationFlags::FlagValue::Signed : 0;
 
-  if (0 != quant_params.quantized_dimension) {
+  // Scale size can't be zero as it is checked before.
+  if (quant_params.scale.size() != 1) {
     llvm::SmallVector<double, 4> scales(quant_params.scale.begin(),
                                         quant_params.scale.end());
     return mlir::quant::UniformQuantizedPerAxisType::get(
@@ -879,11 +880,8 @@ static OwningModuleRef FlatBufferFileToMlirTrans(llvm::SourceMgr* source_mgr,
       mlir::FileLineColLoc::get(input->getBufferIdentifier(), 0, 0, context);
 
   // Parses output_arrays_order from command line option.
-  absl::flat_hash_set<std::string> output_set;
-  std::vector<std::string> output_arrays_order;
-  if (!tensorflow::ParseOutputArrayInfo(output_arrays_string, &output_set,
-                                        &output_arrays_order)
-           .ok()) {
+  std::vector<std::string> outputs;
+  if (!tensorflow::ParseOutputArrayInfo(output_arrays_string, &outputs).ok()) {
     return emitError(loc, "parsing output array info failed ")
                << output_arrays_string,
            nullptr;
@@ -891,7 +889,7 @@ static OwningModuleRef FlatBufferFileToMlirTrans(llvm::SourceMgr* source_mgr,
 
   return tflite::FlatBufferToMlir(
       absl::string_view(input->getBufferStart(), input->getBufferSize()),
-      context, loc, output_arrays_order);
+      context, loc, outputs);
 }
 
 static mlir::TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(

@@ -24,10 +24,9 @@
 #define MLIR_DIALECT_STANDARDOPS_OPS_H
 
 #include "mlir/Analysis/CallInterfaces.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Dialect.h"
-#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
 
 // Pull in all enum type definitions and utility function declarations.
@@ -179,9 +178,9 @@ public:
   using Op::Op;
 
   static void build(Builder *builder, OperationState &result, Value *srcMemRef,
-                    ArrayRef<Value *> srcIndices, Value *destMemRef,
-                    ArrayRef<Value *> destIndices, Value *numElements,
-                    Value *tagMemRef, ArrayRef<Value *> tagIndices,
+                    ValueRange srcIndices, Value *destMemRef,
+                    ValueRange destIndices, Value *numElements,
+                    Value *tagMemRef, ValueRange tagIndices,
                     Value *stride = nullptr,
                     Value *elementsPerStride = nullptr);
 
@@ -191,7 +190,7 @@ public:
   unsigned getSrcMemRefRank() {
     return getSrcMemRef()->getType().cast<MemRefType>().getRank();
   }
-  // Returns the source memerf indices for this DMA operation.
+  // Returns the source memref indices for this DMA operation.
   operand_range getSrcIndices() {
     return {getOperation()->operand_begin() + 1,
             getOperation()->operand_begin() + 1 + getSrcMemRefRank()};
@@ -304,7 +303,7 @@ public:
   using Op::Op;
 
   static void build(Builder *builder, OperationState &result, Value *tagMemRef,
-                    ArrayRef<Value *> tagIndices, Value *numElements);
+                    ValueRange tagIndices, Value *numElements);
 
   static StringRef getOperationName() { return "std.dma_wait"; }
 
@@ -338,7 +337,7 @@ void printDimAndSymbolList(Operation::operand_iterator begin,
 
 /// Parses dimension and symbol list and returns true if parsing failed.
 ParseResult parseDimAndSymbolList(OpAsmParser &parser,
-                                  SmallVector<Value *, 4> &operands,
+                                  SmallVectorImpl<Value *> &operands,
                                   unsigned &numDims);
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, SubViewOp::Range &range);

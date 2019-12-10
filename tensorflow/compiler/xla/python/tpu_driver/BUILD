@@ -1,4 +1,4 @@
-load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library_cc")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library_cc")
 load(
     "//tensorflow/compiler/xla/python/tpu_driver:platform/external/tools.bzl",
     "external_deps",
@@ -32,6 +32,11 @@ tf_proto_library_cc(
 )
 
 cc_library(
+    name = "c_api",
+    hdrs = ["c_api.h"],
+)
+
+cc_library(
     name = "tpu_driver",
     srcs = [
         "tpu_driver.cc",
@@ -58,6 +63,7 @@ cc_library(
     srcs = [
         "grpc_tpu_driver.cc",
     ],
+    hdrs = ["grpc_tpu_driver.h"],
     deps = [
         ":tpu_driver",
         "//tensorflow/core/platform:logging",
@@ -79,6 +85,7 @@ cc_library(
     deps = [
         ":tpu_driver",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/types:optional",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:stringpiece",

@@ -2,12 +2,9 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-load("//tensorflow:tensorflow.bzl", "VERSION")
-load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library_additional_deps_impl")
-load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "VERSION", "tf_cc_shared_object", "tf_custom_op_library_additional_deps_impl", "tf_native_cc_binary")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
 )
 load(
@@ -112,27 +109,6 @@ config_setting(
 )
 
 config_setting(
-    name = "chromiumos_x86_64",
-    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
-    values = {"cpu": "k8"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "chromiumos_arm64",
-    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
-    values = {"cpu": "arm"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "chromiumos_armv7",
-    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
-    values = {"cpu": "armeabi-v7a"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "emscripten",
     values = {"crosstool_top": "//external:android/emscripten"},
     visibility = ["//visibility:public"],
@@ -216,6 +192,12 @@ config_setting(
         "crosstool_top": "//tools/osx/crosstool:crosstool",
         "cpu": "ios_x86_64",
     },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "chromiumos",
+    values = {"crosstool_top": "//external:android/chromiumos"},
     visibility = ["//visibility:public"],
 )
 
@@ -471,11 +453,13 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
+        "//learning/brain/swift/x10/...",
         "//perftools/accelerators/xprof/api/...",
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",
         "//third_party/py/autograph/...",
+        "//third_party/swift/tensorflow/x10/...",
     ],
 )
 
@@ -494,7 +478,7 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/platform:build_config_root_bzl",
-        "//tensorflow/core/platform:cuda_build_defs_bzl",
+        "//tensorflow/core/platform/default:cuda_build_defs_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
         "//third_party/ngraph:build_defs_bzl",
@@ -606,6 +590,18 @@ tf_cc_shared_object(
         "//tensorflow/stream_executor:stream_executor_impl",
         "//tensorflow:tf_framework_version_script.lds",
     ] + tf_additional_binary_deps(),
+)
+
+# This is intended to be the same as tf_binary_additional_srcs:
+# https://github.com/tensorflow/tensorflow/blob/cd67f4f3723f9165aabedd0171aaadc6290636e5/tensorflow/tensorflow.bzl#L396-L425
+# And is usable in the "deps" attribute instead of the "srcs" attribute
+# as a workaround for https://github.com/tensorflow/tensorflow/issues/34117
+cc_import(
+    name = "libtensorflow_framework_import_lib",
+    shared_library = select({
+        "//tensorflow:macos": ":libtensorflow_framework.dylib",
+        "//conditions:default": ":libtensorflow_framework.so",
+    }),
 )
 
 # -------------------------------------------

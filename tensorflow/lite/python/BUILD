@@ -90,6 +90,7 @@ py_test(
         "no_oss",
         "no_pip",
         "no_windows",
+        "noasan",  # b/144707533
     ],
     deps = [
         ":tflite_convert",

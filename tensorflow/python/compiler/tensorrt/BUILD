@@ -100,6 +100,7 @@ cuda_py_test(
         "test/testdata/tftrt_2.0_saved_model/variables/variables.data-00001-of-00002",
         "test/testdata/tftrt_2.0_saved_model/variables/variables.index",
     ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_pip",
@@ -138,6 +139,7 @@ cuda_py_tests(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_rocm",
@@ -157,6 +159,7 @@ cuda_py_tests(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    python_version = "PY3",
     tags = [
         "no_rocm",
         "no_windows",
@@ -180,6 +183,7 @@ cuda_py_test(
         "test/testdata/mnist/model.ckpt-46900.data-00000-of-00001",
         "test/testdata/mnist/model.ckpt-46900.index",
     ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_oss",  # TODO(b/125290478): allow running in at least some OSS configurations.

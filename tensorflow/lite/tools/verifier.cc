@@ -240,7 +240,7 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
       const auto& opcode = model.operator_codes()->Get(op->opcode_index());
       // Check for invalid inputs by ensuring all exist in produced_tensors.
       for (const int input_idx : *op->inputs()) {
-        if (input_idx == kOptionalTensor) continue;
+        if (input_idx == kTfLiteOptionalTensor) continue;
         if (constant_tensors.find(input_idx) == constant_tensors.end() &&
             variable_tensors.find(input_idx) == variable_tensors.end() &&
             subgraph_input_tensors.find(input_idx) ==

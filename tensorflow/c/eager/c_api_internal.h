@@ -103,12 +103,6 @@ struct TFE_TensorHandle {
   }
 
   tensorflow::TensorHandle* handle;
-
-  // Create a symbolic tensor.
-  TFE_TensorHandle(TF_Output t, TF_DataType dtype)
-      : handle(new tensorflow::TensorHandle(
-            tensorflow::OutputGraphNode{t.oper, t.index},
-            static_cast<tensorflow::DataType>(dtype))) {}
 };
 
 struct TFE_TensorDebugInfo {
@@ -140,11 +134,13 @@ struct TFE_Op {
     inference_ctx.reset();
   }
 
-  void Reset(TFE_Context* ctx, const char* op, bool is_function,
-             const tensorflow::AttrTypeMap* t,
-             TFE_OpInferenceContext* infer_ctx) {
-    operation.Reset(ctx->context, op, is_function, t, nullptr);
+  tensorflow::Status Reset(TFE_Context* ctx, const char* op, bool is_function,
+                           const tensorflow::AttrTypeMap* t,
+                           const char* raw_device_name,
+                           TFE_OpInferenceContext* infer_ctx) {
     inference_ctx.reset(infer_ctx);
+    return operation.Reset(ctx->context, op, is_function, t, raw_device_name,
+                           nullptr);
   }
 
   tensorflow::EagerOperation operation;
@@ -152,7 +148,8 @@ struct TFE_Op {
 };
 
 TFE_Op* NewOrResetOp(TFE_Context* ctx, const char* op_or_function_name,
-                     TF_Status* status, TFE_Op* op_to_reset = nullptr);
+                     const char* raw_device_name, TF_Status* status,
+                     TFE_Op* op_to_reset = nullptr);
 
 struct TFE_Profiler {
   explicit TFE_Profiler() { profiler = tensorflow::ProfilerSession::Create(); }
@@ -284,26 +281,6 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
                           const tensorflow::AttrValue& default_value,
                           const char* attr_name, TF_Status* status);
 }  // namespace tensorflow
-
-struct TFE_TraceContext {
-  TF_Graph* const graph;
-
-  unsigned int node_counter = 0;
-  // Each tensor handle will have its ref count incremented when it's added as a
-  // map key, and decremented when this object is destroyed.
-  std::map<tensorflow::TensorHandle*, TF_Output> input_tensor_map;
-  std::vector<std::pair<tensorflow::TensorHandle*, TF_Output>>* input_tensors =
-      nullptr;
-
-  explicit TFE_TraceContext(TF_Graph* graph) : graph(graph) {}
-
-  ~TFE_TraceContext() {
-    delete input_tensors;
-    for (auto input : input_tensor_map) {
-      input.first->Unref();
-    }
-  }
-};
 
 struct TFE_CancellationManager {
   tensorflow::CancellationManager cancellation_manager;

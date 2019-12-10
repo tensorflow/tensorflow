@@ -73,17 +73,31 @@ struct ReturnTypeOpMatch : public RewritePattern {
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const final {
     if (auto retTypeFn = dyn_cast<InferTypeOpInterface>(op)) {
-      SmallVector<Value *, 4> values;
-      values.reserve(op->getNumOperands());
-      for (auto &operand : op->getOpOperands())
-        values.push_back(operand.get());
-      auto res = retTypeFn.inferReturnTypes(op->getLoc(), values,
-                                            op->getAttrs(), op->getRegions());
-      SmallVector<Type, 1> result_types(op->getResultTypes());
-      if (!retTypeFn.isCompatibleReturnTypes(res, result_types))
+      SmallVector<Value *, 4> values(op->getOperands());
+      SmallVector<Type, 2> inferedReturnTypes;
+      if (failed(retTypeFn.inferReturnTypes(op->getLoc(), values,
+                                            op->getAttrs(), op->getRegions(),
+                                            inferedReturnTypes)))
+        return matchFailure();
+      SmallVector<Type, 1> resultTypes(op->getResultTypes());
+      if (!retTypeFn.isCompatibleReturnTypes(inferedReturnTypes, resultTypes))
         return op->emitOpError(
                    "inferred type incompatible with return type of operation"),
                matchFailure();
+
+      // TODO(jpienaar): Split this out to make the test more focused.
+      // Create new op with unknown location to verify building with
+      // InferTypeOpInterface is triggered.
+      auto fop = op->getParentOfType<FuncOp>();
+      if (values[0] == fop.getArgument(0)) {
+        // Use the 2nd function argument if the first function argument is used
+        // when constructing the new op so that a new return type is inferred.
+        values[0] = fop.getArgument(1);
+        values[1] = fop.getArgument(1);
+        // TODO(jpienaar): Expand to regions.
+        rewriter.create<OpWithInferTypeInterfaceOp>(
+            UnknownLoc::get(op->getContext()), values, op->getAttrs());
+      }
     }
     return matchFailure();
   }
@@ -216,8 +230,7 @@ struct TestSplitReturnType : public ConversionPattern {
     // results directly.
     auto *defOp = operands[0]->getDefiningOp();
     if (auto packerOp = llvm::dyn_cast_or_null<TestCastOp>(defOp)) {
-      SmallVector<Value *, 2> returnOperands(packerOp.getOperands());
-      rewriter.replaceOpWithNewOp<TestReturnOp>(op, returnOperands);
+      rewriter.replaceOpWithNewOp<TestReturnOp>(op, packerOp.getOperands());
       return matchSuccess();
     }
 
@@ -272,8 +285,7 @@ struct TestUpdateConsumerType : public ConversionPattern {
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const final {
-    // Verify that the the incoming operand has been successfully remapped to
-    // F64.
+    // Verify that the incoming operand has been successfully remapped to F64.
     if (!operands[0]->getType().isF64())
       return matchFailure();
     rewriter.replaceOpWithNewOp<TestTypeConsumerOp>(op, operands[0]);
@@ -435,3 +447,66 @@ static mlir::PassRegistration<TestLegalizePatternDriver>
                      return std::make_unique<TestLegalizePatternDriver>(
                          legalizerConversionMode);
                    });
+
+//===----------------------------------------------------------------------===//
+// ConversionPatternRewriter::getRemappedValue testing. This method is used
+// to get the remapped value of a original value that was replaced using
+// ConversionPatternRewriter.
+namespace {
+/// Converter that replaces a one-result one-operand OneVResOneVOperandOp1 with
+/// a one-operand two-result OneVResOneVOperandOp1 by replicating its original
+/// operand twice.
+///
+/// Example:
+///   %1 = test.one_variadic_out_one_variadic_in1"(%0)
+/// is replaced with:
+///   %1 = test.one_variadic_out_one_variadic_in1"(%0, %0)
+struct OneVResOneVOperandOp1Converter
+    : public OpConversionPattern<OneVResOneVOperandOp1> {
+  using OpConversionPattern<OneVResOneVOperandOp1>::OpConversionPattern;
+
+  PatternMatchResult
+  matchAndRewrite(OneVResOneVOperandOp1 op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto origOps = op.getOperands();
+    assert(std::distance(origOps.begin(), origOps.end()) == 1 &&
+           "One operand expected");
+    Value *origOp = *origOps.begin();
+    SmallVector<Value *, 2> remappedOperands;
+    // Replicate the remapped original operand twice. Note that we don't used
+    // the remapped 'operand' since the goal is testing 'getRemappedValue'.
+    remappedOperands.push_back(rewriter.getRemappedValue(origOp));
+    remappedOperands.push_back(rewriter.getRemappedValue(origOp));
+
+    SmallVector<Type, 1> resultTypes(op.getResultTypes());
+    rewriter.replaceOpWithNewOp<OneVResOneVOperandOp1>(op, resultTypes,
+                                                       remappedOperands);
+    return matchSuccess();
+  }
+};
+
+struct TestRemappedValue : public mlir::FunctionPass<TestRemappedValue> {
+  void runOnFunction() override {
+    mlir::OwningRewritePatternList patterns;
+    patterns.insert<OneVResOneVOperandOp1Converter>(&getContext());
+
+    mlir::ConversionTarget target(getContext());
+    target.addLegalOp<ModuleOp, ModuleTerminatorOp, FuncOp, TestReturnOp>();
+    // We make OneVResOneVOperandOp1 legal only when it has more that one
+    // operand. This will trigger the conversion that will replace one-operand
+    // OneVResOneVOperandOp1 with two-operand OneVResOneVOperandOp1.
+    target.addDynamicallyLegalOp<OneVResOneVOperandOp1>(
+        [](Operation *op) -> bool {
+          return std::distance(op->operand_begin(), op->operand_end()) > 1;
+        });
+
+    if (failed(mlir::applyFullConversion(getFunction(), target, patterns))) {
+      signalPassFailure();
+    }
+  }
+};
+} // end anonymous namespace
+
+static PassRegistration<TestRemappedValue> remapped_value_pass(
+    "test-remapped-value",
+    "Test public remapped value mechanism in ConversionPatternRewriter");

@@ -655,7 +655,7 @@ public:
   Optional<int64_t> getConstantUpperBound(unsigned pos) const;
 
   /// Gets the lower and upper bound of the pos^th identifier treating
-  /// [0, offset) U [offset + num, symbStartPos) as dimensions and
+  /// [0, offset) U [offset + num, symStartPos) as dimensions and
   /// [symStartPos, getNumDimAndSymbolIds) as symbols. The returned
   /// multi-dimensional maps in the pair represent the max and min of
   /// potentially multiple affine expressions. The upper bound is exclusive.
@@ -664,7 +664,7 @@ public:
   std::pair<AffineMap, AffineMap>
   getLowerAndUpperBound(unsigned pos, unsigned offset, unsigned num,
                         unsigned symStartPos, ArrayRef<AffineExpr> localExprs,
-                        MLIRContext *context);
+                        MLIRContext *context) const;
 
   /// Returns true if the set can be trivially detected as being
   /// hyper-rectangular on the specified contiguous set of identifiers.
@@ -788,11 +788,13 @@ private:
 AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
                               unsigned numSymbols);
 
-/// Flattens 'expr' into 'flattenedExpr'. Returns failure if 'expr' could not be
-/// flattened (i.e., semi-affine is not yet handled). 'cst' contains constraints
-/// that connect newly introduced local identifiers to existing dimensional and
-/// symbolic identifiers. See documentation for AffineExprFlattener on how
-/// mod's and div's are flattened.
+/// Flattens 'expr' into 'flattenedExpr', which contains the coefficients of the
+/// dimensions, symbols, and additional variables that represent floor divisions
+/// of dimensions, symbols, and in turn other floor divisions.  Returns failure
+/// if 'expr' could not be flattened (i.e., semi-affine is not yet handled).
+/// 'cst' contains constraints that connect newly introduced local identifiers
+/// to existing dimensional and symbolic identifiers. See documentation for
+/// AffineExprFlattener on how mod's and div's are flattened.
 LogicalResult
 getFlattenedAffineExpr(AffineExpr expr, unsigned numDims, unsigned numSymbols,
                        llvm::SmallVectorImpl<int64_t> *flattenedExpr,

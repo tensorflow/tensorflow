@@ -1042,6 +1042,62 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
 
 // -----
 
+func @testWhileCond(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<i1>)
+func @testWhileBody(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<16xf32>>>)
+
+// Test invalid 'While' operation verifier that detects incompatible tf.resource
+// subtypes.
+func @testWhileResult(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<16xf32>>>) {
+^bb0(%arg0: tensor<*x!tf.resource<tensor<32xf32>>>):
+  // expected-error @+1 {{operand type tensor<*x!tf.resource<tensor<32xf32>>> is incompatible with result type}}
+  %1 = "tf.While"(%arg0) {
+    cond = @testWhileCond,
+    body = @testWhileBody,
+    is_stateless = false
+  } : (tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<16xf32>>>)
+
+  return %1 : tensor<!tf.resource<tensor<16xf32>>>
+}
+
+// -----
+
+func @testWhileCond(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<i1>)
+func @testWhileBody(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<*xf32>>>)
+
+// Test 'While' operation verifier allows compatible tf.resource subtypes.
+// CHECK-LABEL: func @testWhileResult
+func @testWhileResult(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<*xf32>>>) {
+^bb0(%arg0: tensor<*x!tf.resource<tensor<32xf32>>>):
+  %1 = "tf.While"(%arg0) {
+    cond = @testWhileCond,
+    body = @testWhileBody,
+    is_stateless = false
+  } : (tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<*xf32>>>)
+
+  return %1 : tensor<!tf.resource<tensor<*xf32>>>
+}
+
+// -----
+
+func @testWhileCond(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<i1>)
+func @testWhileBody(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource>)
+
+// Test 'While' operation verifier treats tf.resource with subtype and without
+// subtype as compatible types.
+// CHECK-LABEL: func @testWhileResult
+func @testWhileResult(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource>) {
+^bb0(%arg0: tensor<*x!tf.resource<tensor<32xf32>>>):
+  %1 = "tf.While"(%arg0) {
+    cond = @testWhileCond,
+    body = @testWhileBody,
+    is_stateless = false
+  } : (tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource>)
+
+  return %1 : tensor<!tf.resource>
+}
+
+// -----
+
 // CHECK-LABEL: func @testValidShape
 func @testValidShape(tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<4xi32>, tensor<?xi32>) {
 ^bb0(%arg0: tensor<1x32x32x16xf32>, %arg1: tensor<*xf32>):
@@ -1526,4 +1582,244 @@ func @testOneHot(%indices: tensor<3xi32>, %depth: tensor<i32>, %on_value: tensor
   // expected-error @+1 {{expected axis (-2) to be -1 or between [0, 1]}}
   %result = "tf.OneHot"(%indices, %depth, %on_value, %off_value) {axis = -2 : i64} : (tensor<3xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<3x5xf32>
   return %result : tensor<3x5xf32>
+}
+
+// -----
+
+func @testSplitNonConstSplitDim(%input: tensor<4x4xf32>, %split_dim: tensor<i32>) {
+  %0:2 = "tf.Split"(%split_dim, %input) : (tensor<i32>, tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+func @testSplitUnknownRankSplitDim(%input: tensor<4x4xf32>, %split_dim: tensor<*xi32>) {
+  %0:2 = "tf.Split"(%split_dim, %input) : (tensor<*xi32>, tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+func @testSplitUnknownRankInput(%input: tensor<*xf32>) {
+  %cst = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %0:2 = "tf.Split"(%cst, %input) : (tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+func @testSplitUnknownDimInput(%input: tensor<4x?x4xf32>) {
+  %cst = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %0:2 = "tf.Split"(%cst, %input) : (tensor<i32>, tensor<4x?x4xf32>) -> (tensor<4x?x4xf32>, tensor<4x?x4xf32>)
+  return
+}
+
+// -----
+
+func @testSplitNonScalarSplitDim(%input: tensor<4x4xf32>, %split_dim: tensor<1xi32>) {
+  // expected-error @+1 {{split dimension should be an integer scalar tensor}}
+  %0:2 = "tf.Split"(%split_dim, %input) : (tensor<1xi32>, tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitScalarInput(%input: tensor<f32>, %split_dim: tensor<i32>) {
+  // expected-error @+1 {{cannot split scalar input tensor}}
+  %0:2 = "tf.Split"(%split_dim, %input) : (tensor<i32>, tensor<f32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitLargeSplitDim(%input: tensor<4x8xf32>) {
+  %cst = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+  // expected-error @+1 {{split dimension must be in range [-2, 2)}}
+  %0:2 = "tf.Split"(%cst, %input) : (tensor<i32>, tensor<4x8xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitSmallSplitDim(%input: tensor<4x8xf32>) {
+  %cst = "tf.Const"() {value = dense<-3> : tensor<i32>} : () -> tensor<i32>
+  // expected-error @+1 {{split dimension must be in range [-2, 2)}}
+  %0:2 = "tf.Split"(%cst, %input) : (tensor<i32>, tensor<4x8xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitSmallSplitDim(%input: tensor<4x8xf32>) {
+  %cst = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // expected-error @+1 {{dimension #0 not divisible by the number of result tensors}}
+  %0:3 = "tf.Split"(%cst, %input) : (tensor<i32>, tensor<4x8xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testTernaryEinsum(%arg0: tensor<2x3xf32>){
+  // expected-error @+1 {{supports at most two operands}}
+  %0 = "tf.Einsum"(%arg0, %arg0, %arg0) {equation = "ab,cd,ef->"} : (tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>) -> (tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testTopKV2WrongInputRank(%input: tensor<f32>, %k: tensor<i32>) {
+  // expected-error @+1 {{op requires input operand to have at least 1 dimension}}
+  %0:2 = "tf.TopKV2"(%input, %k) : (tensor<f32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xi32>)
+  return
+}
+
+// -----
+
+func @testTopKV2WrongKRank(%input: tensor<8xf32>, %k: tensor<5xi32>) {
+  // expected-error @+1 {{op requires k operand to be 0D tensor}}
+  %0:2 = "tf.TopKV2"(%input, %k) : (tensor<8xf32>, tensor<5xi32>) -> (tensor<*xf32>, tensor<*xi32>)
+  return
+}
+
+// -----
+
+func @testSplitVScalarInput(%input: tensor<f32>, %split_sizes: tensor<2xi32>, %split_dim: tensor<i32>) {
+  // expected-error @+1 {{cannot split scalar input tensor}}
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<f32>, tensor<2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitVNonScalarSplitDim(%input: tensor<4x4xf32>, %split_sizes: tensor<2xi32>, %split_dim: tensor<1xi32>) {
+  // expected-error @+1 {{split dimension should be an integer scalar tensor}}
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2xi32>, tensor<1xi32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitVSplitDimOutOfRange(%input: tensor<4x4xf32>, %split_sizes: tensor<2xi32>) {
+  %split_dim = "tf.Const"() {value = dense<100>: tensor<i32>} : () -> (tensor<i32>)
+  // expected-error @+1 {{split dimension must be in range [-2, 2)}}
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitVWrongSplitSizesType(%input: tensor<4x4xf32>, %split_sizes: tensor<2x2xi32>, %split_dim: tensor<i32>) {
+  // expected-error @+1 {{op split sizes should be a 1D tensor of 2 elements}}
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2x2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitVMultipleDynamicSizes(%input: tensor<4x4xf32>) {
+  %split_dim = "tf.Const"() {value = dense<1>: tensor<i32>} : () -> (tensor<i32>)
+  %split_sizes = "tf.Const"() {value = dense<[-1, -1]>: tensor<2xi32>} : () -> (tensor<2xi32>)
+  // expected-error @+1 {{cannot have more than one dynamic dimension in split sizes}}
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitVSplitSizeOutOfRange(%input: tensor<4x4xf32>) {
+  %split_dim = "tf.Const"() {value = dense<1>: tensor<i32>} : () -> (tensor<i32>)
+  %split_sizes = "tf.Const"() {value = dense<[-1, 100]>: tensor<2xi32>} : () -> (tensor<2xi32>)
+  // expected-error @+1 {{split sizes must sum up to be less than or equal to the dimension size along split dimension, found 100 vs 4}}
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitVSplitSizeOutOfRange(%input: tensor<4x4xf32>) {
+  %split_dim = "tf.Const"() {value = dense<1>: tensor<i32>} : () -> (tensor<i32>)
+  %split_sizes = "tf.Const"() {value = dense<[2, 3]>: tensor<2xi32>} : () -> (tensor<2xi32>)
+  // expected-error @+1 {{split sizes must sum up to the dimension size along split dimension, found 5 vs 4}}
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+func @testSplitV1(%input: tensor<4x4xf32>) {
+  %split_dim = "tf.Const"() {value = dense<1>: tensor<i32>} : () -> (tensor<i32>)
+  %split_sizes = "tf.Const"() {value = dense<[-1, 4]>: tensor<2xi32>} : () -> (tensor<2xi32>)
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+func @testSplitV2(%input: tensor<4x4xf32>) {
+  %split_dim = "tf.Const"() {value = dense<1>: tensor<i32>} : () -> (tensor<i32>)
+  %split_sizes = "tf.Const"() {value = dense<[3, 1]>: tensor<2xi32>} : () -> (tensor<2xi32>)
+  %0:2 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>)
+  return
+}
+
+// -----
+
+//===--------------------------------------------------------------------===//
+//  tf.All
+//===--------------------------------------------------------------------===//
+
+func @testAllDimWrongRank(%input: tensor<4x6xi1>, %dims: tensor<2x2xi32>) {
+  // expected-error @+1 {{dimensions can only be 0D or 1D tensor}}
+  %0 = "tf.All"(%input, %dims) : (tensor<4x6xi1>, tensor<2x2xi32>) -> (tensor<*xi1>)
+  return
+}
+
+// -----
+
+func @testAllDimOutOfRange(%input: tensor<4x6xi1>) {
+  %dims = "tf.Const"() {value = dense<[-1, 5]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  // expected-error @+1 {{1-th dimension should be in the range of [-2, 2)}}
+  %0 = "tf.All"(%input, %dims) : (tensor<4x6xi1>, tensor<2xi32>) -> (tensor<*xi1>)
+  return
+}
+
+// -----
+
+//===--------------------------------------------------------------------===//
+//  tf.Any
+//===--------------------------------------------------------------------===//
+
+func @testAnyDimWrongRank(%input: tensor<4x6xi1>, %dims: tensor<2x2xi32>) {
+  // expected-error @+1 {{dimensions can only be 0D or 1D tensor}}
+  %0 = "tf.Any"(%input, %dims) : (tensor<4x6xi1>, tensor<2x2xi32>) -> (tensor<*xi1>)
+  return
+}
+
+// -----
+
+func @testAnyDimOutOfRange(%input: tensor<4x6xi1>) {
+  %dims = "tf.Const"() {value = dense<[-1, 5]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  // expected-error @+1 {{1-th dimension should be in the range of [-2, 2)}}
+  %0 = "tf.Any"(%input, %dims) : (tensor<4x6xi1>, tensor<2xi32>) -> (tensor<*xi1>)
+  return
+}
+
+// -----
+
+//===--------------------------------------------------------------------===//
+//  tf.Unpack
+//===--------------------------------------------------------------------===//
+
+func @testUnpackAxisOutOfRange(%input: tensor<2x6xf32>) {
+  // expected-error @+1 {{axis attribute must be in the range of [-2, 2)}}
+  %0:2 = "tf.Unpack"(%input) {axis = 5} : (tensor<2x6xf32>) -> (tensor<6xf32>, tensor<6xf32>)
+  return
+}
+
+// -----
+
+func @testAxisUnknownDim(%input: tensor<?x6xf32>) {
+  // CHECK: tf.Unpack
+  %0:2 = "tf.Unpack"(%input) {axis = 0} : (tensor<?x6xf32>) -> (tensor<6xf32>, tensor<6xf32>)
+  return
+}
+
+// -----
+
+func @testAxisDim(%input: tensor<2x6xf32>) {
+  // expected-error @+1 {{result count must be equal to 6}}
+  %0:2 = "tf.Unpack"(%input) {axis = -1} : (tensor<2x6xf32>) -> (tensor<6xf32>, tensor<6xf32>)
+  return
 }

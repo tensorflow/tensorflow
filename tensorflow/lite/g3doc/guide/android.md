@@ -176,35 +176,3 @@ dependencies {
     compile(name:'tensorflow-lite', ext:'aar')
 }
 ```
-
-##### Install AAR to local Maven repository
-
-Execute the following command from your root checkout directory:
-
-```sh
-mvn install:install-file \
-  -Dfile=bazel-bin/tensorflow/lite/java/tensorflow-lite.aar \
-  -DgroupId=org.tensorflow \
-  -DartifactId=tensorflow-lite -Dversion=0.1.100 -Dpackaging=aar
-```
-
-In your app's `build.gradle`, ensure you have the `mavenLocal()` dependency and
-replace the standard TensorFlow Lite dependency with the one that has support
-for select TensorFlow ops:
-
-```
-allprojects {
-    repositories {
-        jcenter()
-        mavenLocal()
-    }
-}
-
-dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-with-select-tf-ops:0.1.100'
-}
-```
-
-Note that the `0.1.100` version here is purely for the sake of
-testing/development. With the local AAR installed, you can use the standard
-[TensorFlow Lite Java inference APIs](inference.md) in your app code.

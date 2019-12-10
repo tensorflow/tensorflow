@@ -368,6 +368,10 @@ class ShapeUtil {
   static void UpdateTupleShape(const Shape& shape, int64 index,
                                Shape* tuple_shape);
 
+  // Update the dynamic dimension for a shape. This shape can be a nested tuple.
+  static void UpdateDynamicDimension(Shape* shape, ShapeIndexView index,
+                                     int64 dim, bool is_dynamic);
+
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
 
@@ -393,6 +397,9 @@ class ShapeUtil {
   static Shape MakeShape(PrimitiveType element_type,
                          absl::Span<const int64> dimensions,
                          const std::vector<bool>& dynamic_dimensions);
+
+  // Make a scalar shape with given primitive type.
+  static Shape MakeScalarShape(PrimitiveType element_type);
 
   // Constructs a new shape with the given element type and sequence of
   // dimensions. Method checks if the element type is valid and the shape's
@@ -423,6 +430,9 @@ class ShapeUtil {
   static Shape MakeShapeWithSparseLayout(PrimitiveType element_type,
                                          absl::Span<const int64> dimensions,
                                          int64 max_sparse_elements);
+
+  // Returns the same shape except with all dimensions set to be static.
+  static Shape MakeShapeWithStaticDimensions(const Shape& shape);
 
   // Constructs a new shape with major-first layout (i.e. {n, n-1, ..., 0}).
   static Shape MakeShapeWithDescendingLayout(

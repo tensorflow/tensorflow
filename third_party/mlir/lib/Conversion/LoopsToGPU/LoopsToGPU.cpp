@@ -313,7 +313,7 @@ LogicalResult createLaunchBody(OpBuilder &builder, OpTy rootForOp,
                                gpu::LaunchOp launchOp, unsigned numBlockDims,
                                unsigned numThreadDims) {
   OpBuilder::InsertionGuard bodyInsertionGuard(builder);
-  builder.setInsertionPointToEnd(&launchOp.getBody().front());
+  builder.setInsertionPointToEnd(&launchOp.body().front());
   auto returnOp = builder.create<gpu::ReturnOp>(launchOp.getLoc());
 
   rootForOp.getOperation()->moveBefore(returnOp);
@@ -389,7 +389,7 @@ LogicalResult createLaunchFromOp(OpTy rootForOp,
        llvm::zip_first(valuesToForward, launchOp.getKernelArguments())) {
     Value *from = std::get<0>(pair);
     Value *to = std::get<1>(pair);
-    replaceAllUsesInRegionWith(from, to, launchOp.getBody());
+    replaceAllUsesInRegionWith(from, to, launchOp.body());
   }
   return success();
 }
@@ -444,15 +444,15 @@ void LoopToGpuConverter::createLaunch(OpTy rootForOp, OpTy innermostForOp,
   terminator.erase();
   builder.setInsertionPointToEnd(innermostForOp.getBody());
   builder.create<gpu::ReturnOp>(terminatorLoc);
-  launchOp.getBody().front().getOperations().splice(
-      launchOp.getBody().front().begin(),
+  launchOp.body().front().getOperations().splice(
+      launchOp.body().front().begin(),
       innermostForOp.getBody()->getOperations());
 
   // Remap the loop iterators to use block/thread identifiers instead.  Loops
   // may iterate from LB with step S whereas GPU thread/block ids always iterate
   // from 0 to N with step 1.  Therefore, loop induction variables are replaced
   // with (gpu-thread/block-id * S) + LB.
-  builder.setInsertionPointToStart(&launchOp.getBody().front());
+  builder.setInsertionPointToStart(&launchOp.body().front());
   auto lbArgumentIt = std::next(launchOp.getKernelArguments().begin(),
                                 originallyForwardedValues);
   auto stepArgumentIt = std::next(lbArgumentIt, lbs.size());
@@ -469,7 +469,7 @@ void LoopToGpuConverter::createLaunch(OpTy rootForOp, OpTy innermostForOp,
         builder.create<AddIOp>(rootForOp.getLoc(), *lbArgumentIt, id);
     en.value()->replaceAllUsesWith(ivReplacement);
     replaceAllUsesInRegionWith(steps[en.index()], *stepArgumentIt,
-                               launchOp.getBody());
+                               launchOp.body());
     std::advance(lbArgumentIt, 1);
     std::advance(stepArgumentIt, 1);
   }
@@ -481,7 +481,7 @@ void LoopToGpuConverter::createLaunch(OpTy rootForOp, OpTy innermostForOp,
        llvm::zip_first(valuesToForward, launchOp.getKernelArguments())) {
     Value *from = std::get<0>(pair);
     Value *to = std::get<1>(pair);
-    replaceAllUsesInRegionWith(from, to, launchOp.getBody());
+    replaceAllUsesInRegionWith(from, to, launchOp.body());
   }
 
   // We are done and can erase the original outermost loop.

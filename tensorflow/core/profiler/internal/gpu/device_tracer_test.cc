@@ -39,14 +39,15 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
+namespace profiler {
 
 #if GOOGLE_CUDA
-std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer(
-    const profiler::ProfilerOptions& options);
+std::unique_ptr<ProfilerInterface> CreateGpuTracer(
+    const ProfilerOptions& options);
 #else
 // We don't have device tracer for non-cuda case.
-std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer(
-    const profiler::ProfilerOptions& options) {
+std::unique_ptr<ProfilerInterface> CreateGpuTracer(
+    const ProfilerOptions& options) {
   return nullptr;
 }
 #endif
@@ -243,4 +244,5 @@ TEST_F(DeviceTracerTest, RunWithTraceOption) {
 }
 
 }  // namespace
+}  // namespace profiler
 }  // namespace tensorflow

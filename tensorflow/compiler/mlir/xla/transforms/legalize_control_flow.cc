@@ -15,7 +15,9 @@ limitations under the License.
 
 // This file implements logic for lowering XLA dialect to Standard dialect.
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Block.h"  // TF:local_config_mlir
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
@@ -49,12 +51,10 @@ LogicalResult ReplaceTerminators(Region* region, Block* target_block,
   for (auto& old_block : region->getBlocks()) {
     Block* block = mapper.lookup(&old_block);
     auto return_op = dyn_cast<xla_hlo::ReturnOp>(block->getTerminator());
-    if (!return_op) return failure();
+    if (!return_op) continue;
     builder->setInsertionPointToEnd(block);
-
-    SmallVector<Value*, 4> args(return_op.getOperands());
-    builder->create<mlir::BranchOp>(loc, target_block, args);
-    return_op.getOperation()->erase();
+    builder->create<mlir::BranchOp>(loc, target_block, return_op.getOperands());
+    return_op.erase();
   }
 
   return success();
@@ -164,21 +164,19 @@ LogicalResult LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
     auto new_block = mapper.lookup(&block);
 
     auto return_op = dyn_cast<xla_hlo::ReturnOp>(new_block->getTerminator());
-    if (!return_op) return failure();
+    if (!return_op) continue;
     builder.setInsertionPointToEnd(new_block);
 
     auto return_value = return_op.getOperand(0);
     auto cond_value = builder.create<mlir::ExtractElementOp>(loc, return_value);
 
     // Get the body block arguments.
-    llvm::SmallVector<Value*, 4> body_block_arguments(cond_block->args_begin(),
-                                                      cond_block->args_end());
-
+    llvm::SmallVector<Value*, 4> successor_args(cond_block->args_begin(),
+                                                cond_block->args_end());
     builder.create<mlir::CondBranchOp>(loc, cond_value, body_block,
-                                       body_block_arguments, tail_block,
-                                       body_block_arguments);
-
-    return_op.getOperation()->erase();
+                                       successor_args, tail_block,
+                                       successor_args);
+    return_op.erase();
   }
 
   // Updates the body blocks by replace the return op with an branch to the
@@ -193,15 +191,12 @@ LogicalResult LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
   //     br ^cond(%0) // Branch.
   for (auto& block : while_op.body()) {
     auto new_block = mapper.lookup(&block);
-    builder.setInsertionPointToEnd(new_block);
     auto return_op =
         dyn_cast<mlir::xla_hlo::ReturnOp>(new_block->getTerminator());
-    if (!return_op) return failure();
-
-    llvm::SmallVector<Value*, 4> body_results(return_op.operand_begin(),
-                                              return_op.operand_end());
-    builder.create<mlir::BranchOp>(loc, cond_block, body_results);
-    return_op.getOperation()->erase();
+    if (!return_op) continue;
+    builder.setInsertionPointToEnd(new_block);
+    builder.create<mlir::BranchOp>(loc, cond_block, return_op.getOperands());
+    return_op.erase();
   }
 
   // Erase the original while loop.

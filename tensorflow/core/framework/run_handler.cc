@@ -948,7 +948,7 @@ class RunHandlerPool::Impl {
       CHECK_EQ(handler->tws()->TaskQueueSize(true), 0);
       CHECK_EQ(handler->tws()->TaskQueueSize(false), 0);
 
-      uint64 now = tensorflow::Env::Default()->NowMicros();
+      uint64 now = tensorflow::EnvTime::NowMicros();
       double elapsed = (now - handler->start_time_us()) / 1000.0;
       time_hist_.Add(elapsed);
 

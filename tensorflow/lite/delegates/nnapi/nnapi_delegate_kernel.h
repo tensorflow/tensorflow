@@ -20,7 +20,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
@@ -169,6 +169,7 @@ class NNMemory {
   ANeuralNetworksMemory* nn_memory_handle_ = nullptr;
 };
 
+
 enum class NNAPIValidationFailureType : int {
   // The operator is not supported by either NNAPI or the NNAPI Delegate.
   kUnsupportedOperator = 0,
@@ -225,6 +226,7 @@ enum class NNAPIValidationFailureType : int {
   // for the accelerated operation.
   kUnsupportedQuantizationParameters = 15,
 };
+
 
 struct NNAPIValidationFailure {
   NNAPIValidationFailureType type;
@@ -285,7 +287,7 @@ class NNAPIDelegateKernel {
   // Access to NNApi.
   const NnApi* nnapi_;
   // ANN device handle.
-  ANeuralNetworksDevice* nnapi_device_ = nullptr;
+  std::vector<ANeuralNetworksDevice*> nnapi_devices_;
   // ANN API state.
   std::unique_ptr<ANeuralNetworksModel, NNFreeModel> nn_model_;
   std::unique_ptr<ANeuralNetworksCompilation, NNFreeCompilation>

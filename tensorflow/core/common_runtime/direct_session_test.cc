@@ -2267,7 +2267,7 @@ bool IsCUDATensor(const Tensor& t) {
       cudaPointerGetAttributes(&attributes, t.tensor_data().data());
   if (err == cudaErrorInvalidValue) return false;
   CHECK_EQ(cudaSuccess, err) << cudaGetErrorString(err);
-  return (attributes.memoryType == cudaMemoryTypeDevice);
+  return (attributes.type == cudaMemoryTypeDevice);
 #elif TENSORFLOW_USE_ROCM
   hipPointerAttribute_t attributes;
   hipError_t err = hipPointerGetAttributes(&attributes, t.tensor_data().data());
@@ -2527,7 +2527,8 @@ TEST(DirectSessionTest,
 // A simple benchmark for the overhead of `DirectSession::Run()` calls
 // with varying numbers of feeds/fetches.
 void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
-                              int inter_op_threads) {
+                              int inter_op_threads,
+                              bool use_single_threaded_executor) {
   testing::StopTiming();
 
   Tensor value(DT_FLOAT, TensorShape());
@@ -2562,6 +2563,10 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
   g.ToGraphDef(&gd);
   SessionOptions opts;
   opts.config.set_inter_op_parallelism_threads(inter_op_threads);
+  if (use_single_threaded_executor) {
+    opts.config.mutable_experimental()->set_executor_type(
+        "SINGLE_THREADED_EXECUTOR");
+  }
   std::unique_ptr<Session> session(NewSession(opts));
   TF_CHECK_OK(session->Create(gd));
   if (use_make_callable) {
@@ -2606,20 +2611,33 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
 
 void BM_FeedFetch(int iters, int num_feeds) {
   FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ false,
-                           /* inter_op_threads */ 0);
+                           /* inter_op_threads */ 0,
+                           /* use_single_threaded_executor */ false);
 }
 void BM_FeedFetchCallable(int iters, int num_feeds) {
   FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
-                           /* inter_op_threads */ 0);
+                           /* inter_op_threads */ 0,
+                           /* use_single_threaded_executor */ false);
 }
 void BM_FeedFetchCallableSingleThread(int iters, int num_feeds) {
   FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
-                           /* inter_op_threads */ -1);
+                           /* inter_op_threads */ -1,
+                           /* use_single_threaded_executor */ false);
+}
+void BM_FeedFetchCallableSingleThreadExecutor(int iters, int num_feeds) {
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+                           /* inter_op_threads */ -1,
+                           /* use_single_threaded_executor */ true);
 }
 
 BENCHMARK(BM_FeedFetch)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
 BENCHMARK(BM_FeedFetchCallable)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
 BENCHMARK(BM_FeedFetchCallableSingleThread)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
+BENCHMARK(BM_FeedFetchCallableSingleThreadExecutor)
+    ->Arg(1)
+    ->Arg(2)
+    ->Arg(5)
+    ->Arg(10);
 
 }  // namespace
 
