@@ -1,7 +1,9 @@
 # Settings for XMOS XS3 based processors
 
 #IMPORTANT: to set up environment variables correctly run the following from the top tensorflow directory:
+# $ make -f tensorflow/lite/micro/tools/make/Makefile TARGET="xcore" test
 # $ pushd ./tensorflow/lite/micro/tools/make/downloads/xtimecomposer/ && source SetEnv && popd
+# $ make -f tensorflow/lite/micro/tools/make/Makefile TARGET="xcore" test
 
 #TODO changing this file doesn't mark build as dirty
 ifeq ($(TARGET), xcore)

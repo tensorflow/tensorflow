@@ -31,8 +31,6 @@ mkdir -p ${MICRO_LOG_PATH}
 # Get the location of this script file as an absolute path
 SCRIPT_PATH="`dirname \"$BASH_SOURCE\"`"
 SCRIPT_PATH="`( cd \"$SCRIPT_PATH\" && pwd )`"
-# pushd ./tensorflow/lite/micro/tools/make/downloads/xtimecomposer/ && source SetEnv && popd
-#XSIM_PATH="tensorflow/lite/micro/tools/make/downloads/xtimecomposer/bin/xsim"
 XSIM_FLAGS=""
 xsim $1 ${XSIM_FLAGS} 2>&1 | tee ${MICRO_LOG_FILENAME}
 
