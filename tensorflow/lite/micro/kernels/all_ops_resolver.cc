@@ -58,6 +58,8 @@ AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_ROUND, Register_ROUND());
   AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE());
   AddBuiltin(BuiltinOperator_PACK, Register_PACK());
+  AddBuiltin(BuiltinOperator_PAD, Register_PAD());
+  AddBuiltin(BuiltinOperator_PADV2, Register_PADV2());
   AddBuiltin(BuiltinOperator_SPLIT, Register_SPLIT(), 1, 3);
   AddBuiltin(BuiltinOperator_UNPACK, Register_UNPACK());
   AddBuiltin(BuiltinOperator_NEG, Register_NEG());

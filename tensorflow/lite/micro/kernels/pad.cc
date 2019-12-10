@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,33 +12,34 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/kernels/internal/reference/pad.h"
+
 #include <string.h>
 
-#include <vector>
+#include "tensorflow/lite/kernels/internal/types.h"
+
+#ifdef MEMORY_SANITIZER
+#include <sanitizer/msan_interface.h>
+#else
+#define __msan_check_mem_is_initialized(ptr, size)
+#endif
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
-namespace builtin {
+namespace micro {
 namespace pad {
-
-// This file has two implementations of Pad.
-enum KernelType {
-  kReference,
-  kGenericOptimized,
-};
 
 struct PadContext {
   PadContext(TfLiteContext* context, TfLiteNode* node) {
     input = GetInput(context, node, 0);
     paddings = GetInput(context, node, 1);
+    constant_values = nullptr;
     if (NumInputs(node) == 3) {
       constant_values = GetOptionalInputTensor(context, node, 2);
     } else {
@@ -66,35 +67,6 @@ struct PadContext {
   ResizingCategory resizing_category;
 };
 
-// Resizes output array based on the input size and padding size. This function
-// is callable from both Prepare() and Eval() as long as the caller ensures the
-// paddings data is present.
-TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
-                                PadContext* op_context) {
-  // Ensures the paddings array is dims x 2.
-  TF_LITE_ENSURE_EQ(context, SizeOfDimension(op_context->paddings, 0),
-                    op_context->dims);
-  TF_LITE_ENSURE_EQ(context, SizeOfDimension(op_context->paddings, 1), 2);
-
-  // Determines the size of the output tensor.
-  TfLiteIntArray* input_size = op_context->input->dims;
-  TfLiteIntArray* output_size = TfLiteIntArrayCopy(input_size);
-  const int32* paddings_data = GetTensorData<int32>(op_context->paddings);
-
-  for (int idx = 0; idx < op_context->dims; ++idx) {
-    int before_padding = *paddings_data++;
-    int after_padding = *paddings_data++;
-
-    TF_LITE_ENSURE_MSG(context, (before_padding >= 0 && after_padding >= 0),
-                       "Pad value has to be greater than equal to 0.");
-
-    output_size->data[idx] =
-        (input_size->data[idx] + before_padding + after_padding);
-  }
-
-  return context->ResizeTensor(context, op_context->output, output_size);
-}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, NumInputs(node) == 2 || NumInputs(node) == 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -106,20 +78,26 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                       op_context.constant_values->type);
   }
 
-  // TODO(nupurgarg): Current implementations rely on the inputs being <= 4D.
+  // There must be a pair of paddings for each output dimension.
+  TF_LITE_ENSURE_EQ(context, GetTensorShape(op_context.paddings).FlatSize(),
+                    op_context.output->dims->size * 2);
+
+  // On Micro, outputs must be properly sized by the converter.
+  const int32* paddings_data = GetTensorData<int32>(op_context.paddings);
+  for (int i = 0; i < op_context.output->dims->size; i++) {
+    int output_dim = op_context.output->dims->data[i];
+    int expected_dim = op_context.input->dims->data[i] + paddings_data[i * 2] +
+                       paddings_data[i * 2 + 1];
+    TF_LITE_ENSURE_EQ(context, output_dim, expected_dim);
+  }
+
+  // Current implementations rely on the inputs being <= 4D.
   TF_LITE_ENSURE(
       context, op_context.dims <= reference_ops::PadKernelMaxDimensionCount());
-
-  // Exit early if paddings is a non-const tensor. Set output tensor to
-  // dynamic so output size can be determined in Eval.
-  if (!IsConstantTensor(op_context.paddings)) {
-    SetTensorToDynamic(op_context.output);
-    return kTfLiteOk;
-  }
-  return ResizeOutputTensor(context, &op_context);
+  TF_LITE_ENSURE(context, IsConstantTensor(op_context.paddings));
+  return kTfLiteOk;
 }
 
-template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   PadContext op_context(context, node);
 
@@ -128,18 +106,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, NumElements(op_context.constant_values), 1);
   }
 
-  // Resize the output tensor if the output tensor is dynamic.
-  if (IsDynamicTensor(op_context.output)) {
-    TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
-  }
-
   // Create before and after padding arrays that are accepted by the kernel.
   const int32* paddings_data = GetTensorData<int32>(op_context.paddings);
 
-  TF_LITE_ENSURE(
-      context, op_context.dims <= reference_ops::PadKernelMaxDimensionCount());
-
   tflite::PadParams op_params;
+  memset(&op_params, 0, sizeof(PadParams));
   op_params.left_padding_count = op_context.dims;
   op_params.right_padding_count = op_context.dims;
 
@@ -160,18 +131,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       float pad_value = op_context.constant_values == nullptr
                             ? 0.f
                             : *GetTensorData<float>(op_context.constant_values);
-      if (kernel_type == kReference) {
-        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
-          TF_LITE_PAD(reference_ops, PadImageStyle, float, pad_value);
-        } else {
-          TF_LITE_PAD(reference_ops, Pad, float, pad_value);
-        }
-      } else if (kernel_type == kGenericOptimized) {
-        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
-          TF_LITE_PAD(optimized_ops, PadImageStyle, float, pad_value);
-        } else {
-          TF_LITE_PAD(optimized_ops, Pad, float, pad_value);
-        }
+      if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+        TF_LITE_PAD(reference_ops, PadImageStyle, float, pad_value);
+      } else {
+        TF_LITE_PAD(reference_ops, Pad, float, pad_value);
       }
     } break;
     case kTfLiteUInt8: {
@@ -193,18 +156,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                           op_context.constant_values->params.scale);
         pad_value = *GetTensorData<uint8_t>(op_context.constant_values);
       }
-      if (kernel_type == kReference) {
-        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
-          TF_LITE_PAD(reference_ops, PadImageStyle, uint8_t, pad_value);
-        } else {
-          TF_LITE_PAD(reference_ops, Pad, uint8_t, pad_value);
-        }
-      } else if (kernel_type == kGenericOptimized) {
-        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
-          TF_LITE_PAD(optimized_ops, PadImageStyle, uint8_t, pad_value);
-        } else {
-          TF_LITE_PAD(optimized_ops, Pad, uint8_t, pad_value);
-        }
+      if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+        TF_LITE_PAD(reference_ops, PadImageStyle, uint8_t, pad_value);
+      } else {
+        TF_LITE_PAD(reference_ops, Pad, uint8_t, pad_value);
       }
     } break;
     case kTfLiteInt8: {
@@ -222,8 +177,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         // same quantized range as the input and output tensors.
         TF_LITE_ENSURE_EQ(context, op_context.output->params.zero_point,
                           op_context.constant_values->params.zero_point);
-        TF_LITE_ENSURE_EQ(context, op_context.output->params.scale,
-                          op_context.constant_values->params.scale);
+        TF_LITE_ENSURE(context, op_context.output->params.scale ==
+                                    op_context.constant_values->params.scale);
         pad_value = *GetTensorData<int8_t>(op_context.constant_values);
       }
       if (op_context.resizing_category == ResizingCategory::kImageStyle) {
@@ -237,27 +192,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           op_context.constant_values == nullptr
               ? 0
               : *GetTensorData<int32_t>(op_context.constant_values);
-      if (kernel_type == kReference) {
-        TF_LITE_PAD(reference_ops, Pad, int32_t, pad_value);
-      } else if (kernel_type == kGenericOptimized) {
-        TF_LITE_PAD(optimized_ops, Pad, int32_t, pad_value);
-      }
-    } break;
-    case kTfLiteInt64: {
-      int64_t pad_value =
-          op_context.constant_values == nullptr
-              ? 0L
-              : *GetTensorData<int64_t>(op_context.constant_values);
-      if (kernel_type == kReference) {
-        TF_LITE_PAD(reference_ops, Pad, int64_t, pad_value);
-      } else if (kernel_type == kGenericOptimized) {
-        TF_LITE_PAD(optimized_ops, Pad, int64_t, pad_value);
-      }
+      TF_LITE_PAD(reference_ops, Pad, int32_t, pad_value);
     } break;
     default:
-      context->ReportError(context,
-                           "Type %d is currently not supported by Pad.",
-                           op_context.input->type);
+
+      context->ReportError(context, "Type %s not currently supported by Pad.",
+                           TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_PAD
@@ -266,35 +206,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace pad
 
-TfLiteRegistration* Register_PAD_REF() {
-  static TfLiteRegistration r = {nullptr, nullptr, pad::Prepare,
-                                 pad::Eval<pad::kReference>};
+TfLiteRegistration* Register_PAD() {
+  static TfLiteRegistration r = {nullptr, nullptr, pad::Prepare, pad::Eval};
   return &r;
 }
-
-TfLiteRegistration* Register_PAD_GENERIC_OPT() {
-  static TfLiteRegistration r = {nullptr, nullptr, pad::Prepare,
-                                 pad::Eval<pad::kGenericOptimized>};
-  return &r;
-}
-
-TfLiteRegistration* Register_PAD() { return Register_PAD_GENERIC_OPT(); }
 
 // Also register Pad as PadV2.
-TfLiteRegistration* Register_PADV2_REF() {
-  static TfLiteRegistration r = {nullptr, nullptr, pad::Prepare,
-                                 pad::Eval<pad::kReference>};
+TfLiteRegistration* Register_PADV2() {
+  static TfLiteRegistration r = {nullptr, nullptr, pad::Prepare, pad::Eval};
   return &r;
 }
 
-TfLiteRegistration* Register_PADV2_GENERIC_OPT() {
-  static TfLiteRegistration r = {nullptr, nullptr, pad::Prepare,
-                                 pad::Eval<pad::kGenericOptimized>};
-  return &r;
-}
-
-TfLiteRegistration* Register_PADV2() { return Register_PADV2_GENERIC_OPT(); }
-
-}  // namespace builtin
+}  // namespace micro
 }  // namespace ops
 }  // namespace tflite
