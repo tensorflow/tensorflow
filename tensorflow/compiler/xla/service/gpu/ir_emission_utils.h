@@ -158,8 +158,9 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
 
 // Whether it is an input fusion whose root is either a non-strided slice
-// or a tuple of non-strided slices. If verify_no_strides is true, verify
-// that all ROOT slices have no strides.
+// or a tuple of non-strided slices. Returns whether unnested_hlo is a
+// slice input fusion or not. If verify_no_strides is true, return false
+// unless all ROOT slices have no strides.
 bool IsInputFusibleSlices(const HloInstruction& unnested_hlo,
                           bool verify_no_strides = false);
 
