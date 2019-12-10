@@ -30,7 +30,7 @@ py_test(
         "notsan",
     ],
     deps = [
-        "tf_doctest_lib",
+        ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
     ],
@@ -47,7 +47,7 @@ py_test(
         "notsan",
     ],
     deps = [
-        "tf_doctest_lib",
+        ":tf_doctest_lib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
