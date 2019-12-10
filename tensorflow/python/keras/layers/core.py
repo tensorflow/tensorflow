@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import functools
 import sys
 import textwrap
 import types as python_types
@@ -785,7 +784,6 @@ class Lambda(Layer):
 
     self.arguments = arguments or {}
     self.function = function
-    self._function_with_args = functools.partial(function, **self.arguments)
 
     if mask is not None:
       self.supports_masking = True
@@ -830,15 +828,12 @@ class Lambda(Layer):
     return nest.map_structure(_add_batch, output_shapes)
 
   def call(self, inputs, mask=None, training=None):
-    kwargs = {}
+    # We must copy for thread safety, but it only needs to be a shallow copy.
+    kwargs = {k: v for k, v in self.arguments.items()}
     if self._fn_expects_mask_arg:
       kwargs['mask'] = mask
     if self._fn_expects_training_arg:
       kwargs['training'] = training
-
-    call_fn = self._function_with_args
-    if kwargs:
-      call_fn = functools.partial(call_fn, **kwargs)
 
     created_variables = []
     def _variable_creator(next_creator, **kwargs):
@@ -848,7 +843,7 @@ class Lambda(Layer):
 
     with backprop.GradientTape(watch_accessed_variables=True) as tape,\
         variable_scope.variable_creator_scope(_variable_creator):
-      result = call_fn(inputs)
+      result = self.function(inputs, **kwargs)
     self._check_variables(created_variables, tape.watched_variables())
     return result
 
