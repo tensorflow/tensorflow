@@ -61,6 +61,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:op_macros",
     ],
 )
 
