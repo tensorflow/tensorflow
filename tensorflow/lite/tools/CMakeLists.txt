@@ -1,4 +1,4 @@
-set(TENSORFLOW_LITE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../)
+set(TENSORFLOW_LITE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/..)
 set(CMAKE_CXX_STANDARD 11)
 
 add_library(tensorflow-lite
@@ -158,17 +158,16 @@ add_library(tensorflow-lite
   ${TENSORFLOW_LITE_DIR}/kernels/internal/optimized/sse_tensor_utils.cc
   ${TENSORFLOW_LITE_DIR}/kernels/internal/reference/portable_tensor_utils.cc
   ${TENSORFLOW_LITE_DIR}/profiling/time.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/nnapi/nnapi_delegate_disabled.cc
+  ${TENSORFLOW_LITE_DIR}/nnapi/nnapi_implementation_disabled.cc
   ${TENSORFLOW_LITE_DIR}/tools/make/downloads/farmhash/src/farmhash.cc
   ${TENSORFLOW_LITE_DIR}/tools/make/downloads/fft2d/fftsg.c
   ${TENSORFLOW_LITE_DIR}/tools/make/downloads/flatbuffers/src/util.cpp
-  ${TENSORFLOW_LITE_DIR}/delegates/nnapi/nnapi_delegate_disabled.cc
-  ${TENSORFLOW_LITE_DIR}/nnapi/nnapi_implementation_disabled.cc
 )
 
 target_include_directories(tensorflow-lite PUBLIC
   ${TENSORFLOW_LITE_DIR}/../..
   ${TENSORFLOW_LITE_DIR}/tools/make/downloads/flatbuffers/include
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl
 )
 target_include_directories(tensorflow-lite PRIVATE
   ${TENSORFLOW_LITE_DIR}/tools/make/downloads/
@@ -181,18 +180,6 @@ target_link_libraries(tensorflow-lite PUBLIC
   stdc++ m z
 )
 
-## minimal example
-#add_executable(tflite-minimal
-#  ${TENSORFLOW_LITE_DIR}/examples/minimal/minimal.cc
-#)
-#target_link_libraries(tflite-minimal tensorflow-lite gl_delegate EGL GLESv2)
-
-## GPU delegate
-if(NOT CMAKE_CROSSCOMPILING)
-  set(FLATBUFFERS_BUILD_FLATC ON)
-  add_subdirectory(${TENSORFLOW_LITE_DIR}/tools/make/downloads/flatbuffers)
-endif()
-
 add_custom_command(
   OUTPUT  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/common_generated.h
   OUTPUT  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiled_model_generated.h
@@ -202,8 +189,7 @@ add_custom_command(
           ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiled_model.fbs
           ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata.fbs
           ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups.fbs
-          ${CMAKE_CURRENT_BINARY_DIR}/make/downloads/flatbuffers/flatc
-  COMMAND ${CMAKE_CURRENT_BINARY_DIR}/make/downloads/flatbuffers/flatc
+  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/host/flatc
           --cpp --scoped-enums -o ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/
           ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/common.fbs
           ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiled_model.fbs
@@ -296,14 +282,13 @@ add_library(gl_delegate
   # headers
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata_generated.h
 )
-target_include_directories(gl_delegate PUBLIC
-  /usr/local/include/
-)
 target_include_directories(gl_delegate PRIVATE
   ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl
   ${TENSORFLOW_LITE_DIR}/tools/make/downloads/fp16/include
 )
-target_link_libraries(gl_delegate tensorflow-lite)
+target_link_libraries(gl_delegate
+  tensorflow-lite
+)
 
 ## global compile option
 target_compile_options(tensorflow-lite PUBLIC -O3 -DNDEBUG -fPIC -DTFLITE_GPU_DELEGATE_ENABLED)
