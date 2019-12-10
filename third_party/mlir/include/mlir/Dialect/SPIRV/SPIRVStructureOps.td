@@ -253,7 +253,9 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope, Symbol]> {
     }]>,
     OpBuilder<[{Builder *builder, OperationState &state,
                 Type type, StringRef name, unsigned descriptorSet,
-                unsigned binding}]>
+                unsigned binding}]>,
+    OpBuilder<[{Builder *builder, OperationState &state,
+                Type type, StringRef name, spirv::BuiltIn builtin}]>
   ];
 
   let results = (outs);

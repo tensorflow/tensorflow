@@ -118,6 +118,11 @@ def SPV_CompositeExtractOp : SPV_Op<"CompositeExtract", [NoSideEffect]> {
     SPV_Type:$component
   );
 
+  let builders = [
+    OpBuilder<[{Builder *builder, OperationState &state,
+                Value *composite, ArrayRef<int32_t> indices}]>
+  ];
+
   let hasFolder = 1;
 }
 

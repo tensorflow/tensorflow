@@ -92,8 +92,12 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
 OpKernel::OpKernel(OpKernelConstruction* context)
     : OpKernel(context, MakeUnique<const NodeDef>(context->def())) {}
 
+OpKernel::OpKernel(OpKernelConstruction* context, bool is_deferred)
+    : OpKernel(context, MakeUnique<const NodeDef>(context->def()),
+               is_deferred) {}
+
 OpKernel::OpKernel(OpKernelConstruction* context,
-                   std::unique_ptr<const NodeDef> node_def)
+                   std::unique_ptr<const NodeDef> node_def, bool is_deferred)
     : def_(std::move(node_def)),
       input_types_(context->input_types().begin(),
                    context->input_types().end()),
@@ -106,6 +110,7 @@ OpKernel::OpKernel(OpKernelConstruction* context,
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()),
       graph_def_version_(context->graph_def_version()),
+      is_deferred_(is_deferred),
       cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(*def_, *context->op_def_, &input_name_map_,
