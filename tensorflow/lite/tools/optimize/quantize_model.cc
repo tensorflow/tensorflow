@@ -300,7 +300,7 @@ TfLiteStatus ApplyConstraints(ModelT* model,
       if (!property.quantizable) {
         continue;
       }
-      if ((!property.arbitrary_inputs) ||
+      if (!property.arbitrary_inputs ||
           !property.restrict_same_input_output_scale) {
         continue;
       }
