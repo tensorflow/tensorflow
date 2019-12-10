@@ -2,11 +2,6 @@ set(LLVM_TARGET_DEFINITIONS TestLinalgTransformPatterns.td)
 mlir_tablegen(TestLinalgTransformPatterns.h.inc -gen-rewriters)
 add_public_tablegen_target(MLIRTestLinalgTransformPatternsIncGen)
 
-set(LLVM_TARGET_DEFINITIONS TestLinalgTilePermutePatterns.td)
-mlir_tablegen(TestLinalgTilePermutePatterns.h.inc -gen-rewriters)
-add_public_tablegen_target(MLIRTestLinalgTilePermutePatternsIncGen)
-
-
-set(LLVM_TARGET_DEFINITIONS TestVectorPatterns.td)
-mlir_tablegen(TestVectorPatterns.h.inc -gen-rewriters)
+set(LLVM_TARGET_DEFINITIONS TestVectorTransformPatterns.td)
+mlir_tablegen(TestVectorTransformPatterns.h.inc -gen-rewriters)
 add_public_tablegen_target(MLIRTestVectorTransformPatternsIncGen)

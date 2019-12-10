@@ -4,7 +4,6 @@ add_llvm_library(MLIRTestTransforms
   TestLoopFusion.cpp
   TestInlining.cpp
   TestLinalgTransforms.cpp
-  TestLinalgTilePermuteTransforms.cpp
   TestLoopMapping.cpp
   TestLoopParametricTiling.cpp
   TestOpaqueLoc.cpp
@@ -22,7 +21,6 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../DeclarativeTransforms)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/../DeclarativeTransforms)
 add_dependencies(MLIRTestTransforms MLIRStandardOpsIncGen)
 add_dependencies(MLIRTestTransforms MLIRTestLinalgTransformPatternsIncGen)
-add_dependencies(MLIRTestTransforms MLIRTestLinalgTilePermutePatternsIncGen)
 add_dependencies(MLIRTestTransforms MLIRTestVectorTransformPatternsIncGen)
 target_link_libraries(MLIRTestTransforms
   MLIRAffineOps

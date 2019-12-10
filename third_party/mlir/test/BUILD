@@ -33,21 +33,6 @@ gentbl(
 )
 
 gentbl(
-    name = "TestLinalgTilePermuteTransformPatternsIncGen",
-    tbl_outs = [
-        (
-            "-gen-rewriters",
-            "lib/DeclarativeTransforms/TestLinalgTilePermutePatterns.h.inc",
-        ),
-    ],
-    tblgen = "@local_config_mlir//:mlir-tblgen",
-    td_file = "lib/DeclarativeTransforms/TestLinalgTilePermutePatterns.td",
-    td_srcs = [
-        "@local_config_mlir//:LinalgTransformPatternsTdFiles",
-    ],
-)
-
-gentbl(
     name = "TestVectorTransformPatternsIncGen",
     tbl_outs = [
         (
@@ -162,7 +147,6 @@ cc_library(
         "lib/Transforms/TestCallGraph.cpp",
         "lib/Transforms/TestConstantFold.cpp",
         "lib/Transforms/TestInlining.cpp",
-        "lib/Transforms/TestLinalgTilePermuteTransforms.cpp",
         "lib/Transforms/TestLinalgTransforms.cpp",
         "lib/Transforms/TestLoopFusion.cpp",
         "lib/Transforms/TestLoopMapping.cpp",
@@ -176,7 +160,6 @@ cc_library(
     includes = ["lib/TestDialect"],
     deps = [
         ":TestDialect",
-        ":TestLinalgTilePermuteTransformPatternsIncGen",
         ":TestLinalgTransformPatternsIncGen",
         ":TestVectorTransformPatternsIncGen",
         "@llvm//:support",
