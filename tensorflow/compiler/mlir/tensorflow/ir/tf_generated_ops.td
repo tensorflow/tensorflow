@@ -4496,9 +4496,7 @@ def TF_ResourceApplyGradientDescentOp : TF_Op<"ResourceApplyGradientDescent", []
 }
 
 def TF_ResourceApplyKerasMomentumOp : TF_Op<"ResourceApplyKerasMomentum", []> {
-  let summary = [{
-Update '*var' according to the momentum scheme.
-  }];
+  let summary = "Update '*var' according to the momentum scheme.";
 
   let description = [{
 Set use_nesterov = True if you want to use Nesterov momentum.
