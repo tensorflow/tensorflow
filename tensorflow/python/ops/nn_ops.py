@@ -533,8 +533,8 @@ class _WithSpaceToBatch(object):
     spatial_dims = sorted(set(int(x) for x in orig_spatial_dims))
     if spatial_dims != orig_spatial_dims or any(x < 1 for x in spatial_dims):
       raise ValueError(
-          "spatial_dims must be a monotonically increasing sequence of positive "
-          "integers")
+          "spatial_dims must be a monotonically increasing sequence of "
+          "positive integers")
 
     if data_format is not None and data_format.startswith("NC"):
       expected_input_rank = spatial_dims[-1]

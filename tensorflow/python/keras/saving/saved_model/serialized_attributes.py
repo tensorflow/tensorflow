@@ -219,8 +219,8 @@ class CommonEndpoints(SerializedAttributes.with_attributes(
     variables: List of all variables in the model and its sublayers.
     trainable_variables: List of all trainable variables in the model and its
       sublayers.
-    regularization_losses: List of all unconditional losses (losses not dependent
-      on the inputs) in the model and its sublayers.
+    regularization_losses: List of all unconditional losses (losses not
+      dependent on the inputs) in the model and its sublayers.
     __call__: Function that takes inputs and returns the outputs of the model
       call function.
     call_and_return_all_conditional_losses: Function that returns a tuple of
