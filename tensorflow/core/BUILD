@@ -2389,6 +2389,7 @@ cc_library(
     ],
     copts = tf_copts(),
     linkopts = ["-ldl"],
+    visibility = ["//visibility:public"],
     deps = [
         ":platform_base",
         "//tensorflow/core/platform/default/build_config:logging",
