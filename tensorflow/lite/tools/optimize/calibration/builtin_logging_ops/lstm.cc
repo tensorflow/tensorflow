@@ -252,62 +252,40 @@ inline void LstmStepWithAuxInput(
 
   // For each batch: update the projection and output_state. Note that since
   // the output batch rows may not be contiguous (output_batch_leading_dim !=
-  // n_output), we unroll the batched operations where this is the case.
-  if (output_batch_leading_dim == n_output) {
-    if (use_projection_weight) {
-      if (use_projection_bias) {
-        tensor_utils::VectorBatchVectorAssign(projection_bias_ptr, n_output,
-                                              n_batch, output_ptr_batch);
-      } else {
-        std::fill_n(output_ptr_batch, n_batch * n_output, 0.0f);
-      }
-      tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-          projection_weights_ptr, n_output, n_cell, output_gate_scratch,
-          n_batch, output_ptr_batch, /*result_stride=*/1);
-      if (params->proj_clip > 0.0) {
-        tensor_utils::ClipVector(output_ptr_batch, n_batch * n_output,
-                                 params->proj_clip, output_ptr_batch);
-      }
-    } else {
-      std::copy_n(output_gate_scratch, n_batch * n_output, output_ptr_batch);
-    }
-    std::copy_n(output_ptr_batch, n_batch * n_output, output_state_ptr);
-  } else {
-    if (use_projection_weight) {
-      if (use_projection_bias) {
-        for (int k = 0; k < n_batch; k++) {
-          std::copy_n(projection_bias_ptr, n_output,
-                      output_ptr_batch + k * output_batch_leading_dim);
-        }
-      } else {
-        for (int k = 0; k < n_batch; k++) {
-          std::fill_n(output_ptr_batch + k * output_batch_leading_dim, n_output,
-                      0.0f);
-        }
-      }
+  // n_output), we unroll batched operations.
+  if (use_projection_weight) {
+    if (use_projection_bias) {
       for (int k = 0; k < n_batch; k++) {
-        tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-            projection_weights_ptr, n_output, n_cell,
-            output_gate_scratch + k * n_cell,
-            /*n_batch=*/1, output_ptr_batch + k * output_batch_leading_dim,
-            /*result_stride=*/1);
-        if (params->proj_clip > 0.0) {
-          tensor_utils::ClipVector(
-              output_ptr_batch + k * output_batch_leading_dim, n_output,
-              params->proj_clip,
-              output_ptr_batch + k * output_batch_leading_dim);
-        }
-      }
-    } else {
-      for (int k = 0; k < n_batch; k++) {
-        std::copy_n(output_gate_scratch + k * n_output, n_output,
+        std::copy_n(projection_bias_ptr, n_output,
                     output_ptr_batch + k * output_batch_leading_dim);
+      }
+    } else {
+      for (int k = 0; k < n_batch; k++) {
+        std::fill_n(output_ptr_batch + k * output_batch_leading_dim, n_output,
+                    0.0f);
       }
     }
     for (int k = 0; k < n_batch; k++) {
-      std::copy_n(output_ptr_batch + k * output_batch_leading_dim, n_output,
-                  output_state_ptr + k * n_output);
+      tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+          projection_weights_ptr, n_output, n_cell,
+          output_gate_scratch + k * n_cell,
+          /*n_batch=*/1, output_ptr_batch + k * output_batch_leading_dim,
+          /*result_stride=*/1);
+      if (params->proj_clip > 0.0) {
+        tensor_utils::ClipVector(
+            output_ptr_batch + k * output_batch_leading_dim, n_output,
+            params->proj_clip, output_ptr_batch + k * output_batch_leading_dim);
+      }
     }
+  } else {
+    for (int k = 0; k < n_batch; k++) {
+      std::copy_n(output_gate_scratch + k * n_output, n_output,
+                  output_ptr_batch + k * output_batch_leading_dim);
+    }
+  }
+  for (int k = 0; k < n_batch; k++) {
+    std::copy_n(output_ptr_batch + k * output_batch_leading_dim, n_output,
+                output_state_ptr + k * n_output);
   }
 }
 
