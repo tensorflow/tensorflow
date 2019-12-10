@@ -220,6 +220,9 @@ public:
   /// has static shape.
   bool hasStaticShape() const;
 
+  /// If this has a static shape and the shape is equal to `shape` return true.
+  bool hasStaticShape(ArrayRef<int64_t> shape) const;
+
   /// If this is a ranked type, return the number of dimensions with dynamic
   /// size. Otherwise, abort.
   int64_t getNumDynamicDims() const;

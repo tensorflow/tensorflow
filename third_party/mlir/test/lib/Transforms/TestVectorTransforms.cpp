@@ -1,5 +1,4 @@
-//===- TestVectorToVectorConversion.cpp - Test VectorTransfers lowering
-//-------===//
+//===- TestVectorToVectorConversion.cpp - Test VectorTransfers lowering ---===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -18,25 +17,28 @@
 
 #include <type_traits>
 
+#include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/Dialect/VectorOps/VectorTransforms.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/Passes.h"
 
 using namespace mlir;
+using namespace mlir::vector;
 
 namespace {
+#include "TestVectorTransformPatterns.h.inc"
 
 struct TestVectorToVectorConversion
     : public FunctionPass<TestVectorToVectorConversion> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     auto *context = &getContext();
-    populateVectorToVectorConversionPatterns(context, patterns);
+    populateWithGenerated(context, &patterns);
+    populateVectorToVectorCanonicalizationPatterns(patterns, context);
     applyPatternsGreedily(getFunction(), patterns);
   }
 };
-
 } // end anonymous namespace
 
 static PassRegistration<TestVectorToVectorConversion>

@@ -48,6 +48,21 @@ gentbl(
 )
 
 gentbl(
+    name = "TestVectorTransformPatternsIncGen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/DeclarativeTransforms/TestVectorTransformPatterns.h.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "lib/DeclarativeTransforms/TestVectorTransformPatterns.td",
+    td_srcs = [
+        "@local_config_mlir//:VectorTransformPatternsTdFiles",
+    ],
+)
+
+gentbl(
     name = "TestOpsIncGen",
     strip_include_prefix = "lib/TestDialect",
     tbl_outs = [
@@ -155,7 +170,7 @@ cc_library(
         "lib/Transforms/TestMemRefStrideCalculation.cpp",
         "lib/Transforms/TestOpaqueLoc.cpp",
         "lib/Transforms/TestVectorToLoopsConversion.cpp",
-        "lib/Transforms/TestVectorToVectorConversion.cpp",
+        "lib/Transforms/TestVectorTransforms.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
     ],
     includes = ["lib/TestDialect"],
@@ -163,6 +178,7 @@ cc_library(
         ":TestDialect",
         ":TestLinalgTilePermuteTransformPatternsIncGen",
         ":TestLinalgTransformPatternsIncGen",
+        ":TestVectorTransformPatternsIncGen",
         "@llvm//:support",
         "@local_config_mlir//:AffineOps",
         "@local_config_mlir//:Analysis",

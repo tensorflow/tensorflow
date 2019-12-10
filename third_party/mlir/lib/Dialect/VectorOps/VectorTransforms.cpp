@@ -113,14 +113,6 @@ static Operation *cloneOpWithOperandsAndTypes(PatternRewriter &builder,
   return builder.createOperation(res);
 }
 
-// Helper function for Tablegen.
-static bool hasShape(Value *v, ArrayRef<int64_t> shape) {
-  auto t = v->getType().dyn_cast<ShapedType>();
-  if (!t)
-    return false;
-  return std::equal(t.getShape().begin(), t.getShape().end(), shape.begin());
-}
-
 static Value *makeSplatZero(Location loc, PatternRewriter &rewriter,
                             VectorType vt) {
   auto t = vt.getElementType();
@@ -453,19 +445,4 @@ Value *mlir::vector::unrollSingleResultOpMatchingType(
   // Unroll 'op' with 'iterationBounds' to 'targetShape'.
   return unrollSingleResultStructuredOp(op, iterationBounds, vectors,
                                         resultIndex, targetShape, builder);
-}
-
-namespace mlir {
-namespace vector {
-namespace {
-#include "mlir/Dialect/VectorOps/VectorTransformPatterns.h.inc"
-} // end namespace
-} // end namespace vector
-} // end namespace mlir
-
-void mlir::populateVectorToVectorConversionPatterns(
-    MLIRContext *context, OwningRewritePatternList &patterns,
-    ArrayRef<int64_t> coarseVectorShape, ArrayRef<int64_t> fineVectorShape) {
-  vector::populateWithGenerated(context, &patterns);
-  vector::populateVectorToVectorCanonicalizationPatterns(patterns, context);
 }
