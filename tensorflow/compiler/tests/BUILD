@@ -1415,6 +1415,7 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["conv_node_name_test.py"],
     shard_count = 5,
+    tags = ["no_rocm"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
