@@ -25,6 +25,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import random_seed
 from tensorflow.python.platform import test
 
 
@@ -131,6 +132,24 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
       sorted_epoch = sorted(
           output[i * 5:(i + 1) * 5], key=lambda batch: batch[0])
       self.assertAllEqual(sorted_epoch, np.arange(500).reshape([5, 100]))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testRerandomizeOnReplicate(self):
+    random_seed.set_random_seed(None)
+    # When no seeds are fixed, each instantiation of the dataset should
+    # produce elements in a different order.
+    num_epochs = 2
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements).apply(
+        shuffle_ops.shuffle_and_repeat(
+            buffer_size=num_elements, count=num_epochs))
+
+    shuffle_1 = self.getDatasetOutput(ds)
+    ds = self.graphRoundTrip(ds)
+    shuffle_2 = self.getDatasetOutput(ds)
+
+    self.assertCountEqual(shuffle_1, shuffle_2)
+    self.assertNotEqual(shuffle_1, shuffle_2)
 
 
 if __name__ == "__main__":

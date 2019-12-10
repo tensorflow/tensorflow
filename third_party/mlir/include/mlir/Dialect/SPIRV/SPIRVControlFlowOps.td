@@ -36,7 +36,7 @@ def SPV_BranchOp : SPV_Op<"Branch", [InFunctionScope, Terminator]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     branch-op ::= `spv.Branch` successor
     successor ::= bb-id branch-use-list?
     branch-use-list ::= `(` ssa-use-list `:` type-list-no-parens `)`
@@ -106,7 +106,7 @@ def SPV_BranchConditionalOp : SPV_Op<"BranchConditional",
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     branch-conditional-op ::= `spv.BranchConditional` ssa-use
                               (`[` integer-literal, integer-literal `]`)?
                               `,` successor `,` successor
@@ -231,7 +231,7 @@ def SPV_FunctionCallOp : SPV_Op<"FunctionCall", [
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     function-call-op ::= `spv.FunctionCall` function-id `(` ssa-use-list `)`
                      `:` function-type
     ```
@@ -355,7 +355,7 @@ def SPV_ReturnOp : SPV_Op<"Return", [InFunctionScope, Terminator]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     return-op ::= `spv.Return`
     ```
   }];
@@ -378,7 +378,7 @@ def SPV_UnreachableOp : SPV_Op<"Unreachable", [InFunctionScope, Terminator]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     unreachable-op ::= `spv.Unreachable`
     ```
   }];
@@ -405,7 +405,7 @@ def SPV_ReturnValueOp : SPV_Op<"ReturnValue", [InFunctionScope, Terminator]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     return-value-op ::= `spv.ReturnValue` ssa-use `:` spirv-type
     ```
 

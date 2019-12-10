@@ -18,7 +18,7 @@ load(
     "tf_protobuf_deps",
 )
 load(
-    "//tensorflow/core/platform:default/build_refactor.bzl",
+    "//tensorflow/core/platform/default:build_refactor.bzl",
     "tf_instantiate_platform_libraries",
     "tf_legacy_srcs_no_runtime_google",
     "tf_logging_deps",
@@ -890,31 +890,31 @@ filegroup(
     name = "legacy_srcs_no_runtime",
     srcs = [
         ":legacy_srcs_common",
-        "//tensorflow/core/platform:default/context.h",
-        "//tensorflow/core/platform:default/cord.h",
-        "//tensorflow/core/platform:default/dynamic_annotations.h",
-        "//tensorflow/core/platform:default/env.cc",
-        "//tensorflow/core/platform:default/human_readable_json.cc",
-        "//tensorflow/core/platform:default/integral_types.h",
-        "//tensorflow/core/platform:default/load_library.cc",
-        "//tensorflow/core/platform:default/logging.h",
-        "//tensorflow/core/platform:default/monitoring.cc",
-        "//tensorflow/core/platform:default/mutex.h",
-        "//tensorflow/core/platform:default/mutex_data.h",
-        "//tensorflow/core/platform:default/net.cc",
-        "//tensorflow/core/platform:default/notification.h",
-        "//tensorflow/core/platform:default/port.cc",
-        "//tensorflow/core/platform:default/posix_file_system.cc",
-        "//tensorflow/core/platform:default/posix_file_system.h",
-        "//tensorflow/core/platform:default/stacktrace.h",
-        "//tensorflow/core/platform:default/stacktrace_handler.cc",
-        "//tensorflow/core/platform:default/strong_hash.h",
-        "//tensorflow/core/platform:default/subprocess.cc",
-        "//tensorflow/core/platform:default/subprocess.h",
-        "//tensorflow/core/platform:default/tracing.cc",
-        "//tensorflow/core/platform:default/tracing_impl.h",
-        "//tensorflow/core/platform:default/unbounded_work_queue.cc",
-        "//tensorflow/core/platform:default/unbounded_work_queue.h",
+        "//tensorflow/core/platform/default:context.h",
+        "//tensorflow/core/platform/default:cord.h",
+        "//tensorflow/core/platform/default:dynamic_annotations.h",
+        "//tensorflow/core/platform/default:env.cc",
+        "//tensorflow/core/platform/default:human_readable_json.cc",
+        "//tensorflow/core/platform/default:integral_types.h",
+        "//tensorflow/core/platform/default:load_library.cc",
+        "//tensorflow/core/platform/default:logging.h",
+        "//tensorflow/core/platform/default:monitoring.cc",
+        "//tensorflow/core/platform/default:mutex.h",
+        "//tensorflow/core/platform/default:mutex_data.h",
+        "//tensorflow/core/platform/default:net.cc",
+        "//tensorflow/core/platform/default:notification.h",
+        "//tensorflow/core/platform/default:port.cc",
+        "//tensorflow/core/platform/default:posix_file_system.cc",
+        "//tensorflow/core/platform/default:posix_file_system.h",
+        "//tensorflow/core/platform/default:stacktrace.h",
+        "//tensorflow/core/platform/default:stacktrace_handler.cc",
+        "//tensorflow/core/platform/default:strong_hash.h",
+        "//tensorflow/core/platform/default:subprocess.cc",
+        "//tensorflow/core/platform/default:subprocess.h",
+        "//tensorflow/core/platform/default:tracing.cc",
+        "//tensorflow/core/platform/default:tracing_impl.h",
+        "//tensorflow/core/platform/default:unbounded_work_queue.cc",
+        "//tensorflow/core/platform/default:unbounded_work_queue.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -967,6 +967,14 @@ filegroup(
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
+bzl_library(
+    name = "build_config_root_bzl",
+    srcs = [
+        "build_config_root.bzl",
+        "//tensorflow/core/platform/default:build_config_root.bzl",
+    ],
+)
+
 # TODO(gunan): Remove the following once references in core/BUILD is removed.
 exports_files(
     glob(
@@ -986,19 +994,6 @@ exports_files(
             "stacktrace.h",
         ],
     ),
-)
-
-bzl_library(
-    name = "build_config_root_bzl",
-    srcs = [
-        "build_config_root.bzl",
-        "default/build_config_root.bzl",
-    ],
-)
-
-bzl_library(
-    name = "cuda_build_defs_bzl",
-    srcs = ["default/cuda_build_defs.bzl"],
 )
 
 exports_files(

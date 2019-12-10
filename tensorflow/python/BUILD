@@ -594,10 +594,10 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_util_port",
     srcs = ["util/port_wrapper.cc"],
-    hdrs = ["//tensorflow/core:util_port_hdrs"],
+    hdrs = ["//tensorflow/core/util:port_hdrs"],
     module_name = "_pywrap_util_port",
     deps = [
-        "//tensorflow/core:util_port",
+        "//tensorflow/core/util:port",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -5556,7 +5556,7 @@ WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS = [
     ":cpp_python_util",  # util
     ":py_func_lib",  # py_func
     ":model_analyzer_lib",  # model_analyzer
-    "//tensorflow/core:util_port",  # util_port
+    "//tensorflow/core/util:port",  # util_port
     "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
     "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
     "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof

@@ -22,8 +22,16 @@ limitations under the License.
 extern "C" {
 #endif
 
+// Resets `op_to_reset` with `op_or_function_name` and `raw_device_name`. This
+// is for performance optimization by reusing an exiting unused op rather than
+// creating a new op every time. If `raw_device_name` is `NULL` or empty, it
+// does not set the device name. If it's not `NULL`, then it attempts to parse
+// and set the device name. It's effectively `TFE_OpSetDevice`, but it is faster
+// than seperately calling it because if the existing op has the same
+// `raw_device_name`, it skips parsing and just leave as it is.
 TF_CAPI_EXPORT extern void TFE_OpReset(TFE_Context* ctx,
                                        const char* op_or_function_name,
+                                       const char* raw_device_name,
                                        TF_Status* status, TFE_Op* op_to_reset);
 
 TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,

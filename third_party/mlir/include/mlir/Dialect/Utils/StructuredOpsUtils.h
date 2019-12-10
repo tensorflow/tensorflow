@@ -33,23 +33,23 @@ namespace mlir {
 /// Attribute name for the AffineArrayAttr which encodes the relationship
 /// between a structured op iterators' and its operands.
 static constexpr StringLiteral getIndexingMapsAttrName() {
-  return "indexing_maps";
+  return StringLiteral("indexing_maps");
 }
 
 /// Attribute name for the StrArrayAttr which encodes the type of a structured
 /// op's iterators.
 static constexpr StringLiteral getIteratorTypesAttrName() {
-  return "iterator_types";
+  return StringLiteral("iterator_types");
 }
 
 /// Use to encode that a particular iterator type has parallel semantics.
 inline static constexpr StringLiteral getParallelIteratorTypeName() {
-  return "parallel";
+  return StringLiteral("parallel");
 }
 
 /// Use to encode that a particular iterator type has reduction semantics.
 inline static constexpr StringLiteral getReductionIteratorTypeName() {
-  return "reduction";
+  return StringLiteral("reduction");
 }
 } // end namespace mlir
 

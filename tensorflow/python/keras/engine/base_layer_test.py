@@ -485,9 +485,15 @@ class BaseLayerTest(keras_parameterized.TestCase):
     add4 = keras.layers.Add()([inputs, inputs])
     model = keras.models.Model(
         inputs=[inputs], outputs=[add1, add2, add3, add4])
-    self.assertEqual(
-        [l.name for l in model.layers],
-        ['input_1', 'tf_op_layer_add', 'add', 'tf_op_layer_add_2', 'add_1'])
+    actual_names = [l.name for l in model.layers]
+    graph_names = [
+        'input_1', 'tf_op_layer_AddV2', 'add', 'tf_op_layer_AddV2_1', 'add_1'
+    ]
+    eager_names = [
+        'input_1', 'tf_op_layer_add', 'add', 'tf_op_layer_add_2', 'add_1'
+    ]
+    for actual, eager, graph in zip(actual_names, graph_names, eager_names):
+      self.assertIn(actual, {eager, graph})
 
   def test_add_trainable_weight_on_frozen_layer(self):
 

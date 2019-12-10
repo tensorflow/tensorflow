@@ -169,6 +169,22 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "snapshot_dataset_serialization_test",
+    size = "small",
+    srcs = ["snapshot_dataset_serialization_test.py"],
+    additional_deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+)
+
+tf_py_test(
     name = "csv_dataset_serialization_test",
     size = "small",
     srcs = ["csv_dataset_serialization_test.py"],

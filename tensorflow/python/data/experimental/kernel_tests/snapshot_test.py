@@ -110,9 +110,9 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     dataset2 = dataset2.apply(snapshot.snapshot(tmpdir))
     next2 = self.getNext(dataset2)
 
-    for _ in range(1000):
-      self.evaluate(next1())
-      self.evaluate(next2())
+    for i in range(0, 1000):
+      self.assertEqual(i, self.evaluate(next1()))
+      self.assertEqual(i, self.evaluate(next2()))
 
     # we check that only one copy of the metadata has been written, and the
     # one that lost the race would be in passthrough mode.

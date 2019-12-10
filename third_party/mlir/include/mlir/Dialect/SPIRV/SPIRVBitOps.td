@@ -83,7 +83,7 @@ def SPV_BitCountOp : SPV_BitUnaryOp<"BitCount", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                   `vector<` integer-literal `x` integer-type `>`
     bitcount-op ::= ssa-id `=` `spv.BitCount` ssa-use
@@ -132,7 +132,7 @@ def SPV_BitFieldInsertOp : SPV_Op<"BitFieldInsert", [NoSideEffect]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                   `vector<` integer-literal `x` integer-type `>`
     bitfield-insert-op ::= ssa-id `=` `spv.BitFieldInsert` ssa-use `,` ssa-use
@@ -190,7 +190,7 @@ def SPV_BitFieldSExtractOp : SPV_BitFieldExtractOp<"BitFieldSExtract", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                   `vector<` integer-literal `x` integer-type `>`
     bitfield-extract-s-op ::= ssa-id `=` `spv.BitFieldSExtract` ssa-use
@@ -219,7 +219,7 @@ def SPV_BitFieldUExtractOp : SPV_BitFieldExtractOp<"BitFieldUExtract", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                   `vector<` integer-literal `x` integer-type `>`
     bitfield-extract-u-op ::= ssa-id `=` `spv.BitFieldUExtract` ssa-use
@@ -253,7 +253,7 @@ def SPV_BitReverseOp : SPV_BitUnaryOp<"BitReverse", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                    `vector<` integer-literal `x` integer-type `>`
     bitreverse-op ::= ssa-id `=` `spv.BitReverse` ssa-use
@@ -287,7 +287,7 @@ def SPV_BitwiseAndOp : SPV_BitBinaryOp<"BitwiseAnd", [Commutative]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                   `vector<` integer-literal `x` integer-type `>`
     bitwise-and-op ::= ssa-id `=` `spv.BitwiseAnd` ssa-use, ssa-use
@@ -321,7 +321,7 @@ def SPV_BitwiseOrOp : SPV_BitBinaryOp<"BitwiseOr", [Commutative]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                   `vector<` integer-literal `x` integer-type `>`
     bitwise-or-op ::= ssa-id `=` `spv.BitwiseOr` ssa-use, ssa-use
@@ -355,7 +355,7 @@ def SPV_BitwiseXorOp : SPV_BitBinaryOp<"BitwiseXor", [Commutative]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                   `vector<` integer-literal `x` integer-type `>`
     bitwise-xor-op ::= ssa-id `=` `spv.BitwiseXor` ssa-use, ssa-use
@@ -397,7 +397,7 @@ def SPV_ShiftLeftLogicalOp : SPV_ShiftOp<"ShiftLeftLogical", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                   `vector<` integer-literal `x` integer-type `>`
     shift-left-logical-op ::= ssa-id `=` `spv.ShiftLeftLogical`
@@ -438,7 +438,7 @@ def SPV_ShiftRightArithmeticOp : SPV_ShiftOp<"ShiftRightArithmetic", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                   `vector<` integer-literal `x` integer-type `>`
     shift-right-arithmetic-op ::= ssa-id `=` `spv.ShiftRightArithmetic`
@@ -480,7 +480,7 @@ def SPV_ShiftRightLogicalOp : SPV_ShiftOp<"ShiftRightLogical", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                   `vector<` integer-literal `x` integer-type `>`
     shift-right-logical-op ::= ssa-id `=` `spv.ShiftRightLogical`
@@ -514,7 +514,7 @@ def SPV_NotOp : SPV_BitUnaryOp<"Not", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                   `vector<` integer-literal `x` integer-type `>`
     not-op ::= ssa-id `=` `spv.BitNot` ssa-use `:` integer-scalar-vector-type

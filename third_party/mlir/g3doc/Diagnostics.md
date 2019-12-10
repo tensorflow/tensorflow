@@ -16,7 +16,7 @@ different location types depending on the situational need.
 
 ### CallSite Location
 
-``` {.ebnf}
+```
 callsite-location ::= 'callsite' '(' location 'at' location ')'
 ```
 
@@ -26,7 +26,7 @@ location usages. This connects a location of a `callee` with the location of a
 
 ### FileLineCol Location
 
-``` {.ebnf}
+```
 filelinecol-location ::= string-literal ':' integer-literal ':' integer-literal
 ```
 
@@ -36,7 +36,7 @@ languages.
 
 ### Fused Location
 
-``` {.ebnf}
+```
 fused-location ::= `fused` fusion-metadata? '[' location (location ',')* ']'
 fusion-metadata ::= '<' attribute-value '>'
 ```
@@ -49,7 +49,7 @@ loss of location information. With `fused` locations, this is a non-issue.
 
 ### Name Location
 
-``` {.ebnf}
+```
 name-location ::= string-literal ('(' location ')')?
 ```
 
@@ -66,7 +66,7 @@ optional location is used during serialization.
 
 ### Unknown Location
 
-``` {.ebnf}
+```
 unknown-location ::= `unknown`
 ```
 
@@ -311,7 +311,7 @@ annotate your source file with expected diagnostics in the form of:
 
 A few examples are shown below:
 
-```mlir {.mlir}
+```mlir
 // Expect an error on the same line.
 func @bad_branch() {
   br ^missing  // expected-error {{reference to an undefined block}}

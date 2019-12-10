@@ -556,6 +556,15 @@ manual_symbol_renames = {
 }
 # pylint: enable=line-too-long
 
+
+def add_contrib_direct_import_support(symbol_dict):
+  """Add support for `tf.contrib.*` alias `contrib_*.` Updates dict in place."""
+  for symbol_name in list(symbol_dict.keys()):
+    symbol_alias = symbol_name.replace("tf.contrib.", "contrib_")
+    symbol_dict[symbol_alias] = symbol_dict[symbol_name]
+
+add_contrib_direct_import_support(manual_symbol_renames)
+
 symbol_renames = renames_v2.renames
 symbol_renames.update(manual_symbol_renames)
 
@@ -613,3 +622,5 @@ addons_symbol_mappings = {
     "tf.contrib.rnn.LayerNormBasicLSTMCell":
         "tfa.rnn.LayerNormLSTMCell"
 }
+
+add_contrib_direct_import_support(addons_symbol_mappings)

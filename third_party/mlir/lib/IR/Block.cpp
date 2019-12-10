@@ -257,3 +257,13 @@ Block *PredecessorIterator::unwrap(BlockOperand &value) {
 unsigned PredecessorIterator::getSuccessorIndex() const {
   return I->getOperandNumber();
 }
+
+//===----------------------------------------------------------------------===//
+// Successors
+//===----------------------------------------------------------------------===//
+
+SuccessorRange::SuccessorRange(Block *block) : SuccessorRange(nullptr, 0) {
+  if (Operation *term = block->getTerminator())
+    if ((count = term->getNumSuccessors()))
+      base = term->getBlockOperands().data();
+}

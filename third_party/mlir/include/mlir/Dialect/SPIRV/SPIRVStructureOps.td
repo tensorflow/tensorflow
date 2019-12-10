@@ -40,7 +40,7 @@ def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     spv-address-of-op ::= ssa-id `=` `spv._address_of` symbol-ref-id
                                      `:` spirv-pointer-type
     ```
@@ -89,7 +89,7 @@ def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     spv-constant-op ::= ssa-id `=` `spv.constant` attribute-value
                         (`:` spirv-type)?
     ```
@@ -160,7 +160,7 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     execution-model ::= "Vertex" | "TesellationControl" |
                         <and other SPIR-V execution models...>
 
@@ -217,7 +217,7 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope, Symbol]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     variable-op ::= `spv.globalVariable` spirv-type symbol-ref-id
                     (`initializer(` symbol-ref-id `)`)?
                     (`bind(` integer-literal, integer-literal `)`)?
@@ -293,7 +293,7 @@ def SPV_ModuleOp : SPV_Op<"module",
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     addressing-model ::= `"Logical"` | `"Physical32"` | `"Physical64"`
     memory-model ::= `"Simple"` | `"GLSL450"` | `"OpenCL"` | `"VulkanKHR"`
     spv-module-op ::= `spv.module` addressing-model memory-model
@@ -393,7 +393,7 @@ def SPV_ReferenceOfOp : SPV_Op<"_reference_of", [NoSideEffect]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     spv-reference-of-op ::= ssa-id `=` `spv._reference_of` symbol-ref-id
                                        `:` spirv-scalar-type
     ```
@@ -434,7 +434,7 @@ def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope, Symbol]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     spv-spec-constant-op ::= `spv.specConstant` symbol-ref-id
                              `spec_id(` integer `)`
                              `=` attribute-value (`:` spirv-type)?
