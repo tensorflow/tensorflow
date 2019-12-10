@@ -57,8 +57,10 @@ const char kDetectionPostProcessOp[] =
     "type: 'int'} attr : { name: 'max_detections' type: 'int'} attr : { "
     "name: 'nms_iou_threshold' type: 'float'} attr : { name: "
     "'nms_score_threshold' type: 'float'} attr : { name: 'num_classes' type: "
-    "'int'} attr : { name: 'w_scale' type: 'int'} attr : { name: 'x_scale' "
-    "type: 'int'} attr : { name: 'y_scale' type: 'int'}";
+    "'int'} attr : { name: 'w_scale' type: 'float'} attr : { name: 'x_scale' "
+    "type: 'float'} attr : { name: 'y_scale' type: 'float'} attr { name: "
+    "'detections_per_class' type: 'int' default_value { i : 100 }} attr { "
+    "name: 'use_regular_nms' type: 'bool' default_value { b : false }}";
 
 // Converts the toco::IODataType to tensorflow::DataType. Only contains the
 // conversion mapping for constants defined in TFLite Python API.
@@ -237,8 +239,8 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   // Parse output arrays.
   std::vector<string> output_arrays(model_flags.output_arrays().begin(),
                                     model_flags.output_arrays().end());
-  TF_RETURN_IF_ERROR(tensorflow::ParseOutputArrayInfo(
-      output_arrays, &specs.output_arrays, &specs.output_arrays_order));
+  TF_RETURN_IF_ERROR(
+      tensorflow::ParseOutputArrayInfo(output_arrays, &specs.outputs));
 
   // Other flags.
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();

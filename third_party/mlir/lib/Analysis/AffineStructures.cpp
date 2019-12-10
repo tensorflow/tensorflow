@@ -659,9 +659,8 @@ LogicalResult FlatAffineConstraints::composeMap(const AffineValueMap *vMap) {
 
   // Add localCst information.
   if (localCst.getNumLocalIds() > 0) {
-    SmallVector<Value *, 8> values(vMap->getOperands().begin(),
-                                   vMap->getOperands().end());
-    localCst.setIdValues(0, localCst.getNumDimAndSymbolIds(), values);
+    localCst.setIdValues(0, /*end=*/localCst.getNumDimAndSymbolIds(),
+                         /*values=*/vMap->getOperands());
     // Align localCst and this.
     mergeAndAlignIds(/*offset=*/0, &localCst, this);
     // Finally, append localCst to this constraint set.
@@ -1525,7 +1524,7 @@ void FlatAffineConstraints::removeRedundantInequalities() {
 
 std::pair<AffineMap, AffineMap> FlatAffineConstraints::getLowerAndUpperBound(
     unsigned pos, unsigned offset, unsigned num, unsigned symStartPos,
-    ArrayRef<AffineExpr> localExprs, MLIRContext *context) {
+    ArrayRef<AffineExpr> localExprs, MLIRContext *context) const {
   assert(pos + offset < getNumDimIds() && "invalid dim start pos");
   assert(symStartPos >= (pos + offset) && "invalid sym start pos");
   assert(getNumLocalIds() == localExprs.size() &&

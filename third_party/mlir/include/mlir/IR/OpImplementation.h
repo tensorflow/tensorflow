@@ -95,15 +95,14 @@ public:
   /// SSA values in namesToUse.  This may only be used for IsolatedFromAbove
   /// operations.  If any entry in namesToUse is null, the corresponding
   /// argument name is left alone.
-  virtual void shadowRegionArgs(Region &region,
-                                ArrayRef<Value *> namesToUse) = 0;
+  virtual void shadowRegionArgs(Region &region, ValueRange namesToUse) = 0;
 
   /// Prints an affine map of SSA ids, where SSA id names are used in place
   /// of dims/symbols.
   /// Operand values must come from single-result sources, and be valid
   /// dimensions/symbol identifiers according to mlir::isValidDim/Symbol.
   virtual void printAffineMapOfSSAIds(AffineMapAttr mapAttr,
-                                      ArrayRef<Value *> operands) = 0;
+                                      ValueRange operands) = 0;
 
   /// Print an optional arrow followed by a type list.
   void printOptionalArrowTypeList(ArrayRef<Type> types) {

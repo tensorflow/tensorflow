@@ -27,7 +27,7 @@ limitations under the License.
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
-#include "tensorflow/core/lib/strings/base64.h"
+#include "tensorflow/core/platform/base64.h"
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"

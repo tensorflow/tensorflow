@@ -231,7 +231,14 @@ cc_library(
     srcs = ["shape_inference_helpers.cc"],
     hdrs = ["shape_inference_helpers.h"],
     visibility = [":friends"],
-    deps = ["//tensorflow/core:graph"],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:graph",
+        ],
+    }),
 )
 
 # Internal targets below this point.

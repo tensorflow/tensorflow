@@ -272,7 +272,8 @@ def generated_test_models():
         "exp",
         "embedding_lookup",
         "expand_dims",
-        "eye",
+        # TODO(b/145885576): Re-enable.
+        # "eye",
         "fill",
         "floor",
         "floor_div",
@@ -301,8 +302,9 @@ def generated_test_models():
         "logical_or",
         "logical_xor",
         "lstm",
-        "matrix_diag",
-        "matrix_set_diag",
+        # TODO(b/145885576): Re-enable.
+        # "matrix_diag",
+        # "matrix_set_diag",
         "max_pool",
         "maximum",
         "mean",

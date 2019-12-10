@@ -71,7 +71,7 @@ mlir::spirv::getEntryPointABIAttr(ArrayRef<int32_t> localSize,
 Type SPIRVTypeConverter::getIndexType(MLIRContext *context) {
   // Convert to 32-bit integers for now. Might need a way to control this in
   // future.
-  // TODO(ravishankarm): It is porbably better to make it 64-bit integers. To
+  // TODO(ravishankarm): It is probably better to make it 64-bit integers. To
   // this some support is needed in SPIR-V dialect for Conversion
   // instructions. The Vulkan spec requires the builtins like
   // GlobalInvocationID, etc. to be 32-bit (unsigned) integers which should be
@@ -86,6 +86,33 @@ static Optional<int64_t> getTypeNumBytes(Type t) {
     return integerType.getWidth() / 8;
   } else if (auto floatType = t.dyn_cast<FloatType>()) {
     return floatType.getWidth() / 8;
+  } else if (auto memRefType = t.dyn_cast<MemRefType>()) {
+    // TODO: Layout should also be controlled by the ABI attributes. For now
+    // using the layout from MemRef.
+    int64_t offset;
+    SmallVector<int64_t, 4> strides;
+    if (!memRefType.hasStaticShape() ||
+        failed(getStridesAndOffset(memRefType, strides, offset))) {
+      return llvm::None;
+    }
+    // To get the size of the memref object in memory, the total size is the
+    // max(stride * dimension-size) computed for all dimensions times the size
+    // of the element.
+    auto elementSize = getTypeNumBytes(memRefType.getElementType());
+    if (!elementSize) {
+      return llvm::None;
+    }
+    auto dims = memRefType.getShape();
+    if (llvm::is_contained(dims, ShapedType::kDynamicSize) ||
+        offset == MemRefType::getDynamicStrideOrOffset() ||
+        llvm::is_contained(strides, MemRefType::getDynamicStrideOrOffset())) {
+      return llvm::None;
+    }
+    int64_t memrefSize = -1;
+    for (auto shape : enumerate(dims)) {
+      memrefSize = std::max(memrefSize, shape.value() * strides[shape.index()]);
+    }
+    return (offset + memrefSize) * elementSize.getValue();
   }
   // TODO: Add size computation for other types.
   return llvm::None;
@@ -120,40 +147,21 @@ static Type convertStdType(Type type) {
     if (!elementSize) {
       return Type();
     }
-
-    if (!memRefType.hasStaticShape()) {
-      // TODO(ravishankarm) : Handle dynamic shapes.
-      return Type();
+    // TODO(ravishankarm) : Handle dynamic shapes.
+    if (memRefType.hasStaticShape()) {
+      auto arraySize = getTypeNumBytes(memRefType);
+      if (!arraySize) {
+        return Type();
+      }
+      auto arrayType = spirv::ArrayType::get(
+          elementType, arraySize.getValue() / elementSize.getValue(),
+          elementSize.getValue());
+      auto structType = spirv::StructType::get(arrayType, 0);
+      // For now initialize the storage class to StorageBuffer. This will be
+      // updated later based on whats passed in w.r.t to the ABI attributes.
+      return spirv::PointerType::get(structType,
+                                     spirv::StorageClass::StorageBuffer);
     }
-
-    // Get the strides and offset.
-    int64_t offset;
-    SmallVector<int64_t, 4> strides;
-    if (failed(getStridesAndOffset(memRefType, strides, offset)) ||
-        offset == MemRefType::getDynamicStrideOrOffset() ||
-        llvm::is_contained(strides, MemRefType::getDynamicStrideOrOffset())) {
-      // TODO(ravishankarm) : Handle dynamic strides and offsets.
-      return Type();
-    }
-
-    // Convert to a multi-dimensional spv.array if size is known.
-    auto shape = memRefType.getShape();
-    assert(shape.size() == strides.size());
-    Type arrayType = elementType;
-    // TODO(antiagainst): Introduce layout as part of the shader ABI to have
-    // better separate of concerns.
-    for (int i = shape.size(); i > 0; --i) {
-      arrayType = spirv::ArrayType::get(
-          arrayType, shape[i - 1], strides[i - 1] * elementSize.getValue());
-    }
-
-    // For the offset, need to wrap the array in a struct.
-    auto structType =
-        spirv::StructType::get(arrayType, offset * elementSize.getValue());
-    // For now initialize the storage class to StorageBuffer. This will be
-    // updated later based on whats passed in w.r.t to the ABI attributes.
-    return spirv::PointerType::get(structType,
-                                   spirv::StorageClass::StorageBuffer);
   }
 
   return Type();
@@ -170,8 +178,9 @@ Type SPIRVTypeConverter::convertType(Type type) { return convertStdType(type); }
 static spirv::GlobalVariableOp getBuiltinVariable(spirv::ModuleOp &moduleOp,
                                                   spirv::BuiltIn builtin) {
   for (auto varOp : moduleOp.getBlock().getOps<spirv::GlobalVariableOp>()) {
-    if (auto builtinAttr = varOp.getAttrOfType<StringAttr>(convertToSnakeCase(
-            stringifyDecoration(spirv::Decoration::BuiltIn)))) {
+    if (auto builtinAttr = varOp.getAttrOfType<StringAttr>(
+            spirv::SPIRVDialect::getAttributeName(
+                spirv::Decoration::BuiltIn))) {
       auto varBuiltIn = spirv::symbolizeBuiltIn(builtinAttr.getValue());
       if (varBuiltIn && varBuiltIn.getValue() == builtin) {
         return varOp;
@@ -181,7 +190,7 @@ static spirv::GlobalVariableOp getBuiltinVariable(spirv::ModuleOp &moduleOp,
   return nullptr;
 }
 
-/// Gets name of global variable for a buitlin.
+/// Gets name of global variable for a builtin.
 static std::string getBuiltinVarName(spirv::BuiltIn builtin) {
   return std::string("__builtin_var_") + stringifyBuiltIn(builtin).str() + "__";
 }
@@ -206,11 +215,8 @@ getOrInsertBuiltinVariable(spirv::ModuleOp &moduleOp, Location loc,
     auto ptrType = spirv::PointerType::get(
         VectorType::get({3}, builder.getIntegerType(32)),
         spirv::StorageClass::Input);
-    newVarOp = builder.create<spirv::GlobalVariableOp>(
-        loc, TypeAttr::get(ptrType), builder.getStringAttr(name), nullptr);
-    newVarOp.setAttr(
-        convertToSnakeCase(stringifyDecoration(spirv::Decoration::BuiltIn)),
-        builder.getStringAttr(stringifyBuiltIn(builtin)));
+    newVarOp =
+        builder.create<spirv::GlobalVariableOp>(loc, ptrType, name, builtin);
     break;
   }
   default:
@@ -222,7 +228,7 @@ getOrInsertBuiltinVariable(spirv::ModuleOp &moduleOp, Location loc,
 }
 
 /// Gets the global variable associated with a builtin and add
-/// it if it doesnt exist.
+/// it if it doesn't exist.
 Value *mlir::spirv::getBuiltinVariableValue(Operation *op,
                                             spirv::BuiltIn builtin,
                                             OpBuilder &builder) {
@@ -231,16 +237,12 @@ Value *mlir::spirv::getBuiltinVariableValue(Operation *op,
     op->emitError("expected operation to be within a SPIR-V module");
     return nullptr;
   }
-  auto varOp =
+  spirv::GlobalVariableOp varOp =
       getOrInsertBuiltinVariable(moduleOp, op->getLoc(), builtin, builder);
-  auto ptr = builder
-                 .create<spirv::AddressOfOp>(op->getLoc(), varOp.type(),
-                                             builder.getSymbolRefAttr(varOp))
-                 .pointer();
-  return builder.create<spirv::LoadOp>(
-      op->getLoc(),
-      ptr->getType().template cast<spirv::PointerType>().getPointeeType(), ptr,
-      /*memory_access =*/nullptr, /*alignment =*/nullptr);
+  Value *ptr = builder.create<spirv::AddressOfOp>(op->getLoc(), varOp);
+  return builder.create<spirv::LoadOp>(op->getLoc(), ptr,
+                                       /*memory_access =*/nullptr,
+                                       /*alignment =*/nullptr);
 }
 
 //===----------------------------------------------------------------------===//
@@ -278,7 +280,7 @@ FuncOp mlir::spirv::lowerAsEntryFunction(
   newFuncOp.setType(rewriter.getFunctionType(
       signatureConverter.getConvertedTypes(), llvm::None));
   rewriter.applySignatureConversion(&newFuncOp.getBody(), signatureConverter);
-  rewriter.replaceOp(funcOp.getOperation(), llvm::None);
+  rewriter.eraseOp(funcOp);
 
   // Set the attributes for argument and the function.
   StringRef argABIAttrName = spirv::getInterfaceVarABIAttrName();

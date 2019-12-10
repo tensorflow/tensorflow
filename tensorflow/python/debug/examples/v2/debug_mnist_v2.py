@@ -99,8 +99,8 @@ def parse_args():
       "--dump_tensor_debug_mode",
       type=str,
       default="NO_TENSOR",
-      help="Mode for dumping tensor values. Options: NO_TENSOR, FULL_TENSOR. "
-      "This is relevant only when --dump_dir is set.")
+      help="Mode for dumping tensor values. Options: NO_TENSOR, CURT_HEALTH, "
+      "FULL_TENSOR. This is relevant only when --dump_dir is set.")
   # TODO(cais): Add more tensor debug mode strings once they are supported.
   parser.add_argument(
       "--dump_circular_buffer_size",

@@ -993,6 +993,9 @@ TfLiteStatus EnsureBiasScaleCompatibility(
 
       // Loop over all bias tensors.
       for (const int bias_idx : property.biases) {
+        if (op->inputs[bias_idx] == kTfLiteOptionalTensor) {
+          continue;
+        }
         TensorT* bias_tensor = subgraph->tensors[op->inputs[bias_idx]].get();
         int32_t channel_dim_size = bias_tensor->shape[0];
         if (bias_tensor->shape.size() != 1) {

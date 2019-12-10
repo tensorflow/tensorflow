@@ -38,7 +38,7 @@ class LLVM_Builder<string builder> {
 
 def LLVM_OneResultOpBuilder : OpBuilder<
   "Builder *, OperationState &result, Type resultType, "
-  "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
+  "ValueRange operands, ArrayRef<NamedAttribute> attributes = {}",
   [{
     if (resultType) result.addTypes(resultType);
     result.addOperands(operands);
@@ -48,7 +48,7 @@ def LLVM_OneResultOpBuilder : OpBuilder<
   }]>;
 
 def LLVM_ZeroResultOpBuilder : OpBuilder<
-  "Builder *, OperationState &result, ArrayRef<Value *> operands, "
+  "Builder *, OperationState &result, ValueRange operands, "
   "ArrayRef<NamedAttribute> attributes = {}",
   [{
     result.addOperands(operands);
@@ -71,7 +71,7 @@ class LLVM_OneResultOp<string mnemonic, list<OpTrait> traits = []> :
 // to indicate no result.
 def LLVM_VoidResultTypeOpBuilder : OpBuilder<
   "Builder *builder, OperationState &result, Type resultType, "
-  "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
+  "ValueRange operands, ArrayRef<NamedAttribute> attributes = {}",
   [{
     auto llvmType = resultType.dyn_cast<LLVM::LLVMType>(); (void)llvmType;
     assert(llvmType && "result must be an LLVM type");
@@ -94,9 +94,9 @@ class LLVM_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
   let builders = [
     OpBuilder<
       "Builder *, OperationState &result, "
-      "ArrayRef<Value *> properOperands, "
+      "ValueRange properOperands, "
       "ArrayRef<Block *> destinations, "
-      "ArrayRef<ArrayRef<Value *>> operands, "
+      "ArrayRef<ValueRange> operands, "
       "ArrayRef<NamedAttribute> attributes = {}",
       [{
         result.addOperands(properOperands);
@@ -110,11 +110,11 @@ class LLVM_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
     >,
     OpBuilder<
       "Builder *builder, OperationState &result, "
-      "ArrayRef<Value *> properOperands, "
+      "ValueRange properOperands, "
       "ArrayRef<Block *> destinations, "
       "ArrayRef<NamedAttribute> attributes = {}",
     [{
-        SmallVector<ArrayRef<Value *>, 2> operands(destinations.size(), {});
+        SmallVector<ValueRange, 2> operands(destinations.size(), {});
         build(builder, result, properOperands,
             destinations, operands, attributes);
       }]
@@ -509,8 +509,9 @@ def LLVM_AddressOfOp
 
     OpBuilder<"Builder *builder, OperationState &result, GlobalOp global, "
               "ArrayRef<NamedAttribute> attrs = {}", [{
-      build(builder, result, global.getType().getPointerTo(), global.sym_name(),
-            attrs);}]>
+      build(builder, result,
+            global.getType().getPointerTo(global.addr_space().getZExtValue()),
+            global.sym_name(), attrs);}]>
   ];
 
   let extraClassDeclaration = [{
@@ -552,7 +553,8 @@ def LLVM_GlobalOp
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, LLVMType type, "
               "bool isConstant, Linkage linkage, StringRef name, "
-              "Attribute value, ArrayRef<NamedAttribute> attrs = {}">
+              "Attribute value, unsigned addrSpace = 0, "
+              "ArrayRef<NamedAttribute> attrs = {}">
   ];
 
   let extraClassDeclaration = [{
@@ -583,9 +585,10 @@ def LLVM_GlobalOp
   let verifier = "return ::verify(*this);";
 }
 
-def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
-      [NativeOpTrait<"IsIsolatedFromAbove">, NativeOpTrait<"FunctionLike">,
-       Symbol]> {
+def LLVM_LLVMFuncOp
+    : LLVM_ZeroResultOp<"func", [IsolatedFromAbove, FunctionLike, Symbol]>,
+      Arguments<(ins DefaultValuedAttr<Linkage,
+                                       "Linkage::External">:$linkage)> {
   let summary = "LLVM dialect function, has wrapped LLVM IR function type";
 
   let regions = (region AnyRegion:$body);
@@ -594,7 +597,8 @@ def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
 
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, StringRef name, "
-              "LLVMType type, ArrayRef<NamedAttribute> attrs = {}, "
+              "LLVMType type, LLVM::Linkage linkage = LLVM::Linkage::External, "
+              "ArrayRef<NamedAttribute> attrs = {}, "
               "ArrayRef<NamedAttributeList> argAttrs = {}">
   ];
 
@@ -627,10 +631,7 @@ def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
 
   let verifier = [{ return ::verify(*this); }];
   let printer = [{ printLLVMFuncOp(p, *this); }];
-  let parser = [{
-    return impl::parseFunctionLikeOp(parser, result, /*allowVariadic=*/true,
-                                     buildLLVMFunctionType);
-  }];
+  let parser = [{ return parseLLVMFuncOp(parser, result); }];
 }
 
 def LLVM_NullOp

@@ -233,7 +233,7 @@ tensorflow::Status GetReplacedFromExistingWorkers(
   std::vector<tensorflow::eager::KeepAliveResponse> responses(
       existing_workers->size());
   for (int i = 0; i < existing_workers->size(); i++) {
-    tensorflow::eager::EagerClient* eager_client;
+    tensorflow::core::RefCountPtr<tensorflow::eager::EagerClient> eager_client;
     statuses[i] =
         client_cache->GetClient(existing_workers->at(i), &eager_client);
     if (!statuses[i].ok()) {
@@ -282,7 +282,7 @@ tensorflow::Status CreateRemoteContexts(
       continue;
     }
 
-    tensorflow::eager::EagerClient* eager_client;
+    tensorflow::core::RefCountPtr<tensorflow::eager::EagerClient> eager_client;
     statuses[i] = remote_eager_workers->GetClient(remote_worker, &eager_client);
     if (eager_client == nullptr) {
       statuses[i] = tensorflow::errors::Internal(
@@ -340,7 +340,7 @@ tensorflow::Status UpdateRemoteContexts(
       continue;
     }
 
-    tensorflow::eager::EagerClient* eager_client;
+    tensorflow::core::RefCountPtr<tensorflow::eager::EagerClient> eager_client;
     statuses[i] = remote_eager_workers->GetClient(remote_worker, &eager_client);
     if (eager_client == nullptr) {
       statuses[i] = tensorflow::errors::Internal(
@@ -819,7 +819,7 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
   }
 
   // TODO(yuefengz): support partially specified `worker_name`.
-  tensorflow::eager::EagerClient* eager_client;
+  tensorflow::core::RefCountPtr<tensorflow::eager::EagerClient> eager_client;
   status->status = remote_eager_workers->GetClient(worker_name, &eager_client);
   if (!status->status.ok()) {
     return false;
@@ -1009,7 +1009,7 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
 
 TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
                   TF_Status* status) {
-  return NewOrResetOp(ctx, op_or_function_name, status,
+  return NewOrResetOp(ctx, op_or_function_name, nullptr, status,
                       /* op_to_reset= */ nullptr);
 }
 

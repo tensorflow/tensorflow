@@ -48,6 +48,9 @@ public:
   /// Returns the pass managers held by this adaptor.
   MutableArrayRef<OpPassManager> getPassManagers() { return mgrs; }
 
+  /// Returns the adaptor pass name.
+  std::string getName();
+
 protected:
   // A set of adaptors to run.
   SmallVector<OpPassManager, 1> mgrs;
@@ -74,6 +77,11 @@ public:
 
   /// Run the held pipeline over all operations.
   void runOnOperation() override;
+
+  /// Return the async pass managers held by this parallel adaptor.
+  MutableArrayRef<SmallVector<OpPassManager, 1>> getParallelPassManagers() {
+    return asyncExecutors;
+  }
 
 private:
   // A set of executors, cloned from the main executor, that run asynchronously

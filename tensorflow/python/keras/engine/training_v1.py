@@ -175,8 +175,8 @@ class Model(training_lib.Model):
                 self._compile_time_distribution_strategy)
     if strategy:
       with strategy.scope():
-        return super(Model, self).get_weights()
-    return super(Model, self).get_weights()
+        return network.Network.get_weights(self)
+    return network.Network.get_weights(self)
 
   def load_weights(self, filepath, by_name=False, skip_mismatch=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.

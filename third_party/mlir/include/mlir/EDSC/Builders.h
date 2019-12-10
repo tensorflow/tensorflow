@@ -26,7 +26,6 @@
 #include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
-#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Transforms/FoldUtils.h"
 
@@ -210,7 +209,7 @@ private:
 /// ```
 class AffineLoopNestBuilder {
 public:
-  // This entry point accomodates the fact that AffineForOp implicitly uses
+  // This entry point accommodates the fact that AffineForOp implicitly uses
   // multiple `lbs` and `ubs` with one single `iv` and `step` to encode `max`
   // and and `min` constraints respectively.
   AffineLoopNestBuilder(ValueHandle *iv, ArrayRef<ValueHandle> lbs,

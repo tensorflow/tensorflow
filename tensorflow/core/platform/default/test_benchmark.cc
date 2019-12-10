@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/default/test_benchmark.h"
 
 #include <algorithm>
 #include <cstdio>

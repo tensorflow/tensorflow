@@ -235,7 +235,6 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
         " but received update request at view #", request->context_view_id(),
         ". View id should only be continuously incremented.");
   }
-  ctx->ClearCaches();
   // TODO(b/143914772): Potential memory leak if rendezvous has pending
   // tensors for removed / replaced workers.
 
@@ -277,13 +276,25 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
   DistributedFunctionLibraryRuntime* cluster_flr =
       eager::CreateClusterFLR(request->context_id(), ctx, worker_session.get());
 
-  Status s = ctx->UpdateRemoteWorker(
-      device_mgr, std::move(remote_eager_workers),
-      worker_session->remote_device_mgr(), remote_workers,
-      request->context_id(), cluster_flr);
-  if (!s.ok()) {
-    VLOG(1) << "EagerContext::UpdateRemoteWorker failed with " << s.ToString();
-    return s;
+  {
+    // Hold `contexts_mu_` exclusively, wait for all pending nodes to finish
+    // (implicitly calling WaitForAllPendingNodes inside `ctx->ClearCaches`),
+    // and update the context state.
+    // This lock prevents other threads from handling enqueue requests at the
+    // same time. Each enqueue request will be processed either with context
+    // state before or after the update, but the exact ordering needs to be
+    // determined by the client if desired.
+    mutex_lock lock(contexts_mu_);
+    ctx->ClearCaches();
+    Status s = ctx->UpdateRemoteWorker(
+        device_mgr, std::move(remote_eager_workers),
+        worker_session->remote_device_mgr(), remote_workers,
+        request->context_id(), cluster_flr);
+    if (!s.ok()) {
+      VLOG(1) << "EagerContext::UpdateRemoteWorker failed with "
+              << s.ToString();
+      return s;
+    }
   }
 
   std::vector<DeviceAttributes> device_attributes;
@@ -401,13 +412,17 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
                                  EnqueueResponse* response, uint64 stream_id) {
   profiler::TraceMe activity(
       [&] {
-        return absl::StrCat("EagerService:Enqueue:", request->DebugString());
+        return absl::StrCat(
+            "EagerService:Enqueue#debug_str=", request->DebugString(), "#");
       },
       profiler::TraceMeLevel::kInfo);
   ServerContext* context = nullptr;
   TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
   core::ScopedUnref context_unref(context);
 
+  // Acquire shared lock to prevent handling enqueue requests while updating
+  // context (see UpdateContext).
+  tf_shared_lock lock(contexts_mu_);
   EagerExecutor& executor =
       stream_id == kInvalidStreamId
           ? context->Context()->Executor()
@@ -545,7 +560,7 @@ Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,
 
 tensorflow::Status EagerServiceImpl::GetServerContext(
     uint64 context_id, ServerContext** server_context) {
-  mutex_lock l(contexts_mu_);
+  tf_shared_lock l(contexts_mu_);
   auto iter = contexts_.find(context_id);
   if (iter == contexts_.end()) {
     *server_context = nullptr;

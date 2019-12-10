@@ -215,10 +215,9 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
   return res;
 }
 
-llvm::Optional<TiledLinalgOp>
-mlir::linalg::tileLinalgOp(OpBuilder &b, LinalgOp op,
-                           ArrayRef<Value *> tileSizes,
-                           OperationFolder *folder) {
+llvm::Optional<TiledLinalgOp> mlir::linalg::tileLinalgOp(
+    OpBuilder &b, LinalgOp op, ArrayRef<Value *> tileSizes,
+    ArrayRef<unsigned> permutation, OperationFolder *folder) {
   // 1. Enforce the convention that "tiling by zero" skips tiling a particular
   // dimension. This convention is significantly simpler to handle instead of
   // adjusting affine maps to account for missing dimensions.
@@ -226,6 +225,15 @@ mlir::linalg::tileLinalgOp(OpBuilder &b, LinalgOp op,
                  op.getNumWindowLoops() ==
              tileSizes.size() &&
          "expected matching number of tile sizes and loops");
+
+  // If permutation is empty, use the identity. Build the permutation map
+  // otherwise.
+  auto invPermutationMap = AffineMap::getMultiDimIdentityMap(
+      tileSizes.size(), ScopedContext::getContext());
+  if (!permutation.empty())
+    invPermutationMap = inversePermutation(
+        AffineMap::getPermutationMap(permutation, ScopedContext::getContext()));
+
   OpBuilder::InsertionGuard g(b);
   b.setInsertionPoint(op);
   ScopedContext scope(b, op.getLoc());
@@ -239,6 +247,8 @@ mlir::linalg::tileLinalgOp(OpBuilder &b, LinalgOp op,
   auto loopRanges =
       makeTiledLoopRanges(b, scope.getLocation(), viewSizesToLoopsMap,
                           viewSizes, tileSizes, folder);
+  if (!permutation.empty())
+    applyPermutationToVector(loopRanges, permutation);
 
   // 3. Create the tiled loops.
   LinalgOp res = op;
@@ -248,6 +258,15 @@ mlir::linalg::tileLinalgOp(OpBuilder &b, LinalgOp op,
     auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
     SmallVector<Value *, 4> ivValues(ivs.begin(), ivs.end());
+
+    // If we have to apply a permutation to the tiled loop nest, we have to
+    // reorder the induction variables This permutation is the right one
+    // assuming that loopRanges have previously been permuted by
+    // (i,j,k)->(k,i,j) So this permutation should be the inversePermutation of
+    // that one: (d0,d1,d2)->(d2,d0,d1)
+    if (!permutation.empty())
+      ivValues = applyMapToValues(b, loc, invPermutationMap, ivValues, folder);
+
     auto views =
         makeTiledViews(b, loc, op, ivValues, tileSizes, viewSizes, folder);
     auto operands = getAssumedNonViewOperands(op);
@@ -264,10 +283,9 @@ mlir::linalg::tileLinalgOp(OpBuilder &b, LinalgOp op,
   return TiledLinalgOp{res, loops};
 }
 
-llvm::Optional<TiledLinalgOp>
-mlir::linalg::tileLinalgOp(OpBuilder &b, LinalgOp op,
-                           ArrayRef<int64_t> tileSizes,
-                           OperationFolder *folder) {
+llvm::Optional<TiledLinalgOp> mlir::linalg::tileLinalgOp(
+    OpBuilder &b, LinalgOp op, ArrayRef<int64_t> tileSizes,
+    ArrayRef<unsigned> permutation, OperationFolder *folder) {
   if (tileSizes.empty())
     return llvm::None;
 
@@ -297,14 +315,15 @@ mlir::linalg::tileLinalgOp(OpBuilder &b, LinalgOp op,
       tileSizeValues.push_back(constant_index(folder, 0));
   }
 
-  return tileLinalgOp(b, op, tileSizeValues, folder);
+  return tileLinalgOp(b, op, tileSizeValues, permutation, folder);
 }
 
 static void tileLinalgOps(FuncOp f, ArrayRef<int64_t> tileSizes) {
   OpBuilder b(f);
   OperationFolder folder(f.getContext());
   f.walk([tileSizes, &b, &folder](LinalgOp op) {
-    auto opLoopsPair = tileLinalgOp(b, op, tileSizes, &folder);
+    auto opLoopsPair =
+        tileLinalgOp(b, op, tileSizes, /*permutation=*/{}, &folder);
     // If tiling occurred successfully, erase old op.
     if (opLoopsPair)
       op.erase();

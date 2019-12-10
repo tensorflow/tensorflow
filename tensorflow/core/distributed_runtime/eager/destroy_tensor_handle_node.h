@@ -30,45 +30,24 @@ namespace eager {
 class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
  public:
   DestroyTensorHandleNode(std::unique_ptr<EnqueueRequest> request,
-                          EagerContext* ctx, const string& remote_task,
-                          bool ready)
+                          EagerClient* eager_client, bool ready)
       : tensorflow::AsyncEagerNode(),
         request_(std::move(request)),
-        ctx_(ctx),
-        remote_task_(remote_task),
+        eager_client_(eager_client),
         ready_(ready) {
-    ctx_->Ref();
+    eager_client_->Ref();
   }
 
-  ~DestroyTensorHandleNode() override { ctx_->Unref(); }
+  ~DestroyTensorHandleNode() override { eager_client_->Unref(); }
 
   void RunAsync(StatusCallback done) override {
-    auto context_id = request_->context_id();
-    if (ctx_->GetContextId() != context_id) {
-      // This means that this tensor was pointing to a remote device, which
-      // has been changed out from under us. Simply return since there is
-      // nothing we can do.
-      done(Status::OK());
-      return;
-    }
-
-    eager::EagerClient* eager_client;
-    Status status = ctx_->GetClient(remote_task_, &eager_client);
-    if (!status.ok()) {
-      LOG_EVERY_N_SEC(INFO, 60)
-          << "Unable to destroy remote tensor handle because the target "
-          << remote_task_ << " is no longer available.";
-      done(Status::OK());
-      return;
-    }
-
     EnqueueResponse* response = new EnqueueResponse;
     bool ready = ready_;
     // NOTE(fishx): Don't use StreamingEnqueueAsync here. When a
     // StreamingEnqueueAsync request fails all following requests will fail as
     // well. We don't want this request poison following requests since it is
     // safe to ignore a failing destroy tensor handle request.
-    eager_client->EnqueueAsync(
+    eager_client_->EnqueueAsync(
         request_.get(), response,
         [response, ready, done](const tensorflow::Status& s) {
           // Omit the warning if:
@@ -96,7 +75,7 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
 
  private:
   std::unique_ptr<EnqueueRequest> request_;
-  EagerContext* ctx_;
+  EagerClient* eager_client_;
   const string remote_task_;
   bool ready_;
 };

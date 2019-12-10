@@ -654,6 +654,7 @@ py_test(
     deps = [
         ":debug_events_reader",
         ":debug_events_writer",
+        ":dumping_callback_test_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
@@ -725,6 +726,7 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "guitar",
         "multi_and_single_gpu",
@@ -766,6 +768,7 @@ cuda_py_test(
     additional_deps = [
         ":debug_events_reader",
         ":debug_events_writer",
+        ":dumping_callback_test_lib",
         "//third_party/py/numpy",
         "//tensorflow/python:debug_ops_gen",
         "//tensorflow/python:framework_test_lib",

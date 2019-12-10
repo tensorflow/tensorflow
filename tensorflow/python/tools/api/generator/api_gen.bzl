@@ -92,7 +92,7 @@ def gen_api_init_files(
         name = api_gen_binary_target,
         srcs = ["//tensorflow/python/tools/api/generator:create_python_api.py"],
         main = "//tensorflow/python/tools/api/generator:create_python_api.py",
-        python_version = "PY2",
+        python_version = "PY3",
         srcs_version = "PY2AND3",
         visibility = ["//visibility:public"],
         deps = package_deps + [

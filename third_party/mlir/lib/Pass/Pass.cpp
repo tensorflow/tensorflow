@@ -216,6 +216,11 @@ OpPassManager &OpPassManager::operator=(const OpPassManager &rhs) {
 
 OpPassManager::~OpPassManager() {}
 
+OpPassManager::pass_iterator OpPassManager::begin() {
+  return impl->passes.begin();
+}
+OpPassManager::pass_iterator OpPassManager::end() { return impl->passes.end(); }
+
 /// Run all of the passes in this manager over the current operation.
 LogicalResult OpPassManager::run(Operation *op, AnalysisManager am) {
   // Run each of the held passes.
@@ -274,7 +279,7 @@ MLIRContext *OpPassManager::getContext() const {
 /// Return the operation name that this pass manager operates on.
 const OperationName &OpPassManager::getOpName() const { return impl->name; }
 
-/// Prints out the passes of the pass mangager as the textual representation
+/// Prints out the passes of the pass manager as the textual representation
 /// of pipelines.
 void OpPassManager::printAsTextualPipeline(raw_ostream &os) {
   // Filter out passes that are not part of the public pipeline.
@@ -339,6 +344,17 @@ void OpToOpPassAdaptorBase::mergeInto(OpToOpPassAdaptorBase &rhs) {
                          return lhs->getOpName().getStringRef().compare(
                              rhs->getOpName().getStringRef());
                        });
+}
+
+/// Returns the adaptor pass name.
+std::string OpToOpPassAdaptorBase::getName() {
+  std::string name = "Pipeline Collection : [";
+  llvm::raw_string_ostream os(name);
+  interleaveComma(getPassManagers(), os, [&](OpPassManager &pm) {
+    os << '\'' << pm.getOpName() << '\'';
+  });
+  os << ']';
+  return os.str();
 }
 
 OpToOpPassAdaptor::OpToOpPassAdaptor(OpPassManager &&mgr)
@@ -533,7 +549,7 @@ static LogicalResult runWithCrashRecovery(OpPassManager &pm,
   outputFile->keep();
 
   return reproducerModule->emitError()
-         << "A crash has been detected while processing the MLIR module, a "
+         << "A failure has been detected while processing the MLIR module, a "
             "reproducer has been generated in '"
          << crashReproducerFileName << "'";
 }
@@ -560,9 +576,15 @@ LogicalResult PassManager::run(ModuleOp module) {
 
   // If reproducer generation is enabled, run the pass manager with crash
   // handling enabled.
-  if (crashReproducerFileName)
-    return runWithCrashRecovery(*this, am, module, *crashReproducerFileName);
-  return OpPassManager::run(module, am);
+  LogicalResult result =
+      crashReproducerFileName
+          ? runWithCrashRecovery(*this, am, module, *crashReproducerFileName)
+          : OpPassManager::run(module, am);
+
+  // Dump all of the pass statistics if necessary.
+  if (passStatisticsMode)
+    dumpStatistics();
+  return result;
 }
 
 /// Disable support for multi-threading within the pass manager.

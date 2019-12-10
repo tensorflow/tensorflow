@@ -25,7 +25,7 @@ must exist in the dialect's context.
 The LLVM IR dialect defines a single MLIR type, `LLVM::LLVMType`, that can wrap
 any existing LLVM IR type. Its syntax is as follows
 
-``` {.ebnf}
+```
 type ::= `!llvm<"` llvm-canonical-type `">
 llvm-canonical-type ::= <canonical textual representation defined by LLVM>
 ```
@@ -60,7 +60,7 @@ type. LLVM function operation is intended to capture additional properties of
 LLVM functions, such as linkage and calling convention, that may be modeled
 differently by the built-in MLIR function.
 
-```mlir {.mlir}
+```mlir
 // The type of @bar is !llvm<"i64 (i64)">
 llvm.func @bar(%arg0: !llvm.i64) -> !llvm.i64 {
   llvm.return %arg0 : !llvm.i64
@@ -69,6 +69,11 @@ llvm.func @bar(%arg0: !llvm.i64) -> !llvm.i64 {
 // Type type of @foo is !llvm<"void (i64)">
 // !llvm.void type is omitted
 llvm.func @foo(%arg0: !llvm.i64) {
+  llvm.return
+}
+
+// A function with `internal` linkage.
+llvm.func internal @internal_func() {
   llvm.return
 }
 
@@ -95,7 +100,7 @@ same type.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Integer addition.
 %0 = llvm.add %a, %b : !llvm.i32
 
@@ -116,7 +121,7 @@ the same type.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Float addition.
 %0 = llvm.fadd %a, %b : !llvm.float
 
@@ -141,7 +146,7 @@ non-pointer arguments of LLVM IR's `getelementptr`.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Allocate an array of 4 floats on stack
 %c4 = llvm.mlir.constant(4) : !llvm.i64
 %0 = llvm.alloca %c4 x !llvm.float : (!llvm.i64) -> !llvm<"float*">
@@ -174,7 +179,7 @@ they are modeled as array attributes.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Get the value third element of the second element of a structure.
 %0 = llvm.extractvalue %s[1, 2] : !llvm<"{i32, {i1, i8, i16}">
 
@@ -204,7 +209,7 @@ arguments.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Branch without arguments.
 ^bb0:
   llvm.br ^bb0
@@ -243,7 +248,7 @@ wrapped LLVM IR function type.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Direct call without arguments and with one result.
 %0 = llvm.call @foo() : () -> (!llvm.float)
 
@@ -287,7 +292,7 @@ referenced. If the global value is a constant, storing into it is not allowed.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 func @foo() {
   // Get the address of a global.
   %0 = llvm.mlir.addressof @const : !llvm<"i32*">
@@ -314,7 +319,7 @@ to the attribute type converted to LLVM IR.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Integer constant, internal i32 is mandatory
 %0 = llvm.mlir.constant(42 : i32) : !llvm.i32
 
@@ -338,7 +343,7 @@ both cases.
 There are two forms of initialization syntax. Simple constants that can be
 represented as MLIR attributes can be given in-line:
 
-```mlir {.mlir}
+```mlir
 llvm.mlir.global @variable(32.0 : f32) : !llvm.float
 ```
 
@@ -349,7 +354,7 @@ types must be compatible.
 More complex constants that cannot be represented as MLIR attributes can be
 given in an initializer region:
 
-```mlir {.mlir}
+```mlir
 // This global is initialized with the equivalent of:
 //   i32* getelementptr (i32* @g2, i32 2)
 llvm.mlir.global constant @int_gep() : !llvm<"i32*"> {
@@ -369,7 +374,7 @@ other @-identifiers in it.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Global values use @-identifiers.
 llvm.mlir.global constant @cst(42 : i32) : !llvm.i32
 
@@ -401,7 +406,7 @@ type.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Null pointer to i8 value.
 %0 = llvm.mlir.null : !llvm<"i8*">
 
@@ -418,7 +423,7 @@ dialect type wrapping an LLVM IR structure type.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 // Create a structure with a 32-bit integer followed by a float.
 %0 = llvm.mlir.undef : !llvm<"{i32, float}">
 ```
