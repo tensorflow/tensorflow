@@ -4486,7 +4486,7 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   tf.Tensor([0.10536055 0.8046684  0.06187541], shape=(3,), dtype=float32)
   >>> loss = tf.keras.backend.categorical_crossentropy(a, a)
   >>> print(loss)
-  tf.Tensor([1.1920929e-07 1.1920929e-07 1.19...e-07], shape=(3,),
+  tf.Tensor([1.1920929e-07 1.1920929e-07 1.1920930e-07], shape=(3,),
   dtype=float32)
 
   """
