@@ -215,14 +215,6 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
   return res;
 }
 
-void applyPermutationToLoopRanges(SmallVector<SubViewOp::Range, 4> &loopRanges,
-                                  ArrayRef<unsigned> permutation) {
-  SmallVector<SubViewOp::Range, 4> auxVec(loopRanges.size());
-  for (unsigned i = 0; i < permutation.size(); ++i)
-    auxVec[i] = loopRanges[permutation[i]];
-  loopRanges = auxVec;
-}
-
 llvm::Optional<TiledLinalgOp> mlir::linalg::tileLinalgOp(
     OpBuilder &b, LinalgOp op, ArrayRef<Value *> tileSizes,
     ArrayRef<unsigned> permutation, OperationFolder *folder) {
@@ -256,7 +248,7 @@ llvm::Optional<TiledLinalgOp> mlir::linalg::tileLinalgOp(
       makeTiledLoopRanges(b, scope.getLocation(), viewSizesToLoopsMap,
                           viewSizes, tileSizes, folder);
   if (!permutation.empty())
-    applyPermutationToLoopRanges(loopRanges, permutation);
+    applyPermutationToVector(loopRanges, permutation);
 
   // 3. Create the tiled loops.
   LinalgOp res = op;

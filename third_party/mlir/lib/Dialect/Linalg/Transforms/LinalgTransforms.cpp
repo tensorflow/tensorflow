@@ -22,8 +22,10 @@
 #include "mlir/Dialect/Linalg/Transforms/LinalgTransforms.h"
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/Linalg/Utils/Intrinsics.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/VectorOps/VectorOps.h"
+#include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
@@ -35,7 +37,10 @@
 #define DEBUG_TYPE "linalg-transforms"
 
 using namespace mlir;
+using namespace mlir::edsc;
+using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
+using namespace mlir::linalg::intrinsics;
 
 using llvm::dbgs;
 
@@ -191,5 +196,37 @@ LogicalResult mlir::linalg::vectorizeGenericOp(PatternRewriter &rewriter,
   auto vRes = vector_contract(vA, vB, vC, genericOp.indexing_maps(),
                               genericOp.iterator_types());
   std_store(vRes, vectorMemRefC);
+  return success();
+}
+
+LogicalResult
+mlir::linalg::permuteGenericLinalgOp(PatternRewriter &rewriter, Operation *op,
+                                     ArrayRef<unsigned> permutation,
+                                     StringRef linalgMarker) {
+  // If permutation is empty, there is nothing to be done.
+  if (permutation.empty())
+    return failure();
+
+  auto linOp = cast<LinalgOp>(op);
+  auto permutationMap = inversePermutation(
+      AffineMap::getPermutationMap(permutation, rewriter.getContext()));
+  SmallVector<AffineMap, 4> newIndexingMap;
+  auto indexingMaps =
+      linOp.getAttrOfType<ArrayAttr>("indexing_maps").getValue();
+  for (unsigned i = 0, e = linOp.getNumInputsAndOutputs(); i != e; ++i) {
+    AffineMap m = indexingMaps[i].cast<AffineMapAttr>().getValue().compose(
+        permutationMap);
+    newIndexingMap.push_back(m);
+  }
+  auto itTypes = linOp.getAttrOfType<ArrayAttr>("iterator_types").getValue();
+  SmallVector<StringRef, 4> itTypesVector;
+  for (unsigned i = 0, e = itTypes.size(); i != e; ++i)
+    itTypesVector.push_back(itTypes[i].cast<StringAttr>().getValue());
+  applyPermutationToVector(itTypesVector, permutation);
+  op->setAttr("indexing_maps", rewriter.getAffineMapArrayAttr(newIndexingMap));
+  op->setAttr("iterator_types", rewriter.getStrArrayAttr(itTypesVector));
+  op->setAttr(LinalgTransforms::kLinalgTransformMarker,
+              rewriter.getStringAttr(linalgMarker));
+  linOp.clone(rewriter, linOp.getLoc(), op->getOperands());
   return success();
 }

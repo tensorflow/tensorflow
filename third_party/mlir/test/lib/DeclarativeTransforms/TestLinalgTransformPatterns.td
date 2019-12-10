@@ -87,4 +87,17 @@ def : Pattern<(GenericOp:$op $_1, $_2, $_3, $_4, $_5, $_6, $_7),
               [(LinalgOpToVectorContraction<"GenericOp"> $op)],
               [(Constraint<HasLinalgTransformMarker<"_marked_matmul_">> $op)]>;
 
+//===----------------------------------------------------------------------===//
+// Linalg generic permutation patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(GenericOp:$op $input, $imap, $itypes, $nviews, $doc, $fun, $libcall),
+              (PermuteGenericLinalgOp<[1,2,0],"PERMUTED"> $op),
+              [(Constraint<And<[HasNoLinalgTransformMarker,
+                           AffineMapDomainHasDim<3>]>> $op)]>;
+
+def : Pat<(IndexedGenericOp:$op $input, $imap, $itypes, $nviews, $doc, $fun, $libcall),
+              (PermuteGenericLinalgOp<[1,2,0],"PERMUTED"> $op),
+              [(Constraint<And<[HasNoLinalgTransformMarker,
+                           AffineMapDomainHasDim<3>]>> $op)]>;
 #endif // TEST_LINALG_TRANSFORMS_PATTERNS
