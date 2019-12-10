@@ -17,7 +17,8 @@ limitations under the License.
 #include "tensorflow/core/platform/host_info.h"
 
 TFE_Op* NewOrResetOp(TFE_Context* ctx, const char* op_or_function_name,
-                     TF_Status* status, TFE_Op* op_to_reset) {
+                     const char* raw_device_name, TF_Status* status,
+                     TFE_Op* op_to_reset) {
   const char* name = op_or_function_name;  // Shorthand
   const tensorflow::AttrTypeMap* types;
   bool is_function = false;
@@ -25,14 +26,17 @@ TFE_Op* NewOrResetOp(TFE_Context* ctx, const char* op_or_function_name,
   if (!status->status.ok()) {
     return nullptr;
   }
-  auto create_or_reset = [&op_to_reset, &ctx, &name, &types](
-                             bool is_function,
-                             TFE_OpInferenceContext* inference_ctx) -> TFE_Op* {
+  auto create_or_reset =
+      [&op_to_reset, &ctx, &name, &types, &raw_device_name, &status](
+          bool is_function, TFE_OpInferenceContext* inference_ctx) -> TFE_Op* {
     if (op_to_reset) {
-      op_to_reset->Reset(ctx, name, is_function, types, inference_ctx);
+      status->status = op_to_reset->Reset(ctx, name, is_function, types,
+                                          raw_device_name, inference_ctx);
       return op_to_reset;
     } else {
-      return new TFE_Op(ctx, name, is_function, types, inference_ctx);
+      TFE_Op* new_op = new TFE_Op(ctx, name, is_function, types, inference_ctx);
+      status->status = new_op->operation.SetDeviceName(raw_device_name);
+      return new_op;
     }
   };
 

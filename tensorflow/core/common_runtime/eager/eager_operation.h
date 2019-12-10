@@ -33,7 +33,9 @@ class EagerOperation {
                  const absl::optional<EagerRemoteFunctionParams>
                      remote_func_params = absl::nullopt)
       : ctx_(nullptr) {
-    Reset(ctx, op, is_function, t, executor, remote_func_params);
+    tensorflow::Status status =
+        Reset(ctx, op, is_function, t, nullptr, executor, remote_func_params);
+    DCHECK(status.ok());
   }
 
   ~EagerOperation() {
@@ -53,10 +55,11 @@ class EagerOperation {
     inputs_.clear();
   }
 
-  void Reset(tensorflow::EagerContext* ctx, const char* op, bool is_function,
-             const tensorflow::AttrTypeMap* t, EagerExecutor* executor,
-             const absl::optional<EagerRemoteFunctionParams>
-                 remote_func_params = absl::nullopt) {
+  tensorflow::Status Reset(tensorflow::EagerContext* ctx, const char* op,
+                           bool is_function, const tensorflow::AttrTypeMap* t,
+                           const char* raw_device_name, EagerExecutor* executor,
+                           const absl::optional<EagerRemoteFunctionParams>
+                               remote_func_params = absl::nullopt) {
     DCHECK(ctx_ == nullptr) << "Calling Reset without first calling Release";
     DCHECK(inputs_.empty());
     ctx_ = ctx;
@@ -67,8 +70,6 @@ class EagerOperation {
     }
     attr_types_ = t;
     device_ = nullptr;
-    device_name_ = "";
-    device_parsed_name_.Clear();
     use_xla_ = false;
     is_function_ = is_function;
     cancellation_manager_ = nullptr;
@@ -77,6 +78,7 @@ class EagerOperation {
 #ifdef TENSORFLOW_MEM_DEBUG
     op_name_ = op;
 #endif
+    return SetDeviceName(raw_device_name, true);
   }
 
   bool is_function() const { return is_function_; }
@@ -105,6 +107,7 @@ class EagerOperation {
   tensorflow::Device* Device() const { return device_; }
   void SetDevice(tensorflow::Device* device) {
     device_ = device;
+    raw_device_name_.clear();
     device_name_ = device->name();
     device_parsed_name_ = device->parsed_name();
   }
@@ -113,7 +116,8 @@ class EagerOperation {
   const DeviceNameUtils::ParsedName& GetDeviceParsedName() const {
     return device_parsed_name_;
   }
-  tensorflow::Status SetDeviceName(const char* device);
+  tensorflow::Status SetDeviceName(const char* device,
+                                   const bool reset = false);
 
   // Indicates whether the op is assigned to a device that is local to the
   // current host.
@@ -147,6 +151,7 @@ class EagerOperation {
   const tensorflow::AttrTypeMap* attr_types_;
   tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 4> inputs_;
   tensorflow::Device* device_;
+  string raw_device_name_;
   string device_name_;
   DeviceNameUtils::ParsedName device_parsed_name_;
   bool use_xla_ = false;
