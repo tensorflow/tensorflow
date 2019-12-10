@@ -1729,7 +1729,6 @@ TfLiteStatus EvalQuantized(
 
   int16_t* cell_ptr = GetTensorData<int16_t>(cell_state);
   int8_t* activation_ptr = GetTensorData<int8_t>(activation_state);
-  int8_t* output_ptr = GetTensorData<int8_t>(output);
 
   // Zero points
   int input_zp = 0;
@@ -1746,7 +1745,7 @@ TfLiteStatus EvalQuantized(
 
   for (int t = 0; t < max_time; t++) {
     const int t_rel = t;
-    output_ptr = output_ptr + t_rel * output_step;
+    int8_t* output_ptr = GetTensorData<int8_t>(output) + t_rel * output_step;
 
     // Input can be int8 asymmetric or int16 symmetric.
     const int8_t* input_ptr = GetTensorData<int8_t>(input) + t_rel * input_step;
