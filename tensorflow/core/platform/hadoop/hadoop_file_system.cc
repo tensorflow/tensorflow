@@ -143,7 +143,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
 
   StringPiece scheme, namenode, path;
   io::ParseURI(fname, &scheme, &namenode, &path);
-  const string nn(namenode);
+  string nn(namenode);
 
   hdfsBuilder* builder = libhdfs()->hdfsNewBuilder();
   if (scheme == "file") {
@@ -163,6 +163,18 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
     // configuration files). See:
     // https://github.com/tensorflow/tensorflow/blob/v1.0.0/third_party/hadoop/hdfs.h#L259
     libhdfs()->hdfsBuilderSetNameNode(builder, "default");
+  } else if (scheme == "har") {
+    size_t index_end_archive_name = path.find(".har");
+    if (index_end_archive_name == path.npos) {
+      return errors::InvalidArgument(
+          "Hadoop archive path does not contain a .har extension");
+    }
+    // Case of hadoop archive. Namenode is the path to the archive.
+    nn = string("har://") + string(nn) +
+         string(path.substr(0, index_end_archive_name + 4));
+    // Remove the hadoop archive path to the path
+    path.remove_prefix(index_end_archive_name + 4);
+    libhdfs()->hdfsBuilderSetNameNode(builder, nn.c_str());
   } else {
     libhdfs()->hdfsBuilderSetNameNode(builder,
                                       nn.empty() ? "default" : nn.c_str());
@@ -517,5 +529,6 @@ Status HadoopFileSystem::Stat(const string& fname, FileStatistics* stats) {
 
 REGISTER_FILE_SYSTEM("hdfs", HadoopFileSystem);
 REGISTER_FILE_SYSTEM("viewfs", HadoopFileSystem);
+REGISTER_FILE_SYSTEM("har", HadoopFileSystem);
 
 }  // namespace tensorflow
