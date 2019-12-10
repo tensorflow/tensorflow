@@ -508,6 +508,8 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             "checkpoint_dir": "ckpt_dir_or_file",
         }
     }
+    all_renames_v2.add_contrib_direct_import_support(
+        self.function_keyword_renames)
 
     # Mapping from function to the new name of the function
     # Add additional renames not in renames_v2.py to all_renames_v2.py.
@@ -1240,6 +1242,7 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.summary.tensor_summary": summary_api_comment,
         "tf.summary.text": summary_api_comment,
     }
+    all_renames_v2.add_contrib_direct_import_support(self.function_warnings)
 
     for symbol, replacement in all_renames_v2.addons_symbol_mappings.items():
       warning = (
@@ -1385,6 +1388,7 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
                   "compat.v1.image.resize_nearest_neighbor."),
         },
     }
+    all_renames_v2.add_contrib_direct_import_support(self.function_arg_warnings)
 
     # Specially handled functions
     # Each transformer is a callable which will be called with the arguments
@@ -1604,6 +1608,7 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             arg_name="save_format",
             arg_value_ast=ast.Str("h5")),
     }
+    all_renames_v2.add_contrib_direct_import_support(self.function_transformers)
 
     self.module_deprecations = module_deprecations_v2.MODULE_DEPRECATIONS
 
