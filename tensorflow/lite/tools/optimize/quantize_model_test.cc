@@ -1256,13 +1256,11 @@ class QuantizeUnpackTest : public QuantizeModelTest {
 };
 
 TEST_F(QuantizeUnpackTest, VerifyUnpack) {
-  
   auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
 
   ASSERT_EQ(kTfLiteOk, status);
 
   const auto subgraph = model_.subgraphs[0].get();
-  
   auto op = subgraph->operators[1].get();
 
   auto float_graph = readonly_model_->subgraphs()->Get(0);

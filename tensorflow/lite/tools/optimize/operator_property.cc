@@ -779,7 +779,6 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.arbitrary_inputs = true;
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
-      property.restrict_multiple_inputs_scale = true;
       property.version = 2;
       break;
     case BuiltinOperator_PAD:
