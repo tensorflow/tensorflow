@@ -565,6 +565,8 @@ class TensorListConcat : public OpKernel {
     for (int i = 0; i < tensor_list->tensors().size(); i++) {
       const Tensor& element_tensor = tensor_list->tensors()[i];
       if (element_tensor.dtype() != DT_INVALID) {
+        if(element_tensor.NumElements() == 0)
+          continue;
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
             element_tensor.shaped<T, 2>({1, element_tensor.NumElements()})));
       } else {
