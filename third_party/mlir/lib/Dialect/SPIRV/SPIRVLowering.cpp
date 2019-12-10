@@ -178,8 +178,9 @@ Type SPIRVTypeConverter::convertType(Type type) { return convertStdType(type); }
 static spirv::GlobalVariableOp getBuiltinVariable(spirv::ModuleOp &moduleOp,
                                                   spirv::BuiltIn builtin) {
   for (auto varOp : moduleOp.getBlock().getOps<spirv::GlobalVariableOp>()) {
-    if (auto builtinAttr = varOp.getAttrOfType<StringAttr>(convertToSnakeCase(
-            stringifyDecoration(spirv::Decoration::BuiltIn)))) {
+    if (auto builtinAttr = varOp.getAttrOfType<StringAttr>(
+            spirv::SPIRVDialect::getAttributeName(
+                spirv::Decoration::BuiltIn))) {
       auto varBuiltIn = spirv::symbolizeBuiltIn(builtinAttr.getValue());
       if (varBuiltIn && varBuiltIn.getValue() == builtin) {
         return varOp;
@@ -214,11 +215,8 @@ getOrInsertBuiltinVariable(spirv::ModuleOp &moduleOp, Location loc,
     auto ptrType = spirv::PointerType::get(
         VectorType::get({3}, builder.getIntegerType(32)),
         spirv::StorageClass::Input);
-    newVarOp = builder.create<spirv::GlobalVariableOp>(
-        loc, TypeAttr::get(ptrType), builder.getStringAttr(name), nullptr);
-    newVarOp.setAttr(
-        convertToSnakeCase(stringifyDecoration(spirv::Decoration::BuiltIn)),
-        builder.getStringAttr(stringifyBuiltIn(builtin)));
+    newVarOp =
+        builder.create<spirv::GlobalVariableOp>(loc, ptrType, name, builtin);
     break;
   }
   default:
@@ -239,16 +237,12 @@ Value *mlir::spirv::getBuiltinVariableValue(Operation *op,
     op->emitError("expected operation to be within a SPIR-V module");
     return nullptr;
   }
-  auto varOp =
+  spirv::GlobalVariableOp varOp =
       getOrInsertBuiltinVariable(moduleOp, op->getLoc(), builtin, builder);
-  auto ptr = builder
-                 .create<spirv::AddressOfOp>(op->getLoc(), varOp.type(),
-                                             builder.getSymbolRefAttr(varOp))
-                 .pointer();
-  return builder.create<spirv::LoadOp>(
-      op->getLoc(),
-      ptr->getType().template cast<spirv::PointerType>().getPointeeType(), ptr,
-      /*memory_access =*/nullptr, /*alignment =*/nullptr);
+  Value *ptr = builder.create<spirv::AddressOfOp>(op->getLoc(), varOp);
+  return builder.create<spirv::LoadOp>(op->getLoc(), ptr,
+                                       /*memory_access =*/nullptr,
+                                       /*alignment =*/nullptr);
 }
 
 //===----------------------------------------------------------------------===//
