@@ -262,23 +262,24 @@ Status KernelAndDeviceOp::Run(
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
   OpExecutionState* op_execution_state = nullptr;
+
+  CancellationManager default_cancellation_manager;
   if (cancellation_manager) {
     params.cancellation_manager = cancellation_manager;
-  } else {
+  } else if (kernel_->is_deferred()) {
     op_execution_state = new OpExecutionState;
     params.cancellation_manager = &op_execution_state->cancellation_manager;
-  }
-  params.log_memory = log_memory_;
-  params.inc_num_deferred_ops_function = [op_execution_state]() {
-    if (op_execution_state != nullptr) {
+    params.inc_num_deferred_ops_function = [op_execution_state]() {
       op_execution_state->Ref();
-    }
-  };
-  params.dec_num_deferred_ops_function = [op_execution_state]() {
-    if (op_execution_state != nullptr) {
+    };
+    params.dec_num_deferred_ops_function = [op_execution_state]() {
       op_execution_state->Unref();
-    }
-  };
+    };
+  } else {
+    params.cancellation_manager = &default_cancellation_manager;
+  }
+
+  params.log_memory = log_memory_;
 
   params.runner = get_runner();
 
