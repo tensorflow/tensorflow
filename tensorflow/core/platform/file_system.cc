@@ -146,17 +146,12 @@ Status FileSystem::DeleteRecursively(const string& dirname,
 }
 
 Status FileSystem::RecursivelyCreateDir(const string& dirname) {
-  std::cerr << "MM: RecursivelyCreateDir(" << dirname << ")\n";
   StringPiece scheme, host, remaining_dir;
   io::ParseURI(dirname, &scheme, &host, &remaining_dir);
-  std::cerr << "MM: scheme=\"" << scheme << "\", host=\"" << host
-            << "\" remaining_dir=\"" << remaining_dir << "\"\n";
   std::vector<StringPiece> sub_dirs;
   while (!remaining_dir.empty()) {
     std::string current_entry = io::CreateURI(scheme, host, remaining_dir);
-    std::cerr << "MM: current_entry=\"" << current_entry << "\"\n";
     Status exists_status = FileExists(current_entry);
-    std::cerr << "MM: exists_status=" << exists_status << "\n";
     if (exists_status.ok()) {
       // FileExists cannot differentiate between existence of a file or a
       // directory, hence we need an additional test as we must not assume that
