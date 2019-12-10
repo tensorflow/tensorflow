@@ -94,6 +94,7 @@ cuda_py_test(
         "//tensorflow/python/tools:freeze_graph_lib",
         "//tensorflow/python/tools:saved_model_utils",
     ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_rocm",
@@ -131,6 +132,7 @@ cuda_py_tests(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_rocm",
@@ -150,6 +152,7 @@ cuda_py_tests(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    python_version = "PY3",
     tags = [
         "no_rocm",
         "no_windows",
@@ -173,6 +176,7 @@ cuda_py_test(
         "test/testdata/model.ckpt-46900.data-00000-of-00001",
         "test/testdata/model.ckpt-46900.index",
     ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_oss",  # TODO(b/125290478): allow running in at least some OSS configurations.
