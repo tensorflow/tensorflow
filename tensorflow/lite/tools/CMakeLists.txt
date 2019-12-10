@@ -291,7 +291,7 @@ target_link_libraries(gl_delegate
 )
 
 ## global compile option
-target_compile_options(tensorflow-lite PUBLIC -O3 -DNDEBUG -fPIC -DTFLITE_GPU_DELEGATE_ENABLED)
+target_compile_options(tensorflow-lite PUBLIC -O3 -DNDEBUG -fPIC -DTFLITE_CONFIG_GPU_GLES)
 
 add_subdirectory(${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl)
 

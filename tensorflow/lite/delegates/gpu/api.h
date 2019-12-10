@@ -39,7 +39,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
-#if defined(TFLITE_GPU_DELEGATE_CL_ENABLED)
+#if defined(TFLITE_CONFIG_GPU_CL)
 #include <CL/cl.h>
 #endif
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -71,7 +71,7 @@ enum class ObjectType {
   OPENGL_SSBO,
   OPENGL_TEXTURE,
   CPU_MEMORY,
-#if defined(TFLITE_GPU_DELEGATE_CL_ENABLED)
+#if defined(TFLITE_CONFIG_GPU_CL)
   OPENCL_TEXTURE,
   OPENCL_BUFFER,
 #endif
@@ -93,7 +93,7 @@ struct OpenGlTexture {
   GLenum format = GL_INVALID_ENUM;
 };
 
-#if defined(TFLITE_GPU_DELEGATE_CL_ENABLED)
+#if defined(TFLITE_CONFIG_GPU_CL)
 struct OpenClBuffer {
   OpenClBuffer() = default;
   explicit OpenClBuffer(cl_mem new_memobj) : memobj(new_memobj) {}
@@ -203,7 +203,7 @@ uint32_t NumElements(const TensorObjectDef& def);
 
 using TensorObject = absl::variant<absl::monostate, OpenGlBuffer, OpenGlTexture,
                                    CpuMemory
-#if defined(TFLITE_GPU_DELEGATE_CL_ENABLED)
+#if defined(TFLITE_CONFIG_GPU_CL)
                                    ,OpenClBuffer, OpenClTexture
 #endif
                                    >;
