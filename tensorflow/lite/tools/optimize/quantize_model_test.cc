@@ -1265,7 +1265,7 @@ TEST_P(QuantizeMinimumMaximumTest, VerifyMinimumMaximum) {
   EXPECT_EQ(subgraph->tensors[5]->name, "input");
   EXPECT_EQ(subgraph->tensors[6]->name, "output");
 }
-  
+
 INSTANTIATE_TEST_SUITE_P(MinimumMaximumTestInst, QuantizeMinimumMaximumTest,
                          testing::ValuesIn({internal::kModelWithMinimumOp,
                                            internal::kModelWithMaximumOp}));
@@ -1274,12 +1274,10 @@ class QuantizeUnpackTest : public QuantizeModelTest {
  protected:
   QuantizeUnpackTest() {
     input_model_ = ReadModel(internal::kModelWithUnpack);
-
     readonly_model_ = input_model_->GetModel();
     readonly_model_->UnPackTo(&model_);
   }
 };
-    
 TEST_F(QuantizeUnpackTest, VerifyUnpack) {
   auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
 
