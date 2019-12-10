@@ -186,11 +186,11 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Generates code for input-fusible slices.
   //
-  // Prerequisite: `IsInputFusibleNonStridedSlices(*unnested_hlo)`. We require
-  // that the slices are non-strided. It serves well the main use case where the
-  // slices are generated from split. Note that, on the other hand, we do
-  // support overlapping slices. Further generalizing the implementation when
-  // the needs arise in the future.
+  // Prerequisite: ROOT is either a slice or a tuple of slices. The input shapes
+  // of all ROOT slices need to be the same while their output shapes can be
+  // different. On the other hand, the input ranges of slices can be
+  // overlapping. Further generalization/specialization when the needs are seen
+  // in the future.
   Status EmitInputFusibleNonStridedSlices(HloInstruction* unnested_hlo);
 
   void EmitElementForInputFusibleSlices(
