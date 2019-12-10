@@ -59,6 +59,7 @@ constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kNameAttr[] = "name";
 constexpr char kNumReplicasAttr[] = "num_replicas";
+constexpr char kIndexAttr[] = "index";
 
 constexpr char kBadTPUReplicateAttrMsg[] =
     "requires '_tpu_replicate' string attribute";
@@ -259,6 +260,40 @@ void MovePrecedingClusterUsers(tf_device::LaunchOp launch_op,
   for (Operation* user : preceding_users) user->moveBefore(op_after_launch_op);
 }
 
+// Sorts `tf.TPUReplicatedInput` ops by `index` attribute. Ops with an `index`
+// of -1 are always after ops with a non negative `index`, and an arbitrary
+// ordering is used as there are no dependencies on their relative ordering.
+LogicalResult SortTPUReplicatedInputsByIndex(
+    llvm::ArrayRef<Operation*> inputs,
+    llvm::SmallVectorImpl<Operation*>* sorted_inputs) {
+  const int input_size = inputs.size();
+  sorted_inputs->resize(input_size, nullptr);
+  int last_index = input_size - 1;
+
+  for (Operation* input : inputs) {
+    int64_t index = -1;
+    if (auto index_attr = input->getAttrOfType<IntegerAttr>(kIndexAttr))
+      index = index_attr.getInt();
+
+    if (index >= input_size || index < -1)
+      return input->emitError() << "'" << input->getName().getStringRef()
+                                << "' index is not in range [-1, " << input_size
+                                << "), got " << index;
+
+    if (index == -1)
+      (*sorted_inputs)[last_index--] = input;
+    else
+      (*sorted_inputs)[index] = input;
+  }
+
+  if (llvm::any_of(*sorted_inputs, [](Operation* op) { return op == nullptr; }))
+    return inputs.front()->emitError()
+           << "failed to sort '" << inputs.front()->getName().getStringRef()
+           << "' ops, gap(s) found in indices";
+
+  return success();
+}
+
 // Creates a `tf_device.replicate` to represent replication for the cluster, if
 // necessary.
 LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
@@ -270,14 +305,18 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
     return launch_op.emitError() << "requires '" << kNumReplicasAttr
                                  << "' int attribute to be at least 1";
 
-  // Collect all used TPUReplicatedInput ops.
-  llvm::SmallSetVector<Operation*, 8> replicated_input_ops;
+  // Collect all used TPUReplicatedInput ops and sort by `index`.
+  llvm::SmallSetVector<Operation*, 8> unique_replicated_input_ops;
   mlir::visitUsedValuesDefinedAbove(
       launch_op.body(), launch_op.body(), [&](mlir::OpOperand* operand) {
         Operation* def = operand->get()->getDefiningOp();
         if (def && llvm::isa<TF::TPUReplicatedInputOp>(def))
-          replicated_input_ops.insert(def);
+          unique_replicated_input_ops.insert(def);
       });
+  llvm::SmallVector<Operation*, 8> replicated_input_ops;
+  if (failed(SortTPUReplicatedInputsByIndex(
+          unique_replicated_input_ops.getArrayRef(), &replicated_input_ops)))
+    return failure();
 
   // Check if number of operands of each used TPUReplicatedInput op matches
   // `num_replicas`. Collect all their operands and associated type for creating
