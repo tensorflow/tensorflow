@@ -560,7 +560,7 @@ Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,
 
 tensorflow::Status EagerServiceImpl::GetServerContext(
     uint64 context_id, ServerContext** server_context) {
-  mutex_lock l(contexts_mu_);
+  tf_shared_lock l(contexts_mu_);
   auto iter = contexts_.find(context_id);
   if (iter == contexts_.end()) {
     *server_context = nullptr;
