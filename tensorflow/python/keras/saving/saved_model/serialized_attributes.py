@@ -114,7 +114,7 @@ class SerializedAttributes(object):
       checkpointable_objects: List of checkpointable objects to be serialized
         in the SavedModel.
       functions: List of functions to be serialized in the SavedModel.
-      copy_from: List of other SerializedAttributes subclasses. The returend
+      copy_from: List of other SerializedAttributes subclasses. The returned
         class will copy checkpoint objects/functions from each subclass.
 
     Returns:
@@ -219,7 +219,7 @@ class CommonEndpoints(SerializedAttributes.with_attributes(
     variables: List of all variables in the model and its sublayers.
     trainable_variables: List of all trainable variables in the model and its
       sublayers.
-    regulariation_losses: List of all unconditional losses (losses not dependent
+    regularization_losses: List of all unconditional losses (losses not dependent
       on the inputs) in the model and its sublayers.
     __call__: Function that takes inputs and returns the outputs of the model
       call function.

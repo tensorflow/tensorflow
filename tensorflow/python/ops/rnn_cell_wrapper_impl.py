@@ -387,7 +387,7 @@ class ResidualWrapperBase(object):
           self._residual_fn)
       config = {"residual_fn": function,
                 "residual_fn_type": function_type,
-                "residule_fn_module": function_module}
+                "residual_fn_module": function_module}
     else:
       config = {}
     base_config = super(ResidualWrapperBase, self).get_config()
@@ -399,7 +399,7 @@ class ResidualWrapperBase(object):
       config = config.copy()
       residual_function = _parse_config_to_function(
           config, custom_objects, "residual_fn", "residual_fn_type",
-          "residule_fn_module")
+          "residual_fn_module")
       config["residual_fn"] = residual_function
     return super(ResidualWrapperBase, cls).from_config(
         config, custom_objects=custom_objects)

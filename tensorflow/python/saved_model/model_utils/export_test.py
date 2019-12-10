@@ -110,7 +110,7 @@ class ExportTest(test_util.TensorFlowTestCase):
                 {"some_output_3": output_3})
 
         # Note that the alternatives 'other:serving_default' and
-        # 'other:head-2' are invalid, because regession and classification
+        # 'other:head-2' are invalid, because regression and classification
         # signatures must take a single string input.  Here we verify that
         # these invalid signatures are not included in the export_utils.
     }
@@ -167,7 +167,7 @@ class ExportTest(test_util.TensorFlowTestCase):
                 {"some_output_3": output_3})
 
         # Note that the alternatives 'other:serving_default' and 'other:head-2'
-        # are invalid, because regession and classification signatures must take
+        # are invalid, because regression and classification signatures must take
         # a single string input.  Here we verify that these invalid signatures
         # are not included in the export_utils.
     }

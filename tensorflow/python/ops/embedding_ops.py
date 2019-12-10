@@ -137,7 +137,7 @@ def _embedding_lookup_and_transform(params,
             array_ops.gather(params[0], ids, name=name), ids, max_norm)
         if transform_fn:
           result = transform_fn(result)
-      # Make sure the final result does not have colocation contraints on the
+      # Make sure the final result does not have colocation constraints on the
       # params. Similar to the case np > 1 where parallel_dynamic_stitch is
       # outside the scioe of all with ops.colocate_with(params[p]).
       return array_ops.identity(result)
@@ -208,7 +208,7 @@ def _embedding_lookup_and_transform(params,
           if transform_fn:
             # If transform_fn is provided, the clip_by_norm precedes
             # the transform and hence must be co-located. See below
-            # for the counterpart if transform_fn is not proveded.
+            # for the counterpart if transform_fn is not provided.
             result = transform_fn(_clip(result, pids, max_norm))
         partitioned_result.append(result)
       # Stitch these back together

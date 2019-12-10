@@ -177,7 +177,7 @@ def get_session_config_with_timeout(timeout_in_secs, cluster_def):
 
 
 def master_job(master, cluster_def):
-  """Returns the canonnical job name to use to place TPU computations on.
+  """Returns the canonical job name to use to place TPU computations on.
 
   Args:
     master: A `string` representing the TensorFlow master to use.

@@ -67,7 +67,7 @@ def _concrete_tensor_to_proto(tensor):
 
 
 class _DumpingCallback(object):
-  """An object holding the states surrouding the dumping callback."""
+  """An object holding the states surrounding the dumping callback."""
 
   def __init__(self,
                dump_root,

@@ -351,7 +351,7 @@ class WhileOp(object):
     return inp, stacked
 
   def _maybe_stacked(self, cache, inp):
-    """Heuristic to figue out if the coverting inp leads to a stacked value.
+    """Heuristic to figue out if the converting inp leads to a stacked value.
 
 
     Args:
@@ -609,7 +609,7 @@ class WhileOp(object):
       return not_all_done
 
     def body(not_all_done, indices, *args):
-      # See documentatin for __call__ for the structure of *args.
+      # See documentation for __call__ for the structure of *args.
       num_enters = len(self._enters)
       inputs = args[:num_enters]
       output_tas = args[num_enters:]
@@ -1433,7 +1433,7 @@ class PFor(object):
           else:
             new_outputs = [wrap(x, False) for x in y_op.outputs]
         elif not (is_stateful or is_while_loop or some_input_stacked):
-          # All inputs are unstacked or uncoverted but some control inputs are
+          # All inputs are unstacked or unconverted but some control inputs are
           # converted.
           # TODO(rachelim): Handle the case where some inputs are sparsely
           # stacked (i.e. any(x.is_sparse_stacked for x in converted_inputs))
@@ -3378,7 +3378,7 @@ def _convert_stack_pop_v2(pfor_input):
   stack_cache_key = _stack_cache_key(pfor_input)
   stacked = _stack_cache.get(stack_cache_key, None)
   # If a StackPushV2 has not been converted yet, we default to unstacked since
-  # the push could be outside of pfor, or the covertor may not be called if the
+  # the push could be outside of pfor, or the convertor may not be called if the
   # inputs are unconverted.
   if stacked is None:
     stacked = False

@@ -713,7 +713,7 @@ def show(args):
   if args.all:
     _show_all(args.dir)
   else:
-    # If no tag is specified, display all tag_set, if no signaure_def key is
+    # If no tag is specified, display all tag_set, if no signature_def key is
     # specified, display all SignatureDef keys, else show input output tensor
     # information corresponding to the given SignatureDef key
     if args.tag_set is None:

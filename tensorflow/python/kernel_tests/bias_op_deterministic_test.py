@@ -97,7 +97,7 @@ class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase,
         data_type, shape=out_shape, name='upstream_gradients')
     gradient_injector_op = bias_add_op * upstream_gradients
     # The gradient function behaves as if grad_ys is multiplied by the op
-    # gradient result, not passing the upstram gradients through the op's
+    # gradient result, not passing the upstream gradients through the op's
     # gradient generation graph. This is the reason for using the
     # gradient_injector_op
     grad_ys = None

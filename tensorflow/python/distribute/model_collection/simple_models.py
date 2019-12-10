@@ -42,7 +42,7 @@ def _get_data_for_simple_models():
 
 
 class SimpleFunctionalModel(model_collection_base.ModelAndInput):
-  """A simple functinal model and its inputs."""
+  """A simple functional model and its inputs."""
 
   def get_model(self, **kwargs):
     output_name = 'output_layer'

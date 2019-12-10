@@ -3640,7 +3640,7 @@ class Graph(object):
     """Returns the `Operation` with the given `name`.
 
     This is a internal unsafe version of get_operation_by_name. It skips many
-    checks and does not have user friedly error messages but runs considerably
+    checks and does not have user friendly error messages but runs considerably
     faster. This method may be called concurrently from multiple threads.
 
     Args:
@@ -5161,7 +5161,7 @@ def control_dependencies(control_inputs):
   """
   if context.executing_eagerly():
     if control_inputs:
-      # Excute any pending callables.
+      # Execute any pending callables.
       for control in control_inputs:
         if callable(control):
           control()
@@ -6178,8 +6178,8 @@ def name_scope(name, default_name=None, values=None, skip_on_eager=True):
     values: The list of `Tensor` arguments that are passed to the op function.
     skip_on_eager: Indicates to return NullContextmanager if executing eagerly.
       By default this is True since naming tensors and operations in eager mode
-      have little use and cause unecessary performance overhead. However, it is
-      important to preseve variable names since they are often useful for
+      have little use and cause unnecessary performance overhead. However, it is
+      important to preserve variable names since they are often useful for
       debugging and saved models.
 
   Returns:
@@ -6650,7 +6650,7 @@ def add_exit_callback_to_default_func_graph(fn):
       To be executed when exiting func graph scope.
 
   Raises:
-    RuntimeError: If executed when the current defualt graph is not a FuncGraph,
+    RuntimeError: If executed when the current default graph is not a FuncGraph,
       or not currently executing in function creation mode (e.g., if inside
       an init_scope).
   """
