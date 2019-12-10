@@ -30,7 +30,7 @@
 
 namespace mlir {
 
-/// Type conversion from stdandard types to SPIR-V types for shader interface.
+/// Type conversion from standard types to SPIR-V types for shader interface.
 ///
 /// For composite types, this converter additionally performs type wrapping to
 /// satisfy shader interface requirements: shader interface types must be
@@ -39,10 +39,10 @@ class SPIRVTypeConverter final : public TypeConverter {
 public:
   using TypeConverter::TypeConverter;
 
-  /// Converts the given standard `type` to SPIR-V correspondance.
+  /// Converts the given standard `type` to SPIR-V correspondence.
   Type convertType(Type type) override;
 
-  /// Gets the SPIR-V correspondance for the standard index type.
+  /// Gets the SPIR-V correspondence for the standard index type.
   static Type getIndexType(MLIRContext *context);
 };
 

@@ -24,9 +24,9 @@ import numpy as np
 from tensorflow.python.data.experimental.ops import resampling
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
@@ -34,12 +34,11 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @parameterized.named_parameters(
-      ("InitialDistributionKnown", True),
-      ("InitialDistributionUnknown", False))
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(initial_known=[True, False])))
   def testDistribution(self, initial_known):
     classes = np.random.randint(5, size=(20000,))  # Uniformly sampled
     target_dist = [0.9, 0.05, 0.05, 0.0, 0.0]
@@ -72,9 +71,9 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
     returned_dist = class_counts / total_returned
     self.assertAllClose(target_dist, returned_dist, atol=1e-2)
 
-  @parameterized.named_parameters(
-      ("OnlyInitial", True),
-      ("NotInitial", False))
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(only_initial_dist=[True, False])))
   def testEdgeCasesSampleFromInitialDataset(self, only_initial_dist):
     init_dist = [0.5, 0.5]
     target_dist = [0.5, 0.5] if only_initial_dist else [0.0, 1.0]
@@ -99,6 +98,7 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
       while True:
         returned.append(self.evaluate(get_next()))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testRandomClasses(self):
     init_dist = [0.25, 0.25, 0.25, 0.25]
     target_dist = [0.0, 0.0, 0.0, 1.0]

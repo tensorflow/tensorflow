@@ -137,7 +137,7 @@ def LinalgLibraryInterface : OpInterface<"LinalgOp"> {
       }],
       "Operation *", "create",
       (ins "OpBuilder &":$builder, "Location":$loc,
-           "ArrayRef<Value *>":$operands,
+           "ValueRange":$operands,
            "ArrayRef<NamedAttribute>":$attributes), [{
         return builder.create<ConcreteOp>(loc, ArrayRef<Type>{}, operands,
                                           attributes);
@@ -151,7 +151,7 @@ def LinalgLibraryInterface : OpInterface<"LinalgOp"> {
         is used to abstract away the optional underlying region creation.
       }],
       "Operation *", "clone",
-      (ins "OpBuilder &":$b, "Location":$loc, "ArrayRef<Value *>":$operands), [{
+      (ins "OpBuilder &":$b, "Location":$loc, "ValueRange":$operands), [{
         BlockAndValueMapping map;
         unsigned numRegions = op.getOperation()->getNumRegions();
         Operation *res = create(b, loc, operands, op.getAttrs());
@@ -318,6 +318,7 @@ def ConvOp : LinalgLibrary_Op<"conv", [NInputsAndOutputs<2, 1>]> {
                        q]
     ```
   }];
+
   // TODO(ntv) padding.
   // Following the TF source of truth above, strides and dilations are integer
   // attributes of the same rank as the number of window dimensions.
@@ -483,9 +484,10 @@ def GenericOp : GenericOpBase<"generic"> {
         The external library is assumed to be dynamically linked and no strong
         compile-time guarantees are provided. In the absence of such a library
         call, linalg.generic will always lower to loops.
-      - iterator_types: an ArrayAttr they type of the enclosing loops; Each element of
-        the list represents and iterator of one of the following types:
-        parallel, reduction, window
+      - iterator_types: an ArrayAttr specifying the type of the enclosing loops.
+        Each element of the list represents and iterator of one of the following
+        types:
+          parallel, reduction, window
       - n_views: a pair of I64Attr representing the number of input (readonly)
         and output (readwrite) views.
 

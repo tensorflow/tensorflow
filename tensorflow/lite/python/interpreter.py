@@ -157,11 +157,6 @@ def load_delegate(library, options=None):
     ValueError: Delegate failed to load.
     RuntimeError: If delegate loading is used on unsupported platform.
   """
-
-  # TODO(b/137299813): Fix darwin support for delegates.
-  if sys.platform == 'darwin':
-    raise RuntimeError('Dynamic loading of delegates on Darwin not supported.')
-
   try:
     delegate = Delegate(library, options)
   except ValueError as e:

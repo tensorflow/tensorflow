@@ -18,7 +18,7 @@ cc_library(
 )
 
 gentbl(
-    name = "TestTransformPatternsIncGen",
+    name = "TestLinalgTransformPatternsIncGen",
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -29,6 +29,21 @@ gentbl(
     td_file = "lib/DeclarativeTransforms/TestLinalgTransformPatterns.td",
     td_srcs = [
         "@local_config_mlir//:LinalgTransformPatternsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "TestVectorTransformPatternsIncGen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/DeclarativeTransforms/TestVectorTransformPatterns.h.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "lib/DeclarativeTransforms/TestVectorTransformPatterns.td",
+    td_srcs = [
+        "@local_config_mlir//:VectorTransformPatternsTdFiles",
     ],
 )
 
@@ -98,12 +113,15 @@ cc_library(
     name = "TestIR",
     srcs = [
         "lib/IR/TestFunc.cpp",
+        "lib/IR/TestMatchers.cpp",
         "lib/IR/TestSymbolUses.cpp",
     ],
     deps = [
+        ":TestDialect",
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
+        "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
     ],
     alwayslink = 1,
@@ -136,13 +154,14 @@ cc_library(
         "lib/Transforms/TestMemRefStrideCalculation.cpp",
         "lib/Transforms/TestOpaqueLoc.cpp",
         "lib/Transforms/TestVectorToLoopsConversion.cpp",
-        "lib/Transforms/TestVectorToVectorConversion.cpp",
+        "lib/Transforms/TestVectorTransforms.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
     ],
     includes = ["lib/TestDialect"],
     deps = [
         ":TestDialect",
-        ":TestTransformPatternsIncGen",
+        ":TestLinalgTransformPatternsIncGen",
+        ":TestVectorTransformPatternsIncGen",
         "@llvm//:support",
         "@local_config_mlir//:AffineOps",
         "@local_config_mlir//:Analysis",

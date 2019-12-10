@@ -36,6 +36,7 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/internal:annotation_stack",
         "//tensorflow/core/profiler/internal:parse_annotation",
+        "//tensorflow/core/profiler/internal:profiler_factory",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",

@@ -302,12 +302,64 @@ void AddOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// AddNOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult AddNOp::fold(ArrayRef<Attribute> operands) {
+  if (operands.size() == 1) return *inputs().begin();
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // AddV2Op
 //===----------------------------------------------------------------------===//
 
 void AddV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   results.insert<AddV2OfNegLeft, AddV2OfNegRight>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// AllOp
+//===----------------------------------------------------------------------===//
+
+// Verifies an reduction op's `input` and reduction `dims`.
+static LogicalResult VerifyReductionInputAndDims(Value *input, Value *dims,
+                                                 Location loc) {
+  auto dims_type = dims->getType().dyn_cast<RankedTensorType>();
+  if (!dims_type) return success();
+  if (dims_type.getRank() > 1)
+    return emitError(loc, "dimensions can only be 0D or 1D tensor");
+
+  auto input_type = input->getType().dyn_cast<RankedTensorType>();
+  if (!input_type) return success();
+  int64_t rank = input_type.getRank();
+
+  DenseIntElementsAttr dims_attr;
+  if (!matchPattern(dims, m_Constant(&dims_attr))) return success();
+  for (const auto &dim_pair : llvm::enumerate(dims_attr)) {
+    int64_t cur_dim = dim_pair.value().getSExtValue();
+    if (cur_dim < -rank || cur_dim >= rank)
+      return emitError(loc)
+             << dim_pair.index() << "-th dimension should be in the range of [-"
+             << rank << ", " << rank << ")";
+  }
+
+  return success();
+}
+
+static LogicalResult Verify(AllOp op) {
+  return VerifyReductionInputAndDims(op.input(), op.reduction_indices(),
+                                     op.getLoc());
+}
+
+//===----------------------------------------------------------------------===//
+// AnyOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(AnyOp op) {
+  return VerifyReductionInputAndDims(op.input(), op.reduction_indices(),
+                                     op.getLoc());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1542,17 +1594,23 @@ static LogicalResult Verify(SoftmaxCrossEntropyWithLogitsOp op) {
 // SplitOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(SplitOp op) {
+// Verifies the input and split dimension operands for tf.Split/tf.SplitV.
+// Writes the split dimension's index (adjusted with input rank) via `dim_index`
+// if it's a constant.
+template <class Op>
+LogicalResult VerifySplitInputAndSplitDim(Op op, Optional<int64_t> *dim_index) {
+  *dim_index = llvm::None;
+
   Value *split_dim = op.split_dim();
-  auto split_dim_type = split_dim->getType().dyn_cast<RankedTensorType>();
-  if (!split_dim_type) return success();
-  if (split_dim_type.getRank() != 0)
-    return op.emitOpError("split dimension should be an integer scalar tensor");
+  if (auto split_dim_type = split_dim->getType().dyn_cast<RankedTensorType>())
+    if (split_dim_type.getRank() != 0)
+      return op.emitOpError(
+          "split dimension should be an integer scalar tensor");
 
   // We can perform further verification if the input tensor to be split has
   // known rank and the split dimension tensor is a constant.
 
-  auto input_type = op.value()->getType().dyn_cast<RankedTensorType>();
+  auto input_type = op.value()->getType().template dyn_cast<RankedTensorType>();
   if (!input_type) return success();
 
   int64_t input_rank = input_type.getRank();
@@ -1562,21 +1620,95 @@ static LogicalResult Verify(SplitOp op) {
   DenseIntElementsAttr split_dim_attr;
   if (!matchPattern(split_dim, m_Constant(&split_dim_attr))) return success();
 
-  int64_t dim_index = (*split_dim_attr.begin()).getSExtValue();
+  int64_t index = (*split_dim_attr.begin()).getSExtValue();
 
-  if (dim_index + input_rank < 0 || dim_index >= input_rank) {
+  if (index + input_rank < 0 || index >= input_rank) {
     return op.emitOpError("split dimension must be in range [-")
            << input_rank << ", " << input_rank << ")";
   }
 
-  if (dim_index < 0) dim_index += input_rank;
+  if (index < 0) index += input_rank;
+  *dim_index = index;
 
-  int64_t input_dim_size = input_type.getDimSize(dim_index);
-  if (input_dim_size < 0) return success();
+  return success();
+}
+
+static LogicalResult Verify(SplitOp op) {
+  Optional<int64_t> dim_index;
+  if (failed(VerifySplitInputAndSplitDim(op, &dim_index))) return failure();
+  if (!dim_index) return success();
+
+  int64_t input_dim_size =
+      op.value()->getType().cast<RankedTensorType>().getDimSize(*dim_index);
+  if (input_dim_size == ShapedType::kDynamicSize) return success();
 
   if (input_dim_size % op.getNumResults() != 0)
     return op.emitOpError("dimension #")
-           << dim_index << " not divisible by the number of result tensors";
+           << *dim_index << " not divisible by the number of result tensors";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SplitVOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SplitVOp op) {
+  auto split_sizes_type =
+      op.size_splits()->getType().dyn_cast<RankedTensorType>();
+  if (!split_sizes_type) return success();
+
+  if (split_sizes_type.getRank() != 1 ||
+      split_sizes_type.getDimSize(0) != op.getNumResults())
+    return op.emitOpError("split sizes should be a 1D tensor of ")
+           << op.getNumResults() << " elements";
+
+  Optional<int64_t> dim_index = 0;
+  if (failed(VerifySplitInputAndSplitDim(op, &dim_index))) return failure();
+  if (!dim_index) return success();
+
+  int64_t input_dim_size =
+      op.value()->getType().cast<RankedTensorType>().getDimSize(*dim_index);
+  if (input_dim_size == ShapedType::kDynamicSize) return success();
+
+  // If split sizes come from a constant, they must sum to the dimension size
+  // along split_dim, and we can have no more than one dynamic dimension.
+  DenseIntElementsAttr split_sizes_attr;
+  if (!matchPattern(op.size_splits(), m_Constant(&split_sizes_attr)))
+    return success();
+
+  int64_t total_dim_size = 0;  // Total dimension size assigned to splits
+  llvm::Optional<int> dynamic_dim_index;
+
+  SmallVector<int64_t, 4> split_sizes;
+  split_sizes.reserve(
+      split_sizes_attr.getType().cast<ShapedType>().getNumElements());
+
+  for (auto dim : llvm::enumerate(split_sizes_attr)) {
+    int64_t dim_val = dim.value().getSExtValue();
+    split_sizes.push_back(dim_val);
+    if (dim_val == ShapedType::kDynamicSize) {
+      // We cannot have more than one dynamic dimension.
+      if (dynamic_dim_index)
+        return op.emitOpError(
+            "cannot have more than one dynamic dimension in split sizes");
+      dynamic_dim_index = dim.index();
+    } else {
+      total_dim_size += dim_val;
+    }
+  }
+
+  if (!dynamic_dim_index && total_dim_size != input_dim_size)
+    return op.emitOpError(
+               "split sizes must sum up to the dimension size along split "
+               "dimension, found ")
+           << total_dim_size << " vs " << input_dim_size;
+
+  if (dynamic_dim_index && total_dim_size > input_dim_size)
+    return op.emitOpError(
+               "split sizes must sum up to be less than or equal to the "
+               "dimension size along split dimension, found ")
+           << total_dim_size << " vs " << input_dim_size;
 
   return success();
 }
@@ -1785,6 +1917,30 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
 void TruncateDivOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<TruncateDivWithSqrtDivisor>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// UnpackOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(UnpackOp op) {
+  auto value_type = op.value()->getType().dyn_cast<RankedTensorType>();
+  if (!value_type) return success();
+
+  int64_t value_rank = value_type.getRank();
+  int64_t axis = op.axis().getSExtValue();
+  if (axis < -value_rank || axis >= value_rank)
+    return op.emitOpError("axis attribute must be in the range of [-")
+           << value_rank << ", " << value_rank << ')';
+
+  axis = GetDimForAxis(axis, value_rank);
+  int64_t dim_size = value_type.getDimSize(axis);
+  if (ShapedType::isDynamic(dim_size)) return success();
+
+  if (dim_size != op.getNumResults())
+    return op.emitOpError("result count must be equal to ") << dim_size;
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

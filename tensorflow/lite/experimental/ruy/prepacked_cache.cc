@@ -38,7 +38,7 @@ void PrepackedCache::Insert(const CacheKey &key,
   // Calculate size of this new item.
   const size_t size_bytes = matrix.data_size + matrix.sums_size;
 
-  // If we are above the threshold of ejection, eject the LRU entry.
+  // While we are above the threshold of ejection, eject the LRU entry.
   while (!cache_.empty() &&
          ((TotalSize() + size_bytes) > ejection_threshold_)) {
     EjectOne();

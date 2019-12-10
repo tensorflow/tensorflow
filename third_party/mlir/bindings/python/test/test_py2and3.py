@@ -19,12 +19,14 @@
 import google_mlir.bindings.python.pybind as E
 import inspect
 
+
 # Prints `str` prefixed by the current test function name so we can use it in
 # Filecheck label directives.
 # This is achieved by inspecting the stack and getting the parent name.
 def printWithCurrentFunctionName(str):
   print(inspect.stack()[1][3])
   print(str)
+
 
 class EdscTest:
 
@@ -104,8 +106,9 @@ class EdscTest:
 
   def testBooleanOps(self):
     self.setUp()
-    with self.module.function_context(
-        "booleans", [self.boolType for _ in range(4)], []) as fun:
+    with self.module.function_context("booleans",
+                                      [self.boolType for _ in range(4)],
+                                      []) as fun:
       i, j, k, l = (fun.arg(x) for x in range(4))
       stmt1 = (i < j) & (j >= k)
       stmt2 = ~(stmt1 | (k == l))
@@ -191,6 +194,22 @@ class EdscTest:
       printWithCurrentFunctionName(str(fun))
     # CHECK-LABEL: testCondBr
     #       CHECK:   cond_br %{{.*}}, ^bb{{.*}}, ^bb{{.*}}(%{{.*}} : index)
+
+  def testConstantAffineExpr(self):
+    self.setUp()
+    with self.module.function_context("constant_affine", [], []) as fun:
+      a1 = self.module.affine_dim_expr(0)
+      a2 = self.module.affine_dim_expr(1)
+      a3 = a1 + a2 + 3
+      composedExpr = a3.compose(
+          self.module.affine_map(2, 0, [
+              self.module.affine_constant_expr(4),
+              self.module.affine_constant_expr(7)
+          ]))
+      printWithCurrentFunctionName(str(fun))
+      print("constant value : %d" % composedExpr.get_constant_value())
+    # CHECK-LABEL: testConstantAffineExpr
+    #       CHECK: constant value : 14
 
   def testConstants(self):
     self.setUp()
@@ -471,15 +490,16 @@ class EdscTest:
   def testMatrixMultiply(self):
     self.setUp()
     memrefType = self.module.make_memref_type(self.f32Type, [32, 32])
-    with self.module.function_context(
-        "matmul", [memrefType, memrefType, memrefType], []) as fun:
+    with self.module.function_context("matmul",
+                                      [memrefType, memrefType, memrefType],
+                                      []) as fun:
       A = E.IndexedValue(fun.arg(0))
       B = E.IndexedValue(fun.arg(1))
       C = E.IndexedValue(fun.arg(2))
       c0 = E.constant_index(0)
       c32 = E.constant_index(32)
-      with E.LoopNestContext([c0, c0, c0], [c32, c32, c32], [1, 1, 1]) as (i, j,
-                                                                           k):
+      with E.LoopNestContext([c0, c0, c0], [c32, c32, c32],
+                             [1, 1, 1]) as (i, j, k):
         C.store([i, j], A.load([i, k]) * B.load([k, j]))
       E.ret([])
       printWithCurrentFunctionName(str(fun))
@@ -520,19 +540,33 @@ class EdscTest:
     # CHECK-LABEL: testSelectOp
     #       CHECK:  %{{.*}} = select %{{.*}}, %{{.*}}, %{{.*}} : i32
 
+  def testType(self):
+    self.setUp()
+    printWithCurrentFunctionName("")
+    with self.module.function_context(
+        "foo", [self.module.make_memref_type(self.f32Type, [10])], []) as fun:
+      c42 = E.constant_int(42, 32)
+      print(str(c42.type()))
+      print(str(fun.arg(0).type()))
+    # CHECK-LABEL: testType
+    #       CHECK:    i32
+    #       CHECK:    memref<10xf32>
+
 
 # Until python 3.6 this cannot be used because the order in the dict is not the
 # order of method declaration.
 def runTests():
+
   def isTest(attr):
     return inspect.ismethod(attr) and "EdscTest.setUp " not in str(attr)
 
   edscTest = EdscTest()
-  tests = sorted(filter(isTest,
-                        (getattr(edscTest, attr) for attr in dir(edscTest))),
-                 key = lambda x : str(x))
+  tests = sorted(
+      filter(isTest, (getattr(edscTest, attr) for attr in dir(edscTest))),
+      key=lambda x: str(x))
   for test in tests:
     test()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   runTests()

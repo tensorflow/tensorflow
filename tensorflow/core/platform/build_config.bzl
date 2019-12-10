@@ -1,7 +1,7 @@
 """Provides a redirection point for platform specific implementations of starlark utilities."""
 
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform/default:build_config.bzl",
     _pyx_library = "pyx_library",
     _tf_additional_all_protos = "tf_additional_all_protos",
     _tf_additional_binary_deps = "tf_additional_binary_deps",
@@ -12,10 +12,7 @@ load(
     _tf_additional_env_hdrs = "tf_additional_env_hdrs",
     _tf_additional_lib_deps = "tf_additional_lib_deps",
     _tf_additional_lib_hdrs = "tf_additional_lib_hdrs",
-    _tf_additional_lib_srcs = "tf_additional_lib_srcs",
     _tf_additional_monitoring_hdrs = "tf_additional_monitoring_hdrs",
-    _tf_additional_monitoring_srcs = "tf_additional_monitoring_srcs",
-    _tf_additional_proto_hdrs = "tf_additional_proto_hdrs",
     _tf_additional_rpc_deps = "tf_additional_rpc_deps",
     _tf_additional_tensor_coding_deps = "tf_additional_tensor_coding_deps",
     _tf_additional_test_deps = "tf_additional_test_deps",
@@ -48,10 +45,7 @@ tf_additional_device_tracer_srcs = _tf_additional_device_tracer_srcs
 tf_additional_env_hdrs = _tf_additional_env_hdrs
 tf_additional_lib_deps = _tf_additional_lib_deps
 tf_additional_lib_hdrs = _tf_additional_lib_hdrs
-tf_additional_lib_srcs = _tf_additional_lib_srcs
 tf_additional_monitoring_hdrs = _tf_additional_monitoring_hdrs
-tf_additional_monitoring_srcs = _tf_additional_monitoring_srcs
-tf_additional_proto_hdrs = _tf_additional_proto_hdrs
 tf_additional_rpc_deps = _tf_additional_rpc_deps
 tf_additional_tensor_coding_deps = _tf_additional_tensor_coding_deps
 tf_additional_test_deps = _tf_additional_test_deps

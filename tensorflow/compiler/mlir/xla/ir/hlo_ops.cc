@@ -606,7 +606,7 @@ static TensorType GetReduceResultType(Type operand_ty,
 }
 
 void ReduceOp::build(Builder* builder, OperationState& state,
-                     ArrayRef<Value*> operands, ArrayRef<Value*> init_values,
+                     ValueRange operands, ValueRange init_values,
                      DenseIntElementsAttr dimensions) {
   SmallVector<Type, 1> result_ty;
   result_ty.reserve(operands.size());
@@ -845,9 +845,8 @@ Type SliceOp::InferOutputTypes(Builder* builder, Value* operand,
 // SortOp
 //===----------------------------------------------------------------------===//
 
-void SortOp::build(Builder* builder, OperationState& state,
-                   ArrayRef<Value*> operands, int64_t dimension,
-                   bool is_stable) {
+void SortOp::build(Builder* builder, OperationState& state, ValueRange operands,
+                   int64_t dimension, bool is_stable) {
   state.addOperands(operands);
   state.addAttribute("dimension", builder->getI64IntegerAttr(dimension));
   state.addAttribute("is_stable", builder->getBoolAttr(dimension));
@@ -990,7 +989,7 @@ void GetTupleElementOp::build(Builder* builder, OperationState& result,
 //===----------------------------------------------------------------------===//
 
 void TupleOp::build(Builder* builder, OperationState& result,
-                    ArrayRef<Value*> values) {
+                    ValueRange values) {
   SmallVector<Type, 4> types;
   types.reserve(values.size());
   for (auto val : values) {

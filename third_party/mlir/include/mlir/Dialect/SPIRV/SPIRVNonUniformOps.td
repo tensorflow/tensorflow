@@ -49,7 +49,7 @@ def SPV_GroupNonUniformBallotOp : SPV_Op<"GroupNonUniformBallot", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     scope ::= `"Workgroup"` | `"Subgroup"`
     non-uniform-ballot-op ::= ssa-id `=` `spv.GroupNonUniformBallot` scope
                               ssa-use `:` `vector` `<` 4 `x` `integer-type` `>`

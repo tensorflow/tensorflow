@@ -22,6 +22,7 @@ limitations under the License.
 // constant folding support for the TensorFlow ops.
 
 #include <climits>
+#include <complex>
 #include <cstdint>
 
 #include "llvm/ADT/APInt.h"
@@ -42,6 +43,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace mlir {
 namespace TFL {
@@ -49,6 +57,9 @@ namespace TFL {
 //===----------------------------------------------------------------------===//
 // The actual LegalizeTF Pass.
 namespace {
+
+using xla::Status;
+using xla::StatusOr;
 
 // Legalize operations in functions.
 struct LegalizeTF : public FunctionPass<LegalizeTF> {
@@ -68,6 +79,7 @@ struct LegalizeTF : public FunctionPass<LegalizeTF> {
 // TODO(antiagainst): Define this pattern in a table-driven manner once variadic
 // operands are properly supported in declarative rewrite rule specification.
 
+DECL_CONVERT_OP(Assert);
 DECL_CONVERT_OP(Concat);
 DECL_CONVERT_OP(ConcatV2);
 DECL_CONVERT_OP(MatMul);
@@ -79,6 +91,7 @@ DECL_CONVERT_OP(Split);
 DECL_CONVERT_OP(SplitV);
 DECL_CONVERT_OP(StridedSlice);
 DECL_CONVERT_OP(Unpack);
+DECL_CONVERT_OP(Reciprocal);
 
 #undef DECL_CONVERT_OP
 
@@ -86,7 +99,7 @@ PatternMatchResult ConvertTFConcatOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_concat_op = cast<TF::ConcatOp>(op);
 
-  SmallVector<Value*, 4> values(tf_concat_op.values());
+  auto values = tf_concat_op.values();
   auto output_type = tf_concat_op.output()->getType();
   // Extract axis attribute from constant concat_dims tensor
   ElementsAttr axis;
@@ -105,7 +118,7 @@ PatternMatchResult ConvertTFConcatV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_concat_op = cast<TF::ConcatV2Op>(op);
 
-  SmallVector<Value*, 4> values(tf_concat_op.values());
+  auto values = tf_concat_op.values();
   auto output_type = tf_concat_op.output()->getType();
   // Extract axis attribute from constant axis tensor
   ElementsAttr axis;
@@ -374,6 +387,111 @@ PatternMatchResult ConvertTFMatrixDiagV3Op::matchAndRewrite(
   return matchFailure();
 }
 
+// TF Lite doesn't support Assert, we just drop the assert from the graph.
+PatternMatchResult ConvertTFAssertOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  op->dropAllReferences();
+  op->erase();
+  return matchSuccess();
+}
+
+StatusOr<ConstantOp> CreateConstOpWithSingleValue(PatternRewriter* rewriter,
+                                                  Location loc,
+                                                  ShapedType shaped_type,
+                                                  int value) {
+  Type element_type = shaped_type.getElementType();
+  ShapedType ranked_tensor_type = RankedTensorType::get({1}, element_type);
+  Type type = ranked_tensor_type;
+  Attribute attr;
+  switch (element_type.getKind()) {
+    case mlir::StandardTypes::F16: {
+      auto floatType = mlir::FloatType::getF16(element_type.getContext());
+      auto floatAttr =
+          mlir::FloatAttr::get(floatType, static_cast<float>(value));
+      std::vector<Attribute> floatValues({floatAttr});
+      attr = DenseElementsAttr::get(ranked_tensor_type, floatValues);
+      break;
+    }
+    case mlir::StandardTypes::F32: {
+      attr = DenseElementsAttr::get<float>(ranked_tensor_type,
+                                           static_cast<float>(value));
+      break;
+    }
+    case mlir::StandardTypes::Complex: {
+      auto etype = element_type.cast<mlir::ComplexType>().getElementType();
+      if (etype.isF32()) {
+        auto dialect = etype.getContext()->getRegisteredDialect("tf");
+        tensorflow::TensorProto repr;
+        repr.set_dtype(tensorflow::DT_COMPLEX64);
+
+        tensorflow::TensorShapeProto* shape = repr.mutable_tensor_shape();
+        shape->set_unknown_rank(false);
+        shape->add_dim()->set_size(int64_t{1});
+        std::string content;
+        auto complex_value =
+            std::complex<float>(static_cast<float>(value), 0.0f);
+        content.assign(reinterpret_cast<const char*>(&complex_value),
+                       sizeof(complex_value));
+        repr.set_tensor_content(content);
+        std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
+
+        attr =
+            mlir::OpaqueElementsAttr::get(dialect, ranked_tensor_type, mangled);
+        break;
+      }
+      return Status(tensorflow::error::INVALID_ARGUMENT, "Unsupported type");
+    }
+    case mlir::StandardTypes::Integer: {
+      const auto& itype = element_type.cast<mlir::IntegerType>();
+      switch (itype.getWidth()) {
+        case 8:
+          attr = DenseElementsAttr::get<int8_t>(ranked_tensor_type,
+                                                static_cast<int8_t>(value));
+          break;
+        case 16:
+          attr = DenseElementsAttr::get<int16_t>(ranked_tensor_type,
+                                                 static_cast<int16_t>(value));
+          break;
+        case 32:
+          attr = DenseElementsAttr::get<int32_t>(ranked_tensor_type,
+                                                 static_cast<int32_t>(value));
+          break;
+        case 64:
+          attr = DenseElementsAttr::get<int64_t>(ranked_tensor_type,
+                                                 static_cast<int64_t>(value));
+          break;
+        default:
+          return Status(tensorflow::error::INVALID_ARGUMENT,
+                        "Unsupported type");
+      }
+      break;
+    }
+    default:
+      return Status(tensorflow::error::INVALID_ARGUMENT, "Unsupported type");
+  }
+  return rewriter->create<ConstantOp>(loc, type, attr);
+}
+
+PatternMatchResult ConvertTFReciprocalOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_reciprocal_op = cast<TF::ReciprocalOp>(op);
+
+  auto status_or_const_op = CreateConstOpWithSingleValue(
+      &rewriter, op->getLoc(),
+      tf_reciprocal_op.x()->getType().cast<ShapedType>(), 1);
+  if (!status_or_const_op.ok()) {
+    return matchFailure();
+  }
+
+  StringAttr fused_activation_function =
+      StringAttr::get("NONE", rewriter.getContext());
+
+  rewriter.replaceOpWithNewOp<TFL::DivOp>(op, status_or_const_op.ValueOrDie(),
+                                          tf_reciprocal_op.x(),
+                                          fused_activation_function);
+  return matchSuccess();
+}
+
 void LegalizeTF::runOnFunction() {
   OwningRewritePatternList patterns;
   auto* ctx = &getContext();
@@ -381,11 +499,11 @@ void LegalizeTF::runOnFunction() {
 
   // Add the generated patterns to the list.
   populateWithGenerated(ctx, &patterns);
-  patterns
-      .insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
-              ConvertTFMatrixDiagV2Op, ConvertTFMatrixDiagV3Op, ConvertTFPackOp,
-              ConvertTFReshapeOp, ConvertTFSplitOp, ConvertTFSplitVOp,
-              ConvertTFStridedSliceOp, ConvertTFUnpackOp>(ctx);
+  patterns.insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
+                  ConvertTFMatrixDiagV2Op, ConvertTFMatrixDiagV3Op,
+                  ConvertTFPackOp, ConvertTFReshapeOp, ConvertTFSplitOp,
+                  ConvertTFSplitVOp, ConvertTFStridedSliceOp, ConvertTFUnpackOp,
+                  ConvertTFAssertOp, ConvertTFReciprocalOp>(ctx);
   applyPatternsGreedily(func, patterns);
 }
 

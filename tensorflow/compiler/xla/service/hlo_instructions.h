@@ -336,12 +336,32 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
   explicit HloAllReduceInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const std::vector<ReplicaGroup>& replica_groups,
+      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id);
 
   // Returns true if the AllReduce does no communication, so it's equivalent
   // to a mem copy.
   bool IsNoop() const;
+
+  // Returns true if the layout of the AllReduce is enforced by XLA client (as
+  // the layout set in the shape). The only reason for the client to set the
+  // layout is to separately compile computations that communicate with
+  // AllReduce. Since this field is only set `true` by the client, the compiler
+  // only needs to propagate existing values (e.g., Clone, X64Rewriter) or set
+  // `false` for all other cases.
+  //
+  // When this is `true`, there may be communication endpoints outside the
+  // current compilation unit, so the compiler considers this AllReduce as
+  // side-effecting to disable compiler transformations. The compiler is free to
+  // transform unconstrained AllReduces differently across compilation units.
+  // It is an error for an HloModule to have a mix of constrained and
+  // unconstrained AllReduce instructions (checked by HloVerifier).
+  bool constrain_layout() const { return constrain_layout_; }
+
+ protected:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  HloInstructionProto ToProto() const override;
 
  private:
   bool IdenticalSlowPath(
@@ -353,6 +373,8 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
+
+  bool constrain_layout_;
 };
 
 class HloAllToAllInstruction : public HloCollectiveInstruction {

@@ -1031,128 +1031,131 @@ class SPV_OpCode<string name, int val> {
 
 // Begin opcode section. Generated from SPIR-V spec; DO NOT MODIFY!
 
-def SPV_OC_OpNop                    : I32EnumAttrCase<"OpNop", 0>;
-def SPV_OC_OpUndef                  : I32EnumAttrCase<"OpUndef", 1>;
-def SPV_OC_OpSourceContinued        : I32EnumAttrCase<"OpSourceContinued", 2>;
-def SPV_OC_OpSource                 : I32EnumAttrCase<"OpSource", 3>;
-def SPV_OC_OpSourceExtension        : I32EnumAttrCase<"OpSourceExtension", 4>;
-def SPV_OC_OpName                   : I32EnumAttrCase<"OpName", 5>;
-def SPV_OC_OpMemberName             : I32EnumAttrCase<"OpMemberName", 6>;
-def SPV_OC_OpString                 : I32EnumAttrCase<"OpString", 7>;
-def SPV_OC_OpExtension              : I32EnumAttrCase<"OpExtension", 10>;
-def SPV_OC_OpExtInstImport          : I32EnumAttrCase<"OpExtInstImport", 11>;
-def SPV_OC_OpExtInst                : I32EnumAttrCase<"OpExtInst", 12>;
-def SPV_OC_OpMemoryModel            : I32EnumAttrCase<"OpMemoryModel", 14>;
-def SPV_OC_OpEntryPoint             : I32EnumAttrCase<"OpEntryPoint", 15>;
-def SPV_OC_OpExecutionMode          : I32EnumAttrCase<"OpExecutionMode", 16>;
-def SPV_OC_OpCapability             : I32EnumAttrCase<"OpCapability", 17>;
-def SPV_OC_OpTypeVoid               : I32EnumAttrCase<"OpTypeVoid", 19>;
-def SPV_OC_OpTypeBool               : I32EnumAttrCase<"OpTypeBool", 20>;
-def SPV_OC_OpTypeInt                : I32EnumAttrCase<"OpTypeInt", 21>;
-def SPV_OC_OpTypeFloat              : I32EnumAttrCase<"OpTypeFloat", 22>;
-def SPV_OC_OpTypeVector             : I32EnumAttrCase<"OpTypeVector", 23>;
-def SPV_OC_OpTypeArray              : I32EnumAttrCase<"OpTypeArray", 28>;
-def SPV_OC_OpTypeRuntimeArray       : I32EnumAttrCase<"OpTypeRuntimeArray", 29>;
-def SPV_OC_OpTypeStruct             : I32EnumAttrCase<"OpTypeStruct", 30>;
-def SPV_OC_OpTypePointer            : I32EnumAttrCase<"OpTypePointer", 32>;
-def SPV_OC_OpTypeFunction           : I32EnumAttrCase<"OpTypeFunction", 33>;
-def SPV_OC_OpConstantTrue           : I32EnumAttrCase<"OpConstantTrue", 41>;
-def SPV_OC_OpConstantFalse          : I32EnumAttrCase<"OpConstantFalse", 42>;
-def SPV_OC_OpConstant               : I32EnumAttrCase<"OpConstant", 43>;
-def SPV_OC_OpConstantComposite      : I32EnumAttrCase<"OpConstantComposite", 44>;
-def SPV_OC_OpConstantNull           : I32EnumAttrCase<"OpConstantNull", 46>;
-def SPV_OC_OpSpecConstantTrue       : I32EnumAttrCase<"OpSpecConstantTrue", 48>;
-def SPV_OC_OpSpecConstantFalse      : I32EnumAttrCase<"OpSpecConstantFalse", 49>;
-def SPV_OC_OpSpecConstant           : I32EnumAttrCase<"OpSpecConstant", 50>;
-def SPV_OC_OpSpecConstantComposite  : I32EnumAttrCase<"OpSpecConstantComposite", 51>;
-def SPV_OC_OpFunction               : I32EnumAttrCase<"OpFunction", 54>;
-def SPV_OC_OpFunctionParameter      : I32EnumAttrCase<"OpFunctionParameter", 55>;
-def SPV_OC_OpFunctionEnd            : I32EnumAttrCase<"OpFunctionEnd", 56>;
-def SPV_OC_OpFunctionCall           : I32EnumAttrCase<"OpFunctionCall", 57>;
-def SPV_OC_OpVariable               : I32EnumAttrCase<"OpVariable", 59>;
-def SPV_OC_OpLoad                   : I32EnumAttrCase<"OpLoad", 61>;
-def SPV_OC_OpStore                  : I32EnumAttrCase<"OpStore", 62>;
-def SPV_OC_OpAccessChain            : I32EnumAttrCase<"OpAccessChain", 65>;
-def SPV_OC_OpDecorate               : I32EnumAttrCase<"OpDecorate", 71>;
-def SPV_OC_OpMemberDecorate         : I32EnumAttrCase<"OpMemberDecorate", 72>;
-def SPV_OC_OpCompositeExtract       : I32EnumAttrCase<"OpCompositeExtract", 81>;
-def SPV_OC_OpConvertFToU            : I32EnumAttrCase<"OpConvertFToU", 109>;
-def SPV_OC_OpConvertFToS            : I32EnumAttrCase<"OpConvertFToS", 110>;
-def SPV_OC_OpConvertSToF            : I32EnumAttrCase<"OpConvertSToF", 111>;
-def SPV_OC_OpConvertUToF            : I32EnumAttrCase<"OpConvertUToF", 112>;
-def SPV_OC_OpUConvert               : I32EnumAttrCase<"OpUConvert", 113>;
-def SPV_OC_OpSConvert               : I32EnumAttrCase<"OpSConvert", 114>;
-def SPV_OC_OpFConvert               : I32EnumAttrCase<"OpFConvert", 115>;
-def SPV_OC_OpBitcast                : I32EnumAttrCase<"OpBitcast", 124>;
-def SPV_OC_OpFNegate                : I32EnumAttrCase<"OpFNegate", 127>;
-def SPV_OC_OpIAdd                   : I32EnumAttrCase<"OpIAdd", 128>;
-def SPV_OC_OpFAdd                   : I32EnumAttrCase<"OpFAdd", 129>;
-def SPV_OC_OpISub                   : I32EnumAttrCase<"OpISub", 130>;
-def SPV_OC_OpFSub                   : I32EnumAttrCase<"OpFSub", 131>;
-def SPV_OC_OpIMul                   : I32EnumAttrCase<"OpIMul", 132>;
-def SPV_OC_OpFMul                   : I32EnumAttrCase<"OpFMul", 133>;
-def SPV_OC_OpUDiv                   : I32EnumAttrCase<"OpUDiv", 134>;
-def SPV_OC_OpSDiv                   : I32EnumAttrCase<"OpSDiv", 135>;
-def SPV_OC_OpFDiv                   : I32EnumAttrCase<"OpFDiv", 136>;
-def SPV_OC_OpUMod                   : I32EnumAttrCase<"OpUMod", 137>;
-def SPV_OC_OpSRem                   : I32EnumAttrCase<"OpSRem", 138>;
-def SPV_OC_OpSMod                   : I32EnumAttrCase<"OpSMod", 139>;
-def SPV_OC_OpFRem                   : I32EnumAttrCase<"OpFRem", 140>;
-def SPV_OC_OpFMod                   : I32EnumAttrCase<"OpFMod", 141>;
-def SPV_OC_OpLogicalEqual           : I32EnumAttrCase<"OpLogicalEqual", 164>;
-def SPV_OC_OpLogicalNotEqual        : I32EnumAttrCase<"OpLogicalNotEqual", 165>;
-def SPV_OC_OpLogicalOr              : I32EnumAttrCase<"OpLogicalOr", 166>;
-def SPV_OC_OpLogicalAnd             : I32EnumAttrCase<"OpLogicalAnd", 167>;
-def SPV_OC_OpLogicalNot             : I32EnumAttrCase<"OpLogicalNot", 168>;
-def SPV_OC_OpSelect                 : I32EnumAttrCase<"OpSelect", 169>;
-def SPV_OC_OpIEqual                 : I32EnumAttrCase<"OpIEqual", 170>;
-def SPV_OC_OpINotEqual              : I32EnumAttrCase<"OpINotEqual", 171>;
-def SPV_OC_OpUGreaterThan           : I32EnumAttrCase<"OpUGreaterThan", 172>;
-def SPV_OC_OpSGreaterThan           : I32EnumAttrCase<"OpSGreaterThan", 173>;
-def SPV_OC_OpUGreaterThanEqual      : I32EnumAttrCase<"OpUGreaterThanEqual", 174>;
-def SPV_OC_OpSGreaterThanEqual      : I32EnumAttrCase<"OpSGreaterThanEqual", 175>;
-def SPV_OC_OpULessThan              : I32EnumAttrCase<"OpULessThan", 176>;
-def SPV_OC_OpSLessThan              : I32EnumAttrCase<"OpSLessThan", 177>;
-def SPV_OC_OpULessThanEqual         : I32EnumAttrCase<"OpULessThanEqual", 178>;
-def SPV_OC_OpSLessThanEqual         : I32EnumAttrCase<"OpSLessThanEqual", 179>;
-def SPV_OC_OpFOrdEqual              : I32EnumAttrCase<"OpFOrdEqual", 180>;
-def SPV_OC_OpFUnordEqual            : I32EnumAttrCase<"OpFUnordEqual", 181>;
-def SPV_OC_OpFOrdNotEqual           : I32EnumAttrCase<"OpFOrdNotEqual", 182>;
-def SPV_OC_OpFUnordNotEqual         : I32EnumAttrCase<"OpFUnordNotEqual", 183>;
-def SPV_OC_OpFOrdLessThan           : I32EnumAttrCase<"OpFOrdLessThan", 184>;
-def SPV_OC_OpFUnordLessThan         : I32EnumAttrCase<"OpFUnordLessThan", 185>;
-def SPV_OC_OpFOrdGreaterThan        : I32EnumAttrCase<"OpFOrdGreaterThan", 186>;
-def SPV_OC_OpFUnordGreaterThan      : I32EnumAttrCase<"OpFUnordGreaterThan", 187>;
-def SPV_OC_OpFOrdLessThanEqual      : I32EnumAttrCase<"OpFOrdLessThanEqual", 188>;
-def SPV_OC_OpFUnordLessThanEqual    : I32EnumAttrCase<"OpFUnordLessThanEqual", 189>;
-def SPV_OC_OpFOrdGreaterThanEqual   : I32EnumAttrCase<"OpFOrdGreaterThanEqual", 190>;
-def SPV_OC_OpFUnordGreaterThanEqual : I32EnumAttrCase<"OpFUnordGreaterThanEqual", 191>;
-def SPV_OC_OpShiftRightLogical      : I32EnumAttrCase<"OpShiftRightLogical", 194>;
-def SPV_OC_OpShiftRightArithmetic   : I32EnumAttrCase<"OpShiftRightArithmetic", 195>;
-def SPV_OC_OpShiftLeftLogical       : I32EnumAttrCase<"OpShiftLeftLogical", 196>;
-def SPV_OC_OpBitwiseOr              : I32EnumAttrCase<"OpBitwiseOr", 197>;
-def SPV_OC_OpBitwiseXor             : I32EnumAttrCase<"OpBitwiseXor", 198>;
-def SPV_OC_OpBitwiseAnd             : I32EnumAttrCase<"OpBitwiseAnd", 199>;
-def SPV_OC_OpNot                    : I32EnumAttrCase<"OpNot", 200>;
-def SPV_OC_OpBitFieldInsert         : I32EnumAttrCase<"OpBitFieldInsert", 201>;
-def SPV_OC_OpBitFieldSExtract       : I32EnumAttrCase<"OpBitFieldSExtract", 202>;
-def SPV_OC_OpBitFieldUExtract       : I32EnumAttrCase<"OpBitFieldUExtract", 203>;
-def SPV_OC_OpBitReverse             : I32EnumAttrCase<"OpBitReverse", 204>;
-def SPV_OC_OpBitCount               : I32EnumAttrCase<"OpBitCount", 205>;
-def SPV_OC_OpControlBarrier         : I32EnumAttrCase<"OpControlBarrier", 224>;
-def SPV_OC_OpMemoryBarrier          : I32EnumAttrCase<"OpMemoryBarrier", 225>;
-def SPV_OC_OpPhi                    : I32EnumAttrCase<"OpPhi", 245>;
-def SPV_OC_OpLoopMerge              : I32EnumAttrCase<"OpLoopMerge", 246>;
-def SPV_OC_OpSelectionMerge         : I32EnumAttrCase<"OpSelectionMerge", 247>;
-def SPV_OC_OpLabel                  : I32EnumAttrCase<"OpLabel", 248>;
-def SPV_OC_OpBranch                 : I32EnumAttrCase<"OpBranch", 249>;
-def SPV_OC_OpBranchConditional      : I32EnumAttrCase<"OpBranchConditional", 250>;
-def SPV_OC_OpReturn                 : I32EnumAttrCase<"OpReturn", 253>;
-def SPV_OC_OpReturnValue            : I32EnumAttrCase<"OpReturnValue", 254>;
-def SPV_OC_OpUnreachable            : I32EnumAttrCase<"OpUnreachable", 255>;
-def SPV_OC_OpModuleProcessed        : I32EnumAttrCase<"OpModuleProcessed", 330>;
-def SPV_OC_OpGroupNonUniformBallot  : I32EnumAttrCase<"OpGroupNonUniformBallot", 339>;
-def SPV_OC_OpSubgroupBallotKHR      : I32EnumAttrCase<"OpSubgroupBallotKHR", 4421>;
+def SPV_OC_OpNop                       : I32EnumAttrCase<"OpNop", 0>;
+def SPV_OC_OpUndef                     : I32EnumAttrCase<"OpUndef", 1>;
+def SPV_OC_OpSourceContinued           : I32EnumAttrCase<"OpSourceContinued", 2>;
+def SPV_OC_OpSource                    : I32EnumAttrCase<"OpSource", 3>;
+def SPV_OC_OpSourceExtension           : I32EnumAttrCase<"OpSourceExtension", 4>;
+def SPV_OC_OpName                      : I32EnumAttrCase<"OpName", 5>;
+def SPV_OC_OpMemberName                : I32EnumAttrCase<"OpMemberName", 6>;
+def SPV_OC_OpString                    : I32EnumAttrCase<"OpString", 7>;
+def SPV_OC_OpExtension                 : I32EnumAttrCase<"OpExtension", 10>;
+def SPV_OC_OpExtInstImport             : I32EnumAttrCase<"OpExtInstImport", 11>;
+def SPV_OC_OpExtInst                   : I32EnumAttrCase<"OpExtInst", 12>;
+def SPV_OC_OpMemoryModel               : I32EnumAttrCase<"OpMemoryModel", 14>;
+def SPV_OC_OpEntryPoint                : I32EnumAttrCase<"OpEntryPoint", 15>;
+def SPV_OC_OpExecutionMode             : I32EnumAttrCase<"OpExecutionMode", 16>;
+def SPV_OC_OpCapability                : I32EnumAttrCase<"OpCapability", 17>;
+def SPV_OC_OpTypeVoid                  : I32EnumAttrCase<"OpTypeVoid", 19>;
+def SPV_OC_OpTypeBool                  : I32EnumAttrCase<"OpTypeBool", 20>;
+def SPV_OC_OpTypeInt                   : I32EnumAttrCase<"OpTypeInt", 21>;
+def SPV_OC_OpTypeFloat                 : I32EnumAttrCase<"OpTypeFloat", 22>;
+def SPV_OC_OpTypeVector                : I32EnumAttrCase<"OpTypeVector", 23>;
+def SPV_OC_OpTypeArray                 : I32EnumAttrCase<"OpTypeArray", 28>;
+def SPV_OC_OpTypeRuntimeArray          : I32EnumAttrCase<"OpTypeRuntimeArray", 29>;
+def SPV_OC_OpTypeStruct                : I32EnumAttrCase<"OpTypeStruct", 30>;
+def SPV_OC_OpTypePointer               : I32EnumAttrCase<"OpTypePointer", 32>;
+def SPV_OC_OpTypeFunction              : I32EnumAttrCase<"OpTypeFunction", 33>;
+def SPV_OC_OpConstantTrue              : I32EnumAttrCase<"OpConstantTrue", 41>;
+def SPV_OC_OpConstantFalse             : I32EnumAttrCase<"OpConstantFalse", 42>;
+def SPV_OC_OpConstant                  : I32EnumAttrCase<"OpConstant", 43>;
+def SPV_OC_OpConstantComposite         : I32EnumAttrCase<"OpConstantComposite", 44>;
+def SPV_OC_OpConstantNull              : I32EnumAttrCase<"OpConstantNull", 46>;
+def SPV_OC_OpSpecConstantTrue          : I32EnumAttrCase<"OpSpecConstantTrue", 48>;
+def SPV_OC_OpSpecConstantFalse         : I32EnumAttrCase<"OpSpecConstantFalse", 49>;
+def SPV_OC_OpSpecConstant              : I32EnumAttrCase<"OpSpecConstant", 50>;
+def SPV_OC_OpSpecConstantComposite     : I32EnumAttrCase<"OpSpecConstantComposite", 51>;
+def SPV_OC_OpFunction                  : I32EnumAttrCase<"OpFunction", 54>;
+def SPV_OC_OpFunctionParameter         : I32EnumAttrCase<"OpFunctionParameter", 55>;
+def SPV_OC_OpFunctionEnd               : I32EnumAttrCase<"OpFunctionEnd", 56>;
+def SPV_OC_OpFunctionCall              : I32EnumAttrCase<"OpFunctionCall", 57>;
+def SPV_OC_OpVariable                  : I32EnumAttrCase<"OpVariable", 59>;
+def SPV_OC_OpLoad                      : I32EnumAttrCase<"OpLoad", 61>;
+def SPV_OC_OpStore                     : I32EnumAttrCase<"OpStore", 62>;
+def SPV_OC_OpAccessChain               : I32EnumAttrCase<"OpAccessChain", 65>;
+def SPV_OC_OpDecorate                  : I32EnumAttrCase<"OpDecorate", 71>;
+def SPV_OC_OpMemberDecorate            : I32EnumAttrCase<"OpMemberDecorate", 72>;
+def SPV_OC_OpCompositeConstruct        : I32EnumAttrCase<"OpCompositeConstruct", 80>;
+def SPV_OC_OpCompositeExtract          : I32EnumAttrCase<"OpCompositeExtract", 81>;
+def SPV_OC_OpCompositeInsert           : I32EnumAttrCase<"OpCompositeInsert", 82>;
+def SPV_OC_OpConvertFToU               : I32EnumAttrCase<"OpConvertFToU", 109>;
+def SPV_OC_OpConvertFToS               : I32EnumAttrCase<"OpConvertFToS", 110>;
+def SPV_OC_OpConvertSToF               : I32EnumAttrCase<"OpConvertSToF", 111>;
+def SPV_OC_OpConvertUToF               : I32EnumAttrCase<"OpConvertUToF", 112>;
+def SPV_OC_OpUConvert                  : I32EnumAttrCase<"OpUConvert", 113>;
+def SPV_OC_OpSConvert                  : I32EnumAttrCase<"OpSConvert", 114>;
+def SPV_OC_OpFConvert                  : I32EnumAttrCase<"OpFConvert", 115>;
+def SPV_OC_OpBitcast                   : I32EnumAttrCase<"OpBitcast", 124>;
+def SPV_OC_OpFNegate                   : I32EnumAttrCase<"OpFNegate", 127>;
+def SPV_OC_OpIAdd                      : I32EnumAttrCase<"OpIAdd", 128>;
+def SPV_OC_OpFAdd                      : I32EnumAttrCase<"OpFAdd", 129>;
+def SPV_OC_OpISub                      : I32EnumAttrCase<"OpISub", 130>;
+def SPV_OC_OpFSub                      : I32EnumAttrCase<"OpFSub", 131>;
+def SPV_OC_OpIMul                      : I32EnumAttrCase<"OpIMul", 132>;
+def SPV_OC_OpFMul                      : I32EnumAttrCase<"OpFMul", 133>;
+def SPV_OC_OpUDiv                      : I32EnumAttrCase<"OpUDiv", 134>;
+def SPV_OC_OpSDiv                      : I32EnumAttrCase<"OpSDiv", 135>;
+def SPV_OC_OpFDiv                      : I32EnumAttrCase<"OpFDiv", 136>;
+def SPV_OC_OpUMod                      : I32EnumAttrCase<"OpUMod", 137>;
+def SPV_OC_OpSRem                      : I32EnumAttrCase<"OpSRem", 138>;
+def SPV_OC_OpSMod                      : I32EnumAttrCase<"OpSMod", 139>;
+def SPV_OC_OpFRem                      : I32EnumAttrCase<"OpFRem", 140>;
+def SPV_OC_OpFMod                      : I32EnumAttrCase<"OpFMod", 141>;
+def SPV_OC_OpLogicalEqual              : I32EnumAttrCase<"OpLogicalEqual", 164>;
+def SPV_OC_OpLogicalNotEqual           : I32EnumAttrCase<"OpLogicalNotEqual", 165>;
+def SPV_OC_OpLogicalOr                 : I32EnumAttrCase<"OpLogicalOr", 166>;
+def SPV_OC_OpLogicalAnd                : I32EnumAttrCase<"OpLogicalAnd", 167>;
+def SPV_OC_OpLogicalNot                : I32EnumAttrCase<"OpLogicalNot", 168>;
+def SPV_OC_OpSelect                    : I32EnumAttrCase<"OpSelect", 169>;
+def SPV_OC_OpIEqual                    : I32EnumAttrCase<"OpIEqual", 170>;
+def SPV_OC_OpINotEqual                 : I32EnumAttrCase<"OpINotEqual", 171>;
+def SPV_OC_OpUGreaterThan              : I32EnumAttrCase<"OpUGreaterThan", 172>;
+def SPV_OC_OpSGreaterThan              : I32EnumAttrCase<"OpSGreaterThan", 173>;
+def SPV_OC_OpUGreaterThanEqual         : I32EnumAttrCase<"OpUGreaterThanEqual", 174>;
+def SPV_OC_OpSGreaterThanEqual         : I32EnumAttrCase<"OpSGreaterThanEqual", 175>;
+def SPV_OC_OpULessThan                 : I32EnumAttrCase<"OpULessThan", 176>;
+def SPV_OC_OpSLessThan                 : I32EnumAttrCase<"OpSLessThan", 177>;
+def SPV_OC_OpULessThanEqual            : I32EnumAttrCase<"OpULessThanEqual", 178>;
+def SPV_OC_OpSLessThanEqual            : I32EnumAttrCase<"OpSLessThanEqual", 179>;
+def SPV_OC_OpFOrdEqual                 : I32EnumAttrCase<"OpFOrdEqual", 180>;
+def SPV_OC_OpFUnordEqual               : I32EnumAttrCase<"OpFUnordEqual", 181>;
+def SPV_OC_OpFOrdNotEqual              : I32EnumAttrCase<"OpFOrdNotEqual", 182>;
+def SPV_OC_OpFUnordNotEqual            : I32EnumAttrCase<"OpFUnordNotEqual", 183>;
+def SPV_OC_OpFOrdLessThan              : I32EnumAttrCase<"OpFOrdLessThan", 184>;
+def SPV_OC_OpFUnordLessThan            : I32EnumAttrCase<"OpFUnordLessThan", 185>;
+def SPV_OC_OpFOrdGreaterThan           : I32EnumAttrCase<"OpFOrdGreaterThan", 186>;
+def SPV_OC_OpFUnordGreaterThan         : I32EnumAttrCase<"OpFUnordGreaterThan", 187>;
+def SPV_OC_OpFOrdLessThanEqual         : I32EnumAttrCase<"OpFOrdLessThanEqual", 188>;
+def SPV_OC_OpFUnordLessThanEqual       : I32EnumAttrCase<"OpFUnordLessThanEqual", 189>;
+def SPV_OC_OpFOrdGreaterThanEqual      : I32EnumAttrCase<"OpFOrdGreaterThanEqual", 190>;
+def SPV_OC_OpFUnordGreaterThanEqual    : I32EnumAttrCase<"OpFUnordGreaterThanEqual", 191>;
+def SPV_OC_OpShiftRightLogical         : I32EnumAttrCase<"OpShiftRightLogical", 194>;
+def SPV_OC_OpShiftRightArithmetic      : I32EnumAttrCase<"OpShiftRightArithmetic", 195>;
+def SPV_OC_OpShiftLeftLogical          : I32EnumAttrCase<"OpShiftLeftLogical", 196>;
+def SPV_OC_OpBitwiseOr                 : I32EnumAttrCase<"OpBitwiseOr", 197>;
+def SPV_OC_OpBitwiseXor                : I32EnumAttrCase<"OpBitwiseXor", 198>;
+def SPV_OC_OpBitwiseAnd                : I32EnumAttrCase<"OpBitwiseAnd", 199>;
+def SPV_OC_OpNot                       : I32EnumAttrCase<"OpNot", 200>;
+def SPV_OC_OpBitFieldInsert            : I32EnumAttrCase<"OpBitFieldInsert", 201>;
+def SPV_OC_OpBitFieldSExtract          : I32EnumAttrCase<"OpBitFieldSExtract", 202>;
+def SPV_OC_OpBitFieldUExtract          : I32EnumAttrCase<"OpBitFieldUExtract", 203>;
+def SPV_OC_OpBitReverse                : I32EnumAttrCase<"OpBitReverse", 204>;
+def SPV_OC_OpBitCount                  : I32EnumAttrCase<"OpBitCount", 205>;
+def SPV_OC_OpControlBarrier            : I32EnumAttrCase<"OpControlBarrier", 224>;
+def SPV_OC_OpMemoryBarrier             : I32EnumAttrCase<"OpMemoryBarrier", 225>;
+def SPV_OC_OpAtomicCompareExchangeWeak : I32EnumAttrCase<"OpAtomicCompareExchangeWeak", 231>;
+def SPV_OC_OpPhi                       : I32EnumAttrCase<"OpPhi", 245>;
+def SPV_OC_OpLoopMerge                 : I32EnumAttrCase<"OpLoopMerge", 246>;
+def SPV_OC_OpSelectionMerge            : I32EnumAttrCase<"OpSelectionMerge", 247>;
+def SPV_OC_OpLabel                     : I32EnumAttrCase<"OpLabel", 248>;
+def SPV_OC_OpBranch                    : I32EnumAttrCase<"OpBranch", 249>;
+def SPV_OC_OpBranchConditional         : I32EnumAttrCase<"OpBranchConditional", 250>;
+def SPV_OC_OpReturn                    : I32EnumAttrCase<"OpReturn", 253>;
+def SPV_OC_OpReturnValue               : I32EnumAttrCase<"OpReturnValue", 254>;
+def SPV_OC_OpUnreachable               : I32EnumAttrCase<"OpUnreachable", 255>;
+def SPV_OC_OpModuleProcessed           : I32EnumAttrCase<"OpModuleProcessed", 330>;
+def SPV_OC_OpGroupNonUniformBallot     : I32EnumAttrCase<"OpGroupNonUniformBallot", 339>;
+def SPV_OC_OpSubgroupBallotKHR         : I32EnumAttrCase<"OpSubgroupBallotKHR", 4421>;
 
 def SPV_OpcodeAttr :
     I32EnumAttr<"Opcode", "valid SPIR-V instructions", [
@@ -1169,7 +1172,8 @@ def SPV_OpcodeAttr :
       SPV_OC_OpSpecConstantComposite, SPV_OC_OpFunction, SPV_OC_OpFunctionParameter,
       SPV_OC_OpFunctionEnd, SPV_OC_OpFunctionCall, SPV_OC_OpVariable, SPV_OC_OpLoad,
       SPV_OC_OpStore, SPV_OC_OpAccessChain, SPV_OC_OpDecorate,
-      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpConvertFToU,
+      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeConstruct,
+      SPV_OC_OpCompositeExtract, SPV_OC_OpCompositeInsert, SPV_OC_OpConvertFToU,
       SPV_OC_OpConvertFToS, SPV_OC_OpConvertSToF, SPV_OC_OpConvertUToF,
       SPV_OC_OpUConvert, SPV_OC_OpSConvert, SPV_OC_OpFConvert, SPV_OC_OpBitcast,
       SPV_OC_OpFNegate, SPV_OC_OpIAdd, SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub,
@@ -1190,10 +1194,11 @@ def SPV_OpcodeAttr :
       SPV_OC_OpBitwiseAnd, SPV_OC_OpNot, SPV_OC_OpBitFieldInsert,
       SPV_OC_OpBitFieldSExtract, SPV_OC_OpBitFieldUExtract, SPV_OC_OpBitReverse,
       SPV_OC_OpBitCount, SPV_OC_OpControlBarrier, SPV_OC_OpMemoryBarrier,
-      SPV_OC_OpPhi, SPV_OC_OpLoopMerge, SPV_OC_OpSelectionMerge, SPV_OC_OpLabel,
-      SPV_OC_OpBranch, SPV_OC_OpBranchConditional, SPV_OC_OpReturn,
-      SPV_OC_OpReturnValue, SPV_OC_OpUnreachable, SPV_OC_OpModuleProcessed,
-      SPV_OC_OpGroupNonUniformBallot, SPV_OC_OpSubgroupBallotKHR
+      SPV_OC_OpAtomicCompareExchangeWeak, SPV_OC_OpPhi, SPV_OC_OpLoopMerge,
+      SPV_OC_OpSelectionMerge, SPV_OC_OpLabel, SPV_OC_OpBranch,
+      SPV_OC_OpBranchConditional, SPV_OC_OpReturn, SPV_OC_OpReturnValue,
+      SPV_OC_OpUnreachable, SPV_OC_OpModuleProcessed, SPV_OC_OpGroupNonUniformBallot,
+      SPV_OC_OpSubgroupBallotKHR
       ]> {
     let cppNamespace = "::mlir::spirv";
 }

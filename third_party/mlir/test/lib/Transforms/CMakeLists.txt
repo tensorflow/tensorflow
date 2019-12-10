@@ -9,7 +9,7 @@ add_llvm_library(MLIRTestTransforms
   TestOpaqueLoc.cpp
   TestMemRefStrideCalculation.cpp
   TestVectorToLoopsConversion.cpp
-  TestVectorToVectorConversion.cpp
+  TestVectorTransforms.cpp
   TestVectorizationUtils.cpp
 
   ADDITIONAL_HEADER_DIRS
@@ -21,6 +21,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../DeclarativeTransforms)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/../DeclarativeTransforms)
 add_dependencies(MLIRTestTransforms MLIRStandardOpsIncGen)
 add_dependencies(MLIRTestTransforms MLIRTestLinalgTransformPatternsIncGen)
+add_dependencies(MLIRTestTransforms MLIRTestVectorTransformPatternsIncGen)
 target_link_libraries(MLIRTestTransforms
   MLIRAffineOps
   MLIRAnalysis

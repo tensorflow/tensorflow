@@ -42,7 +42,7 @@ even arbitrary user-defined high-level operations including the
 
 Here's an example of an MLIR module:
 
-```mlir {.mlir}
+```mlir
 // Compute A*B using an implementation of multiply kernel and print the
 // result using a TensorFlow op. The dimensions of A and B are partially
 // known. The shapes are assumed to match.
@@ -115,7 +115,7 @@ This document describes the grammar using
 
 This is the EBNF grammar used in this document, presented in yellow boxes.
 
-``` {.ebnf}
+```
 alternation ::= expr0 | expr1 | expr2  // Either expr0 or expr1 or expr2.
 sequence    ::= expr0 expr1 expr2      // Sequence of expr0 expr1 expr2.
 repetition0 ::= expr*  // 0 or more occurrences.
@@ -127,7 +127,7 @@ literal     ::= `abcd` // Matches the literal `abcd`.
 
 Code examples are presented in blue boxes.
 
-```mlir {.mlir}
+```mlir
 // This is an example use of the grammar above:
 // This matches things like: ba, bana, boma, banana, banoma, bomana...
 example ::= `b` (`an` | `om`)* `a`
@@ -137,7 +137,7 @@ example ::= `b` (`an` | `om`)* `a`
 
 The following core grammar productions are used in this document:
 
-``` {.ebnf}
+```
 // TODO: Clarify the split between lexing (tokens) and parsing (grammar).
 digit     ::= [0-9]
 hex_digit ::= [0-9a-fA-F]
@@ -158,7 +158,7 @@ starting with a `//` and going until the end of the line.
 
 Syntax:
 
-``` {.ebnf}
+```
 // Identifiers
 bare-id ::= (letter|[_]) (letter|digit|[_$.])*
 bare-id-list ::= bare-id (`,` bare-id)*
@@ -226,7 +226,7 @@ with an "llvm." name.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 // LLVM: %x = call {i16, i1} @llvm.sadd.with.overflow.i16(i16 %a, i16 %b)
 %x:2 = "llvm.sadd.with.overflow.i16"(%a, %b) : (i16, i16) -> (i16, i1)
 ```
@@ -238,7 +238,7 @@ GPUs), and are required to align with the LLVM definition of these intrinsics.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation         ::= op-result-list? (generic-operation | custom-operation)
                       trailing-location?
 generic-operation ::= string-literal '(' ssa-use-list? ')' attribute-dict?
@@ -270,7 +270,7 @@ types of the results and operands.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 // An operation that produces two results.
 // The results of %result can be accessed via the <name> `#` <opNo> syntax.
 %result:2 = "foo_div"() : () -> (f32, i32)
@@ -295,7 +295,7 @@ also have a list of successors ([blocks](#blocks) and their arguments).
 
 Example:
 
-```mlir {.mlir}
+```mlir
 // Branch to ^bb1 or ^bb2 depending on the condition %cond.
 // Pass value %v to ^bb2, but not to ^bb1.
 "cond_br"(%cond)[^bb1, ^bb2(%v : index)] : (i1) -> ()
@@ -303,7 +303,7 @@ Example:
 
 ### Module
 
-``` {.ebnf}
+```
 module ::= `module` symbol-ref-id? (`attributes` attribute-dict)? region
 ```
 
@@ -321,7 +321,7 @@ outside of the function, and all external references must use function arguments
 or attributes that establish a symbolic connection (e.g. symbols referenced by
 name via a string attribute like [SymbolRefAttr](#symbol-reference-attribute)):
 
-``` {.ebnf}
+```
 function ::= `func` function-signature function-attributes? function-body?
 
 function-signature ::= symbol-ref-id `(` argument-list `)`
@@ -352,7 +352,7 @@ function arguments, results, or the function itself.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // External function definitions.
 func @abort()
 func @scribble(i32, i64, memref<? x 128 x f32, #layout_map0>) -> f64
@@ -377,7 +377,7 @@ func @example_fn_attr() attributes {dialectName.attrName = false}
 
 Syntax:
 
-``` {.ebnf}
+```
 block           ::= block-label operation+
 block-label     ::= block-id block-arg-list? `:`
 block-id        ::= caret-id
@@ -402,7 +402,7 @@ provided for these block arguments by branches that go to the block.
 Here is a simple example function showing branches, returns, and block
 arguments:
 
-```mlir {.mlir}
+```mlir
 func @simple(i64, i1) -> i64 {
 ^bb0(%a: i64, %cond: i1): // Code dominated by ^bb0 may refer to %a
   cond_br %cond, ^bb1, ^bb2
@@ -447,7 +447,7 @@ attributes.
 The first block in the region cannot be a successor of any other block. The
 syntax for the region is as follows:
 
-``` {.ebnf}
+```
 region ::= `{` block* `}`
 ```
 
@@ -468,7 +468,7 @@ would have been legal to use them as operands to the enclosing operation.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 func @accelerator_compute(i64, i1) -> i64 {
 ^bb0(%a: i64, %cond: i1): // Code dominated by ^bb0 may refer to %a
   cond_br %cond, ^bb1, ^bb2
@@ -548,7 +548,7 @@ MLIR has an open type system (i.e. there is no fixed list of types), and types
 may have application-specific semantics. For example, MLIR supports a set of
 [dialect types](#dialect-types).
 
-``` {.ebnf}
+```
 type ::= type-alias | dialect-type | standard-type
 
 type-list-no-parens ::=  type (`,` type)*
@@ -564,7 +564,7 @@ ssa-use-and-type-list ::= ssa-use-and-type (`,` ssa-use-and-type)*
 
 ### Type Aliases
 
-``` {.ebnf}
+```
 type-alias-def ::= '!' alias-name '=' 'type' type
 type-alias ::= '!' alias-name
 ```
@@ -576,7 +576,7 @@ names are reserved for [dialect types](#dialect-types).
 
 Example:
 
-```mlir {.mlir}
+```mlir
 !avx_m128 = type vector<4 x f32>
 
 // Using the original type.
@@ -591,7 +591,7 @@ Example:
 Similarly to operations, dialects may define custom extensions to the type
 system.
 
-``` {.ebnf}
+```
 dialect-namespace ::= bare-id
 
 opaque-dialect-item ::= dialect-namespace '<' string-literal '>'
@@ -613,7 +613,7 @@ dialect-type ::= '!' pretty-dialect-item
 
 Dialect types can be specified in a verbose form, e.g. like this:
 
-```mlir {.mlir}
+```mlir
 // LLVM type that wraps around llvm IR types.
 !llvm<"i32*">
 
@@ -630,7 +630,7 @@ Dialect types can be specified in a verbose form, e.g. like this:
 Dialect types that are simple enough can use the pretty format, which is a
 lighter weight syntax that is equivalent to the above forms:
 
-```mlir {.mlir}
+```mlir
 // Tensor flow string type.
 !tf.string
 
@@ -651,7 +651,7 @@ See [here](DefiningAttributesAndTypes.md) to learn how to define dialect types.
 Standard types are a core set of [dialect types](#dialect-types) that are
 defined in a builtin dialect and thus available to all users of MLIR.
 
-``` {.ebnf}
+```
 standard-type ::=     complex-type
                     | float-type
                     | function-type
@@ -668,7 +668,7 @@ standard-type ::=     complex-type
 
 Syntax:
 
-``` {.ebnf}
+```
 complex-type ::= `complex` `<` type `>`
 ```
 
@@ -678,7 +678,7 @@ type. The element must be a floating point or integer scalar type.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 complex<f32>
 complex<i32>
 ```
@@ -687,7 +687,7 @@ complex<i32>
 
 Syntax:
 
-``` {.ebnf}
+```
 // Floating point.
 float-type ::= `f16` | `bf16` | `f32` | `f64`
 ```
@@ -699,7 +699,7 @@ above.
 
 Syntax:
 
-``` {.ebnf}
+```
 // MLIR functions can return multiple values.
 function-result-type ::= type-list-parens
                        | non-function-type
@@ -721,7 +721,7 @@ Function types are also used to indicate the arguments and results of
 
 Syntax:
 
-``` {.ebnf}
+```
 // Target word-sized integer.
 index-type ::= `index`
 ```
@@ -739,7 +739,7 @@ sizes, dimensionalities and subscripts.
 
 Syntax:
 
-``` {.ebnf}
+```
 // Sized integers like i1, i4, i8, i16, i32.
 integer-type ::= `i` [1-9][0-9]*
 ```
@@ -759,10 +759,16 @@ TODO: Need to decide on a representation for quantized integers
 
 Syntax:
 
-``` {.ebnf}
-memref-type ::= `memref` `<` dimension-list-ranked tensor-memref-element-type
-                (`,` layout-specification)? |
-                (`,` memory-space)? `>`
+```
+
+memref-type ::= ranked-memref-type | unranked-memref-type
+
+ranked-memref-type ::= `memref` `<` dimension-list-ranked tensor-memref-element-type
+                      (`,` layout-specification)? |
+                      (`,` memory-space)? `>`
+
+unranked-memref-type ::= `memref` `<*x` tensor-memref-element-type
+                         (`,` memory-space)? `>`
 
 stride-list ::= `[` (dimension (`,` dimension)*)? `]`
 strided-layout ::= `offset:` dimension `,` `strides: ` stride-list
@@ -774,9 +780,52 @@ A `memref` type is a reference to a region of memory (similar to a buffer
 pointer, but more powerful). The buffer pointed to by a memref can be allocated,
 aliased and deallocated. A memref can be used to read and write data from/to the
 memory region which it references. Memref types use the same shape specifier as
-tensor types, but do not allow unknown rank. Note that `memref<f32>`, `memref<0
-x f32>`, `memref<1 x 0 x f32>`, and `memref<0 x 1 x f32>` are all different
-types.
+tensor types. Note that `memref<f32>`, `memref<0 x f32>`, `memref<1 x 0 x f32>`,
+and `memref<0 x 1 x f32>` are all different types.
+
+A `memref` is allowed to have an unknown rank (e.g. `memref<*xf32>`). The
+purpose of unranked memrefs is to allow external library functions to receive
+memref arguments of any rank without versioning the functions based on the rank.
+Other uses of this type are disallowed or will have undefined behavior.
+
+##### Codegen of Unranked Memref
+
+Using unranked memref in codegen besides the case mentioned above is highly
+discouraged. Codegen is concerned with generating loop nests and specialized
+instructions for high-performance, unranked memref is concerned with hiding the
+rank and thus, the number of enclosing loops required to iterate over the data.
+However, if there is a need to code-gen unranked memref, one possible path is to
+cast into a static ranked type based on the dynamic rank. Another possible path
+is to emit a single while loop conditioned on a linear index and perform
+delinearization of the linear index to a dynamic array containing the (unranked)
+indices. While this is possible, it is expected to not be a good idea to perform
+this during codegen as the cost of the translations is expected to be
+prohibitive and optimizations at this level are not expected to be worthwhile.
+If expressiveness is the main concern, irrespective of performance, passing
+unranked memrefs to an external C++ library and implementing rank-agnostic logic
+there is expected to be significantly simpler.
+
+Unranked memrefs may provide expressiveness gains in the future and help bridge
+the gap with unranked tensors. Unranked memrefs will not be expected to be
+exposed to codegen but one may query the rank of an unranked memref (a special
+op will be needed for this purpose) and perform a switch and cast to a ranked
+memref as a prerequisite to codegen.
+
+Example ```mlir // With static ranks, we need a function for each // possible
+argument type %A = alloc() : memref<16x32xf32> %B = alloc() :
+memref<16x32x64xf32> call @helper_2D(%A) : (memref<16x32xf32>)->() call
+@helper_3D(%B) : (memref<16x32x64xf32>)->()
+
+// With unknown rank, the functions can be unified under one unranked type 
+%A = alloc() : memref<16x32xf32>
+%B = alloc() : memref<16x32x64xf32>
+// Remove rank info
+%A_u = memref_cast %A : memref<16x32xf32> -> memref<*xf32>
+%B_u = memref_cast %B : memref<16x32x64xf32> -> memref<*xf32>
+// call same function with dynamic ranks 
+call @helper(%A_u) : (memref<*xf32>)->()
+call @helper(%B_u) : (memref<*xf32>)->() 
+```
 
 The core syntax and representation of a layout specification is a
 [semi-affine map](Dialects/Affine.md#semi-affine-maps). Additionally, syntactic
@@ -799,7 +848,7 @@ and index maps.
 
 Examples of memref static type
 
-```mlir {.mlir}
+```mlir
 // Identity index/layout map
 #identity = (d0, d1) -> (d0, d1)
 
@@ -867,7 +916,7 @@ multidimensional index space defined by the memref's dimension list.
 
 Examples
 
-```mlir {.mlir}
+```mlir
 // Allocates a memref with 2D index space:
 //   { (i, j) : 0 <= i < 16, 0 <= j < 32 }
 %A = alloc() : memref<16x32xf32, #imapA, memspace0>
@@ -906,7 +955,7 @@ maps, `memref<?x?xf32>`.
 
 Layout map examples:
 
-```mlir {.mlir}
+```mlir
 // MxN matrix stored in row major layout in memory:
 #layout_map_row_major = (i, j) -> (i, j)
 
@@ -971,7 +1020,7 @@ normalized memref descriptor when lowering to LLVM.
 
 Syntax:
 
-``` {.ebnf}
+```
 none-type ::= `none`
 ```
 
@@ -982,7 +1031,7 @@ where its value does not have a defined dynamic representation.
 
 Syntax:
 
-``` {.ebnf}
+```
 tensor-type ::= `tensor` `<` dimension-list tensor-memref-element-type `>`
 tensor-memref-element-type ::= vector-element-type | vector-type | complex-type
 
@@ -1013,7 +1062,7 @@ types, such tensors should be optimized away before lowering tensors to vectors.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Tensor with unknown rank.
 tensor<* x f32>
 
@@ -1040,7 +1089,7 @@ tensor<0xf32>
 
 Syntax:
 
-``` {.ebnf}
+```
 tuple-type ::= `tuple` `<` (type ( `,` type)*)? `>`
 ```
 
@@ -1053,7 +1102,7 @@ no standard operations for operating on `tuple` types
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Empty tuple.
 tuple<>
 
@@ -1068,7 +1117,7 @@ tuple<i32, f32, tensor<i1>, i5>
 
 Syntax:
 
-``` {.ebnf}
+```
 vector-type ::= `vector` `<` static-dimension-list vector-element-type `>`
 vector-element-type ::= float-type | integer-type
 
@@ -1090,7 +1139,7 @@ shape `(0, 42)` and zero shapes are not allowed.
 
 Syntax:
 
-``` {.ebnf}
+```
 attribute-dict ::= `{` `}`
                  | `{` attribute-entry (`,` attribute-entry)* `}`
 attribute-entry ::= dialect-attribute-entry | dependent-attribute-entry
@@ -1117,13 +1166,13 @@ dialect and not the function argument.
 
 Attribute values are represented by the following forms:
 
-``` {.ebnf}
+```
 attribute-value ::= attribute-alias | dialect-attribute | standard-attribute
 ```
 
 ### Attribute Value Aliases
 
-``` {.ebnf}
+```
 attribute-alias ::= '#' alias-name '=' attribute-value
 attribute-alias ::= '#' alias-name
 ```
@@ -1136,7 +1185,7 @@ These aliases *must* be defined before their uses. Alias names may not contain a
 
 Example:
 
-```mlir {.mlir}
+```mlir
 #map = (d0) -> (d0 + 10)
 
 // Using the original attribute.
@@ -1153,14 +1202,14 @@ syntactic structure of these values is identical to custom dialect type values,
 except that dialect attributes values are distinguished with a leading '#',
 while dialect types are distinguished with a leading '!'.
 
-``` {.ebnf}
+```
 dialect-attribute ::= '#' opaque-dialect-item
 dialect-attribute ::= '#' pretty-dialect-item
 ```
 
 Dialect attributes can be specified in a verbose form, e.g. like this:
 
-```mlir {.mlir}
+```mlir
 // Complex attribute
 #foo<"something<abcd>">
 
@@ -1171,7 +1220,7 @@ Dialect attributes can be specified in a verbose form, e.g. like this:
 Dialect attributes that are simple enough can use the pretty format, which is a
 lighter weight syntax that is equivalent to the above forms:
 
-```mlir {.mlir}
+```mlir
 // Complex attribute
 #foo.something<abcd>
 ```
@@ -1191,7 +1240,7 @@ Standard attributes are a core set of
 [dialect attributes](#dialect-attribute-values) that are defined in a builtin
 dialect and thus available to all users of MLIR.
 
-``` {.ebnf}
+```
 standard-attribute ::=   affine-map-attribute
                        | array-attribute
                        | bool-attribute
@@ -1210,7 +1259,7 @@ standard-attribute ::=   affine-map-attribute
 
 Syntax:
 
-``` {.ebnf}
+```
 affine-map-attribute ::= affine-map
 ```
 
@@ -1220,7 +1269,7 @@ An affine-map attribute is an attribute that represents a affine-map object.
 
 Syntax:
 
-``` {.ebnf}
+```
 array-attribute ::= `[` (attribute-value (`,` attribute-value)*)? `]`
 ```
 
@@ -1231,7 +1280,7 @@ values.
 
 Syntax:
 
-``` {.ebnf}
+```
 bool-attribute ::= bool-literal
 ```
 
@@ -1242,7 +1291,7 @@ value, true or false.
 
 Syntax:
 
-``` {.ebnf}
+```
 dictionary-attribute ::= `{` (attribute-entry (`,` attribute-entry)*)? `}`
 ```
 
@@ -1254,7 +1303,7 @@ unique within the collection.
 
 Syntax:
 
-``` {.ebnf}
+```
 elements-attribute ::= dense-elements-attribute
                      | opaque-elements-attribute
                      | sparse-elements-attribute
@@ -1267,7 +1316,7 @@ An elements attribute is a literal attribute that represents a constant
 
 Syntax:
 
-``` {.ebnf}
+```
 dense-elements-attribute ::= `dense` `<` attribute-value `>` `:`
                              ( tensor-type | vector-type )
 ```
@@ -1281,7 +1330,7 @@ floating point type.
 
 Syntax:
 
-``` {.ebnf}
+```
 opaque-elements-attribute ::= `opaque` `<` dialect-namespace  `,`
                               hex-string-literal `>` `:`
                               ( tensor-type | vector-type )
@@ -1298,7 +1347,7 @@ Note: The parsed string literal must be in hexadecimal form.
 
 Syntax:
 
-``` {.ebnf}
+```
 sparse-elements-attribute ::= `sparse` `<` attribute-value `,` attribute-value
                               `>` `:` ( tensor-type | vector-type )
 ```
@@ -1315,7 +1364,7 @@ corresponding values for the indices.
 
 Example:
 
-```mlir {.mlir}
+```mlir
   sparse<[[0, 0], [1, 2]], [1, 5]> : tensor<3x4xi32>
 
 // This represents the following tensor:
@@ -1328,7 +1377,7 @@ Example:
 
 Syntax:
 
-``` {.ebnf}
+```
 float-attribute ::= (float-literal (`:` float-type)?)
                   | (hexadecimal-literal `:` float-type)
 ```
@@ -1343,7 +1392,7 @@ attribute.
 
 Examples:
 
-``` {.mlir}
+```
 42.0         // float attribute defaults to f64 type
 42.0 : f32   // float attribute of f32 type
 0x7C00 : f16 // positive infinity
@@ -1355,7 +1404,7 @@ Examples:
 
 Syntax:
 
-``` {.ebnf}
+```
 integer-attribute ::= integer-literal ( `:` (index-type | integer-type) )?
 ```
 
@@ -1367,7 +1416,7 @@ is not specified, is a 64-bit integer.
 
 Syntax:
 
-``` {.ebnf}
+```
 integer-set-attribute ::= affine-map
 ```
 
@@ -1377,7 +1426,7 @@ An integer-set attribute is an attribute that represents an integer-set object.
 
 Syntax:
 
-``` {.ebnf}
+```
 string-attribute ::= string-literal (`:` type)?
 ```
 
@@ -1387,7 +1436,7 @@ A string attribute is an attribute that represents a string literal value.
 
 Syntax:
 
-``` {.ebnf}
+```
 symbol-ref-attribute ::= symbol-ref-id (`::` symbol-ref-id)*
 ```
 
@@ -1415,7 +1464,7 @@ reference, we can always opaquely reason about a symbols usage characteristics.
 
 Syntax:
 
-``` {.ebnf}
+```
 type-attribute ::= type
 ```
 
@@ -1423,7 +1472,7 @@ A type attribute is an attribute that represents a [type object](#type-system).
 
 #### Unit Attribute
 
-``` {.ebnf}
+```
 unit-attribute ::= `unit`
 ```
 
@@ -1437,7 +1486,7 @@ could be represented as a [boolean attribute](#boolean-attribute)(true or
 false), but a value of false doesn't really bring any value. The parameter
 either is the self/context or it isn't.
 
-```mlir {.mlir}
+```mlir
 // A unit attribute defined with the `unit` value specifier.
 func @verbose_form(i1) attributes {dialectName.unitAttr = unit}
 

@@ -17,7 +17,7 @@ load(
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
-    "//tensorflow/core/platform:default/cuda_build_defs.bzl",
+    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
@@ -1197,6 +1197,8 @@ cc_library(
         ":gpu_conv_rewriter",
         ":gpu_layout_assignment",
         ":reduction_degenerate_dim_remover",
+        ":reduction_dimension_grouper",
+        ":reduction_layout_normalizer",
         ":stream_executor_util",
         ":target_constants",
         "//tensorflow/compiler/xla:status_macros",
@@ -1670,6 +1672,48 @@ cc_library(
     name = "reduction_degenerate_dim_remover",
     srcs = ["reduction_degenerate_dim_remover.cc"],
     hdrs = ["reduction_degenerate_dim_remover.h"],
+    deps = [
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "reduction_dimension_grouper",
+    srcs = ["reduction_dimension_grouper.cc"],
+    hdrs = ["reduction_dimension_grouper.h"],
+    deps = [
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "reduction_layout_normalizer",
+    srcs = ["reduction_layout_normalizer.cc"],
+    hdrs = ["reduction_layout_normalizer.h"],
     deps = [
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",

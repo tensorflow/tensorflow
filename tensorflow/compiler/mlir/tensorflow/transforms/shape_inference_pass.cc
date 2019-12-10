@@ -65,7 +65,11 @@ struct ShapeInference : public ModulePass<ShapeInference> {
       return;
     }
     for (auto func : module.getOps<FuncOp>()) {
-      TF::InferShapeUntilFixPoint(&func.getBody(), producer.getInt());
+      InferShapeUntilFixPoint(&func.getBody(), producer.getInt());
+    }
+
+    if (auto main_func = module.lookupSymbol<mlir::FuncOp>("main")) {
+      InferShapeForFunctionType(main_func);
     }
   }
 };

@@ -347,8 +347,8 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// PatternRewriter hook for replacing the results of an operation.
-  void replaceOp(Operation *op, ArrayRef<Value *> newValues,
-                 ArrayRef<Value *> valuesToRemoveIfDead) override;
+  void replaceOp(Operation *op, ValueRange newValues,
+                 ValueRange valuesToRemoveIfDead) override;
   using PatternRewriter::replaceOp;
 
   /// PatternRewriter hook for erasing a dead operation. The uses of this
@@ -360,8 +360,7 @@ public:
   Block *splitBlock(Block *block, Block::iterator before) override;
 
   /// PatternRewriter hook for merging a block into another.
-  void mergeBlocks(Block *source, Block *dest,
-                   ArrayRef<Value *> argValues) override;
+  void mergeBlocks(Block *source, Block *dest, ValueRange argValues) override;
 
   /// PatternRewriter hook for moving blocks out of a region.
   void inlineRegionBefore(Region &region, Region &parent,

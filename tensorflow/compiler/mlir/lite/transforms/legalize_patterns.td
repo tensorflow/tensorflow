@@ -233,6 +233,18 @@ def : Pat<(TF_FakeQuantWithMinMaxVarsOp $inputs,
                  (ConvertToQuantTypeFromAttrs $inputs, $min, $max,
                      $num_bits, $narrow_range)))>;
 
+// TODO(rocky): Not all of the attributes are handled correctly.  Make this
+// more general if there is a need.
+def : Pat<(TF_QuantizeAndDequantizeV2Op $inputs,
+              (ConstantOp F32ElementsAttr:$min),
+              (ConstantOp F32ElementsAttr:$max),
+              $signed_input, $num_bits, $range_given, $round_mode,
+              $narrow_range, $axis),
+          (TFL_DequantizeOp
+              (TFL_QuantizeOp $inputs,
+                 (ConvertToQuantTypeFromAttrs $inputs, $min, $max,
+                     $num_bits, $narrow_range)))>;
+
 def : Pat<(TF_RankOp $input), (TFL_RankOp $input)>;
 
 def : Pat<(TF_SquaredDifferenceOp $l, $r), (TFL_SquaredDifferenceOp $l, $r)>;

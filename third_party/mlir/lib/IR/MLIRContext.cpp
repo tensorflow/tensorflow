@@ -90,8 +90,8 @@ struct BuiltinDialect : public Dialect {
                   UnknownLoc>();
 
     addTypes<ComplexType, FloatType, FunctionType, IndexType, IntegerType,
-             MemRefType, NoneType, OpaqueType, RankedTensorType, TupleType,
-             UnrankedTensorType, VectorType>();
+             MemRefType, UnrankedMemRefType, NoneType, OpaqueType,
+             RankedTensorType, TupleType, UnrankedTensorType, VectorType>();
 
     // TODO: These operations should be moved to a different dialect when they
     // have been fully decoupled from the core.

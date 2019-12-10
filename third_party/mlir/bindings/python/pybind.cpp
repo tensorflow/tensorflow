@@ -110,6 +110,10 @@ struct PythonValueHandle {
     return ValueHandle::create<CallIndirectOp>(value, argValues);
   }
 
+  PythonType type() const {
+    return PythonType(value.getType().getAsOpaquePointer());
+  }
+
   mlir::edsc::ValueHandle value;
 };
 
@@ -153,7 +157,7 @@ struct PythonMLIRModule {
   PythonMLIRModule()
       : mlirContext(),
         module(mlir::ModuleOp::create(mlir::UnknownLoc::get(&mlirContext))),
-        moduleManager(*module) {}
+        symbolTable(*module) {}
 
   PythonType makeMemRefType(PythonType elemType, std::vector<int64_t> sizes) {
     return ::makeMemRefType(mlir_context_t{&mlirContext}, elemType,
@@ -270,7 +274,7 @@ struct PythonMLIRModule {
   }
 
   PythonFunction getNamedFunction(const std::string &name) {
-    return moduleManager.lookupSymbol<FuncOp>(name);
+    return symbolTable.lookup<FuncOp>(name);
   }
 
   PythonFunctionContext
@@ -282,7 +286,7 @@ private:
   mlir::MLIRContext mlirContext;
   // One single module in a python-exposed MLIRContext for now.
   mlir::OwningModuleRef module;
-  mlir::ModuleManager moduleManager;
+  mlir::SymbolTable symbolTable;
 
   // An execution engine and an associated target machine. The latter must
   // outlive the former since it may be used by the transformation layers.
@@ -692,7 +696,7 @@ PythonMLIRModule::declareFunction(const std::string &name,
       UnknownLoc::get(&mlirContext), name,
       mlir::Type::getFromOpaquePointer(funcType).cast<FunctionType>(), attrs,
       inputAttrs);
-  moduleManager.insert(func);
+  symbolTable.insert(func);
   return func;
 }
 
@@ -951,7 +955,7 @@ PYBIND11_MODULE(pybind, m) {
       .def("affine_constant_map", &PythonMLIRModule::affineConstantMap,
            "Returns an affine map with single constant result.")
       .def("affine_map", &PythonMLIRModule::affineMap, "Returns an affine map.",
-           py::arg("dimCount"), py::arg("symbolCount"), py::arg("resuls"))
+           py::arg("dimCount"), py::arg("symbolCount"), py::arg("results"))
       .def("__str__", &PythonMLIRModule::getIR,
            "Get the string representation of the module");
 
@@ -1034,7 +1038,8 @@ PYBIND11_MODULE(pybind, m) {
         .def("__or__",
              [](PythonValueHandle lhs, PythonValueHandle rhs)
                  -> PythonValueHandle { return lhs.value || rhs.value; })
-        .def("__call__", &PythonValueHandle::call);
+        .def("__call__", &PythonValueHandle::call)
+        .def("type", &PythonValueHandle::type);
   }
 
   py::class_<PythonBlockAppender>(
@@ -1117,6 +1122,20 @@ PYBIND11_MODULE(pybind, m) {
            [](PythonAffineExpr lhs, PythonAffineExpr rhs) -> PythonAffineExpr {
              return PythonAffineExpr(lhs.get() % rhs.get());
            })
+      .def("compose",
+           [](PythonAffineExpr self, PythonAffineMap map) -> PythonAffineExpr {
+             return PythonAffineExpr(self.get().compose(map));
+           })
+      .def(
+          "get_constant_value",
+          [](PythonAffineExpr self) -> py::object {
+            auto const_expr = self.get().dyn_cast<AffineConstantExpr>();
+            if (const_expr)
+              return py::cast(const_expr.getValue());
+            return py::none();
+          },
+          "Returns the constant value for the affine expression if any, or "
+          "returns None.")
       .def("__str__", &PythonAffineExpr::str);
 
   py::class_<PythonAffineMap>(m, "AffineMap",

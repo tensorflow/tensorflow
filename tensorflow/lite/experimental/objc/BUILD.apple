@@ -72,7 +72,9 @@ ios_unit_test(
     name = "Tests",
     size = "medium",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS,
+    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS + [
+        "nozapfhahn",  # TODO(b/145984659): Enable after solving tool failure.
+    ],
     deps = [
         ":TestsLibrary",
     ],

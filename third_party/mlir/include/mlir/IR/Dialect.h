@@ -308,7 +308,7 @@ template <typename ConcreteDialect> void registerDialect() {
   });
 }
 
-/// DialectRegistration provides a global initialiser that registers a Dialect
+/// DialectRegistration provides a global initializer that registers a Dialect
 /// allocation routine.
 ///
 /// Usage:

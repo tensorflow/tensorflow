@@ -57,11 +57,13 @@ class AdamOptimizer(optimizer.Optimizer):
     described at the end of section 2 of the paper:
 
     $$t := t + 1$$
-    $$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$
+    $$\text{lr}_t := \mathrm{learning_rate} *
+      \sqrt{1 - \beta_2^t} / (1 - \beta_1^t)$$
 
-    $$m_t := beta_1 * m_{t-1} + (1 - beta_1) * g$$
-    $$v_t := beta_2 * v_{t-1} + (1 - beta_2) * g * g$$
-    $$variable := variable - lr_t * m_t / (\sqrt{v_t} + \epsilon)$$
+    $$m_t := \beta_1 * m_{t-1} + (1 - \beta_1) * g$$
+    $$v_t := \beta_2 * v_{t-1} + (1 - \beta_2) * g * g$$
+    $$\text{variable} := \text{variable} -
+      \text{lr}_t * m_t / (\sqrt{v_t} + \epsilon)$$
 
     The default value of 1e-8 for epsilon might not be a good default in
     general. For example, when training an Inception network on ImageNet a

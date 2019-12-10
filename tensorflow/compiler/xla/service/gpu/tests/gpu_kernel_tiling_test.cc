@@ -461,7 +461,7 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
           .ValueOrDie();
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
-; CHECK-LABEL: define void @reduce
+; CHECK-LABEL: define void @
 ; CHECK: atomicrmw fadd float
 ; CHECK: }
 )",

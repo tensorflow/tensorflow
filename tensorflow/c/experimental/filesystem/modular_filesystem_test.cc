@@ -427,6 +427,77 @@ TEST_P(ModularFileSystemTest, TestCreateDirPathIsInvalid) {
   EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
+TEST_P(ModularFileSystemTest, TestRecursivelyCreateDir) {
+  const std::string dirpath = GetURIForPath("a/path/to/a/dir");
+  Status status = env_->RecursivelyCreateDir(dirpath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirInATree) {
+  const std::string dirpath = GetURIForPath("a/path/to/a/dir");
+  Status status = env_->RecursivelyCreateDir(dirpath);
+  if (!status.ok()) GTEST_SKIP() << "RecursivelyCreateDir() not supported";
+
+  const std::string new_dirpath = GetURIForPath("a/path/to/a/another/dir");
+  status = env_->RecursivelyCreateDir(new_dirpath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirWhichIsFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  status = env_->RecursivelyCreateDir(filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirTwice) {
+  const std::string dirpath = GetURIForPath("a/path/to/a/dir");
+  Status status = env_->RecursivelyCreateDir(dirpath);
+  if (!status.ok()) GTEST_SKIP() << "RecursivelyCreateDir() not supported";
+
+  status = env_->RecursivelyCreateDir(dirpath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirPathIsInvalid) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string new_path = GetURIForPath("a_file/a_dir");
+  status = env_->RecursivelyCreateDir(new_path);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirFromNestedDir) {
+  const std::string parent_path = GetURIForPath("some/path");
+  Status status = env_->RecursivelyCreateDir(parent_path);
+  if (!status.ok()) GTEST_SKIP() << "RecursivelyCreateDir() not supported";
+
+  const std::string new_dirpath = GetURIForPath("some/path/that/is/extended");
+  status = env_->RecursivelyCreateDir(new_dirpath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestRecursivelyCreateDirFromNestedFile) {
+  const std::string parent_path = GetURIForPath("some/path");
+  Status status = env_->RecursivelyCreateDir(parent_path);
+  if (!status.ok()) GTEST_SKIP() << "RecursivelyCreateDir() not supported";
+
+  const std::string filepath = GetURIForPath("some/path/to_a_file");
+  std::unique_ptr<WritableFile> file;
+  status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string new_dirpath = GetURIForPath("some/path/to_a_file/error");
+  status = env_->RecursivelyCreateDir(new_dirpath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
 TEST_P(ModularFileSystemTest, TestDeleteFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
@@ -537,6 +608,126 @@ TEST_P(ModularFileSystemTest, TestDeleteDirectoryPathIsInvalid) {
   const std::string new_path = GetURIForPath("a_file/a_dir");
   status = env_->DeleteDir(new_path);
   EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestDeleteRecursivelyEmpty) {
+  const std::string dirpath = GetURIForPath("a_dir");
+  Status status = env_->CreateDir(dirpath);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  int64 undeleted_files = 0;
+  int64 undeleted_dirs = 0;
+  status = env_->DeleteRecursively(dirpath, &undeleted_files, &undeleted_dirs);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_EQ(undeleted_files, 0);
+  EXPECT_EQ(undeleted_dirs, 0);
+}
+
+TEST_P(ModularFileSystemTest, TestDeleteRecursivelyNotEmpty) {
+  const std::string dirpath = GetURIForPath("a_dir");
+  Status status = env_->CreateDir(dirpath);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  const std::string some_path = GetURIForPath("a_dir/another_dir");
+  status = env_->CreateDir(some_path);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  const std::string another_path = GetURIForPath("a_dir/yet_another_dir");
+  status = env_->CreateDir(another_path);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  const std::string filepath = GetURIForPath("a_dir/a_file");
+  std::unique_ptr<WritableFile> new_file;
+  status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  int64 undeleted_files = 0;
+  int64 undeleted_dirs = 0;
+  status = env_->DeleteRecursively(dirpath, &undeleted_files, &undeleted_dirs);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_EQ(undeleted_files, 0);
+  EXPECT_EQ(undeleted_dirs, 0);
+}
+
+TEST_P(ModularFileSystemTest, TestDeleteRecursivelyDoesNotExist) {
+  const std::string dirpath = GetURIForPath("a_dir");
+
+  int64 undeleted_files = 0;
+  int64 undeleted_dirs = 0;
+  Status status =
+      env_->DeleteRecursively(dirpath, &undeleted_files, &undeleted_dirs);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  EXPECT_EQ(undeleted_files, 0);
+  EXPECT_EQ(undeleted_dirs, 1);
+}
+
+TEST_P(ModularFileSystemTest, TestDeleteRecursivelyAFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  int64 undeleted_files = 0;
+  int64 undeleted_dirs = 0;
+  status = env_->DeleteRecursively(filepath, &undeleted_files, &undeleted_dirs);
+  EXPECT_EQ(undeleted_files, 0);
+  EXPECT_EQ(undeleted_dirs, 0);
+}
+
+TEST_P(ModularFileSystemTest, TestDeleteRecursivelyPathIsInvalid) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string new_path = GetURIForPath("a_file/a_dir");
+  int64 undeleted_files, undeleted_dirs;
+  status = env_->DeleteRecursively(new_path, &undeleted_files, &undeleted_dirs);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestDeleteRecursivelyANestedDir) {
+  const std::string parent_path = GetURIForPath("parent/path");
+  Status status = env_->RecursivelyCreateDir(parent_path);
+  if (!status.ok()) GTEST_SKIP() << "RecursivelyCreateDir() not supported";
+
+  const std::string new_dirpath = GetURIForPath("parent/path/that/is/extended");
+  status = env_->RecursivelyCreateDir(new_dirpath);
+  if (!status.ok()) GTEST_SKIP() << "RecursivelyCreateDir() not supported";
+
+  const std::string path = GetURIForPath("parent/path/that");
+  int64 undeleted_files = 0;
+  int64 undeleted_dirs = 0;
+  status = env_->DeleteRecursively(path, &undeleted_files, &undeleted_dirs);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_EQ(undeleted_files, 0);
+  EXPECT_EQ(undeleted_dirs, 0);
+
+  // Parent directory must still exist
+  status = env_->FileExists(parent_path);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestDeleteRecursivelyANestedFile) {
+  const std::string parent_path = GetURIForPath("some/path");
+  Status status = env_->RecursivelyCreateDir(parent_path);
+  if (!status.ok()) GTEST_SKIP() << "RecursivelyCreateDir() not supported";
+
+  const std::string filepath = GetURIForPath("some/path/to_a_file");
+  std::unique_ptr<WritableFile> file;
+  status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  int64 undeleted_files = 0;
+  int64 undeleted_dirs = 0;
+  status = env_->DeleteRecursively(filepath, &undeleted_files, &undeleted_dirs);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_EQ(undeleted_files, 0);
+  EXPECT_EQ(undeleted_dirs, 0);
+
+  // Parent directory must still exist
+  status = env_->FileExists(parent_path);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
 }
 
 TEST_P(ModularFileSystemTest, TestRenameFile) {

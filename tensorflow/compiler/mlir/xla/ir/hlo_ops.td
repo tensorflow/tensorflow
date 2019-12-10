@@ -405,8 +405,8 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
   let results = (outs Variadic<HLO_TensorOrTuple>);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState &state, ArrayRef<Value *> operands, "
-    "ArrayRef<Value *> init_values, DenseIntElementsAttr dimensions"
+    "Builder *, OperationState &state, ValueRange operands, "
+    "ValueRange init_values, DenseIntElementsAttr dimensions"
   >];
 
   let hasFolder = 1;
@@ -445,7 +445,7 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
 
   let builders = [OpBuilder<
                   "Builder *builder, OperationState &results, "
-                  "ArrayRef<Value*> values">];
+                  "ValueRange values">];
 
   // TupleOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -777,21 +777,25 @@ def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]>, BASE_HLO_FftOp {
   let hasCustomHLOConverter = 1;
 }
 
+def GatherDimensionNumbers : StructAttr<"GatherDimensionNumbers", HLO_Dialect,
+      [StructFieldAttr<"offset_dims", I64ElementsAttr>,
+      StructFieldAttr<"collapsed_slice_dims", I64ElementsAttr>,
+      StructFieldAttr<"start_index_map", I64ElementsAttr>,
+      StructFieldAttr<"index_vector_dim", I64Attr>]> {
+  let description = "Structure of dimension information for gather";
+}
+
 def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]>, BASE_HLO_GatherOp {
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_IntTensor:$start_indices,
-    I64Attr:$index_vector_dim,
-    I64ElementsAttr:$offset_dims,
+    GatherDimensionNumbers:$dimension_numbers,
     I64ElementsAttr:$slice_sizes,
-    I64ElementsAttr:$collapsed_slice_dims,
-    I64ElementsAttr:$start_index_map
+    DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted
   );
 
   let results = (outs HLO_Tensor);
 
-  // TODO(b/129422361) Attributes are not supported by the codegen. The
-  // optional argument (dimensions) needs to be added as an attribute.
   let hasCustomHLOConverter = 1;
 }
 
@@ -880,7 +884,7 @@ def HLO_SortOp : HLO_Op<"sort", [NoSideEffect]>, BASE_HLO_SortOp {
   let regions = (region SizedRegion<1>:$comparator);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &state, ArrayRef<Value *> operands, "
+    "Builder *builder, OperationState &state, ValueRange operands, "
     "int64_t dimension, bool is_stable"
   >];
 
