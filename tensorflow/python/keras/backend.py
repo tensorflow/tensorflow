@@ -1905,7 +1905,7 @@ def transpose(x):
   <tf.Tensor 'Placeholder_...' shape=(2, 3) dtype=float32>
   >>> input_transposed = tf.keras.backend.transpose(input)
   >>> input_transposed
-  <tf.Tensor 'transpose_...' shape=(3, 2) dtype=float32>
+  <tf.Tensor 'Transpose_...' shape=(3, 2) dtype=float32>
 
 
   """
