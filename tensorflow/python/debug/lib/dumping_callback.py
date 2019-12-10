@@ -467,9 +467,12 @@ class _DumpingCallback(object):
         return self._instrument_symbolic_tensors(
             outputs, op_type, op_name, context_id, output_tensor_ids)
     else:
-      if compat.as_bytes(op_type) == b"DebugNumericSummaryV2":
+      op_type_bytes = compat.as_bytes(op_type)
+      if op_type_bytes == b"DebugNumericSummaryV2":
         # TODO(b/140334369): Remove this special casing logic once op_callback.
         # automatically prevents infinite recursion in eager mode.
+        return None
+      if op_type_bytes in op_callbacks_common.OP_CALLBACK_SKIP_OPS:
         return None
       context_id = self._func_graph_id_from_func_name(op_type)
       input_ids = [t._id for t in inputs]  # pylint:disable=protected-access
