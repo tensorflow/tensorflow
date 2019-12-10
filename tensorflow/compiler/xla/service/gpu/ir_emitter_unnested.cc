@@ -3107,7 +3107,7 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
 }
 
 // Overall, emit code for slices based on the below structure. A `slice_guard_i`
-// and a `slice_i` are generated for each ROO slice. `slice_guard_i` computes
+// and a `slice_i` are generated for each ROOT slice. `slice_guard_i` computes
 // the guarding condition to decide whether it should jump into `slice_i`
 // for writing to the slice output or continue to next `slice_guard_{i+1}`.
 //
@@ -3186,7 +3186,7 @@ void IrEmitterUnnested::EmitElementForInputFusibleSlices(
     b_.SetInsertPoint(emitted_guard_blocks[i]);
     const HloInstruction* slice = slice_instructions[i];
 
-    // guarding_cond := index >= start && index < limit for each dim.
+    // guarding_cond := index >= start && index < limit, for each dim.
     std::vector<llvm::Value*> index_within_ranges;
     for (size_t dim = 0; dim < slice->slice_starts().size(); ++dim) {
       CHECK(slice->slice_strides(dim) == 1);
@@ -3197,7 +3197,7 @@ void IrEmitterUnnested::EmitElementForInputFusibleSlices(
           index.multidim()[dim],
           index.GetConstantWithIndexType(slice->slice_limits(dim)));
       llvm::Value* within_range =
-          And(larger_or_equal_than_start, smaller_than_limit);
+          b_.CreateAnd(larger_or_equal_than_start, smaller_than_limit);
       index_within_ranges.push_back(within_range);
     }
     llvm::Value* guarding_cond = b_.CreateAnd(index_within_ranges);
@@ -3229,7 +3229,7 @@ void IrEmitterUnnested::EmitElementForInputFusibleSlices(
         slice_dst_index, &b_, "slice.dest");
     b_.CreateStore(input_ir_values[i], dst_addr);
     if (i != slice_instructions.size() - 1) {
-      // Jump to slice_guard_{i+1}.
+      // Jump to next slice_guard.
       b_.CreateBr(emitted_guard_blocks[i + 1]);
     } else {
       // Jump to exit.
