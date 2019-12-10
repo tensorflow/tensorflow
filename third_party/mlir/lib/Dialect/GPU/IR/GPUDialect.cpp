@@ -46,10 +46,10 @@ bool GPUDialect::isKernel(Operation *op) {
 
 GPUDialect::GPUDialect(MLIRContext *context)
     : Dialect(getDialectName(), context) {
-  addOperations<LaunchFuncOp,
+  addOperations<
 #define GET_OP_LIST
 #include "mlir/Dialect/GPU/GPUOps.cpp.inc"
-                >();
+      >();
 }
 
 LogicalResult GPUDialect::verifyOperationAttribute(Operation *op,
@@ -545,26 +545,26 @@ KernelDim3 LaunchFuncOp::getBlockSizeOperandValues() {
   return KernelDim3{getOperand(3), getOperand(4), getOperand(5)};
 }
 
-LogicalResult LaunchFuncOp::verify() {
-  auto module = getParentOfType<ModuleOp>();
+LogicalResult verify(LaunchFuncOp op) {
+  auto module = op.getParentOfType<ModuleOp>();
   if (!module)
-    return emitOpError("expected to belong to a module");
+    return op.emitOpError("expected to belong to a module");
 
   if (!module.getAttrOfType<UnitAttr>(GPUDialect::getContainerModuleAttrName()))
-    return emitOpError("expected the closest surrounding module to have the '" +
-                       GPUDialect::getContainerModuleAttrName() +
-                       "' attribute");
+    return op.emitOpError(
+        "expected the closest surrounding module to have the '" +
+        GPUDialect::getContainerModuleAttrName() + "' attribute");
 
-  auto kernelAttr = getAttrOfType<StringAttr>(getKernelAttrName());
+  auto kernelAttr = op.getAttrOfType<StringAttr>(op.getKernelAttrName());
   if (!kernelAttr)
-    return emitOpError("string attribute '" + getKernelAttrName() +
-                       "' must be specified");
+    return op.emitOpError("string attribute '" + op.getKernelAttrName() +
+                          "' must be specified");
 
   auto kernelModuleAttr =
-      getAttrOfType<SymbolRefAttr>(getKernelModuleAttrName());
+      op.getAttrOfType<SymbolRefAttr>(op.getKernelModuleAttrName());
   if (!kernelModuleAttr)
-    return emitOpError("symbol reference attribute '" +
-                       getKernelModuleAttrName() + "' must be specified");
+    return op.emitOpError("symbol reference attribute '" +
+                          op.getKernelModuleAttrName() + "' must be specified");
 
   return success();
 }
