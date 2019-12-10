@@ -484,7 +484,7 @@ def Vector_TransferReadOp :
     More precisely, let's dive deeper into the permutation_map for the following
     MLIR:
 
-    ```mlir {.mlir}
+    ```mlir
     vector.transfer_read %A[%expr1, %expr2, %expr3, %expr4]
       { permutation_map : (d0,d1,d2,d3) -> (d2,0,d0) } :
       memref<?x?x?x?xf32>, vector<3x4x5xf32>
@@ -544,7 +544,7 @@ def Vector_TransferReadOp :
     implemented using a warp-shuffle if loop `j` were mapped to `threadIdx.x`.
 
     Syntax
-    ``` {.ebnf}
+    ```
     operation ::= ssa-id `=` `vector.transfer_read` ssa-use-list
       `{` attribute-entry `} :` memref-type `,` vector-type
     ```
@@ -615,14 +615,14 @@ def Vector_TransferWriteOp :
 
     Syntax:
 
-    ``` {.ebnf}
+    ```
     operation ::= `vector.transfer_write` ssa-use-list `{` attribute-entry `} :
       ` vector-type ', ' memref-type '
     ```
 
     Examples:
 
-    ```mlir {.mlir}
+    ```mlir
     // write vector<16x32x64xf32> into the slice
     //   `%A[%i0, %i1:%i1+32, %i2:%i2+64, %i3:%i3+16]`:
     for %i0 = 0 to %0 {
@@ -661,7 +661,7 @@ def Vector_TypeCastOp :
 
     Syntax:
 
-    ``` {.ebnf}
+    ```
     operation ::= `vector.type_cast` ssa-use : memref-type to memref-type
     ```
 
