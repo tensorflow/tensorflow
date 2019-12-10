@@ -1,5 +1,7 @@
 # Settings for XMOS XS3 based processors
-#-Wno-unknown-attributes
+
+#IMPORTANT: to set up environment variables correctly run the following from the top tensorflow directory:
+# $ pushd ./tensorflow/lite/micro/tools/make/downloads/xtimecomposer/ && source SetEnv && popd
 
 #TODO changing this file doesn't mark build as dirty
 ifeq ($(TARGET), xcore)
@@ -15,7 +17,7 @@ ifeq ($(TARGET), xcore)
   override CCFLAGS := -g -DTF_LITE_STATIC_MEMORY -DNDEBUG
   override CCFLAGS += $(PLATFORM_FLAGS)
   TARGET_ARCH := xcore
-  TARGET_TOOLCHAIN_PREFIX := tensorflow/lite/micro/tools/make/downloads/xtimecomposer/bin/
+  #TARGET_TOOLCHAIN_PREFIX := tensorflow/lite/micro/tools/make/downloads/xtimecomposer/bin/
   TEST_SCRIPT := tensorflow/lite/micro/testing/test_xcore_binary.sh
-  GCC_XCORE := $(MAKEFILE_DIR)/downloads/xtimecomposer/bin/
+  #GCC_XCORE := $(MAKEFILE_DIR)/downloads/xtimecomposer/bin/
 endif
