@@ -207,13 +207,15 @@ class ExportTest(test_util.TensorFlowTestCase):
     self.assertLess(int(time_2), int(time_3))
 
   def test_get_temp_export_dir(self):
-    export_dir = "/tmp/export/1576013284"
+    export_dir = os.path.join("tmp", "export", "1576013284")
     tmp_export_dir = export_utils.get_temp_export_dir(export_dir)
-    self.assertEqual(tmp_export_dir, b"/tmp/export/temp-1576013284")
+    self.assertEqual(tmp_export_dir,
+                     os.path.join(b"tmp", b"export", b"temp-1576013284"))
 
-    export_dir = b"/tmp/export/1576013284"
+    export_dir = os.path.join(b"tmp", b"export", b"1576013284")
     tmp_export_dir = export_utils.get_temp_export_dir(export_dir)
-    self.assertEqual(tmp_export_dir, b"/tmp/export/temp-1576013284")
+    self.assertEqual(tmp_export_dir,
+                     os.path.join(b"tmp", b"export", b"temp-1576013284"))
 
   @test_util.deprecated_graph_mode_only
   def test_build_all_signature_defs_serving_only(self):
