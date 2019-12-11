@@ -3106,32 +3106,22 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
   return Status::OK();
 }
 
-// Overall, emit code for slices based on the below structure. A `slice_guard_i`
-// and a `slice_i` are generated for each ROOT slice. `slice_guard_i` computes
-// the guarding condition to decide whether it should jump into `slice_i`
-// for writing to the slice output or continue to next `slice_guard_{i+1}`.
+// Emits code for slices based on the below structure. An if statement with
+// a guarding condition is generated for each ROOT slice.
 //
-// init_block:
-//   Compute values of slice input operands
-//   Br slice_guard_0
+// Pseudo code:
 //
-// slice_guard_0:
-//   Compute guarding_cond0
-//   CondBr guarding_cond0, slice_0, slice_guard_1
+// Compute values of slice input operands
 //
-// slice_0:
+// Compute guarding_cond0
+// if (guarding_cond0) {
 //   Write to output of slice0
-//   Br slice_guard_1
+// }
 //
-// slice_guard_1:
-//   Compute guarding_cond1
-//   CondBr guarding_cond1, slice_1, exit_block
-//
-// slice_1:
+// Compute guarding_cond1
+// if (guarding_cond1) {
 //   Write to output of slice1
-//   Br exit_block
-//
-// exit_block:
+// }
 //
 void IrEmitterUnnested::EmitElementForInputFusibleSlices(
     HloInstruction* unnested_hlo, const llvm_ir::IrArray::Index& index) {
@@ -3146,7 +3136,7 @@ void IrEmitterUnnested::EmitElementForInputFusibleSlices(
     return slice_or_tuple->operands();
   }();
 
-  // Emit input operand values of slices here.
+  // Emit input operand values of slices.
   std::vector<llvm::Value*> input_ir_values;
   GpuElementalIrEmitter elem_emitter(hlo_module_config_, module_, &b_,
                                      GetNestedComputer());
@@ -3158,33 +3148,10 @@ void IrEmitterUnnested::EmitElementForInputFusibleSlices(
     input_ir_values.push_back(input_generator(index).ValueOrDie());
   }
 
-  // Emit for slice_instructions begins here.
-  llvm::BasicBlock* init_block = b_.GetInsertBlock();
-  llvm::BasicBlock* exit_block = init_block->splitBasicBlock(
-      b_.GetInsertPoint(), IrName(unnested_hlo, "merge"));
-
-  // First, generate blocks and guard_blocks for each slice. Will populate
-  // them below.
-  std::vector<llvm::BasicBlock*> emitted_guard_blocks;
-  std::vector<llvm::BasicBlock*> emitted_slice_blocks;
-  emitted_guard_blocks.reserve(slice_instructions.size());
-  emitted_slice_blocks.reserve(slice_instructions.size());
-  for (size_t i = 0; i < slice_instructions.size(); ++i) {
-    emitted_guard_blocks.emplace_back(llvm_ir::CreateBasicBlock(
-        exit_block, StrCat("slice_guard_id", i), &b_));
-    emitted_slice_blocks.emplace_back(
-        llvm_ir::CreateBasicBlock(exit_block, StrCat("slice_id", i), &b_));
-  }
-
-  // Jump from init_block to the first guard_block.
-  init_block->getTerminator()->eraseFromParent();
-  b_.SetInsertPoint(init_block);
-  b_.CreateBr(emitted_guard_blocks[0]);
-
-  // Populate the guard blocks.
-  for (size_t i = 0; i < slice_instructions.size(); ++i) {
-    b_.SetInsertPoint(emitted_guard_blocks[i]);
-    const HloInstruction* slice = slice_instructions[i];
+  // Emit for slice_instructions.
+  KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
+  for (int64 i = 0; i < slice_instructions.size(); ++i) {
+    HloInstruction* slice = slice_instructions[i];
 
     // guarding_cond := index >= start && index < limit, for each dim.
     std::vector<llvm::Value*> index_within_ranges;
@@ -3201,43 +3168,29 @@ void IrEmitterUnnested::EmitElementForInputFusibleSlices(
       index_within_ranges.push_back(within_range);
     }
     llvm::Value* guarding_cond = b_.CreateAnd(index_within_ranges);
-    b_.CreateCondBr(guarding_cond, emitted_slice_blocks[i],
-                    (i == slice_instructions.size() - 1)
-                        ? exit_block
-                        : emitted_guard_blocks[i + 1]);
-  }
 
-  // Populate the slice blocks.
-  for (int64 i = 0; i < slice_instructions.size(); ++i) {
-    b_.SetInsertPoint(emitted_slice_blocks[i]);
-    HloInstruction* slice = slice_instructions[i];
-    const std::vector<llvm::Value*>& src_multidim = index.multidim();
-    std::vector<llvm::Value*> dst_multidim(src_multidim.size());
-    for (size_t dim = 0; dim < src_multidim.size(); ++dim) {
-      dst_multidim[dim] =
-          Sub(src_multidim[dim],
-              index.GetConstantWithIndexType(slice->slice_starts(dim)));
-    }
-    ShapeIndex shape_index = (slice_or_tuple->opcode() == HloOpcode::kSlice)
-                                 ? ShapeIndex()
-                                 : ShapeIndex({i});
-    llvm_ir::IrArray src_ir_array =
-        GetIrArray(*unnested_hlo, *unnested_hlo, shape_index);
-    IrArray::Index slice_dst_index(dst_multidim, slice->shape(),
-                                   index.GetType());
-    llvm::Value* dst_addr = src_ir_array.EmitArrayElementAddress(
-        slice_dst_index, &b_, "slice.dest");
-    b_.CreateStore(input_ir_values[i], dst_addr);
-    if (i != slice_instructions.size() - 1) {
-      // Jump to next slice_guard.
-      b_.CreateBr(emitted_guard_blocks[i + 1]);
-    } else {
-      // Jump to exit.
-      b_.CreateBr(exit_block);
-    }
-  }
+    auto emit_slice_elem_func = [&]() -> void {
+      const std::vector<llvm::Value*>& src_multidim = index.multidim();
+      std::vector<llvm::Value*> dst_multidim(src_multidim.size());
+      for (size_t dim = 0; dim < src_multidim.size(); ++dim) {
+        dst_multidim[dim] =
+            Sub(src_multidim[dim],
+                index.GetConstantWithIndexType(slice->slice_starts(dim)));
+      }
+      ShapeIndex shape_index = (slice_or_tuple->opcode() == HloOpcode::kSlice)
+                                   ? ShapeIndex()
+                                   : ShapeIndex({i});
+      llvm_ir::IrArray src_ir_array =
+          GetIrArray(*unnested_hlo, *unnested_hlo, shape_index);
+      IrArray::Index slice_dst_index(dst_multidim, slice->shape(),
+                                     index.GetType());
+      llvm::Value* dst_addr = src_ir_array.EmitArrayElementAddress(
+          slice_dst_index, &b_, "slice.dest");
+      b_.CreateStore(input_ir_values[i], dst_addr);
+    };
 
-  b_.SetInsertPoint(exit_block);
+    ksl.If(StrCat("slice", i), guarding_cond, emit_slice_elem_func);
+  }
 }
 
 Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(

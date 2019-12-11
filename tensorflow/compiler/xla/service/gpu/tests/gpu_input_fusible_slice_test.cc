@@ -29,12 +29,11 @@ class GpuSliceInputFusionTest : public GpuCodegenTest {
  protected:
   GpuSliceInputFusionTest() {}
 
-  // Disable the layout assignment pass as it would throw away the layouts
-  // in the fusion computation.
   HloModuleConfig ConfigWithoutLayoutAssignment() {
     HloModuleConfig config;
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
-    // Disable layout_assignment to use the preassigned layouts.
+    // Disable the layout_assignment pass to use the preassigned layouts;
+    // otherwise, the pass throws away the layouts in the fusion computation.
     debug_options.add_xla_disable_hlo_passes("layout-assignment");
     config.set_debug_options(debug_options);
     return config;
@@ -67,7 +66,7 @@ TEST_F(GpuSliceInputFusionTest, InputFusionWithOnlyOneSlice) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK: slice_id0
+; CHECK: slice0
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/false);
@@ -104,7 +103,7 @@ TEST_F(GpuSliceInputFusionTest, InputFusionWithATupleOfSlices) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK: slice_id2
+; CHECK: slice2
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/false);
@@ -146,7 +145,7 @@ TEST_F(GpuSliceInputFusionTest, ConcatThenSplit) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK: slice_id2
+; CHECK: slice2
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/false);
