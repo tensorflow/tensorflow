@@ -94,9 +94,16 @@ cuda_py_test(
         "//tensorflow/python/tools:freeze_graph_lib",
         "//tensorflow/python/tools:saved_model_utils",
     ],
+    data = [
+        "test/testdata/tftrt_2.0_saved_model/saved_model.pb",
+        "test/testdata/tftrt_2.0_saved_model/variables/variables.data-00000-of-00002",
+        "test/testdata/tftrt_2.0_saved_model/variables/variables.data-00001-of-00002",
+        "test/testdata/tftrt_2.0_saved_model/variables/variables.index",
+    ],
     python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_pip",
         "no_rocm",
         "no_windows",
         "nomac",
@@ -172,9 +179,9 @@ cuda_py_test(
         "//tensorflow/python/estimator:estimator",
     ],
     data = [
-        "test/testdata/checkpoint",
-        "test/testdata/model.ckpt-46900.data-00000-of-00001",
-        "test/testdata/model.ckpt-46900.index",
+        "test/testdata/mnist/checkpoint",
+        "test/testdata/mnist/model.ckpt-46900.data-00000-of-00001",
+        "test/testdata/mnist/model.ckpt-46900.index",
     ],
     python_version = "PY3",
     tags = [
