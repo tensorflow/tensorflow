@@ -237,6 +237,8 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/lstm_calibrated2.bin",
         "//tensorflow/lite/tools/optimize:testdata/lstm_quantized.bin",
         "//tensorflow/lite/tools/optimize:testdata/lstm_quantized2.bin",
+        "//tensorflow/lite/tools/optimize:testdata/maximum.bin",
+        "//tensorflow/lite/tools/optimize:testdata/minimum.bin",
         "//tensorflow/lite/tools/optimize:testdata/mixed.bin",
         "//tensorflow/lite/tools/optimize:testdata/multi_input_add_reshape.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_avg_pool_min_minus_5_max_plus_5.bin",
@@ -244,8 +246,6 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_minus_127_max_plus_127.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_softmax_min_minus_5_max_plus_5.bin",
         "//tensorflow/lite/tools/optimize:testdata/split.bin",
-        "//tensorflow/lite/tools/optimize:testdata/maximum.bin",
-        "//tensorflow/lite/tools/optimize:testdata/minimum.bin",
         "//tensorflow/lite/tools/optimize:testdata/unpack.bin",
     ],
     tags = [
