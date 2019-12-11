@@ -837,6 +837,18 @@ def LoadOp : Std_Op<"load"> {
   let hasCanonicalizer = 1;
 }
 
+def LogOp : FloatUnaryOp<"log"> {
+  let summary = "base-e logarithm of the specified value";
+}
+
+def Log10Op : FloatUnaryOp<"log10"> {
+  let summary = "base-10 logarithm of the specified value";
+}
+
+def Log2Op : FloatUnaryOp<"log2"> {
+  let summary = "base-2 logarithm of the specified value";
+}
+
 def MemRefCastOp : CastOp<"memref_cast"> {
   let summary = "memref cast operation";
   let description = [{
