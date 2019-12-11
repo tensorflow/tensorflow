@@ -25,10 +25,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("mixed_precision.experimental.LossScaleGradientTape", v1=[])
+# TODO(reedwm): Expose this. Currently it doesn't work with DistributionStrategy
 class LossScaleGradientTape(backprop.GradientTape):
   """A gradient tape that scales losses and unscales resulting gradients.
 
