@@ -68,7 +68,7 @@ def GPU_GPUFuncOp : GPU_Op<"func", [FunctionLike, IsolatedFromAbove, Symbol]> {
 
     Syntax:
 
-    ``` {.ebnf}
+    ```
     op ::= `gpu.func` symbol-ref-id `(` argument-list `)` (`->`
     function-result-list)?
            memory-attribution `kernel`? function-attributes? region
@@ -213,7 +213,7 @@ def GPU_LaunchOp : GPU_Op<"launch", [IsolatedFromAbove]>,
 
     Syntax:
 
-    ``` {.ebnf}
+    ```
     operation ::= `gpu.launch` `block` `(` ssa-id-list `)` `in` ssa-reassignment
                              `threads` `(` ssa-id-list `)` `in` ssa-reassignment
                                (`args` ssa-reassignment `:` type-list)?
@@ -223,7 +223,7 @@ def GPU_LaunchOp : GPU_Op<"launch", [IsolatedFromAbove]>,
 
     Example:
 
-    ```mlir {.mlir}
+    ```mlir
     gpu.launch blocks(%bx, %by, %bz) in (%sz_bx = %0, %sz_by = %1, %sz_bz = %2)
                threads(%tx, %ty, %tz) in (%sz_tx = %3, %sz_ty = %4, %sz_tz = %5)
                args(%arg0 = %6, %arg1 = 7) : f32, memref<?xf32, 1> {

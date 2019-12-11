@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import numpy as np
 
+from tensorflow.lite.python import tflite_convert
 from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.client import session
@@ -116,9 +117,10 @@ class TfLiteConvertV1Test(TestModels):
     write_graph(sess.graph_def, '', graph_def_file, False)
     sess.close()
 
-    flags_str = ('--graph_def_file={0} --input_arrays={1} '
-                 '--output_arrays={2} --experimental_legacy_converter'.format(
-                     graph_def_file, 'Placeholder', 'add'))
+    flags_str = (
+        '--graph_def_file={0} --input_arrays={1} '
+        '--output_arrays={2} --experimental_new_converter=false'.format(
+            graph_def_file, 'Placeholder', 'add'))
     self._run(flags_str, should_succeed=True)
     os.remove(graph_def_file)
 
@@ -308,6 +310,76 @@ class TfLiteConvertV2Test(TestModels):
     self._run(
         '--keras_model_file=model.h5 --saved_model_dir=/tmp/',
         should_succeed=False)
+
+
+class ArgParserTest(test_util.TensorFlowTestCase):
+
+  def test_without_experimental_new_converter(self):
+    args = [
+        '--saved_model_dir=/tmp/saved_model/',
+        '--output_file=/tmp/output.tflite',
+    ]
+
+    # V1 parser.
+    parser = tflite_convert._get_parser(False)
+    parsed_args = parser.parse_args(args)
+    self.assertFalse(parsed_args.experimental_new_converter)
+
+    # V2 parser.
+    parser = tflite_convert._get_parser(True)
+    parsed_args = parser.parse_args(args)
+    self.assertFalse(parsed_args.experimental_new_converter)
+
+  def test_experimental_new_converter(self):
+    args = [
+        '--saved_model_dir=/tmp/saved_model/',
+        '--output_file=/tmp/output.tflite',
+        '--experimental_new_converter',
+    ]
+
+    # V1 parser.
+    parser = tflite_convert._get_parser(False)
+    parsed_args = parser.parse_args(args)
+    self.assertTrue(parsed_args.experimental_new_converter)
+
+    # V2 parser.
+    parser = tflite_convert._get_parser(True)
+    parsed_args = parser.parse_args(args)
+    self.assertTrue(parsed_args.experimental_new_converter)
+
+  def test_experimental_new_converter_true(self):
+    args = [
+        '--saved_model_dir=/tmp/saved_model/',
+        '--output_file=/tmp/output.tflite',
+        '--experimental_new_converter=true',
+    ]
+
+    # V1 parser.
+    parser = tflite_convert._get_parser(False)
+    parsed_args = parser.parse_args(args)
+    self.assertTrue(parsed_args.experimental_new_converter)
+
+    # V2 parser.
+    parser = tflite_convert._get_parser(True)
+    parsed_args = parser.parse_args(args)
+    self.assertTrue(parsed_args.experimental_new_converter)
+
+  def test_experimental_new_converter_false(self):
+    args = [
+        '--saved_model_dir=/tmp/saved_model/',
+        '--output_file=/tmp/output.tflite',
+        '--experimental_new_converter=false',
+    ]
+
+    # V1 parser.
+    parser = tflite_convert._get_parser(False)
+    parsed_args = parser.parse_args(args)
+    self.assertFalse(parsed_args.experimental_new_converter)
+
+    # V2 parser.
+    parser = tflite_convert._get_parser(True)
+    parsed_args = parser.parse_args(args)
+    self.assertFalse(parsed_args.experimental_new_converter)
 
 
 if __name__ == '__main__':

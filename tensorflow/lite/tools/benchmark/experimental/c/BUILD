@@ -29,7 +29,7 @@ cc_library(
         "benchmark",
     ],
     deps = [
-        "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite/tools/benchmark:benchmark_tflite_model_lib",
     ],
 )

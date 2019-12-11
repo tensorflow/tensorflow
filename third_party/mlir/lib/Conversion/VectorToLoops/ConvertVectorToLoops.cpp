@@ -51,7 +51,7 @@ using vector_type_cast = edsc::intrinsics::ValueBuilder<vector::TypeCastOp>;
 ///
 /// Consider the case:
 ///
-/// ```mlir {.mlir}
+/// ```mlir
 ///    // Read the slice `%A[%i0, %i1:%i1+256, %i2:%i2+32]` into
 ///    // vector<32x256xf32> and pad with %f0 to handle the boundary case:
 ///    %f0 = constant 0.0f : f32
@@ -68,7 +68,7 @@ using vector_type_cast = edsc::intrinsics::ValueBuilder<vector::TypeCastOp>;
 /// resembling the following (while guaranteeing an always full-tile
 /// abstraction):
 ///
-/// ```mlir {.mlir}
+/// ```mlir
 ///    loop.for %d2 = 0 to %c256 {
 ///      loop.for %d1 = 0 to %c32 {
 ///        %s = %A[%i0, %i1 + %d1, %i2 + %d2] : f32

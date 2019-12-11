@@ -641,12 +641,12 @@ protected:
   /// Return the current index for this iterator, adjusted for the case of a
   /// splat.
   ptrdiff_t getDataIndex() const {
-    bool isSplat = this->object.getInt();
+    bool isSplat = this->base.getInt();
     return isSplat ? 0 : this->index;
   }
 
-  /// Return the data object pointer.
-  const char *getData() const { return this->object.getPointer(); }
+  /// Return the data base pointer.
+  const char *getData() const { return this->base.getPointer(); }
 };
 } // namespace detail
 

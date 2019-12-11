@@ -1009,7 +1009,7 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
 
 TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
                   TF_Status* status) {
-  return NewOrResetOp(ctx, op_or_function_name, status,
+  return NewOrResetOp(ctx, op_or_function_name, nullptr, status,
                       /* op_to_reset= */ nullptr);
 }
 

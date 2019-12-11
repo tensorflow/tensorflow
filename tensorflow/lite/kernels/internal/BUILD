@@ -51,9 +51,9 @@ cc_library(
     name = "scoped_profiling_label_wrapper",
     hdrs = ["scoped_profiling_label_wrapper.h"],
     copts = tflite_copts(),
-    deps = [
-        "@gemmlowp//:profiler",
-    ],
+    # TODO(b/145820877): Add in a select statement once we can figure out a way
+    # to make it play nicely with copybara.
+    deps = ["@gemmlowp//:profiler"],
 )
 
 cc_library(
@@ -443,6 +443,7 @@ cc_library(
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
         "reference/quantize.h",
+        "reference/reduce.h",
         "reference/reference_ops.h",
         "reference/round.h",
         "reference/softmax.h",
@@ -502,6 +503,7 @@ cc_library(
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
         "reference/quantize.h",
+        "reference/reduce.h",
         "reference/reference_ops.h",
         "reference/round.h",
         "reference/softmax.h",

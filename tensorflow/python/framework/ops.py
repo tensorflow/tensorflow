@@ -6196,6 +6196,9 @@ def name_scope(name, default_name=None, values=None, skip_on_eager=True):
   if not in_eager_mode:
     return internal_name_scope_v1(name, default_name, values)
 
+  if skip_on_eager:
+    return NullContextmanager()
+
   name = default_name if name is None else name
   if values:
     # The presence of a graph tensor in `values` overrides the context.
@@ -6206,9 +6209,6 @@ def name_scope(name, default_name=None, values=None, skip_on_eager=True):
     # pylint: enable=unidiomatic-typecheck
     if graph_value is not None:
       return graph_value.graph.name_scope(name)
-
-  if skip_on_eager:
-    return NullContextmanager()
 
   return name_scope_v2(name or "")
 

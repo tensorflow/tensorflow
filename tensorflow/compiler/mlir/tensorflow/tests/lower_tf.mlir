@@ -115,6 +115,16 @@ func @pad(%arg0: tensor<3xf32>) -> tensor<6xf32> {
   return %0 : tensor<6xf32>
 }
 
+// CHECK-LABEL: func @pad_bf16
+func @pad_bf16(%arg0: tensor<3xbf16>) -> tensor<6xbf16> {
+  %padding = "tf.Const"() { value = dense<[[1, 2]]> : tensor<1x2xi64> } : () -> tensor<1x2xi64>
+  // CHECK-DAG: [[PAD:%.+]] = "tf.Const"() {
+  // CHECK-DAG: [[CST:%.+]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<bf16>}
+  // CHECK: "tf.PadV2"(%arg0, [[PAD]], [[CST]])
+  %0 = "tf.Pad"(%arg0, %padding) : (tensor<3xbf16>, tensor<1x2xi64>) -> tensor<6xbf16>
+  return %0 : tensor<6xbf16>
+}
+
 // CHECK-LABEL: func @BiasAddGrad_NHWC
 func @BiasAddGrad_NHWC(%arg0: tensor<2x3x4x5xf32>) -> tensor<5xf32> {
   // CHECK: "tf.Const"() {value = dense<[0, 1, 2]> : tensor<3xi64>}

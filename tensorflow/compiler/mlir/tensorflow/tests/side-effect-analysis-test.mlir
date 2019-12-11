@@ -120,14 +120,14 @@ func @aliasing_reads_writes(%arg0: tensor<32xf32>) -> () {
 
 // CHECK-LABEL: func @unknown_side_effecting_op
 func @unknown_side_effecting_op(%arg0: tensor<32xf32>) -> () {
-// expected-remark@above {{ID: 13}}
+// expected-remark@above {{ID: 14}}
   tf_executor.graph {
-  // expected-remark@above {{ID: 11}}
-  // expected-remark@above {{Successors: {12}}}
+  // expected-remark@above {{ID: 12}}
+  // expected-remark@above {{Successors: {13}}}
     // CHECK: tf_executor.island
     %island = tf_executor.island {
-    // expected-remark@above {{ID: 9}}
-    // expected-remark@above {{Successors: {10}}}
+    // expected-remark@above {{ID: 10}}
+    // expected-remark@above {{Successors: {11}}}
       %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> tensor<*x!tf.resource<tensor<32xf32>>>
       // expected-remark@above {{ID: 0}}
       %vh1 = "tf.VarHandleOp"() {container = "c", shared_name = "v1"} : () -> tensor<*x!tf.resource<tensor<32xf32>>>
@@ -141,30 +141,34 @@ func @unknown_side_effecting_op(%arg0: tensor<32xf32>) -> () {
       "tf._UnknownSideEffectingOp_"() : () -> ()
       // expected-remark@above {{ID: 4}}
       // expected-remark@above {{Predecessors: {2,3}}}
-      // expected-remark@above {{Successors: {5,6}}}
+      // expected-remark@above {{Successors: {5,6,7}}}
       %read1 = "tf.ReadVariableOp"(%vh1) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
       // expected-remark@above {{ID: 5}}
       // expected-remark@above {{Predecessors: {4}}}
-      // expected-remark@above {{Successors: {7}}}
-      "tf.AssignVariableOp"(%vh0, %read1) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      // expected-remark@above {{Successors: {8}}}
+      %read2 = "tf.ReadVariableOp"(%vh1) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
       // expected-remark@above {{ID: 6}}
       // expected-remark@above {{Predecessors: {4}}}
       // expected-remark@above {{Successors: {8}}}
-      "tf.AssignVariableOp"(%vh1, %read0) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      "tf.AssignVariableOp"(%vh0, %read1) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       // expected-remark@above {{ID: 7}}
-      // expected-remark@above {{Predecessors: {5}}}
-      // expected-remark@above {{Successors: {8}}}
-      tf_executor.yield
+      // expected-remark@above {{Predecessors: {4}}}
+      // expected-remark@above {{Successors: {9}}}
+      "tf.AssignVariableOp"(%vh1, %read0) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
       // expected-remark@above {{ID: 8}}
-      // expected-remark@above {{Predecessors: {6,7}}}
+      // expected-remark@above {{Predecessors: {5,6}}}
+      // expected-remark@above {{Successors: {9}}}
+      tf_executor.yield
+      // expected-remark@above {{ID: 9}}
+      // expected-remark@above {{Predecessors: {7,8}}}
     }
     tf_executor.fetch %island : !tf_executor.control
-    // expected-remark@above {{ID: 10}}
-    // expected-remark@above {{Predecessors: {9}}}
+    // expected-remark@above {{ID: 11}}
+    // expected-remark@above {{Predecessors: {10}}}
   }
   return
-  // expected-remark@above {{ID: 12}}
-  // expected-remark@above {{Predecessors: {11}}}
+  // expected-remark@above {{ID: 13}}
+  // expected-remark@above {{Predecessors: {12}}}
 }
 
 // -----

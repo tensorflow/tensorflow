@@ -71,8 +71,8 @@ class Conv(Layer):
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, ..., channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, ...)`.
+      `(batch_size, ..., channels)` while `channels_first` corresponds to
+      inputs with shape `(batch_size, channels, ...)`.
     dilation_rate: An integer or tuple/list of n integers, specifying
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is
@@ -506,9 +506,9 @@ class Conv2D(Conv):
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, height, width, channels)` while `channels_first`
+      `(batch_size, height, width, channels)` while `channels_first`
       corresponds to inputs with shape
-      `(batch, channels, height, width)`.
+      `(batch_size, channels, height, width)`.
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be "channels_last".
@@ -644,9 +644,9 @@ class Conv3D(Conv):
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
+      `(batch_size, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
       while `channels_first` corresponds to inputs with shape
-      `(batch, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
+      `(batch_size, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be "channels_last".
@@ -785,9 +785,9 @@ class Conv2DTranspose(Conv2D):
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, height, width, channels)` while `channels_first`
+      `(batch_size, height, width, channels)` while `channels_first`
       corresponds to inputs with shape
-      `(batch, channels, height, width)`.
+      `(batch_size, channels, height, width)`.
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be "channels_last".
@@ -1075,9 +1075,9 @@ class Conv3DTranspose(Conv3D):
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, depth, height, width, channels)` while `channels_first`
+      `(batch_size, depth, height, width, channels)` while `channels_first`
       corresponds to inputs with shape
-      `(batch, channels, depth, height, width)`.
+      `(batch_size, channels, depth, height, width)`.
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be "channels_last".
@@ -1361,8 +1361,8 @@ class SeparableConv(Conv):
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, ..., channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, ...)`.
+      `(batch_size, ..., channels)` while `channels_first` corresponds to
+      inputs with shape `(batch_size, channels, ...)`.
     dilation_rate: An integer or tuple/list of 2 integers, specifying
       the dilation rate to use for dilated convolution.
       Can be a single integer to specify the same value for
@@ -1565,8 +1565,8 @@ class SeparableConv1D(SeparableConv):
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, length, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, length)`.
+      `(batch_size, length, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch_size, channels, length)`.
     dilation_rate: A single integer, specifying
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is
@@ -1751,9 +1751,9 @@ class SeparableConv2D(SeparableConv):
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, height, width, channels)` while `channels_first`
+      `(batch_size, height, width, channels)` while `channels_first`
       corresponds to inputs with shape
-      `(batch, channels, height, width)`.
+      `(batch_size, channels, height, width)`.
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be "channels_last".
@@ -1915,9 +1915,9 @@ class DepthwiseConv2D(Conv2D):
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, height, width, channels)` while `channels_first`
+      `(batch_size, height, width, channels)` while `channels_first`
       corresponds to inputs with shape
-      `(batch, channels, height, width)`.
+      `(batch_size, channels, height, width)`.
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be 'channels_last'.
@@ -1944,15 +1944,15 @@ class DepthwiseConv2D(Conv2D):
 
   Input shape:
     4D tensor with shape:
-    `[batch, channels, rows, cols]` if data_format='channels_first'
+    `[batch_size, channels, rows, cols]` if data_format='channels_first'
     or 4D tensor with shape:
-    `[batch, rows, cols, channels]` if data_format='channels_last'.
+    `[batch_size, rows, cols, channels]` if data_format='channels_last'.
 
   Output shape:
     4D tensor with shape:
-    `[batch, filters, new_rows, new_cols]` if data_format='channels_first'
+    `[batch_size, filters, new_rows, new_cols]` if data_format='channels_first'
     or 4D tensor with shape:
-    `[batch, new_rows, new_cols, filters]` if data_format='channels_last'.
+    `[batch_size, new_rows, new_cols, filters]` if data_format='channels_last'.
     `rows` and `cols` values might have changed due to padding.
 
   Returns:
@@ -2097,14 +2097,35 @@ class UpSampling1D(Layer):
 
   Repeats each temporal step `size` times along the time axis.
 
+  Examples:
+
+  >>> input_shape = (2, 2, 3)
+  >>> x = np.arange(np.prod(input_shape)).reshape(input_shape)
+  >>> print(x)
+  [[[ 0  1  2]
+    [ 3  4  5]]
+   [[ 6  7  8]
+    [ 9 10 11]]]
+  >>> y = tf.keras.layers.UpSampling1D(size=2)(x)
+  >>> print(y)
+  tf.Tensor(
+    [[[ 0  1  2]
+      [ 0  1  2]
+      [ 3  4  5]
+      [ 3  4  5]]
+     [[ 6  7  8]
+      [ 6  7  8]
+      [ 9 10 11]
+      [ 9 10 11]]], shape=(2, 4, 3), dtype=int64)
+
   Arguments:
     size: Integer. Upsampling factor.
 
   Input shape:
-    3D tensor with shape: `(batch, steps, features)`.
+    3D tensor with shape: `(batch_size, steps, features)`.
 
   Output shape:
-    3D tensor with shape: `(batch, upsampled_steps, features)`.
+    3D tensor with shape: `(batch_size, upsampled_steps, features)`.
   """
 
   def __init__(self, size=2, **kwargs):
@@ -2134,6 +2155,27 @@ class UpSampling2D(Layer):
   Repeats the rows and columns of the data
   by `size[0]` and `size[1]` respectively.
 
+  Examples:
+
+  >>> input_shape = (2, 2, 1, 3)
+  >>> x = np.arange(np.prod(input_shape)).reshape(input_shape)
+  >>> print(x)
+  [[[[ 0  1  2]]
+    [[ 3  4  5]]]
+   [[[ 6  7  8]]
+    [[ 9 10 11]]]]
+  >>> y = tf.keras.layers.UpSampling2D(size=(1, 2))(x)
+  >>> print(y)
+  tf.Tensor(
+    [[[[ 0  1  2]
+       [ 0  1  2]]
+      [[ 3  4  5]
+       [ 3  4  5]]]
+     [[[ 6  7  8]
+       [ 6  7  8]]
+      [[ 9 10 11]
+       [ 9 10 11]]]], shape=(2, 2, 2, 3), dtype=int64)
+
   Arguments:
     size: Int, or tuple of 2 integers.
       The upsampling factors for rows and columns.
@@ -2141,9 +2183,9 @@ class UpSampling2D(Layer):
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, height, width, channels)` while `channels_first`
+      `(batch_size, height, width, channels)` while `channels_first`
       corresponds to inputs with shape
-      `(batch, channels, height, width)`.
+      `(batch_size, channels, height, width)`.
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be "channels_last".
@@ -2152,16 +2194,16 @@ class UpSampling2D(Layer):
   Input shape:
     4D tensor with shape:
     - If `data_format` is `"channels_last"`:
-        `(batch, rows, cols, channels)`
+        `(batch_size, rows, cols, channels)`
     - If `data_format` is `"channels_first"`:
-        `(batch, channels, rows, cols)`
+        `(batch_size, channels, rows, cols)`
 
   Output shape:
     4D tensor with shape:
     - If `data_format` is `"channels_last"`:
-        `(batch, upsampled_rows, upsampled_cols, channels)`
+        `(batch_size, upsampled_rows, upsampled_cols, channels)`
     - If `data_format` is `"channels_first"`:
-        `(batch, channels, upsampled_rows, upsampled_cols)`
+        `(batch_size, channels, upsampled_rows, upsampled_cols)`
   """
 
   def __init__(self,
@@ -2217,6 +2259,14 @@ class UpSampling3D(Layer):
   Repeats the 1st, 2nd and 3rd dimensions
   of the data by `size[0]`, `size[1]` and `size[2]` respectively.
 
+  Examples:
+
+  >>> input_shape = (2, 1, 2, 1, 3)
+  >>> x = tf.constant(1, shape=input_shape)
+  >>> y = tf.keras.layers.UpSampling3D(size=2)(x)
+  >>> print(y.shape)
+  (2, 2, 4, 2, 3)
+
   Arguments:
     size: Int, or tuple of 3 integers.
       The upsampling factors for dim1, dim2 and dim3.
@@ -2224,9 +2274,9 @@ class UpSampling3D(Layer):
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
+      `(batch_size, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
       while `channels_first` corresponds to inputs with shape
-      `(batch, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
+      `(batch_size, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be "channels_last".
@@ -2234,16 +2284,16 @@ class UpSampling3D(Layer):
   Input shape:
     5D tensor with shape:
     - If `data_format` is `"channels_last"`:
-        `(batch, dim1, dim2, dim3, channels)`
+        `(batch_size, dim1, dim2, dim3, channels)`
     - If `data_format` is `"channels_first"`:
-        `(batch, channels, dim1, dim2, dim3)`
+        `(batch_size, channels, dim1, dim2, dim3)`
 
   Output shape:
     5D tensor with shape:
     - If `data_format` is `"channels_last"`:
-        `(batch, upsampled_dim1, upsampled_dim2, upsampled_dim3, channels)`
+        `(batch_size, upsampled_dim1, upsampled_dim2, upsampled_dim3, channels)`
     - If `data_format` is `"channels_first"`:
-        `(batch, channels, upsampled_dim1, upsampled_dim2, upsampled_dim3)`
+        `(batch_size, channels, upsampled_dim1, upsampled_dim2, upsampled_dim3)`
   """
 
   def __init__(self, size=(2, 2, 2), data_format=None, **kwargs):
@@ -2287,6 +2337,31 @@ class UpSampling3D(Layer):
 class ZeroPadding1D(Layer):
   """Zero-padding layer for 1D input (e.g. temporal sequence).
 
+  Examples:
+
+  >>> input_shape = (2, 2, 3)
+  >>> x = np.arange(np.prod(input_shape)).reshape(input_shape)
+  >>> print(x)
+  [[[ 0  1  2]
+    [ 3  4  5]]
+   [[ 6  7  8]
+    [ 9 10 11]]]
+  >>> y = tf.keras.layers.ZeroPadding1D(padding=2)(x)
+  >>> print(y)
+  tf.Tensor(
+    [[[ 0  0  0]
+      [ 0  0  0]
+      [ 0  1  2]
+      [ 3  4  5]
+      [ 0  0  0]
+      [ 0  0  0]]
+     [[ 0  0  0]
+      [ 0  0  0]
+      [ 6  7  8]
+      [ 9 10 11]
+      [ 0  0  0]
+      [ 0  0  0]]], shape=(2, 6, 3), dtype=int64)
+
   Arguments:
       padding: Int, or tuple of int (length 2), or dictionary.
           - If int:
@@ -2297,10 +2372,10 @@ class ZeroPadding1D(Layer):
           the padding dimension (`(left_pad, right_pad)`).
 
   Input shape:
-      3D tensor with shape `(batch, axis_to_pad, features)`
+      3D tensor with shape `(batch_size, axis_to_pad, features)`
 
   Output shape:
-      3D tensor with shape `(batch, padded_axis, features)`
+      3D tensor with shape `(batch_size, padded_axis, features)`
   """
 
   def __init__(self, padding=1, **kwargs):
@@ -2331,6 +2406,29 @@ class ZeroPadding2D(Layer):
   This layer can add rows and columns of zeros
   at the top, bottom, left and right side of an image tensor.
 
+  Examples:
+
+  >>> input_shape = (1, 1, 2, 2)
+  >>> x = np.arange(np.prod(input_shape)).reshape(input_shape)
+  >>> print(x)
+  [[[[0 1]
+     [2 3]]]]
+  >>> y = tf.keras.layers.ZeroPadding2D(padding=1)(x)
+  >>> print(y)
+  tf.Tensor(
+    [[[[0 0]
+       [0 0]
+       [0 0]
+       [0 0]]
+      [[0 0]
+       [0 1]
+       [2 3]
+       [0 0]]
+      [[0 0]
+       [0 0]
+       [0 0]
+       [0 0]]]], shape=(1, 3, 4, 2), dtype=int64)
+
   Arguments:
     padding: Int, or tuple of 2 ints, or tuple of 2 tuples of 2 ints.
       - If int: the same symmetric padding
@@ -2346,9 +2444,9 @@ class ZeroPadding2D(Layer):
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, height, width, channels)` while `channels_first`
+      `(batch_size, height, width, channels)` while `channels_first`
       corresponds to inputs with shape
-      `(batch, channels, height, width)`.
+      `(batch_size, channels, height, width)`.
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be "channels_last".
@@ -2356,16 +2454,16 @@ class ZeroPadding2D(Layer):
   Input shape:
     4D tensor with shape:
     - If `data_format` is `"channels_last"`:
-        `(batch, rows, cols, channels)`
+        `(batch_size, rows, cols, channels)`
     - If `data_format` is `"channels_first"`:
-        `(batch, channels, rows, cols)`
+        `(batch_size, channels, rows, cols)`
 
   Output shape:
     4D tensor with shape:
     - If `data_format` is `"channels_last"`:
-        `(batch, padded_rows, padded_cols, channels)`
+        `(batch_size, padded_rows, padded_cols, channels)`
     - If `data_format` is `"channels_first"`:
-        `(batch, channels, padded_rows, padded_cols)`
+        `(batch_size, channels, padded_rows, padded_cols)`
   """
 
   def __init__(self, padding=(1, 1), data_format=None, **kwargs):
@@ -2430,6 +2528,14 @@ class ZeroPadding2D(Layer):
 class ZeroPadding3D(Layer):
   """Zero-padding layer for 3D data (spatial or spatio-temporal).
 
+  Examples:
+
+  >>> input_shape = (1, 1, 2, 2, 3)
+  >>> x = np.arange(np.prod(input_shape)).reshape(input_shape)
+  >>> y = tf.keras.layers.ZeroPadding3D(padding=2)(x)
+  >>> print(y.shape)
+  (1, 5, 6, 6, 3)
+
   Arguments:
     padding: Int, or tuple of 3 ints, or tuple of 3 tuples of 2 ints.
       - If int: the same symmetric padding
@@ -2446,9 +2552,9 @@ class ZeroPadding3D(Layer):
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
+      `(batch_size, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
       while `channels_first` corresponds to inputs with shape
-      `(batch, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
+      `(batch_size, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be "channels_last".
@@ -2456,19 +2562,19 @@ class ZeroPadding3D(Layer):
   Input shape:
     5D tensor with shape:
     - If `data_format` is `"channels_last"`:
-        `(batch, first_axis_to_pad, second_axis_to_pad, third_axis_to_pad,
+        `(batch_size, first_axis_to_pad, second_axis_to_pad, third_axis_to_pad,
           depth)`
     - If `data_format` is `"channels_first"`:
-        `(batch, depth, first_axis_to_pad, second_axis_to_pad,
+        `(batch_size, depth, first_axis_to_pad, second_axis_to_pad,
           third_axis_to_pad)`
 
   Output shape:
     5D tensor with shape:
     - If `data_format` is `"channels_last"`:
-        `(batch, first_padded_axis, second_padded_axis, third_axis_to_pad,
+        `(batch_size, first_padded_axis, second_padded_axis, third_axis_to_pad,
           depth)`
     - If `data_format` is `"channels_first"`:
-        `(batch, depth, first_padded_axis, second_padded_axis,
+        `(batch_size, depth, first_padded_axis, second_padded_axis,
           third_axis_to_pad)`
   """
 
@@ -2550,6 +2656,23 @@ class Cropping1D(Layer):
 
   It crops along the time dimension (axis 1).
 
+  Examples:
+
+  >>> input_shape = (2, 3, 2)
+  >>> x = np.arange(np.prod(input_shape)).reshape(input_shape)
+  >>> print(x)
+  [[[ 0  1]
+    [ 2  3]
+    [ 4  5]]
+   [[ 6  7]
+    [ 8  9]
+    [10 11]]]
+  >>> y = tf.keras.layers.Cropping1D(cropping=1)(x)
+  >>> print(y)
+  tf.Tensor(
+    [[[2 3]]
+     [[8 9]]], shape=(2, 1, 2), dtype=int64)
+
   Arguments:
     cropping: Int or tuple of int (length 2)
       How many units should be trimmed off at the beginning and end of
@@ -2557,10 +2680,10 @@ class Cropping1D(Layer):
       If a single int is provided, the same value will be used for both.
 
   Input shape:
-    3D tensor with shape `(batch, axis_to_crop, features)`
+    3D tensor with shape `(batch_size, axis_to_crop, features)`
 
   Output shape:
-    3D tensor with shape `(batch, cropped_axis, features)`
+    3D tensor with shape `(batch_size, cropped_axis, features)`
   """
 
   def __init__(self, cropping=(1, 1), **kwargs):
@@ -2594,6 +2717,14 @@ class Cropping2D(Layer):
 
   It crops along spatial dimensions, i.e. height and width.
 
+  Examples:
+
+  >>> input_shape = (2, 28, 28, 3)
+  >>> x = np.arange(np.prod(input_shape)).reshape(input_shape)
+  >>> y = tf.keras.layers.Cropping2D(cropping=((2, 2), (4, 4)))(x)
+  >>> print(y.shape)
+  (2, 24, 20, 3)
+
   Arguments:
     cropping: Int, or tuple of 2 ints, or tuple of 2 tuples of 2 ints.
       - If int: the same symmetric cropping
@@ -2609,9 +2740,9 @@ class Cropping2D(Layer):
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, height, width, channels)` while `channels_first`
+      `(batch_size, height, width, channels)` while `channels_first`
       corresponds to inputs with shape
-      `(batch, channels, height, width)`.
+      `(batch_size, channels, height, width)`.
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be "channels_last".
@@ -2619,29 +2750,16 @@ class Cropping2D(Layer):
   Input shape:
     4D tensor with shape:
     - If `data_format` is `"channels_last"`:
-      `(batch, rows, cols, channels)`
+      `(batch_size, rows, cols, channels)`
     - If `data_format` is `"channels_first"`:
-      `(batch, channels, rows, cols)`
+      `(batch_size, channels, rows, cols)`
 
   Output shape:
     4D tensor with shape:
     - If `data_format` is `"channels_last"`:
-      `(batch, cropped_rows, cropped_cols, channels)`
+      `(batch_size, cropped_rows, cropped_cols, channels)`
     - If `data_format` is `"channels_first"`:
-      `(batch, channels, cropped_rows, cropped_cols)`
-
-  Examples:
-
-  ```python
-  # Crop the input 2D images or feature maps
-  model = Sequential()
-  model.add(Cropping2D(cropping=((2, 2), (4, 4)),
-                       input_shape=(28, 28, 3)))
-  # now model.output_shape == (None, 24, 20, 3)
-  model.add(Conv2D(64, (3, 3), padding='same'))
-  model.add(Cropping2D(cropping=((2, 2), (2, 2))))
-  # now model.output_shape == (None, 20, 16. 64)
-  ```
+      `(batch_size, channels, cropped_rows, cropped_cols)`
   """
 
   def __init__(self, cropping=((0, 0), (0, 0)), data_format=None, **kwargs):
@@ -2724,6 +2842,14 @@ class Cropping2D(Layer):
 class Cropping3D(Layer):
   """Cropping layer for 3D data (e.g. spatial or spatio-temporal).
 
+    Examples:
+
+  >>> input_shape = (2, 28, 28, 10, 3)
+  >>> x = np.arange(np.prod(input_shape)).reshape(input_shape)
+  >>> y = tf.keras.layers.Cropping3D(cropping=(2, 4, 2))(x)
+  >>> print(y.shape)
+  (2, 24, 20, 6, 3)
+
   Arguments:
     cropping: Int, or tuple of 3 ints, or tuple of 3 tuples of 2 ints.
       - If int: the same symmetric cropping
@@ -2738,9 +2864,9 @@ class Cropping3D(Layer):
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
+      `(batch_size, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
       while `channels_first` corresponds to inputs with shape
-      `(batch, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
+      `(batch_size, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be "channels_last".
@@ -2748,19 +2874,19 @@ class Cropping3D(Layer):
   Input shape:
     5D tensor with shape:
     - If `data_format` is `"channels_last"`:
-      `(batch, first_axis_to_crop, second_axis_to_crop, third_axis_to_crop,
+      `(batch_size, first_axis_to_crop, second_axis_to_crop, third_axis_to_crop,
         depth)`
     - If `data_format` is `"channels_first"`:
-      `(batch, depth, first_axis_to_crop, second_axis_to_crop,
+      `(batch_size, depth, first_axis_to_crop, second_axis_to_crop,
         third_axis_to_crop)`
 
   Output shape:
     5D tensor with shape:
     - If `data_format` is `"channels_last"`:
-      `(batch, first_cropped_axis, second_cropped_axis, third_cropped_axis,
+      `(batch_size, first_cropped_axis, second_cropped_axis, third_cropped_axis,
         depth)`
     - If `data_format` is `"channels_first"`:
-      `(batch, depth, first_cropped_axis, second_cropped_axis,
+      `(batch_size, depth, first_cropped_axis, second_cropped_axis,
         third_cropped_axis)`
   """
 

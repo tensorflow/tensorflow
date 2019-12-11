@@ -778,10 +778,17 @@ class MicroBenchmarks(test.Benchmark):
   def benchmark_forwardprop_of_defun_matmul_100_by_784_CPU(self):
     self._benchmark_forwardprop_of_defun_matmul_CPU(shape=(100, 784))
 
-  def _benchmark_tf_reduce_logsumexp(self, device=CPU, execution_mode=None):
+  def _benchmark_tf_reduce_logsumexp(self,
+                                     device=CPU,
+                                     execution_mode=None,
+                                     defunc=False):
     with context.device(device):
       x = constant_op.constant([[1, 0.], [0., 0.]])
-      func = lambda: math_ops.reduce_logsumexp(x)
+      if defunc:
+        reduce_func = def_function.function(math_ops.reduce_logsumexp)
+        func = lambda: reduce_func(x)
+      else:
+        func = lambda: math_ops.reduce_logsumexp(x)
       self._run(func, 3000, execution_mode=execution_mode)
 
   def benchmark_tf_reduce_logsumexp_CPU(self):
@@ -796,6 +803,20 @@ class MicroBenchmarks(test.Benchmark):
   def benchmark_tf_reduce_logsumexp_GPU_async(self):
     self._benchmark_tf_reduce_logsumexp(device=GPU,
                                         execution_mode=context.ASYNC)
+
+  def benchmark_tf_reduce_logsumexp_CPU_defunc(self):
+    self._benchmark_tf_reduce_logsumexp(defunc=True)
+
+  def benchmark_tf_reduce_logsumexp_CPU_async_defun(self):
+    self._benchmark_tf_reduce_logsumexp(
+        execution_mode=context.ASYNC, defunc=True)
+
+  def benchmark_tf_reduce_logsumexp_GPU_defun(self):
+    self._benchmark_tf_reduce_logsumexp(device=GPU, defunc=True)
+
+  def benchmark_tf_reduce_logsumexp_GPU_async_defun(self):
+    self._benchmark_tf_reduce_logsumexp(
+        device=GPU, execution_mode=context.ASYNC, defunc=True)
 
   def _benchmark_tf_tensordot(self, device=CPU, execution_mode=None):
     with context.device(device):

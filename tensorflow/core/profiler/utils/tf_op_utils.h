@@ -54,6 +54,66 @@ inline bool IsUnknownOp(absl::string_view tf_op_type) {
 inline bool IsDatasetOp(absl::string_view tf_op_type) {
   return tf_op_type == kDatasetOp;
 }
+
+constexpr size_t kNumStatType = 27;
+
+enum class StatType {
+  kUnknown = 0,
+  // TraceMe arguments.
+  kStepId,
+  kParentStepId,
+  kFunctionStepId,
+  kDeviceOrdinal,
+  kChipOrdinal,
+  kNodeOrdinal,
+  kModelId,
+  kQueueAddr,
+  kRequestId,
+  kRunId,
+  kCorrelationId,
+  kGraphType,
+  kStepNum,
+  kIterNum,
+  kIndexOnHost,
+  kBytesReserved,
+  kBytesAllocated,
+  kBytesAvailable,
+  kFragmentation,
+  kKernelDetails,
+  // Stats added when processing traces.
+  kGroupId,
+  kStepName,
+  kLevel0,
+  kTfOp,
+  kHloOp,
+  kHloModule,
+};
+
+constexpr std::array<absl::string_view, kNumStatType> kStatTypeStrMap({
+    "unknown",         "id",
+    "parent_step_id",  "function_step_id",
+    "device_ordinal",  "chip_ordinal",
+    "node_ordinal",    "model_id",
+    "queue_addr",      "request_id",
+    "run_id",          "correlation_id",
+    "graph_type",      "step_num",
+    "iter_num",        "index_on_host",
+    "bytes_reserved",  "bytes_allocated",
+    "bytes_available", "fragmentation",
+    "kernel_details",  "group_id",
+    "step_name",       "level 0",
+    "tf_op",           "hlo_op",
+    "hlo_module",
+});
+
+inline absl::string_view GetStatTypeStr(StatType stat_type) {
+  return kStatTypeStrMap.at(static_cast<std::size_t>(stat_type));
+}
+
+inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
+  return kStatTypeStrMap.at(static_cast<std::size_t>(stat_type)) == stat_name;
+}
+
 }  // namespace profiler
 }  // namespace tensorflow
 

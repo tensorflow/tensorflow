@@ -215,9 +215,24 @@ Status ModularFileSystem::DeleteFile(const std::string& fname) {
 Status ModularFileSystem::DeleteRecursively(const std::string& dirname,
                                             int64* undeleted_files,
                                             int64* undeleted_dirs) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (undeleted_files == nullptr || undeleted_dirs == nullptr)
+    return errors::FailedPrecondition(
+        "DeleteRecursively must not be called with `undeleted_files` or "
+        "`undeleted_dirs` set to NULL");
+
+  if (ops_->delete_recursively == nullptr)
+    return FileSystem::DeleteRecursively(dirname, undeleted_files,
+                                         undeleted_dirs);
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  std::string translated_name = TranslateName(dirname);
+  uint64_t plugin_undeleted_files, plugin_undeleted_dirs;
+  ops_->delete_recursively(filesystem_.get(), translated_name.c_str(),
+                           &plugin_undeleted_files, &plugin_undeleted_dirs,
+                           plugin_status.get());
+  *undeleted_files = plugin_undeleted_files;
+  *undeleted_dirs = plugin_undeleted_dirs;
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::DeleteDir(const std::string& dirname) {
@@ -233,9 +248,14 @@ Status ModularFileSystem::DeleteDir(const std::string& dirname) {
 }
 
 Status ModularFileSystem::RecursivelyCreateDir(const std::string& dirname) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->recursively_create_dir == nullptr)
+    return FileSystem::RecursivelyCreateDir(dirname);
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  std::string translated_name = TranslateName(dirname);
+  ops_->recursively_create_dir(filesystem_.get(), translated_name.c_str(),
+                               plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::CreateDir(const std::string& dirname) {

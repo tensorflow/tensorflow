@@ -36,7 +36,7 @@ class TestGraphDebugInfo(object):
     @tf.function(
         input_signature=[tf.TensorSpec(shape=[3, 3], dtype=tf.float32)])
     def model(x):
-      y = tf.math.reciprocal(x)  # Not supported
+      y = tf.math.betainc(x, 0.5, 1.0)  # Not supported
       return y + y
 
     func = model.get_concrete_function()
@@ -47,14 +47,14 @@ class TestGraphDebugInfo(object):
 # pylint: disable=line-too-long
 
 # CHECK-LABEL: testConcreteFunctionDebugInfo
-# CHECK: error: 'tf.Reciprocal' op is neither a custom op nor a flex op
+# CHECK: error: 'tf.Betainc' op is neither a custom op nor a flex op
 # CHECK:                                  attrs=attr_protos, op_def=op_def)
 # CHECK:                                  ^
 # CHECK: {{.*tensorflow/python/ops/gen_math_ops.py:[0-9]+:[0-9]+: note: called from}}
-# CHECK:         "Reciprocal", x=x, name=name)
+# CHECK:         "Betainc", a=a, b=b, x=x, name=name)
 # CHECK:         ^
 # CHECK: {{.*tensorflow/compiler/mlir/lite/tests/debuginfo/concrete_function_error.py:[0-9]+:[0-9]+: note: called from}}
-# CHECK:     y = tf.math.reciprocal(x)  # Not supported
+# CHECK:     y = tf.math.betainc(x, 0.5, 1.0)  # Not supported
 # CHECK:     ^
 # CHECK: <unknown>:0: error: failed while converting: 'main'
 

@@ -58,22 +58,13 @@ static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
 static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
   RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
   if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
-    const auto &float_semantics = float_ty.getFloatSemantics();
-    Builder builder(ty.getContext());
-    if (&float_semantics == &APFloat::IEEEsingle())
-      return DenseElementsAttr::get(scalar_ty,
-                                    builder.getF32FloatAttr(raw_value));
-    if (&float_semantics == &APFloat::IEEEdouble())
-      return DenseElementsAttr::get(scalar_ty,
-                                    builder.getF64FloatAttr(raw_value));
-
-    assert(false && "unhandled IEEE float kind");
-    return {};
+    FloatAttr attr = FloatAttr::get(float_ty, raw_value);
+    return DenseElementsAttr::get(scalar_ty, attr);
   }
 
   auto int_ty = ty.cast<IntegerType>();
-  APInt value(int_ty.getWidth(), raw_value, /*isSigned=*/true);
-  return DenseElementsAttr::get(scalar_ty, value);
+  IntegerAttr attr = IntegerAttr::get(int_ty, raw_value);
+  return DenseElementsAttr::get(scalar_ty, attr);
 }
 
 // Returns reduction indices to use while lowering tf.BiasAddGrad op to tf.Sum

@@ -668,7 +668,7 @@ public:
       : indexed_accessor_iterator<OperandIterator, Operation *, Value *,
                                   Value *, Value *>(object, index) {}
 
-  Value *operator*() const { return this->object->getOperand(this->index); }
+  Value *operator*() const { return this->base->getOperand(this->index); }
 };
 
 /// This class implements the operand type iterators for the Operation
@@ -721,11 +721,11 @@ class ResultIterator final
                                        Value *, Value *> {
 public:
   /// Initializes the result iterator to the specified index.
-  ResultIterator(Operation *object, unsigned index)
+  ResultIterator(Operation *base, unsigned index)
       : indexed_accessor_iterator<ResultIterator, Operation *, Value *, Value *,
-                                  Value *>(object, index) {}
+                                  Value *>(base, index) {}
 
-  Value *operator*() const { return this->object->getResult(this->index); }
+  Value *operator*() const { return this->base->getResult(this->index); }
 };
 
 /// This class implements the result type iterators for the Operation
@@ -799,15 +799,19 @@ inline auto Operation::getResultTypes() -> result_type_range {
 /// SmallVector/std::vector. This class should be used in places that are not
 /// suitable for a more derived type (e.g. ArrayRef) or a template range
 /// parameter.
-class ValueRange {
+class ValueRange
+    : public detail::indexed_accessor_range_base<
+          ValueRange,
+          llvm::PointerUnion<Value *const *, OpOperand *, OpResult *>, Value *,
+          Value *, Value *> {
   /// The type representing the owner of this range. This is either a list of
   /// values, operands, or results.
   using OwnerT = llvm::PointerUnion<Value *const *, OpOperand *, OpResult *>;
 
 public:
-  ValueRange(const ValueRange &) = default;
-  ValueRange(ValueRange &&) = default;
-  ValueRange &operator=(const ValueRange &) = default;
+  using detail::indexed_accessor_range_base<
+      ValueRange, OwnerT, Value *, Value *,
+      Value *>::indexed_accessor_range_base;
 
   template <typename Arg,
             typename = typename std::enable_if_t<
@@ -822,46 +826,15 @@ public:
   ValueRange(iterator_range<OperandIterator> values);
   ValueRange(iterator_range<ResultIterator> values);
 
-  /// An iterator element of this range.
-  class Iterator : public indexed_accessor_iterator<Iterator, OwnerT, Value *,
-                                                    Value *, Value *> {
-  public:
-    Value *operator*() const;
-
-  private:
-    Iterator(OwnerT owner, unsigned curIndex);
-
-    /// Allow access to the constructor.
-    friend ValueRange;
-  };
-
-  Iterator begin() const { return Iterator(owner, 0); }
-  Iterator end() const { return Iterator(owner, count); }
-  Value *operator[](unsigned index) const {
-    assert(index < size() && "invalid index for value range");
-    return *std::next(begin(), index);
-  }
-
-  /// Return the size of this range.
-  size_t size() const { return count; }
-
-  /// Return if the range is empty.
-  bool empty() const { return size() == 0; }
-
-  /// Drop the first N elements, and keep M elements.
-  ValueRange slice(unsigned n, unsigned m) const;
-  /// Drop the first n elements.
-  ValueRange drop_front(unsigned n = 1) const;
-  /// Drop the last n elements.
-  ValueRange drop_back(unsigned n = 1) const;
-
 private:
-  ValueRange(OwnerT owner, unsigned count) : owner(owner), count(count) {}
+  /// See `detail::indexed_accessor_range_base` for details.
+  static OwnerT offset_base(const OwnerT &owner, ptrdiff_t index);
+  /// See `detail::indexed_accessor_range_base` for details.
+  static Value *dereference_iterator(const OwnerT &owner, ptrdiff_t index);
 
-  /// The object that owns the provided range of values.
-  OwnerT owner;
-  /// The size from the owning range.
-  unsigned count;
+  /// Allow access to `offset_base` and `dereference_iterator`.
+  friend detail::indexed_accessor_range_base<ValueRange, OwnerT, Value *,
+                                             Value *, Value *>;
 };
 
 } // end namespace mlir
