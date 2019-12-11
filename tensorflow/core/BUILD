@@ -821,9 +821,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps =
-        if_mobile([
+        [
             "@nsync//:nsync_cpp",
-        ]) + [
+        ] + [
             "//third_party/eigen3",
             "//tensorflow/core/lib/bfloat16",
             "//tensorflow/core/platform:dynamic_annotations",
