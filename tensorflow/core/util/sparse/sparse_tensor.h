@@ -74,51 +74,47 @@ class SparseTensor {
                     "Shape rank must be SparseTensor rank.");
     }
 
-    *result = SparseTensor(std::move(ix), std::move(vals), shape, order);
+    *result = SparseTensor(ix, vals, shape, order);
     return Status();
   }
 
   static Status Create(Tensor ix, Tensor vals, const TensorShape& shape,
                        SparseTensor* result) {
-    return Create(std::move(ix), std::move(vals), TensorShapeToVector(shape),
+    return Create(ix, vals, TensorShapeToVector(shape),
                   UndefinedOrder(TensorShapeToVector(shape)), result);
   }
 
   static Status Create(Tensor ix, Tensor vals, const VarDimArray shape,
                        SparseTensor* result) {
-    return Create(std::move(ix), std::move(vals), shape, UndefinedOrder(shape),
-                  result);
+    return Create(ix, vals, shape, UndefinedOrder(shape), result);
   }
 
   static Status Create(Tensor ix, Tensor vals, const TensorShape& shape,
                        const VarDimArray order, SparseTensor* result) {
-    return Create(std::move(ix), std::move(vals), TensorShapeToVector(shape),
-                  order, result);
+    return Create(ix, vals, TensorShapeToVector(shape), order, result);
   }
 
   SparseTensor() : dims_(0) {}
 
   ABSL_DEPRECATED("Use Create() functions instead of constructors directly.")
   SparseTensor(Tensor ix, Tensor vals, const TensorShape& shape)
-      : SparseTensor(std::move(ix), std::move(vals), TensorShapeToVector(shape),
+      : SparseTensor(ix, vals, TensorShapeToVector(shape),
                      UndefinedOrder(TensorShapeToVector(shape))) {}
 
   ABSL_DEPRECATED("Use Create() functions instead of constructors directly.")
   SparseTensor(Tensor ix, Tensor vals, const VarDimArray shape)
-      : SparseTensor(std::move(ix), std::move(vals), shape,
-                     UndefinedOrder(shape)) {}
+      : SparseTensor(ix, vals, shape, UndefinedOrder(shape)) {}
 
   ABSL_DEPRECATED("use Create() functions instead of constructors directly.")
   SparseTensor(Tensor ix, Tensor vals, const TensorShape& shape,
                const VarDimArray order)
-      : SparseTensor(std::move(ix), std::move(vals), TensorShapeToVector(shape),
-                     order) {}
+      : SparseTensor(ix, vals, TensorShapeToVector(shape), order) {}
 
   ABSL_DEPRECATED("Use Create() functions instead of constructors directly.")
   SparseTensor(Tensor ix, Tensor vals, const VarDimArray shape,
                const VarDimArray order)
-      : ix_(std::move(ix)),
-        vals_(std::move(vals)),
+      : ix_(ix),
+        vals_(vals),
         shape_(shape.begin(), shape.end()),
         order_(order.begin(), order.end()),
         dims_(UnsafeGetDimsFromIx(ix)) {
