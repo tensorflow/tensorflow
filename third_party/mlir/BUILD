@@ -1598,7 +1598,7 @@ cc_library(
         ":LLVMIRModuleTranslation",
         ":Support",
         ":Translation",
-        "//third_party/llvm/llvm-project/llvm:ir_reader",
+        "@llvm//:ir_reader",
         "@llvm//:core",
         "@llvm//:support",
     ],
