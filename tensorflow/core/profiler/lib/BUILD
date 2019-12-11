@@ -18,14 +18,14 @@ cc_library(
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/internal:profiler_factory",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow:android": [],
         "//conditions:default": [
+            "//tensorflow/core/profiler/convert:run_metadata_to_trace_events",
             "//tensorflow/core/platform",
-            "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
+            "//tensorflow/core:framework",
             "//tensorflow/core:protos_all_cc",
         ],
     }),

@@ -132,7 +132,7 @@ func @iota(%out: memref<7x10xf32>) {
   "xla_lhlo.iota"(%out) {iota_dimension = 1 : i64} : (memref<7x10xf32>) -> ()
   return
 }
-// CHECK: linalg.indexed_generic {indexing_maps = [#[[RESULT_MAP]]]
+// CHECK: linalg.indexed_generic {{{.*}}indexing_maps = [#[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[D0:.*]]: index, %[[D1:.*]]: index, %[[RESULT:.*]]: f32):
 // CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[D1]] : index to i32
 // CHECK-NEXT:   %[[FLOAT_CAST:.*]] = sitofp %[[INT_CAST]] : i32 to f32
@@ -158,6 +158,6 @@ func @broadcast(%operand: memref<5x7x1xf32>, %result: memref<7x10x6x4x5xf32>) {
     : (memref<5x7x1xf32>, memref<7x10x6x4x5xf32>) -> ()
   return
 }
-// CHECK: linalg.generic {indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %[[RESULT:.*]]: f32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32

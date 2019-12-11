@@ -2548,7 +2548,6 @@ TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionNoPeephole) {
   for (int i = 0; i < input_sequence_size; ++i) {
     lstm.SetInput(lstm_input[i]);
     lstm.Invoke();
-    const auto x = lstm.GetOutput();
     EXPECT_THAT(lstm.GetOutput(), ElementsAreArray(expected_output[i]));
   }
 }

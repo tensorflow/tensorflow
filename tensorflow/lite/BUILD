@@ -16,6 +16,13 @@ exports_files(glob([
 ]))
 
 config_setting(
+    name = "gemmlowp_profiling",
+    values = {
+        "copt": "-DGEMMLOWP_PROFILING",
+    },
+)
+
+config_setting(
     name = "mips",
     values = {
         "cpu": "mips",

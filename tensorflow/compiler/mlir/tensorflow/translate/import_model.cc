@@ -2243,12 +2243,14 @@ Status DiagnoseMultipleConcreteFunctions(const SavedObjectGraph& object_graph,
       if (object.function().concrete_functions_size() != 1) {
         llvm::SmallVector<std::string, 4> names;
         for (llvm::StringRef s : object_names.GetExportedNames(node_id)) {
-          names.push_back(s.str());
+          names.push_back("'" + s.str() + "'");
         }
         return errors::InvalidArgument(
-            "Exported function '", absl::StrJoin(names, ","),
-            "' with multiple concrete functions. Check if you have "
-            "@tf.function(input_signature=[...]) on this function.");
+            "Exported function with exported name(s) ",
+            absl::StrJoin(names, ", "),
+            " with multiple concrete functions. Add "
+            "@tf.function(input_signature=[...]) on this function, or use a "
+            "narrower list of exported names that excludes this function.");
       }
     }
   }

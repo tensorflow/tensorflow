@@ -111,7 +111,7 @@ struct TensorEvaluator<const TensorMirrorPadOp<PaddingDimensions, ArgType>,
   };
 
   //===- Tensor block evaluation strategy (see TensorBlock.h) -------------===//
-  typedef internal::TensorBlockNotImplemented TensorBlockV2;
+  typedef internal::TensorBlockNotImplemented TensorBlock;
   //===--------------------------------------------------------------------===//
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorEvaluator(const XprType& op,

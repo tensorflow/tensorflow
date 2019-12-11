@@ -39,32 +39,18 @@ class MicroAllocator {
                  uint8_t* tensor_arena, size_t arena_size,
                  ErrorReporter* error_reporter);
 
-  // Specify a particular tensor as pre-allocated.  This means that this tensor
-  // will internally point to the supplied buffer, and no new memory will be
-  // provided.  The buffer must live at least as long as the allocator, since
-  // the buffer will be used every time an op is invoked which uses the
-  // specified tensor.  Most commonly this is useful when a platform-provided
-  // DMA buffer is used as an input, and it is desirable to avoid unnecessarily
-  // allocating a new buffer and copying from the DMA buffer. The user must
-  // ensure the buffer is valid throughout each interpreter run, and is not
-  // prematurely overwritten.
-  TfLiteStatus RegisterPreallocatedInput(uint8_t* buffer, size_t input_index);
-
   // Sets up all of the data structure members for a runtime tensor based on the
-  // contents of a serialized tensor. This method doesn't allocate any memory,
-  // all allocations happen subsequently in AllocateTensors.
+  // contents of a serialized tensor.
   TfLiteStatus InitializeRuntimeTensor(
       const tflite::Tensor& flatbuffer_tensor,
       const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
-      ErrorReporter* error_reporter, TfLiteTensor* result,
-      uint8_t* preallocated_buffer = nullptr);
+      ErrorReporter* error_reporter, TfLiteTensor* result);
 
-  // Run through the model and allocate all necessary input, output and
-  // intermediate tensors except for those already provided via calls to
-  // registerPreallocatedInput.
-  // WARNING: doing any allocation after calling is method has the risk of
-  // corruption tensor data so this method is the last method to be called in
-  // this class.
+  // Runs through the model and allocates all necessary input, output and
+  // intermediate tensors.
+  // WARNING: doing any allocation after calling this method has the risk of
+  // corrupting tensor data so this method should be the last method to be
+  // called in this class.
   TfLiteStatus FinishTensorAllocation();
 
   // Run through the model to allocate nodes and registrations. We need to keep

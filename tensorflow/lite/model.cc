@@ -375,8 +375,6 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
     return kTfLiteError;
   }
 
-  // Affine-quantization.
-  quantization->type = kTfLiteAffineQuantization;
   const size_t num_scales = src_quantization->scale()->size();
 
   // Ensure that the quantization dimension is valid.
@@ -401,6 +399,8 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
     return kTfLiteError;
   }
 
+  // Affine-quantization.
+  quantization->type = kTfLiteAffineQuantization;
   auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
       malloc(sizeof(TfLiteAffineQuantization)));
   affine_quantization->scale = TfLiteFloatArrayCreate(num_scales);

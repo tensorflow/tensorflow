@@ -148,6 +148,7 @@ cc_library(
         "lib/Transforms/TestConstantFold.cpp",
         "lib/Transforms/TestInlining.cpp",
         "lib/Transforms/TestLinalgTransforms.cpp",
+        "lib/Transforms/TestLiveness.cpp",
         "lib/Transforms/TestLoopFusion.cpp",
         "lib/Transforms/TestLoopMapping.cpp",
         "lib/Transforms/TestLoopParametricTiling.cpp",

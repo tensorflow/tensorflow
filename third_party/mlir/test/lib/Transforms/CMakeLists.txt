@@ -4,6 +4,7 @@ add_llvm_library(MLIRTestTransforms
   TestLoopFusion.cpp
   TestInlining.cpp
   TestLinalgTransforms.cpp
+  TestLiveness.cpp
   TestLoopMapping.cpp
   TestLoopParametricTiling.cpp
   TestOpaqueLoc.cpp
