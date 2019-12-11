@@ -274,3 +274,171 @@ func @with_replicate(
   // expected-remark@above {{ID: 11}}
   // expected-remark@above {{Predecessors: {10}}}
 }
+
+// -----
+
+// Tests that the pass does not add control dependencies a stateless if op.
+
+// CHECK-LABEL: func @stateless_if_op
+func @stateless_if_op(
+  // expected-remark@above {{ID: 8}}
+  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
+  %arg1: tensor<i1>) {
+  tf_executor.graph {
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Successors: {7}}}
+    // CHECK: tf_executor.island
+    %island = tf_executor.island {
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Successors: {5}}}
+      %r0 = "tf.ReadVariableOp"(%arg0) :
+      // expected-remark@above {{ID: 0}}
+      // expected-remark@above {{Successors: {2}}}
+        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %if = "tf.If"(%arg1, %arg1) {
+      // expected-remark@above {{ID: 1}}
+          then_branch = @if_then, else_branch = @if_else, is_stateless = true}
+        : (tensor<i1>, tensor<i1>) -> tensor<i1>
+      "tf.AssignVariableOp"(%arg0, %r0) :
+      // expected-remark@above {{ID: 2}}
+      // expected-remark@above {{Predecessors: {0}}}
+      // expected-remark@above {{Successors: {3}}}
+        (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      tf_executor.yield
+      // expected-remark@above {{ID: 3}}
+      // expected-remark@above {{Predecessors: {2}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Predecessors: {4}}}
+  }
+  return
+  // expected-remark@above {{ID: 7}}
+  // expected-remark@above {{Predecessors: {6}}}
+}
+
+// CHECK-LABEL: func @if_then
+func @if_then(%arg0: tensor<i1>) -> tensor<i1> {
+  // expected-remark@above {{ID: 5}}
+  %graph = tf_executor.graph {
+  // expected-remark@above {{ID: 3}}
+  // expected-remark@above {{Successors: {4}}}
+    %island:2 = tf_executor.island {
+    // expected-remark@above {{ID: 1}}
+    // expected-remark@above {{Successors: {2}}}
+      tf_executor.yield %arg0 : tensor<i1>
+      // expected-remark@above {{ID: 0}}
+    }
+    tf_executor.fetch %island#0 : tensor<i1>
+    // expected-remark@above {{ID: 2}}
+    // expected-remark@above {{Predecessors: {1}}}
+  }
+  return %graph : tensor<i1>
+  // expected-remark@above {{ID: 4}}
+  // expected-remark@above {{Predecessors: {3}}}
+}
+
+// CHECK-LABEL: func @if_else
+func @if_else(%arg0: tensor<i1>) -> tensor<i1> {
+  // expected-remark@above {{ID: 5}}
+  %graph = tf_executor.graph {
+  // expected-remark@above {{ID: 3}}
+  // expected-remark@above {{Successors: {4}}}
+    %island:2 = tf_executor.island {
+    // expected-remark@above {{ID: 1}}
+    // expected-remark@above {{Successors: {2}}}
+      tf_executor.yield %arg0 : tensor<i1>
+      // expected-remark@above {{ID: 0}}
+    }
+    tf_executor.fetch %island#0 : tensor<i1>
+    // expected-remark@above {{ID: 2}}
+    // expected-remark@above {{Predecessors: {1}}}
+  }
+  return %graph : tensor<i1>
+  // expected-remark@above {{ID: 4}}
+  // expected-remark@above {{Predecessors: {3}}}
+}
+
+// -----
+
+// Tests that the pass does not add control dependencies a stateless while op.
+
+// CHECK-LABEL: func @stateless_if_op
+func @stateless_if_op(
+  // expected-remark@above {{ID: 8}}
+  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
+  %arg1: tensor<i1>) {
+  tf_executor.graph {
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Successors: {7}}}
+    // CHECK: tf_executor.island
+    %island = tf_executor.island {
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Successors: {5}}}
+      %r0 = "tf.ReadVariableOp"(%arg0) :
+      // expected-remark@above {{ID: 0}}
+      // expected-remark@above {{Successors: {2}}}
+        (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+      %if = "tf.While"(%arg1) {
+      // expected-remark@above {{ID: 1}}
+          body = @while_body, cond = @while_cond, is_stateless = true}
+        : (tensor<i1>) -> tensor<i1>
+      "tf.AssignVariableOp"(%arg0, %r0) :
+      // expected-remark@above {{ID: 2}}
+      // expected-remark@above {{Predecessors: {0}}}
+      // expected-remark@above {{Successors: {3}}}
+        (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+      tf_executor.yield
+      // expected-remark@above {{ID: 3}}
+      // expected-remark@above {{Predecessors: {2}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Predecessors: {4}}}
+  }
+  return
+  // expected-remark@above {{ID: 7}}
+  // expected-remark@above {{Predecessors: {6}}}
+}
+
+// CHECK-LABEL: func @while_body
+func @while_body(%arg0: tensor<i1>) -> tensor<i1> {
+  // expected-remark@above {{ID: 5}}
+  %graph = tf_executor.graph {
+  // expected-remark@above {{ID: 3}}
+  // expected-remark@above {{Successors: {4}}}
+    %island:2 = tf_executor.island {
+    // expected-remark@above {{ID: 1}}
+    // expected-remark@above {{Successors: {2}}}
+      tf_executor.yield %arg0 : tensor<i1>
+      // expected-remark@above {{ID: 0}}
+    }
+    tf_executor.fetch %island#0 : tensor<i1>
+    // expected-remark@above {{ID: 2}}
+    // expected-remark@above {{Predecessors: {1}}}
+  }
+  return %graph : tensor<i1>
+  // expected-remark@above {{ID: 4}}
+  // expected-remark@above {{Predecessors: {3}}}
+}
+
+// CHECK-LABEL: func @while_cond
+func @while_cond(%arg0: tensor<i1>) -> tensor<i1> {
+  // expected-remark@above {{ID: 5}}
+  %graph = tf_executor.graph {
+  // expected-remark@above {{ID: 3}}
+  // expected-remark@above {{Successors: {4}}}
+    %island:2 = tf_executor.island {
+    // expected-remark@above {{ID: 1}}
+    // expected-remark@above {{Successors: {2}}}
+      tf_executor.yield %arg0 : tensor<i1>
+      // expected-remark@above {{ID: 0}}
+    }
+    tf_executor.fetch %island#0 : tensor<i1>
+    // expected-remark@above {{ID: 2}}
+    // expected-remark@above {{Predecessors: {1}}}
+  }
+  return %graph : tensor<i1>
+  // expected-remark@above {{ID: 4}}
+  // expected-remark@above {{Predecessors: {3}}}
+}

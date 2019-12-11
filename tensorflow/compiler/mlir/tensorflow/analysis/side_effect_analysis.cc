@@ -223,6 +223,18 @@ bool OpIsDeclaration(Operation* op,
           !FindAccessedResources(op, alias_analysis).empty());
 }
 
+// Returns if `op` is know to not have any side effect.
+bool OpIsKnownToHaveNoSideEffect(Operation* op) {
+  if (op->hasNoSideEffect()) return true;
+  if (auto if_op = llvm::dyn_cast<TF::IfOp>(op)) {
+    return if_op.is_stateless();
+  }
+  if (auto while_op = llvm::dyn_cast<TF::WhileOp>(op)) {
+    return while_op.is_stateless();
+  }
+  return false;
+}
+
 }  // namespace
 
 void SideEffectAnalysis::TrackAccess(int64_t resource_id, Operation* op,
@@ -344,7 +356,7 @@ void SideEffectAnalysis::AnalyzeRegion(
       if (OpIsDeclaration(&op, alias_analysis)) continue;
 
       auto resource_op_info = GetResourceInfoForOp(&op);
-      if (!resource_op_info && op.hasNoSideEffect()) continue;
+      if (!resource_op_info && OpIsKnownToHaveNoSideEffect(&op)) continue;
 
       llvm::SmallDenseSet<int64_t, 8> resources =
           resource_op_info ? FindAccessedResources(&op, alias_analysis)
