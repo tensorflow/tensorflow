@@ -45,6 +45,7 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 from tensorflow.python.training.tracking import tracking
 
+
 def GetGraph(input1, input2, var):
   """Define graph."""
   add = input1 + var
@@ -88,7 +89,6 @@ def GenerateModelV2(tf_saved_model_dir, tftrt_saved_model_dir):
 
 def GenerateModelV1(tf_saved_model_dir, tftrt_saved_model_dir):
   """Generate and convert a model using TFv1 API."""
-
 
   def SimpleModel():
     """Define model with a TF graph."""
