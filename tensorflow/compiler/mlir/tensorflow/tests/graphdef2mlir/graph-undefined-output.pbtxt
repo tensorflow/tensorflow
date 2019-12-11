@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input -tf-input-data-types=DT_FLOAT -tf-input-shapes='' -tf-output-arrays=NotANodeInTheGraph -o - 2>&1 | FileCheck %s; test ${PIPESTATUS[0]} -ne 0
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input -tf-input-data-types=DT_FLOAT -tf-input-shapes='' -tf-output-arrays=NotANodeInTheGraph -o - 2>&1 | FileCheck %s; if [[ ${PIPESTATUS[0]} != 0  &&  ${PIPESTATUS[1]} == 0 ]]; then exit 0; else exit 1; fi
 
 # CHECK: Graph import failed: Invalid argument: Output NotANodeInTheGraph was not found in graph
 

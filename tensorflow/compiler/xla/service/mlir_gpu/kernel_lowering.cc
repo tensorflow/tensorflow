@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // TF:local_config_mlir
 #include "mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h"  // TF:local_config_mlir
@@ -137,27 +138,64 @@ struct SingleTripLoopRemoval
 // same address with the stored value. This needs generalization.
 struct StoreForwardingPass : mlir::FunctionPass<StoreForwardingPass> {
   void runOnFunction() override {
+    absl::flat_hash_map<mlir::Value*, mlir::Operation*> memrefToAllocOp;
+
     getFunction().walk([&](mlir::LoadOp loadOp) {
-      auto block = loadOp.getOperation()->getBlock();
-      auto iterator = std::find_if(block->rbegin(), block->rend(),
+      auto* block = loadOp.getOperation()->getBlock();
+      auto loadOpIt = std::find_if(block->rbegin(), block->rend(),
                                    [&loadOp](mlir::Operation& other) {
                                      return &other == loadOp.getOperation();
                                    });
-      if (++iterator == block->rend()) return;
-      mlir::StoreOp storeOp = llvm::dyn_cast<mlir::StoreOp>(&*(iterator));
-      if (!storeOp) return;
-      // Check both store to the same value.
-      if (storeOp.memref() != loadOp.memref()) return;
-      auto storeIndices = storeOp.getIndices();
-      auto loadIndices = loadOp.getIndices();
-      if (!std::equal(storeIndices.begin(), storeIndices.end(),
-                      loadIndices.begin(), loadIndices.end())) {
+      for (auto storeOpIt = loadOpIt; storeOpIt != block->rend(); ++storeOpIt) {
+        auto storeOp = llvm::dyn_cast<mlir::StoreOp>(&*(storeOpIt));
+        if (!storeOp) {
+          continue;
+        }
+        mlir::Operation* storeOpAlloc =
+            GetAllocOp(storeOp.memref(), &memrefToAllocOp);
+        mlir::Operation* loadOpAlloc =
+            GetAllocOp(loadOp.memref(), &memrefToAllocOp);
+        if (!storeOpAlloc || !loadOpAlloc || storeOpAlloc != loadOpAlloc) {
+          continue;
+        }
+        auto storeIndices = storeOp.getIndices();
+        auto loadIndices = loadOp.getIndices();
+        if (!std::equal(storeIndices.begin(), storeIndices.end(),
+                        loadIndices.begin(), loadIndices.end())) {
+          return;
+        }
+        loadOp.replaceAllUsesWith(storeOp.getValueToStore());
+        loadOp.erase();
         return;
       }
-      loadOp.replaceAllUsesWith(storeOp.getValueToStore());
-      loadOp.erase();
     });
   };
+
+  // Recursively checks defining ops until finds AllocOp. Return either AllocOp
+  // if it is found or nullptr.
+  mlir::Operation* SearchAllocOp(mlir::Value* memref) {
+    mlir::Operation* defOp = memref->getDefiningOp();
+    while (auto subviewOp = mlir::dyn_cast_or_null<mlir::SubViewOp>(defOp)) {
+      defOp = subviewOp.source()->getDefiningOp();
+    }
+    if (auto allocOp = mlir::dyn_cast_or_null<mlir::AllocOp>(defOp)) {
+      return allocOp.getOperation();
+    }
+    return nullptr;
+  }
+
+  // Retrieves AllocOp from the cache or actually looks for it.
+  mlir::Operation* GetAllocOp(
+      mlir::Value* memref,
+      absl::flat_hash_map<mlir::Value*, mlir::Operation*>* memrefToAllocOp) {
+    auto allocOpIt = memrefToAllocOp->find(memref);
+    if (allocOpIt != memrefToAllocOp->end()) {
+      return allocOpIt->second;
+    }
+    auto allocOp = SearchAllocOp(memref);
+    memrefToAllocOp->insert({memref, allocOp});
+    return allocOp;
+  }
 };
 
 // Simple pass that removes temporary buffers that are only written to but

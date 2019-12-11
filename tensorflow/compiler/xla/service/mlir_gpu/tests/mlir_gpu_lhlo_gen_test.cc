@@ -227,6 +227,27 @@ ENTRY %AddMultiply (x: f32[2,2], y: f32[2,2], z: f32[2,2]) -> f32[2,2] {
       )");
 }
 
+TEST_F(LhloGenTest, IotaAddMultiply) {
+  CompileAndVerifyIr(R"(
+HloModule AddMultiply
+
+ENTRY %AddMultiply (x: s32[2,2], y: s32[2,2]) -> s32[2,2] {
+  %x = s32[2,2]{1,0} parameter(0)
+  %y = s32[2,2]{1,0} parameter(1)
+
+  %add = s32[2,2]{1,0} add(s32[2,2]{1,0} %x, s32[2,2]{1,0} %y)
+  %iota = s32[2, 2]{1,0} iota(), iota_dimension=0
+
+  ROOT %mul = s32[2,2]{1,0} multiply(s32[2,2]{1,0} %add, s32[2,2]{1,0} %iota)
+})",
+                     R"(
+;CHECK-NOT:  store
+;CHECK:      %[[RESULT:.*]] = muli %{{.*}}, %{{.*}}
+;CHECK:      store %[[RESULT]]
+)",
+                     LoweringStage::GPU);
+}
+
 TEST_F(LhloGenTest, AddMultiplyGPU) {
   CompileAndVerifyIr(R"(
 HloModule AddMultiply
