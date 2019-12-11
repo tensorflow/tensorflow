@@ -115,6 +115,34 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
   }
 };
 
+template <typename LhloOp>
+class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
+ public:
+  using OpConversionPattern<LhloOp>::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      LhloOp lhlo_op, ArrayRef<Value*> args,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = lhlo_op.getLoc();
+    auto argType =
+        lhlo_op.getOperand(0)->getType().template dyn_cast<ShapedType>();
+    if (!argType || !argType.getElementType().isIntOrFloat() ||
+        (argType.getRank() != 0)) {
+      return ConversionPattern::matchFailure();
+    }
+
+    // Create two loads from the input.
+    auto lhs = rewriter.create<LoadOp>(loc, lhlo_op.lhs());
+    auto rhs = rewriter.create<LoadOp>(loc, lhlo_op.rhs());
+    Operation* op = MapLhloOpToStdScalarOp<LhloOp>(
+        llvm::cast<LhloOp>(lhlo_op), argType.getElementType(),
+        llvm::ArrayRef<Value*>{lhs, rhs}, rewriter);
+    rewriter.create<StoreOp>(loc, op->getResult(0), lhlo_op.out());
+    rewriter.eraseOp(lhlo_op);
+    return ConversionPattern::matchSuccess();
+  }
+};
+
 class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
  public:
   using OpConversionPattern<BroadcastInDimOp>::OpConversionPattern;
@@ -247,7 +275,9 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_lhlo::MinOp>,
                    PointwiseToLinalgConverter<xla_lhlo::MulOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SelectOp>,
-                   PointwiseToLinalgConverter<xla_lhlo::SubOp>>(context);
+                   PointwiseToLinalgConverter<xla_lhlo::SubOp>,
+                   ScalarPointwiseToStandardConverter<xla_lhlo::AddOp>
+                  >(context);
   // clang-format on
 }
 
