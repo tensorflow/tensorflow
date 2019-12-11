@@ -4,7 +4,6 @@ add_llvm_library(MLIRAnalysis STATIC
   CallGraph.cpp
   Dominance.cpp
   InferTypeOpInterface.cpp
-  Liveness.cpp
   LoopAnalysis.cpp
   MemRefBoundCheck.cpp
   NestedMatcher.cpp
