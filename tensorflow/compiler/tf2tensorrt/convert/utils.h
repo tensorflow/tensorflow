@@ -51,6 +51,14 @@ Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name);
 
 Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode);
 
+// Define a hash function for vector<TensorShape> because it is used as the key
+// for the engine cache.
+struct VectorTensorShapeHasher {
+  std::size_t operator()(const std::vector<TensorShape>& key) const {
+    return std::hash<std::string>()(TensorShapeUtils::ShapeListString(key));
+  }
+};
+
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 #define IS_TRT_VERSION_GE(major, minor, patch, build)           \
