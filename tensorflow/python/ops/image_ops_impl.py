@@ -1866,7 +1866,14 @@ def rgb_to_grayscale(images, name=None):
   Outputs a tensor of the same `DType` and rank as `images`.  The size of the
   last dimension of the output is 1, containing the Grayscale value of the
   pixels.
-
+  
+  ```python
+  >>> original = tf.constant([[[1.0], [2.0], [3.0]]])
+  >>> converted = tf.image.rgb_to_grayscale(original)
+  >>> print(converted.shape)
+  (1, 3, 3)
+  ```
+  
   Args:
     images: The RGB tensor to convert. The last dimension must have size 3 and
       should contain RGB values.
@@ -1874,13 +1881,6 @@ def rgb_to_grayscale(images, name=None):
 
   Returns:
     The converted grayscale image(s).
-    
-  ```python
-  >>> original = tf.constant([[[1.0], [2.0], [3.0]]])
-  >>> converted = tf.image.rgb_to_grayscale(original)
-  >>> print(converted.shape)
-  (1, 3, 3)
-  ```
   """
   with ops.name_scope(name, 'rgb_to_grayscale', [images]) as name:
     images = ops.convert_to_tensor(images, name='images')
@@ -1903,20 +1903,20 @@ def grayscale_to_rgb(images, name=None):
   Outputs a tensor of the same `DType` and rank as `images`.  The size of the
   last dimension of the output is 3, containing the RGB value of the pixels.
   The input images' last dimension must be size 1.
-
-  Args:
-    images: The Grayscale tensor to convert. The last dimension must be size 1.
-    name: A name for the operation (optional).
-
-  Returns:
-    The converted grayscale image(s).
-
+ 
   ```python
   >>> original = tf.constant([[[1.0, 2.0, 3.0]]])
   >>> converted = tf.image.grayscale_to_rgb(original)
   >>> print(converted.shape)
   (1, 1, 1)
   ```
+  
+  Args:
+    images: The Grayscale tensor to convert. The last dimension must be size 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    The converted grayscale image(s).
   """
   with ops.name_scope(name, 'grayscale_to_rgb', [images]) as name:
     images = _AssertGrayscaleImage(images)
