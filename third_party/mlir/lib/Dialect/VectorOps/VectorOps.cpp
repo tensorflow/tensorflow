@@ -731,6 +731,12 @@ LogicalResult isSumOfIntegerArrayAttrConfinedToShape(
   return success();
 }
 
+static void populateFromInt64AttrArray(ArrayAttr arrayAttr,
+                                       SmallVectorImpl<int64_t> &results) {
+  for (auto attr : arrayAttr)
+    results.push_back(attr.cast<IntegerAttr>().getInt());
+}
+
 static ArrayAttr makeI64ArrayAttr(ArrayRef<int64_t> values,
                                   MLIRContext *context) {
   auto attrs = functional::map(
@@ -929,13 +935,11 @@ static LogicalResult verify(StridedSliceOp op) {
   return success();
 }
 
-namespace {
-
-static void populateFromInt64AttrArray(ArrayAttr arrayAttr,
-                                       SmallVectorImpl<int64_t> &results) {
-  for (auto attr : arrayAttr)
-    results.push_back(attr.cast<IntegerAttr>().getInt());
+void StridedSliceOp::getOffsets(SmallVectorImpl<int64_t> &results) {
+  populateFromInt64AttrArray(offsets(), results);
 }
+
+namespace {
 
 // Pattern to rewrite a StridedSliceOp(ConstantMaskOp) -> ConstantMaskOp.
 class StridedSliceConstantMaskFolder final

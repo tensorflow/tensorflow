@@ -36,6 +36,7 @@ struct TestVectorToVectorConversion
     auto *context = &getContext();
     populateWithGenerated(context, &patterns);
     populateVectorToVectorCanonicalizationPatterns(patterns, context);
+    populateVectorToVectorTransformationPatterns(patterns, context);
     applyPatternsGreedily(getFunction(), patterns);
   }
 };
