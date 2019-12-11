@@ -51,9 +51,10 @@ cc_library(
     name = "scoped_profiling_label_wrapper",
     hdrs = ["scoped_profiling_label_wrapper.h"],
     copts = tflite_copts(),
-    # TODO(b/145820877): Add in a select statement once we can figure out a way
-    # to make it play nicely with copybara.
-    deps = ["@gemmlowp//:profiler"],
+    deps = select({
+        "//tensorflow/lite:gemmlowp_profiling": ["@gemmlowp//:profiler"],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
