@@ -24,6 +24,7 @@ import platform
 import tempfile
 
 import six as _six
+from functools import partial
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -976,6 +977,8 @@ class TrtGraphConverterV2(object):
     self._input_saved_model_signature_key = (
         input_saved_model_signature_key or
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
+    self._rewriter_config = get_tensorrt_rewriter_config(
+        conversion_params=self._conversion_params, is_v2=True)
 
     self._need_calibration = (
         conversion_params.precision_mode == TrtPrecisionMode.INT8 and
@@ -983,6 +986,13 @@ class TrtGraphConverterV2(object):
     if (self._need_calibration and not conversion_params.is_dynamic_op):
       raise ValueError("INT8 precision mode with calibration is not supported "
                        "with static TensorRT ops. Set is_dynamic_op to True.")
+
+    # rewriter_config is already validated
+    for optimizer in self._rewriter_config.custom_optimizers:
+      if optimizer.name == "TensorRTOptimizer":
+        self._need_trt_profiles = not optimizer.parameter_map[
+            "use_implicit_batch"].b \
+            if "use_implicit_batch" in optimizer.parameter_map else False
 
     self._converted = False
 
@@ -995,11 +1005,9 @@ class TrtGraphConverterV2(object):
     Returns:
       The optimized GraphDef.
     """
-    rewriter_config = get_tensorrt_rewriter_config(
-        conversion_params=self._conversion_params, is_v2=True)
     grappler_session_config = config_pb2.ConfigProto()
     grappler_session_config.graph_options.rewrite_options.CopyFrom(
-        rewriter_config)
+        self._rewriter_config)
     return tf_optimizer.OptimizeGraph(
         grappler_session_config, meta_graph_def, graph_id=b"tf_graph")
 
@@ -1097,8 +1105,37 @@ class TrtGraphConverterV2(object):
         engines.
         Example: `def input_fn(): yield input1, input2, input3`
     """
+    def _rebuild_func():
+      # Rebuild function from graph_def
+      reset_converted_func = wrap_function.function_from_graph_def(
+          self._converted_graph_def,
+          [tensor.name for tensor in self._converted_func.inputs],
+          [tensor.name for tensor in self._converted_func.outputs])
+      reset_converted_func.graph.structured_outputs = nest.pack_sequence_as(
+          self._converted_func.graph.structured_outputs,
+          reset_converted_func.graph.structured_outputs)
+      self._converted_func = reset_converted_func
+
+    def _set_profile_generation_mode(value, node):
+      node.attr["_profile_generation_mode"].b = value
+
+    # Enable profile generation if needed
+    if self._need_trt_profiles:
+      self._for_each_trt_node(self._converted_graph_def,
+                              partial(_set_profile_generation_mode, True))
+      _rebuild_func()
+
+    # Run inference to build engines and optimization profiles depending
+    # on self._need_trt_profiles
     for inp in input_fn():
       self._converted_func(*map(ops.convert_to_tensor, inp))
+
+    # Disable profile generation if needed
+    if self._need_trt_profiles:
+      self._for_each_trt_node(self._converted_graph_def,
+                              partial(_set_profile_generation_mode, False))
+      _rebuild_func()
+
 
   def save(self, output_saved_model_dir):
     """Save the converted SavedModel.

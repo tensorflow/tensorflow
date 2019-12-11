@@ -157,6 +157,10 @@ class TRTEngineOp : public AsyncOpKernel {
   // Whether to use implicit batch dimension for TensorRT
   bool use_implicit_batch_;
 
+  // Whether to collect optimization profiles for TensorRT
+  // Only used when use_implicit_batch_=false
+  bool profile_generation_mode_;
+
   // Maximum number of cached engines
   int max_cached_engines_;
 
@@ -298,6 +302,18 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     VLOG(2) << "Not found _use_implicit_batch in " << context->device()->name()
             << ", thus setting _use_implicit_batch=true";
     use_implicit_batch_ = true;
+  }
+  status = context->GetAttr("_profile_generation_mode", &profile_generation_mode_);
+  if (status.code() == tensorflow::error::NOT_FOUND) {
+    VLOG(2) << "Not found _profile_generation_mode in " << context->device()->name()
+            << ", thus setting _profile_generation_mode=false";
+    profile_generation_mode_ = false;
+  }
+  if (use_implicit_batch_) {
+    OP_REQUIRES(context, !profile_generation_mode_,
+                errors::InvalidArgument(
+                    "profile_generation_mode_=true is only supported if "
+                    "use_implicit_batch=false"));
   }
 }
 
