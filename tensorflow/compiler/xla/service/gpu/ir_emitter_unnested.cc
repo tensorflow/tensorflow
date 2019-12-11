@@ -301,12 +301,12 @@ llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo, int64 launch_size,
   return b->getInt32Ty();
 }
 
-// Get the input shape of the ROOT slices, which will be used as the kernel
+// Gets the input shape of the ROOT slices, which will be used as the kernel
 // launch dims. The slice input fusion requires the input shapes of the ROOT
 // slices to be the same although the (slice) output shapes can be different.
 //
-// Return the input shape of the ROOT slices if all the input shapes of ROOT
-// slices are the same and the slices are non-strided. Otherwise, return
+// Returns the input shape of the ROOT slices if all the input shapes of ROOT
+// slices are the same and the slices are non-strided. Otherwise, returns
 // FailedPrecondition.
 StatusOr<Shape> GetConsistentInputShapeForRootSlices(
     const HloInstruction& fusion) {

@@ -253,9 +253,9 @@ bool IsInputFusibleSlices(const HloInstruction& unnested_hlo,
     return false;
   }
 
-  return absl::c_all_of(root->operands(), [&](const HloInstruction* insn) {
-    return insn->opcode() == HloOpcode::kSlice &&
-           (!verify_no_strides || is_non_strided(insn->slice_strides()));
+  return absl::c_all_of(root->operands(), [&](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kSlice &&
+           (!verify_no_strides || is_non_strided(instr->slice_strides()));
   });
 }
 
