@@ -39805,9 +39805,9 @@ func ResourceApplyKerasMomentumUseNesterov(value bool) ResourceApplyKerasMomentu
 	}
 }
 
-// Update '*var' according to the momentum scheme. Set use_nesterov = True if you
+// Update '*var' according to the momentum scheme.
 //
-// want to use Nesterov momentum.
+// Set use_nesterov = True if you want to use Nesterov momentum.
 //
 // accum = accum * momentum - lr * grad
 // var += accum
