@@ -1868,10 +1868,10 @@ def rgb_to_grayscale(images, name=None):
   pixels.
   
   ```python
-  >>> original = tf.constant([[[1.0], [2.0], [3.0]]])
+  >>> original = tf.constant([[[1.0, 2.0, 3.0]]])
   >>> converted = tf.image.rgb_to_grayscale(original)
   >>> print(converted.shape)
-  (1, 3, 3)
+  (1, 1, 1)
   ```
   
   Args:
@@ -1905,10 +1905,10 @@ def grayscale_to_rgb(images, name=None):
   The input images' last dimension must be size 1.
  
   ```python
-  >>> original = tf.constant([[[1.0, 2.0, 3.0]]])
+  >>> original = tf.constant([[[1.0], [2.0], [3.0]]])
   >>> converted = tf.image.grayscale_to_rgb(original)
   >>> print(converted.shape)
-  (1, 1, 1)
+  (1, 3, 3)
   ```
   
   Args:
