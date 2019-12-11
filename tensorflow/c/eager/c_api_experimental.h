@@ -434,6 +434,30 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
                                                  const char* worker_name,
                                                  TF_Status* status);
 
+// This function will block till the operation that produces `h` has
+// completed. This is only valid on local TFE_TensorHandles. The pointer
+// returned will be on the device in which the TFE_TensorHandle resides (so e.g.
+// for a GPU tensor this will return a pointer to GPU memory). The pointer is
+// only guaranteed to be valid until TFE_DeleteTensorHandle is called on this
+// TensorHandle. Only supports POD data types.
+TF_CAPI_EXPORT extern void* TFE_TensorHandleDevicePointer(TFE_TensorHandle*,
+                                                          TF_Status*);
+
+// This function will block till the operation that produces `h` has
+// completed. This is only valid on local TFE_TensorHandles. Returns the size in
+// bytes of the memory pointed to by the device pointer returned above.
+TF_CAPI_EXPORT extern size_t TFE_TensorHandleDeviceMemorySize(TFE_TensorHandle*,
+                                                              TF_Status*);
+
+// Creates a new TensorHandle from memory residing in device_name. Takes
+// ownership of the memory, and will call deleter to release it after TF
+// no longer needs it or in case of error.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
+    TFE_Context* ctx, const char* device_name, TF_DataType, const int64_t* dims,
+    int num_dims, void* data, size_t len,
+    void (*deallocator)(void* data, size_t len, void* arg),
+    void* deallocator_arg, TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
