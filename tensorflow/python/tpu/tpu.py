@@ -334,7 +334,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       self._gradient_colocation_stack.append(op)
       if not self._outside_compilation_cluster:
         try:
-          outside_attr = op.get_attr(_OUTSIDE_COMPILATION_ATTR)
+          outside_attr = op.get_attr(_OUTSIDE_COMPILATION_ATTR).decode("ascii")
           if self._in_gradient_colocation:
             raise NotImplementedError(
                 "Cannot nest gradient colocation operations outside compilation"

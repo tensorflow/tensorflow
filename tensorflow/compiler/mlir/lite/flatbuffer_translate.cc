@@ -414,8 +414,8 @@ class Translator {
   // is marked as a stateful operand.
   bool IsStatefulOperand(mlir::Operation* op, int operand_index);
 
-  // Returns a unique name for `op`.
-  std::string UniqueName(mlir::Operation* op);
+  // Returns a unique name for `val`.
+  std::string UniqueName(mlir::Value* val);
 
   ModuleOp module_;
 
@@ -445,8 +445,8 @@ class Translator {
   std::vector<std::string> failed_custom_ops_;
 };
 
-std::string Translator::UniqueName(mlir::Operation* op) {
-  return name_mapper_.GetUniqueName(op);
+std::string Translator::UniqueName(mlir::Value* val) {
+  return name_mapper_.GetUniqueName(val);
 }
 
 Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
@@ -864,17 +864,7 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn, bool* has_input_attr) {
       return;
     }
     for (const auto& it : llvm::enumerate(term->getOperands())) {
-      // TODO(jpienaar): If this isn't due to an op, then we'd need to either
-      // ensure the name that will be assigned to the buffer is the same, or
-      // insert an op so that we can have a buffer named such. This cannot
-      // currently happen due to pseudo_input nodes.
-      if (auto op = it.value()->getDefiningOp()) {
-        name_mapper_.InitOpName(op, output_names[it.index()].trim());
-      } else {
-        fn.emitWarning() << "output is not due to an op and '"
-                         << output_names[it.index()]
-                         << "' may not be a named output";
-      }
+      name_mapper_.InitOpName(it.value(), output_names[it.index()].trim());
     }
   }
 }
@@ -941,16 +931,9 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   for (auto& inst : bb) {
     if (inst.isKnownTerminator()) break;
 
-    std::string name = UniqueName(&inst);
-    for (size_t i = 0, e = inst.getNumResults(); i < e; ++i) {
-      // Tensors are named by adding result index to name for the particular
-      // operation such as name:0, name:1, name:2 etc. Default port is zero so
-      // the first result can be specified without the port. This is based on
-      // TensorFlow's naming scheme for inputs in the NodeDef proto.
-      std::string suffix = i > 0 ? absl::StrCat(":", i) : "";
-      if (!build_tensor_and_buffer(inst.getResult(i), name + suffix)) {
-        return llvm::None;
-      }
+    for (auto val : inst.getResults()) {
+      std::string name = UniqueName(val);
+      if (!build_tensor_and_buffer(val, name)) return llvm::None;
     }
 
     // Skip constant ops as they don't represent a TFLite operator.

@@ -147,6 +147,7 @@ enum class OperatorType : uint8 {
   // special nodes in the graph to shuffle axes.
   kReorderAxes,
   kSelect,
+  kSelectV2,
   kSparseToDense,
   kEqual,
   kNotEqual,

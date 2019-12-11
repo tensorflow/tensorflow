@@ -9,6 +9,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["logging.h"])
+
 common_copts = ["-Wall"] + tflite_copts()
 
 cc_library(
@@ -149,7 +151,7 @@ cc_library(
         ":benchmark_params",
         ":benchmark_utils",
         ":logging",
-        "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/nnapi:nnapi_util",
         "//tensorflow/lite/profiling:time",
@@ -183,7 +185,7 @@ cc_library(
         ":benchmark_params",
         ":benchmark_utils",
         ":logging",
-        "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/profiling:memory_info",

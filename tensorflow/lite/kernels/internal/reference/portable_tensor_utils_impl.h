@@ -99,6 +99,10 @@ void PortableBatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                               int32_t* result,
                                               int result_stride);
 
+void PortableVectorBatchVectorCwiseProductAccumulate(
+    const int16_t* vector, int v_size, const int16_t* batch_vector, int n_batch,
+    int32_t multiplier, int shift, int16_t* result);
+
 void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
@@ -124,14 +128,8 @@ void PortableApplyLayerNorm(const int16_t* input,
 void PortableApplySigmoid(const int16_t* input, int32_t n_batch,
                           int32_t n_input, int16_t* output);
 
-void PortableApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output);
-
-void PortableApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output);
-
-void PortableApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output);
+void PortableApplyTanh(int32_t integer_bits, const int16_t* input,
+                       int32_t n_batch, int32_t n_input, int16_t* output);
 
 void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
                       int n_batch, int n_input, int shift, int16_t* output);

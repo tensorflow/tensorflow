@@ -23,7 +23,9 @@ import sys
 
 from absl.testing import parameterized
 import numpy as np
+
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
@@ -40,6 +42,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
@@ -1348,6 +1351,23 @@ class FunctionTest(test.TestCase):
           if node.name == node_name:
             devices_for_this_node.add(node.device)
       self.assertSetEqual(devices_for_this_node, set(devices))
+
+  def testFuctionPreservesAutoGraph(self):
+    config.set_logical_device_configuration(
+        config.list_physical_devices("CPU")[0],
+        [context.LogicalDeviceConfiguration()] * 2)
+    ms = mirrored_strategy.MirroredStrategy()
+
+    def f():
+      self.assertTrue(converter_testing.is_inside_generated_code())
+      return 1
+
+    with ms.scope():
+      @def_function.function
+      def replica_fn():
+        return f()
+
+      ms.experimental_run_v2(replica_fn)
 
 
 def _replica_id():

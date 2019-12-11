@@ -245,7 +245,7 @@ def BranchOp : Std_Op<"br", [Terminator]> {
 
   let builders = [OpBuilder<
     "Builder *, OperationState &result, Block *dest,"
-    "ArrayRef<Value *> operands = {}", [{
+    "ValueRange operands = {}", [{
       result.addSuccessor(dest, operands);
   }]>];
 
@@ -279,19 +279,19 @@ def CallOp : Std_Op<"call", [CallOpInterface]> {
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, FuncOp callee,"
-    "ArrayRef<Value *> operands = {}", [{
+    "ValueRange operands = {}", [{
       result.addOperands(operands);
       result.addAttribute("callee", builder->getSymbolRefAttr(callee));
       result.addTypes(callee.getType().getResults());
   }]>, OpBuilder<
     "Builder *builder, OperationState &result, SymbolRefAttr callee,"
-    "ArrayRef<Type> results, ArrayRef<Value *> operands = {}", [{
+    "ArrayRef<Type> results, ValueRange operands = {}", [{
       result.addOperands(operands);
       result.addAttribute("callee", callee);
       result.addTypes(results);
   }]>, OpBuilder<
     "Builder *builder, OperationState &result, StringRef callee,"
-    "ArrayRef<Type> results, ArrayRef<Value *> operands = {}", [{
+    "ArrayRef<Type> results, ValueRange operands = {}", [{
       build(builder, result, builder->getSymbolRefAttr(callee), results,
             operands);
   }]>];
@@ -331,7 +331,7 @@ def CallIndirectOp : Std_Op<"call_indirect", [CallOpInterface]> {
 
   let builders = [OpBuilder<
     "Builder *, OperationState &result, Value *callee,"
-    "ArrayRef<Value *> operands = {}", [{
+    "ValueRange operands = {}", [{
       result.operands.push_back(callee);
       result.addOperands(operands);
       result.addTypes(callee->getType().cast<FunctionType>().getResults());
@@ -503,8 +503,8 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
 
   let builders = [OpBuilder<
     "Builder *, OperationState &result, Value *condition,"
-    "Block *trueDest, ArrayRef<Value *> trueOperands,"
-    "Block *falseDest, ArrayRef<Value *> falseOperands", [{
+    "Block *trueDest, ValueRange trueOperands,"
+    "Block *falseDest, ValueRange falseOperands", [{
       result.addOperands(condition);
       result.addSuccessor(trueDest, trueOperands);
       result.addSuccessor(falseDest, falseOperands);
@@ -731,7 +731,7 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Value *aggregate,"
-    "ArrayRef<Value *> indices = {}", [{
+    "ValueRange indices = {}", [{
       auto resType = aggregate->getType().cast<ShapedType>()
                                          .getElementType();
       build(builder, result, resType, aggregate, indices);
@@ -817,7 +817,7 @@ def LoadOp : Std_Op<"load"> {
 
   let builders = [OpBuilder<
     "Builder *, OperationState &result, Value *memref,"
-    "ArrayRef<Value *> indices = {}", [{
+    "ValueRange indices = {}", [{
       auto memrefType = memref->getType().cast<MemRefType>();
       result.addOperands(memref);
       result.addOperands(indices);
@@ -842,7 +842,8 @@ def MemRefCastOp : CastOp<"memref_cast"> {
   let description = [{
     The "memref_cast" operation converts a memref from one type to an equivalent
     type with a compatible shape. The source and destination types are
-    when both are memref types with the same element type, affine mappings,
+    compatible if:
+    a. both are ranked memref types with the same element type, affine mappings,
     address space, and rank but where the individual dimensions may add or
     remove constant dimensions from the memref type.
 
@@ -850,6 +851,7 @@ def MemRefCastOp : CastOp<"memref_cast"> {
     acts as an assertion that fails at runtime of the dynamic dimensions
     disagree with resultant destination size.
 
+    Example:
     Assert that the input dynamic shape matches the destination static shape.
        %2 = memref_cast %1 : memref<?x?xf32> to memref<4x4xf32>
     Erase static shape information, replacing it with dynamic information.
@@ -864,10 +866,20 @@ def MemRefCastOp : CastOp<"memref_cast"> {
     dynamic information.
        %5 = memref_cast %1 : memref<12x4xf32, offset:5, strides: [4, 1]> to
                              memref<12x4xf32, offset:?, strides: [?, ?]>
+
+    b. either or both memref types are unranked with the same element type, and
+    address space.
+
+    Example:
+    Cast to concrete shape.
+        %4 = memref_cast %1 : memref<*xf32> to memref<4x?xf32>
+
+    Erase rank information.
+        %5 = memref_cast %1 : memref<4x?xf32> to memref<*xf32>
   }];
 
-  let arguments = (ins AnyMemRef:$source);
-  let results = (outs AnyMemRef);
+  let arguments = (ins AnyRankedOrUnrankedMemRef:$source);
+  let results = (outs AnyRankedOrUnrankedMemRef);
 
   let extraClassDeclaration = [{
     /// Return true if `a` and `b` are valid operand and result pairs for
@@ -875,7 +887,7 @@ def MemRefCastOp : CastOp<"memref_cast"> {
     static bool areCastCompatible(Type a, Type b);
 
     /// The result of a memref_cast is always a memref.
-    MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
+    Type getType() { return getResult()->getType(); }
   }];
 }
 
@@ -1224,7 +1236,7 @@ def SubViewOp : Std_Op<"subview", [AttrSizedOperandSegments, NoSideEffect]> {
         : memref<?x?xf32, (d0, d1)[s0, s1, s2] -> (d0 * s1 + d1 * s2 + s0)> to
           memref<4x4xf32, (d0, d1)[r0, r1, r2] -> (d0 * r1 + d1 * r2 + r0)>
 
-      // Note that the subview op does not gaurantee that the result
+      // Note that the subview op does not guarantee that the result
       // memref is "inbounds" w.r.t to base memref. It is upto the client
       // to ensure that the subview is accessed in a manner that is
       // in-bounds.
@@ -1246,8 +1258,8 @@ def SubViewOp : Std_Op<"subview", [AttrSizedOperandSegments, NoSideEffect]> {
   let builders = [
     OpBuilder<
       "Builder *b, OperationState &result, Value *source, "
-      "ArrayRef<Value *> offsets, ArrayRef<Value *> sizes, "
-      "ArrayRef<Value *> strides, Type resultType = Type(), "
+      "ValueRange offsets, ValueRange sizes, "
+      "ValueRange strides, Type resultType = Type(), "
       "ArrayRef<NamedAttribute> attrs = {}">,
     OpBuilder<
       "Builder *builder, OperationState &result, "

@@ -28,17 +28,134 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
-#include "tensorflow/lite/nnapi/nnapi_handler.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
 namespace tflite {
 namespace delegate {
 namespace nnapi {
 
-class NnApiMock : public ::tflite::nnapi::NnApiHandler {
+class NnApiMock {
  public:
+  template <int Value>
+  void GetDeviceCountReturns() {
+    nnapi_->ANeuralNetworks_getDeviceCount = [](uint32_t* numDevices) -> int {
+      *numDevices = 2;
+      return Value;
+    };
+  }
+
+  template <int Value>
+  void ModelCreateReturns() {
+    nnapi_->ANeuralNetworksModel_create = [](ANeuralNetworksModel** model) {
+      *model = reinterpret_cast<ANeuralNetworksModel*>(1);
+      return Value;
+    };
+  }
+
+  template <int Value>
+  void AddOperandReturns() {
+    nnapi_->ANeuralNetworksModel_addOperand =
+        [](ANeuralNetworksModel* model,
+           const ANeuralNetworksOperandType* type) { return Value; };
+  }
+
+  template <int Value>
+  void SetOperandValueReturns() {
+    nnapi_->ANeuralNetworksModel_setOperandValue =
+        [](ANeuralNetworksModel* model, int32_t index, const void* buffer,
+           size_t length) { return Value; };
+  }
+
+  template <int Value>
+  void AddOperationReturns() {
+    nnapi_->ANeuralNetworksModel_addOperation =
+        [](ANeuralNetworksModel* model, ANeuralNetworksOperationType type,
+           uint32_t inputCount, const uint32_t* inputs, uint32_t outputCount,
+           const uint32_t* outputs) { return Value; };
+  }
+
+  template <int Value>
+  void IdentifyInputAndOutputsReturns() {
+    nnapi_->ANeuralNetworksModel_identifyInputsAndOutputs =
+        [](ANeuralNetworksModel* model, uint32_t inputCount,
+           const uint32_t* inputs, uint32_t outputCount,
+           const uint32_t* outputs) { return Value; };
+  }
+
+  template <int Value>
+  void RelaxComputationFloatReturns() {
+    nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16 =
+        [](ANeuralNetworksModel* model, bool allow) { return Value; };
+  }
+
+  template <int Value>
+  void ModelFinishReturns() {
+    nnapi_->ANeuralNetworksModel_finish = [](ANeuralNetworksModel* model) {
+      return Value;
+    };
+  }
+
+  template <int Value>
+  void MemoryCreateFromFdReturns() {
+    nnapi_->ANeuralNetworksMemory_createFromFd =
+        [](size_t size, int protect, int fd, size_t offset,
+           ANeuralNetworksMemory** memory) {
+          *memory = reinterpret_cast<ANeuralNetworksMemory*>(2);
+          return Value;
+        };
+  }
+
+  template <int Value>
+  void CompilationCreateReturns() {
+    nnapi_->ANeuralNetworksCompilation_create =
+        [](ANeuralNetworksModel* model,
+           ANeuralNetworksCompilation** compilation) {
+          *compilation = reinterpret_cast<ANeuralNetworksCompilation*>(3);
+          return Value;
+        };
+  }
+
+  template <int Value>
+  void CompilationFinishReturns() {
+    nnapi_->ANeuralNetworksCompilation_finish =
+        [](ANeuralNetworksCompilation* compilation) { return Value; };
+  }
+
+  template <int Value>
+  void ExecutionCreateReturns() {
+    nnapi_->ANeuralNetworksExecution_create =
+        [](ANeuralNetworksCompilation* compilation,
+           ANeuralNetworksExecution** execution) {
+          if (compilation == nullptr) return 1;
+          *execution = reinterpret_cast<ANeuralNetworksExecution*>(4);
+          return Value;
+        };
+  }
+  template <int Value>
+  void ExecutionSetInputFromMemoryReturns() {
+    nnapi_->ANeuralNetworksExecution_setInputFromMemory =
+        [](ANeuralNetworksExecution* execution, int32_t index,
+           const ANeuralNetworksOperandType* type,
+           const ANeuralNetworksMemory* memory, size_t offset,
+           size_t length) { return Value; };
+  }
+  template <int Value>
+  void ExecutionSetOutputFromMemoryReturns() {
+    nnapi_->ANeuralNetworksExecution_setOutputFromMemory =
+        [](ANeuralNetworksExecution* execution, int32_t index,
+           const ANeuralNetworksOperandType* type,
+           const ANeuralNetworksMemory* memory, size_t offset,
+           size_t length) { return Value; };
+  }
+
+  template <int Value>
+  void ExecutionComputeReturns() {
+    nnapi_->ANeuralNetworksExecution_compute =
+        [](ANeuralNetworksExecution* execution) { return Value; };
+  }
+
   explicit NnApiMock(NnApi* nnapi, int android_sdk_version = 29)
-      : ::tflite::nnapi::NnApiHandler(nnapi) {
+      : nnapi_(nnapi), prev_nnapi_(*nnapi) {
     nnapi_->nnapi_exists = true;
     nnapi_->android_sdk_version = android_sdk_version;
 
@@ -69,7 +186,14 @@ class NnApiMock : public ::tflite::nnapi::NnApiHandler {
     ExecutionComputeReturns<0>();
   }
 
-  ~NnApiMock() { Reset(); }
+  ~NnApiMock() {
+    // Restores global NNAPI to original value for non mocked tests
+    *nnapi_ = prev_nnapi_;
+  }
+
+ private:
+  NnApi* nnapi_;
+  NnApi prev_nnapi_;
 };
 
 class NnApiDelegateMockTest : public ::testing::Test {

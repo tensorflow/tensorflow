@@ -25,6 +25,7 @@ from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.engine import training_v1
 from tensorflow.python.keras.engine.base_layer import AddMetric
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_layer import Input
@@ -33,6 +34,7 @@ from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -447,6 +449,8 @@ def _in_place_subclassed_model_reset(model):
     ValueError: In case the model uses a subclassed model as inner layer.
   """
   assert not model._is_graph_network  # Only makes sense for subclassed networks
+  # Select correct base class for new Model.
+  version_utils.swap_class(model.__class__, training.Model, training_v1.Model)
   # Retrieve all layers tracked by the model as well as their attribute names
   attributes_cache = {}
   for name in dir(model):

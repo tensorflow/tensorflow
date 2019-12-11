@@ -10,7 +10,10 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
+exports_files([
+    "LICENSE",
+    "test_example.proto",
+])
 
 tf_py_test(
     name = "decode_proto_op_test",

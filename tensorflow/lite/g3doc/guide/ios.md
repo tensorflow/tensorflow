@@ -7,7 +7,7 @@ example:
 image classification example</a>
 
 For an explanation of the source code, you should also read
-[TensorFlow Lite iOS image classification](https://www.tensorflow.org/lite/models/image_classification/ios).
+[TensorFlow Lite iOS image classification](https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/ios/EXPLORE_THE_CODE.md).
 
 This example app uses
 [image classification](https://www.tensorflow.org/lite/models/image_classification/overview)

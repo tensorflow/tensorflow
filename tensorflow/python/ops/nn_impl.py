@@ -38,6 +38,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import util as losses_util
+from tensorflow.python.platform import device_context
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
@@ -707,22 +708,6 @@ def zero_fraction(value, name=None):
     return array_ops.identity(zero_fraction_float32, "fraction")
 
 
-# copybara:strip_begin
-# TODO(b/138808492): Remove code inside copybara
-# to make TPU code and CPU code consistent.
-def _enclosing_tpu_context():
-  # pylint: disable=protected-access
-  context = ops.get_default_graph()._get_control_flow_context()
-  # pylint: enable=protected-access
-  while context is not None and not isinstance(
-      context, control_flow_ops.XLAControlFlowContext):
-    context = context.outer_context
-  return context
-
-
-# copybara:strip_end
-
-
 # pylint: disable=redefined-builtin
 @tf_export(v1=["nn.depthwise_conv2d"])
 def depthwise_conv2d(input,
@@ -782,11 +767,8 @@ def depthwise_conv2d(input,
     if rate is None:
       rate = [1, 1]
 
-    # copybara:strip_begin
-    # TODO(b/138808492): Remove code inside copybara
-    # to make TPU code and CPU code consistent.
     # Use depthwise_conv2d_native if executing on TPU.
-    if _enclosing_tpu_context() is not None:
+    if device_context.enclosing_tpu_context() is not None:
       if data_format == "NCHW":
         dilations = [1, 1, rate[0], rate[1]]
       else:
@@ -799,7 +781,6 @@ def depthwise_conv2d(input,
           data_format=data_format,
           dilations=dilations,
           name=name)
-    # copybara:strip_end
 
     def op(input_converted, _, padding):
       return nn_ops.depthwise_conv2d_native(

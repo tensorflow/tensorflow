@@ -77,7 +77,7 @@ py_library(
 py_binary(
     name = "toco_from_protos",
     srcs = ["toco_from_protos.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:_pywrap_toco_api",
@@ -94,6 +94,7 @@ tf_py_test(
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
     ],
+    python_version = "PY3",
     tags = [
         "no_oss",
         "no_pip",

@@ -134,7 +134,7 @@ unknown dimension can be queried using the "dim" builtin as shown below.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 func foo(...) {
   %A = alloc <8x?xf32, #lmap> (%N)
   ...
@@ -532,7 +532,7 @@ the existing LLVM type parsing infrastructure.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 %s = "foo"() : () -> !llvm<"i32*">
 ```
 
@@ -588,7 +588,7 @@ represents computation.
 
 ### Non-affine control flow
 
-```mlir {.mlir}
+```mlir
 // A simple linear search in every row of a matrix
 for (i = 0; i < N; i++) {
   for (j = 0; j < N; j++) {
@@ -604,7 +604,7 @@ for (i = 0; i < N; i++) {
 The presence of dynamic control flow leads to an inner non-affine function
 nested in an outer function that using affine loops.
 
-```mlir {.mlir}
+```mlir
 func @search(%A: memref<?x?xi32, %S: <?xi32>, %key : i32) {
   %ni = dim %A, 0 : memref<?x?xi32>
   // This loop can be parallelized
@@ -662,7 +662,7 @@ for (i = 0; i < N; i++)
        }
 ```
 
-```mlir {.mlir}
+```mlir
 func @outer_nest(%n : index) {
   affine.for %i = 0 to %n {
     affine.for %j = 0 to %n {
@@ -689,7 +689,7 @@ The following example illustrates a reference implementation of a 2D
 convolution, which uses an integer set `#domain` to represent valid input data
 in a dilated convolution.
 
-```mlir {.mlir}
+```mlir
 // Dilation factors S0 and S1 can be constant folded if constant at compile time.
 #domain = (d0, d1)[S0,S1,S2,S3]: (d0 % S0 == 0, d1 % S1 == 0, d0 >= 0, d1 >= 0,
                                    S3 - d0 - 1 >= 0, S4 - d1 - 1 >= 0)
@@ -805,7 +805,7 @@ which is called a schedule tree. Each non-leaf node of the tree is an abstract
 polyhedral dimension corresponding to an abstract fused loop for each ML
 instruction that appears in that branch. Each leaf node is an ML Instruction.
 
-```mlir {.mlir}
+```mlir
 // A tiled matmul code (128x128x128) represented in schedule tree form
 
 // #map0 = (d0, d1, d2, d3, d4, d5) -> (128*d0 + d3, 128*d1 + d4, 128*d2 + d5)
@@ -859,7 +859,7 @@ constraints on the identifiers.
 
 Syntax:
 
-``` {.ebnf}
+```
 // Affine relation definition at the top of file
 affine-rel-def ::= affine-rel-id `=` affine-relation-inline
 
@@ -890,7 +890,7 @@ dimensions.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 // read relation: two elements ( d0 <= r0 <= d0+1 )
 ##aff_rel9 = (d0) -> (r0) : r0 - d0 >= 0, d0 - r0 + 1 >= 0
 
@@ -966,7 +966,7 @@ TODO: Design this, and update to use function attribute syntax.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 ##rel9 ( ) [s0] -> (r0, r1) : 0 <= r0 <= 1023, 0 <= r1 <= s0 - 1
 
 func @cblas_reduce_ffi(%M: memref<1024 x ? x f32, #layout_map0, /*mem=*/0>)
@@ -1027,7 +1027,7 @@ The abandoned design of supporting escaping scalars is as follows:
 
 Syntax:
 
-``` {.ebnf}
+```
 [<out-var-list> =]
 for %<index-variable-name> = <lower-bound> ... <upper-bound> step <step>
    [with <in-var-list>] { <loop-instruction-list> }
@@ -1040,7 +1040,7 @@ is a list of instructions that may also include a yield instruction.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 // Return sum of elements in 1-dimensional mref A
 func i32 @sum(%A : memref<?xi32>, %N : i32) -> (i32) {
    %init = 0
@@ -1057,7 +1057,7 @@ func i32 @sum(%A : memref<?xi32>, %N : i32) -> (i32) {
 
 Syntax:
 
-``` {.ebnf}
+```
 <out-var-list> = affine.if (<cond-list>) {...} [else {...}]
 ```
 
@@ -1070,7 +1070,7 @@ this situation.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 // Compute sum of half of the array
 func i32 @sum_half(%A : memref<?xi32>, %N : i32) -> (i32) {
    %s0 = 0

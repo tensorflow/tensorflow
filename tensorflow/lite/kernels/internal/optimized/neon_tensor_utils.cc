@@ -957,11 +957,6 @@ void NeonCpuBackendGemm(const int8_t* input, const int32_t* bias,
   using ::tflite::cpu_backend_gemm::Gemm;
   using ::tflite::cpu_backend_gemm::GemmParams;
   using ::tflite::cpu_backend_gemm::MatrixParams;
-  using ::tflite::cpu_backend_gemm::QuantizationFlavor;
-
-  ruy::Matrix<int8_t> ruy_lhs;
-  ruy::Matrix<int8_t> ruy_rhs;
-  ruy::Matrix<int32_t> ruy_dst;
 
   MatrixParams<int8_t> lhs_params;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
@@ -978,15 +973,10 @@ void NeonCpuBackendGemm(const int8_t* input, const int32_t* bias,
   dst_params.rows = n_output;
   dst_params.cols = n_batch;
 
-  cpu_backend_gemm::detail::MakeRuyMatrix(lhs_params, input_to_gate_weights,
-                                          &ruy_lhs);
-  cpu_backend_gemm::detail::MakeRuyMatrix(rhs_params, input, &ruy_rhs);
-  cpu_backend_gemm::detail::MakeRuyMatrix(dst_params, scratch, &ruy_dst);
-
-  ruy::BasicSpec<int32_t, int32_t> ruy_spec;
-  ruy_spec.bias = bias;
-  ruy::Mul<ruy::kAllPaths>(ruy_lhs, ruy_rhs, ruy_spec, context->ruy_context(),
-                           &ruy_dst);
+  GemmParams<int32, int32> gemm_params;
+  gemm_params.bias = bias;
+  cpu_backend_gemm::Gemm(lhs_params, input_to_gate_weights, rhs_params, input,
+                         dst_params, scratch, gemm_params, context);
 }
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
@@ -1514,19 +1504,25 @@ void NeonApplyTanhImpl(const int16_t* input, int32_t n_batch, int32_t n_input,
   }
 }
 
-void NeonApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                    int16_t* output) {
-  NeonApplyTanhImpl<0>(input, n_batch, n_input, output);
-}
-
-void NeonApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                    int16_t* output) {
-  NeonApplyTanhImpl<3>(input, n_batch, n_input, output);
-}
-
-void NeonApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                    int16_t* output) {
-  NeonApplyTanhImpl<4>(input, n_batch, n_input, output);
+void NeonApplyTanh(int32_t integer_bits, const int16_t* input, int32_t n_batch,
+                   int32_t n_input, int16_t* output) {
+  assert(integer_bits <= 6);
+#define DISPATCH_TANH(i)                                   \
+  case i:                                                  \
+    NeonApplyTanhImpl<i>(input, n_batch, n_input, output); \
+    break;
+  switch (integer_bits) {
+    DISPATCH_TANH(0);
+    DISPATCH_TANH(1);
+    DISPATCH_TANH(2);
+    DISPATCH_TANH(3);
+    DISPATCH_TANH(4);
+    DISPATCH_TANH(5);
+    DISPATCH_TANH(6);
+    default:
+      return;
+  }
+#undef DISPATCH_TANH
 }
 
 void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,

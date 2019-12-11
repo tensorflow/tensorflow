@@ -94,8 +94,16 @@ cuda_py_test(
         "//tensorflow/python/tools:freeze_graph_lib",
         "//tensorflow/python/tools:saved_model_utils",
     ],
+    data = [
+        "test/testdata/tftrt_2.0_saved_model/saved_model.pb",
+        "test/testdata/tftrt_2.0_saved_model/variables/variables.data-00000-of-00002",
+        "test/testdata/tftrt_2.0_saved_model/variables/variables.data-00001-of-00002",
+        "test/testdata/tftrt_2.0_saved_model/variables/variables.index",
+    ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_pip",
         "no_rocm",
         "no_windows",
         "nomac",
@@ -131,6 +139,7 @@ cuda_py_tests(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_rocm",
@@ -150,6 +159,7 @@ cuda_py_tests(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    python_version = "PY3",
     tags = [
         "no_rocm",
         "no_windows",
@@ -169,15 +179,11 @@ cuda_py_test(
         "//tensorflow/python/estimator:estimator",
     ],
     data = [
-        "test/testdata/gen_tftrt_model.py",
         "test/testdata/mnist/checkpoint",
         "test/testdata/mnist/model.ckpt-46900.data-00000-of-00001",
         "test/testdata/mnist/model.ckpt-46900.index",
-        "test/testdata/tftrt_2.0_saved_model/saved_model.pb",
-        "test/testdata/tftrt_2.0_saved_model/variables/variables.data-00000-of-00002",
-        "test/testdata/tftrt_2.0_saved_model/variables/variables.data-00001-of-00002",
-        "test/testdata/tftrt_2.0_saved_model/variables/variables.index",
     ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_oss",  # TODO(b/125290478): allow running in at least some OSS configurations.

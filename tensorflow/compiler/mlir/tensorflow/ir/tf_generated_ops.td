@@ -94,6 +94,8 @@ Inputs must be of same size and shape.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+
+  let hasFolder = 1;
 }
 
 def TF_AddV2Op : TF_Op<"AddV2", [Broadcastable, Commutative, NoSideEffect]>,
@@ -143,6 +145,8 @@ retained with length 1.
   );
 
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_AnyOp : TF_Op<"Any", [NoSideEffect]> {
@@ -169,6 +173,8 @@ retained with length 1.
   );
 
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_ArgMaxOp : TF_Op<"ArgMax", [NoSideEffect]> {
@@ -1263,6 +1269,89 @@ def TF_DivNoNanOp : TF_Op<"DivNoNan", [Broadcastable, NoSideEffect]>,
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_DynamicStitchOp : TF_Op<"DynamicStitch", [NoSideEffect, SameVariadicOperandSize]> {
+  let summary = [{
+Interleave the values from the `data` tensors into a single tensor.
+  }];
+
+  let description = [{
+Builds a merged tensor such that
+
+```python
+    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]
+```
+
+For example, if each `indices[m]` is scalar or vector, we have
+
+```python
+    # Scalar indices:
+    merged[indices[m], ...] = data[m][...]
+
+    # Vector indices:
+    merged[indices[m][i], ...] = data[m][i, ...]
+```
+
+Each `data[i].shape` must start with the corresponding `indices[i].shape`,
+and the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we
+must have `data[i].shape = indices[i].shape + constant`.  In terms of this
+`constant`, the output shape is
+
+    merged.shape = [max(indices)] + constant
+
+Values are merged in order, so if an index appears in both `indices[m][i]` and
+`indices[n][j]` for `(m,i) < (n,j)` the slice `data[n][j]` will appear in the
+merged result. If you do not need this guarantee, ParallelDynamicStitch might
+perform better on some devices.
+
+For example:
+
+```python
+    indices[0] = 6
+    indices[1] = [4, 1]
+    indices[2] = [[5, 2], [0, 3]]
+    data[0] = [61, 62]
+    data[1] = [[41, 42], [11, 12]]
+    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]
+    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],
+              [51, 52], [61, 62]]
+```
+
+This method can be used to merge partitions created by `dynamic_partition`
+as illustrated on the following example:
+
+```python
+    # Apply function (increments x_i) on elements for which a certain condition
+    # apply (x_i != -1 in this example).
+    x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])
+    condition_mask=tf.not_equal(x,tf.constant(-1.))
+    partitioned_data = tf.dynamic_partition(
+        x, tf.cast(condition_mask, tf.int32) , 2)
+    partitioned_data[1] = partitioned_data[1] + 1.0
+    condition_indices = tf.dynamic_partition(
+        tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)
+    x = tf.dynamic_stitch(condition_indices, partitioned_data)
+    # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain
+    # unchanged.
+```
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/DynamicStitch.png" alt>
+</div>
+  }];
+
+  let arguments = (ins
+    Variadic<I32Tensor>:$indices,
+    Variadic<TF_Tensor>:$data
+  );
+
+  let results = (outs
+    TF_Tensor:$merged
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
 def TF_EinsumOp : TF_Op<"Einsum", [NoSideEffect]> {
   let summary = [{
 Tensor contraction according to Einstein summation convention.
@@ -2116,6 +2205,28 @@ tf.math.greater_equal(x, y) ==> [True, False, True, True]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_HashTableV2Op : TF_Op<"HashTableV2", []> {
+  let summary = "Creates a non-initialized hash table.";
+
+  let description = [{
+This op creates a hash table, specifying the type of its keys and values.
+Before using the table you will have to initialize it.  After initialization the
+table will be immutable.
+  }];
+
+  let arguments = (ins
+    StrAttr:$container,
+    StrAttr:$shared_name,
+    DefaultValuedAttr<BoolAttr, "false">:$use_node_name_sharing,
+    TypeAttr:$key_dtype,
+    TypeAttr:$value_dtype
+  );
+
+  let results = (outs
+    TF_ResourceTensor:$table_handle
+  );
+}
+
 def TF_IdentityNOp : TF_Op<"IdentityN", [NoSideEffect]> {
   let summary = [{
 Returns a list of tensors with the same shapes and contents as the input
@@ -2473,7 +2584,7 @@ def TF_LogicalAndOp : TF_Op<"LogicalAnd", [Broadcastable, Commutative, NoSideEff
 }
 
 def TF_LogicalNotOp : TF_Op<"LogicalNot", [NoSideEffect, SameOperandsAndResultType]> {
-  let summary = "Returns the truth value of NOT x element-wise.";
+  let summary = "Returns the truth value of `NOT x` element-wise.";
 
   let description = [{
   }];
@@ -4334,6 +4445,37 @@ Resize `images` to `size` using nearest neighbor interpolation.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_ResourceApplyAdamOp : TF_Op<"ResourceApplyAdam", []> {
+  let summary = "Update '*var' according to the Adam algorithm.";
+
+  let description = [{
+$$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$
+$$m_t := beta_1 * m_{t-1} + (1 - beta_1) * g$$
+$$v_t := beta_2 * v_{t-1} + (1 - beta_2) * g * g$$
+$$variable := variable - lr_t * m_t / (\sqrt{v_t} + \epsilon)$$
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$var,
+    TF_ResourceTensor:$m,
+    TF_ResourceTensor:$v,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$beta1_power,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$beta2_power,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$beta1,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$beta2,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$epsilon,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$grad,
+
+    DefaultValuedAttr<BoolAttr, "false">:$use_locking,
+    DefaultValuedAttr<BoolAttr, "false">:$use_nesterov
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<3>;
+}
+
 def TF_ResourceApplyGradientDescentOp : TF_Op<"ResourceApplyGradientDescent", []> {
   let summary = "Update '*var' by subtracting 'alpha' * 'delta' from it.";
 
@@ -4351,6 +4493,32 @@ def TF_ResourceApplyGradientDescentOp : TF_Op<"ResourceApplyGradientDescent", []
   let results = (outs);
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_ResourceApplyKerasMomentumOp : TF_Op<"ResourceApplyKerasMomentum", []> {
+  let summary = "Update '*var' according to the momentum scheme.";
+
+  let description = [{
+Set use_nesterov = True if you want to use Nesterov momentum.
+
+accum = accum * momentum - lr * grad
+var += accum
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$var,
+    TF_ResourceTensor:$accum,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$grad,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$momentum,
+
+    DefaultValuedAttr<BoolAttr, "false">:$use_locking,
+    DefaultValuedAttr<BoolAttr, "false">:$use_nesterov
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
 }
 
 def TF_ReverseSequenceOp : TF_Op<"ReverseSequence", [NoSideEffect]> {
@@ -5117,6 +5285,8 @@ def TF_SplitVOp : TF_Op<"SplitV", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr Tlen = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultSizeAttr num_split = TF_DerivedResultSizeAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_SqrtOp : TF_Op<"Sqrt", [NoSideEffect, SameOperandsAndResultType]> {
@@ -5489,6 +5659,65 @@ output. For the internal use of the distributed TPU compiler.
 
   TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
+}
+
+def TF_TPUReplicatedInputOp : TF_Op<"TPUReplicatedInput", [NoSideEffect]> {
+  let summary = "Connects N inputs to an N-way replicated TPU computation.";
+
+  let description = [{
+This operation holds a replicated input to a `tpu.replicate()` computation subgraph.
+Each replicated input has the same shape and type alongside the output.
+
+For example:
+```
+%a = "tf.opA"()
+%b = "tf.opB"()
+%replicated_input = "tf.TPUReplicatedInput"(%a, %b)
+%computation = "tf.Computation"(%replicated_input)
+```
+The above computation has a replicated input of two replicas.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs,
+
+    DefaultValuedAttr<BoolAttr, "false">:$is_mirrored_variable,
+    DefaultValuedAttr<I64Attr, "-1">:$index
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
+def TF_TPUReplicatedOutputOp : TF_Op<"TPUReplicatedOutput", [NoSideEffect]> {
+  let summary = "Connects N outputs from an N-way replicated TPU computation.";
+
+  let description = [{
+This operation holds a replicated output from a `tpu.replicate()` computation subgraph.
+Each replicated output has the same shape and type alongside the input.
+
+For example:
+```
+%computation = "tf.Computation"()
+%replicated_output:2 = "tf.TPUReplicatedOutput"(%computation)
+```
+The above computation has a replicated output of two replicas.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$outputs
+  );
+
+  TF_DerivedResultSizeAttr num_replicas = TF_DerivedResultSizeAttr<0>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType]> {
@@ -5905,6 +6134,8 @@ This is the opposite of `pack`.
 
   TF_DerivedResultSizeAttr num = TF_DerivedResultSizeAttr<0>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_VariableShapeOp : TF_Op<"VariableShape", []> {

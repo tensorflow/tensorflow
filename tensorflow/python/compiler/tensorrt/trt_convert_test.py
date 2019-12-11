@@ -21,9 +21,8 @@ from __future__ import print_function
 import gc
 import os
 import tempfile
-import numpy as np
-
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.compiler.tf2tensorrt.wrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
@@ -897,22 +896,19 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return
 
     model_dir = test.test_src_dir_path(
-        'python/compiler/tensorrt/test/testdata/tftrt_2.0_saved_model')
-    saved_model_loaded = load.load(
-        model_dir, tags=[tag_constants.SERVING])
+        "python/compiler/tensorrt/test/testdata/tftrt_2.0_saved_model")
+    saved_model_loaded = load.load(model_dir, tags=[tag_constants.SERVING])
     graph_func = saved_model_loaded.signatures[
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
 
-    np_input1 = ops.convert_to_tensor(
-        np.ones([4, 1, 1]).astype(np.float32))
-    np_input2 = ops.convert_to_tensor(
-        np.ones([4, 1, 1]).astype(np.float32))
-    output = graph_func(input1=np_input1, input2=np_input2)['output_0']
+    np_input1 = ops.convert_to_tensor(np.ones([4, 1, 1]).astype(np.float32))
+    np_input2 = ops.convert_to_tensor(np.ones([4, 1, 1]).astype(np.float32))
+    output = graph_func(input1=np_input1, input2=np_input2)["output_0"]
 
-    self.assertTrue(output.shape == (4, 1, 1))
+    self.assertEqual(output.shape, (4, 1, 1))
     self.assertAllClose(
-        np.asarray([5.0, 5.0, 5.0, 5.0]).reshape([4, 1, 1]),
-        output)
+        np.asarray([5.0, 5.0, 5.0, 5.0]).reshape([4, 1, 1]), output)
+
 
 if __name__ == "__main__":
   test.main()

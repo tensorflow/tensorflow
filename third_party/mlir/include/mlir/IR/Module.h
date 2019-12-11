@@ -118,56 +118,6 @@ public:
   static void build(Builder *, OperationState &) {}
 };
 
-//===----------------------------------------------------------------------===//
-// Module Manager.
-//===----------------------------------------------------------------------===//
-
-/// A class used to manage the symbols held by a module. This class handles
-/// ensures that symbols inserted into a module have a unique name, and provides
-/// efficient named lookup to held symbols.
-class ModuleManager {
-public:
-  ModuleManager(ModuleOp module) : module(module), symbolTable(module) {}
-
-  /// Look up a symbol with the specified name, returning null if no such
-  /// name exists. Names must never include the @ on them.
-  template <typename T, typename NameTy> T lookupSymbol(NameTy &&name) const {
-    return symbolTable.lookup<T>(name);
-  }
-
-  /// Look up a symbol with the specified name, returning null if no such
-  /// name exists. Names must never include the @ on them.
-  template <typename NameTy> Operation *lookupSymbol(NameTy &&name) const {
-    return symbolTable.lookup(name);
-  }
-
-  /// Insert a new symbol into the module, auto-renaming it as necessary.
-  void insert(Operation *op) {
-    symbolTable.insert(op);
-    module.push_back(op);
-  }
-  void insert(Block::iterator insertPt, Operation *op) {
-    symbolTable.insert(op);
-    module.insert(insertPt, op);
-  }
-
-  /// Remove the given symbol from the module symbol table and then erase it.
-  void erase(Operation *op) {
-    symbolTable.erase(op);
-    op->erase();
-  }
-
-  /// Return the internally held module.
-  ModuleOp getModule() const { return module; }
-
-  /// Return the context of the internal module.
-  MLIRContext *getContext() { return module.getContext(); }
-
-private:
-  ModuleOp module;
-  SymbolTable symbolTable;
-};
-
 /// This class acts as an owning reference to a module, and will automatically
 /// destroy the held module if valid.
 class OwningModuleRef {

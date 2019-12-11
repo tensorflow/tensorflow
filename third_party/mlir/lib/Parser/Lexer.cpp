@@ -315,7 +315,7 @@ Token Lexer::lexNumber(const char *tokStart) {
 
 /// Lex an identifier that starts with a prefix followed by suffix-id.
 ///
-///   affine-map-id ::= `#` suffix-id
+///   attribute-id  ::= `#` suffix-id
 ///   ssa-id        ::= '%' suffix-id
 ///   block-id      ::= '^' suffix-id
 ///   type-id       ::= '!' suffix-id

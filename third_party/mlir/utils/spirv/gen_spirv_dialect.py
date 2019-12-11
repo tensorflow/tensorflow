@@ -472,7 +472,7 @@ def get_op_definition(instruction, doc, existing_info):
 
   description = existing_info.get('description', None)
   if description is None:
-    assembly = '\n    ``` {.ebnf}\n'\
+    assembly = '\n    ```\n'\
                '    [TODO]\n'\
                '    ```\n\n'\
                '    For example:\n\n'\

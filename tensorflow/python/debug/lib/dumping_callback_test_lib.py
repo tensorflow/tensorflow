@@ -193,6 +193,11 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
 
     Returns:
       executed_op_types: Types of ops that are created, as a `list` of `str`.
+      executed_graph_ids: A `list` of the same length as `executed_op_types`.
+        If the executed op is a FuncGraph, the corresponding element of the
+        `list` will be the ID of the FuncGraph. Else, the corresponding element
+        will be an empty string. This allows establishing connection between
+        eagerly executed FuncGraphs and their prior graph building.
       input_tensor_ids: Input tensor IDs for each of the ops executed, as a
         `list` of `list` of `int`s, with the same length as `executed_op_types`.
       output_tensor_ids: Output tensor IDs for each of the ops executed, as a
@@ -209,6 +214,7 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
       execution_iter = reader.execution_iterator()
       prev_wall_time = 1
       executed_op_types = []
+      executed_graph_ids = []  # Empty string for execution of inidividual ops.
       input_tensor_ids = []
       output_tensor_ids = []
       tensor_debug_modes = []
@@ -218,6 +224,7 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
         prev_wall_time = debug_event.wall_time
         execution = debug_event.execution
         executed_op_types.append(execution.op_type)
+        executed_graph_ids.append(execution.graph_id)
         input_tensor_ids.append(execution.input_tensor_ids)
         output_tensor_ids.append(execution.output_tensor_ids)
         tensor_debug_modes.append(execution.tensor_debug_mode)
@@ -227,8 +234,8 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
         ])
       # TODO(cais): When tensor debug modes other than NO_TENSOR is supported,
       # return tensor_values as well.
-      return (executed_op_types, input_tensor_ids, output_tensor_ids,
-              tensor_debug_modes, tensor_values)
+      return (executed_op_types, executed_graph_ids, input_tensor_ids,
+              output_tensor_ids, tensor_debug_modes, tensor_values)
 
   def _readAndCheckGraphExecutionTracesFile(self, context_ids):
     """Read & verify the content of the .graph_execution_trace debug-event file.

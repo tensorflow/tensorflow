@@ -44,8 +44,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     num_samples = 100
     input_dim = 50
 
-    model = model_util.SimpleTestModel(
-        num_classes=num_classes, use_dp=True, use_bn=True)
+    model = testing_utils.SmallSubclassMLP(
+        num_hidden=32, num_classes=num_classes, use_dp=True, use_bn=True)
     model.compile(
         loss='mse',
         optimizer='rmsprop',
@@ -87,8 +87,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     input_dim = 50
 
     with self.cached_session():
-      model = model_util.SimpleTestModel(
-          num_classes=num_classes, use_dp=True, use_bn=True)
+      model = testing_utils.SmallSubclassMLP(
+          num_hidden=32, num_classes=num_classes, use_dp=True, use_bn=True)
       model.compile(
           loss='mse',
           optimizer='rmsprop',

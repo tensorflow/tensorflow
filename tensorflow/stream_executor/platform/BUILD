@@ -34,11 +34,3 @@ cc_library(
         "//tensorflow/stream_executor/platform/default:dso_loader",
     ],
 )
-
-filegroup(
-    name = "c_srcs",
-    data = glob([
-        "**/*.cc",
-        "**/*.h",
-    ]),
-)

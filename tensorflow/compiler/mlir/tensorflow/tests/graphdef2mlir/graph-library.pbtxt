@@ -39,10 +39,10 @@ versions {
 # Verify that functions from the library are properly imported.
 
 # CHECK-LABEL:  func @main() {
-# CHECK:    "tf.foo0"()
-# CHECK:    "tf.bar0"()
+# CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = false, f = @foo0}
+# CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = false, f = @bar0}
 
 # CHECK-LABEL:  func @foo0() {
-# CHECK: "tf.bar0"()
+# CHECK: "tf.LegacyCall"() {_disable_call_shape_inference = false, f = @bar0}
 
 # CHECK-LABEL:  func @bar0() {

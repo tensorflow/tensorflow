@@ -52,6 +52,9 @@ const char* kModelSplit = "split.bin";
 const char* kLstmCalibrated = "lstm_calibrated.bin";
 const char* kLstmQuantized = "lstm_quantized.bin";
 
+const char* kLstmCalibrated2 = "lstm_calibrated2.bin";
+const char* kLstmQuantized2 = "lstm_quantized2.bin";
+
 const char* kModelWithUnpack = "unpack.bin";
 
 int FailOnErrorReporter::Report(const char* format, va_list args) {

@@ -61,6 +61,23 @@ static inline bool isFnEntryBlock(Block *block) {
 }
 
 namespace {
+/// A struct for containing a header block's merge and continue targets.
+///
+/// This struct is used to track original structured control flow info from
+/// SPIR-V blob. This info will be used to create spv.selection/spv.loop
+/// later.
+struct BlockMergeInfo {
+  Block *mergeBlock;
+  Block *continueBlock; // nullptr for spv.selection
+
+  BlockMergeInfo() : mergeBlock(nullptr), continueBlock(nullptr) {}
+  BlockMergeInfo(Block *m, Block *c = nullptr)
+      : mergeBlock(m), continueBlock(c) {}
+};
+
+/// Map from a selection/loop's header block to its merge (and continue) target.
+using BlockMergeInfoMap = DenseMap<Block *, BlockMergeInfo>;
+
 /// A SPIR-V module serializer.
 ///
 /// A SPIR-V binary module is a single linear stream of instructions; each
@@ -253,16 +270,6 @@ private:
   //    block and redirect all branches to the old header block to the old
   //    merge block (which contains the spv.selection/spv.loop op now).
 
-  /// A struct for containing a header block's merge and continue targets.
-  struct BlockMergeInfo {
-    Block *mergeBlock;
-    Block *continueBlock; // nullptr for spv.selection
-
-    BlockMergeInfo() : mergeBlock(nullptr), continueBlock(nullptr) {}
-    BlockMergeInfo(Block *m, Block *c = nullptr)
-        : mergeBlock(m), continueBlock(c) {}
-  };
-
   /// For OpPhi instructions, we use block arguments to represent them. OpPhi
   /// encodes a list of (value, predecessor) pairs. At the time of handling the
   /// block containing an OpPhi instruction, the predecessor block might not be
@@ -270,7 +277,7 @@ private:
   /// the block argument from the predecessors. We use the following approach:
   ///
   /// 1. For each OpPhi instruction, add a block argument to the current block
-  ///    in construction. Record the block argment in `valueMap` so its uses
+  ///    in construction. Record the block argument in `valueMap` so its uses
   ///    can be resolved. For the list of (value, predecessor) pairs, update
   ///    `blockPhiInfo` for bookkeeping.
   /// 2. After processing all blocks, loop over `blockPhiInfo` to fix up each
@@ -433,7 +440,7 @@ private:
   DenseMap<uint32_t, Block *> blockMap;
 
   // Header block to its merge (and continue) target mapping.
-  DenseMap<Block *, BlockMergeInfo> blockMergeInfo;
+  BlockMergeInfoMap blockMergeInfo;
 
   // Block to its phi (block argument) mapping.
   DenseMap<Block *, BlockPhiInfo> blockPhiInfo;
@@ -1648,17 +1655,21 @@ public:
   /// This method will create an spv.loop op in the `mergeBlock` and move all
   /// blocks in the structured loop into the spv.loop's region. All branches to
   /// the `headerBlock` will be redirected to the `mergeBlock`.
-  static LogicalResult structurize(Location loc, Block *headerBlock,
-                                   Block *mergeBlock, Block *continueBlock) {
-    return ControlFlowStructurizer(loc, headerBlock, mergeBlock, continueBlock)
+  /// This method will also update `mergeInfo` by remapping all blocks inside to
+  /// the newly cloned ones inside structured control flow op's regions.
+  static LogicalResult structurize(Location loc, BlockMergeInfoMap &mergeInfo,
+                                   Block *headerBlock, Block *mergeBlock,
+                                   Block *continueBlock) {
+    return ControlFlowStructurizer(loc, mergeInfo, headerBlock, mergeBlock,
+                                   continueBlock)
         .structurizeImpl();
   }
 
 private:
-  ControlFlowStructurizer(Location loc, Block *header, Block *merge,
-                          Block *cont)
-      : location(loc), headerBlock(header), mergeBlock(merge),
-        continueBlock(cont) {}
+  ControlFlowStructurizer(Location loc, BlockMergeInfoMap &mergeInfo,
+                          Block *header, Block *merge, Block *cont)
+      : location(loc), blockMergeInfo(mergeInfo), headerBlock(header),
+        mergeBlock(merge), continueBlock(cont) {}
 
   /// Creates a new spv.selection op at the beginning of the `mergeBlock`.
   spirv::SelectionOp createSelectionOp();
@@ -1666,13 +1677,14 @@ private:
   /// Creates a new spv.loop op at the beginning of the `mergeBlock`.
   spirv::LoopOp createLoopOp();
 
-  /// Collects all blocks reachable from `headerBlock` except `mergeBlock` and
-  /// `continueBlock` into `constructBlocks`.
+  /// Collects all blocks reachable from `headerBlock` except `mergeBlock`.
   void collectBlocksInConstruct();
 
   LogicalResult structurizeImpl();
 
   Location location;
+
+  BlockMergeInfoMap &blockMergeInfo;
 
   Block *headerBlock;
   Block *mergeBlock;
@@ -1713,10 +1725,11 @@ void ControlFlowStructurizer::collectBlocksInConstruct() {
   // Put the header block in the work list first.
   constructBlocks.insert(headerBlock);
 
-  // For each item in the work list, add its successors under conditions.
+  // For each item in the work list, add its successors excluding the merge
+  // block.
   for (unsigned i = 0; i < constructBlocks.size(); ++i) {
     for (auto *successor : constructBlocks[i]->getSuccessors())
-      if (successor != mergeBlock && successor != continueBlock)
+      if (successor != mergeBlock)
         constructBlocks.insert(successor);
   }
 }
@@ -1741,11 +1754,6 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
   mapper.map(mergeBlock, &body.back());
 
   collectBlocksInConstruct();
-  if (isLoop) {
-    // Add the loop continue block at the last so it's the second to last block
-    // in LoopOp's region.
-    constructBlocks.insert(continueBlock);
-  }
 
   // We've identified all blocks belonging to the selection/loop's region. Now
   // need to "move" them into the selection/loop. Instead of really moving the
@@ -1779,8 +1787,11 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
         auto *newArg = newBlock->addArgument(blockArg->getType());
         mapper.map(blockArg, newArg);
         LLVM_DEBUG(llvm::dbgs() << "[cf] remapped block argument " << blockArg
-                                << " to " << newArg);
+                                << " to " << newArg << '\n');
       }
+    } else {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "[cf] block " << block << " is a function entry block\n");
     }
 
     for (auto &op : *block)
@@ -1833,13 +1844,42 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
   // All the blocks cloned into the SelectionOp/LoopOp's region can now be
   // cleaned up.
   LLVM_DEBUG(llvm::dbgs() << "[cf] cleaning up blocks after clone\n");
-  // First we need to drop all uses on ops inside all blocks. This is needed
-  // because we can have blocks referencing SSA values from one another.
+  // First we need to drop all operands' references inside all blocks. This is
+  // needed because we can have blocks referencing SSA values from one another.
   for (auto *block : constructBlocks)
     block->dropAllReferences();
 
-  // Then erase all blocks except the old header block.
+  // Then erase all old blocks.
   for (auto *block : constructBlocks) {
+    // We've cloned all blocks belonging to this construct into the structured
+    // control flow op's region. Among these blocks, some may compose another
+    // selection/loop. If so, they will be recorded within blockMergeInfo.
+    // We need to update the pointers there to the newly remapped ones so we can
+    // continue structurizing them later.
+    // TODO(antiagainst): The asserts in the following assumes input SPIR-V blob
+    // forms correctly nested selection/loop constructs. We should relax this
+    // and support error cases better.
+    auto it = blockMergeInfo.find(block);
+    if (it != blockMergeInfo.end()) {
+      Block *newHeader = mapper.lookupOrNull(block);
+      assert(newHeader && "nested loop header block should be remapped!");
+
+      Block *newContinue = it->second.continueBlock;
+      if (newContinue) {
+        newContinue = mapper.lookupOrNull(newContinue);
+        assert(newContinue && "nested loop continue block should be remapped!");
+      }
+
+      Block *newMerge = it->second.mergeBlock;
+      if (Block *mappedTo = mapper.lookupOrNull(newMerge))
+        newMerge = mappedTo;
+
+      // The iterator should be erased before adding a new entry into
+      // blockMergeInfo to avoid iterator invalidation.
+      blockMergeInfo.erase(it);
+      blockMergeInfo.try_emplace(newHeader, newMerge, newContinue);
+    }
+
     // The structured selection/loop's entry block does not have arguments.
     // If the function's header block is also part of the structured control
     // flow, we cannot just simply erase it because it may contain arguments
@@ -1857,6 +1897,11 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
       block->erase();
     }
   }
+
+  LLVM_DEBUG(
+      llvm::dbgs() << "[cf] after structurizing construct with header block "
+                   << headerBlock << ":\n"
+                   << *op << '\n');
 
   return success();
 }
@@ -1913,12 +1958,12 @@ LogicalResult Deserializer::wireUpBlockArgument() {
 LogicalResult Deserializer::structurizeControlFlow() {
   LLVM_DEBUG(llvm::dbgs() << "[cf] start structurizing control flow\n");
 
-  for (const auto &info : blockMergeInfo) {
-    auto *headerBlock = info.first;
+  while (!blockMergeInfo.empty()) {
+    Block *headerBlock = blockMergeInfo.begin()->first;
+    BlockMergeInfo mergeInfo = blockMergeInfo.begin()->second;
+
     LLVM_DEBUG(llvm::dbgs() << "[cf] header block " << headerBlock << ":\n");
     LLVM_DEBUG(headerBlock->print(llvm::dbgs()));
-
-    const auto &mergeInfo = info.second;
 
     auto *mergeBlock = mergeInfo.mergeBlock;
     assert(mergeBlock && "merge block cannot be nullptr");
@@ -1934,11 +1979,14 @@ LogicalResult Deserializer::structurizeControlFlow() {
       LLVM_DEBUG(continueBlock->print(llvm::dbgs()));
     }
 
-    if (failed(ControlFlowStructurizer::structurize(unknownLoc, headerBlock,
-                                                    mergeBlock, continueBlock)))
+    // Erase this case before calling into structurizer, who will update
+    // blockMergeInfo.
+    blockMergeInfo.erase(blockMergeInfo.begin());
+    if (failed(ControlFlowStructurizer::structurize(unknownLoc, blockMergeInfo,
+                                                    headerBlock, mergeBlock,
+                                                    continueBlock)))
       return failure();
   }
-  blockMergeInfo.clear();
 
   LLVM_DEBUG(llvm::dbgs() << "[cf] completed structurizing control flow\n");
   return success();

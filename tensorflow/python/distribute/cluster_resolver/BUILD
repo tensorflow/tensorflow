@@ -101,7 +101,7 @@ tf_py_test(
     ],
     grpc_enabled = True,
     main = "cloud_tpu_client_test.py",
-    python_version = "PY2",
+    python_version = "PY3",
 )
 
 py_library(
@@ -211,7 +211,7 @@ tf_py_test(
     ],
     grpc_enabled = True,
     main = "tpu_cluster_resolver_test.py",
-    python_version = "PY2",
+    python_version = "PY3",
 )
 
 tf_py_test(

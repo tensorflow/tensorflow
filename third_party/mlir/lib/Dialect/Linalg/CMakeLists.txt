@@ -25,4 +25,5 @@ add_dependencies(MLIRLinalg
   MLIRLinalgTransformPatternsIncGen
   MLIRStandardOps
   MLIRStandardToLLVM
+  MLIRVectorOps
   )

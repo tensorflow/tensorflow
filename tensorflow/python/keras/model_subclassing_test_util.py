@@ -23,30 +23,6 @@ from tensorflow.python.keras import testing_utils
 
 
 # pylint: disable=missing-docstring,not-callable
-class SimpleTestModel(keras.Model):
-
-  def __init__(self, use_bn=False, use_dp=False, num_classes=10):
-    super(SimpleTestModel, self).__init__(name='test_model')
-    self.use_bn = use_bn
-    self.use_dp = use_dp
-    self.num_classes = num_classes
-
-    self.dense1 = keras.layers.Dense(32, activation='relu')
-    self.dense2 = keras.layers.Dense(num_classes, activation='softmax')
-    if self.use_dp:
-      self.dp = keras.layers.Dropout(0.5)
-    if self.use_bn:
-      self.bn = keras.layers.BatchNormalization(axis=-1)
-
-  def call(self, x):
-    x = self.dense1(x)
-    if self.use_dp:
-      x = self.dp(x)
-    if self.use_bn:
-      x = self.bn(x)
-    return self.dense2(x)
-
-
 class SimpleConvTestModel(keras.Model):
 
   def __init__(self, num_classes=10):
@@ -92,9 +68,8 @@ class NestedTestModel1(keras.Model):
     self.dense1 = keras.layers.Dense(32, activation='relu')
     self.dense2 = keras.layers.Dense(num_classes, activation='relu')
     self.bn = keras.layers.BatchNormalization()
-    self.test_net = SimpleTestModel(num_classes=4,
-                                    use_bn=True,
-                                    use_dp=True)
+    self.test_net = testing_utils.SmallSubclassMLP(
+        num_hidden=32, num_classes=4, use_bn=True, use_dp=True)
 
   def call(self, inputs):
     x = self.dense1(inputs)

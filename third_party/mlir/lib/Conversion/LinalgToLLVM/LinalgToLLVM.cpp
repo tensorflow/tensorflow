@@ -417,10 +417,8 @@ public:
     if (!libraryCallName)
       return this->matchFailure();
 
-    SmallVector<Value *, 4> operands(op.getOperands().begin(),
-                                     op.getOperands().end());
-    rewriter.replaceOpWithNewOp<mlir::CallOp>(op, libraryCallName.getValue(),
-                                              ArrayRef<Type>{}, operands);
+    rewriter.replaceOpWithNewOp<mlir::CallOp>(
+        op, libraryCallName.getValue(), ArrayRef<Type>{}, op.getOperands());
     return this->matchSuccess();
   }
 };
@@ -444,10 +442,8 @@ public:
     if (!libraryCallName)
       return matchFailure();
 
-    SmallVector<Value *, 4> operands(op.getOperands().begin(),
-                                     op.getOperands().end());
-    rewriter.replaceOpWithNewOp<mlir::CallOp>(op, libraryCallName.getValue(),
-                                              ArrayRef<Type>{}, operands);
+    rewriter.replaceOpWithNewOp<mlir::CallOp>(
+        op, libraryCallName.getValue(), ArrayRef<Type>{}, op.getOperands());
     return matchSuccess();
   }
 };

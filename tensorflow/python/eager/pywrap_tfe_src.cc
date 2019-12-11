@@ -68,13 +68,14 @@ TFE_Op* ReleaseThreadLocalOp() {
 }
 
 TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
-              TF_Status* status) {
+              const char* raw_device_name, TF_Status* status) {
   TFE_Op* maybe_op = ReleaseThreadLocalOp();
   if (maybe_op) {
-    TFE_OpReset(ctx, op_or_function_name, status, maybe_op);
+    TFE_OpReset(ctx, op_or_function_name, raw_device_name, status, maybe_op);
     return maybe_op;
   } else {
-    return TFE_NewOp(ctx, op_or_function_name, status);
+    return NewOrResetOp(ctx, op_or_function_name, raw_device_name, status,
+                        nullptr);
   }
 }
 
@@ -834,14 +835,12 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
                               TFE_CancellationManager* cancellation_manager,
                               TFE_OutputTensorHandles* outputs,
                               TF_Status* out_status) {
-  TFE_Op* op = GetOp(ctx, op_name, out_status);
+  TFE_Op* op = GetOp(ctx, op_name, device_name, out_status);
   auto cleaner = tensorflow::gtl::MakeCleanup([op] { ReturnOp(op); });
   if (!out_status->status.ok()) return;
-  TFE_OpSetDevice(op, device_name, out_status);
-  if (out_status->status.ok()) {
-    for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
-      TFE_OpAddInput(op, inputs->at(i), out_status);
-    }
+
+  for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
+    TFE_OpAddInput(op, inputs->at(i), out_status);
   }
   if (cancellation_manager && out_status->status.ok()) {
     TFE_OpSetCancellationManager(op, cancellation_manager, out_status);
@@ -3506,7 +3505,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
     return nullptr;
   }
 
-  TFE_Op* op = GetOp(op_exec_info.ctx, op_name, status);
+  TFE_Op* op =
+      GetOp(op_exec_info.ctx, op_name, op_exec_info.device_name, status);
   auto cleaner = tensorflow::gtl::MakeCleanup([status, op] {
     ReturnStatus(status);
     ReturnOp(op);
@@ -3571,11 +3571,6 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
         break;
       }
     }
-  }
-
-  TFE_OpSetDevice(op, op_exec_info.device_name, status);
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
-    return nullptr;
   }
 
   // Flat attrs and inputs as required by the record_gradient call. The attrs
