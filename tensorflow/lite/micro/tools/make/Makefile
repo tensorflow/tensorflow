@@ -140,6 +140,7 @@ tensorflow/lite/kernels/internal/reference/integer_ops/softmax.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/mul.h \
 tensorflow/lite/kernels/internal/reference/neg.h \
+tensorflow/lite/kernels/internal/reference/pad.h \
 tensorflow/lite/kernels/internal/reference/pooling.h \
 tensorflow/lite/kernels/internal/reference/prelu.h \
 tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h \

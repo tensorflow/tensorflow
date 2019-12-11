@@ -201,8 +201,7 @@ void ResourceDeviceInference::runOnModule() {
   // Helper that propagates an op's recorded operand device assignments to its
   // called function's arguments.
   auto propagate_operands_to_callee_arguments =
-      [&](Operation* caller,
-          llvm::iterator_range<OperandIterator> caller_operands,
+      [&](Operation* caller, Operation::operand_range caller_operands,
           llvm::StringRef called_func_name,
           const PerFunctionResult& caller_res) {
         auto callee =

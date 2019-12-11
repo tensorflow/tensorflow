@@ -2819,7 +2819,7 @@ public:
       return matchFailure();
     }
     SmallVector<int64_t, 4> staticShape(subViewOp.getNumSizes());
-    for (auto size : enumerate(subViewOp.sizes())) {
+    for (auto size : llvm::enumerate(subViewOp.sizes())) {
       auto defOp = size.value()->getDefiningOp();
       assert(defOp);
       staticShape[size.index()] = cast<ConstantIndexOp>(defOp).getValue();
@@ -2865,7 +2865,7 @@ public:
     }
 
     SmallVector<int64_t, 4> staticStrides(subViewOp.getNumStrides());
-    for (auto stride : enumerate(subViewOp.strides())) {
+    for (auto stride : llvm::enumerate(subViewOp.strides())) {
       auto defOp = stride.value()->getDefiningOp();
       assert(defOp);
       assert(baseStrides[stride.index()] > 0);
@@ -2916,7 +2916,7 @@ public:
     }
 
     auto staticOffset = baseOffset;
-    for (auto offset : enumerate(subViewOp.offsets())) {
+    for (auto offset : llvm::enumerate(subViewOp.offsets())) {
       auto defOp = offset.value()->getDefiningOp();
       assert(defOp);
       assert(baseStrides[offset.index()] > 0);

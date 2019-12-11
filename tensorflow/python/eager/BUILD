@@ -383,7 +383,7 @@ cuda_py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:test_ops",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     shard_count = 15,
 )
 

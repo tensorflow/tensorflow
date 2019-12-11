@@ -53,7 +53,25 @@ from tensorflow.python.saved_model import saved_model
 from tensorflow.python.training.training_util import write_graph
 
 
-class TestModels(test_util.TensorFlowTestCase):
+class LiteTest(test_util.TensorFlowTestCase):
+  """Base class of all the tests in this module."""
+
+  def setUp(self):
+    # Some cases are broken when we enable the new converter by default.
+    # Explicitly disabling it for now.
+    # TODO(b/145763157): Investigate if these are real issues.
+    self._original_use_experimental_new_converter = (
+        lite._USE_EXPERIMENTAL_NEW_CONVERTER)
+    lite._USE_EXPERIMENTAL_NEW_CONVERTER = False
+    super(LiteTest, self).setUp()
+
+  def tearDown(self):
+    super(LiteTest, self).tearDown()
+    lite._USE_EXPERIMENTAL_NEW_CONVERTER = (
+        self._original_use_experimental_new_converter)
+
+
+class TestModels(LiteTest):
 
   def assertValidDebugInfo(self, debug_info):
     """Verify the DebugInfo is valid."""
@@ -1202,7 +1220,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertIn(('add@' + six.ensure_str(func)), converter._debug_info.traces)
 
 
-class FromFrozenGraphFile(test_util.TensorFlowTestCase):
+class FromFrozenGraphFile(LiteTest):
 
   def testFloat(self):
     with ops.Graph().as_default():
@@ -1388,7 +1406,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     self.assertTrue(not converter._debug_info)
 
 
-class FromFrozenGraphObjectDetection(test_util.TensorFlowTestCase):
+class FromFrozenGraphObjectDetection(LiteTest):
 
   def _initObjectDetectionArgs(self):
     # Initializes the arguments required for the object detection model.
@@ -2082,7 +2100,7 @@ class GrapplerTest(TestModels, parameterized.TestCase):
     self.assertEqual('Placeholder', input_details[0]['name'])
     self.assertEqual('Const', input_details[1]['name'])
 
-class ImportOpsUtilTest(test_util.TensorFlowTestCase):
+class ImportOpsUtilTest(LiteTest):
 
   def testGetPotentiallySupportedOps(self):
     self.assertIsNotNone(lite.get_potentially_supported_ops())

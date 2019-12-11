@@ -184,6 +184,28 @@ Status ProfilerSession::Status() {
   return status_;
 }
 
+Status ProfilerSession::CollectData(profiler::XSpace* space) {
+  mutex_lock l(mutex_);
+  if (!status_.ok()) return status_;
+  for (auto& profiler : profilers_) {
+    profiler->Stop().IgnoreError();
+  }
+
+  for (auto& profiler : profilers_) {
+    profiler->CollectData(space).IgnoreError();
+  }
+
+  if (active_) {
+    // Allow another session to start.
+#if !defined(IS_MOBILE_PLATFORM)
+    profiler::ReleaseProfilerLock();
+#endif
+    active_ = false;
+  }
+
+  return Status::OK();
+}
+
 Status ProfilerSession::CollectData(RunMetadata* run_metadata) {
   mutex_lock l(mutex_);
   if (!status_.ok()) return status_;

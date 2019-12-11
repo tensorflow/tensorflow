@@ -43,6 +43,10 @@ public:
 void populateVectorToVectorCanonicalizationPatterns(
     OwningRewritePatternList &patterns, MLIRContext *context);
 
+/// Collect a set of vector-to-vector transformation patterns.
+void populateVectorToVectorTransformationPatterns(
+    OwningRewritePatternList &patterns, MLIRContext *context);
+
 #define GET_OP_CLASSES
 #include "mlir/Dialect/VectorOps/VectorOps.h.inc"
 

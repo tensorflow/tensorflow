@@ -77,58 +77,6 @@ struct KernelDim3 {
   Value *z;
 };
 
-/// Operation to launch a kernel given as outlined function.
-class LaunchFuncOp : public Op<LaunchFuncOp, OpTrait::AtLeastNOperands<6>::Impl,
-                               OpTrait::ZeroResult> {
-public:
-  using Op::Op;
-
-  static void build(Builder *builder, OperationState &result, FuncOp kernelFunc,
-                    Value *gridSizeX, Value *gridSizeY, Value *gridSizeZ,
-                    Value *blockSizeX, Value *blockSizeY, Value *blockSizeZ,
-                    ValueRange kernelOperands);
-
-  static void build(Builder *builder, OperationState &result, FuncOp kernelFunc,
-                    KernelDim3 gridSize, KernelDim3 blockSize,
-                    ValueRange kernelOperands);
-
-  /// The kernel function specified by the operation's `kernel` attribute.
-  StringRef kernel();
-  /// The number of operands passed to the kernel function.
-  unsigned getNumKernelOperands();
-  /// The name of the kernel module specified by the operation's `kernel_module`
-  /// attribute.
-  StringRef getKernelModuleName();
-  /// The i-th operand passed to the kernel function.
-  Value *getKernelOperand(unsigned i);
-
-  /// Get the SSA values passed as operands to specify the grid size.
-  KernelDim3 getGridSizeOperandValues();
-  /// Get the SSA values passed as operands to specify the block size.
-  KernelDim3 getBlockSizeOperandValues();
-
-  LogicalResult verify();
-
-  static StringRef getOperationName() { return "gpu.launch_func"; }
-
-  /// The number of launch configuration operands, placed at the leading
-  /// positions of the operand list.
-  static constexpr unsigned kNumConfigOperands = 6;
-
-private:
-  // This needs to quietly verify if attributes with names defined below are
-  // present since it is run before the verifier of this op.
-  friend LogicalResult GPUDialect::verifyOperationAttribute(Operation *,
-                                                            NamedAttribute);
-
-  /// The name of the symbolRef attribute specifying the kernel to launch.
-  static StringRef getKernelAttrName() { return "kernel"; }
-
-  /// The name of the symbolRef attribute specifying the name of the module
-  /// containing the kernel to launch.
-  static StringRef getKernelModuleAttrName() { return "kernel_module"; }
-};
-
 #define GET_OP_CLASSES
 #include "mlir/Dialect/GPU/GPUOps.h.inc"
 

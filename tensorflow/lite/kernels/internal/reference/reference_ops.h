@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/maximum_minimum.h"
 #include "tensorflow/lite/kernels/internal/reference/mul.h"
 #include "tensorflow/lite/kernels/internal/reference/neg.h"
+#include "tensorflow/lite/kernels/internal/reference/pad.h"
 #include "tensorflow/lite/kernels/internal/reference/pooling.h"
 #include "tensorflow/lite/kernels/internal/reference/prelu.h"
 #include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
@@ -2148,150 +2149,6 @@ inline void BatchToSpaceND(
   }
 }
 
-// There are two versions of pad: Pad and PadV2.  In PadV2 there is a second
-// scalar input that provides the padding value.  Therefore pad_value_ptr can be
-// equivalent to a simple input1_data.  For Pad, it should point to a zero
-// value.
-//
-// Note that two typenames are required, so that T=P=int32 is considered a
-// specialization distinct from P=int32.
-template <typename T, typename P>
-inline void PadImpl(const tflite::PadParams& op_params,
-                    const RuntimeShape& input_shape, const T* input_data,
-                    const P* pad_value_ptr, const RuntimeShape& output_shape,
-                    T* output_data) {
-  const RuntimeShape ext_input_shape =
-      RuntimeShape::ExtendedShape(4, input_shape);
-  const RuntimeShape ext_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-  TFLITE_DCHECK_LE(op_params.left_padding_count, 4);
-  TFLITE_DCHECK_LE(op_params.right_padding_count, 4);
-
-  // Runtime calls are currently fixed at 4 dimensions. Copy inputs so
-  // we can pad them to 4 dims (yes, we are "padding the padding").
-  std::vector<int> left_padding_copy(4, 0);
-  for (int i = 0; i < op_params.left_padding_count; ++i) {
-    left_padding_copy[i + 4 - op_params.left_padding_count] =
-        op_params.left_padding[i];
-  }
-  std::vector<int> right_padding_copy(4, 0);
-  for (int i = 0; i < op_params.right_padding_count; ++i) {
-    right_padding_copy[i + 4 - op_params.right_padding_count] =
-        op_params.right_padding[i];
-  }
-
-  const int output_batch = ext_output_shape.Dims(0);
-  const int output_height = ext_output_shape.Dims(1);
-  const int output_width = ext_output_shape.Dims(2);
-  const int output_depth = ext_output_shape.Dims(3);
-
-  const int left_b_padding = left_padding_copy[0];
-  const int left_h_padding = left_padding_copy[1];
-  const int left_w_padding = left_padding_copy[2];
-  const int left_d_padding = left_padding_copy[3];
-
-  const int right_b_padding = right_padding_copy[0];
-  const int right_h_padding = right_padding_copy[1];
-  const int right_w_padding = right_padding_copy[2];
-  const int right_d_padding = right_padding_copy[3];
-
-  const T pad_value = *pad_value_ptr;
-
-  const T* in_ptr = input_data;
-  T* out_ptr = output_data;
-  for (int out_b = 0; out_b < output_batch; ++out_b) {
-    for (int out_h = 0; out_h < output_height; ++out_h) {
-      for (int out_w = 0; out_w < output_width; ++out_w) {
-        for (int out_d = 0; out_d < output_depth; ++out_d) {
-          if (out_b < left_b_padding ||
-              out_b >= output_batch - right_b_padding ||
-              out_h < left_h_padding ||
-              out_h >= output_height - right_h_padding ||
-              out_w < left_w_padding ||
-              out_w >= output_width - right_w_padding ||
-              out_d < left_d_padding ||
-              out_d >= output_depth - right_d_padding) {
-            *out_ptr++ = pad_value;
-          } else {
-            *out_ptr++ = *in_ptr++;
-          }
-        }
-      }
-    }
-  }
-}
-
-template <typename T, typename P>
-inline void Pad(const tflite::PadParams& op_params,
-                const RuntimeShape& input_shape, const T* input_data,
-                const P* pad_value_ptr, const RuntimeShape& output_shape,
-                T* output_data) {
-  PadImpl(op_params, input_shape, input_data, pad_value_ptr, output_shape,
-          output_data);
-}
-
-// The second (pad-value) input can be int32 when, say, the first is uint8.
-template <typename T>
-inline void Pad(const tflite::PadParams& op_params,
-                const RuntimeShape& input_shape, const T* input_data,
-                const int32* pad_value_ptr, const RuntimeShape& output_shape,
-                T* output_data) {
-  const T converted_pad_value = static_cast<T>(*pad_value_ptr);
-  PadImpl(op_params, input_shape, input_data, &converted_pad_value,
-          output_shape, output_data);
-}
-
-// This version avoids conflicting template matching.
-template <>
-inline void Pad(const tflite::PadParams& op_params,
-                const RuntimeShape& input_shape, const int32* input_data,
-                const int32* pad_value_ptr, const RuntimeShape& output_shape,
-                int32* output_data) {
-  PadImpl(op_params, input_shape, input_data, pad_value_ptr, output_shape,
-          output_data);
-}
-
-// One could make all PadImageStyle calls simply delegate the work to the
-// ordinary Pad.  However, it is better that the reference code asserts false in
-// similar cases.
-template <typename T, typename P>
-inline void PadImageStyle(const tflite::PadParams& op_params,
-                          const RuntimeShape& input_shape, const T* input_data,
-                          const P* pad_value_ptr,
-                          const RuntimeShape& output_shape, T* output_data) {
-  TFLITE_ASSERT_FALSE;
-}
-
-template <typename P>
-inline void PadImageStyle(const tflite::PadParams& op_params,
-                          const RuntimeShape& input_shape,
-                          const uint8* input_data, const P* pad_value_ptr,
-                          const RuntimeShape& output_shape,
-                          uint8* output_data) {
-  Pad(op_params, input_shape, input_data, pad_value_ptr, output_shape,
-      output_data);
-}
-
-template <typename P>
-inline void PadImageStyle(const tflite::PadParams& op_params,
-                          const RuntimeShape& input_shape,
-                          const int8_t* input_data, const P* pad_value_ptr,
-                          const RuntimeShape& output_shape,
-                          int8_t* output_data) {
-  Pad(op_params, input_shape, input_data, pad_value_ptr, output_shape,
-      output_data);
-}
-
-template <typename P>
-inline void PadImageStyle(const tflite::PadParams& op_params,
-                          const RuntimeShape& input_shape,
-                          const float* input_data, const P* pad_value_ptr,
-                          const RuntimeShape& output_shape,
-                          float* output_data) {
-  Pad(op_params, input_shape, input_data, pad_value_ptr, output_shape,
-      output_data);
-}
-
 template <typename T>
 inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape,
@@ -2700,6 +2557,57 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
     const T* input_data = input_condition_data[i] ? input_x_data : input_y_data;
     memcpy(output_data + offset, input_data + offset, inner_size * sizeof(T));
     offset += inner_size;
+  }
+}
+
+template <typename D, typename T>
+void BroadcastSelect4DSlow(const RuntimeShape& input_condition_shape,
+                           const D* input_condition_data,
+                           const RuntimeShape& input_x_shape,
+                           const T* input_x_data,
+                           const RuntimeShape& input_y_shape,
+                           const T* input_y_data,
+                           const RuntimeShape& output_shape, T* output_data) {
+  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 4);
+
+  const RuntimeShape extended_output_shape =
+      RuntimeShape::ExtendedShape(4, output_shape);
+
+  NdArrayDesc<4> desc_condition;
+  NdArrayDesc<4> desc_x;
+  NdArrayDesc<4> desc_y;
+  NdArrayDescsForElementwiseBroadcast(input_condition_shape, input_x_shape,
+                                      input_y_shape, &desc_condition, &desc_x,
+                                      &desc_y);
+
+  // In Tensorflow, the dimensions are canonically named (batch_number, row,
+  // col, channel), with extents (batches, height, width, depth), with the
+  // trailing dimension changing most rapidly (channels has the smallest
+  // stride, typically 1 element).
+  //
+  // In generated C code, we store arrays with the dimensions reversed. The
+  // first dimension has smallest stride.
+  //
+  // We name our variables by their Tensorflow convention, but generate C code
+  // nesting loops such that the innermost loop has the smallest stride for
+  // the best cache behavior.
+  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
+    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
+      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
+        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
+          const int condition_index =
+              SubscriptToIndex(desc_condition, b, y, x, c);
+          const int x_index = SubscriptToIndex(desc_x, b, y, x, c);
+          const int y_index = SubscriptToIndex(desc_y, b, y, x, c);
+          output_data[Offset(extended_output_shape, b, y, x, c)] =
+              input_condition_data[condition_index] ? input_x_data[x_index]
+                                                    : input_y_data[y_index];
+        }
+      }
+    }
   }
 }
 

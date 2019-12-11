@@ -691,7 +691,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags):
             ] + args,
             data = data,
             srcs_version = "PY2AND3",
-            python_version = "PY2",
+            python_version = "PY3",
             tags = [
                 "no_oss",
                 "no_windows",

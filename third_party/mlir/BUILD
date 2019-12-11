@@ -490,7 +490,7 @@ cc_library(
     name = "VectorOps",
     srcs = [
         "lib/Dialect/VectorOps/VectorOps.cpp",
-        "lib/Dialect/VectorOps/VectorToVector.cpp",
+        "lib/Dialect/VectorOps/VectorTransforms.cpp",
     ],
     hdrs = [
         "include/mlir/Dialect/VectorOps/Utils.h",
@@ -505,7 +505,7 @@ cc_library(
         ":StandardOps",
         ":Support",
         ":VectorOpsIncGen",
-        ":VectorTransformPatterns",
+        ":VectorTransformPatternsIncGen",
         "@llvm//:support",
     ],
 )
@@ -596,6 +596,7 @@ filegroup(
     name = "GPUOpsTdFiles",
     srcs = [
         "include/mlir/Dialect/GPU/GPUOps.td",
+        "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -1490,6 +1491,7 @@ cc_library(
         "lib/Analysis/CallGraph.cpp",
         "lib/Analysis/Dominance.cpp",
         "lib/Analysis/InferTypeOpInterface.cpp",
+        "lib/Analysis/Liveness.cpp",
         "lib/Analysis/LoopAnalysis.cpp",
         "lib/Analysis/MemRefBoundCheck.cpp",
         "lib/Analysis/NestedMatcher.cpp",
@@ -1507,6 +1509,7 @@ cc_library(
         "include/mlir/Analysis/CallInterfaces.h",
         "include/mlir/Analysis/Dominance.h",
         "include/mlir/Analysis/InferTypeOpInterface.h",
+        "include/mlir/Analysis/Liveness.h",
         "include/mlir/Analysis/LoopAnalysis.h",
         "include/mlir/Analysis/NestedMatcher.h",
         "include/mlir/Analysis/Passes.h",
@@ -2413,8 +2416,21 @@ gentbl(
     ],
 )
 
+filegroup(
+    name = "VectorTransformPatternsTdFiles",
+    srcs = [
+        "include/mlir/Dialect/VectorOps/VectorTransformPatterns.td",
+        ":AffineOpsTdFiles",
+        ":LinalgLibraryOpsTdFiles",
+        ":LinalgOpsTdFiles",
+        ":OpBaseTdFiles",
+        ":StdOpsTdFiles",
+        ":VectorOpsTdFiles",
+    ],
+)
+
 gentbl(
-    name = "VectorTransformPatterns",
+    name = "VectorTransformPatternsIncGen",
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -2424,9 +2440,7 @@ gentbl(
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/VectorOps/VectorTransformPatterns.td",
     td_srcs = [
-        ":OpBaseTdFiles",
-        ":StdOpsTdFiles",
-        ":VectorOpsTdFiles",
+        ":VectorTransformPatternsTdFiles",
     ],
 )
 

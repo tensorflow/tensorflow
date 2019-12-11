@@ -168,11 +168,19 @@ void CalculateActivationRange(TfLiteFusedActivation activation,
 // Return true if the given tensors have the same shape.
 bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2);
 
-// Calculate the output_shape that is necessary for element-wise operations
+// Calculates the output_shape that is necessary for element-wise operations
 // with broadcasting involving the two input tensors.
 TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         const TfLiteTensor* input1,
                                         const TfLiteTensor* input2,
+                                        TfLiteIntArray** output_shape);
+
+// Calculates the output_shape that is necessary for element-wise operations
+// with broadcasting involving the three input tensors.
+TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
+                                        const TfLiteTensor* input1,
+                                        const TfLiteTensor* input2,
+                                        const TfLiteTensor* input3,
                                         TfLiteIntArray** output_shape);
 }  // namespace tflite
 

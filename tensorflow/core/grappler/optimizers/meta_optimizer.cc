@@ -221,7 +221,7 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.function_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<FunctionOptimizer>(
         cfg_.function_optimization(),
-        /*lower_contorl_flow=*/!IsSingleThreadedExecutor()));
+        /*lower_control_flow=*/!IsSingleThreadedExecutor()));
   }
   if (cfg_.debug_stripper() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<DebugStripper>());

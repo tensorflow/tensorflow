@@ -35,7 +35,7 @@ constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
-constexpr int kMaxChannels = 64;
+constexpr int kMaxChannels = 256;
 
 // Size of the cached buffer we'll be using to hold reordered weights.
 constexpr int kReshapedFilterDataSize = 1 * 1024;

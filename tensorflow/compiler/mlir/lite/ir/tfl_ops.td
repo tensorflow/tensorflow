@@ -577,6 +577,19 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [NoSideEffect,
   ];
 }
 
+def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [NoSideEffect]> {
+  let summary = "External const op.";
+
+  let description = [{
+    External const op holds a `buffer_index` which points to a constant
+    in the flatbuffer.
+  }];
+
+  let arguments = (ins I32Attr:$buffer_index);
+
+  let results = (outs AnyTensor:$output);
+}
+
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0>;
 
 def TFL_CosOp: TFL_Op<"cos", [

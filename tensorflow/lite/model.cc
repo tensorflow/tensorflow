@@ -558,15 +558,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     const auto* src_quantization = tensor->quantization();
     TfLiteQuantization quantization;
     if (ParseQuantization(src_quantization, &quantization, dims) != kTfLiteOk) {
+      error_reporter_->Report("Tensor %d has invalid quantization parameters.",
+                              i);
       status = kTfLiteError;
-      continue;
-    }
-
-    const auto* src_sparsity = tensor->sparsity();
-    TfLiteSparsity* sparsity = nullptr;
-    if (ParseSparsity(src_sparsity, &sparsity) != kTfLiteOk) {
-      status = kTfLiteError;
-      continue;
     }
 
     bool is_variable = tensor->is_variable();
@@ -579,6 +573,15 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
 
+      // TODO(b/144999664): Only constant sparse tensor is supported now.
+      const auto* src_sparsity = tensor->sparsity();
+      TfLiteSparsity* sparsity = nullptr;
+      if (ParseSparsity(src_sparsity, &sparsity) != kTfLiteOk) {
+        error_reporter_->Report("Tensor %d has invalid sparsity parameters.",
+                                i);
+        status = kTfLiteError;
+      }
+
       if (subgraph->SetTensorParametersReadOnly(
               i, type, get_name(tensor), dims, quantization, buffer_ptr,
               buffer_size, allocation_, sparsity) != kTfLiteOk) {
@@ -587,7 +590,6 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
     } else {
-      // TODO(b/144999664): Non-constant sparse tensor is not supported now.
       if (subgraph->SetTensorParametersReadWrite(i, type, get_name(tensor),
                                                  dims, quantization,
                                                  is_variable) != kTfLiteOk) {

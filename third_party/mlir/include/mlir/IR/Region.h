@@ -175,9 +175,7 @@ class RegionRange
   using OwnerT = llvm::PointerUnion<Region *, const std::unique_ptr<Region> *>;
 
 public:
-  using detail::indexed_accessor_range_base<
-      RegionRange, OwnerT, Region *, Region *,
-      Region *>::indexed_accessor_range_base;
+  using RangeBaseT::RangeBaseT;
 
   RegionRange(MutableArrayRef<Region> regions = llvm::None);
 
@@ -196,8 +194,7 @@ private:
   static Region *dereference_iterator(const OwnerT &owner, ptrdiff_t index);
 
   /// Allow access to `offset_base` and `dereference_iterator`.
-  friend detail::indexed_accessor_range_base<RegionRange, OwnerT, Region *,
-                                             Region *, Region *>;
+  friend RangeBaseT;
 };
 
 } // end namespace mlir

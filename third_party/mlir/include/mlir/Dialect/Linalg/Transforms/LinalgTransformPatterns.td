@@ -24,6 +24,7 @@
 
 include "mlir/Dialect/Linalg/IR/LinalgOps.td"
 include "mlir/Dialect/Linalg/IR/LinalgLibraryOps.td"
+include "mlir/Dialect/AffineOps/AffineOps.td"
 
 def HasNoLinalgTransformMarker : CPred<[{
   !$0.getAttrOfType<StringAttr>(LinalgTransforms::kLinalgTransformMarker)
@@ -37,6 +38,10 @@ class HasLinalgTransformMarker<string str> : CPred<[{
 
 class IsProducedByOpOfType<string str> :
   CPred<"isProducedByOpOfType<" # str # ">($0, $1)">;
+
+class AffineMapDomainHasDim<int n> : CPred<[{
+  $0.getAttrOfType<ArrayAttr>("indexing_maps").getValue()[0].
+  cast<AffineMapAttr>().getValue().getNumDims() ==}] # n # [{}]>;
 
 //===----------------------------------------------------------------------===//
 // Linalg fusion patterns.
@@ -86,4 +91,12 @@ class LinalgOpToVectorContraction<string OpType> : NativeCodeCall<
   "if (failed(vectorizeGenericOp($_builder, $0))) " #
   "  return matchFailure();">;
 
+//===----------------------------------------------------------------------===//
+// Linalg generic permutation patterns.
+//===----------------------------------------------------------------------===//
+class PermuteGenericLinalgOp<list<int> permutation, string value> :
+  NativeCodeCall<
+  "if (failed(permuteGenericLinalgOp($_builder, $0, {" #
+  StrJoinInt<permutation>.result # "}, \"" # value # "\"))) " #
+  "  return matchFailure();">;
 #endif // LINALG_TRANSFORMS

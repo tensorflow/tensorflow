@@ -17,6 +17,7 @@ cc_library(
         ":profiler_utils",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/internal:profiler_factory",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow:android": [],
@@ -78,6 +79,7 @@ filegroup(
     srcs = [
         "profiler_session.cc",
         "profiler_session.h",
+        "profiler_utils.h",
         "scoped_annotation.h",
         "traceme.h",
     ],

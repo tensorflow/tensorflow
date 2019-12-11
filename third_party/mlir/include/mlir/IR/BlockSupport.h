@@ -68,14 +68,12 @@ class SuccessorRange final
     : public detail::indexed_accessor_range_base<SuccessorRange, BlockOperand *,
                                                  Block *, Block *, Block *> {
 public:
-  using detail::indexed_accessor_range_base<
-      SuccessorRange, BlockOperand *, Block *, Block *,
-      Block *>::indexed_accessor_range_base;
+  using RangeBaseT::RangeBaseT;
   SuccessorRange(Block *block);
 
 private:
   /// See `detail::indexed_accessor_range_base` for details.
-  static BlockOperand *offset_object(BlockOperand *object, ptrdiff_t index) {
+  static BlockOperand *offset_base(BlockOperand *object, ptrdiff_t index) {
     return object + index;
   }
   /// See `detail::indexed_accessor_range_base` for details.
@@ -83,9 +81,8 @@ private:
     return object[index].get();
   }
 
-  /// Allow access to `offset_object` and `dereference_iterator`.
-  friend detail::indexed_accessor_range_base<SuccessorRange, BlockOperand *,
-                                             Block *, Block *, Block *>;
+  /// Allow access to `offset_base` and `dereference_iterator`.
+  friend RangeBaseT;
 };
 
 } // end namespace mlir

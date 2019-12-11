@@ -2133,7 +2133,7 @@ class LSTMIntegerOpModel : public SingleOpModel {
       }
       cell_to_forget_weights_ = AddInput({TensorType_INT16, input_shapes[10],
                                           ranges[10].first, ranges[10].second});
-      cell_to_output_weights_ = AddInput({TensorType_INT8, input_shapes[11],
+      cell_to_output_weights_ = AddInput({TensorType_INT16, input_shapes[11],
                                           ranges[11].first, ranges[11].second});
     } else {
       cell_to_input_weights_ = AddNullInput();

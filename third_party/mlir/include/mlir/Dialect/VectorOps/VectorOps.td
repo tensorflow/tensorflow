@@ -451,6 +451,7 @@ def Vector_StridedSliceOp :
     static StringRef getSizesAttrName() { return "sizes"; }
     static StringRef getStridesAttrName() { return "strides"; }
     VectorType getVectorType(){ return vector()->getType().cast<VectorType>(); }
+    void getOffsets(SmallVectorImpl<int64_t> &results);
   }];
   let hasCanonicalizer = 1;
 }
