@@ -39,20 +39,8 @@ class MicroInterpreter {
                    uint8_t* tensor_arena, size_t tensor_arena_size,
                    ErrorReporter* error_reporter);
 
-  // Specify a particular tensor as pre-allocated.  This means that this tensor
-  // will internally point to the supplied buffer, and no new memory will be
-  // provided.  The buffer must live at least as long as the allocator, since
-  // the buffer will be used every time an op is invoked which uses the
-  // specified tensor.  Most commonly this is useful when a platform-provided
-  // DMA buffer is used as an input, and it is desirable to avoid unnecessarily
-  // allocating a new buffer and copying from the DMA buffer. The user must
-  // ensure the buffer is valid throughout each interpreter run, and is not
-  // prematurely overwritten.
-  TfLiteStatus RegisterPreallocatedInput(uint8_t* buffer, size_t input_index);
-
-  // Run through the model and allocate all necessary input, output and
-  // intermediate tensors except for those already provided via calls to
-  // registerPreallocatedInput.
+  // Runs through the model and allocates all necessary input, output and
+  // intermediate tensors.
   TfLiteStatus AllocateTensors();
 
   TfLiteStatus Invoke();
