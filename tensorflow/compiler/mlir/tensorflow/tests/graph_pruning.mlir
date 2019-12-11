@@ -121,12 +121,12 @@ func @reachable_loop() {
 // CHECK: "tf.Less"
 // CHECK: tf_executor.LoopCond
 // CHECK: tf_executor.Switch
-// CHECK: %[[EXIT:.*]]:2 = tf_executor.Exit
+// CHECK: %[[EXIT:.*]], %{{.*}} = tf_executor.Exit
 // CHECK: "tf.Identity"
 // CHECK: "tf.Const"
 // CHECK: "tf.Add"
 // CHECK: tf_executor.NextIteration.Sink
-// CHECK: tf_executor.fetch %[[EXIT]]#0
+// CHECK: tf_executor.fetch %[[EXIT]]
   %0 = tf_executor.graph {
     %0:3 = tf_executor.NextIteration.Source : tensor<*xi32> {T = "tfdtype$DT_INT32"}
     %1:2 = tf_executor.island wraps "tf.Const"() {dtype = "tfdtype$DT_INT32", value = dense<0> : tensor<i32>} : () -> tensor<i32>

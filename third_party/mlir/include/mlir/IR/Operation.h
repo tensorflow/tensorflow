@@ -29,15 +29,6 @@
 #include "llvm/ADT/Twine.h"
 
 namespace mlir {
-class BlockAndValueMapping;
-class Location;
-class MLIRContext;
-class OperandIterator;
-class OperandTypeIterator;
-struct OperationState;
-class ResultIterator;
-class ResultTypeIterator;
-
 /// Terminator operations can have Block operands to represent successors.
 using BlockOperand = IROperandImpl<Block>;
 
@@ -63,12 +54,19 @@ public:
   static Operation *create(Location location, OperationName name,
                            ArrayRef<Type> resultTypes,
                            ArrayRef<Value *> operands,
-                           const NamedAttributeList &attributes,
+                           NamedAttributeList attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
                            bool resizableOperandList);
 
   /// Create a new Operation from the fields stored in `state`.
   static Operation *create(const OperationState &state);
+
+  /// Create a new Operation with the specific fields.
+  static Operation *
+  create(Location location, OperationName name, ArrayRef<Type> resultTypes,
+         ArrayRef<Value *> operands, NamedAttributeList attributes,
+         ArrayRef<Block *> successors = {}, RegionRange regions = {},
+         bool resizableOperandList = false);
 
   /// The name of an operation is the key identifier for it.
   OperationName getName() { return name; }
@@ -213,9 +211,7 @@ public:
   /// Replace the current operands of this operation with the ones provided in
   /// 'operands'. If the operands list is not resizable, the size of 'operands'
   /// must be less than or equal to the current number of operands.
-  void setOperands(ArrayRef<Value *> operands) {
-    getOperandStorage().setOperands(this, operands);
-  }
+  void setOperands(ValueRange operands);
 
   unsigned getNumOperands() { return getOperandStorage().size(); }
 
@@ -225,14 +221,14 @@ public:
   }
 
   // Support operand iteration.
-  using operand_iterator = OperandIterator;
-  using operand_range = llvm::iterator_range<operand_iterator>;
+  using operand_range = OperandRange;
+  using operand_iterator = operand_range::iterator;
 
-  operand_iterator operand_begin();
-  operand_iterator operand_end();
+  operand_iterator operand_begin() { return getOperands().begin(); }
+  operand_iterator operand_end() { return getOperands().end(); }
 
   /// Returns an iterator on the underlying Value's (Value *).
-  operand_range getOperands();
+  operand_range getOperands() { return operand_range(this); }
 
   /// Erase the operand at position `idx`.
   void eraseOperand(unsigned idx) { getOperandStorage().eraseOperand(idx); }
@@ -244,11 +240,11 @@ public:
   OpOperand &getOpOperand(unsigned idx) { return getOpOperands()[idx]; }
 
   // Support operand type iteration.
-  using operand_type_iterator = OperandTypeIterator;
-  using operand_type_range = llvm::iterator_range<operand_type_iterator>;
-  operand_type_iterator operand_type_begin();
-  operand_type_iterator operand_type_end();
-  operand_type_range getOperandTypes();
+  using operand_type_iterator = operand_range::type_iterator;
+  using operand_type_range = iterator_range<operand_type_iterator>;
+  operand_type_iterator operand_type_begin() { return operand_begin(); }
+  operand_type_iterator operand_type_end() { return operand_end(); }
+  operand_type_range getOperandTypes() { return getOperands().getTypes(); }
 
   //===--------------------------------------------------------------------===//
   // Results
@@ -261,14 +257,13 @@ public:
 
   Value *getResult(unsigned idx) { return &getOpResult(idx); }
 
-  // Support result iteration.
-  using result_iterator = ResultIterator;
-  using result_range = llvm::iterator_range<result_iterator>;
+  /// Support result iteration.
+  using result_range = ResultRange;
+  using result_iterator = result_range::iterator;
 
-  result_iterator result_begin();
-  result_iterator result_end();
-
-  result_range getResults();
+  result_iterator result_begin() { return getResults().begin(); }
+  result_iterator result_end() { return getResults().end(); }
+  result_range getResults() { return result_range(this); }
 
   MutableArrayRef<OpResult> getOpResults() {
     return {getTrailingObjects<OpResult>(), numResults};
@@ -276,12 +271,12 @@ public:
 
   OpResult &getOpResult(unsigned idx) { return getOpResults()[idx]; }
 
-  // Support result type iteration.
-  using result_type_iterator = ResultTypeIterator;
-  using result_type_range = llvm::iterator_range<result_type_iterator>;
-  result_type_iterator result_type_begin();
-  result_type_iterator result_type_end();
-  result_type_range getResultTypes();
+  /// Support result type iteration.
+  using result_type_iterator = result_range::type_iterator;
+  using result_type_range = iterator_range<result_type_iterator>;
+  result_type_iterator result_type_begin() { return result_begin(); }
+  result_type_iterator result_type_end() { return result_end(); }
+  result_type_range getResultTypes() { return getResults().getTypes(); }
 
   //===--------------------------------------------------------------------===//
   // Attributes
@@ -566,6 +561,26 @@ public:
   InFlightDiagnostic emitRemark(const Twine &message = {});
 
 private:
+  //===--------------------------------------------------------------------===//
+  // Ordering
+  //===--------------------------------------------------------------------===//
+
+  /// This value represents an invalid index ordering for an operation within a
+  /// block.
+  static constexpr unsigned kInvalidOrderIdx = -1;
+
+  /// This value represents the stride to use when computing a new order for an
+  /// operation.
+  static constexpr unsigned kOrderStride = 5;
+
+  /// Update the order index of this operation of this operation if necessary,
+  /// potentially recomputing the order of the parent block.
+  void updateOrderIfNecessary();
+
+  /// Returns true if this operation has a valid order.
+  bool hasValidOrder() { return orderIndex != kInvalidOrderIdx; }
+
+private:
   Operation(Location location, OperationName name, unsigned numResults,
             unsigned numSuccessors, unsigned numRegions,
             const NamedAttributeList &attributes);
@@ -632,91 +647,6 @@ inline raw_ostream &operator<<(raw_ostream &os, Operation &op) {
   return os;
 }
 
-/// This class implements the const/non-const operand iterators for the
-/// Operation class in terms of getOperand(idx).
-class OperandIterator final
-    : public indexed_accessor_iterator<OperandIterator, Operation *, Value *,
-                                       Value *, Value *> {
-public:
-  /// Initializes the operand iterator to the specified operand index.
-  OperandIterator(Operation *object, unsigned index)
-      : indexed_accessor_iterator<OperandIterator, Operation *, Value *,
-                                  Value *, Value *>(object, index) {}
-
-  Value *operator*() const { return this->object->getOperand(this->index); }
-};
-
-/// This class implements the operand type iterators for the Operation
-/// class in terms of operand_iterator->getType().
-class OperandTypeIterator final
-    : public llvm::mapped_iterator<OperandIterator, Type (*)(Value *)> {
-  static Type unwrap(Value *value) { return value->getType(); }
-
-public:
-  using reference = Type;
-
-  /// Provide a const deference method.
-  Type operator*() const { return unwrap(*I); }
-
-  /// Initializes the operand type iterator to the specified operand iterator.
-  OperandTypeIterator(OperandIterator it)
-      : llvm::mapped_iterator<OperandIterator, Type (*)(Value *)>(it, &unwrap) {
-  }
-};
-
-// Implement the inline operand iterator methods.
-inline auto Operation::operand_begin() -> operand_iterator {
-  return operand_iterator(this, 0);
-}
-
-inline auto Operation::operand_end() -> operand_iterator {
-  return operand_iterator(this, getNumOperands());
-}
-
-inline auto Operation::getOperands() -> operand_range {
-  return {operand_begin(), operand_end()};
-}
-
-inline auto Operation::operand_type_begin() -> operand_type_iterator {
-  return operand_type_iterator(operand_begin());
-}
-
-inline auto Operation::operand_type_end() -> operand_type_iterator {
-  return operand_type_iterator(operand_end());
-}
-
-inline auto Operation::getOperandTypes() -> operand_type_range {
-  return {operand_type_begin(), operand_type_end()};
-}
-
-/// This class implements the result iterators for the Operation class
-/// in terms of getResult(idx).
-class ResultIterator final
-    : public indexed_accessor_iterator<ResultIterator, Operation *, Value *,
-                                       Value *, Value *> {
-public:
-  /// Initializes the result iterator to the specified index.
-  ResultIterator(Operation *object, unsigned index)
-      : indexed_accessor_iterator<ResultIterator, Operation *, Value *, Value *,
-                                  Value *>(object, index) {}
-
-  Value *operator*() const { return this->object->getResult(this->index); }
-};
-
-/// This class implements the result type iterators for the Operation
-/// class in terms of result_iterator->getType().
-class ResultTypeIterator final
-    : public llvm::mapped_iterator<ResultIterator, Type (*)(Value *)> {
-  static Type unwrap(Value *value) { return value->getType(); }
-
-public:
-  using reference = Type;
-
-  /// Initializes the result type iterator to the specified result iterator.
-  ResultTypeIterator(ResultIterator it)
-      : llvm::mapped_iterator<ResultIterator, Type (*)(Value *)>(it, &unwrap) {}
-};
-
 /// This class implements use iterator for the Operation. This iterates over all
 /// uses of all results of an Operation.
 class UseIterator final
@@ -743,32 +673,6 @@ private:
   /// The use of the result.
   Value::use_iterator use;
 };
-
-// Implement the inline result iterator methods.
-inline auto Operation::result_begin() -> result_iterator {
-  return result_iterator(this, 0);
-}
-
-inline auto Operation::result_end() -> result_iterator {
-  return result_iterator(this, getNumResults());
-}
-
-inline auto Operation::getResults() -> llvm::iterator_range<result_iterator> {
-  return {result_begin(), result_end()};
-}
-
-inline auto Operation::result_type_begin() -> result_type_iterator {
-  return result_type_iterator(result_begin());
-}
-
-inline auto Operation::result_type_end() -> result_type_iterator {
-  return result_type_iterator(result_end());
-}
-
-inline auto Operation::getResultTypes() -> result_type_range {
-  return {result_type_begin(), result_type_end()};
-}
-
 } // end namespace mlir
 
 namespace llvm {

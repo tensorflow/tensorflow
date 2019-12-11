@@ -151,7 +151,7 @@ LogicalResult MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
 }
 
 /// Computes the memory region accessed by this memref with the region
-/// represented as constraints symbolic/parameteric in 'loopDepth' loops
+/// represented as constraints symbolic/parametric in 'loopDepth' loops
 /// surrounding opInst and any additional Function symbols.
 //  For example, the memref region for this load operation at loopDepth = 1 will
 //  be as below:

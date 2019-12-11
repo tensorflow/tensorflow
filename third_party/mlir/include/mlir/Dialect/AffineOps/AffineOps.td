@@ -22,15 +22,9 @@
 #ifndef AFFINE_OPS
 #define AFFINE_OPS
 
-#ifndef OP_BASE
-include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-#ifndef MLIR_LOOPLIKEINTERFACE
-include "mlir/Transforms/LoopLikeInterface.td"
-#endif
-
 include "mlir/Dialect/AffineOps/AffineOpsBase.td"
+include "mlir/IR/OpBase.td"
+include "mlir/Transforms/LoopLikeInterface.td"
 
 def Affine_Dialect : Dialect {
   let name = "affine";
@@ -96,8 +90,8 @@ def AffineForOp : Affine_Op<"for",
     OpBuilder<"Builder *builder, OperationState &result, "
               "int64_t lowerBound, int64_t upperBound, int64_t step = 1">,
     OpBuilder<"Builder *builder, OperationState &result, "
-              "ArrayRef<Value *> lbOperands, AffineMap lbMap, "
-              "ArrayRef<Value *> ubOperands, AffineMap ubMap, "
+              "ValueRange lbOperands, AffineMap lbMap, "
+              "ValueRange ubOperands, AffineMap ubMap, "
               "int64_t step = 1">
   ];
 
@@ -145,10 +139,10 @@ def AffineForOp : Affine_Op<"for",
 
     /// Set lower bound. The new bound must have the same number of operands as
     /// the current bound map. Otherwise, 'replaceForLowerBound' should be used.
-    void setLowerBound(ArrayRef<Value *> operands, AffineMap map);
+    void setLowerBound(ValueRange operands, AffineMap map);
     /// Set upper bound. The new bound must not have more operands than the
     /// current bound map. Otherwise, 'replaceForUpperBound' should be used.
-    void setUpperBound(ArrayRef<Value *> operands, AffineMap map);
+    void setUpperBound(ValueRange operands, AffineMap map);
 
     /// Set the lower bound map without changing operands.
     void setLowerBoundMap(AffineMap map);
@@ -219,7 +213,7 @@ def AffineIfOp : Affine_Op<"if", [ImplicitAffineTerminator]> {
 
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, "
-              "IntegerSet set, ArrayRef<Value *> args, bool withElseRegion">
+              "IntegerSet set, ValueRange args, bool withElseRegion">
   ];
 
   let extraClassDeclaration = [{
@@ -231,7 +225,7 @@ def AffineIfOp : Affine_Op<"if", [ImplicitAffineTerminator]> {
     /// Sets the integer set with its operands. The size of 'operands' must not
     /// exceed the current number of operands for this instance, as the operands
     /// list of AffineIf is not resizable.
-    void setConditional(IntegerSet set, ArrayRef<Value *> operands);
+    void setConditional(IntegerSet set, ValueRange operands);
 
     OpBuilder getThenBodyBuilder() {
       assert(!thenRegion().empty() && "Unexpected empty 'then' region.");

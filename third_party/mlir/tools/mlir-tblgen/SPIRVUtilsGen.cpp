@@ -687,7 +687,7 @@ static void emitEnumGetSymbolizeFnDefn(const EnumAttr &enumAttr,
 }
 
 static bool emitOpUtils(const RecordKeeper &recordKeeper, raw_ostream &os) {
-  llvm::emitSourceFileHeader("SPIR-V Op Utilites", os);
+  llvm::emitSourceFileHeader("SPIR-V Op Utilities", os);
 
   auto defs = recordKeeper.getAllDerivedDefinitions("EnumAttrInfo");
   os << "#ifndef SPIRV_OP_UTILS_H_\n";

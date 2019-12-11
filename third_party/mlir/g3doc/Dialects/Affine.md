@@ -19,7 +19,7 @@ brackets.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // A 2d to 3d affine mapping.
 // d0/d1 are dimensions, s0 is a symbol
 #affine_map2to3 = (d0, d1)[s0] -> (d0, d1 + s0, d1 - s0)
@@ -36,7 +36,7 @@ use the same parenthesized vs square bracket list to distinguish the two.
 
 Syntax:
 
-``` {.ebnf}
+```
 // Uses of SSA values that are passed to dimensional identifiers.
 dim-use-list ::= `(` ssa-use-list? `)`
 
@@ -51,7 +51,7 @@ SSA values bound to dimensions and symbols must always have 'index' type.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 #affine_map2to3 = (d0, d1)[s0] -> (d0, d1 + s0, d1 - s0)
 // Binds %N to the s0 symbol in affine_map2to3.
 %x = alloc()[%N] : memref<40x50xf32, #affine_map2to3>
@@ -66,9 +66,12 @@ function, a value defined at the top level of that function (outside of all
 loops and if operations), the result of a
 [`constant` operation](Standard.md#constant-operation), or the result of an
 [`affine.apply` operation](#affineapply-operation) that recursively takes as
-arguments any symbolic identifiers. Dimensions may be bound not only to anything
-that a symbol is bound to, but also to induction variables of enclosing
-[`affine.for` operations](#affinefor-operation), and the result of an
+arguments any symbolic identifiers, or the result of a [`dim`
+operation](Standard.md#dim-operation) on either a memref that is a function
+argument or a memref where the corresponding dimension is either static or a
+dynamic one in turn bound to a symbolic identifier.  Dimensions may be bound not
+only to anything that a symbol is bound to, but also to induction variables of
+enclosing [`affine.for` operations](#affinefor-operation), and the result of an
 [`affine.apply` operation](#affineapply-operation) (which recursively may use
 other dimensions and symbols).
 
@@ -76,7 +79,7 @@ other dimensions and symbols).
 
 Syntax:
 
-``` {.ebnf}
+```
 affine-expr ::= `(` affine-expr `)`
               | affine-expr `+` affine-expr
               | affine-expr `-` affine-expr
@@ -128,7 +131,7 @@ i^2)$$, $$(i \mod j, i/j)$$ are not affine functions of $$(i, j)$$.
 
 Syntax:
 
-``` {.ebnf}
+```
 affine-map-inline
    ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
 ```
@@ -155,7 +158,7 @@ the representation closed with respect to several operations of interest.
 
 Syntax:
 
-``` {.ebnf}
+```
 affine-map-id ::= `#` suffix-id
 
 // Definitions of affine maps are at the top of the file.
@@ -172,7 +175,7 @@ name.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Affine map out-of-line definition and usage example.
 #affine_map42 = (d0, d1)[s0] -> (d0, d0 + d1 + s0 floordiv 2)
 
@@ -192,7 +195,7 @@ Semi-affine maps are thus a strict superset of affine maps.
 
 Syntax of semi-affine expressions:
 
-``` {.ebnf}
+```
 semi-affine-expr ::= `(` semi-affine-expr `)`
                    | semi-affine-expr `+` semi-affine-expr
                    | semi-affine-expr `-` semi-affine-expr
@@ -213,7 +216,7 @@ as that for [affine expressions](#affine-expressions).
 
 Syntax of semi-affine maps:
 
-``` {.ebnf}
+```
 semi-affine-map-inline
    ::= dim-and-symbol-id-lists `->` multi-dim-semi-affine-expr
 ```
@@ -222,7 +225,7 @@ Semi-affine maps may be defined inline at the point of use, or may be hoisted to
 the top of the file and given a name with a semi-affine map definition, and used
 by name.
 
-``` {.ebnf}
+```
 semi-affine-map-id ::= `#` suffix-id
 
 // Definitions of semi-affine maps are at the top of file.
@@ -244,7 +247,7 @@ while its symbols are enclosed in square brackets.
 
 Syntax of affine constraints:
 
-``` {.ebnf}
+```
 affine-constraint ::= affine-expr `>=` `0`
                     | affine-expr `==` `0`
 affine-constraint-conjunction ::= affine-constraint (`,` affine-constraint)*
@@ -254,7 +257,7 @@ Integer sets may be defined inline at the point of use, or may be hoisted to the
 top of the file and given a name with an integer set definition, and used by
 name.
 
-``` {.ebnf}
+```
 integer-set-id ::= `#` suffix-id
 
 integer-set-inline
@@ -275,7 +278,7 @@ dimensions.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 // A example two-dimensional integer set with two symbols.
 #set42 = (d0, d1)[s0, s1]
    : (d0 >= 0, -d0 + s0 - 1 >= 0, d1 >= 0, -d1 + s1 - 1 >= 0)
@@ -295,7 +298,7 @@ affine.if #set42(%i, %j)[%M, %N] {
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `affine.apply` affine-map dim-and-symbol-use-list
 ```
 
@@ -308,7 +311,7 @@ value. The input operands and result must all have 'index' type.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 #map10 = (d0, d1) -> (d0 floordiv 8 + d1 floordiv 128)
 ...
 %1 = affine.apply #map10 (%s, %t)
@@ -321,7 +324,7 @@ Example:
 
 Syntax:
 
-``` {.ebnf}
+```
 operation   ::= `affine.for` ssa-id `=` lower-bound `to` upper-bound
                       (`step` integer-literal)? `{` op* `}`
 
@@ -362,7 +365,7 @@ nullary mapping function that returns the constant value (e.g. `()->(-42)()`).
 
 Example showing reverse iteration of the inner loop:
 
-```mlir {.mlir}
+```mlir
 #map57 = (d0)[s0] -> (s0 - d0 - 1)
 
 func @simple_example(%A: memref<?x?xf32>, %B: memref<?x?xf32>) {
@@ -382,7 +385,7 @@ func @simple_example(%A: memref<?x?xf32>, %B: memref<?x?xf32>) {
 
 Syntax:
 
-``` {.ebnf}
+```
 operation    ::= `affine.if` if-op-cond `{` op* `}` (`else` `{` op* `}`)?
 if-op-cond ::= integer-set dim-and-symbol-use-list
 ```
@@ -406,7 +409,7 @@ blocks must not have any arguments.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 #set = (d0, d1)[s0]: (d0 - 10 >= 0, s0 - d0 - 9 >= 0,
                       d1 - 10 >= 0, s0 - d1 - 9 >= 0)
 func @reduced_domain_example(%A, %X, %N) : (memref<10xi32>, i32, i32) {
@@ -428,19 +431,20 @@ func @reduced_domain_example(%A, %X, %N) : (memref<10xi32>, i32, i32) {
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `affine.load` ssa-use `[` multi-dim-affine-map-of-ssa-ids `]` `:` memref-type
 ```
-The `affine.load` op reads an element from a memref, where the index
-for each memref dimension is an affine expression of loop induction
-variables and symbols. The output of 'affine.load' is a new value with the
-same type as the elements of the memref. An affine expression of loop IVs
-and symbols must be specified for each dimension of the memref. The keyword
-'symbol' can be used to indicate SSA identifiers which are symbolic.
+
+The `affine.load` op reads an element from a memref, where the index for each
+memref dimension is an affine expression of loop induction variables and
+symbols. The output of 'affine.load' is a new value with the same type as the
+elements of the memref. An affine expression of loop IVs and symbols must be
+specified for each dimension of the memref. The keyword 'symbol' can be used to
+indicate SSA identifiers which are symbolic.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 
   Example 1:
 
@@ -457,19 +461,20 @@ Example:
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `affine.store` ssa-use, ssa-use `[` multi-dim-affine-map-of-ssa-ids `]` `:` memref-type
 ```
-The `affine.store` op writes an element to a memref, where the index
-for each memref dimension is an affine expression of loop induction
-variables and symbols. The 'affine.store' op stores a new value which is the
-same type as the elements of the memref. An affine expression of loop IVs
-and symbols must be specified for each dimension of the memref. The keyword
-'symbol' can be used to indicate SSA identifiers which are symbolic.
+
+The `affine.store` op writes an element to a memref, where the index for each
+memref dimension is an affine expression of loop induction variables and
+symbols. The 'affine.store' op stores a new value which is the same type as the
+elements of the memref. An affine expression of loop IVs and symbols must be
+specified for each dimension of the memref. The keyword 'symbol' can be used to
+indicate SSA identifiers which are symbolic.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 
     Example 1:
 
@@ -486,7 +491,7 @@ Example:
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= `affine.dma_Start` ssa-use `[` multi-dim-affine-map-of-ssa-ids `]`, `[` multi-dim-affine-map-of-ssa-ids `]`, `[` multi-dim-affine-map-of-ssa-ids `]`, ssa-use `:` memref-type
 ```
 
@@ -512,7 +517,7 @@ specified. The value of 'num_elements' must be a multiple of
 
 Example:
 
-```mlir {.mlir}
+```mlir
 
 For example, a DmaStartOp operation that transfers 256 elements of a memref
 '%src' in memory space 0 at indices [%i + 3, %j] to memref '%dst' in memory
@@ -533,11 +538,12 @@ space 1 at indices [%k + 7, %l], would be specified as follows:
     %stride, %num_elt_per_stride : ...
 
 ```
+
 #### 'affine.dma_wait' operation
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= `affine.dma_Start` ssa-use `[` multi-dim-affine-map-of-ssa-ids `]`, `[` multi-dim-affine-map-of-ssa-ids `]`, `[` multi-dim-affine-map-of-ssa-ids `]`, ssa-use `:` memref-type
 ```
 
@@ -550,7 +556,7 @@ associated with the DMA operation. For example:
 
 Example:
 
-```mlir {.mlir}
+```mlir
 
   affine.dma_start %src[%i, %j], %dst[%k, %l], %tag[%index], %num_elements :
     memref<2048xf32, 0>, memref<256xf32, 1>, memref<1xi32, 2>
@@ -564,7 +570,7 @@ Example:
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `affine.min` affine-map dim-and-symbol-use-list
 ```
 
@@ -577,7 +583,7 @@ returns one value. The input operands and result must all have 'index' type.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 
 %0 = affine.min (d0)[s0] -> (1000, d0 + 512, s0) (%arg0)[%arg1]
 
@@ -587,7 +593,7 @@ Example:
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= `"affine.terminator"() : () -> ()`
 ```
 

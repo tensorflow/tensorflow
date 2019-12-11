@@ -22,9 +22,7 @@ limitations under the License.
 #ifndef TF_OP_BASE
 #define TF_OP_BASE
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 //===----------------------------------------------------------------------===//
 // TensorFlow dialect definitions
@@ -41,7 +39,7 @@ This dialect maps to TensorFlow operations.
 Invariants:
 
 * All values are of Tensor type (in particular, scalars are
-  represented using zero-dimentional tensors);
+  represented using zero-dimensional tensors);
 
 TODO: Make invariants more structured so that we can reference them in ops.
   }];
@@ -262,6 +260,30 @@ class TF_DerivedResultTypeListAttr<int idx> : DerivedAttr<
   "return {mlir::ResultElementTypeIterator(values.begin()), "
           "mlir::ResultElementTypeIterator(values.end())};"
 >;
+
+// A derived attribute that returns the shape of the first result type.
+def TF_DerivedResultShapeAttr : DerivedAttr<"ShapedType",
+  "return (*getOperation()->result_type_begin()).cast<ShapedType>();">;
+
+// A derived attribute that returns the element type of the tensor held by a
+// named resource-type operand or result.
+class TF_DerivedOperandOrResultHandleTypeAttr<string name> : DerivedTypeAttr<
+  "auto resource_type =\n"
+  "  mlir::getElementTypeOrSelf(this->" # name # "())\n"
+  "  .cast<TF::ResourceType>();\n"
+  "assert(!resource_type.getSubtypes().empty() && \"unknown type\");\n"
+  "return mlir::getElementTypeOrSelf(*resource_type.getSubtypes().begin());">;
+
+
+// A derived attribute that returns the shape of the tensor held by a named
+// resource-type operand or result.
+class TF_DerivedOperandOrResultHandleShapeAttr<string name> : DerivedAttr<
+  "ShapedType",
+  "auto resource_type =\n"
+  "  mlir::getElementTypeOrSelf(this->" # name # "())\n"
+  "  .cast<TF::ResourceType>();\n"
+  "assert(!resource_type.getSubtypes().empty() && \"unknown shape\");\n"
+  "return resource_type.getSubtypes().begin()->cast<ShapedType>();">;
 
 def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
   let returnType = "Type";

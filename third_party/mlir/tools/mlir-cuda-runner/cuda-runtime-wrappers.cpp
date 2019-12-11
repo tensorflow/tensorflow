@@ -113,16 +113,3 @@ extern "C" void
 mcuMemHostRegisterMemRef3dFloat(const MemRefType<float, 3> *arg) {
   mcuMemHostRegisterMemRef(arg, 1.23f);
 }
-
-/// Prints the given float array to stderr.
-extern "C" void mcuPrintFloat(const MemRefType<float, 1> *arg) {
-  if (arg->sizes[0] == 0) {
-    llvm::outs() << "[]\n";
-    return;
-  }
-  llvm::outs() << "[" << arg->data[0];
-  for (int pos = 1; pos < arg->sizes[0]; pos++) {
-    llvm::outs() << ", " << arg->data[pos];
-  }
-  llvm::outs() << "]\n";
-}

@@ -24,9 +24,9 @@
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/Utils.h"
-#include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/VectorOps/Utils.h"
 #include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
@@ -306,10 +306,10 @@ using namespace mlir;
 /// terminal processing out of the use-def chains starting from loads. In the
 /// following snippet, there is simply no load::
 /// ```mlir
-/// mlfunc @fill(%A : memref<128xf32>) -> () {
+/// func @fill(%A : memref<128xf32>) -> () {
 ///   %f1 = constant 1.0 : f32
 ///   affine.for %i0 = 0 to 32 {
-///     store %f1, %A[%i0] : memref<128xf32, 0>
+///     affine.store %f1, %A[%i0] : memref<128xf32, 0>
 ///   }
 ///   return
 /// }
@@ -322,7 +322,7 @@ using namespace mlir;
 /// vectorize by a factor 128, we want to transform the following input:
 /// ```mlir
 ///   affine.for %i = %M to %N {
-///     %a = load A[%i] : memref<?xf32>
+///     %a = affine.load %A[%i] : memref<?xf32>
 ///   }
 /// ```
 ///
@@ -332,7 +332,7 @@ using namespace mlir;
 /// ```mlir
 ///   affine.for %i = floor(%M, 128) to ceil(%N, 128) {
 ///     affine.for %ii = max(%M, 128 * %i) to min(%N, 128*%i + 127) {
-///       %a = load A[%ii] : memref<?xf32>
+///       %a = affine.load %A[%ii] : memref<?xf32>
 ///     }
 ///   }
 /// ```
@@ -341,7 +341,7 @@ using namespace mlir;
 /// scheduling, so we want to generate a pattern that resembles:
 /// ```mlir
 ///   affine.for %i = ? to ? step ? {
-///     %v_a = vector.transfer_read A[%i] : memref<?xf32>, vector<128xf32>
+///     %v_a = vector.transfer_read %A[%i] : memref<?xf32>, vector<128xf32>
 ///   }
 /// ```
 ///
@@ -361,7 +361,7 @@ using namespace mlir;
 /// abstraction of size 128 returns code similar to:
 /// ```mlir
 ///   affine.for %i = %M to %N step 128 {
-///     %v_a = vector.transfer_read A[%i] : memref<?xf32>, vector<128xf32>
+///     %v_a = vector.transfer_read %A[%i] : memref<?xf32>, vector<128xf32>
 ///   }
 /// ```
 ///
@@ -382,7 +382,7 @@ using namespace mlir;
 /// =========
 /// Consider the following Function:
 /// ```mlir
-/// mlfunc @vector_add_2d(%M : index, %N : index) -> f32 {
+/// func @vector_add_2d(%M : index, %N : index) -> f32 {
 ///   %A = alloc (%M, %N) : memref<?x?xf32, 0>
 ///   %B = alloc (%M, %N) : memref<?x?xf32, 0>
 ///   %C = alloc (%M, %N) : memref<?x?xf32, 0>
@@ -391,19 +391,19 @@ using namespace mlir;
 ///   affine.for %i0 = 0 to %M {
 ///     affine.for %i1 = 0 to %N {
 ///       // non-scoped %f1
-///       store %f1, %A[%i0, %i1] : memref<?x?xf32, 0>
+///       affine.store %f1, %A[%i0, %i1] : memref<?x?xf32, 0>
 ///     }
 ///   }
 ///   affine.for %i2 = 0 to %M {
 ///     affine.for %i3 = 0 to %N {
 ///       // non-scoped %f2
-///       store %f2, %B[%i2, %i3] : memref<?x?xf32, 0>
+///       affine.store %f2, %B[%i2, %i3] : memref<?x?xf32, 0>
 ///     }
 ///   }
 ///   affine.for %i4 = 0 to %M {
 ///     affine.for %i5 = 0 to %N {
-///       %a5 = load %A[%i4, %i5] : memref<?x?xf32, 0>
-///       %b5 = load %B[%i4, %i5] : memref<?x?xf32, 0>
+///       %a5 = affine.load %A[%i4, %i5] : memref<?x?xf32, 0>
+///       %b5 = affine.load %B[%i4, %i5] : memref<?x?xf32, 0>
 ///       %s5 = addf %a5, %b5 : f32
 ///       // non-scoped %f1
 ///       %s6 = addf %s5, %f1 : f32
@@ -411,7 +411,7 @@ using namespace mlir;
 ///       %s7 = addf %s5, %f2 : f32
 ///       // diamond dependency.
 ///       %s8 = addf %s7, %s6 : f32
-///       store %s8, %C[%i4, %i5] : memref<?x?xf32, 0>
+///       affine.store %s8, %C[%i4, %i5] : memref<?x?xf32, 0>
 ///     }
 ///   }
 ///   %c7 = constant 7 : index
@@ -421,15 +421,14 @@ using namespace mlir;
 /// }
 /// ```
 ///
-/// TODO(ntv): update post b/119731251.
-/// The -vectorize pass with the following arguments:
+/// The -affine-vectorize pass with the following arguments:
 /// ```
-/// -vectorize -virtual-vector-size 256 --test-fastest-varying=0
+/// -affine-vectorize -virtual-vector-size 256 --test-fastest-varying=0
 /// ```
 ///
 /// produces this standard innermost-loop vectorized code:
 /// ```mlir
-/// mlfunc @vector_add_2d(%arg0 : index, %arg1 : index) -> f32 {
+/// func @vector_add_2d(%arg0 : index, %arg1 : index) -> f32 {
 ///   %0 = alloc(%arg0, %arg1) : memref<?x?xf32>
 ///   %1 = alloc(%arg0, %arg1) : memref<?x?xf32>
 ///   %2 = alloc(%arg0, %arg1) : memref<?x?xf32>
@@ -476,16 +475,15 @@ using namespace mlir;
 /// }
 /// ```
 ///
-/// TODO(ntv): update post b/119731251.
-/// The -vectorize pass with the following arguments:
+/// The -affine-vectorize pass with the following arguments:
 /// ```
-/// -vectorize -virtual-vector-size 32 -virtual-vector-size 256
+/// -affine-vectorize -virtual-vector-size 32 -virtual-vector-size 256
 /// --test-fastest-varying=1 --test-fastest-varying=0
 /// ```
 ///
 /// produces this more interesting mixed outer-innermost-loop vectorized code:
 /// ```mlir
-/// mlfunc @vector_add_2d(%arg0 : index, %arg1 : index) -> f32 {
+/// func @vector_add_2d(%arg0 : index, %arg1 : index) -> f32 {
 ///   %0 = alloc(%arg0, %arg1) : memref<?x?xf32>
 ///   %1 = alloc(%arg0, %arg1) : memref<?x?xf32>
 ///   %2 = alloc(%arg0, %arg1) : memref<?x?xf32>
@@ -587,6 +585,13 @@ makePatterns(const llvm::DenseSet<Operation *> &parallelLoops, int vectorRank,
     return std::vector<NestedPattern>();
   }
   }
+}
+
+static NestedPattern &vectorTransferPattern() {
+  static auto pattern = matcher::Op([](Operation &op) {
+    return isa<vector::TransferReadOp>(op) || isa<vector::TransferWriteOp>(op);
+  });
+  return pattern;
 }
 
 namespace {
@@ -770,7 +775,7 @@ void VectorizationState::registerReplacement(Value *key, Value *value) {
 
 // Apply 'map' with 'mapOperands' returning resulting values in 'results'.
 static void computeMemoryOpIndices(Operation *op, AffineMap map,
-                                   ArrayRef<Value *> mapOperands,
+                                   ValueRange mapOperands,
                                    SmallVectorImpl<Value *> &results) {
   OpBuilder builder(op);
   for (auto resultExpr : map.getResults()) {
@@ -817,15 +822,14 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
   // as needed by various targets.
   if (auto load = dyn_cast<AffineLoadOp>(opInst)) {
     OpBuilder b(opInst);
-    SmallVector<Value *, 4> mapOperands(load.getMapOperands());
+    ValueRange mapOperands = load.getMapOperands();
     SmallVector<Value *, 8> indices;
     indices.reserve(load.getMemRefType().getRank());
     if (load.getAffineMap() !=
         b.getMultiDimIdentityMap(load.getMemRefType().getRank())) {
       computeMemoryOpIndices(opInst, load.getAffineMap(), mapOperands, indices);
     } else {
-      indices.append(load.getMapOperands().begin(),
-                     load.getMapOperands().end());
+      indices.append(mapOperands.begin(), mapOperands.end());
     }
     auto permutationMap =
         makePermutationMap(opInst, indices, state->strategy->loopToVectorDim);
@@ -833,7 +837,7 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
       return LogicalResult::Failure;
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ permutationMap: ");
     LLVM_DEBUG(permutationMap.print(dbgs()));
-    auto transfer = b.create<vector::VectorTransferReadOp>(
+    auto transfer = b.create<vector::TransferReadOp>(
         opInst->getLoc(), vectorType, memoryOp.getMemRef(),
         map(makePtrDynCaster<Value>(), indices),
         AffineMapAttr::get(permutationMap),
@@ -893,7 +897,8 @@ isVectorizableLoopPtrFactory(const llvm::DenseSet<Operation *> &parallelLoops,
     if (parallelIt == parallelLoops.end())
       return false;
     int memRefDim = -1;
-    auto vectorizableBody = isVectorizableLoopBody(loop, &memRefDim);
+    auto vectorizableBody =
+        isVectorizableLoopBody(loop, &memRefDim, vectorTransferPattern());
     if (!vectorizableBody)
       return false;
     return memRefDim == -1 || fastestVaryingMemRefDimension == -1 ||
@@ -1035,9 +1040,9 @@ static Operation *vectorizeOneOperation(Operation *opInst,
   // Sanity checks.
   assert(!isa<AffineLoadOp>(opInst) &&
          "all loads must have already been fully vectorized independently");
-  assert(!isa<vector::VectorTransferReadOp>(opInst) &&
+  assert(!isa<vector::TransferReadOp>(opInst) &&
          "vector.transfer_read cannot be further vectorized");
-  assert(!isa<vector::VectorTransferWriteOp>(opInst) &&
+  assert(!isa<vector::TransferWriteOp>(opInst) &&
          "vector.transfer_write cannot be further vectorized");
 
   if (auto store = dyn_cast<AffineStoreOp>(opInst)) {
@@ -1046,7 +1051,7 @@ static Operation *vectorizeOneOperation(Operation *opInst,
     auto *value = store.getValueToStore();
     auto *vectorValue = vectorizeOperand(value, opInst, state);
 
-    SmallVector<Value *, 4> mapOperands(store.getMapOperands());
+    ValueRange mapOperands = store.getMapOperands();
     SmallVector<Value *, 8> indices;
     indices.reserve(store.getMemRefType().getRank());
     if (store.getAffineMap() !=
@@ -1054,8 +1059,7 @@ static Operation *vectorizeOneOperation(Operation *opInst,
       computeMemoryOpIndices(opInst, store.getAffineMap(), mapOperands,
                              indices);
     } else {
-      indices.append(store.getMapOperands().begin(),
-                     store.getMapOperands().end());
+      indices.append(mapOperands.begin(), mapOperands.end());
     }
 
     auto permutationMap =
@@ -1064,7 +1068,7 @@ static Operation *vectorizeOneOperation(Operation *opInst,
       return nullptr;
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ permutationMap: ");
     LLVM_DEBUG(permutationMap.print(dbgs()));
-    auto transfer = b.create<vector::VectorTransferWriteOp>(
+    auto transfer = b.create<vector::TransferWriteOp>(
         opInst->getLoc(), vectorValue, memRef, indices,
         AffineMapAttr::get(permutationMap));
     auto *res = transfer.getOperation();
@@ -1172,7 +1176,7 @@ static LogicalResult vectorizeRootMatch(NestedMatch m,
   // vectorizable. If a pattern is not vectorizable anymore, we just skip it.
   // TODO(ntv): implement a non-greedy profitability analysis that keeps only
   // non-intersecting patterns.
-  if (!isVectorizableLoopBody(loop)) {
+  if (!isVectorizableLoopBody(loop, vectorTransferPattern())) {
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ loop is not vectorizable");
     return failure();
   }

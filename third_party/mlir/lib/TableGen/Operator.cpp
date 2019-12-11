@@ -145,17 +145,20 @@ StringRef tblgen::Operator::getArgName(int index) const {
   return argumentValues->getArgName(index)->getValue();
 }
 
-bool tblgen::Operator::hasTrait(StringRef trait) const {
-  for (auto t : getTraits()) {
+const tblgen::OpTrait *tblgen::Operator::getTrait(StringRef trait) const {
+  for (const auto &t : traits) {
     if (auto opTrait = dyn_cast<tblgen::NativeOpTrait>(&t)) {
       if (opTrait->getTrait() == trait)
-        return true;
+        return opTrait;
     } else if (auto opTrait = dyn_cast<tblgen::InternalOpTrait>(&t)) {
       if (opTrait->getTrait() == trait)
-        return true;
+        return opTrait;
+    } else if (auto opTrait = dyn_cast<tblgen::InterfaceOpTrait>(&t)) {
+      if (opTrait->getTrait() == trait)
+        return opTrait;
     }
   }
-  return false;
+  return nullptr;
 }
 
 unsigned tblgen::Operator::getNumRegions() const { return regions.size(); }

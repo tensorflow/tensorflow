@@ -278,6 +278,15 @@ StatusOr<Literal> HloEvaluator::Evaluate(
 }
 
 StatusOr<Literal> HloEvaluator::Evaluate(HloInstruction* instruction) {
+  // If the instruction is a kCopyDone, simply find the argument that it is
+  // copied from.
+  while (instruction->opcode() == HloOpcode::kCopyDone) {
+    if (instruction->operand(0)->opcode() != HloOpcode::kCopyStart) {
+      return tensorflow::errors::FailedPrecondition(
+          "kCopyDone has an argument different than a kCopyStart.");
+    }
+    instruction = instruction->mutable_operand(0)->mutable_operand(0);
+  }
   if (instruction->opcode() == HloOpcode::kParameter) {
     return tensorflow::errors::FailedPrecondition(
         "Cannot evaluate a parameter.");
@@ -1852,6 +1861,43 @@ Status HloEvaluator::HandleGetTupleElement(HloInstruction* get_tuple_element) {
 Status HloEvaluator::HandleCopy(HloInstruction* copy) {
   TF_RET_CHECK(ShapeUtil::Compatible(copy->shape(), copy->operand(0)->shape()));
   evaluated_[copy] = GetEvaluatedLiteralFor(copy->operand(0)).Clone();
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleCopyStart(HloInstruction* copy_start) {
+  if (copy_start->user_count() != 1 ||
+      copy_start->users().at(0)->opcode() != HloOpcode::kCopyDone) {
+    return tensorflow::errors::FailedPrecondition(
+        "Cannot evaluate a kCopyStart that doesn't have a single kCopyDone "
+        "user.");
+  }
+
+  // The token in index {1} is undefined, but since we can't represent undefined
+  // values using a Literal, we just use 0. This should be safe though since we
+  // ensure that the only user of a kCopyStart is a kCopyDone which "eats" the
+  // token. Also note that MakeTuple copies its arguments, so this is
+  // memory-safe.
+  const Literal token_literal = LiteralUtil::CreateR0<uint32>(0);
+  evaluated_[copy_start] = LiteralUtil::MakeTuple(
+      {&GetEvaluatedLiteralFor(copy_start->operand(0)), &token_literal});
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleCopyDone(HloInstruction* copy_done) {
+  const HloInstruction* operand = copy_done->operand(0);
+  if (operand->opcode() != HloOpcode::kCopyStart) {
+    return tensorflow::errors::FailedPrecondition(
+        "Cannot evaluate a kCopyDone that doesn't have a kCopyStart as "
+        "operand.");
+  }
+
+  const Literal& operand_tuple_literal = GetEvaluatedLiteralFor(operand);
+
+  evaluated_[copy_done] =
+      Literal(ShapeUtil::GetTupleElementShape(operand->shape(), /*index=*/0));
+  TF_RETURN_IF_ERROR(evaluated_[copy_done].CopyFrom(operand_tuple_literal,
+                                                    /*dest_shape_index=*/{},
+                                                    /*src_shape_index=*/{0}));
   return Status::OK();
 }
 

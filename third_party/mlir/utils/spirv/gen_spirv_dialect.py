@@ -200,9 +200,6 @@ def gen_operand_kind_enum_attr(operand_kind):
   enum_attr = 'def SPV_{name}Attr :\n    '\
       '{category}EnumAttr<"{name}", "valid SPIR-V {name}", [\n{cases}\n'\
       '    ]> {{\n'\
-      '  let returnType = "::mlir::spirv::{name}";\n'\
-      '  let convertFromStorage = '\
-            '"static_cast<::mlir::spirv::{name}>($_self.getInt())";\n'\
       '  let cppNamespace = "::mlir::spirv";\n}}'.format(
           name=kind_name, category=kind_category, cases=case_names)
   return kind_name, case_defs + '\n\n' + enum_attr
@@ -240,9 +237,6 @@ def gen_opcode(instructions):
               '    I32EnumAttr<"{name}", "valid SPIR-V instructions", [\n'\
               '{lst}\n'\
               '      ]> {{\n'\
-              '    let returnType = "::mlir::spirv::{name}";\n'\
-              '    let convertFromStorage = '\
-              '"static_cast<::mlir::spirv::{name}>($_self.getInt())";\n'\
               '    let cppNamespace = "::mlir::spirv";\n}}'.format(
                   name='Opcode', lst=opcode_list)
   return opcode_str + '\n\n' + enum_attr
@@ -309,7 +303,10 @@ def update_td_enum_attrs(path, operand_kinds, filter_list):
   # Sort alphabetically according to enum name
   defs.sort(key=lambda enum : enum[0])
   # Only keep the definitions from now on
-  defs = [enum[1] for enum in defs]
+  # Put Capability's definition at the very beginning because capability cases
+  # will be referenced later
+  defs = [enum[1] for enum in defs if enum[0] == 'Capability'
+         ] + [enum[1] for enum in defs if enum[0] != 'Capability']
 
   # Substitute the old section
   content = content[0] + AUTOGEN_ENUM_SECTION_MARKER + '\n\n' + \
@@ -429,7 +426,11 @@ def get_op_definition(instruction, doc, existing_info):
   # Make sure we have ', ' to separate the category arguments from traits
   category_args = category_args.rstrip(', ') + ', '
 
-  summary, text = doc.split('\n', 1)
+  if '\n' in doc:
+    summary, text = doc.split('\n', 1)
+  else:
+    summary = doc
+    text = ''
   wrapper = textwrap.TextWrapper(
       width=76, initial_indent='    ', subsequent_indent='    ')
 
@@ -471,7 +472,7 @@ def get_op_definition(instruction, doc, existing_info):
 
   description = existing_info.get('description', None)
   if description is None:
-    assembly = '\n    ``` {.ebnf}\n'\
+    assembly = '\n    ```\n'\
                '    [TODO]\n'\
                '    ```\n\n'\
                '    For example:\n\n'\

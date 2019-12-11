@@ -36,14 +36,13 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.all_strategies,
-          mode=["eager"]
-      ))
+          distribution=strategy_combinations.strategies_minus_tpu,
+          mode=["eager"]))
   def testFullEager(self, distribution):
     dataset = self._get_dataset()
 
     def train_step(data):
-      return data
+      return math_ops.square(data)
 
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
     results = []
@@ -63,7 +62,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def train_step(data):
-      return data
+      return math_ops.square(data)
 
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
     results = []
@@ -82,7 +81,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
     dataset = self._get_dataset()
 
     def train_step(data):
-      return data
+      return math_ops.square(data)
 
     @def_function.function
     def f_train_step(input_data):
@@ -105,9 +104,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
     dataset = self._get_dataset()
 
     def train_step(data):
-      if math_ops.reduce_sum(data) < 0:
-        return -data
-      return data
+      return math_ops.square(data)
 
     @def_function.function
     def f_train_step(input_data):
@@ -171,7 +168,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
   def testIterationInsideFunction(self, distribution):
 
     def step_fn(data):
-      return data
+      return math_ops.square(data)
 
     @def_function.function
     def train(dataset):
@@ -199,7 +196,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
   def testIterationOutsideFunction(self, distribution):
 
     def train_step(data):
-      return data
+      return math_ops.square(data)
 
     @def_function.function
     def f_train_step(input_data):
@@ -226,7 +223,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
         map(lambda x: math_ops.cast(x, dtypes.int32)).batch(2)
 
   def _validate_outputs(self, actual_results):
-    expected_results = [[i, i+1] for i in range(0, 10, 2)]
+    expected_results = [[i**2, (i+1)**2] for i in range(0, 10, 2)]
     self.assertEqual(len(expected_results), len(actual_results))
 
     for i, expected_result in enumerate(expected_results):

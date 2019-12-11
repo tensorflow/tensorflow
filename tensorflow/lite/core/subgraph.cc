@@ -18,7 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/lite/arena_planner.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
@@ -39,6 +39,15 @@ struct TfLiteQuantizationDeleter {
 
 using ScopedTfLiteQuantization =
     std::unique_ptr<TfLiteQuantization, TfLiteQuantizationDeleter>;
+
+struct TfLiteSparsityDeleter {
+  void operator()(TfLiteSparsity* s) {
+    if (s) TfLiteSparsityFree(s);
+  }
+};
+
+using ScopedTfLiteSparsity =
+    std::unique_ptr<TfLiteSparsity, TfLiteSparsityDeleter>;
 
 TfLiteStatus ReportOpError(TfLiteContext* context, const TfLiteNode& node,
                            const TfLiteRegistration& registration,
@@ -116,6 +125,18 @@ TfLiteQuantizationParams GetLegacyQuantization(
   return legacy_quantization;
 }
 
+static constexpr const char kUnknownCustomOpName[] = "UnknownCustomOp";
+const char* GetTFLiteOpName(const TfLiteRegistration& op_reg) {
+  const char* op_name = nullptr;
+  if (op_reg.builtin_code == tflite::BuiltinOperator_CUSTOM) {
+    const char* const custom_name = op_reg.custom_name;
+    op_name = custom_name ? custom_name : kUnknownCustomOpName;
+  } else {
+    op_name = tflite::EnumNamesBuiltinOperator()[op_reg.builtin_code];
+  }
+  return op_name;
+}
+
 }  // namespace
 
 // A trivial implementation of GraphInfo around the Interpreter.
@@ -158,13 +179,13 @@ class InterpreterInfo : public GraphInfo {
 Subgraph::Subgraph(ErrorReporter* error_reporter,
                    TfLiteExternalContext** external_contexts,
                    std::vector<std::unique_ptr<Subgraph>>* subgraphs,
-                   ResourceVariableMap* resource_variables)
+                   resource::ResourceMap* resources)
     : external_contexts_(external_contexts),
       error_reporter_(error_reporter),
       next_execution_plan_index_to_prepare_(0),
       next_execution_plan_index_to_plan_allocation_(0),
       subgraphs_(subgraphs),
-      resource_variables_(resource_variables) {
+      resources_(resources) {
   context_.impl_ = static_cast<void*>(this);
   context_.ResizeTensor = ResizeTensor;
   context_.ReportError = ReportErrorC;
@@ -444,14 +465,16 @@ void Subgraph::ReserveNodes(int count) {
 
 TfLiteStatus Subgraph::CheckTensorIndices(const char* label, const int* indices,
                                           int length) {
-  // Making sure kOptionalTensor is not re-defined to something other than -1.
-  static_assert(kOptionalTensor == -1, "kOptionalTensor should be defined -1");
+  // Making sure kTfLiteOptionalTensor is not re-defined to something other than
+  // -1.
+  static_assert(kTfLiteOptionalTensor == -1,
+                "kTfLiteOptionalTensor should be defined -1");
 
   for (int i = 0; i < length; i++) {
     int index = indices[i];
-    // Continue if index == kOptionalTensor before additional comparisons below,
-    // size_t(-1) is always >= context_tensors_size.
-    if (index == kOptionalTensor) {
+    // Continue if index == kTfLiteOptionalTensor before additional comparisons
+    // below, size_t(-1) is always >= context_tensors_size.
+    if (index == kTfLiteOptionalTensor) {
       continue;
     }
     if (index < 0 || static_cast<size_t>(index) >= context_.tensors_size) {
@@ -756,7 +779,10 @@ TfLiteStatus Subgraph::Invoke() {
     TfLiteNode& node = nodes_and_registration_[node_index].first;
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
-    TFLITE_SCOPED_OPERATOR_PROFILE(profiler_.get(), node_index);
+
+    const char* op_name = nullptr;
+    if (profiler_) op_name = GetTFLiteOpName(registration);
+    TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(profiler_.get(), op_name, node_index);
 
     // TODO(ycling): This is an extra loop through inputs to check if the data
     // need to be copied from Delegate buffer to raw memory, which is often not
@@ -764,7 +790,7 @@ TfLiteStatus Subgraph::Invoke() {
     // done for a node or not.
     for (int i = 0; i < node.inputs->size; ++i) {
       int tensor_index = node.inputs->data[i];
-      if (tensor_index == kOptionalTensor) {
+      if (tensor_index == kTfLiteOptionalTensor) {
         continue;
       }
       TfLiteTensor* tensor = &tensors_[tensor_index];
@@ -896,9 +922,10 @@ TfLiteStatus Subgraph::GetNodeAndRegistration(
 TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
     const int* dims, TfLiteQuantization quantization, const char* buffer,
-    size_t bytes, const Allocation* allocation) {
+    size_t bytes, const Allocation* allocation, TfLiteSparsity* sparsity) {
   // Ensure quantization cleanup on failure.
   ScopedTfLiteQuantization scoped_quantization(&quantization);
+  ScopedTfLiteSparsity scoped_sparsity(sparsity);
   if (state_ == kStateInvokableAndImmutable) {
     ReportError(
         "SetTensorParametersReadOnly is disallowed when graph is immutable.");
@@ -907,10 +934,12 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
 
   TF_LITE_ENSURE(&context_,
                  tensor_index < context_.tensors_size && tensor_index >= 0);
+
   // For most tensors we know exactly how much memory is necessary so we can
   // ensure the buffer is large enough. However, we need to skip string tensors
-  // because their sizes change with the contents of the individual strings.
-  if (type != kTfLiteString) {
+  // and sparse tensors because their sizes change with the contents.
+  // TODO(b/145615516): Extend BytesRequired to check sparse tensors.
+  if (type != kTfLiteString && sparsity == nullptr) {
     size_t required_bytes;
     TF_LITE_ENSURE_OK(&context_,
                       BytesRequired(type, dims, rank, &required_bytes));
@@ -927,6 +956,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     if (!tensor.dims) tensor.dims = ConvertArrayToTfLiteIntArray(rank, dims);
     tensor.params = GetLegacyQuantization(quantization);
     tensor.quantization = *scoped_quantization.release();
+    tensor.sparsity = scoped_sparsity.release();
     tensor.allocation_type = kTfLiteMmapRo;
     tensor.allocation = allocation;
   } else {
@@ -938,6 +968,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     // TODO(suharshs): Update TfLiteTensorReset to include the new quantization
     // if there are other required callers.
     tensor.quantization = *scoped_quantization.release();
+    tensor.sparsity = scoped_sparsity.release();
   }
   return kTfLiteOk;
 }
@@ -1130,6 +1161,9 @@ TfLiteStatus Subgraph::EnsureMemoryAllocations() {
 }
 
 TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
+  TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(),
+                                       "ModifyGraphWithDelegate");
+
   // Restore delegation state if applicable.
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());
 

@@ -314,7 +314,7 @@ class GrpcTpuStream {
 class GrpcTpuDriver : public TpuDriver {
  public:
   explicit GrpcTpuDriver(const TpuDriverConfig& config,
-                         std::shared_ptr<::grpc_impl::ChannelCredentials> creds,
+                         std::shared_ptr<::grpc::ChannelCredentials> creds,
                          int32_t client_id)
       : config_(config), creds_(creds), client_id_(client_id) {
     SystemInfo system_info;
@@ -336,7 +336,9 @@ class GrpcTpuDriver : public TpuDriver {
       return;
     }
     auto status = Close();
-    LOG_IF(ERROR, !status.ok()) << status;
+    if (!status.ok()) {
+      LOG(ERROR) << status;
+    }
   }
 
   void QuerySystemInfo(SystemInfo* system_info) override;
@@ -419,7 +421,7 @@ class GrpcTpuDriver : public TpuDriver {
 
   static std::unique_ptr<grpc::CloudTpuDriver::Stub> CreateTpuDriverStub(
       const TpuDriverConfig& config,
-      std::shared_ptr<::grpc_impl::ChannelCredentials> creds);
+      std::shared_ptr<::grpc::ChannelCredentials> creds);
 
   uint32_t client_id() const { return client_id_; }
 
@@ -428,7 +430,7 @@ class GrpcTpuDriver : public TpuDriver {
   std::unique_ptr<GrpcTpuStream> AllocateStream(int32_t core_id);
 
   const TpuDriverConfig config_;
-  std::shared_ptr<::grpc_impl::ChannelCredentials> creds_;
+  std::shared_ptr<::grpc::ChannelCredentials> creds_;
   const uint32_t client_id_;
   // Map from stream IDs to streams.
   absl::flat_hash_map<int32_t, std::unique_ptr<GrpcTpuStream>> streams_;
@@ -942,7 +944,7 @@ std::shared_ptr<Event> GrpcTpuStream::ExecuteProgram(
 /*static*/ std::unique_ptr<grpc::CloudTpuDriver::Stub>
 GrpcTpuDriver::CreateTpuDriverStub(
     const TpuDriverConfig& config,
-    std::shared_ptr<grpc_impl::ChannelCredentials> creds) {
+    std::shared_ptr<::grpc::ChannelCredentials> creds) {
   ::grpc::ChannelArguments args;
   args.SetMaxReceiveMessageSize(std::numeric_limits<int>::max());
   args.SetMaxSendMessageSize(std::numeric_limits<int>::max());
@@ -1052,7 +1054,7 @@ Status GrpcTpuDriver::Close() {
 
 xla::StatusOr<std::unique_ptr<TpuDriver>> CreateGrpcTpuDriver(
     const TpuDriverConfig& config,
-    std::shared_ptr<::grpc_impl::ChannelCredentials> creds) {
+    std::shared_ptr<::grpc::ChannelCredentials> creds) {
   auto stub = GrpcTpuDriver::CreateTpuDriverStub(config, creds);
   ::grpc::ClientContext ctx;
   ctx.set_fail_fast(false);

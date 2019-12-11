@@ -30,10 +30,10 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
 
   for (auto* computation : module->MakeNonfusionComputations()) {
     computation_ = computation;
-    RecomputeReachability();
     candidates_.clear();
     candidates_index_.clear();
     all_fusion_candidates_.clear();
+    RecomputeReachability();
 
     int64 index = 0;
     for (auto it : computation_->MakeInstructionPostOrder()) {
@@ -108,6 +108,11 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
       changed = true;
     }
   }
+  // Clean up state in case this pass is wrapped in an HloPassPipeline.
+  candidates_.clear();
+  candidates_index_.clear();
+  all_fusion_candidates_.clear();
+  reachability_.reset();
   return changed;
 }
 
@@ -258,6 +263,8 @@ bool MultiOutputFusion::LegalToFuse(HloInstruction* instr1,
 }
 
 void MultiOutputFusion::RecomputeReachability() {
+  // Free the memory used for the reachability map before computing a new one.
+  reachability_.reset();
   reachability_ = HloReachabilityMap::Build(computation_);
 }
 

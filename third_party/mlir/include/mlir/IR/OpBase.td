@@ -221,6 +221,9 @@ def IsTensorTypePred : CPred<"$_self.isa<TensorType>()">;
 // Whether a type is a MemRefType.
 def IsMemRefTypePred : CPred<"$_self.isa<MemRefType>()">;
 
+// Whether a type is an  IsUnrankedMemRefType
+def IsUnrankedMemRefTypePred : CPred<"$_self.isa<UnrankedMemRefType>()">;
+
 // Whether a type is a ShapedType.
 def IsShapedTypePred : CPred<"$_self.isa<ShapedType>()">;
 
@@ -486,6 +489,10 @@ class 2DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [2]>;
 class 3DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [3]>;
 class 4DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [4]>;
 
+// Unranked Memref type
+def AnyUnrankedMemRef : 
+    ShapedContainerType<[AnyType], 
+                        IsUnrankedMemRefTypePred, "unranked.memref">;
 // Memref type.
 
 // Memrefs are blocks of data with fixed type and rank.
@@ -493,6 +500,8 @@ class MemRefOf<list<Type> allowedTypes> :
     ShapedContainerType<allowedTypes, IsMemRefTypePred, "memref">;
 
 def AnyMemRef : MemRefOf<[AnyType]>;
+
+def AnyRankedOrUnrankedMemRef: AnyTypeOf<[AnyUnrankedMemRef, AnyMemRef]>;
 
 // Memref declarations handle any memref, independent of rank, size, (static or
 // dynamic), layout, or memory space.
@@ -938,12 +947,18 @@ class IntEnumAttr<I intType, string name, string description,
 class I32EnumAttr<string name, string description,
                   list<I32EnumAttrCase> cases> :
     IntEnumAttr<I32, name, description, cases> {
+  let returnType = cppNamespace # "::" # name;
   let underlyingType = "uint32_t";
+  let convertFromStorage = "static_cast<" # returnType # ">($_self.getInt())";
+  let constBuilderCall = "$_builder.getI32IntegerAttr(static_cast<int32_t>($0))";
 }
 class I64EnumAttr<string name, string description,
                   list<I64EnumAttrCase> cases> :
     IntEnumAttr<I64, name, description, cases> {
+  let returnType = cppNamespace # "::" # name;
   let underlyingType = "uint64_t";
+  let convertFromStorage = "static_cast<" # returnType # ">($_self.getInt())";
+  let constBuilderCall = "$_builder.getI64IntegerAttr(static_cast<int64_t>($0))";
 }
 
 // A bit enum stored with 32-bit IntegerAttr.
@@ -963,7 +978,10 @@ class BitEnumAttr<string name, string description,
           ")))">
   ]>;
 
+  let returnType = cppNamespace # "::" # name;
   let underlyingType = "uint32_t";
+  let convertFromStorage = "static_cast<" # returnType # ">($_self.getInt())";
+  let constBuilderCall = "$_builder.getI32IntegerAttr(static_cast<int32_t>($0))";
 
   // We need to return a string because we may concatenate symbols for multiple
   // bits together.
@@ -1230,6 +1248,10 @@ class ArrayMinCount<int n> : AttrConstraint<
     CPred<"$_self.cast<ArrayAttr>().size() >= " # n>,
     "with at least " # n # " elements">;
 
+class ArrayCount<int n> : AttrConstraint<
+    CPred<"$_self.cast<ArrayAttr>().size() == " #n>,
+    "with exactly " # n # " elements">;
+
 class IntArrayNthElemEq<int index, int value> : AttrConstraint<
     And<[
       CPred<"$_self.cast<ArrayAttr>().size() > " # index>,
@@ -1294,8 +1316,7 @@ class NativeOpTrait<string prop> : OpTrait {
 // the value in `prop` as the trait name and the value in `params` as
 // parameters to construct the native trait class name.
 class ParamNativeOpTrait<string prop, string params>
-    : NativeOpTrait<prop # "<" # params # ">::Impl"> {
-}
+    : NativeOpTrait<prop # "<" # params # ">::Impl">;
 
 // GenInternalOpTrait is an op trait that does not have direct C++ mapping but
 // affects op definition generator internals, like how op builders and
@@ -1314,6 +1335,8 @@ class PredOpTrait<string descr, Pred pred> : OpTrait {
 def Broadcastable  : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
 // X op Y == Y op X
 def Commutative  : NativeOpTrait<"IsCommutative">;
+// Op behaves like a function.
+def FunctionLike : NativeOpTrait<"FunctionLike">;
 // Op is isolated from above.
 def IsolatedFromAbove : NativeOpTrait<"IsIsolatedFromAbove">;
 // Op results are float or vectors/tensors thereof.
@@ -1338,7 +1361,7 @@ def Symbol : NativeOpTrait<"Symbol">;
 // Op defines a symbol table.
 def SymbolTable : NativeOpTrait<"SymbolTable">;
 // Op is a terminator.
-def Terminator       : NativeOpTrait<"IsTerminator">;
+def Terminator : NativeOpTrait<"IsTerminator">;
 
 // Op's regions have a single block with the specified terminator.
 class SingleBlockImplicitTerminator<string op>
@@ -1367,6 +1390,18 @@ def SameVariadicOperandSize : GenInternalOpTrait<"SameVariadicOperandSize">;
 // known at runtime. This trait requires all variadic results of an op
 // to have the same array size.
 def SameVariadicResultSize : GenInternalOpTrait<"SameVariadicResultSize">;
+
+// Uses an attribute named `operand_segment_sizes` to specify how many actual
+// operand each ODS-declared operand (variadic or not) corresponds to.
+// This trait is used for ops that have multiple variadic operands but do
+// not know statically their size relationship. The attribute must be a 1D
+// vector that has the same number of elements as the number of ODS declared
+// operands. That means even if some operands are non-variadic, the attribute
+// still need to have an element for its size, which is always 1.
+def AttrSizedOperandSegments : NativeOpTrait<"AttrSizedOperandSegments">;
+// Similar to AttrSizedOperandSegments, but used for results. The attribute
+// should be named as `result_segment_sizes`.
+def AttrSizedResultSegments  : NativeOpTrait<"AttrSizedResultSegments">;
 
 //===----------------------------------------------------------------------===//
 // OpInterface definitions
@@ -1667,6 +1702,12 @@ class TCOpResIsShapedTypePred<int i, int j> : And<[
       IsShapedTypePred>,
     SubstLeaves<"$_self", "$_op.getOperand(" # j # ")->getType()",
       IsShapedTypePred>]>;
+
+// Predicate to verify that the i'th result and the j'th operand have the same
+// type.
+class TCresIsSameAsOpBase<int i, int j> :
+    CPred<"$_op.getResult(" # i # ")->getType() == "
+          "$_op.getOperand(" # j # ")->getType()">;
 
 // Basic Predicate to verify that the i'th result and the j'th operand have the
 // same elemental type.

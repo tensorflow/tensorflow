@@ -97,7 +97,7 @@ class MapAndBatchDatasetParams : public DatasetParams {
   bool preserve_cardinality_;
 };
 
-class MapAndBatchDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class MapAndBatchDatasetOpTest : public DatasetOpsTestBase {};
 
 FunctionDefHelper::AttrValueWrapper MapFunc(const string& func_name,
                                             const DataType& dtype) {

@@ -176,11 +176,22 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   return MakeValidatedShape(element_type, dimensions).ValueOrDie();
 }
 
+/* static */ Shape ShapeUtil::MakeScalarShape(PrimitiveType element_type) {
+  return MakeShape(element_type, {});
+}
+
 /* static */ Shape ShapeUtil::MakeShape(
     PrimitiveType element_type, absl::Span<const int64> dimensions,
     const std::vector<bool>& dynamic_dimensions) {
   return MakeValidatedShape(element_type, dimensions, dynamic_dimensions)
       .ValueOrDie();
+}
+
+/* static */ Shape ShapeUtil::MakeShapeWithStaticDimensions(
+    const Shape& shape) {
+  Shape output = shape;
+  output.clear_dynamic_dimensions();
+  return output;
 }
 
 /* static */ StatusOr<Shape> ShapeUtil::MakeValidatedShape(
@@ -242,6 +253,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       shape.layout().tiles().begin(), shape.layout().tiles().end());
   new_shape.mutable_layout()->set_element_size_in_bits(
       shape.layout().element_size_in_bits());
+  for (int i = 0; i < shape.dimensions_size(); ++i) {
+    new_shape.set_dynamic_dimension(i, shape.is_dynamic_dimension(i));
+  }
   return new_shape;
 }
 
@@ -292,6 +306,20 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
                                               Shape* tuple_shape) {
   CHECK(index < tuple_shape->tuple_shapes_size());
   *tuple_shape->mutable_tuple_shapes(index) = shape;
+}
+
+/* static */ void ShapeUtil::UpdateDynamicDimension(Shape* shape,
+                                                    ShapeIndexView index,
+                                                    int64 dim,
+                                                    bool is_dynamic) {
+  if (index.empty()) {
+    CHECK(!shape->IsTuple());
+    shape->set_dynamic_dimension(dim, is_dynamic);
+    return;
+  }
+
+  UpdateDynamicDimension(shape->mutable_tuple_shapes(index.front()),
+                         index.ConsumeFront(), dim, is_dynamic);
 }
 
 /* static */ void ShapeUtil::AppendMajorDimension(int bound, Shape* shape) {

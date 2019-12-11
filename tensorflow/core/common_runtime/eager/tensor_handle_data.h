@@ -58,15 +58,14 @@ class LocalTensorHandleData : public TensorHandleData {
   tensorflow::Tensor tensor_;
 };
 
-// Async Local Tensor Handle: A non-ready local tensor handle used in async
-// eager execution. Once the execution is complete this is replaced by a local
-// tensor handle.
-class AsyncLocalTensorHandleData : public TensorHandleData {
+// Empty Local Tensor Handle: Once the execution is complete this is replaced by
+// a local tensor handle.
+class EmptyLocalTensorHandleData : public TensorHandleData {
  public:
-  AsyncLocalTensorHandleData() {}
-  ~AsyncLocalTensorHandleData() override {}
+  EmptyLocalTensorHandleData() {}
+  ~EmptyLocalTensorHandleData() override {}
 
-  // Async tensor handles are not ready and hence cannot satisfy any of these
+  // Empty tensor handles are not ready and hence cannot satisfy any of these
   // requests.
   Status Tensor(const tensorflow::Tensor** t) const override;
   Status TensorValue(tensorflow::TensorValue* t) override;

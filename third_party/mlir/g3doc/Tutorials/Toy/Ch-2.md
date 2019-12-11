@@ -41,7 +41,7 @@ modules, etc.
 Here is the MLIR assembly for the Toy `transpose` operations:
 
 ```mlir
-%t_tensor = "toy.transpose"(%tensor) {inplace = true} : (tensor<2x3xf64>) -> tensor<3x2xf64>
+%t_tensor = "toy.transpose"(%tensor) {inplace = true} : (tensor<2x3xf64>) -> tensor<3x2xf64> loc("example/file/path":12:1)
 ```
 
 Let's break down the anatomy of this MLIR operation:
@@ -72,11 +72,16 @@ Let's break down the anatomy of this MLIR operation:
         are always constant. Here we define a boolean attribute named 'inplace'
         that has a constant value of true.
 
--   `(tensor<2x3xf64) -> tensor<3x2xf64>`
+-   `(tensor<2x3xf64>) -> tensor<3x2xf64>`
 
-    *   This trailing portion refers to the type of the operation in a
-        functional form, spelling the types of the arguments in parentheses and
-        the type of the return values afterward.
+    *   This refers to the type of the operation in a functional form, spelling
+        the types of the arguments in parentheses and the type of the return
+        values afterward.
+
+-   `loc("example/file/path":12:1)`
+
+    *   This is the location in the source code from which this operation
+        originated.
 
 Shown here is the general form of an operation. As described above, the set of
 operations in MLIR is extensible. This means that the infrastructure must be
@@ -84,10 +89,11 @@ able to opaquely reason about the structure of an operation. This is done by
 boiling down the composition of an operation into discrete pieces:
 
 -   A name for the operation.
--   A source location for debugging purposes.
 -   A list of SSA operand values.
--   A list of [types](../../LangRef.md#type-system) for result values.
 -   A list of [attributes](../../LangRef.md#attributes).
+-   A list of [types](../../LangRef.md#type-system) for result values.
+-   A [source location](../../Diagnostics.md#source-locations) for debugging
+    purposes.
 -   A list of successors [blocks](../../LangRef.md#blocks) (for branches,
     mostly).
 -   A list of [regions](../../LangRef.md#regions) (for structural operations
@@ -97,6 +103,15 @@ In MLIR, every operation has a mandatory source location associated with it.
 Contrary to LLVM, where debug info locations are metadata and can be dropped, in
 MLIR, the location is a core requirement, and APIs depend on and manipulate it.
 Dropping a location is thus an explicit choice which cannot happen by mistake.
+
+To provide an illustration: If a transformation replaces an operation by
+another, that new operation must still have a location attached. This makes it
+possible to track where that operation came from.
+
+It's worth noting that the mlir-opt tool - a tool for testing
+compiler passes - does not include locations in the output by default. The
+`-mlir-print-debuginfo` flag specifies to include locations. (Run `mlir-opt
+--help` for more options.)
 
 ### Opaque API
 
@@ -255,16 +270,17 @@ types, etc). We can always get an instance of our toy operation by using LLVM's
 casting infrastructure:
 
 ```c++
-void processConstantOp(mlir::Operation *op) {
-  ConstantOp op = llvm::dyn_cast<ConstantOp>(op);
+void processConstantOp(mlir::Operation *operation) {
+  ConstantOp op = llvm::dyn_cast<ConstantOp>(operation);
 
   // This operation is not an instance of `ConstantOp`.
   if (!op)
     return;
 
   // Get the internal operation instance back.
-  mlir::Operation *internalOp = op.getOperation();
-  assert(internalOp == op && "these operation instances are the same");
+  mlir::Operation *internalOperation = op.getOperation();
+  assert(internalOperation == operation &&
+         "these operation instances are the same");
 }
 ```
 
@@ -380,7 +396,7 @@ documents.
 ```tablegen
 def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
   // Provide a summary and description for this operation. This can be used to
-  // auto-generate documenatation of the operations within our dialect.
+  // auto-generate documentation of the operations within our dialect.
   let summary = "constant operation";
   let description = [{
     Constant operation turns a literal into an SSA value. The data is attached
@@ -418,7 +434,7 @@ invariants of the operation have already been verified:
 ```tablegen
 def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
   // Provide a summary and description for this operation. This can be used to
-  // auto-generate documenatation of the operations within our dialect.
+  // auto-generate documentation of the operations within our dialect.
   let summary = "constant operation";
   let description = [{
     Constant operation turns a literal into an SSA value. The data is attached
@@ -458,7 +474,7 @@ the implementation inline.
 ```tablegen
 def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
   // Provide a summary and description for this operation. This can be used to
-  // auto-generate documenatation of the operations within our dialect.
+  // auto-generate documentation of the operations within our dialect.
   let summary = "constant operation";
   let description = [{
     Constant operation turns a literal into an SSA value. The data is attached

@@ -90,7 +90,14 @@ class OpKernel {
   // stripped-down `NodeDef` that does not contain the full set of attrs (such
   // as tensor values) if the descendant stores them in a different form.
   explicit OpKernel(OpKernelConstruction* context,
-                    std::unique_ptr<const NodeDef> node_def);
+                    std::unique_ptr<const NodeDef> node_def,
+                    bool is_deferred = false);
+
+  // Specialized constructor that allows a kernel implementation to mark itself
+  // as a "deferred" op. If true, the executor will provide access to the
+  // `OpKernelContext::inc_num_deferred_ops_function()` and
+  // `OpKernelContext::dec_num_deferred_ops_function()` methods at run-time.
+  explicit OpKernel(OpKernelConstruction* context, bool is_deferred);
 
   virtual ~OpKernel();
 
@@ -210,6 +217,9 @@ class OpKernel {
 
   static int DeviceNumaNode(const DeviceBase* device);
 
+  // Returns `true` if and only if this kernel uses deferred execution.
+  bool is_deferred() const { return is_deferred_; }
+
  private:
   const std::unique_ptr<const NodeDef> def_;
   const DataTypeVector input_types_;
@@ -219,6 +229,7 @@ class OpKernel {
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
   const int graph_def_version_;
+  const bool is_deferred_;
   bool expensive_;
   std::atomic_uint_fast64_t cost_estimate_;
 
@@ -234,12 +245,12 @@ class AsyncOpKernel : public OpKernel {
   // Implementations of ComputeAsync() must ensure that `done` is (eventually)
   // called exactly once to signal the completion of the computation. The
   // implementation of ComputeAsync() must not block on the execution of another
-  // OpKernel. `done` may be called by the current thread, or by another thread
+  // OpKernel. `done` may be called by the current thread, or by another thread.
   // `context` is guaranteed to stay alive until the `done` callback starts.
   //
   // Since it is possible that the unblocking kernel may never run (due to an
   // error or cancellation), in most cases the AsyncOpKernel should implement
-  // cancellation support via `ctx->cancellation_manager()`.
+  // cancellation support via `context->cancellation_manager()`.
   //
   // WARNING: As soon as the `done` callback starts, `context` and `this` may be
   // deleted. No code depending on these objects should execute after the call
@@ -253,12 +264,11 @@ class AsyncOpKernel : public OpKernel {
   void Compute(OpKernelContext* context) final;
 };
 
-// Wraps a tensor that is held by an Op across calls to Compute(). For
-// memory safety when using asynchronous devices like GPUs, the system
-// must be notified when a Tensor is used inside an Op execution. The
-// wrapper ensures that all uses of the Tensor are tracked, because in
-// order to retrieve the Tensor the caller must use AccessTensor which
-// notifies the context.
+// Wraps a tensor that is held by an Op across calls to Compute(). For memory
+// safety when using asynchronous devices like GPUs, the system must be notified
+// when a Tensor is used inside an Op execution. The wrapper ensures that all
+// uses of the Tensor are tracked, because in order to retrieve the Tensor the
+// caller must use AccessTensor which notifies the context.
 class PersistentTensor {
  public:
   PersistentTensor() {}
@@ -672,7 +682,7 @@ class OpKernelContext {
 
     // Mechanism used by this op kernel invocation to communicate with
     // computations running on other devices.
-    Rendezvous* rendezvous = nullptr;
+    RendezvousInterface* rendezvous = nullptr;
     const std::function<Status(const int64, const DeviceMgr*, Rendezvous** r)>*
         create_rendezvous;
 
@@ -726,8 +736,8 @@ class OpKernelContext {
     const int* forward_from_array = nullptr;
 
     // For tracking actively running deferred ops.
-    std::function<void()> inc_num_deferred_ops_function = []() {};
-    std::function<void()> dec_num_deferred_ops_function = []() {};
+    std::function<void()> inc_num_deferred_ops_function;
+    std::function<void()> dec_num_deferred_ops_function;
   };
 
   // params must outlive the OpKernelContext.
@@ -1090,9 +1100,11 @@ class OpKernelContext {
   }
 
   gtl::InlinedVector<WrappedAllocator, 4> ConsumeWrappedAllocators() {
-    mutex_lock lock(mu_);
     gtl::InlinedVector<WrappedAllocator, 4> retrieved;
-    retrieved.swap(wrapped_allocators_);
+    if (tracking_state_) {
+      mutex_lock lock(tracking_state_->mu);
+      retrieved.swap(tracking_state_->wrapped_allocators);
+    }
     return retrieved;
   }
 
@@ -1100,7 +1112,7 @@ class OpKernelContext {
   //
   // An op kernel communicates with outside environment through
   // Rendezvous Send() and Recv().
-  Rendezvous* rendezvous() const { return params_->rendezvous; }
+  RendezvousInterface* rendezvous() const { return params_->rendezvous; }
   Status create_rendezvous(const int64 step_id, const DeviceMgr* device_mgr,
                            Rendezvous** r) const {
     return (*params_->create_rendezvous)(step_id, device_mgr, r);
@@ -1233,27 +1245,29 @@ class OpKernelContext {
   // Records temp memory allocation. Tensor object is recorded to identify the
   // case where temp memory is used as output memory.
   void record_temp_memory_allocation(int64 size, const Tensor& t)
-      LOCKS_EXCLUDED(stats_mu_);
+      LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size of temporary memory;
-  int64 temp_memory_allocated() const LOCKS_EXCLUDED(stats_mu_);
+  int64 temp_memory_allocated() const LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Records persistent memory allocation, size can be negative indicating
   // deallocation.
   void record_persistent_memory_allocation(int64 size, int64 alloc_id = -1)
-      LOCKS_EXCLUDED(stats_mu_);
+      LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size and ids of persistent memory.
-  int64 persistent_memory_allocated() const LOCKS_EXCLUDED(stats_mu_);
+  int64 persistent_memory_allocated() const
+      LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
-  std::vector<int64> persistent_alloc_ids() const LOCKS_EXCLUDED(stats_mu_);
+  std::vector<int64> persistent_alloc_ids() const
+      LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Resets counters for temp and persistent memory and recorded ids.
-  void clear_recorded_memory() LOCKS_EXCLUDED(stats_mu_);
+  void clear_recorded_memory() LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   bool input_is_ref(int index) const;
 
-  void set_record_memory_consumption(bool v) { record_memory_consumption_ = v; }
+  void set_record_memory_consumption(bool v);
 
   // Used by OpKernel implementations to track actively running deferred ops.
   //
@@ -1267,10 +1281,16 @@ class OpKernelContext {
   // functions. It then must call these two functions in pairs, before and after
   // device execution, respectively.
   TF_MUST_USE_RESULT std::function<void()> inc_num_deferred_ops_function() {
-    return params_->inc_num_deferred_ops_function;
+    DCHECK(params_->op_kernel->is_deferred());
+    return params_->inc_num_deferred_ops_function
+               ? params_->inc_num_deferred_ops_function
+               : []() {};
   }
   TF_MUST_USE_RESULT std::function<void()> dec_num_deferred_ops_function() {
-    return params_->dec_num_deferred_ops_function;
+    DCHECK(params_->op_kernel->is_deferred());
+    return params_->dec_num_deferred_ops_function
+               ? params_->dec_num_deferred_ops_function
+               : []() {};
   }
 
   Allocator* get_allocator(AllocatorAttributes attr);
@@ -1312,26 +1332,30 @@ class OpKernelContext {
   Status status_;
   friend class CollectiveExecutor;  // for access to params_
   Params* params_;                  // not owned
-  mutable mutex mu_;  // mutable so const accessors can acquire the lock
-  gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators_ GUARDED_BY(mu_);
   gtl::InlinedVector<TensorValue, 4> outputs_;
 
   // Keep track of calls to ScopedAllocator.
   // TODO(ayushd): change to absl::flat_hash_set.
   std::unique_ptr<std::unordered_set<int32>> allocated_scope_ids_;
 
-  // Constructed only if <params->record_tensor_accesses>.
-  ManualConstructor<UniqueTensorReferences> referenced_tensors_ GUARDED_BY(mu_);
-
   // The following data members are only used when allocation tracking is
-  // enabled.
-  mutable mutex stats_mu_;
-  int64 temp_memory_allocated_ GUARDED_BY(stats_mu_);
-  int64 persistent_memory_allocated_ GUARDED_BY(stats_mu_);
-  std::unique_ptr<gtl::InlinedVector<std::pair<const void*, int64>, 2>>
-      temp_tensor_buffer_and_size_ GUARDED_BY(stats_mu_);
-  std::unique_ptr<gtl::InlinedVector<int64, 2>> persistent_alloc_ids_
-      GUARDED_BY(stats_mu_);
+  // enabled, memory consumption is being recorded, or tensor access is being
+  // recorded.
+  struct TrackingState {
+    mutable mutex mu;
+    gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators GUARDED_BY(mu);
+
+    UniqueTensorReferences referenced_tensors GUARDED_BY(mu);
+
+    mutable mutex stats_mu;
+    int64 temp_memory_allocated GUARDED_BY(stats_mu) = 0;
+
+    int64 persistent_memory_allocated GUARDED_BY(stats_mu) = 0;
+    gtl::InlinedVector<std::pair<const void*, int64>, 2>
+        temp_tensor_buffer_and_size GUARDED_BY(stats_mu);
+    gtl::InlinedVector<int64, 2> persistent_alloc_ids GUARDED_BY(stats_mu);
+  };
+  std::unique_ptr<TrackingState> tracking_state_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
 };
@@ -1618,8 +1642,9 @@ inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {
 inline void OpKernelContext::retrieve_accessed_tensors(
     TensorReferenceVector* out_vector) {
   if (params_->record_tensor_accesses) {
-    mutex_lock l(mu_);
-    referenced_tensors_->FreezeAndReturnReferences(out_vector);
+    DCHECK(tracking_state_);
+    mutex_lock l(tracking_state_->mu);
+    tracking_state_->referenced_tensors.FreezeAndReturnReferences(out_vector);
   }
 }
 

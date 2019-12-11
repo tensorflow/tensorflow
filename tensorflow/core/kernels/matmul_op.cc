@@ -220,10 +220,11 @@ bool ShouldUseGemv(uint64 n) {
 bool GetCublasAutotuneComputationType(const DataType& dtype,
                                       se::blas::ComputationType* compute_type) {
   using se::blas::ComputationType;
-  bool use_f32_for_f16_computation = MatmulDoFP32ComputationFP16Input();
   switch (dtype) {
     case DT_HALF:
     case DT_BFLOAT16:
+      static bool use_f32_for_f16_computation =
+          MatmulDoFP32ComputationFP16Input();
       if (use_f32_for_f16_computation) {
         *compute_type = ComputationType::kF32;
       } else {

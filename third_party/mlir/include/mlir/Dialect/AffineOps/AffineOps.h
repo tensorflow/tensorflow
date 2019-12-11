@@ -39,8 +39,9 @@ class FlatAffineConstraints;
 class OpBuilder;
 
 /// A utility function to check if a value is defined at the top level of a
-/// function. A value defined at the top level is always a valid symbol.
-bool isTopLevelSymbol(Value *value);
+/// function. A value of index type defined at the top level is always a valid
+/// symbol.
+bool isTopLevelValue(Value *value);
 
 class AffineOpsDialect : public Dialect {
 public:
@@ -69,7 +70,7 @@ public:
 
   /// Builds an affine apply op with the specified map and operands.
   static void build(Builder *builder, OperationState &result, AffineMap map,
-                    ArrayRef<Value *> operands);
+                    ValueRange operands);
 
   /// Returns the affine map to be applied by this operation.
   AffineMap getAffineMap() {
@@ -143,11 +144,10 @@ public:
   using Op::Op;
 
   static void build(Builder *builder, OperationState &result, Value *srcMemRef,
-                    AffineMap srcMap, ArrayRef<Value *> srcIndices,
-                    Value *destMemRef, AffineMap dstMap,
-                    ArrayRef<Value *> destIndices, Value *tagMemRef,
-                    AffineMap tagMap, ArrayRef<Value *> tagIndices,
-                    Value *numElements, Value *stride = nullptr,
+                    AffineMap srcMap, ValueRange srcIndices, Value *destMemRef,
+                    AffineMap dstMap, ValueRange destIndices, Value *tagMemRef,
+                    AffineMap tagMap, ValueRange tagIndices, Value *numElements,
+                    Value *stride = nullptr,
                     Value *elementsPerStride = nullptr);
 
   /// Returns the operand index of the src memref.
@@ -333,7 +333,7 @@ public:
   using Op::Op;
 
   static void build(Builder *builder, OperationState &result, Value *tagMemRef,
-                    AffineMap tagMap, ArrayRef<Value *> tagIndices,
+                    AffineMap tagMap, ValueRange tagIndices,
                     Value *numElements);
 
   static StringRef getOperationName() { return "affine.dma_wait"; }
@@ -402,13 +402,13 @@ public:
 
   /// Builds an affine load op with the specified map and operands.
   static void build(Builder *builder, OperationState &result, AffineMap map,
-                    ArrayRef<Value *> operands);
+                    ValueRange operands);
   /// Builds an affine load op with an identity map and operands.
   static void build(Builder *builder, OperationState &result, Value *memref,
-                    ArrayRef<Value *> indices = {});
+                    ValueRange indices = {});
   /// Builds an affine load op with the specified map and its operands.
   static void build(Builder *builder, OperationState &result, Value *memref,
-                    AffineMap map, ArrayRef<Value *> mapOperands);
+                    AffineMap map, ValueRange mapOperands);
 
   /// Returns the operand index of the memref.
   unsigned getMemRefOperandIndex() { return 0; }
@@ -470,12 +470,11 @@ public:
 
   /// Builds an affine store operation with the provided indices (identity map).
   static void build(Builder *builder, OperationState &result,
-                    Value *valueToStore, Value *memref,
-                    ArrayRef<Value *> indices);
+                    Value *valueToStore, Value *memref, ValueRange indices);
   /// Builds an affine store operation with the specified map and its operands.
   static void build(Builder *builder, OperationState &result,
                     Value *valueToStore, Value *memref, AffineMap map,
-                    ArrayRef<Value *> mapOperands);
+                    ValueRange mapOperands);
 
   /// Get value to be stored by store operation.
   Value *getValueToStore() { return getOperand(0); }

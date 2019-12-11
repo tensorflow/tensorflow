@@ -169,33 +169,33 @@ InterpreterWriter::ExportTensors(flatbuffers::FlatBufferBuilder* fbb) {
       const flatbuffers::Offset<flatbuffers::Vector<float>> null_array;
       flatbuffers::Offset<flatbuffers::Vector<float>> scale_array;
       flatbuffers::Offset<flatbuffers::Vector<int64_t>> zero_point_array;
-      // Multi channel quantization.
-      if (tensor->quantization.type == kTfLiteAffineQuantization) {
-        const TfLiteAffineQuantization* params =
-            reinterpret_cast<TfLiteAffineQuantization*>(
-                tensor->quantization.params);
-        const size_t num_scales = params->scale->size;
 
-        const int channel_index = params->quantized_dimension;
-        std::vector<float> scale_vector(
-            {params->scale->data, params->scale->data + num_scales});
-        std::vector<int64_t> zero_point_vector(
-            {params->zero_point->data, params->zero_point->data + num_scales});
-        scale_array = fbb->CreateVector<float>(scale_vector);
-        zero_point_array = fbb->CreateVector<int64_t>(zero_point_vector);
-        quantization_params = CreateQuantizationParameters(
-            *fbb, null_array, null_array, scale_array, zero_point_array,
-            QuantizationDetails_NONE, 0, channel_index);
-      } else {
-        // Quantization with a single argument array.
+      if (tensor->quantization.type == kTfLiteAffineQuantization) {
         if (tensor->params.scale != 0.f) {
+          // Quantization with a single argument array.
           scale_array = fbb->CreateVector<float>({tensor->params.scale});
           zero_point_array =
               fbb->CreateVector<int64_t>({tensor->params.zero_point});
+          quantization_params = CreateQuantizationParameters(
+              *fbb, null_array, null_array, scale_array, zero_point_array);
+        } else {  // Multi channel quantization.
+          const TfLiteAffineQuantization* params =
+              reinterpret_cast<TfLiteAffineQuantization*>(
+                  tensor->quantization.params);
+          const size_t num_scales = params->scale->size;
+
+          std::vector<float> scale_vector(params->scale->data,
+                                          params->scale->data + num_scales);
+          std::vector<int64_t> zero_point_vector(
+              params->zero_point->data, params->zero_point->data + num_scales);
+          scale_array = fbb->CreateVector<float>(scale_vector);
+          zero_point_array = fbb->CreateVector<int64_t>(zero_point_vector);
+          quantization_params = CreateQuantizationParameters(
+              *fbb, null_array, null_array, scale_array, zero_point_array,
+              QuantizationDetails_NONE, 0, params->quantized_dimension);
         }
-        quantization_params = CreateQuantizationParameters(
-            *fbb, null_array, null_array, scale_array, zero_point_array);
       }
+
       // Shape
       TfLiteIntArrayView shape_view(tensor->dims);
       std::vector<int> shape =
@@ -293,7 +293,10 @@ TfLiteStatus InterpreterWriter::Write(const std::string& filename) {
   FILE* fp = fopen(filename.c_str(), "wb");
   if (!fp) return kTfLiteError;
 
-  if (fwrite(buffer.get(), 1, size, fp) != size) return kTfLiteError;
+  if (fwrite(buffer.get(), 1, size, fp) != size) {
+    fclose(fp);
+    return kTfLiteError;
+  }
   if (fclose(fp)) return kTfLiteError;
 
   return kTfLiteOk;

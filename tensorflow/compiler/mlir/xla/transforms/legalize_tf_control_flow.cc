@@ -64,7 +64,7 @@ createLegalizeTFControlFlowPass() {
 
 namespace {
 
-void Detuple(Value* tuple, llvm::iterator_range<ResultIterator> replace,
+void Detuple(Value* tuple, Operation::result_range replace,
              OpBuilder* builder) {
   // De-tuple the results of the xla hlo conditional result.
   for (auto result_it : llvm::enumerate(replace)) {
@@ -95,8 +95,7 @@ void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
     detupled_args.push_back(extract);
   }
 
-  llvm::SmallVector<Value*, 4> result(
-      builder.create<CallOp>(loc, func, detupled_args).getResults());
+  auto result = builder.create<CallOp>(loc, func, detupled_args).getResults();
   if (!tuple_return) {
     builder.create<xla_hlo::ReturnOp>(loc, result);
   } else {

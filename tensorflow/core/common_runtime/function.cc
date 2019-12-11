@@ -1017,7 +1017,7 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
                                            Item* item, DoneCallback done) {
   string target_device = parent_->GetDeviceName(handle);
   string source_device = opts.source_device;
-  Rendezvous* rendezvous = opts.rendezvous;
+  RendezvousInterface* rendezvous = opts.rendezvous;
   DeviceContext* device_context;
   Status s = parent_->GetDeviceContext(target_device, &device_context);
   if (!s.ok()) {
@@ -1116,11 +1116,11 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   }
   Options run_opts = opts;
   if (opts.create_rendezvous) {
-    Rendezvous* rendezvous = new IntraProcessRendezvous(device_mgr_);
+    auto* rendezvous = new PrivateIntraProcessRendezvous(device_mgr_);
     run_opts.rendezvous = rendezvous;
     run_opts.create_rendezvous = false;
-    done = [done = std::move(done), rendezvous](const Status& status) {
-      rendezvous->Unref();
+    done = [done = std::move(done), rendezvous](const Status& status) mutable {
+      delete rendezvous;
       done(status);
     };
   }
@@ -1187,11 +1187,11 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
 
   Options run_opts = opts;
   if (opts.create_rendezvous) {
-    Rendezvous* rendezvous = new IntraProcessRendezvous(device_mgr_);
+    auto* rendezvous = new PrivateIntraProcessRendezvous(device_mgr_);
     run_opts.rendezvous = rendezvous;
     run_opts.create_rendezvous = false;
-    done = [done = std::move(done), rendezvous](const Status& status) {
-      rendezvous->Unref();
+    done = [done = std::move(done), rendezvous](const Status& status) mutable {
+      delete rendezvous;
       done(status);
     };
   }

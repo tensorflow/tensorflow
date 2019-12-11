@@ -16,10 +16,12 @@ add_llvm_library(MLIRMlirOptLib
 target_link_libraries(MLIRMlirOptLib ${LIB_LIBS})
 
 set(LIBS
+  MLIRAnalysis
   MLIRAffineOps
   MLIRAffineToStandard
   MLIRLoopsToGPU
-  MLIRAnalysis
+  MLIRLinalgToLLVM
+
   MLIRLoopToStandard
   MLIREDSC
   MLIRFxpMathOps
@@ -49,7 +51,8 @@ set(LIBS
   MLIRTestTransforms
   MLIRSupport
   MLIRVectorOps
-  MLIRVectorConversions
+  MLIRVectorToLLVM
+  MLIRVectorToLoops
 )
 if(MLIR_CUDA_CONVERSIONS_ENABLED)
   list(APPEND LIBS

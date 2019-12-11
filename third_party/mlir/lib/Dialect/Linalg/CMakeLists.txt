@@ -5,8 +5,7 @@ add_llvm_library(MLIRLinalg
   IR/LinalgTypes.cpp
   Transforms/Fusion.cpp
   Transforms/LinalgTransforms.cpp
-  Transforms/LowerToLLVMDialect.cpp
-  Transforms/LowerToLoops.cpp
+  Transforms/LinalgToLoops.cpp
   Transforms/Promotion.cpp
   Transforms/Tiling.cpp
   Utils/Utils.cpp
@@ -26,4 +25,5 @@ add_dependencies(MLIRLinalg
   MLIRLinalgTransformPatternsIncGen
   MLIRStandardOps
   MLIRStandardToLLVM
+  MLIRVectorOps
   )

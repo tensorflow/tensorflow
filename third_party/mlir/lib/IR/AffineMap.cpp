@@ -106,6 +106,20 @@ AffineMap AffineMap::getConstantMap(int64_t val, MLIRContext *context) {
              {getAffineConstantExpr(val, context)});
 }
 
+/// Returns an AffineMap representing a permutation.
+AffineMap AffineMap::getPermutationMap(ArrayRef<unsigned> permutation,
+                                       MLIRContext *context) {
+  assert(!permutation.empty() &&
+         "Cannot create permutation map from empty permutation vector");
+  SmallVector<AffineExpr, 4> affExprs;
+  for (auto index : permutation)
+    affExprs.push_back(getAffineDimExpr(index, context));
+  auto m = std::max_element(permutation.begin(), permutation.end());
+  auto permutationMap = AffineMap::get(*m + 1, 0, affExprs);
+  assert(permutationMap.isPermutation() && "Invalid permutation vector");
+  return permutationMap;
+}
+
 AffineMap AffineMap::getMultiDimIdentityMap(unsigned numDims,
                                             MLIRContext *context) {
   SmallVector<AffineExpr, 4> dimExprs;

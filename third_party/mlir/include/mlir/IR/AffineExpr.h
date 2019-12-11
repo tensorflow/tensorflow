@@ -114,8 +114,9 @@ public:
   /// floordiv, ceildiv, and mod is only allowed w.r.t constants.
   bool isPureAffine() const;
 
-  /// Returns the greatest known integral divisor of this affine expression.
-  uint64_t getLargestKnownDivisor() const;
+  /// Returns the greatest known integral divisor of this affine expression. The
+  /// result is always positive.
+  int64_t getLargestKnownDivisor() const;
 
   /// Return true if the affine expression is a multiple of 'factor'.
   bool isMultipleOf(int64_t factor) const;
@@ -267,9 +268,8 @@ AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 
 /// Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
 /// if 'expr' could not be flattened (i.e., semi-affine is not yet handled).
-/// 'cst' contains constraints that connect newly introduced local identifiers
-/// to existing dimensional and / symbolic identifiers. See documentation for
-/// AffineExprFlattener on how mod's and div's are flattened.
+/// See documentation for AffineExprFlattener on how mod's and div's are
+/// flattened.
 bool getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
                             unsigned numSymbols,
                             llvm::SmallVectorImpl<int64_t> *flattenedExpr);

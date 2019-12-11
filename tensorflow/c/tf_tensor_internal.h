@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_C_TF_TENSOR_INTERNAL_H_
 
 #include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
@@ -29,6 +30,38 @@ limitations under the License.
 typedef struct TF_Tensor {
   ::tensorflow::Tensor tensor;
 } TF_Tensor;
+
+class TF_ManagedBuffer : public tensorflow::TensorBuffer {
+ public:
+  TF_ManagedBuffer(void* data, size_t len,
+                   void (*deallocator)(void* data, size_t len, void* arg),
+                   void* deallocator_arg)
+      : TensorBuffer(data),
+        len_(len),
+        deallocator_(deallocator),
+        deallocator_arg_(deallocator_arg) {}
+
+  ~TF_ManagedBuffer() override {
+    (*deallocator_)(data(), len_, deallocator_arg_);
+  }
+
+  size_t size() const override { return len_; }
+  TensorBuffer* root_buffer() override { return this; }
+  void FillAllocationDescription(
+      tensorflow::AllocationDescription* proto) const override {
+    tensorflow::int64 rb = size();
+    proto->set_requested_bytes(rb);
+    proto->set_allocator_name(tensorflow::cpu_allocator()->Name());
+  }
+
+  // Prevents input forwarding from mutating this buffer.
+  bool OwnsMemory() const override { return false; }
+
+ private:
+  const size_t len_;
+  void (*const deallocator_)(void* data, size_t len, void* arg);
+  void* const deallocator_arg_;
+};
 
 namespace tensorflow {
 

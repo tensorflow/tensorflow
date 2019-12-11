@@ -19,13 +19,8 @@ limitations under the License.
 #else
 #define TF_Quantization
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-#ifndef DIALECT_QUANTOPS_QUANT_PREDICATES_
 include "mlir/Dialect/QuantOps/QuantPredicates.td"
-#endif // DIALECT_QUANTOPS_QUANT_PREDICATES_
 
 
 //===----------------------------------------------------------------------===//
@@ -107,7 +102,7 @@ class AffineOpCoefficient<int dim, int index> : NativeOpTrait<
              StrJoinInt<[dim, index]>.result,
              ">::Impl")>;
 
-// Specify this trait if the op doesn't have quantizable ouput. We shouldn't
+// Specify this trait if the op doesn't have quantizable output. We shouldn't
 // apply quantization on this op.
 def NoQuantizableResult : NativeOpTrait<"quant::NoQuantizableResult">;
 

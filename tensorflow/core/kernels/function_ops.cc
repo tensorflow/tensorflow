@@ -398,7 +398,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   profiler::TraceMe trace_me(
       [&] {
         return absl::StrCat("RemoteCallOp#func_name=", func_name,
-                            "parent_step_id=", ctx->step_id(),
+                            ",parent_step_id=", ctx->step_id(),
                             ",function_step_id=", opts.step_id,
                             ",device=", target_device, "#");
       },
@@ -409,7 +409,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         profiler::TraceMe activity(
             [&] {
               return absl::StrCat("RemoteCallOpDone#func_name=", func_name,
-                                  "parent_step_id=", ctx->step_id(),
+                                  ",parent_step_id=", ctx->step_id(),
                                   ",function_step_id=", opts.step_id,
                                   ",device=", target_device, "#");
             },

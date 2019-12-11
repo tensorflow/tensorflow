@@ -50,9 +50,9 @@ LoadFromGraphdefOrMlirSource(
 // result is exported in MLIR text format, otherwise exported in flat buffer.
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
-    bool emit_select_tf_ops, bool emit_custom_ops, bool emit_quant_adaptor_ops,
-    bool lower_tensor_list_ops, const mlir::TFL::QuantizationSpecs& quant_specs,
-    std::string* result, mlir::PassManager* pass_manager);
+    bool emit_select_tf_ops, bool emit_custom_ops,
+    const mlir::TFL::QuantizationSpecs& quant_specs, std::string* result,
+    mlir::PassManager* pass_manager);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_

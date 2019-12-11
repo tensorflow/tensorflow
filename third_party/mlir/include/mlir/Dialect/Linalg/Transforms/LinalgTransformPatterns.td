@@ -24,80 +24,79 @@
 
 include "mlir/Dialect/Linalg/IR/LinalgOps.td"
 include "mlir/Dialect/Linalg/IR/LinalgLibraryOps.td"
+include "mlir/Dialect/AffineOps/AffineOps.td"
 
 def HasNoLinalgTransformMarker : CPred<[{
-  !$0.getAttrOfType<StringAttr>(kLinalgTransformMarker)
+  !$0.getAttrOfType<StringAttr>(LinalgTransforms::kLinalgTransformMarker)
 }]>;
 
-class HasLinalgTransformMarker<string value> : CPred<[{
-  $0.getAttrOfType<StringAttr>(kLinalgTransformMarker).getValue() == "}] #
-  value # [{"}]>;
+class HasLinalgTransformMarker<string str> : CPred<[{
+  $0.getAttrOfType<StringAttr>(
+    LinalgTransforms::kLinalgTransformMarker) &&
+  $0.getAttrOfType<StringAttr>(
+    LinalgTransforms::kLinalgTransformMarker).getValue() == "}] # str # [{"}]>;
 
-class IsProducedByOpOfType<string value> :
-  CPred<"isProducedByOpOfType<" # value # ">($0, $1)">;
+class IsProducedByOpOfType<string str> :
+  CPred<"isProducedByOpOfType<" # str # ">($0, $1)">;
+
+class AffineMapDomainHasDim<int n> : CPred<[{
+  $0.getAttrOfType<ArrayAttr>("indexing_maps").getValue()[0].
+  cast<AffineMapAttr>().getValue().getNumDims() ==}] # n # [{}]>;
 
 //===----------------------------------------------------------------------===//
 // Linalg fusion patterns.
 //===----------------------------------------------------------------------===//
 //
 // In the future, tile sizes should be derived from op properties + machine
-// model but we do not need to wait on this to start having useful patterns.
-class TileAndFuseLinalgOp<list<int> sizes, string value> : NativeCodeCall<
+// description but we do not need to wait on this to start having useful
+// patterns.
+class TileAndFuseLinalgOp<
+    list<int> sizes, list<int> operandIndices, string value> : NativeCodeCall<
   "if (failed(tileAndFuseLinalgOpAndSetMarker($_builder, $0, {" #
-  StrJoinInt<sizes>.result # "}, \"" # value # "\")))" #
+  StrJoinInt<sizes>.result # "}, {" # StrJoinInt<operandIndices>.result # "}," #
+      " \"" # value # "\")))" #
   "  return matchFailure();">;
-
-def : Pat<(MatmulOp:$consumer $A, $B, $C),
-          (TileAndFuseLinalgOp<[100, 150], "L1"> $consumer),
-          [
-            (Constraint<HasNoLinalgTransformMarker> $consumer),
-            (Constraint<IsProducedByOpOfType<"MatmulOp">> $consumer, $A),
-          ],
-          // In the buffer world there is no use-def chains or dags so benefits
-          // cannot be computed automatically from the length of the matched
-          // pattern. Instead we specify the benefit ourselves for now.
-          // This is not expected to be a big challenge long-term because
-          // pattern benefits are akin to feature engineering: features should
-          // be learned.
-          (addBenefit 1)>;
 
 //===----------------------------------------------------------------------===//
 // Linalg tiling patterns.
 //===----------------------------------------------------------------------===//
 //
 // In the future, tile sizes should be derived from op properties + machine
-// model but we do not need to wait on this to start having useful patterns.
-class TileLinalgOp<list<int> sizes, string value> : NativeCodeCall<
+// description but we do not need to wait on this to start having useful
+// patterns.
+// `permutation` is an optional parameter to specify the ordering of the
+// tiled loops. If provided, it must be a list of integers with the same number
+// of elements as `sizes`.
+class TileLinalgOp<list<int> sizes, string value, list<int> permutation=[]> : NativeCodeCall<
   "if (failed(tileLinalgOpAndSetMarker($_builder, $0, {" #
-  StrJoinInt<sizes>.result # "}, \"" # value # "\")))" #
+  StrJoinInt<sizes>.result # "}, \"" # value # "\", {" #
+  StrJoinInt<permutation>.result # "})))" #
   "  return matchFailure();">;
 
-def : Pat<(MatmulOp:$op $A, $B, $C),
-          (TileLinalgOp<[2000, 3000, 4000], "L3"> $op),
-          [(Constraint<Or<[HasNoLinalgTransformMarker,
-                           HasLinalgTransformMarker<"MEM">]>> $op)]>;
-def : Pat<(MatmulOp:$op $A, $B, $C),
-          (TileLinalgOp<[200, 300, 400], "L2"> $op),
-          [(Constraint<HasLinalgTransformMarker<"L3">> $op)]>;
-def : Pat<(MatmulOp:$op $A, $B, $C),
-          (TileLinalgOp<[20, 30, 40], "L1"> $op),
-          [(Constraint<HasLinalgTransformMarker<"L2">> $op)]>;
-def : Pat<(MatmulOp:$op $A, $B, $C),
-          (TileLinalgOp<[2, 3, 4], "REG"> $op),
-          [(Constraint<HasLinalgTransformMarker<"L1">> $op)]>;
+//===----------------------------------------------------------------------===//
+// Linalg to loop patterns.
+//===----------------------------------------------------------------------===//
+class LinalgOpToLoops<string OpType> : NativeCodeCall<
+  "if (failed(linalgOpToLoops<" # OpType # ">($_builder, $0))) " #
+  "  return matchFailure();">;
 
-def : Pattern<(MatvecOp:$op $A, $b, $c),
-              [(TileLinalgOp<[5, 6], "L1"> $op)],
-              [(Constraint<HasNoLinalgTransformMarker> $op)]>;
+class LinalgOpToAffineLoops<string OpType> : NativeCodeCall<
+  "if (failed(linalgOpToAffineLoops<" # OpType # ">($_builder, $0))) " #
+  "  return matchFailure();">;
 
-def : Pattern<(DotOp:$op $a, $b, $c),
-              [(TileLinalgOp<[8000], "L1"> $op)],
-              [(Constraint<Or<[HasNoLinalgTransformMarker,
-                               HasLinalgTransformMarker<"MEM">,
-                               HasLinalgTransformMarker<"L3">,
-                               HasLinalgTransformMarker<"L2">]>> $op)]>;
-def : Pattern<(DotOp:$op $a, $b, $c),
-              [(TileLinalgOp<[8], "REG"> $op)],
-              [(Constraint<HasLinalgTransformMarker<"L1">> $op)]>;
+//===----------------------------------------------------------------------===//
+// Linalg to vector contraction patterns.
+//===----------------------------------------------------------------------===//
+class LinalgOpToVectorContraction<string OpType> : NativeCodeCall<
+  "if (failed(vectorizeGenericOp($_builder, $0))) " #
+  "  return matchFailure();">;
 
+//===----------------------------------------------------------------------===//
+// Linalg generic permutation patterns.
+//===----------------------------------------------------------------------===//
+class PermuteGenericLinalgOp<list<int> permutation, string value> :
+  NativeCodeCall<
+  "if (failed(permuteGenericLinalgOp($_builder, $0, {" #
+  StrJoinInt<permutation>.result # "}, \"" # value # "\"))) " #
+  "  return matchFailure();">;
 #endif // LINALG_TRANSFORMS

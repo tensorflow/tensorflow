@@ -47,13 +47,11 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_utils.h"
 
 namespace mlir {
 #include "tensorflow/compiler/mlir/xla/ir/hlo_structs.cc.inc"
-}  // namespace mlir
-
-using namespace mlir;
-using namespace mlir::xla_hlo;
+namespace xla_hlo {
 
 Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
                                               Attribute value, Type type,
@@ -82,8 +80,7 @@ DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
                                         Builder* builder) {
   RankedTensorType ty = RankedTensorType::get(
       {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
-  return DenseElementsAttr::get<int64_t>(ty, values)
-      .cast<DenseIntElementsAttr>();
+  return DenseIntElementsAttr::get(ty, values);
 }
 
 // Given the start indices and slice sizes for a dynamic-slice that can be
@@ -161,7 +158,7 @@ void ConstOp::build(Builder* builder, OperationState& result, Attribute value) {
   } else if (value.isa<BoolAttr>() || value.isa<FloatAttr>() ||
              value.isa<IntegerAttr>()) {
     // All XLA types must be tensor types. In the build() method, we want to
-    // provide more flexiblity by allowing attributes of scalar types. But we
+    // provide more flexibility by allowing attributes of scalar types. But we
     // need to wrap it up with ElementsAttr to construct valid XLA constants.
     type = RankedTensorType::get(/*shape=*/{}, value.getType());
     value = DenseElementsAttr::get(type.cast<TensorType>(), value);
@@ -213,9 +210,9 @@ void AbsOp::build(Builder* builder, OperationState& result, Value* operand) {
     new_type = operand->getType();
   } else if (shaped_type.hasRank()) {
     new_type =
-        mlir::RankedTensorType::get(shaped_type.getShape(), operand->getType());
+        RankedTensorType::get(shaped_type.getShape(), operand->getType());
   } else {
-    new_type = mlir::UnrankedTensorType::get(operand->getType());
+    new_type = UnrankedTensorType::get(operand->getType());
   }
 
   return AbsOp::build(builder, result, new_type, operand);
@@ -437,7 +434,7 @@ static LogicalResult Verify(ClampOp op) {
 void ComplexOp::build(Builder* builder, OperationState& state, Value* lhs,
                       Value* rhs) {
   auto type = lhs->getType();
-  auto element_ty = mlir::ComplexType::get(getElementTypeOrSelf(type));
+  auto element_ty = ComplexType::get(getElementTypeOrSelf(type));
   Type result_ty;
   if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
     result_ty = RankedTensorType::get(ranked_type.getShape(), element_ty);
@@ -609,7 +606,7 @@ static TensorType GetReduceResultType(Type operand_ty,
 }
 
 void ReduceOp::build(Builder* builder, OperationState& state,
-                     ArrayRef<Value*> operands, ArrayRef<Value*> init_values,
+                     ValueRange operands, ValueRange init_values,
                      DenseIntElementsAttr dimensions) {
   SmallVector<Type, 1> result_ty;
   result_ty.reserve(operands.size());
@@ -718,7 +715,7 @@ static Type GetBroadcastType(Builder* builder, Type x, Type y,
                              DenseIntElementsAttr broadcast_dimensions) {
   auto x_ranked = x.dyn_cast<RankedTensorType>();
   auto y_ranked = y.dyn_cast<RankedTensorType>();
-  if (!x || !y) {
+  if (!x_ranked || !y_ranked) {
     return UnrankedTensorType::get(element_type);
   }
 
@@ -845,6 +842,69 @@ Type SliceOp::InferOutputTypes(Builder* builder, Value* operand,
 }
 
 //===----------------------------------------------------------------------===//
+// SortOp
+//===----------------------------------------------------------------------===//
+
+void SortOp::build(Builder* builder, OperationState& state, ValueRange operands,
+                   int64_t dimension, bool is_stable) {
+  state.addOperands(operands);
+  state.addAttribute("dimension", builder->getI64IntegerAttr(dimension));
+  state.addAttribute("is_stable", builder->getBoolAttr(dimension));
+
+  SmallVector<Type, 2> element_types;
+  element_types.reserve(operands.size());
+  for (Value* operand : operands) element_types.push_back(operand->getType());
+  state.addTypes(builder->getTupleType(element_types));
+
+  state.addRegion();
+}
+
+static LogicalResult Verify(SortOp op) {
+  Operation::operand_range operands = op.operands();
+  if (operands.empty()) return op.emitOpError("requires at least one input");
+
+  // TODO(antiagainst): verify partionally dynamic shapes
+  if (llvm::all_of(operands, [](Value* operand) {
+        return operand->getType().cast<ShapedType>().hasRank();
+      })) {
+    ArrayRef<int64_t> input_shape =
+        (*operands.begin())->getType().cast<ShapedType>().getShape();
+
+    if (llvm::any_of(llvm::drop_begin(operands, 1), [&](Value* operand) {
+          return operand->getType().cast<ShapedType>().getShape() !=
+                 input_shape;
+        }))
+      return op.emitOpError("requires all inputs to have the same dimensions");
+
+    if (op.dimension().getSExtValue() >= input_shape.size())
+      return op.emitOpError(
+          "dimension attribute value must be less than input rank");
+  }
+
+  Block& block = op.comparator().front();
+  size_t num_operands = op.getOperation()->getNumOperands();
+  if (block.getNumArguments() != 2 * num_operands)
+    return op.emitOpError("comparator block should have ")
+           << 2 * num_operands << " arguments";
+
+  for (auto indexed_operand : llvm::enumerate(operands)) {
+    int index = indexed_operand.index();
+    Type element_type =
+        indexed_operand.value()->getType().cast<ShapedType>().getElementType();
+    Type tensor_type = RankedTensorType::get({}, element_type);
+    for (int i : {2 * index, 2 * index + 1}) {
+      Type arg_type = block.getArgument(i)->getType();
+      if (arg_type != tensor_type)
+        return op.emitOpError("comparator block argument #")
+               << i << " should be of type " << tensor_type << " but got "
+               << arg_type;
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
 
@@ -929,7 +989,7 @@ void GetTupleElementOp::build(Builder* builder, OperationState& result,
 //===----------------------------------------------------------------------===//
 
 void TupleOp::build(Builder* builder, OperationState& result,
-                    ArrayRef<Value*> values) {
+                    ValueRange values) {
   SmallVector<Type, 4> types;
   types.reserve(values.size());
   for (auto val : values) {
@@ -937,6 +997,15 @@ void TupleOp::build(Builder* builder, OperationState& result,
   }
 
   build(builder, result, builder->getTupleType(types), values);
+}
+
+//===----------------------------------------------------------------------===//
+// UnaryEinsumOp
+//===----------------------------------------------------------------------===//
+
+void UnaryEinsumOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<UnaryEinsumToEinsum>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -991,3 +1060,6 @@ XlaHloDialect::XlaHloDialect(MLIRContext* context)
   // Support unknown operations because not all XLA operations are registered.
   // allowUnknownOperations();
 }
+
+}  // namespace xla_hlo
+}  // namespace mlir

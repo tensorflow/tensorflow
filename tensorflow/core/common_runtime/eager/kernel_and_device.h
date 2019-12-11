@@ -59,6 +59,8 @@ class EagerKernelArgs : public FunctionArgsInterface {
  public:
   EagerKernelArgs() {}
 
+  explicit EagerKernelArgs(int count) : tensor_args_(count) {}
+
   explicit EagerKernelArgs(gtl::InlinedVector<TensorValue, 4>&& tensor_args)
       : tensor_args_(std::move(tensor_args)) {}
 
@@ -211,6 +213,8 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 
  private:
   std::unique_ptr<OpKernel> kernel_;
+  gtl::InlinedVector<AllocatorAttributes, 4> input_alloc_attrs_;
+  gtl::InlinedVector<AllocatorAttributes, 1> output_alloc_attrs_;
   Rendezvous* const rendez_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   const bool log_memory_;

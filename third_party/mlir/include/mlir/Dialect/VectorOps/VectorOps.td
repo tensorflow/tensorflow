@@ -22,13 +22,8 @@
 #ifndef VECTOR_OPS
 #define VECTOR_OPS
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-#ifndef AFFINE_OPS_BASE
 include "mlir/Dialect/AffineOps/AffineOpsBase.td"
-#endif // AFFINE_OPS_BASE
 
 def Vector_Dialect : Dialect {
   let name = "vector";
@@ -51,12 +46,11 @@ class Vector_Op<string mnemonic, list<OpTrait> traits = []> :
 
 // TODO(andydavis, ntv) Add an attribute to specify a different algebra
 // with operators other than the current set: {*, +}.
-// TODO(andydavis) Consider using AffineMaps to express contracting, batch
-// and free dimension pairs.
-def VectorContractionOp :
+def Vector_ContractionOp :
   Vector_Op<"contract", [NoSideEffect]>,
     Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
-               Variadic<TupleOf<[Index]>>:$masks)>,
+               Variadic<VectorOf<[I1]>>:$masks,
+               AffineMapArrayAttr:$indexing_maps, ArrayAttr:$iterator_types)>,
     Results<(outs AnyVector)> {
   let summary = "vector contraction operation";
   let description = [{
@@ -66,55 +60,76 @@ def VectorContractionOp :
     vector result of rank K (where K = num_lhs_free_dims + num_rhs_free_dims +
     num_batch_dims (see dimension type descriptions below)).
 
-    Optional vector mask arguments specify the dynamic dimension sizes of
-    valid data within the lhs/rhs vector arguments.
+    Optional vector mask arguments (produced by CreateMaskOp or ConstantMaskOp)
+    specify the dynamic dimension sizes of valid data within the lhs/rhs vector
+    arguments.
 
-    Dimensions for the arguments and result type fall into three categories:
-    *) Contracting: contracting dimensions are present in the lhs and rhs
+    An iterator type attribute list must be specified, where each element of
+    the list represents an iterator with one of the following types:
+
+    *) "reduction": reduction dimensions are present in the lhs and rhs
                     arguments but not in the output (or optional accumulator
                     argument). These are the dimensions along which the vector
-                    contraction op computes the sum of products, and contracting
-                    dimension pair dimension sizes must match between lhs/rhs.
-    *) Batch: batch dimensions are non-contracting dimensions and so are
-              present in the output and in the accumulator argument. The lhs
-              and rhs co-iterate along the batch dimension and so dimension
-              sizes must match across all arguments and result.
-    *) Free: free dimensions are non-contraction, non-batch dimensions and
-             are present in the output and accumulator argument. The lhs and
-             rhs free dimensions are unrelated to each other and do not
-             co-iterate.
+                    contraction op computes the sum of products, and
+                    contracting dimension pair dimension sizes must match
+                    between lhs/rhs.
+    *) "parallel": Batch dimensions are iterator type "parallel", and
+                   are non-contracting dimensions present in the lhs, rhs and
+                   output. The lhs/rhs co-iterate along the batch dimensions,
+                   which should be expressed in their indexing maps.
 
-    Contracting and batch dimensions are specified as dimension pairs
-    of logical dimension numbers: the first in the pair represents the lhs
-    logical dimension number and the second in the pair represents the
-    associated rhs logical dimension number. A dimension pair binds together
-    logical dimension numbers from the lhs/rhs which co-iterate together, either
-    as contracting or batch dimensions.
+                   Free dimensions are iterator type "parallel", and are
+                   non-contraction, non-batch dimensions accessed by either the
+                   lhs or rhs (but not both). The lhs and rhs free dimensions
+                   are unrelated to each other and do not co-iterate, which
+                   should be expressed in their indexing maps.
+
+    An indexing map attribute list must be specified with an entry for lhs, rhs
+    and acc arguments. An indexing map attribute specifies a mapping from each
+    iterator in the iterator type list, to each dimension of an N-D vector.
 
     Examples:
 
       // 2D vector contraction with one contracting dimension (matmul).
-      %3 = vector.contract %0, %1, %2
-        { contracting_dim_map = [[1, 0]] }
-          : vector<4x3xf32>, vector<3x7xf32> into vector<4x7xf32>
+      #contraction_accesses = [
+        (i, j, k) -> (i, k),
+        (i, j, k) -> (k, j),
+        (i, j, k) -> (i, j)
+      ]
+      #contraction_trait = {
+        indexing_maps = #contraction_accesses,
+        iterator_types = [parallel, parallel, reduction]
+      }
+
+      %3 = vector.contract #contraction_trait %0, %1, %2
+        : vector<4x3xf32>, vector<3x7xf32> into vector<4x7xf32>
 
       // 4D to 3D vector contraction with two contracting dimensions and
       // one batch dimension.
-      %4 = vector.contract %0, %1, %2
-        { batch_dim_map = [[1, 0]], contracting_dim_map = [[0, 2], [2, 1]] }
+      #contraction_accesses = [
+        (b0, f0, f1, c0, c1) -> (c0, b0, c1, f0),
+        (b0, f0, f1, c0, c1) -> (b0, c1, c0, f1),
+        (b0, f0, f1, c0, c1) -> (b0, f0, f1)
+      ]
+      #contraction_trait = {
+        indexing_maps = #contraction_accesses,
+        iterator_types = [parallel, parallel, parallel reduction, reduction]
+      }
+
+      %4 = vector.contract #contraction_trait %0, %1, %2
           : vector<7x8x16x15xf32>, vector<8x16x7x5xf32> into vector<8x15x5xf32>
 
       // 4D vector contraction with two contracting dimensions and optional
       // vector mask arguments.
-      %lhs_mask = vector.make_tuple %size0, %size1, %size2, %size3
-        : tuple<index, index, index, index>
-      %rhs_mask = vector.make_tuple %size4, %size5, %size6, %size7
-        : tuple<index, index, index, index>
+      %lhs_mask = vector.constant_mask [7, 8, 16, 15] : vector<7x8x16x15xi1>
+      %rhs_mask = vector.constant_mask [8, 16, 7, 5] : vector<8x16x7x5xi1>
 
-      %5 = vector.contract %0, %1, %2, %lhs_mask, %rhs_mask
-        { contracting_dim_map = [[0, 2], [2, 1]] }
+      %5 = vector.contract #contraction_trait %0, %1, %2, %lhs_mask, %rhs_mask
          : vector<7x8x16x15xf32>, vector<8x16x7x5xf32> into vector<8x15x8x5xf32>
   }];
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *lhs, Value *rhs, "
+    "Value *acc, ArrayAttr indexingMaps, ArrayAttr iteratorTypes">];
   let extraClassDeclaration = [{
     VectorType getLhsType() {
       return lhs()->getType().cast<VectorType>();
@@ -125,43 +140,148 @@ def VectorContractionOp :
     VectorType getAccType() {
       return acc()->getType().cast<VectorType>();
     }
-    TupleType getLHSVectorMaskType() {
-      if (llvm::size(masks()) != 2) return TupleType();
-      return getOperand(3)->getType().cast<TupleType>();
+    VectorType getLHSVectorMaskType() {
+      if (llvm::size(masks()) != 2) return VectorType();
+      return getOperand(3)->getType().cast<VectorType>();
     }
-    TupleType getRHSVectorMaskType() {
-      if (llvm::size(masks()) != 2) return TupleType();
-      return getOperand(4)->getType().cast<TupleType>();
+    VectorType getRHSVectorMaskType() {
+      if (llvm::size(masks()) != 2) return VectorType();
+      return getOperand(4)->getType().cast<VectorType>();
     }
     VectorType getResultType() {
       return getResult()->getType().cast<VectorType>();
     }
-    static StringRef getContractingDimMapAttrName() {
-      return "contracting_dim_map";
-    }
-    static StringRef getBatchDimMapAttrName() {
-      return "batch_dim_map";
-    }
+    ArrayRef<StringRef> getTraitAttrNames();
+    SmallVector<AffineMap, 4> getIndexingMaps();
+    static unsigned getAccOperandIndex() { return 2; }
+
+    // Returns the bounds of each dimension in the iteration space spanned
+    // by the iterator types of this operation.
+    void getIterationBounds(SmallVectorImpl<int64_t> &iterationBounds);
+
+    // Returns a list of index maps, where there is a list entry for each
+    // op indexing map attribute (i.e. one for each input and output, with
+    // the output listed last). Each index map, maps from this operations
+    // iteration space, to vector dimensions of the maps input/output.
+    void getIterationIndexMap(
+      std::vector<DenseMap<int64_t, int64_t>> &iterationIndexMap);
+
     std::vector<std::pair<int64_t, int64_t>> getContractingDimMap();
     std::vector<std::pair<int64_t, int64_t>> getBatchDimMap();
   }];
 }
 
-def VectorExtractElementOp :
-  Vector_Op<"extractelement", [NoSideEffect,
+def Vector_BroadcastOp :
+  Vector_Op<"broadcast", [NoSideEffect,
+     PredOpTrait<"source operand and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 0>>]>,
+    Arguments<(ins AnyType:$source)>,
+    Results<(outs AnyVector:$vector)> {
+  let summary = "broadcast operation";
+  let description = [{
+    Broadcasts the scalar or k-D vector value in the source operand
+    to a n-D result vector such that the broadcast makes sense, i.e.,
+    the source operand is duplicated to match the given rank and sizes
+    in the result vector. The legality rules are:
+    * the source operand must have the same element type as the result type
+    * a k-D vector <s_1 x .. x s_k x type> can be broadcast to
+      a n-D vector <t_1 x .. x t_n x type> if
+       * k <= n, and
+       * the sizes in the trailing dimensions n-k < i <= n with j=i+k-n
+          match exactly as s_j = t_i or s_j = 1:
+       ```
+           t_1 x   ..  t_n-k x t_n-k+1 x .. x t_i x .. x t_n
+                               s_1     x .. x s_j x .. x s_k
+               <duplication>         <potential stretch>
+       ```
+    The source operand is duplicated over all the missing leading dimensions
+    and stretched over the trailing dimensions where the source has a non-equal
+    dimension of 1. These rules imply that any scalar broadcast (k=0) to any
+    shaped vector with the same element type is always legal.
+
+    Examples:
+    ```
+      %0 = constant 0.0 : f32
+      %1 = vector.broadcast %0 : f32 to vector<16xf32>
+      %2 = vector.broadcast %1 : vector<16xf32> to vector<4x16xf32>
+    ```
+  }];
+  let extraClassDeclaration = [{
+    Type getSourceType() { return source()->getType(); }
+    VectorType getVectorType() {
+      return vector()->getType().cast<VectorType>();
+    }
+  }];
+}
+
+def Vector_ShuffleOp :
+  Vector_Op<"shuffle", [NoSideEffect,
+     PredOpTrait<"first operand v1 and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 0>>,
+     PredOpTrait<"second operand v2 and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 1>>]>,
+     Arguments<(ins AnyVector:$v1, AnyVector:$v2, I32ArrayAttr:$mask)>,
+     Results<(outs AnyVector:$vector)> {
+  let summary = "shuffle operation";
+  let description = [{
+    The shuffle operation constructs a permutation (or duplication) of elements
+    from two input vectors, returning a vector with the same element type as
+    the input and a length that is the same as the shuffle mask. The two input
+    vectors must have the same element type, rank, and trailing dimension sizes
+    and shuffles their values in the leading dimension (which may differ in size)
+    according to the given mask. The legality rules are:
+    * the two operands must have the same element type as the result
+    * the two operands and the result must have the same rank and trailing
+      dimension sizes, viz. given two k-D operands
+              v1 : <s_1 x s_2 x .. x s_k x type> and
+              v2 : <t_1 x t_2 x .. x t_k x type>
+      we have s_i = t_i for all 1 < i <= k
+    * the mask length equals the leading dimension size of the result
+    * numbering the input vector indices left to right accross the operands, all
+      mask values must be within range, viz. given two k-D operands v1 and v2
+      above, all mask values are in the range [0,s_1+t_1)
+
+    Examples:
+    ```
+    %0 = vector.shuffle %a, %b[0:i32, 3:i32]
+               : vector<2xf32>, vector<2xf32>       ; yields vector<2xf32>
+    %1 = vector.shuffle %c, %b[0:i32, 1:i32, 2:i32]
+               : vector<2x16xf32>, vector<1x16xf32> ; yields vector<3x16xf32>
+    %2 = vector.shuffle %a, %b[3:i32, 2:i32, 1:i32 : 0:i32]
+               : vector<2xf32>, vector<2xf32>       ; yields vector<4xf32>
+
+    ```
+  }];
+  let builders = [OpBuilder<"Builder *builder, OperationState &result, Value *v1, Value *v2, ArrayRef<int32_t>">];
+  let extraClassDeclaration = [{
+    static StringRef getMaskAttrName() { return "mask"; }
+    VectorType getV1VectorType() {
+      return v1()->getType().cast<VectorType>();
+    }
+    VectorType getV2VectorType() {
+      return v2()->getType().cast<VectorType>();
+    }
+    VectorType getVectorType() {
+      return vector()->getType().cast<VectorType>();
+    }
+  }];
+}
+
+def Vector_ExtractOp :
+  Vector_Op<"extract", [NoSideEffect,
      PredOpTrait<"operand and result have same element type",
                  TCresVTEtIsSameAsOpBase<0, 0>>]>,
     Arguments<(ins AnyVector:$vector, I32ArrayAttr:$position)>,
     Results<(outs AnyType)> {
-  let summary = "extractelement operation";
+  let summary = "extract operation";
   let description = [{
     Takes an n-D vector and a k-D position and extracts the (n-k)-D vector at
     the proper position. Degenerates to an element type in the 0-D case.
 
     Examples:
     ```
-      %1 = vector.extractelement %0[3]: vector<4x8x16xf32>
-      %2 = vector.extractelement %0[3, 3, 3]: vector<4x8x16xf32>
+      %1 = vector.extract %0[3]: vector<4x8x16xf32>
+      %2 = vector.extract %0[3, 3, 3]: vector<4x8x16xf32>
     ```
   }];
   let builders = [OpBuilder<
@@ -174,49 +294,85 @@ def VectorExtractElementOp :
   }];
 }
 
-def VectorStridedSliceOp :
-  Vector_Op<"strided_slice", [NoSideEffect,
-     PredOpTrait<"operand and result have same element type",
-                 TCresVTEtIsSameAsOpBase<0, 0>>]>,
-    Arguments<(ins AnyVector:$vector, I64ArrayAttr:$offsets,
-               I64ArrayAttr:$sizes, I64ArrayAttr:$strides)>,
-    Results<(outs AnyVector)> {
-  let summary = "strided_slice operation";
+def Vector_InsertOp :
+  Vector_Op<"insert", [NoSideEffect,
+     PredOpTrait<"source operand and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 0>>,
+     PredOpTrait<"dest operand and result have same type",
+                 TCresIsSameAsOpBase<0, 1>>]>,
+     Arguments<(ins AnyType:$source, AnyVector:$dest, I32ArrayAttr:$position)>,
+     Results<(outs AnyVector)> {
+  let summary = "insert operation";
   let description = [{
-    Takes an n-D vector, k-D `offsets` integer array attribute, a k-D `sizes`
-    integer array attribute, a k-D `strides` integer array attribute and
-    extracts the n-D subvector at the proper offset.
-
-    At the moment strides must contain only 1s.
-
-    Returns an n-D vector where the first k-D dimensions match the `sizes`
-    attribute. The returned subvector contains the elements starting at offset
-    `offsets` and ending at `offsets + sizes`.
+    Takes an n-D source vector, an (n+k)-D destination vector and a k-D position
+    and inserts the n-D source into the (n+k)-D destination at the proper
+    position. Degenerates to a scalar source type when n = 0.
 
     Examples:
     ```
-      %1 = vector.strided_slice %0
-          {offsets : [0, 2], sizes : [2, 4], strides : [1, 1]}:
-        vector<4x8x16xf32> to vector<2x4x16xf32>
+      %2 = vector.insert %0, %1[3 : i32]:
+        vector<8x16xf32> into vector<4x8x16xf32>
+      %5 = vector.insert %3, %4[3 : i32, 3 : i32, 3 : i32]:
+        f32 into vector<4x8x16xf32>
     ```
-
-    // TODO(Evolve to a range form syntax):
-    %1 = vector.strided_slice %0[0:2:1][2:4:1]
-      vector<4x8x16xf32> to vector<2x4x16xf32>
   }];
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Value *source, " #
-    "ArrayRef<int64_t> offsets, ArrayRef<int64_t> sizes, " #
-    "ArrayRef<int64_t> strides">];
+    "Value *dest, ArrayRef<int32_t>">];
   let extraClassDeclaration = [{
-    static StringRef getOffsetsAttrName() { return "offsets"; }
-    static StringRef getSizesAttrName() { return "sizes"; }
-    static StringRef getStridesAttrName() { return "strides"; }
-    VectorType getVectorType(){ return vector()->getType().cast<VectorType>(); }
+    static StringRef getPositionAttrName() { return "position"; }
+    Type getSourceType() { return source()->getType(); }
+    VectorType getDestVectorType() {
+      return dest()->getType().cast<VectorType>();
+    }
   }];
 }
 
-def VectorOuterProductOp :
+def Vector_InsertStridedSliceOp :
+  Vector_Op<"insert_strided_slice", [NoSideEffect,
+    PredOpTrait<"operand #0 and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 0>>,
+    PredOpTrait<"dest operand and result have same type",
+                 TCresIsSameAsOpBase<0, 1>>]>,
+    Arguments<(ins AnyVector:$source, AnyVector:$dest, I64ArrayAttr:$offsets,
+               I64ArrayAttr:$strides)>,
+    Results<(outs AnyVector)> {
+  let summary = "strided_slice operation";
+  let description = [{
+    Takes a k-D source vector, an n-D destination vector (n >= k), n-D `offsets`
+    integer array attribute, a k-D `strides` integer array attribute and inserts
+    the k-D source vector as a strided subvector at the proper offset into the
+    n-D destination vector.
+
+    At the moment strides must contain only 1s.
+
+    Returns an n-D vector that is a copy of the n-D destination vector in which
+    the last k-D dimensions contain the k-D source vector elements strided at
+    the proper location as specified by the offsets.
+
+    Examples:
+    ```
+      %2 = vector.insert_strided_slice %0, %1
+          {offsets : [0, 0, 2], strides : [1, 1]}:
+        vector<2x4xf32> into vector<16x4x8xf32>
+    ```
+  }];
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *source, Value *dest, " #
+    "ArrayRef<int64_t> offsets, ArrayRef<int64_t> strides">];
+  let extraClassDeclaration = [{
+    static StringRef getOffsetsAttrName() { return "offsets"; }
+    static StringRef getStridesAttrName() { return "strides"; }
+    VectorType getSourceVectorType() {
+      return source()->getType().cast<VectorType>();
+    }
+    VectorType getDestVectorType() {
+      return dest()->getType().cast<VectorType>();
+    }
+  }];
+}
+
+def Vector_OuterProductOp :
   Vector_Op<"outerproduct", [NoSideEffect, SameOperandsAndResultElementType]>,
     Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, Variadic<AnyVector>:$acc)>,
     Results<(outs AnyVector)> {
@@ -255,7 +411,52 @@ def VectorOuterProductOp :
   }];
 }
 
-def VectorTransferReadOp :
+def Vector_StridedSliceOp :
+  Vector_Op<"strided_slice", [NoSideEffect,
+    PredOpTrait<"operand and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 0>>]>,
+    Arguments<(ins AnyVector:$vector, I64ArrayAttr:$offsets,
+               I64ArrayAttr:$sizes, I64ArrayAttr:$strides)>,
+    Results<(outs AnyVector)> {
+  let summary = "strided_slice operation";
+  let description = [{
+    Takes an n-D vector, k-D `offsets` integer array attribute, a k-D `sizes`
+    integer array attribute, a k-D `strides` integer array attribute and
+    extracts the n-D subvector at the proper offset.
+
+    At the moment strides must contain only 1s.
+    // TODO(ntv) support non-1 strides.
+
+    Returns an n-D vector where the first k-D dimensions match the `sizes`
+    attribute. The returned subvector contains the elements starting at offset
+    `offsets` and ending at `offsets + sizes`.
+
+    Examples:
+    ```
+      %1 = vector.strided_slice %0
+          {offsets : [0, 2], sizes : [2, 4], strides : [1, 1]}:
+        vector<4x8x16xf32> to vector<2x4x16xf32>
+    ```
+
+    // TODO(ntv) Evolve to a range form syntax similar to:
+    %1 = vector.strided_slice %0[0:2:1][2:4:1]
+      vector<4x8x16xf32> to vector<2x4x16xf32>
+  }];
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *source, " #
+    "ArrayRef<int64_t> offsets, ArrayRef<int64_t> sizes, " #
+    "ArrayRef<int64_t> strides">];
+  let extraClassDeclaration = [{
+    static StringRef getOffsetsAttrName() { return "offsets"; }
+    static StringRef getSizesAttrName() { return "sizes"; }
+    static StringRef getStridesAttrName() { return "strides"; }
+    VectorType getVectorType(){ return vector()->getType().cast<VectorType>(); }
+    void getOffsets(SmallVectorImpl<int64_t> &results);
+  }];
+  let hasCanonicalizer = 1;
+}
+
+def Vector_TransferReadOp :
   Vector_Op<"transfer_read">,
     Arguments<(ins AnyMemRef:$memref, Variadic<Index>:$indices,
                AffineMapAttr:$permutation_map, AnyType:$padding)>,
@@ -284,7 +485,7 @@ def VectorTransferReadOp :
     More precisely, let's dive deeper into the permutation_map for the following
     MLIR:
 
-    ```mlir {.mlir}
+    ```mlir
     vector.transfer_read %A[%expr1, %expr2, %expr3, %expr4]
       { permutation_map : (d0,d1,d2,d3) -> (d2,0,d0) } :
       memref<?x?x?x?xf32>, vector<3x4x5xf32>
@@ -344,7 +545,7 @@ def VectorTransferReadOp :
     implemented using a warp-shuffle if loop `j` were mapped to `threadIdx.x`.
 
     Syntax
-    ``` {.ebnf}
+    ```
     operation ::= ssa-id `=` `vector.transfer_read` ssa-use-list
       `{` attribute-entry `} :` memref-type `,` vector-type
     ```
@@ -386,7 +587,7 @@ def VectorTransferReadOp :
   }];
 }
 
-def VectorTransferWriteOp :
+def Vector_TransferWriteOp :
   Vector_Op<"transfer_write">,
     Arguments<(ins AnyVector:$vector, AnyMemRef:$memref,
                Variadic<Index>:$indices,
@@ -415,14 +616,14 @@ def VectorTransferWriteOp :
 
     Syntax:
 
-    ``` {.ebnf}
+    ```
     operation ::= `vector.transfer_write` ssa-use-list `{` attribute-entry `} :
       ` vector-type ', ' memref-type '
     ```
 
     Examples:
 
-    ```mlir {.mlir}
+    ```mlir
     // write vector<16x32x64xf32> into the slice
     //   `%A[%i0, %i1:%i1+32, %i2:%i2+64, %i3:%i3+16]`:
     for %i0 = 0 to %0 {
@@ -447,7 +648,7 @@ def VectorTransferWriteOp :
   }];
 }
 
-def VectorTypeCastOp :
+def Vector_TypeCastOp :
   Vector_Op<"type_cast", [NoSideEffect]>,
     Arguments<(ins StaticShapeMemRefOf<[AnyType]>:$memref)>,
     Results<(outs AnyMemRef)> {
@@ -461,7 +662,7 @@ def VectorTypeCastOp :
 
     Syntax:
 
-    ``` {.ebnf}
+    ```
     operation ::= `vector.type_cast` ssa-use : memref-type to memref-type
     ```
 
@@ -490,20 +691,70 @@ def VectorTypeCastOp :
   }];
 }
 
-// TODO(andydavis) Morph this operation into a VectorMaskOp.
-def VectorIndexTupleOp :
-  Vector_Op<"make_index_tuple", [NoSideEffect]>,
-    Arguments<(ins Variadic<Index>:$operands)>,
-    Results<(outs TupleOf<[Index]>)> {
-  let summary = "creates a tuple of operand values";
+def Vector_ConstantMaskOp :
+  Vector_Op<"constant_mask", [NoSideEffect]>,
+    Arguments<(ins I64ArrayAttr:$mask_dim_sizes)>,
+    Results<(outs VectorOf<[I1]>)> {
+  let summary = "creates a constant vector mask";
   let description = [{
-    Creates and returns a tuple of its operands which must be of index type.
+    Creates and returns a vector mask where elements of the result vector
+    are set to '0' or '1', based on whether the element indices are contained
+    within a hyper-rectangular region specified by the 'mask_dim_sizes'
+    array attribute argument. Each element of the 'mask_dim_sizes' array,
+    specifies an exclusive upper bound [0, mask-dim-size-element-value)
+    for a unique dimension in the vector result. The conjunction of the ranges
+    define a hyper-rectangular region within which elements values are set to 1
+    (otherwise element values are set to 0).
 
-    Example:
+    Example: create a constant vector mask of size 4x3xi1 with elements in range
+             0 <= row <= 2 and 0 <= col <= 1 are set to 1 (others to 0).
 
-      %1 = vector.make_index_tuple %size0, %size1, %size2
-        : tuple<index, index, index>
+      %1 = vector.constant_mask [3, 2] : vector<4x3xi1>
 
+      print %1
+                    columns
+                  0    1    2
+                |------------
+              0 | 1    1    0
+        rows  1 | 1    1    0
+              2 | 1    1    0
+              3 | 0    0    0
+  }];
+
+  let extraClassDeclaration = [{
+    static StringRef getMaskDimSizesAttrName() { return "mask_dim_sizes"; }
   }];
 }
+
+def Vector_CreateMaskOp :
+  Vector_Op<"create_mask", [NoSideEffect]>,
+    Arguments<(ins Variadic<Index>:$operands)>, Results<(outs VectorOf<[I1]>)> {
+  let summary = "creates a vector mask";
+  let description = [{
+    Creates and returns a vector mask where elements of the result vector
+    are set to '0' or '1', based on whether the element indices are contained
+    within a hyper-rectangular region specified by the operands. Specifically,
+    each operand specifies a range [0, operand-value) for a unique dimension in
+    the vector result. The conjunction of the operand ranges define a
+    hyper-rectangular region within which elements values are set to 1
+    (otherwise element values are set to 0).
+
+    Example: create a vector mask of size 4x3xi1 where elements in range
+             0 <= row <= 2 and 0 <= col <= 1 are set to 1 (others to 0).
+
+      %1 = vector.create_mask %c3, %c2 : vector<4x3xi1>
+
+      print %1
+                    columns
+                  0    1    2
+                |------------
+              0 | 1    1    0
+        rows  1 | 1    1    0
+              2 | 1    1    0
+              3 | 0    0    0
+  }];
+
+  let hasCanonicalizer = 1;
+}
+
 #endif // VECTOR_OPS

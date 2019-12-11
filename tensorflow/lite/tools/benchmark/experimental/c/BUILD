@@ -12,6 +12,11 @@ package_group(
     ],
 )
 
+exports_files(
+    ["benchmark_c_api.h"],
+    visibility = ["//tensorflow/lite/tools/benchmark/experimental/c:benchmark"],
+)
+
 cc_library(
     name = "benchmark_c_api",
     srcs = ["benchmark_c_api.cc"],
@@ -24,7 +29,7 @@ cc_library(
         "benchmark",
     ],
     deps = [
-        "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite/tools/benchmark:benchmark_tflite_model_lib",
     ],
 )

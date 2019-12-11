@@ -106,6 +106,10 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
 
+  if (pass_config.inline_functions) {
+    pass_manager->addPass(mlir::createInlinerPass());
+  }
+
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
   if (pass_config.emit_builtin_tflite_ops) {

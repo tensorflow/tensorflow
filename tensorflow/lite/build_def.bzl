@@ -29,6 +29,17 @@ def tflite_copts():
     }) + select({
         clean_dep("//tensorflow:optimized"): ["-O3"],
         "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow:android"): [
+            "-ffunction-sections",  # Helps trim binary size.
+            "-fdata-sections",  # Helps trim binary size.
+        ],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow:windows"): [],
+        "//conditions:default": [
+            "-fno-exceptions",  # Exceptions are unused in TFLite.
+        ],
     })
 
     return copts
@@ -142,6 +153,7 @@ def tflite_cc_shared_object(
         linkstatic = 1,
         deps = [],
         visibility = None,
+        per_os_targets = False,
         tags = None):
     """Builds a shared object for TFLite."""
     tf_cc_shared_object(
@@ -153,6 +165,7 @@ def tflite_cc_shared_object(
         deps = deps,
         visibility = visibility,
         tags = tags,
+        per_os_targets = per_os_targets,
     )
 
 def tf_to_tflite(name, src, options, out):
@@ -259,7 +272,8 @@ def generated_test_models():
         "exp",
         "embedding_lookup",
         "expand_dims",
-        "eye",
+        # TODO(b/145885576): Re-enable.
+        # "eye",
         "fill",
         "floor",
         "floor_div",
@@ -288,8 +302,9 @@ def generated_test_models():
         "logical_or",
         "logical_xor",
         "lstm",
-        "matrix_diag",
-        "matrix_set_diag",
+        # TODO(b/145885576): Re-enable.
+        # "matrix_diag",
+        # "matrix_set_diag",
         "max_pool",
         "maximum",
         "mean",
@@ -676,7 +691,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags):
             ] + args,
             data = data,
             srcs_version = "PY2AND3",
-            python_version = "PY2",
+            python_version = "PY3",
             tags = [
                 "no_oss",
                 "no_windows",

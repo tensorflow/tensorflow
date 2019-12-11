@@ -5,10 +5,10 @@
 # FetchOp.
 
 # Match the island containing the "tf.Neg", capture the output
-# CHECK:          %[[ISLAND_0:[0-9]*]]:2 = tf_executor.island wraps "tf.Neg"
+# CHECK:          %[[ISLAND_0:[a-z_0-9]*]], %[[ISLAND_0_control:[a-z_0-9]*]] = tf_executor.island wraps "tf.Neg"
 
 # Check that the tf.Neg control is passed to the fetch
-# CHECK:          tf_executor.fetch {{.*}} %[[ISLAND_0]]#1 : tensor<*xf32>, !tf_executor.control
+# CHECK:          tf_executor.fetch {{.*}} %[[ISLAND_0_control]] : tensor<*xf32>, !tf_executor.control
 
 node {
   name: "const"

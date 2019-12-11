@@ -17,20 +17,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-def _map_and_filter_fusion_test_cases():
-  """Generates test cases for the MapAndFilterFusion optimization."""
+def _test_combinations():
+  cases = []
 
   identity = lambda x: x
   increment = lambda x: x + 1
@@ -40,32 +42,41 @@ def _map_and_filter_fusion_test_cases():
     y = x + 1
     return y * y
 
+  functions = [identity, increment, minus_five, increment_and_square]
+
   take_all = lambda x: constant_op.constant(True)
   is_zero = lambda x: math_ops.equal(x, 0)
   is_odd = lambda x: math_ops.equal(x % 2, 0)
   greater = lambda x: math_ops.greater(x + 5, 0)
+  predicates = [take_all, is_zero, is_odd, greater]
 
-  functions = [identity, increment, minus_five, increment_and_square]
-  filters = [take_all, is_zero, is_odd, greater]
-  tests = []
+  for i, function in enumerate(functions):
+    for j, predicate in enumerate(predicates):
+      cases.append((function, "Scalar{}{}".format(i, j), predicate))
 
-  for x, fun in enumerate(functions):
-    for y, predicate in enumerate(filters):
-      tests.append(("Mixed{}{}".format(x, y), fun, predicate))
+  replicate = lambda x: (x, x)
+  with_two = lambda x: (x, 2)
+  functions = [replicate, with_two]
+  take_all = lambda x, y: constant_op.constant(True)
+  is_zero = lambda x, y: math_ops.equal(x * math_ops.cast(y, dtypes.int64), 0)
+  predicates = [take_all, is_zero]
 
-  # Multi output
-  tests.append(("Multi1", lambda x: (x, x),
-                lambda x, y: constant_op.constant(True)))
-  tests.append(
-      ("Multi2", lambda x: (x, 2),
-       lambda x, y: math_ops.equal(x * math_ops.cast(y, dtypes.int64), 0)))
-  return tuple(tests)
+  for i, function in enumerate(functions):
+    for j, predicate in enumerate(predicates):
+      cases.append((function, "Tuple{}{}".format(i, j), predicate))
+
+  def reduce_fn(x, y):
+    function, name, predicate = y
+    return x + combinations.combine(
+        function=function,
+        predicate=combinations.NamedObject(name, predicate))
+
+  return functools.reduce(reduce_fn, cases, [])
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  def _testMapAndFilter(self, dataset, function, predicate):
+  def _testDataset(self, dataset, function, predicate):
     expected_output = []
     for x in range(10):
       r = function(x)
@@ -77,8 +88,10 @@ class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
         expected_output.append(r)
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
-  @parameterized.named_parameters(*_map_and_filter_fusion_test_cases())
-  def testMapFilterFusion(self, function, predicate):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         _test_combinations()))
+  def testMapAndFilterFusion(self, function, predicate):
     dataset = dataset_ops.Dataset.range(10).apply(
         testing.assert_next(["Map", "Filter",
                              "Map"])).map(function).filter(predicate)
@@ -86,8 +99,9 @@ class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_and_filter_fusion = True
     dataset = dataset.with_options(options)
-    self._testMapAndFilter(dataset, function, predicate)
+    self._testDataset(dataset, function, predicate)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCapturedInputs(self):
     a = constant_op.constant(3, dtype=dtypes.int64)
     b = constant_op.constant(4, dtype=dtypes.int64)
@@ -104,7 +118,7 @@ class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_and_filter_fusion = True
     dataset = dataset.with_options(options)
-    self._testMapAndFilter(dataset, function, predicate)
+    self._testDataset(dataset, function, predicate)
 
 
 if __name__ == "__main__":

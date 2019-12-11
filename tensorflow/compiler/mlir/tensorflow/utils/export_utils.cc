@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/Support/DebugStringHelper.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -253,21 +254,30 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
   // Note: we do not use NodeBuilder or NodeDefBuilder as that would require
   // mapping back from the inputs to the input arguments.
 
-  // Some control flow ops in TensorFlow Graph have their respective "Ref" ops
-  // as well. For example there is Enter and RefEnter op. RefEnter forwards
-  // the input ref buffer to output. However both Enter and RefEnter are
-  // mapped to tf_executor::EnterOp during import and then to _tf.Enter op in
-  // control dialect. Check if it is a Ref op to correctly map to the TensorFlow
-  // Graph op.
   llvm::SmallString<64> op_name;
-  if (IsRefTypeControlOp(inst)) op_name = "Ref";
+  if (IsLegacyCallInstruction(inst)) {
+    // The op_name is the name of the function.
+    op_name.append(
+        inst->getAttrOfType<mlir::SymbolRefAttr>("f").getLeafReference());
+    // Remove the attribute from the instruction as it is already converted to
+    // op_name.
+    auto attr_id = mlir::Identifier::get("f", inst->getContext());
+    inst->removeAttr(attr_id);
+  } else {
+    // Some control flow ops in TensorFlow Graph have their respective "Ref" ops
+    // as well. For example there is Enter and RefEnter op. RefEnter forwards
+    // the input ref buffer to output. However both Enter and RefEnter are
+    // mapped to tf_executor::EnterOp during import and then to _tf.Enter op in
+    // control dialect. Check if it is a Ref op to correctly map to the
+    // TensorFlow Graph op.
+    if (IsRefTypeControlOp(inst)) op_name = "Ref";
+    TF_ASSIGN_OR_RETURN(auto tf_name,
+                        GetTensorFlowOpName(inst->getName().getStringRef()));
+    op_name.append(tf_name);
+  }
 
-  TF_ASSIGN_OR_RETURN(auto tf_name,
-                      GetTensorFlowOpName(inst->getName().getStringRef()));
-  op_name.append(tf_name);
-
+  node_def->set_name(name.str());
   node_def->set_op(op_name.str());
-  node_def->set_name(name);
 
   // Add inputs to the NodeDef based on the number of operands. This is required
   // as later when edges are added to the Node using Graph::AddEdge the
@@ -452,6 +462,11 @@ Status SetSizeAttribute(absl::string_view name, size_t size,
                                      size, " but found ", actual_size);
   }
   return Status::OK();
+}
+
+bool IsLegacyCallInstruction(mlir::Operation* inst) {
+  return llvm::dyn_cast<mlir::TF::LegacyCallOp>(inst) ||
+         inst->getName().getStringRef().compare("_tf.LegacyCall") == 0;
 }
 
 }  // namespace tensorflow

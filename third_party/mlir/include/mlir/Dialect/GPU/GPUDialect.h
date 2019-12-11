@@ -24,7 +24,9 @@
 #define MLIR_DIALECT_GPU_GPUDIALECT_H
 
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/FunctionSupport.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/SymbolTable.h"
 
 namespace mlir {
 class FuncOp;
@@ -59,6 +61,10 @@ public:
   /// 'gpu.kernel' attribute.
   static bool isKernel(Operation *op);
 
+  /// Returns the numeric value used to identify the workgroup memory address
+  /// space.
+  static int getWorkgroupAddressSpace() { return 3; }
+
   LogicalResult verifyOperationAttribute(Operation *op,
                                          NamedAttribute attr) override;
 };
@@ -69,126 +75,6 @@ struct KernelDim3 {
   Value *x;
   Value *y;
   Value *z;
-};
-
-/// GPU kernel launch operation.  Takes a 3D grid of thread blocks as leading
-/// operands, followed by kernel data operands.  Has one region representing
-/// the kernel to be executed.  This region is not allowed to use values defined
-/// outside it.
-class LaunchOp : public Op<LaunchOp, OpTrait::AtLeastNOperands<6>::Impl,
-                           OpTrait::ZeroResult, OpTrait::IsIsolatedFromAbove> {
-public:
-  using Op::Op;
-
-  static void build(Builder *builder, OperationState &result, Value *gridSizeX,
-                    Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
-                    Value *blockSizeY, Value *blockSizeZ,
-                    ArrayRef<Value *> operands);
-
-  /// Get the kernel region.
-  Region &getBody();
-
-  /// Get the SSA values corresponding to kernel block identifiers.
-  KernelDim3 getBlockIds();
-  /// Get the SSA values corresponding to kernel thread identifiers.
-  KernelDim3 getThreadIds();
-  /// Get the SSA values corresponding to kernel grid size.
-  KernelDim3 getGridSize();
-  /// Get the SSA values corresponding to kernel block size.
-  KernelDim3 getBlockSize();
-  /// Get the operand values passed as kernel arguments.
-  operand_range getKernelOperandValues();
-  /// Get the operand types passed as kernel arguments.
-  operand_type_range getKernelOperandTypes();
-
-  /// Get the SSA values passed as operands to specify the grid size.
-  KernelDim3 getGridSizeOperandValues();
-  /// Get the SSA values passed as operands to specify the block size.
-  KernelDim3 getBlockSizeOperandValues();
-
-  /// Get the SSA values of the kernel arguments.
-  llvm::iterator_range<Block::args_iterator> getKernelArguments();
-
-  LogicalResult verify();
-
-  /// Custom syntax support.
-  void print(OpAsmPrinter &p);
-  static ParseResult parse(OpAsmParser &parser, OperationState &result);
-
-  static StringRef getOperationName() { return "gpu.launch"; }
-
-  /// Erase the `index`-th kernel argument.  Both the entry block argument and
-  /// the operand will be dropped.  The block argument must not have any uses.
-  void eraseKernelArgument(unsigned index);
-
-  /// Append canonicalization patterns to `results`.
-  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                          MLIRContext *context);
-
-private:
-  static StringRef getBlocksKeyword() { return "blocks"; }
-  static StringRef getThreadsKeyword() { return "threads"; }
-  static StringRef getArgsKeyword() { return "args"; }
-
-  /// The number of launch configuration operands, placed at the leading
-  /// positions of the operand list.
-  static constexpr unsigned kNumConfigOperands = 6;
-
-  /// The number of region attributes containing the launch configuration,
-  /// placed in the leading positions of the argument list.
-  static constexpr unsigned kNumConfigRegionAttributes = 12;
-};
-
-/// Operation to launch a kernel given as outlined function.
-class LaunchFuncOp : public Op<LaunchFuncOp, OpTrait::AtLeastNOperands<6>::Impl,
-                               OpTrait::ZeroResult> {
-public:
-  using Op::Op;
-
-  static void build(Builder *builder, OperationState &result, FuncOp kernelFunc,
-                    Value *gridSizeX, Value *gridSizeY, Value *gridSizeZ,
-                    Value *blockSizeX, Value *blockSizeY, Value *blockSizeZ,
-                    ArrayRef<Value *> kernelOperands);
-
-  static void build(Builder *builder, OperationState &result, FuncOp kernelFunc,
-                    KernelDim3 gridSize, KernelDim3 blockSize,
-                    ArrayRef<Value *> kernelOperands);
-
-  /// The kernel function specified by the operation's `kernel` attribute.
-  StringRef kernel();
-  /// The number of operands passed to the kernel function.
-  unsigned getNumKernelOperands();
-  /// The name of the kernel module specified by the operation's `kernel_module`
-  /// attribute.
-  StringRef getKernelModuleName();
-  /// The i-th operand passed to the kernel function.
-  Value *getKernelOperand(unsigned i);
-
-  /// Get the SSA values passed as operands to specify the grid size.
-  KernelDim3 getGridSizeOperandValues();
-  /// Get the SSA values passed as operands to specify the block size.
-  KernelDim3 getBlockSizeOperandValues();
-
-  LogicalResult verify();
-
-  static StringRef getOperationName() { return "gpu.launch_func"; }
-
-  /// The number of launch configuration operands, placed at the leading
-  /// positions of the operand list.
-  static constexpr unsigned kNumConfigOperands = 6;
-
-private:
-  // This needs to quietly verify if attributes with names defined below are
-  // present since it is run before the verifier of this op.
-  friend LogicalResult GPUDialect::verifyOperationAttribute(Operation *,
-                                                            NamedAttribute);
-
-  /// The name of the symbolRef attribute specifying the kernel to launch.
-  static StringRef getKernelAttrName() { return "kernel"; }
-
-  /// The name of the symbolRef attribute specifying the name of the module
-  /// containing the kernel to launch.
-  static StringRef getKernelModuleAttrName() { return "kernel_module"; }
 };
 
 #define GET_OP_CLASSES

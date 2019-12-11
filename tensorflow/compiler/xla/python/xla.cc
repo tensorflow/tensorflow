@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -107,6 +108,17 @@ StatusOr<std::string> GetComputationHloDotGraph(
   return RenderGraph(*hlo_module->entry_computation(), /*label=*/"",
                      hlo_module->config().debug_options(),
                      RenderedGraphFormat::kDot);
+}
+
+// Hashes the HLO module.
+StatusOr<uint64> HashComputation(const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          computation.proto(), GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      HloModule::CreateFromProto(computation.proto(), module_config));
+  return hlo_module->Hash();
 }
 
 // Registers a 'fn_capsule' as a CPU custom call target.
@@ -317,6 +329,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("host_id", &Device::host_id,
                              "Integer ID of this device's host.\n\n"
                              "This is always 0 except on multi-host platforms.")
+      .def_property_readonly("platform", &Device::platform_name)
       .def("__str__", &Device::DebugString);
 
   py::class_<CpuDevice, Device, std::shared_ptr<CpuDevice>>(m, "CpuDevice")
@@ -353,6 +366,21 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("devices", &PyLocalClient::devices)
       .def("local_devices", &PyLocalClient::local_devices)
       .def("host_id", &PyLocalClient::host_id)
+      .def("GetDefaultDeviceAssignment",
+           [](PyLocalClient* client, int num_replicas)
+               -> StatusOr<std::vector<std::shared_ptr<Device>>> {
+             TF_ASSIGN_OR_RETURN(
+                 DeviceAssignment device_assignment,
+                 client->GetDefaultDeviceAssignment(num_replicas));
+             std::vector<std::shared_ptr<Device>> result;
+             for (int i = 0; i < num_replicas; ++i) {
+               int device_id = device_assignment(i, 0);
+               auto iter = client->id_to_device().find(device_id);
+               CHECK(iter != client->id_to_device().end()) << device_id;
+               result.push_back(iter->second);
+             }
+             return result;
+           })
       .def("TransferToInfeed",
            [](PyLocalClient* client, const LiteralSlice& literal,
               int device_ordinal) {
@@ -390,6 +418,12 @@ PYBIND11_MODULE(xla_extension, m) {
              std::shared_ptr<Device> device)
               -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
             CHECK(device != nullptr);
+            auto iter = client->id_to_device().find(device->id());
+            if (iter->second != device) {
+              return InvalidArgument(
+                  "Cannot copy value to device '%s' with '%s' backend",
+                  device->DebugString(), client->platform_name());
+            }
             GlobalPyRefManager()->CollectGarbage();
             TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
                                 GetPythonBufferTree(argument));
@@ -435,8 +469,15 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static("make_tuple",
                   [](const std::vector<PyLocalBuffer*> buffers,
                      std::shared_ptr<PyLocalClient> client,
-                     std::shared_ptr<Device> device) {
+                     std::shared_ptr<Device> device)
+                      -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
                     CHECK(device != nullptr);
+                    auto iter = client->id_to_device().find(device->id());
+                    if (iter->second != device) {
+                      return InvalidArgument(
+                          "Cannot make tuple on device '%s' with '%s' backend",
+                          device->DebugString(), client->platform_name());
+                    }
                     return PyLocalBuffer::MakeTuple(
                         buffers, client, device->local_device_ordinal());
                   })
@@ -562,7 +603,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("GetProgramShape", &XlaComputation::GetProgramShape)
       .def("GetSerializedProto", &GetComputationSerializedProto)
       .def("GetHloText", &GetComputationHloText)
-      .def("GetHloDotGraph", &GetComputationHloDotGraph);
+      .def("GetHloDotGraph", &GetComputationHloDotGraph)
+      .def("Hash", &HashComputation);
 
   py::class_<XlaOp>(m, "XlaOp");
 
@@ -588,17 +630,21 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           py::arg("root") = absl::nullopt)
       .def("IsConstant", &XlaBuilder::IsConstant)
-      .def("SetOpMetadata", &XlaBuilder::SetOpMetadata);
+      .def("SetOpMetadata", &XlaBuilder::SetOpMetadata)
+      .def("SetSharding", &XlaBuilder::SetSharding)
+      .def("ClearSharding", &XlaBuilder::ClearSharding);
 
   // ops submodule, containing free functions that add operators to an
   // XlaBuilder.
   py::module ops = m.def_submodule("ops", "XLA operations");
 
   ops.def("AfterAll", &AfterAll);
-  ops.def("AllReduce",
-          static_cast<XlaOp (*)(
-              XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
-              const absl::optional<ChannelHandle>&)>(&AllReduce));
+  ops.def(
+      "AllReduce",
+      static_cast<XlaOp (*)(
+          XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
+          const absl::optional<ChannelHandle>&, const absl::optional<Shape>&)>(
+          &AllReduce));
   ops.def("AllToAll", &AllToAll);
   ops.def("CollectivePermute", &CollectivePermute);
   ops.def("CreateToken", &CreateToken);
@@ -696,6 +742,7 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("ReducePrecision", &ReducePrecision, py::arg("operand"),
           py::arg("exponent_bits"), py::arg("mantissa_bits"));
   ops.def("ReduceWindowWithGeneralPadding", &ReduceWindowWithGeneralPadding);
+  ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta);
   ops.def("ReplicaId", &ReplicaId);
   ops.def("Reshape", static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,
                                            absl::Span<const int64>)>(&Reshape));
@@ -823,6 +870,12 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("DEFAULT", PrecisionConfig::DEFAULT)
       .value("HIGH", PrecisionConfig::HIGH)
       .value("HIGHEST", PrecisionConfig::HIGHEST);
+
+  py::enum_<OpSharding::Type>(m, "OpSharding_Type")
+      .value("REPLICATED", OpSharding::REPLICATED)
+      .value("MAXIMAL", OpSharding::MAXIMAL)
+      .value("TUPLE", OpSharding::TUPLE)
+      .value("OTHER", OpSharding::OTHER);
 
   // TODO(phawkins): improve bindings for these types.
   py::class_<ChannelHandle>(m, "ChannelHandle");

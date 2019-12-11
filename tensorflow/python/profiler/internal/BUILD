@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_binary_additional_srcs")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_binary_additional_data_deps", "tf_binary_additional_srcs")
 
 package(
     default_visibility = ["//tensorflow/python/profiler:__subpackages__"],
@@ -40,7 +40,7 @@ py_library(
 py_test(
     name = "print_model_analysis_test",
     srcs = ["print_model_analysis_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core/profiler:protos_all_py",
@@ -67,6 +67,7 @@ cuda_py_test(
         "//tensorflow/python/profiler:model_analyzer",
         "//tensorflow/python:random_ops",
     ],
+    python_version = "PY3",
     tags = [
         "no_gpu",  # b/138442728
         "no_pip",
@@ -77,6 +78,7 @@ cuda_py_test(
 pybind_extension(
     name = "_pywrap_traceme",
     srcs = ["traceme_wrapper.cc"] + tf_binary_additional_srcs(),
+    data = tf_binary_additional_data_deps(),
     module_name = "_pywrap_traceme",
     visibility = [
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
@@ -93,6 +95,7 @@ pybind_extension(
 pybind_extension(
     name = "_pywrap_scoped_annotation",
     srcs = ["scoped_annotation_wrapper.cc"] + tf_binary_additional_srcs(),
+    data = tf_binary_additional_data_deps(),
     module_name = "_pywrap_scoped_annotation",
     deps = [
         "//tensorflow/core:lib",

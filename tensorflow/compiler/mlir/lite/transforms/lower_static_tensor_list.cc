@@ -299,9 +299,9 @@ struct ConvertTensorListInitOp : public ConversionPattern {
         new_element_shape_values.push_back(dim_value);
       }
 
-      auto attr = DenseIntElementsAttr::get<int32_t>(
-          element_shape->getType().cast<ShapedType>(),
-          new_element_shape_values);
+      auto attr =
+          DenseIntElementsAttr::get(element_shape->getType().cast<ShapedType>(),
+                                    new_element_shape_values);
       auto new_element_shape = rewriter.create<ConstantOp>(
           op.getLoc(), element_shape->getType(), attr);
       element_shape = new_element_shape;
@@ -484,9 +484,9 @@ struct ConvertTensorListResize : public ConversionPattern {
                           &rewriter);
 
     // Inserts the two blocks' names into the symbol table held by the module.
-    // Using ModuleManager will ensure that the inserted symbol names are
+    // Using SymbolTable will ensure that the inserted symbol names are
     // unique.
-    ModuleManager manager(resize_op.getParentOfType<ModuleOp>());
+    SymbolTable manager(resize_op.getParentOfType<ModuleOp>());
     manager.insert(then_branch_op);
     manager.insert(else_branch_op);
 
@@ -754,8 +754,7 @@ struct ConvertWhile : public ConversionPattern {
     cloned.removeAttr("T");
     UpdateFunctionTypes(cloned);
 
-    SmallVector<Value *, 8> results(cloned.getResults());
-    rewriter.replaceOp(op, results);
+    rewriter.replaceOp(op, cloned.getResults());
     return matchSuccess();
   }
 };

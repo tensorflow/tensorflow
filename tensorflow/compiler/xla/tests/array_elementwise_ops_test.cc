@@ -669,7 +669,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, RemF64s) {
 
   ComputeAndCompareR1<double>(
       &builder, {-2.5, 0.0, 0.25, 0.0, -0.0, 1.0, 1.0, -1.0, -0.0}, {},
-      error_spec_);
+      strict_error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MulTwoConstantF32s) {
