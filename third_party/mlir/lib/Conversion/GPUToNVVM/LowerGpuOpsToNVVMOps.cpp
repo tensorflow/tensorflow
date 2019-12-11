@@ -450,10 +450,8 @@ private:
   static constexpr int kWarpSize = 32;
 };
 
-namespace {
-
-struct FuncOpLowering : LLVMOpLowering {
-  explicit FuncOpLowering(LLVMTypeConverter &typeConverter)
+struct GPUFuncOpLowering : LLVMOpLowering {
+  explicit GPUFuncOpLowering(LLVMTypeConverter &typeConverter)
       : LLVMOpLowering(gpu::GPUFuncOp::getOperationName(),
                        typeConverter.getDialect()->getContext(),
                        typeConverter) {}
@@ -585,8 +583,6 @@ struct FuncOpLowering : LLVMOpLowering {
   }
 };
 
-} // end namespace
-
 /// Import the GPU Ops to NVVM Patterns.
 #include "GPUToNVVM.cpp.inc"
 
@@ -633,7 +629,7 @@ void mlir::populateGpuToNVVMConversionPatterns(
                                           NVVM::BlockIdYOp, NVVM::BlockIdZOp>,
               GPUIndexIntrinsicOpLowering<gpu::GridDimOp, NVVM::GridDimXOp,
                                           NVVM::GridDimYOp, NVVM::GridDimZOp>,
-              GPUAllReduceOpLowering, FuncOpLowering>(converter);
+              GPUAllReduceOpLowering, GPUFuncOpLowering>(converter);
   patterns.insert<OpToFuncCallLowering<ExpOp>>(converter, "__nv_expf",
                                                "__nv_exp");
 }
