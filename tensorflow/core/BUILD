@@ -1659,6 +1659,7 @@ cc_library(
     deps = [
         ":emscripten_proto_lib_no_rtti_lite_runtime",
         ":mobile_additional_lib_deps",
+        "//tensorflow/core/util:stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
         "@farmhash_archive//:farmhash",
@@ -1701,6 +1702,7 @@ cc_library(
     deps = [
         ":mobile_additional_lib_deps",
         ":protos_all_cc_impl",
+        "//tensorflow/core/util:stats_calculator_portable",
         "//third_party/eigen3",
         "@com_google_protobuf//:protobuf",
         "@double_conversion//:double-conversion",

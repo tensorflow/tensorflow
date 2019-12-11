@@ -175,6 +175,7 @@ filegroup(
         exclude = [
             "*_test.*",
             "debug_events_writer.*",
+            "stats_calculator.*",
             "events_writer.*",
             "reporter.*",
         ],
