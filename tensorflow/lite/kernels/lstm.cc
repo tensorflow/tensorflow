@@ -113,18 +113,6 @@ namespace {
 TfLiteStatus PopulateQuantizedLstmParams(
     TfLiteContext* context, TfLiteNode* node,
     lstm_eval::QuantizedLstmParameter* quantized_lstm_param) {
-  std::vector<float> intermediate_scale;
-  std::vector<int32> intermediate_zp;
-  for (int i = 0; i < 5; ++i) {
-    // Calculate intermediate tensors.
-    TfLiteTensor* intermediate =
-        &context->tensors[node->intermediates->data[i]];
-    auto* params = static_cast<TfLiteAffineQuantization*>(
-        intermediate->quantization.params);
-    intermediate_scale.push_back(params->scale->data[0]);
-    intermediate_zp.push_back(params->zero_point->data[0]);
-  }
-
   // Calculate quantized clip for projection and cell.
   const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
   const float cell_clip = params->cell_clip;
@@ -211,6 +199,30 @@ TfLiteStatus PopulateQuantizedLstmParams(
   const bool use_cifg = (input_to_input_weights == nullptr);
   const bool use_peephole = (cell_to_output_weights != nullptr);
   const bool use_projection = (projection_weights != nullptr);
+
+  // Get intermediate scales and zero points.
+  std::vector<float> intermediate_scale;
+  std::vector<int32> intermediate_zp;
+  for (int i = 0; i < 4; ++i) {
+    if (is_layer_norm_lstm) {
+      const TfLiteTensor* intermediate = GetIntermediates(context, node, i);
+      auto* params = static_cast<TfLiteAffineQuantization*>(
+          intermediate->quantization.params);
+      intermediate_scale.push_back(params->scale->data[0]);
+      intermediate_zp.push_back(params->zero_point->data[0]);
+    } else {
+      // Q3.12 for activation functions.
+      intermediate_scale.push_back(std::pow(2, -12));
+      intermediate_zp.push_back(0);
+    }
+  }
+  // In the absense of projection, hidden becomes otuput and this intermediate
+  // is ignored.
+  const TfLiteTensor* hidden = GetIntermediates(context, node, 4);
+  auto* hidden_params =
+      static_cast<TfLiteAffineQuantization*>(hidden->quantization.params);
+  intermediate_scale.push_back(hidden_params->scale->data[0]);
+  intermediate_zp.push_back(hidden_params->zero_point->data[0]);
 
   // Scales.
   const float default_scale = 1.0;
@@ -509,8 +521,9 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   if (cell_to_input_weights) {
     TF_LITE_ENSURE_EQ(context, cell_to_input_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_input_weights->dims->data[0], n_cell);
-    TF_LITE_ENSURE_EQ(context, cell_to_input_weights->type,
-                      input_to_forget_weights->type);
+    TF_LITE_ENSURE_EQ(
+        context, cell_to_input_weights->type,
+        is_fully_quantized ? kTfLiteInt16 : input_to_forget_weights->type);
   }
 
   const TfLiteTensor* cell_to_forget_weights =
@@ -518,8 +531,9 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   if (cell_to_forget_weights) {
     TF_LITE_ENSURE_EQ(context, cell_to_forget_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_forget_weights->dims->data[0], n_cell);
-    TF_LITE_ENSURE_EQ(context, cell_to_forget_weights->type,
-                      input_to_forget_weights->type);
+    TF_LITE_ENSURE_EQ(
+        context, cell_to_forget_weights->type,
+        is_fully_quantized ? kTfLiteInt16 : input_to_forget_weights->type);
   }
 
   const TfLiteTensor* cell_to_output_weights =
@@ -527,8 +541,9 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   if (cell_to_output_weights) {
     TF_LITE_ENSURE_EQ(context, cell_to_output_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_output_weights->dims->data[0], n_cell);
-    TF_LITE_ENSURE_EQ(context, cell_to_output_weights->type,
-                      input_to_forget_weights->type);
+    TF_LITE_ENSURE_EQ(
+        context, cell_to_output_weights->type,
+        is_fully_quantized ? kTfLiteInt16 : input_to_forget_weights->type);
   }
 
   // Making sure the peephole weights are there all or none.
@@ -750,48 +765,71 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
       static_cast<TfLiteAffineQuantization*>(intermediate->quantization.params);
   const int32_t hidden_zp = params->zero_point->data[0];
 
+  // Get bias and perform zero point calculation.
+  // When there is layer normalization, the gate bias does not apply to matmul
+  // directly:
+  //      y = ln(w * x + w * r + w * c) + b.
+  const bool is_layer_norm = op_data->is_layer_norm_lstm;
+
   // Forget gate.
+  const TfLiteTensor* forget_gate_bias =
+      is_layer_norm ? nullptr : GetInput(context, node, kForgetGateBiasTensor);
   TF_LITE_ENSURE_OK(
-      context, PrecomputeZeroPointTimesWeightWithBias(
-                   context, input_zero_point, input_to_forget_weights, nullptr,
-                   &(quantized_lstm_params->input_to_forget_effective_bias)));
+      context,
+      PrecomputeZeroPointTimesWeightWithBias(
+          context, input_zero_point, input_to_forget_weights, forget_gate_bias,
+          &(quantized_lstm_params->input_to_forget_effective_bias)));
+
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_forget_weights, nullptr,
           &(quantized_lstm_params->recurrent_to_forget_effective_bias)));
+
   // Modulation gate.
+  const TfLiteTensor* cell_gate_bias =
+      is_layer_norm ? nullptr : GetInput(context, node, kCellGateBiasTensor);
   TF_LITE_ENSURE_OK(
-      context, PrecomputeZeroPointTimesWeightWithBias(
-                   context, input_zero_point, input_to_cell_weights, nullptr,
-                   &(quantized_lstm_params->input_to_cell_effective_bias)));
+      context,
+      PrecomputeZeroPointTimesWeightWithBias(
+          context, input_zero_point, input_to_cell_weights, cell_gate_bias,
+          &(quantized_lstm_params->input_to_cell_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_cell_weights, nullptr,
           &(quantized_lstm_params->recurrent_to_cell_effective_bias)));
+
   // Output gate.
+  const TfLiteTensor* output_gate_bias =
+      is_layer_norm ? nullptr : GetInput(context, node, kOutputGateBiasTensor);
   TF_LITE_ENSURE_OK(
-      context, PrecomputeZeroPointTimesWeightWithBias(
-                   context, input_zero_point, input_to_output_weights, nullptr,
-                   &(quantized_lstm_params->input_to_output_effective_bias)));
+      context,
+      PrecomputeZeroPointTimesWeightWithBias(
+          context, input_zero_point, input_to_output_weights, output_gate_bias,
+          &(quantized_lstm_params->input_to_output_effective_bias)));
+
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_output_weights, nullptr,
           &(quantized_lstm_params->recurrent_to_output_effective_bias)));
-  // Input gate.
+
+  // Input gate. The calculation is only meaningful for non-cifg case.
+  const TfLiteTensor* input_gate_bias =
+      is_layer_norm ? nullptr : GetInput(context, node, kInputGateBiasTensor);
   TF_LITE_ENSURE_OK(
-      context, PrecomputeZeroPointTimesWeightWithBias(
-                   context, input_zero_point, input_to_input_weights, nullptr,
-                   &(quantized_lstm_params->input_to_input_effective_bias)));
+      context,
+      PrecomputeZeroPointTimesWeightWithBias(
+          context, input_zero_point, input_to_input_weights, input_gate_bias,
+          &(quantized_lstm_params->input_to_input_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_input_weights, nullptr,
           &(quantized_lstm_params->recurrent_to_input_effective_bias)));
 
-  // Projection bias.
+  // Projection bias. The calculation is only meaningful for with projection.
   TF_LITE_ENSURE_OK(context,
                     PrecomputeZeroPointTimesWeightWithBias(
                         context, hidden_zp, projection_weights, projection_bias,
