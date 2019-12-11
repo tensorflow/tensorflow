@@ -79,7 +79,7 @@ resulting in a struct containing two pointers + offset.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 memref<f32> -> !llvm.type<"{ float*, float*, i64 }">
 memref<1 x f32> -> !llvm.type<"{ float*, float*, i64, [1 x i64], [1 x i64] }">
 memref<? x f32> -> !llvm.type<"{ float*, float*, i64, [1 x i64], [1 x i64] }">
@@ -88,6 +88,23 @@ memref<10x?x42x?x123 x f32> -> !llvm.type<"{ float*, float*, i64, [5 x i64], [5 
 
 // Memref types can have vectors as element types
 memref<1x? x vector<4xf32>> -> !llvm.type<"{ <4 x float>*, <4 x float>*, i64, [1 x i64], [1 x i64] }">
+```
+
+If the rank of the memref is unknown at compile time, the Memref is converted to
+an unranked descriptor that contains: 1. a 64-bit integer representing the
+dynamic rank of the memref, followed by 2. a pointer to a ranked memref
+descriptor with the contents listed above.
+
+Dynamic ranked memrefs should be used only to pass arguments to external library
+calls that expect a unified memref type. The called functions can parse any
+unranked memref descriptor by reading the rank and parsing the enclosed ranked
+descriptor pointer.
+
+Examples:
+
+```mlir
+// unranked descriptor
+memref<*xf32> -> !llvm.type<"{i64, i8*}">
 ```
 
 ### Function Types
@@ -108,7 +125,7 @@ converted using these rules.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // zero-ary function type with no results.
 () -> ()
 // is converted to a zero-ary function with `void` result
@@ -145,7 +162,7 @@ definition operation uses MLIR syntax.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // zero-ary function type with no results.
 func @foo() -> ()
 // gets LLVM type void().
@@ -178,7 +195,7 @@ defines and uses of the values being returned.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 func @foo(%arg0: i32, %arg1: i64) -> (i32, i64) {
   return %arg0, %arg1 : i32, i64
 }
@@ -232,7 +249,7 @@ are used instead of them in the original terminator operation.
 
 Example:
 
-```mlir {.mlir}
+```mlir
   cond_br %0, ^bb1(%1 : i32), ^bb1(%2 : i32)
 ^bb1(%3 : i32)
   "use"(%3) : (i32) -> ()
@@ -240,7 +257,7 @@ Example:
 
 leads to a new basic block being inserted,
 
-```mlir {.mlir}
+```mlir
   cond_br %0, ^bb1(%1 : i32), ^dummy
 ^bb1(%3 : i32):
   "use"(%3) : (i32) -> ()
@@ -250,7 +267,7 @@ leads to a new basic block being inserted,
 
 before the conversion to the LLVM IR dialect:
 
-```mlir {.mlir}
+```mlir
   llvm.cond_br  %0, ^bb1(%1 : !llvm.type<"i32">), ^dummy
 ^bb1(%3 : !llvm.type<"i32">):
   "use"(%3) : (!llvm.type<"i32">) -> ()
@@ -290,7 +307,7 @@ Examples:
 
 An access to a zero-dimensional memref is converted into a plain load:
 
-```mlir {.mlir}
+```mlir
 // before
 %0 = load %m[] : memref<f32>
 
@@ -300,13 +317,13 @@ An access to a zero-dimensional memref is converted into a plain load:
 
 An access to a memref with indices:
 
-```mlir {.mlir}
+```mlir
 %0 = load %m[1,2,3,4] : memref<10x?x13x?xf32>
 ```
 
 is transformed into the equivalent of the following code:
 
-```mlir {.mlir}
+```mlir
 // obtain the buffer pointer
 %b = llvm.extractvalue %m[0] : !llvm.type<"{float*, i64, i64}">
 

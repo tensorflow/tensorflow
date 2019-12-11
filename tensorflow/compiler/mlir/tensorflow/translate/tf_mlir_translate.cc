@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/utils/transitive_fanin.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
@@ -63,16 +64,18 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
   specs.upgrade_legacy = upgrade_legacy;
   TF_RETURN_IF_ERROR(ParseInputArrayInfo(input_arrays, input_dtypes,
                                          input_shapes, &specs.inputs));
-  TF_RETURN_IF_ERROR(ParseOutputArrayInfo(output_arrays, &specs.output_arrays,
-                                          &specs.output_arrays_order));
+  TF_RETURN_IF_ERROR(ParseOutputArrayInfo(output_arrays, &specs.outputs));
   // TODO(b/142828368): Pruning should not be needed when TF import
   // supports importing graphs w/ unregistered ops natively.
   GraphDef pruned_graph_def;
   if (specs.prune_unused_nodes) {
-    std::vector<string> terminal_nodes(specs.output_arrays.begin(),
-                                       specs.output_arrays.end());
-    for (const auto entry : specs.inputs) {
-      terminal_nodes.push_back(entry.first);
+    std::vector<std::string> terminal_nodes;
+    terminal_nodes.reserve(specs.outputs.size() + specs.inputs.size());
+    for (const auto& output : specs.outputs) {
+      terminal_nodes.push_back(std::string(ParseTensorName(output).node()));
+    }
+    for (const auto& input : specs.inputs) {
+      terminal_nodes.push_back(input.first);
     }
     TF_RETURN_IF_ERROR(tensorflow::grappler::SetTransitiveFaninGraph(
         graphdef, &pruned_graph_def, terminal_nodes));

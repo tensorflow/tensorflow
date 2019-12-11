@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
@@ -112,6 +114,18 @@ bool ContainsInstrWithOpcode(const HloComputation* comp,
     }
     for (const HloComputation* subcomp : instr->called_computations()) {
       if (ContainsInstrWithOpcode(subcomp, opcodes)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool ContainsLayoutConstrainedAllReduce(const HloModule& module) {
+  for (auto computation : module.computations()) {
+    for (auto hlo : computation->instructions()) {
+      if (hlo->opcode() == HloOpcode::kAllReduce &&
+          DynCast<HloAllReduceInstruction>(hlo)->constrain_layout()) {
         return true;
       }
     }

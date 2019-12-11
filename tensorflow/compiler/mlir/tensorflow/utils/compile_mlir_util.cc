@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 
-#include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
@@ -58,7 +58,7 @@ Status ParseMlirModule(llvm::StringRef mlir_module_string,
 
 // Converts arg_shapes to xla::Shape's and store into xla_input_shapes.
 Status GetXlaInputShapes(
-    mlir::ModuleOp module, absl::Span<TensorShape> arg_shapes,
+    mlir::ModuleOp module, llvm::ArrayRef<TensorShape> arg_shapes,
     const xla::CustomShapeRepresentationFn shape_representation_fn,
     std::vector<xla::Shape>* xla_input_shapes) {
   xla_input_shapes->clear();
@@ -150,7 +150,8 @@ void GetInputMappingForMlir(int num_inputs, std::vector<int>* input_mapping) {
 }
 
 // Refine MLIR types based on new shape information.
-Status RefineShapes(absl::Span<TensorShape> arg_shapes, mlir::ModuleOp module) {
+Status RefineShapes(llvm::ArrayRef<TensorShape> arg_shapes,
+                    mlir::ModuleOp module) {
   auto versions = module.getAttrOfType<::mlir::DictionaryAttr>("tf.versions");
   if (!versions) {
     return errors::Internal(
@@ -234,7 +235,7 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
 }
 
 Status CompileSerializedMlirToXlaHlo(
-    llvm::StringRef mlir_module_string, absl::Span<TensorShape> arg_shapes,
+    llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
     XlaCompiler::CompilationResult* compilation_result) {
   mlir::MLIRContext mlir_context;

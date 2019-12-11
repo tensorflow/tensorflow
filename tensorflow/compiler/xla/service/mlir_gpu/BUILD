@@ -139,6 +139,9 @@ cc_library(
     hdrs = ["kernel_lowering.h"],
     deps = [
         "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/mlir/xla:hlo_legalize_to_lhlo",
+        "//tensorflow/compiler/mlir/xla:lhlo",
+        "//tensorflow/compiler/mlir/xla:lhlo_fuse_linalg",
         "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_affine",
         "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_linalg",
         "//tensorflow/compiler/mlir/xla:xla_dialect_registration",
@@ -157,10 +160,12 @@ cc_library(
         "@local_config_mlir//:Linalg",
         "@local_config_mlir//:LinalgDialectRegistration",
         "@local_config_mlir//:LoopDialectRegistration",
+        "@local_config_mlir//:LoopOps",
         "@local_config_mlir//:LoopsToGPUPass",
         "@local_config_mlir//:NVVMDialect",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardDialectRegistration",
+        "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Transforms",
     ],
 )

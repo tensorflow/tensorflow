@@ -49,29 +49,58 @@ def clip_by_value(t, clip_value_min, clip_value_max,
 
   For example:
 
-  ```python
-  A = tf.constant([[1, 20, 13], [3, 21, 13]])
-  B = tf.clip_by_value(A, clip_value_min=0, clip_value_max=3) # [[1, 3, 3],[3, 3, 3]]
-  C = tf.clip_by_value(A, clip_value_min=0., clip_value_max=3.) # throws `TypeError`
-  as input and clip_values are of different dtype
-  ```
+  Basic usage passes a scalar as the min and max value.
+
+  >>> t = tf.constant([[-10., -1., 0.], [0., 2., 10.]])
+  >>> t2 = tf.clip_by_value(t, clip_value_min=-1, clip_value_max=1)
+  >>> t2.numpy()
+  array([[-1., -1.,  0.],
+         [ 0.,  1.,  1.]], dtype=float32)
+
+  The min and max can be the same size as `t`, or broadcastable to that size.
+
+  >>> t = tf.constant([[-1, 0., 10.], [-1, 0, 10]])
+  >>> clip_min = [[2],[1]]
+  >>> t3 = tf.clip_by_value(t, clip_value_min=clip_min, clip_value_max=100)
+  >>> t3.numpy()
+  array([[ 2.,  2., 10.],
+         [ 1.,  1., 10.]], dtype=float32)
+
+  Broadcasting fails, intentionally, if you would expand the dimensions of `t`
+
+  >>> t = tf.constant([[-1, 0., 10.], [-1, 0, 10]])
+  >>> clip_min = [[[2, 1]]] # Has a third axis
+  >>> t4 = tf.clip_by_value(t, clip_value_min=clip_min, clip_value_max=100)
+  Traceback (most recent call last):
+  ...
+  InvalidArgumentError: Incompatible shapes: [2,3] vs. [1,1,2]
+
+  It throws a `TypeError` if you try to clip an `int` to a `float` value
+  (`tf.cast` the input to `float` first).
+
+  >>> t = tf.constant([[1, 2], [3, 4]], dtype=tf.int32)
+  >>> t5 = tf.clip_by_value(t, clip_value_min=-3.1, clip_value_max=3.1)
+  Traceback (most recent call last):
+  ...
+  TypeError: Cannot convert ...
+
 
   Args:
     t: A `Tensor` or `IndexedSlices`.
-    clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
-      as `t`. The minimum value to clip by.
-    clip_value_max: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
-      as `t`. The maximum value to clip by.
+    clip_value_min: The minimum value to clip to. A scalar `Tensor` or one that
+      is broadcastable to the shape of `t`.
+    clip_value_max: The minimum value to clip to. A scalar `Tensor` or one that
+      is broadcastable to the shape of `t`.
     name: A name for the operation (optional).
 
   Returns:
     A clipped `Tensor` or `IndexedSlices`.
 
   Raises:
-    ValueError: If the clip tensors would trigger array broadcasting
-      that would make the returned tensor larger than the input.
+    `tf.errors.InvalidArgumentError`: If the clip tensors would trigger array
+      broadcasting that would make the returned tensor larger than the input.
     TypeError: If dtype of the input is `int32` and dtype of
-    the `clip_value_min` or `clip_value_max` is `float32`
+      the `clip_value_min` or `clip_value_max` is `float32`
   """
   with ops.name_scope(name, "clip_by_value",
                       [t, clip_value_min, clip_value_max]) as name:

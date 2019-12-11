@@ -23,7 +23,7 @@ import org.tensorflow.lite.support.tensorbuffer.TensorBuffer;
 import org.tensorflow.lite.support.tensorbuffer.TensorBufferFloat;
 
 /**
- * Normalize a TensorBuffer with given mean and stddev: output = (input - mean) / stddev.
+ * Normalizes a {@link TensorBuffer} with given mean and stddev: output = (input - mean) / stddev.
  */
 public class NormalizeOp implements TensorOperator {
 

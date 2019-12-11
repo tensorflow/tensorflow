@@ -126,7 +126,6 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
 
   ASSERT_EQ(space.planes_size(), 1);
   const auto& plane = space.planes(0);
-  EXPECT_EQ(plane.name(), "Host Threads");
   ASSERT_EQ(plane.lines_size(), 1);
   ASSERT_EQ(plane.event_metadata_size(), 6);
   ASSERT_EQ(plane.stat_metadata_size(), 2);

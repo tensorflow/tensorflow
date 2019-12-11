@@ -62,39 +62,6 @@ void deallocate_buffer(void* data, size_t len, void* arg) {
 }
 }  // namespace tensorflow
 
-namespace {
-class TF_ManagedBuffer : public TensorBuffer {
- public:
-  TF_ManagedBuffer(void* data, size_t len,
-                   void (*deallocator)(void* data, size_t len, void* arg),
-                   void* deallocator_arg)
-      : TensorBuffer(data),
-        len_(len),
-        deallocator_(deallocator),
-        deallocator_arg_(deallocator_arg) {}
-
-  const size_t len_;
-  void (*const deallocator_)(void* data, size_t len, void* arg);
-  void* const deallocator_arg_;
-
-  ~TF_ManagedBuffer() override {
-    (*deallocator_)(data(), len_, deallocator_arg_);
-  }
-
-  size_t size() const override { return len_; }
-  TensorBuffer* root_buffer() override { return this; }
-  void FillAllocationDescription(
-      tensorflow::AllocationDescription* proto) const override {
-    tensorflow::int64 rb = size();
-    proto->set_requested_bytes(rb);
-    proto->set_allocator_name(tensorflow::cpu_allocator()->Name());
-  }
-
-  // Prevents input forwarding from mutating this buffer.
-  bool OwnsMemory() const override { return false; }
-};
-
-}  // namespace
 
 TF_Tensor* TF_AllocateTensor(TF_DataType dtype, const int64_t* dims,
                              int num_dims, size_t len) {

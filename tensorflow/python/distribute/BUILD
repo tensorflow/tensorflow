@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow/core/platform:default/distribute.bzl", "distribute_py_test")
+load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -56,7 +56,6 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:state_ops",
     ],
-    python_version = "PY3",
 )
 
 py_library(
@@ -119,7 +118,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
     ],
-    python_version = "PY3",
 )
 
 py_library(
@@ -189,6 +187,7 @@ py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -391,7 +390,6 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
     ],
-    python_version = "PY3",
     tags = ["no_pip"],
 )
 
@@ -429,7 +427,6 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python:framework_ops",
     ],
-    python_version = "PY3",
 )
 
 py_library(
@@ -502,7 +499,6 @@ cuda_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
     ],
-    python_version = "PY3",
 )
 
 py_test(
@@ -717,7 +713,6 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
     ],
@@ -727,7 +722,6 @@ distribute_py_test(
     name = "checkpointing_test",
     srcs = ["checkpointing_test.py"],
     main = "checkpointing_test.py",
-    python_version = "PY3",
     deps = [
         ":tpu_strategy",
         "//tensorflow/compiler/tests:xla_test",
@@ -781,7 +775,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
-    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -803,7 +796,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
-    python_version = "PY3",
     tags = [
         # TODO(b/138143527): Re-enable after fixing Guitar failure.
         # "multi_and_single_gpu",
@@ -820,7 +812,6 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
     ],
     grpc_enabled = True,
-    python_version = "PY3",
 )
 
 py_library(
@@ -847,7 +838,6 @@ tf_py_test(
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/training/tracking:util",
     ],
-    python_version = "PY3",
 )
 
 py_library(
@@ -883,7 +873,6 @@ distribute_py_test(
     name = "values_test",
     srcs = ["values_test.py"],
     main = "values_test.py",
-    python_version = "PY3",
     tags = [
         "no_oss",  # http://b/119349471
     ],
@@ -914,7 +903,6 @@ distribute_py_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
     main = "moving_averages_test.py",
-    python_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -932,7 +920,6 @@ distribute_py_test(
     name = "custom_training_loop_test",
     srcs = ["custom_training_loop_test.py"],
     main = "custom_training_loop_test.py",
-    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
     ],
@@ -951,7 +938,6 @@ distribute_py_test(
     name = "minimize_loss_test",
     srcs = ["minimize_loss_test.py"],
     main = "minimize_loss_test.py",
-    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/139815303): enable after this is fixed.
@@ -1007,7 +993,6 @@ distribute_py_test(
     name = "step_fn_test",
     srcs = ["step_fn_test.py"],
     main = "step_fn_test.py",
-    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
         "no_rocm",
@@ -1038,7 +1023,6 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
     ],
@@ -1065,7 +1049,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
-    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -1079,6 +1062,7 @@ cuda_py_test(
         ":strategy_test_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:layers",
@@ -1091,7 +1075,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
-    python_version = "PY3",
     shard_count = 5,
     tags = [
         "guitar",
@@ -1120,7 +1103,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
-    python_version = "PY3",
     tags = [
         "guitar",
         "multi_and_single_gpu",
@@ -1131,7 +1113,6 @@ distribute_py_test(
     name = "metrics_v1_test",
     srcs = ["metrics_v1_test.py"],
     main = "metrics_v1_test.py",
-    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
     ],
@@ -1152,7 +1133,6 @@ distribute_py_test(
     name = "keras_metrics_test",
     srcs = ["keras_metrics_test.py"],
     main = "keras_metrics_test.py",
-    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
     ],
@@ -1173,7 +1153,6 @@ distribute_py_test(
     name = "zero_batch_test",
     srcs = ["zero_batch_test.py"],
     main = "zero_batch_test.py",
-    python_version = "PY3",
     deps = [
         ":combinations",
         ":multi_worker_test_base",
@@ -1218,7 +1197,6 @@ distribute_py_test(
     srcs = ["saved_model_save_load_test.py"],
     full_precision = True,
     main = "saved_model_save_load_test.py",
-    python_version = "PY3",
     shard_count = 5,
     deps = [
         ":saved_model_test_base",
@@ -1232,7 +1210,6 @@ distribute_py_test(
     srcs = ["keras_save_load_test.py"],
     full_precision = True,
     main = "keras_save_load_test.py",
-    python_version = "PY3",
     shard_count = 5,
     deps = [
         ":saved_model_test_base",
@@ -1246,7 +1223,6 @@ distribute_py_test(
     srcs = ["saved_model_mixed_api_test.py"],
     full_precision = True,
     main = "saved_model_mixed_api_test.py",
-    python_version = "PY3",
     shard_count = 5,
     deps = [
         ":saved_model_test_base",
@@ -1259,7 +1235,6 @@ distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
-    python_version = "PY3",
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
@@ -1304,10 +1279,10 @@ cuda_py_test(
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/keras/mixed_precision/experimental:test_util",
     ],
-    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -1339,7 +1314,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:estimator_py",
     ],
-    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/133330625)

@@ -196,6 +196,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kLessEqual, 2}, "1.14.0"},
           {{OperatorType::kSelect, 1}, "1.14.0"},
           {{OperatorType::kSelect, 2}, "1.14.0"},
+          {{OperatorType::kSelectV2, 1}, kPendingReleaseOpVersion},
           {{OperatorType::kFloorDiv, 1}, "1.14.0"},
           {{OperatorType::kFloorDiv, 2}, "1.14.0"},
           {{OperatorType::kFloor, 1}, "1.9.0"},

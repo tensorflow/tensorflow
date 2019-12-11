@@ -415,7 +415,7 @@ def converted_call(f,
     options = caller_fn_scope.callopts
 
   if conversion.is_in_whitelist_cache(f, options):
-    logging.log(2, 'Whitelisted %s: from cache')
+    logging.log(2, 'Whitelisted %s: from cache', f)
     return _call_unconverted(f, args, kwargs, options, False)
 
   if ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:

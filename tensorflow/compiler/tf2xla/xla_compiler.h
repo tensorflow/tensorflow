@@ -147,6 +147,9 @@ class XlaCompiler {
     // The name of this argument, used for debugging.
     string name;
 
+    // The name of TensorFlow _Arg node, used for debugging.
+    string node_name;
+
     // For a kResource, what kind of resource is it?
     XlaResource::Kind resource_kind = XlaResource::kInvalid;
 
@@ -378,8 +381,10 @@ class XlaCompiler {
   // Returns the shape of the XLA parameter for an argument 'arg'.
   // See the class comment for more details about the argument passing
   // convention.
-  Status XLAShapeForArgument(const Argument& arg, bool is_entry_computation,
-                             xla::Shape* xla_shape) const;
+  Status XLAShapeForArgument(
+      const Argument& arg, bool is_entry_computation,
+      const absl::optional<xla::HloSharding>& arg_sharding,
+      xla::Shape* xla_shape) const;
 
   // Retrieves the channel handle associated with `key`. Allocates
   // a new channel handle if none exists.

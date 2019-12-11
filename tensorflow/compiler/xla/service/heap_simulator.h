@@ -254,8 +254,8 @@ class HeapAlgorithm {
     Alloc(buffer, size);
   }
 
-  // Finish collects the buffer offset assignment results.  Free may only be
-  // called once, after the Alloc and Free calls.
+  // Finish collects the buffer offset assignment results.  Finish may only be
+  // called once, after all Alloc and Free calls.
   virtual Result Finish() = 0;
 };
 

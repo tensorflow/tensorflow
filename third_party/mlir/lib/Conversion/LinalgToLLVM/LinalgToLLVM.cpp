@@ -20,7 +20,7 @@
 #include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
-#include "mlir/Conversion/VectorConversions/VectorConversions.h"
+#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
@@ -417,10 +417,8 @@ public:
     if (!libraryCallName)
       return this->matchFailure();
 
-    SmallVector<Value *, 4> operands(op.getOperands().begin(),
-                                     op.getOperands().end());
-    rewriter.replaceOpWithNewOp<mlir::CallOp>(op, libraryCallName.getValue(),
-                                              ArrayRef<Type>{}, operands);
+    rewriter.replaceOpWithNewOp<mlir::CallOp>(
+        op, libraryCallName.getValue(), ArrayRef<Type>{}, op.getOperands());
     return this->matchSuccess();
   }
 };
@@ -444,10 +442,8 @@ public:
     if (!libraryCallName)
       return matchFailure();
 
-    SmallVector<Value *, 4> operands(op.getOperands().begin(),
-                                     op.getOperands().end());
-    rewriter.replaceOpWithNewOp<mlir::CallOp>(op, libraryCallName.getValue(),
-                                              ArrayRef<Type>{}, operands);
+    rewriter.replaceOpWithNewOp<mlir::CallOp>(
+        op, libraryCallName.getValue(), ArrayRef<Type>{}, op.getOperands());
     return matchSuccess();
   }
 };

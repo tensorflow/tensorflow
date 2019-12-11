@@ -70,7 +70,7 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
   (void)oldMemRefRank; // unused in opt mode
   if (indexRemap) {
     assert(indexRemap.getNumSymbols() == symbolOperands.size() &&
-           "symbolic operand count mistmatch");
+           "symbolic operand count mismatch");
     assert(indexRemap.getNumInputs() ==
            extraOperands.size() + oldMemRefRank + symbolOperands.size());
     assert(indexRemap.getNumResults() + extraIndices.size() == newMemRefRank);

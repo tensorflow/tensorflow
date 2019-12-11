@@ -78,7 +78,7 @@ Traits may be used when defining a derived operation type, by simply adding the
 name of the trait class to the `Op` class after the concrete operation type:
 
 ```c++
-/// Here we define 'MyOp' along with the 'MyTrait' and `MyParameteric trait
+/// Here we define 'MyOp' along with the 'MyTrait' and `MyParametric trait
 /// classes we defined previously.
 class MyOp : public Op<MyOp, MyTrait, MyParametricTrait<10>::Impl> {};
 ```

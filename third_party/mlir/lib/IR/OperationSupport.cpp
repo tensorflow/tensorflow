@@ -36,7 +36,7 @@ OperationState::OperationState(Location location, OperationName name)
     : location(location), name(name) {}
 
 OperationState::OperationState(Location location, StringRef name,
-                               ArrayRef<Value *> operands, ArrayRef<Type> types,
+                               ValueRange operands, ArrayRef<Type> types,
                                ArrayRef<NamedAttribute> attributes,
                                ArrayRef<Block *> successors,
                                MutableArrayRef<std::unique_ptr<Region>> regions,
@@ -48,6 +48,18 @@ OperationState::OperationState(Location location, StringRef name,
       successors(successors.begin(), successors.end()) {
   for (std::unique_ptr<Region> &r : regions)
     this->regions.push_back(std::move(r));
+}
+
+void OperationState::addOperands(ValueRange newOperands) {
+  assert(successors.empty() && "Non successor operands should be added first.");
+  operands.append(newOperands.begin(), newOperands.end());
+}
+
+void OperationState::addSuccessor(Block *successor, ValueRange succOperands) {
+  successors.push_back(successor);
+  // Insert a sentinel operand to mark a barrier between successor operands.
+  operands.push_back(nullptr);
+  operands.append(succOperands.begin(), succOperands.end());
 }
 
 Region *OperationState::addRegion() {
@@ -66,7 +78,7 @@ void OperationState::addRegion(std::unique_ptr<Region> &&region) {
 /// Replace the operands contained in the storage with the ones provided in
 /// 'operands'.
 void detail::OperandStorage::setOperands(Operation *owner,
-                                         ArrayRef<Value *> operands) {
+                                         ValueRange operands) {
   // If the number of operands is less than or equal to the current amount, we
   // can just update in place.
   if (operands.size() <= numOperands) {
@@ -131,4 +143,51 @@ void detail::OperandStorage::grow(ResizableStorage &resizeUtil,
   for (auto &operand : operands)
     operand.~OpOperand();
   resizeUtil.setDynamicStorage(newStorage);
+}
+
+//===----------------------------------------------------------------------===//
+// Operation Value-Iterators
+//===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+// OperandRange
+
+OperandRange::OperandRange(Operation *op)
+    : OperandRange(op->getOpOperands().data(), op->getNumOperands()) {}
+
+//===----------------------------------------------------------------------===//
+// ResultRange
+
+ResultRange::ResultRange(Operation *op)
+    : ResultRange(op->getOpResults().data(), op->getNumResults()) {}
+
+//===----------------------------------------------------------------------===//
+// ValueRange
+
+ValueRange::ValueRange(ArrayRef<Value *> values)
+    : ValueRange(values.data(), values.size()) {}
+ValueRange::ValueRange(OperandRange values)
+    : ValueRange(values.begin().getBase(), values.size()) {}
+ValueRange::ValueRange(ResultRange values)
+    : ValueRange(values.begin().getBase(), values.size()) {}
+
+/// See `detail::indexed_accessor_range_base` for details.
+ValueRange::OwnerT ValueRange::offset_base(const OwnerT &owner,
+                                           ptrdiff_t index) {
+  if (OpOperand *operand = owner.dyn_cast<OpOperand *>())
+    return operand + index;
+  if (OpResult *result = owner.dyn_cast<OpResult *>())
+    return result + index;
+  return owner.get<Value *const *>() + index;
+}
+/// See `detail::indexed_accessor_range_base` for details.
+Value *ValueRange::dereference_iterator(const OwnerT &owner, ptrdiff_t index) {
+  // Operands access the held value via 'get'.
+  if (OpOperand *operand = owner.dyn_cast<OpOperand *>())
+    return operand[index].get();
+  // An OpResult is a value, so we can return it directly.
+  if (OpResult *result = owner.dyn_cast<OpResult *>())
+    return &result[index];
+  // Otherwise, this is a raw value array so just index directly.
+  return owner.get<Value *const *>()[index];
 }

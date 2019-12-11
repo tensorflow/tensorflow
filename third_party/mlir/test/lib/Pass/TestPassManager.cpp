@@ -74,6 +74,18 @@ public:
 class TestCrashRecoveryPass : public OperationPass<TestCrashRecoveryPass> {
   void runOnOperation() final { abort(); }
 };
+
+/// A test pass that contains a statistic.
+struct TestStatisticPass : public OperationPass<TestStatisticPass> {
+  TestStatisticPass() = default;
+  TestStatisticPass(const TestStatisticPass &) {}
+
+  Statistic opCount{this, "num-ops", "Number of operations counted"};
+
+  void runOnOperation() final {
+    getOperation()->walk([&](Operation *) { ++opCount; });
+  }
+};
 } // end anonymous namespace
 
 static void testNestedPipeline(OpPassManager &pm) {
@@ -105,6 +117,9 @@ static PassRegistration<TestFunctionPass>
 static PassRegistration<TestCrashRecoveryPass>
     unusedCrashP("test-pass-crash",
                  "Test a pass in the pass manager that always crashes");
+
+static PassRegistration<TestStatisticPass> unusedStatP("test-stats-pass",
+                                                       "Test pass statistics");
 
 static PassPipelineRegistration<>
     unused("test-pm-nested-pipeline",

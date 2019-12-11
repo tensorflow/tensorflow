@@ -256,11 +256,11 @@ bool TfLiteDriver::DataExpectation::QuantizedCheck(bool verbose,
   auto* quantization =
       reinterpret_cast<TfLiteAffineQuantization*>(tensor.quantization.params);
   const float scale = quantization->scale->data[0];
-  const int32 zero_point = quantization->zero_point->data[0];
+  const int32_t zero_point = quantization->zero_point->data[0];
 
   bool good_result = true;
   for (int i = 0; i < tensor.bytes; i++) {
-    const int32 computed = tensor.data.int8[i];
+    const int32_t computed = tensor.data.int8[i];
     const float dequantized =
         static_cast<float>(scale * (computed - zero_point));
     const float reference = Value<float>(data_.get(), i);

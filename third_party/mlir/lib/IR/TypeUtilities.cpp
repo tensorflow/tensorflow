@@ -92,15 +92,19 @@ LogicalResult mlir::verifyCompatibleShape(Type type1, Type type2) {
   return success();
 }
 
-OperandElementTypeIterator::OperandElementTypeIterator(OperandIterator it)
-    : llvm::mapped_iterator<OperandIterator, Type (*)(Value *)>(it, &unwrap) {}
+OperandElementTypeIterator::OperandElementTypeIterator(
+    Operation::operand_iterator it)
+    : llvm::mapped_iterator<Operation::operand_iterator, Type (*)(Value *)>(
+          it, &unwrap) {}
 
 Type OperandElementTypeIterator::unwrap(Value *value) {
   return value->getType().cast<ShapedType>().getElementType();
 }
 
-ResultElementTypeIterator::ResultElementTypeIterator(ResultIterator it)
-    : llvm::mapped_iterator<ResultIterator, Type (*)(Value *)>(it, &unwrap) {}
+ResultElementTypeIterator::ResultElementTypeIterator(
+    Operation::result_iterator it)
+    : llvm::mapped_iterator<Operation::result_iterator, Type (*)(Value *)>(
+          it, &unwrap) {}
 
 Type ResultElementTypeIterator::unwrap(Value *value) {
   return value->getType().cast<ShapedType>().getElementType();

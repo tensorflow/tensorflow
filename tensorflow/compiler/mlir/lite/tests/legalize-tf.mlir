@@ -1280,3 +1280,63 @@ func @conv2d_backprop_unsupported_data_format(%arg0: tensor<4xi32>, %arg1: tenso
   // CHECK-LABEL: conv2d_backprop_unsupported_data_format
   // CHECK: tf.Conv2DBackpropInput
 }
+
+func @assert_remove(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi1> {
+  %0 = "tf.LessEqual"(%arg0, %arg1) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
+  "tf.Assert"(%0, %arg1) {summarize = 3} : (tensor<1xi1>, tensor<1xi32>) -> ()
+  return %0 : tensor<1xi1>
+  // CHECK-LABEL: assert_remove
+  // CHECK: tfl.less_equal
+  // CHECK-NOT: Assert
+  // CHECK: return
+}
+
+func @reciprocal_f16(%arg0: tensor<8xf16>) -> tensor<8xf16> {
+  %0 = "tf.Reciprocal"(%arg0) : (tensor<8xf16>) -> tensor<8xf16>
+  return %0: tensor<8xf16>
+
+// CHECK-LABEL: reciprocal_f16
+// CHECK:  %cst = constant dense<1.000000e+00> : tensor<1xf16>
+// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<1xf16>, tensor<8xf16>) -> tensor<8xf16>
+// CHECK:  return
+}
+
+func @reciprocal_f32(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = "tf.Reciprocal"(%arg0) : (tensor<8xf32>) -> tensor<8xf32>
+  return %0: tensor<8xf32>
+
+// CHECK-LABEL: reciprocal_f32
+// CHECK:  %cst = constant dense<1.000000e+00> : tensor<1xf32>
+// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<1xf32>, tensor<8xf32>) -> tensor<8xf32>
+// CHECK:  return
+}
+
+func @reciprocal_complex_f32(%arg0: tensor<8xcomplex<f32>>) -> tensor<8xcomplex<f32>> {
+  %0 = "tf.Reciprocal"(%arg0) : (tensor<8xcomplex<f32>>) -> tensor<8xcomplex<f32>>
+  return %0: tensor<8xcomplex<f32>>
+
+// CHECK-LABEL: reciprocal_complex_f32
+// CHECK:  %cst = constant opaque<"tf", "0x746674656E736F722464747970653A2044545F434F4D504C455836342074656E736F725F7368617065207B2064696D207B2073697A653A2031207D207D2074656E736F725F636F6E74656E743A20225C3030305C3030305C3230303F5C3030305C3030305C3030305C30303022"> : tensor<1xcomplex<f32>>
+// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<1xcomplex<f32>>, tensor<8xcomplex<f32>>) -> tensor<8xcomplex<f32>>
+// CHECK:  return
+}
+
+func @reciprocal_i32(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+  %0 = "tf.Reciprocal"(%arg0) : (tensor<8xi32>) -> tensor<8xi32>
+  return %0: tensor<8xi32>
+
+// CHECK-LABEL: reciprocal_i32
+// CHECK:  %cst = constant dense<1> : tensor<1xi32>
+// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<8xi32>) -> tensor<8xi32>
+// CHECK:  return
+}
+
+func @reciprocal_i64(%arg0: tensor<8xi64>) -> tensor<8xi64> {
+  %0 = "tf.Reciprocal"(%arg0) : (tensor<8xi64>) -> tensor<8xi64>
+  return %0: tensor<8xi64>
+
+// CHECK-LABEL: reciprocal_i64
+// CHECK:  %cst = constant dense<1> : tensor<1xi64>
+// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<1xi64>, tensor<8xi64>) -> tensor<8xi64>
+// CHECK:  return
+}
