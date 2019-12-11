@@ -130,8 +130,8 @@ public:
     IndexedValueType O(fillOp.getOutput(0));
     // Emit the proper scalar assignment, whether we are dealing with a 0-D or
     // an n-D loop nest; with or without permutations.
-    nPar > 0 ? O(ivs) = ValueHandle(fillOp.getValue())
-             : O() = ValueHandle(fillOp.getValue());
+    nPar > 0 ? O(ivs) = ValueHandle(fillOp.value())
+             : O() = ValueHandle(fillOp.value());
   }
 };
 

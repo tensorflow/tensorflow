@@ -87,15 +87,12 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
       result_or_body_arg.emplace_back(memrefType.getElementType());
     }
 
-    // Define the number of input memref/output memrefs.
-    SmallVector<Attribute, 2> nmemrefs{
-        rewriter.getI64IntegerAttr(bodyArgTypes.size()),
-        rewriter.getI64IntegerAttr(bodyResultTypes.size())};
-
     auto linalgOp = rewriter.create<linalg::GenericOp>(
-        loc, args, rewriter.getArrayAttr(indexingMaps),
+        loc, args,
+        rewriter.getI64IntegerAttr(bodyArgTypes.size()),     // args_in
+        rewriter.getI64IntegerAttr(bodyResultTypes.size()),  // args_out
+        rewriter.getArrayAttr(indexingMaps),
         GetNParallelLoopsAttrs(nloops, rewriter),
-        rewriter.getArrayAttr(nmemrefs),
         /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
@@ -163,16 +160,13 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
     indexingMaps.emplace_back(
         AffineMapAttr::get(rewriter.getMultiDimIdentityMap(nloops)));
 
-    // Define the number of input memref/output memrefs.
-    SmallVector<Attribute, 2> nmemrefs{
-        rewriter.getI64IntegerAttr(bodyArgTypes.size()),
-        rewriter.getI64IntegerAttr(1)};
-
     auto loc = broadcastOp.getLoc();
     auto linalgOp = rewriter.create<linalg::GenericOp>(
-        loc, args, rewriter.getArrayAttr(indexingMaps),
+        loc, args,
+        rewriter.getI64IntegerAttr(bodyArgTypes.size()),  // args_in
+        rewriter.getI64IntegerAttr(1),                    // args_out
+        rewriter.getArrayAttr(indexingMaps),
         GetNParallelLoopsAttrs(nloops, rewriter),
-        rewriter.getArrayAttr(nmemrefs),
         /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
@@ -208,15 +202,13 @@ class IotaConverter : public OpConversionPattern<IotaOp> {
     indexingMaps.emplace_back(
         AffineMapAttr::get(rewriter.getMultiDimIdentityMap(nloops)));
 
-    // Define the number of input memref/output memrefs.
-    SmallVector<Attribute, 2> nmemrefs{rewriter.getI64IntegerAttr(0),
-                                       rewriter.getI64IntegerAttr(1)};
-
     auto loc = iotaOp.getLoc();
     auto linalgOp = rewriter.create<linalg::IndexedGenericOp>(
-        loc, args, rewriter.getArrayAttr(indexingMaps),
+        loc, args,
+        rewriter.getI64IntegerAttr(0),  // args_in
+        rewriter.getI64IntegerAttr(1),  // args_out
+        rewriter.getArrayAttr(indexingMaps),
         GetNParallelLoopsAttrs(nloops, rewriter),
-        rewriter.getArrayAttr(nmemrefs),
         /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
@@ -273,9 +265,10 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
 //     %0 = addf %arg4, %arg5 : f32
 //     "linalg.yield"(%0) : (f32) -> ()
 //   }) {
+//     args_in = 2,
+//     args_out = 1,
 //     indexing_maps = [#map0, #map0, #map0],
 //     iterator_types = ["parallel", "parallel"],
-//     n_views = [2, 1]
 //   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 // }
 struct LhloLegalizeToLinalg : public FunctionPass<LhloLegalizeToLinalg> {
