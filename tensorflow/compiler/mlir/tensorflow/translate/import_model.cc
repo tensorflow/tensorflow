@@ -121,7 +121,7 @@ class NameUniquifier : public OpOrArgNameMapper {
  private:
   bool IsUnique(llvm::StringRef name) override { return !flib_.Contains(name); }
 
-  std::string GetName(OpOrArg op_or_arg) override {
+  std::string GetName(OpOrVal op_or_val) override {
     DCHECK(false) << "Unimplemented";
     return "";
   }
