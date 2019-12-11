@@ -509,6 +509,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":cpu_backend_context",
+        ":cpu_backend_threadpool",
         ":eigen_support",
         ":kernel_util",
         ":lstm_eval",
@@ -517,7 +518,6 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:audio_utils",
         "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
