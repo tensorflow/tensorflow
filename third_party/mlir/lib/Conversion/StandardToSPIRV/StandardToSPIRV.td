@@ -21,7 +21,10 @@ class BinaryOpPattern<Op src, Op tgt> :
           (tgt $l, $r)>;
 
 def : BinaryOpPattern<AddFOp, SPV_FAddOp>;
+def : BinaryOpPattern<DivFOp, SPV_FDivOp>;
 def : BinaryOpPattern<MulFOp, SPV_FMulOp>;
+def : BinaryOpPattern<RemFOp, SPV_FRemOp>;
+def : BinaryOpPattern<SubFOp, SPV_FSubOp>;
 
 // Constant Op
 // TODO(ravishankarm): Handle lowering other constant types.
