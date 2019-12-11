@@ -148,6 +148,7 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@local_config_mlir//:AffineDialectRegistration",
         "@local_config_mlir//:GPUDialect",
