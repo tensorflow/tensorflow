@@ -86,10 +86,10 @@ inline static constexpr StringLiteral getWindowIteratorTypeName() {
 
 /// Use to encode that a particular iterator type has window semantics.
 inline static ArrayRef<StringRef> getAllIteratorTypeNames() {
-  static const StringRef names[3] = {getParallelIteratorTypeName(),
-                                     getReductionIteratorTypeName(),
-                                     getWindowIteratorTypeName()};
-  return names;
+  static StringRef names[3] = {getParallelIteratorTypeName(),
+                               getReductionIteratorTypeName(),
+                               getWindowIteratorTypeName()};
+  return llvm::makeArrayRef(names);
 }
 
 /// Returns the iterator of a certain type.
