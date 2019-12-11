@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/gcs_dns_cache.h"
 #include "tensorflow/core/platform/cloud/gcs_throttle.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
-#include "tensorflow/core/platform/cloud/retrying_file_system.h"
+#include "tensorflow/core/platform/retrying_file_system.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/status.h"
 

@@ -262,8 +262,14 @@ class S3WritableFile : public WritableFile {
     outfile_->clear();
     outfile_->seekp(offset);
     if (!putObjectOutcome.IsSuccess()) {
-      return errors::Unknown(putObjectOutcome.GetError().GetExceptionName(),
-                             ": ", putObjectOutcome.GetError().GetMessage());
+
+      auto error = putObjectOutcome.GetError();
+      if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
+        return errors::FailedPrecondition("AWS Credentials have not been set properly. "
+                                          "Unable to access the specified S3 location");
+      } else {
+        return errors::Unknown(error.GetExceptionName(), ": ", error.GetMessage());
+      }
     }
     sync_needed_ = false;
     return Status::OK();
@@ -417,8 +423,13 @@ Status S3FileSystem::GetChildren(const string& dir,
     auto listObjectsOutcome =
         this->GetS3Client()->ListObjects(listObjectsRequest);
     if (!listObjectsOutcome.IsSuccess()) {
-      return errors::Unknown(listObjectsOutcome.GetError().GetExceptionName(),
-                             ": ", listObjectsOutcome.GetError().GetMessage());
+      auto error = listObjectsOutcome.GetError();
+      if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
+        return errors::FailedPrecondition("AWS Credentials have not been set properly. "
+                                          "Unable to access the specified S3 location");
+      } else {
+        return errors::Unknown(error.GetExceptionName(), ": ", error.GetMessage());
+      }
     }
 
     listObjectsResult = listObjectsOutcome.GetResult();
@@ -452,8 +463,13 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
     headBucketRequest.WithBucket(bucket.c_str());
     auto headBucketOutcome = this->GetS3Client()->HeadBucket(headBucketRequest);
     if (!headBucketOutcome.IsSuccess()) {
-      return errors::Unknown(headBucketOutcome.GetError().GetExceptionName(),
-                             ": ", headBucketOutcome.GetError().GetMessage());
+      auto error = headBucketOutcome.GetError();
+      if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
+        return errors::FailedPrecondition("AWS Credentials have not been set properly. "
+                                          "Unable to access the specified S3 location");
+      } else {
+        return errors::Unknown(error.GetExceptionName(), ": ", error.GetMessage());
+      }
     }
     stats->length = 0;
     stats->is_directory = 1;
@@ -473,6 +489,12 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
     stats->mtime_nsec =
         headObjectOutcome.GetResult().GetLastModified().Millis() * 1e6;
     found = true;
+  } else {
+    auto error = headObjectOutcome.GetError();
+    if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
+      return errors::FailedPrecondition("AWS Credentials have not been set properly. "
+                                        "Unable to access the specified S3 location");
+    }
   }
   string prefix = object;
   if (prefix.back() != '/') {
@@ -487,10 +509,18 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
   auto listObjectsOutcome =
       this->GetS3Client()->ListObjects(listObjectsRequest);
   if (listObjectsOutcome.IsSuccess()) {
-    if (listObjectsOutcome.GetResult().GetContents().size() > 0) {
+    auto listObjects = listObjectsOutcome.GetResult().GetContents();
+    if (listObjects.size() > 0) {
       stats->length = 0;
       stats->is_directory = 1;
+      stats->mtime_nsec = listObjects[0].GetLastModified().Millis() * 1e6;
       found = true;
+    }
+  } else {
+    auto error = listObjectsOutcome.GetError();
+    if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
+      return errors::FailedPrecondition("AWS Credentials have not been set properly. "
+                                        "Unable to access the specified S3 location");
     }
   }
   if (!found) {
@@ -514,8 +544,13 @@ Status S3FileSystem::DeleteFile(const string& fname) {
   auto deleteObjectOutcome =
       this->GetS3Client()->DeleteObject(deleteObjectRequest);
   if (!deleteObjectOutcome.IsSuccess()) {
-    return errors::Unknown(deleteObjectOutcome.GetError().GetExceptionName(),
-                           ": ", deleteObjectOutcome.GetError().GetMessage());
+    auto error = deleteObjectOutcome.GetError();
+    if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
+      return errors::FailedPrecondition("AWS Credentials have not been set properly. "
+                                        "Unable to access the specified S3 location");
+    } else {
+      return errors::Unknown(error.GetExceptionName(), ": ", error.GetMessage());
+    }
   }
   return Status::OK();
 }
@@ -529,7 +564,13 @@ Status S3FileSystem::CreateDir(const string& dirname) {
     headBucketRequest.WithBucket(bucket.c_str());
     auto headBucketOutcome = this->GetS3Client()->HeadBucket(headBucketRequest);
     if (!headBucketOutcome.IsSuccess()) {
-      return errors::NotFound("The bucket ", bucket, " was not found.");
+      auto error = headBucketOutcome.GetError();
+      if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
+        return errors::FailedPrecondition("AWS Credentials have not been set properly. "
+                                          "Unable to access the specified S3 location");
+      } else {
+        return errors::NotFound("The bucket ", bucket, " was not found.");
+      }
     }
     return Status::OK();
   }
@@ -537,9 +578,11 @@ Status S3FileSystem::CreateDir(const string& dirname) {
   if (filename.back() != '/') {
     filename.push_back('/');
   }
-  std::unique_ptr<WritableFile> file;
-  TF_RETURN_IF_ERROR(NewWritableFile(filename, &file));
-  TF_RETURN_IF_ERROR(file->Close());
+  if (!this->FileExists(filename).ok()) {
+    std::unique_ptr <WritableFile> file;
+    TF_RETURN_IF_ERROR(NewWritableFile(filename, &file));
+    TF_RETURN_IF_ERROR(file->Close());
+  }
   return Status::OK();
 }
 
@@ -563,7 +606,9 @@ Status S3FileSystem::DeleteDir(const string& dirname) {
     auto contents = listObjectsOutcome.GetResult().GetContents();
     if (contents.size() > 1 ||
         (contents.size() == 1 && contents[0].GetKey() != prefix.c_str())) {
-      return errors::FailedPrecondition("Cannot delete a non-empty directory.");
+      return errors::Unknown("Cannot delete a non-empty directory. "
+                             "This operation will be retried in case this "
+                             "is due to S3's eventual consistency.");
     }
     if (contents.size() == 1 && contents[0].GetKey() == prefix.c_str()) {
       string filename = dirname;
@@ -571,6 +616,12 @@ Status S3FileSystem::DeleteDir(const string& dirname) {
         filename.push_back('/');
       }
       return DeleteFile(filename);
+    }
+  } else {
+    auto error = listObjectsOutcome.GetError();
+    if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
+      return errors::FailedPrecondition("AWS Credentials have not been set properly. "
+                                        "Unable to access the specified S3 location");
     }
   }
   return Status::OK();
@@ -613,8 +664,13 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
     auto listObjectsOutcome =
         this->GetS3Client()->ListObjects(listObjectsRequest);
     if (!listObjectsOutcome.IsSuccess()) {
-      return errors::Unknown(listObjectsOutcome.GetError().GetExceptionName(),
-                             ": ", listObjectsOutcome.GetError().GetMessage());
+      auto error = listObjectsOutcome.GetError();
+      if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
+        return errors::FailedPrecondition("AWS Credentials have not been set properly. "
+                                          "Unable to access the specified S3 location");
+      } else {
+        return errors::Unknown(error.GetExceptionName(), ": ", error.GetMessage());
+      }
     }
 
     listObjectsResult = listObjectsOutcome.GetResult();
@@ -632,8 +688,13 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
       auto copyObjectOutcome =
           this->GetS3Client()->CopyObject(copyObjectRequest);
       if (!copyObjectOutcome.IsSuccess()) {
-        return errors::Unknown(copyObjectOutcome.GetError().GetExceptionName(),
-                               ": ", copyObjectOutcome.GetError().GetMessage());
+        auto error = copyObjectOutcome.GetError();
+        if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
+          return errors::FailedPrecondition("AWS Credentials have not been set properly. "
+                                            "Unable to access the specified S3 location");
+        } else {
+          return errors::Unknown(error.GetExceptionName(), ": ", error.GetMessage());
+        }
       }
 
       deleteObjectRequest.SetBucket(src_bucket.c_str());
@@ -642,9 +703,13 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
       auto deleteObjectOutcome =
           this->GetS3Client()->DeleteObject(deleteObjectRequest);
       if (!deleteObjectOutcome.IsSuccess()) {
-        return errors::Unknown(
-            deleteObjectOutcome.GetError().GetExceptionName(), ": ",
-            deleteObjectOutcome.GetError().GetMessage());
+        auto error = deleteObjectOutcome.GetError();
+        if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
+          return errors::FailedPrecondition("AWS Credentials have not been set properly. "
+                                            "Unable to access the specified S3 location");
+        } else {
+          return errors::Unknown(error.GetExceptionName(), ": ", error.GetMessage());
+        }
       }
     }
     listObjectsRequest.SetMarker(listObjectsResult.GetNextMarker());
@@ -653,6 +718,6 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
   return Status::OK();
 }
 
-REGISTER_FILE_SYSTEM("s3", S3FileSystem);
+REGISTER_FILE_SYSTEM("s3", RetryingS3FileSystem);
 
 }  // namespace tensorflow
