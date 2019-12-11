@@ -267,6 +267,7 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
+    visibility = ["//visibility:private"],
     deps = [
         "@com_google_absl//absl/base",
         "//tensorflow/core/platform:byte_order",
@@ -314,21 +315,6 @@ cc_library(
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:abi",
-    ],
-)
-
-cc_library(
-    name = "stacktrace_handler",
-    srcs = ["stacktrace_handler.cc"],
-    hdrs = ["//tensorflow/core/platform:stacktrace_handler.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:stacktrace",
     ],
 )
 
