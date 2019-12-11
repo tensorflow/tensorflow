@@ -591,7 +591,7 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
   CompileAndVerifyIr(std::move(hlo_module),
 #if TENSORFLOW_USE_ROCM
                      R"(
-; CHECK-LABEL: define amdgpu_kernel void @reduce
+; CHECK-LABEL: define amdgpu_kernel void @
 ; CHECK-LABEL: atomic_op_loop_body{{.*}}:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
@@ -600,7 +600,7 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
 )",
 #else
                      R"(
-; CHECK-LABEL: define void @reduce
+; CHECK-LABEL: define void @
 ; CHECK: atomicrmw fadd float
 ; CHECK: }
 )",

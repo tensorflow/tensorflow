@@ -535,6 +535,18 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
         arg, index,
         graph_as_function && !input_names.empty() ? input_names[index] : ""));
   }
+
+  auto convert_called_function = [&](llvm::StringRef name) {
+    auto func =
+        function.getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
+            name);
+    if (func != nullptr) {
+      TF_RETURN_IF_ERROR(ConvertLibFunction(configs, tf_dialect, func, flib));
+      TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(*flib));
+    }
+    return Status::OK();
+  };
+
   // Adds nodes for operations.
   for (Operation& inst : block) {
     auto op_name = GetTensorFlowOpName(inst.getName().getStringRef());
@@ -544,13 +556,12 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       // definition library
       // TODO(prakalps): If two functions have cyclic dependence, this will
       // introduce an infinite loop.
-      auto func =
-          function.getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
-              op_name.ValueOrDie());
-      if (func != nullptr) {
-        TF_RETURN_IF_ERROR(ConvertLibFunction(configs, tf_dialect, func, flib));
-        TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(*flib));
-      }
+      TF_RETURN_IF_ERROR(convert_called_function(op_name.ValueOrDie().str()));
+    }
+
+    if (IsLegacyCallInstruction(&inst)) {
+      TF_RETURN_IF_ERROR(convert_called_function(
+          inst.getAttrOfType<mlir::SymbolRefAttr>("f").getLeafReference()));
     }
 
     for (auto type : inst.getResultTypes()) {

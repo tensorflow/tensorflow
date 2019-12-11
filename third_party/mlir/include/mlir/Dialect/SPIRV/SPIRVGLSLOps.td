@@ -516,6 +516,36 @@ def SPV_GLSLSSignOp : SPV_GLSLUnaryArithmeticOp<"SSign", 7, SPV_Integer> {
 
 // -----
 
+def SPV_GLSLSqrtOp : SPV_GLSLUnaryArithmeticOp<"Sqrt", 31, SPV_Float> {
+  let summary = "Returns the square root of the operand";
+
+  let description = [{
+    Result is the square root of x. Result is undefined if x < 0.
+
+    The operand x must be a scalar or vector whose component type is
+    floating-point.
+
+    Result Type and the type of x must be the same type. Results are computed
+    per component.
+
+    ### Custom assembly format
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    sqrt-op ::= ssa-id `=` `spv.GLSL.Sqrt` ssa-use `:`
+                float-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %2 = spv.GLSL.Sqrt %0 : f32
+    %3 = spv.GLSL.Sqrt %1 : vector<3xf16>
+    ```
+  }];
+}
+
+// -----
+
 def SPV_GLSLTanhOp : SPV_GLSLUnaryArithmeticOp<"Tanh", 21, SPV_Float16or32> {
   let summary = "Hyperbolic tangent of operand in radians";
 

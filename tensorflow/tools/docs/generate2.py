@@ -78,10 +78,8 @@ flags.DEFINE_string("site_path", "",
 
 if tf.__version__.startswith('1'):
   PRIVATE_MAP = {
-      'tf.contrib.autograph': ['utils', 'operators'],
       'tf.test': ['mock'],
-      'tf.contrib.estimator': ['python'],
-      'tf': ['python', 'core', 'compiler', 'examples', 'tools'],
+      'tf': ['python', 'core', 'compiler', 'examples', 'tools', 'contrib'],
       # There's some aliasing between the compats and v1/2s, so it's easier to
       # block by name and location than by deleting, or hiding objects.
       'tf.compat.v1.compat': ['v1', 'v2'],
@@ -89,45 +87,7 @@ if tf.__version__.startswith('1'):
   }
 
   DO_NOT_DESCEND_MAP = {
-      'tf': ['cli', 'lib', 'wrappers'],
-      'tf.contrib': [
-          'compiler',
-          'grid_rnn',
-          # Block contrib.keras to de-clutter the docs
-          'keras',
-          'labeled_tensor',
-          'quantization',
-          'session_bundle',
-          'slim',
-          'solvers',
-          'specs',
-          'tensor_forest',
-          'tensorboard',
-          'testing',
-          'tfprof',
-      ],
-      'tf.contrib.bayesflow': [
-          'special_math', 'stochastic_gradient_estimators',
-          'stochastic_variables'
-      ],
-      'tf.contrib.ffmpeg': ['ffmpeg_ops'],
-      'tf.contrib.graph_editor': [
-          'edit', 'match', 'reroute', 'subgraph', 'transform', 'select', 'util'
-      ],
-      'tf.contrib.keras': ['api', 'python'],
-      'tf.contrib.layers': ['feature_column', 'summaries'],
-      'tf.contrib.learn': [
-          'datasets',
-          'head',
-          'graph_actions',
-          'io',
-          'models',
-          'monitors',
-          'ops',
-          'preprocessing',
-          'utils',
-      ],
-      'tf.contrib.util': ['loader'],
+      'tf': ['cli', 'lib', 'wrappers', 'contrib'],
   }
 else:
   PRIVATE_MAP = {

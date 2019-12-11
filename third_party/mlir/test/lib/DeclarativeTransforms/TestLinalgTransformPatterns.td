@@ -80,4 +80,11 @@ def : Pattern<(DotOp:$op $a, $b, $c),
               [(LinalgOpToLoops<"DotOp"> $op)],
               [(Constraint<HasLinalgTransformMarker<"REG">> $op)]>;
 
+//===----------------------------------------------------------------------===//
+// Linalg to vector contraction patterns.
+//===----------------------------------------------------------------------===//
+def : Pattern<(GenericOp:$op $_1, $_2, $_3, $_4, $_5, $_6, $_7),
+              [(LinalgOpToVectorContraction<"GenericOp"> $op)],
+              [(Constraint<HasLinalgTransformMarker<"_marked_matmul_">> $op)]>;
+
 #endif // TEST_LINALG_TRANSFORMS_PATTERNS

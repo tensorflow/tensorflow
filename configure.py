@@ -33,7 +33,7 @@ except ImportError:
   from distutils.spawn import find_executable as which
 # pylint: enable=g-import-not-at-top
 
-_DEFAULT_CUDA_VERSION = '10.1'
+_DEFAULT_CUDA_VERSION = '10'
 _DEFAULT_CUDNN_VERSION = '7'
 _DEFAULT_TENSORRT_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
@@ -1232,20 +1232,6 @@ def is_reduced_optimize_huge_functions_available(environ_cp):
 
 def set_windows_build_flags(environ_cp):
   """Set Windows specific build options."""
-  # The non-monolithic build is not supported yet
-  write_to_bazelrc('build --config monolithic')
-  # Suppress warning messages
-  write_to_bazelrc('build --copt=-w --host_copt=-w')
-  # Fix winsock2.h conflicts
-  write_to_bazelrc(
-      'build --copt=-DWIN32_LEAN_AND_MEAN --host_copt=-DWIN32_LEAN_AND_MEAN '
-      '--copt=-DNOGDI --host_copt=-DNOGDI')
-  # Output more verbose information when something goes wrong
-  write_to_bazelrc('build --verbose_failures')
-  # The host and target platforms are the same in Windows build. So we don't
-  # have to distinct them. This avoids building the same targets twice.
-  write_to_bazelrc('build --distinct_host_configuration=false')
-
   if is_reduced_optimize_huge_functions_available(environ_cp):
     write_to_bazelrc(
         'build --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions'

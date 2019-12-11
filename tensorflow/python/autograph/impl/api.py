@@ -422,6 +422,27 @@ def converted_call(f,
     logging.log(2, 'Whitelisted: %s: AutoGraph is disabled in context', f)
     return _call_unconverted(f, args, kwargs, options, False)
 
+  if is_autograph_artifact(f):
+    logging.log(2, 'Permanently whitelisted: %s: AutoGraph artifact', f)
+    return _call_unconverted(f, args, kwargs, options)
+
+  # If this is a partial, unwrap it and redo all the checks.
+  if isinstance(f, functools.partial):
+    new_kwargs = {}
+    if f.keywords is not None:
+      new_kwargs = f.keywords
+    if kwargs is not None:
+      new_kwargs.update(kwargs)
+    new_args = f.args + args
+    logging.log(3, 'Forwarding call of partial %s with\n%s\n%s\n', f, new_args,
+                new_kwargs)
+    return converted_call(
+        f.func,
+        new_args,
+        new_kwargs,
+        caller_fn_scope=caller_fn_scope,
+        options=options)
+
   if inspect_utils.isbuiltin(f):
     if f is eval:
       return py_builtins.eval_in_original_context(f, args, caller_fn_scope)
@@ -431,10 +452,6 @@ def converted_call(f,
       return py_builtins.overload_of(f)(*args, **kwargs)
     else:
       return py_builtins.overload_of(f)(*args)
-
-  if is_autograph_artifact(f):
-    logging.log(2, 'Permanently whitelisted: %s: AutoGraph artifact', f)
-    return _call_unconverted(f, args, kwargs, options)
 
   # TODO(b/122265385): Remove this bypass.
   if (_is_known_loaded_type(f, 'wrapt', 'FunctionWrapper') or
@@ -453,7 +470,7 @@ def converted_call(f,
   # Constructors are permanently whitelisted.
   # TODO(mdan): Toggle as experimental feature instead.
   # TODO(b/124016764): Remove this limitation.
-  if tf_inspect.isclass(f):
+  if inspect_utils.isconstructor(f):
     logging.log(2, 'Permanently whitelisted: %s: constructor', f)
     return _call_unconverted(f, args, kwargs, options)
 
@@ -483,19 +500,6 @@ def converted_call(f,
 
   # TODO(mdan): Move this entire block inside to_graph.
   try:  # Begin of transformation error guards
-
-    # Unwrap functools.partial objects
-    # TODO(mdan): Consider sharing unwrapping logic with tf_inspect.
-    # TODO(b/120224672): This unwrapping should be done before the checks above.
-    while isinstance(f, functools.partial):
-      args = f.args + args
-      new_kwargs = {}
-      if f.keywords is not None:
-        new_kwargs.update(f.keywords)
-      if kwargs is not None:
-        new_kwargs.update(kwargs)
-      kwargs = new_kwargs
-      f = f.func
 
     if tf_inspect.isfunction(f) or tf_inspect.ismethod(f):
       # Regular functions

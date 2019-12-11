@@ -18,6 +18,8 @@ limitations under the License.
 #include <stdint.h>
 #include <stdio.h>
 
+#include <string>
+
 typedef struct AHardwareBuffer AHardwareBuffer;
 
 // NN api types based on NNAPI header file
@@ -159,6 +161,7 @@ enum {
 /**
  * Result codes.
  */
+// LINT.IfChange
 enum {
   ANEURALNETWORKS_NO_ERROR = 0,
   ANEURALNETWORKS_OUT_OF_MEMORY = 1,
@@ -171,6 +174,7 @@ enum {
   ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE = 8,
   ANEURALNETWORKS_UNAVAILABLE_DEVICE = 9,
 };
+// LINT.ThenChange(//tensorflow/lite/delegates/nnapi/nnapi_delegate.cc:NnApiErrorDescription)
 
 /**
  * Implicit padding algorithms.

@@ -195,6 +195,71 @@ MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
   return MatrixMap<Scalar>(data, rows, cols);
 }
 
+// TODO(renjieliu): Refactor this to merge with other
+// MultiplyByQuantizedMultipler.
+#ifdef USE_NEON
+inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
+    int32x4x4_t input_val, int32 quantized_multiplier, int shift) {
+  using gemmlowp::RoundingDivideByPOT;
+  using gemmlowp::SaturatingRoundingDoublingHighMul;
+  const int left_shift = shift > 0 ? shift : 0;
+  const int right_shift = shift > 0 ? 0 : -shift;
+  int32x4x4_t result;
+  // The vector type support for SaturatingRoundingDoublingHighMulth in gemmlowp
+  // is limited to NEON.
+#ifdef GEMMLOWP_NEON
+  const int32x4_t left_shifted_one_dup = vdupq_n_s32(1 << left_shift);
+  result.val[0] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[0], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+  result.val[1] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[1], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+  result.val[2] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[2], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+  result.val[3] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[3], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+#else
+  for (int i = 0; i < 4; ++i) {
+    int32_t vals[4];
+    vals[0] = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(
+            vgetq_lane_s32(input_val.val[i], 0) * (1 << left_shift),
+            quantized_multiplier),
+        right_shift);
+    vals[1] = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(
+            vgetq_lane_s32(input_val.val[i], 1) * (1 << left_shift),
+            quantized_multiplier),
+        right_shift);
+    vals[2] = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(
+            vgetq_lane_s32(input_val.val[i], 2) * (1 << left_shift),
+            quantized_multiplier),
+        right_shift);
+    vals[3] = RoundingDivideByPOT(
+        SaturatingRoundingDoublingHighMul(
+            vgetq_lane_s32(input_val.val[i], 3) * (1 << left_shift),
+            quantized_multiplier),
+        right_shift);
+
+    result.val[i] = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+  }
+#endif
+  return result;
+}
+#endif
+
 inline void AddBiasAndEvalActivationFunction(float output_activation_min,
                                              float output_activation_max,
                                              const RuntimeShape& bias_shape,
@@ -849,9 +914,8 @@ inline uint32x4_t RoundToNearestUnsigned(const float32x4_t input) {
 
 inline void MeanImpl(const tflite::MeanParams& op_params,
                      const RuntimeShape& input_shape, const uint8_t* input_data,
-                     int32 input_zero_point, float input_scale,
+                     int32 multiplier, int32 shift, int32 bias,
                      const RuntimeShape& output_shape, uint8_t* output_data,
-                     int32 output_zero_point, float output_scale,
                      int start_depth, int end_depth) {
   gemmlowp::ScopedProfilingLabel label("Mean4D/Uint8/MeanImpl");
 
@@ -862,7 +926,6 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
   const int output_width = output_shape.Dims(2);
   const int input_height = input_shape.Dims(1);
   const int input_width = input_shape.Dims(2);
-  const float num_elements_in_axis = input_width * input_height;
 
   TFLITE_CHECK_EQ(op_params.axis_count, 2);
   TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
@@ -870,83 +933,103 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
   TFLITE_CHECK_EQ(output_height, 1);
   TFLITE_CHECK_EQ(output_width, 1);
 
-  const bool ordinary_mean =
-      (input_zero_point == output_zero_point && input_scale == output_scale);
-  float scale = 0.0f, bias = 0.0f;
-  if (!ordinary_mean) {
-    scale = input_scale / output_scale;
-    bias = -input_zero_point * scale + 0.5;
-  }
+  constexpr int32_t kMinValue = std::numeric_limits<uint8_t>::min();
+  constexpr int32_t kMaxValue = std::numeric_limits<uint8_t>::max();
 
 #ifdef USE_NEON
-  const float32x4_t num_elements_dup = vdupq_n_f32(num_elements_in_axis);
-  // This is only an approximation as NEON does not offer division instruction.
-  const float32x4_t scale_dup = vdupq_n_f32(scale);
-  const float32x4_t num_elements_reverse = vrecpeq_f32(num_elements_dup);
-  float32x4_t zero_point_with_bias_dup = vdupq_n_f32(output_zero_point + bias);
+  const int32x4_t bias_dup = vdupq_n_s32(bias);
+  const int32x4_t min_dup = vdupq_n_s32(kMinValue);
+  const int32x4_t max_dup = vdupq_n_s32(kMaxValue);
 #endif  // USE_NEON
 
   for (int out_b = 0; out_b < output_batch; ++out_b) {
     int out_d = start_depth;
 #ifdef USE_NEON
 
-    for (; out_d < end_depth - 8; out_d += 8) {
-      float32x4_t temp_sum_1 = vdupq_n_f32(0);
-      float32x4_t temp_sum_2 = vdupq_n_f32(0);
+    for (; out_d <= end_depth - 16; out_d += 16) {
+      int32x4x4_t temp_sum;
+      temp_sum.val[0] = vdupq_n_s32(0);
+      temp_sum.val[1] = vdupq_n_s32(0);
+      temp_sum.val[2] = vdupq_n_s32(0);
+      temp_sum.val[3] = vdupq_n_s32(0);
       for (int in_h = 0; in_h < input_height; ++in_h) {
         for (int in_w = 0; in_w < input_width; ++in_w) {
           const uint8_t* input_data_ptr =
               input_data + Offset(input_shape, out_b, in_h, in_w, out_d);
-          uint8x8_t input_data_val = vld1_u8(input_data_ptr);
-          int16x8_t input_data_val_shift =
-              vreinterpretq_s16_u16(vmovl_u8(input_data_val));
-          float32x4_t input_float_1 =
-              vcvtq_f32_s32(vmovl_s16(vget_high_s16(input_data_val_shift)));
-          float32x4_t input_float_2 =
-              vcvtq_f32_s32(vmovl_s16(vget_low_s16(input_data_val_shift)));
-          temp_sum_1 = vaddq_f32(temp_sum_1, input_float_1);
-          temp_sum_2 = vaddq_f32(temp_sum_2, input_float_2);
+          uint8x16_t input_data_val = vld1q_u8(input_data_ptr);
+
+          int16x8_t input_data_low_shift =
+              vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(input_data_val)));
+          int16x8_t input_data_high_shift =
+              vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(input_data_val)));
+
+          int32x4_t input_low_low =
+              vmovl_s16(vget_low_s16(input_data_low_shift));
+          int32x4_t input_high_low =
+              vmovl_s16(vget_high_s16(input_data_low_shift));
+          int32x4_t input_low_high =
+              vmovl_s16(vget_low_s16(input_data_high_shift));
+          int32x4_t input_high_high =
+              vmovl_s16(vget_high_s16(input_data_high_shift));
+
+          temp_sum.val[0] = vaddq_s32(temp_sum.val[0], input_low_low);
+          temp_sum.val[1] = vaddq_s32(temp_sum.val[1], input_high_low);
+          temp_sum.val[2] = vaddq_s32(temp_sum.val[2], input_low_high);
+          temp_sum.val[3] = vaddq_s32(temp_sum.val[3], input_high_high);
         }
       }
 
-      const float32x4_t mean_1 =
-          DivideSumForMeanImpl(temp_sum_1, num_elements_reverse, ordinary_mean,
-                               scale_dup, zero_point_with_bias_dup);
-      const float32x4_t mean_2 =
-          DivideSumForMeanImpl(temp_sum_2, num_elements_reverse, ordinary_mean,
-                               scale_dup, zero_point_with_bias_dup);
+      temp_sum =
+          MultiplyByQuantizedMultiplier4Rows(temp_sum, multiplier, shift);
 
-      uint32x4_t casted_mean_1 = RoundToNearestUnsigned(mean_1);
-      uint16x4_t narrow_range_mean_1 = vmovn_u32(casted_mean_1);
-      uint32x4_t casted_mean_2 = RoundToNearestUnsigned(mean_2);
-      uint16x4_t narrow_range_mean_2 = vmovn_u32(casted_mean_2);
-      uint16x8_t combined_mean =
-          vcombine_u16(narrow_range_mean_2, narrow_range_mean_1);
-      uint8x8_t narrowed_combined_mean = vmovn_u16(combined_mean);
+      temp_sum.val[0] = vaddq_s32(temp_sum.val[0], bias_dup);
+      temp_sum.val[1] = vaddq_s32(temp_sum.val[1], bias_dup);
+      temp_sum.val[2] = vaddq_s32(temp_sum.val[2], bias_dup);
+      temp_sum.val[3] = vaddq_s32(temp_sum.val[3], bias_dup);
+
+      temp_sum.val[0] = vminq_s32(vmaxq_s32(temp_sum.val[0], min_dup), max_dup);
+      temp_sum.val[1] = vminq_s32(vmaxq_s32(temp_sum.val[1], min_dup), max_dup);
+      temp_sum.val[2] = vminq_s32(vmaxq_s32(temp_sum.val[2], min_dup), max_dup);
+      temp_sum.val[3] = vminq_s32(vmaxq_s32(temp_sum.val[3], min_dup), max_dup);
+
+      uint16x4_t narrowed_low_low =
+          vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[0]));
+      uint16x4_t narrowed_high_low =
+          vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[1]));
+      uint16x4_t narrowed_low_high =
+          vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[2]));
+      uint16x4_t narrowed_high_high =
+          vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[3]));
+
+      uint16x8_t combined_low =
+          vcombine_u16(narrowed_low_low, narrowed_high_low);
+      uint16x8_t combined_high =
+          vcombine_u16(narrowed_low_high, narrowed_high_high);
+
+      uint8x8_t narrowed_low = vmovn_u16(combined_low);
+      uint8x8_t narrowed_high = vmovn_u16(combined_high);
+
+      uint8x16_t combined_output = vcombine_u8(narrowed_low, narrowed_high);
+
       uint8_t* output_data_ptr =
           output_data + Offset(output_shape, out_b, 0, 0, out_d);
-      vst1_u8(output_data_ptr, narrowed_combined_mean);
+      vst1q_u8(output_data_ptr, combined_output);
     }
 #endif  // USE_NEON
 
     for (; out_d < end_depth; ++out_d) {
-      float temp_value = 0;
+      int acc = 0;
       for (int in_h = 0; in_h < input_height; ++in_h) {
         for (int in_w = 0; in_w < input_width; ++in_w) {
-          temp_value +=
-              input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
+          acc += input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
         }
       }
 
-      temp_value = temp_value / num_elements_in_axis;
-      if (ordinary_mean) {
-        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-            static_cast<uint8_t>(round(temp_value));
-      } else {
-        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-            static_cast<uint8_t>(round(temp_value * scale + bias)) +
-            output_zero_point;
-      }
+      acc = MultiplyByQuantizedMultiplier(acc, multiplier, shift);
+      acc += bias;
+      acc = std::min(std::max(acc, kMinValue), kMaxValue);
+      output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
+          static_cast<uint8_t>(acc);
     }
   }
 }
@@ -954,40 +1037,36 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
 struct MeanWorkerTask : cpu_backend_threadpool::Task {
   MeanWorkerTask(const tflite::MeanParams& op_params,
                  const RuntimeShape& input_shape, const uint8_t* input_data,
-                 int32 input_zero_point, float input_scale,
+                 int32 multiplier, int32 shift, int32 bias,
                  const RuntimeShape& output_shape, uint8_t* output_data,
-                 int32 output_zero_point, float output_scale, int start_height,
-                 int end_height)
-      : op_params_(op_params),
-        input_shape_(input_shape),
-        input_data_(input_data),
-        input_zero_point_(input_zero_point),
-        input_scale_(input_scale),
-        output_shape_(output_shape),
-        output_data_(output_data),
-        output_zero_point_(output_zero_point),
-        output_scale_(output_scale),
-        start_height_(start_height),
-        end_height_(end_height) {}
+                 int start_height, int end_height)
+      : op_params(op_params),
+        input_shape(input_shape),
+        input_data(input_data),
+        multiplier(multiplier),
+        shift(shift),
+        bias(bias),
+        output_shape(output_shape),
+        output_data(output_data),
+        start_height(start_height),
+        end_height(end_height) {}
 
   void Run() override {
-    MeanImpl(op_params_, input_shape_, input_data_, input_zero_point_,
-             input_scale_, output_shape_, output_data_, output_zero_point_,
-             output_scale_, start_height_, end_height_);
+    MeanImpl(op_params, input_shape, input_data, multiplier, shift, bias,
+             output_shape, output_data, start_height, end_height);
   }
 
  private:
-  const tflite::MeanParams& op_params_;
-  const RuntimeShape& input_shape_;
-  const uint8_t* input_data_;
-  int32 input_zero_point_;
-  float input_scale_;
-  const RuntimeShape& output_shape_;
-  uint8_t* output_data_;
-  int32 output_zero_point_;
-  float output_scale_;
-  int start_height_;
-  int end_height_;
+  const tflite::MeanParams& op_params;
+  const RuntimeShape& input_shape;
+  const uint8_t* input_data;
+  int32 multiplier;
+  int32 shift;
+  int32 bias;
+  const RuntimeShape& output_shape;
+  uint8_t* output_data;
+  int start_height;
+  int end_height;
 };
 
 inline void Mean(const tflite::MeanParams& op_params,
@@ -1015,6 +1094,18 @@ inline void Mean(const tflite::MeanParams& op_params,
   TFLITE_CHECK_EQ(output_height, 1);
   TFLITE_CHECK_EQ(output_width, 1);
 
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const float num_elements_in_axis = input_width * input_height;
+
+  int32 bias =
+      output_zero_point -
+      static_cast<int32>(input_zero_point * input_scale / output_scale);
+  float real_scale = input_scale / (num_elements_in_axis * output_scale);
+
+  int32 multiplier, shift;
+  QuantizeMultiplier(real_scale, &multiplier, &shift);
+
   constexpr int kMinDepthPerThread = 8;
   int thread_count = output_depth / kMinDepthPerThread;
   thread_count = thread_count > 0 ? thread_count : 1;
@@ -1022,9 +1113,8 @@ inline void Mean(const tflite::MeanParams& op_params,
       std::min(thread_count, cpu_backend_context->max_num_threads());
 
   if (capped_thread_count == 1) {
-    MeanImpl(op_params, input_shape, input_data, input_zero_point, input_scale,
-             output_shape, output_data, output_zero_point, output_scale, 0,
-             output_depth);
+    MeanImpl(op_params, input_shape, input_data, multiplier, shift, bias,
+             output_shape, output_data, 0, output_depth);
   } else {
     // Instead parrallel for batch, we loop for the output_depth since batch
     // is typical 1.
@@ -1037,9 +1127,8 @@ inline void Mean(const tflite::MeanParams& op_params,
       // Try to distribute the tasks as even as possible.
       int depth_end = depth_start +
                       (output_depth - depth_start) / (capped_thread_count - i);
-      tasks.emplace_back(op_params, input_shape, input_data, input_zero_point,
-                         input_scale, output_shape, output_data,
-                         output_zero_point, output_scale, depth_start,
+      tasks.emplace_back(op_params, input_shape, input_data, multiplier, shift,
+                         bias, output_shape, output_data, depth_start,
                          depth_end);
       depth_start = depth_end;
     }
@@ -5465,71 +5554,6 @@ inline void TransposeConvV2(
   }
 }
 
-// TODO(renjieliu): Refactor this to merge with other
-// MultiplyByQuantizedMultipler.
-#ifdef USE_NEON
-inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
-    int32x4x4_t input_val, int32 quantized_multiplier, int shift) {
-  using gemmlowp::RoundingDivideByPOT;
-  using gemmlowp::SaturatingRoundingDoublingHighMul;
-  const int left_shift = shift > 0 ? shift : 0;
-  const int right_shift = shift > 0 ? 0 : -shift;
-  int32x4x4_t result;
-  // The vector type support for SaturatingRoundingDoublingHighMulth in gemmlowp
-  // is limited to NEON.
-#ifdef GEMMLOWP_NEON
-  const int32x4_t left_shifted_one_dup = vdupq_n_s32(1 << left_shift);
-  result.val[0] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[0], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-  result.val[1] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[1], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-  result.val[2] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[2], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-  result.val[3] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[3], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-#else
-  for (int i = 0; i < 4; ++i) {
-    int32_t vals[4];
-    vals[0] = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vgetq_lane_s32(input_val.val[i], 0) * (1 << left_shift),
-            quantized_multiplier),
-        right_shift);
-    vals[1] = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vgetq_lane_s32(input_val.val[i], 1) * (1 << left_shift),
-            quantized_multiplier),
-        right_shift);
-    vals[2] = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vgetq_lane_s32(input_val.val[i], 2) * (1 << left_shift),
-            quantized_multiplier),
-        right_shift);
-    vals[3] = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vgetq_lane_s32(input_val.val[i], 3) * (1 << left_shift),
-            quantized_multiplier),
-        right_shift);
-
-    result.val[i] = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
-  }
-#endif
-  return result;
-}
-#endif
-
 inline void Quantize(int32_t multiplier, int32_t shift, int32_t total_size,
                      int32_t output_zp, int32_t* scratch, uint8_t* output) {
   gemmlowp::ScopedProfilingLabel label("Quantize/uint8");
@@ -5590,6 +5614,114 @@ inline void Quantize(int32_t multiplier, int32_t shift, int32_t total_size,
       temp = output_min;
     }
     output[i] = static_cast<uint8_t>(temp);
+  }
+}
+
+inline void Quantize(const int32_t* multiplier, const int32_t* shift,
+                     int32_t channel_size, int32_t total_size,
+                     int32_t output_zp, int32_t output_min, int32_t output_max,
+                     int32_t* scratch, int8_t* output) {
+  gemmlowp::ScopedProfilingLabel label("Quantize/int8");
+
+  // Here we're trying to quantize the raw accumulators:
+  //        output_channels
+  //       data data data data data
+  // rows  data data data data data
+  //       data data data data data
+  //          ....
+  //
+  // In order to minimize the reload of the multipliers & shifts, once we load
+  // the multipliers & shifts, we load & quantize the raw accumualtrs for every
+  // row.
+#ifdef USE_NEON
+  const int32x4_t output_offset_vec = vdupq_n_s32(output_zp);
+  const int32x4_t output_activation_min_vec = vdupq_n_s32(output_min);
+  const int32x4_t output_activation_max_vec = vdupq_n_s32(output_max);
+  const int32x4_t ones = vdupq_n_s32(1);
+  const int32x4_t minus_ones = vdupq_n_s32(-1);
+  const int32x4_t zeros = vdupq_n_s32(0);
+#endif
+
+  TFLITE_DCHECK_EQ(total_size % channel_size, 0);
+  const int32_t rows = total_size / channel_size;
+
+  int c = 0;
+
+  while (c < channel_size) {
+    int target_output_depth = channel_size;
+#ifdef USE_NEON
+    using gemmlowp::RoundingDivideByPOT;
+    for (; c <= channel_size - 4; c += 4) {
+      int32x4_t out_shift = vld1q_s32(shift + c);
+      const bool out_shift_all_less_than_zero =
+          (vgetq_lane_s32(out_shift, 0) < 0) &&
+          (vgetq_lane_s32(out_shift, 1) < 0) &&
+          (vgetq_lane_s32(out_shift, 2) < 0) &&
+          (vgetq_lane_s32(out_shift, 3) < 0);
+      const bool out_shift_all_greater_equal_than_zero =
+          (vgetq_lane_s32(out_shift, 0) >= 0) &&
+          (vgetq_lane_s32(out_shift, 1) >= 0) &&
+          (vgetq_lane_s32(out_shift, 2) >= 0) &&
+          (vgetq_lane_s32(out_shift, 3) >= 0);
+      if (!out_shift_all_less_than_zero &&
+          !out_shift_all_greater_equal_than_zero) {
+        // Fallback to general path.
+        // Then go ahead for next 4.
+        target_output_depth = c + 4;
+        break;
+      }
+      int32x4_t out_mul = vld1q_s32(multiplier + c);
+      for (int n = 0; n < rows; ++n) {
+        int loc = n * channel_size + c;
+        int32x4_t acc = vld1q_s32(scratch + loc);
+        if (out_shift_all_less_than_zero) {  // output_shift all < 0 case.
+          acc = vqrdmulhq_s32(acc, out_mul);
+          int32x4_t negative_out_shift = vmulq_n_s32(out_shift, -1);
+          int32x4_t mask =
+              vaddq_s32(vshlq_s32(ones, negative_out_shift), minus_ones);
+          int32x4_t remainder = vandq_s32(acc, mask);
+          int32x4_t shifted_right_mask = vshlq_s32(mask, minus_ones);
+          int32x4_t temp =
+              vandq_s32(vreinterpretq_s32_u32(vcltq_s32(acc, zeros)), ones);
+          int32x4_t threshold = vaddq_s32(shifted_right_mask, temp);
+          temp = vandq_s32(
+              vreinterpretq_s32_u32(vcgtq_s32(remainder, threshold)), ones);
+          int32x4_t shifted_right_acc = vshlq_s32(acc, out_shift);
+          acc = vaddq_s32(shifted_right_acc, temp);
+        } else {  // output_shift all > 0 case.
+          int32x4_t multiplier_power_of_two = vshlq_s32(ones, out_shift);
+          acc = vmulq_s32(acc, multiplier_power_of_two);
+          acc = vqrdmulhq_s32(acc, out_mul);
+        }
+        // Add the output offset.
+        acc = vaddq_s32(acc, output_offset_vec);
+        // Apply the activation function.
+        acc = vmaxq_s32(acc, output_activation_min_vec);
+        acc = vminq_s32(acc, output_activation_max_vec);
+        // Saturating cast to int8 and store to destination.
+        const int16x4_t acc_s16 = vqmovn_s32(acc);
+        const int16x8_t res_s16 = vcombine_s16(acc_s16, acc_s16);
+        const int8x8_t res_s8 = vqmovn_s16(res_s16);
+        vst1_lane_s8(output + loc + 0, res_s8, 0);
+        vst1_lane_s8(output + loc + 1, res_s8, 1);
+        vst1_lane_s8(output + loc + 2, res_s8, 2);
+        vst1_lane_s8(output + loc + 3, res_s8, 3);
+      }
+    }
+
+#endif  // USE_NEON
+    // Handle leftover values, one by one. This is very slow.
+    for (; c < target_output_depth; c++) {
+      for (int n = 0; n < rows; ++n) {
+        int loc = n * channel_size + c;
+        int32 acc = scratch[loc];
+        acc = MultiplyByQuantizedMultiplier(acc, multiplier[c], shift[c]);
+        acc += output_zp;
+        acc = std::max(acc, output_min);
+        acc = std::min(acc, output_max);
+        output[loc] = static_cast<int8>(acc);
+      }
+    }
   }
 }
 

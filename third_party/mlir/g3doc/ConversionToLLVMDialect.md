@@ -90,6 +90,23 @@ memref<10x?x42x?x123 x f32> -> !llvm.type<"{ float*, float*, i64, [5 x i64], [5 
 memref<1x? x vector<4xf32>> -> !llvm.type<"{ <4 x float>*, <4 x float>*, i64, [1 x i64], [1 x i64] }">
 ```
 
+If the rank of the memref is unknown at compile time, the Memref is converted to
+an unranked descriptor that contains: 1. a 64-bit integer representing the
+dynamic rank of the memref, followed by 2. a pointer to a ranked memref
+descriptor with the contents listed above.
+
+Dynamic ranked memrefs should be used only to pass arguments to external library
+calls that expect a unified memref type. The called functions can parse any
+unranked memref descriptor by reading the rank and parsing the enclosed ranked
+descriptor pointer.
+
+Examples:
+
+```mlir {.mlir}
+// unranked descriptor
+memref<*xf32> -> !llvm.type<"{i64, i8*}">
+```
+
 ### Function Types
 
 Function types get converted to LLVM function types. The arguments are converted

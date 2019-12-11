@@ -37,18 +37,18 @@ StatusOr<mlir::ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
 StatusOr<mlir::ElementsAttr> ConvertTensor(const Tensor& input_tensor,
                                            mlir::Builder* builder);
 
-// Converts a shape from MLIR to an TensorFlow tensor shape proto.
+// Converts a shape from MLIR to a TensorFlow tensor shape proto.
 void ConvertToTensorShapeProto(llvm::ArrayRef<int64_t> shape,
                                TensorShapeProto* output_shape);
 
-// Converts an MLIR type with static tensor shape to an TensorFlow tensor shape.
+// Converts an MLIR type to a TensorFlow tensor shape.
 PartialTensorShape ConvertTypeToTensorShape(const mlir::Type& type);
 
-// Converts an MLIR elements attribute to an TensorFlow tensor proto.
+// Converts an MLIR elements attribute to a TensorFlow tensor proto.
 Status ConvertToTensorProto(mlir::ElementsAttr attr,
                             TensorProto* output_tensor);
 
-// Converts an MLIR elements attribute to an TensorFlow tensor.
+// Converts an MLIR elements attribute to a TensorFlow tensor.
 Status ConvertToTensor(mlir::ElementsAttr attr, Tensor* output_tensor);
 
 // Decodes the given opaque elements attribute holding tensor content into a

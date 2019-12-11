@@ -16,6 +16,14 @@ cc_library(
 )
 
 cc_library(
+    name = "op_stack",
+    hdrs = ["op_stack.h"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "op_stats_to_tf_stats",
     srcs = ["op_stats_to_tf_stats.cc"],
     hdrs = ["op_stats_to_tf_stats.h"],

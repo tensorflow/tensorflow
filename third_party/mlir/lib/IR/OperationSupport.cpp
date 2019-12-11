@@ -36,7 +36,7 @@ OperationState::OperationState(Location location, OperationName name)
     : location(location), name(name) {}
 
 OperationState::OperationState(Location location, StringRef name,
-                               ArrayRef<Value *> operands, ArrayRef<Type> types,
+                               ValueRange operands, ArrayRef<Type> types,
                                ArrayRef<NamedAttribute> attributes,
                                ArrayRef<Block *> successors,
                                MutableArrayRef<std::unique_ptr<Region>> regions,
@@ -48,6 +48,18 @@ OperationState::OperationState(Location location, StringRef name,
       successors(successors.begin(), successors.end()) {
   for (std::unique_ptr<Region> &r : regions)
     this->regions.push_back(std::move(r));
+}
+
+void OperationState::addOperands(ValueRange newOperands) {
+  assert(successors.empty() && "Non successor operands should be added first.");
+  operands.append(newOperands.begin(), newOperands.end());
+}
+
+void OperationState::addSuccessor(Block *successor, ValueRange succOperands) {
+  successors.push_back(successor);
+  // Insert a sentinel operand to mark a barrier between successor operands.
+  operands.push_back(nullptr);
+  operands.append(succOperands.begin(), succOperands.end());
 }
 
 Region *OperationState::addRegion() {
@@ -66,7 +78,7 @@ void OperationState::addRegion(std::unique_ptr<Region> &&region) {
 /// Replace the operands contained in the storage with the ones provided in
 /// 'operands'.
 void detail::OperandStorage::setOperands(Operation *owner,
-                                         ArrayRef<Value *> operands) {
+                                         ValueRange operands) {
   // If the number of operands is less than or equal to the current amount, we
   // can just update in place.
   if (operands.size() <= numOperands) {

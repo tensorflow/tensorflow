@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -727,7 +728,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     op->SetDevice(device);
   }
 
-  eager::EagerClient* eager_client = nullptr;
+  core::RefCountPtr<eager::EagerClient> eager_client;
   uint64 context_id = ctx->GetContextId();
   TF_RETURN_IF_ERROR(ctx->GetClient(op->GetDeviceParsedName(), &eager_client));
   string remote_task;
@@ -860,7 +861,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
            << " (is async?: " << executor.Async() << ").";
 
   std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
-      std::move(request), op_device, eager_client,
+      std::move(request), op_device, eager_client.get(),
       op->MutableAttrs()->BuildNodeDef(), op->EagerContext()->FuncLibDef(),
       op->Inputs(), {retvals, num_outputs}));
   Status s = executor.AddOrExecute(std::move(node));
@@ -1040,24 +1041,21 @@ Status EagerKernelExecute(
   profiler::TraceMe activity("EagerKernelExecute",
                              profiler::TraceMeLevel::kInfo);
   std::vector<Tensor> outputs(1);
-  gtl::InlinedVector<TensorValue, 4> input_vector(op_inputs.size());
 
-  std::unique_ptr<ExecuteNodeArgs> inputs;
-  TF_RETURN_IF_ERROR(ExecuteNodeArgs::CreateExecuteNodeArgs(
-      std::move(input_vector), ctx, op_inputs, &inputs));
+  ExecuteNodeArgs inputs(op_inputs.size());
+  TF_RETURN_IF_ERROR(inputs.Init(ctx, op_inputs));
   // TODO(apassos) figure out how to record stats for ops which are a part of
   // functions.
-  // TODO(agarwal): change Run to take vector of handles ?
   // TODO(b/111859745): When we support recovering from kernel/device errors, we
   // would need to call XlaDevice::EnsureDeviceContextOk() before using an XLA
   // device. We don't call it now because it is an unneeded overhead (it
   // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
   if (container == nullptr) {
-    TF_RETURN_IF_ERROR(kernel->Run(*inputs, &outputs, cancellation_manager,
+    TF_RETURN_IF_ERROR(kernel->Run(inputs, &outputs, cancellation_manager,
                                    remote_func_params));
   } else {
-    TF_RETURN_IF_ERROR(kernel->Run(container, *inputs, &outputs,
+    TF_RETURN_IF_ERROR(kernel->Run(container, inputs, &outputs,
                                    cancellation_manager, remote_func_params));
   }
   if (graph_collector != nullptr) {

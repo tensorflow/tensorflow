@@ -42,13 +42,13 @@ func @main(%arg0: tensor<f32>) -> tuple<tensor<f32>> {
 
   // CHECK:   %[[VAL3:.+]] = (f32[]) conditional(pred[] %[[VAL1]], (f32[]) %[[VAL2]], (f32[]) %[[VAL2]]), true_computation=[[R0]], false_computation=[[R1]]
   %2 = "xla_hlo.conditional"(%0, %1, %1) ( {
-  ^bb0(%arg1: tuple<tensor<f32>>):	// no predecessors
+  ^bb0(%arg1: tuple<tensor<f32>>):
     %6 = "xla_hlo.get_tuple_element"(%arg1) {index = 0 : i32} : (tuple<tensor<f32>>) -> tensor<f32>
     %7 = "xla_hlo.log"(%6) : (tensor<f32>) -> tensor<f32>
     %8 = "xla_hlo.tuple"(%7) : (tensor<f32>) -> tuple<tensor<f32>>
     "xla_hlo.return"(%8) : (tuple<tensor<f32>>) -> ()
   },  {
-  ^bb0(%arg1: tuple<tensor<f32>>):	// no predecessors
+  ^bb0(%arg1: tuple<tensor<f32>>):
     %6 = "xla_hlo.get_tuple_element"(%arg1) {index = 0 : i32} : (tuple<tensor<f32>>) -> tensor<f32>
     %7 = "xla_hlo.exp"(%6) : (tensor<f32>) -> tensor<f32>
     %8 = "xla_hlo.tuple"(%7) : (tensor<f32>) -> tuple<tensor<f32>>

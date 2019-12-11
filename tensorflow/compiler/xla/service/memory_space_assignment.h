@@ -450,7 +450,8 @@ class MemorySpaceAssignment {
       absl::Span<HloInstruction* const> flattened_instructions)
       : module_(module),
         alternate_memory_space_(alternate_memory_space),
-        flattened_instruction_sequence_(flattened_instructions),
+        flattened_instructions_(flattened_instructions.begin(),
+                                flattened_instructions.end()),
         preset_assignments_(absl::make_unique<PresetAssignments>()) {}
 
   // Process calls Process methods of the allocations after the allocations have
@@ -479,7 +480,7 @@ class MemorySpaceAssignment {
 
   HloModule* module_;
   int64 alternate_memory_space_;
-  HloInstructionSequence flattened_instruction_sequence_;
+  std::vector<HloInstruction*> flattened_instructions_;
   AllocationMap allocation_map_;
   std::unique_ptr<PresetAssignments> preset_assignments_;
 
@@ -546,6 +547,12 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // Adds input and outputs as required assignments.
   void AddInputAndOutputRequiredAssignments();
 
+  // Returns true if the colocated intervals in the argument are in a parameter
+  // or root instruction of the entry computation and are reserved by the user
+  // to be in the alternate memory space.
+  bool AreIntervalsReservedInAlternateMemory(
+      absl::Span<const BufferInterval* const> colocated_intervals) const;
+
   // Given a buffer interval, returns the colocated intervals. Unlike the
   // similar GlobalDecreasingSizeBestFitHeap::GetTransitiveColocations, it
   // returns the colocated intervals sorted by scheduled time.
@@ -574,6 +581,11 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
                           const ChunkCandidate& chunk_candidate);
   void CommitPendingChunks();
 
+  // Returns the available heap size in the alternate memory.
+  int64 available_heap_size() const {
+    return options_.max_size_in_bytes - reserved_in_bytes_;
+  }
+
   MemorySpaceAssignment::AllocationMap* allocation_map_;
   const MemorySpaceAssignment::Options& options_;
   const HloAliasAnalysis& alias_analysis_;
@@ -587,6 +599,8 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // and outputs).
   absl::flat_hash_map<const HloValue*, std::vector<RequiredMemoryAssignment>>
       required_assignments_;
+  // Number of bytes reserved in alternate memory space.
+  int64 reserved_in_bytes_ = 0;
 };
 
 }  // namespace xla

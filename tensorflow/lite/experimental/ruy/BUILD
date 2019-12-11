@@ -118,6 +118,7 @@ cc_library(
         ":opt_set",
         ":platform",
         ":time",
+        "@gemmlowp//:profiler",
     ],
 )
 

@@ -329,13 +329,17 @@ def SPV_ModuleOp : SPV_Op<"module",
 
   let regions = (region SizedRegion<1>:$body);
 
-  let builders = [OpBuilder<"Builder *, OperationState &state">,
-                  OpBuilder<[{Builder *, OperationState &state,
-                              IntegerAttr addressing_model,
-                              IntegerAttr memory_model,
-                              /*optional*/ArrayAttr capabilities = nullptr,
-                              /*optional*/ArrayAttr extensions = nullptr,
-                              /*optional*/ArrayAttr extended_instruction_sets = nullptr}]>];
+  let builders =
+    [OpBuilder<"Builder *, OperationState &state">,
+     OpBuilder<[{Builder *, OperationState &state,
+                 IntegerAttr addressing_model,
+                 IntegerAttr memory_model}]>,
+     OpBuilder<[{Builder *, OperationState &state,
+                 spirv::AddressingModel addressing_model,
+                 spirv::MemoryModel memory_model,
+                 /*optional*/ ArrayRef<spirv::Capability> capabilities = {},
+                 /*optional*/ ArrayRef<spirv::Extension> extensions = {},
+                 /*optional*/ ArrayAttr extended_instruction_sets = nullptr}]>];
 
   // We need to ensure the block inside the region is properly terminated;
   // the auto-generated builders do not guarantee that.

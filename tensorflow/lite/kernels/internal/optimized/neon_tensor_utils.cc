@@ -957,11 +957,6 @@ void NeonCpuBackendGemm(const int8_t* input, const int32_t* bias,
   using ::tflite::cpu_backend_gemm::Gemm;
   using ::tflite::cpu_backend_gemm::GemmParams;
   using ::tflite::cpu_backend_gemm::MatrixParams;
-  using ::tflite::cpu_backend_gemm::QuantizationFlavor;
-
-  ruy::Matrix<int8_t> ruy_lhs;
-  ruy::Matrix<int8_t> ruy_rhs;
-  ruy::Matrix<int32_t> ruy_dst;
 
   MatrixParams<int8_t> lhs_params;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
@@ -978,15 +973,10 @@ void NeonCpuBackendGemm(const int8_t* input, const int32_t* bias,
   dst_params.rows = n_output;
   dst_params.cols = n_batch;
 
-  cpu_backend_gemm::detail::MakeRuyMatrix(lhs_params, input_to_gate_weights,
-                                          &ruy_lhs);
-  cpu_backend_gemm::detail::MakeRuyMatrix(rhs_params, input, &ruy_rhs);
-  cpu_backend_gemm::detail::MakeRuyMatrix(dst_params, scratch, &ruy_dst);
-
-  ruy::BasicSpec<int32_t, int32_t> ruy_spec;
-  ruy_spec.bias = bias;
-  ruy::Mul<ruy::kAllPaths>(ruy_lhs, ruy_rhs, ruy_spec, context->ruy_context(),
-                           &ruy_dst);
+  GemmParams<int32, int32> gemm_params;
+  gemm_params.bias = bias;
+  cpu_backend_gemm::Gemm(lhs_params, input_to_gate_weights, rhs_params, input,
+                         dst_params, scratch, gemm_params, context);
 }
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
@@ -1514,19 +1504,25 @@ void NeonApplyTanhImpl(const int16_t* input, int32_t n_batch, int32_t n_input,
   }
 }
 
-void NeonApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                    int16_t* output) {
-  NeonApplyTanhImpl<0>(input, n_batch, n_input, output);
-}
-
-void NeonApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                    int16_t* output) {
-  NeonApplyTanhImpl<3>(input, n_batch, n_input, output);
-}
-
-void NeonApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                    int16_t* output) {
-  NeonApplyTanhImpl<4>(input, n_batch, n_input, output);
+void NeonApplyTanh(int32_t integer_bits, const int16_t* input, int32_t n_batch,
+                   int32_t n_input, int16_t* output) {
+  assert(integer_bits <= 6);
+#define DISPATCH_TANH(i)                                   \
+  case i:                                                  \
+    NeonApplyTanhImpl<i>(input, n_batch, n_input, output); \
+    break;
+  switch (integer_bits) {
+    DISPATCH_TANH(0);
+    DISPATCH_TANH(1);
+    DISPATCH_TANH(2);
+    DISPATCH_TANH(3);
+    DISPATCH_TANH(4);
+    DISPATCH_TANH(5);
+    DISPATCH_TANH(6);
+    default:
+      return;
+  }
+#undef DISPATCH_TANH
 }
 
 void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
@@ -1831,13 +1827,14 @@ void NeonVectorVectorCwiseProduct(const float* vector1, const float* vector2,
   int v = 0;
   for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
     // Load 4 float values from vector1 and vector2.
-    float32x4_t v1_f32x4 = vld1q_f32(vector1 + v);
-    float32x4_t v2_f32x4 = vld1q_f32(vector2 + v);
+    const float32x4_t v1_f32x4 = vld1q_f32(vector1 + v);
+    const float32x4_t v2_f32x4 = vld1q_f32(vector2 + v);
     // Vector multiply 4 float
-    float32x4_t mul_32x4 = vmulq_f32(v1_f32x4, v2_f32x4);
+    const float32x4_t mul_32x4 = vmulq_f32(v1_f32x4, v2_f32x4);
     // Save to result array.
-    vst1q_f32(&result[v], mul_32x4);
+    vst1q_f32(result + v, mul_32x4);
   }
+#pragma clang loop vectorize(disable) unroll(disable)
   for (; v < v_size; v++) {
     result[v] = vector1[v] * vector2[v];
   }
@@ -1854,80 +1851,17 @@ void NeonVectorVectorCwiseProductAccumulate(const float* vector1,
   int v = 0;
   for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
     // Load 4 float values from vector1 and vector2 and accumulator.
-    float32x4_t v1_f32x4 = vld1q_f32(vector1 + v);
-    float32x4_t v2_f32x4 = vld1q_f32(vector2 + v);
+    const float32x4_t v1_f32x4 = vld1q_f32(vector1 + v);
+    const float32x4_t v2_f32x4 = vld1q_f32(vector2 + v);
     float32x4_t acc_32x4 = vld1q_f32(result + v);
     // Vector multiply-accumulate 4 float
     acc_32x4 = vmlaq_f32(acc_32x4, v1_f32x4, v2_f32x4);
     // Save to result array.
-    vst1q_f32(&result[v], acc_32x4);
+    vst1q_f32(result + v, acc_32x4);
   }
+#pragma clang loop vectorize(disable) unroll(disable)
   for (; v < v_size; v++) {
     result[v] += vector1[v] * vector2[v];
-  }
-}
-
-void NeonVectorBatchVectorCwiseProduct(const float* vector, int v_size,
-                                       const float* batch_vector, int n_batch,
-                                       float* result) {
-  // If v_size is not divisible by the vector size, then we need to process the
-  // final few elements sequentially. postamble_start shows the start index
-  // where this should happen.
-  const int postamble_start =
-      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
-
-  for (int b = 0; b < n_batch; b++) {
-    int v = 0;
-    for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
-      // Load from memory to vectors.
-      float32x4_t batch_vector_f32x4 = vld1q_f32(batch_vector + v);
-      float32x4_t vector_f32x4 = vld1q_f32(vector + v);
-      // Multiply.
-      float32x4_t result_f32x4 = vmulq_f32(batch_vector_f32x4, vector_f32x4);
-      // Store.
-      vst1q_f32(result + v, result_f32x4);
-    }
-    // Postamble loop
-    for (; v < v_size; v++) {
-      result[v] = vector[v] * batch_vector[v];
-    }
-    // Update the pointers.
-    result += v_size;
-    batch_vector += v_size;
-  }
-}
-
-void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
-                                                 int v_size,
-                                                 const float* batch_vector,
-                                                 int n_batch, float* result) {
-  // If v_size is not divisible by the vector size, then we need to process the
-  // final few elements sequentially. postamble_start shows the start index
-  // where this should happen.
-  const int postamble_start =
-      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
-
-  float* result_ptr = result;
-  const float* batch_vector_ptr = batch_vector;
-  for (int b = 0; b < n_batch; b++) {
-    int v = 0;
-    for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
-      // Load from memory to vectors.
-      float32x4_t result_f32x4 = vld1q_f32(result_ptr + v);
-      float32x4_t batch_vector_f32x4 = vld1q_f32(batch_vector_ptr + v);
-      float32x4_t vector_f32x4 = vld1q_f32(vector + v);
-      // Multiply-accumulate.
-      result_f32x4 = vmlaq_f32(result_f32x4, batch_vector_f32x4, vector_f32x4);
-      // Store.
-      vst1q_f32(result_ptr + v, result_f32x4);
-    }
-    // Postamble loop
-    for (; v < v_size; v++) {
-      result_ptr[v] += vector[v] * batch_vector_ptr[v];
-    }
-    // Update the pointers.
-    result_ptr += v_size;
-    batch_vector_ptr += v_size;
   }
 }
 

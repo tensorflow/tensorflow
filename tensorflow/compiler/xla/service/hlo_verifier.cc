@@ -1310,6 +1310,29 @@ Status VerifyAsynchronousCopies(const HloModule& module) {
   return Status::OK();
 }
 
+// Checks that AllReduce instructions in the module are either all layout
+// constrained or all unconstrained.
+Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
+  const HloAllReduceInstruction* reference = nullptr;
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() != HloOpcode::kAllReduce) {
+        continue;
+      }
+      auto all_reduce = DynCast<HloAllReduceInstruction>(instruction);
+      if (!reference) {
+        reference = all_reduce;
+      }
+      if (reference->constrain_layout() != all_reduce->constrain_layout()) {
+        return FailedPrecondition(
+            "HloModule has a mix of layout constrained and unconstrained "
+            "AllReduce instructions.");
+      }
+    }
+  }
+  return Status::OK();
+}
+
 // Checks various invariants of send and recv instructions.
 Status VerifySendsAndRecvs(const HloModule& module) {
   absl::flat_hash_map<int64, const HloInstruction*> host_channels;
@@ -1697,6 +1720,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
       }));
 
   TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().Verify(*module));
+  TF_RETURN_IF_ERROR(VerifyLayoutConstrainedAllReduce(*module));
 
   return false;
 }

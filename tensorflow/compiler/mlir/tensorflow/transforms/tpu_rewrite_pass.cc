@@ -109,13 +109,13 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     return parent_module.emitError(CreateMissingAttributeMsg(kVersionsAttr));
 
   module_for_func.get().getOperation()->setAttr(kVersionsAttr, versions_attr);
-  ModuleManager module_manager(module_for_func.get());
+  SymbolTable symbol_table(module_for_func.get());
 
   while (!referenced.empty()) {
     auto func = referenced.pop_back_val();
 
     // Skip functions that have already been cloned into new module.
-    if (module_manager.lookupSymbol<FuncOp>(func.getName())) continue;
+    if (symbol_table.lookup<FuncOp>(func.getName())) continue;
 
     // Find any SymbolRefAttr in func that maps to a FuncOp. We need to clone
     // all found FuncOps to new_module to make sure new_module is
@@ -138,7 +138,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
       // should be no other reference to it.
       clone.setName("main");
     }
-    module_manager.insert(clone);
+    symbol_table.insert(clone);
   }
 
   // Serialize module and return.

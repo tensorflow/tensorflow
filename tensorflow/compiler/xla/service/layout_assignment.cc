@@ -432,6 +432,12 @@ bool IsLayoutConstrainedCustomCall(HloInstruction* instruction) {
   return custom_call != nullptr && custom_call->layout_constrained();
 }
 
+bool IsLayoutConstrainedAllReduce(HloInstruction* instruction) {
+  const HloAllReduceInstruction* all_reduce =
+      DynCast<HloAllReduceInstruction>(instruction);
+  return all_reduce != nullptr && all_reduce->constrain_layout();
+}
+
 }  // namespace
 
 Status LayoutAssignment::AddMandatoryConstraints(
@@ -516,6 +522,9 @@ Status LayoutAssignment::AddMandatoryConstraints(
         TF_RETURN_IF_ERROR(
             constraints->SetBufferLayout(new_shape.layout(), *buffer));
       }
+    } else if (IsLayoutConstrainedAllReduce(instruction)) {
+      TF_RETURN_IF_ERROR(
+          constraints->SetInstructionLayout(instruction->shape(), instruction));
     } else if (instruction->IsCrossModuleAllReduce()) {
       CHECK(get_channel_constraints(instruction))
           << "Multi-module layout assignment requires ChannelLayoutConstraints";
@@ -1765,7 +1774,8 @@ Status LayoutAssignment::ClearComputationLayouts(HloComputation* computation) {
     }
     // Some instructions carry mandatory layouts in their shape.
     if (instruction->opcode() != HloOpcode::kInfeed &&
-        !IsLayoutConstrainedCustomCall(instruction)) {
+        !IsLayoutConstrainedCustomCall(instruction) &&
+        !IsLayoutConstrainedAllReduce(instruction)) {
       LayoutUtil::ClearLayout(instruction->mutable_shape());
     }
   }

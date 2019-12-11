@@ -66,9 +66,12 @@ function, a value defined at the top level of that function (outside of all
 loops and if operations), the result of a
 [`constant` operation](Standard.md#constant-operation), or the result of an
 [`affine.apply` operation](#affineapply-operation) that recursively takes as
-arguments any symbolic identifiers. Dimensions may be bound not only to anything
-that a symbol is bound to, but also to induction variables of enclosing
-[`affine.for` operations](#affinefor-operation), and the result of an
+arguments any symbolic identifiers, or the result of a [`dim`
+operation](Standard.md#dim-operation) on either a memref that is a function
+argument or a memref where the corresponding dimension is either static or a
+dynamic one in turn bound to a symbolic identifier.  Dimensions may be bound not
+only to anything that a symbol is bound to, but also to induction variables of
+enclosing [`affine.for` operations](#affinefor-operation), and the result of an
 [`affine.apply` operation](#affineapply-operation) (which recursively may use
 other dimensions and symbols).
 

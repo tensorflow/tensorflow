@@ -67,6 +67,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
     "if_android",
+    "if_chromiumos",
     "if_emscripten",
     "if_ios",
     "if_mobile",
@@ -105,6 +106,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_additional_core_deps",
+    "tf_additional_env_hdrs",
     "tf_additional_lib_deps",
     "tf_additional_monitoring_hdrs",
     "tf_additional_test_deps",
@@ -241,6 +243,7 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         ":error_codes_proto_impl",
+        ":test_log_proto_impl",
         ":core_protos",
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/lib/core:error_codes_proto",
@@ -401,7 +404,7 @@ filegroup(
         "//tensorflow/core/platform:file_statistics.h",
         "//tensorflow/core/platform:file_system.h",
         "//tensorflow/core/platform:path.h",
-    ],
+    ] + tf_additional_env_hdrs(),
     visibility = ["//visibility:private"],
 )
 
@@ -467,7 +470,6 @@ cc_library(
         "//tensorflow/core/lib/core:legacy_lib_proto_parsing_headers",
         "//tensorflow/core/lib/strings:legacy_lib_proto_parsing_headers",
         "//tensorflow/core/platform:init_main.h",
-        "//tensorflow/core/platform:legacy_proto_hdrs",
         "//tensorflow/core/platform:logging.h",
         "//tensorflow/core/platform:macros.h",
         "//tensorflow/core/platform:platform.h",
@@ -571,6 +573,24 @@ cc_library(
     ],
 )
 
+# TODO(gunan): Move this to core/util/BUILD once the  file is created
+cc_library(
+    name = "util_reporter",
+    srcs = ["util/reporter.cc"],
+    hdrs = ["util/reporter.h"],
+    # This should only be used in tensorflow/core/platform:test_benchmark
+    visibility = ["//tensorflow/core/platform:__subpackages__"],
+    deps = [
+        ":test_log_proto_impl_cc",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
 # Test support library needed for all tests
 # This is currently public, but may be made internal in the
 # future.  Try to avoid depending on it.
@@ -578,7 +598,6 @@ cc_library(
     name = "test",
     testonly = 1,
     srcs = [
-        "util/reporter.cc",
         "//tensorflow/core/platform:legacy_test_srcs",
     ],
     hdrs = [
@@ -1557,7 +1576,6 @@ filegroup(
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
-        "//tensorflow/core/platform:legacy_srcs_no_runtime",
         "//tensorflow/core/profiler:mobile_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
         "//tensorflow/core/util/sparse:mobile_srcs_no_runtime_group",
@@ -1592,6 +1610,9 @@ filegroup(
             "common_runtime/eager/*",
             "common_runtime/gpu_device_factory.*",
         ],
+    ) + if_chromiumos(
+        ["//tensorflow/core/platform:legacy_srcs_no_runtime_google"],
+        otherwise = ["//tensorflow/core/platform:legacy_srcs_no_runtime"],
     ),
     visibility = ["//visibility:private"],
 )
@@ -2099,6 +2120,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = [
     "//tensorflow/core/lib/random:legacy_lib_internal_public_random_headers",
     "//tensorflow/core/lib/strings:legacy_lib_internal_public_string_headers",
     "lib/wav/wav_io.h",
+    "//tensorflow/core/platform:blocking_counter.h",
     "//tensorflow/core/platform:demangle.h",
     "//tensorflow/core/platform:denormal.h",
     "//tensorflow/core/platform:host_info.h",
@@ -2153,8 +2175,6 @@ cc_library(
             "lib/png/**/*",
         ],
     ) + [
-        "//tensorflow/core/platform:legacy_monitoring_srcs",
-        "//tensorflow/core/platform:legacy_platform_lib_srcs",
         "//tensorflow/core/platform:legacy_lib_internal_srcs",
     ],
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
@@ -2162,6 +2182,7 @@ cc_library(
     deps = tf_additional_lib_deps() + [
         ":core_stringpiece",
         ":lib_proto_parsing",
+        ":util_reporter",  # TODO(gunan): REMOVE as soon as cc_shared_library is supported.
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
@@ -2241,6 +2262,7 @@ cc_library(
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/lib/strings:stringprintf",
         "//tensorflow/core/platform:abi",
+        "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:coding",
         "//tensorflow/core/platform:context",
@@ -2256,6 +2278,7 @@ cc_library(
         "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:load_library",
         "//tensorflow/core/platform:logger",
+        "//tensorflow/core/platform:monitoring",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:notification",
         "//tensorflow/core/platform:net",
@@ -2269,6 +2292,8 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:setround",
+        "//tensorflow/core/platform:stacktrace",
+        "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
@@ -2457,6 +2482,15 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "test_log_proto_impl",
+    srcs = ["util/test_log.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    # Not to be used outside this file.
+    visibility = ["//visibility:private"],
+)
+
+tf_proto_library(
     name = "core_protos",
     srcs = COMMON_PROTO_SRCS + [
         # Protos which are not needed on mobile builds, but should be included
@@ -2479,12 +2513,12 @@ tf_proto_library(
         "protobuf/tensorflow_server.proto",
         "protobuf/trackable_object_graph.proto",
         "protobuf/transport_options.proto",
-        "util/test_log.proto",
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":error_codes_proto_impl",
+        ":test_log_proto_impl",
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/lib/core:error_codes_proto",
         "//tensorflow/core/profiler/protobuf:xplane_proto",
@@ -2672,6 +2706,8 @@ tf_cuda_library(
         "@com_google_absl//absl/time",
         "//third_party/eigen3",
         "//tensorflow/core/framework:attr_value_proto_text",
+        "//tensorflow/core/framework:bfloat16",
+        "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:traceme",
@@ -2749,7 +2785,7 @@ tf_cuda_library(
     deps = [":framework_lite"],
 )
 
-# TODO(josh11b): Is this needed, or can we just use ":protos_all"?
+# TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
 cc_library(
     name = "protos_cc",
     visibility = ["//visibility:public"],

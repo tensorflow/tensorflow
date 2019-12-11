@@ -65,6 +65,15 @@ public:
   static AffineMap getMultiDimIdentityMap(unsigned numDims,
                                           MLIRContext *context);
 
+  /// Returns an AffineMap representing a permutation.
+  /// The permutation is expressed as a non-empty vector of integers.
+  /// E.g. the permutation `(i,j,k) -> (j,k,i)` will be expressed with
+  /// `permutation = [1,2,0]`. All values in `permutation` must be
+  /// integers, in the range 0..`permutation.size()-1` without duplications
+  /// (i.e. `[1,1,2]` is an invalid permutation).
+  static AffineMap getPermutationMap(ArrayRef<unsigned> permutation,
+                                     MLIRContext *context);
+
   MLIRContext *getContext() const;
 
   explicit operator bool() { return map != nullptr; }

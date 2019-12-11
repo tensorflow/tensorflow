@@ -85,7 +85,7 @@ LookupInterface* CreateStaticHashtableWithGivenKey(TfLiteType key_type,
                                                    TfLiteType value_type) {
   switch (value_type) {
     case kTfLiteInt32:
-      return new StaticHashtable<KeyType, int32>(key_type, value_type);
+      return new StaticHashtable<KeyType, std::int32_t>(key_type, value_type);
     case kTfLiteString:
       return new StaticHashtable<KeyType, std::string>(key_type, value_type);
     case kTfLiteFloat32:
@@ -99,7 +99,8 @@ LookupInterface* CreateStaticHashtable(TfLiteType key_type,
                                        TfLiteType value_type) {
   switch (key_type) {
     case kTfLiteInt32:
-      return CreateStaticHashtableWithGivenKey<int32>(key_type, value_type);
+      return CreateStaticHashtableWithGivenKey<std::int32_t>(key_type,
+                                                             value_type);
     case kTfLiteString:
       return CreateStaticHashtableWithGivenKey<std::string>(key_type,
                                                             value_type);

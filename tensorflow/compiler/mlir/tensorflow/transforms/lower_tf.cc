@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace mlir {
@@ -109,6 +110,39 @@ Type InferExpandDimsType(Type ty, int64_t axis, Builder *builder) {
   return RankedTensorType::get(shape, ranked_ty.getElementType());
 }
 
+// Lowers AddN op to a sequence of AddV2 ops to accumulate operands.
+//
+//   %result = "tf.AddN"(%0, %1, %2)
+//
+// is lowered to:
+//
+//   %sum_0 = "tf.AddV2"(%0, %1)
+//   %result = "tf.AddV2"(%sum_0, %2)
+//
+class LowerAddNOp : public OpRewritePattern<TF::AddNOp> {
+ public:
+  explicit LowerAddNOp(MLIRContext *context)
+      : OpRewritePattern<TF::AddNOp>(context) {}
+
+  PatternMatchResult matchAndRewrite(TF::AddNOp op,
+                                     PatternRewriter &rewriter) const override {
+    // TODO(hinsu): Support variant with TensorList type. tf.AddV2 doesn't
+    // support variant type so variant types require special handling.
+    if (getElementTypeOrSelf(op.getType()).isa<VariantType>())
+      return matchFailure();
+
+    // TODO(hinsu): Improve parallelism by splitting operands in two halves and
+    // accumulating them first.
+    Value *result = *op.inputs().begin();
+    for (Value *operand : llvm::drop_begin(op.inputs(), 1)) {
+      result = rewriter.create<TF::AddV2Op>(op.getLoc(), result, operand);
+    }
+
+    rewriter.replaceOp(op, result);
+    return matchSuccess();
+  }
+};
+
 // Lowers Pack op to ConcatV2 op after changing shape of the inputs with
 // ExpandDims op.
 //
@@ -159,6 +193,7 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
+  patterns->insert<LowerAddNOp>(context);
   patterns->insert<LowerPackOp>(context);
   populateWithGenerated(context, patterns);
 }

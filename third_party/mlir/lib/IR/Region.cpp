@@ -213,3 +213,21 @@ void llvm::ilist_traits<::mlir::Block>::transferNodesFromList(
   for (; first != last; ++first)
     first->parentValidOpOrderPair.setPointer(curParent);
 }
+
+//===----------------------------------------------------------------------===//
+// RegionRange
+//===----------------------------------------------------------------------===//
+RegionRange::RegionRange(MutableArrayRef<Region> regions)
+    : owner(regions.data()), count(regions.size()) {}
+RegionRange::RegionRange(ArrayRef<std::unique_ptr<Region>> regions)
+    : owner(regions.data()), count(regions.size()) {}
+RegionRange::Iterator::Iterator(OwnerT owner, unsigned curIndex)
+    : indexed_accessor_iterator<Iterator, OwnerT, Region *, Region *, Region *>(
+          owner, curIndex) {}
+
+Region *RegionRange::Iterator::operator*() const {
+  if (const std::unique_ptr<Region> *operand =
+          object.dyn_cast<const std::unique_ptr<Region> *>())
+    return operand[index].get();
+  return &object.get<Region *>()[index];
+}

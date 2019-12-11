@@ -711,6 +711,11 @@ TfLiteStatus QuantizeIntemediateTensors(ModelT* model,
 // Quantize tensros that have shared range. For example, in LSTM, the output
 // tensor and input state tensor should share the same range because they are
 // using the same scale and zero point.
+// We have to model this explicitely because the output is modeled as an extra
+// tensor in LSTM. In calibrator, state tensors are logged both before and after
+// the inferece so the range is fully captured. But output, although it is
+// identical to activation, is not a state tensor the input value (range) of the
+// very first inference is not captured.
 TfLiteStatus QuantizeSharedRange(ModelT* model, ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {

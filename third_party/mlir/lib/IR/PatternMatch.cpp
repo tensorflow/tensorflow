@@ -85,8 +85,8 @@ PatternRewriter::~PatternRewriter() {
 /// clients can specify a list of other nodes that this replacement may make
 /// (perhaps transitively) dead.  If any of those ops are dead, this will
 /// remove them as well.
-void PatternRewriter::replaceOp(Operation *op, ArrayRef<Value *> newValues,
-                                ArrayRef<Value *> valuesToRemoveIfDead) {
+void PatternRewriter::replaceOp(Operation *op, ValueRange newValues,
+                                ValueRange valuesToRemoveIfDead) {
   // Notify the rewriter subclass that we're about to replace this root.
   notifyRootReplaced(op);
 
@@ -114,7 +114,7 @@ void PatternRewriter::eraseOp(Operation *op) {
 /// 'argValues' is used to replace the block arguments of 'source' after
 /// merging.
 void PatternRewriter::mergeBlocks(Block *source, Block *dest,
-                                  ArrayRef<Value *> argValues) {
+                                  ValueRange argValues) {
   assert(llvm::all_of(source->getPredecessors(),
                       [dest](Block *succ) { return succ == dest; }) &&
          "expected 'source' to have no predecessors or only 'dest'");
@@ -141,15 +141,12 @@ Block *PatternRewriter::splitBlock(Block *block, Block::iterator before) {
 /// op and newOp are known to have the same number of results, replace the
 /// uses of op with uses of newOp
 void PatternRewriter::replaceOpWithResultsOfAnotherOp(
-    Operation *op, Operation *newOp, ArrayRef<Value *> valuesToRemoveIfDead) {
+    Operation *op, Operation *newOp, ValueRange valuesToRemoveIfDead) {
   assert(op->getNumResults() == newOp->getNumResults() &&
          "replacement op doesn't match results of original op");
   if (op->getNumResults() == 1)
     return replaceOp(op, newOp->getResult(0), valuesToRemoveIfDead);
-
-  SmallVector<Value *, 8> newResults(newOp->getResults().begin(),
-                                     newOp->getResults().end());
-  return replaceOp(op, newResults, valuesToRemoveIfDead);
+  return replaceOp(op, newOp->getResults(), valuesToRemoveIfDead);
 }
 
 /// Move the blocks that belong to "region" before the given position in
@@ -190,8 +187,8 @@ void PatternRewriter::cloneRegionBefore(Region &region, Block *before) {
 /// The opsToRemoveIfDead list is an optional list of nodes that the rewriter
 /// should remove if they are dead at this point.
 ///
-void PatternRewriter::updatedRootInPlace(
-    Operation *op, ArrayRef<Value *> valuesToRemoveIfDead) {
+void PatternRewriter::updatedRootInPlace(Operation *op,
+                                         ValueRange valuesToRemoveIfDead) {
   // Notify the rewriter subclass that we're about to replace this root.
   notifyRootUpdated(op);
 

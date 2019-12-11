@@ -880,11 +880,8 @@ static OwningModuleRef FlatBufferFileToMlirTrans(llvm::SourceMgr* source_mgr,
       mlir::FileLineColLoc::get(input->getBufferIdentifier(), 0, 0, context);
 
   // Parses output_arrays_order from command line option.
-  absl::flat_hash_set<std::string> output_set;
-  std::vector<std::string> output_arrays_order;
-  if (!tensorflow::ParseOutputArrayInfo(output_arrays_string, &output_set,
-                                        &output_arrays_order)
-           .ok()) {
+  std::vector<std::string> outputs;
+  if (!tensorflow::ParseOutputArrayInfo(output_arrays_string, &outputs).ok()) {
     return emitError(loc, "parsing output array info failed ")
                << output_arrays_string,
            nullptr;
@@ -892,7 +889,7 @@ static OwningModuleRef FlatBufferFileToMlirTrans(llvm::SourceMgr* source_mgr,
 
   return tflite::FlatBufferToMlir(
       absl::string_view(input->getBufferStart(), input->getBufferSize()),
-      context, loc, output_arrays_order);
+      context, loc, outputs);
 }
 
 static mlir::TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(

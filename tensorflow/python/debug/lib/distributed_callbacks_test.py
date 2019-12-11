@@ -266,7 +266,7 @@ class DistributedDumpingCallbackTest(
      tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
 
     # Eager execution of tf.function should be recorded.
-    executed_op_types, _, _, _, _ = self._readAndCheckExecutionFile()
+    executed_op_types, _, _, _, _, _ = self._readAndCheckExecutionFile()
     fit_functions = [op_type for op_type in executed_op_types
                      if "_distributed_function" in op_type]
     self.assertLen(fit_functions, epochs)

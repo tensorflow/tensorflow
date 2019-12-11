@@ -61,6 +61,10 @@ public:
   /// 'gpu.kernel' attribute.
   static bool isKernel(Operation *op);
 
+  /// Returns the numeric value used to identify the workgroup memory address
+  /// space.
+  static int getWorkgroupAddressSpace() { return 3; }
+
   LogicalResult verifyOperationAttribute(Operation *op,
                                          NamedAttribute attr) override;
 };
@@ -73,74 +77,6 @@ struct KernelDim3 {
   Value *z;
 };
 
-/// GPU kernel launch operation.  Takes a 3D grid of thread blocks as leading
-/// operands, followed by kernel data operands.  Has one region representing
-/// the kernel to be executed.  This region is not allowed to use values defined
-/// outside it.
-class LaunchOp : public Op<LaunchOp, OpTrait::AtLeastNOperands<6>::Impl,
-                           OpTrait::ZeroResult, OpTrait::IsIsolatedFromAbove> {
-public:
-  using Op::Op;
-
-  static void build(Builder *builder, OperationState &result, Value *gridSizeX,
-                    Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
-                    Value *blockSizeY, Value *blockSizeZ,
-                    ArrayRef<Value *> operands);
-
-  /// Get the kernel region.
-  Region &getBody();
-
-  /// Get the SSA values corresponding to kernel block identifiers.
-  KernelDim3 getBlockIds();
-  /// Get the SSA values corresponding to kernel thread identifiers.
-  KernelDim3 getThreadIds();
-  /// Get the SSA values corresponding to kernel grid size.
-  KernelDim3 getGridSize();
-  /// Get the SSA values corresponding to kernel block size.
-  KernelDim3 getBlockSize();
-  /// Get the operand values passed as kernel arguments.
-  operand_range getKernelOperandValues();
-  /// Get the operand types passed as kernel arguments.
-  operand_type_range getKernelOperandTypes();
-
-  /// Get the SSA values passed as operands to specify the grid size.
-  KernelDim3 getGridSizeOperandValues();
-  /// Get the SSA values passed as operands to specify the block size.
-  KernelDim3 getBlockSizeOperandValues();
-
-  /// Get the SSA values of the kernel arguments.
-  llvm::iterator_range<Block::args_iterator> getKernelArguments();
-
-  LogicalResult verify();
-
-  /// Custom syntax support.
-  void print(OpAsmPrinter &p);
-  static ParseResult parse(OpAsmParser &parser, OperationState &result);
-
-  static StringRef getOperationName() { return "gpu.launch"; }
-
-  /// Erase the `index`-th kernel argument.  Both the entry block argument and
-  /// the operand will be dropped.  The block argument must not have any uses.
-  void eraseKernelArgument(unsigned index);
-
-  /// Append canonicalization patterns to `results`.
-  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                          MLIRContext *context);
-
-private:
-  static StringRef getBlocksKeyword() { return "blocks"; }
-  static StringRef getThreadsKeyword() { return "threads"; }
-  static StringRef getArgsKeyword() { return "args"; }
-
-  /// The number of launch configuration operands, placed at the leading
-  /// positions of the operand list.
-  static constexpr unsigned kNumConfigOperands = 6;
-
-  /// The number of region attributes containing the launch configuration,
-  /// placed in the leading positions of the argument list.
-  static constexpr unsigned kNumConfigRegionAttributes = 12;
-};
-
 /// Operation to launch a kernel given as outlined function.
 class LaunchFuncOp : public Op<LaunchFuncOp, OpTrait::AtLeastNOperands<6>::Impl,
                                OpTrait::ZeroResult> {
@@ -150,11 +86,11 @@ public:
   static void build(Builder *builder, OperationState &result, FuncOp kernelFunc,
                     Value *gridSizeX, Value *gridSizeY, Value *gridSizeZ,
                     Value *blockSizeX, Value *blockSizeY, Value *blockSizeZ,
-                    ArrayRef<Value *> kernelOperands);
+                    ValueRange kernelOperands);
 
   static void build(Builder *builder, OperationState &result, FuncOp kernelFunc,
                     KernelDim3 gridSize, KernelDim3 blockSize,
-                    ArrayRef<Value *> kernelOperands);
+                    ValueRange kernelOperands);
 
   /// The kernel function specified by the operation's `kernel` attribute.
   StringRef kernel();
@@ -191,88 +127,6 @@ private:
   /// The name of the symbolRef attribute specifying the name of the module
   /// containing the kernel to launch.
   static StringRef getKernelModuleAttrName() { return "kernel_module"; }
-};
-
-class GPUFuncOp : public Op<GPUFuncOp, OpTrait::FunctionLike,
-                            OpTrait::IsIsolatedFromAbove, OpTrait::Symbol> {
-public:
-  using Op::Op;
-
-  /// Returns the name of the operation.
-  static StringRef getOperationName() { return "gpu.func"; }
-
-  /// Constructs a FuncOp, hook for Builder methods.
-  static void build(Builder *builder, OperationState &result, StringRef name,
-                    FunctionType type, ArrayRef<Type> workgroupAttributions,
-                    ArrayRef<Type> privateAttributions,
-                    ArrayRef<NamedAttribute> attrs);
-
-  /// Prints the Op in custom format.
-  void print(OpAsmPrinter &p);
-
-  /// Parses the Op in custom format.
-  static ParseResult parse(OpAsmParser &parser, OperationState &result);
-
-  /// Returns `true` if the GPU function defined by this Op is a kernel, i.e.
-  /// it is intended to be launched from host.
-  bool isKernel() {
-    return getAttrOfType<UnitAttr>(GPUDialect::getKernelFuncAttrName()) !=
-           nullptr;
-  }
-
-  /// Returns the type of the function this Op defines.
-  FunctionType getType() {
-    return getTypeAttr().getValue().cast<FunctionType>();
-  }
-
-  /// Returns the number of buffers located in the workgroup memory.
-  unsigned getNumWorkgroupAttributions() {
-    return getAttrOfType<IntegerAttr>(getNumWorkgroupAttributionsAttrName())
-        .getInt();
-  }
-
-  /// Returns a list of block arguments that correspond to buffers located in
-  /// the workgroup memory
-  ArrayRef<BlockArgument *> getWorkgroupAttributions() {
-    auto begin =
-        std::next(getBody().front().args_begin(), getType().getNumInputs());
-    auto end = std::next(begin, getNumWorkgroupAttributions());
-    return {begin, end};
-  }
-
-  /// Returns a list of block arguments that correspond to buffers located in
-  /// the private memory.
-  ArrayRef<BlockArgument *> getPrivateAttributions() {
-    auto begin =
-        std::next(getBody().front().args_begin(),
-                  getType().getNumInputs() + getNumWorkgroupAttributions());
-    return {begin, getBody().front().args_end()};
-  }
-
-private:
-  // FunctionLike trait needs access to the functions below.
-  friend class OpTrait::FunctionLike<GPUFuncOp>;
-
-  /// Hooks for the input/output type enumeration in FunctionLike .
-  unsigned getNumFuncArguments() { return getType().getNumInputs(); }
-  unsigned getNumFuncResults() { return getType().getNumResults(); }
-
-  /// Returns the name of the attribute containing the number of buffers located
-  /// in the workgroup memory.
-  static StringRef getNumWorkgroupAttributionsAttrName() {
-    return "workgroup_attibutions";
-  }
-
-  /// Returns the keywords used in the custom syntax for this Op.
-  static StringRef getWorkgroupKeyword() { return "workgroup"; }
-  static StringRef getPrivateKeyword() { return "private"; }
-  static StringRef getKernelKeyword() { return "kernel"; }
-
-  /// Hook for FunctionLike verifier.
-  LogicalResult verifyType();
-
-  /// Verifies the body of the function.
-  LogicalResult verifyBody();
 };
 
 #define GET_OP_CLASSES

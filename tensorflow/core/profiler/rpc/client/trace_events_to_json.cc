@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/rpc/client/trace_events_to_json.h"
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "include/json/json.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/protobuf/trace_events.pb.h"
 
 namespace tensorflow {
@@ -26,94 +26,91 @@ namespace profiler {
 namespace client {
 namespace {
 
-using ::tensorflow::strings::Appendf;
-using ::tensorflow::strings::StrAppend;
-
 constexpr double kPicosPerMicro = 1000000.0;
 
-inline void AppendEscapedName(string* json, const string& name) {
-  StrAppend(json, "\"name\":", Json::valueToQuotedString(name.c_str()).c_str());
+inline void AppendEscapedName(string *json, const string &name) {
+  absl::StrAppend(json, "\"name\":", Json::valueToQuotedString(name.c_str()));
 }
 
 // Adds resource events for a single device.
 void AddResourceMetadata(uint32 device_id,
-                         const std::map<uint32, const Resource*>& resources,
-                         string* json) {
-  for (const auto& pair : resources) {
+                         const std::map<uint32, const Resource *> &resources,
+                         string *json) {
+  for (const auto &pair : resources) {
     uint32 resource_id = pair.first;
-    const Resource& resource = *pair.second;
+    const Resource &resource = *pair.second;
     if (!resource.name().empty()) {
-      Appendf(json,
-              R"({"ph":"M","pid":%u,"tid":%u,)"
-              R"("name":"thread_name","args":{)",
-              device_id, resource_id);
+      absl::StrAppendFormat(json,
+                            R"({"ph":"M","pid":%u,"tid":%u,)"
+                            R"("name":"thread_name","args":{)",
+                            device_id, resource_id);
       AppendEscapedName(json, resource.name());
-      Appendf(json, "}},");
+      absl::StrAppend(json, "}},");
     }
-    Appendf(json,
-            R"({"ph":"M","pid":%u,"tid":%u,)"
-            R"("name":"thread_sort_index","args":{"sort_index":%u}},)",
-            device_id, resource_id, resource_id);
+    absl::StrAppendFormat(
+        json,
+        R"({"ph":"M","pid":%u,"tid":%u,)"
+        R"("name":"thread_sort_index","args":{"sort_index":%u}},)",
+        device_id, resource_id, resource_id);
   }
 }
 
-void AddDeviceMetadata(const std::map<uint32, const Device*>& devices,
-                       string* json) {
-  for (const auto& pair : devices) {
+void AddDeviceMetadata(const std::map<uint32, const Device *> &devices,
+                       string *json) {
+  for (const auto &pair : devices) {
     uint32 device_id = pair.first;
-    const Device& device = *pair.second;
+    const Device &device = *pair.second;
     if (!device.name().empty()) {
-      Appendf(json,
-              R"({"ph":"M","pid":%u,"name":"process_name",)"
-              R"("args":{)",
-              device_id);
+      absl::StrAppendFormat(json,
+                            R"({"ph":"M","pid":%u,"name":"process_name",)"
+                            R"("args":{)",
+                            device_id);
       AppendEscapedName(json, device.name());
-      StrAppend(json, "}},");
+      absl::StrAppend(json, "}},");
     }
-    Appendf(json,
-            R"({"ph":"M","pid":%u,"name":"process_sort_index",)"
-            R"("args":{"sort_index":%u}},)",
-            device_id, device_id);
+    absl::StrAppendFormat(json,
+                          R"({"ph":"M","pid":%u,"name":"process_sort_index",)"
+                          R"("args":{"sort_index":%u}},)",
+                          device_id, device_id);
     // Convert to a std::map so that devices are sorted by the device id.
-    std::map<uint32, const Resource*> sorted_resources;
-    for (const auto& pair : device.resources()) {
+    std::map<uint32, const Resource *> sorted_resources;
+    for (const auto &pair : device.resources()) {
       sorted_resources[pair.first] = &pair.second;
     }
     AddResourceMetadata(device_id, sorted_resources, json);
   }
 }
 
-inline void AddTraceEvent(const TraceEvent& event, string* json) {
-  Appendf(json, R"({"pid":%u,"tid":%u,"ts":%.5f,)", event.device_id(),
-          event.resource_id(), event.timestamp_ps() / kPicosPerMicro);
+inline void AddTraceEvent(const TraceEvent &event, string *json) {
+  absl::StrAppendFormat(json, R"({"pid":%u,"tid":%u,"ts":%.5f,)",
+                        event.device_id(), event.resource_id(),
+                        event.timestamp_ps() / kPicosPerMicro);
   AppendEscapedName(json, event.name());
-  StrAppend(json, ",");
+  absl::StrAppend(json, ",");
   if (event.duration_ps() > 0) {
-    Appendf(json, R"("ph":"X","dur":%.5f},)",
-            event.duration_ps() / kPicosPerMicro);
+    absl::StrAppendFormat(json, R"("ph":"X","dur":%.5f},)",
+                          event.duration_ps() / kPicosPerMicro);
   } else {
-    StrAppend(json, R"("ph":"i","s":"t"},)");
+    absl::StrAppend(json, R"("ph":"i","s":"t"},)");
   }
 }
 
 }  // namespace
 
-string TraceEventsToJson(const Trace& trace) {
-  string json;
-  Appendf(&json,
-          R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true},)");
-  Appendf(&json, R"("traceEvents":[)");
+string TraceEventsToJson(const Trace &trace) {
+  string json = R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true},)"
+                R"("traceEvents":[)";
   // Convert to a std::map so that devices are sorted by the device id.
-  std::map<uint32, const Device*> sorted_devices;
-  for (const auto& pair : trace.devices()) {
+  std::map<uint32, const Device *> sorted_devices;
+  for (const auto &pair : trace.devices()) {
     sorted_devices[pair.first] = &pair.second;
   }
   AddDeviceMetadata(sorted_devices, &json);
-  for (const TraceEvent& event : trace.trace_events()) {
+  for (const TraceEvent &event : trace.trace_events()) {
     AddTraceEvent(event, &json);
   }
   // Add one fake event to avoid dealing with no-trailing-comma rule.
-  Appendf(&json, R"({}]})");
+  absl::StrAppend(&json, "{}]}");
   return json;
 }
 

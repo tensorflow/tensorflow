@@ -136,8 +136,7 @@ Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
                              ArrayRef<Value *> operands,
                              NamedAttributeList attributes,
-                             ArrayRef<Block *> successors,
-                             ArrayRef<std::unique_ptr<Region>> regions,
+                             ArrayRef<Block *> successors, RegionRange regions,
                              bool resizableOperandList) {
   unsigned numRegions = regions.size();
   Operation *op = create(location, name, resultTypes, operands, attributes,
@@ -286,7 +285,7 @@ void Operation::destroy() {
 /// Return the context this operation is associated with.
 MLIRContext *Operation::getContext() { return location->getContext(); }
 
-/// Return the dialact this operation is associated with, or nullptr if the
+/// Return the dialect this operation is associated with, or nullptr if the
 /// associated dialect is not registered.
 Dialect *Operation::getDialect() {
   if (auto *abstractOp = getAbstractOperation())
@@ -321,6 +320,13 @@ void Operation::replaceUsesOfWith(Value *from, Value *to) {
   for (auto &operand : getOpOperands())
     if (operand.get() == from)
       operand.set(to);
+}
+
+/// Replace the current operands of this operation with the ones provided in
+/// 'operands'. If the operands list is not resizable, the size of 'operands'
+/// must be less than or equal to the current number of operands.
+void Operation::setOperands(ValueRange operands) {
+  getOperandStorage().setOperands(this, operands);
 }
 
 //===----------------------------------------------------------------------===//
@@ -366,8 +372,11 @@ InFlightDiagnostic Operation::emitRemark(const Twine &message) {
 }
 
 //===----------------------------------------------------------------------===//
-// Other
+// Operation Ordering
 //===----------------------------------------------------------------------===//
+
+constexpr unsigned Operation::kInvalidOrderIdx;
+constexpr unsigned Operation::kOrderStride;
 
 /// Given an operation 'other' that is within the same parent block, return
 /// whether the current operation is before 'other' in the operation list
@@ -378,10 +387,75 @@ bool Operation::isBeforeInBlock(Operation *other) {
   assert(block && "Operations without parent blocks have no order.");
   assert(other && other->block == block &&
          "Expected other operation to have the same parent block.");
-  // Recompute the parent ordering if necessary.
-  if (!block->isOpOrderValid())
+  // If the order of the block is already invalid, directly recompute the
+  // parent.
+  if (!block->isOpOrderValid()) {
     block->recomputeOpOrder();
+  } else {
+    // Update the order either operation if necessary.
+    updateOrderIfNecessary();
+    other->updateOrderIfNecessary();
+  }
+
   return orderIndex < other->orderIndex;
+}
+
+/// Update the order index of this operation of this operation if necessary,
+/// potentially recomputing the order of the parent block.
+void Operation::updateOrderIfNecessary() {
+  assert(block && "expected valid parent");
+
+  // If the order is valid for this operation there is nothing to do.
+  if (hasValidOrder())
+    return;
+  Operation *blockFront = &block->front();
+  Operation *blockBack = &block->back();
+
+  // This method is expected to only be invoked on blocks with more than one
+  // operation.
+  assert(blockFront != blockBack && "expected more than one operation");
+
+  // If the operation is at the end of the block.
+  if (this == blockBack) {
+    Operation *prevNode = getPrevNode();
+    if (!prevNode->hasValidOrder())
+      return block->recomputeOpOrder();
+
+    // Add the stride to the previous operation.
+    orderIndex = prevNode->orderIndex + kOrderStride;
+    return;
+  }
+
+  // If this is the first operation try to use the next operation to compute the
+  // ordering.
+  if (this == blockFront) {
+    Operation *nextNode = getNextNode();
+    if (!nextNode->hasValidOrder())
+      return block->recomputeOpOrder();
+    // There is no order to give this operation.
+    if (nextNode->orderIndex == 0)
+      return block->recomputeOpOrder();
+
+    // If we can't use the stride, just take the middle value left. This is safe
+    // because we know there is at least one valid index to assign to.
+    if (nextNode->orderIndex <= kOrderStride)
+      orderIndex = (nextNode->orderIndex / 2);
+    else
+      orderIndex = kOrderStride;
+    return;
+  }
+
+  // Otherwise, this operation is between two others. Place this operation in
+  // the middle of the previous and next if possible.
+  Operation *prevNode = getPrevNode(), *nextNode = getNextNode();
+  if (!prevNode->hasValidOrder() || !nextNode->hasValidOrder())
+    return block->recomputeOpOrder();
+  unsigned prevOrder = prevNode->orderIndex, nextOrder = nextNode->orderIndex;
+
+  // Check to see if there is a valid order between the two.
+  if (prevOrder + 1 == nextOrder)
+    return block->recomputeOpOrder();
+  orderIndex = prevOrder + 1 + ((nextOrder - prevOrder) / 2);
 }
 
 //===----------------------------------------------------------------------===//
@@ -430,8 +504,8 @@ void llvm::ilist_traits<::mlir::Operation>::addNodeToList(Operation *op) {
   assert(!op->getBlock() && "already in a operation block!");
   op->block = getContainingBlock();
 
-  // Invalidate the block ordering.
-  op->block->invalidateOpOrder();
+  // Invalidate the order on the operation.
+  op->orderIndex = Operation::kInvalidOrderIdx;
 }
 
 /// This is a trait method invoked when a operation is removed from a block.
@@ -672,6 +746,67 @@ Operation *Operation::clone() {
 }
 
 //===----------------------------------------------------------------------===//
+// ValueRange
+//===----------------------------------------------------------------------===//
+
+ValueRange::ValueRange(ArrayRef<Value *> values)
+    : owner(values.data()), count(values.size()) {}
+ValueRange::ValueRange(llvm::iterator_range<OperandIterator> values)
+    : count(llvm::size(values)) {
+  if (count != 0) {
+    auto begin = values.begin();
+    owner = &begin.getObject()->getOpOperand(begin.getIndex());
+  }
+}
+ValueRange::ValueRange(llvm::iterator_range<ResultIterator> values)
+    : count(llvm::size(values)) {
+  if (count != 0) {
+    auto begin = values.begin();
+    owner = &begin.getObject()->getOpResult(begin.getIndex());
+  }
+}
+
+/// Drop the first N elements, and keep M elements.
+ValueRange ValueRange::slice(unsigned n, unsigned m) const {
+  assert(n + m <= size() && "Invalid specifier");
+  OwnerT newOwner;
+  if (OpOperand *operand = owner.dyn_cast<OpOperand *>())
+    newOwner = operand + n;
+  else if (OpResult *result = owner.dyn_cast<OpResult *>())
+    newOwner = result + n;
+  else
+    newOwner = owner.get<Value *const *>() + n;
+  return ValueRange(newOwner, m);
+}
+
+/// Drop the first n elements.
+ValueRange ValueRange::drop_front(unsigned n) const {
+  assert(size() >= n && "Dropping more elements than exist");
+  return slice(n, size() - n);
+}
+
+/// Drop the last n elements.
+ValueRange ValueRange::drop_back(unsigned n) const {
+  assert(size() >= n && "Dropping more elements than exist");
+  return ValueRange(owner, size() - n);
+}
+
+ValueRange::Iterator::Iterator(OwnerT owner, unsigned curIndex)
+    : indexed_accessor_iterator<Iterator, OwnerT, Value *, Value *, Value *>(
+          owner, curIndex) {}
+
+Value *ValueRange::Iterator::operator*() const {
+  // Operands access the held value via 'get'.
+  if (OpOperand *operand = object.dyn_cast<OpOperand *>())
+    return operand[index].get();
+  // An OpResult is a value, so we can return it directly.
+  if (OpResult *result = object.dyn_cast<OpResult *>())
+    return &result[index];
+  // Otherwise, this is a raw value array so just index directly.
+  return object.get<Value *const *>()[index];
+}
+
+//===----------------------------------------------------------------------===//
 // OpState trait class.
 //===----------------------------------------------------------------------===//
 
@@ -901,18 +1036,21 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultType(Operation *op) {
   return success();
 }
 
-static LogicalResult verifyBBArguments(Operation::operand_range operands,
-                                       Block *destBB, Operation *op) {
-  unsigned operandCount = std::distance(operands.begin(), operands.end());
+static LogicalResult verifySuccessor(Operation *op, unsigned succNo) {
+  Operation::operand_range operands = op->getSuccessorOperands(succNo);
+  unsigned operandCount = op->getNumSuccessorOperands(succNo);
+  Block *destBB = op->getSuccessor(succNo);
   if (operandCount != destBB->getNumArguments())
     return op->emitError() << "branch has " << operandCount
-                           << " operands, but target block has "
+                           << " operands for successor #" << succNo
+                           << ", but target block has "
                            << destBB->getNumArguments();
 
   auto operandIt = operands.begin();
   for (unsigned i = 0, e = operandCount; i != e; ++i, ++operandIt) {
     if ((*operandIt)->getType() != destBB->getArgument(i)->getType())
-      return op->emitError() << "type mismatch in bb argument #" << i;
+      return op->emitError() << "type mismatch for bb argument #" << i
+                             << " of successor #" << succNo;
   }
 
   return success();
@@ -926,7 +1064,7 @@ static LogicalResult verifyTerminatorSuccessors(Operation *op) {
     auto *succ = op->getSuccessor(i);
     if (succ->getParent() != parent)
       return op->emitError("reference to block defined in another region");
-    if (failed(verifyBBArguments(op->getSuccessorOperands(i), succ, op)))
+    if (failed(verifySuccessor(op, i)))
       return failure();
   }
   return success();
