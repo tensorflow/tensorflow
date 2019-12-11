@@ -125,6 +125,18 @@ TfLiteQuantizationParams GetLegacyQuantization(
   return legacy_quantization;
 }
 
+static constexpr const char kUnknownCustomOpName[] = "UnknownCustomOp";
+const char* GetTFLiteOpName(const TfLiteRegistration& op_reg) {
+  const char* op_name = nullptr;
+  if (op_reg.builtin_code == tflite::BuiltinOperator_CUSTOM) {
+    const char* const custom_name = op_reg.custom_name;
+    op_name = custom_name ? custom_name : kUnknownCustomOpName;
+  } else {
+    op_name = tflite::EnumNamesBuiltinOperator()[op_reg.builtin_code];
+  }
+  return op_name;
+}
+
 }  // namespace
 
 // A trivial implementation of GraphInfo around the Interpreter.
@@ -769,14 +781,7 @@ TfLiteStatus Subgraph::Invoke() {
         nodes_and_registration_[node_index].second;
 
     const char* op_name = nullptr;
-    if (profiler_) {
-      if (registration.builtin_code == tflite::BuiltinOperator_CUSTOM) {
-        const char* const custom_name = registration.custom_name;
-        op_name = custom_name ? custom_name : "UnknownCustomOp";
-      } else {
-        op_name = tflite::EnumNamesBuiltinOperator()[registration.builtin_code];
-      }
-    }
+    if (profiler_) op_name = GetTFLiteOpName(registration);
     TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(profiler_.get(), op_name, node_index);
 
     // TODO(ycling): This is an extra loop through inputs to check if the data
@@ -1156,6 +1161,9 @@ TfLiteStatus Subgraph::EnsureMemoryAllocations() {
 }
 
 TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
+  TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(),
+                                       "ModifyGraphWithDelegate");
+
   // Restore delegation state if applicable.
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());
 
