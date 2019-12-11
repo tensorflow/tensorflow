@@ -112,6 +112,18 @@ func @main(%arg0: tensor<1x4xi32>, %arg1: tensor<2x4xi32>, %arg2: tensor<2x3x4xi
 // -----
 
 // CHECK-LABEL:  HloModule
+func @main(%arg0: tensor<2xi32>) -> tensor<2xf32> {
+  %0 = "xla_hlo.bitcast_convert"(%arg0) : (tensor<2xi32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL:  ENTRY
+// CHECK:  %[[ARG:.*]] = s32[2] parameter(0)
+// CHECK:  ROOT %[[RESULT:.*]] = f32[2] bitcast-convert(s32[2] %[[ARG]])
+
+// -----
+
+// CHECK-LABEL:  HloModule
 func @main(%arg0: tensor<4xi32>) -> tensor<1x2x3x4xi32> {
   // CHECK:  [[ARG:%.*]] = s32[4] parameter(0)
   // CHECK-NEXT:  ROOT %broadcast.2 = s32[1,2,3,4] broadcast(s32[4] [[ARG]]), dimensions={3}

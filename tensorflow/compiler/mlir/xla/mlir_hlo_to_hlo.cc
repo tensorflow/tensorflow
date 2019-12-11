@@ -446,6 +446,14 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(BitcastConvertOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::BitcastConvertType(
+      value_map[op.operand()],
+      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+  return success();
+}
+
 LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   auto type = op.getType().dyn_cast<RankedTensorType>();
   if (!type) return failure();

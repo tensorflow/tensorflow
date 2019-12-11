@@ -586,6 +586,14 @@ def HLO_BatchNormTrainingOp : HLO_Op<"batch_norm_training", [NoSideEffect]>,
   let results = (outs HLO_Tuple);
 }
 
+def HLO_BitcastConvertOp : HLO_Op<"bitcast_convert",
+    [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_BitcastConvertOp {
+
+  let arguments = (ins HLO_Tensor:$operand);
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_BroadcastOp : HLO_Op<"broadcast",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_BroadcastOp {
   let arguments = (ins
