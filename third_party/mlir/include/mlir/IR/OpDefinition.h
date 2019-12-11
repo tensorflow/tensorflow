@@ -53,6 +53,30 @@ public:
   /// Failure is true in a boolean context.
   explicit operator bool() const { return failed(*this); }
 };
+/// This class implements `Optional` functionality for ParseResult. We don't
+/// directly use llvm::Optional here, because it provides an implicit conversion
+/// to 'bool' which we want to avoid. This class is used to implement tri-state
+/// 'parseOptional' functions that may have a failure mode when parsing that
+/// shouldn't be attributed to "not present".
+class OptionalParseResult {
+public:
+  OptionalParseResult() = default;
+  OptionalParseResult(LogicalResult result) : impl(result) {}
+  OptionalParseResult(ParseResult result) : impl(result) {}
+  OptionalParseResult(const InFlightDiagnostic &)
+      : OptionalParseResult(failure()) {}
+  OptionalParseResult(llvm::NoneType) : impl(llvm::None) {}
+
+  /// Returns true if we contain a valid ParseResult value.
+  bool hasValue() const { return impl.hasValue(); }
+
+  /// Access the internal ParseResult value.
+  ParseResult getValue() const { return impl.getValue(); }
+  ParseResult operator*() const { return getValue(); }
+
+private:
+  Optional<ParseResult> impl;
+};
 
 // These functions are out-of-line utilities, which avoids them being template
 // instantiated/duplicated.
@@ -69,7 +93,7 @@ template <typename OpTy>
 void ensureRegionTerminator(Region &region, Builder &builder, Location loc) {
   ensureRegionTerminator(region, loc, [&] {
     OperationState state(loc, OpTy::getOperationName());
-    OpTy::build(&builder, &state);
+    OpTy::build(&builder, state);
     return Operation::create(state);
   });
 }
@@ -105,7 +129,9 @@ public:
   MLIRContext *getContext() { return getOperation()->getContext(); }
 
   /// Print the operation to the given stream.
-  void print(raw_ostream &os) { state->print(os); }
+  void print(raw_ostream &os, OpPrintingFlags flags = llvm::None) {
+    state->print(os, flags);
+  }
 
   /// Dump this operation.
   void dump() { state->dump(); }
@@ -210,10 +236,10 @@ protected:
   /// Unless overridden, the custom assembly form of an op is always rejected.
   /// Op implementations should implement this to return failure.
   /// On success, they should fill in result with the fields to use.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
 
   // The fallback for the printer is to print it the generic assembly form.
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
 
   /// Mutability management is handled by the OpWrapper/OpConstWrapper classes,
   /// so we can cast it away here.
@@ -360,6 +386,8 @@ LogicalResult verifyResultsAreBoolLike(Operation *op);
 LogicalResult verifyResultsAreFloatLike(Operation *op);
 LogicalResult verifyResultsAreIntegerLike(Operation *op);
 LogicalResult verifyIsTerminator(Operation *op);
+LogicalResult verifyOperandSizeAttr(Operation *op, StringRef sizeAttrName);
+LogicalResult verifyResultSizeAttr(Operation *op, StringRef sizeAttrName);
 } // namespace impl
 
 /// Helper class for implementing traits.  Clients are not expected to interact
@@ -645,7 +673,7 @@ public:
 };
 
 /// This class provides verification for ops that are known to have the same
-/// operand element type.
+/// operand element type (or the type itself if it is scalar).
 ///
 template <typename ConcreteType>
 class SameOperandsElementType
@@ -657,7 +685,7 @@ public:
 };
 
 /// This class provides verification for ops that are known to have the same
-/// operand and result element type.
+/// operand and result element type (or the type itself if it is scalar).
 ///
 template <typename ConcreteType>
 class SameOperandsAndResultElementType
@@ -881,6 +909,43 @@ template <typename ParentOpType> struct HasParent {
   };
 };
 
+/// A trait for operations that have an attribute specifying operand segments.
+///
+/// Certain operations can have multiple variadic operands and their size
+/// relationship is not always known statically. For such cases, we need
+/// a per-op-instance specification to divide the operands into logical groups
+/// or segments. This can be modeled by attributes. The attribute will be named
+/// as `operand_segment_sizes`.
+///
+/// This trait verifies the attribute for specifying operand segments has
+/// the correct type (1D vector) and values (non-negative), etc.
+template <typename ConcreteType>
+class AttrSizedOperandSegments
+    : public TraitBase<ConcreteType, AttrSizedOperandSegments> {
+public:
+  static StringRef getOperandSegmentSizeAttr() {
+    return "operand_segment_sizes";
+  }
+
+  static LogicalResult verifyTrait(Operation *op) {
+    return ::mlir::OpTrait::impl::verifyOperandSizeAttr(
+        op, getOperandSegmentSizeAttr());
+  }
+};
+
+/// Similar to AttrSizedOperandSegments but used for results.
+template <typename ConcreteType>
+class AttrSizedResultSegments
+    : public TraitBase<ConcreteType, AttrSizedResultSegments> {
+public:
+  static StringRef getResultSegmentSizeAttr() { return "result_segment_sizes"; }
+
+  static LogicalResult verifyTrait(Operation *op) {
+    return ::mlir::OpTrait::impl::verifyResultSizeAttr(
+        op, getResultSegmentSizeAttr());
+  }
+};
+
 } // end namespace OpTrait
 
 //===----------------------------------------------------------------------===//
@@ -923,10 +988,9 @@ public:
   Region *getParentRegion() { return getOperation()->getParentRegion(); }
 
   /// Return true if this "op class" can match against the specified operation.
-  /// This hook can be overridden with a more specific implementation in
-  /// the subclass of Base.
-  ///
   static bool classof(Operation *op) {
+    if (auto *abstractOp = op->getAbstractOperation())
+      return &classof == abstractOp->classof;
     return op->getName().getStringRef() == ConcreteType::getOperationName();
   }
 
@@ -934,14 +998,14 @@ public:
   /// op from an .mlir file.  Op implementations should provide a parse method,
   /// which returns failure.  On success, they should return fill in result with
   /// the fields to use.
-  static ParseResult parseAssembly(OpAsmParser *parser,
-                                   OperationState *result) {
+  static ParseResult parseAssembly(OpAsmParser &parser,
+                                   OperationState &result) {
     return ConcreteType::parse(parser, result);
   }
 
   /// This is the hook used by the AsmPrinter to emit this to the .mlir file.
   /// Op implementations should provide a print method.
-  static void printAssembly(Operation *op, OpAsmPrinter *p) {
+  static void printAssembly(Operation *op, OpAsmPrinter &p) {
     auto opPointer = dyn_cast<ConcreteType>(op);
     assert(opPointer &&
            "op's name does not match name of concrete type instantiated with");
@@ -1140,25 +1204,30 @@ private:
   Concept *impl;
 };
 
-// These functions are out-of-line implementations of the methods in BinaryOp,
-// which avoids them being template instantiated/duplicated.
+// These functions are out-of-line implementations of the methods in UnaryOp and
+// BinaryOp, which avoids them being template instantiated/duplicated.
 namespace impl {
-void buildBinaryOp(Builder *builder, OperationState *result, Value *lhs,
+ParseResult parseOneResultOneOperandTypeOp(OpAsmParser &parser,
+                                           OperationState &result);
+
+void buildBinaryOp(Builder *builder, OperationState &result, Value *lhs,
                    Value *rhs);
-ParseResult parseBinaryOp(OpAsmParser *parser, OperationState *result);
+ParseResult parseOneResultSameOperandTypeOp(OpAsmParser &parser,
+                                            OperationState &result);
+
 // Prints the given binary `op` in custom assembly form if both the two operands
 // and the result have the same time. Otherwise, prints the generic assembly
 // form.
-void printBinaryOp(Operation *op, OpAsmPrinter *p);
+void printOneResultOp(Operation *op, OpAsmPrinter &p);
 } // namespace impl
 
 // These functions are out-of-line implementations of the methods in CastOp,
 // which avoids them being template instantiated/duplicated.
 namespace impl {
-void buildCastOp(Builder *builder, OperationState *result, Value *source,
+void buildCastOp(Builder *builder, OperationState &result, Value *source,
                  Type destType);
-ParseResult parseCastOp(OpAsmParser *parser, OperationState *result);
-void printCastOp(Operation *op, OpAsmPrinter *p);
+ParseResult parseCastOp(OpAsmParser &parser, OperationState &result);
+void printCastOp(Operation *op, OpAsmPrinter &p);
 Value *foldCastOp(Operation *op);
 } // namespace impl
 } // end namespace mlir

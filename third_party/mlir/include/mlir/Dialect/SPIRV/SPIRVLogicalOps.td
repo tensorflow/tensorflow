@@ -20,29 +20,35 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef SPIRV_LOGICAL_OPS
-#else
+#ifndef SPIRV_LOGICAL_OPS
 #define SPIRV_LOGICAL_OPS
 
-#ifdef SPIRV_BASE
-#else
-include "mlir/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
+include "mlir/Dialect/SPIRV/SPIRVBase.td"
 
-class SPV_LogicalOp<string mnemonic, Type operandsType,
+class SPV_LogicalBinaryOp<string mnemonic, Type operandsType,
                     list<OpTrait> traits = []> :
       // Result type is SPV_Bool.
       SPV_BinaryOp<mnemonic, SPV_Bool, operandsType,
                    !listconcat(traits,
                                [NoSideEffect, SameTypeOperands,
                                 SameOperandsAndResultShape])> {
-  let parser = [{ return ::parseBinaryLogicalOp(parser, result); }];
-  let printer = [{ return ::printBinaryLogicalOp(getOperation(), p); }];
+  let parser = [{ return ::parseLogicalBinaryOp(parser, result); }];
+  let printer = [{ return ::printLogicalOp(getOperation(), p); }];
+}
+
+class SPV_LogicalUnaryOp<string mnemonic, Type operandType,
+                         list<OpTrait> traits = []> :
+      // Result type is SPV_Bool.
+      SPV_UnaryOp<mnemonic, SPV_Bool, operandType,
+                  !listconcat(traits, [NoSideEffect, SameTypeOperands,
+                                       SameOperandsAndResultShape])> {
+  let parser = [{ return ::parseLogicalUnaryOp(parser, result); }];
+  let printer = [{ return ::printLogicalOp(getOperation(), p); }];
 }
 
 // -----
 
-def SPV_FOrdEqualOp : SPV_LogicalOp<"FOrdEqual", SPV_Float, [Commutative]> {
+def SPV_FOrdEqualOp : SPV_LogicalBinaryOp<"FOrdEqual", SPV_Float, [Commutative]> {
   let summary = "Floating-point comparison for being ordered and equal.";
 
   let description = [{
@@ -56,7 +62,7 @@ def SPV_FOrdEqualOp : SPV_LogicalOp<"FOrdEqual", SPV_Float, [Commutative]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     fordequal-op ::= ssa-id `=` `spv.FOrdEqual` ssa-use, ssa-use
@@ -73,7 +79,7 @@ def SPV_FOrdEqualOp : SPV_LogicalOp<"FOrdEqual", SPV_Float, [Commutative]> {
 
 // -----
 
-def SPV_FOrdGreaterThanOp : SPV_LogicalOp<"FOrdGreaterThan", SPV_Float, []> {
+def SPV_FOrdGreaterThanOp : SPV_LogicalBinaryOp<"FOrdGreaterThan", SPV_Float, []> {
   let summary = [{
     Floating-point comparison if operands are ordered and Operand 1 is
     greater than  Operand 2.
@@ -90,7 +96,7 @@ def SPV_FOrdGreaterThanOp : SPV_LogicalOp<"FOrdGreaterThan", SPV_Float, []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     fordgt-op ::= ssa-id `=` `spv.FOrdGreaterThan` ssa-use, ssa-use
@@ -107,7 +113,7 @@ def SPV_FOrdGreaterThanOp : SPV_LogicalOp<"FOrdGreaterThan", SPV_Float, []> {
 
 // -----
 
-def SPV_FOrdGreaterThanEqualOp : SPV_LogicalOp<"FOrdGreaterThanEqual", SPV_Float, []> {
+def SPV_FOrdGreaterThanEqualOp : SPV_LogicalBinaryOp<"FOrdGreaterThanEqual", SPV_Float, []> {
   let summary = [{
     Floating-point comparison if operands are ordered and Operand 1 is
     greater than or equal to Operand 2.
@@ -124,7 +130,7 @@ def SPV_FOrdGreaterThanEqualOp : SPV_LogicalOp<"FOrdGreaterThanEqual", SPV_Float
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     fordgte-op ::= ssa-id `=` `spv.FOrdGreaterThanEqual` ssa-use, ssa-use
@@ -141,7 +147,7 @@ def SPV_FOrdGreaterThanEqualOp : SPV_LogicalOp<"FOrdGreaterThanEqual", SPV_Float
 
 // -----
 
-def SPV_FOrdLessThanOp : SPV_LogicalOp<"FOrdLessThan", SPV_Float, []> {
+def SPV_FOrdLessThanOp : SPV_LogicalBinaryOp<"FOrdLessThan", SPV_Float, []> {
   let summary = [{
     Floating-point comparison if operands are ordered and Operand 1 is less
     than Operand 2.
@@ -158,7 +164,7 @@ def SPV_FOrdLessThanOp : SPV_LogicalOp<"FOrdLessThan", SPV_Float, []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     fordlt-op ::= ssa-id `=` `spv.FOrdLessThan` ssa-use, ssa-use
@@ -175,7 +181,7 @@ def SPV_FOrdLessThanOp : SPV_LogicalOp<"FOrdLessThan", SPV_Float, []> {
 
 // -----
 
-def SPV_FOrdLessThanEqualOp : SPV_LogicalOp<"FOrdLessThanEqual", SPV_Float, []> {
+def SPV_FOrdLessThanEqualOp : SPV_LogicalBinaryOp<"FOrdLessThanEqual", SPV_Float, []> {
   let summary = [{
     Floating-point comparison if operands are ordered and Operand 1 is less
     than or equal to Operand 2.
@@ -192,7 +198,7 @@ def SPV_FOrdLessThanEqualOp : SPV_LogicalOp<"FOrdLessThanEqual", SPV_Float, []> 
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     fordlte-op ::= ssa-id `=` `spv.FOrdLessThanEqual` ssa-use, ssa-use
@@ -209,7 +215,7 @@ def SPV_FOrdLessThanEqualOp : SPV_LogicalOp<"FOrdLessThanEqual", SPV_Float, []> 
 
 // -----
 
-def SPV_FOrdNotEqualOp : SPV_LogicalOp<"FOrdNotEqual", SPV_Float, [Commutative]> {
+def SPV_FOrdNotEqualOp : SPV_LogicalBinaryOp<"FOrdNotEqual", SPV_Float, [Commutative]> {
   let summary = "Floating-point comparison for being ordered and not equal.";
 
   let description = [{
@@ -223,7 +229,7 @@ def SPV_FOrdNotEqualOp : SPV_LogicalOp<"FOrdNotEqual", SPV_Float, [Commutative]>
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     fordneq-op ::= ssa-id `=` `spv.FOrdNotEqual` ssa-use, ssa-use
@@ -240,7 +246,7 @@ def SPV_FOrdNotEqualOp : SPV_LogicalOp<"FOrdNotEqual", SPV_Float, [Commutative]>
 
 // -----
 
-def SPV_FUnordEqualOp : SPV_LogicalOp<"FUnordEqual", SPV_Float, [Commutative]> {
+def SPV_FUnordEqualOp : SPV_LogicalBinaryOp<"FUnordEqual", SPV_Float, [Commutative]> {
   let summary = "Floating-point comparison for being unordered or equal.";
 
   let description = [{
@@ -254,7 +260,7 @@ def SPV_FUnordEqualOp : SPV_LogicalOp<"FUnordEqual", SPV_Float, [Commutative]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     funordequal-op ::= ssa-id `=` `spv.FUnordEqual` ssa-use, ssa-use
@@ -271,7 +277,7 @@ def SPV_FUnordEqualOp : SPV_LogicalOp<"FUnordEqual", SPV_Float, [Commutative]> {
 
 // -----
 
-def SPV_FUnordGreaterThanOp : SPV_LogicalOp<"FUnordGreaterThan", SPV_Float, []> {
+def SPV_FUnordGreaterThanOp : SPV_LogicalBinaryOp<"FUnordGreaterThan", SPV_Float, []> {
   let summary = [{
     Floating-point comparison if operands are unordered or Operand 1 is
     greater than  Operand 2.
@@ -288,7 +294,7 @@ def SPV_FUnordGreaterThanOp : SPV_LogicalOp<"FUnordGreaterThan", SPV_Float, []> 
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     funordgt-op ::= ssa-id `=` `spv.FUnordGreaterThan` ssa-use, ssa-use
@@ -305,7 +311,7 @@ def SPV_FUnordGreaterThanOp : SPV_LogicalOp<"FUnordGreaterThan", SPV_Float, []> 
 
 // -----
 
-def SPV_FUnordGreaterThanEqualOp : SPV_LogicalOp<"FUnordGreaterThanEqual", SPV_Float, []> {
+def SPV_FUnordGreaterThanEqualOp : SPV_LogicalBinaryOp<"FUnordGreaterThanEqual", SPV_Float, []> {
   let summary = [{
     Floating-point comparison if operands are unordered or Operand 1 is
     greater than or equal to Operand 2.
@@ -322,7 +328,7 @@ def SPV_FUnordGreaterThanEqualOp : SPV_LogicalOp<"FUnordGreaterThanEqual", SPV_F
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     funordgte-op ::= ssa-id `=` `spv.FUnordGreaterThanEqual` ssa-use, ssa-use
@@ -339,7 +345,7 @@ def SPV_FUnordGreaterThanEqualOp : SPV_LogicalOp<"FUnordGreaterThanEqual", SPV_F
 
 // -----
 
-def SPV_FUnordLessThanOp : SPV_LogicalOp<"FUnordLessThan", SPV_Float, []> {
+def SPV_FUnordLessThanOp : SPV_LogicalBinaryOp<"FUnordLessThan", SPV_Float, []> {
   let summary = [{
     Floating-point comparison if operands are unordered or Operand 1 is less
     than Operand 2.
@@ -356,7 +362,7 @@ def SPV_FUnordLessThanOp : SPV_LogicalOp<"FUnordLessThan", SPV_Float, []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     funordlt-op ::= ssa-id `=` `spv.FUnordLessThan` ssa-use, ssa-use
@@ -373,7 +379,7 @@ def SPV_FUnordLessThanOp : SPV_LogicalOp<"FUnordLessThan", SPV_Float, []> {
 
 // -----
 
-def SPV_FUnordLessThanEqualOp : SPV_LogicalOp<"FUnordLessThanEqual", SPV_Float, []> {
+def SPV_FUnordLessThanEqualOp : SPV_LogicalBinaryOp<"FUnordLessThanEqual", SPV_Float, []> {
   let summary = [{
     Floating-point comparison if operands are unordered or Operand 1 is less
     than or equal to Operand 2.
@@ -390,7 +396,7 @@ def SPV_FUnordLessThanEqualOp : SPV_LogicalOp<"FUnordLessThanEqual", SPV_Float, 
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     funordlte-op ::= ssa-id `=` `spv.FUnordLessThanEqual` ssa-use, ssa-use
@@ -407,7 +413,7 @@ def SPV_FUnordLessThanEqualOp : SPV_LogicalOp<"FUnordLessThanEqual", SPV_Float, 
 
 // -----
 
-def SPV_FUnordNotEqualOp : SPV_LogicalOp<"FUnordNotEqual", SPV_Float, [Commutative]> {
+def SPV_FUnordNotEqualOp : SPV_LogicalBinaryOp<"FUnordNotEqual", SPV_Float, [Commutative]> {
   let summary = "Floating-point comparison for being unordered or not equal.";
 
   let description = [{
@@ -421,7 +427,7 @@ def SPV_FUnordNotEqualOp : SPV_LogicalOp<"FUnordNotEqual", SPV_Float, [Commutati
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     funordneq-op ::= ssa-id `=` `spv.FUnordNotEqual` ssa-use, ssa-use
@@ -438,7 +444,7 @@ def SPV_FUnordNotEqualOp : SPV_LogicalOp<"FUnordNotEqual", SPV_Float, [Commutati
 
 // -----
 
-def SPV_IEqualOp : SPV_LogicalOp<"IEqual", SPV_Integer, [Commutative]> {
+def SPV_IEqualOp : SPV_LogicalBinaryOp<"IEqual", SPV_Integer, [Commutative]> {
   let summary = "Integer comparison for equality.";
 
   let description = [{
@@ -451,7 +457,7 @@ def SPV_IEqualOp : SPV_LogicalOp<"IEqual", SPV_Integer, [Commutative]> {
      Results are computed per component.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     iequal-op ::= ssa-id `=` `spv.IEqual` ssa-use, ssa-use
@@ -469,7 +475,7 @@ def SPV_IEqualOp : SPV_LogicalOp<"IEqual", SPV_Integer, [Commutative]> {
 
 // -----
 
-def SPV_INotEqualOp : SPV_LogicalOp<"INotEqual", SPV_Integer, [Commutative]> {
+def SPV_INotEqualOp : SPV_LogicalBinaryOp<"INotEqual", SPV_Integer, [Commutative]> {
   let summary = "Integer comparison for inequality.";
 
   let description = [{
@@ -482,7 +488,7 @@ def SPV_INotEqualOp : SPV_LogicalOp<"INotEqual", SPV_Integer, [Commutative]> {
      Results are computed per component.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     inot-equal-op ::= ssa-id `=` `spv.INotEqual` ssa-use, ssa-use
@@ -500,7 +506,170 @@ def SPV_INotEqualOp : SPV_LogicalOp<"INotEqual", SPV_Integer, [Commutative]> {
 
 // -----
 
-def SPV_SGreaterThanOp : SPV_LogicalOp<"SGreaterThan", SPV_Integer, []> {
+def SPV_LogicalAndOp : SPV_LogicalBinaryOp<"LogicalAnd", SPV_Bool, [Commutative]> {
+  let summary = [{
+    Result is true if both Operand 1 and Operand 2 are true. Result is false
+    if either Operand 1 or Operand 2 are false.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 must be the same as Result Type.
+
+     The type of Operand 2 must be the same as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ```
+    logical-and ::= `spv.LogicalAnd` ssa-use `,` ssa-use
+                    `:` operand-type
+    ```
+
+    For example:
+
+    ```
+    %2 = spv.LogicalAnd %0, %1 : i1
+    %2 = spv.LogicalAnd %0, %1 : vector<4xi1>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_LogicalEqualOp : SPV_LogicalBinaryOp<"LogicalEqual", SPV_Bool, [Commutative]> {
+  let summary = [{
+    Result is true if Operand 1 and Operand 2 have the same value. Result is
+    false if Operand 1 and Operand 2 have different values.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 must be the same as Result Type.
+
+     The type of Operand 2 must be the same as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ```
+    logical-equal ::= `spv.LogicalEqual` ssa-use `,` ssa-use
+                      `:` operand-type
+    ```
+
+    For example:
+
+    ```
+    %2 = spv.LogicalEqual %0, %1 : i1
+    %2 = spv.LogicalEqual %0, %1 : vector<4xi1>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_LogicalNotOp : SPV_LogicalUnaryOp<"LogicalNot", SPV_Bool, []> {
+  let summary = [{
+    Result is true if Operand is false.  Result is false if Operand is true.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand must be the same as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ```
+    logical-not ::= `spv.LogicalNot` ssa-use `:` operand-type
+    ```
+
+    For example:
+
+    ```
+    %2 = spv.LogicalNot %0 : i1
+    %2 = spv.LogicalNot %0 : vector<4xi1>
+    ```
+  }];
+
+  let hasCanonicalizer = 1;
+}
+
+// -----
+
+def SPV_LogicalNotEqualOp : SPV_LogicalBinaryOp<"LogicalNotEqual", SPV_Bool, [Commutative]> {
+  let summary = [{
+    Result is true if Operand 1 and Operand 2 have different values. Result
+    is false if Operand 1 and Operand 2 have the same value.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 must be the same as Result Type.
+
+     The type of Operand 2 must be the same as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ```
+    logical-not-equal ::= `spv.LogicalNotEqual` ssa-use `,` ssa-use
+                          `:` operand-type
+    ```
+
+    For example:
+
+    ```
+    %2 = spv.LogicalNotEqual %0, %1 : i1
+    %2 = spv.LogicalNotEqual %0, %1 : vector<4xi1>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_LogicalOrOp : SPV_LogicalBinaryOp<"LogicalOr", SPV_Bool, [Commutative]> {
+  let summary = [{
+    Result is true if either Operand 1 or Operand 2 is true. Result is false
+    if both Operand 1 and Operand 2 are false.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 must be the same as Result Type.
+
+     The type of Operand 2 must be the same as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ```
+    logical-or ::= `spv.LogicalOr` ssa-use `,` ssa-use
+                    `:` operand-type
+    ```
+
+    For example:
+
+    ```
+    %2 = spv.LogicalOr %0, %1 : i1
+    %2 = spv.LogicalOr %0, %1 : vector<4xi1>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_SGreaterThanOp : SPV_LogicalBinaryOp<"SGreaterThan", SPV_Integer, []> {
   let summary = [{
     Signed-integer comparison if Operand 1 is greater than  Operand 2.
   }];
@@ -515,7 +684,7 @@ def SPV_SGreaterThanOp : SPV_LogicalOp<"SGreaterThan", SPV_Integer, []> {
      Results are computed per component.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     sgreater-than-op ::= ssa-id `=` `spv.SGreaterThan` ssa-use, ssa-use
@@ -533,7 +702,7 @@ def SPV_SGreaterThanOp : SPV_LogicalOp<"SGreaterThan", SPV_Integer, []> {
 
 // -----
 
-def SPV_SGreaterThanEqualOp : SPV_LogicalOp<"SGreaterThanEqual", SPV_Integer, []> {
+def SPV_SGreaterThanEqualOp : SPV_LogicalBinaryOp<"SGreaterThanEqual", SPV_Integer, []> {
   let summary = [{
     Signed-integer comparison if Operand 1 is greater than or equal to
     Operand 2.
@@ -549,7 +718,7 @@ def SPV_SGreaterThanEqualOp : SPV_LogicalOp<"SGreaterThanEqual", SPV_Integer, []
      Results are computed per component.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     sgreater-than-equal-op ::= ssa-id `=` `spv.SGreaterThanEqual` ssa-use, ssa-use
@@ -567,7 +736,7 @@ def SPV_SGreaterThanEqualOp : SPV_LogicalOp<"SGreaterThanEqual", SPV_Integer, []
 
 // -----
 
-def SPV_SLessThanOp : SPV_LogicalOp<"SLessThan", SPV_Integer, []> {
+def SPV_SLessThanOp : SPV_LogicalBinaryOp<"SLessThan", SPV_Integer, []> {
   let summary = [{
     Signed-integer comparison if Operand 1 is less than Operand 2.
   }];
@@ -582,7 +751,7 @@ def SPV_SLessThanOp : SPV_LogicalOp<"SLessThan", SPV_Integer, []> {
      Results are computed per component.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     sless-than-op ::= ssa-id `=` `spv.SLessThan` ssa-use, ssa-use
@@ -600,7 +769,7 @@ def SPV_SLessThanOp : SPV_LogicalOp<"SLessThan", SPV_Integer, []> {
 
 // -----
 
-def SPV_SLessThanEqualOp : SPV_LogicalOp<"SLessThanEqual", SPV_Integer, []> {
+def SPV_SLessThanEqualOp : SPV_LogicalBinaryOp<"SLessThanEqual", SPV_Integer, []> {
   let summary = [{
     Signed-integer comparison if Operand 1 is less than or equal to Operand
     2.
@@ -616,7 +785,7 @@ def SPV_SLessThanEqualOp : SPV_LogicalOp<"SLessThanEqual", SPV_Integer, []> {
      Results are computed per component.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     sless-than-equal-op ::= ssa-id `=` `spv.SLessThanEqual` ssa-use, ssa-use
@@ -634,7 +803,7 @@ def SPV_SLessThanEqualOp : SPV_LogicalOp<"SLessThanEqual", SPV_Integer, []> {
 
 // -----
 
-def SPV_SelectOp : SPV_Op<"Select", []> {
+def SPV_SelectOp : SPV_Op<"Select", [NoSideEffect]> {
   let summary = [{
     Select between two objects. Before version 1.4, results are only
     computed per component.
@@ -658,7 +827,7 @@ def SPV_SelectOp : SPV_Op<"Select", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     scalar-type ::= integer-type | float-type | boolean-type
     select-object-type ::= scalar-type
                            | `vector<` integer-literal `x` scalar-type `>`
@@ -687,11 +856,15 @@ def SPV_SelectOp : SPV_Op<"Select", []> {
   let results = (outs
     SPV_SelectType:$result
   );
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                              Value *cond, Value *trueValue,
+                              Value *falseValue}]>];
 }
 
 // -----
 
-def SPV_UGreaterThanOp : SPV_LogicalOp<"UGreaterThan", SPV_Integer, []> {
+def SPV_UGreaterThanOp : SPV_LogicalBinaryOp<"UGreaterThan", SPV_Integer, []> {
   let summary = [{
     Unsigned-integer comparison if Operand 1 is greater than  Operand 2.
   }];
@@ -706,7 +879,7 @@ def SPV_UGreaterThanOp : SPV_LogicalOp<"UGreaterThan", SPV_Integer, []> {
      Results are computed per component.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     ugreater-than-op ::= ssa-id `=` `spv.UGreaterThan` ssa-use, ssa-use
@@ -715,7 +888,7 @@ def SPV_UGreaterThanOp : SPV_LogicalOp<"UGreaterThan", SPV_Integer, []> {
     For example:
 
     ```
-    %4 = spv.UGreaterhan %0, %1 : i32
+    %4 = spv.UGreaterThan %0, %1 : i32
     %5 = spv.UGreaterThan %2, %3 : vector<4xi32>
 
     ```
@@ -724,7 +897,7 @@ def SPV_UGreaterThanOp : SPV_LogicalOp<"UGreaterThan", SPV_Integer, []> {
 
 // -----
 
-def SPV_UGreaterThanEqualOp : SPV_LogicalOp<"UGreaterThanEqual", SPV_Integer, []> {
+def SPV_UGreaterThanEqualOp : SPV_LogicalBinaryOp<"UGreaterThanEqual", SPV_Integer, []> {
   let summary = [{
     Unsigned-integer comparison if Operand 1 is greater than or equal to
     Operand 2.
@@ -740,7 +913,7 @@ def SPV_UGreaterThanEqualOp : SPV_LogicalOp<"UGreaterThanEqual", SPV_Integer, []
      Results are computed per component.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     ugreater-than-equal-op ::= ssa-id `=` `spv.UGreaterThanEqual` ssa-use, ssa-use
@@ -758,7 +931,7 @@ def SPV_UGreaterThanEqualOp : SPV_LogicalOp<"UGreaterThanEqual", SPV_Integer, []
 
 // -----
 
-def SPV_ULessThanOp : SPV_LogicalOp<"ULessThan", SPV_Integer, []> {
+def SPV_ULessThanOp : SPV_LogicalBinaryOp<"ULessThan", SPV_Integer, []> {
   let summary = [{
     Unsigned-integer comparison if Operand 1 is less than Operand 2.
   }];
@@ -773,7 +946,7 @@ def SPV_ULessThanOp : SPV_LogicalOp<"ULessThan", SPV_Integer, []> {
      Results are computed per component.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     uless-than-op ::= ssa-id `=` `spv.ULessThan` ssa-use, ssa-use
@@ -791,7 +964,8 @@ def SPV_ULessThanOp : SPV_LogicalOp<"ULessThan", SPV_Integer, []> {
 
 // -----
 
-def SPV_ULessThanEqualOp : SPV_LogicalOp<"ULessThanEqual", SPV_Integer, []> {
+def SPV_ULessThanEqualOp :
+  SPV_LogicalBinaryOp<"ULessThanEqual", SPV_Integer, []> {
   let summary = [{
     Unsigned-integer comparison if Operand 1 is less than or equal to
     Operand 2.
@@ -807,7 +981,7 @@ def SPV_ULessThanEqualOp : SPV_LogicalOp<"ULessThanEqual", SPV_Integer, []> {
      Results are computed per component.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     uless-than-equal-op ::= ssa-id `=` `spv.ULessThanEqual` ssa-use, ssa-use

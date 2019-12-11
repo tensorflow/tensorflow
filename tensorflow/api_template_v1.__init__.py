@@ -39,7 +39,7 @@ if "dev" in __version__:   # pylint: disable=undefined-variable
   TensorFlow's `tf-nightly` package will soon be updated to TensorFlow 2.0.
 
   Please upgrade your code to TensorFlow 2.0:
-    * https://www.tensorflow.org/beta/guide/migration_guide
+    * https://www.tensorflow.org/guide/migrate
 
   Or install the latest stable TensorFlow 1.X release:
     * `pip install -U "tensorflow==1.*"`
@@ -132,9 +132,10 @@ def _running_from_pip_package():
       _current_file_location.startswith(dir_) for dir_ in _site_packages_dirs)
 
 if _running_from_pip_package():
-  for s in _site_packages_dirs:
+  for _s in _site_packages_dirs:
     # TODO(gunan): Add sanity checks to loaded modules here.
-    plugin_dir = _os.path.join(s, 'tensorflow-plugins')
-    if _fi.file_exists(plugin_dir):
-      _ll.load_library(plugin_dir)
+    _plugin_dir = _os.path.join(_s, 'tensorflow-plugins')
+    if _fi.file_exists(_plugin_dir):
+      _ll.load_library(_plugin_dir)
 
+# __all__ PLACEHOLDER

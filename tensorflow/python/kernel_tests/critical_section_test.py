@@ -391,8 +391,8 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
 
     def get_first():
       if context.executing_eagerly():
-        return self.evaluate(ds.make_one_shot_iterator().get_next())
-      itr = ds.make_initializable_iterator()
+        return self.evaluate(dataset_ops.make_one_shot_iterator(ds).get_next())
+      itr = dataset_ops.make_initializable_iterator(ds)
       self.evaluate([v.initializer, itr.initializer])
       return self.evaluate(itr.get_next())
 

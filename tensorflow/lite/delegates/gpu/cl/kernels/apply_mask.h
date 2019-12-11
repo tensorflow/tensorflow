@@ -26,30 +26,35 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class ApplyMask : public GPUOperation {
+class ApplyMask : public ElementwiseOperation {
  public:
-  explicit ApplyMask(const OperationDef& definition)
-      : GPUOperation(definition) {}
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
-
-  Status Compile(const CreationContext& creation_context) override;
-
   // Move only
   ApplyMask(ApplyMask&& operation);
   ApplyMask& operator=(ApplyMask&& operation);
   ApplyMask(const ApplyMask&) = delete;
   ApplyMask& operator=(const ApplyMask&) = delete;
 
- private:
-  Status BindArguments();
-  int3 GetGridSize() const;
+  void SetLinkIndex(int index) override;
+  std::string GetCoreCode(const LinkingContext& context) const override;
+  std::string GetArgsDeclaration() const override;
+  Status BindArguments(CLKernel* kernel) override;
 
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
+ private:
+  friend ApplyMask CreateApplyMask(const OperationDef& definition,
+                                   const BHWC& src_shape,
+                                   const BHWC& mask_shape);
+
+  enum class MaskType { LAYER, CHANNELS, TENSOR };
+
+  explicit ApplyMask(const OperationDef& definition, MaskType mask_type)
+      : ElementwiseOperation(definition), mask_type_(mask_type) {}
+
+  MaskType mask_type_;
+  int link_index_;
 };
 
-ApplyMask CreateApplyMask(const OperationDef& definition);
+ApplyMask CreateApplyMask(const OperationDef& definition, const BHWC& src_shape,
+                          const BHWC& mask_shape);
 
 }  // namespace cl
 }  // namespace gpu

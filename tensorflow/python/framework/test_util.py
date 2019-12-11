@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 from collections import OrderedDict
 import contextlib
 import functools
@@ -49,11 +50,13 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python import _pywrap_stacktrace_handler
 from tensorflow.python import _pywrap_util_port
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
+from tensorflow.python.compat.compat import forward_compatibility_horizon
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
@@ -66,6 +69,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
@@ -73,6 +77,7 @@ from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
@@ -99,6 +104,8 @@ try:
 except:
   pass
 
+def _get_object_count_by_type():
+  return collections.Counter([type(obj).__name__ for obj in gc.get_objects()])
 
 @tf_export("test.gpu_device_name")
 def gpu_device_name():
@@ -284,6 +291,10 @@ def IsBuiltWithROCm():
   return _pywrap_util_port.IsBuiltWithROCm()
 
 
+def IsBuiltWithNvcc():
+  return _pywrap_util_port.IsBuiltWithNvcc()
+
+
 def GpuSupportsHalfMatMulAndConv():
   return _pywrap_util_port.GpuSupportsHalfMatMulAndConv()
 
@@ -293,7 +304,7 @@ def IsMklEnabled():
 
 
 def InstallStackTraceHandler():
-  pywrap_tensorflow.InstallStacktraceHandler()
+  _pywrap_stacktrace_handler.InstallStacktraceHandler()
 
 
 def NHWCToNCHW(input_tensor):
@@ -561,7 +572,7 @@ def enable_output_all_intermediates(fn):
   return wrapper
 
 
-def assert_no_new_pyobjects_executing_eagerly(f):
+def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
   """Decorator for asserting that no new Python objects persist after a test.
 
   Runs the test multiple times executing eagerly, first as a warmup and then to
@@ -570,60 +581,78 @@ def assert_no_new_pyobjects_executing_eagerly(f):
 
   Useful for checking that there are no missing Py_DECREFs in the C exercised by
   a bit of Python.
+
+  Args:
+    func: The function to test.
+    warmup_iters: The numer of warmup iterations, excluded from measuring.
+
+  Returns:
+    The wrapped function performing the test.
   """
 
-  def decorator(self, *args, **kwargs):
-    """Warms up, gets an object count, runs the test, checks for new objects."""
-    with context.eager_mode():
-      gc.disable()
-      # Run the test 2 times as warmup, in an attempt to fill up caches, which
-      # should not grow as the test is run repeatedly below.
-      #
-      # TODO(b/117156879): Running warmup twice is black magic; we have seen
-      # tests that fail with 1 warmup run, and pass with 2, on various versions
-      # of python2.7.x.
-      for _ in range(2):
-        f(self, *args, **kwargs)
-      gc.collect()
-      previous_count = len(gc.get_objects())
-      if ops.has_default_graph():
-        collection_sizes_before = {
-            collection: len(ops.get_collection(collection))
-            for collection in ops.get_default_graph().collections
-        }
-      for _ in range(3):
-        f(self, *args, **kwargs)
-      # Note that gc.get_objects misses anything that isn't subject to garbage
-      # collection (C types). Collections are a common source of leaks, so we
-      # test for collection sizes explicitly.
-      if ops.has_default_graph():
-        for collection_key in ops.get_default_graph().collections:
-          collection = ops.get_collection(collection_key)
-          size_before = collection_sizes_before.get(collection_key, 0)
-          if len(collection) > size_before:
-            raise AssertionError(
-                ("Collection %s increased in size from "
-                 "%d to %d (current items %s).") %
-                (collection_key, size_before, len(collection), collection))
-          # Make sure our collection checks don't show up as leaked memory by
-          # removing references to temporary variables.
-          del collection
-          del collection_key
-          del size_before
-        del collection_sizes_before
-      gc.collect()
-      # There should be no new Python objects hanging around.
-      new_count = len(gc.get_objects())
-      # In some cases (specifacally on MacOS), new_count is somehow
-      # smaller than previous_count.
-      # Using plain assert because not all classes using this decorator
-      # have assertLessEqual
-      assert new_count <= previous_count, (
-          "new_count(%d) is not less than or equal to previous_count(%d)" %
-          (new_count, previous_count))
-      gc.enable()
+  def wrap_f(f):
+    def decorator(self, *args, **kwargs):
+      """Warms up, gets object counts, runs the test, checks for new objects."""
+      with context.eager_mode():
+        gc.disable()
+        # Run the test 2 times as warmup, in an attempt to fill up caches, which
+        # should not grow as the test is run repeatedly below.
+        #
+        # TODO(b/117156879): Running warmup twice is black magic; we have seen
+        # tests that fail with 1 warmup run, and pass with 2, on various
+        # versions of python2.7.x.
+        for _ in range(warmup_iters):
+          f(self, *args, **kwargs)
 
-  return decorator
+        # Some objects are newly created by _get_object_count_by_type().  So
+        # create and save as a dummy variable to include it as a baseline.
+        obj_count_by_type = _get_object_count_by_type()
+        gc.collect()
+        obj_count_by_type = _get_object_count_by_type()
+
+        if ops.has_default_graph():
+          collection_sizes_before = {
+              collection: len(ops.get_collection(collection))
+              for collection in ops.get_default_graph().collections
+          }
+        for _ in range(3):
+          f(self, *args, **kwargs)
+        # Note that gc.get_objects misses anything that isn't subject to garbage
+        # collection (C types). Collections are a common source of leaks, so we
+        # test for collection sizes explicitly.
+        if ops.has_default_graph():
+          for collection_key in ops.get_default_graph().collections:
+            collection = ops.get_collection(collection_key)
+            size_before = collection_sizes_before.get(collection_key, 0)
+            if len(collection) > size_before:
+              raise AssertionError(
+                  ("Collection %s increased in size from "
+                   "%d to %d (current items %s).") %
+                  (collection_key, size_before, len(collection), collection))
+            # Make sure our collection checks don't show up as leaked memory by
+            # removing references to temporary variables.
+            del collection
+            del collection_key
+            del size_before
+          del collection_sizes_before
+        gc.collect()
+
+        # There should be no new Python objects hanging around.
+        obj_count_by_type = _get_object_count_by_type() - obj_count_by_type
+        # In some cases (specifacally on MacOS), new_count is somehow
+        # smaller than previous_count.
+        # Using plain assert because not all classes using this decorator
+        # have assertLessEqual
+        assert not obj_count_by_type, (
+            "The following objects were newly created: %s" %
+            str(obj_count_by_type))
+        gc.enable()
+    return decorator
+
+  if func is None:
+    return wrap_f
+  else:
+    return wrap_f(func)
 
 
 def assert_no_new_tensors(f):
@@ -881,27 +910,14 @@ def _combine_named_parameters(**kwargs):
     the keyword argument names.  Each key has one value - one of the
     corresponding keyword argument values.
   """
-  if not kwargs:
-    return [OrderedDict()]
+  sort_by_key = lambda k: k[0]
+  combinations = []
+  for key, values in sorted(kwargs.items(), key=sort_by_key):
+    if not isinstance(values, list):
+      values = [values]
+    combinations.append([(key, value) for value in values])
 
-  sort_by_key = lambda k: k[0][0]
-  kwargs = OrderedDict(sorted(kwargs.items(), key=sort_by_key))
-  first = list(kwargs.items())[0]
-
-  rest = dict(list(kwargs.items())[1:])
-  rest_combined = _combine_named_parameters(**rest)
-
-  key = first[0]
-  values = first[1]
-  if not isinstance(values, list):
-    values = [values]
-
-  combinations = [
-      OrderedDict(sorted(list(combined.items()) + [(key, v)], key=sort_by_key))
-      for v in values
-      for combined in rest_combined
-  ]
-  return combinations
+  return [OrderedDict(result) for result in itertools.product(*combinations)]
 
 
 def generate_combinations_with_testcase_name(**kwargs):
@@ -1000,6 +1016,21 @@ def build_as_function_and_v1_graph(func=None):
 
   if func is not None:
     return decorator(func)
+
+  return decorator
+
+
+def eager_lazy_remote_copy_on_and_off(f):
+  """Execute the test method w/o lazy tensor copy for function remote inputs."""
+
+  @parameterized.named_parameters([("WithLazyRemoteCopy", True), ("", False)])
+  @functools.wraps(f)
+  def decorator(self, lazily_remote_copy, *args, **kwargs):
+    if lazily_remote_copy:
+      context.context().lazy_remote_inputs_copy = True
+    else:
+      context.context().lazy_remote_inputs_copy = False
+    f(self, *args, **kwargs)
 
   return decorator
 
@@ -1210,7 +1241,7 @@ def deprecated_graph_mode_only(func=None):
       return f
 
     def decorated(self, *args, **kwargs):
-      if tf2.enabled():
+      if context.executing_eagerly():
         with context.graph_mode():
           return f(self, *args, **kwargs)
       else:
@@ -1396,6 +1427,43 @@ def run_cuda_only(func=None):
   return decorator
 
 
+def with_forward_compatibility_horizons(*horizons):
+  """Executes the decorated test with the specified forward-compat horizons.
+
+  Args:
+    *horizons: A list of (year, month, day) tuples.  If the list includes
+      `None`, then the test will also be run with no forward-compatibility
+      horizon set.
+
+  Returns:
+    A decorator that will execute the test with the specified horizons.
+  """
+  if not horizons:
+    raise ValueError("Expected at least one horizon.")
+  for horizon in horizons:
+    if not ((horizon is None) or
+            (len(horizon) == 3 and all(isinstance(x, int) for x in horizon))):
+      raise ValueError("Bad horizon value: %r" % horizon)
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError("`with_forward_compatibility_horizons` only "
+                       "supports test methods.")
+    def decorated(self, *args, **kwargs):
+      for horizon in horizons:
+        if horizon is None:
+          f(self, *args, **kwargs)
+        else:
+          (year, month, day) = horizon
+          with forward_compatibility_horizon(year, month, day):
+            f(self, *args, **kwargs)
+    return decorated
+
+  return decorator
+
+
+@deprecation.deprecated(None,
+                        "Use `tf.config.list_physical_devices('GPU')` instead.")
 @tf_export("test.is_gpu_available")
 def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   """Returns whether TensorFlow can access a GPU.
@@ -1774,6 +1842,7 @@ class TensorFlowTestCase(googletest.TestCase):
       pywrap_tensorflow.TF_SetXlaAutoJitMode("2")
       pywrap_tensorflow.TF_SetXlaMinClusterSize(1)
       pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(False)
+      pywrap_tensorflow.TF_SetTfXlaCpuGlobalJit(True)
       # Constant folding secretly runs code on TF:Classic CPU, so we also
       # disable it here.
       pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(True)
@@ -1797,7 +1866,8 @@ class TensorFlowTestCase(googletest.TestCase):
     random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
     # Reset summary writer in case another test used set_as_default() with their
     # summary writer.
-    context.context().summary_writer = None
+    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
+    summary_state.writer = None
 
     # Avoiding calling setUp() for the poorly named test_session method.
     if self.id().endswith(".test_session"):
@@ -2005,7 +2075,8 @@ class TensorFlowTestCase(googletest.TestCase):
     the CPU.
 
     Example:
-    ```python
+
+    ``` python
     class MyOperatorTest(test_util.TensorFlowTestCase):
       def testMyOperator(self):
         with self.session(use_gpu=True):
@@ -2097,7 +2168,11 @@ class TensorFlowTestCase(googletest.TestCase):
                    force_gpu=False):
     """Use cached_session instead."""
     if self.id().endswith(".test_session"):
-      self.skipTest("Not a test.")
+      self.skipTest(
+          "Tests that have the name \"test_session\" are automatically skipped "
+          "by TensorFlow test fixture, as the name is reserved for creating "
+          "sessions within tests. Please rename your test if you have a test "
+          "with this name.")
     if context.executing_eagerly():
       yield None
     else:
@@ -2271,8 +2346,8 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertTrue(self._NDArrayNear(ndarray1, ndarray2, err), msg=msg)
 
   def _GetNdArray(self, a):
-    # If a is a tensor then convert it to ndarray
-    if isinstance(a, ops.Tensor):
+    # If a is tensor-like then convert it to ndarray
+    if tensor_util.is_tensor(a):
       if isinstance(a, ops._EagerTensorBase):
         a = a.numpy()
       else:
@@ -2534,6 +2609,8 @@ class TensorFlowTestCase(googletest.TestCase):
         x, y = a, b
       msgs.append("not equal lhs = {}".format(x))
       msgs.append("not equal rhs = {}".format(y))
+      # With Python 3, we need to make sure the dtype matches between a and b.
+      b = b.astype(a.dtype)
       np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
 
   @py_func_if_in_function

@@ -83,7 +83,8 @@ class RMSprop(optimizer_v2.OptimizerV2):
     a particular graph execution), but differs from the published algorithm.
 
     Args:
-      learning_rate: A Tensor or a floating point value.  The learning rate.
+      learning_rate: A `Tensor`, floating point value, or a schedule that is a
+        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
       rho: Discounting factor for the history/coming gradient
       momentum: A scalar tensor.
       epsilon: Small value to avoid zero denominator.

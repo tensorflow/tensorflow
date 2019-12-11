@@ -113,6 +113,8 @@ XLAJIT_MAKE_UNARY(Erf, xla::Erf(x));
 XLAJIT_MAKE_UNARY(Erfc, xla::Erfc(x));
 XLAJIT_MAKE_UNARY(Lgamma, xla::Lgamma(x));
 XLAJIT_MAKE_UNARY(Digamma, xla::Digamma(x));
+XLAJIT_MAKE_UNARY(BesselI0e, xla::BesselI0e(x));
+XLAJIT_MAKE_UNARY(BesselI1e, xla::BesselI1e(x));
 
 }  // namespace
 }  // namespace tensorflow

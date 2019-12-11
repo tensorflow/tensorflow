@@ -192,9 +192,9 @@ manual_symbol_renames = {
     "tf.contrib.util.constant_value":
         "tf.get_static_value",
     "tf.contrib.saved_model.load_keras_model":
-        "tf.keras.experimental.load_from_saved_model",
+        "tf.compat.v1.keras.experimental.load_from_saved_model",
     "tf.contrib.saved_model.save_keras_model":
-        "tf.keras.experimental.export_saved_model",
+        "tf.compat.v1.keras.experimental.export_saved_model",
     "tf.contrib.rnn.RNNCell":
         "tf.compat.v1.nn.rnn_cell.RNNCell",
     "tf.contrib.rnn.LSTMStateTuple":
@@ -279,6 +279,8 @@ manual_symbol_renames = {
         "tf.recompute_grad",
     "tf.count_nonzero":
         "tf.math.count_nonzero",
+    "tf.decode_raw":
+        "tf.io.decode_raw",
     "tf.manip.batch_to_space_nd":
         "tf.batch_to_space",
     "tf.quantize_v2":
@@ -550,8 +552,18 @@ manual_symbol_renames = {
         "tf.compat.v1.where",
     "tf.where_v2":
         "tf.compat.v2.where",
+    "tf.app.flags": "tf.compat.v1.app.flags",
 }
 # pylint: enable=line-too-long
+
+
+def add_contrib_direct_import_support(symbol_dict):
+  """Add support for `tf.contrib.*` alias `contrib_*.` Updates dict in place."""
+  for symbol_name in list(symbol_dict.keys()):
+    symbol_alias = symbol_name.replace("tf.contrib.", "contrib_")
+    symbol_dict[symbol_alias] = symbol_dict[symbol_name]
+
+add_contrib_direct_import_support(manual_symbol_renames)
 
 symbol_renames = renames_v2.renames
 symbol_renames.update(manual_symbol_renames)
@@ -610,3 +622,5 @@ addons_symbol_mappings = {
     "tf.contrib.rnn.LayerNormBasicLSTMCell":
         "tfa.rnn.LayerNormLSTMCell"
 }
+
+add_contrib_direct_import_support(addons_symbol_mappings)

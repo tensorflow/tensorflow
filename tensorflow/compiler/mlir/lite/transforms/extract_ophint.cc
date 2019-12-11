@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include <map>
 #include <queue>
+#include <vector>
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -170,6 +172,20 @@ struct OphintCompositeOp {
     return all_output_ops;
   }
 
+  std::vector<Operation*> GetAllInUseOutputOps() {
+    std::vector<Operation*> all_output_ops;
+    for (const auto& kv : outputs) {
+      auto& aggregated_operand = kv.second;
+      if (aggregated_operand.aggregation != kStrategyStack) {
+        continue;
+      }
+      for (const auto& operand_kv : aggregated_operand.ops) {
+        all_output_ops.push_back(operand_kv.second);
+      }
+    }
+    return all_output_ops;
+  }
+
   // This function will process the aggregated inputs based on different
   // strategies like "first", "last", "stack".
   std::map<int, Value*> GetAggregatedInputs(OpBuilder* builder) {
@@ -177,7 +193,7 @@ struct OphintCompositeOp {
     for (const auto& kv : inputs) {
       Value* op_input = nullptr;
       const AggregatedOperand& operand = kv.second;
-      // Dealiong with "stack" strategy:
+      // Dealing with "stack" strategy:
       // This breaks into two parts:
       // 1) If the ops only has one element, we only add a reshape op to expand
       // the dim.
@@ -196,12 +212,24 @@ struct OphintCompositeOp {
           for (const auto& dim : input_type.getShape()) {
             reshape_op_shape.push_back(dim);
           }
-          auto reshape_output_type = builder->getTensorType(
-              reshape_op_shape, input_type.getElementType());
+
           Operation* first_use = current_identity_op->getNextNode();
           builder->setInsertionPoint(first_use);
+          Location loc = first_use->getLoc();
+          auto shape_type = RankedTensorType::get({input_type.getRank() + 1},
+                                                  builder->getIntegerType(32));
+          SmallVector<Attribute, 4> result_shape_data(reshape_op_shape.size());
+          for (int i = 0; i < reshape_op_shape.size(); ++i) {
+            result_shape_data[i] = builder->getI32IntegerAttr(
+                static_cast<int32_t>(reshape_op_shape[i]));
+          }
+          auto shape_attr =
+              DenseElementsAttr::get(shape_type, result_shape_data);
+          auto shape = builder->create<ConstantOp>(loc, shape_type, shape_attr);
+          auto reshape_output_type = RankedTensorType::get(
+              reshape_op_shape, input_type.getElementType());
           Operation* reshape = builder->create<TFL::ReshapeOp>(
-              first_use->getLoc(), reshape_output_type, input);
+              first_use->getLoc(), reshape_output_type, input, shape);
           op_input = reshape->getResult(0);
 
         } else {
@@ -226,7 +254,7 @@ struct OphintCompositeOp {
             pack_shape.push_back(dim);
           }
           auto pack_input_type =
-              builder->getTensorType(pack_shape, type.getElementType());
+              RankedTensorType::get(pack_shape, type.getElementType());
           builder->setInsertionPoint(first_use);
           Operation* pack_op = builder->create<TFL::PackOp>(
               first_use->getLoc(), pack_input_type, pack_input_operands,
@@ -251,10 +279,10 @@ struct OphintCompositeOp {
   // be inserted in.
   Operation* GetFirstOutputOp() { return outputs.begin()->second.ops.at(0); }
 
-  // Since we have differnt aggregation strategies, e.g., "first", "last",
+  // Since we have different aggregation strategies, e.g., "first", "last",
   // "stack". We don't somehow aggregated to get the outputs for the funcOp.
   // This function is simply compute the RankedTensorType (shape & element type)
-  std::map<int, Type> GetAggregatedOuputTypes(OpBuilder* builder) {
+  std::map<int, Type> GetAggregatedOutputTypes(OpBuilder* builder) {
     std::map<int, Type> aggregated_output_types;
     for (const auto& kv : outputs) {
       const AggregatedOperand& operand = kv.second;
@@ -270,7 +298,7 @@ struct OphintCompositeOp {
           shape.push_back(dim);
         }
         aggregated_output_types[kv.first] =
-            builder->getTensorType(shape, first_output_type.getElementType());
+            RankedTensorType::get(shape, first_output_type.getElementType());
       } else if (operand.aggregation == kStrategyLast) {
         Value* last_output =
             operand.ops.at(operand.ops.size() - 1)->getOperand(0);
@@ -290,7 +318,7 @@ struct OphintCompositeOp {
     int output_index = 0;
     for (const auto& kv : outputs) {
       const AggregatedOperand& operand = kv.second;
-      // This handles the "stack" stratefy. It push a unpack_op before all the
+      // This handles the "stack" strategy. It push a unpack_op before all the
       // outputs and make all the outputs point to the unpack_op.
       if (operand.aggregation == kStrategyStack) {
         // TODO(renjieliu): Revisit here if we need to handle
@@ -317,12 +345,14 @@ struct OphintCompositeOp {
       } else if (operand.aggregation == kStrategyLast) {
         // This handles the strategy "last", it simply takes the last output.
         Operation* op = operand.ops.at(operand.ops.size() - 1);
-        op->replaceUsesOfWith(op->getOperand(0), fused_op->getResult(kv.first));
+        op->replaceUsesOfWith(op->getOperand(0),
+                              fused_op->getResult(output_index));
       } else {
         // This handles the strategy "first" and default, it simply takes the
         // first output.
         Operation* op = operand.ops.at(0);
-        op->replaceUsesOfWith(op->getOperand(0), fused_op->getResult(kv.first));
+        op->replaceUsesOfWith(op->getOperand(0),
+                              fused_op->getResult(output_index));
       }
 
       output_index++;
@@ -353,6 +383,128 @@ struct OphintCompositeOp {
   std::map<int, AggregatedOperand> outputs;
 };
 
+// Preprocess the graph for topo sort. (each operation is a node, while
+// inputs/outputs indicate edges) Assume the graph is acyclic. The preprocess
+// does the following:
+//   Compute each operations's in-degress (how many input nodes they're taken)
+//   Get all consumer operations for every operations. (operation_to_outputs)
+//   Get the init_queue (those operations will be processed first).
+void PreprocessTopoSortGraph(
+    Block* block, std::queue<Operation*>* init_queue,
+    llvm::DenseMap<Operation*, llvm::DenseSet<Operation*>>*
+        operation_to_outputs,
+    llvm::DenseMap<Operation*, int>* operation_to_in_degrees) {
+  for (auto& op : *block) {
+    if (&op == block->getTerminator()) continue;
+    if (op.getNumOperands() == 0) {
+      init_queue->push(&op);
+    } else {
+      // The operand of the ops is not a direct indication of the "edge" as we
+      // can have a pack op after a unpack op (they have multiple edges), we
+      // should only count as one.
+      llvm::DenseSet<Operation*> input_ops;
+      for (int i = 0; i < op.getNumOperands(); ++i) {
+        Operation* input_op = op.getOperand(i)->getDefiningOp();
+        if (input_op) input_ops.insert(input_op);
+      }
+      if (input_ops.empty()) {
+        init_queue->push(&op);
+        continue;
+      }
+      operation_to_in_degrees->try_emplace(&op, input_ops.size());
+      for (auto* input_op : input_ops) {
+        auto preceeding_op_it = operation_to_outputs->find(input_op);
+        if (preceeding_op_it == operation_to_outputs->end()) {
+          auto result = operation_to_outputs->try_emplace(
+              input_op, llvm::DenseSet<Operation*>());
+          preceeding_op_it = result.first;
+        }
+        preceeding_op_it->second.insert(&op);
+      }
+    }
+  }
+}
+
+bool IsSideEffectOp(Operation* op) {
+  if (op->hasNoSideEffect()) return false;
+
+  // Identity op has no side effect.
+  // Check the OperationName maybe more elegant here.
+  auto tf_identity_op = dyn_cast_or_null<TF::IdentityOp>(op);
+  if (tf_identity_op) return false;
+  return true;
+}
+
+// It's possible other transformations can benefit from this util function, but
+// since currently there's none, so we only limit this function to the ophint
+// extraction pass. We may refactor this function to extend the usage in future.
+//
+// Assume the graph is disconnected from outside.
+// Also assume the block has no arguments.
+LogicalResult TopoSortOperations(OpBuilder* builder) {
+  std::queue<Operation*> init_queue;
+  llvm::DenseMap<Operation*, llvm::DenseSet<Operation*>> operation_to_outputs;
+  llvm::DenseMap<Operation*, int> operation_to_in_degrees;
+  std::vector<Operation*> sorted_ops;
+
+  PreprocessTopoSortGraph(builder->getBlock(), &init_queue,
+                          &operation_to_outputs, &operation_to_in_degrees);
+  while (!init_queue.empty()) {
+    Operation* current_op = init_queue.front();
+    init_queue.pop();
+    sorted_ops.push_back(current_op);
+
+    auto current_op_to_output_it = operation_to_outputs.find(current_op);
+    if (current_op_to_output_it == operation_to_outputs.end()) {
+      continue;
+    }
+    for (Operation* output_op : current_op_to_output_it->second) {
+      auto output_op_it = operation_to_in_degrees.find(output_op);
+      if (output_op_it == operation_to_in_degrees.end()) return failure();
+
+      output_op_it->second -= 1;
+      if (output_op_it->second == 0) {
+        init_queue.push(output_op);
+        operation_to_in_degrees.erase(output_op_it);
+      }
+    }
+    operation_to_outputs.erase(current_op_to_output_it);
+  }
+
+  // Before we performs the sort. We need to make sure we didn't mess the
+  // ordering of original side-effect operations.
+  // It's possible those side-effect operations have no topological relations
+  // at all!
+  std::vector<Operation*> original_side_effect_ops;
+  std::vector<Operation*> after_sort_side_effect_ops;
+  for (auto& op : *builder->getBlock()) {
+    if (IsSideEffectOp(&op) && (&op != builder->getBlock()->getTerminator()))
+      original_side_effect_ops.push_back(&op);
+  }
+  for (auto* op : sorted_ops) {
+    if (IsSideEffectOp(op)) after_sort_side_effect_ops.push_back(op);
+  }
+  if (original_side_effect_ops.size() != after_sort_side_effect_ops.size())
+    return failure();
+  for (int i = 0; i < original_side_effect_ops.size(); ++i) {
+    if (original_side_effect_ops[i] != after_sort_side_effect_ops[i])
+      return failure();
+  }
+
+  // Performs the sort.
+  // Ideally it would be nice to just clear the block then write the sorted ops.
+  // But unfortunately that's hard to do.
+  for (int i = sorted_ops.size() - 1; i > 0; --i) {
+    Operation* current_op = sorted_ops[i];
+    for (int j = i - 1; j >= 0; --j) {
+      Operation* prev_op = sorted_ops[j];
+      prev_op->moveBefore(current_op);
+    }
+  }
+
+  return success();
+}
+
 Operation* BuildFusedFuncOp(StringRef func_name, StringRef fused_func_type,
                             Operation* insert_before_op,
                             const std::map<int, Value*>& inputs,
@@ -360,10 +512,12 @@ Operation* BuildFusedFuncOp(StringRef func_name, StringRef fused_func_type,
                             OpBuilder* builder, ModuleOp* module_op) {
   SmallVector<Type, 4> input_types;
   SmallVector<Value*, 4> input_values;
+  SmallVector<int, 4> input_indexes;
   for (const auto& kv : inputs) {
     Value* input = kv.second;
     input_types.push_back(input->getType());
     input_values.push_back(input);
+    input_indexes.push_back(kv.first);
   }
 
   SmallVector<Type, 4> func_output_types;
@@ -378,6 +532,8 @@ Operation* BuildFusedFuncOp(StringRef func_name, StringRef fused_func_type,
   SmallVector<NamedAttribute, 4> attrs;
   attrs.push_back(builder->getNamedAttr(
       kTfLiteFunctionName, builder->getStringAttr(fused_func_type)));
+  attrs.push_back(builder->getNamedAttr(
+      kTfLiteFunctionInputIndex, builder->getI32ArrayAttr(input_indexes)));
   FuncOp func_op = FuncOp::create(insert_before_op->getLoc(), func_name,
                                   function_type, llvm::makeArrayRef(attrs));
   module_op->push_back(func_op);
@@ -474,11 +630,11 @@ LogicalResult ConvertOphintToStub(StringRef stub_name,
 
   // Step 4, get aggregated output types.
   const std::map<int, Type>& aggregated_output_types =
-      ophint_composite_op.GetAggregatedOuputTypes(builder);
+      ophint_composite_op.GetAggregatedOutputTypes(builder);
 
   // Step 5, create & place the fused op and rewire the inputs.
   // Here we use a funcOp to represent the fused op. This "funcOp" will be
-  // coonverted to other ops (like UnidirectionalSequenceRNNOp) in the
+  // converted to other ops (like UnidirectionalSequenceRNNOp) in the
   // legalization phase.
   Operation* inserted_before_op = ophint_composite_op.GetFirstOutputOp();
   Operation* fused_op = BuildFusedFuncOp(
@@ -497,9 +653,16 @@ LogicalResult ConvertOphintToStub(StringRef stub_name,
   // Step 7, remove all the removable ops where
   // (reachable_by_outputs - reachable_by_inputs) as removable and the rest
   // ops are not removable.
+  // We also need to make sure all the output identity nodes are there.
+  llvm::DenseSet<Operation*> ophinted_identity_nodes;
+  for (auto* output : ophint_composite_op.GetAllInUseOutputOps()) {
+    ophinted_identity_nodes.insert(output);
+  }
+
   auto removeRemovableOps = [&](Operation* op) {
-    if (!llvm::is_contained(reachable_by_inputs, op) &&
-        llvm::is_contained(reachable_by_outputs, op)) {
+    if (reachable_by_inputs.count(op) == 0 &&
+        reachable_by_outputs.count(op) != 0 &&
+        ophinted_identity_nodes.count(op) == 0) {
       op->dropAllDefinedValueUses();
       op->dropAllReferences();
       op->erase();
@@ -507,6 +670,10 @@ LogicalResult ConvertOphintToStub(StringRef stub_name,
   };
 
   builder->getBlock()->walk(removeRemovableOps);
+
+  // Step 8: Topo sort to fix any invalid temporary IRs.
+  if (failed(TopoSortOperations(builder))) return failure();
+
   return success();
 }
 
@@ -584,7 +751,7 @@ void ExtractOphintPass::Verify() {
 
 /// Creates an instance of the TensorFlow Lite dialect ExtractOphintPass
 /// pass.
-std::unique_ptr<ModulePassBase> CreateExtractOphintPass() {
+std::unique_ptr<OpPassBase<ModuleOp>> CreateExtractOphintPass() {
   return std::make_unique<ExtractOphintPass>();
 }
 

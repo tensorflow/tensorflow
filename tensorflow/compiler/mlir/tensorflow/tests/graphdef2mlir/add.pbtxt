@@ -1,4 +1,6 @@
 # RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input0,input1 -tf-input-data-types=DT_INT32,DT_INT32 -tf-input-shapes=10:10 -tf-output-arrays=Add -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input0,input1 -tf-input-shapes=10:10 -tf-output-arrays=Add -o - | FileCheck --check-prefix=NONE %s
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input0,input1 -tf-input-shapes=10:10 -tf-input-data-types=',DT_INT32' -tf-output-arrays=Add -o - | FileCheck --check-prefix=SOME %s
 
 node {
   name: "Add"
@@ -37,15 +39,16 @@ versions {
 }
 
 # CHECK: func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32>
-# CHECK: attributes {tf.entry_function = {inputs = "input0, input1", outputs = "Add"}} {
+# CHECK: attributes {tf.entry_function = {inputs = "input0,input1", outputs = "Add"}} {
+# CHECK:   %[[add:.*]], %[[add_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
+# CHECK:   fetch %[[add]]
 
-# CHECK:   %[[INPUT0:[0-9]+]]:2 = tf_executor.island
-# CHECK-NEXT: "tf.Placeholder.input"(%arg0)
+# SOME: func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32>
+# SOME: attributes {tf.entry_function = {inputs = "input0,input1", outputs = "Add"}} {
+# SOME:   %[[add:.*]], %[[add_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
+# SOME:   fetch %[[add]]
 
-# CHECK:   %[[INPUT1:[0-9]+]]:2 = tf_executor.island
-# CHECK-NEXT: "tf.Placeholder.input"(%arg1)
-
-# CHECK:   %[[add:[0-9]+]]:2 = tf_executor.island
-# CHECK-NEXT: "tf.Add"(%[[INPUT0]]#0, %[[INPUT1]]#0)
-
-# CHECK:   fetch %[[add]]#0
+# NONE: func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32>
+# NONE: attributes {tf.entry_function = {inputs = "input0,input1", outputs = "Add"}} {
+# NONE:   %[[add:.*]], %[[add_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
+# NONE:   fetch %[[add]]

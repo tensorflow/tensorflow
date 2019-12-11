@@ -221,6 +221,16 @@ TEST_F(XlaBuilderTest, ShapeInferenceError) {
   EXPECT_THAT(statusor.status().error_message(), HasSubstr("shape inference"));
 }
 
+TEST_F(XlaBuilderTest, DynamicDimensionReshapeToR0) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {1}), "x");
+  auto y = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}), "dyn_dim");
+  auto dx = SetDimensionSize(x, y, 0);
+  Reshape(dx, {});
+  auto statusor = BuildHloModule(&b);
+  ASSERT_TRUE(statusor.ok());
+}
+
 TEST_F(XlaBuilderTest, ParameterAlreadyRegistered) {
   XlaBuilder b_call("add");
   Parameter(&b_call, 0, ShapeUtil::MakeShape(PRED, {}), "x");
@@ -853,14 +863,14 @@ TEST_F(XlaBuilderTest, DynamicReshape) {
                                    /*target_param_index=*/{0},
                                    /*target_dim_num=*/3));
   auto gte = GetTupleElement(p0, 0);  // f32[2, 3, <=4, <=5, 6]
-  Reshape(gte, /*new_sizes=*/{6, 4, 1, 5, 2, 3});
+  Reshape(gte, /*new_sizes=*/{6, 4, 5, 2, 3});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result_shape =
       module->entry_computation()->root_instruction()->shape();
   EXPECT_TRUE(result_shape.is_dynamic_dimension(1));
-  EXPECT_TRUE(result_shape.is_dynamic_dimension(3));
+  EXPECT_TRUE(result_shape.is_dynamic_dimension(2));
   EXPECT_TRUE(ContainersEqual(result_shape.dynamic_dimensions(),
-                              {false, true, false, true, false, false}))
+                              {false, true, true, false, false}))
       << result_shape;
 }
 

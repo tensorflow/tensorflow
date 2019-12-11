@@ -143,7 +143,7 @@ def register_keras_serializable(package='Custom', name=None):
   Note that to be serialized and deserialized, classes must implement the
   `get_config()` method. Functions do not have this requirement.
 
-  The object will be registered under the key 'module>name' where `name`,
+  The object will be registered under the key 'package>name' where `name`,
   defaults to the object name if not passed.
 
   Arguments:
@@ -189,16 +189,43 @@ def _get_name_or_custom_name(obj):
 
 @keras_export('keras.utils.serialize_keras_object')
 def serialize_keras_object(instance):
+  """Serialize Keras object into JSON."""
   _, instance = tf_decorator.unwrap(instance)
   if instance is None:
     return None
 
   if hasattr(instance, 'get_config'):
+    config = instance.get_config()
+    serialization_config = {}
+    for key, item in config.items():
+      if isinstance(item, six.string_types):
+        serialization_config[key] = item
+        continue
+
+      # Any object of a different type needs to be converted to string or dict
+      # for serialization (e.g. custom functions, custom classes)
+      try:
+        serialized_item = serialize_keras_object(item)
+        if isinstance(serialized_item, dict) and not isinstance(item, dict):
+          serialized_item['__passive_serialization__'] = True
+        serialization_config[key] = serialized_item
+      except ValueError:
+        serialization_config[key] = item
+
     name = _get_name_or_custom_name(instance.__class__)
-    return serialize_keras_class_and_config(name, instance.get_config())
+    return serialize_keras_class_and_config(name, serialization_config)
   if hasattr(instance, '__name__'):
     return _get_name_or_custom_name(instance)
   raise ValueError('Cannot serialize', instance)
+
+
+def _get_custom_objects_by_name(item, custom_objects=None):
+  """Returns the item if it is in either local or global custom objects."""
+  if item in _GLOBAL_CUSTOM_OBJECTS:
+    return _GLOBAL_CUSTOM_OBJECTS[item]
+  elif custom_objects and item in custom_objects:
+    return custom_objects[item]
+  return None
 
 
 def class_and_config_for_serialized_keras_object(
@@ -221,7 +248,33 @@ def class_and_config_for_serialized_keras_object(
     cls = module_objects.get(class_name)
     if cls is None:
       raise ValueError('Unknown ' + printable_module_name + ': ' + class_name)
-  return (cls, config['config'])
+
+  cls_config = config['config']
+  deserialized_objects = {}
+  for key, item in cls_config.items():
+    if isinstance(item, dict) and '__passive_serialization__' in item:
+      deserialized_objects[key] = deserialize_keras_object(
+          item,
+          module_objects=module_objects,
+          custom_objects=custom_objects,
+          printable_module_name='config_item')
+    elif (isinstance(item, six.string_types) and
+          tf_inspect.isfunction(
+              _get_custom_objects_by_name(item, custom_objects))):
+      # Handle custom functions here. When saving functions, we only save the
+      # function's name as a string. If we find a matching string in the custom
+      # objects during deserialization, we convert the string back to the
+      # original function.
+      # Note that a potential issue is that a string field could have a naming
+      # conflict with a custom function name, but this should be a rare case.
+      # This issue does not occur if a string field has a naming conflict with
+      # a custom object, since the config of an object will always be a dict.
+      deserialized_objects[key] = _get_custom_objects_by_name(
+          item, custom_objects)
+  for key, item in deserialized_objects.items():
+    cls_config[key] = deserialized_objects[key]
+
+  return (cls, cls_config)
 
 
 @keras_export('keras.utils.deserialize_keras_object')
@@ -231,6 +284,7 @@ def deserialize_keras_object(identifier,
                              printable_module_name='object'):
   if identifier is None:
     return None
+
   if isinstance(identifier, dict):
     # In this case we are dealing with a Keras config dictionary.
     config = identifier
@@ -271,9 +325,12 @@ def deserialize_keras_object(identifier,
     if tf_inspect.isclass(obj):
       return obj()
     return obj
+  elif tf_inspect.isfunction(identifier):
+    # If a function has already been deserialized, return as is.
+    return identifier
   else:
-    raise ValueError('Could not interpret serialized ' + printable_module_name +
-                     ': ' + identifier)
+    raise ValueError('Could not interpret serialized %s: %s' %
+                     (printable_module_name, identifier))
 
 
 def func_dump(func):
@@ -422,12 +479,16 @@ class Progbar(object):
       if k not in self._values_order:
         self._values_order.append(k)
       if k not in self.stateful_metrics:
+        # In the case that progress bar doesn't have a target value in the first
+        # epoch, both on_batch_end and on_epoch_end will be called, which will
+        # cause 'current' and 'self._seen_so_far' to have the same value. Force
+        # the minimal value to 1 here, otherwise stateful_metric will be 0s.
+        value_base = max(current - self._seen_so_far, 1)
         if k not in self._values:
-          self._values[k] = [v * (current - self._seen_so_far),
-                             current - self._seen_so_far]
+          self._values[k] = [v * value_base, value_base]
         else:
-          self._values[k][0] += v * (current - self._seen_so_far)
-          self._values[k][1] += (current - self._seen_so_far)
+          self._values[k][0] += v * value_base
+          self._values[k][1] += value_base
       else:
         # Stateful metrics output a numeric value. This representation
         # means "take an average from a single value" but keeps the

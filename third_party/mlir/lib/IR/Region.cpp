@@ -78,6 +78,7 @@ void Region::cloneInto(Region *dest, BlockAndValueMapping &mapper) {
 void Region::cloneInto(Region *dest, Region::iterator destPos,
                        BlockAndValueMapping &mapper) {
   assert(dest && "expected valid region to clone into");
+  assert(this != dest && "cannot clone region into itself");
 
   // If the list is empty there is nothing to clone.
   if (empty())
@@ -188,14 +189,14 @@ Region *llvm::ilist_traits<::mlir::Block>::getParentRegion() {
 /// We keep the region pointer up to date.
 void llvm::ilist_traits<::mlir::Block>::addNodeToList(Block *block) {
   assert(!block->getParent() && "already in a region!");
-  block->parentValidInstOrderPair.setPointer(getParentRegion());
+  block->parentValidOpOrderPair.setPointer(getParentRegion());
 }
 
 /// This is a trait method invoked when an operation is removed from a
 /// region.  We keep the region pointer up to date.
 void llvm::ilist_traits<::mlir::Block>::removeNodeFromList(Block *block) {
   assert(block->getParent() && "not already in a region!");
-  block->parentValidInstOrderPair.setPointer(nullptr);
+  block->parentValidOpOrderPair.setPointer(nullptr);
 }
 
 /// This is a trait method invoked when an operation is moved from one block
@@ -210,5 +211,29 @@ void llvm::ilist_traits<::mlir::Block>::transferNodesFromList(
 
   // Update the 'parent' member of each Block.
   for (; first != last; ++first)
-    first->parentValidInstOrderPair.setPointer(curParent);
+    first->parentValidOpOrderPair.setPointer(curParent);
+}
+
+//===----------------------------------------------------------------------===//
+// RegionRange
+//===----------------------------------------------------------------------===//
+
+RegionRange::RegionRange(MutableArrayRef<Region> regions)
+    : RegionRange(regions.data(), regions.size()) {}
+RegionRange::RegionRange(ArrayRef<std::unique_ptr<Region>> regions)
+    : RegionRange(regions.data(), regions.size()) {}
+
+/// See `detail::indexed_accessor_range_base` for details.
+RegionRange::OwnerT RegionRange::offset_base(const OwnerT &owner,
+                                             ptrdiff_t index) {
+  if (auto *operand = owner.dyn_cast<const std::unique_ptr<Region> *>())
+    return operand + index;
+  return &owner.get<Region *>()[index];
+}
+/// See `detail::indexed_accessor_range_base` for details.
+Region *RegionRange::dereference_iterator(const OwnerT &owner,
+                                          ptrdiff_t index) {
+  if (auto *operand = owner.dyn_cast<const std::unique_ptr<Region> *>())
+    return operand[index].get();
+  return &owner.get<Region *>()[index];
 }

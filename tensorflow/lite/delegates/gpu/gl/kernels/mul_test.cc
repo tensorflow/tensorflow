@@ -44,6 +44,7 @@ TEST(MulTest, Scalar) {
   MultiplyScalarAttributes attr;
   attr.param = 2;
 
+  // TODO(eignasheva): change to MULTIPLY_SCALAR
   SingleOpModel model({ToString(OperationType::MUL), attr}, {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
   ASSERT_OK(model.Invoke(*NewMultiplyScalarNodeShader()));
@@ -68,6 +69,7 @@ TEST(MulTest, Linear) {
   tensor.data = {2, 3};
   attr.param = std::move(tensor);
 
+  // TODO(eignasheva): change to MULTIPLY_SCALAR
   SingleOpModel model({ToString(OperationType::MUL), attr}, {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
   ASSERT_OK(model.Invoke(*NewMultiplyScalarNodeShader()));

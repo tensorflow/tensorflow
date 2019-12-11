@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -264,6 +265,28 @@ class Session {
   virtual Status ReleaseCallable(CallableHandle handle) {
     return errors::Unimplemented(
         "ReleaseCallable is not supported for this session.");
+  }
+
+  /// \brief Release global graph-related state in this session.
+  ///
+  /// After calling `this->Finalize()`, calls to `this->Run()` with previously
+  /// unseen feeds and fetches, and calls to `this->MakeCallable()` will fail.
+  /// Using `MakeCallable()` and `RunCallable()` is recommended, because
+  /// explicit callable creation makes it clearer where the `Finalize()` call
+  /// should be placed.
+  ///
+  /// This API can be used in conjunction with a "warmup" phase to reduce the
+  /// memory consumed by the session:
+  ///
+  /// 1. Call `Session::Create()`.
+  /// 2. Call `Session::MakeCallable()` for all subgraphs that you will execute
+  ///    in the session.
+  /// 3. Call `Session::Finalize()` to release global graph-related state.
+  /// 4. Call `Session::RunCallable()` with the handle(s) created in step 2.
+  ///
+  /// NOTE: This API is still experimental and may change.
+  virtual Status Finalize() {
+    return errors::Unimplemented("Finalize is not supported for this session.");
   }
 };
 

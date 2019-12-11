@@ -25,90 +25,11 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/map_lhlo_to_scalar_op.h"
 
 namespace mlir {
 namespace xla_lhlo {
 namespace {
-
-template <typename LHLO_BinaryOp>
-struct ScalarOp;
-
-template <>
-struct ScalarOp<xla_lhlo::AddOp> {
-  using FOp = ::mlir::AddFOp;
-  using IOp = ::mlir::AddIOp;
-};
-template <>
-struct ScalarOp<xla_lhlo::AndOp> {
-  using IOp = ::mlir::AndOp;
-};
-template <>
-struct ScalarOp<xla_lhlo::DivOp> {
-  using FOp = ::mlir::DivFOp;
-  using IOp = ::mlir::DivISOp;
-};
-template <>
-struct ScalarOp<xla_lhlo::MulOp> {
-  using FOp = ::mlir::MulFOp;
-  using IOp = ::mlir::MulIOp;
-};
-template <>
-struct ScalarOp<xla_lhlo::SubOp> {
-  using FOp = ::mlir::SubFOp;
-  using IOp = ::mlir::SubIOp;
-};
-template <typename LHLO_BinaryOp>
-using ScalarFOp = typename ScalarOp<LHLO_BinaryOp>::FOp;
-template <typename LHLO_BinaryOp>
-using ScalarIOp = typename ScalarOp<LHLO_BinaryOp>::IOp;
-
-template <typename LHLO_BinaryOp>
-Value* GetBinaryOp(Type element_type, Location loc, Value* lhs, Value* rhs,
-                   OpBuilder b) {
-  if (element_type.isa<IntegerType>()) {
-    return b.create<ScalarIOp<LHLO_BinaryOp>>(loc, lhs, rhs);
-  }
-  if (element_type.isa<FloatType>()) {
-    return b.create<ScalarFOp<LHLO_BinaryOp>>(loc, lhs, rhs);
-  }
-  return nullptr;
-}
-
-template <>
-Value* GetBinaryOp<xla_lhlo::AndOp>(Type element_type, Location loc, Value* lhs,
-                                    Value* rhs, OpBuilder b) {
-  return element_type.isa<IntegerType>()
-             ? b.create<ScalarIOp<xla_lhlo::AndOp>>(loc, lhs, rhs)
-             : nullptr;
-}
-
-template <>
-Value* GetBinaryOp<xla_lhlo::MinOp>(Type element_type, Location loc, Value* lhs,
-                                    Value* rhs, OpBuilder b) {
-  if (element_type.isa<IntegerType>()) {
-    auto lhs_lt_rhs = b.create<CmpIOp>(loc, CmpIPredicate::SLT, lhs, rhs);
-    return b.create<::mlir::SelectOp>(loc, lhs_lt_rhs, lhs, rhs);
-  }
-  if (element_type.isa<FloatType>()) {
-    auto lhs_lt_rhs = b.create<CmpFOp>(loc, CmpFPredicate::OLT, lhs, rhs);
-    return b.create<::mlir::SelectOp>(loc, lhs_lt_rhs, lhs, rhs);
-  }
-  return nullptr;
-}
-
-template <>
-Value* GetBinaryOp<xla_lhlo::MaxOp>(Type element_type, Location loc, Value* lhs,
-                                    Value* rhs, OpBuilder b) {
-  if (element_type.isa<IntegerType>()) {
-    auto lhs_gt_rhs = b.create<CmpIOp>(loc, CmpIPredicate::SGT, lhs, rhs);
-    return b.create<::mlir::SelectOp>(loc, lhs_gt_rhs, lhs, rhs);
-  }
-  if (element_type.isa<FloatType>()) {
-    auto lhs_gt_rhs = b.create<CmpFOp>(loc, CmpFPredicate::OGT, lhs, rhs);
-    return b.create<::mlir::SelectOp>(loc, lhs_gt_rhs, lhs, rhs);
-  }
-  return nullptr;
-}
 
 template <typename LhloOp>
 struct BinaryOpConverter : public OpRewritePattern<LhloOp> {
@@ -135,12 +56,14 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOp> {
     }
     auto l = rewriter.create<LoadOp>(loc, lhs, induction_vars);
     auto r = rewriter.create<LoadOp>(loc, rhs, induction_vars);
-    auto result = GetBinaryOp<LhloOp>(element_type, loc, l, r, rewriter);
+    Operation* result = MapLhloOpToStdScalarOp<LhloOp>(
+        llvm::cast<LhloOp>(op), element_type, {l, r}, rewriter);
     if (result == nullptr) {
       return this->matchFailure();
     }
-    rewriter.create<StoreOp>(loc, result, op.out(), induction_vars);
-    rewriter.replaceOp(op, {});
+    rewriter.create<StoreOp>(loc, result->getResult(0), op.out(),
+                             induction_vars);
+    rewriter.eraseOp(op);
     return this->matchSuccess();
   }
 };
@@ -170,7 +93,7 @@ struct LhloLegalizeToAffine : public FunctionPass<LhloLegalizeToAffine> {
 
 }  // namespace
 
-std::unique_ptr<FunctionPassBase> createLegalizeToAffinePass() {
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass() {
   return absl::make_unique<LhloLegalizeToAffine>();
 }
 

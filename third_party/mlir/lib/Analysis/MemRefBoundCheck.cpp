@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file implements a pass to check memref accessses for out of bound
+// This file implements a pass to check memref accesses for out of bound
 // accesses.
 //
 //===----------------------------------------------------------------------===//
@@ -43,8 +43,8 @@ struct MemRefBoundCheck : public FunctionPass<MemRefBoundCheck> {
 
 } // end anonymous namespace
 
-FunctionPassBase *mlir::createMemRefBoundCheckPass() {
-  return new MemRefBoundCheck();
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createMemRefBoundCheckPass() {
+  return std::make_unique<MemRefBoundCheck>();
 }
 
 void MemRefBoundCheck::runOnFunction() {

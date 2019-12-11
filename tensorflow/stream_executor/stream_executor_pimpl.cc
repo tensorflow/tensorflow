@@ -457,19 +457,20 @@ port::Status StreamExecutor::GetStatus(Stream *stream) {
   return implementation_->GetStatus(stream);
 }
 
-void *StreamExecutor::Allocate(uint64 size) {
+DeviceMemoryBase StreamExecutor::Allocate(uint64 size, int64 memory_space) {
   if (memory_limit_bytes_ > 0 &&
       mem_alloc_bytes_ + size > memory_limit_bytes_) {
     LOG(WARNING) << "Not enough memory to allocate " << size << " on device "
                  << device_ordinal_
                  << " within provided limit. [used=" << mem_alloc_bytes_
                  << ", limit=" << memory_limit_bytes_ << "]";
-    return nullptr;
+    return DeviceMemoryBase();
   }
-  void *buf = implementation_->Allocate(size);
-  VLOG(1) << "Called StreamExecutor::Allocate(size=" << size << ") returns "
-          << buf << StackTraceIfVLOG10();
-  CreateAllocRecord(buf, size);
+  DeviceMemoryBase buf = implementation_->Allocate(size, memory_space);
+  VLOG(1) << "Called StreamExecutor::Allocate(size=" << size
+          << ", memory_space=" << memory_space << ") returns " << buf.opaque()
+          << StackTraceIfVLOG10();
+  CreateAllocRecord(buf.opaque(), size);
 
   return buf;
 }
@@ -560,16 +561,16 @@ bool StreamExecutor::SynchronizeAllActivity() {
   return ok;
 }
 
-bool StreamExecutor::SynchronousMemZero(DeviceMemoryBase *location,
-                                        uint64 size) {
+port::Status StreamExecutor::SynchronousMemZero(DeviceMemoryBase *location,
+                                                uint64 size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemZero(location=" << location
           << ", size=" << size << ")" << StackTraceIfVLOG10();
 
   return implementation_->SynchronousMemZero(location, size);
 }
 
-bool StreamExecutor::SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                       uint64 size) {
+port::Status StreamExecutor::SynchronousMemSet(DeviceMemoryBase *location,
+                                               int value, uint64 size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemSet(location=" << location
           << ", value=" << value << ", size=" << size << ")"
           << StackTraceIfVLOG10();
@@ -688,13 +689,14 @@ bool StreamExecutor::MemcpyDeviceToDevice(Stream *stream,
                                                size);
 }
 
-bool StreamExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
-                             uint64 size) {
+port::Status StreamExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
+                                     uint64 size) {
   return implementation_->MemZero(stream, location, size);
 }
 
-bool StreamExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
-                              uint32 pattern, uint64 size) {
+port::Status StreamExecutor::Memset32(Stream *stream,
+                                      DeviceMemoryBase *location,
+                                      uint32 pattern, uint64 size) {
   CHECK_EQ(0, size % 4)
       << "need 32-bit multiple size to fill with 32-bit pattern";
   return implementation_->Memset32(stream, location, pattern, size);
@@ -866,10 +868,11 @@ StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
       stream_executors_(stream_executors.begin(), stream_executors.end()) {}
 
 port::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
-    int device_ordinal, uint64 size, bool retry_on_failure) {
+    int device_ordinal, uint64 size, bool retry_on_failure,
+    int64 memory_space) {
   TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
                       GetStreamExecutor(device_ordinal));
-  DeviceMemoryBase result = executor->AllocateArray<uint8>(size);
+  DeviceMemoryBase result = executor->AllocateArray<uint8>(size, memory_space);
   if (size > 0 && result == nullptr) {
     return tensorflow::errors::ResourceExhausted(absl::StrFormat(
         "Failed to allocate request for %s (%uB) on device ordinal %d",
@@ -896,7 +899,7 @@ port::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
 }
 
 port::StatusOr<StreamExecutor *>
-StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) {
+StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) const {
   if (device_ordinal < 0) {
     return tensorflow::errors::InvalidArgument(absl::StrFormat(
         "device ordinal value (%d) must be non-negative", device_ordinal));
@@ -913,6 +916,26 @@ StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) {
 
 bool StreamExecutorMemoryAllocator::AllowsAsynchronousDeallocation() const {
   return false;
+}
+
+port::StatusOr<Stream *> StreamExecutorMemoryAllocator::GetStream(
+    int device_ordinal) {
+  CHECK(!AllowsAsynchronousDeallocation())
+      << "The logic below only works for synchronous allocators";
+  TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
+                      GetStreamExecutor(device_ordinal));
+  Stream *out = [&] {
+    absl::MutexLock lock(&mutex_);
+    if (!streams_.count(device_ordinal)) {
+      auto p = streams_.emplace(std::piecewise_construct,
+                                std::forward_as_tuple(device_ordinal),
+                                std::forward_as_tuple(executor));
+      p.first->second.Init();
+      return &p.first->second;
+    }
+    return &streams_.at(device_ordinal);
+  }();
+  return out;
 }
 
 }  // namespace stream_executor

@@ -247,11 +247,11 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
 
   def __init__(self, container_strategy, device):
     super(OneDeviceExtended, self).__init__(container_strategy)
-    self._device = device_util.canonicalize(device)
+    self._device = device_util.resolve(device)
     suffix_loc = self._device.rfind("/")
     self._input_device = self._device[:suffix_loc] + "/device:CPU:0"
     worker_device_pairs = [(self._input_device, [self._device])]
-    device_map = values.SingleDeviceMap(device)
+    device_map = values.SingleDeviceMap(self._device)
     self._input_workers = input_lib.InputWorkers(
         device_map, worker_device_pairs)
 

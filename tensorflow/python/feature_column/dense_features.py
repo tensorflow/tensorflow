@@ -45,13 +45,15 @@ class DenseFeatures(fc._BaseFeaturesLayer):  # pylint: disable=protected-access
   Example:
 
   ```python
-  price = numeric_column('price')
-  keywords_embedded = embedding_column(
-      categorical_column_with_hash_bucket("keywords", 10K), dimensions=16)
+  price = tf.feature_column.numeric_column('price')
+  keywords_embedded = tf.feature_column.embedding_column(
+      tf.feature_column.categorical_column_with_hash_bucket("keywords", 10K),
+      dimensions=16)
   columns = [price, keywords_embedded, ...]
-  feature_layer = DenseFeatures(columns)
+  feature_layer = tf.compat.v1.keras.layers.DenseFeatures(columns)
 
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
+  features = tf.io.parse_example(
+      ..., features=tf.feature_column.make_parse_example_spec(columns))
   dense_tensor = feature_layer(features)
   for units in [128, 64, 32]:
     dense_tensor = tf.compat.v1.keras.layers.Dense(

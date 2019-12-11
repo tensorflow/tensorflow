@@ -177,6 +177,27 @@ TEST(ShapeUtilTest, UnequalIgnoringFpPrecision) {
       ShapeUtil::MakeShapeWithLayout(PRED, {4, 3}, {0, 1})));
 }
 
+TEST(ShapeUtilTest, EqualIgnoringElementType) {
+  EXPECT_TRUE(ShapeUtil::EqualIgnoringElementType(
+      ShapeUtil::MakeShapeWithLayout(F32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {4, 3}, {0, 1})));
+  EXPECT_TRUE(ShapeUtil::EqualIgnoringElementType(
+      ShapeUtil::MakeShapeWithLayout(S32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {4, 3}, {0, 1})));
+  EXPECT_TRUE(ShapeUtil::EqualIgnoringElementType(
+      ShapeUtil::MakeShapeWithLayout(F32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(PRED, {4, 3}, {0, 1})));
+}
+
+TEST(ShapeUtilTest, UnequalIgnoringElementType) {
+  EXPECT_FALSE(ShapeUtil::EqualIgnoringElementType(
+      ShapeUtil::MakeShapeWithLayout(F32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {3, 4}, {0, 1})));
+  EXPECT_FALSE(ShapeUtil::EqualIgnoringElementType(
+      ShapeUtil::MakeShapeWithLayout(F32, {3, 4}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {3, 4}, {1, 0})));
+}
+
 TEST(ShapeUtilTest, EqualDynamicShapes) {
   EXPECT_TRUE(
       ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {4, 3}, {true, false}),
@@ -709,6 +730,15 @@ TEST(ShapeUtilTest, PermuteDimensionsLayout) {
           InversePermutation(permutation)));
     } while (std::next_permutation(permutation.begin(), permutation.end()));
   } while (std::next_permutation(layout.begin(), layout.end()));
+}
+
+TEST(ShapeUtilTest, UpdateDynamicDimensions) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 100, 1000});
+
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape});
+
+  ShapeUtil::UpdateDynamicDimension(&tuple_shape, {0}, 1, true);
+  EXPECT_TRUE(ShapeUtil::GetSubshape(tuple_shape, {0}).is_dynamic_dimension(1));
 }
 
 TEST(ShapeUtilTest, PermuteDynamicDimensions) {

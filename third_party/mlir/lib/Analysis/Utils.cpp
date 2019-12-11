@@ -23,11 +23,8 @@
 #include "mlir/Analysis/Utils.h"
 
 #include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
-#include "mlir/IR/Builders.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -43,7 +40,7 @@ using llvm::SmallDenseMap;
 void mlir::getLoopIVs(Operation &op, SmallVectorImpl<AffineForOp> *loops) {
   auto *currOp = op.getParentOp();
   AffineForOp currAffineForOp;
-  // Traverse up the hierarchy collecing all 'affine.for' operation while
+  // Traverse up the hierarchy collecting all 'affine.for' operation while
   // skipping over 'affine.if' operations.
   while (currOp && ((currAffineForOp = dyn_cast<AffineForOp>(currOp)) ||
                     isa<AffineIfOp>(currOp))) {
@@ -154,7 +151,7 @@ LogicalResult MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
 }
 
 /// Computes the memory region accessed by this memref with the region
-/// represented as constraints symbolic/parameteric in 'loopDepth' loops
+/// represented as constraints symbolic/parametric in 'loopDepth' loops
 /// surrounding opInst and any additional Function symbols.
 //  For example, the memref region for this load operation at loopDepth = 1 will
 //  be as below:
@@ -225,7 +222,7 @@ LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
   cst.reset(numDims, numSymbols, 0, operands);
 
   // Add equality constraints.
-  // Add inequalties for loop lower/upper bounds.
+  // Add inequalities for loop lower/upper bounds.
   for (unsigned i = 0; i < numDims + numSymbols; ++i) {
     auto *operand = operands[i];
     if (auto loop = getForInductionVarOwner(operand)) {
@@ -619,7 +616,9 @@ LogicalResult mlir::computeSliceUnion(ArrayRef<Operation *> opsA,
           return failure();
       }
       // Compute union bounding box of 'sliceUnionCst' and 'tmpSliceCst'.
-      if (failed(sliceUnionCst.unionBoundingBox(tmpSliceCst))) {
+      if (sliceUnionCst.getNumLocalIds() > 0 ||
+          tmpSliceCst.getNumLocalIds() > 0 ||
+          failed(sliceUnionCst.unionBoundingBox(tmpSliceCst))) {
         LLVM_DEBUG(llvm::dbgs()
                    << "Unable to compute union bounding box of slice bounds."
                       "\n.");
@@ -847,7 +846,7 @@ MemRefAccess::MemRefAccess(Operation *loadOrStoreOpInst) {
     opInst = loadOrStoreOpInst;
     auto loadMemrefType = loadOp.getMemRefType();
     indices.reserve(loadMemrefType.getRank());
-    for (auto *index : loadOp.getIndices()) {
+    for (auto *index : loadOp.getMapOperands()) {
       indices.push_back(index);
     }
   } else {
@@ -857,7 +856,7 @@ MemRefAccess::MemRefAccess(Operation *loadOrStoreOpInst) {
     memref = storeOp.getMemRef();
     auto storeMemrefType = storeOp.getMemRefType();
     indices.reserve(storeMemrefType.getRank());
-    for (auto *index : storeOp.getIndices()) {
+    for (auto *index : storeOp.getMapOperands()) {
       indices.push_back(index);
     }
   }
@@ -879,6 +878,24 @@ unsigned mlir::getNestingDepth(Operation &op) {
       depth++;
   }
   return depth;
+}
+
+/// Equal if both affine accesses are provably equivalent (at compile
+/// time) when considering the memref, the affine maps and their respective
+/// operands. The equality of access functions + operands is checked by
+/// subtracting fully composed value maps, and then simplifying the difference
+/// using the expression flattener.
+/// TODO: this does not account for aliasing of memrefs.
+bool MemRefAccess::operator==(const MemRefAccess &rhs) const {
+  if (memref != rhs.memref)
+    return false;
+
+  AffineValueMap diff, thisMap, rhsMap;
+  getAccessMap(&thisMap);
+  rhs.getAccessMap(&rhsMap);
+  AffineValueMap::difference(thisMap, rhsMap, &diff);
+  return llvm::all_of(diff.getAffineMap().getResults(),
+                      [](AffineExpr e) { return e == 0; });
 }
 
 /// Returns the number of surrounding loops common to 'loopsA' and 'loopsB',
@@ -916,7 +933,7 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
     if (failed(
             region->compute(opInst,
                             /*loopDepth=*/getNestingDepth(*block.begin())))) {
-      return opInst->emitError("Error obtaining memory region\n");
+      return opInst->emitError("error obtaining memory region\n");
     }
 
     auto it = regions.find(region->memref);

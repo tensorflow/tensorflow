@@ -18,10 +18,9 @@
 #define MLIR_PASS_PASSDETAIL_H_
 
 #include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
 
 namespace mlir {
-class OpPassManager;
-
 namespace detail {
 
 //===----------------------------------------------------------------------===//
@@ -37,60 +36,68 @@ class VerifierPass : public OperationPass<VerifierPass> {
 // OpToOpPassAdaptor
 //===----------------------------------------------------------------------===//
 
+/// A base class for Op-to-Op adaptor passes.
+class OpToOpPassAdaptorBase {
+public:
+  OpToOpPassAdaptorBase(OpPassManager &&mgr);
+  OpToOpPassAdaptorBase(const OpToOpPassAdaptorBase &rhs) = default;
+
+  /// Merge the current pass adaptor into given 'rhs'.
+  void mergeInto(OpToOpPassAdaptorBase &rhs);
+
+  /// Returns the pass managers held by this adaptor.
+  MutableArrayRef<OpPassManager> getPassManagers() { return mgrs; }
+
+  /// Returns the adaptor pass name.
+  std::string getName();
+
+protected:
+  // A set of adaptors to run.
+  SmallVector<OpPassManager, 1> mgrs;
+};
+
 /// An adaptor pass used to run operation passes over nested operations
 /// synchronously on a single thread.
-class OpToOpPassAdaptor : public OperationPass<OpToOpPassAdaptor> {
+class OpToOpPassAdaptor : public OperationPass<OpToOpPassAdaptor>,
+                          public OpToOpPassAdaptorBase {
 public:
-  OpToOpPassAdaptor(std::unique_ptr<OpPassManager> mgr);
-  OpToOpPassAdaptor(const OpToOpPassAdaptor &rhs);
+  OpToOpPassAdaptor(OpPassManager &&mgr);
 
   /// Run the held pipeline over all operations.
   void runOnOperation() override;
-
-  /// Returns the nested pass manager for this adaptor.
-  OpPassManager &getPassManager() { return *mgr; }
-
-private:
-  std::unique_ptr<OpPassManager> mgr;
 };
 
 /// An adaptor pass used to run operation passes over nested operations
 /// asynchronously across multiple threads.
 class OpToOpPassAdaptorParallel
-    : public OperationPass<OpToOpPassAdaptorParallel> {
+    : public OperationPass<OpToOpPassAdaptorParallel>,
+      public OpToOpPassAdaptorBase {
 public:
-  OpToOpPassAdaptorParallel(std::unique_ptr<OpPassManager> mgr);
-  OpToOpPassAdaptorParallel(const OpToOpPassAdaptorParallel &rhs);
+  OpToOpPassAdaptorParallel(OpPassManager &&mgr);
 
   /// Run the held pipeline over all operations.
   void runOnOperation() override;
 
-  /// Returns the nested pass manager for this adaptor.
-  OpPassManager &getPassManager() { return *mgr; }
+  /// Return the async pass managers held by this parallel adaptor.
+  MutableArrayRef<SmallVector<OpPassManager, 1>> getParallelPassManagers() {
+    return asyncExecutors;
+  }
 
 private:
-  // The main pass executor for this adaptor.
-  std::unique_ptr<OpPassManager> mgr;
-
   // A set of executors, cloned from the main executor, that run asynchronously
   // on different threads.
-  std::vector<OpPassManager> asyncExecutors;
+  SmallVector<SmallVector<OpPassManager, 1>, 8> asyncExecutors;
 };
 
-/// Utility function to return if a pass refers to an OpToOpAdaptorPass
-/// instance.
-inline bool isOpToOpAdaptorPass(Pass *pass) {
-  return isa<OpToOpPassAdaptorParallel>(pass) || isa<OpToOpPassAdaptor>(pass);
-}
+/// Utility function to convert the given class to the base adaptor it is an
+/// adaptor pass, returns nullptr otherwise.
+OpToOpPassAdaptorBase *getAdaptorPassBase(Pass *pass);
 
 /// Utility function to return if a pass refers to an adaptor pass. Adaptor
-/// passes are those that internally execute a pipeline, such as the
-/// OpToOpPassAdaptor.
-inline bool isAdaptorPass(Pass *pass) { return isOpToOpAdaptorPass(pass); }
-
-/// Utility function to return the operation name that the given adaptor pass
-/// operates on. Return None if the given pass is not an adaptor pass.
-Optional<StringRef> getAdaptorPassOpName(Pass *pass);
+/// passes are those that internally execute a pipeline.
+inline bool isAdaptorPass(Pass *pass) {
+  return isa<OpToOpPassAdaptorParallel>(pass) || isa<OpToOpPassAdaptor>(pass);
+}
 
 } // end namespace detail
 } // end namespace mlir

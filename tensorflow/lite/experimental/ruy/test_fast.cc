@@ -97,4 +97,14 @@ TEST(RuyTest, TestNarrowMuls) {
   }
 }
 
+TEST(RuyTest, TestGEMV) {
+  for (int size = 1; size < 1024; size *= 2) {
+    for (int depth = 1; depth < 500; depth += 47) {
+      TestLinearAllOrders<TestSetType>(size, depth, 1);
+    }
+  }
+  TestLinearAllOrders<TestSetType>(5, 5001, 1);
+  TestLinearAllOrders<TestSetType>(8193, 17, 1);
+}
+
 }  // namespace ruy

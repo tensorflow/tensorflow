@@ -48,6 +48,7 @@ class Region;
 class RewritePattern;
 class Type;
 class Value;
+class ValueRange;
 
 /// This is an adaptor from a list of values to named operands of OpTy.  In a
 /// generic operation context, e.g., in dialect conversions, an ordered array of
@@ -98,10 +99,10 @@ public:
   bool (&classof)(Operation *op);
 
   /// Use the specified object to parse this ops custom assembly format.
-  ParseResult (&parseAssembly)(OpAsmParser *parser, OperationState *result);
+  ParseResult (&parseAssembly)(OpAsmParser &parser, OperationState &result);
 
   /// This hook implements the AsmPrinter for this operation.
-  void (&printAssembly)(Operation *op, OpAsmPrinter *p);
+  void (&printAssembly)(Operation *op, OpAsmPrinter &p);
 
   /// This hook implements the verifier for this operation.  It should emits an
   /// error message and returns failure if a problem is detected, or returns
@@ -171,8 +172,8 @@ private:
   AbstractOperation(
       StringRef name, Dialect &dialect, OperationProperties opProperties,
       bool (&classof)(Operation *op),
-      ParseResult (&parseAssembly)(OpAsmParser *parser, OperationState *result),
-      void (&printAssembly)(Operation *op, OpAsmPrinter *p),
+      ParseResult (&parseAssembly)(OpAsmParser &parser, OperationState &result),
+      void (&printAssembly)(Operation *op, OpAsmPrinter &p),
       LogicalResult (&verifyInvariants)(Operation *op),
       LogicalResult (&foldHook)(Operation *op, ArrayRef<Attribute> operands,
                                 SmallVectorImpl<OpFoldResult> &results),
@@ -273,17 +274,13 @@ public:
 
   OperationState(Location location, OperationName name);
 
-  OperationState(Location location, StringRef name, ArrayRef<Value *> operands,
+  OperationState(Location location, StringRef name, ValueRange operands,
                  ArrayRef<Type> types, ArrayRef<NamedAttribute> attributes,
                  ArrayRef<Block *> successors = {},
                  MutableArrayRef<std::unique_ptr<Region>> regions = {},
                  bool resizableOperandList = false);
 
-  void addOperands(ArrayRef<Value *> newOperands) {
-    assert(successors.empty() &&
-           "Non successor operands should be added first.");
-    operands.append(newOperands.begin(), newOperands.end());
-  }
+  void addOperands(ValueRange newOperands);
 
   void addTypes(ArrayRef<Type> newTypes) {
     types.append(newTypes.begin(), newTypes.end());
@@ -304,12 +301,7 @@ public:
     attributes.append(newAttributes.begin(), newAttributes.end());
   }
 
-  void addSuccessor(Block *successor, ArrayRef<Value *> succOperands) {
-    successors.push_back(successor);
-    // Insert a sentinal operand to mark a barrier between successor operands.
-    operands.push_back(nullptr);
-    operands.append(succOperands.begin(), succOperands.end());
-  }
+  void addSuccessor(Block *successor, ValueRange succOperands);
 
   /// Create a region that should be attached to the operation.  These regions
   /// can be filled in immediately without waiting for Operation to be
@@ -398,7 +390,7 @@ public:
 
   /// Replace the operands contained in the storage with the ones provided in
   /// 'operands'.
-  void setOperands(Operation *owner, ArrayRef<Value *> operands);
+  void setOperands(Operation *owner, ValueRange operands);
 
   /// Erase an operand held by the storage.
   void eraseOperand(unsigned index);
@@ -452,6 +444,66 @@ private:
   }
 };
 } // end namespace detail
+
+/// Set of flags used to control the behavior of the various IR print methods
+/// (e.g. Operation::Print).
+class OpPrintingFlags {
+public:
+  OpPrintingFlags();
+  OpPrintingFlags(llvm::NoneType) : OpPrintingFlags() {}
+
+  /// Enable the elision of large elements attributes, by printing a '...'
+  /// instead of the element data. Note: The IR generated with this option is
+  /// not parsable. `largeElementLimit` is used to configure what is considered
+  /// to be a "large" ElementsAttr by providing an upper limit to the number of
+  /// elements.
+  OpPrintingFlags &elideLargeElementsAttrs(int64_t largeElementLimit = 16);
+
+  /// Enable printing of debug information. If 'prettyForm' is set to true,
+  /// debug information is printed in a more readable 'pretty' form. Note: The
+  /// IR generated with 'prettyForm' is not parsable.
+  OpPrintingFlags &enableDebugInfo(bool prettyForm = false);
+
+  /// Always print operations in the generic form.
+  OpPrintingFlags &printGenericOpForm();
+
+  /// Use local scope when printing the operation. This allows for using the
+  /// printer in a more localized and thread-safe setting, but may not
+  /// necessarily be identical to what the IR will look like when dumping
+  /// the full module.
+  OpPrintingFlags &useLocalScope();
+
+  /// Return if the given ElementsAttr should be elided.
+  bool shouldElideElementsAttr(ElementsAttr attr) const;
+
+  /// Return if debug information should be printed.
+  bool shouldPrintDebugInfo() const;
+
+  /// Return if debug information should be printed in the pretty form.
+  bool shouldPrintDebugInfoPrettyForm() const;
+
+  /// Return if operations should be printed in the generic form.
+  bool shouldPrintGenericOpForm() const;
+
+  /// Return if the printer should use local scope when dumping the IR.
+  bool shouldUseLocalScope() const;
+
+private:
+  /// Elide large elements attributes if the number of elements is larger than
+  /// the upper limit.
+  llvm::Optional<int64_t> elementsAttrElementLimit;
+
+  /// Print debug information.
+  bool printDebugInfoFlag : 1;
+  bool printDebugInfoPrettyFormFlag : 1;
+
+  /// Print operations in the generic form.
+  bool printGenericOpFormFlag : 1;
+
+  /// Print operations with numberings local to the current operation.
+  bool printLocalScope : 1;
+};
+
 } // end namespace mlir
 
 namespace llvm {

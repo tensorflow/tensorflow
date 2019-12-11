@@ -64,7 +64,7 @@ struct DecodeConstant : public FunctionPass<DecodeConstant> {
 
 }  // namespace
 
-std::unique_ptr<FunctionPassBase> CreateDecodeConstantPass() {
+std::unique_ptr<OpPassBase<FuncOp>> CreateDecodeConstantPass() {
   return std::make_unique<DecodeConstant>();
 }
 

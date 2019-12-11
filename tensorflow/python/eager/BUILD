@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_logged_benchmark",
@@ -39,6 +40,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/python:cpp_python_util",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",
@@ -65,7 +67,6 @@ py_library(
         ":core",
         ":def_function",
         ":execute",
-        ":execution_callbacks",
         ":forwardprop",
         ":forwardprop_util",
         ":function",
@@ -111,6 +112,7 @@ cuda_py_test(
         ":cancellation",
         ":test",
     ],
+    python_version = "PY3",
 )
 
 py_library(
@@ -150,13 +152,17 @@ cuda_py_test(
         ":context",
         ":test",
     ],
+    python_version = "PY3",
 )
 
 py_library(
     name = "monitoring",
     srcs = ["monitoring.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_agents:__subpackages__",
+    ],
     deps = [
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:pywrap_tensorflow",
@@ -171,7 +177,7 @@ cuda_py_test(
         ":monitoring",
         ":test",
     ],
-    xla_enable_strict_auto_jit = True,
+    python_version = "PY3",
 )
 
 py_library(
@@ -193,9 +199,8 @@ cuda_py_test(
         ":profiler",
         ":test",
         "//tensorflow/python:constant_op",
-        "//tensorflow/core/profiler:protos_all_py",
     ],
-    xla_enable_strict_auto_jit = True,
+    python_version = "PY3",
 )
 
 py_library(
@@ -211,7 +216,7 @@ py_library(
 py_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     visibility = ["//tensorflow:internal"],
@@ -237,7 +242,7 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
     ],
-    xla_enable_strict_auto_jit = True,
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -259,11 +264,11 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:training",
     ],
+    python_version = "PY3",
     tags = [
         "no_rocm",
         "no_windows",  #TODO(b/139745667)
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -275,8 +280,8 @@ cuda_py_test(
         ":test",
         "//tensorflow/python/distribute:mirrored_strategy",
     ],
+    python_version = "PY3",
     shard_count = 5,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -295,7 +300,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:pywrap_tensorflow",
     ],
-    xla_enable_strict_auto_jit = True,
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -310,7 +315,7 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:math_ops",
     ],
-    xla_enable_strict_auto_jit = True,
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -326,7 +331,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
     ],
-    xla_enable_strict_auto_jit = True,
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -343,8 +348,8 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
     ],
+    python_version = "PY3",
     shard_count = 5,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -359,10 +364,11 @@ cuda_py_test(
         ":function",
         ":test",
         "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python:data_flow_ops",
-        "//tensorflow/python:constant_op",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:indexed_slices",
@@ -377,6 +383,7 @@ cuda_py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:test_ops",
     ],
+    python_version = "PY2",
     shard_count = 15,
 )
 
@@ -411,30 +418,6 @@ py_library(
 )
 
 py_library(
-    name = "execution_callbacks",
-    srcs = ["execution_callbacks.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        ":context",
-        "//tensorflow/python:op_callbacks",
-        "//tensorflow/python:pywrap_tensorflow",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "execution_callbacks_test",
-    srcs = ["execution_callbacks_test.py"],
-    additional_deps = [
-        ":execution_callbacks",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-    ],
-)
-
-py_library(
     name = "graph_only_ops",
     srcs = ["graph_only_ops.py"],
     srcs_version = "PY2AND3",
@@ -457,7 +440,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
     ],
-    xla_enable_strict_auto_jit = True,
+    python_version = "PY3",
 )
 
 py_library(
@@ -539,6 +522,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":forwardprop_util",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:util",
@@ -572,11 +556,30 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python/keras",
     ],
-    xla_enable_strict_auto_jit = True,
+    python_version = "PY3",
+)
+
+cuda_py_test(
+    name = "remote_benchmarks_test",
+    srcs = ["remote_benchmarks_test.py"],
+    additional_deps = [
+        ":backprop",
+        ":context",
+        ":forwardprop",
+        ":function",
+        ":test",
+        ":profiler",
+        ":remote",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:random_ops",
+    ],
+    python_version = "PY3",
 )
 
 tf_py_logged_benchmark(
     name = "benchmarks",
+    python_version = "PY3",
     target = "//tensorflow/python/eager:benchmarks_test",
 )
 
@@ -595,6 +598,7 @@ tf_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -619,7 +623,7 @@ cuda_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:tensor_shape",
     ],
-    xla_enable_strict_auto_jit = True,
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -635,7 +639,9 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:test_ops",
     ],
+    python_version = "PY3",
 )
 
 py_library(
@@ -692,6 +698,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
     ],
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -699,10 +706,13 @@ cuda_py_test(
     srcs = ["def_function_test.py"],
     additional_deps = [
         ":def_function",
+        "//tensorflow/python/autograph/core",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
     ],
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -716,6 +726,7 @@ cuda_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
     ],
+    python_version = "PY3",
     tags = [
         "no_mac",
         "no_windows",
@@ -726,6 +737,7 @@ cuda_py_test(
 tf_xla_py_test(
     name = "def_function_xla_test",
     srcs = ["def_function_xla_test.py"],
+    python_version = "PY3",
     tags = [
         "no_pip",
         "no_windows",
@@ -736,6 +748,8 @@ tf_xla_py_test(
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:framework_ops",
     ],
 )
@@ -765,6 +779,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
     ],
+    python_version = "PY3",
 )
 
 py_library(
@@ -788,12 +803,31 @@ cuda_py_test(
         ":def_function",
         ":test",
         ":remote",
+        "@absl_py//absl/testing:parameterized",
+        "@six_archive//:six",
         "//tensorflow/python:resource_variable_ops",
     ],
     grpc_enabled = True,
+    python_version = "PY3",
+    shard_count = 2,
     tags = [
         "no_oss",  # This test launches local server.
         "optonly",  # times out
+    ],
+)
+
+tpu_py_test(
+    name = "remote_cloud_tpu_test",
+    srcs = ["remote_cloud_tpu_test.py"],
+    python_version = "PY3",
+    tags = [
+        "notap",
+    ],
+    deps = [
+        ":context",
+        ":remote",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/tpu:tpu_strategy_util",
     ],
 )
 
@@ -808,4 +842,5 @@ cuda_py_test(
         ":remote",
         "//tensorflow/python:resource_variable_ops",
     ],
+    python_version = "PY3",
 )

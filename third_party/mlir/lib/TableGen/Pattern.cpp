@@ -22,9 +22,12 @@
 
 #include "mlir/TableGen/Pattern.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Record.h"
+
+#define DEBUG_TYPE "mlir-tblgen-pattern"
 
 using namespace mlir;
 
@@ -90,6 +93,11 @@ bool tblgen::DagLeaf::isSubClassOf(StringRef superclass) const {
   if (auto *defInit = dyn_cast_or_null<llvm::DefInit>(def))
     return defInit->getDef()->isSubClassOf(superclass);
   return false;
+}
+
+void tblgen::DagLeaf::print(raw_ostream &os) const {
+  if (def)
+    def->print(os);
 }
 
 //===----------------------------------------------------------------------===//
@@ -159,6 +167,11 @@ bool tblgen::DagNode::isReplaceWithValue() const {
   return dagOpDef->getName() == "replaceWithValue";
 }
 
+void tblgen::DagNode::print(raw_ostream &os) const {
+  if (node)
+    node->print(os);
+}
+
 //===----------------------------------------------------------------------===//
 // SymbolInfoMap
 //===----------------------------------------------------------------------===//
@@ -198,6 +211,7 @@ int tblgen::SymbolInfoMap::SymbolInfo::getStaticValueCount() const {
 
 std::string
 tblgen::SymbolInfoMap::SymbolInfo::getVarDecl(StringRef name) const {
+  LLVM_DEBUG(llvm::dbgs() << "getVarDecl for '" << name << "': ");
   switch (kind) {
   case Kind::Attr: {
     auto type =
@@ -222,10 +236,13 @@ tblgen::SymbolInfoMap::SymbolInfo::getVarDecl(StringRef name) const {
 
 std::string tblgen::SymbolInfoMap::SymbolInfo::getValueAndRangeUse(
     StringRef name, int index, const char *fmt, const char *separator) const {
+  LLVM_DEBUG(llvm::dbgs() << "getValueAndRangeUse for '" << name << "': ");
   switch (kind) {
   case Kind::Attr: {
     assert(index < 0);
-    return formatv(fmt, name);
+    auto repl = formatv(fmt, name);
+    LLVM_DEBUG(llvm::dbgs() << repl << " (Attr)\n");
+    return repl;
   }
   case Kind::Operand: {
     assert(index < 0);
@@ -233,9 +250,13 @@ std::string tblgen::SymbolInfoMap::SymbolInfo::getValueAndRangeUse(
     // If this operand is variadic, then return a range. Otherwise, return the
     // value itself.
     if (operand->isVariadic()) {
-      return formatv(fmt, name);
+      auto repl = formatv(fmt, name);
+      LLVM_DEBUG(llvm::dbgs() << repl << " (VariadicOperand)\n");
+      return repl;
     }
-    return formatv(fmt, formatv("(*{0}.begin())", name));
+    auto repl = formatv(fmt, formatv("(*{0}.begin())", name));
+    LLVM_DEBUG(llvm::dbgs() << repl << " (SingleOperand)\n");
+    return repl;
   }
   case Kind::Result: {
     // If `index` is greater than zero, then we are referencing a specific
@@ -244,7 +265,16 @@ std::string tblgen::SymbolInfoMap::SymbolInfo::getValueAndRangeUse(
       std::string v = formatv("{0}.getODSResults({1})", name, index);
       if (!op->getResult(index).isVariadic())
         v = formatv("(*{0}.begin())", v);
-      return formatv(fmt, v);
+      auto repl = formatv(fmt, v);
+      LLVM_DEBUG(llvm::dbgs() << repl << " (SingleResult)\n");
+      return repl;
+    }
+
+    // If this op has no result at all but still we bind a symbol to it, it
+    // means we want to capture the op itself.
+    if (op->getNumResults() == 0) {
+      LLVM_DEBUG(llvm::dbgs() << name << " (Op)\n");
+      return name;
     }
 
     // We are referencing all results of the multi-result op. A specific result
@@ -259,27 +289,37 @@ std::string tblgen::SymbolInfoMap::SymbolInfo::getValueAndRangeUse(
       }
       values.push_back(formatv(fmt, v));
     }
-    return llvm::join(values, separator);
+    auto repl = llvm::join(values, separator);
+    LLVM_DEBUG(llvm::dbgs() << repl << " (VariadicResult)\n");
+    return repl;
   }
   case Kind::Value: {
     assert(index < 0);
     assert(op == nullptr);
-    return formatv(fmt, name);
+    auto repl = formatv(fmt, name);
+    LLVM_DEBUG(llvm::dbgs() << repl << " (Value)\n");
+    return repl;
   }
   }
+  llvm_unreachable("unknown kind");
 }
 
 std::string tblgen::SymbolInfoMap::SymbolInfo::getAllRangeUse(
     StringRef name, int index, const char *fmt, const char *separator) const {
+  LLVM_DEBUG(llvm::dbgs() << "getAllRangeUse for '" << name << "': ");
   switch (kind) {
   case Kind::Attr:
   case Kind::Operand: {
     assert(index < 0 && "only allowed for symbol bound to result");
-    return formatv(fmt, name);
+    auto repl = formatv(fmt, name);
+    LLVM_DEBUG(llvm::dbgs() << repl << " (Operand/Attr)\n");
+    return repl;
   }
   case Kind::Result: {
     if (index >= 0) {
-      return formatv(fmt, formatv("{0}.getODSResults({1})", name, index));
+      auto repl = formatv(fmt, formatv("{0}.getODSResults({1})", name, index));
+      LLVM_DEBUG(llvm::dbgs() << repl << " (SingleResult)\n");
+      return repl;
     }
 
     // We are referencing all results of the multi-result op. Each result should
@@ -291,12 +331,16 @@ std::string tblgen::SymbolInfoMap::SymbolInfo::getAllRangeUse(
       values.push_back(
           formatv(fmt, formatv("{0}.getODSResults({1})", name, i)));
     }
-    return llvm::join(values, separator);
+    auto repl = llvm::join(values, separator);
+    LLVM_DEBUG(llvm::dbgs() << repl << " (VariadicResult)\n");
+    return repl;
   }
   case Kind::Value: {
     assert(index < 0 && "only allowed for symbol bound to result");
     assert(op == nullptr);
-    return formatv(fmt, formatv("{{{0}}", name));
+    auto repl = formatv(fmt, formatv("{{{0}}", name));
+    LLVM_DEBUG(llvm::dbgs() << repl << " (Value)\n");
+    return repl;
   }
   }
   llvm_unreachable("unknown kind");
@@ -401,15 +445,19 @@ tblgen::DagNode tblgen::Pattern::getResultPattern(unsigned index) const {
 
 void tblgen::Pattern::collectSourcePatternBoundSymbols(
     tblgen::SymbolInfoMap &infoMap) {
+  LLVM_DEBUG(llvm::dbgs() << "start collecting source pattern bound symbols\n");
   collectBoundSymbols(getSourcePattern(), infoMap, /*isSrcPattern=*/true);
+  LLVM_DEBUG(llvm::dbgs() << "done collecting source pattern bound symbols\n");
 }
 
 void tblgen::Pattern::collectResultPatternBoundSymbols(
     tblgen::SymbolInfoMap &infoMap) {
+  LLVM_DEBUG(llvm::dbgs() << "start collecting result pattern bound symbols\n");
   for (int i = 0, e = getNumResultPatterns(); i < e; ++i) {
     auto pattern = getResultPattern(i);
     collectBoundSymbols(pattern, infoMap, /*isSrcPattern=*/false);
   }
+  LLVM_DEBUG(llvm::dbgs() << "done collecting result pattern bound symbols\n");
 }
 
 const tblgen::Operator &tblgen::Pattern::getSourceRootOp() {
@@ -428,13 +476,19 @@ std::vector<tblgen::AppliedConstraint> tblgen::Pattern::getConstraints() const {
   for (auto it : *listInit) {
     auto *dagInit = dyn_cast<llvm::DagInit>(it);
     if (!dagInit)
-      PrintFatalError(def.getLoc(), "all elemements in Pattern multi-entity "
+      PrintFatalError(def.getLoc(), "all elements in Pattern multi-entity "
                                     "constraints should be DAG nodes");
 
     std::vector<std::string> entities;
     entities.reserve(dagInit->arg_size());
-    for (auto *argName : dagInit->getArgNames())
+    for (auto *argName : dagInit->getArgNames()) {
+      if (!argName) {
+        PrintFatalError(
+            def.getLoc(),
+            "operands to additional constraints can only be symbol references");
+      }
       entities.push_back(argName->getValue());
+    }
 
     ret.emplace_back(cast<llvm::DefInit>(dagInit->getOperator())->getDef(),
                      dagInit->getNameStr(), std::move(entities));
@@ -495,6 +549,8 @@ void tblgen::Pattern::collectBoundSymbols(DagNode tree, SymbolInfoMap &infoMap,
   // The name attached to the DAG node's operator is for representing the
   // results generated from this op. It should be remembered as bound results.
   if (!treeName.empty()) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "found symbol bound to op result: " << treeName << '\n');
     if (!infoMap.bindOpResult(treeName, op))
       PrintFatalError(def.getLoc(),
                       formatv("symbol '{0}' bound more than once", treeName));
@@ -508,7 +564,10 @@ void tblgen::Pattern::collectBoundSymbols(DagNode tree, SymbolInfoMap &infoMap,
       // We can only bind symbols to op arguments in source pattern. Those
       // symbols are referenced in result patterns.
       auto treeArgName = tree.getArgName(i);
-      if (!treeArgName.empty()) {
+      // `$_` is a special symbol meaning ignore the current argument.
+      if (!treeArgName.empty() && treeArgName != "_") {
+        LLVM_DEBUG(llvm::dbgs() << "found symbol bound to op argument: "
+                                << treeArgName << '\n');
         if (!infoMap.bindOpArgument(treeArgName, op, i)) {
           auto err = formatv("symbol '{0}' bound more than once", treeArgName);
           PrintFatalError(def.getLoc(), err);

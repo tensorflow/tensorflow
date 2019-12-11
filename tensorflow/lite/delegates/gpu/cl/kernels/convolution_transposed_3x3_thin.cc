@@ -28,17 +28,21 @@ namespace cl {
 namespace {
 
 std::string GenerateConvolutionTransposedCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    const LinearStorage& biases, int src_depth, int dst_depth,
-    const CLDevice& device,
+    const OperationDef& op_def, const LinearStorage& biases, int src_depth,
+    int dst_depth, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  const TensorCodeGenerator::SizeVariablesNames src_size(
+      "src_size.x", "src_size.y", "src_size.z", "src_size.w");
+  const TensorCodeGenerator::SizeVariablesNames dst_size(
+      "dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w");
+  TensorCodeGenerator src_tensor("src_data", src_size, op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", dst_size, op_def.dst_tensors[0]);
+  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
 
-  std::string c = GetCommonDefines(precision);
+  const std::string batch_id = op_def.batch_support ? "B" : "";
+  std::string c = GetCommonDefines(op_def.precision);
 
-  switch (precision) {
+  switch (op_def.precision) {
     case CalculationsPrecision::F32:
     case CalculationsPrecision::F16:
       c += "#define CONV(R, SRC, F, i) \\\n";
@@ -63,7 +67,13 @@ std::string GenerateConvolutionTransposedCode(
   c += "    int4 src_size,             \n";
   c += "    int4 dst_size              \n";
   c += ") {\n";
-  c += "  int X = get_global_id(0);\n";
+  if (op_def.batch_support) {
+    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int X = linear_id / dst_size.w;\n";
+    c += "  int B = linear_id % dst_size.w;\n";
+  } else {
+    c += "  int X = get_global_id(0);\n";
+  }
   c += "  int Y = get_global_id(1);\n";
   c += "  if (X >= src_size.x || Y >= src_size.y) return;\n";
   for (int d = 0; d < dst_depth; ++d) {
@@ -78,29 +88,50 @@ std::string GenerateConvolutionTransposedCode(
   for (int s = 0; s < src_depth; ++s) {
     const std::string z = std::to_string(s);
     c += "  {\n";
-    if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+    if (src_tensor_type == TensorStorageType::BUFFER) {
       c += "  bool x_in = X + 1 < src_size.x;\n";
       c += "  bool y_in = Y + 1 < src_size.y;\n";
-      c += "  FLT4 src0 = " + src_tensor.Read3D("X", "Y", z) + ";\n";
+      c += "  FLT4 src0 = " + src_tensor.Read4D("X", "Y", z, batch_id) + ";\n";
       c += "  FLT4 src1 = (FLT4)(0.0);\n";
       c += "  FLT4 src2 = (FLT4)(0.0);\n";
       c += "  FLT4 src3 = (FLT4)(0.0);\n";
       c += "  if (x_in) {\n";
-      c += "    src1 = " + src_tensor.Read3D("X + 1", "Y", z) + ";\n";
+      c += "    src1 = " + src_tensor.Read4D("X + 1", "Y", z, batch_id) + ";\n";
       c += "  }\n";
       c += "  if (y_in) {\n";
-      c += "    src2 = " + src_tensor.Read3D("X", "Y + 1", z) + ";\n";
+      c += "    src2 = " + src_tensor.Read4D("X", "Y + 1", z, batch_id) + ";\n";
       c += "  }\n";
       c += "  if (x_in && y_in) {\n";
-      c += "    src3 = " + src_tensor.Read3D("X + 1", "Y + 1", z) + ";\n";
+      c += "    src3 = " + src_tensor.Read4D("X + 1", "Y + 1", z, batch_id) +
+           ";\n";
       c += "  }\n";
+    } else if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
+      c += "  " + src_tensor.GetAddress("c0", "X", "Y", z, batch_id) + ";\n";
+      c +=
+          "  " + src_tensor.GetAddress("c1", "X + 1", "Y", z, batch_id) + ";\n";
+      c +=
+          "  " + src_tensor.GetAddress("c2", "X", "Y + 1", z, batch_id) + ";\n";
+      c += "  " + src_tensor.GetAddress("c3", "X + 1", "Y + 1", z, batch_id) +
+           ";\n";
+      c += "  bool x_in = X + 1 < src_size.x;\n";
+      c += "  bool y_in = Y + 1 < src_size.y;\n";
+      c += "  c1 = select(-1, c1, x_in);\n";
+      c += "  c2 = select(-1, c2, y_in);\n";
+      c += "  c3 = select(-1, c3, x_in && y_in);\n";
+      c += "  FLT4 src0 = " + src_tensor.Read("c0") + ";\n";
+      c += "  FLT4 src1 = " + src_tensor.Read("c1") + ";\n";
+      c += "  FLT4 src2 = " + src_tensor.Read("c2") + ";\n";
+      c += "  FLT4 src3 = " + src_tensor.Read("c3") + ";\n";
     } else {
       const auto mode = GetFastestZeroMode(device);
-      c += "  FLT4 src0 = " + src_tensor.Read3D("X", "Y", z, mode) + ";\n";
-      c += "  FLT4 src1 = " + src_tensor.Read3D("X + 1", "Y", z, mode) + ";\n";
-      c += "  FLT4 src2 = " + src_tensor.Read3D("X", "Y + 1", z, mode) + ";\n";
-      c += "  FLT4 src3 = " + src_tensor.Read3D("X + 1", "Y + 1", z, mode) +
+      c += "  FLT4 src0 = " + src_tensor.Read4D("X", "Y", z, batch_id, mode) +
            ";\n";
+      c += "  FLT4 src1 = " +
+           src_tensor.Read4D("X + 1", "Y", z, batch_id, mode) + ";\n";
+      c += "  FLT4 src2 = " +
+           src_tensor.Read4D("X", "Y + 1", z, batch_id, mode) + ";\n";
+      c += "  FLT4 src3 = " +
+           src_tensor.Read4D("X + 1", "Y + 1", z, batch_id, mode) + ";\n";
     }
     for (int d = 0; d < dst_depth; ++d) {
       const std::string layer = std::to_string(d);
@@ -129,15 +160,19 @@ std::string GenerateConvolutionTransposedCode(
     c += "  FLT4 bias_val = " + biases.ReadLinearFLT4(layer) + ";\n";
     for (int y = 0; y < 2; ++y) {
       for (int x = 0; x < 2; ++x) {
+        const std::string x_coord = "X + " + std::to_string(x);
+        const std::string y_coord = "Y + " + std::to_string(y);
         c += "  {\n";
         c += "    FLT4 result = TO_FLT4(r" + layer + "[" + std::to_string(y) +
              "][" + std::to_string(x) + "]) + bias_val;\n";
+        const std::string x_3dcoord = op_def.batch_support
+                                          ? "(" + x_coord + ") * dst_size.w + B"
+                                          : x_coord;
+        const LinkingContext context{"result", x_3dcoord, y_coord, layer};
+        c += PostProcess(linked_operations, context);
         c += "    " +
-             dst_tensor.GetAddress("address", "X + " + std::to_string(x),
-                                   "Y + " + std::to_string(y), layer) +
+             dst_tensor.Write4D("result", x_coord, y_coord, layer, batch_id) +
              "\n";
-        c += PostProcess(linked_operations, "result", layer, "address");
-        c += "    " + dst_tensor.Write3D("result", "address") + "\n";
         c += "  }\n";
       }
     }
@@ -182,8 +217,7 @@ ConvolutionTransposed3x3Thin& ConvolutionTransposed3x3Thin::operator=(
 Status ConvolutionTransposed3x3Thin::Compile(
     const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposedCode(
-      definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, biases_, IntegralDivideRoundUp(src_channels_, 4),
+      definition_, biases_, IntegralDivideRoundUp(src_channels_, 4),
       IntegralDivideRoundUp(dst_channels_, 4), *creation_context.device,
       linked_operations_);
 
@@ -198,14 +232,14 @@ Status ConvolutionTransposed3x3Thin::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHDB()));
   return OkStatus();
 }
 
 int3 ConvolutionTransposed3x3Thin::GetGridSize() const {
-  const int grid_x = src_[0]->Width();
+  const int grid_x = src_[0]->Width() * dst_[0]->Batch();
   const int grid_y = src_[0]->Height();
   const int grid_z = 1;
   return int3(grid_x, grid_y, grid_z);
@@ -226,7 +260,8 @@ bool IsConvolutionTransposed3x3ThinSupported(
   return attr.weights.shape.o <= 8 && attr.weights.shape.w == 3 &&
          attr.weights.shape.h == 3 && attr.stride.w == 2 &&
          attr.stride.h == 2 && attr.padding.prepended.w == 1 &&
-         attr.padding.prepended.h == 1;
+         attr.padding.prepended.h == 1 && attr.padding.appended.w == 1 &&
+         attr.padding.appended.h == 1;
 }
 
 Status CreateConvolutionTransposed3x3Thin(

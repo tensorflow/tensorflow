@@ -33,14 +33,14 @@ namespace xla {
 
 // Converts a HloModuleProto stored in the file with the given `input_filename`
 // into a MLIR module. Creates MLIR entities into the given MLIR `context`.
-mlir::OwningModuleRef HloToMlirHloTranslateFunction(
-    llvm::StringRef input_filename, mlir::MLIRContext* context);
+mlir::OwningModuleRef HloToMlirHloTranslateFunction(llvm::StringRef input,
+                                                    mlir::MLIRContext* context);
 
 // Converts a HloModule stored in text form for a file with the given
 // `input_filename` into a MLIR module. Creates MLIR entities into the given
 // MLIR `context`.
 mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
-    llvm::StringRef input_filename, mlir::MLIRContext* context);
+    llvm::StringRef input, mlir::MLIRContext* context);
 
 }  // namespace xla
 

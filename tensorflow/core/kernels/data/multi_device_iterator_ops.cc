@@ -98,8 +98,9 @@ class MultiDeviceIterator : public ResourceBase {
     return Status::OK();
   }
 
-  void GetNextFromShard(OpKernelContext* ctx, int shard_num,
-                        int64 incarnation_id, std::function<void()> done) {
+  Status GetNextFromShard(OpKernelContext* ctx, int shard_num,
+                          int64 incarnation_id,
+                          MultiDeviceIteratorCallback callback) {
     tf_shared_lock l(mu_);
     IteratorContext::Params params(ctx);
     params.flr = flr_;
@@ -109,33 +110,21 @@ class MultiDeviceIterator : public ResourceBase {
     params.thread_pool = &unbounded_thread_pool_;
     params.cancellation_manager = &cancellation_manager_;
     std::function<void()> deregister_fn;
-    OP_REQUIRES_OK_ASYNC(ctx,
-                         ConnectCancellationManagers(
-                             ctx->cancellation_manager(),
-                             params.cancellation_manager, &deregister_fn),
-                         done);
+    TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+        ctx->cancellation_manager(),
+        [cm = params.cancellation_manager]() { cm->StartCancel(); },
+        &deregister_fn));
     IteratorContext iter_ctx(std::move(params));
-    MultiDeviceIteratorCallback callback = std::bind(
-        [ctx](const HostBufferElement& elem, const std::function<void()>& done,
-              const std::function<void()>& deregister_fn) {
-          // iterator->Unref();
-          Status s = elem.status;
-          if (!s.ok()) {
-            ctx->SetStatus(s);
-          } else if (elem.end_of_sequence) {
-            ctx->SetStatus(errors::OutOfRange("End of sequence"));
-          } else {
-            for (int i = 0; i < elem.value.size(); ++i) {
-              ctx->set_output(i, elem.value[i]);
-            }
-          }
+    MultiDeviceIteratorCallback callback_new = std::bind(
+        [](const HostBufferElement& elem, MultiDeviceIteratorCallback callback,
+           std::function<void()> deregister_fn) {
+          callback(elem);
           deregister_fn();
-          done();
         },
-        std::placeholders::_1, std::move(done), std::move(deregister_fn));
-
+        std::placeholders::_1, std::move(callback), std::move(deregister_fn));
     multi_device_buffer_->GetNextFromShard(&iter_ctx, shard_num, incarnation_id,
-                                           std::move(callback));
+                                           std::move(callback_new));
+    return Status::OK();
   }
 
   const DataTypeVector& output_types() const { return output_types_; }
@@ -439,7 +428,7 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
         std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
         OP_REQUIRES_OK(context, context->function_library()->Clone(
                                     &flib_def, &pflr, &flr));
-        std::unique_ptr<FunctionHandleCache> function_handle_cache =
+        auto function_handle_cache =
             absl::make_unique<FunctionHandleCache>(flr);
         ResourceMgr* mgr = context->resource_manager();
         OP_REQUIRES_OK(context, cinfo_.Init(mgr, def()));
@@ -575,9 +564,11 @@ class MultiDeviceIteratorInitOp : public OpKernel {
     params.resource_mgr = resource->resource_mgr();
     params.cancellation_manager = resource->cancellation_manager();
     std::function<void()> deregister_fn;
-    OP_REQUIRES_OK(ctx, ConnectCancellationManagers(ctx->cancellation_manager(),
-                                                    params.cancellation_manager,
-                                                    &deregister_fn));
+    OP_REQUIRES_OK(
+        ctx, RegisterCancellationCallback(
+                 ctx->cancellation_manager(),
+                 [cm = params.cancellation_manager]() { cm->StartCancel(); },
+                 &deregister_fn));
     auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
     IteratorContext iter_ctx(std::move(params));
@@ -597,11 +588,12 @@ REGISTER_KERNEL_BUILDER(Name("MultiDeviceIteratorInit").Device(DEVICE_CPU),
                         MultiDeviceIteratorInitOp);
 
 // Calls GetNextFromShard(shard) and returns a vector of Tensors as output.
-// TODO(rohanj): Implement using BackgroundWorker that Derek built?
 class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
  public:
   explicit MultiDeviceIteratorGetNextFromShardOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx) {}
+      : AsyncOpKernel(ctx),
+        background_worker_(ctx->env(),
+                           "tf_data_multi_device_iterator_get_next") {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     const Tensor* tensor_shard_num;
@@ -613,12 +605,46 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
         ctx, ctx->input("incarnation_id", &tensor_incarnation_id), done);
     int64 incarnation_id = tensor_incarnation_id->scalar<int64>()();
 
-    core::RefCountPtr<MultiDeviceIterator> iterator;
+    MultiDeviceIterator* iterator;
     OP_REQUIRES_OK_ASYNC(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
 
-    iterator->GetNextFromShard(ctx, shard_num, incarnation_id, std::move(done));
+    background_worker_.Schedule(std::bind(
+        [ctx, iterator, shard_num, incarnation_id](DoneCallback done) {
+          Notification n;
+          MultiDeviceIteratorCallback callback = std::bind(
+              [ctx, &n](const HostBufferElement& elem) {
+                Status s = elem.status;
+                if (!s.ok()) {
+                  ctx->SetStatus(s);
+                } else if (elem.end_of_sequence) {
+                  ctx->SetStatus(errors::OutOfRange("End of sequence"));
+                } else {
+                  for (int i = 0; i < elem.value.size(); ++i) {
+                    ctx->set_output(i, elem.value[i]);
+                  }
+                }
+                n.Notify();
+              },
+              std::placeholders::_1);
+
+          Status s = iterator->GetNextFromShard(ctx, shard_num, incarnation_id,
+                                                std::move(callback));
+          if (!s.ok()) {
+            ctx->SetStatus(s);
+            iterator->Unref();
+            done();
+            return;
+          }
+          iterator->Unref();
+          n.WaitForNotification();
+          done();
+        },
+        std::move(done)));
   }
+
+ private:
+  BackgroundWorker background_worker_;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -724,14 +750,7 @@ class DeleteMultiDeviceIteratorOp : public OpKernel {
     // The iterator resource is guaranteed to exist because the variant tensor
     // wrapping the deleter is provided as an unused input to this op, which
     // guarantees that it has not run yet.
-    Status s = ctx->resource_manager()->Delete(handle);
-    if (errors::IsNotFound(s)) {
-      // TODO(b/135948230): Investigate why is the above statement not true and
-      // then get rid of the special case.
-      ctx->SetStatus(Status::OK());
-      return;
-    }
-    ctx->SetStatus(s);
+    OP_REQUIRES_OK(ctx, ctx->resource_manager()->Delete(handle));
   }
 };
 

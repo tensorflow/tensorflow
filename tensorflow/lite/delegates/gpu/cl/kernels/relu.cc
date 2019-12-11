@@ -52,21 +52,20 @@ void ReLU::SetLinkIndex(int index) {
   clip_.SetName(absl::StrCat("relu_clip", index));
 }
 
-std::string ReLU::GetCoreCode(const std::string& src,
-                              const std::string& z_coord,
-                              const std::string& address) const {
+std::string ReLU::GetCoreCode(const LinkingContext& context) const {
   std::string min_func;
   if (!alpha_.Active()) {
     min_func = "(FLT)(0.0f)";
   } else {
-    min_func = absl::StrCat("min(", src, " * (FLT)(", alpha_.GetName(),
-                            "), (FLT)(0.0f))");
+    min_func = absl::StrCat("min(", context.var_name, " * (FLT)(",
+                            alpha_.GetName(), "), (FLT)(0.0f))");
   }
   if (!clip_.Active()) {
-    return absl::StrCat(src, " = max(", src, ", ", min_func, ");\n");
+    return absl::StrCat(context.var_name, " = max(", context.var_name, ", ",
+                        min_func, ");\n");
   } else {
-    return absl::StrCat(src, " = clamp(", src, ", " + min_func + ", (FLT)(",
-                        clip_.GetName(), "));\n");
+    return absl::StrCat(context.var_name, " = clamp(", context.var_name,
+                        ", " + min_func + ", (FLT)(", clip_.GetName(), "));\n");
   }
 }
 

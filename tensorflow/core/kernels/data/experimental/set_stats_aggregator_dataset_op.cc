@@ -167,13 +167,20 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        IteratorContext iter_ctx = ContextWithAggregator(ctx);
+        return dataset()->input_->MakeIterator(&iter_ctx, prefix(),
+                                               &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
+        IteratorContext iter_ctx = ContextWithAggregator(ctx);
+        return input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
+      }
+
+      IteratorContext ContextWithAggregator(IteratorContext* ctx) {
         StatsAggregatorResource* resource =
             dataset()->stats_aggregator_resource_;
         IteratorContext::Params params(ctx);
@@ -182,7 +189,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
                                                 dataset()->tag_,
                                                 dataset()->prefix_));
         IteratorContext iter_ctx(std::move(params));
-        return input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
+        return iter_ctx;
       }
 
      protected:
@@ -193,14 +200,14 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
       }
 
       Status SaveInternal(IteratorStateWriter* writer) override {
-        return errors::Unimplemented(dataset()->DebugString(),
-                                     " does not support checkpointing");
+        mutex_lock l(mu_);
+        return SaveInput(writer, input_impl_);
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
-        return errors::Unimplemented(dataset()->DebugString(),
-                                     " does not support checkpointing");
+        mutex_lock l(mu_);
+        return RestoreInput(ctx, reader, input_impl_);
       }
 
      private:

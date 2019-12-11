@@ -190,7 +190,7 @@ def enable_mixed_precision_graph_rewrite(opt, loss_scale='dynamic'):
   Args:
     opt: An instance of a `tf.keras.optimizers.Optimizer`.
     loss_scale: Either an int/float, the string `"dynamic"`, or an instance of a
-      `tf.train.experimental.LossScale`. The loss scale to use. It is
+      `tf.mixed_precision.experimental.LossScale`. The loss scale to use. It is
       recommended to keep this as its default value of `"dynamic"`, which will
       adjust the scaling automatically to prevent `Inf` or `NaN` values.
 
@@ -317,9 +317,9 @@ def enable_mixed_precision_graph_rewrite_v1(opt, loss_scale='dynamic'):
     opt: An instance of a `tf.keras.optimizers.Optimizer` or a
       `tf.train.Optimizer`.
     loss_scale: Either an int/float, the string `"dynamic"`, or an instance of
-      a `tf.train.experimental.LossScale`. The loss scale to use. It is
-      recommended to keep this as its default value of `"dynamic"`, which will 
-      adjust the scaling automatically to prevent `Inf` or `NaN` values.
+      a `tf.mixed_precision.experimental.LossScale`. The loss scale to use. It
+      is recommended to keep this as its default value of `"dynamic"`, which
+      will adjust the scaling automatically to prevent `Inf` or `NaN` values.
   
   Returns:
     A version of `opt` that will use loss scaling to prevent underflow.

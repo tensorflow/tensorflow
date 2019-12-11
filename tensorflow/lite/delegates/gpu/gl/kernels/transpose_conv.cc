@@ -63,8 +63,10 @@ class ConvolutionTransposedBuffers : public NodeShader {
     ivec2 p0 = ($padding$ + $stride$ - gid.xy % $stride$) % $stride$;
     for (int y = p0.y; y < $kernel_size.y$; y += $stride.y$) {
       for (int x = p0.x; x < $kernel_size.x$; x += $stride.x$) {
-        int i = y * $kernel_size.x$ + x;
-        ivec2 idx = gid.xy + ivec2(x, y) - $padding$;
+      
+        int i = int(float(y * $kernel_size.x$) + float(x));        
+        ivec2 idx = ivec2(vec2(gid.xy + ivec2(x, y)) - vec2($padding$));
+        
         if (IN_BOUNDS(idx, ivec2(0), ivec2($input_data_0_w$, $input_data_0_h$) * $stride$)) {
           ivec2 coord = idx / $stride$;
           for (int l = 0; l < $src_depth$; ++l) {

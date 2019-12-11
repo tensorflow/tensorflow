@@ -273,7 +273,7 @@ public:
   template <typename OpTy, typename... Args>
   OpTy create(Location location, Args... args) {
     OperationState state(location, OpTy::getOperationName());
-    OpTy::build(this, &state, args...);
+    OpTy::build(this, state, args...);
     auto *op = createOperation(state);
     auto result = dyn_cast<OpTy>(op);
     assert(result && "Builder didn't return the right type");
@@ -286,7 +286,7 @@ public:
   template <typename OpTy, typename... Args>
   OpTy createChecked(Location location, Args... args) {
     OperationState state(location, OpTy::getOperationName());
-    OpTy::build(this, &state, args...);
+    OpTy::build(this, state, args...);
     auto *op = createOperation(state);
 
     // If the Operation we produce is valid, return it.
@@ -307,12 +307,23 @@ public:
   virtual Operation *createOperation(const OperationState &state) = 0;
 
   /// Move the blocks that belong to "region" before the given position in
-  /// another region "parent".  The two regions must be different.  The caller
+  /// another region "parent". The two regions must be different. The caller
   /// is responsible for creating or updating the operation transferring flow
-  // of control to the region and pass it the correct block arguments.
+  /// of control to the region and passing it the correct block arguments.
   virtual void inlineRegionBefore(Region &region, Region &parent,
                                   Region::iterator before);
   void inlineRegionBefore(Region &region, Block *before);
+
+  /// Clone the blocks that belong to "region" before the given position in
+  /// another region "parent". The two regions must be different. The caller is
+  /// responsible for creating or updating the operation transferring flow of
+  /// control to the region and passing it the correct block arguments.
+  virtual void cloneRegionBefore(Region &region, Region &parent,
+                                 Region::iterator before,
+                                 BlockAndValueMapping &mapping);
+  void cloneRegionBefore(Region &region, Region &parent,
+                         Region::iterator before);
+  void cloneRegionBefore(Region &region, Block *before);
 
   /// This method performs the final replacement for a pattern, where the
   /// results of the operation are updated to use the specified list of SSA
@@ -320,9 +331,9 @@ public:
   /// clients can specify a list of other nodes that this replacement may make
   /// (perhaps transitively) dead.  If any of those values are dead, this will
   /// remove them as well.
-  virtual void replaceOp(Operation *op, ArrayRef<Value *> newValues,
-                         ArrayRef<Value *> valuesToRemoveIfDead);
-  void replaceOp(Operation *op, ArrayRef<Value *> newValues) {
+  virtual void replaceOp(Operation *op, ValueRange newValues,
+                         ValueRange valuesToRemoveIfDead);
+  void replaceOp(Operation *op, ValueRange newValues) {
     replaceOp(op, newValues, llvm::None);
   }
 
@@ -338,18 +349,26 @@ public:
   /// The result values of the two ops must be the same types.  This allows
   /// specifying a list of ops that may be removed if dead.
   template <typename OpTy, typename... Args>
-  void replaceOpWithNewOp(ArrayRef<Value *> valuesToRemoveIfDead, Operation *op,
+  void replaceOpWithNewOp(ValueRange valuesToRemoveIfDead, Operation *op,
                           Args &&... args) {
     auto newOp = create<OpTy>(op->getLoc(), std::forward<Args>(args)...);
     replaceOpWithResultsOfAnotherOp(op, newOp.getOperation(),
                                     valuesToRemoveIfDead);
   }
 
+  /// This method erases an operation that is known to have no uses.
+  virtual void eraseOp(Operation *op);
+
+  /// Merge the operations of block 'source' into the end of block 'dest'.
+  /// 'source's predecessors must either be empty or only contain 'dest`.
+  /// 'argValues' is used to replace the block arguments of 'source' after
+  /// merging.
+  virtual void mergeBlocks(Block *source, Block *dest,
+                           ValueRange argValues = llvm::None);
+
   /// Split the operations starting at "before" (inclusive) out of the given
   /// block into a new block, and return it.
-  virtual Block *splitBlock(Block *block, Block::iterator before) {
-    return block->splitBlock(before);
-  }
+  virtual Block *splitBlock(Block *block, Block::iterator before);
 
   /// This method is used as the final notification hook for patterns that end
   /// up modifying the pattern root in place, by changing its operands.  This is
@@ -359,8 +378,7 @@ public:
   /// The valuesToRemoveIfDead list is an optional list of values that the
   /// rewriter should remove if they are dead at this point.
   ///
-  void updatedRootInPlace(Operation *op,
-                          ArrayRef<Value *> valuesToRemoveIfDead = {});
+  void updatedRootInPlace(Operation *op, ValueRange valuesToRemoveIfDead = {});
 
 protected:
   explicit PatternRewriter(MLIRContext *ctx) : OpBuilder(ctx) {}
@@ -387,7 +405,7 @@ private:
   /// op and newOp are known to have the same number of results, replace the
   /// uses of op with uses of newOp
   void replaceOpWithResultsOfAnotherOp(Operation *op, Operation *newOp,
-                                       ArrayRef<Value *> valuesToRemoveIfDead);
+                                       ValueRange valuesToRemoveIfDead);
 };
 
 //===----------------------------------------------------------------------===//
@@ -455,12 +473,14 @@ private:
 /// work-list driven manner. Return true if no more patterns can be matched in
 /// the result operation regions.
 /// Note: This does not apply patterns to the top-level operation itself.
-/// Note: This method also performs folding and simply dead-code elimination
+/// Note: These methods also perform folding and simple dead-code elimination
 ///       before attempting to match any of the provided patterns.
 ///
 bool applyPatternsGreedily(Operation *op,
                            const OwningRewritePatternList &patterns);
-
+/// Rewrite the given regions, which must be isolated from above.
+bool applyPatternsGreedily(MutableArrayRef<Region> regions,
+                           const OwningRewritePatternList &patterns);
 } // end namespace mlir
 
 #endif // MLIR_PATTERN_MATCH_H

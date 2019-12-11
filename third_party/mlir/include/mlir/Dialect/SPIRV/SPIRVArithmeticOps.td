@@ -20,25 +20,28 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef SPIRV_ARITHMETIC_OPS
-#else
+#ifndef SPIRV_ARITHMETIC_OPS
 #define SPIRV_ARITHMETIC_OPS
 
-#ifdef SPIRV_BASE
-#else
-include "mlir/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
+include "mlir/Dialect/SPIRV/SPIRVBase.td"
 
-class SPV_ArithmeticOp<string mnemonic, Type type,
+class SPV_ArithmeticBinaryOp<string mnemonic, Type type,
                        list<OpTrait> traits = []> :
       // Operands type same as result type.
       SPV_BinaryOp<mnemonic, type, type,
                    !listconcat(traits,
                                [NoSideEffect, SameOperandsAndResultType])>;
 
+class SPV_ArithmeticUnaryOp<string mnemonic, Type type,
+                            list<OpTrait> traits = []> :
+      // Operand type same as result type.
+      SPV_UnaryOp<mnemonic, type, type,
+                   !listconcat(traits,
+                               [NoSideEffect, SameOperandsAndResultType])>;
+
 // -----
 
-def SPV_FAddOp : SPV_ArithmeticOp<"FAdd", SPV_Float, [Commutative]> {
+def SPV_FAddOp : SPV_ArithmeticBinaryOp<"FAdd", SPV_Float, [Commutative]> {
   let summary = "Floating-point addition of Operand 1 and Operand 2.";
 
   let description = [{
@@ -50,7 +53,7 @@ def SPV_FAddOp : SPV_ArithmeticOp<"FAdd", SPV_Float, [Commutative]> {
      Results are computed per component.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     fadd-op ::= ssa-id `=` `spv.FAdd` ssa-use, ssa-use
@@ -67,7 +70,7 @@ def SPV_FAddOp : SPV_ArithmeticOp<"FAdd", SPV_Float, [Commutative]> {
 
 // -----
 
-def SPV_FDivOp : SPV_ArithmeticOp<"FDiv", SPV_Float> {
+def SPV_FDivOp : SPV_ArithmeticBinaryOp<"FDiv", SPV_Float, []> {
   let summary = "Floating-point division of Operand 1 divided by Operand 2.";
 
   let description = [{
@@ -78,8 +81,9 @@ def SPV_FDivOp : SPV_ArithmeticOp<"FDiv", SPV_Float> {
 
      Results are computed per component.  The resulting value is undefined
     if Operand 2 is 0.
+
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     fdiv-op ::= ssa-id `=` `spv.FDiv` ssa-use, ssa-use
@@ -97,7 +101,7 @@ def SPV_FDivOp : SPV_ArithmeticOp<"FDiv", SPV_Float> {
 
 // -----
 
-def SPV_FModOp : SPV_ArithmeticOp<"FMod", SPV_Float> {
+def SPV_FModOp : SPV_ArithmeticBinaryOp<"FMod", SPV_Float, []> {
   let summary = [{
     The floating-point remainder whose sign matches the sign of Operand 2.
   }];
@@ -114,7 +118,7 @@ def SPV_FModOp : SPV_ArithmeticOp<"FMod", SPV_Float> {
     sign of Operand 2.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     fmod-op ::= ssa-id `=` `spv.FMod` ssa-use, ssa-use
@@ -131,7 +135,7 @@ def SPV_FModOp : SPV_ArithmeticOp<"FMod", SPV_Float> {
 
 // -----
 
-def SPV_FMulOp : SPV_ArithmeticOp<"FMul", SPV_Float, [Commutative]> {
+def SPV_FMulOp : SPV_ArithmeticBinaryOp<"FMul", SPV_Float, [Commutative]> {
   let summary = "Floating-point multiplication of Operand 1 and Operand 2.";
 
   let description = [{
@@ -144,7 +148,7 @@ def SPV_FMulOp : SPV_ArithmeticOp<"FMul", SPV_Float, [Commutative]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     fmul-op ::= `spv.FMul` ssa-use, ssa-use
@@ -162,7 +166,36 @@ def SPV_FMulOp : SPV_ArithmeticOp<"FMul", SPV_Float, [Commutative]> {
 
 // -----
 
-def SPV_FRemOp : SPV_ArithmeticOp<"FRem", SPV_Float> {
+def SPV_FNegateOp : SPV_ArithmeticUnaryOp<"FNegate", SPV_Float, []> {
+  let summary = "Floating-point subtract of Operand from zero.";
+
+  let description = [{
+    Result Type must be a scalar or vector of floating-point type.
+
+     The type of Operand must be the same as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ```
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    fmul-op ::= `spv.FNegate` ssa-use `:` float-scalar-vector-type
+    ```
+
+    For example:
+
+    ```
+    %1 = spv.FNegate %0 : f32
+    %3 = spv.FNegate %2 : vector<4xf32>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_FRemOp : SPV_ArithmeticBinaryOp<"FRem", SPV_Float, []> {
   let summary = [{
     The floating-point remainder whose sign matches the sign of Operand 1.
   }];
@@ -179,7 +212,7 @@ def SPV_FRemOp : SPV_ArithmeticOp<"FRem", SPV_Float> {
     sign of Operand 1.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     frem-op ::= ssa-id `=` `spv.FRemOp` ssa-use, ssa-use
@@ -197,7 +230,7 @@ def SPV_FRemOp : SPV_ArithmeticOp<"FRem", SPV_Float> {
 
 // -----
 
-def SPV_FSubOp : SPV_ArithmeticOp<"FSub", SPV_Float> {
+def SPV_FSubOp : SPV_ArithmeticBinaryOp<"FSub", SPV_Float, []> {
   let summary = "Floating-point subtraction of Operand 2 from Operand 1.";
 
   let description = [{
@@ -209,7 +242,7 @@ def SPV_FSubOp : SPV_ArithmeticOp<"FSub", SPV_Float> {
      Results are computed per component.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     float-scalar-vector-type ::= float-type |
                                  `vector<` integer-literal `x` float-type `>`
     fsub-op ::= ssa-id `=` `spv.FRemOp` ssa-use, ssa-use
@@ -227,7 +260,7 @@ def SPV_FSubOp : SPV_ArithmeticOp<"FSub", SPV_Float> {
 
 // -----
 
-def SPV_IAddOp : SPV_ArithmeticOp<"IAdd", SPV_Integer, [Commutative]> {
+def SPV_IAddOp : SPV_ArithmeticBinaryOp<"IAdd", SPV_Integer, [Commutative]> {
   let summary = "Integer addition of Operand 1 and Operand 2.";
 
   let description = [{
@@ -244,7 +277,7 @@ def SPV_IAddOp : SPV_ArithmeticOp<"IAdd", SPV_Integer, [Commutative]> {
      Results are computed per component.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     iadd-op ::= ssa-id `=` `spv.IAdd` ssa-use, ssa-use
@@ -259,11 +292,13 @@ def SPV_IAddOp : SPV_ArithmeticOp<"IAdd", SPV_Integer, [Commutative]> {
 
     ```
   }];
+
+  let hasFolder = 1;
 }
 
 // -----
 
-def SPV_IMulOp : SPV_ArithmeticOp<"IMul", SPV_Integer, [Commutative]> {
+def SPV_IMulOp : SPV_ArithmeticBinaryOp<"IMul", SPV_Integer, [Commutative]> {
   let summary = "Integer multiplication of Operand 1 and Operand 2.";
 
   let description = [{
@@ -280,7 +315,7 @@ def SPV_IMulOp : SPV_ArithmeticOp<"IMul", SPV_Integer, [Commutative]> {
      Results are computed per component.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     imul-op ::= ssa-id `=` `spv.IMul` ssa-use, ssa-use
@@ -295,11 +330,13 @@ def SPV_IMulOp : SPV_ArithmeticOp<"IMul", SPV_Integer, [Commutative]> {
 
     ```
   }];
+
+  let hasFolder = 1;
 }
 
 // -----
 
-def SPV_ISubOp : SPV_ArithmeticOp<"ISub", SPV_Integer> {
+def SPV_ISubOp : SPV_ArithmeticBinaryOp<"ISub", SPV_Integer, []> {
   let summary = "Integer subtraction of Operand 2 from Operand 1.";
 
   let description = [{
@@ -316,7 +353,7 @@ def SPV_ISubOp : SPV_ArithmeticOp<"ISub", SPV_Integer> {
      Results are computed per component.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     isub-op ::= `spv.ISub` ssa-use, ssa-use
@@ -331,11 +368,13 @@ def SPV_ISubOp : SPV_ArithmeticOp<"ISub", SPV_Integer> {
 
     ```
   }];
+
+  let hasFolder = 1;
 }
 
 // -----
 
-def SPV_SDivOp : SPV_ArithmeticOp<"SDiv", SPV_Integer> {
+def SPV_SDivOp : SPV_ArithmeticBinaryOp<"SDiv", SPV_Integer, []> {
   let summary = "Signed-integer division of Operand 1 divided by Operand 2.";
 
   let description = [{
@@ -349,7 +388,7 @@ def SPV_SDivOp : SPV_ArithmeticOp<"SDiv", SPV_Integer> {
     if Operand 2 is 0.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     sdiv-op ::= ssa-id `=` `spv.SDiv` ssa-use, ssa-use
@@ -368,7 +407,7 @@ def SPV_SDivOp : SPV_ArithmeticOp<"SDiv", SPV_Integer> {
 
 // -----
 
-def SPV_SModOp : SPV_ArithmeticOp<"SMod", SPV_Integer> {
+def SPV_SModOp : SPV_ArithmeticBinaryOp<"SMod", SPV_Integer, []> {
   let summary = [{
     Signed remainder operation for the remainder whose sign matches the sign
     of Operand 2.
@@ -387,7 +426,7 @@ def SPV_SModOp : SPV_ArithmeticOp<"SMod", SPV_Integer> {
     sign of Operand 2.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     smod-op ::= ssa-id `=` `spv.SMod` ssa-use, ssa-use
@@ -405,7 +444,7 @@ def SPV_SModOp : SPV_ArithmeticOp<"SMod", SPV_Integer> {
 
 // -----
 
-def SPV_SRemOp : SPV_ArithmeticOp<"SRem", SPV_Integer> {
+def SPV_SRemOp : SPV_ArithmeticBinaryOp<"SRem", SPV_Integer, []> {
   let summary = [{
     Signed remainder operation for the remainder whose sign matches the sign
     of Operand 1.
@@ -424,7 +463,7 @@ def SPV_SRemOp : SPV_ArithmeticOp<"SRem", SPV_Integer> {
     sign of Operand 1.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     srem-op ::= ssa-id `=` `spv.SRem` ssa-use, ssa-use
@@ -442,7 +481,7 @@ def SPV_SRemOp : SPV_ArithmeticOp<"SRem", SPV_Integer> {
 
 // -----
 
-def SPV_UDivOp : SPV_ArithmeticOp<"UDiv", SPV_Integer> {
+def SPV_UDivOp : SPV_ArithmeticBinaryOp<"UDiv", SPV_Integer, []> {
   let summary = "Unsigned-integer division of Operand 1 divided by Operand 2.";
 
   let description = [{
@@ -456,7 +495,7 @@ def SPV_UDivOp : SPV_ArithmeticOp<"UDiv", SPV_Integer> {
     if Operand 2 is 0.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     udiv-op ::= ssa-id `=` `spv.UDiv` ssa-use, ssa-use
@@ -474,7 +513,7 @@ def SPV_UDivOp : SPV_ArithmeticOp<"UDiv", SPV_Integer> {
 
 // -----
 
-def SPV_UModOp : SPV_ArithmeticOp<"UMod", SPV_Integer> {
+def SPV_UModOp : SPV_ArithmeticBinaryOp<"UMod", SPV_Integer> {
   let summary = "Unsigned modulo operation of Operand 1 modulo Operand 2.";
 
   let description = [{
@@ -488,7 +527,7 @@ def SPV_UModOp : SPV_ArithmeticOp<"UMod", SPV_Integer> {
     if Operand 2 is 0.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     integer-scalar-vector-type ::= integer-type |
                                  `vector<` integer-literal `x` integer-type `>`
     umod-op ::= ssa-id `=` `spv.UMod` ssa-use, ssa-use

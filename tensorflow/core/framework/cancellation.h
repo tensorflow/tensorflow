@@ -51,6 +51,13 @@ class CancellationManager {
   static const CancellationToken kInvalidToken;
 
   CancellationManager();
+
+  // Constructs a new CancellationManager that is a "child" of `*parent`.
+  //
+  // If `*parent` is cancelled, `*this` will be cancelled. `*parent` must
+  // outlive the created CancellationManager.
+  explicit CancellationManager(CancellationManager* parent);
+
   ~CancellationManager();
 
   // Run all callbacks associated with this manager.
@@ -61,7 +68,9 @@ class CancellationManager {
 
   // Returns a token that must be used in calls to RegisterCallback
   // and DeregisterCallback.
-  CancellationToken get_cancellation_token();
+  CancellationToken get_cancellation_token() {
+    return next_cancellation_token_.fetch_add(1);
+  }
 
   // Attempts to register the given callback to be invoked when this
   // manager is cancelled. Returns true if the callback was
@@ -135,13 +144,39 @@ class CancellationManager {
   bool TryDeregisterCallback(CancellationToken token);
 
  private:
+  struct State {
+    Notification cancelled_notification;
+    gtl::FlatMap<CancellationToken, CancelCallback> callbacks;
+
+    // If this CancellationManager has any children, this member points to the
+    // head of a doubly-linked list of its children.
+    CancellationManager* first_child = nullptr;  // Not owned.
+  };
+
+  bool RegisterChild(CancellationManager* child);
+  void DeregisterChild(CancellationManager* child);
+
   bool is_cancelling_;
   std::atomic_bool is_cancelled_;
+  std::atomic<CancellationToken> next_cancellation_token_;
+
+  CancellationManager* const parent_ = nullptr;  // Not owned.
+
+  // If this CancellationManager is associated with a parent, this member will
+  // be set to `true` after this is removed from the parent's list of children.
+  bool is_removed_from_parent_ GUARDED_BY(parent_->mu_) = false;
+
+  // If this CancellationManager is associated with a parent, these members form
+  // a doubly-linked list of that parent's children.
+  //
+  // These fields are valid only when `this->is_removed_from_parent_` is false.
+  CancellationManager* prev_sibling_ GUARDED_BY(parent_->mu_) =
+      nullptr;  // Not owned.
+  CancellationManager* next_sibling_ GUARDED_BY(parent_->mu_) =
+      nullptr;  // Not owned.
 
   mutex mu_;
-  Notification cancelled_notification_;
-  CancellationToken next_cancellation_token_ GUARDED_BY(mu_);
-  gtl::FlatMap<CancellationToken, CancelCallback> callbacks_ GUARDED_BY(mu_);
+  std::unique_ptr<State> state_ GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

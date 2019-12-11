@@ -102,7 +102,7 @@ class TStringOutputStream : public protobuf::io::ZeroCopyOutputStream {
 
   bool Next(void** data, int* size) override;
   void BackUp(int count) override;
-  protobuf::io::ByteCountInt64 ByteCount() const override;
+  int64_t ByteCount() const override;
 
  private:
   static const int kMinimumSize = 16;

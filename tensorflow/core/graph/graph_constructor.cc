@@ -56,7 +56,8 @@ namespace {
 static constexpr const bool kDoNotCheckDuplicates = true;
 
 inline bool IsMerge(const NodeDef& node_def) {
-  return node_def.op() == "Merge" || node_def.op() == "RefMerge";
+  return node_def.op() == "Merge" || node_def.op() == "RefMerge" ||
+         node_def.op() == "_XlaMerge";
 }
 
 inline bool IsNextIteration(const NodeDef& node_def) {
@@ -66,12 +67,23 @@ inline bool IsNextIteration(const NodeDef& node_def) {
 
 bool IsValidNodeName(StringPiece s, bool allow_internal_ops) {
   using ::tensorflow::strings::Scanner;
-  return Scanner(s)
+  Scanner scanner(s);
+  scanner
       .One(allow_internal_ops ? Scanner::LETTER_DIGIT_DOT_UNDERSCORE
                               : Scanner::LETTER_DIGIT_DOT)
-      .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
-      .Eos()
-      .GetResult();
+      .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
+
+  while (true) {
+    if (!scanner.GetResult())  // Some error in previous iteration.
+      return false;
+    if (scanner.empty())  // No error, but nothing left, good.
+      return true;
+
+    // Absorb another piece, starting with a '>'
+    scanner.One(Scanner::RANGLE)
+        .One(Scanner::LETTER_DIGIT_DOT)
+        .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
+  }
 }
 
 class GraphConstructor {
@@ -81,7 +93,9 @@ class GraphConstructor {
         : allow_internal_ops(in.allow_internal_ops),
           expect_device_spec(in.expect_device_spec),
           importing(false),
-          validate_colocation_constraints(false) {}
+          validate_nodes(in.validate_nodes),
+          validate_colocation_constraints(false),
+          add_default_attributes(in.add_default_attributes) {}
     Options(const ImportGraphDefOptions& in)  // NOLINT(runtime/explicit)
         : allow_internal_ops(false),
           expect_device_spec(false),
@@ -96,6 +110,7 @@ class GraphConstructor {
           return_tensors(in.return_tensors.begin(), in.return_tensors.end()),
           return_nodes(in.return_nodes),
           importing(true),
+          validate_nodes(true),
           validate_colocation_constraints(in.validate_colocation_constraints),
           validate_shape(in.validate_shape),
           default_device(in.default_device) {}
@@ -121,8 +136,16 @@ class GraphConstructor {
     // applicable to ConvertGraphDefToGraph as well, so make an attempt to
     // remove this.
     bool importing;
+    // If true, validates that nodes being converted have all expected attrs
+    // set and no unknonw attrs set by calling ValidateNodeDef().
+    // `validate_nodes` is always true when `importing` is set.
+    bool validate_nodes;
     bool validate_colocation_constraints;
     bool validate_shape = true;
+
+    // If true, GraphConstructor will add attributes with their default
+    // value to the Node when they are missing from the NodeDef.
+    bool add_default_attributes = true;
 
     string default_device;
   };
@@ -1214,8 +1237,22 @@ Status GraphConstructor::Convert() {
       if (opts_.uniquify_names && (prefix_.empty() || !opts_.uniquify_prefix)) {
         UniquifyNames(input_already_exists, &node_def);
       }
-      TF_RETURN_IF_ERROR(ModifyNodeDefForImport(&node_def));
     }
+
+    if (opts_.importing) {
+      TF_RETURN_IF_ERROR(ModifyNodeDefForImport(&node_def));
+    } else {
+      const OpDef* op_def;
+      TF_RETURN_IF_ERROR(
+          g_->op_registry()->LookUpOpDef(node_def.op(), &op_def));
+      if (opts_.add_default_attributes) {
+        AddDefaultsToNodeDef(*op_def, &node_def);
+      }
+      if (opts_.validate_nodes) {
+        TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, *op_def));
+      }
+    }
+
     TF_RETURN_IF_ERROR(MakeNode(std::move(node_def), &node));
 
     if (opts_.importing) {

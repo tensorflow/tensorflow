@@ -766,7 +766,10 @@ class PoolingTest(test.TestCase):
   # The following are tests that verify that the CPU and GPU implementations
   # produce the same results.
   def _CompareMaxPoolingFwd(self, input_shape, ksize, strides, padding):
-    for dtype in np.float64, np.float32, np.float16:
+    # double datatype is currently not supported for pooling ops
+    # on the ROCm platform
+    for dtype in [np.float32, np.float16] \
+        + [np.float64] if not test.is_built_with_rocm() else []:
       tensor_input = np.random.rand(*input_shape).astype(dtype)
       with self.cached_session(use_gpu=True):
         t = constant_op.constant(tensor_input, shape=input_shape)
@@ -780,7 +783,10 @@ class PoolingTest(test.TestCase):
 
   def _CompareMaxPoolingBk(self, input_shape, output_shape, ksize, strides,
                            padding):
-    for dtype in np.float64, np.float32, np.float16:
+    # double datatype is currently not supported for pooling ops
+    # on the ROCm platform
+    for dtype in [np.float32, np.float16] \
+        + [np.float64] if not test.is_built_with_rocm() else []:
       # Generate numbers in a narrow range, so that there are many duplicates
       # in the input.
       tensor_input = np.random.random_integers(0, 3, input_shape).astype(dtype)
@@ -810,7 +816,10 @@ class PoolingTest(test.TestCase):
 
   def _CompareMaxPoolingGradBk(self, input_shape, output_shape, ksize, strides,
                                padding):
-    for dtype in np.float64, np.float32, np.float16:
+    # double datatype is currently not supported for pooling ops
+    # on the ROCm platform
+    for dtype in [np.float32, np.float16] \
+        + [np.float64] if not test.is_built_with_rocm() else []:
       # Generate numbers in a narrow range, so that there are many duplicates
       # in the input.
       tensor_input = np.random.random_integers(0, 3, input_shape).astype(dtype)

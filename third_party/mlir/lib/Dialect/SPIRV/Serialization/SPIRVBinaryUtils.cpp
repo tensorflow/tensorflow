@@ -51,3 +51,19 @@ void spirv::appendModuleHeader(SmallVectorImpl<uint32_t> &header,
   header.push_back(idBound); // <id> bound
   header.push_back(0);       // Schema (reserved word)
 }
+
+/// Returns the word-count-prefixed opcode for an SPIR-V instruction.
+uint32_t spirv::getPrefixedOpcode(uint32_t wordCount, spirv::Opcode opcode) {
+  assert(((wordCount >> 16) == 0) && "word count out of range!");
+  return (wordCount << 16) | static_cast<uint32_t>(opcode);
+}
+
+LogicalResult spirv::encodeStringLiteralInto(SmallVectorImpl<uint32_t> &binary,
+                                             StringRef literal) {
+  // We need to encode the literal and the null termination.
+  auto encodingSize = literal.size() / 4 + 1;
+  auto bufferStartSize = binary.size();
+  binary.resize(bufferStartSize + encodingSize, 0);
+  std::memcpy(binary.data() + bufferStartSize, literal.data(), literal.size());
+  return success();
+}

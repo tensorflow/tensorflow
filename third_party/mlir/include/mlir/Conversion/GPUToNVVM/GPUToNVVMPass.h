@@ -1,4 +1,4 @@
-//===- GPUToNVMMPass.h - Convert GPU kernel to NVVM dialect -----*- C++ -*-===//
+//===- GPUToNVVMPass.h - Convert GPU kernel to NVVM dialect -----*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -25,14 +25,9 @@ class OwningRewritePatternList;
 
 class ModuleOp;
 template <typename OpT> class OpPassBase;
-using ModulePassBase = OpPassBase<ModuleOp>;
-
-/// Collect a set of patterns to convert from the GPU dialect to NVVM.
-void populateGpuToNVVMConversionPatterns(LLVMTypeConverter &converter,
-                                         OwningRewritePatternList &patterns);
 
 /// Creates a pass that lowers GPU dialect operations to NVVM counterparts.
-std::unique_ptr<ModulePassBase> createLowerGpuOpsToNVVMOpsPass();
+std::unique_ptr<OpPassBase<ModuleOp>> createLowerGpuOpsToNVVMOpsPass();
 
 } // namespace mlir
 

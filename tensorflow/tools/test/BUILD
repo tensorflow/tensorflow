@@ -22,17 +22,19 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
 py_binary(
     name = "system_info",
     srcs = ["system_info.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":system_info_lib",
@@ -50,16 +52,20 @@ py_library(
         ":system_info_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
 py_binary(
     name = "run_and_gather_logs",
     srcs = ["run_and_gather_logs.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [":run_and_gather_logs_main_lib"],
+    deps = [
+        ":run_and_gather_logs_main_lib",
+        "@six_archive//:six",
+    ],
 )
 
 py_library(
@@ -72,6 +78,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
@@ -105,5 +112,5 @@ tf_py_logged_benchmark(
 
 tf_py_logged_benchmark(
     name = "sparse_csr_matrix_ops_benchmark",
-    target = "//tensorflow/python/kernel_tests:sparse_csr_matrix_ops_test_py",
+    target = "//tensorflow/python/kernel_tests/linalg/sparse:csr_sparse_matrix_ops_test",
 )

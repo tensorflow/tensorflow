@@ -22,7 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/gpu/common/memory_management.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
@@ -55,6 +55,9 @@ bool IsCoveringObject(const uint2& first_object, const uint2& second_object);
 
 // Size of object, that covers both input objects (3-dimensional case).
 bool IsCoveringObject(const uint3& first_object, const uint3& second_object);
+
+// Difference between two objects in elements count (1-dimensional case).
+size_t AbsDiffInElements(const size_t first_size, const size_t second_size);
 
 // Difference between two objects in elements count (2-dimensional case).
 size_t AbsDiffInElements(const uint2& first_size, const uint2& second_size);

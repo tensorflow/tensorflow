@@ -37,7 +37,7 @@ struct UpperBoundFunctor<CPUDevice, T, OutType> {
                         const typename TTypes<T, 1>::ConstTensor& values,
                         int batch_size, int num_inputs, int num_values,
                         typename TTypes<OutType, 1>::Tensor* output) {
-    // TODO(eriche): If anyone ever needs this to be faster, we can multithread.
+    // TODO(rmlarsen): add multithreading or interleaving.
     for (int b = 0; b < batch_size; ++b) {
       const T* sorted_inputs_ptr = sorted_inputs.data() + b * num_inputs;
       OutType* output_ptr = output->data() + b * num_values;
@@ -60,7 +60,7 @@ struct LowerBoundFunctor<CPUDevice, T, OutType> {
                         const typename TTypes<T, 1>::ConstTensor& values,
                         int batch_size, int num_inputs, int num_values,
                         typename TTypes<OutType, 1>::Tensor* output) {
-    // TODO(eriche): If anyone ever needs this to be faster, we can multithread.
+    // TODO(rmlarsen): add multithreading or interleaving.
     for (int b = 0; b < batch_size; ++b) {
       const T* sorted_inputs_ptr = sorted_inputs.data() + b * num_inputs;
       OutType* output_ptr = output->data() + b * num_values;

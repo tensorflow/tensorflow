@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
@@ -38,6 +38,7 @@ constexpr int kInputTensorBoxes = 0;
 // Type: Float.
 constexpr int kInputTensorScores = 1;
 // Max number of boxes to output. Actual output can be smaller.
+// The output tensors (indices/scores) are of this length.
 // Type: Int32.
 constexpr int kInputTensorMaxOutputSize = 2;
 // Type: Float.
@@ -99,14 +100,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       GetInput(context, node, kInputTensorMaxOutputSize);
   TF_LITE_ENSURE_EQ(context, input_max_output_size->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_max_output_size), 0);
-  // TODO(b/265135869): Add support for non-constant max_output_size by making
-  // output dynamic?
-  if (!IsConstantTensor(input_max_output_size)) {
-    context->ReportError(context, "Max output size should be a constant");
-    return kTfLiteError;
+  const bool is_max_output_size_const = IsConstantTensor(input_max_output_size);
+  int max_output_size_value = 0;
+  if (is_max_output_size_const) {
+    max_output_size_value = *GetTensorData<int>(input_max_output_size);
+    TF_LITE_ENSURE(context, (max_output_size_value >= 0));
   }
-  int max_output_size_value = *GetTensorData<int>(input_max_output_size);
-  TF_LITE_ENSURE(context, (max_output_size_value >= 0));
 
   // IoU & Score thresholds.
   const TfLiteTensor* input_iou_threshold =
@@ -128,25 +127,36 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* output_selected_indices =
         GetOutput(context, node, kSoftNMSOutputTensorSelectedIndices);
     output_selected_indices->type = kTfLiteInt32;
-    SetTensorSizes(context, output_selected_indices, {max_output_size_value});
     TfLiteTensor* output_selected_scores =
         GetOutput(context, node, kSoftNMSOutputTensorSelectedScores);
     output_selected_scores->type = kTfLiteFloat32;
-    SetTensorSizes(context, output_selected_scores, {max_output_size_value});
     TfLiteTensor* output_num_selected_indices =
         GetOutput(context, node, kSoftNMSOutputTensorNumSelectedIndices);
     output_num_selected_indices->type = kTfLiteInt32;
     SetTensorSizes(context, output_num_selected_indices, {});
+
+    if (is_max_output_size_const) {
+      SetTensorSizes(context, output_selected_indices, {max_output_size_value});
+      SetTensorSizes(context, output_selected_scores, {max_output_size_value});
+    } else {
+      SetTensorToDynamic(output_selected_indices);
+      SetTensorToDynamic(output_selected_scores);
+    }
   } else {
     TF_LITE_ENSURE_EQ(context, NumOutputs(node), 2);
     TfLiteTensor* output_selected_indices =
         GetOutput(context, node, kNMSOutputTensorSelectedIndices);
     output_selected_indices->type = kTfLiteInt32;
-    SetTensorSizes(context, output_selected_indices, {max_output_size_value});
     TfLiteTensor* output_num_selected_indices =
         GetOutput(context, node, kNMSOutputTensorNumSelectedIndices);
     output_num_selected_indices->type = kTfLiteInt32;
     SetTensorSizes(context, output_num_selected_indices, {});
+
+    if (is_max_output_size_const) {
+      SetTensorSizes(context, output_selected_indices, {max_output_size_value});
+    } else {
+      SetTensorToDynamic(output_selected_indices);
+    }
   }
 
   return kTfLiteOk;
@@ -181,6 +191,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input_max_output_size =
       GetInput(context, node, kInputTensorMaxOutputSize);
   const int max_output_size_value = *GetTensorData<int>(input_max_output_size);
+  TF_LITE_ENSURE(context, (max_output_size_value >= 0));
+  const bool is_max_output_size_const = IsConstantTensor(input_max_output_size);
   const TfLiteTensor* input_iou_threshold =
       GetInput(context, node, kInputTensorIouThreshold);
   const float iou_threshold = *GetTensorData<float>(input_iou_threshold);
@@ -208,6 +220,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         GetOutput(context, node, kSoftNMSOutputTensorSelectedScores);
     output_num_selected_indices =
         GetOutput(context, node, kSoftNMSOutputTensorNumSelectedIndices);
+    if (!is_max_output_size_const) {
+      SetTensorSizes(context, output_selected_indices, {max_output_size_value});
+      SetTensorSizes(context, output_selected_scores, {max_output_size_value});
+    }
     reference_ops::NonMaxSuppression(
         input_boxes->data.f, num_boxes, input_scores->data.f,
         max_output_size_value, iou_threshold, score_threshold, soft_nms_sigma,
@@ -221,6 +237,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         GetOutput(context, node, kNMSOutputTensorSelectedIndices);
     output_num_selected_indices =
         GetOutput(context, node, kNMSOutputTensorNumSelectedIndices);
+    if (!is_max_output_size_const) {
+      SetTensorSizes(context, output_selected_indices, {max_output_size_value});
+    }
     reference_ops::NonMaxSuppression(
         input_boxes->data.f, num_boxes, input_scores->data.f,
         max_output_size_value, iou_threshold, score_threshold, /**sigma=**/ 0.0,

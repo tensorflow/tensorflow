@@ -16,7 +16,6 @@
 // =============================================================================
 
 #include "mlir/EDSC/Intrinsics.h"
-#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/IR/AffineExpr.h"
 

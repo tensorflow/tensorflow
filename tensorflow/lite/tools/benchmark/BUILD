@@ -9,6 +9,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["logging.h"])
+
 common_copts = ["-Wall"] + tflite_copts()
 
 cc_library(
@@ -81,9 +83,13 @@ cc_test(
     name = "benchmark_test",
     srcs = ["benchmark_test.cc"],
     args = [
-        "--graph=$(location //tensorflow/lite:testdata/multi_add.bin)",
+        "--fp32_graph=$(location //tensorflow/lite:testdata/multi_add.bin)",
+        "--int8_graph=$(location //tensorflow/lite:testdata/add_quantized_int8.bin)",
     ],
-    data = ["//tensorflow/lite:testdata/multi_add.bin"],
+    data = [
+        "//tensorflow/lite:testdata/add_quantized_int8.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
     tags = [
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
@@ -93,22 +99,28 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:command_line_flags",
+        "@com_google_absl//absl/algorithm",
         "@com_google_googletest//:gtest",
     ],
 )
 
 cc_library(
     name = "benchmark_tflite_model_lib",
-    srcs = [
-        "benchmark_tflite_model.cc",
-        "logging.h",
-    ],
+    srcs = ["benchmark_tflite_model.cc"],
     hdrs = ["benchmark_tflite_model.h"],
-    copts = common_copts,
+    copts = common_copts + select({
+        "//tensorflow:ios": [
+            "-xobjective-c++",
+        ],
+        "//conditions:default": [],
+    }),
     deps = [
         ":benchmark_model_lib",
         ":benchmark_utils",
         ":logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
+        "@gemmlowp",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -116,8 +128,15 @@ cc_library(
         "//tensorflow/lite/profiling:profile_summarizer",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools/evaluation:utils",
-        "@gemmlowp",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/gpu:delegate",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/lite/delegates/gpu:metal_delegate",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -132,13 +151,14 @@ cc_library(
         ":benchmark_params",
         ":benchmark_utils",
         ":logging",
-        "//tensorflow/core:stats_calculator_portable",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/core/util:stats_calculator_portable",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/nnapi:nnapi_util",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/lite/delegates/gpu:gl_delegate",
+            "//tensorflow/lite/delegates/gpu:delegate",
         ],
         "//conditions:default": [],
     }),
@@ -165,9 +185,10 @@ cc_library(
         ":benchmark_params",
         ":benchmark_utils",
         ":logging",
-        "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/profiling:memory_info",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
     ],

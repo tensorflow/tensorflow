@@ -54,7 +54,7 @@ py_test(
     srcs = [
         "policy_test.py",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":policy",
@@ -85,7 +85,7 @@ py_test(
     name = "autocast_variable_test",
     size = "medium",
     srcs = ["autocast_variable_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     deps = [
         ":autocast_variable",
         "//tensorflow/python:client_testlib",
@@ -93,7 +93,18 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "loss_scale",
+    srcs = ["loss_scale.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:loss_scale",
+        "//tensorflow/python/keras:generic_utils",
     ],
 )
 
@@ -102,6 +113,7 @@ py_library(
     srcs = ["loss_scale_optimizer.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":loss_scale",
         "//tensorflow/python:loss_scale",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
@@ -121,7 +133,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
     ],
-    xla_enable_strict_auto_jit = True,
+    python_version = "PY3",
 )
 
 py_library(
@@ -130,6 +142,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework",
+        "//tensorflow/python/keras",
     ],
 )
 
@@ -145,7 +158,22 @@ cuda_py_test(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = ["no_windows"],  # b/139083295: bfloat16 tests fail on Windows
-    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "layer_correctness_test",
+    size = "medium",
+    srcs = ["layer_correctness_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:one_device_strategy",
+        "//tensorflow/python/keras",
+    ],
+    python_version = "PY3",
+    tags = ["no_rocm"],
 )

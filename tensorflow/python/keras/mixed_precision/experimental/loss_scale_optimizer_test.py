@@ -21,12 +21,14 @@ from __future__ import print_function
 import os
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
 from tensorflow.python.keras.optimizer_v2 import adam
@@ -263,6 +265,8 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(opt.loss_scale()),
                        initial_loss_scale * 16)
 
+      self.assertEqual(opt.get_slot_names(), ['momentum'])
+
   @test_util.run_in_graph_and_eager_modes
   def testIterations(self):
     opt = gradient_descent.SGD(2.0)
@@ -270,6 +274,46 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     lso.iterations = 7
     self.assertEqual(lso.iterations, 7)
     self.assertEqual(opt.iterations, 7)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testWeightMethods(self):
+    var = variables.Variable([1.0])
+    opt = gradient_descent.SGD(1.0)
+    initial_loss_scale = 2.
+    loss_scale = loss_scale_module.DynamicLossScale(
+        initial_loss_scale=initial_loss_scale, increment_period=1,
+        multiplier=4)
+    opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+    run_op = opt.minimize(lambda: var * 2, [var])
+    self.evaluate(variables.global_variables_initializer())
+    self._run_if_in_graph_mode(run_op)
+
+    self.assertLen(opt.weights, 1)  # The 'iterations' weight
+    self.assertEqual(self.evaluate(opt.weights[0]), 1)
+    self.assertEqual(opt.get_weights()[0], 1)
+    self.assertEqual(self.evaluate(opt.variables()[0]), 1)
+    opt.set_weights([np.array(2.)])
+    self.assertEqual(self.evaluate(opt.variables()[0]), 2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSlotMethodErrors(self):
+    opt = gradient_descent.SGD(1.0, momentum=1.0)
+    opt = loss_scale_optimizer.LossScaleOptimizer(opt, 'dynamic')
+    with self.assertRaisesRegexp(
+        AttributeError,
+        'You cannot call get_slot on a LossScaleOptimizer. This limitation '
+        'will be removed in the future.'):
+      opt.get_slot(None, None)
+    with self.assertRaisesRegexp(
+        AttributeError,
+        'You cannot call add_slot on a LossScaleOptimizer. This limitation '
+        'will be removed in the future.'):
+      opt.add_slot(None, None)
+
+  def testPassingNoneToLossScale(self):
+    opt = gradient_descent.SGD()
+    with self.assertRaisesRegexp(ValueError, r'loss_scale cannot be None'):
+      loss_scale_optimizer.LossScaleOptimizer(opt, None)
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
@@ -383,6 +427,71 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(loss_scale()), 1.)
       self.assertEqual(self.evaluate(loss_scale._num_good_steps), 1)
       self.assertAlmostEqual(self.evaluate(slot_var).item(), slot_value)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGetConfig(self):
+    opt = gradient_descent.SGD(2., momentum=0.5)
+    loss_scale = loss_scale_module.DynamicLossScale(
+        initial_loss_scale=2., increment_period=3.,
+        multiplier=4.)
+    opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+    config = opt.get_config()
+    opt = loss_scale_optimizer.LossScaleOptimizer.from_config(config)
+    # Force hyperparameters to be created
+    opt.lr  # pylint: disable=pointless-statement
+    self.evaluate(variables.global_variables_initializer())
+
+    self.assertEqual(self.evaluate(opt.lr), 2.)
+    self.assertEqual(self.evaluate(opt._optimizer.momentum), 0.5)
+    self.assertEqual(self.evaluate(opt.loss_scale()), 2.)
+    self.assertEqual(opt.loss_scale.increment_period, 3.)
+    self.assertEqual(opt.loss_scale.multiplier, 4.)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSerializationWithBuiltInOptimizer(self):
+    opt = gradient_descent.SGD(2., momentum=0.5)
+    loss_scale = loss_scale_module.DynamicLossScale(
+        initial_loss_scale=2., increment_period=3.,
+        multiplier=4.)
+    opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+    config = optimizers.serialize(opt)
+    opt = optimizers.deserialize(config)
+    # Force hyperparameters to be created
+    opt.lr  # pylint: disable=pointless-statement
+    self.evaluate(variables.global_variables_initializer())
+
+    self.assertEqual(self.evaluate(opt.lr), 2.)
+    self.assertEqual(self.evaluate(opt._optimizer.momentum), 0.5)
+    self.assertEqual(self.evaluate(opt.loss_scale()), 2.)
+    self.assertEqual(opt.loss_scale.increment_period, 3.)
+    self.assertEqual(opt.loss_scale.multiplier, 4.)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSerializationWithCustomOptimizer(self):
+    class MySGD(gradient_descent.SGD):
+
+      def __init__(self, *args, **kwargs):
+        super(MySGD, self).__init__(*args, **kwargs)
+        self.my_attribute = 123
+
+    opt = MySGD(2., momentum=0.5)
+    loss_scale = loss_scale_module.DynamicLossScale(
+        initial_loss_scale=2., increment_period=3.,
+        multiplier=4.)
+    opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+    config = optimizers.serialize(opt)
+    custom_objects = {'MySGD': MySGD}
+    opt = optimizers.deserialize(config, custom_objects=custom_objects)
+    # Force hyperparameters to be created
+    opt.lr  # pylint: disable=pointless-statement
+    self.evaluate(variables.global_variables_initializer())
+
+    self.assertEqual(self.evaluate(opt.lr), 2.)
+    self.assertEqual(self.evaluate(opt._optimizer.momentum), 0.5)
+    self.assertEqual(self.evaluate(opt.loss_scale()), 2.)
+    self.assertEqual(opt.loss_scale.increment_period, 3.)
+    self.assertEqual(opt.loss_scale.multiplier, 4.)
+    self.assertEqual(opt._optimizer.my_attribute, 123)
 
 
 if __name__ == '__main__':

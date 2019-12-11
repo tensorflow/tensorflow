@@ -329,7 +329,7 @@ SDBM SDBM::get(ArrayRef<SDBMExpr> inequalities, ArrayRef<SDBMExpr> equalities) {
   //    x - t - (C - 1) <= 0}.
   for (const auto &pair : result.stripeToPoint) {
     auto stripe = pair.second.cast<SDBMStripeExpr>();
-    SDBMBuilderResult update = builder.visit(stripe.getVar());
+    SDBMBuilderResult update = builder.visit(stripe.getLHS());
     assert(update.negativePos.size() == 1 && update.negativePos[0] == 0 &&
            "unexpected negated variable in stripe expression");
     assert(update.value == 0 &&
@@ -354,8 +354,8 @@ SDBM SDBM::get(ArrayRef<SDBMExpr> inequalities, ArrayRef<SDBMExpr> equalities) {
 // If one of the expressions is derived from another using a stripe operation,
 // check if the inequalities induced by the stripe operation subsume the
 // inequalities defined in the DBM and if so, elide these inequalities.
-void SDBM::convertDBMElement(unsigned row, unsigned col,
-                             SDBMPositiveExpr rowExpr, SDBMPositiveExpr colExpr,
+void SDBM::convertDBMElement(unsigned row, unsigned col, SDBMTermExpr rowExpr,
+                             SDBMTermExpr colExpr,
                              SmallVectorImpl<SDBMExpr> &inequalities,
                              SmallVectorImpl<SDBMExpr> &equalities) {
   using ops_assertions::operator+;
@@ -388,13 +388,13 @@ void SDBM::convertDBMElement(unsigned row, unsigned col,
                          SDBMExpr x1Expr, int64_t value) {
     if (stripeToPoint.count(x0)) {
       auto stripe = stripeToPoint[x0].cast<SDBMStripeExpr>();
-      SDBMPositiveExpr var = stripe.getVar();
+      SDBMDirectExpr var = stripe.getLHS();
       if (x1Expr == var && value >= 0)
         return true;
     }
     if (stripeToPoint.count(x1)) {
       auto stripe = stripeToPoint[x1].cast<SDBMStripeExpr>();
-      SDBMPositiveExpr var = stripe.getVar();
+      SDBMDirectExpr var = stripe.getLHS();
       if (x0Expr == var && value >= stripe.getStripeFactor().getValue() - 1)
         return true;
     }
@@ -418,7 +418,7 @@ void SDBM::convertDBMElement(unsigned row, unsigned col,
 // to -C <= 0.  Only construct the inequalities when C is negative, which
 // are trivially false but necessary for the returned system of inequalities
 // to indicate that the set it defines is empty.
-void SDBM::convertDBMDiagonalElement(unsigned pos, SDBMPositiveExpr expr,
+void SDBM::convertDBMDiagonalElement(unsigned pos, SDBMTermExpr expr,
                                      SmallVectorImpl<SDBMExpr> &inequalities) {
   auto selfDifference = at(pos, pos);
   if (selfDifference.isFinite() && selfDifference < 0) {

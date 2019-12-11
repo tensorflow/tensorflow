@@ -54,6 +54,7 @@ cc_test(
         "//tensorflow/lite:testdata/empty_model.bin",
         "//tensorflow/lite:testdata/test_model.bin",
         "//tensorflow/lite:testdata/test_model_broken.bin",
+        "//tensorflow/lite:testdata/test_model_versioned_ops.bin",
     ],
     tags = [
         "tflite_not_portable_android",
@@ -73,7 +74,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/container:flat_hash_set",
     ],

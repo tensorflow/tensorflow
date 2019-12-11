@@ -65,6 +65,8 @@ class IrEmitterUnnested : public IrEmitter,
       const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
       llvm::Value* x_loc, int64 x_iter_num)>;
 
+  using ConstantGenerator = std::function<llvm::Value*(int64)>;
+
   // A function to generate the code to emit the entire tile.
   using TileElementGenerator = std::function<void(
       llvm::Value* y, llvm::Value* x, const llvm_ir::IrArray::Index& index,
@@ -167,9 +169,12 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Generates code for reduction to contiguous dimensions.
   //
-  // Prerequisite: `IsReductionFromOrToContiguousDimensions(*unnested_hlo)`
+  // output_instructions: Output instructions in the computation: instruction
+  // itself if it's not a fusion, fusion root if fusion is not multi-output, and
+  // elements of the fusion multi-output tuple otherwise.
   Status EmitReductionFromOrToContiguousDimensions(
-      HloInstruction* unnested_hlo);
+      HloInstruction* unnested_hlo,
+      absl::Span<HloInstruction* const> output_instructions);
 
   // Computes the KernelMappingScheme for the reduce HLO and indicates whether
   // the reduction is a row reduction. For an un-fused reduce op, unnested_hlo
@@ -207,9 +212,9 @@ class IrEmitterUnnested : public IrEmitter,
   // scheme.
   //
   // Returns lane_id as an LLVM value.
-  llvm::Value* EmitTilingKernel(const KernelMappingScheme& mapping_scheme,
-                                llvm::Type* index_ty,
-                                TileElementGenerator tile_element_generator);
+  llvm::Value* EmitTilingKernel(
+      const KernelMappingScheme& mapping_scheme, llvm::Type* index_ty,
+      const TileElementGenerator& tile_element_generator);
 
   // Emits code to process a tensor element in a tile for the given kCopy HLO
   // that performs a 0-2-1 transpose.
@@ -229,6 +234,9 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Emits code to process a tensor element in a tile for the given input hlo
   // that is either a unnested kReduce or a kInput fusion.
+  //
+  // Calculates and stores the temporary reduction value in the corresponding
+  // alloca.
   void EmitTileElementForReduction(
       HloInstruction* unnested_hlo, const Shape& reduction_operand_shape,
       absl::Span<HloInstruction* const> output_instructions,
@@ -237,6 +245,9 @@ class IrEmitterUnnested : public IrEmitter,
       absl::Span<HloComputation* const> reducers, int64 x_iter_num);
 
   // Prepares for the code generation for a tile block of a reduction kernel.
+  //
+  // Create accumulator alloca's, populate them with initial values, and store
+  // inside reduction_info.
   void EmitPrologueForReduction(
       HloInstruction* unnested_hlo, ReductionCodegenInfo* reduction_info,
       absl::Span<HloInstruction* const> reduce_instructions,
@@ -247,7 +258,8 @@ class IrEmitterUnnested : public IrEmitter,
                                    ReductionCodegenInfo* kernel_info,
                                    GpuElementalIrEmitter* elemental_emitter);
 
-  // Wraps up the code generation for a tile block of a reduction kernel.
+  // Wraps up the code generation for a tile block of a reduction kernel: write
+  // the calculated output into the output tensor.
   void EmitEpilogueForReduction(
       HloInstruction* unnested_hlo, const ReductionCodegenInfo& reduction_info,
       absl::Span<const HloInstruction* const> reduce_instructions,

@@ -46,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -134,7 +133,6 @@ class Buffer : public BufferBase {
   size_t size() const override { return sizeof(T) * elem_; }
 
  private:
-  T* data_;
   int64 elem_;
 
   ~Buffer() override;
@@ -514,8 +512,13 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64 n) {
       std::copy_n(begin, n, data);
     } else {
       std::copy_n(begin, in_n, data);
-      const T& last = *(data + in_n - 1);
-      std::fill_n(data + in_n, n - in_n, last);
+      if (std::is_trivially_copyable<T>::value) {
+        const T last = *(data + in_n - 1);
+        std::fill_n(data + in_n, n - in_n, last);
+      } else {
+        const T& last = *(data + in_n - 1);
+        std::fill_n(data + in_n, n - in_n, last);
+      }
     }
   }
 
@@ -634,7 +637,7 @@ void UnrefIfNonNull(core::RefCounted* buf) {
 
 Tensor::Tensor() : Tensor(DT_FLOAT) {}
 
-Tensor::Tensor(DataType type) : shape_({0}), buf_(nullptr) { set_dtype(type); }
+Tensor::Tensor(DataType type) : shape_(type), buf_(nullptr) {}
 
 Tensor::Tensor(DataType type, const TensorShape& shape, TensorBuffer* buf)
     : shape_(shape), buf_(buf) {
@@ -648,14 +651,14 @@ bool Tensor::IsInitialized() const {
 }
 
 void Tensor::CheckType(DataType expected_dtype) const {
-  CHECK_EQ(dtype(), expected_dtype) << " "
-      << DataTypeString(expected_dtype) << " expected, got "
+  CHECK_EQ(dtype(), expected_dtype)
+      << " " << DataTypeString(expected_dtype) << " expected, got "
       << DataTypeString(dtype());
 }
 
 void Tensor::CheckTypeAndIsAligned(DataType expected_dtype) const {
-  CHECK_EQ(dtype(), expected_dtype) << " "
-      << DataTypeString(expected_dtype) << " expected, got "
+  CHECK_EQ(dtype(), expected_dtype)
+      << " " << DataTypeString(expected_dtype) << " expected, got "
       << DataTypeString(dtype());
   CHECK(IsAligned()) << "ptr = " << base<void>();
 }

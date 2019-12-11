@@ -12,7 +12,7 @@ package(
 py_binary(
     name = "upgrade_schema",
     srcs = ["upgrade_schema.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     deps = [":upgrade_schema_main_lib"],
 )
 
@@ -38,7 +38,7 @@ py_test(
     name = "upgrade_schema_test",
     size = "small",
     srcs = ["upgrade_schema_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "manual",
@@ -54,6 +54,7 @@ py_test(
 )
 
 exports_files([
+    "schema.fbs",
     "schema_v0.fbs",
     "schema_v1.fbs",
     "schema_v2.fbs",
@@ -64,6 +65,17 @@ exports_files([
 flatbuffer_cc_library(
     name = "schema_fbs",
     srcs = ["schema.fbs"],
+)
+
+# Generic schema for flatbuffer converter (but with mutable makes bigger).
+flatbuffer_cc_library(
+    name = "schema_fbs_with_mutable",
+    srcs = ["schema.fbs"],
+    flatc_args = [
+        "--gen-mutable",
+        "--gen-object-api",
+    ],
+    out_prefix = "mutable/",
 )
 
 # Generic schema for inference on device (but with reflections makes bigger).
@@ -77,12 +89,6 @@ flatbuffer_cc_library(
         "--gen-object-api",
     ],
     out_prefix = "reflection/",
-)
-
-# Generic schema for model metadata.
-flatbuffer_cc_library(
-    name = "metadata_schema_fbs",
-    srcs = ["metadata_schema.fbs"],
 )
 
 # Schema test to make sure we don't introduce backward incompatible changes

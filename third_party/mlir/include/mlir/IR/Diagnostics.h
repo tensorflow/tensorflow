@@ -391,7 +391,7 @@ private:
   friend DiagnosticEngine;
 
   /// The engine that this diagnostic is to report to.
-  DiagnosticEngine *owner;
+  DiagnosticEngine *owner = nullptr;
 
   /// The raw diagnostic that is inflight to be reported.
   llvm::Optional<Diagnostic> impl;
@@ -409,8 +409,8 @@ class DiagnosticEngine {
 public:
   ~DiagnosticEngine();
 
-  // Diagnostic handler registration and use.  MLIR supports the ability for the
-  // IR to carry arbitrary metadata about operation location information.  If a
+  // Diagnostic handler registration and use. MLIR supports the ability for the
+  // IR to carry arbitrary metadata about operation location information. If a
   // problem is detected by the compiler, it can invoke the emitError /
   // emitWarning / emitRemark method on an Operation and have it get reported
   // through this interface.
@@ -419,14 +419,36 @@ public:
   // schema for their location information.  If they don't, then warnings and
   // notes will be dropped and errors will be emitted to errs.
 
-  using HandlerTy = std::function<void(Diagnostic)>;
+  /// The handler type for MLIR diagnostics. This function takes a diagnostic as
+  /// input, and returns success if the handler has fully processed this
+  /// diagnostic. Returns failure otherwise.
+  using HandlerTy = std::function<LogicalResult(Diagnostic &)>;
 
-  /// Set the diagnostic handler for this engine. Note that this replaces any
-  /// existing handler.
-  void setHandler(const HandlerTy &handler);
+  /// A handle to a specific registered handler object.
+  using HandlerID = uint64_t;
 
-  /// Return the current diagnostic handler, or null if none is present.
-  HandlerTy getHandler();
+  /// Register a new handler for diagnostics to the engine. Diagnostics are
+  /// process by handlers in stack-like order, meaning that the last added
+  /// handlers will process diagnostics first. This function returns a unique
+  /// identifier for the registered handler, which can be used to unregister
+  /// this handler at a later time.
+  HandlerID registerHandler(const HandlerTy &handler);
+
+  /// Set the diagnostic handler with a function that returns void. This is a
+  /// convenient wrapper for handlers that always completely process the given
+  /// diagnostic.
+  template <typename FuncTy, typename RetT = decltype(std::declval<FuncTy>()(
+                                 std::declval<Diagnostic &>()))>
+  std::enable_if_t<std::is_same<RetT, void>::value, HandlerID>
+  registerHandler(FuncTy &&handler) {
+    return registerHandler([=](Diagnostic &diag) {
+      handler(diag);
+      return success();
+    });
+  }
+
+  /// Erase the registered diagnostic handler with the given identifier.
+  void eraseHandler(HandlerID id);
 
   /// Create a new inflight diagnostic with the given location and severity.
   InFlightDiagnostic emit(Location loc, DiagnosticSeverity severity) {
@@ -447,36 +469,6 @@ private:
   std::unique_ptr<detail::DiagnosticEngineImpl> impl;
 };
 
-//===----------------------------------------------------------------------===//
-// ScopedDiagnosticHandler
-//===----------------------------------------------------------------------===//
-
-/// This diagnostic handler is a simple RAII class that saves and restores the
-/// current diagnostic handler registered to a given context. This class can
-/// be either be used directly, or in conjunction with a derived diagnostic
-/// handler.
-class ScopedDiagnosticHandler {
-public:
-  ScopedDiagnosticHandler(MLIRContext *ctx);
-  ScopedDiagnosticHandler(MLIRContext *ctx,
-                          const DiagnosticEngine::HandlerTy &handler);
-  ~ScopedDiagnosticHandler();
-
-  /// Propagate a diagnostic to the existing diagnostic handler.
-  void propagateDiagnostic(Diagnostic diag) {
-    if (existingHandler)
-      existingHandler(std::move(diag));
-  }
-
-private:
-  /// The existing diagnostic handler registered with the context at the time of
-  /// construction.
-  DiagnosticEngine::HandlerTy existingHandler;
-
-  /// The context to register the handler back to.
-  MLIRContext *ctx;
-};
-
 /// Utility method to emit an error message using this location.
 InFlightDiagnostic emitError(Location loc);
 InFlightDiagnostic emitError(Location loc, const Twine &message);
@@ -488,6 +480,64 @@ InFlightDiagnostic emitWarning(Location loc, const Twine &message);
 /// Utility method to emit a remark message using this location.
 InFlightDiagnostic emitRemark(Location loc);
 InFlightDiagnostic emitRemark(Location loc, const Twine &message);
+
+/// Overloads of the above emission functions that take an optionally null
+/// location. If the location is null, no diagnostic is emitted and a failure is
+/// returned. Given that the provided location may be null, these methods take
+/// the diagnostic arguments directly instead of relying on the returned
+/// InFlightDiagnostic.
+template <typename... Args>
+LogicalResult emitOptionalError(Optional<Location> loc, Args &&... args) {
+  if (loc)
+    return emitError(*loc).append(std::forward<Args>(args)...);
+  return failure();
+}
+template <typename... Args>
+LogicalResult emitOptionalWarning(Optional<Location> loc, Args &&... args) {
+  if (loc)
+    return emitWarning(*loc).append(std::forward<Args>(args)...);
+  return failure();
+}
+template <typename... Args>
+LogicalResult emitOptionalRemark(Optional<Location> loc, Args &&... args) {
+  if (loc)
+    return emitRemark(*loc).append(std::forward<Args>(args)...);
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
+// ScopedDiagnosticHandler
+//===----------------------------------------------------------------------===//
+
+/// This diagnostic handler is a simple RAII class that registers and erases a
+/// diagnostic handler on a given context. This class can be either be used
+/// directly, or in conjunction with a derived diagnostic handler.
+class ScopedDiagnosticHandler {
+public:
+  explicit ScopedDiagnosticHandler(MLIRContext *ctx) : handlerID(0), ctx(ctx) {}
+  template <typename FuncTy>
+  ScopedDiagnosticHandler(MLIRContext *ctx, FuncTy &&handler)
+      : handlerID(0), ctx(ctx) {
+    setHandler(std::forward<FuncTy>(handler));
+  }
+  ~ScopedDiagnosticHandler();
+
+protected:
+  /// Set the handler to manage via RAII.
+  template <typename FuncTy> void setHandler(FuncTy &&handler) {
+    auto &diagEngine = ctx->getDiagEngine();
+    if (handlerID)
+      diagEngine.eraseHandler(handlerID);
+    handlerID = diagEngine.registerHandler(std::forward<FuncTy>(handler));
+  }
+
+private:
+  /// The unique id for the scoped handler.
+  DiagnosticEngine::HandlerID handlerID;
+
+  /// The context to erase the handler from.
+  MLIRContext *ctx;
+};
 
 //===----------------------------------------------------------------------===//
 // SourceMgrDiagnosticHandler
@@ -595,6 +645,10 @@ public:
   /// deterministically order the diagnostics that it receives given the thread
   /// that it is receiving on.
   void setOrderIDForThread(size_t orderID);
+
+  /// Remove the order id for the current thread. This removes the thread from
+  /// diagnostics tracking.
+  void eraseOrderIDForThread();
 
 private:
   std::unique_ptr<detail::ParallelDiagnosticHandlerImpl> impl;

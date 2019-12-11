@@ -1455,7 +1455,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     if (IsInPreserveSet(*node)) return false;
     if (IsConcat(*node) && node->attr().count("N") != 0) {
       const int n = node->attr().at("N").i();
-      return n > 1;
+      return n > 1 && FirstNInputsAreUnique(*node, n);
     } else if ((IsSplit(*node) || IsSplitV(*node)) &&
                node->attr().count("num_split") != 0) {
       const int num_split = node->attr().at("num_split").i();
@@ -1489,6 +1489,17 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   }
 
  private:
+  bool FirstNInputsAreUnique(const NodeDef& node, int n) const {
+    if (n > node.input_size()) return false;
+    absl::flat_hash_set<string> unique_inputs;
+    const int start = node.op() == "Concat" ? 1 : 0;
+    const int end = start + n;
+    for (int i = start; i < end; ++i) {
+      unique_inputs.insert(node.input(i));
+    }
+    return unique_inputs.size() == n;
+  }
+
   // Returns the length of the common unary chain of ops that can be
   // hoisted to the other side of concat or split.
   Status FindCommonUnaryOpChain(const NodeDef& root_node, int* prefix_length,
@@ -1525,7 +1536,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   Status HoistUnaryOpChain(const int prefix_length, const ChainLinkSet& tails,
                            std::set<string>* ctrl_inputs, NodeDef* root_node) {
     VLOG(3) << "Hoist unary op chain:"
-            << " root=" << root_node->name()
+            << " root=" << root_node->DebugString()
             << " prefix_length=" << prefix_length << " ctrl_inputs=["
             << absl::StrJoin(*ctrl_inputs, ", ") << "]";
 
@@ -2240,10 +2251,10 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
     }
 
     const std::set<string> foldable_transpose_ops =
-        !is_complex ? std::set<string>{"ConjugateTranspose", "Transpose"}
-                    : (node->op() == "BatchMatMul"
-                           ? std::set<string>{"ConjugateTranspose"}
-                           : std::set<string>{"Transpose"});
+        !is_complex
+            ? std::set<string>{"ConjugateTranspose", "Transpose"}
+            : (IsAnyBatchMatMul(*node) ? std::set<string>{"ConjugateTranspose"}
+                                       : std::set<string>{"Transpose"});
 
     const bool a_is_foldable = foldable_transpose_ops.count(a->op()) > 0 &&
                                IsInnerMatrixTransposeNode(*a, ctx().node_map);
@@ -2254,8 +2265,7 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
     NodeDef* new_op = AddCopyNode(optimized_node_name, node);
 
     if (a_is_foldable) {
-      const string attr_a =
-          node->op() == "BatchMatMul" ? "adj_x" : "transpose_a";
+      const string attr_a = IsAnyBatchMatMul(*node) ? "adj_x" : "transpose_a";
       FlipBooleanAttr(attr_a, new_op);
       new_op->set_input(0, a->input(0));
       ctx().node_map->UpdateInput(new_op->name(), a->name(), a->input(0));
@@ -2264,8 +2274,7 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
     }
 
     if (b_is_foldable) {
-      const string attr_b =
-          node->op() == "BatchMatMul" ? "adj_y" : "transpose_b";
+      const string attr_b = IsAnyBatchMatMul(*node) ? "adj_y" : "transpose_b";
       FlipBooleanAttr(attr_b, new_op);
       new_op->set_input(1, b->input(0));
       ctx().node_map->UpdateInput(new_op->name(), b->name(), b->input(0));
@@ -2322,7 +2331,6 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
   }
 };
 
-// Fold Transpose into matrix multiplication.
 class FoldConjugateIntoTranspose : public ArithmeticOptimizerStage {
  public:
   explicit FoldConjugateIntoTranspose(const GraphOptimizerContext& ctx,
@@ -2421,7 +2429,7 @@ class SimplifyAggregation : public ArithmeticOptimizerStage {
   ~SimplifyAggregation() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAggregate(*node) && NumNonControlInputs(*node) > 0 &&
+    return IsAggregate(*node) && HasRegularInputs(*node) &&
            GetDataTypeFromAttr(*node, "T") !=
                DT_VARIANT;  // TODO(b/119787146): Enable for variants.
   }
@@ -2821,19 +2829,30 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
     if (IsInPreserveSet(*reduction_node)) {
       return Status::OK();
     }
+
     NodeDef* inner_function;
     TF_RETURN_IF_ERROR(GetInputNode(reduction_node->input(0), &inner_function));
+
+    NodeDef* inner_function_input = nullptr;
+    if (inner_function->input_size() > 0) {
+      TF_RETURN_IF_ERROR(
+          GetInputNode(inner_function->input(0), &inner_function_input));
+    }
+
     // Optimize only if:
     // 0. inner_function is not in the preserve set,
     // 1. inner_function's Op is element-wise monotonic
     // 2. inner_function's output is not being consumed elsewhere.
     // 3. is monotonic increasing if reduction_node is a pooling operation
     //    since we don't have MinPool operations.
+    // 4. inner_functions is not a Relu node with an input from FusedBatchNorm.
+    //    This pattern will be fused later by remapper.
     bool is_non_decreasing = false;
     if (!IsInPreserveSet(*inner_function) &&
         IsElementWiseMonotonic(*inner_function, &is_non_decreasing) &&
         ctx().node_map->GetOutputs(inner_function->name()).size() == 1 &&
-        (is_non_decreasing || !IsAnyMaxPool(*reduction_node))) {
+        (is_non_decreasing || !IsAnyMaxPool(*reduction_node)) &&
+        !(IsRelu(*inner_function) && IsFusedBatchNorm(*inner_function_input))) {
       // Swap the first inputs of the inner function Op & the reduction Op.
       NodeDef* inner_input;
       TF_RETURN_IF_ERROR(GetInputNode(inner_function->input(0), &inner_input));
@@ -3101,21 +3120,6 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
   }
 
  protected:
-  bool GetConstantAsInt64(const NodeDef& node, DataType dtype,
-                          std::vector<int64>* values) {
-    if (dtype == DT_INT32) {
-      std::vector<int32> values_int32;
-      if (!ValuesFromConstNode(node, &values_int32)) {
-        return false;
-      }
-      std::copy(values_int32.begin(), values_int32.end(),
-                std::inserter(*values, values->begin()));
-      return true;
-    } else {
-      return ValuesFromConstNode(node, values);
-    }
-  }
-
   Status CheckInputs(const NodeDef* node, const NodeDef* pack,
                      PartialTensorShape* pack_output_shape, int* pack_axis,
                      bool* return_early) {
@@ -3130,12 +3134,11 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
       return Status::OK();
     }
     *pack_output_shape = slice_properties[0].shape();
-    const int pack_input_rank = pack_output_shape->dims() - 1;
+    const int pack_output_rank = pack_output_shape->dims();
     if (*pack_axis < 0) {
-      // The ndims of any input into Pack op is its output ndims - 1.
-      *pack_axis += pack_input_rank;
+      *pack_axis += pack_output_rank;
     }
-    if (*pack_axis < 0 || *pack_axis >= pack_input_rank) {
+    if (*pack_axis < 0 || *pack_axis >= pack_output_rank) {
       return errors::InvalidArgument(
           "Pack node (", pack->name(),
           ") axis attribute is out of bounds: ", pack->attr().at("axis").i());
@@ -3291,6 +3294,10 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
           OptimizedNodeName(ParseNodeScopeAndName(node->name()), "Axis"));
       axis->set_op("Const");
       axis->set_device(node->device());
+      // We need to add a control edge from input slice to guarantee that axis
+      // constant will be executed in the same frame as `input_slice`, otherwise
+      // ExpandDims might have mismatched input frames.
+      axis->add_input(absl::StrCat("^", ParseTensorName(input_slice).node()));
       auto axis_attr = axis->mutable_attr();
       SetDataTypeToAttr(DT_INT32, "dtype", axis);
       auto* axis_t = (*axis_attr)["value"].mutable_tensor();
@@ -3300,6 +3307,7 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
       output->set_op("ExpandDims");
       output->set_device(node->device());
       SetDataTypeToAttr(output_properties->dtype(), "T", output);
+      SetDataTypeToAttr(DT_INT32, "Tdim", output);
       output->add_input(input_slice);
       output->add_input(axis->name());
     }

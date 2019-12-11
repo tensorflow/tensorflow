@@ -1,3 +1,4 @@
+# Lint as: python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,31 +20,40 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import re
 import sys
-import numpy as np
 
 from absl import flags
 from absl.testing import absltest
+import numpy as np
 
 import tensorflow.compat.v2 as tf
-tf.compat.v1.enable_v2_behavior()
+from tensorflow.tools.docs import tf_doctest_lib
 
 # We put doctest after absltest so that it picks up the unittest monkeypatch.
 # Otherwise doctest tests aren't runnable at all.
-import doctest  # pylint: disable=g-import-not-at-top, g-bad-import-order
+import doctest  # pylint: disable=g-bad-import-order
+
+tf.compat.v1.enable_v2_behavior()
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('module', '', 'A specific module to run doctest on.')
-flags.DEFINE_boolean('list', False,
+flags.DEFINE_string('module', None, 'A specific module to run doctest on.')
+flags.DEFINE_boolean('list', None,
                      'List all the modules in the core package imported.')
+flags.DEFINE_string('file', None, 'A specific file to run doctest on.')
+
+flags.mark_flags_as_mutual_exclusive(['module', 'file'])
+flags.mark_flags_as_mutual_exclusive(['list', 'file'])
 
 PACKAGE = 'tensorflow.python.'
 
 
 def find_modules():
-  """Finds all the modules in the core package imported."""
+  """Finds all the modules in the core package imported.
+
+  Returns:
+    A list containing all the modules in tensorflow.python.
+  """
 
   tf_modules = []
   for name, module in sys.modules.items():
@@ -75,6 +85,29 @@ def filter_on_submodules(all_modules, submodule):
   return filtered_modules
 
 
+def get_module_and_inject_docstring(file_path):
+  """Replaces the docstring of the module with the changed file's content.
+
+  Args:
+    file_path: Path to the file
+
+  Returns:
+    A list containing the module changed by the file.
+  """
+
+  file_path = os.path.abspath(file_path)
+  mod_index = file_path.find(PACKAGE.replace('.', os.sep))
+  file_mod_name, _ = os.path.splitext(file_path[mod_index:])
+  file_module = sys.modules[file_mod_name.replace(os.sep, '.')]
+
+  with open(file_path, 'r') as f:
+    content = f.read()
+
+  file_module.__doc__ = content
+
+  return [file_module]
+
+
 class TfTestCase(tf.test.TestCase):
 
   def set_up(self, test):
@@ -82,16 +115,6 @@ class TfTestCase(tf.test.TestCase):
 
   def tear_down(self, test):
     self.tearDown()
-
-
-class CustomOutputChecker(doctest.OutputChecker):
-
-  def check_output(self, want, got, optionflags):
-    # Replace tf.Tensor's id with ellipsis(...) because tensor's id can change
-    # on each execution. Users may forget to use ellipsis while writing
-    # examples in docstrings, so replacing the id with `...` makes it safe.
-    want = re.sub(r'\bid=(\d+)\b', r'id=...', want)
-    return doctest.OutputChecker.check_output(self, want, got, optionflags)
 
 
 def load_tests(unused_loader, tests, unused_ignore):
@@ -109,6 +132,9 @@ def load_tests(unused_loader, tests, unused_ignore):
     print('**************************************************')
     return tests
 
+  if FLAGS.file:
+    tf_modules = get_module_and_inject_docstring(FLAGS.file)
+
   for module in tf_modules:
     testcase = TfTestCase()
     tests.addTests(
@@ -122,8 +148,10 @@ def load_tests(unused_loader, tests, unused_ignore):
             },
             setUp=testcase.set_up,
             tearDown=testcase.tear_down,
-            checker=CustomOutputChecker(),
-            optionflags=(doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE),
+            checker=tf_doctest_lib.TfDoctestOutputChecker(),
+            optionflags=(doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE
+                         | doctest.IGNORE_EXCEPTION_DETAIL
+                         | doctest.DONT_ACCEPT_BLANKLINE),
         ))
   return tests
 

@@ -135,16 +135,24 @@ Attribute quantizeAttrUniform(Attribute realValue,
 /// On success, stores the converted type in outConvertedType.
 Attribute quantizeAttr(Attribute realValue, QuantizedType quantizedElementType,
                        Type &outConvertedType) {
-  // Hard-coded to just support UniformQuantizedType. This will need to
-  // be generalized when there is more than one.
-  auto uniformQuantizedType =
-      quantizedElementType.dyn_cast<UniformQuantizedType>();
-  if (!uniformQuantizedType) {
+  if (auto uniformQuantized =
+          quantizedElementType.dyn_cast<UniformQuantizedType>()) {
+    UniformQuantizedValueConverter converter(uniformQuantized);
+    return quantizeAttrUniform(realValue, uniformQuantized, converter,
+                               outConvertedType);
+
+  } else if (auto uniformQuantizedPerAxis =
+                 quantizedElementType.dyn_cast<UniformQuantizedPerAxisType>()) {
+    UniformQuantizedPerAxisValueConverter converter(uniformQuantizedPerAxis);
+    auto converted = converter.convert(realValue);
+    // TODO(fengliuai): why we need this outConvertedType? remove it?
+    if (converted) {
+      outConvertedType = converted.getType();
+    }
+    return converted;
+  } else {
     return nullptr;
   }
-  UniformQuantizedValueConverter converter(uniformQuantizedType);
-  return quantizeAttrUniform(realValue, uniformQuantizedType, converter,
-                             outConvertedType);
 }
 
 } // namespace quant

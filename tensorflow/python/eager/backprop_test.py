@@ -47,21 +47,8 @@ from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import training
-from tensorflow.python.util import nest
-
-
-def _chain_grads(primals, grad_fns):
-  if len(grad_fns) == 1:
-    return grad_fns[-1]
-  @custom_gradient.custom_gradient(primals=primals)
-  def grad(*args, **kwargs):
-    return (grad_fns[0](*args, **kwargs),
-            _chain_grads(primals, grad_fns[1:]))
-  return grad
 
 
 class BackpropTest(test.TestCase, parameterized.TestCase):
@@ -319,6 +306,19 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       t.watch(x)
       y = array_ops.identity(x)
     self.assertEqual(t.gradient(y, x).numpy(), 1.0)
+
+  def testFunctionIndexedSlicesGradient(self):
+
+    @def_function.function
+    def f(x):
+      return x + 1
+
+    with backprop.GradientTape() as t:
+      x = constant_op.constant([1.0])
+      t.watch(x)
+      y = f(x)
+      y = array_ops.gather(y, [0])
+    self.assertAllEqual(t.gradient(y, x), [1.0])
 
   def testTapeGradientMultiTargetOneIsSource(self):
     x = constant_op.constant(2.0)
@@ -923,7 +923,6 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     dz_dx = g.gradient(z, x, unconnected_gradients='zero')
     self.assertAllEqual([[0.0, 0.0], [0.0, 0.0]], self.evaluate(dz_dx))
 
-  @test_util.assert_no_new_tensors
   @test_util.run_in_graph_and_eager_modes
   def testUnknownUnconnectedGradientsValueGiven(self):
     x = constant_op.constant(1.0)
@@ -1381,138 +1380,33 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       g = f(c)
     self.assertAllEqual(self.evaluate(t.gradient(g, c)), 4.0)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testNthOrderCustomGradientsTape(self):
-
-    def _all_grads_tape(f, primals, doutputs):
-      primals = nest.map_structure(ops.convert_to_tensor, primals)
-      with backprop.GradientTape(persistent=True) as t:
-        t.watch(primals)
-        with variable_scope.variable_scope(
-            # Required when graph building
-            variable_scope.get_variable_scope(), use_resource=True):
-          current = f(primals)
-          ret = [current]
-          for doutput in doutputs:
-            current = t.gradient(current, primals, output_gradients=doutput,
-                                 unconnected_gradients='zero')
-            ret.append(current)
-        return ret
-
-    @custom_gradient.custom_gradient
-    def f(x):
-      y = 2. * x
-      return y, _chain_grads(x, [lambda dy: dy * 2.1,
-                                 lambda ddy: ddy * 2.2,
-                                 lambda dddy: dddy * x * 2.3])
-
-    self.assertAllClose(
-        [6., 4.2, 22.], _all_grads_tape(f, 3., [2., 10.]))
-    self.assertAllClose(
-        [6., 2.1, 2.2, 6.9, 2.3, 0.],
-        _all_grads_tape(f, 3., [1., 1., 1., 1., 1.]))
-
-    traced_tape_grads = def_function.function(_all_grads_tape)
-    self.assertAllClose(
-        [6., 4.2, 22.], traced_tape_grads(f, 3., [2., 10.]))
-    self.assertAllClose(
-        [6., 2.1, 2.2, 6.9, 2.3, 0.],
-        traced_tape_grads(f, 3., [1., 1., 1., 1., 1.]))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testNthOrderCustomGradientsTFGradients(self):
-
-    @def_function.function
-    def _all_grads_tf_gradients(f, primals, doutputs):
-      primals = nest.map_structure(ops.convert_to_tensor, primals)
-      current = f(primals)
-      ret = [current]
-      for doutput in doutputs:
-        current, = gradients.gradients(current, primals, grad_ys=doutput,
-                                       unconnected_gradients='zero')
-        ret.append(current)
-      return ret
-
-    @custom_gradient.custom_gradient
-    def f(x):
-      y = 2. * x
-      return y, _chain_grads(x, [lambda dy: dy * 2.1,
-                                 lambda ddy: ddy * 2.2,
-                                 lambda dddy: dddy * x * 2.3])
-
-    self.assertAllClose(
-        [6., 4.2, 22.], _all_grads_tf_gradients(f, 3., [2., 10.]))
-    self.assertAllClose(
-        [6., 2.1, 2.2, 6.9, 2.3, 0.], _all_grads_tf_gradients(
-            f, 3., [1., 1., 1., 1., 1.]))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testCustomGradientManualNesting(self):
-    @custom_gradient.custom_gradient
-    def f(x, y):
-      z = 2. * x * y
-
-      @custom_gradient.custom_gradient(primals=(x, y))
-      def g(unused_dz):
-
-        def h(unused_dz, unused_dydz):
-          return (2.2, 3.2)
-
-        return (2.1, 3.1), h
-
-      return z, g
-
-    with backprop.GradientTape(persistent=True) as t:
-      with backprop.GradientTape(persistent=True) as tt:
-        c = constant_op.constant(1.)
-        d = constant_op.constant(-1.)
-        t.watch(c)
-        tt.watch(c)
-        t.watch(d)
-        tt.watch(d)
-        output = f(c, d)
-        self.assertAllClose(-2., output)
-      gc = tt.gradient(output, c)
-      self.assertAllClose(2.1, gc)
-      gd = tt.gradient(output, d)
-      self.assertAllClose(3.1, gd)
-    gcgc = t.gradient(gc, c)
-    self.assertAllClose(2.2, gcgc)
-    gcgd = t.gradient(gc, d)
-    self.assertAllClose(3.2, gcgd)
-    gdgc = t.gradient(gd, c)
-    self.assertAllClose(2.2, gdgc)
-    gdgd = t.gradient(gd, d)
-    self.assertAllClose(3.2, gdgd)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testPrimalsWithVariable(self):
+  def testOverrideSecondOrderWithCustomGradient(self):
     @custom_gradient.custom_gradient
     def f(x):
 
-      @custom_gradient.custom_gradient(primals=(x,))
-      def g(dz):
+      def first_order_grad(dz):
+        @custom_gradient.custom_gradient
+        def first_order_custom(unused_x):
 
-        def h(unused_ddz):
-          return 2.2
+          def h(ddz):
+            return -2.1 * ddz
 
-        return x * 2.1 * dz, h
+          return -1.1, h
+        return dz * first_order_custom(x)
 
-      return x + 1., g
+      return x + 10., first_order_grad
 
-    with backprop.GradientTape(persistent=True) as t:
-      with backprop.GradientTape(persistent=True) as tt:
-        v = variables.Variable(1.)
-        w = variables.Variable(0.)
-        self.evaluate([v.initializer, w.initializer])
-        t.watch(v)
-        tt.watch(v)
-        output = f(v + w)
-        self.assertAllClose(2., output)
-      g = tt.gradient(output, v, output_gradients=1. + w)
-      self.assertAllClose(2.1, g)
-    gg = t.gradient(g, v)
-    self.assertAllClose(2.2, gg)
+    c = constant_op.constant(1.)
+    with backprop.GradientTape() as outer:
+      outer.watch(c)
+      with backprop.GradientTape() as inner:
+        inner.watch(c)
+        d = f(c) ** 4.
+      dd = inner.gradient(d, c)
+      self.assertAllClose(4. * f(c) ** 3. * -1.1, dd)
+    self.assertAllClose(3. * 4. * f(c) ** 2. * -1.1 * -1.1
+                        + 4. * f(c) ** 3. * -2.1,
+                        outer.gradient(dd, c))
 
   @test_util.run_in_graph_and_eager_modes
   def testCustomGradientForwardprop(self):
@@ -1579,23 +1473,34 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, 'ndarray'):
       g.watch(np.array(1.))
 
-  def testOpWithNoAttrs(self):
+  def testWatchedVariablesAfterNonPersistentGradientCall(self):
+    with backprop.GradientTape(persistent=False) as tape:
+      x = resource_variable_ops.ResourceVariable(1.0)
+      tape.watch(x)
+    tape.gradient(x, x)
+    self.assertEqual((x,), tape.watched_variables())
 
-    @function.defun(autograph=False)
-    def f():
-      with backprop.GradientTape() as tape:
-        xs = random_ops.random_normal([10, 32])
-        tape.watch(xs)
-        # The `rfft()` op has no defined attrs, which exercises a different
-        # branch in the Python op wrapper code generator for recording
-        # gradients.
-        ys = fft_ops.rfft(xs)
-        self.assertEmpty(ys.op.node_def.attr)
-      gs = tape.gradient(ys, xs)
-      self.assertIsNotNone(gs)
+  def testWatchedVariablesOnlyHasVariablesFromLastTape(self):
+    with backprop.GradientTape(persistent=False) as tape:
+      x = resource_variable_ops.ResourceVariable(1.0)
+      tape.watch(x)
+    with backprop.GradientTape(persistent=False) as tape:
+      z = resource_variable_ops.ResourceVariable(2.0)
+      tape.watch(z)
+    tape.gradient(z, z)
+    self.assertEqual((z,), tape.watched_variables())
 
-    f.get_concrete_function()
-
+  def testWatchedVariablesRespectReset(self):
+    with backprop.GradientTape(persistent=False) as tape:
+      x = resource_variable_ops.ResourceVariable(1.0)
+      tape.watch(x)
+      self.assertEqual((x,), tape.watched_variables())
+      tape.reset()
+      z = resource_variable_ops.ResourceVariable(2.0)
+      tape.watch(z)
+      self.assertEqual((z,), tape.watched_variables())
+    tape.gradient(z, z)
+    self.assertEqual((z,), tape.watched_variables())
 
 class JacobianTest(test.TestCase):
 

@@ -22,9 +22,11 @@ import time
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import function
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -37,15 +39,16 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSum(self):
     for i in range(10):
       ds = dataset_ops.Dataset.range(1, i + 1)
       result = ds.reduce(np.int64(0), lambda x, y: x + y)
       self.assertEqual(((i + 1) * i) // 2, self.evaluate(result))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSumTuple(self):
 
     def reduce_fn(state, value):
@@ -58,6 +61,7 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
       result = ds.reduce(constant_op.constant(0, dtype=dtypes.int64), reduce_fn)
       self.assertEqual(((i + 1) * i), self.evaluate(result))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSumAndCount(self):
 
     def reduce_fn(state, value):
@@ -73,8 +77,8 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(((i + 1) * i) // 2, s)
       self.assertEqual(i, c)
 
-  @test_util.run_v1_only("graph-mode specific test")
-  def testSkipEagerSquareUsingPlaceholder(self):
+  @combinations.generate(combinations.combine(tf_api_version=1, mode="graph"))
+  def testSquareUsingPlaceholder(self):
     delta = array_ops.placeholder(dtype=dtypes.int64)
 
     def reduce_fn(state, _):
@@ -87,6 +91,7 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
         square = sess.run(result, feed_dict={delta: i})
         self.assertEqual(i * i, square)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSparse(self):
 
     def reduce_fn(_, value):
@@ -103,6 +108,7 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
       result = ds.reduce(make_sparse_fn(0), reduce_fn)
       self.assertValuesEqual(make_sparse_fn(i + 1), self.evaluate(result))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNested(self):
 
     def reduce_fn(state, value):
@@ -127,6 +133,7 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(((i + 1) * i) // 2, result["dense"])
       self.assertValuesEqual(make_sparse_fn(i), result["sparse"])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDatasetSideEffect(self):
     counter_var = variables.Variable(0)
 
@@ -149,6 +156,7 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(self.evaluate(fn()), b"hello")
     self.assertEqual(self.evaluate(counter_var), 10)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSideEffect(self):
     counter_var = variables.Variable(0)
 
@@ -168,6 +176,7 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(self.evaluate(fn()), b"hello")
     self.assertEqual(self.evaluate(counter_var), 10)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testAutomaticControlDependencies(self):
     counter_var = variables.Variable(1)
 
@@ -192,6 +201,7 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(self.evaluate(fn()), b"hello")
     self.assertEqual(self.evaluate(counter_var), 4)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testStateOnGPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPUs available.")
@@ -207,8 +217,8 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
       result = ds.reduce(state, reduce_fn)
       self.assertEqual(((i + 1) * i) // 2, self.evaluate(result))
 
-  @test_util.run_v1_only("graph-mode specific test")
-  def testSkipEagerCancellation(self):
+  @combinations.generate(combinations.combine(tf_api_version=1, mode="graph"))
+  def testCancellation(self):
     ds = dataset_ops.Dataset.from_tensors(1).repeat()
     result = ds.reduce(0, lambda x, y: x + y)
     with self.cached_session() as sess:
@@ -220,10 +230,18 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.close()
       thread.join()
 
+  @combinations.generate(test_base.default_test_combinations())
   def testInvalidFunction(self):
     ds = dataset_ops.Dataset.range(5)
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(ds.reduce(0, lambda _, __: ()))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testOptions(self):
+    dataset = dataset_ops.Dataset.range(5)
+    dataset = dataset.apply(testing.assert_next(["MapAndBatch"]))
+    dataset = dataset.map(lambda x: x).batch(5)
+    self.evaluate(dataset.reduce(0, lambda state, value: state))
 
 
 if __name__ == "__main__":

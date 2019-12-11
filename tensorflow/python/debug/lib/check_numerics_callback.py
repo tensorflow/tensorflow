@@ -19,14 +19,75 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import functools
+import threading
 
 import numpy as np
 
+from tensorflow.core.protobuf import debug_event_pb2
+from tensorflow.python.debug.lib import op_callbacks_common
 from tensorflow.python.debug.lib import source_utils
 from tensorflow.python.framework import op_callbacks
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_debug_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
+
+
+# Many ops have benign NaN outputs, and running them with check_numerics
+# on will create unwanted errors
+# TODO(b/142497024): Replace this whitelist with function decorators in the ops
+IGNORE_OP_OUTPUTS = (
+    # For FusedBatchNorm, if the input tensor is empty then batch_mean and
+    # batch_variance will be NaN. reserve_space holds intermediate values
+    # derived from batch_mean and batch_variance used for gradient calculation
+    (b"FusedBatchNorm", 1),  # batch_mean
+    (b"FusedBatchNorm", 2),  # batch_variance
+    (b"FusedBatchNorm", 3),  # reserve_space_1
+    (b"FusedBatchNorm", 4),  # reserve_space_2
+
+    # Same as above
+    (b"FusedBatchNormV2", 1),  # batch_mean
+    (b"FusedBatchNormV2", 2),  # batch_variance
+    (b"FusedBatchNormV2", 3),  # reserve_space_1
+    (b"FusedBatchNormV2", 4),  # reserve_space_2
+
+    # Same as above, but reserve_space_3 holds additional intermediate values
+    (b"FusedBatchNormV3", 1),  # batch_mean
+    (b"FusedBatchNormV3", 2),  # batch_variance
+    (b"FusedBatchNormV3", 3),  # reserve_space_1
+    (b"FusedBatchNormV3", 4),  # reserve_space_2
+    (b"FusedBatchNormV3", 5),  # reserve_space_3
+)
+
+# Some frequently used ops are generally safe and we can skip them to reduce
+# overhead. NOTE: This list is compiled by observing operations called by
+# models in practice and is not a comprehensive list of safe operations.
+SAFE_OPS = (
+    b"Concat",
+    b"ConcatV2",
+    b"ExpandDims",
+    b"Fill",
+    b"Gather",
+    b"Maximum",
+    b"Minimum",
+    b"Reshape",
+    b"Slice",
+    b"Squeeze",
+    b"Stack",
+    b"StridedSlice",
+    b"StridedSliceGrad",
+    b"TensorListConcatV2",
+    b"TensorListGather",
+    b"TensorListGetItem",
+    b"TensorListPopBack",
+    b"TensorListStack",
+    b"Transpose",
+    b"Unpack",
+)
+
+_state = threading.local()
 
 
 def limit_string_length(string, max_len=50):
@@ -45,25 +106,15 @@ def limit_string_length(string, max_len=50):
     return "..." + string[len(string) - max_len:]
 
 
-_CHECK_NUMERICS_CALLBACK_SKIP_OPS = (
-    # TODO(b/139668453): The following skipped ops are related to a limitation
-    # in the op callback.
-    b"Identity",
-    b"If",
-    b"StatelessIf",
-    b"While",
-)
-
 # A dictionary that supports looking up the original input tensor names.
 _CHECK_NUMERICS_INPUT_LOOKUP = collections.defaultdict(dict)
 
 
 def _maybe_lookup_original_input_tensor(graph, tensor):
   if (graph and
-      graph.name and
-      graph.name in _CHECK_NUMERICS_INPUT_LOOKUP and
-      tensor.name in _CHECK_NUMERICS_INPUT_LOOKUP[graph.name]):
-    return _CHECK_NUMERICS_INPUT_LOOKUP[graph.name][tensor.name]
+      graph in _CHECK_NUMERICS_INPUT_LOOKUP and
+      tensor.name in _CHECK_NUMERICS_INPUT_LOOKUP[graph]):
+    return _CHECK_NUMERICS_INPUT_LOOKUP[graph][tensor.name]
   else:
     return tensor
 
@@ -135,7 +186,7 @@ def get_check_numerics_error_message(slot,
   elif len(inputs) == 1:
     message += "\n  Input tensor: %s\n" % (
         _maybe_lookup_original_input_tensor(graph, inputs[0]))
-  if graph and graph.name:
+  if graph and hasattr(graph, "name") and graph.name:
     message += "  Graph name: \"%s\"\n" % graph.name
 
   # Format the stack trace for the op's creation. We omit files that
@@ -161,58 +212,91 @@ def get_check_numerics_error_message(slot,
   return message
 
 
-def _check_numerics_callback(stack_height_limit,
-                             path_length_limit,
-                             op_type,
-                             inputs,
-                             attrs,
-                             outputs,
-                             op_name=None,
-                             graph=None):
-  """Eager-function unified callback for checking numerics."""
-  del attrs, op_name  # Unused
-
-  if compat.as_bytes(op_type) in _CHECK_NUMERICS_CALLBACK_SKIP_OPS:
-    return
-  if graph:
-    # Under graph mode. Insert check_numerics op.
-    instrumented_outputs = []
-    for slot, output in enumerate(outputs):
-      if output.dtype.is_floating:
-        checked_output = array_ops.check_numerics(
-            output,
-            get_check_numerics_error_message(
-                slot, len(outputs), op_type, output, inputs,
-                graph=graph, traceback=output.op.traceback))
-        if graph.name:
-          _CHECK_NUMERICS_INPUT_LOOKUP[
-              graph.name][checked_output.name] = output
-        instrumented_outputs.append(checked_output)
-      else:
-        instrumented_outputs.append(output)
-    return instrumented_outputs
-  else:
-    if compat.as_bytes(op_type) == b"CheckNumerics":
-      # TODO(b/140334369): Remove this special casing logic once op_callback.
-      # automatically prevents infinite recursion in eager mode.
-      return
-    # Under eager mode. Eagerly execute check_numerics op.
-    for slot, output in enumerate(outputs):
-      if output.dtype.is_floating:
-        array_ops.check_numerics(
-            output,
-            get_check_numerics_error_message(
-                slot, len(outputs), op_type, output, inputs,
-                stack_height_limit=stack_height_limit,
-                path_length_limit=path_length_limit))
+def _debug_summary(x):
+  return gen_debug_ops.debug_numeric_summary_v2(
+      x,
+      tensor_debug_mode=(
+          debug_event_pb2.TensorDebugMode.REDUCE_INF_NAN_THREE_SLOTS))
 
 
-def check_numerics(stack_height_limit=30,
-                   path_length_limit=50):
-  r"""Creates a context manager that checks numerics of tensors in ops.
+class CheckNumericsCallback(object):
+  """Wrapper for the numerics-checking callback for thread locality."""
 
-  This context manager works for eagerly-executed ops and ops executed in
-  `tf.function`s (graphs) in a unified way.
+  def __init__(self, stack_height_limit, path_length_limit):
+    self._stack_height_limit = stack_height_limit
+    self._path_length_limit = path_length_limit
+
+  def callback(self,
+               op_type,
+               inputs,
+               attrs,
+               outputs,
+               op_name=None,
+               graph=None):
+    """Eager-function unified callback for checking numerics."""
+    del attrs, op_name  # Unused
+    op_type_bytes = compat.as_bytes(op_type)
+    is_v1_graph_mode = not ops.executing_eagerly_outside_functions()
+    if (op_type_bytes in op_callbacks_common.OP_CALLBACK_SKIP_OPS or
+        op_type_bytes in SAFE_OPS):
+      return None
+    if graph:
+      # Under graph mode. Insert check_numerics op.
+      instrumented_outputs = []
+      for slot, output in enumerate(outputs):
+        if (output.dtype.is_floating and
+            (op_type_bytes, slot) not in IGNORE_OP_OUTPUTS):
+          checked_output = array_ops.check_numerics_v2(
+              # TF v2 has automatic control dependencies added to stateful async
+              # ops, which allows us to run check_numerics asynchronously.
+              # In the above case we use debug_summary to reduce all output
+              # tensors asynchronously from the op being checked and then
+              # process the tensor summary with check_numerics.
+              output if is_v1_graph_mode else _debug_summary(output),
+              get_check_numerics_error_message(
+                  slot,
+                  len(outputs),
+                  op_type,
+                  output,
+                  inputs,
+                  graph=graph,
+                  traceback=output.op.traceback))
+          _CHECK_NUMERICS_INPUT_LOOKUP[graph][checked_output.name] = output
+          instrumented_outputs.append(
+              checked_output if is_v1_graph_mode else output)
+        else:
+          instrumented_outputs.append(output)
+      return instrumented_outputs
+    else:
+      if op_type_bytes == b"CheckNumericsV2":
+        # TODO(b/140334369): Remove this special casing logic once op_callback.
+        # automatically prevents infinite recursion in eager mode.
+        return None
+      # Under eager mode. Eagerly execute check_numerics op.
+      for slot, output in enumerate(outputs):
+        if (output.dtype.is_floating and
+            (op_type_bytes, slot) not in IGNORE_OP_OUTPUTS):
+          array_ops.check_numerics_v2(
+              output,
+              get_check_numerics_error_message(
+                  slot, len(outputs), op_type, output, inputs,
+                  stack_height_limit=self._stack_height_limit,
+                  path_length_limit=self._path_length_limit))
+
+
+@tf_export("debugging.enable_check_numerics")
+def enable_check_numerics(stack_height_limit=30,
+                          path_length_limit=50):
+  r"""Enable tensor numerics checking in an eager/graph unified fashion.
+
+  The numerics checking mechanism will cause any TensorFlow eager execution or
+  graph execution to error out as soon as an op's output tensor contains
+  infinity or NaN.
+
+  This method is idempotent. Calling it multiple times has the same effect
+  as calling it once.
+
+  This method takes effect only on the thread in which it is called.
 
   When a op's float-type output tensor contains any Infinity or NaN, an
   `tf.errors.InvalidArgumentError` will be thrown, with an error message that
@@ -221,7 +305,7 @@ def check_numerics(stack_height_limit=30,
     - Data type (dtype) of the tensor.
     - Shape of the tensor (to the extent known at the time of eager execution
       or graph construction).
-    - (Graph mode only): Name of the containing graph.
+    - Name of the containing graph (if available).
     - (Graph mode only): The stack trace of the intra-graph op's creation,
       with a stack-height limit and a path-length limit for visual clarity.
       The stack frames that belong to the user's code (as opposed to
@@ -229,19 +313,92 @@ def check_numerics(stack_height_limit=30,
     - (Eager mode only): How many of the offending tensor's elements are
       `Infinity` and `NaN`, respectively.
 
+  Once enabled, the check-numerics mechanism can be disabled by using
+  `tf.debugging.disable_check_numerics()`.
+
+  Example usage:
+
+  1. Catching infinity during the execution of a `tf.function` graph:
+
+     ```py
+     import tensorflow as tf
+
+     tf.debugging.enable_check_numerics()
+
+     @tf.function
+     def square_log_x_plus_1(x):
+       v = tf.math.log(x + 1)
+       return tf.math.square(v)
+
+     x = -1.0
+
+     # When the following line runs, a function graph will be compiled
+     # from the Python function `log_x_plus_1()`. Due to the
+     # `enable_check_numerics()` call above, the graph will contain
+     # numerics checking ops that will run during the function graph's
+     # execution. The function call generates an -infinity when the Log
+     # (logarithm) op operates on the output tensor of the Add op.
+     # The program errors out at this line, printing an error message.
+     y = log_x_plus_1(x)
+     z = -y
+    ```
+
+  2. Catching NaN during eager execution:
+
+     ```py
+     import numpy as np
+     import tensorflow as tf
+
+     tf.debugging.enable_check_numerics()
+
+     x = np.array([[0.0, -1.0], [4.0, 3.0]])
+
+     # The following line executes the Sqrt op eagerly. Due to the negative
+     # element in the input array, a NaN is generated. Due to the
+     # `enable_check_numerics()` call above, the program errors immediately
+     # at this line, printing an error message.
+     y = tf.math.sqrt(x)
+     z = tf.matmul(y, y)
+     ```
+
   Args:
     stack_height_limit: Limit to the height of the printed stack trace.
       Applicable only to ops in `tf.function`s (graphs).
     path_length_limit: Limit to the file path included in the printed stack
       trace. Applicable only to ops in `tf.function`s (graphs).
-
-  Returns:
-    A thread-local context manager.
   """
-  # TODO(cais): Once this is exposed as a public API add code example in the
-  # doc string above.
+  if not hasattr(_state, "check_numerics_callback"):
+    _state.check_numerics_callback = CheckNumericsCallback(
+        stack_height_limit, path_length_limit)
+  op_callbacks.add_op_callback(_state.check_numerics_callback.callback)
 
-  return op_callbacks.op_callback(functools.partial(
-      _check_numerics_callback,
-      stack_height_limit,
-      path_length_limit))
+  logging.info(
+      "Enabled check-numerics callback in thread %s",
+      threading.current_thread().name)
+
+
+@tf_export("debugging.disable_check_numerics")
+def disable_check_numerics():
+  """Disable the eager/graph unified numerics checking mechanism.
+
+  This method can be used after a call to `tf.debugging.enable_check_numerics()`
+  to disable the numerics-checking mechanism that catches inifnity and NaN
+  values output by ops executed eagerly or in tf.function-compiled graphs.
+
+  This method is idempotent. Calling it multiple times has the same effect
+  as calling it once.
+
+  This method takes effect only on the thread in which it is called.
+  """
+  if not hasattr(_state, "check_numerics_callback"):
+    return
+  try:
+    op_callbacks.remove_op_callback(_state.check_numerics_callback.callback)
+    delattr(_state, "check_numerics_callback")
+    logging.info(
+        "Disabled check-numerics callback in thread %s",
+        threading.current_thread().name)
+  except KeyError:
+    # Tolerate disabling the check numerics callback without
+    # enable_check_numerics() being called first.
+    pass

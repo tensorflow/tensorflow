@@ -19,21 +19,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef AFFINE_OPS_BASE
-#else
+#ifndef AFFINE_OPS_BASE
 #define AFFINE_OPS_BASE
 
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 // Attributes containing affine maps.
 def AffineMapAttr : Attr<
     CPred<"$_self.isa<AffineMapAttr>()">, "AffineMap attribute"> {
   let storageType = [{ AffineMapAttr }];
   let returnType = [{ AffineMap }];
-  let constBuilderCall = "$_builder.getAffineMapAttr($0)";
+  let constBuilderCall = "AffineMapAttr::get($0)";
 }
 
 def AffineMapArrayAttr : TypedArrayAttrBase<AffineMapAttr,

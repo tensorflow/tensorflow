@@ -113,7 +113,7 @@ class AdamOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testSparse(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -202,7 +202,7 @@ class AdamOptimizerTest(test.TestCase):
 
   def doTestBasic(self, use_callable_params=False):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.session(graph=ops.Graph()):
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -262,7 +262,7 @@ class AdamOptimizerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes(reset_test=True)
   def testBasicWithAmsgrad(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.session(graph=ops.Graph()):
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, v0, v0hat, m1, v1, v1hat = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -356,7 +356,7 @@ class AdamOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testBasicWithLearningRateDecay(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.session(graph=ops.Graph()):
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -403,7 +403,7 @@ class AdamOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testBasicWithLearningRateInverseTimeDecay(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.session(graph=ops.Graph()):
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -452,7 +452,7 @@ class AdamOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -491,7 +491,7 @@ class AdamOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)

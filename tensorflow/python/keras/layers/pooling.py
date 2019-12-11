@@ -280,18 +280,81 @@ class Pooling2D(Layer):
 
 @keras_export('keras.layers.MaxPool2D', 'keras.layers.MaxPooling2D')
 class MaxPooling2D(Pooling2D):
-  """Max pooling operation for spatial data.
+  """Max pooling operation for 2D spatial data.
+
+  Downsamples the input representation by taking the maximum value over the
+  window defined by `pool_size` for each dimension along the features axis.
+  The window is shifted by `strides` in each dimension.  The resulting output
+  when using "valid" padding option has a shape(number of rows or columns) of:
+  `output_shape = (input_shape - pool_size + 1) / strides)`
+
+  The resulting output shape when using the "same" padding option is:
+  `output_shape = input_shape / strides`
+
+  For example, for stride=(1,1) and padding="valid":
+
+  >>> x = tf.constant([[1., 2., 3.],
+  ...                  [4., 5., 6.],
+  ...                  [7., 8., 9.]])
+  >>> x = tf.reshape(x, [1, 3, 3, 1])
+  >>> max_pool_2d = tf.keras.layers.MaxPooling2D(pool_size=(2, 2),
+  ...    strides=(1, 1), padding='valid')
+  >>> max_pool_2d(x)
+  <tf.Tensor: shape=(1, 2, 2, 1), dtype=float32, numpy=
+    array([[[[5.],
+             [6.]],
+            [[8.],
+             [9.]]]], dtype=float32)>
+
+  For example, for stride=(2,2) and padding="valid":
+
+  >>> x = tf.constant([[1., 2., 3., 4.],
+  ...                  [5., 6., 7., 8.],
+  ...                  [9., 10., 11., 12.]])
+  >>> x = tf.reshape(x, [1, 3, 4, 1])
+  >>> max_pool_2d = tf.keras.layers.MaxPooling2D(pool_size=(2, 2),
+  ...    strides=(1, 1), padding='valid')
+  >>> max_pool_2d(x)
+  <tf.Tensor: shape=(1, 2, 3, 1), dtype=float32, numpy=
+    array([[[[ 6.],
+             [ 7.],
+             [ 8.]],
+            [[10.],
+             [11.],
+             [12.]]]], dtype=float32)>
+
+  For example, for stride=(1,1) and padding="same":
+
+  >>> x = tf.constant([[1., 2., 3.],
+  ...                  [4., 5., 6.],
+  ...                  [7., 8., 9.]])
+  >>> x = tf.reshape(x, [1, 3, 3, 1])
+  >>> max_pool_2d = tf.keras.layers.MaxPooling2D(pool_size=(2, 2),
+  ...    strides=(1, 1), padding='same')
+  >>> max_pool_2d(x)
+  <tf.Tensor: shape=(1, 3, 3, 1), dtype=float32, numpy=
+    array([[[[5.],
+             [6.],
+             [6.]],
+            [[8.],
+             [9.],
+             [9.]],
+            [[8.],
+             [9.],
+             [9.]]]], dtype=float32)>
 
   Arguments:
     pool_size: integer or tuple of 2 integers,
-      factors by which to downscale (vertical, horizontal).
-      `(2, 2)` will halve the input in both spatial dimension.
+      window size over which to take the maximum.
+      `(2, 2)` will take the max value over a 2x2 pooling window.
       If only one integer is specified, the same window length
       will be used for both dimensions.
     strides: Integer, tuple of 2 integers, or None.
-      Strides values.
-      If None, it will default to `pool_size`.
+      Strides values.  Specifies how far the pooling window moves
+      for each pooling step. If None, it will default to `pool_size`.
     padding: One of `"valid"` or `"same"` (case-insensitive).
+      "valid" adds no zero padding.  "same" adds padding such that if the stride
+      is 1, the output shape is the same as input shape.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -314,6 +377,10 @@ class MaxPooling2D(Pooling2D):
       4D tensor with shape `(batch_size, pooled_rows, pooled_cols, channels)`.
     - If `data_format='channels_first'`:
       4D tensor with shape `(batch_size, channels, pooled_rows, pooled_cols)`.
+
+  Returns:
+    A tensor of rank 4 representing the maximum pooled values.  See above for
+    output shape.
   """
 
   def __init__(self,
@@ -581,6 +648,7 @@ class GlobalPooling1D(Layer):
     super(GlobalPooling1D, self).__init__(**kwargs)
     self.input_spec = InputSpec(ndim=3)
     self.data_format = conv_utils.normalize_data_format(data_format)
+    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -638,9 +706,8 @@ class GlobalAveragePooling1D(GlobalPooling1D):
     steps_axis = 1 if self.data_format == 'channels_last' else 2
     if mask is not None:
       mask = math_ops.cast(mask, backend.floatx())
-      input_shape = inputs.shape.as_list()
-      broadcast_shape = [-1, input_shape[steps_axis], 1]
-      mask = array_ops.reshape(mask, broadcast_shape)
+      mask = array_ops.expand_dims(
+          mask, 2 if self.data_format == 'channels_last' else 1)
       inputs *= mask
       return backend.sum(inputs, axis=steps_axis) / math_ops.reduce_sum(
           mask, axis=steps_axis)
@@ -689,6 +756,7 @@ class GlobalPooling2D(Layer):
     super(GlobalPooling2D, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=4)
+    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -780,6 +848,7 @@ class GlobalPooling3D(Layer):
     super(GlobalPooling3D, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=5)
+    self._supports_ragged_inputs = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()

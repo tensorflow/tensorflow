@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 
+#include "absl/strings/match.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -59,9 +60,13 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   Status HandlePad(HloInstruction* hlo) override;
 
+  Status HandleCustomCall(HloInstruction* hlo) override;
+
   Status HandleBroadcast(HloInstruction* hlo) override;
 
   Status HandleGetDimensionSize(HloInstruction* hlo) override;
+
+  Status HandleSetDimensionSize(HloInstruction* hlo) override;
 
   Status HandleSelect(HloInstruction* hlo) override;
 
@@ -71,6 +76,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleReduceWindow(HloInstruction* hlo) override;
 
+  Status HandleReverse(HloInstruction* hlo) override;
+
   Status HandleSelectAndScatter(HloInstruction* hlo) override;
 
   Status HandleGetTupleElement(HloInstruction* hlo) override;
@@ -78,6 +85,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
   Status HandleElementwiseUnary(HloInstruction* hlo) override;
 
   Status HandleElementwiseBinary(HloInstruction* hlo) override;
+
+  Status HandleClamp(HloInstruction* hlo) override;
 
   Status HandleWhile(HloInstruction* hlo) override;
 
@@ -100,6 +109,9 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   Status ForEachOperandDynamicDimension(HloInstruction* inst,
                                         const OperandDynamicDimensionFn&);
+  Status ForEachDynamicDimensionInOperand(HloInstruction* inst,
+                                          int64 operand_index,
+                                          const OperandDynamicDimensionFn&);
 
   // Pass through a dynamic dimension from the input to the output with the same
   // value and index in the shape. This is a helper function to handle trivial
@@ -119,9 +131,9 @@ Status DynamicDimensionInferenceVisitor::DefaultAction(HloInstruction* hlo) {
                int64 operand_index, HloInstruction* dynamic_size,
                DimensionConstraint constraint) {
         return UnimplementedStrCat(
-            "Asked to propagate a dynamic dimension from hlo ",
-            operand->ToString(), "@", index.ToString(), "@", dimension,
-            " to hlo ", hlo->ToString(), ", which is not implemented.");
+            "Asked to propagate a dynamic dimension from hlo ", operand->name(),
+            "@", index.ToString(), "@", dimension, " to hlo ", hlo->ToString(),
+            ", which is not implemented.");
       });
 }
 
@@ -161,6 +173,21 @@ Status DynamicDimensionInferenceVisitor::HandleBroadcast(HloInstruction* hlo) {
         int64 broadcast_dim = hlo->dimensions(dimension);
         parent_->SetDynamicSize(hlo, {}, broadcast_dim, dynamic_size,
                                 constraint);
+        return Status::OK();
+      });
+}
+
+Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
+  return ForEachOperandDynamicDimension(
+      hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
+               int64 operand_index, HloInstruction* dynamic_size,
+               DimensionConstraint constraint) {
+        if (hlo->custom_call_target() != "Unpad" ||
+            absl::StartsWith(hlo->custom_call_target(), "Resize")) {
+          return Unimplemented(
+              "CustomCall is not supported to have a dynamic dimension");
+        }
+        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size, constraint);
         return Status::OK();
       });
 }
@@ -392,14 +419,47 @@ Status DynamicDimensionInferenceVisitor::HandleConvolution(
 
 Status DynamicDimensionInferenceVisitor::HandleConcatenate(
     HloInstruction* hlo) {
+  // First handle concatenate dimensions. We do this by iterating through all
+  // operands while tracking both dynamic and static dimensions.
+
+  // static_size is used to keep track of the concated size of static
+  // dimensions.
+  int64 static_size = 0;
+  std::vector<HloInstruction*> dynamic_concat_dims;
+  for (int64 i = 0; i < hlo->operand_count(); ++i) {
+    HloInstruction* dynamic_size = parent_->GetDynamicSize(
+        hlo->mutable_operand(i), {}, hlo->concatenate_dimension());
+    if (dynamic_size == nullptr) {
+      // This is a static dimension.
+      static_size +=
+          hlo->operand(i)->shape().dimensions(hlo->concatenate_dimension());
+    } else {
+      dynamic_concat_dims.push_back(dynamic_size);
+    }
+  }
+  // If concat dimension is dynamic, calculate its size by summing up static
+  // dims and dynamic dims together.
+  if (!dynamic_concat_dims.empty()) {
+    HloInstruction* dim_size_total =
+        hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
+            LiteralUtil::CreateR0<int32>(static_size)));
+    for (HloInstruction* dynamic_dim : dynamic_concat_dims) {
+      dim_size_total = hlo->parent()->AddInstruction(
+          HloInstruction::CreateBinary(dim_size_total->shape(), HloOpcode::kAdd,
+                                       dim_size_total, dynamic_dim));
+    }
+    parent_->SetDynamicSize(hlo, {}, hlo->concatenate_dimension(),
+                            dim_size_total, {.stride = 1, .multiple_of = 1});
+  }
+
+  // Simply pass through non-concat dynamic dimensions.
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size,
                DimensionConstraint constraint) {
         int64 concatenate_dimension = hlo->concatenate_dimension();
         if (concatenate_dimension == dimension) {
-          return Unimplemented("Dynamic concatenation is not supported yet: %s",
-                               operand->ToString());
+          return Status::OK();
         }
         parent_->SetDynamicSize(hlo, index, dimension, dynamic_size,
                                 constraint);
@@ -413,11 +473,52 @@ Status DynamicDimensionInferenceVisitor::HandleGetDimensionSize(
   //
   //   Input: F32[x, y, z]
   //     |
-  //   GetDimensionSize(1): U32[]
+  //   GetDimensionSize(1): S32[]
   //
   // The returned value is a scalar, which doesn't have any dynamic dimension in
   // the shape (although the value contains the real size of the dynamic
   // dimension of the input).
+  return Status::OK();
+}
+
+Status DynamicDimensionInferenceVisitor::HandleSetDimensionSize(
+    HloInstruction* hlo) {
+  bool dimension_is_static = false;
+  const HloInstruction* size = hlo->operand(1);
+  if (size->opcode() == HloOpcode::kConstant) {
+    // Check if we are setting a dimension size to its static size. If so,
+    // removes the dynamic dimension.
+    //
+    // size = s32[] constant(5)
+    // s32[2, 5] = set-dimension-size(s32[2,<=5]{1,0} %param, s32[] %size),
+    //                                                        dimensions={1}
+    // The result shape has no dynamic dimension.
+    TF_RET_CHECK(size->shape().rank() == 0);
+    if (size->literal().Get<int32>({}) ==
+        hlo->shape().dimensions(hlo->dimension())) {
+      dimension_is_static = true;
+    }
+  }
+
+  if (!dimension_is_static) {
+    // Propagate dynamic dimension indicated by this set dimension size
+    // instruction.
+    parent_->SetDynamicSize(hlo, {}, hlo->dimension(), hlo->mutable_operand(1),
+                            {.stride = 1, .multiple_of = 1});
+  }
+
+  // Also Propagate dynamic dimension already set by operands.
+  TF_RETURN_IF_ERROR(ForEachOperandDynamicDimension(
+      hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
+               int64 operand_index, HloInstruction* dynamic_size,
+               DimensionConstraint constraint) {
+        if (dimension != hlo->dimension()) {
+          parent_->SetDynamicSize(hlo, index, dimension, dynamic_size,
+                                  constraint);
+        }
+        return Status::OK();
+      }));
+
   return Status::OK();
 }
 
@@ -447,224 +548,352 @@ Status DynamicDimensionInferenceVisitor::HandleElementwiseBinary(
   return PassThroughDynamicDimension(hlo);
 }
 
+Status DynamicDimensionInferenceVisitor::HandleClamp(HloInstruction* hlo) {
+  return PassThroughDynamicDimension(hlo);
+}
+
 Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
-      hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
+      hlo,
+      [&](HloInstruction* operand, ShapeIndex index,
+          int64 input_dynamic_dimension, int64 operand_index,
+          HloInstruction* operand_dynamic_size,
+          DimensionConstraint constraint) -> Status {
         HloInstruction* reshape = hlo;
-        // Reshape is supported as long as it is the most
-        // major one and it is combining with other non-dynamic dimensions.
-        const int64 output_most_major = reshape->shape().dimensions(0);
-        const int64 input_most_major = operand->shape().dimensions(0);
-        if (dimension == 0) {
-          if (output_most_major > input_most_major) {
-            const int64 multiplier =
-                reshape->shape().dimensions(0) / operand->shape().dimensions(0);
-            HloInstruction* multiplier_hlo =
-                hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
-                    LiteralUtil::CreateR0<int32>(multiplier)));
+        TF_RET_CHECK(reshape->shape().rank() > 0)
+            << "Reshaping a dynamic dimension into a scalar, which has "
+               "undefined behavior. The offending instruction is: "
+            << reshape->ToString();
+        auto common_factors = CommonFactors(operand->shape().dimensions(),
+                                            reshape->shape().dimensions());
+        int64 input_dim_start = -1;
+        int64 input_dim_end = -1;
+        int64 output_dim_start = -1;
+        int64 output_dim_end = -1;
+        // Find common_factors that the input belongs to.
+        for (int64 i = 0; i < common_factors.size() - 1; ++i) {
+          auto start = common_factors[i];
+          auto end = common_factors[i + 1];
+          if (input_dynamic_dimension >= start.first &&
+              input_dynamic_dimension < end.first) {
+            // Found the common_factor group that the input_dim belongs to.
+            input_dim_start = start.first;
+            input_dim_end = end.first;
+            output_dim_start = start.second;
+            output_dim_end = end.second;
+          }
+        }
 
-            HloInstruction* new_dynamic_size =
-                hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
-                    dynamic_size->shape(), HloOpcode::kMultiply, dynamic_size,
-                    multiplier_hlo));
-            parent_->SetDynamicSize(reshape, {}, 0, new_dynamic_size,
-                                    {.stride = 1, .multiple_of = multiplier});
-            return Status::OK();
-          } else if (output_most_major < input_most_major) {
-            // Output dimension is decomposed from input most major dimension.
-            // In this case, we don't know which one is dynamic, e.g., when we
-            // have:
+        VLOG(2) << "Input dim start: " << input_dim_start
+                << " Input dim end: " << input_dim_end
+                << " output dim start: " << output_dim_start
+                << " output dim end: " << output_dim_end;
+
+        if ((input_dim_end - input_dim_start) > 1 &&
+            (output_dim_end - output_dim_start) > 1) {
+          // We don't support the case when a dynamic dimension is both combined
+          // with and splitted into other dimensions:
+          //
+          //  [x, yz]
+          //     | Reshape
+          //  [xy, z]
+          //
+          // TODO(yunxing): This can be supported by canonicalizing
+          // the offending reshape into two reshapes:
+          //
+          //  [x,yz]
+          //     | Reshape
+          //  [x, y, z]
+          //     | Reshape
+          //  [xy, z]
+          //
+          return Unimplemented(
+              "Dynamic input dimension to reshape that is both splitted and "
+              "combined is not supported %s",
+              hlo->ToString());
+        }
+
+        for (auto common_factor : common_factors) {
+          // Expand common factor to include degenerated output dimensions.
+          if (common_factor.first == input_dim_start) {
+            output_dim_start = std::min(output_dim_start, common_factor.second);
+          }
+          if (common_factor.first == input_dim_end) {
+            output_dim_end = std::max(output_dim_end, common_factor.second);
+          }
+        }
+
+        int64 output_dynamic_dimension = -1;
+
+        if (operand->shape().dimensions(input_dynamic_dimension) == 1) {
+          // If dynamic dimension is 1, it can only be most-major or
+          // most-minor.
+          if (input_dynamic_dimension == 0) {
+            output_dynamic_dimension = 0;
+          }
+          if (input_dynamic_dimension == operand->shape().rank() - 1) {
+            output_dynamic_dimension = reshape->shape().rank() - 1;
+          }
+
+          if (output_dynamic_dimension == -1) {
+            return Unimplemented(
+                "Dynamic degenerated dimension that's not most-minor nor "
+                "most-major is not supported %s",
+                reshape->ToString());
+          }
+        }
+
+        if (output_dynamic_dimension == -1 &&
+            output_dim_end - output_dim_start == 1) {
+          // Only one possible output dimension.
+          output_dynamic_dimension = output_dim_start;
+        }
+
+        if (output_dynamic_dimension == -1 &&
+            output_dim_end - output_dim_start > 1) {
+          // TODO(yunxing): We now have a better way to decide output dimension
+          // in the bridge. No need for this constraint propagation logic.
+          //
+          // One input dimension is splitted into multiple output dimensions.
+          // Output dimension is decomposed from input most major dimension.
+          // In this case, we don't know which one is dynamic, e.g., when we
+          // have:
+          //
+          //           [<=a/c, c, b]
+          //              | Reshape
+          //           [<=a, b] // a is dynamic, has to be multiple of c.
+          //             |  Reshape
+          // [1, 1, ... , a/c, c, b]
+          //
+          // Any dimension from the first '1' to 'a/c' can be dynamic.
+          //
+          // We use the following logics to disambiguate:
+          // 1. If the user sets "inferred_dimension", then use that as
+          // dynamic dimension.
+          //
+          // 2. Use the "multiple_of" constraint, e.g, :
+          //    [<=2, 4]
+          //     | Reshape
+          //    [<=8]
+          //     | Reshape
+          //    [2, 4] // Which is dynamic?
+          //
+          //    If the dynamic value has to be multiple of 4 (constraint
+          //    created by the first reshape), then 2 must be the dynamic
+          //    dimension.
+          //
+          //    But this logic doesn't help with the case where two
+          //    dimensions are the same:
+          //
+          //    [<=3, 3]
+          //     | Reshape
+          //    [<=9]
+          //     | Reshape
+          //    [3, 3]  // Which is dynamic?
+          //
+          //    Both dynamic dimension can be multiple of 3.
+          //
+          //    We then need the next constraint to disambiguate this case:
+          //
+          // 3. Use the "stride" constraint (also see the comment at the
+          // definition):
+          //
+          //        [<=3, 3]
+          //           | Reshape
+          //         [<=9] // constraint.stride = 1
+          //          | Reshape
+          //        [3, 3]
+          //         ^  ^
+          //         |  |
+          // stride= 1  3
+          //
+          //    Each dimension will have different strides, only one will
+          //    satisfy the stride constraint.
+          //
+          //    Note that the stride constrint itself is not enough:
+          //
+          //
+          //         [<=128]
+          //           | Reshape
+          //         [1, 128]
+          //          ^  ^
+          //          |  |
+          //  stride= 1  1
+          //
+          //    In this case, both dimensions have the same stride, which is
+          //    ambiguous. That's why we need the "multiple_of" constraint
+          //    as used above.
+          //
+          // 4. If all logics above cannot disambiguate, e.g.,:
+          //
+          //     [<=1]
+          //      |
+          //   reshape
+          //      |
+          //   [1, 1, 1]
+          //
+          //   We bail out and return an error.
+          output_dynamic_dimension = reshape->inferred_dimension();
+          if (output_dynamic_dimension == -1) {
+            // The user of XLA didn't specify a dynamic dimension, try infer
+            // it from the current constraint.
             //
-            //           [<=a/c, c, b]
-            //              | Reshape
-            //           [<=a, b] // a is dynamic, has to be multiple of c.
-            //             |  Reshape
-            // [1, 1, ... , a/c, c, b]
+            // Find all output dimensions that are decomposed from the first
+            // dimension. Among those dimensions, find all dimensions that
+            // satisfy the constraint of the dynamic dimension. In the
+            // previous example, if `a` is 9 and constraint is a multiple of
+            // `3', then in the output shape both a/c and c can be dynamic.
+            int64 current_product = 1;
+            int64 dimension_iter = output_dim_start;
+
+            // compatible_dimensions are dimensions that satisfies
+            // "multiple_of" constraints.
+            std::vector<int64> compatible_dimensions;
+            while (current_product <
+                   operand->shape().dimensions(input_dynamic_dimension)) {
+              current_product *= reshape->shape().dimensions(dimension_iter);
+              if (operand->shape().dimensions(input_dynamic_dimension) /
+                      reshape->shape().dimensions(dimension_iter) ==
+                  constraint.multiple_of) {
+                compatible_dimensions.push_back(dimension_iter);
+              }
+              dimension_iter++;
+            }
+            CHECK_EQ(current_product,
+                     operand->shape().dimensions(input_dynamic_dimension))
+                << "Not a valid reshape: " << hlo->ToString();
+            // If there is only one compatible dimension, it must be the
+            // dynamic one in the output.
+            if (compatible_dimensions.size() == 1) {
+              output_dynamic_dimension = compatible_dimensions[0];
+            }
+
+            // When there are multiple compatible dimensions, e.g:
+            //     [<=9]
+            //      | Reshape
+            //    [3, 3]
+            // Use stride constraint to figure out which one is the true
+            // dynamic one.
             //
-            // Any dimension from the first '1' to 'a/c' can be dynamic.
-            //
-            // We use the following logics to disambiguate://
-            // 1. If the user sets "inferred_dimension", then use that as
-            // dynamic dimension.
-            //
-            // 2. Use the "multiple_of" constraint, e.g, :
-            //    [<=2, 4]
-            //     | Reshape
-            //    [<=8]
-            //     | Reshape
-            //    [2, 4] // Which is dynamic?
-            //
-            //    If the dynamic value has to be multiple of 4 (constraint
-            //    created by the first reshape), then 2 must be the dynamic
-            //    dimension.
-            //
-            //    But this logic doesn't help with the case where two
-            //    dimensions are the same:
-            //
-            //    [<=3, 3]
-            //     | Reshape
-            //    [<=9]
-            //     | Reshape
-            //    [3, 3]  // Which is dynamic?
-            //
-            //    Both dynamic dimension can be multiple of 3.
-            //
-            //    We then need the next constraint to disambiguate this case:
-            //
-            // 3. Use the "stride" constraint (also see the comment at the
-            // definition):
-            //
-            //        [<=3, 3]
-            //           | Reshape
-            //         [<=9] // constraint.stride = 1
+            //         [<=9]
             //          | Reshape
             //        [3, 3]
             //         ^  ^
             //         |  |
             // stride= 1  3
             //
-            //    Each dimension will have different strides, only one will
-            //    satisfy the stride constraint.
-            //
-            //    Note that the stride constrint itself is not enough:
-            //
-            //
-            //         [<=128]
-            //           | Reshape
-            //         [1, 128]
-            //          ^  ^
-            //          |  |
-            //  stride= 1  1
-            //
-            //    In this case, both dimensions have the same stride, which is
-            //    ambiguous. That's why we need the "multiple_of" constraint
-            //    as used above.
-            //
-            // 4. If all logics above cannot disambiguate, e.g.,:
-            //
-            //     [<=1]
-            //      |
-            //   reshape
-            //      |
-            //   [1, 1, 1]
-            //
-            //   We bail out and return an error.
-            int64 dynamic_dimension = reshape->inferred_dimension();
-            if (dynamic_dimension == -1) {
-              // The user of XLA didn't specify a dynamic dimension, try infer
-              // it from the current constraint.
-              //
-              // Find all output dimensions that are decomposed from the first
-              // dimension. Among those dimensions, find all dimensions that
-              // satisfy the constraint of the dynamic dimension. In the
-              // previous example, if `a` is 9 and constraint is a multiple of
-              // `3', then in the output shape both a/c and c can be dynamic.
-              int64 current_product = 1;
-              int64 dimension_iter = 0;
-
-              // compatible_dimensions are dimensions that satisfies
-              // "multiple_of" constraints.
-              std::vector<int64> compatible_dimensions;
-              while (current_product < operand->shape().dimensions(0)) {
-                current_product *= reshape->shape().dimensions(dimension_iter);
-                if (operand->shape().dimensions(0) /
-                        reshape->shape().dimensions(dimension_iter) ==
-                    constraint.multiple_of) {
-                  compatible_dimensions.push_back(dimension_iter);
-                }
-                dimension_iter++;
-              }
-              CHECK_EQ(current_product, operand->shape().dimensions(0))
-                  << "Not a valid reshape: " << hlo->ToString();
-              // If there is only one compatible dimension, it must be the
-              // dynamic one in the output.
-              if (compatible_dimensions.size() == 1) {
-                dynamic_dimension = compatible_dimensions[0];
-              }
-
-              // When there are multiple compatible dimensions, e.g:
-              //     [<=9]
-              //      | Reshape
-              //    [3, 3]
-              // Use stride constraint to figure out which one is the true
-              // dynamic one.
-              //
-              //         [<=9]
-              //          | Reshape
-              //        [3, 3]
-              //         ^  ^
-              //         |  |
-              // stride= 1  3
-              //
-              std::vector<int64> compatible_dimensions_with_stride;
-              absl::c_copy_if(
-                  compatible_dimensions,
-                  std::back_inserter(compatible_dimensions_with_stride),
-                  [&](int64 dimension) {
-                    int64 stride_total = 1;
-                    for (int64 i = 0; i < dimension + 1; ++i) {
-                      stride_total *= reshape->shape().dimensions(dimension);
-                    }
-                    return stride_total == constraint.stride;
-                  });
-              if (compatible_dimensions_with_stride.size() == 1) {
-                dynamic_dimension = compatible_dimensions_with_stride[0];
-              }
+            std::vector<int64> compatible_dimensions_with_stride;
+            absl::c_copy_if(
+                compatible_dimensions,
+                std::back_inserter(compatible_dimensions_with_stride),
+                [&](int64 dimension) {
+                  int64 stride_total = 1;
+                  for (int64 i = 0; i < dimension + 1; ++i) {
+                    stride_total *= reshape->shape().dimensions(dimension);
+                  }
+                  return stride_total == constraint.stride;
+                });
+            if (compatible_dimensions_with_stride.size() == 1) {
+              output_dynamic_dimension = compatible_dimensions_with_stride[0];
             }
-            if (dynamic_dimension == -1) {
-              return InvalidArgument(
-                  "Reshape's input dynamic dimension is decomposed into "
-                  "multiple output dynamic dimensions, but the constraint is "
-                  "ambiguous and XLA can't infer the output dimension %s. "
-                  "Constraint: multiple_of: %lld, stride: %lld",
-                  hlo->ToString(), constraint.multiple_of, constraint.stride);
-            }
-            for (int64 i = 0; i < dynamic_dimension - 1; ++i) {
-              // The requirement of current implementation is that in output
-              // shape all dimensions that are more major than the dynamic
-              // dimension have to be 1.
+          }
+
+          if (output_dynamic_dimension == -1) {
+            std::vector<int64> output_non_degenerated;
+            for (int64 i = output_dim_start; i < output_dim_end; ++i) {
               if (reshape->shape().dimensions(i) != 1) {
-                return Unimplemented(
-                    "In dynamic reshape, all dimensions that are more major "
-                    "than the dynamic "
-                    "dimension in output shape has to be 1");
+                output_non_degenerated.push_back(i);
               }
             }
+            if (output_non_degenerated.size() == 1) {
+              output_dynamic_dimension = output_non_degenerated[0];
+            }
+          }
 
-            const int64 divisor =
-                operand->shape().dimensions(0) /
-                reshape->shape().dimensions(dynamic_dimension);
-            HloInstruction* divisor_hlo =
+          if (output_dynamic_dimension == -1) {
+            return InvalidArgument(
+                "Reshape's input dynamic dimension is decomposed into "
+                "multiple output dynamic dimensions, but the constraint is "
+                "ambiguous and XLA can't infer the output dimension %s. "
+                "Constraint: multiple_of: %lld, stride: %lld",
+                hlo->ToString(), constraint.multiple_of, constraint.stride);
+          }
+        }
+
+        CHECK_NE(output_dynamic_dimension, -1);
+        const int64 input_dim_size =
+            operand->shape().dimensions(input_dynamic_dimension);
+        const int64 output_dim_size =
+            reshape->shape().dimensions(output_dynamic_dimension);
+        VLOG(2) << "input_dim_size: " << input_dim_size
+                << " output_dim_size: " << output_dim_size;
+
+        if (input_dim_size == output_dim_size) {
+          // Simply forward dynamic dimension.
+          parent_->SetDynamicSize(reshape, {}, output_dynamic_dimension,
+                                  operand_dynamic_size, constraint);
+        }
+
+        if (input_dim_size > output_dim_size) {
+          TF_RET_CHECK(input_dim_size % output_dim_size == 0);
+          const int64 divisor = input_dim_size / output_dim_size;
+          HloInstruction* divisor_hlo =
+              hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
+                  LiteralUtil::CreateR0<int32>(divisor)));
+
+          HloInstruction* new_dynamic_size =
+              hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
+                  operand_dynamic_size->shape(), HloOpcode::kDivide,
+                  operand_dynamic_size, divisor_hlo));
+
+          parent_->SetDynamicSize(
+              reshape, {}, output_dynamic_dimension, new_dynamic_size,
+              {.stride = 1, .multiple_of = constraint.multiple_of / divisor});
+        }
+
+        if (input_dim_size < output_dim_size) {
+          // Input dimension is combined with other input dimensions.
+          //
+          // Adjust the output size by the ratio of dynamic_input_dim /
+          // static_input_dim.
+          //
+          // For example if we have  [<=3, 3] -> [9], if the dynamic size is 2,
+          // the new output dynamic isze is 9 / 3 * 2 = 6.
+          //
+          // If it turns out the second dimension is also dynamic:
+          // [<=3, <=3] -> [9], and the dynamic size is also 2, the new output
+          // dynamic size is 6 / 3 * 2 = 4.
+          //
+          //
+          HloInstruction* output_dynamic_size =
+              parent_->GetDynamicSize(reshape, {}, output_dynamic_dimension);
+          if (output_dynamic_size == nullptr) {
+            output_dynamic_size =
                 hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
-                    LiteralUtil::CreateR0<int32>(divisor)));
-
-            HloInstruction* new_dynamic_size =
-                hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
-                    dynamic_size->shape(), HloOpcode::kDivide, dynamic_size,
-                    divisor_hlo));
-
-            parent_->SetDynamicSize(reshape, {}, dynamic_dimension,
-                                    new_dynamic_size,
-                                    {.stride = 1, .multiple_of = 1});
-            return Status::OK();
+                    LiteralUtil::CreateR0<int32>(output_dim_size)));
           }
+          HloInstruction* divisor_hlo = hlo->parent()->AddInstruction(
+              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+                  operand->shape().dimensions(input_dynamic_dimension))));
+
+          HloInstruction* new_dynamic_size =
+              hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
+                  output_dynamic_size->shape(), HloOpcode::kDivide,
+                  output_dynamic_size, divisor_hlo));
+
+          new_dynamic_size =
+              hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
+                  output_dynamic_size->shape(), HloOpcode::kMultiply,
+                  new_dynamic_size, operand_dynamic_size));
+          parent_->SetDynamicSize(
+              reshape, {}, output_dynamic_dimension, new_dynamic_size,
+              {.stride = 1,
+               .multiple_of =
+                   constraint.multiple_of * output_dim_size /
+                   operand->shape().dimensions(input_dynamic_dimension)});
         }
 
-        std::vector<std::pair<int64, int64>> unmodified_dims =
-            ShapeUtil::DimensionsUnmodifiedByReshape(operand->shape(),
-                                                     reshape->shape());
-        for (auto& unmodified : unmodified_dims) {
-          if (unmodified.first == dimension) {
-            parent_->SetDynamicSize(reshape, {}, unmodified.second,
-                                    dynamic_size, constraint);
-            return Status::OK();
-          }
-        }
-        return Unimplemented(
-            "Dynamic Reshape on modified dimensions is yet not supported: %s",
-            reshape->ToString());
+        return Status::OK();
       });
 }
 
@@ -723,6 +952,10 @@ Status DynamicDimensionInferenceVisitor::HandleSlice(HloInstruction* hlo) {
             hlo->slice_strides(dimension) != 1 ||
             hlo->slice_limits(dimension) !=
                 operand->shape().dimensions(dimension)) {
+          // Slicing a single element out eliminates the dynamic dimension.
+          if (hlo->shape().dimensions(dimension) == 1) {
+            return Status::OK();
+          }
           return Unimplemented(
               "Dynamic dimension propagation on Slice where it doesn't slice "
               "out an entire dimension is not supported %s",
@@ -779,23 +1012,61 @@ Status DynamicDimensionInferenceVisitor::HandleDynamicUpdateSlice(
       });
 }
 
-Status DynamicDimensionInferenceVisitor::HandleGather(HloInstruction* hlo) {
+Status DynamicDimensionInferenceVisitor::HandleReverse(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* /*operand*/, ShapeIndex /*index*/,
+               int64 dimension, int64 /*operand_index*/,
+               HloInstruction* dynamic_size, DimensionConstraint constraint) {
+        if (absl::c_linear_search(hlo->dimensions(), dimension)) {
+          return Unimplemented(
+              "Dynamic dimension propagation on reversed dimension is not "
+              "supported %s",
+              hlo->ToString());
+        }
+        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size, constraint);
+
+        return Status::OK();
+      });
+}
+
+Status DynamicDimensionInferenceVisitor::HandleGather(HloInstruction* hlo) {
+  return ForEachOperandDynamicDimension(
+      hlo, [&](HloInstruction* operand, ShapeIndex /*index*/,
                int64 input_dynamic_dimension, int64 operand_index,
                HloInstruction* dynamic_size, DimensionConstraint constraint) {
+        const GatherDimensionNumbers& gather_dims =
+            hlo->gather_dimension_numbers();
         if (operand_index != 1) {
+          if (hlo->gather_slice_sizes()[input_dynamic_dimension] == 1) {
+            // Gathering a size 1 dimension out of a dynamic dimension removes
+            // the dynamisity.
+            return Status::OK();
+          }
+          if (hlo->gather_slice_sizes()[input_dynamic_dimension] ==
+              operand->shape().dimensions(input_dynamic_dimension)) {
+            // Gathering a full-sized dimension out of a dynamic dimension
+            // propagates the dynamisity to output.
+            int64 output_dimension = input_dynamic_dimension;
+            for (int64 collapsed_dim : gather_dims.collapsed_slice_dims()) {
+              if (collapsed_dim < input_dynamic_dimension) {
+                // This output dimension is collapsed.
+                output_dimension--;
+              }
+            }
+            parent_->SetDynamicSize(hlo, {}, output_dimension, dynamic_size,
+                                    constraint);
+            return Status::OK();
+          }
           return Unimplemented(
               "Detects a dynamic dimension on the data input of gather, which "
-              "is not supported: %s",
-              hlo->ToString());
+              "is not supported: %s, %lld",
+              hlo->ToString(), input_dynamic_dimension);
         }
         // A mapping from output to input batch dim number. -1 means not a batch
         // dimension.
         int64 indices_rank = hlo->operand(1)->shape().rank();
         int64 output_rank = hlo->shape().rank();
-        const GatherDimensionNumbers& gather_dims =
-            hlo->gather_dimension_numbers();
+
         // indices_dim is an iterator over indices dimensions.
         int64 indices_dim = 0;
         // Find the corresponding batch dimension in the output.
@@ -828,20 +1099,13 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
           int64 operand_index, HloInstruction* operand_dynamic_size,
           DimensionConstraint constraint) {
         if (operand_index == 0) {
-          return Unimplemented(
-              "Detects a dynamic dimension on the data input of scatter, which "
-              "is not supported: %s",
-              hlo->ToString());
-        }
-
-        const ScatterDimensionNumbers& scatter_dims =
-            hlo->scatter_dimension_numbers();
-        if (operand_index == 1) {
           parent_->SetDynamicSize(hlo, {}, dimension, operand_dynamic_size,
                                   constraint);
           return Status::OK();
         }
 
+        const ScatterDimensionNumbers& scatter_dims =
+            hlo->scatter_dimension_numbers();
         if (operand_index == 2 &&
             absl::c_linear_search(scatter_dims.update_window_dims(),
                                   dimension)) {
@@ -970,6 +1234,8 @@ Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(DynamicDimensionInferenceVisitor::Run(
       hlo->while_condition(), binding_for_while, parent_));
 
+  // Set the replacement while loop as visited to avoid visiting it again.
+  SetVisited(*hlo);
   return Status::OK();
 }
 
@@ -1001,24 +1267,31 @@ Status DynamicDimensionInferenceVisitor::HandleParameter(HloInstruction* hlo) {
       });
 }
 
+Status DynamicDimensionInferenceVisitor::ForEachDynamicDimensionInOperand(
+    HloInstruction* inst, int64 operand_index,
+    const OperandDynamicDimensionFn& fn) {
+  auto iter =
+      parent_->per_hlo_dynamic_dimensions_.find(inst->operand(operand_index));
+  if (iter != parent_->per_hlo_dynamic_dimensions_.end()) {
+    for (auto& dynamic_dimension : iter->second) {
+      HloInstruction* dynamic_size = parent_->GetDynamicSize(
+          dynamic_dimension.inst, dynamic_dimension.index,
+          dynamic_dimension.dim);
+      CHECK_NE(parent_->constraint_mapping_.count(dynamic_dimension), 0);
+      TF_RETURN_IF_ERROR(fn(dynamic_dimension.inst, dynamic_dimension.index,
+                            dynamic_dimension.dim, operand_index, dynamic_size,
+                            parent_->constraint_mapping_[dynamic_dimension]));
+    }
+  }
+  return Status::OK();
+}
+
 Status DynamicDimensionInferenceVisitor::ForEachOperandDynamicDimension(
     HloInstruction* inst, const OperandDynamicDimensionFn& fn) {
   for (int64 operand_index = 0; operand_index < inst->operand_count();
        ++operand_index) {
-    auto iter =
-        parent_->per_hlo_dynamic_dimensions_.find(inst->operand(operand_index));
-    if (iter != parent_->per_hlo_dynamic_dimensions_.end()) {
-      for (auto& dynamic_dimension : iter->second) {
-        HloInstruction* dynamic_size = parent_->GetDynamicSize(
-            dynamic_dimension.inst, dynamic_dimension.index,
-            dynamic_dimension.dim);
-        CHECK_NE(parent_->constraint_mapping_.count(dynamic_dimension), 0);
-        TF_RETURN_IF_ERROR(fn(dynamic_dimension.inst, dynamic_dimension.index,
-                              dynamic_dimension.dim, operand_index,
-                              dynamic_size,
-                              parent_->constraint_mapping_[dynamic_dimension]));
-      }
-    }
+    TF_RETURN_IF_ERROR(
+        ForEachDynamicDimensionInOperand(inst, operand_index, fn));
   }
   return Status::OK();
 }
@@ -1066,6 +1339,27 @@ DynamicDimensionInference::DynamicDimensionInference(HloModule* module)
 Status DynamicDimensionInference::AnalyzeDynamicDimensions() {
   return DynamicDimensionInferenceVisitor::Run(
       module_->entry_computation(), module_->dynamic_parameter_binding(), this);
+}
+
+Status DynamicDimensionInference::ForwardDynamicSize(HloInstruction* inst,
+                                                     HloInstruction* new_inst,
+                                                     const ShapeIndex& index) {
+  CHECK(Shape::Equal()(inst->shape(), new_inst->shape()));
+
+  for (int64 dim = 0; dim < inst->shape().rank(); ++dim) {
+    DynamicDimension dynamic_dimension_new{new_inst, index, dim};
+    DynamicDimension dynamic_dimension{inst, index, dim};
+    auto iter = dynamic_mapping_.find(dynamic_dimension);
+    if (iter != dynamic_mapping_.end()) {
+      dynamic_mapping_.insert({dynamic_dimension_new, iter->second});
+      constraint_mapping_.insert(
+          {dynamic_dimension_new, constraint_mapping_[dynamic_dimension]});
+      auto iter = per_hlo_dynamic_dimensions_.try_emplace(new_inst);
+      iter.first->second.emplace(dynamic_dimension_new);
+    }
+  }
+
+  return Status::OK();
 }
 
 HloInstruction* DynamicDimensionInference::GetDynamicSize(

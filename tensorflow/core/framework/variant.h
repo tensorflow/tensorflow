@@ -26,9 +26,8 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 
@@ -150,7 +149,10 @@ void EncodeVariant(const T& value, string* buf);
 //
 class Variant {
  public:
-  Variant() noexcept : is_inline_(false) {}
+  // Constructs a Variant holding no value (aka `is_empty()`).
+  //
+  // This is done by pointing at nullptr via the heap value.
+  Variant() noexcept : heap_value_(/*pointer=*/nullptr), is_inline_(false) {}
 
   ~Variant();
 
@@ -281,16 +283,15 @@ class Variant {
 
  private:
   struct in_place_t {};
-  static constexpr in_place_t kInPlace{};
+  static constexpr in_place_t InPlace() { return in_place_t{}; }
 
   struct ValueInterface {
     virtual ~ValueInterface() = default;
     virtual TypeIndex TypeId() const = 0;
     virtual void* RawPtr() = 0;
     virtual const void* RawPtr() const = 0;
-    virtual ValueInterface* Clone() const = 0;
+    virtual std::unique_ptr<ValueInterface> Clone() const = 0;
     virtual void CloneInto(ValueInterface* memory) const = 0;
-    virtual void Swap(ValueInterface* memory) = 0;
     virtual void MoveAssign(ValueInterface* memory) = 0;
     virtual void MoveInto(ValueInterface* memory) = 0;
     virtual string TypeName() const = 0;
@@ -302,7 +303,7 @@ class Variant {
   };
 
   template <typename T>
-  struct Value : ValueInterface {
+  struct Value final : ValueInterface {
     template <class... Args>
     explicit Value(in_place_t /*tag*/, Args&&... args)
         : value(std::forward<Args>(args)...) {}
@@ -311,87 +312,49 @@ class Variant {
     // build `alignof(Variant<void*>)`.
     ~Value() final = default;
 
-    TypeIndex TypeId() const override {
+    TypeIndex TypeId() const final {
       const TypeIndex value_type_index =
           MakeTypeIndex<typename std::decay<T>::type>();
       return value_type_index;
     }
 
-    void* RawPtr() override { return &value; }
+    void* RawPtr() final { return &value; }
 
-    const void* RawPtr() const override { return &value; }
+    const void* RawPtr() const final { return &value; }
 
-    ValueInterface* Clone() const override {
-      // NOTE: Use placement new here because we override `operator delete`,
-      // and need to match the call to `port::Free()` with a call to
-      // `port::Malloc()`.
-      auto* clone = static_cast<Value*>(port::Malloc(sizeof(Value)));
-      new (clone) Value(kInPlace, value);
-      return clone;
+    std::unique_ptr<ValueInterface> Clone() const final {
+      return absl::make_unique<Value>(InPlace(), value);
     }
 
-    void MoveAssign(ValueInterface* memory) override {
+    void MoveAssign(ValueInterface* memory) final {
       CHECK(TypeId() == memory->TypeId())
           << TypeId().name() << " vs. " << memory->TypeId().name();
       static_cast<Value*>(memory)->value = std::move(value);
     }
 
-    void CloneInto(ValueInterface* memory) const override {
-      new (memory) Value(kInPlace, value);
+    void CloneInto(ValueInterface* memory) const final {
+      new (memory) Value(InPlace(), value);
     }
 
-    void MoveInto(ValueInterface* memory) override {
-      new (memory) Value(kInPlace, std::move(value));
+    void MoveInto(ValueInterface* memory) final {
+      new (memory) Value(InPlace(), std::move(value));
     }
 
-    void Swap(ValueInterface* memory) override {
-      CHECK(TypeId() == memory->TypeId())
-          << TypeId().name() << " vs. " << memory->TypeId().name();
-      std::swap(value, static_cast<Value*>(memory)->value);
-    }
+    string TypeName() const final { return TypeNameVariant(value); }
 
-    string TypeName() const override { return TypeNameVariant(value); }
+    string DebugString() const final { return DebugStringVariant(value); }
 
-    string DebugString() const override { return DebugStringVariant(value); }
-
-    void Encode(VariantTensorData* data) const override {
+    void Encode(VariantTensorData* data) const final {
       EncodeVariant(value, data);
     }
 
-    bool Decode(VariantTensorData data) override {
+    bool Decode(VariantTensorData data) final {
       return DecodeVariant(&data, &value);
     }
 
-    void Encode(string* buf) const override { EncodeVariant(value, buf); }
+    void Encode(string* buf) const final { EncodeVariant(value, buf); }
 
-    bool Decode(string buf) override { return DecodeVariant(&buf, &value); }
-
-    // We override operator delete in order to selectively free memory
-    // depending on if Value<VT> is stored inline or on the heap:
-    //
-    // Value<VT> is stored inline if its size <= InlineValue::kMaxValueSize and
-    // its alignment <= kMaxInlineValueAlignSize.  This check is performed by
-    // CanInlineType<VT>().
-    //
-    // We only need to call its destructor in this case and then overwrite
-    // the inline memory with zeros.  Variant::clear() does this.
-    // Thus, in the inline case, the delete operator does nothing (calling
-    // delete on the memory location calls the destructor only).
-    //
-    // If !CanInlineType<VT>(), then it is stored as a pointer inside HeapValue.
-    // The memory buffer it resides in on the heap was allocated with
-    // port::Malloc, and it should be deallocated via port::Free.
-    //
-    // operator delete is stored in the vtable since ~ValueInterface is a
-    // virtual destructor; furthermore it has access to VT and can calculate
-    // CanInlineType<VT>().
-    static void operator delete(void* ptr);
-
-    static void operator delete(void*, void*) {
-      // Some compilers require an overridden class-specific deallocation
-      // function, which will be called if placement `new` throws an
-      // exception.
-    }
+    bool Decode(string buf) final { return DecodeVariant(&buf, &value); }
 
     T value;
   };
@@ -402,78 +365,46 @@ class Variant {
   struct InlineValue {
     // We try to size InlineValue so that sizeof(Variant) <= 64 and it can fit
     // into the aligned space of a TensorBuffer.
-    static constexpr int kMaxValueSize = (64 - /*some extra padding=*/16);
+    static constexpr int kMaxValueSize = (64 - /*some extra padding=*/8);
 
     typedef char ValueDataArray[kMaxValueSize];
     alignas(kMaxInlineValueAlignSize) ValueDataArray value_data;
-    bool has_value = false;
 
-    explicit InlineValue() {}
+    // Tag is used for deducing the right type when constructing a Value in
+    // place.
+    template <typename VT>
+    struct Tag {};
 
-    InlineValue(const InlineValue& other) noexcept
-        : has_value(other.has_value) {
-      if (other.has_value) {
-        other.AsValueInterface()->CloneInto(AsValueInterface());
-      }
+    template <typename VT, class... Args>
+    explicit InlineValue(Tag<VT> /*tag*/, Args&&... args) noexcept {
+      Value<VT>* inline_value_data = reinterpret_cast<Value<VT>*>(value_data);
+      new (inline_value_data) Value<VT>(InPlace(), std::forward<Args>(args)...);
     }
 
-    InlineValue(InlineValue&& other) noexcept : has_value(other.has_value) {
-      if (other.has_value) {
-        other.AsValueInterface()->MoveInto(AsValueInterface());
-        other.Cleanup();
-      }
+    InlineValue(const InlineValue& other) noexcept {
+      other.AsValueInterface()->CloneInto(AsValueInterface());
     }
 
-    void Cleanup() {
-      // **NOTE** This must be a no-op if the memory representation of
-      // InlineValue is all zeros, in order to properly interact with
-      // HeapOrInline::ResetMemory().
-      if (has_value) {
-        // This doesn't actually delete anything on the heap; the delete
-        // operator of Value<VT> is overridden to do nothing for inline
-        // values; the side-effect of delete is that the virtual destructor is
-        // called.
-        //
-        // We leave it to callers to overwrite the data buffer in value_data
-        // with new objects.
-        delete AsValueInterface();
-      }
-      has_value = false;
+    InlineValue(InlineValue&& other) noexcept {
+      other.AsValueInterface()->MoveInto(AsValueInterface());
     }
+
+    void ResetMemory() { AsValueInterface()->~ValueInterface(); }
 
     InlineValue& operator=(const InlineValue& other) {
       if (&other == this) return *this;
-      Cleanup();
-      if (other.has_value) {
-        other.AsValueInterface()->CloneInto(AsValueInterface());
-      }
-      has_value = other.has_value;
+      ResetMemory();
+      other.AsValueInterface()->CloneInto(AsValueInterface());
       return *this;
     }
 
     InlineValue& operator=(InlineValue&& other) {
       if (&other == this) return *this;
-      if (other.has_value) {
-        if (has_value && AsValueInterface()->TypeId() ==
-                             other.AsValueInterface()->TypeId()) {
-          other.AsValueInterface()->Swap(AsValueInterface());
-        } else {
-          if (has_value) {
-            if (AsValueInterface()->TypeId() !=
-                other.AsValueInterface()->TypeId()) {
-              Cleanup();
-              other.AsValueInterface()->MoveInto(AsValueInterface());
-            } else {
-              other.AsValueInterface()->MoveAssign(AsValueInterface());
-            }
-          } else {
-            other.AsValueInterface()->MoveInto(AsValueInterface());
-          }
-          other.Cleanup();
-          has_value = true;
-        }
+      if (AsValueInterface()->TypeId() == other.AsValueInterface()->TypeId()) {
+        other.AsValueInterface()->MoveAssign(AsValueInterface());
       } else {
-        Cleanup();
+        ResetMemory();
+        other.AsValueInterface()->MoveInto(AsValueInterface());
       }
       return *this;
     }
@@ -486,89 +417,79 @@ class Variant {
       return reinterpret_cast<const ValueInterface*>(value_data);
     }
 
-    // **WARNING** This must be a no-op when the byte-representation of
-    // InlineValue is all zeros.
-    ~InlineValue() { Cleanup(); }
+    ~InlineValue() { ResetMemory(); }
   };
 
-  // value_ can point to any type T as wrapped by a ValueInterface.
-  // The only real requirement is that T is default-constructible.
-  union HeapOrInline {
-    HeapOrInline() { ResetMemory(); }
-    explicit HeapOrInline(HeapValue&& v) : heap_value(std::move(v)) {}
-    explicit HeapOrInline(InlineValue&& v) : inline_value(std::move(v)) {}
-    ~HeapOrInline() {}  // Taken care of by owner.
-
-    // This must be called when modifying which element of HeapOrInline is
-    // being used, because the destructor of the new class may be called
-    // while the memory is still a representation of the old class.
-    // **WARNING** This code assumes that the destructors of HeapValue and
-    // InlineValue are no-ops when the internal representation is zeros.
-    //
-    // Example of when this is needed:
-    //   value.heap_value = HeapValue(...);
-    //   // Segfault.  This calls InlineValue::Cleanup on value.inline_value
-    //   // but the internal memory representation is that of HeapValue.
-    //   value.inline_value = InlineValue();
-    //
-    //   The correct way to do this:
-    //   value.heap_value = HeapValue(...);
-    //   value.ResetMemory();
-    //   value.inline_value = InlineValue();
-    void ResetMemory();
-
-    HeapValue heap_value;
-    InlineValue inline_value;
-  } value_;
+  union {
+    HeapValue heap_value_;
+    InlineValue inline_value_;
+  };
+  // is_inline_ provides discrimination between which member of the prior union
+  // is currently within it's lifetime. To switch from one member to the other,
+  // the destructor must be called on the currently alive member before calling
+  // the constructor on the other member. In effect, a member is expected to be
+  // live at any given time and that member is tracked via this boolean.
   bool is_inline_;
 
   bool IsInlineValue() const { return is_inline_; }
 
+  // ResetMemory causes the destructor of the currently active member of the
+  // union to be run. This must be follwed with a placement new call on the
+  // member whose lifetime is to start. Additionally, is_inline_ needs to be set
+  // accordingly. ResetAndSetInline and ResetAndSetHeap are simple helper
+  // functions for performing the actions that are required to follow.
+  void ResetMemory() {
+    if (IsInlineValue()) {
+      inline_value_.~InlineValue();
+    } else {
+      heap_value_.~HeapValue();
+    }
+  }
+
+  // ResetAndSetInline clears the current state and then constructs a new value
+  // inline with the provided arguments.
+  template <typename... Args>
+  void ResetAndSetInline(Args&&... args) noexcept {
+    ResetMemory();
+    new (&inline_value_) InlineValue(std::forward<Args>(args)...);
+    is_inline_ = true;
+  }
+
+  // ResetAndSetHeap clears the current state then constructs a new value on the
+  // heap with the provided arguments.
+  template <typename... Args>
+  void ResetAndSetHeap(Args&&... args) noexcept {
+    ResetMemory();
+    new (&heap_value_) HeapValue(std::forward<Args>(args)...);
+    is_inline_ = false;
+  }
+
   ValueInterface* GetValue() {
     if (IsInlineValue()) {
-      return value_.inline_value.AsValueInterface();
+      return inline_value_.AsValueInterface();
     } else {
-      return value_.heap_value.get();
+      return heap_value_.get();
     }
   }
 
   const ValueInterface* GetValue() const {
     if (IsInlineValue()) {
-      return value_.inline_value.AsValueInterface();
+      return inline_value_.AsValueInterface();
     } else {
-      return value_.heap_value.get();
+      return heap_value_.get();
     }
   }
 
-  // PRECONDITION: Called on construction or clear() has been called before
-  // this method.
-  template <typename T, typename VT>
-  void InsertValueMove(T&& value) {
-    if (is_inline_) {
-      Value<VT>* inline_value_data =
-          reinterpret_cast<Value<VT>*>(value_.inline_value.value_data);
-      new (inline_value_data) Value<VT>(kInPlace, std::forward<T>(value));
-      value_.inline_value.has_value = true;
+  // PRECONDITION: Called on construction or ResetMemory() has been called
+  // before this method.
+  template <typename VT, typename T>
+  void InsertValue(T&& value) {
+    if (IsInlineValue()) {
+      new (&inline_value_)
+          InlineValue(InlineValue::Tag<VT>{}, std::forward<T>(value));
     } else {
-      auto* moved = static_cast<Value<VT>*>(port::Malloc(sizeof(Value<VT>)));
-      new (moved) Value<VT>(kInPlace, std::forward<T>(value));
-      value_.heap_value = HeapValue(moved);
-    }
-  }
-
-  // PRECONDITION: Called on construction or clear() has been called before
-  // this method.
-  template <typename T, typename VT>
-  void InsertValueCopy(const T& value) {
-    if (is_inline_) {
-      Value<VT>* inline_value_data =
-          reinterpret_cast<Value<VT>*>(value_.inline_value.value_data);
-      new (inline_value_data) Value<VT>(kInPlace, value);
-      value_.inline_value.has_value = true;
-    } else {
-      auto* moved = static_cast<Value<VT>*>(port::Malloc(sizeof(Value<VT>)));
-      new (moved) Value<VT>(kInPlace, value);
-      value_.heap_value = HeapValue(moved);
+      new (&heap_value_) HeapValue(
+          absl::make_unique<Value<VT>>(InPlace(), std::forward<T>(value)));
     }
   }
 };
@@ -578,36 +499,23 @@ class Variant {
 static_assert(sizeof(Variant) <= 64,
               "Expected internal representation to be 64 bytes.");
 
-inline Variant::Variant(const Variant& other) : is_inline_(other.is_inline_) {
-  if (!other.is_empty()) {
-    if (other.IsInlineValue()) {
-      value_.inline_value = InlineValue();
-      other.GetValue()->CloneInto(GetValue());
-      value_.inline_value.has_value = true;
-    } else {
-      value_.heap_value = HeapValue(other.GetValue()->Clone());
-      is_inline_ = false;
-    }
+inline Variant::Variant(const Variant& other)
+    : is_inline_(other.IsInlineValue()) {
+  if (IsInlineValue()) {
+    new (&inline_value_) InlineValue(other.inline_value_);
+  } else {
+    new (&heap_value_)
+        HeapValue(other.heap_value_ ? other.heap_value_->Clone() : nullptr);
   }
 }
 
 inline Variant::Variant(Variant&& other) noexcept
-    : is_inline_(other.is_inline_) {
-  if (!other.is_empty()) {
-    if (other.IsInlineValue()) {
-      value_.inline_value = InlineValue();
-      other.GetValue()->MoveInto(GetValue());
-      value_.inline_value.has_value = true;
-    } else {
-      value_.heap_value = std::move(other.value_.heap_value);
-      is_inline_ = false;
-    }
+    : is_inline_(other.IsInlineValue()) {
+  if (IsInlineValue()) {
+    new (&inline_value_) InlineValue(std::move(other.inline_value_));
+  } else {
+    new (&heap_value_) HeapValue(std::move(other.heap_value_));
   }
-}
-
-template <typename VT>
-void Variant::Value<VT>::operator delete(void* ptr) {
-  if (!CanInlineType<VT>()) port::Free(ptr);
 }
 
 template <typename T, typename VT,
@@ -615,7 +523,7 @@ template <typename T, typename VT,
                                       std::is_move_constructible<VT>::value,
                                   void>::type*>
 inline Variant::Variant(T&& value) : is_inline_(CanInlineType<VT>()) {
-  InsertValueMove<T, VT>(std::forward<T>(value));
+  InsertValue<VT>(std::forward<T>(value));
 }
 
 template <typename T, typename VT,
@@ -623,7 +531,7 @@ template <typename T, typename VT,
                                       std::is_copy_constructible<VT>::value,
                                   void>::type*>
 inline Variant::Variant(const T& value) : is_inline_(CanInlineType<VT>()) {
-  InsertValueCopy<T, VT>(value);
+  InsertValue<VT>(value);
 }
 
 template <typename T, typename VT,
@@ -631,9 +539,9 @@ template <typename T, typename VT,
                                       std::is_move_constructible<VT>::value,
                                   void>::type*>
 inline Variant& Variant::operator=(T&& value) {
-  clear();
+  ResetMemory();
   is_inline_ = CanInlineType<VT>();
-  InsertValueMove<T, VT>(std::forward<T>(value));
+  InsertValue<VT>(std::forward<T>(value));
   return *this;
 }
 
@@ -642,83 +550,47 @@ template <typename T, typename VT,
                                       std::is_copy_constructible<VT>::value,
                                   void>::type*>
 inline Variant& Variant::operator=(const T& value) {
-  clear();
+  ResetMemory();
   is_inline_ = CanInlineType<VT>();
-  InsertValueCopy<T, VT>(value);
+  InsertValue<VT>(value);
   return *this;
 }
 
-inline void Variant::HeapOrInline::ResetMemory() {
-  memset(  // NOLINT: not TriviallyCopyable
-      this, 0, sizeof(Variant::HeapOrInline));
-}
-
 inline void Variant::clear() noexcept {
-  if (!is_empty()) {
-    if (IsInlineValue()) {
-      value_.inline_value.~InlineValue();
-    } else {
-      value_.heap_value.~HeapValue();
-    }
-    value_.ResetMemory();
-  }
-  is_inline_ = false;
+  // We set the internal unique_ptr to nullptr so that we preserve the
+  // invariant that one of the two states must be set at all times. nullptr
+  // indicates that the variant is empty.
+  ResetAndSetHeap(/*pointer=*/nullptr);
 }
 
 inline void Variant::swap(Variant& other) noexcept {
   if (is_empty()) {
     if (other.IsInlineValue()) {
-      value_.ResetMemory();
-      value_.inline_value = std::move(other.value_.inline_value);
-      other.value_.ResetMemory();
-      other.value_.heap_value = HeapValue();
-      is_inline_ = true;
-      other.is_inline_ = false;
+      ResetAndSetInline(std::move(other.inline_value_));
     } else {
-      value_.ResetMemory();
-      value_.heap_value = std::move(other.value_.heap_value);
-      other.value_.ResetMemory();
-      other.value_.heap_value = HeapValue();
-      is_inline_ = false;
-      other.is_inline_ = false;
+      ResetAndSetHeap(std::move(other.heap_value_));
     }
+    other.clear();
   } else if (other.is_empty()) {
     if (IsInlineValue()) {
-      other.value_.ResetMemory();
-      other.value_.inline_value = std::move(value_.inline_value);
-      value_.ResetMemory();
-      value_.heap_value = HeapValue();
-      other.is_inline_ = true;
-      is_inline_ = false;
+      other.ResetAndSetInline(std::move(inline_value_));
     } else {
-      other.value_.ResetMemory();
-      other.value_.heap_value = std::move(value_.heap_value);
-      value_.ResetMemory();
-      value_.heap_value = HeapValue();
-      other.is_inline_ = false;
-      is_inline_ = false;
+      other.ResetAndSetHeap(std::move(heap_value_));
     }
+    clear();
   } else {  // Both Variants have values.
     if (other.IsInlineValue() && IsInlineValue()) {
-      std::swap(value_.inline_value, other.value_.inline_value);
+      std::swap(inline_value_, other.inline_value_);
     } else if (!other.IsInlineValue() && !IsInlineValue()) {
-      std::swap(value_.heap_value, other.value_.heap_value);
+      std::swap(heap_value_, other.heap_value_);
     } else if (other.IsInlineValue() && !IsInlineValue()) {
-      HeapValue v = std::move(value_.heap_value);
-      value_.ResetMemory();
-      value_.inline_value = std::move(other.value_.inline_value);
-      other.value_.ResetMemory();
-      other.value_.heap_value = std::move(v);
-      is_inline_ = true;
-      other.is_inline_ = false;
+      HeapValue v = std::move(heap_value_);
+      ResetAndSetInline(std::move(other.inline_value_));
+      other.ResetAndSetHeap(std::move(v));
     } else {  // !other.IsInlineValue() && IsInlineValue()
-      HeapValue v = std::move(other.value_.heap_value);
-      other.value_.ResetMemory();
-      other.value_.inline_value = std::move(value_.inline_value);
-      value_.ResetMemory();
-      value_.heap_value = std::move(v);
-      is_inline_ = false;
-      other.is_inline_ = true;
+      HeapValue v = std::move(other.heap_value_);
+      other.ResetAndSetInline(std::move(inline_value_));
+      ResetAndSetHeap(std::move(v));
     }
   }
 }

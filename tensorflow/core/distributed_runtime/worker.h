@@ -29,7 +29,7 @@ namespace tensorflow {
 class CancellationManager;
 class Device;
 struct WorkerEnv;
-struct WorkerSession;
+class WorkerSession;
 
 // A TensorFlow Worker runs registered graphs and supports worker-to-worker
 // Tensor transfer.

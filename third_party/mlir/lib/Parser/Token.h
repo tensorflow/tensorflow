@@ -88,8 +88,8 @@ public:
   /// if the integer doesn't fit.
   Optional<unsigned> getHashIdentifierNumber() const;
 
-  /// Given a 'string' token, return its value, including removing the quote
-  /// characters and unescaping the contents of the string.
+  /// Given a token containing a string literal, return its value, including
+  /// removing the quote characters and unescaping the contents of the string.
   std::string getStringValue() const;
 
   // Location processing.

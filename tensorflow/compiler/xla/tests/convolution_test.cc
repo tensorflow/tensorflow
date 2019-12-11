@@ -1886,7 +1886,7 @@ XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
 // (We run this test on all platforms, because, what the heck.)
 XLA_TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
-      "cudnn-conv-algorithm-picker");
+      "gpu-conv-algorithm-picker");
 
   XlaBuilder builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
@@ -1908,10 +1908,10 @@ XLA_TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
   XlaBuilder builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 64, 100, 100});
   Array4D<float> input_data(1, 64, 100, 100);
-  input_data.FillRandom(/*value=*/0.023, 0.001, /*seed=*/45321);
+  input_data.FillRandom(/*stddev=*/0.023, 0.001, /*seed=*/45321);
   Shape filter_shape = ShapeUtil::MakeShape(F32, {7, 7, 1, 64});
   Array4D<float> filter_data(7, 7, 1, 64);
-  input_data.FillRandom(/*value=*/0.023, 0.001, /*seed=*/45320);
+  filter_data.FillRandom(/*stddev=*/0.023, 0.001, /*seed=*/45320);
   auto input = Parameter(&builder, 0, input_shape, "input");
   auto filter = ConstantR4FromArray4D(&builder, filter_data);
 

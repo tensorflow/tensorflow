@@ -162,12 +162,12 @@ static llvm::Optional<ValueHandle> emitStaticFor(ArrayRef<ValueHandle> lbs,
                                           ubConst.getValue(), step);
 }
 
-mlir::edsc::LoopBuilder::LoopBuilder(ValueHandle *iv,
-                                     ArrayRef<ValueHandle> lbHandles,
-                                     ArrayRef<ValueHandle> ubHandles,
-                                     int64_t step) {
-  if (auto res = emitStaticFor(lbHandles, ubHandles, step)) {
-    *iv = res.getValue();
+mlir::edsc::LoopBuilder mlir::edsc::LoopBuilder::makeAffine(
+    ValueHandle *iv, ArrayRef<ValueHandle> lbHandles,
+    ArrayRef<ValueHandle> ubHandles, int64_t step) {
+  mlir::edsc::LoopBuilder result;
+  if (auto staticFor = emitStaticFor(lbHandles, ubHandles, step)) {
+    *iv = staticFor.getValue();
   } else {
     SmallVector<Value *, 4> lbs(lbHandles.begin(), lbHandles.end());
     SmallVector<Value *, 4> ubs(ubHandles.begin(), ubHandles.end());
@@ -177,11 +177,24 @@ mlir::edsc::LoopBuilder::LoopBuilder(ValueHandle *iv,
         step);
   }
   auto *body = getForInductionVarOwner(iv->getValue()).getBody();
-  enter(body, /*prev=*/1);
+  result.enter(body, /*prev=*/1);
+  return result;
 }
 
-ValueHandle
-mlir::edsc::LoopBuilder::operator()(llvm::function_ref<void(void)> fun) {
+mlir::edsc::LoopBuilder
+mlir::edsc::LoopBuilder::makeLoop(ValueHandle *iv, ValueHandle lbHandle,
+                                  ValueHandle ubHandle,
+                                  ValueHandle stepHandle) {
+  mlir::edsc::LoopBuilder result;
+  auto forOp =
+      OperationHandle::createOp<loop::ForOp>(lbHandle, ubHandle, stepHandle);
+  *iv = ValueHandle(forOp.getInductionVar());
+  auto *body = loop::getForInductionVarOwner(iv->getValue()).getBody();
+  result.enter(body, /*prev=*/1);
+  return result;
+}
+
+void mlir::edsc::LoopBuilder::operator()(llvm::function_ref<void(void)> fun) {
   // Call to `exit` must be explicit and asymmetric (cannot happen in the
   // destructor) because of ordering wrt comma operator.
   /// The particular use case concerns nested blocks:
@@ -203,24 +216,27 @@ mlir::edsc::LoopBuilder::operator()(llvm::function_ref<void(void)> fun) {
   if (fun)
     fun();
   exit();
-  return ValueHandle::null();
 }
 
-mlir::edsc::LoopNestBuilder::LoopNestBuilder(ArrayRef<ValueHandle *> ivs,
-                                             ArrayRef<ValueHandle> lbs,
-                                             ArrayRef<ValueHandle> ubs,
-                                             ArrayRef<int64_t> steps) {
+mlir::edsc::AffineLoopNestBuilder::AffineLoopNestBuilder(
+    ValueHandle *iv, ArrayRef<ValueHandle> lbs, ArrayRef<ValueHandle> ubs,
+    int64_t step) {
+  loops.emplace_back(LoopBuilder::makeAffine(iv, lbs, ubs, step));
+}
+
+mlir::edsc::AffineLoopNestBuilder::AffineLoopNestBuilder(
+    ArrayRef<ValueHandle *> ivs, ArrayRef<ValueHandle> lbs,
+    ArrayRef<ValueHandle> ubs, ArrayRef<int64_t> steps) {
   assert(ivs.size() == lbs.size() && "Mismatch in number of arguments");
   assert(ivs.size() == ubs.size() && "Mismatch in number of arguments");
   assert(ivs.size() == steps.size() && "Mismatch in number of arguments");
-  for (auto it : llvm::zip(ivs, lbs, ubs, steps)) {
-    loops.emplace_back(std::get<0>(it), std::get<1>(it), std::get<2>(it),
-                       std::get<3>(it));
-  }
+  for (auto it : llvm::zip(ivs, lbs, ubs, steps))
+    loops.emplace_back(LoopBuilder::makeAffine(
+        std::get<0>(it), std::get<1>(it), std::get<2>(it), std::get<3>(it)));
 }
 
-ValueHandle
-mlir::edsc::LoopNestBuilder::operator()(llvm::function_ref<void(void)> fun) {
+void mlir::edsc::AffineLoopNestBuilder::operator()(
+    llvm::function_ref<void(void)> fun) {
   if (fun)
     fun();
   // Iterate on the calling operator() on all the loops in the nest.
@@ -228,10 +244,32 @@ mlir::edsc::LoopNestBuilder::operator()(llvm::function_ref<void(void)> fun) {
   // to be asymmetric (i.e. enter() occurs on LoopBuilder construction, exit()
   // occurs on calling operator()). The asymmetry is required for properly
   // nesting imperfectly nested regions (see LoopBuilder::operator()).
-  for (auto lit = loops.rbegin(), eit = loops.rend(); lit != eit; ++lit) {
+  for (auto lit = loops.rbegin(), eit = loops.rend(); lit != eit; ++lit)
     (*lit)();
+}
+
+mlir::edsc::LoopNestBuilder::LoopNestBuilder(ArrayRef<ValueHandle *> ivs,
+                                             ArrayRef<ValueHandle> lbs,
+                                             ArrayRef<ValueHandle> ubs,
+                                             ArrayRef<ValueHandle> steps) {
+  assert(ivs.size() == lbs.size() && "expected size of ivs and lbs to match");
+  assert(ivs.size() == ubs.size() && "expected size of ivs and ubs to match");
+  assert(ivs.size() == steps.size() &&
+         "expected size of ivs and steps to match");
+  loops.reserve(ivs.size());
+  for (auto it : llvm::zip(ivs, lbs, ubs, steps)) {
+    loops.emplace_back(LoopBuilder::makeLoop(std::get<0>(it), std::get<1>(it),
+                                             std::get<2>(it), std::get<3>(it)));
   }
-  return ValueHandle::null();
+  assert(loops.size() == ivs.size() && "Mismatch loops vs ivs size");
+}
+
+void LoopNestBuilder::LoopNestBuilder::operator()(
+    std::function<void(void)> fun) {
+  if (fun)
+    fun();
+  for (auto &lit : reverse(loops))
+    lit({});
 }
 
 mlir::edsc::BlockBuilder::BlockBuilder(BlockHandle bh, Append) {
@@ -282,7 +320,6 @@ categorizeValueByAffineType(MLIRContext *context, Value *val, unsigned &numDims,
     d = getAffineSymbolExpr(numSymbols++, context);
     resultVal = val;
   } else {
-    assert(isValidDim(val) && "Must be a valid Dim");
     d = getAffineDimExpr(numDims++, context);
     resultVal = val;
   }
@@ -423,13 +460,13 @@ ValueHandle mlir::edsc::op::operator==(ValueHandle lhs, ValueHandle rhs) {
   auto type = lhs.getType();
   return type.isa<FloatType>()
              ? createFComparisonExpr(CmpFPredicate::OEQ, lhs, rhs)
-             : createIComparisonExpr(CmpIPredicate::EQ, lhs, rhs);
+             : createIComparisonExpr(CmpIPredicate::eq, lhs, rhs);
 }
 ValueHandle mlir::edsc::op::operator!=(ValueHandle lhs, ValueHandle rhs) {
   auto type = lhs.getType();
   return type.isa<FloatType>()
              ? createFComparisonExpr(CmpFPredicate::ONE, lhs, rhs)
-             : createIComparisonExpr(CmpIPredicate::NE, lhs, rhs);
+             : createIComparisonExpr(CmpIPredicate::ne, lhs, rhs);
 }
 ValueHandle mlir::edsc::op::operator<(ValueHandle lhs, ValueHandle rhs) {
   auto type = lhs.getType();
@@ -437,23 +474,23 @@ ValueHandle mlir::edsc::op::operator<(ValueHandle lhs, ValueHandle rhs) {
              ? createFComparisonExpr(CmpFPredicate::OLT, lhs, rhs)
              :
              // TODO(ntv,zinenko): signed by default, how about unsigned?
-             createIComparisonExpr(CmpIPredicate::SLT, lhs, rhs);
+             createIComparisonExpr(CmpIPredicate::slt, lhs, rhs);
 }
 ValueHandle mlir::edsc::op::operator<=(ValueHandle lhs, ValueHandle rhs) {
   auto type = lhs.getType();
   return type.isa<FloatType>()
              ? createFComparisonExpr(CmpFPredicate::OLE, lhs, rhs)
-             : createIComparisonExpr(CmpIPredicate::SLE, lhs, rhs);
+             : createIComparisonExpr(CmpIPredicate::sle, lhs, rhs);
 }
 ValueHandle mlir::edsc::op::operator>(ValueHandle lhs, ValueHandle rhs) {
   auto type = lhs.getType();
   return type.isa<FloatType>()
              ? createFComparisonExpr(CmpFPredicate::OGT, lhs, rhs)
-             : createIComparisonExpr(CmpIPredicate::SGT, lhs, rhs);
+             : createIComparisonExpr(CmpIPredicate::sgt, lhs, rhs);
 }
 ValueHandle mlir::edsc::op::operator>=(ValueHandle lhs, ValueHandle rhs) {
   auto type = lhs.getType();
   return type.isa<FloatType>()
              ? createFComparisonExpr(CmpFPredicate::OGE, lhs, rhs)
-             : createIComparisonExpr(CmpIPredicate::SGE, lhs, rhs);
+             : createIComparisonExpr(CmpIPredicate::sge, lhs, rhs);
 }

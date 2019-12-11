@@ -75,11 +75,9 @@ class PForTest(PForTestCase):
       return nn.top_k(x_i)
 
     with self.assertRaisesRegexp(ValueError, "No converter defined"):
-      self._test_loop_fn(
-          loop_fn, 3, loop_fn_dtypes=[dtypes.float32, dtypes.int32])
+      self._test_loop_fn(loop_fn, 3)
     flags.FLAGS.op_conversion_fallback_to_while_loop = True
-    self._test_loop_fn(
-        loop_fn, 3, loop_fn_dtypes=[dtypes.float32, dtypes.int32])
+    self._test_loop_fn(loop_fn, 3)
     flags.FLAGS.op_conversion_fallback_to_while_loop = False
 
   def test_parallel_iterations(self):
@@ -111,6 +109,14 @@ class PForTest(PForTestCase):
       return math_ops.reduce_mean(x, axis=0, keepdims=True)
     result = pfor_control_flow_ops.vectorized_map(
         compute, array_ops.ones((10, 5, 3)))
+    self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
+
+  def test_vectorized_map_with_dynamic_shape(self):
+    def compute(x):
+      return math_ops.reduce_mean(x, axis=0, keepdims=True)
+    x = array_ops.placeholder_with_default(
+        array_ops.ones((10, 5, 3)), shape=None)
+    result = pfor_control_flow_ops.vectorized_map(compute, x)
     self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
 
   def test_vectorized_map_example_1(self):
@@ -156,7 +162,7 @@ class IndexedSlicesTest(PForTestCase):
           values=array_ops.reshape(i, [1]),
           dense_shape=[3, 1])
 
-    self._test_loop_fn(loop_fn, 2, loop_fn_dtypes=[dtypes.int32])
+    self._test_loop_fn(loop_fn, 2)
 
   def test_indexed_slices_components(self):
 
@@ -169,11 +175,30 @@ class IndexedSlicesTest(PForTestCase):
       # densification, which may be more efficient.
       return slices.values, slices.indices
 
-    self._test_loop_fn(loop_fn, 2, loop_fn_dtypes=[dtypes.int32] * 2)
+    self._test_loop_fn(loop_fn, 2)
 
 
 @test_util.run_all_in_graph_and_eager_modes
 class ReductionTest(PForTestCase):
+
+  def test_reduce(self):
+
+    def reduce_fn(p, q):
+      return math_ops.reduce_mean(p + q, axis=0)
+
+    x = random_ops.random_uniform([4, 3, 2])
+    y = random_ops.random_uniform([4, 3, 2])
+
+    def loop_fn(i, pfor_config):
+      x_i = array_ops.gather(x, i)
+      y_i = array_ops.gather(y, i)
+      reduced = pfor_config.reduce(reduce_fn, x_i, y_i)
+      return reduced + x_i
+
+    output = pfor_control_flow_ops.pfor(loop_fn, 4)
+    ans = reduce_fn(x, y) + x
+    output_val, ans_val = self.evaluate([output, ans])
+    self.assertAllClose(ans_val, output_val)
 
   def test_reduce_concat(self):
     x = random_ops.random_uniform([8, 3])
@@ -269,7 +294,7 @@ class BitwiseTest(PForTestCase):
         return op(x1)
       # pylint: enable=cell-var-from-loop
 
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
+      self._test_loop_fn(loop_fn, 3)
 
   def test_binary_cwise(self):
     binary_ops = [
@@ -293,7 +318,7 @@ class BitwiseTest(PForTestCase):
         output_dtypes.extend([t.dtype for t in outputs])
         return outputs
       # pylint: enable=cell-var-from-loop
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=output_dtypes)
+      self._test_loop_fn(loop_fn, 3)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -346,7 +371,7 @@ class NNTest(PForTestCase):
               data_format="NHWC") for inp in [x_i, x_0]
       ]
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
+    self._test_loop_fn(loop_fn, 3)
 
   def test_avg_pool(self):
     with backprop.GradientTape(persistent=True) as g:
@@ -363,7 +388,7 @@ class NNTest(PForTestCase):
         loss = nn.l2_loss(output)
       return output, g.gradient(loss, x1)
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
+    self._test_loop_fn(loop_fn, 3)
 
   def test_max_pool(self):
     with backprop.GradientTape(persistent=True) as g:
@@ -384,7 +409,7 @@ class NNTest(PForTestCase):
       grad_grad = g.gradient(grad, ones)
       return output, grad, grad_grad
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+    self._test_loop_fn(loop_fn, 3)
 
   def test_max_pool3d(self):
     if test.is_built_with_rocm():
@@ -407,7 +432,7 @@ class NNTest(PForTestCase):
       grad_grad = g.gradient(grad, ones)
       return output, grad, grad_grad
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+    self._test_loop_fn(loop_fn, 3)
 
   def test_fused_batch_norm(self):
     with compat.forward_compatibility_horizon(2019, 6, 7):
@@ -458,7 +483,7 @@ class NNTest(PForTestCase):
 
           # pylint: enable=cell-var-from-loop
 
-          self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 6)
+          self._test_loop_fn(loop_fn, 3)
 
   def test_log_softmax(self):
     logits = random_ops.random_uniform([3, 2, 4])
@@ -469,7 +494,7 @@ class NNTest(PForTestCase):
               nn.log_softmax(logits_i, axis=0),
               nn.log_softmax(logits_i, axis=-1))
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+    self._test_loop_fn(loop_fn, 3)
 
   def test_softmax(self):
     logits = random_ops.random_uniform([3, 2, 4])
@@ -480,7 +505,7 @@ class NNTest(PForTestCase):
               nn.softmax(logits_i, axis=0),
               nn.softmax(logits_i, axis=-1))
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+    self._test_loop_fn(loop_fn, 3)
 
   def test_softmax_cross_entropy_with_logits(self):
     with backprop.GradientTape(persistent=True) as g:
@@ -498,7 +523,7 @@ class NNTest(PForTestCase):
         total_loss = math_ops.reduce_sum(loss)
       return loss, g.gradient(total_loss, logits_i)
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
+    self._test_loop_fn(loop_fn, 3)
 
 
 class RandomTest(PForTestCase):
@@ -523,7 +548,7 @@ class RandomTest(PForTestCase):
     def loop_fn(_):
       return random_ops.random_uniform([3], maxval=1, dtype=dtypes.int32)
 
-    self._test_loop_fn(loop_fn, 5, loop_fn_dtypes=dtypes.int32)
+    self._test_loop_fn(loop_fn, 5)
 
   def test_random_standard_normal(self):
 
@@ -557,7 +582,7 @@ class RandomTest(PForTestCase):
               random_ops.random_gamma(alpha=alphas_i[0, 0], shape=[3]),
               random_ops.random_gamma(alpha=alphas_i, shape=[3]))
 
-    self._test_loop_fn(loop_fn, 5, loop_fn_dtypes=[dtypes.float32] * 4)
+    self._test_loop_fn(loop_fn, 5)
 
   def test_random_poisson_v2_invariant_rate(self):
 
@@ -577,14 +602,14 @@ class RandomTest(PForTestCase):
               random_ops.random_poisson(lam=rates_i[0, 0], shape=[3]),
               random_ops.random_poisson(lam=rates_i, shape=[3]))
 
-    self._test_loop_fn(loop_fn, 5, loop_fn_dtypes=[dtypes.float32] * 4)
+    self._test_loop_fn(loop_fn, 5)
 
   def test_random_multinomial_invariant_logits(self):
 
     def loop_fn(_):
       return random_ops.categorical(logits=[[1., -1.]], num_samples=3)
 
-    self._test_loop_fn(loop_fn, 5, loop_fn_dtypes=[dtypes.int64])
+    self._test_loop_fn(loop_fn, 5)
 
   def test_random_multinomial_varying_logits(self):
     logits = random_ops.random_normal([5, 3, 2])
@@ -593,7 +618,7 @@ class RandomTest(PForTestCase):
       logits_i = array_ops.gather(logits, i)
       return random_ops.categorical(logits_i, num_samples=3)
 
-    self._test_loop_fn(loop_fn, 5, loop_fn_dtypes=[dtypes.int64])
+    self._test_loop_fn(loop_fn, 5)
 
 
 class LoggingTest(PForTestCase):
@@ -630,7 +655,7 @@ class TensorArrayTest(PForTestCase):
     def loop_fn(i):
       return ta.read(i), ta.read(0)
 
-    self._test_loop_fn(loop_fn, 2, [dtypes.int32] * 2)
+    self._test_loop_fn(loop_fn, 2)
 
   @test_util.run_v1_only("b/122612051")
   def test_create_outside_and_gather(self):
@@ -641,7 +666,7 @@ class TensorArrayTest(PForTestCase):
     def loop_fn(i):
       return ta.gather([i]), ta.gather([0, 1])
 
-    self._test_loop_fn(loop_fn, 2, [dtypes.int32] * 2)
+    self._test_loop_fn(loop_fn, 2)
 
   @test_util.run_v1_only("b/122612051")
   def test_create_outside_and_write_and_scatter(self):
@@ -675,7 +700,7 @@ class TensorArrayTest(PForTestCase):
       ta2 = tensor_array_ops.TensorArray(dtypes.int32, 1).write(0, 1)
       return ta1.stack(), ta2.stack()
 
-    self._test_loop_fn(loop_fn, 3, [dtypes.int32] * 2)
+    self._test_loop_fn(loop_fn, 3)
 
   @test_util.run_v1_only("b/122612051")
   def test_create_inside_and_scatter(self):
@@ -688,7 +713,7 @@ class TensorArrayTest(PForTestCase):
                                          2).scatter([0], [3]).scatter([1], [4])
       return ta1.stack(), ta2.stack()
 
-    self._test_loop_fn(loop_fn, 3, [dtypes.int32] * 2)
+    self._test_loop_fn(loop_fn, 3)
 
   @test_util.run_v1_only("b/122612051")
   def test_create_inside_and_read(self):
@@ -701,7 +726,7 @@ class TensorArrayTest(PForTestCase):
       # TODO(agarwal): ta1.read(i) currently is not supported.
       return ta1.read(0), ta2.read(0), ta2.read(i)
 
-    self._test_loop_fn(loop_fn, 2, [dtypes.int32] * 3)
+    self._test_loop_fn(loop_fn, 2)
 
   @test_util.run_v1_only("b/122612051")
   def test_create_inside_and_gather(self):
@@ -714,7 +739,7 @@ class TensorArrayTest(PForTestCase):
       # TODO(agarwal): ta1.read(i) currently is not supported.
       return ta1.gather([0, 1]), ta2.gather([0, 1]), ta2.gather([i])
 
-    self._test_loop_fn(loop_fn, 2, [dtypes.int32] * 3)
+    self._test_loop_fn(loop_fn, 2)
 
   @test_util.run_v1_only("b/122612051")
   def test_grad(self):
@@ -752,7 +777,7 @@ class StackTest(PForTestCase):
         e1 = data_flow_ops.stack_pop_v2(s, elem_type=dtypes.int32)
       return e1, e2
 
-    self._test_loop_fn(loop_fn, 2, [dtypes.int32] * 2)
+    self._test_loop_fn(loop_fn, 2)
 
   @test_util.run_v1_only("b/122612051")
   def test_stack_inside_push_loop_dependent(self):
@@ -768,7 +793,7 @@ class StackTest(PForTestCase):
         e1 = data_flow_ops.stack_pop_v2(s, elem_type=dtypes.int32)
       return e1, e2
 
-    self._test_loop_fn(loop_fn, 2, [dtypes.int32] * 2)
+    self._test_loop_fn(loop_fn, 2)
 
   @test_util.run_v1_only("b/122612051")
   def test_stack_outside_pop(self):
@@ -816,7 +841,7 @@ class ControlFlowTest(PForTestCase):
     def loop_fn(i):
       return x + i
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
+    self._test_loop_fn(loop_fn, 3)
 
   @test_util.run_v1_only("b/122612051")
   def test_invariant_while(self):
@@ -824,7 +849,7 @@ class ControlFlowTest(PForTestCase):
     def loop_fn(_):
       return control_flow_ops.while_loop(lambda j: j < 4, lambda j: j + 1, [0])
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
+    self._test_loop_fn(loop_fn, 3)
 
   @test_util.run_v1_only("b/122612051")
   def test_invariant_while_with_control_dependency(self):
@@ -834,7 +859,7 @@ class ControlFlowTest(PForTestCase):
         return control_flow_ops.while_loop(lambda j: j < 4, lambda j: j + 1,
                                            [0])
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
+    self._test_loop_fn(loop_fn, 3)
 
   @test_util.run_v1_only("b/122612051")
   def test_while_with_stateful_ops(self):
@@ -844,7 +869,7 @@ class ControlFlowTest(PForTestCase):
           lambda j, x: j < 4,
           lambda j, x: (j + 1, x + random_ops.random_uniform([])), [0, 0.])[0]
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
+    self._test_loop_fn(loop_fn, 3)
 
   @test_util.run_v1_only("b/122612051")
   def test_while_unstacked_condition(self):
@@ -853,7 +878,7 @@ class ControlFlowTest(PForTestCase):
       return control_flow_ops.while_loop(lambda j, x: j < 4,
                                          lambda j, x: (j + 1, x + i), [0, 0])
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32, dtypes.int32])
+    self._test_loop_fn(loop_fn, 3)
 
   @test_util.run_v1_only("b/122612051")
   def test_while(self):
@@ -869,7 +894,7 @@ class ControlFlowTest(PForTestCase):
           lambda j, t: (j + 1, t + array_ops.gather(x_i, j)), [0, 0.])
       return total
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32])
+    self._test_loop_fn(loop_fn, 3)
 
   @test_util.run_v1_only("b/122612051")
   def test_while_jacobian(self):
@@ -913,7 +938,7 @@ class ControlFlowTest(PForTestCase):
           (0, tensor_array_ops.TensorArray(dtypes.int32, size=4)))
       return ta.stack()
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
+    self._test_loop_fn(loop_fn, 3)
 
   @test_util.run_v1_only("b/122612051")
   def test_read_tensor_array_partitioned_indices(self):
@@ -931,7 +956,7 @@ class ControlFlowTest(PForTestCase):
                                          (0, 0))
       return s
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
+    self._test_loop_fn(loop_fn, 3)
 
   @test_util.run_v1_only("b/122612051")
   def test_external_while_loop_grad(self):
@@ -1326,7 +1351,7 @@ class ParsingTest(PForTestCase):
       line = array_ops.gather(csv_tensor, i)
       return parsing_ops.decode_csv(line, **kwargs)
 
-    self._test_loop_fn(loop_fn, iters=3, loop_fn_dtypes=[dtypes.int32] * 3)
+    self._test_loop_fn(loop_fn, iters=3)
 
   @test_util.run_v1_only("b/122612051")
   def test_parse_single_example(self):
@@ -1431,7 +1456,7 @@ class PartitionedCallTest(PForTestCase):
         out = f(z_i)
       return out, g.gradient(out, z_i)
 
-    self._test_loop_fn(loop_fn, 4, [dtypes.float32] * 2)
+    self._test_loop_fn(loop_fn, 4)
 
   def test_stateful_with_gradients(self):
 
@@ -1449,7 +1474,7 @@ class PartitionedCallTest(PForTestCase):
         out = f(z_i)
       return out, g.gradient(out, z_i)
 
-    self._test_loop_fn(loop_fn, 4, [dtypes.float32] * 2)
+    self._test_loop_fn(loop_fn, 4)
 
 
 if __name__ == "__main__":

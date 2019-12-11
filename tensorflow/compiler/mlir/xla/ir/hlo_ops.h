@@ -32,6 +32,8 @@ limitations under the License.
 namespace mlir {
 class OpBuilder;
 
+#include "tensorflow/compiler/mlir/xla/ir/hlo_structs.h.inc"
+
 namespace xla_hlo {
 
 class XlaHloDialect : public Dialect {

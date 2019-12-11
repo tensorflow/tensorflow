@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -98,14 +99,27 @@ class HloFunctionImporter {
       xla::HloInstruction* instruction);
 
   // Converts the dimensions of an HLO instruction into an MLIR attribute.
-  mlir::ElementsAttr ConvertDimensions(
+  mlir::DenseIntElementsAttr ConvertDimensions(
       llvm::ArrayRef<tensorflow::int64> op_dimensions);
 
-  // Converts Array ref to an ElementsAttr.
-  mlir::ElementsAttr Convert(llvm::ArrayRef<int64_t> op_dimensions);
+  // Converts Array ref to an DenseIntElementsAttr.
+  mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> op_dimensions);
 
-  // Ensures dot instruction has only default contracting and batch dimensions.
-  Status ValidateDotDimensions(xla::HloInstruction* instruction);
+  // Converts Array ref to padding attribute. Input is a flattened list of
+  // padding low and padding high for each of the spatial dimensions.
+  mlir::NamedAttribute ConvertPadding(llvm::ArrayRef<int64_t> padding);
+
+  // Converts the dot dimensions to attribute.
+  mlir::NamedAttribute ConvertDotDimensionNumbers(
+      const DotDimensionNumbers& dnums);
+
+  // Converts the conv dimensions to attributes.
+  mlir::NamedAttribute ConvertConvDimensionNumbers(
+      const xla::ConvolutionDimensionNumbers& dnums);
+
+  // Converts the gather dimensions to attributes.
+  mlir::NamedAttribute ConvertGatherDimensionNumbers(
+      const xla::GatherDimensionNumbers& dnums);
 
   mlir::MLIRContext* context_;
   mlir::ModuleOp module_;

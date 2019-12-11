@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/logger_registry.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/segment/segment.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
@@ -306,7 +307,7 @@ void UpdateToEngineNode(const std::vector<EngineInfo>& infos,
       }
     }
   }
-  LOG(FATAL) << "Node " << (**node).name() << " not found in any engine.";
+  LOG(FATAL) << "Node " << node_name << " not found in any engine.";
 }
 
 // Function to insert a TRT engine node into the graph.
@@ -417,16 +418,15 @@ Status CreateTRTNode(const ConversionParams& params,
   // Build the engine and get its serialized representation.
   string segment_string;
   if (info.engine_type == EngineInfo::EngineType::TRTStatic) {
+    auto trt_logger = GetLoggerRegistry()->LookUp(params.trt_logger_name);
     // Create static engine for fp32/fp16 mode.
-    Logger trt_logger;
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     // TODO(sami): What happens if 1st dim is not batch?
     TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
         info.segment_graph_def,
         calibrate_int8 ? TrtPrecisionMode::FP32 : info.precision_mode,
-        max_batch_size, info.max_workspace_size_bytes, input_shapes,
-        &trt_logger, alloc, /*calibrator=*/nullptr, &engine,
-        info.use_calibration,
+        max_batch_size, info.max_workspace_size_bytes, input_shapes, trt_logger,
+        alloc, /*calibrator=*/nullptr, &engine, info.use_calibration,
         /*convert_successfully=*/nullptr));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string = string(static_cast<const char*>(engine_data->data()),
@@ -730,14 +730,15 @@ Status ConvertAfterShapes(const ConversionParams& params) {
         CreateTRTNode(params, engine_segments, i, params.max_batch_size, &graph,
                       alloc.get(), &engine_nodes);
 
-    string msg =
-        StrCat("TensorRT node ", engine.engine_name, " added for segment ", i,
-               " consisting of ", converted_segments.at(i).size(), " nodes");
+    string msg = StrCat("segment ", i, " consisting of ",
+                        converted_segments.at(i).size(), " nodes by ",
+                        engine.engine_name);
     if (status.ok()) {
-      LOG(INFO) << msg << " succeeded.";
+      LOG(INFO) << "Replaced " << msg << ".";
     } else {
       // Graph is not modified.
-      LOG(WARNING) << msg << " failed: " << status << ". Fallback to TF...";
+      LOG(WARNING) << "Cannot replace " << msg
+                   << " (keeping original segment).";
     }
     if (VLOG_IS_ON(1)) {
       msg = "Segment consists of nodes: ";

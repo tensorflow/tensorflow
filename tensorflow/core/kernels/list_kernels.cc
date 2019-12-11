@@ -13,23 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <limits>
-
-#include "tensorflow/core/framework/allocator.h"
-
 #define EIGEN_USE_THREADS
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include "tensorflow/core/kernels/list_kernels.h"
+
+#include <limits>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/concat_lib.h"
-#include "tensorflow/core/kernels/list_kernels.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/util.h"
@@ -540,9 +541,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorListSetItem").Device(DEVICE_CPU),
                               .HostMemory("index"),               \
                           TensorListSetItem);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
-TF_CALL_complex64(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
-TF_CALL_complex128(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
+TF_CALL_GPU_ALL_TYPES(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
 TF_CALL_int32(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
 TF_CALL_int64(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
 REGISTER_TENSOR_LIST_SET_ITEM_GPU(bfloat16)

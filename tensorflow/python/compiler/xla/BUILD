@@ -41,7 +41,6 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-    xla_enable_strict_auto_jit = True,
     xla_enabled = True,
 )
 
@@ -90,6 +89,5 @@ cuda_py_test(
         "no_rocm",  # XLA support is not enabled on the ROCm platform
         "no_windows",
     ],
-    xla_enable_strict_auto_jit = True,
     xla_enabled = True,
 )

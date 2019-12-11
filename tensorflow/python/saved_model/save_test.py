@@ -24,6 +24,7 @@ import sys
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
@@ -44,10 +45,12 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training.tracking import tracking
@@ -122,6 +125,40 @@ class SaveTest(test.TestCase):
         {"out": 2.},
         _import_and_infer(
             save_dir, {"z": 1.}, signature_key="non_default_key"))
+
+  def test_method_save_annotated_function(self):
+    # This test is only meaningful with Python 3 because Python 2's
+    # inspect.getargspec doesn't save annotations.
+
+    root = tracking.AutoTrackable()
+
+    class UnknownType(object):  # pylint: disable=unused-variable
+      pass
+
+    def annotated_function(z):
+      return {"out": 2. * z}
+
+    # Same effect as annotating function like the following.
+    # def annotated_function("z": UnknownType) -> UnknownType:
+    # This is a workaround since Python 2 does not support annotations and
+    # our presubmit linter catches it.
+    annotated_function.__annotations__ = {
+        "z": UnknownType,
+        "return": UnknownType
+    }
+
+    root.f = def_function.function(annotated_function)
+    root.f(constant_op.constant(1.))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(
+        root, save_dir, {
+            "non_default_key":
+                root.f.get_concrete_function(
+                    tensor_spec.TensorSpec(None, dtypes.float32))
+        })
+    self.assertEqual({"out": 2.},
+                     _import_and_infer(
+                         save_dir, {"z": 1.}, signature_key="non_default_key"))
 
   def test_unbuilt_model_does_not_prevent_saving(self):
     root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))
@@ -393,6 +430,65 @@ class SaveTest(test.TestCase):
     self.assertAllClose({"output_0": 3 * (1 + 4 + 9 + 16)},
                         _import_and_infer(save_dir, {"x": 3}))
 
+  def test_variable_args_cannot_be_used_as_signature(self):
+    @def_function.function(input_signature=[
+        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)])
+    def f(unused_v):
+      return 1
+    root = tracking.AutoTrackable()
+    root.f = f.get_concrete_function()
+    with self.assertRaisesRegexp(ValueError,
+                                 "tf.Variable inputs cannot be exported"):
+      save.save(root, os.path.join(self.get_temp_dir(), "saved_model"),
+                signatures=root.f)
+
+  def test_export_correct_output_shapes(self):
+    """Asserts that nodes are exported with the correct number of output shapes.
+
+    After backpropagation rewrite, functions are rewritten with additional
+    outputs. When exporting to SavedModel, the shapes of the additional outputs
+    were incorrectly added to the FunctionDef proto (b/133666530).
+    """
+    obj = tracking.AutoTrackable()
+    obj.v = variables.Variable(2.)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(None, dtypes.float32)])
+    def f(x):
+      return (math_ops.multiply(obj.v, x),
+              math_ops.multiply(obj.v, (x+1)),
+              None)
+    obj.f = f
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(None, dtypes.float32)])
+    def g(x):
+      return obj.f(x)[1]
+    obj.g = g
+
+    # After the following lines, the concrete functions of obj.g and obj.f are
+    # rewritten with many extra outputs.
+    with backprop.GradientTape():
+      obj.g(constant_op.constant(3.0))
+
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(obj, save_dir, signatures={"g": obj.g})
+    graph_def = loader_impl.parse_saved_model(save_dir).meta_graphs[0].graph_def
+
+    def assert_correct_number_of_output_shapes(node):
+      if node.op == "StatefulPartitionedCall":
+        fn_name = node.attr["f"].func.name
+        if fn_name.startswith("__inference_f"):
+          self.assertLen(node.attr["_output_shapes"].list.shape, 2)
+        if fn_name.startswith("__inference_g"):
+          self.assertLen(node.attr["_output_shapes"].list.shape, 1)
+
+    for f in graph_def.library.function:
+      if(f.signature.name.startswith("__inference_f") or
+         f.signature.name.startswith("__inference_g")):
+        for node in f.node_def:
+          assert_correct_number_of_output_shapes(node)
+
 
 class SavingOptionsTest(test.TestCase):
 
@@ -414,6 +510,48 @@ class SavingOptionsTest(test.TestCase):
         ValueError, "Attempted to save ops from non-whitelisted namespaces"):
       save._verify_ops(graph_def, [])
     save._verify_ops(graph_def, ["Test"])
+
+  def test_save_debug_info_enabled(self):
+    root = tracking.AutoTrackable()
+    root.f = def_function.function(
+        lambda x: math_ops.mul(2., x, name="DEBUG_INFO_OP"),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(
+        root,
+        save_dir,
+        root.f,
+        options=save_options.SaveOptions(save_debug_info=True))
+    debug_info_file_name = os.path.join(save_dir, "debug",
+                                        "saved_model_debug_info.pb")
+    self.assertTrue(os.path.exists(debug_info_file_name))
+    debug_info = graph_debug_info_pb2.GraphDebugInfo()
+    with open(debug_info_file_name, "rb") as f:
+      debug_info.ParseFromString(f.read())
+
+    # Verify that there is a trace for DEBUG_INFO_OP just to ensure that
+    # function debug info tracing is nominally functioning.
+    found_op = False
+    for key in debug_info.traces.keys():
+      if key.startswith("DEBUG_INFO_OP@"):
+        found_op = True
+        break
+    self.assertTrue(found_op, "Did not find DEBUG_INFO_OP in trace")
+
+  def test_save_debug_info_disabled(self):
+    root = tracking.AutoTrackable()
+    root.f = def_function.function(
+        lambda x: math_ops.mul(2., x, name="DEBUG_INFO_OP"),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(
+        root,
+        save_dir,
+        root.f,
+        options=save_options.SaveOptions(save_debug_info=False))
+    debug_info_file_name = os.path.join(save_dir, "debug",
+                                        "saved_model_debug_info.pb")
+    self.assertFalse(os.path.exists(debug_info_file_name))
 
 
 class AssetTests(test.TestCase):

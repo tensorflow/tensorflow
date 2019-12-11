@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -70,6 +71,7 @@ import subprocess
 import sys
 from absl import app
 from absl import flags
+import six
 
 from tensorflow.tools.tensorflow_builder.config_detector.data import cuda_compute_capability
 
@@ -182,7 +184,7 @@ def get_cpu_type():
   """
   key = "cpu_type"
   out, err = run_shell_cmd(cmds_all[PLATFORM][key])
-  cpu_detected = out.split(":")[1].strip()
+  cpu_detected = out.split(b":")[1].strip()
   if err and FLAGS.debug:
     print("Error in detecting CPU type:\n %s" % str(err))
 
@@ -201,7 +203,7 @@ def get_cpu_arch():
   if err and FLAGS.debug:
     print("Error in detecting CPU arch:\n %s" % str(err))
 
-  return out.strip("\n")
+  return out.strip(b"\n")
 
 
 def get_distrib():
@@ -216,7 +218,7 @@ def get_distrib():
   if err and FLAGS.debug:
     print("Error in detecting distribution:\n %s" % str(err))
 
-  return out.strip("\n")
+  return out.strip(b"\n")
 
 
 def get_distrib_version():
@@ -233,7 +235,7 @@ def get_distrib_version():
         "Error in detecting distribution version:\n %s" % str(err)
     )
 
-  return out.strip("\n")
+  return out.strip(b"\n")
 
 
 def get_gpu_type():
@@ -251,7 +253,7 @@ def get_gpu_type():
   key = "gpu_type_no_sudo"
   gpu_dict = cuda_compute_capability.retrieve_from_golden()
   out, err = run_shell_cmd(cmds_all[PLATFORM][key])
-  ret_val = out.split(" ")
+  ret_val = out.split(b" ")
   gpu_id = ret_val[0]
   if err and FLAGS.debug:
     print("Error in detecting GPU type:\n %s" % str(err))
@@ -261,10 +263,10 @@ def get_gpu_type():
     return gpu_id, GPU_TYPE
   else:
     if "[" or "]" in ret_val[1]:
-      gpu_release = ret_val[1].replace("[", "") + " "
-      gpu_release += ret_val[2].replace("]", "").strip("\n")
+      gpu_release = ret_val[1].replace(b"[", b"") + b" "
+      gpu_release += ret_val[2].replace(b"]", b"").strip(b"\n")
     else:
-      gpu_release = ret_val[1].replace("\n", " ")
+      gpu_release = six.ensure_str(ret_val[1]).replace("\n", " ")
 
     if gpu_release not in gpu_dict:
       GPU_TYPE = "unknown"
@@ -285,7 +287,7 @@ def get_gpu_count():
   if err and FLAGS.debug:
     print("Error in detecting GPU count:\n %s" % str(err))
 
-  return out.strip("\n")
+  return out.strip(b"\n")
 
 
 def get_cuda_version_all():
@@ -303,7 +305,7 @@ def get_cuda_version_all():
   """
   key = "cuda_ver_all"
   out, err = run_shell_cmd(cmds_all[PLATFORM.lower()][key])
-  ret_val = out.split("\n")
+  ret_val = out.split(b"\n")
   filtered = []
   for item in ret_val:
     if item not in ["\n", ""]:
@@ -311,9 +313,9 @@ def get_cuda_version_all():
 
   all_vers = []
   for item in filtered:
-    ver_re = re.search(r".*/cuda(\-[\d]+\.[\d]+)?", item)
+    ver_re = re.search(r".*/cuda(\-[\d]+\.[\d]+)?", item.decode("utf-8"))
     if ver_re.group(1):
-      all_vers.append(ver_re.group(1).strip("-"))
+      all_vers.append(six.ensure_str(ver_re.group(1)).strip("-"))
 
   if err and FLAGS.debug:
     print("Error in detecting CUDA version:\n %s" % str(err))
@@ -409,13 +411,13 @@ def get_cudnn_version():
   if err and FLAGS.debug:
     print("Error in finding `cudnn.h`:\n %s" % str(err))
 
-  if len(out.split(" ")) > 1:
+  if len(out.split(b" ")) > 1:
     cmd = cmds[0] + " | " + cmds[1]
     out_re, err_re = run_shell_cmd(cmd)
     if err_re and FLAGS.debug:
       print("Error in detecting cuDNN version:\n %s" % str(err_re))
 
-    return out_re.strip("\n")
+    return out_re.strip(b"\n")
   else:
     return
 
@@ -432,7 +434,7 @@ def get_gcc_version():
   if err and FLAGS.debug:
     print("Error in detecting GCC version:\n %s" % str(err))
 
-  return out.strip("\n")
+  return out.strip(b"\n")
 
 
 def get_glibc_version():
@@ -447,7 +449,7 @@ def get_glibc_version():
   if err and FLAGS.debug:
     print("Error in detecting GCC version:\n %s" % str(err))
 
-  return out.strip("\n")
+  return out.strip(b"\n")
 
 
 def get_libstdcpp_version():
@@ -462,7 +464,7 @@ def get_libstdcpp_version():
   if err and FLAGS.debug:
     print("Error in detecting libstdc++ version:\n %s" % str(err))
 
-  ver = out.split("_")[-1].replace("\n", "")
+  ver = out.split(b"_")[-1].replace(b"\n", b"")
   return ver
 
 
@@ -485,7 +487,7 @@ def get_cpu_isa_version():
   found = []
   missing = []
   for isa in required_isa:
-    for sys_isa in ret_val.split(" "):
+    for sys_isa in ret_val.split(b" "):
       if isa == sys_isa:
         if isa not in found:
           found.append(isa)
@@ -539,7 +541,7 @@ def get_all_configs():
   json_data = {}
   missing = []
   warning = []
-  for config, call_func in all_functions.iteritems():
+  for config, call_func in six.iteritems(all_functions):
     ret_val = call_func
     if not ret_val:
       configs_found.append([config, "\033[91m\033[1mMissing\033[0m"])
@@ -557,10 +559,10 @@ def get_all_configs():
           configs_found.append([config, ret_val[0]])
           json_data[config] = ret_val[0]
         else:
-          configs_found.append(
-              [config,
-               "\033[91m\033[1mMissing " + str(ret_val[1])[1:-1] + "\033[0m"]
-          )
+          configs_found.append([
+              config, "\033[91m\033[1mMissing " +
+              six.ensure_str(str(ret_val[1])[1:-1]) + "\033[0m"
+          ])
           missing.append(
               [config,
                "\n\t=> Found %s but missing %s"
@@ -587,7 +589,7 @@ def print_all_configs(configs, missing, warning):
   llen = 65  # line length
   for i, row in enumerate(configs):
     if i != 0:
-      print_text += "-"*llen + "\n"
+      print_text += six.ensure_str("-" * llen) + "\n"
 
     if isinstance(row[1], list):
       val = ", ".join(row[1])
@@ -629,7 +631,7 @@ def save_to_file(json_data, filename):
     print("filename: %s" % filename)
     filename += ".json"
 
-  with open(PATH_TO_DIR + "/" + filename, "w") as f:
+  with open(PATH_TO_DIR + "/" + six.ensure_str(filename), "w") as f:
     json.dump(json_data, f, sort_keys=True, indent=4)
 
   print(" Successfully wrote configs to file `%s`.\n" % (filename))

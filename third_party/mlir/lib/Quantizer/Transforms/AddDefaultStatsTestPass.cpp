@@ -81,9 +81,9 @@ void AddDefaultStatsPass::runWithConfig(SolverContext &solverContext,
     APFloat minValue(-1.0f);
     APFloat maxValue(1.0f);
     ElementsAttr layerStats = DenseFPElementsAttr::get(
-        b.getTensorType({2}, b.getF32Type()), {minValue, maxValue});
-    auto statsOp =
-        b.create<StatisticsOp>(func.getLoc(), arg, layerStats, nullptr);
+        RankedTensorType::get({2}, b.getF32Type()), {minValue, maxValue});
+    auto statsOp = b.create<StatisticsOp>(func.getLoc(), arg, layerStats,
+                                          nullptr, nullptr);
     arg->replaceAllUsesWith(statsOp);
 
     // StatsOp contained a use to 'arg' so make sure to reset it after replacing
@@ -107,9 +107,9 @@ void AddDefaultStatsPass::runWithConfig(SolverContext &solverContext,
     APFloat minValue(-1.0f);
     APFloat maxValue(1.0f);
     ElementsAttr layerStats = DenseFPElementsAttr::get(
-        b.getTensorType({2}, b.getF32Type()), {minValue, maxValue});
+        RankedTensorType::get({2}, b.getF32Type()), {minValue, maxValue});
     auto statsOp = b.create<StatisticsOp>(op->getLoc(), op->getResult(0),
-                                          layerStats, nullptr);
+                                          layerStats, nullptr, nullptr);
     originalResult->replaceAllUsesWith(statsOp);
 
     // StatsOp contained a use to 'op' so make sure to reset it after replacing
@@ -118,7 +118,8 @@ void AddDefaultStatsPass::runWithConfig(SolverContext &solverContext,
   });
 }
 
-std::unique_ptr<FunctionPassBase> mlir::quantizer::createAddDefaultStatsPass() {
+std::unique_ptr<OpPassBase<FuncOp>>
+mlir::quantizer::createAddDefaultStatsPass() {
   return std::make_unique<AddDefaultStatsPass>();
 }
 

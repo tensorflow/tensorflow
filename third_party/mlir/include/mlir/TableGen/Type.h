@@ -24,6 +24,7 @@
 
 #include "mlir/Support/LLVM.h"
 #include "mlir/TableGen/Constraint.h"
+#include "mlir/TableGen/Dialect.h"
 
 namespace llvm {
 class DefInit;
@@ -44,6 +45,18 @@ public:
 
   // Returns true if this is a variadic type constraint.
   bool isVariadic() const;
+};
+
+// Wrapper class with helper methods for accessing Types defined in TableGen.
+class Type : public TypeConstraint {
+public:
+  explicit Type(const llvm::Record *record);
+
+  // Returns the description of the type.
+  StringRef getTypeDescription() const;
+
+  // Returns the dialect for the type if defined.
+  Dialect getDialect() const;
 };
 
 } // end namespace tblgen

@@ -81,7 +81,7 @@ struct LoopTiling : public FunctionPass<LoopTiling> {
 
 /// Creates a pass to perform loop tiling on all suitable loop nests of a
 /// Function.
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::createLoopTilingPass(uint64_t cacheSizeBytes) {
   return std::make_unique<LoopTiling>(cacheSizeBytes);
 }
@@ -168,13 +168,13 @@ constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
       boundExprs.push_back(dim + tileSizes[i]);
       boundExprs.append(origUbMap.getResults().begin(),
                         origUbMap.getResults().end());
-      auto ubMap = b.getAffineMap(origUbMap.getNumDims() + 1,
+      auto ubMap = AffineMap::get(origUbMap.getNumDims() + 1,
                                   origUbMap.getNumSymbols(), boundExprs);
       newLoops[width + i].setUpperBound(/*operands=*/ubOperands, ubMap);
     } else {
       // No need of the min expression.
       auto dim = b.getAffineDimExpr(0);
-      auto ubMap = b.getAffineMap(1, 0, dim + tileSizes[i]);
+      auto ubMap = AffineMap::get(1, 0, dim + tileSizes[i]);
       newLoops[width + i].setUpperBound(newLoops[i].getInductionVar(), ubMap);
     }
   }
@@ -190,7 +190,7 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
 
   // Check if the supplied for op's are all successively nested.
   for (unsigned i = 1, e = band.size(); i < e; i++) {
-    assert(band[i].getOperation()->getParentOp() == band[i - 1].getOperation());
+    assert(band[i].getParentOp() == band[i - 1].getOperation());
   }
 
   auto origLoops = band;
@@ -362,7 +362,7 @@ void LoopTiling::getTileSizes(ArrayRef<AffineForOp> band,
   // one possible approach. Or compute a polynomial in tile sizes and solve for
   // it.
 
-  // For an n-d tilable band, compute n^th root of the excess.
+  // For an n-d tileable band, compute n^th root of the excess.
   unsigned tSize =
       static_cast<unsigned>(floorl(std::pow(excessFactor, 1.0 / band.size())));
   // We'll keep a running product to determine the last tile size better.

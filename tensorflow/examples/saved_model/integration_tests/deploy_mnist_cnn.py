@@ -40,7 +40,7 @@ flags.DEFINE_string(
     'tflite_output_file', None,
     'The filename of the .tflite model file to write (optional).')
 flags.DEFINE_bool(
-    'reload_as_keras_model', False,  # TODO(b/140199731): enable by default.
+    'reload_as_keras_model', True,
     'Also test tf.keras.models.load_model() on --saved_model_dir.')
 
 

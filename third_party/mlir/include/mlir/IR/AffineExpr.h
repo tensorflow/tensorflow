@@ -88,6 +88,8 @@ public:
 
   bool operator==(AffineExpr other) const { return expr == other.expr; }
   bool operator!=(AffineExpr other) const { return !(*this == other); }
+  bool operator==(int64_t v) const;
+  bool operator!=(int64_t v) const { return !(*this == v); }
   explicit operator bool() const { return expr; }
 
   bool operator!() const { return expr == nullptr; }
@@ -265,9 +267,8 @@ AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 
 /// Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
 /// if 'expr' could not be flattened (i.e., semi-affine is not yet handled).
-/// 'cst' contains constraints that connect newly introduced local identifiers
-/// to existing dimensional and / symbolic identifiers. See documentation for
-/// AffineExprFlattener on how mod's and div's are flattened.
+/// See documentation for AffineExprFlattener on how mod's and div's are
+/// flattened.
 bool getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
                             unsigned numSymbols,
                             llvm::SmallVectorImpl<int64_t> *flattenedExpr);

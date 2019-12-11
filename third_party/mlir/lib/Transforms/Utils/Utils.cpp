@@ -62,14 +62,17 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
                                              Operation *op,
                                              ArrayRef<Value *> extraIndices,
                                              AffineMap indexRemap,
-                                             ArrayRef<Value *> extraOperands) {
+                                             ArrayRef<Value *> extraOperands,
+                                             ArrayRef<Value *> symbolOperands) {
   unsigned newMemRefRank = newMemRef->getType().cast<MemRefType>().getRank();
   (void)newMemRefRank; // unused in opt mode
   unsigned oldMemRefRank = oldMemRef->getType().cast<MemRefType>().getRank();
-  (void)oldMemRefRank;
+  (void)oldMemRefRank; // unused in opt mode
   if (indexRemap) {
-    assert(indexRemap.getNumSymbols() == 0 && "pure dimensional map expected");
-    assert(indexRemap.getNumInputs() == extraOperands.size() + oldMemRefRank);
+    assert(indexRemap.getNumSymbols() == symbolOperands.size() &&
+           "symbolic operand count mismatch");
+    assert(indexRemap.getNumInputs() ==
+           extraOperands.size() + oldMemRefRank + symbolOperands.size());
     assert(indexRemap.getNumResults() + extraIndices.size() == newMemRefRank);
   } else {
     assert(oldMemRefRank + extraIndices.size() == newMemRefRank);
@@ -116,8 +119,8 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
   oldMemRefOperands.reserve(oldMemRefRank);
   if (oldMap != builder.getMultiDimIdentityMap(oldMap.getNumDims())) {
     for (auto resultExpr : oldMap.getResults()) {
-      auto singleResMap = builder.getAffineMap(
-          oldMap.getNumDims(), oldMap.getNumSymbols(), resultExpr);
+      auto singleResMap = AffineMap::get(oldMap.getNumDims(),
+                                         oldMap.getNumSymbols(), resultExpr);
       auto afOp = builder.create<AffineApplyOp>(op->getLoc(), singleResMap,
                                                 oldMapOperands);
       oldMemRefOperands.push_back(afOp);
@@ -131,9 +134,11 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
   // provided. The indices of a memref come right after it, i.e.,
   // at position memRefOperandPos + 1.
   SmallVector<Value *, 4> remapOperands;
-  remapOperands.reserve(extraOperands.size() + oldMemRefRank);
+  remapOperands.reserve(extraOperands.size() + oldMemRefRank +
+                        symbolOperands.size());
   remapOperands.append(extraOperands.begin(), extraOperands.end());
   remapOperands.append(oldMemRefOperands.begin(), oldMemRefOperands.end());
+  remapOperands.append(symbolOperands.begin(), symbolOperands.end());
 
   SmallVector<Value *, 4> remapOutputs;
   remapOutputs.reserve(oldMemRefRank);
@@ -142,7 +147,7 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
       indexRemap != builder.getMultiDimIdentityMap(indexRemap.getNumDims())) {
     // Remapped indices.
     for (auto resultExpr : indexRemap.getResults()) {
-      auto singleResMap = builder.getAffineMap(
+      auto singleResMap = AffineMap::get(
           indexRemap.getNumDims(), indexRemap.getNumSymbols(), resultExpr);
       auto afOp = builder.create<AffineApplyOp>(op->getLoc(), singleResMap,
                                                 remapOperands);
@@ -205,7 +210,7 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
     state.types.push_back(result->getType());
 
   // Add attribute for 'newMap', other Attributes do not change.
-  auto newMapAttr = builder.getAffineMapAttr(newMap);
+  auto newMapAttr = AffineMapAttr::get(newMap);
   for (auto namedAttr : op->getAttrs()) {
     if (namedAttr.first == oldMapAttrPair.first) {
       state.attributes.push_back({namedAttr.first, newMapAttr});
@@ -226,6 +231,7 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
                                              ArrayRef<Value *> extraIndices,
                                              AffineMap indexRemap,
                                              ArrayRef<Value *> extraOperands,
+                                             ArrayRef<Value *> symbolOperands,
                                              Operation *domInstFilter,
                                              Operation *postDomInstFilter) {
   unsigned newMemRefRank = newMemRef->getType().cast<MemRefType>().getRank();
@@ -233,8 +239,10 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
   unsigned oldMemRefRank = oldMemRef->getType().cast<MemRefType>().getRank();
   (void)oldMemRefRank;
   if (indexRemap) {
-    assert(indexRemap.getNumSymbols() == 0 && "pure dimensional map expected");
-    assert(indexRemap.getNumInputs() == extraOperands.size() + oldMemRefRank);
+    assert(indexRemap.getNumSymbols() == symbolOperands.size() &&
+           "symbol operand count mismatch");
+    assert(indexRemap.getNumInputs() ==
+           extraOperands.size() + oldMemRefRank + symbolOperands.size());
     assert(indexRemap.getNumResults() + extraIndices.size() == newMemRefRank);
   } else {
     assert(oldMemRefRank + extraIndices.size() == newMemRefRank);
@@ -287,7 +295,8 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
 
   for (auto *op : opsToReplace) {
     if (failed(replaceAllMemRefUsesWith(oldMemRef, newMemRef, op, extraIndices,
-                                        indexRemap, extraOperands)))
+                                        indexRemap, extraOperands,
+                                        symbolOperands)))
       llvm_unreachable("memref replacement guaranteed to succeed here");
   }
 
@@ -362,8 +371,8 @@ void mlir::createAffineComputationSlice(
   // Create an affine.apply for each of the map results.
   sliceOps->reserve(composedMap.getNumResults());
   for (auto resultExpr : composedMap.getResults()) {
-    auto singleResMap = builder.getAffineMap(
-        composedMap.getNumDims(), composedMap.getNumSymbols(), resultExpr);
+    auto singleResMap = AffineMap::get(composedMap.getNumDims(),
+                                       composedMap.getNumSymbols(), resultExpr);
     sliceOps->push_back(builder.create<AffineApplyOp>(
         opInst->getLoc(), singleResMap, composedOpOperands));
   }
@@ -389,7 +398,7 @@ void mlir::createAffineComputationSlice(
   }
 }
 
-// TODO: Currently works for static memrefs with single non-identity layout map.
+// TODO: Currently works for static memrefs with a single layout map.
 LogicalResult mlir::normalizeMemRef(AllocOp allocOp) {
   MemRefType memrefType = allocOp.getType();
   unsigned rank = memrefType.getRank();
@@ -403,16 +412,12 @@ LogicalResult mlir::normalizeMemRef(AllocOp allocOp) {
 
   AffineMap layoutMap = layoutMaps.front();
 
+  // Nothing to do for identity layout maps.
   if (layoutMap == b.getMultiDimIdentityMap(rank))
     return success();
 
-  if (layoutMap.getNumResults() < rank)
-    // This is a sufficient condition for not being one-to-one; the map is thus
-    // invalid. Leave it alone. (Undefined behavior?)
-    return failure();
-
-  // We don't do any more non-trivial checks for one-to-one'ness; we
-  // assume that it is one-to-one.
+  // We don't do any checks for one-to-one'ness; we assume that it is
+  // one-to-one.
 
   // TODO: Only for static memref's for now.
   if (memrefType.getNumDynamicDims() > 0)
@@ -421,7 +426,7 @@ LogicalResult mlir::normalizeMemRef(AllocOp allocOp) {
   // We have a single map that is not an identity map. Create a new memref with
   // the right shape and an identity layout map.
   auto shape = memrefType.getShape();
-  FlatAffineConstraints fac(rank, 0);
+  FlatAffineConstraints fac(rank, allocOp.getNumSymbolicOperands());
   for (unsigned d = 0; d < rank; ++d) {
     fac.addConstantLowerBound(d, 0);
     fac.addConstantUpperBound(d, shape[d] - 1);
@@ -430,7 +435,10 @@ LogicalResult mlir::normalizeMemRef(AllocOp allocOp) {
   // We compose this map with the original index (logical) space to derive the
   // upper bounds for the new index space.
   unsigned newRank = layoutMap.getNumResults();
-  fac.composeMatchingMap(layoutMap);
+  if (failed(fac.composeMatchingMap(layoutMap)))
+    // TODO: semi-affine maps.
+    return failure();
+
   // Project out the old data dimensions.
   fac.projectOut(newRank, fac.getNumIds() - newRank - fac.getNumLocalIds());
   SmallVector<int64_t, 4> newShape(newRank);
@@ -447,14 +455,18 @@ LogicalResult mlir::normalizeMemRef(AllocOp allocOp) {
   }
 
   auto *oldMemRef = allocOp.getResult();
-  auto newMemRefType = b.getMemRefType(newShape, memrefType.getElementType(),
+  SmallVector<Value *, 4> symbolOperands(allocOp.getSymbolicOperands());
+
+  auto newMemRefType = MemRefType::get(newShape, memrefType.getElementType(),
                                        b.getMultiDimIdentityMap(newRank));
   auto newAlloc = b.create<AllocOp>(allocOp.getLoc(), newMemRefType);
 
   // Replace all uses of the old memref.
   if (failed(replaceAllMemRefUsesWith(oldMemRef, /*newMemRef=*/newAlloc,
                                       /*extraIndices=*/{},
-                                      /*indexRemap=*/layoutMap))) {
+                                      /*indexRemap=*/layoutMap,
+                                      /*extraOperands=*/{},
+                                      /*symbolOperands=*/symbolOperands))) {
     // If it failed (due to escapes for example), bail out.
     newAlloc.erase();
     return failure();

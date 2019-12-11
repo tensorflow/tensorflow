@@ -17,6 +17,7 @@ limitations under the License.
 // standard TensorFlow dialect to MLIR Control Flow Graph (CFG) form.
 
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
@@ -79,8 +80,11 @@ static Operation* CallFn(Location loc,
   for (int i = 0; i < num_operands; ++i) {
     Value* val = get_arg(i);
     Type expected = fn_type.getInput(i);
-    if (val->getType() != expected)
-      val = builder->create<TensorCastOp>(loc, val, expected);
+    if (val->getType() != expected) {
+      val =
+          builder->create<TF::CastOp>(loc, expected, val,
+                                      /*Truncate=*/builder->getBoolAttr(false));
+    }
     operands.push_back(val);
   }
   return builder->create<CallOp>(loc, fn, operands).getOperation();
@@ -100,8 +104,11 @@ static llvm::SmallVector<Value*, 4> PrepareValsForJump(
   for (int i = 0; i < num_vals; ++i) {
     Value* val = get_val(i);
     Type expected = block->getArgument(i)->getType();
-    if (val->getType() != expected)
-      val = builder->create<TensorCastOp>(loc, val, expected);
+    if (val->getType() != expected) {
+      val =
+          builder->create<TF::CastOp>(loc, expected, val,
+                                      /*Truncate=*/builder->getBoolAttr(false));
+    }
     result.push_back(val);
   }
   return result;
@@ -131,8 +138,11 @@ static void ReplaceOpResultWithBlockArgs(Location loc, Operation* op,
   for (unsigned i = 0, e = op->getNumResults(); i != e; ++i) {
     Value* arg = block->getArgument(i);
     Value* result = op->getResult(i);
-    if (arg->getType() != result->getType())
-      arg = builder->create<TensorCastOp>(loc, arg, result->getType());
+    if (arg->getType() != result->getType()) {
+      arg =
+          builder->create<TF::CastOp>(loc, result->getType(), arg,
+                                      /*Truncate=*/builder->getBoolAttr(false));
+    }
     result->replaceAllUsesWith(arg);
   }
 }
@@ -301,26 +311,15 @@ void FunctionalControlFlowToCFG::runOnFunction() {
       // subsequent blocks.
       //
       // TODO: Use PatternRewriter to eliminate these function control flow ops.
-      auto has_variant_operand = [](Operation* op) {
-        auto is_variant = [](Type ty) {
-          return getElementTypeOrSelf(ty).getKind() == TensorFlowTypes::VARIANT;
-        };
-
-        if (llvm::none_of(op->getOperandTypes(), is_variant)) return false;
-
-        op->emitOpError() << "does not yet support operands of type variant "
-                             "for conversion to CFG";
-        return true;
-      };
 
       if (IfOp if_op = llvm::dyn_cast<IfOp>(op)) {
-        if (has_variant_operand(&op) || failed(LowerIfOp(if_op))) {
+        if (failed(LowerIfOp(if_op))) {
           return signalPassFailure();
         }
         break;
       }
       if (WhileOp while_op = llvm::dyn_cast<WhileOp>(op)) {
-        if (has_variant_operand(&op) || failed(LowerWhileOp(while_op))) {
+        if (failed(LowerWhileOp(while_op))) {
           return signalPassFailure();
         }
         break;
@@ -331,7 +330,7 @@ void FunctionalControlFlowToCFG::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<FunctionPassBase> CreateTFFunctionalControlFlowToCFG() {
+std::unique_ptr<OpPassBase<FuncOp>> CreateTFFunctionalControlFlowToCFG() {
   return std::make_unique<FunctionalControlFlowToCFG>();
 }
 

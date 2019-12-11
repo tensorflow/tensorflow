@@ -44,6 +44,7 @@ struct IntegerSetAttributeStorage;
 struct FloatAttributeStorage;
 struct OpaqueAttributeStorage;
 struct StringAttributeStorage;
+struct SymbolRefAttributeStorage;
 struct TypeAttributeStorage;
 
 /// Elements Attributes.
@@ -162,6 +163,7 @@ enum Kind {
   FileLineColLocation,
   FusedLocation,
   NameLocation,
+  OpaqueLocation,
   UnknownLocation,
 
   // Represents a location as a 'void*' pointer to a front-end's opaque
@@ -177,6 +179,10 @@ enum Kind {
   LAST_LOCATION_ATTR = UnknownLocation,
 };
 } // namespace StandardAttributes
+
+//===----------------------------------------------------------------------===//
+// AffineMapAttr
+//===----------------------------------------------------------------------===//
 
 class AffineMapAttr
     : public Attribute::AttrBase<AffineMapAttr, Attribute,
@@ -194,6 +200,10 @@ public:
     return kind == StandardAttributes::AffineMap;
   }
 };
+
+//===----------------------------------------------------------------------===//
+// ArrayAttr
+//===----------------------------------------------------------------------===//
 
 /// Array attributes are lists of other attributes.  They are not necessarily
 /// type homogenous given that attributes don't, in general, carry types.
@@ -219,6 +229,10 @@ public:
   }
 };
 
+//===----------------------------------------------------------------------===//
+// BoolAttr
+//===----------------------------------------------------------------------===//
+
 class BoolAttr : public Attribute::AttrBase<BoolAttr, Attribute,
                                             detail::BoolAttributeStorage> {
 public:
@@ -232,6 +246,10 @@ public:
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) { return kind == StandardAttributes::Bool; }
 };
+
+//===----------------------------------------------------------------------===//
+// DictionaryAttr
+//===----------------------------------------------------------------------===//
 
 /// NamedAttribute is used for dictionary attributes, it holds an identifier for
 /// the name and a value for the attribute. The attribute pointer should always
@@ -270,6 +288,10 @@ public:
   }
 };
 
+//===----------------------------------------------------------------------===//
+// FloatAttr
+//===----------------------------------------------------------------------===//
+
 class FloatAttr : public Attribute::AttrBase<FloatAttr, Attribute,
                                              detail::FloatAttributeStorage> {
 public:
@@ -299,13 +321,17 @@ public:
   }
 
   /// Verify the construction invariants for a double value.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc, MLIRContext *ctx,
-                               Type type, double value);
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc, MLIRContext *ctx,
-                               Type type, const APFloat &value);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *ctx, Type type,
+                                                    double value);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *ctx, Type type,
+                                                    const APFloat &value);
 };
+
+//===----------------------------------------------------------------------===//
+// IntegerAttr
+//===----------------------------------------------------------------------===//
 
 class IntegerAttr
     : public Attribute::AttrBase<IntegerAttr, Attribute,
@@ -327,6 +353,10 @@ public:
   }
 };
 
+//===----------------------------------------------------------------------===//
+// IntegerSetAttr
+//===----------------------------------------------------------------------===//
+
 class IntegerSetAttr
     : public Attribute::AttrBase<IntegerSetAttr, Attribute,
                                  detail::IntegerSetAttributeStorage> {
@@ -343,6 +373,10 @@ public:
     return kind == StandardAttributes::IntegerSet;
   }
 };
+
+//===----------------------------------------------------------------------===//
+// OpaqueAttr
+//===----------------------------------------------------------------------===//
 
 /// Opaque attributes represent attributes of non-registered dialects. These are
 /// attribute represented in their raw string form, and can only usefully be
@@ -369,15 +403,20 @@ public:
   StringRef getAttrData() const;
 
   /// Verify the construction of an opaque attribute.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, Identifier dialect,
-                               StringRef attrData, Type type);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *context,
+                                                    Identifier dialect,
+                                                    StringRef attrData,
+                                                    Type type);
 
   static bool kindof(unsigned kind) {
     return kind == StandardAttributes::Opaque;
   }
 };
+
+//===----------------------------------------------------------------------===//
+// StringAttr
+//===----------------------------------------------------------------------===//
 
 class StringAttr : public Attribute::AttrBase<StringAttr, Attribute,
                                               detail::StringAttributeStorage> {
@@ -399,25 +438,76 @@ public:
   }
 };
 
+//===----------------------------------------------------------------------===//
+// SymbolRefAttr
+//===----------------------------------------------------------------------===//
+
+class FlatSymbolRefAttr;
+
 /// A symbol reference attribute represents a symbolic reference to another
 /// operation.
 class SymbolRefAttr
     : public Attribute::AttrBase<SymbolRefAttr, Attribute,
-                                 detail::StringAttributeStorage> {
+                                 detail::SymbolRefAttributeStorage> {
 public:
   using Base::Base;
-  using ValueType = StringRef;
 
-  static SymbolRefAttr get(StringRef value, MLIRContext *ctx);
+  /// Construct a symbol reference for the given value name.
+  static FlatSymbolRefAttr get(StringRef value, MLIRContext *ctx);
 
-  /// Returns the name of the held symbol reference.
-  StringRef getValue() const;
+  /// Construct a symbol reference for the given value name, and a set of nested
+  /// references that are further resolve to a nested symbol.
+  static SymbolRefAttr get(StringRef value,
+                           ArrayRef<FlatSymbolRefAttr> references,
+                           MLIRContext *ctx);
+
+  /// Returns the name of the top level symbol reference, i.e. the root of the
+  /// reference path.
+  StringRef getRootReference() const;
+
+  /// Returns the name of the fully resolved symbol, i.e. the leaf of the
+  /// reference path.
+  StringRef getLeafReference() const;
+
+  /// Returns the set of nested references representing the path to the symbol
+  /// nested under the root reference.
+  ArrayRef<FlatSymbolRefAttr> getNestedReferences() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) {
     return kind == StandardAttributes::SymbolRef;
   }
 };
+
+/// A symbol reference with a reference path containing a single element. This
+/// is used to refer to an operation within the current symbol table.
+class FlatSymbolRefAttr : public SymbolRefAttr {
+public:
+  using SymbolRefAttr::SymbolRefAttr;
+  using ValueType = StringRef;
+
+  /// Construct a symbol reference for the given value name.
+  static FlatSymbolRefAttr get(StringRef value, MLIRContext *ctx) {
+    return SymbolRefAttr::get(value, ctx);
+  }
+
+  /// Returns the name of the held symbol reference.
+  StringRef getValue() const { return getRootReference(); }
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(Attribute attr) {
+    SymbolRefAttr refAttr = attr.dyn_cast<SymbolRefAttr>();
+    return refAttr && refAttr.getNestedReferences().empty();
+  }
+
+private:
+  using SymbolRefAttr::get;
+  using SymbolRefAttr::getNestedReferences;
+};
+
+//===----------------------------------------------------------------------===//
+// Type
+//===----------------------------------------------------------------------===//
 
 class TypeAttr : public Attribute::AttrBase<TypeAttr, Attribute,
                                             detail::TypeAttributeStorage> {
@@ -432,6 +522,10 @@ public:
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) { return kind == StandardAttributes::Type; }
 };
+
+//===----------------------------------------------------------------------===//
+// UnitAttr
+//===----------------------------------------------------------------------===//
 
 /// Unit attributes are attributes that hold no specific value and are given
 /// meaning by their existence.
@@ -507,7 +601,7 @@ public:
   }
 
 protected:
-  /// Returns the 1 dimenional flattened row-major index from the given
+  /// Returns the 1 dimensional flattened row-major index from the given
   /// multi-dimensional index.
   uint64_t getFlattenedIndex(ArrayRef<uint64_t> index) const;
 };
@@ -547,12 +641,12 @@ protected:
   /// Return the current index for this iterator, adjusted for the case of a
   /// splat.
   ptrdiff_t getDataIndex() const {
-    bool isSplat = this->object.getInt();
+    bool isSplat = this->base.getInt();
     return isSplat ? 0 : this->index;
   }
 
-  /// Return the data object pointer.
-  const char *getData() const { return this->object.getPointer(); }
+  /// Return the data base pointer.
+  const char *getData() const { return this->base.getPointer(); }
 };
 } // namespace detail
 
@@ -881,6 +975,20 @@ public:
 
   using DenseElementsAttr::DenseElementsAttr;
 
+  /// Get an instance of a DenseFPElementsAttr with the given arguments. This
+  /// simply wraps the DenseElementsAttr::get calls.
+  template <typename Arg>
+  static DenseFPElementsAttr get(const ShapedType &type, Arg &&arg) {
+    return DenseElementsAttr::get(type, llvm::makeArrayRef(arg))
+        .template cast<DenseFPElementsAttr>();
+  }
+  template <typename T>
+  static DenseFPElementsAttr get(const ShapedType &type,
+                                 const std::initializer_list<T> &list) {
+    return DenseElementsAttr::get(type, list)
+        .template cast<DenseFPElementsAttr>();
+  }
+
   /// Generates a new DenseElementsAttr by mapping each value attribute, and
   /// constructing the DenseElementsAttr given the new element type.
   DenseElementsAttr
@@ -905,6 +1013,20 @@ public:
 
   using DenseElementsAttr::DenseElementsAttr;
 
+  /// Get an instance of a DenseIntElementsAttr with the given arguments. This
+  /// simply wraps the DenseElementsAttr::get calls.
+  template <typename Arg>
+  static DenseIntElementsAttr get(const ShapedType &type, Arg &&arg) {
+    return DenseElementsAttr::get(type, llvm::makeArrayRef(arg))
+        .template cast<DenseIntElementsAttr>();
+  }
+  template <typename T>
+  static DenseIntElementsAttr get(const ShapedType &type,
+                                  const std::initializer_list<T> &list) {
+    return DenseElementsAttr::get(type, list)
+        .template cast<DenseIntElementsAttr>();
+  }
+
   /// Generates a new DenseElementsAttr by mapping each value attribute, and
   /// constructing the DenseElementsAttr given the new element type.
   DenseElementsAttr
@@ -920,7 +1042,7 @@ public:
 };
 
 /// An opaque attribute that represents a reference to a vector or tensor
-/// constant with opaque content. This respresentation is for tensor constants
+/// constant with opaque content. This representation is for tensor constants
 /// which the compiler may not need to interpret. This attribute is always
 /// associated with a particular dialect, which provides a method to convert
 /// tensor representation to a non-opaque format.
@@ -1252,6 +1374,13 @@ public:
       : attrs((attrs && !attrs.empty()) ? attrs : nullptr) {}
   NamedAttributeList(ArrayRef<NamedAttribute> attributes);
 
+  bool operator!=(const NamedAttributeList &other) const {
+    return !(*this == other);
+  }
+  bool operator==(const NamedAttributeList &other) const {
+    return attrs == other.attrs;
+  }
+
   /// Return the underlying dictionary attribute. This may be null, if this list
   /// has no attributes.
   DictionaryAttr getDictionary() const { return attrs; }
@@ -1304,7 +1433,6 @@ template <> struct DenseMapInfo<mlir::Attribute> {
 
 /// Allow LLVM to steal the low bits of Attributes.
 template <> struct PointerLikeTypeTraits<mlir::Attribute> {
-public:
   static inline void *getAsVoidPointer(mlir::Attribute attr) {
     return const_cast<void *>(attr.getAsOpaquePointer());
   }
@@ -1312,6 +1440,15 @@ public:
     return mlir::Attribute::getFromOpaquePointer(ptr);
   }
   enum { NumLowBitsAvailable = 3 };
+};
+
+template <>
+struct PointerLikeTypeTraits<mlir::SymbolRefAttr>
+    : public PointerLikeTypeTraits<mlir::Attribute> {
+  static inline mlir::SymbolRefAttr getFromVoidPointer(void *ptr) {
+    return PointerLikeTypeTraits<mlir::Attribute>::getFromVoidPointer(ptr)
+        .cast<mlir::SymbolRefAttr>();
+  }
 };
 
 } // namespace llvm

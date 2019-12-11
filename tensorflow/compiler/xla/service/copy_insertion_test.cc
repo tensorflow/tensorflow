@@ -404,7 +404,7 @@ TEST_F(CopyInsertionTest, AmbiguousTopLevelRoot) {
 
 class WhileCopyInsertionTest : public CopyInsertionTest {
  protected:
-  WhileCopyInsertionTest() : module_(CreateNewUnverifiedModule()) {}
+  WhileCopyInsertionTest() : module_(CreateNewVerifiedModule()) {}
 
   // Builds a While condition computation which reads the induction variable
   // from the tuple parameter, and returns a predicate indicating whether this
@@ -451,8 +451,11 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     auto data = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(data_shape_, loop_state, 1));
     // Use 'induction_variable' in computation with no path to output tuple.
+    Shape f32_scalar_shape = ShapeUtil::MakeShape(F32, {});
+    auto convert = builder.AddInstruction(
+        HloInstruction::CreateConvert(f32_scalar_shape, induction_variable));
     auto update = builder.AddInstruction(
-        HloInstruction::CreateBroadcast(data_shape_, induction_variable, {8}));
+        HloInstruction::CreateBroadcast(data_shape_, convert, {}));
     auto add1 = builder.AddInstruction(HloInstruction::CreateBinary(
         data_shape_, HloOpcode::kAdd, data, update));
     // Create output Tuple.
@@ -521,8 +524,11 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
         HloInstruction::CreateGetTupleElement(data_shape_, loop_state, 1));
 
     // Use 'induction_variable' in computation with no path to output tuple.
+    Shape f32_scalar_shape = ShapeUtil::MakeShape(F32, {});
+    auto convert = builder.AddInstruction(
+        HloInstruction::CreateConvert(f32_scalar_shape, induction_variable));
     auto update = builder.AddInstruction(
-        HloInstruction::CreateBroadcast(data_shape_, induction_variable, {8}));
+        HloInstruction::CreateBroadcast(data_shape_, convert, {}));
     auto add1 = builder.AddInstruction(HloInstruction::CreateBinary(
         data_shape_, HloOpcode::kAdd, data, update));
     // Create output Tuple.
@@ -685,11 +691,11 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     auto one = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
     auto v1 = builder.AddInstruction(
-        HloInstruction::CreateBroadcast(data_shape_, one, {1}));
+        HloInstruction::CreateBroadcast(data_shape_, one, {}));
     auto zero = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
     auto v2 = builder.AddInstruction(
-        HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
+        HloInstruction::CreateBroadcast(data_shape_, zero, {}));
 
     auto tuple1 = builder.AddInstruction(HloInstruction::CreateTuple({v1, v2}));
     auto tuple2 = builder.AddInstruction(HloInstruction::CreateTuple({v2, v1}));
@@ -709,7 +715,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     auto one = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
     auto one_vec = builder.AddInstruction(
-        HloInstruction::CreateBroadcast(data_shape_, one, {1}));
+        HloInstruction::CreateBroadcast(data_shape_, one, {}));
     auto data_init =
         builder.AddInstruction(HloInstruction::CreateTuple({one_vec, one_vec}));
 
@@ -722,7 +728,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     auto one = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
     auto data_init = builder.AddInstruction(
-        HloInstruction::CreateBroadcast(data_shape_, one, {1}));
+        HloInstruction::CreateBroadcast(data_shape_, one, {}));
     auto one_vec = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>(
             {1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
@@ -840,10 +846,10 @@ TEST_F(WhileCopyInsertionTest, DependentTupleElements) {
   ASSERT_EQ(add->opcode(), HloOpcode::kAdd);
   ASSERT_EQ(bcast->opcode(), HloOpcode::kBroadcast);
 
-  EXPECT_THAT(
-      while_hlo->while_body()->root_instruction(),
-      op::Tuple(op::Add(op::Copy(), op::Constant()),
-                op::Add(op::GetTupleElement(), op::Broadcast(op::Copy()))));
+  EXPECT_THAT(while_hlo->while_body()->root_instruction(),
+              op::Tuple(op::Add(op::Copy(), op::Constant()),
+                        op::Add(op::GetTupleElement(),
+                                op::Broadcast(op::Convert(op::Copy())))));
 
   // Both init indices need copies as they are constants.
   EXPECT_THAT(while_hlo->operand(0),
@@ -953,12 +959,17 @@ TEST_F(WhileCopyInsertionTest,
   auto data_param = builder.AddInstruction(
       HloInstruction::CreateParameter(1, data_shape_, "data"));
   // Add dummy ops to ensure loop_init elements aren't entry parameters.
-  auto iter_value = builder.AddInstruction(HloInstruction::CreateUnary(
-      iter_param->shape(), HloOpcode::kExp, iter_param));
+  Shape f32_scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto convert = builder.AddInstruction(
+      HloInstruction::CreateConvert(f32_scalar_shape, iter_param));
+  auto iter_value = builder.AddInstruction(
+      HloInstruction::CreateUnary(convert->shape(), HloOpcode::kExp, convert));
+  auto convert2 = builder.AddInstruction(
+      HloInstruction::CreateConvert(induction_variable_shape_, iter_value));
   auto data_value = builder.AddInstruction(HloInstruction::CreateUnary(
       data_param->shape(), HloOpcode::kExp, data_param));
   auto loop_init = builder.AddInstruction(
-      HloInstruction::CreateTuple({iter_value, data_value}));
+      HloInstruction::CreateTuple({convert2, data_value}));
 
   auto while_hlo1 = builder.AddInstruction(HloInstruction::CreateWhile(
       loop_state_shape_, condition1, body1, loop_init));
@@ -983,9 +994,9 @@ TEST_F(WhileCopyInsertionTest,
   EXPECT_EQ(CountCopies(*entry), 2);
 
   EXPECT_THAT(while_hlo1->operand(0),
-              op::Tuple(op::Exp(), op::Copy(op::Exp())));
+              op::Tuple(op::Convert(op::Exp()), op::Copy(op::Exp())));
   EXPECT_THAT(while_hlo2->operand(0),
-              op::Tuple(op::Exp(), op::Copy(op::Exp())));
+              op::Tuple(op::Convert(op::Exp()), op::Copy(op::Exp())));
 }
 
 // Tests while body computation with nested tuple elements:

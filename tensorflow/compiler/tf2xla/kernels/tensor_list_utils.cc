@@ -287,7 +287,7 @@ Status GetInitializedTensorListForElement(xla::XlaOp list, xla::XlaOp element,
   if (is_initialized) {
     // Check shape of initialized list is correct.
     TF_ASSIGN_OR_RETURN(xla::Shape original_list_shape, b->GetShape(list));
-    if (!xla::ShapeUtil::Equal(original_list_shape, list_shape)) {
+    if (!xla::ShapeUtil::Compatible(original_list_shape, list_shape)) {
       return errors::Internal(
           "Invalid TensorList shape: ", original_list_shape.DebugString(),
           ", expected: ", list_shape.DebugString());

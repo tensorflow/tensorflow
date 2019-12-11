@@ -13,26 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cassert>
+#include <algorithm>
 #include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <iostream>
-#include <limits>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <memory>
+#include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/activation_functor.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/lstm_eval.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -113,18 +115,18 @@ TfLiteStatus PopulateQuantizedLstmParams(
     lstm_eval::QuantizedLstmParameter* quantized_lstm_param) {
   std::vector<float> intermediate_scale;
   std::vector<int32> intermediate_zp;
-  for (int i = 0; i < 13; ++i) {
+  for (int i = 0; i < 5; ++i) {
     // Calculate intermediate tensors.
     TfLiteTensor* intermediate =
         &context->tensors[node->intermediates->data[i]];
-    auto* params = reinterpret_cast<TfLiteAffineQuantization*>(
+    auto* params = static_cast<TfLiteAffineQuantization*>(
         intermediate->quantization.params);
     intermediate_scale.push_back(params->scale->data[0]);
     intermediate_zp.push_back(params->zero_point->data[0]);
   }
 
   // Calculate quantized clip for projection and cell.
-  const auto* params = reinterpret_cast<TfLiteLSTMParams*>(node->builtin_data);
+  const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
   const float cell_clip = params->cell_clip;
   const float proj_clip = params->proj_clip;
 
@@ -132,9 +134,9 @@ TfLiteStatus PopulateQuantizedLstmParams(
       GetInput(context, node, kInputCellStateTensor);
   const TfLiteTensor* output_tensor = GetOutput(context, node, kOutputTensor);
 
-  auto* cell_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      cell_tensor->quantization.params);
-  auto* proj_params = reinterpret_cast<TfLiteAffineQuantization*>(
+  auto* cell_params =
+      static_cast<TfLiteAffineQuantization*>(cell_tensor->quantization.params);
+  auto* proj_params = static_cast<TfLiteAffineQuantization*>(
       output_tensor->quantization.params);
   if (cell_clip > 0.0) {
     quantized_lstm_param->quantized_cell_clip = static_cast<int32_t>(
@@ -151,7 +153,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
   }
 
   // Calculate effective scales.
-  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  OpData* op_data = static_cast<OpData*>(node->user_data);
   const bool is_layer_norm_lstm = op_data->is_layer_norm_lstm;
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
@@ -287,8 +289,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
       &context->tensors[op_data->cell_state_tensor_index];
   TF_LITE_ENSURE(context, CheckedLog2(cell_state->params.scale, &cell_scale));
 
-  // TODO(jianlijianli): remove this check once kernel has better tanh support.
-  TF_LITE_ENSURE(context, cell_scale == -11 || cell_scale == -15);
+  TF_LITE_ENSURE(context, cell_scale <= -9);
   quantized_lstm_param->cell_scale = cell_scale;
   input_scale = input->params.scale;
 
@@ -301,27 +302,27 @@ TfLiteStatus PopulateQuantizedLstmParams(
                                          intermediate_scale[0];
   }
   effective_input_to_forget_scale =
-      input_to_forget_weight_scale * input_scale / intermediate_scale[3];
+      input_to_forget_weight_scale * input_scale / intermediate_scale[1];
   effective_recurrent_to_forget_scale = recurrent_to_forget_weight_scale *
+                                        activation_scale /
+                                        intermediate_scale[1];
+
+  effective_input_to_cell_scale =
+      input_to_cell_weight_scale * input_scale / intermediate_scale[2];
+  effective_recurrent_to_cell_scale =
+      recurrent_to_cell_weight_scale * activation_scale / intermediate_scale[2];
+
+  effective_input_to_output_scale =
+      input_to_output_weight_scale * input_scale / intermediate_scale[3];
+  effective_recurrent_to_output_scale = recurrent_to_output_weight_scale *
                                         activation_scale /
                                         intermediate_scale[3];
 
-  effective_input_to_cell_scale =
-      input_to_cell_weight_scale * input_scale / intermediate_scale[6];
-  effective_recurrent_to_cell_scale =
-      recurrent_to_cell_weight_scale * activation_scale / intermediate_scale[6];
-
-  effective_input_to_output_scale =
-      input_to_output_weight_scale * input_scale / intermediate_scale[9];
-  effective_recurrent_to_output_scale = recurrent_to_output_weight_scale *
-                                        activation_scale /
-                                        intermediate_scale[9];
-
   effective_hidden_scale =
-      std::pow(2, -15) / intermediate_scale[12] * std::pow(2, -15);
+      std::pow(2, -15) / intermediate_scale[4] * std::pow(2, -15);
 
   effective_proj_scale =
-      proj_weight_scale * intermediate_scale[12] / activation_scale;
+      proj_weight_scale * intermediate_scale[4] / activation_scale;
 
   if (use_peephole) {
     if (!use_cifg) {
@@ -331,10 +332,10 @@ TfLiteStatus PopulateQuantizedLstmParams(
     }
     effective_cell_to_forget_scale = std::pow(2, cell_scale) *
                                      cell_to_forget_weight_scale /
-                                     intermediate_scale[3];
+                                     intermediate_scale[1];
     effective_cell_to_output_scale = std::pow(2, cell_scale) *
                                      cell_to_output_weight_scale /
-                                     intermediate_scale[9];
+                                     intermediate_scale[3];
   }
 
   // Decompose scales.
@@ -394,12 +395,13 @@ TfLiteStatus PopulateQuantizedLstmParams(
                      &quantized_lstm_param->layer_norm_output_scale_a,
                      &quantized_lstm_param->layer_norm_output_scale_b);
 
-  quantized_lstm_param->hidden_zp = intermediate_zp[12];
+  quantized_lstm_param->hidden_zp = intermediate_zp[4];
 
-  // TODO(jianlijianli): add support for cifg.
   // 10000 is used to make sure the kernel logic does not overflow.
-  quantized_lstm_param->inv_large_value[0] =
-      std::min(1, static_cast<int32_t>(10000 * layer_norm_input_scale));
+  if (!use_cifg) {
+    quantized_lstm_param->inv_large_value[0] =
+        std::min(1, static_cast<int32_t>(10000 * layer_norm_input_scale));
+  }
   quantized_lstm_param->inv_large_value[1] =
       std::min(1, static_cast<int32_t>(10000 * layer_norm_forget_scale));
   quantized_lstm_param->inv_large_value[2] =
@@ -426,7 +428,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
                                         int n_output, int n_cell,
                                         bool is_layer_norm_lstm,
                                         bool is_fully_quantized) {
-  const auto* params = reinterpret_cast<TfLiteLSTMParams*>(node->builtin_data);
+  const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
 
   // Making sure clipping parameters have valid values.
   // == 0 means no clipping
@@ -680,7 +682,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 }
 
 TfLiteStatus PrecomputeZeroPointTimesWeightWithBias(
-    TfLiteContext* context, int32_t zero_pint,
+    TfLiteContext* context, int32_t zero_point,
     const TfLiteTensor* weight_tensor, const TfLiteTensor* bias_tensor,
     std::unique_ptr<int32_t[]>* output) {
   if (weight_tensor == nullptr) {
@@ -689,19 +691,19 @@ TfLiteStatus PrecomputeZeroPointTimesWeightWithBias(
 
   const RuntimeShape& weight_shape = GetTensorShape(weight_tensor);
   TF_LITE_ENSURE_EQ(context, weight_shape.DimensionsCount(), 2);
-  int row = weight_shape.Dims(0);
-  int col = weight_shape.Dims(1);
-  const int8_t* weight = GetTensorData<int8_t>(weight_tensor);
-  const int32_t* bias =
-      bias_tensor == nullptr ? nullptr : GetTensorData<int32_t>(bias_tensor);
-  output->reset(new int32_t[row]);
-  for (int i = 0; i < row; ++i) {
-    int32_t accu = bias == nullptr ? 0 : bias[i];
-    for (int j = 0; j < col; ++j) {
-      int weight_val = weight[i * col + j];
-      accu += weight_val * zero_pint;
-    }
-    output->get()[i] = accu;
+  const int row = weight_shape.Dims(0);
+  const int col = weight_shape.Dims(1);
+  *output = absl::make_unique<int32_t[]>(row);
+  if (bias_tensor == nullptr) {
+    memset(output->get(), 0, row * sizeof(int32_t));
+  } else {
+    const int32_t* bias = GetTensorData<int32_t>(bias_tensor);
+    memcpy(output->get(), bias, row * sizeof(int32_t));
+  }
+  if (zero_point != 0) {
+    const int8_t* weight = GetTensorData<int8_t>(weight_tensor);
+    tensor_utils::MatrixScalarMultiplyAccumulate(weight, zero_point, row, col,
+                                                 output->get());
   }
   return kTfLiteOk;
 }
@@ -743,9 +745,9 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
       &op_data->quantized_lstm_param;
 
   const TfLiteTensor* intermediate =
-      &context->tensors[node->intermediates->data[12]];
-  const auto* params = reinterpret_cast<TfLiteAffineQuantization*>(
-      intermediate->quantization.params);
+      &context->tensors[node->intermediates->data[4]];
+  const auto* params =
+      static_cast<TfLiteAffineQuantization*>(intermediate->quantization.params);
   const int32_t hidden_zp = params->zero_point->data[0];
 
   // Forget gate.
@@ -801,7 +803,7 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
 // Allocate a temporary scratch tensor. Also check that the sizes of the input
 // tensors match each other.
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  OpData* op_data = static_cast<OpData*>(node->user_data);
 
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
   // Logic for determining regular lstm and layer norm lstm:
@@ -1046,8 +1048,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const auto* params = reinterpret_cast<TfLiteLSTMParams*>(node->builtin_data);
-  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
+  OpData* op_data = static_cast<OpData*>(node->user_data);
   const bool is_layer_norm_lstm = op_data->is_layer_norm_lstm;
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
@@ -1195,7 +1197,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             cell_bias, output_gate_bias, projection_weights, projection_bias,
             params, &op_data->quantized_lstm_param, activation_state,
             cell_state, output, scratch0, scratch1, scratch2, scratch3,
-            scratch4, scratch5);
+            scratch4, scratch5, CpuBackendContext::GetFromContext(context));
         return kTfLiteOk;
       }
     }
@@ -1415,11 +1417,11 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   return nullptr;
 }
 void Free(TfLiteContext* context, void* buffer) {
-  delete reinterpret_cast<OpData*>(buffer);
+  delete static_cast<OpData*>(buffer);
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  const auto* op_data = reinterpret_cast<const OpData*>(node->user_data);
+  const auto* op_data = static_cast<const OpData*>(node->user_data);
   switch (op_data->kernel_type) {
     case kTfLiteLSTMFullKernel:
       return full::Prepare(context, node);
@@ -1432,7 +1434,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const auto* op_data = reinterpret_cast<const OpData*>(node->user_data);
+  const auto* op_data = static_cast<const OpData*>(node->user_data);
   switch (op_data->kernel_type) {
     case kTfLiteLSTMFullKernel:
       return full::Eval(context, node);

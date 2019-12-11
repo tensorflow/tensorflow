@@ -16,14 +16,18 @@ add_llvm_library(MLIRMlirOptLib
 target_link_libraries(MLIRMlirOptLib ${LIB_LIBS})
 
 set(LIBS
-  MLIRAffineOps
-  MLIRLoopsToGPU
   MLIRAnalysis
-  MLIRControlFlowToCFG
+  MLIRAffineOps
+  MLIRAffineToStandard
+  MLIRLoopsToGPU
+  MLIRLinalgToLLVM
+
+  MLIRLoopToStandard
   MLIREDSC
   MLIRFxpMathOps
   MLIRGPU
   MLIRGPUtoNVVMTransforms
+  MLIRGPUtoROCDLTransforms
   MLIRGPUtoSPIRVTransforms
   MLIRLinalg
   MLIRLLVMIR
@@ -34,23 +38,28 @@ set(LIBS
   MLIRPass
   MLIRQuantizerTransforms
   MLIRQuantOps
+  MLIRROCDLIR
   MLIRSPIRV
-  MLIRSPIRVConversion
+  MLIRStandardToSPIRVTransforms
+  MLIRSPIRVTransforms
   MLIRStandardOps
   MLIRStandardToLLVM
   MLIRTransforms
   MLIRTestDialect
+  MLIRTestIR
+  MLIRTestPass
   MLIRTestTransforms
   MLIRSupport
   MLIRVectorOps
   MLIRVectorToLLVM
+  MLIRVectorToLoops
 )
 if(MLIR_CUDA_CONVERSIONS_ENABLED)
   list(APPEND LIBS
     MLIRGPUtoCUDATransforms
   )
 endif()
-add_llvm_executable(mlir-opt
+add_llvm_tool(mlir-opt
  mlir-opt.cpp
 )
 llvm_update_compile_flags(mlir-opt)

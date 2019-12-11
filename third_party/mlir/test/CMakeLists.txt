@@ -39,16 +39,18 @@ set(MLIR_TEST_DEPENDS
   mlir-translate
   cblas
   cblas_interface
+  mlir_runner_utils
   )
 
 if(LLVM_BUILD_EXAMPLES)
   list(APPEND MLIR_TEST_DEPENDS
-    linalg1-opt
     toyc-ch1
     toyc-ch2
     toyc-ch3
     toyc-ch4
     toyc-ch5
+    toyc-ch6
+    toyc-ch7
     )
 endif()
 

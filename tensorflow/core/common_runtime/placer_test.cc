@@ -37,13 +37,13 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/graph_def_builder_util.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
@@ -92,18 +92,20 @@ class FakeDevice : public Device {
 
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
 
-  static std::unique_ptr<Device> MakeCPU(const string& name) {
+  static std::unique_ptr<Device> MakeDevice(const string& name,
+                                            const string& device_type) {
     DeviceAttributes device_attributes;
     device_attributes.set_name(name);
-    device_attributes.set_device_type(DeviceType("FakeCPU").type());
+    device_attributes.set_device_type(DeviceType(device_type).type());
     return std::unique_ptr<Device>(new FakeDevice(device_attributes));
   }
 
+  static std::unique_ptr<Device> MakeCPU(const string& name) {
+    return MakeDevice(name, "FakeCPU");
+  }
+
   static std::unique_ptr<Device> MakeGPU(const string& name) {
-    DeviceAttributes device_attributes;
-    device_attributes.set_name(name);
-    device_attributes.set_device_type(DeviceType("FakeGPU").type());
-    return std::unique_ptr<Device>(new FakeDevice(device_attributes));
+    return MakeDevice(name, "FakeGPU");
   }
 };
 
@@ -192,6 +194,13 @@ REGISTER_KERNEL_BUILDER(Name("TestDatasetOp").Device("FakeCPU").Priority(2),
 REGISTER_KERNEL_BUILDER(Name("TestDatasetOp").Device("FakeGPU").Priority(1),
                         DummyOp);
 
+// Op that has kernels with XLA device priority higher than FakeCPU.
+REGISTER_OP("TestXlaOp").Input("a: float").Output("b: float");
+REGISTER_KERNEL_BUILDER(Name("TestXlaOp").Device("XLA_CPU").Priority(2),
+                        DummyOp);
+REGISTER_KERNEL_BUILDER(Name("TestXlaOp").Device("FakeCPU").Priority(1),
+                        DummyOp);
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // A PlacerTest method has three phases:
@@ -207,7 +216,8 @@ class PlacerTest : public ::testing::Test {
   PlacerTest() : PlacerTest(10) {}
 
   explicit PlacerTest(int num_devices) {
-    // Build a set of num_devices GPU and num_devices CPU devices.
+    // Build a set of num_devices GPU, num_devices CPU devices, and one XLA_CPU
+    // device.
     // NOTE: this->local_devices_ owns the device objects;
     // this->devices_ contains borrowed pointers to the device
     // objects.
@@ -220,6 +230,9 @@ class PlacerTest : public ::testing::Test {
           "/job:a/replica:0/task:0/device:FakeGPU:", num_devices - 1 - i)));
       devices_.AddDevice(local_devices_.back().get());
     }
+    local_devices_.emplace_back(FakeDevice::MakeDevice(
+        "/job:a/replica:0/task:0/device:XLA_CPU:0", "XLA_CPU"));
+    devices_.AddDevice(local_devices_.back().get());
   }
 
   // Builds the given graph, and (if successful) indexes the node
@@ -342,7 +355,7 @@ class PlacerTest : public ::testing::Test {
 class SoftPlacementPlacerTest : public PlacerTest,
                                 public ::testing::WithParamInterface<bool> {};
 
-INSTANTIATE_TEST_SUITE_P(, SoftPlacementPlacerTest,
+INSTANTIATE_TEST_SUITE_P(All, SoftPlacementPlacerTest,
                          ::testing::Values(false, true),
                          ::testing::PrintToStringParamName());
 
@@ -421,6 +434,31 @@ TEST_F(PlacerTest, TestNoConstraintsWithPrioritizedKernels) {
   EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
   EXPECT_DEVICE_TYPE(g, "n1", "FakeCPU");
   EXPECT_DEVICE_TYPE(g, "n2", "FakeCPU");
+}
+
+// Test that if the node supports XLA_CPU and FakeCPU, it will be placed on
+// XLA_CPU if and only if the node is assigned to the XLA_CPU device.
+TEST_F(PlacerTest, TestXlaOpPlacement) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
+    ops::UnaryOp("TestXlaOp", ops::NodeOut(input, 0), b.opts().WithName("n1"));
+    ops::UnaryOp("TestXlaOp", ops::NodeOut(input, 1), b.opts().WithName("n2"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  GetNodeByName(g, "n2")->set_assigned_device_name(
+      "/job:a/replica:0/task:0/device:XLA_CPU:0");
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
+  // n1 should be placed on FakeCPU even if the op supports XLA_CPU with higher
+  // priority than FakeCPU.
+  EXPECT_DEVICE_TYPE(g, "n1", "FakeCPU");
+  // n2 should be placed on XLA_CPU because it supports XLA_CPU and it is
+  // assigned to a XLA_CPU device.
+  EXPECT_DEVICE_TYPE(g, "n2", "XLA_CPU");
 }
 
 TEST_F(PlacerTest, TestGPUInputIntoPrioritizedKernel) {
@@ -1172,6 +1210,27 @@ TEST_F(PlacerTest, TestMultipleColocationGroups) {
         ops::UnaryOp("TestRelu", input,
                      b.opts().WithName("foo").WithAttr(
                          "_class", {"loc:@in", "loc:@colocated_1"}));
+    CHECK(colocated_with_input);
+    CHECK(colocated_with_input_and_other);
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_COLOCATED(g, "in", "colocated_1");
+  EXPECT_COLOCATED(g, "in", "foo");
+}
+
+TEST_F(PlacerTest, TestChainColocation) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
+    Node* colocated_with_input = ops::UnaryOp(
+        "TestRelu", input,
+        b.opts().WithName("colocated_1").WithAttr("_class", {"loc:@in"}));
+    Node* colocated_with_input_and_other = ops::UnaryOp(
+        "TestRelu", input,
+        b.opts().WithName("foo").WithAttr("_class", {"loc:@colocated_1"}));
     CHECK(colocated_with_input);
     CHECK(colocated_with_input_and_other);
     TF_EXPECT_OK(BuildGraph(b, &g));

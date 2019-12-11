@@ -24,11 +24,11 @@
 #ifndef MLIR_TRANSFORMS_LOOP_UTILS_H
 #define MLIR_TRANSFORMS_LOOP_UTILS_H
 
+#include "mlir/IR/Block.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 
 namespace mlir {
-class AffineMap;
 class AffineForOp;
 class FuncOp;
 class OpBuilder;
@@ -159,6 +159,34 @@ Loops tile(ArrayRef<loop::ForOp> forOps, ArrayRef<Value *> sizes,
 /// Returns the newly created intra-tile loops.
 Loops tilePerfectlyNested(loop::ForOp rootForOp, ArrayRef<Value *> sizes);
 
+/// Explicit copy / DMA generation options for mlir::affineDataCopyGenerate.
+struct AffineCopyOptions {
+  // True if DMAs should be generated instead of point-wise copies.
+  bool generateDma;
+  // The slower memory space from which data is to be moved.
+  unsigned slowMemorySpace;
+  // Memory space of the faster one (typically a scratchpad).
+  unsigned fastMemorySpace;
+  // Memory space to place tags in: only meaningful for DMAs.
+  unsigned tagMemorySpace;
+  // Capacity of the fast memory space in bytes.
+  uint64_t fastMemCapacityBytes;
+};
+
+/// Performs explicit copying for the contiguous sequence of operations in the
+/// block iterator range [`begin', `end'), where `end' can't be past the
+/// terminator of the block (since additional operations are potentially
+/// inserted right before `end`. Returns the total size of fast memory space
+/// buffers used. `copyOptions` provides various parameters, and the output
+/// argument `copyNests` is the set of all copy nests inserted, each represented
+/// by its root affine.for. Since we generate alloc's and dealloc's for all fast
+/// buffers (before and after the range of operations resp. or at a hoisted
+/// position), all of the fast memory capacity is assumed to be available for
+/// processing this block range.
+uint64_t affineDataCopyGenerate(Block::iterator begin, Block::iterator end,
+                                const AffineCopyOptions &copyOptions,
+                                DenseSet<Operation *> &copyNests);
+
 /// Tile a nest of standard for loops rooted at `rootForOp` by finding such
 /// parametric tile sizes that the outer loops have a fixed number of iterations
 /// as defined in `sizes`.
@@ -196,8 +224,8 @@ void coalesceLoops(MutableArrayRef<loop::ForOp> loops);
 /// is rewritten into a version resembling the following pseudo-IR:
 ///
 /// ```
-///    loop.for %i = %lb + threadIdx.x + blockIdx.x * blockDim.x to %ub
-///       step %gridDim.x * blockDim.x {
+///    loop.for %i = %lb + %step * (threadIdx.x + blockIdx.x * blockDim.x)
+///       to %ub step %gridDim.x * blockDim.x * %step {
 ///      ...
 ///    }
 /// ```

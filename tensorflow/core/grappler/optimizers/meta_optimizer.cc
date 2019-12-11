@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/core/util/xla_config_registry.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -126,15 +128,54 @@ bool AutoMixedPrecisionEnabled(RewriterConfig::Toggle opt_level) {
   return false;
 }
 
+bool IsXlaGlobalJitOn(
+    const OptimizerOptions::GlobalJitLevel& jit_level_in_session_opts) {
+  xla_config_registry::XlaGlobalJitLevel xla_global_jit_level =
+      xla_config_registry::GetGlobalJitLevel(jit_level_in_session_opts);
+  // Return true only if XLA JIT is ON for both single-gpu and multi-gpu
+  // graphs. This is a conservative approach that turns off the memory optimizer
+  // when we are sure that all graphs will be processed by XLA JIT.
+  bool is_on = (xla_global_jit_level.single_gpu == OptimizerOptions::ON_1 ||
+                xla_global_jit_level.single_gpu == OptimizerOptions::ON_2) &&
+               (xla_global_jit_level.general == OptimizerOptions::ON_1 ||
+                xla_global_jit_level.general == OptimizerOptions::ON_2);
+  return is_on;
+}
+
+// A helper function to decide whether to enable the memory optimizer.
+bool MemoryOptimizerEnabled(
+    RewriterConfig::MemOptType mem_opt_type,
+    OptimizerOptions::GlobalJitLevel jit_level_in_session_opts) {
+  // Disable the default memory optimizer when XLA JIT is ON as it hurts the
+  // XLA JIT performance. The (current) XLA clustering can result in loss of
+  // concurrency between kernel compute and memory copies. As such, it usually
+  // loses the concurrency needed to hide the latencies of the inserted swap-ins
+  // and swap-outs and incurs great performance overhead. Remove this check when
+  // the XLA JIT can better deal with the concurrency.
+  if (mem_opt_type == RewriterConfig::DEFAULT_MEM_OPT &&
+      IsXlaGlobalJitOn(jit_level_in_session_opts)) {
+    return false;
+  }
+
+  return mem_opt_type != RewriterConfig::NO_MEM_OPT;
+}
+
 }  // namespace
 
 #define MK_OPT(NAME, VALUE) \
   if (optimizer == NAME) return std::unique_ptr<GraphOptimizer>(VALUE)
 
+bool MetaOptimizer::IsSingleThreadedExecutor() const {
+  return config_proto_.experimental().executor_type() ==
+         "SINGLE_THREADED_EXECUTOR";
+}
+
 std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
     const string& optimizer) const {
   MK_OPT("pruning", new ModelPruner());
-  MK_OPT("function", new FunctionOptimizer(cfg_.function_optimization()));
+  MK_OPT("function", new FunctionOptimizer(
+                         cfg_.function_optimization(),
+                         /*lower_control_flow=*/!IsSingleThreadedExecutor()));
   MK_OPT("constfold", new ConstantFolding(cpu_device_));
   MK_OPT("shape", new ShapeOptimizer());
   MK_OPT("remap", new Remapper(cfg_.remapping()));
@@ -178,8 +219,9 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(MakeUnique<ImplementationSelector>());
   }
   if (cfg_.function_optimization() != RewriterConfig::OFF) {
-    optimizers->push_back(
-        MakeUnique<FunctionOptimizer>(cfg_.function_optimization()));
+    optimizers->push_back(MakeUnique<FunctionOptimizer>(
+        cfg_.function_optimization(),
+        /*lower_contorl_flow=*/!IsSingleThreadedExecutor()));
   }
   if (cfg_.debug_stripper() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<DebugStripper>());
@@ -191,11 +233,9 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.shape_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ShapeOptimizer>());
   }
-  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>());
-  }
-  if (cfg_.remapping() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
+  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())) {
+    optimizers->push_back(
+        MakeUnique<AutoMixedPrecision>(cfg_.auto_mixed_precision()));
   }
   if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
@@ -203,6 +243,12 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(
         MakeUnique<ArithmeticOptimizer>(cfg_.arithmetic_optimization()));
+  }
+  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>());
+  }
+  if (cfg_.remapping() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
   if (cfg_.loop_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(
@@ -212,11 +258,9 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(
         MakeUnique<DependencyOptimizer>(cfg_.dependency_optimization()));
   }
-  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())) {
-    optimizers->push_back(
-        MakeUnique<AutoMixedPrecision>(cfg_.auto_mixed_precision()));
-  }
-  if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
+  auto global_jit_level =
+      config_proto_.graph_options().optimizer_options().global_jit_level();
+  if (MemoryOptimizerEnabled(cfg_.memory_optimization(), global_jit_level)) {
     if (cfg_.memory_optimizer_target_node_name_scope().empty()) {
       optimizers->push_back(
           // Use the default target node name prefix "gradients/"
@@ -376,7 +420,6 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   optimized_graph->Swap(&optimized_item.graph);
 
   GraphOptimizationResult optimization_result(item.id);
-  GraphOptimizer* fusion_optimizer = nullptr;
   GraphOptimizer* sa_optimizer = nullptr;
 
   // Constants in the graph are normally compressed after model_pruner.
@@ -411,10 +454,6 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
         if (sa_optimizer == nullptr) sa_optimizer = optimizer.get();
         continue;
       }
-      if (optimizer->name() == "xla-fusion") {
-        if (fusion_optimizer == nullptr) fusion_optimizer = optimizer.get();
-        continue;
-      }
 
       TF_RETURN_IF_ERROR(RunOptimizer(optimizer.get(), cluster, &optimized_item,
                                       optimized_graph, &optimization_result));
@@ -445,18 +484,6 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
     for (const auto& verifier : post_optimization_verifiers) {
       TF_RETURN_IF_ERROR(verifier->Verify(*optimized_graph));
     }
-  }
-
-  // Run fusion optimizer if requested after all other optimizers since: 1) it
-  // doesn't need to be called more than once. 2) we don't want subsequent
-  // optimization passes to break the fusion clusters. We could potentially
-  // encapsulate the fusion clusters right away, but that will prevent a lot of
-  // optimizations from taking place since we don't have shape inference for
-  // functions, and we can't optimize across function boundaries.
-  if (fusion_optimizer != nullptr) {
-    TF_RETURN_IF_ERROR(RunOptimizer(fusion_optimizer, cluster, &optimized_item,
-                                    optimized_graph, &optimization_result));
-    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
   }
 
   // ScopedAllocatorOptimizer must run last.
@@ -513,6 +540,7 @@ Status MetaOptimizer::RunOptimizer(
       optimizer->Optimize(cluster, *optimized_item, optimized_graph);
   const uint64 end_us = Env::Default()->NowMicros();
   const float duration_ms = (end_us - start_us) / 1000.0f;
+  metrics::UpdateGrapplerPassTime(optimizer->name(), end_us - start_us);
 
   string message;
   if (!status.ok()) {

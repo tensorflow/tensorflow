@@ -166,21 +166,35 @@ size_t ScopedAllocatorMgr::PopulateFields(
     const DataType dtype, std::vector<ScopedAllocator::Field>* fields) {
   const int32 num_fields = static_cast<int32>(shapes.size());
   fields->resize(num_fields);
+  // At the end of iteration `i`, `offset` points to the offset from the start
+  // of the backing buffer until the end of `field[i].bytes_allocated`.  This
+  // is aligned to `kAllocatorAlignment`.
   size_t offset = 0;
   for (int32 i = 0; i < num_fields; ++i) {
+    size_t bytes_requested = shapes[i].num_elements() * DataTypeSize(dtype);
+    auto* field = &((*fields)[i]);
+    field->scope_id = scope_id + 1 + i;
+    field->bytes_requested = bytes_requested;
+    field->offset = offset;
+    offset += bytes_requested;
+
+    // Compute actual #bytes allocated, which may include padding due to
+    // alignment.
+    size_t bytes_allocated = bytes_requested;
     size_t overshoot = offset % Allocator::kAllocatorAlignment;
     if (overshoot > 0) {
-      offset += (Allocator::kAllocatorAlignment - overshoot);
+      size_t alignment_bytes = Allocator::kAllocatorAlignment - overshoot;
+      bytes_allocated += alignment_bytes;
+      offset += alignment_bytes;
     }
-    size_t bytes = shapes[i].num_elements() * DataTypeSize(dtype);
-    (*fields)[i].scope_id = scope_id + 1 + i;
-    (*fields)[i].bytes = bytes;
-    (*fields)[i].offset = offset;
-    VLOG(1) << "field=" << i << " scope_id=" << (*fields)[i].scope_id
-            << " bytes=" << (*fields)[i].bytes
-            << " offset=" << (*fields)[i].offset;
-    offset += bytes;
+    field->bytes_allocated = bytes_allocated;
+
+    VLOG(1) << "field=" << i << " scope_id=" << field->scope_id
+            << " bytes_requested=" << field->bytes_requested
+            << " offset=" << field->offset
+            << " bytes_allocated=" << field->bytes_allocated;
   }
+
   return offset;
 }
 

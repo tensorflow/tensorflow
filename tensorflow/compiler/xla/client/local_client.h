@@ -37,6 +37,11 @@ namespace xla {
 
 class LocalExecutable {
  public:
+  // Low-level constructor; LocalClient::Compile() is the usual way to create
+  // executables.
+  LocalExecutable(std::unique_ptr<Executable> executable, Backend* backend,
+                  ExecutableBuildOptions build_options);
+
   // Run the compiled computation with the given arguments and options and
   // return the result.
   StatusOr<ScopedShapedBuffer> Run(
@@ -56,13 +61,6 @@ class LocalExecutable {
   Executable* executable() const { return executable_.get(); }
 
  private:
-  // Only a local client can construct these objects.
-  friend class LocalClient;
-
-  // Constructor invoked by LocalClient.
-  LocalExecutable(std::unique_ptr<Executable> executable, Backend* backend,
-                  ExecutableBuildOptions build_options);
-
   // Validates that the given arguments and options satisfy various constraints
   // of the computation.
   //

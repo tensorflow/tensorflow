@@ -22,6 +22,8 @@
 #include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
+class FuncOp;
+
 namespace linalg {
 
 class LinalgOp;
@@ -66,39 +68,43 @@ public:
   };
   using LinalgDependences = llvm::SmallVector<LinalgDependenceGraphElem, 8>;
   using DependenceGraph = DenseMap<Operation *, LinalgDependences>;
-  using dependence_iterator = LinalgDependences::iterator;
+  using dependence_iterator = LinalgDependences::const_iterator;
   using dependence_range = llvm::iterator_range<dependence_iterator>;
 
   enum DependenceType { RAR = 0, RAW, WAR, WAW, NumTypes };
 
+  // Builds a linalg dependence graph for the ops of type LinalgOp under `f`.
+  static LinalgDependenceGraph buildDependenceGraph(Aliases &aliases, FuncOp f);
   LinalgDependenceGraph(Aliases &aliases, ArrayRef<Operation *> ops);
 
   /// Returns the X such that op -> X is a dependence of type dt.
-  dependence_range getDependencesFrom(Operation *src, DependenceType dt);
-  dependence_range getDependencesFrom(LinalgOp src, DependenceType dt);
+  dependence_range getDependencesFrom(Operation *src, DependenceType dt) const;
+  dependence_range getDependencesFrom(LinalgOp src, DependenceType dt) const;
 
   /// Returns the X such that X -> op is a dependence of type dt.
-  dependence_range getDependencesInto(Operation *dst, DependenceType dt);
-  dependence_range getDependencesInto(LinalgOp dst, DependenceType dt);
+  dependence_range getDependencesInto(Operation *dst, DependenceType dt) const;
+  dependence_range getDependencesInto(LinalgOp dst, DependenceType dt) const;
 
   /// Returns the operations that are interleaved between `srcLinalgOp` and
   /// `dstLinalgOp` and that are involved in any RAW, WAR or WAW dependence
   /// relation with `srcLinalgOp`, on any view.
   /// Any such operation prevents reordering.
-  SmallVector<Operation *, 8> findCoveringDependences(LinalgOp srcLinalgOp,
-                                                      LinalgOp dstLinalgOp);
+  SmallVector<Operation *, 8>
+  findCoveringDependences(LinalgOp srcLinalgOp, LinalgOp dstLinalgOp) const;
 
   /// Returns the operations that are interleaved between `srcLinalgOp` and
   /// `dstLinalgOp` and that are involved in a RAR or RAW with `srcLinalgOp`.
   /// Dependences are restricted to views aliasing `view`.
-  SmallVector<Operation *, 8>
-  findCoveringReads(LinalgOp srcLinalgOp, LinalgOp dstLinalgOp, Value *view);
+  SmallVector<Operation *, 8> findCoveringReads(LinalgOp srcLinalgOp,
+                                                LinalgOp dstLinalgOp,
+                                                Value *view) const;
 
   /// Returns the operations that are interleaved between `srcLinalgOp` and
   /// `dstLinalgOp` and that are involved in a WAR or WAW with `srcLinalgOp`.
   /// Dependences are restricted to views aliasing `view`.
-  SmallVector<Operation *, 8>
-  findCoveringWrites(LinalgOp srcLinalgOp, LinalgOp dstLinalgOp, Value *view);
+  SmallVector<Operation *, 8> findCoveringWrites(LinalgOp srcLinalgOp,
+                                                 LinalgOp dstLinalgOp,
+                                                 Value *view) const;
 
 private:
   // Keep dependences in both directions, this is not just a performance gain
@@ -125,7 +131,7 @@ private:
   SmallVector<Operation *, 8>
   findOperationsWithCoveringDependences(LinalgOp srcLinalgOp,
                                         LinalgOp dstLinalgOp, Value *view,
-                                        ArrayRef<DependenceType> types);
+                                        ArrayRef<DependenceType> types) const;
 
   Aliases &aliases;
   SmallVector<Operation *, 8> linalgOps;

@@ -88,7 +88,7 @@ class SequenceFeatureColumnIntegrationTest(test.TestCase):
     ds = ds.batch(20)
 
     # Test on a single batch
-    features = ds.make_one_shot_iterator().get_next()
+    features = dataset_ops.make_one_shot_iterator(ds).get_next()
 
     # Tile the context features across the sequence features
     sequence_input_layer = sfc.SequenceFeatures(seq_cols)

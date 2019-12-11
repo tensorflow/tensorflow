@@ -51,17 +51,17 @@ void PReLU::SetLinkIndex(int index) {
   alpha_.SetName(absl::StrCat("prelu_alpha_", index));
 }
 
-std::string PReLU::GetCoreCode(const std::string& src,
-                               const std::string& z_coord,
-                               const std::string& address) const {
+std::string PReLU::GetCoreCode(const LinkingContext& context) const {
   if (!clip_.Active()) {
-    return absl::StrCat(src, " = max((FLT4)(0.0f), ", src,
-                        ") + min((FLT4)(0.0f), ", src, ") * ",
-                        alpha_.ReadLinearFLT4(z_coord), ";\n");
+    return absl::StrCat(context.var_name, " = max((FLT4)(0.0f), ",
+                        context.var_name, ") + min((FLT4)(0.0f), ",
+                        context.var_name, ") * ",
+                        alpha_.ReadLinearFLT4(context.z_coord), ";\n");
   } else {
-    return absl::StrCat(src, " = clamp(", src, ", (FLT4)(0.0f), (FLT4)(",
-                        clip_.GetName(), ")) + min((FLT4)(0.0f), ", src, ") * ",
-                        alpha_.ReadLinearFLT4(z_coord), ";\n");
+    return absl::StrCat(context.var_name, " = clamp(", context.var_name,
+                        ", (FLT4)(0.0f), (FLT4)(", clip_.GetName(),
+                        ")) + min((FLT4)(0.0f), ", context.var_name, ") * ",
+                        alpha_.ReadLinearFLT4(context.z_coord), ";\n");
   }
 }
 

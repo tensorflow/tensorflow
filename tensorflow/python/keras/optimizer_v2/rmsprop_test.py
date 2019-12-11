@@ -21,6 +21,7 @@ from __future__ import print_function
 import copy
 import itertools
 import math
+import platform
 
 from absl.testing import parameterized
 import numpy as np
@@ -38,7 +39,11 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
-_DATA_TYPES = [dtypes.half, dtypes.float32]
+_DATA_TYPES = [dtypes.half, dtypes.float32, dtypes.float64]
+# TODO(b/143684500): Eigen to support complex sqrt
+if (not test_util.IsBuiltWithNvcc() and platform.system() != "Windows" and
+    not test.is_built_with_rocm()):
+  _DATA_TYPES += [dtypes.complex64, dtypes.complex128]
 
 _TEST_PARAM_VALUES = [
     # learning_rate, rho, momentum, epsilon, centered
@@ -137,9 +142,9 @@ class RMSpropOptimizerTest(test.TestCase):
           mom1 = None
 
         rms0 = opt.get_slot(var0, "rms")
-        self.assertTrue(rms0 is not None)
+        self.assertIsNotNone(rms0)
         rms1 = opt.get_slot(var1, "rms")
-        self.assertTrue(rms1 is not None)
+        self.assertIsNotNone(rms1)
 
         mg0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
         mg1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
@@ -204,9 +209,9 @@ class RMSpropOptimizerTest(test.TestCase):
     self.evaluate(variables.global_variables_initializer())
 
     rms0 = opt.get_slot(var0, "rms")
-    self.assertTrue(rms0 is not None)
+    self.assertIsNotNone(rms0)
     rms1 = opt.get_slot(var1, "rms")
-    self.assertTrue(rms1 is not None)
+    self.assertIsNotNone(rms1)
     if momentum > 0.:
       mom0 = opt.get_slot(var0, "momentum")
       mom1 = opt.get_slot(var1, "momentum")
@@ -276,9 +281,9 @@ class RMSpropOptimizerTest(test.TestCase):
     self.evaluate(variables.global_variables_initializer())
 
     rms0 = opt.get_slot(var0, "rms")
-    self.assertTrue(rms0 is not None)
+    self.assertIsNotNone(rms0)
     rms1 = opt.get_slot(var1, "rms")
-    self.assertTrue(rms1 is not None)
+    self.assertIsNotNone(rms1)
     if momentum > 0.:
       mom0 = opt.get_slot(var0, "momentum")
       mom1 = opt.get_slot(var1, "momentum")
@@ -320,60 +325,54 @@ class RMSpropOptimizerTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariable(self):
-    for dtype in [dtypes.float32, dtypes.float64]:
-      with self.cached_session():
-        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
-        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+    for dtype in _DATA_TYPES:
+      var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+      x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
-        def loss():
-          pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
-          return pred * pred
+      def loss():
+        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
+        return pred * pred
 
-        sgd_op = rmsprop.RMSprop(
-            learning_rate=1.0,
-            rho=0.0,
-            momentum=0.0,
-            epsilon=0.0,
-            centered=False).minimize(
-                loss, var_list=[var0])
-        self.evaluate(variables.global_variables_initializer())
-        # Fetch params to validate initial values
-        self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
-        # Run 1 step of sgd
-        self.evaluate(sgd_op)
-        # Validate updated params
-        self.assertAllCloseAccordingToType([[0., 1.]],
-                                           self.evaluate(var0),
-                                           atol=0.01)
+      sgd_op = rmsprop.RMSprop(
+          learning_rate=1.0, rho=0.0, momentum=0.0, epsilon=0.0,
+          centered=False).minimize(
+              loss, var_list=[var0])
+      self.evaluate(variables.global_variables_initializer())
+      # Fetch params to validate initial values
+      self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
+      # Run 1 step of sgd
+      self.evaluate(sgd_op)
+      # Validate updated params
+      self.assertAllCloseAccordingToType([[0., 1.]],
+                                         self.evaluate(var0),
+                                         atol=0.01)
 
   @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariableCentered(self):
-    for dtype in [dtypes.float32, dtypes.float64]:
-      with self.cached_session():
-        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
-        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+    for dtype in _DATA_TYPES:
+      if test_util.is_xla_enabled() and dtype.is_complex:
+        self.skipTest("b/143578550")
+      var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+      x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
-        def loss():
-          pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
-          return pred * pred
+      def loss():
+        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
+        return pred * pred
 
-        # loss = lambda: pred * pred  # pylint: disable=cell-var-from-loop
-        sgd_op = rmsprop.RMSprop(
-            learning_rate=1.0,
-            rho=0.0,
-            momentum=0.0,
-            epsilon=1.0,
-            centered=True).minimize(
-                loss, var_list=[var0])
-        self.evaluate(variables.global_variables_initializer())
-        # Fetch params to validate initial values
-        self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
-        # Run 1 step of sgd
-        self.evaluate(sgd_op)
-        # Validate updated params
-        self.assertAllCloseAccordingToType([[-111, -138]],
-                                           self.evaluate(var0),
-                                           atol=0.01)
+      # loss = lambda: pred * pred  # pylint: disable=cell-var-from-loop
+      sgd_op = rmsprop.RMSprop(
+          learning_rate=1.0, rho=0.0, momentum=0.0, epsilon=1.0,
+          centered=True).minimize(
+              loss, var_list=[var0])
+      self.evaluate(variables.global_variables_initializer())
+      # Fetch params to validate initial values
+      self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
+      # Run 1 step of sgd
+      self.evaluate(sgd_op)
+      # Validate updated params
+      self.assertAllCloseAccordingToType([[-111, -138]],
+                                         self.evaluate(var0),
+                                         atol=0.01)
 
   @test_util.run_deprecated_v1
   def testSparse(self):
@@ -413,9 +412,9 @@ class RMSpropOptimizerTest(test.TestCase):
           mg0 = None
           mg1 = None
         rms0 = opt.get_slot(var0, "rms")
-        self.assertTrue(rms0 is not None)
+        self.assertIsNotNone(rms0)
         rms1 = opt.get_slot(var1, "rms")
-        self.assertTrue(rms1 is not None)
+        self.assertIsNotNone(rms1)
         if momentum > 0.:
           mom0 = opt.get_slot(var0, "momentum")
           mom1 = opt.get_slot(var1, "momentum")
@@ -459,7 +458,7 @@ class RMSpropOptimizerTest(test.TestCase):
 
   def testCallableParams(self):
     with context.eager_mode():
-      for dtype in [dtypes.half, dtypes.float32]:
+      for dtype in _DATA_TYPES:
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)

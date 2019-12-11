@@ -1,15 +1,5 @@
 // RUN: tf-opt %s -verify-diagnostics -split-input-file
 
-// -----
-
-func @enforce_static_shapes(%arg0: memref<?xf32>, %arg1: memref<?xf32>) -> () {
-  // expected-error@+1{{op operand #0 must be statically shaped memref of floating-point or integer values}}
-  "xla_lhlo.tanh"(%arg0, %arg1) : (memref<?xf32>, memref<?xf32>) -> ()
-  return
-}
-
-// -----
-
 func @enforce_same_shape(%arg0: memref<1xf32>, %arg1: memref<2xf32>) -> () {
   // expected-error@+1{{'xla_lhlo.tanh' op requires all operands to have the same type}}
   "xla_lhlo.tanh"(%arg0, %arg1) : (memref<1xf32>, memref<2xf32>) -> ()
@@ -130,15 +120,13 @@ func @and_memref(%lhs: memref<10xf32>, %rhs: memref<10xf32>, %out: memref<10xf32
 
 // -----
 
-func @reduce_computation(%sum: memref<1xf32>, %element: memref<1xf32>) -> () {
-  "xla_lhlo.add"(%element, %sum, %sum) : (memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
-  return
-}
-
 // CHECK-LABEL: func @reduce_memref
-func @reduce_memref(%input: memref<10xf32>, %out: memref<1xf32>) -> () {
-  "xla_lhlo.reduce"(%input, %out) {computation = @reduce_computation,
-                                   dimensions = dense<[0]> : tensor<1xi64>} : (memref<10xf32>, memref<1xf32>) -> ()
+func @reduce_memref(%input: memref<10xf32>, %init: memref<f32>, %out: memref<1xf32>) -> () {
+  "xla_lhlo.reduce"(%input, %init, %out) ( {
+  ^bb0(%arg1: memref<f32>, %arg2: memref<f32>, %result: memref<f32>):
+    "xla_lhlo.add"(%arg1, %arg2, %result) : (memref<f32>, memref<f32>, memref<f32>) -> ()
+    "xla_lhlo.terminator"() : () -> ()
+  } ) {dimensions = dense<[0]> : tensor<1xi64>} : (memref<10xf32>, memref<f32>, memref<1xf32>) -> ()
   return
 }
 

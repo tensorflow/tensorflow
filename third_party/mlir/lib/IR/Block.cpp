@@ -36,17 +36,12 @@ unsigned BlockArgument::getArgNumber() {
 //===----------------------------------------------------------------------===//
 
 Block::~Block() {
-  assert(!verifyInstOrder() && "Expected valid operation ordering.");
+  assert(!verifyOpOrder() && "Expected valid operation ordering.");
   clear();
-
-  for (auto *arg : arguments)
-    if (!arg->use_empty())
-      arg->user_begin()->dump();
-
   llvm::DeleteContainerPointers(arguments);
 }
 
-Region *Block::getParent() { return parentValidInstOrderPair.getPointer(); }
+Region *Block::getParent() const { return parentValidOpOrderPair.getPointer(); }
 
 /// Returns the closest surrounding operation that contains this block or
 /// nullptr if this block is unlinked.
@@ -74,16 +69,16 @@ void Block::erase() {
 /// Returns 'op' if 'op' lies in this block, or otherwise finds the
 /// ancestor operation of 'op' that lies in this block. Returns nullptr if
 /// the latter fails.
-Operation *Block::findAncestorInstInBlock(Operation &op) {
+Operation *Block::findAncestorOpInBlock(Operation &op) {
   // Traverse up the operation hierarchy starting from the owner of operand to
-  // find the ancestor operation that resides in the block of 'forInst'.
-  auto *currInst = &op;
-  while (currInst->getBlock() != this) {
-    currInst = currInst->getParentOp();
-    if (!currInst)
+  // find the ancestor operation that resides in the block of 'forOp'.
+  auto *currOp = &op;
+  while (currOp->getBlock() != this) {
+    currOp = currOp->getParentOp();
+    if (!currOp)
       return nullptr;
   }
-  return currInst;
+  return currOp;
 }
 
 /// This drops all operand uses from operations within this block, which is
@@ -104,20 +99,20 @@ void Block::dropAllDefinedValueUses() {
 
 /// Returns true if the ordering of the child operations is valid, false
 /// otherwise.
-bool Block::isInstOrderValid() { return parentValidInstOrderPair.getInt(); }
+bool Block::isOpOrderValid() { return parentValidOpOrderPair.getInt(); }
 
 /// Invalidates the current ordering of operations.
-void Block::invalidateInstOrder() {
+void Block::invalidateOpOrder() {
   // Validate the current ordering.
-  assert(!verifyInstOrder());
-  parentValidInstOrderPair.setInt(false);
+  assert(!verifyOpOrder());
+  parentValidOpOrderPair.setInt(false);
 }
 
 /// Verifies the current ordering of child operations. Returns false if the
 /// order is valid, true otherwise.
-bool Block::verifyInstOrder() {
+bool Block::verifyOpOrder() {
   // The order is already known to be invalid.
-  if (!isInstOrderValid())
+  if (!isOpOrderValid())
     return false;
   // The order is valid if there are less than 2 operations.
   if (operations.empty() || std::next(operations.begin()) == operations.end())
@@ -127,7 +122,8 @@ bool Block::verifyInstOrder() {
   for (auto &i : *this) {
     // The previous operation must have a smaller order index than the next as
     // it appears earlier in the list.
-    if (prev && prev->orderIndex >= i.orderIndex)
+    if (prev && prev->orderIndex != Operation::kInvalidOrderIdx &&
+        prev->orderIndex >= i.orderIndex)
       return true;
     prev = &i;
   }
@@ -135,14 +131,12 @@ bool Block::verifyInstOrder() {
 }
 
 /// Recomputes the ordering of child operations within the block.
-void Block::recomputeInstOrder() {
-  parentValidInstOrderPair.setInt(true);
+void Block::recomputeOpOrder() {
+  parentValidOpOrderPair.setInt(true);
 
-  // TODO(riverriddle) Have non-congruent indices to reduce the number of times
-  // an insert invalidates the list.
   unsigned orderIndex = 0;
   for (auto &op : *this)
-    op.orderIndex = orderIndex++;
+    op.orderIndex = (orderIndex += Operation::kOrderStride);
 }
 
 //===----------------------------------------------------------------------===//
@@ -262,4 +256,14 @@ Block *PredecessorIterator::unwrap(BlockOperand &value) {
 /// Get the successor number in the predecessor terminator.
 unsigned PredecessorIterator::getSuccessorIndex() const {
   return I->getOperandNumber();
+}
+
+//===----------------------------------------------------------------------===//
+// Successors
+//===----------------------------------------------------------------------===//
+
+SuccessorRange::SuccessorRange(Block *block) : SuccessorRange(nullptr, 0) {
+  if (Operation *term = block->getTerminator())
+    if ((count = term->getNumSuccessors()))
+      base = term->getBlockOperands().data();
 }

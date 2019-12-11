@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -335,7 +336,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
         self.assertShapeEqual(np_ans, s)
 
   @test_util.run_deprecated_v1
-  def testGradients(self):
+  def testGradientsTFGradients(self):
     num_cols = 2
     indices_flat = np.array([0, 4, 0, -1, 3, -1, 4, 7, 7, 3])
     num_segments = max(indices_flat) + 3
@@ -354,8 +355,33 @@ class UnsortedSegmentTest(SegmentReductionHelper):
                   shape,
                   s, [num_segments, num_cols],
                   x_init_value=np_x,
-                  delta=1)
-            self.assertAllClose(jacob_t, jacob_n)
+                  delta=1.)
+              self.assertAllCloseAccordingToType(jacob_t, jacob_n,
+                                                 half_atol=1e-2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGradientsGradientTape(self):
+    num_cols = 2
+    indices_flat = np.array([0, 4, 0, -1, 3, -1, 4, 7, 7, 3])
+    num_segments = max(indices_flat) + 3
+    for dtype in self.differentiable_dtypes:
+      ops_list = self.complex_ops_list if dtype.is_complex else self.ops_list
+      for indices in indices_flat, indices_flat.reshape(5, 2):
+        shape = indices.shape + (num_cols,)
+        # test CPU and GPU as tf.gather behaves differently on each device
+        for use_gpu in [test_util.use_gpu, test_util.force_cpu]:
+          with use_gpu():
+            for _, _, tf_op, _ in ops_list:
+              _, np_x = self._input(shape, dtype=dtype)
+              # pylint: disable=cell-var-from-loop
+              def f(x):
+                return tf_op(x, indices, num_segments)
+              gradient_tape_jacob_t, jacob_n = (
+                  gradient_checker_v2.compute_gradient(
+                      f, [np_x], delta=1.))
+              # pylint: enable=cell-var-from-loop
+              self.assertAllCloseAccordingToType(jacob_n, gradient_tape_jacob_t,
+                                                 half_atol=1e-2)
 
   @test_util.run_deprecated_v1
   def testProdGrad(self):

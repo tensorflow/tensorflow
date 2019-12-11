@@ -819,9 +819,9 @@ class MklFusedBatchNormOp : public OpKernel {
     AllocateOutputSetMklShape(context, kSavedMeanIndex, saved_mean_tensor,
                               tf_shape_scale, mkl_shape_saved_mean);
     CHECK_NOTNULL(*saved_mean_tensor);
-    // set NAN mean value in case of empty input tensor
+    // set 0 mean value in case of empty input tensor
     auto saved_mean_data = (*saved_mean_tensor)->flat<U>().data();
-    std::fill_n(saved_mean_data, num_elements, static_cast<U>(NAN));
+    std::fill_n(saved_mean_data, num_elements, static_cast<U>(0));
 
     MklDnnShape mkl_shape_saved_variance;
     mkl_shape_saved_variance.SetMklTensor(false);
@@ -829,14 +829,14 @@ class MklFusedBatchNormOp : public OpKernel {
                               saved_variance_tensor, tf_shape_scale,
                               mkl_shape_saved_variance);
     CHECK_NOTNULL(*saved_variance_tensor);
-    // set NAN variance value in case of empty input tensor
+    // set 0 variance value in case of empty input tensor
     auto saved_variance_data = (*saved_variance_tensor)->flat<U>().data();
-    std::fill_n(saved_variance_data, num_elements, static_cast<U>(NAN));
+    std::fill_n(saved_variance_data, num_elements, static_cast<U>(0));
 
     // Changes to support reserved_space_3 parameter in FusedBatchNormV3.
     // TODO: This parameter functionality is not implemented on CPU.
     //       It is used to hold intermediate results. So the allocated
-    //       memory is filled with NANs.
+    //       memory is filled with 0.
     if (reserved_space) {
       DCHECK(reserved_space_tensor != nullptr);
 
@@ -848,7 +848,7 @@ class MklFusedBatchNormOp : public OpKernel {
       DCHECK((*reserved_space_tensor) != nullptr);
       auto saved_reserved_space_data =
           (*reserved_space_tensor)->flat<U>().data();
-      std::fill_n(saved_reserved_space_data, num_elements, static_cast<U>(NAN));
+      std::fill_n(saved_reserved_space_data, num_elements, static_cast<U>(0));
     }
   }
 };
@@ -1156,8 +1156,12 @@ class MklFusedBatchNormGradOp : public OpKernel {
     mkl_shape_p.SetMklTensor(false);
     AllocateOutputSetMklShape(context, kP1Index, &p1_tensor, TensorShape({}),
                               mkl_shape_p);
+    std::fill_n(p1_tensor->flat<U>().data(), p1_tensor->shape().num_elements(),
+                static_cast<U>(0));
     AllocateOutputSetMklShape(context, kP2Index, &p2_tensor, TensorShape({}),
                               mkl_shape_p);
+    std::fill_n(p2_tensor->flat<U>().data(), p2_tensor->shape().num_elements(),
+                static_cast<U>(0));
   }
 
   memory::dims GetMeanVarianceDims() { return memory::dims({1, depth_}); }

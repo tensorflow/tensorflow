@@ -650,14 +650,18 @@ bool BatchnormSpatialPersistentEnabled() {
 
 // A helper function to decide whether to enable deterministic functionality.
 bool RequireDeterminism() {
-  static bool is_enabled = [] {
-    bool is_enabled = false;
+  static bool require_determinism = [] {
+    bool deterministic_ops = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
+                                               /*default_val=*/false,
+                                               &deterministic_ops));
+    bool cudnn_deterministic = false;
     TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
                                                /*default_val=*/false,
-                                               &is_enabled));
-    return is_enabled;
+                                               &cudnn_deterministic));
+    return deterministic_ops || cudnn_deterministic;
   }();
-  return is_enabled;
+  return require_determinism;
 }
 
 std::tuple<int, int> GetCcMajorMinor(Stream* stream) {

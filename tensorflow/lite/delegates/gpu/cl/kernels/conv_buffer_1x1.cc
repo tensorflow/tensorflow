@@ -85,15 +85,15 @@ std::string GetShiftFromElementSize(int element_size) {
 }
 
 std::string GenerateConvBuffer1x1(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    int x_elements, int y_elements, int element_size,
+    const OperationDef& op_def, int x_elements, int y_elements,
+    int element_size,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  std::string c = GetCommonDefines(precision);
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  std::string c = GetCommonDefines(op_def.precision);
+  TensorCodeGenerator dst_tensor("dst_data",
+                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
+                                 op_def.dst_tensors[0]);
 
-  switch (precision) {
+  switch (op_def.precision) {
     case CalculationsPrecision::F32:
       c += "#define FLT8 float8\n";
       c += "#define FLT16 float16\n";
@@ -118,8 +118,8 @@ std::string GenerateConvBuffer1x1(
        std::to_string(x_elements * element_size) + ";\n";
   c += "  int Y = get_global_id(1) * " + std::to_string(y_elements) + ";\n";
   c += "  int Z = get_global_id(2);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) return;\n";
-  c += "  __global FLT16* temp = filters_buffer + Z * src_size.w;\n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) return;\n";
+  c += "  __global FLT16* temp = filters_buffer + Z * src_size.z;\n";
   c += "  ACCUM_FLT4 bias_val = TO_ACCUM_TYPE(biases[Z]);\n";
   for (int i = 0; i < x_elements * element_size * y_elements; ++i) {
     c += "  ACCUM_FLT4 r" + std::to_string(i) + " = bias_val;\n";
@@ -143,7 +143,7 @@ std::string GenerateConvBuffer1x1(
            x_s + "))" + shift + ";\n";
     }
   }
-  c += "  for (int s = 0; s < src_size.w; ++s) {\n";
+  c += "  for (int s = 0; s < src_size.z; ++s) {\n";
   for (int y = 0; y < y_elements; ++y) {
     std::string y_s = std::to_string(y);
     for (int x = 0; x < x_elements; ++x) {
@@ -154,13 +154,14 @@ std::string GenerateConvBuffer1x1(
     }
   }
   c += "    FLT16 f0 = temp[0];\n";
-  c += GetComputationPart(x_elements, y_elements, element_size, precision);
+  c += GetComputationPart(x_elements, y_elements, element_size,
+                          op_def.precision);
   for (int i = 0; i < x_elements * y_elements; ++i) {
     std::string i_s = std::to_string(i);
-    c += "    src_addr_" + i_s + " += src_size.z;\n";
+    c += "    src_addr_" + i_s + " += src_size.w;\n";
   }
   c += "    temp += 1;\n";
-  c += "  }\n";  // src_size.w = SRC_DEPTH
+  c += "  }\n";  // src_size.z = SRC_DEPTH
 
   for (int y = 0; y < y_elements; ++y) {
     std::string y_s = std::to_string(y);
@@ -170,11 +171,10 @@ std::string GenerateConvBuffer1x1(
       c += "  if (X + " + x_s + " < dst_size.x && Y + " + y_s +
            " < dst_size.y) {\n";
       c += "    FLT4 res = TO_FLT4(r" + i_s + ");\n";
-      c += "  " +
-           dst_tensor.GetAddress("address", "X + " + x_s, "Y + " + y_s, "Z") +
+      const LinkingContext context{"res", "X + " + x_s, "Y + " + y_s, "Z"};
+      c += PostProcess(linked_operations, context);
+      c += "  " + dst_tensor.Write3D("res", "X + " + x_s, "Y + " + y_s, "Z") +
            "\n";
-      c += PostProcess(linked_operations, "res", "Z", "address");
-      c += "  " + dst_tensor.Write3D("res", "address") + "\n";
       c += "  }\n";
     }
   }
@@ -193,7 +193,6 @@ int GetGridWidth(int width) {
 }  // namespace
 
 ConvBuffer1x1::ConvBuffer1x1(const OperationDef& definition,
-                             const Convolution2DAttributes& attr,
                              int flt4_x_count, int flt4_y_count,
                              int flt8_x_count, int flt8_y_count)
     : GPUOperation(definition),
@@ -233,16 +232,12 @@ ConvBuffer1x1& ConvBuffer1x1::operator=(ConvBuffer1x1&& operation) {
 
 Status ConvBuffer1x1::Compile(const CreationContext& creation_context) {
   std::string code_flt4 = GenerateConvBuffer1x1(
-      definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, flt4_x_count_, flt4_y_count_, 1,
-      linked_operations_);
+      definition_, flt4_x_count_, flt4_y_count_, 1, linked_operations_);
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code_flt4, "main_function", *creation_context.context,
       *creation_context.device, &kernel_flt4_));
   std::string code_flt8 = GenerateConvBuffer1x1(
-      definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, flt8_x_count_, flt8_y_count_, 2,
-      linked_operations_);
+      definition_, flt8_x_count_, flt8_y_count_, 2, linked_operations_);
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code_flt8, "main_function", *creation_context.context,
       *creation_context.device, &kernel_flt8_));
@@ -264,31 +259,25 @@ Status ConvBuffer1x1::BindArguments() {
   RETURN_IF_ERROR(kernel->SetMemoryAuto(weights_.GetMemoryPtr()));
   RETURN_IF_ERROR(kernel->SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(kernel, linked_operations_));
-  RETURN_IF_ERROR(kernel->SetMemoryAuto(dst_[0]->GetMemoryPtr()));
-  int4 src_size = int4(src_[0]->Width(), src_[0]->Height(),
-                       GetGridWidth(src_[0]->Width()) * src_[0]->Height(),
-                       src_[0]->Depth());
-  int4 dst_size = int4(dst_[0]->Width(), dst_[0]->Height(),
-                       dst_[0]->Width() * dst_[0]->Height(), dst_[0]->Depth());
+  RETURN_IF_ERROR(kernel->SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
+  int4 src_size = int4(
+      src_[0]->Width() * src_[0]->Batch(), src_[0]->Height(), src_[0]->Depth(),
+      GetGridWidth(src_[0]->Width()) * src_[0]->Height() * src_[0]->Batch());
   RETURN_IF_ERROR(kernel->SetBytesAuto(src_size));
-  RETURN_IF_ERROR(kernel->SetBytesAuto(dst_size));
+  RETURN_IF_ERROR(kernel->SetBytesAuto(dst_[0]->GetWBatchedHDB()));
   return OkStatus();
 }
 
 int3 ConvBuffer1x1::GetGridSize() const {
-  if (src_[0]->Width() % 2 == 0) {  // using kernel_flt8_
-    const int grid_x =
-        IntegralDivideRoundUp(GetGridWidth(dst_[0]->Width()), flt8_x_count_);
-    const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), flt8_y_count_);
-    const int grid_z = dst_[0]->Depth();
-    return int3(grid_x, grid_y, grid_z);
-  } else {  // using kernel_flt4_
-    const int grid_x =
-        IntegralDivideRoundUp(GetGridWidth(dst_[0]->Width()), flt4_x_count_);
-    const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), flt4_y_count_);
-    const int grid_z = dst_[0]->Depth();
-    return int3(grid_x, grid_y, grid_z);
-  }
+  const int fltx_count =
+      dst_[0]->Width() % 2 == 0 ? flt8_x_count_ : flt4_x_count_;
+  const int flty_count =
+      dst_[0]->Width() % 2 == 0 ? flt8_y_count_ : flt4_y_count_;
+  const int grid_x = IntegralDivideRoundUp(
+      GetGridWidth(dst_[0]->Width()) * dst_[0]->Batch(), fltx_count);
+  const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), flty_count);
+  const int grid_z = dst_[0]->Depth();
+  return int3(grid_x, grid_y, grid_z);
 }
 
 Status ConvBuffer1x1::Tune(const TuningParameters& params) {
@@ -332,18 +321,29 @@ Status CreateConvBuffer1x1(const CreationContext& creation_context,
       flt8_x_count = 2;
     }
   }
-  *result = ConvBuffer1x1(definition, attr, flt4_x_count, flt4_y_count,
-                          flt8_x_count, flt8_y_count);
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type = LinearStorageType::BUFFER;
-  create_info.data_type = definition.GetDataType();
-  create_info.aligned_size = attr.weights.shape.o;
-  RETURN_IF_ERROR(CreateLinearStorage(
-      create_info, attr.bias, creation_context.context, &result->biases_));
+  *result = ConvBuffer1x1(definition, flt4_x_count, flt4_y_count, flt8_x_count,
+                          flt8_y_count);
+  return result->UploadData(attr.weights, attr.bias, creation_context.context);
+}
 
-  return OkStatus();
+Status CreateConvBuffer1x1(const CreationContext& creation_context,
+                           const OperationDef& definition,
+                           const FullyConnectedAttributes& attr,
+                           ConvBuffer1x1* result) {
+  int flt4_x_count = 1;
+  int flt4_y_count = 1;
+  int flt8_x_count = 1;
+  int flt8_y_count = 1;
+  if (creation_context.device->vendor() == Vendor::MALI) {
+    if (definition.precision == CalculationsPrecision::F16 &&
+        creation_context.device->GetInfo().compute_units_count <= 4) {
+      flt4_x_count = 2;
+      flt8_x_count = 2;
+    }
+  }
+  *result = ConvBuffer1x1(definition, flt4_x_count, flt4_y_count, flt8_x_count,
+                          flt8_y_count);
+  return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
 }  // namespace cl

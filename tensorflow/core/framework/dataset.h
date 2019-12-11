@@ -297,6 +297,7 @@ class IteratorContext {
       allocator_getter = [device](AllocatorAttributes attrs) {
         return device->GetAllocator(attrs);
       };
+
       thread::ThreadPool* thread_pool =
           ctx->device()->tensorflow_device_thread_pool();
       if (thread_pool) {
@@ -439,13 +440,23 @@ class IteratorContext {
 // Aggregates runtime support needed for dataset and iterator serialization.
 class SerializationContext {
  public:
+  // Enum describing what to do during serialization when external state is
+  // encountered.
+  enum class ExternalStatePolicy : int64 {
+    // Proceed with serialization, but log a warning about what state will be
+    // lost.
+    kWarn = 0,
+    // Proceed with serialization without logging any warning.
+    kIgnore = 1,
+    // Fail the serialization with an error.
+    kFail = 2,
+  };
+
   struct Params {
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
 
-    // Indicates whether serialization should check if the dataset depends on
-    // external state. If the check is enabled and external state is
-    // encountered, then the serialization will fail.
-    bool check_external_state = true;
+    // Indicates what to do if the dataset depends on external state.
+    ExternalStatePolicy external_state_policy = ExternalStatePolicy::kWarn;
 
     // Indicates whether an attempt to serialize a dataset that does not
     // implement serialization should result in an error. If set to `false`, the
@@ -460,13 +471,15 @@ class SerializationContext {
     bool serialize_data_tensors = true;
   };
 
-  explicit SerializationContext(Params params) : params_(std::move(params)) {}
+  explicit SerializationContext(Params params) : params_(params) {}
 
   std::vector<std::pair<string, Tensor>>* input_list() {
     return params_.input_list;
   }
 
-  bool check_external_state() const { return params_.check_external_state; }
+  ExternalStatePolicy external_state_policy() const {
+    return params_.external_state_policy;
+  }
 
   bool fail_if_unimplemented() const { return params_.fail_if_unimplemented; }
 
@@ -540,15 +553,15 @@ class IteratorBase {
     return SaveInternal(writer);
   }
 
-  // Restores the state of this iterator.
-  virtual Status Restore(IteratorContext* ctx, IteratorStateReader* reader) {
-    return RestoreInternal(ctx, reader);
-  }
-
  protected:
   // Returns a node that models this iterator.
   virtual std::shared_ptr<model::Node> CreateNode(
       IteratorContext* ctx, model::Node::Args args) const = 0;
+
+  // Restores the state of this iterator.
+  Status Restore(IteratorContext* ctx, IteratorStateReader* reader) {
+    return RestoreInternal(ctx, reader);
+  }
 
   // This is needed so that sub-classes of IteratorBase can call
   // `SaveInternal` on their input iterators.
@@ -578,6 +591,10 @@ class IteratorBase {
   //
   // This method is used to restore the state of the iterator from a checkpoint.
   //
+  // Implementations may assume that the iterator is in a clean state. That is,
+  // its `Initialize` method has been called, but its `GetNext` method has
+  // never been called.
+  //
   // TODO(jsimsa): Make this method pure virtual once all `IteratorBase`
   // implementations have an override.
   virtual Status RestoreInternal(IteratorContext* ctx,
@@ -592,7 +609,8 @@ class IteratorBase {
   }
 
  private:
-  friend class DatasetBase;          // for access to `AddCleanupFunction`
+  // For access to `AddCleanupFunction` and `Restore`.
+  friend class DatasetBase;
   friend class DatasetBaseIterator;  // for access to `node_`
 
   // Registers a cleanup function to be called upon object destruction.
@@ -692,12 +710,36 @@ class DatasetBase : public core::RefCounted {
       (*iterator)->AddCleanupFunction(
           [model, prefix]() { model->RemoveNode(prefix); });
     }
-    return (*iterator)->Initialize(ctx);
+    Status s = (*iterator)->Initialize(ctx);
+    if (!s.ok()) {
+      // Reset the iterator to avoid returning an uninitialized iterator.
+      iterator->reset();
+    }
+    return s;
   }
 
   Status MakeIterator(IteratorContext&& ctx, const string& output_prefix,
                       std::unique_ptr<IteratorBase>* iterator) const {
     return MakeIterator(&ctx, output_prefix, iterator);
+  }
+
+  // Returns a new iterator restored from the checkpoint data in `reader`.
+  Status MakeIteratorFromCheckpoint(
+      IteratorContext* ctx, const string& output_prefix,
+      IteratorStateReader* reader,
+      std::unique_ptr<IteratorBase>* iterator) const {
+    std::unique_ptr<IteratorBase> it;
+    TF_RETURN_IF_ERROR(MakeIterator(ctx, output_prefix, &it));
+    TF_RETURN_IF_ERROR(it->Restore(ctx, reader));
+    *iterator = std::move(it);
+    return Status::OK();
+  }
+
+  Status MakeIteratorFromCheckpoint(
+      IteratorContext&& ctx, const string& output_prefix,
+      IteratorStateReader* reader,
+      std::unique_ptr<IteratorBase>* iterator) const {
+    return MakeIteratorFromCheckpoint(&ctx, output_prefix, reader, iterator);
   }
 
   // Returns a vector of DataType values, representing the respective
@@ -797,9 +839,13 @@ class DatasetBaseIterator : public IteratorBase {
 
   explicit DatasetBaseIterator(const BaseParams& params) : params_(params) {
     params_.dataset->Ref();
+    VLOG(2) << prefix() << " constructor";
   }
 
-  ~DatasetBaseIterator() override { params_.dataset->Unref(); }
+  ~DatasetBaseIterator() override {
+    VLOG(2) << prefix() << " destructor";
+    params_.dataset->Unref();
+  }
 
   const DataTypeVector& output_dtypes() const override {
     return params_.dataset->output_dtypes();
@@ -808,6 +854,8 @@ class DatasetBaseIterator : public IteratorBase {
   const std::vector<PartialTensorShape>& output_shapes() const override {
     return params_.dataset->output_shapes();
   }
+
+  virtual const DatasetBase* dataset() const { return params_.dataset; }
 
   // The sequence of iterators leading up to this iterator.
   const string& prefix() const override { return params_.prefix; }
@@ -820,6 +868,11 @@ class DatasetBaseIterator : public IteratorBase {
 
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) final;
+
+  Status GetNext(IteratorContext&& ctx, std::vector<Tensor>* out_tensors,
+                 bool* end_of_sequence) {
+    return GetNext(&ctx, out_tensors, end_of_sequence);
+  }
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
     TF_RETURN_IF_ERROR(params_.dataset->CheckExternalState());
@@ -889,7 +942,7 @@ class DatasetBaseIterator : public IteratorBase {
   // this iterator has started work.
   void RecordStart(IteratorContext* ctx, bool stop_output = false) {
     if (collect_resource_usage(ctx)) {
-      int64 now_nanos = Env::Default()->NowNanos();
+      int64 now_nanos = EnvTime::NowNanos();
       if (stop_output && node_->output()) {
         node_->output()->record_stop(now_nanos);
       }
@@ -901,7 +954,7 @@ class DatasetBaseIterator : public IteratorBase {
   // this iterator has stopped work.
   void RecordStop(IteratorContext* ctx, bool start_output = false) {
     if (collect_resource_usage(ctx)) {
-      int64 now_nanos = Env::Default()->NowNanos();
+      int64 now_nanos = EnvTime::NowNanos();
       node_->record_stop(now_nanos);
       if (start_output && node_->output()) {
         node_->output()->record_start(now_nanos);
@@ -936,12 +989,7 @@ class DatasetIterator : public DatasetBaseIterator {
         typed_dataset_(params.dataset) {}
 
   // The dataset from which this iterator was created.
-  const DatasetType* dataset() const { return typed_dataset_; }
-
- protected:
-  virtual Status GetNextInternal(IteratorContext* ctx,
-                                 std::vector<Tensor>* out_tensors,
-                                 bool* end_of_sequence) = 0;
+  const DatasetType* dataset() const final { return typed_dataset_; }
 
  private:
   const DatasetType* const typed_dataset_;  // Not owned.
@@ -980,8 +1028,13 @@ Status ParseVectorArgument(OpKernelContext* ctx,
 // graph execution engine.
 class DatasetOpKernel : public OpKernel {
  public:
-  DatasetOpKernel(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit DatasetOpKernel(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
   void Compute(OpKernelContext* ctx) final;
+
+  // Indicates whether the given op corresponds to an op whose kernels subclass
+  // the `DatasetOpKernel` class.
+  static bool IsDatasetOp(const OpDef* op_def);
 
  protected:
   // Subclasses should implement this method. It will be called during Compute
@@ -993,7 +1046,8 @@ class DatasetOpKernel : public OpKernel {
 // TensorFlow graph execution engine.
 class UnaryDatasetOpKernel : public DatasetOpKernel {
  public:
-  UnaryDatasetOpKernel(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
+  explicit UnaryDatasetOpKernel(OpKernelConstruction* ctx)
+      : DatasetOpKernel(ctx) {}
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) final;
@@ -1005,7 +1059,8 @@ class UnaryDatasetOpKernel : public DatasetOpKernel {
 // TensorFlow graph execution engine.
 class BinaryDatasetOpKernel : public DatasetOpKernel {
  public:
-  BinaryDatasetOpKernel(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
+  explicit BinaryDatasetOpKernel(OpKernelConstruction* ctx)
+      : DatasetOpKernel(ctx) {}
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) final;
@@ -1044,6 +1099,35 @@ class BackgroundWorker {
   bool cancelled_ GUARDED_BY(mu_) = false;
   std::deque<std::function<void()>> work_queue_ GUARDED_BY(mu_);
 };
+
+// Registry of names of ops whose kernels subclass the `DatasetOpKernel` class.
+class DatasetOpRegistry {
+ public:
+  // Registers the op name.
+  static void Register(const string& op_name);
+
+  // Checks whether the given op name has been registered.
+  static bool IsRegistered(const string& op_name);
+};
+
+// Helper class to register dataset op name.
+class DatasetOpRegistrar {
+ public:
+  explicit DatasetOpRegistrar(const string& op_name) {
+    DatasetOpRegistry::Register(op_name);
+  }
+};
+
+// Macro that can be used to register an op name of a dataset op.
+#define REGISTER_DATASET_OP_NAME(op_name) \
+  REGISTER_DATASET_OP_NAME_UNIQ_HELPER(__COUNTER__, op_name)
+
+#define REGISTER_DATASET_OP_NAME_UNIQ_HELPER(ctr, op_name) \
+  REGISTER_DATASET_OP_NAME_UNIQ(ctr, op_name)
+
+#define REGISTER_DATASET_OP_NAME_UNIQ(ctr, op_name) \
+  static ::tensorflow::data::DatasetOpRegistrar     \
+      registrar__body__##ctr##__object(op_name)
 
 }  // namespace data
 

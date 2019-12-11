@@ -6,7 +6,7 @@ package(
 py_binary(
     name = "generate_v2_renames_map",
     srcs = ["generate_v2_renames_map.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
@@ -15,13 +15,14 @@ py_binary(
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
         "//tensorflow/tools/compatibility:all_renames_v2",
+        "@six_archive//:six",
     ],
 )
 
 py_binary(
     name = "generate_v2_reorders_map",
     srcs = ["generate_v2_reorders_map.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",

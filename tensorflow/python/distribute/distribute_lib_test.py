@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
@@ -29,6 +30,7 @@ from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -358,7 +360,7 @@ class TestStrategyTest(test.TestCase):
     dataset = dataset_ops.Dataset.from_tensors(1.).repeat()
     dist.extended.experimental_run_steps_on_iterator(
         lambda _, inputs: all_inputs.append(self.evaluate(inputs)),
-        dataset.make_one_shot_iterator())
+        dataset_ops.make_one_shot_iterator(dataset))
     self.assertEqual(all_inputs, [1.])
 
   @_run_in_and_out_of_scope
@@ -388,11 +390,39 @@ class TestStrategyTest(test.TestCase):
     dist.extended.update(v, assign_fn, (t,))
 
   @_run_in_and_out_of_scope
+  def testUpdateAutoGraph(self, dist):
+    with dist.scope():
+      v = variables.Variable(1.)
+    t = constant_op.constant(2.)
+
+    def assign_fn(unused_vv, unused_tt):
+      self.assertTrue(converter_testing.is_inside_generated_code())
+
+    @def_function.function  # AutoGraph is default-on only within tf.function
+    def test_fn():
+      dist.extended.update(v, assign_fn, (t,))
+
+    test_fn()
+
+  @_run_in_and_out_of_scope
   def testUpdateNonSlot(self, dist):
     t = constant_op.constant(2.)
     update_calls = []
     dist.extended.update_non_slot(t, lambda: update_calls.append(1))
     self.assertEqual(len(update_calls), 1)
+
+  @_run_in_and_out_of_scope
+  def testUpdateNonSlotAutoGraph(self, dist):
+    t = constant_op.constant(2.)
+
+    def update_fn():
+      self.assertTrue(converter_testing.is_inside_generated_code())
+
+    @def_function.function  # AutoGraph is default-on only within tf.function
+    def test_fn():
+      dist.extended.update_non_slot(t, update_fn)
+
+    test_fn()
 
 
 # _TestStrategy2 is like _TestStrategy, except it doesn't change variable
@@ -427,6 +457,20 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
     self.assertIs(ds_context._get_default_replica_context(), replica_ctx)
     self.assertEqual("foo_bar", replica_ctx.merge_call(merge_fn, args=("bar",)))
     _assert_in_default_state(self)
+
+  def testMergeCallAutoGraph(self):
+    _assert_in_default_state(self)
+
+    def merge_fn(_, s):
+      self.assertTrue(converter_testing.is_inside_generated_code())
+      return s
+
+    @def_function.function  # AutoGraph is default-on only within tf.function
+    def test_fn():
+      replica_ctx = ds_context.get_replica_context()
+      replica_ctx.merge_call(merge_fn, args=("bar",))
+
+    test_fn()
 
   def testScopeMostlyNoOp(self):
     _assert_in_default_state(self)

@@ -47,7 +47,7 @@ class AutoMixedPrecisionLists {
  public:
   // Returns the set of ops that are considered numerically-safe (for execution
   // in fp16) and performance-critical. These ops are always converted to fp16.
-  static gtl::FlatSet<string> WhiteList(int cuda_version) {
+  static gtl::FlatSet<string> WhiteList(int cuda_version, int cudnn_version) {
     string to_add, to_remove;
     TF_CHECK_OK(ReadStringFromEnvVar(
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_WHITELIST_ADD", "", &to_add));
@@ -55,30 +55,43 @@ class AutoMixedPrecisionLists {
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_WHITELIST_REMOVE", "",
         &to_remove));
 
-    auto list = gtl::FlatSet<string> {
-          "BlockLSTM", "BlockLSTMGrad", "Conv2D", "Conv2DBackpropFilter",
-          "Conv2DBackpropInput",
-          // TODO(benbarsdell): Enable these when Tensor Core kernels are
-          // available for 3D convolutions.
-          // "Conv3D",
-          // "Conv3DBackpropFilter",
-          // "Conv3DBackpropFilterV2",
-          // "Conv3DBackpropInput",
-          // "Conv3DBackpropInputV2",
-          "CudnnRNN", "CudnnRNNBackprop", "CudnnRNNBackpropV2",
-          "CudnnRNNBackpropV3", "CudnnRNNV2", "CudnnRNNV3", "GRUBlockCell",
-          "GRUBlockCellGrad", "LSTMBlockCell", "LSTMBlockCellGrad",
-          // TODO(benbarsdell): Enable these when fast and safe fp16 kernels are
-          // available for depthwise convolutions.
-          // "DepthwiseConv2dNative",
-          // "DepthwiseConv2dNativeBackpropFilter",
-          // "DepthwiseConv2dNativeBackpropInput",
-          "MatMul",
+    auto list = gtl::FlatSet<string>{
+        "BlockLSTM",
+        "BlockLSTMV2",
+        "BlockLSTMGrad",
+        "BlockLSTMGradV2",
+        "Conv2D",
+        "Conv2DBackpropFilter",
+        "Conv2DBackpropInput",
+        "CudnnRNN",
+        "CudnnRNNBackprop",
+        "CudnnRNNBackpropV2",
+        "CudnnRNNBackpropV3",
+        "CudnnRNNV2",
+        "CudnnRNNV3",
+        "GRUBlockCell",
+        "GRUBlockCellGrad",
+        "LSTMBlockCell",
+        "LSTMBlockCellGrad",
+        // TODO(benbarsdell): Enable these when fast and safe fp16 kernels are
+        // available for depthwise convolutions.
+        // "DepthwiseConv2dNative",
+        // "DepthwiseConv2dNativeBackpropFilter",
+        // "DepthwiseConv2dNativeBackpropInput",
+        "MatMul",
     };
     if (cuda_version >= 9010) {
       // Fp16 BatchMatMul is slow before CUDA 9.1.
       list.insert("BatchMatMul");
       list.insert("BatchMatMulV2");
+    }
+    if (cudnn_version >= 7602) {
+      // Fp16 3D conv is slow before CUDNN 7.6.2.
+      list.insert("Conv3D");
+      list.insert("Conv3DBackpropFilter");
+      list.insert("Conv3DBackpropFilterV2");
+      list.insert("Conv3DBackpropInput");
+      list.insert("Conv3DBackpropInputV2");
     }
     UpdateList(&list, to_add, to_remove);
     return list;
@@ -121,14 +134,22 @@ class AutoMixedPrecisionLists {
         "Inv",
         "LeakyRelu",
         "LeakyReluGrad",
+        "Log",
+        "Log1p",
+        "LogSoftmax",
         "Mul",
         "Prod",
         "RealDiv",
         "Reciprocal",
+        "Selu",
+        "SeluGrad",
         "Sigmoid",
         "SigmoidGrad",
+        "Softmax",
         "Softplus",
         "SoftplusGrad",
+        "Softsign",
+        "SoftsignGrad",
         "Sqrt",
         "Sub",
         "Tanh",
@@ -156,13 +177,9 @@ class AutoMixedPrecisionLists {
         "Exp",
         "Expm1",
         "L2Loss",
-        "Log",
-        "Log1p",
-        "LogSoftmax",
         "Mean",
         "Pow",
         "SaveV2",
-        "Softmax",
         "SoftmaxCrossEntropyWithLogits",
         "SparseSoftmaxCrossEntropyWithLogits",
         "Sum",
@@ -177,9 +194,9 @@ class AutoMixedPrecisionLists {
     if (IsPseudoFastMath()) {
       return gtl::FlatSet<string>{};
     }
-    // Note: if a stateful op (such as StackPopV2) is added to the clearlist,
-    // you must also modify the AutoMixedPrecisionImpl class to call
-    // AddDataStructureOpsToMap() with that op
+    // Note: if a data structure op (such as TensorListPopBack) is added to the
+    // clearlist, the AutoMixedPrecisionImpl class must also be modified to call
+    // AddDataStructureOpsToMap() with that op.
     string to_add, to_remove;
     TF_CHECK_OK(ReadStringFromEnvVar(
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_CLEARLIST_ADD", "", &to_add));
@@ -259,6 +276,7 @@ class AutoMixedPrecisionLists {
         "ReverseV2",
         "Round",
         "Select",
+        "SelectV2",
         "Shape",
         "ShapeN",
         "Sign",
@@ -271,18 +289,23 @@ class AutoMixedPrecisionLists {
         "Split",
         "SplitV",
         "Squeeze",
-        "StackPopV2",
-        "StackPushV2",
         "StopGradient",
         "StridedSlice",
         "StridedSliceGrad",
         "Switch",
-        "TensorArrayConcatV3",
-        "TensorArrayGatherV3",
-        "TensorArrayReadV3",
-        "TensorArrayScatterV3",
-        "TensorArraySplitV3",
-        "TensorArrayWriteV3",
+        "TensorListConcat",
+        "TensorListConcatV2",
+        "TensorListGather",
+        "TensorListGetItem",
+        "TensorListPopBack",
+        "TensorListPushBack",
+        "TensorListFromTensor",
+        "TensorListScatter",
+        "TensorListScatterV2",
+        "TensorListScatterIntoExistingList",
+        "TensorListSetItem",
+        "TensorListSplit",
+        "TensorListStack",
         "Tile",
         "TopK",
         "TopKV2",

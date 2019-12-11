@@ -638,7 +638,11 @@ Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
   }
   for (HloInstruction* fused_param : fused_parameters) {
     int64 param_no = fused_param->parameter_number();
-    if (!ShapesSame(fused_param->shape(), fusion->operand(param_no)->shape())) {
+    // Since fusion buffers aren't materialized, fusion parameters will not have
+    // the same memory space as the fusion operand.
+    if (!ShapesSame(fused_param->shape(), fusion->operand(param_no)->shape(),
+                    /*minor_to_major_only=*/false,
+                    /*ignore_memory_space=*/true)) {
       return InternalError(
           "Shape mismatch between parameter number %d and its operand in "
           "%s.",
@@ -991,6 +995,12 @@ Status ShapeVerifier::HandleGetDimensionSize(HloInstruction* get_size) {
                         get_size->operand(0)->shape(), get_size->dimension()));
 }
 
+Status ShapeVerifier::HandleSetDimensionSize(HloInstruction* set_size) {
+  return CheckShape(set_size,
+                    ShapeInference::InferSetDimensionSizeShape(
+                        set_size->operand(0)->shape(), set_size->dimension()));
+}
+
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
                                  const Shape& inferred_shape,
                                  bool only_compare_minor_to_major_in_layout) {
@@ -1294,6 +1304,29 @@ Status VerifyAsynchronousCopies(const HloModule& module) {
         }
         default:
           break;
+      }
+    }
+  }
+  return Status::OK();
+}
+
+// Checks that AllReduce instructions in the module are either all layout
+// constrained or all unconstrained.
+Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
+  const HloAllReduceInstruction* reference = nullptr;
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() != HloOpcode::kAllReduce) {
+        continue;
+      }
+      auto all_reduce = DynCast<HloAllReduceInstruction>(instruction);
+      if (!reference) {
+        reference = all_reduce;
+      }
+      if (reference->constrain_layout() != all_reduce->constrain_layout()) {
+        return FailedPrecondition(
+            "HloModule has a mix of layout constrained and unconstrained "
+            "AllReduce instructions.");
       }
     }
   }
@@ -1687,6 +1720,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
       }));
 
   TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().Verify(*module));
+  TF_RETURN_IF_ERROR(VerifyLayoutConstrainedAllReduce(*module));
 
   return false;
 }

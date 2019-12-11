@@ -20,15 +20,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/lite/delegates/gpu/common/memory_management.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/internal.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
 
+// Fast version of Equality Assignments for hashable types.
 template <typename TensorSizeT>
-Status EqualityAssignment(
+Status EqualityAssignmentWithHash(
     const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
     ObjectsAssignment<TensorSizeT>* assignment) {
   size_t num_records = usage_records.size();
@@ -50,7 +51,7 @@ Status EqualityAssignment(
       objects_in_use.pop();
     }
 
-    TensorSizeT tensor_size = usage_records[i].tensor_size;
+    const TensorSizeT tensor_size = usage_records[i].tensor_size;
     auto pool_it = pool.find(tensor_size);
     if (pool_it == pool.end() || pool_it->second.empty()) {
       // No free shared object with size equal to tensor_size. Create a new one,
@@ -66,6 +67,46 @@ Status EqualityAssignment(
       pool_it->second.pop_back();
       objects_in_use.push(
           {usage_records[i].last_task, assignment->object_ids[i]});
+    }
+  }
+  return OkStatus();
+}
+
+// Slower version of Equality Assignments for unhashable types.
+template <typename TensorSizeT>
+Status EqualityAssignment(
+    const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
+    ObjectsAssignment<TensorSizeT>* assignment) {
+  size_t num_records = usage_records.size();
+  assignment->object_sizes.clear();
+  assignment->object_ids.assign(num_records, kNotAssigned);
+
+  // Index of operation, after execution of which the shared object can be
+  // deallocated.
+  std::vector<size_t> dealloc_task;
+  for (size_t i = 0; i < num_records; ++i) {
+    const TensorSizeT tensor_size = usage_records[i].tensor_size;
+    size_t best_obj = kNotAssigned;
+    for (size_t obj = 0; obj < assignment->object_sizes.size(); ++obj) {
+      // Find a shared object, that has equal size with current tensor and has
+      // been deallocated before the execution of its first_task.
+      if (dealloc_task[obj] < usage_records[i].first_task &&
+          assignment->object_sizes[obj] == tensor_size) {
+        best_obj = obj;
+        break;
+      }
+    }
+    if (best_obj == kNotAssigned) {
+      // No free shared object with size equal to tensor_size. Create a new one,
+      // assign i-th tensor to it and save its last task as deallocation task.
+      assignment->object_ids[i] = assignment->object_sizes.size();
+      assignment->object_sizes.push_back(tensor_size);
+      dealloc_task.push_back(usage_records[i].last_task);
+    } else {
+      // Shared object with id it->second has size equal to tensor_size. Reuse
+      // this object and update its deallocation task.
+      assignment->object_ids[i] = best_obj;
+      dealloc_task[best_obj] = usage_records[i].last_task;
     }
   }
   return OkStatus();

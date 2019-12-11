@@ -19,6 +19,7 @@
 import google_mlir.bindings.python.pybind as E
 import inspect
 
+
 # Prints `str` prefixed by the current test function name so we can use it in
 # Filecheck label directives.
 # This is achieved by inspecting the stack and getting the parent name.
@@ -26,13 +27,14 @@ def printWithCurrentFunctionName(str):
   print(inspect.stack()[1][3])
   print(str)
 
+
 class EdscTest:
 
   def setUp(self):
     self.module = E.MLIRModule()
-    self.boolType = self.module.make_scalar_type("i", 1)
-    self.i32Type = self.module.make_scalar_type("i", 32)
-    self.f32Type = self.module.make_scalar_type("f32")
+    self.boolType = self.module.make_type("i1")
+    self.i32Type = self.module.make_type("i32")
+    self.f32Type = self.module.make_type("f32")
     self.indexType = self.module.make_index_type()
 
   def testBlockArguments(self):
@@ -104,8 +106,9 @@ class EdscTest:
 
   def testBooleanOps(self):
     self.setUp()
-    with self.module.function_context(
-        "booleans", [self.boolType for _ in range(4)], []) as fun:
+    with self.module.function_context("booleans",
+                                      [self.boolType for _ in range(4)],
+                                      []) as fun:
       i, j, k, l = (fun.arg(x) for x in range(4))
       stmt1 = (i < j) & (j >= k)
       stmt2 = ~(stmt1 | (k == l))
@@ -195,10 +198,10 @@ class EdscTest:
   def testConstants(self):
     self.setUp()
     with self.module.function_context("constants", [], []) as fun:
-      E.constant_float(1.23, self.module.make_scalar_type("bf16"))
-      E.constant_float(1.23, self.module.make_scalar_type("f16"))
-      E.constant_float(1.23, self.module.make_scalar_type("f32"))
-      E.constant_float(1.23, self.module.make_scalar_type("f64"))
+      E.constant_float(1.23, self.module.make_type("bf16"))
+      E.constant_float(1.23, self.module.make_type("f16"))
+      E.constant_float(1.23, self.module.make_type("f32"))
+      E.constant_float(1.23, self.module.make_type("f64"))
       E.constant_int(1, 1)
       E.constant_int(123, 8)
       E.constant_int(123, 16)
@@ -285,6 +288,49 @@ class EdscTest:
     # CHECK-LABEL: testFunctionDeclaration
     #       CHECK: func @foo(memref<10xf32>, memref<10xf32> {llvm.noalias = true}, memref<10xf32> {readonly = true})
 
+  def testFunctionDeclarationWithAffineAttr(self):
+    self.setUp()
+    a1 = self.module.affine_constant_expr(23)
+    a2 = self.module.affine_constant_expr(44)
+    a3 = self.module.affine_dim_expr(1)
+    s0 = self.module.affine_symbol_expr(0)
+    aMap1 = self.module.affine_map(2, 0, [a1, a2, s0])
+    aMap2 = self.module.affine_constant_map(42)
+    aMap3 = self.module.affine_map(
+        2, 0,
+        [a1 + a2 * a3, a1 // a3 % a2,
+         a1.ceildiv(a2), a1 - 2, a2 * 2, -a3])
+
+    affineAttr1 = self.module.affineMapAttr(aMap1)
+    affineAttr2 = self.module.affineMapAttr(aMap2)
+    affineAttr3 = self.module.affineMapAttr(aMap3)
+
+    t = self.module.make_memref_type(self.f32Type, [10])
+    t_with_attr = t({
+        "affine_attr_1": affineAttr1,
+        "affine_attr_2": affineAttr2,
+        "affine_attr_3": affineAttr3,
+    })
+
+    f = self.module.declare_function("foo", [t, t_with_attr], [])
+    printWithCurrentFunctionName(str(self.module))
+    # CHECK-LABEL: testFunctionDeclarationWithAffineAttr
+    #       CHECK:  func @foo(memref<10xf32>, memref<10xf32> {affine_attr_1 = (d0, d1) -> (23, 44, s0), affine_attr_2 = () -> (42), affine_attr_3 = (d0, d1) -> (d1 * 44 + 23, (23 floordiv d1) mod 44, 1, 21, 88, -d1)})
+
+  def testFunctionDeclarationWithArrayAttr(self):
+    self.setUp()
+    arrayAttr = self.module.arrayAttr([
+        self.module.integerAttr(self.i32Type, 43),
+        self.module.integerAttr(self.i32Type, 33),
+    ])
+    t = self.module.make_memref_type(self.f32Type, [10])
+    t_with_attr = t({"array_attr": arrayAttr})
+
+    f = self.module.declare_function("foo", [t, t_with_attr], [])
+    printWithCurrentFunctionName(str(self.module))
+    # CHECK-LABEL: testFunctionDeclarationWithArrayAttr
+    #       CHECK: func @foo(memref<10xf32>, memref<10xf32> {array_attr = [43 : i32, 33 : i32]})
+
   def testFunctionMultiple(self):
     self.setUp()
     with self.module.function_context("foo", [], []):
@@ -296,6 +342,15 @@ class EdscTest:
     #       CHECK: func @foo()
     #       CHECK: func @foo_0()
     #       CHECK: %{{.*}} = constant 0 : index
+
+  def testIndexCast(self):
+    self.setUp()
+    with self.module.function_context("testIndexCast", [], []):
+      index = E.constant_index(0)
+      E.index_cast(index, self.i32Type)
+    printWithCurrentFunctionName(str(self.module))
+    # CHECK-LABEL: testIndexCast
+    #       CHECK: index_cast %{{.*}} : index to i32
 
   def testIndexedValue(self):
     self.setUp()
@@ -381,7 +436,7 @@ class EdscTest:
   def testMLIRFunctionCreation(self):
     self.setUp()
     module = E.MLIRModule()
-    t = module.make_scalar_type("f32")
+    t = module.make_type("f32")
     m = module.make_memref_type(t, [3, 4, -1, 5])
     printWithCurrentFunctionName(str(t))
     print(str(m))
@@ -396,15 +451,15 @@ class EdscTest:
   def testMLIRScalarTypes(self):
     self.setUp()
     module = E.MLIRModule()
-    printWithCurrentFunctionName(str(module.make_scalar_type("bf16")))
-    print(str(module.make_scalar_type("f16")))
-    print(str(module.make_scalar_type("f32")))
-    print(str(module.make_scalar_type("f64")))
-    print(str(module.make_scalar_type("i", 1)))
-    print(str(module.make_scalar_type("i", 8)))
-    print(str(module.make_scalar_type("i", 32)))
-    print(str(module.make_scalar_type("i", 123)))
-    print(str(module.make_scalar_type("index")))
+    printWithCurrentFunctionName(str(module.make_type("bf16")))
+    print(str(module.make_type("f16")))
+    print(str(module.make_type("f32")))
+    print(str(module.make_type("f64")))
+    print(str(module.make_type("i1")))
+    print(str(module.make_type("i8")))
+    print(str(module.make_type("i32")))
+    print(str(module.make_type("i123")))
+    print(str(module.make_type("index")))
     # CHECK-LABEL: testMLIRScalarTypes
     #       CHECK:  bf16
     #       CHECK:  f16
@@ -419,15 +474,16 @@ class EdscTest:
   def testMatrixMultiply(self):
     self.setUp()
     memrefType = self.module.make_memref_type(self.f32Type, [32, 32])
-    with self.module.function_context(
-        "matmul", [memrefType, memrefType, memrefType], []) as fun:
+    with self.module.function_context("matmul",
+                                      [memrefType, memrefType, memrefType],
+                                      []) as fun:
       A = E.IndexedValue(fun.arg(0))
       B = E.IndexedValue(fun.arg(1))
       C = E.IndexedValue(fun.arg(2))
       c0 = E.constant_index(0)
       c32 = E.constant_index(32)
-      with E.LoopNestContext([c0, c0, c0], [c32, c32, c32], [1, 1, 1]) as (i, j,
-                                                                           k):
+      with E.LoopNestContext([c0, c0, c0], [c32, c32, c32],
+                             [1, 1, 1]) as (i, j, k):
         C.store([i, j], A.load([i, k]) * B.load([k, j]))
       E.ret([])
       printWithCurrentFunctionName(str(fun))
@@ -468,19 +524,33 @@ class EdscTest:
     # CHECK-LABEL: testSelectOp
     #       CHECK:  %{{.*}} = select %{{.*}}, %{{.*}}, %{{.*}} : i32
 
+  def testType(self):
+    self.setUp()
+    printWithCurrentFunctionName("")
+    with self.module.function_context(
+        "foo", [self.module.make_memref_type(self.f32Type, [10])], []) as fun:
+      c42 = E.constant_int(42, 32)
+      print(str(c42.type()))
+      print(str(fun.arg(0).type()))
+    # CHECK-LABEL: testType
+    #       CHECK:    i32
+    #       CHECK:    memref<10xf32>
+
 
 # Until python 3.6 this cannot be used because the order in the dict is not the
 # order of method declaration.
 def runTests():
+
   def isTest(attr):
     return inspect.ismethod(attr) and "EdscTest.setUp " not in str(attr)
 
   edscTest = EdscTest()
-  tests = sorted(filter(isTest,
-                        (getattr(edscTest, attr) for attr in dir(edscTest))),
-                 key = lambda x : str(x))
+  tests = sorted(
+      filter(isTest, (getattr(edscTest, attr) for attr in dir(edscTest))),
+      key=lambda x: str(x))
   for test in tests:
     test()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   runTests()

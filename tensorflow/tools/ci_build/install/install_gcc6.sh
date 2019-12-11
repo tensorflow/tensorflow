@@ -22,4 +22,4 @@ apt-get install gcc-snapshot -y
 apt-get update
 apt-get install gcc-6 g++-6 -y
 update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-6 100 --slave /usr/bin/g++ g++ /usr/bin/g++-6
-DEBIAN_FRONTEND=noninteractive update-alternatives --config gcc
+update-alternatives --set gcc /usr/bin/gcc-6

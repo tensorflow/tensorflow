@@ -3,16 +3,8 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_copts",
-)
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-load(
-    "@local_config_tensorrt//:build_defs.bzl",
-    "if_tensorrt",
-)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -59,6 +51,15 @@ py_library(
 )
 
 py_library(
+    name = "trt_convert_windows",
+    srcs = ["trt_convert_windows.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "tf_trt_integration_test_base",
     srcs = ["test/tf_trt_integration_test_base.py"],
     deps = [
@@ -93,13 +94,13 @@ cuda_py_test(
         "//tensorflow/python/tools:freeze_graph_lib",
         "//tensorflow/python/tools:saved_model_utils",
     ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_rocm",
         "no_windows",
         "nomac",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -131,13 +132,13 @@ cuda_py_tests(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_rocm",
         "no_windows",
         "nomac",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -151,13 +152,13 @@ cuda_py_tests(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    python_version = "PY3",
     tags = [
         "no_rocm",
         "no_windows",
         "nomac",
         "notap",  # b/140261407
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -175,6 +176,7 @@ cuda_py_test(
         "test/testdata/model.ckpt-46900.data-00000-of-00001",
         "test/testdata/model.ckpt-46900.index",
     ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_oss",  # TODO(b/125290478): allow running in at least some OSS configurations.
@@ -184,5 +186,4 @@ cuda_py_test(
         "no_windows",
         "nomac",
     ],
-    xla_enable_strict_auto_jit = True,
 )

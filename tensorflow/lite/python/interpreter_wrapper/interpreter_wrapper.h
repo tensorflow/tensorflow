@@ -67,10 +67,17 @@ class InterpreterWrapper {
   std::string TensorName(int i) const;
   PyObject* TensorType(int i) const;
   PyObject* TensorSize(int i) const;
+  // Deprecated in favor of TensorQuantizationScales, below.
   PyObject* TensorQuantization(int i) const;
+  PyObject* TensorQuantizationParameters(int i) const;
   PyObject* SetTensor(int i, PyObject* value);
   PyObject* GetTensor(int i) const;
   PyObject* ResetVariableTensors();
+
+  int NumNodes() const;
+  std::string NodeName(int i) const;
+  PyObject* NodeInputs(int i) const;
+  PyObject* NodeOutputs(int i) const;
 
   // Returns a reference to tensor index i as a numpy array. The base_object
   // should be the interpreter object providing the memory.

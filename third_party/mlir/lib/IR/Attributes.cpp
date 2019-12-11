@@ -91,7 +91,7 @@ bool BoolAttr::getValue() const { return getImpl()->value; }
 /// NamedAttributes.
 static int compareNamedAttributes(const NamedAttribute *lhs,
                                   const NamedAttribute *rhs) {
-  return lhs->first.str().compare(rhs->first.str());
+  return lhs->first.strref().compare(rhs->first.strref());
 }
 
 DictionaryAttr DictionaryAttr::get(ArrayRef<NamedAttribute> value,
@@ -155,10 +155,12 @@ ArrayRef<NamedAttribute> DictionaryAttr::getValue() const {
 
 /// Return the specified attribute if present, null otherwise.
 Attribute DictionaryAttr::get(StringRef name) const {
-  for (auto elt : getValue())
-    if (elt.first.is(name))
-      return elt.second;
-  return nullptr;
+  ArrayRef<NamedAttribute> values = getValue();
+  auto compare = [](NamedAttribute attr, StringRef name) {
+    return attr.first.strref() < name;
+  };
+  auto it = llvm::lower_bound(values, name, compare);
+  return it != values.end() && it->first.is(name) ? it->second : Attribute();
 }
 Attribute DictionaryAttr::get(Identifier name) const {
   for (auto elt : getValue())
@@ -212,35 +214,31 @@ double FloatAttr::getValueAsDouble(APFloat value) {
 }
 
 /// Verify construction invariants.
-static LogicalResult verifyFloatTypeInvariants(llvm::Optional<Location> loc,
+static LogicalResult verifyFloatTypeInvariants(Optional<Location> loc,
                                                Type type) {
-  if (!type.isa<FloatType>()) {
-    if (loc)
-      emitError(*loc, "expected floating point type");
-    return failure();
-  }
+  if (!type.isa<FloatType>())
+    return emitOptionalError(loc, "expected floating point type");
   return success();
 }
 
-LogicalResult FloatAttr::verifyConstructionInvariants(
-    llvm::Optional<Location> loc, MLIRContext *ctx, Type type, double value) {
+LogicalResult FloatAttr::verifyConstructionInvariants(Optional<Location> loc,
+                                                      MLIRContext *ctx,
+                                                      Type type, double value) {
   return verifyFloatTypeInvariants(loc, type);
 }
 
-LogicalResult
-FloatAttr::verifyConstructionInvariants(llvm::Optional<Location> loc,
-                                        MLIRContext *ctx, Type type,
-                                        const APFloat &value) {
+LogicalResult FloatAttr::verifyConstructionInvariants(Optional<Location> loc,
+                                                      MLIRContext *ctx,
+                                                      Type type,
+                                                      const APFloat &value) {
   // Verify that the type is correct.
   if (failed(verifyFloatTypeInvariants(loc, type)))
     return failure();
 
   // Verify that the type semantics match that of the value.
   if (&type.cast<FloatType>().getFloatSemantics() != &value.getSemantics()) {
-    if (loc)
-      emitError(*loc,
-                "FloatAttr type doesn't match the type implied by its value");
-    return failure();
+    return emitOptionalError(
+        loc, "FloatAttr type doesn't match the type implied by its value");
   }
   return success();
 }
@@ -249,12 +247,27 @@ FloatAttr::verifyConstructionInvariants(llvm::Optional<Location> loc,
 // SymbolRefAttr
 //===----------------------------------------------------------------------===//
 
-SymbolRefAttr SymbolRefAttr::get(StringRef value, MLIRContext *ctx) {
-  return Base::get(ctx, StandardAttributes::SymbolRef, value,
-                   NoneType::get(ctx));
+FlatSymbolRefAttr SymbolRefAttr::get(StringRef value, MLIRContext *ctx) {
+  return Base::get(ctx, StandardAttributes::SymbolRef, value, llvm::None)
+      .cast<FlatSymbolRefAttr>();
 }
 
-StringRef SymbolRefAttr::getValue() const { return getImpl()->value; }
+SymbolRefAttr SymbolRefAttr::get(StringRef value,
+                                 ArrayRef<FlatSymbolRefAttr> nestedReferences,
+                                 MLIRContext *ctx) {
+  return Base::get(ctx, StandardAttributes::SymbolRef, value, nestedReferences);
+}
+
+StringRef SymbolRefAttr::getRootReference() const { return getImpl()->value; }
+
+StringRef SymbolRefAttr::getLeafReference() const {
+  ArrayRef<FlatSymbolRefAttr> nestedRefs = getNestedReferences();
+  return nestedRefs.empty() ? getRootReference() : nestedRefs.back().getValue();
+}
+
+ArrayRef<FlatSymbolRefAttr> SymbolRefAttr::getNestedReferences() const {
+  return getImpl()->getNestedRefs();
+}
 
 //===----------------------------------------------------------------------===//
 // IntegerAttr
@@ -313,14 +326,13 @@ Identifier OpaqueAttr::getDialectNamespace() const {
 StringRef OpaqueAttr::getAttrData() const { return getImpl()->attrData; }
 
 /// Verify the construction of an opaque attribute.
-LogicalResult OpaqueAttr::verifyConstructionInvariants(
-    llvm::Optional<Location> loc, MLIRContext *context, Identifier dialect,
-    StringRef attrData, Type type) {
-  if (!Dialect::isValidNamespace(dialect.strref())) {
-    if (loc)
-      emitError(*loc) << "invalid dialect namespace '" << dialect << "'";
-    return failure();
-  }
+LogicalResult OpaqueAttr::verifyConstructionInvariants(Optional<Location> loc,
+                                                       MLIRContext *context,
+                                                       Identifier dialect,
+                                                       StringRef attrData,
+                                                       Type type) {
+  if (!Dialect::isValidNamespace(dialect.strref()))
+    return emitOptionalError(loc, "invalid dialect namespace '", dialect, "'");
   return success();
 }
 
@@ -415,7 +427,7 @@ ElementsAttr ElementsAttr::mapValues(
   }
 }
 
-/// Returns the 1 dimenional flattened row-major index from the given
+/// Returns the 1 dimensional flattened row-major index from the given
 /// multi-dimensional index.
 uint64_t ElementsAttr::getFlattenedIndex(ArrayRef<uint64_t> index) const {
   assert(isValidIndex(index) && "expected valid multi-dimensional index");
@@ -515,7 +527,7 @@ DenseElementsAttr::AttributeElementIterator::AttributeElementIterator(
 
 /// Accesses the Attribute value at this iterator position.
 Attribute DenseElementsAttr::AttributeElementIterator::operator*() const {
-  auto owner = getFromOpaquePointer(object).cast<DenseElementsAttr>();
+  auto owner = getFromOpaquePointer(base).cast<DenseElementsAttr>();
   Type eltTy = owner.getType().getElementType();
   if (auto intEltTy = eltTy.dyn_cast<IntegerType>()) {
     if (intEltTy.getWidth() == 1)

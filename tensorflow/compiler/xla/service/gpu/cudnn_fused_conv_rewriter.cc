@@ -26,8 +26,12 @@ namespace xla {
 namespace gpu {
 namespace {
 
-// Describes a matched pattern:
+// Describes matched patterns:
 //   max(0, alpha1 * conv(x, w) + alpha2 * side_input + broadcast(bias));
+//   for floating point types or
+//   max(0, alpha1 * conv<float>(int8_x, int8_w) + alpha2 *
+//   * side_input + broadcast(bias));
+//   for int8.
 // Where side_input has the shape of output buffer, and bias is a 1D array with
 // the dimension of number of output features.
 struct ConvWithRelu {
@@ -39,6 +43,13 @@ struct ConvWithRelu {
   HloConstantInstruction* alpha_side_input;
 };
 
+// The pattern we want to match:
+//   max(0, alpha1 * conv(x, w) + alpha2 * side_input + broadcast(bias));
+//   or
+//   max(0, alpha1 * conv<float>(int8_x, int8_w) + alpha2 *
+//   * side_input + broadcast(bias));
+// With its variants involving commute/reassociation of adds, multiplies, and
+// max, and omission of alpha1, side_input, alpha2, or bias.
 absl::optional<ConvWithRelu> FindConvWithRelu(HloInstruction* instr) {
   using match::Add;
   using match::AddAnyOrder;
@@ -49,12 +60,6 @@ absl::optional<ConvWithRelu> FindConvWithRelu(HloInstruction* instr) {
   using match::Maximum;
   using match::MultiplyAnyOrder;
   using match::Op;
-
-  // The pattern we want to match:
-  //   max(0, alpha1 * conv(x, w) + alpha2 * side_input + broadcast(bias));
-  //
-  // With its variants involving commute/reassociation of adds, multiplies, and
-  // max, and omission of alpha1, side_input, alpha2, or bias.
 
   HloInstruction* relu_input;
 
@@ -149,6 +154,14 @@ absl::optional<ConvWithRelu> FindConvWithRelu(HloInstruction* instr) {
     return absl::nullopt;
   }
 
+  // In order to map to cudnnConvolutionBiasActivationForward for int8, the
+  // convolution output is float, i.e. conv<float>(int8_x, int8_w)
+  if (conv->operand(0)->shape().element_type() == xla::S8) {
+    if (conv->shape().tuple_shapes(0).element_type() != xla::F32) {
+      return absl::nullopt;
+    }
+  }
+
   if (bias_broadcast) {
     // TODO(timshen): handle bias_broadcast_instr->dimensions() == {}.
     if (bias_broadcast_instr->dimensions().size() != 1) {
@@ -174,7 +187,6 @@ StatusOr<std::unique_ptr<HloInstruction>> TryRewriteToCudnnForwardRelu(
   auto conv = match.conv;
 
   HloComputation* computation = conv->parent();
-  PrimitiveType element_type = conv->operand(0)->shape().element_type();
 
   const auto get_alpha_value =
       [](HloConstantInstruction* instr) -> StatusOr<double> {
@@ -204,13 +216,15 @@ StatusOr<std::unique_ptr<HloInstruction>> TryRewriteToCudnnForwardRelu(
 
   auto bias = match.bias;
   if (!bias) {
+    PrimitiveType conv_output_type =
+        conv->shape().tuple_shapes(0).element_type();
     auto zero = computation->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
+        HloInstruction::CreateConstant(LiteralUtil::Zero(conv_output_type)));
 
     int64 num_output_feature = conv->shape().tuple_shapes(0).dimensions(
         conv->convolution_dimension_numbers().output_feature_dimension());
     bias = computation->AddInstruction(HloInstruction::CreateBroadcast(
-        ShapeUtil::MakeShapeWithDescendingLayout(element_type,
+        ShapeUtil::MakeShapeWithDescendingLayout(conv_output_type,
                                                  {num_output_feature}),
         zero, {}));
   }
@@ -242,9 +256,9 @@ StatusOr<std::unique_ptr<HloInstruction>> TryRewriteToCudnnForwardRelu(
                                                new_conv, 0);
 }
 
-}  // namespace
-
-StatusOr<bool> CudnnFusedConvRewriter::Run(HloModule* module) {
+// Fuse bias/scaling/ReLU with convolution custom call with floating point
+// output
+StatusOr<bool> RunFuseBiasSideActivation(HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     std::vector<ConvWithRelu> matches;
@@ -277,5 +291,201 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(HloModule* module) {
   return changed;
 }
 
+// Describes a matched pattern:
+// convert_or_clamp(get_tuple_element(custom_call(x,w, ...)));
+// where the custom_call targets CuDNN convolution (either pure convolution or
+// fused convolution).
+struct ConvWithConvertOrClamp {
+  HloInstruction* convert_or_clamp;
+  HloInstruction* gte;
+  HloCustomCallInstruction* conv;
+};
+
+// The pattern we want to match:
+//   convert<int8>(clamp(broadcast(-128), (get_tuple_element(custom_call(int8_x,
+//   int8_w, ...)), broadcast(127));
+absl::optional<ConvWithConvertOrClamp> FindConvWithClampAndConvertToInt8(
+    HloInstruction* instr) {
+  using match::Broadcast;
+  using match::Clamp;
+  using match::Convert;
+  using match::GetTupleElement;
+  using match::Op;
+
+  HloInstruction* gte = nullptr;
+  HloInstruction* conv_instr = nullptr;
+  auto lower_pattern = Broadcast(match::ConstantScalar(-128));
+  auto upper_pattern = Broadcast(match::ConstantScalar(127));
+  auto pattern = Convert(
+      Clamp(lower_pattern,
+            GetTupleElement(
+                &gte, Op(&conv_instr).WithOpcode(HloOpcode::kCustomCall), 0),
+            upper_pattern));
+
+  if (Match(instr, pattern)) {
+    if (conv_instr->operand(0)->shape().element_type() == xla::S8 &&
+        instr->shape().element_type() == xla::S8) {
+      HloCustomCallInstruction* conv =
+          CastOrNull<HloCustomCallInstruction>(conv_instr);
+      return ConvWithConvertOrClamp{instr, gte, conv};
+    }
+  }
+  return absl::nullopt;
+}
+
+// A help function to rewrite convert_or_clamp_or_other<new_type>(gte(conv()))
+// to gte<new_type>(conv<new_type>()).  It bypasses convert_or_clamp_or_other
+// and set the output data type on gte and conv.
+Status RewriteForConvertOrClampImpl(ConvWithConvertOrClamp match) {
+  auto conv = match.conv;
+  auto gte = match.gte;
+  auto convert_or_clamp = match.convert_or_clamp;
+
+  // Change type on conv and gte
+  auto convert_out_type = convert_or_clamp->shape().element_type();
+  conv->mutable_shape()->mutable_tuple_shapes(0)->set_element_type(
+      convert_out_type);
+  gte->mutable_shape()->set_element_type(convert_out_type);
+
+  // Remove clamp/convert and so on and just keep
+  // get_tuple_element(custom_call(x,w, ...))
+  TF_RETURN_IF_ERROR(convert_or_clamp->ReplaceAllUsesWithDifferentShape(gte));
+  TF_RETURN_IF_ERROR(
+      conv->parent()->RemoveInstructionAndUnusedOperands(convert_or_clamp));
+  return Status::OK();
+}
+
+Status RewriteForFinalOutput(ConvWithConvertOrClamp match) {
+  // When the matched clamp has a single user, which is convert<int8>, we
+  // will absorb it, if
+  // 1. the side_input matches a convert<float>(int8_side_input), or
+  // 2. there is no side input
+  const auto is_one_to_one_X_to_Y_cast = [](const HloInstruction* instr,
+                                            PrimitiveType X,
+                                            PrimitiveType Y) -> bool {
+    return (instr->opcode() == HloOpcode::kConvert &&
+            instr->shape().element_type() == Y && instr->operand_count() == 1 &&
+            instr->operand(0)->user_count() == 1 &&
+            instr->operand(0)->shape().element_type() == X);
+  };
+
+  if (match.conv->operand_count() < 4) {
+    // Conv input #3 (zero based) is side_input, after x, w, and bias.
+    // Side input doesn't exist in this case.
+    TF_RETURN_IF_ERROR(RewriteForConvertOrClampImpl(match));
+  } else if (is_one_to_one_X_to_Y_cast(match.conv->operand(3), S8, F32)) {
+    // If side_input has a convert_float_to_int8, absorb it as well.
+    auto side_converter = match.conv->mutable_operand(3);
+    TF_RETURN_IF_ERROR(side_converter->ReplaceAllUsesWithDifferentShape(
+        side_converter->mutable_operand(0)));
+    TF_RETURN_IF_ERROR(
+        side_converter->parent()->RemoveInstructionAndUnusedOperands(
+            side_converter));
+
+    TF_RETURN_IF_ERROR(RewriteForConvertOrClampImpl(match));
+  }
+  return Status::OK();
+}
+
+// Fuse the clamp/convert pattern with the int8 convolution custom call
+// (either pure or fused) for int8 output
+StatusOr<bool> RunFuseClamp(HloModule* module) {
+  bool changed = false;
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    std::vector<ConvWithConvertOrClamp> matches;
+    for (auto instr : computation->instructions()) {
+      auto match = FindConvWithClampAndConvertToInt8(instr);
+      if (match.has_value()) {
+        matches.push_back(*match);
+      }
+    }
+    for (const ConvWithConvertOrClamp& match : matches) {
+      TF_RETURN_IF_ERROR(RewriteForFinalOutput(match));
+      changed = true;
+    }
+
+    // Report error for any convolution still having int32 output.
+    // Although int32 output convolution will trigger other sanity check errors
+    // later, we want to give specific error message here.
+    for (auto instr : computation->instructions()) {
+      if (auto call = DynCast<HloCustomCallInstruction>(instr)) {
+        if ((call->custom_call_target() == kCudnnConvForwardCallTarget ||
+             call->custom_call_target() ==
+                 kCudnnConvBiasActivationForwardCallTarget) &&
+            call->shape().tuple_shapes(0).element_type() == xla::S32) {
+          return Unimplemented(
+              "Integer convolutions for CuDNN must have float or int8 output.  "
+              "Use convert to cast output to float or the following pattern to "
+              "int8: "
+              "clamp(broadcast(-128), conv(int8_x, int8_w, ...), "
+              "broadcast(127)).");
+        }
+      }
+    }
+  }
+  return changed;
+}
+
+// The pattern we want to match:
+//   convert<float>(get_tuple_element<int32>(custom_call()));
+absl::optional<ConvWithConvertOrClamp> FindConvWithConvertToFloat(
+    HloInstruction* instr) {
+  using match::Convert;
+  using match::GetTupleElement;
+  using match::Op;
+
+  HloInstruction* gte = nullptr;
+  HloInstruction* conv_instr = nullptr;
+  auto pattern =
+      Convert(GetTupleElement(
+                  &gte,
+                  Op(&conv_instr)
+                      .WithOpcode(HloOpcode::kCustomCall)
+                      .WithCustomCallTarget(kCudnnConvForwardCallTarget),
+                  0)
+                  .WithShape(match::Shape().WithElementType(xla::S32)))
+          .WithShape(match::Shape().WithElementType(xla::F32));
+  if (Match(instr, pattern)) {
+    HloCustomCallInstruction* conv =
+        CastOrNull<HloCustomCallInstruction>(conv_instr);
+    return ConvWithConvertOrClamp{instr, gte, conv};
+  }
+  return absl::nullopt;
+}
+
+// Transform
+// convert<float>(GetTupleElement<int32>(custom_call<int32>(int8_x, int8_w)))
+// to
+// GetTupleElement<float>(custom_call<int32>(int8_x, int8_w))
+StatusOr<bool> RunFuseConvertToFloat(HloModule* module) {
+  bool changed = false;
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    std::vector<ConvWithConvertOrClamp> matches;
+    for (auto instr : computation->instructions()) {
+      auto match = FindConvWithConvertToFloat(instr);
+      if (match.has_value()) {
+        matches.push_back(*match);
+      }
+    }
+
+    for (const ConvWithConvertOrClamp& match : matches) {
+      TF_RETURN_IF_ERROR(RewriteForConvertOrClampImpl(match));
+      changed = true;
+    }
+  }
+  return changed;
+}
+}  // namespace
+
+StatusOr<bool> CudnnFusedConvRewriter::Run(HloModule* module) {
+  TF_ASSIGN_OR_RETURN(bool fused_for_convert_to_float,
+                      RunFuseConvertToFloat(module));
+
+  TF_ASSIGN_OR_RETURN(bool fused_for_bias, RunFuseBiasSideActivation(module));
+
+  TF_ASSIGN_OR_RETURN(bool fused_for_clamp, RunFuseClamp(module));
+
+  return fused_for_convert_to_float || fused_for_bias || fused_for_clamp;
+}
 }  // namespace gpu
 }  // namespace xla

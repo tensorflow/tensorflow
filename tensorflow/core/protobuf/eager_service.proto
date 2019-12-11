@@ -29,6 +29,17 @@ message Operation {
   repeated int64 control_op_ids = 4;
   map<string, AttrValue> attrs = 5;
   string device = 6;
+
+  // Indicates whether the op is a component of a multi-device function.
+  bool is_component_function = 7;
+  // Set when is_component_function is true. It's initially generated
+  // when we create an FunctionLibraryRuntime::Options (negative value) and used
+  // to create Rendezvous for function execution. All components of a
+  // multi-device function should use the same step id to make sure that they
+  // can communicate through Send/Recv ops.
+  int64 func_step_id = 8;
+  // Indicates whether the op is a function.
+  bool is_function = 9;
 }
 
 message QueueItem {
@@ -39,6 +50,9 @@ message QueueItem {
     RemoteTensorHandle handle_to_decref = 1;
     Operation operation = 2;
     SendTensorOp send_tensor = 3;
+    // Takes a FunctionDef and makes it enqueable on the remote worker.
+    RegisterFunctionOp register_function = 4;
+    CleanupFunctionOp cleanup_function = 5;
   }
 }
 
@@ -73,6 +87,14 @@ message CreateContextRequest {
   // match.
   fixed64 context_id = 7;
 
+  // The view ID of the context.
+  fixed64 context_view_id = 8;
+
+  // For a multi device function, if false, eagerly copy all remote inputs to
+  // the default function device; if true, lazily copy remote inputs to their
+  // target devices after function instantiation to avoid redundant copies.
+  bool lazy_copy_remote_function_inputs = 9;
+
   reserved 5;
 }
 
@@ -81,6 +103,27 @@ message CreateContextResponse {
   repeated DeviceAttributes device_attributes = 2;
 
   reserved 1;
+}
+
+message UpdateContextRequest {
+  // Identifies the full cluster, and this particular worker's position within.
+  ServerDef server_def = 1;
+
+  // Device attributes in the cluster
+  repeated DeviceAttributes cluster_device_attributes = 2;
+
+  // The ID of the context to be updated. A context with the specified ID must
+  // already exist on the recepient server of this request.
+  fixed64 context_id = 3;
+
+  // The view ID of the context, which should be contiguously incremented when
+  // updating the same context.
+  fixed64 context_view_id = 4;
+}
+
+message UpdateContextResponse {
+  // List of devices that are locally accessible to the worker.
+  repeated DeviceAttributes device_attributes = 1;
 }
 
 message EnqueueRequest {
@@ -110,21 +153,39 @@ message KeepAliveRequest {
   fixed64 context_id = 1;
 }
 
-message KeepAliveResponse {}
+message KeepAliveResponse {
+  // If the requested context_id is on the remote host, set the context view ID.
+  fixed64 context_view_id = 1;
+}
 
 message CloseContextRequest {
   fixed64 context_id = 1;
+  fixed64 context_view_id = 2;
 }
 
 message CloseContextResponse {}
 
-message RegisterFunctionRequest {
-  fixed64 context_id = 1;
+message RegisterFunctionOp {
+  FunctionDef function_def = 1;
 
-  FunctionDef function_def = 2;
+  // If true, it means that function_def is produced by graph partition during
+  // multi-device function instantiation.
+  bool is_component_function = 2;
+
+  // All necessary FunctionDefs and GradientDefs to expand `function_def`.
+  // When is_component_function is true, `function_def` could be a nested
+  // function, since some nodes in its parent's function body could be
+  // replaced with a new function by the graph optimization passes. No need to
+  // add FunctionDefs here to the function cache in EagerContext since they
+  // won't be executed as KernelAndDevices.
+  FunctionDefLibrary library = 3;
 }
 
-message RegisterFunctionResponse {}
+// Cleanup the step state of a multi-device function (e.g. tensors buffered by
+// a `Send` op but not picked up by its corresponding `Recv` op).
+message CleanupFunctionOp {
+  int64 step_id = 1;
+}
 
 message SendTensorOp {
   // All remote tensors are identified by <Op ID, Output num>. To mimic this
@@ -138,23 +199,6 @@ message SendTensorOp {
   // The device on which the tensors should be resident.
   string device_name = 3;
 }
-
-message SendTensorRequest {
-  fixed64 context_id = 1;
-
-  // All remote tensors are identified by <Op ID, Output num>. To mimic this
-  // situation when directly sending tensors, we include an "artificial" op ID
-  // (which would have corresponded to the _Recv op when not using SendTensor).
-  int64 op_id = 2;
-  // The index within the repeated field is the output number that will help
-  // uniquely identify (along with the above op_id) the particular tensor.
-  repeated TensorProto tensors = 3;
-
-  // The device on which the tensors should be resident.
-  string device_name = 4;
-}
-
-message SendTensorResponse {}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -179,6 +223,10 @@ service EagerService {
   // other RPCs to detect whether the worker has restarted.
   rpc CreateContext(CreateContextRequest) returns (CreateContextResponse);
 
+  // This updates the eager context on an existing worker when updating the set
+  // of servers in a distributed eager cluster.
+  rpc UpdateContext(UpdateContextRequest) returns (UpdateContextResponse);
+
   // This takes a list of Execute and DeleteTensorHandle operations and enqueues
   // (in async mode) or executes (in sync mode) them on the remote server.
   // All outputs of ops which were not explicitly deleted with
@@ -200,21 +248,14 @@ service EagerService {
 
   // Contexts are always created with a deadline and no RPCs within a deadline
   // will trigger a context garbage collection. KeepAlive calls can be used to
-  // delay this.
+  // delay this. It can also be used to validate the existance of a context ID
+  // on remote eager worker. If the context is on remote worker, return the same
+  // ID and the current context view ID. This is useful for checking if the
+  // remote worker (potentially with the same task name and hostname / port) is
+  // replaced with a new process.
   rpc KeepAlive(KeepAliveRequest) returns (KeepAliveResponse);
 
   // Closes the context. No calls to other methods using the existing context ID
   // are valid after this.
   rpc CloseContext(CloseContextRequest) returns (CloseContextResponse);
-
-  // Takes a FunctionDef and makes it enqueable on the remote worker.
-  rpc RegisterFunction(RegisterFunctionRequest)
-      returns (RegisterFunctionResponse);
-
-  // TODO(fishx): Remove this method.
-  // An RPC to push tensors to the server. At times, certain environments don't
-  // allow the server to connect back to the client.
-  rpc SendTensor(SendTensorRequest) returns (SendTensorResponse) {
-    option deprecated = true;
-  }
 }

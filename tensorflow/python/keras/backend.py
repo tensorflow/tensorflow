@@ -41,6 +41,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tfdev
 from tensorflow.python.framework import dtypes as dtypes_module
@@ -53,6 +54,7 @@ from tensorflow.python.keras import backend_config
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import ctc_ops as ctc
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients as gradients_module
@@ -69,8 +71,10 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
+from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import moving_averages
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
@@ -152,26 +156,30 @@ def cast_to_floatx(x):
   """Cast a Numpy array to the default Keras float type.
 
   Arguments:
-      x: Numpy array.
+      x: Numpy array or TensorFlow tensor.
 
   Returns:
-      The same Numpy array, cast to its new type.
+      The same array (Numpy array if `x` was a Numpy array, or TensorFlow tensor
+      if `x` was a tensor), cast to its new type.
 
   Example:
-  ```python
-      >>> from tensorflow.keras import backend as K
-      >>> K.floatx()
-      'float32'
-      >>> arr = numpy.array([1.0, 2.0], dtype='float64')
-      >>> arr.dtype
-      dtype('float64')
-      >>> new_arr = K.cast_to_floatx(arr)
-      >>> new_arr
-      array([ 1.,  2.], dtype=float32)
-      >>> new_arr.dtype
-      dtype('float32')
-  ```
+
+  >>> tf.keras.backend.floatx()
+  'float32'
+  >>> arr = np.array([1.0, 2.0], dtype='float64')
+  >>> arr.dtype
+  dtype('float64')
+  >>> new_arr = cast_to_floatx(arr)
+  >>> new_arr
+  array([1.,  2.], dtype=float32)
+  >>> new_arr.dtype
+  dtype('float32')
+
   """
+  if isinstance(x, (ops.Tensor,
+                    variables_module.Variable,
+                    sparse_tensor.SparseTensor)):
+    return math_ops.cast(x, dtype=floatx())
   return np.asarray(x, dtype=floatx())
 
 
@@ -193,12 +201,11 @@ def get_uid(prefix=''):
 
   Example:
 
-  ```
-    >>> get_uid('dense')
-    1
-    >>> get_uid('dense')
-    2
-  ```
+  >>> get_uid('dense')
+  1
+  >>> get_uid('dense')
+  2
+
   """
   graph = get_graph()
   if graph not in PER_GRAPH_OBJECT_NAME_UIDS:
@@ -337,6 +344,7 @@ def set_learning_phase(value):
 
   Arguments:
       value: Learning phase value, either 0 or 1 (integers).
+             0 = test, 1 = train
 
   Raises:
       ValueError: if `value` is neither `0` nor `1`.
@@ -361,6 +369,7 @@ def learning_phase_scope(value):
 
   Arguments:
      value: Learning phase value, either 0 or 1 (integers).
+            0 = test, 1 = train
 
   Yields:
     None.
@@ -403,6 +412,7 @@ def eager_learning_phase_scope(value):
 
   Arguments:
       value: Learning phase value, either 0 or 1 (integers).
+             0 = test, 1 = train
 
   Yields:
     None.
@@ -624,7 +634,7 @@ def _get_available_gpus():
   """
   if ops.executing_eagerly_outside_functions():
     # Returns names of devices directly.
-    return [name for name in context.list_devices() if 'GPU' in name]
+    return [d.name for d in config.list_logical_devices('GPU')]
 
   global _LOCAL_DEVICES
   if _LOCAL_DEVICES is None:
@@ -692,15 +702,15 @@ def is_sparse(tensor):
       A boolean.
 
   Example:
-  ```python
-  >>> from keras import backend as K
-  >>> a = K.placeholder((2, 2), sparse=False)
-  >>> print(K.is_sparse(a))
+
+
+  >>> a = tf.keras.backend.placeholder((2, 2), sparse=False)
+  >>> print(tf.keras.backend.is_sparse(a))
   False
-  >>> b = K.placeholder((2, 2), sparse=True)
-  >>> print(K.is_sparse(b))
+  >>> b = tf.keras.backend.placeholder((2, 2), sparse=True)
+  >>> print(tf.keras.backend.is_sparse(b))
   True
-  ```
+
   """
   return isinstance(tensor, sparse_tensor.SparseTensor)
 
@@ -716,15 +726,15 @@ def to_dense(tensor):
       A dense tensor.
 
   Examples:
-  ```python
-  >>> from keras import backend as K
-  >>> b = K.placeholder((2, 2), sparse=True)
-  >>> print(K.is_sparse(b))
+
+
+  >>> b = tf.keras.backend.placeholder((2, 2), sparse=True)
+  >>> print(tf.keras.backend.is_sparse(b))
   True
-  >>> c = K.to_dense(b)
-  >>> print(K.is_sparse(c))
+  >>> c = tf.keras.backend.to_dense(b)
+  >>> print(tf.keras.backend.is_sparse(c))
   False
-  ```
+
   """
   if is_sparse(tensor):
     return sparse_ops.sparse_tensor_to_dense(tensor)
@@ -741,13 +751,13 @@ def name_scope(name):
 
   For example, to define a new Python op called `my_op`:
 
-  ```python
+
   def my_op(a):
     with tf.name_scope("MyOp") as scope:
       a = tf.convert_to_tensor(a, name="a")
       # Define some computation that uses `a`.
       return foo_op(..., name=scope)
-  ```
+
 
   When executed, the Tensor `a` will have the name `MyOp/a`.
 
@@ -775,19 +785,17 @@ def variable(value, dtype=None, name=None, constraint=None):
       A variable instance (with Keras metadata included).
 
   Examples:
-  ```python
-  >>> import numpy as np
-  >>> from keras import backend as K
+
   >>> val = np.array([[1, 2], [3, 4]])
-  >>> kvar = K.variable(value=val, dtype='float64', name='example_var')
-  >>> K.dtype(kvar)
+  >>> kvar = tf.keras.backend.variable(value=val, dtype='float64',
+  ...                                  name='example_var')
+  >>> tf.keras.backend.dtype(kvar)
   'float64'
   >>> print(kvar)
-  example_var
-  >>> kvar.eval()
-  array([[ 1.,  2.],
-         [ 3.,  4.]])
-  ```
+  <tf.Variable 'example_var:...' shape=(2, 2) dtype=float64, numpy=
+    array([[1., 2.],
+           [3., 4.]])>
+
   """
   if dtype is None:
     dtype = floatx()
@@ -855,10 +863,10 @@ def unique_object_name(name,
 
   Example:
 
-  ```python
+
   _unique_layer_name('dense')  # dense_1
   _unique_layer_name('dense')  # dense_2
-  ```
+
   """
   if name_uid_map is None:
     name_uid_map = get_default_graph_uid_map()
@@ -946,34 +954,31 @@ def is_keras_tensor(x):
       ValueError: In case `x` is not a symbolic tensor.
 
   Examples:
-  ```python
-  >>> import tensorflow as tf
-  >>> import numpy
-  >>> from keras import backend as K
-  >>> from keras.layers import Input, Dense
-  >>> np_var = numpy.array([1, 2])
-  >>> K.is_keras_tensor(np_var) # A numpy array is not a symbolic tensor.
-  ValueError
-  >>> k_var = tf.compat.v1.placeholder('float32', shape=(1,1))
-  >>> K.is_keras_tensor(k_var) # A variable indirectly created outside of
-  keras is not a Keras tensor.
+
+  >>> np_var = np.array([1, 2])
+  >>> # A numpy array is not a symbolic tensor.
+  >>> tf.keras.backend.is_keras_tensor(np_var)
+  Traceback (most recent call last):
+  ...
+  ValueError: Unexpectedly found an instance of type `<class 'numpy.ndarray'>`.
+  Expected a symbolic tensor instance.
+  >>> keras_var = tf.keras.backend.variable(np_var)
+  >>> # A variable created with the keras backend is not a Keras tensor.
+  >>> tf.keras.backend.is_keras_tensor(keras_var)
   False
-  >>> keras_var = K.variable(np_var)
-  >>> K.is_keras_tensor(keras_var)  # A variable created with the keras
-  backend is not a Keras tensor.
+  >>> keras_placeholder = tf.keras.backend.placeholder(shape=(2, 4, 5))
+  >>> # A placeholder is not a Keras tensor.
+  >>> tf.keras.backend.is_keras_tensor(keras_placeholder)
   False
-  >>> keras_placeholder = K.placeholder(shape=(2, 4, 5))
-  >>> K.is_keras_tensor(keras_placeholder)  # A placeholder is not a Keras
-  tensor.
-  False
-  >>> keras_input = Input([10])
-  >>> K.is_keras_tensor(keras_input) # An Input is a Keras tensor.
+  >>> keras_input = tf.keras.layers.Input([10])
+  >>> # An Input is a Keras tensor.
+  >>> tf.keras.backend.is_keras_tensor(keras_input)
   True
-  >>> keras_layer_output = Dense(10)(keras_input)
-  >>> K.is_keras_tensor(keras_layer_output) # Any Keras layer output is a
-  Keras tensor.
+  >>> keras_layer_output = tf.keras.layers.Dense(10)(keras_input)
+  >>> # Any Keras layer output is a Keras tensor.
+  >>> tf.keras.backend.is_keras_tensor(keras_layer_output)
   True
-  ```
+
   """
   if not isinstance(x, (ops.Tensor,
                         variables_module.Variable,
@@ -1014,12 +1019,12 @@ def placeholder(shape=None,
       Tensor instance (with Keras metadata included).
 
   Examples:
-  ```python
-  >>> from keras import backend as K
-  >>> input_ph = K.placeholder(shape=(2, 4, 5))
+
+
+  >>> input_ph = tf.keras.backend.placeholder(shape=(2, 4, 5))
   >>> input_ph
-  <tf.Tensor 'Placeholder_4:0' shape=(2, 4, 5) dtype=float32>
-  ```
+  <tf.Tensor 'Placeholder_...' shape=(2, 4, 5) dtype=float32>
+
   """
   if sparse and ragged:
     raise ValueError(
@@ -1130,23 +1135,14 @@ def shape(x):
 
   Examples:
 
-  ```python
-  # TensorFlow example
-  >>> from keras import backend as K
-  >>> tf_session = K.get_session()
   >>> val = np.array([[1, 2], [3, 4]])
-  >>> kvar = K.variable(value=val)
-  >>> input = keras.backend.placeholder(shape=(2, 4, 5))
-  >>> K.shape(kvar)
-  <tf.Tensor 'Shape_8:0' shape=(2,) dtype=int32>
-  >>> K.shape(input)
-  <tf.Tensor 'Shape_9:0' shape=(3,) dtype=int32>
-  # To get integer shape (Instead, you can use K.int_shape(x))
-  >>> K.shape(kvar).eval(session=tf_session)
-  array([2, 2], dtype=int32)
-  >>> K.shape(input).eval(session=tf_session)
-  array([2, 4, 5], dtype=int32)
-  ```
+  >>> kvar = tf.keras.backend.variable(value=val)
+  >>> tf.keras.backend.shape(kvar)
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 2], dtype=int32)>
+  >>> input = tf.keras.backend.placeholder(shape=(2, 4, 5))
+  >>> tf.keras.backend.shape(input)
+  <tf.Tensor 'Shape_...' shape=(3,) dtype=int32>
+
   """
   return array_ops.shape(x)
 
@@ -1162,16 +1158,15 @@ def int_shape(x):
       A tuple of integers (or None entries).
 
   Examples:
-  ```python
-  >>> from keras import backend as K
-  >>> input = K.placeholder(shape=(2, 4, 5))
-  >>> K.int_shape(input)
+
+  >>> input = tf.keras.backend.placeholder(shape=(2, 4, 5))
+  >>> tf.keras.backend.int_shape(input)
   (2, 4, 5)
   >>> val = np.array([[1, 2], [3, 4]])
-  >>> kvar = K.variable(value=val)
-  >>> K.int_shape(kvar)
+  >>> kvar = tf.keras.backend.variable(value=val)
+  >>> tf.keras.backend.int_shape(kvar)
   (2, 2)
-  ```
+
   """
   try:
     shape = x.shape
@@ -1193,16 +1188,16 @@ def ndim(x):
       Integer (scalar), number of axes.
 
   Examples:
-  ```python
-  >>> from keras import backend as K
-  >>> input = K.placeholder(shape=(2, 4, 5))
+
+
+  >>> input = tf.keras.backend.placeholder(shape=(2, 4, 5))
   >>> val = np.array([[1, 2], [3, 4]])
-  >>> kvar = K.variable(value=val)
-  >>> K.ndim(input)
+  >>> kvar = tf.keras.backend.variable(value=val)
+  >>> tf.keras.backend.ndim(input)
   3
-  >>> K.ndim(kvar)
+  >>> tf.keras.backend.ndim(kvar)
   2
-  ```
+
   """
   dims = x.shape._dims
   if dims is not None:
@@ -1221,22 +1216,23 @@ def dtype(x):
       String, dtype of `x`.
 
   Examples:
-  ```python
-  >>> from keras import backend as K
-  >>> K.dtype(K.placeholder(shape=(2,4,5)))
+
+  >>> tf.keras.backend.dtype(tf.keras.backend.placeholder(shape=(2,4,5)))
   'float32'
-  >>> K.dtype(K.placeholder(shape=(2,4,5), dtype='float32'))
+  >>> tf.keras.backend.dtype(tf.keras.backend.placeholder(shape=(2,4,5),
+  ...                                                     dtype='float32'))
   'float32'
-  >>> K.dtype(K.placeholder(shape=(2,4,5), dtype='float64'))
+  >>> tf.keras.backend.dtype(tf.keras.backend.placeholder(shape=(2,4,5),
+  ...                                                     dtype='float64'))
   'float64'
-  # Keras variable
-  >>> kvar = K.variable(np.array([[1, 2], [3, 4]]))
-  >>> K.dtype(kvar)
+  >>> kvar = tf.keras.backend.variable(np.array([[1, 2], [3, 4]]))
+  >>> tf.keras.backend.dtype(kvar)
   'float32'
-  >>> kvar = K.variable(np.array([[1, 2], [3, 4]]), dtype='float32')
-  >>> K.dtype(kvar)
+  >>> kvar = tf.keras.backend.variable(np.array([[1, 2], [3, 4]]),
+  ...                                  dtype='float32')
+  >>> tf.keras.backend.dtype(kvar)
   'float32'
-  ```
+
   """
   return x.dtype.base_dtype.name
 
@@ -1252,13 +1248,13 @@ def eval(x):
       A Numpy array.
 
   Examples:
-  ```python
-  >>> from keras import backend as K
-  >>> kvar = K.variable(np.array([[1, 2], [3, 4]]), dtype='float32')
-  >>> K.eval(kvar)
-  array([[ 1.,  2.],
-         [ 3.,  4.]], dtype=float32)
-  ```
+
+  >>> kvar = tf.keras.backend.variable(np.array([[1, 2], [3, 4]]),
+  ...                                  dtype='float32')
+  >>> tf.keras.backend.eval(kvar)
+  array([[1.,  2.],
+         [3.,  4.]], dtype=float32)
+
   """
   return get_value(to_dense(x))
 
@@ -1279,17 +1275,22 @@ def zeros(shape, dtype=None, name=None):
 
   Example:
 
-  ```python
-  from tensorflow.keras import backend as K
-  kvar = K.zeros((3,4))
-  K.eval(kvar)
-  # array([[ 0.,  0.,  0.,  0.], [ 0.,  0.,  0.,  0.],
-  #       [ 0.,  0.,  0.,  0.]], dtype=float32)
-  A = tf.constant([1,2,3])
-  kvar2 = K.zeros(A.shape) # [0., 0., 0.] float32 by default
-  kvar3 = K.zeros(A.shape,dtype=tf.int32) # [0, 0, 0] with int32 dtype
-  kvar4 = K.zeros([2,3]) # [[0., 0., 0.], [0., 0., 0.]]
-  ```
+  >>> kvar = tf.keras.backend.zeros((3,4))
+  >>> tf.keras.backend.eval(kvar)
+  array([[0.,  0.,  0.,  0.],
+         [0.,  0.,  0.,  0.],
+         [0.,  0.,  0.,  0.]], dtype=float32)
+  >>> A = tf.constant([1,2,3])
+  >>> kvar2 = tf.keras.backend.zeros(A.shape) # [0., 0., 0.]
+  >>> tf.keras.backend.eval(kvar2)
+  array([0., 0., 0.], dtype=float32)
+  >>> kvar3 = tf.keras.backend.zeros(A.shape,dtype=tf.int32)
+  >>> tf.keras.backend.eval(kvar3)
+  array([0, 0, 0], dtype=int32)
+  >>> kvar4 = tf.keras.backend.zeros([2,3])
+  >>> tf.keras.backend.eval(kvar4)
+  array([[0., 0., 0.],
+         [0., 0., 0.]], dtype=float32)
 
   """
   with ops.init_scope():
@@ -1318,14 +1319,14 @@ def ones(shape, dtype=None, name=None):
       and will return a dynamically-shaped tensor instead.
 
   Example:
-  ```python
-  >>> from keras import backend as K
-  >>> kvar = K.ones((3,4))
-  >>> K.eval(kvar)
-  array([[ 1.,  1.,  1.,  1.],
-         [ 1.,  1.,  1.,  1.],
-         [ 1.,  1.,  1.,  1.]], dtype=float32)
-  ```
+
+
+  >>> kvar = tf.keras.backend.ones((3,4))
+  >>> tf.keras.backend.eval(kvar)
+  array([[1.,  1.,  1.,  1.],
+         [1.,  1.,  1.,  1.],
+         [1.,  1.,  1.,  1.]], dtype=float32)
+
   """
   with ops.init_scope():
     if dtype is None:
@@ -1351,14 +1352,14 @@ def eye(size, dtype=None, name=None):
       A Keras variable, an identity matrix.
 
   Example:
-  ```python
-  >>> from keras import backend as K
-  >>> kvar = K.eye(3)
-  >>> K.eval(kvar)
-  array([[ 1.,  0.,  0.],
-         [ 0.,  1.,  0.],
-         [ 0.,  0.,  1.]], dtype=float32)
-  ```
+
+
+  >>> kvar = tf.keras.backend.eye(3)
+  >>> tf.keras.backend.eval(kvar)
+  array([[1.,  0.,  0.],
+         [0.,  1.,  0.],
+         [0.,  0.,  1.]], dtype=float32)
+
 
   """
   if dtype is None:
@@ -1382,13 +1383,13 @@ def zeros_like(x, dtype=None, name=None):
 
   Example:
 
-  ```python
+
   from tensorflow.keras import backend as K
   kvar = K.variable(np.random.random((2,3)))
   kvar_zeros = K.zeros_like(kvar)
   K.eval(kvar_zeros)
   # array([[ 0.,  0.,  0.], [ 0.,  0.,  0.]], dtype=float32)
-  ```
+
 
   """
   return array_ops.zeros_like(x, dtype=dtype, name=name)
@@ -1408,14 +1409,13 @@ def ones_like(x, dtype=None, name=None):
       A Keras variable with the shape of x filled with ones.
 
   Example:
-  ```python
-  >>> from keras import backend as K
-  >>> kvar = K.variable(np.random.random((2,3)))
-  >>> kvar_ones = K.ones_like(kvar)
-  >>> K.eval(kvar_ones)
-  array([[ 1.,  1.,  1.],
-         [ 1.,  1.,  1.]], dtype=float32)
-  ```
+
+  >>> kvar = tf.keras.backend.variable(np.random.random((2,3)))
+  >>> kvar_ones = tf.keras.backend.ones_like(kvar)
+  >>> tf.keras.backend.eval(kvar_ones)
+  array([[1.,  1.,  1.],
+         [1.,  1.,  1.]], dtype=float32)
+
   """
   return array_ops.ones_like(x, dtype=dtype, name=name)
 
@@ -1449,15 +1449,13 @@ def random_uniform_variable(shape, low, high, dtype=None, name=None, seed=None):
       A Keras variable, filled with drawn samples.
 
   Example:
-  ```python
+
   # TensorFlow example
-  >>> kvar = K.random_uniform_variable((2,3), 0, 1)
+  >>> kvar = tf.keras.backend.random_uniform_variable((2,3), 0, 1)
   >>> kvar
-  <tensorflow.python.ops.variables.Variable object at 0x10ab40b10>
-  >>> K.eval(kvar)
-  array([[ 0.10940075,  0.10047495,  0.476143  ],
-         [ 0.66137183,  0.00869417,  0.89220798]], dtype=float32)
-  ```
+  <tf.Variable 'Variable:0' shape=(2, 3) dtype=float32, numpy=...,
+  dtype=float32)>
+
   """
   if dtype is None:
     dtype = floatx()
@@ -1487,15 +1485,13 @@ def random_normal_variable(shape, mean, scale, dtype=None, name=None,
       A Keras variable, filled with drawn samples.
 
   Example:
-  ```python
+
   # TensorFlow example
-  >>> kvar = K.random_normal_variable((2,3), 0, 1)
+  >>> kvar = tf.keras.backend.random_normal_variable((2,3), 0, 1)
   >>> kvar
-  <tensorflow.python.ops.variables.Variable object at 0x10ab12dd0>
-  >>> K.eval(kvar)
-  array([[ 1.19591331,  0.68685907, -0.63814116],
-         [ 0.92629528,  0.28055015,  1.70484698]], dtype=float32)
-  ```
+  <tf.Variable 'Variable:0' shape=(2, 3) dtype=float32, numpy=...,
+  dtype=float32)>
+
   """
   if dtype is None:
     dtype = floatx()
@@ -1519,14 +1515,14 @@ def count_params(x):
       Integer, the number of scalars in `x`.
 
   Example:
-  ```python
-  >>> kvar = K.zeros((2,3))
-  >>> K.count_params(kvar)
+
+  >>> kvar = tf.keras.backend.zeros((2,3))
+  >>> tf.keras.backend.count_params(kvar)
   6
-  >>> K.eval(kvar)
-  array([[ 0.,  0.,  0.],
-         [ 0.,  0.,  0.]], dtype=float32)
-  ```
+  >>> tf.keras.backend.eval(kvar)
+  array([[0.,  0.,  0.],
+         [0.,  0.,  0.]], dtype=float32)
+
   """
   return np.prod(x.shape.as_list())
 
@@ -1547,18 +1543,14 @@ def cast(x, dtype):
   Examples:
       Cast a float32 variable to a float64 tensor
 
-  ```python
-  >>> import tensorflow as tf
-  >>> from tensorflow.keras import backend as K
-  >>> input = K.ones(shape=(1,3))
+  >>> input = tf.keras.backend.ones(shape=(1,3))
   >>> print(input)
-  >>> cast_input = K.cast(input, dtype='float64')
-  >>> print(cast_input)
-
   <tf.Variable 'Variable:0' shape=(1, 3) dtype=float32,
-       numpy=array([[1., 1., 1.]], dtype=float32)>
+  numpy=array([[1., 1., 1.]], dtype=float32)>
+  >>> cast_input = tf.keras.backend.cast(input, dtype='float64')
+  >>> print(cast_input)
   tf.Tensor([[1. 1. 1.]], shape=(1, 3), dtype=float64)
-  ```
+
   """
   return math_ops.cast(x, dtype)
 
@@ -1611,11 +1603,6 @@ def moving_average_update(x, value, momentum):
   Returns:
       An Operation to update the variable.
   """
-  # `training` is higher-up than the Keras backend in the abstraction hierarchy.
-  # In particular, `training` depends on layers, and thus on Keras.
-  # moving_averages, being low-level ops, should not be part of the training
-  # module.
-  from tensorflow.python.training import moving_averages  # pylint: disable=g-import-not-at-top
   zero_debias = not tf2.enabled()
   return moving_averages.assign_moving_average(
       x, value, momentum, zero_debias=zero_debias)
@@ -1640,32 +1627,28 @@ def dot(x, y):
       A tensor, dot product of `x` and `y`.
 
   Examples:
-  ```python
-  # dot product between tensors
-  >>> x = K.placeholder(shape=(2, 3))
-  >>> y = K.placeholder(shape=(3, 4))
-  >>> xy = K.dot(x, y)
-  >>> xy
-  <tf.Tensor 'MatMul_9:0' shape=(2, 4) dtype=float32>
-  ```
 
-  ```python
   # dot product between tensors
-  >>> x = K.placeholder(shape=(32, 28, 3))
-  >>> y = K.placeholder(shape=(3, 4))
-  >>> xy = K.dot(x, y)
+  >>> x = tf.keras.backend.placeholder(shape=(2, 3))
+  >>> y = tf.keras.backend.placeholder(shape=(3, 4))
+  >>> xy = tf.keras.backend.dot(x, y)
   >>> xy
-  <tf.Tensor 'MatMul_9:0' shape=(32, 28, 4) dtype=float32>
-  ```
+  <tf.Tensor ... shape=(2, 4) dtype=float32>
 
-  ```python
+  # dot product between tensors
+  >>> x = tf.keras.backend.placeholder(shape=(32, 28, 3))
+  >>> y = tf.keras.backend.placeholder(shape=(3, 4))
+  >>> xy = tf.keras.backend.dot(x, y)
+  >>> xy
+  <tf.Tensor ... shape=(32, 28, 4) dtype=float32>
+
   # Theano-like behavior example
-  >>> x = K.random_uniform_variable(shape=(2, 3), low=0, high=1)
-  >>> y = K.ones((4, 3, 5))
-  >>> xy = K.dot(x, y)
-  >>> K.int_shape(xy)
+  >>> x = tf.keras.backend.random_uniform_variable(shape=(2, 3), low=0, high=1)
+  >>> y = tf.keras.backend.ones((4, 3, 5))
+  >>> xy = tf.keras.backend.dot(x, y)
+  >>> tf.keras.backend.int_shape(xy)
   (2, 4, 5)
-  ```
+
   """
   if ndim(x) is not None and (ndim(x) > 2 or ndim(y) > 2):
     x_shape = []
@@ -1708,84 +1691,192 @@ def batch_dot(x, y, axes=None):
   we use `expand_dims` to make sure that ndim is at least 2.
 
   Arguments:
-      x: Keras tensor or variable with `ndim >= 2`.
-      y: Keras tensor or variable with `ndim >= 2`.
-      axes: list of (or single) int with target dimensions.
-          The lengths of `axes[0]` and `axes[1]` should be the same.
+    x: Keras tensor or variable with `ndim >= 2`.
+    y: Keras tensor or variable with `ndim >= 2`.
+    axes: Tuple or list of integers with target dimensions, or single integer.
+      The sizes of `x.shape[axes[0]]` and `y.shape[axes[1]]` should be equal.
 
   Returns:
-      A tensor with shape equal to the concatenation of `x`'s shape
-      (less the dimension that was summed over) and `y`'s shape
-      (less the batch dimension and the dimension that was summed over).
-      If the final rank is 1, we reshape it to `(batch_size, 1)`.
+    A tensor with shape equal to the concatenation of `x`'s shape
+    (less the dimension that was summed over) and `y`'s shape
+    (less the batch dimension and the dimension that was summed over).
+    If the final rank is 1, we reshape it to `(batch_size, 1)`.
 
   Examples:
-      Assume `x = [[1, 2], [3, 4]]` and `y = [[5, 6], [7, 8]]`
-      `batch_dot(x, y, axes=1) = [[17, 53]]` which is the main diagonal
-      of `x.dot(y.T)`, although we never have to calculate the off-diagonal
-      elements.
+    Assume `x = [[1, 2], [3, 4]]` and `y = [[5, 6], [7, 8]]`
+    `batch_dot(x, y, axes=1) = [[17], [53]]` which is the main diagonal
+    of `x.dot(y.T)`, although we never have to calculate the off-diagonal
+    elements.
 
-      Shape inference:
-      Let `x`'s shape be `(100, 20)` and `y`'s shape be `(100, 30, 20)`.
-      If `axes` is (1, 2), to find the output shape of resultant tensor,
-          loop through each dimension in `x`'s shape and `y`'s shape:
+    Pseudocode:
+    ```
+    inner_products = []
+    for xi, yi in zip(x, y):
+        inner_products.append(xi.dot(yi))
+    result = stack(inner_products)
+    ```
 
-      * `x.shape[0]` : 100 : append to output shape
-      * `x.shape[1]` : 20 : do not append to output shape,
-          dimension 1 of `x` has been summed over. (`dot_axes[0]` = 1)
-      * `y.shape[0]` : 100 : do not append to output shape,
-          always ignore first dimension of `y`
-      * `y.shape[1]` : 30 : append to output shape
-      * `y.shape[2]` : 20 : do not append to output shape,
-          dimension 2 of `y` has been summed over. (`dot_axes[1]` = 2)
-      `output_shape` = `(100, 30)`
+    Shape inference:
+    Let `x`'s shape be `(100, 20)` and `y`'s shape be `(100, 30, 20)`.
+    If `axes` is (1, 2), to find the output shape of resultant tensor,
+        loop through each dimension in `x`'s shape and `y`'s shape:
+    * `x.shape[0]` : 100 : append to output shape
+    * `x.shape[1]` : 20 : do not append to output shape,
+        dimension 1 of `x` has been summed over. (`dot_axes[0]` = 1)
+    * `y.shape[0]` : 100 : do not append to output shape,
+        always ignore first dimension of `y`
+    * `y.shape[1]` : 30 : append to output shape
+    * `y.shape[2]` : 20 : do not append to output shape,
+        dimension 2 of `y` has been summed over. (`dot_axes[1]` = 2)
+    `output_shape` = `(100, 30)`
 
-  ```python
-  >>> x_batch = K.ones(shape=(32, 20, 1))
-  >>> y_batch = K.ones(shape=(32, 30, 20))
-  >>> xy_batch_dot = K.batch_dot(x_batch, y_batch, axes=[1, 2])
-  >>> K.int_shape(xy_batch_dot)
+  >>> x_batch = tf.keras.backend.ones(shape=(32, 20, 1))
+  >>> y_batch = tf.keras.backend.ones(shape=(32, 30, 20))
+  >>> xy_batch_dot = tf.keras.backend.batch_dot(x_batch, y_batch, axes=(1, 2))
+  >>> tf.keras.backend.int_shape(xy_batch_dot)
   (32, 1, 30)
-  ```
   """
+  x_shape = int_shape(x)
+  y_shape = int_shape(y)
+
+  x_ndim = len(x_shape)
+  y_ndim = len(y_shape)
+
+  if x_ndim < 2 or y_ndim < 2:
+    raise ValueError('Cannot do batch_dot on inputs '
+                     'with rank < 2. '
+                     'Received inputs with shapes ' +
+                     str(x_shape) + ' and ' +
+                     str(y_shape) + '.')
+
+  x_batch_size = x_shape[0]
+  y_batch_size = y_shape[0]
+
+  if x_batch_size is not None and y_batch_size is not None:
+    if x_batch_size != y_batch_size:
+      raise ValueError('Cannot do batch_dot on inputs '
+                       'with different batch sizes. '
+                       'Received inputs with shapes ' +
+                       str(x_shape) + ' and ' +
+                       str(y_shape) + '.')
   if isinstance(axes, int):
-    axes = (axes, axes)
-  x_ndim = ndim(x)
-  y_ndim = ndim(y)
+    axes = [axes, axes]
+
   if axes is None:
-    # behaves like tf.batch_matmul as default
-    axes = [x_ndim - 1, y_ndim - 2]
-  if x_ndim > y_ndim:
-    diff = x_ndim - y_ndim
-    y = array_ops.reshape(y,
-                          array_ops.concat(
-                              [array_ops.shape(y), [1] * (diff)], axis=0))
-  elif y_ndim > x_ndim:
-    diff = y_ndim - x_ndim
-    x = array_ops.reshape(x,
-                          array_ops.concat(
-                              [array_ops.shape(x), [1] * (diff)], axis=0))
-  else:
-    diff = 0
-  if ndim(x) == 2 and ndim(y) == 2:
-    if axes[0] == axes[1]:
-      out = math_ops.reduce_sum(math_ops.multiply(x, y), axes[0])
+    if y_ndim == 2:
+      axes = [x_ndim - 1, y_ndim - 1]
     else:
-      out = math_ops.reduce_sum(
-          math_ops.multiply(array_ops.transpose(x, [1, 0]), y), axes[1])
+      axes = [x_ndim - 1, y_ndim - 2]
+
+  if py_any([isinstance(a, (list, tuple)) for a in axes]):
+    raise ValueError('Multiple target dimensions are not supported. ' +
+                     'Expected: None, int, (int, int), ' +
+                     'Provided: ' + str(axes))
+
+  # if tuple, convert to list.
+  axes = list(axes)
+
+  # convert negative indices.
+  if axes[0] < 0:
+    axes[0] += x_ndim
+  if axes[1] < 0:
+    axes[1] += y_ndim
+
+  # sanity checks
+  if 0 in axes:
+    raise ValueError('Cannot perform batch_dot over axis 0. '
+                     'If your inputs are not batched, '
+                     'add a dummy batch dimension to your '
+                     'inputs using K.expand_dims(x, 0)')
+  a0, a1 = axes
+  d1 = x_shape[a0]
+  d2 = y_shape[a1]
+
+  if d1 is not None and d2 is not None and d1 != d2:
+    raise ValueError('Cannot do batch_dot on inputs with shapes ' +
+                     str(x_shape) + ' and ' + str(y_shape) +
+                     ' with axes=' + str(axes) + '. x.shape[%d] != '
+                     'y.shape[%d] (%d != %d).' % (axes[0], axes[1], d1, d2))
+
+  # backup ndims. Need them later.
+  orig_x_ndim = x_ndim
+  orig_y_ndim = y_ndim
+
+  # if rank is 2, expand to 3.
+  if x_ndim == 2:
+    x = array_ops.expand_dims(x, 1)
+    a0 += 1
+    x_ndim += 1
+  if y_ndim == 2:
+    y = array_ops.expand_dims(y, 2)
+    y_ndim += 1
+
+  # bring x's dimension to be reduced to last axis.
+  if a0 != x_ndim - 1:
+    pattern = list(range(x_ndim))
+    for i in range(a0, x_ndim - 1):
+      pattern[i] = pattern[i + 1]
+    pattern[-1] = a0
+    x = array_ops.transpose(x, pattern)
+
+  # bring y's dimension to be reduced to axis 1.
+  if a1 != 1:
+    pattern = list(range(y_ndim))
+    for i in range(a1, 1, -1):
+      pattern[i] = pattern[i - 1]
+    pattern[1] = a1
+    y = array_ops.transpose(y, pattern)
+
+  # normalize both inputs to rank 3.
+  if x_ndim > 3:
+    # squash middle dimensions of x.
+    x_shape = shape(x)
+    x_mid_dims = x_shape[1:-1]
+    x_squashed_shape = array_ops.stack(
+        [x_shape[0], -1, x_shape[-1]])
+    x = array_ops.reshape(x, x_squashed_shape)
+    x_squashed = True
   else:
-    adj_x = None if axes[0] == ndim(x) - 1 else True
-    adj_y = True if axes[1] == ndim(y) - 1 else None
-    out = math_ops.matmul(x, y, adjoint_a=adj_x, adjoint_b=adj_y)
-  if diff:
-    if x_ndim > y_ndim:
-      idx = x_ndim + y_ndim - 3
-    else:
-      idx = x_ndim - 1
-    out = array_ops.squeeze(out, list(range(idx, idx + diff)))
-  if ndim(out) == 1:
-    out = expand_dims(out, 1)
-  return out
+    x_squashed = False
+
+  if y_ndim > 3:
+    # squash trailing dimensions of y.
+    y_shape = shape(y)
+    y_trail_dims = y_shape[2:]
+    y_squashed_shape = array_ops.stack(
+        [y_shape[0], y_shape[1], -1])
+    y = array_ops.reshape(y, y_squashed_shape)
+    y_squashed = True
+  else:
+    y_squashed = False
+
+  result = math_ops.matmul(x, y)
+
+  # if inputs were squashed, we have to reshape the matmul output.
+  output_shape = array_ops.shape(result)
+  do_reshape = False
+
+  if x_squashed:
+    output_shape = array_ops.concat(
+        [output_shape[:1],
+         x_mid_dims,
+         output_shape[-1:]], 0)
+    do_reshape = True
+
+  if y_squashed:
+    output_shape = array_ops.concat([output_shape[:-1], y_trail_dims], 0)
+    do_reshape = True
+
+  if do_reshape:
+    result = array_ops.reshape(result, output_shape)
+
+  # if the inputs were originally rank 2, we remove the added 1 dim.
+  if orig_x_ndim == 2:
+    result = array_ops.squeeze(result, 1)
+  elif orig_y_ndim == 2:
+    result = array_ops.squeeze(result, -1)
+
+  return result
 
 
 @keras_export('keras.backend.transpose')
@@ -1799,27 +1890,24 @@ def transpose(x):
       A tensor.
 
   Examples:
-  ```python
-  >>> var = K.variable([[1, 2, 3], [4, 5, 6]])
-  >>> K.eval(var)
-  array([[ 1.,  2.,  3.],
-         [ 4.,  5.,  6.]], dtype=float32)
-  >>> var_transposed = K.transpose(var)
-  >>> K.eval(var_transposed)
-  array([[ 1.,  4.],
-         [ 2.,  5.],
-         [ 3.,  6.]], dtype=float32)
-  ```
 
-  ```python
-  >>> input = K.placeholder((2, 3))
+  >>> var = tf.keras.backend.variable([[1, 2, 3], [4, 5, 6]])
+  >>> tf.keras.backend.eval(var)
+  array([[1.,  2.,  3.],
+         [4.,  5.,  6.]], dtype=float32)
+  >>> var_transposed = tf.keras.backend.transpose(var)
+  >>> tf.keras.backend.eval(var_transposed)
+  array([[1.,  4.],
+         [2.,  5.],
+         [3.,  6.]], dtype=float32)
+  >>> input = tf.keras.backend.placeholder((2, 3))
   >>> input
-  <tf.Tensor 'Placeholder_11:0' shape=(2, 3) dtype=float32>
-  >>> input_transposed = K.transpose(input)
+  <tf.Tensor 'Placeholder_...' shape=(2, 3) dtype=float32>
+  >>> input_transposed = tf.keras.backend.transpose(input)
   >>> input_transposed
-  <tf.Tensor 'transpose_4:0' shape=(3, 2) dtype=float32>
+  <tf.Tensor 'Transpose_...' shape=(3, 2) dtype=float32>
 
-  ```
+
   """
   return array_ops.transpose(x)
 
@@ -2198,18 +2286,20 @@ def clip(x, min_value, max_value):
 
   Arguments:
       x: Tensor or variable.
-      min_value: Python float or integer.
-      max_value: Python float or integer.
+      min_value: Python float, integer, or tensor.
+      max_value: Python float, integer, or tensor.
 
   Returns:
       A tensor.
   """
-  if max_value is not None and max_value < min_value:
-    max_value = min_value
+  if (isinstance(min_value, (int, float)) and
+      isinstance(max_value, (int, float))):
+    if max_value < min_value:
+      max_value = min_value
+  if min_value is None:
+    min_value = -np.inf
   if max_value is None:
     max_value = np.inf
-  min_value = _constant_to_tensor(min_value, x.dtype.base_dtype)
-  max_value = _constant_to_tensor(max_value, x.dtype.base_dtype)
   return clip_ops.clip_by_value(x, min_value, max_value)
 
 
@@ -2309,16 +2399,16 @@ def maximum(x, y):
       A tensor with the element wise maximum value(s) of `x` and `y`.
 
   Examples:
-  ```python
+
   # maximum of two tensors
   >>> x = tf.Variable([[1, 2], [3, 4]])
   >>> y = tf.Variable([[2, 1], [0, -1]])
   >>> m = tf.keras.backend.maximum(x, y)
   >>> m
-  <tf.Tensor: id=42, shape=(2, 2), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
   array([[2, 2],
          [3, 4]], dtype=int32)>
-  ```
+
   """
   return math_ops.maximum(x, y)
 
@@ -2569,15 +2659,15 @@ def concatenate(tensors, axis=-1):
       A tensor.
 
   Example:
-      ```python
+
       >>> a = tf.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
       >>> b = tf.constant([[10, 20, 30], [40, 50, 60], [70, 80, 90]])
       >>> tf.keras.backend.concatenate((a, b), axis=-1)
-      <tf.Tensor: id=14, shape=(3, 6), dtype=int32, numpy=
+      <tf.Tensor: shape=(3, 6), dtype=int32, numpy=
       array([[ 1,  2,  3, 10, 20, 30],
              [ 4,  5,  6, 40, 50, 60],
              [ 7,  8,  9, 70, 80, 90]], dtype=int32)>
-      ```
+
   """
   if axis < 0:
     rank = ndim(tensors[0])
@@ -2588,6 +2678,8 @@ def concatenate(tensors, axis=-1):
 
   if py_all(is_sparse(x) for x in tensors):
     return sparse_ops.sparse_concat(axis, tensors)
+  elif py_all(isinstance(x, ragged_tensor.RaggedTensor) for x in tensors):
+    return ragged_concat_ops.concat(tensors, axis)
   else:
     return array_ops.concat([to_dense(x) for x in tensors], axis)
 
@@ -2604,19 +2696,19 @@ def reshape(x, shape):
       A tensor.
 
   Example:
-    ```python
+
     >>> a = tf.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]])
     >>> a
-    <tf.Tensor: id=32, shape=(4, 3), dtype=int32, numpy=
+    <tf.Tensor: shape=(4, 3), dtype=int32, numpy=
     array([[ 1,  2,  3],
            [ 4,  5,  6],
            [ 7,  8,  9],
            [10, 11, 12]], dtype=int32)>
     >>> tf.keras.backend.reshape(a, shape=(2, 6))
-    <tf.Tensor: id=35, shape=(2, 6), dtype=int32, numpy=
+    <tf.Tensor: shape=(2, 6), dtype=int32, numpy=
     array([[ 1,  2,  3,  4,  5,  6],
            [ 7,  8,  9, 10, 11, 12]], dtype=int32)>
-    ```
+
   """
   return array_ops.reshape(x, shape)
 
@@ -2634,20 +2726,20 @@ def permute_dimensions(x, pattern):
       A tensor.
 
   Example:
-    ```python
+
     >>> a = tf.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]])
     >>> a
-    <tf.Tensor: id=49, shape=(4, 3), dtype=int32, numpy=
+    <tf.Tensor: shape=(4, 3), dtype=int32, numpy=
     array([[ 1,  2,  3],
            [ 4,  5,  6],
            [ 7,  8,  9],
            [10, 11, 12]], dtype=int32)>
     >>> tf.keras.backend.permute_dimensions(a, pattern=(1, 0))
-    <tf.Tensor: id=52, shape=(3, 4), dtype=int32, numpy=
+    <tf.Tensor: shape=(3, 4), dtype=int32, numpy=
     array([[ 1,  4,  7, 10],
            [ 2,  5,  8, 11],
            [ 3,  6,  9, 12]], dtype=int32)>
-    ```
+
   """
   return array_ops.transpose(x, perm=pattern)
 
@@ -2763,12 +2855,12 @@ def repeat_elements(x, rep, axis):
       A tensor.
 
   Example:
-      ```python
+
       >>> b = tf.constant([1, 2, 3])
       >>> tf.keras.backend.repeat_elements(b, rep=2, axis=0)
-      <tf.Tensor: id=70, shape=(6,), dtype=int32,
+      <tf.Tensor: shape=(6,), dtype=int32,
           numpy=array([1, 1, 2, 2, 3, 3], dtype=int32)>
-      ```
+
   """
   x_shape = x.shape.as_list()
   # For static axis
@@ -2823,19 +2915,19 @@ def repeat(x, n):
       A tensor.
 
   Example:
-      ```python
+
       >>> b = tf.constant([[1, 2], [3, 4]])
       >>> b
-      <tf.Tensor: id=78, shape=(2, 2), dtype=int32, numpy=
+      <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
       array([[1, 2],
              [3, 4]], dtype=int32)>
       >>> tf.keras.backend.repeat(b, n=2)
-      <tf.Tensor: id=82, shape=(2, 2, 2), dtype=int32, numpy=
+      <tf.Tensor: shape=(2, 2, 2), dtype=int32, numpy=
       array([[[1, 2],
               [1, 2]],
              [[3, 4],
               [3, 4]]], dtype=int32)>
-      ```
+
   """
   assert ndim(x) == 2
   x = array_ops.expand_dims(x, 1)
@@ -2864,12 +2956,12 @@ def arange(start, stop=None, step=1, dtype='int32'):
       An integer tensor.
 
   Example:
-      ```python
+
       >>> tf.keras.backend.arange(start=0, stop=10, step=1.5)
-      <tf.Tensor: id=96, shape=(7,), dtype=float32,
+      <tf.Tensor: shape=(7,), dtype=float32,
           numpy=array([0. , 1.5, 3. , 4.5, 6. , 7.5, 9. ], dtype=float32)>
 
-      ```
+
 
   """
   # Match the behavior of numpy and Theano by returning an empty sequence.
@@ -2909,16 +3001,16 @@ def flatten(x):
       A tensor, reshaped into 1-D
 
   Example:
-      ```python
+
       >>> b = tf.constant([[1, 2], [3, 4]])
       >>> b
-      <tf.Tensor: id=102, shape=(2, 2), dtype=int32, numpy=
+      <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
       array([[1, 2],
              [3, 4]], dtype=int32)>
       >>> tf.keras.backend.flatten(b)
-      <tf.Tensor: id=105, shape=(4,), dtype=int32,
+      <tf.Tensor: shape=(4,), dtype=int32,
           numpy=array([1, 2, 3, 4], dtype=int32)>
-      ```
+
   """
   return array_ops.reshape(x, [-1])
 
@@ -2938,13 +3030,11 @@ def batch_flatten(x):
   Examples:
     Flattening a 3D tensor to 2D by collapsing the last dimension.
 
-  ```python
-  >>> from tensorflow.keras import backend as K
-  >>> x_batch = K.ones(shape=(2, 3, 4, 5))
-  >>> x_batch_flatten = K.batch_flatten(x_batch)
-  >>> K.int_shape(x_batch_flatten)
+  >>> x_batch = tf.keras.backend.ones(shape=(2, 3, 4, 5))
+  >>> x_batch_flatten = batch_flatten(x_batch)
+  >>> tf.keras.backend.int_shape(x_batch_flatten)
   (2, 60)
-  ```
+
   """
   x = array_ops.reshape(x, array_ops.stack([-1, prod(shape(x)[1:])]))
   return x
@@ -3082,16 +3172,16 @@ def stack(x, axis=0):
       A tensor.
 
   Example:
-      ```python
+
       >>> a = tf.constant([[1, 2],[3, 4]])
       >>> b = tf.constant([[10, 20],[30, 40]])
       >>> tf.keras.backend.stack((a, b))
-      <tf.Tensor: id=146, shape=(2, 2, 2), dtype=int32, numpy=
+      <tf.Tensor: shape=(2, 2, 2), dtype=int32, numpy=
       array([[[ 1,  2],
               [ 3,  4]],
              [[10, 20],
               [30, 40]]], dtype=int32)>
-      ```
+
   """
   return array_ops.stack(x, axis=axis)
 
@@ -3268,9 +3358,11 @@ def print_tensor(x, message=''):
 
   Example:
 
-  ```python
-  >>> x = K.print_tensor(x, message="x is: ")
-  ```
+  >>> x = tf.constant([[1.0, 2.0], [3.0, 4.0]])
+  >>> tf.keras.backend.print_tensor(x)
+  <tf.Tensor: shape=(2, 2), dtype=float32, numpy=
+    array([[1., 2.],
+           [3., 4.]], dtype=float32)>
 
   Arguments:
       x: Tensor to print.
@@ -3753,7 +3845,9 @@ def rnn(step_function,
           with a zero for every element that is masked.
       constants: List of constant values passed at each step.
       unroll: Whether to unroll the RNN or to use a symbolic `while_loop`.
-      input_length: If specified, assume time dimension is of this length.
+      input_length: An integer or a 1-D Tensor, depending on whether
+          the time dimension is fixed-length or not. In case of variable length
+          input, it is used for masking in case there's no mask specified.
       time_major: Boolean. If true, the inputs and outputs will be in shape
           `(timesteps, batch, ...)`, whereas in the False case, it will be
           `(batch, timesteps, ...)`. Using `time_major = True` is a bit more
@@ -3764,6 +3858,7 @@ def rnn(step_function,
       zero_output_for_mask: Boolean. If True, the output for masked timestep
           will be zeros, whereas in the False case, output from previous
           timestep is returned.
+
   Returns:
       A tuple, `(last_output, outputs, new_states)`.
           last_output: the latest output of the rnn, of shape `(samples, ...)`
@@ -3816,8 +3911,10 @@ def rnn(step_function,
   # That's what the tile call does, it just repeats the mask along its
   # second dimension n times.
   def _expand_mask(mask_t, input_t, fixed_dim=1):
-    assert not nest.is_sequence(mask_t)
-    assert not nest.is_sequence(input_t)
+    if nest.is_sequence(mask_t):
+      raise ValueError('mask_t is expected to be tensor, but got %s' % mask_t)
+    if nest.is_sequence(input_t):
+      raise ValueError('input_t is expected to be tensor, but got %s' % input_t)
     rank_diff = len(input_t.shape) - len(mask_t.shape)
     for _ in range(rank_diff):
       mask_t = array_ops.expand_dims(mask_t, -1)
@@ -3868,14 +3965,16 @@ def rnn(step_function,
         else:
           prev_output = successive_outputs[-1]
 
-        output = array_ops.where(tiled_mask_t, output, prev_output)
+        output = array_ops.where_v2(tiled_mask_t, output, prev_output)
 
-        return_states = []
-        for state, new_state in zip(states, new_states):
-          # (see earlier comment for tile explanation)
-          tiled_mask_t = _expand_mask(mask_t, new_state)
-          return_states.append(array_ops.where(tiled_mask_t, new_state, state))
-        states = return_states
+        flat_states = nest.flatten(states)
+        flat_new_states = nest.flatten(new_states)
+        tiled_mask_t = tuple(_expand_mask(mask_t, s) for s in flat_states)
+        flat_final_states = tuple(
+            array_ops.where_v2(m, s, ps)
+            for m, s, ps in zip(tiled_mask_t, flat_new_states, flat_states))
+        states = nest.pack_sequence_as(states, flat_final_states)
+
         successive_outputs.append(output)
         successive_states.append(states)
       last_output = successive_outputs[-1]
@@ -3883,16 +3982,14 @@ def rnn(step_function,
       outputs = array_ops.stack(successive_outputs)
 
       if zero_output_for_mask:
-        last_output = array_ops.where(
-            _expand_mask(mask_list[-1], last_output),
-            last_output,
+        last_output = array_ops.where_v2(
+            _expand_mask(mask_list[-1], last_output), last_output,
             zeros_like(last_output))
-        outputs = array_ops.where(
-            _expand_mask(mask, outputs, fixed_dim=2),
-            outputs,
+        outputs = array_ops.where_v2(
+            _expand_mask(mask, outputs, fixed_dim=2), outputs,
             zeros_like(outputs))
 
-    else:
+    else:  # mask is None
       for i in range(time_steps):
         inp = _get_input_tensor(i)
         output, states = step_function(inp, tuple(states) + tuple(constants))
@@ -3902,7 +3999,7 @@ def rnn(step_function,
       new_states = successive_states[-1]
       outputs = array_ops.stack(successive_outputs)
 
-  else:
+  else:  # Unroll == False
     states = tuple(initial_states)
 
     # Create input tensor array, if the inputs is nested tensors, then it will
@@ -3938,21 +4035,21 @@ def rnn(step_function,
 
     time = constant_op.constant(0, dtype='int32', name='time')
 
+    # We only specify the 'maximum_iterations' when building for XLA since that
+    # causes slowdowns on GPU in TF.
+    if (not context.executing_eagerly() and
+        control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph())):
+      max_iterations = math_ops.reduce_max(input_length)
+    else:
+      max_iterations = None
+
     while_loop_kwargs = {
         'cond': lambda time, *_: time < time_steps_t,
-        'maximum_iterations': input_length,
+        'maximum_iterations': max_iterations,
         'parallel_iterations': 32,
         'swap_memory': True,
     }
-
     if mask is not None:
-      if not states:
-        raise ValueError('No initial states provided! '
-                         'When using masking in an RNN, you should '
-                         'provide initial states '
-                         '(and your step function should return '
-                         'as its first state at time `t` '
-                         'the output at time `t-1`).')
       if go_backwards:
         mask = reverse(mask, 0)
 
@@ -3962,6 +4059,36 @@ def rnn(step_function,
           tensor_array_name='mask_ta')
       mask_ta = mask_ta.unstack(mask)
 
+      def masking_fn(time):
+        return mask_ta.read(time)
+
+      def compute_masked_output(mask_t, flat_out, flat_mask):
+        tiled_mask_t = tuple(
+            _expand_mask(mask_t, o, fixed_dim=len(mask_t.shape))
+            for o in flat_out)
+        return tuple(
+            array_ops.where_v2(m, o, fm)
+            for m, o, fm in zip(tiled_mask_t, flat_out, flat_mask))
+    elif isinstance(input_length, ops.Tensor):
+      if go_backwards:
+        max_len = math_ops.reduce_max(input_length, axis=0)
+        rev_input_length = math_ops.subtract(max_len - 1, input_length)
+
+        def masking_fn(time):
+          return math_ops.less(rev_input_length, time)
+      else:
+
+        def masking_fn(time):
+          return math_ops.greater(input_length, time)
+
+      def compute_masked_output(mask_t, flat_out, flat_mask):
+        return tuple(
+            array_ops.where(mask_t, o, zo)
+            for (o, zo) in zip(flat_out, flat_mask))
+    else:
+      masking_fn = None
+
+    if masking_fn is not None:
       # Mask for the T output will be base on the output of T - 1. In the case
       # T = 0, a zero filled tensor will be used.
       flat_zero_output = tuple(array_ops.zeros_like(o)
@@ -3981,17 +4108,15 @@ def rnn(step_function,
         current_input = tuple(ta.read(time) for ta in input_ta)
         # maybe set shape.
         current_input = nest.pack_sequence_as(inputs, current_input)
-        mask_t = mask_ta.read(time)
+        mask_t = masking_fn(time)
         output, new_states = step_function(current_input,
                                            tuple(states) + tuple(constants))
         # mask output
         flat_output = nest.flatten(output)
         flat_mask_output = (flat_zero_output if zero_output_for_mask
                             else nest.flatten(prev_output))
-        tiled_mask_t = tuple(_expand_mask(mask_t, o) for o in flat_output)
-        flat_new_output = tuple(
-            array_ops.where(m, o, zo) for m, o, zo in zip(
-                tiled_mask_t, flat_output, flat_mask_output))
+        flat_new_output = compute_masked_output(mask_t, flat_output,
+                                                flat_mask_output)
 
         # mask states
         flat_state = nest.flatten(states)
@@ -3999,10 +4124,8 @@ def rnn(step_function,
         for state, new_state in zip(flat_state, flat_new_state):
           if isinstance(new_state, ops.Tensor):
             new_state.set_shape(state.shape)
-        tiled_mask_t = tuple(_expand_mask(mask_t, s) for s in flat_state)
-        flat_final_state = tuple(
-            array_ops.where(m, s, ps)
-            for m, s, ps in zip(tiled_mask_t, flat_new_state, flat_state))
+        flat_final_state = compute_masked_output(mask_t, flat_new_state,
+                                                 flat_state)
         new_states = nest.pack_sequence_as(new_states, flat_final_state)
 
         output_ta_t = tuple(
@@ -4133,10 +4256,10 @@ def switch(condition, then_expression, else_expression):
       condition = array_ops.reshape(condition, cond_shape)
       expr_shape = array_ops.shape(then_expression)
       shape_diff = expr_shape - cond_shape
-      tile_shape = array_ops.where(shape_diff > 0, expr_shape,
-                                   array_ops.ones_like(expr_shape))
+      tile_shape = array_ops.where_v2(shape_diff > 0, expr_shape,
+                                      array_ops.ones_like(expr_shape))
       condition = array_ops.tile(condition, tile_shape)
-    x = array_ops.where(condition, then_expression, else_expression)
+    x = array_ops.where_v2(condition, then_expression, else_expression)
   return x
 
 
@@ -4273,7 +4396,7 @@ def elu(x, alpha=1.):
   if alpha == 1:
     return res
   else:
-    return array_ops.where(x > 0, res, alpha * res)
+    return array_ops.where_v2(x > 0, res, alpha * res)
 
 
 @keras_export('keras.backend.softmax')
@@ -4317,6 +4440,12 @@ def softsign(x):
   return nn.softsign(x)
 
 
+def _backtrack_identity(tensor):
+  while tensor.op.type == 'Identity':
+    tensor = tensor.op.inputs[0]
+  return tensor
+
+
 @keras_export('keras.backend.categorical_crossentropy')
 def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   """Categorical crossentropy between an output tensor and a target tensor.
@@ -4339,37 +4468,50 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
 
   Example:
-  ```python:
-  import tensorflow as tf
-  from tensorflow.keras import backend as K
-  a = tf.constant([1., 0., 0., 0., 1., 0., 0., 0., 1.], shape=[3,3])
-  print("a: ", a)
-  b = tf.constant([.9, .05, .05, .5, .89, .6, .05, .01, .94], shape=[3,3])
-  print("b: ", b)
-  loss = K.categorical_crossentropy(a, b)
-  print('Loss: ', loss) #Loss: tf.Tensor([0.10536055 0.8046684  0.06187541], shape=(3,), dtype=float32)
-  loss = K.categorical_crossentropy(a, a)
-  print('Loss: ', loss) #Loss:  tf.Tensor([1.1920929e-07 1.1920929e-07 1.1920929e-07], shape=(3,), dtype=float32)
-  ```
+
+  >>> a = tf.constant([1., 0., 0., 0., 1., 0., 0., 0., 1.], shape=[3,3])
+  >>> print(a)
+  tf.Tensor(
+    [[1. 0. 0.]
+     [0. 1. 0.]
+     [0. 0. 1.]], shape=(3, 3), dtype=float32)
+  >>> b = tf.constant([.9, .05, .05, .5, .89, .6, .05, .01, .94], shape=[3,3])
+  >>> print(b)
+  tf.Tensor(
+    [[0.9  0.05 0.05]
+     [0.5  0.89 0.6 ]
+     [0.05 0.01 0.94]], shape=(3, 3), dtype=float32)
+  >>> loss = tf.keras.backend.categorical_crossentropy(a, b)
+  >>> print(loss)
+  tf.Tensor([0.10536055 0.8046684  0.06187541], shape=(3,), dtype=float32)
+  >>> loss = tf.keras.backend.categorical_crossentropy(a, a)
+  >>> print(loss)
+  tf.Tensor([1.1920929e-07 1.1920929e-07 1.1920930e-07], shape=(3,),
+  dtype=float32)
+
   """
-  if not from_logits:
-    if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
-        output.op.type != 'Softmax'):
-      # scale preds so that the class probas of each sample sum to 1
-      output = output / math_ops.reduce_sum(output, axis, True)
-      # Compute cross entropy from probabilities.
-      epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
-      output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
-      return -math_ops.reduce_sum(target * math_ops.log(output), axis)
-    else:
+  if from_logits:
+    return nn.softmax_cross_entropy_with_logits_v2(
+        labels=target, logits=output, axis=axis)
+
+  if not isinstance(output, (ops.EagerTensor, variables_module.Variable)):
+    output = _backtrack_identity(output)
+    if output.op.type == 'Softmax':
       # When softmax activation function is used for output operation, we
       # use logits from the softmax function directly to compute loss in order
       # to prevent collapsing zero when training.
       # See b/117284466
       assert len(output.op.inputs) == 1
       output = output.op.inputs[0]
-  return nn.softmax_cross_entropy_with_logits_v2(
-      labels=target, logits=output, axis=axis)
+      return nn.softmax_cross_entropy_with_logits_v2(
+          labels=target, logits=output, axis=axis)
+
+  # scale preds so that the class probas of each sample sum to 1
+  output = output / math_ops.reduce_sum(output, axis, True)
+  # Compute cross entropy from probabilities.
+  epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
+  output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
+  return -math_ops.reduce_sum(target * math_ops.log(output), axis)
 
 
 @keras_export('keras.backend.sparse_categorical_crossentropy')
@@ -4393,19 +4535,22 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
-  if not from_logits:
-    if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
-        output.op.type != 'Softmax'):
-      epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
-      output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
-      output = math_ops.log(output)
-    else:
+  if not from_logits and not isinstance(
+      output, (ops.EagerTensor, variables_module.Variable)):
+    output = _backtrack_identity(output)
+    if output.op.type == 'Softmax':
       # When softmax activation function is used for output operation, we
       # use logits from the softmax function directly to compute loss in order
       # to prevent collapsing zero when training.
       # See b/117284466
       assert len(output.op.inputs) == 1
       output = output.op.inputs[0]
+      from_logits = True
+
+  if not from_logits:
+    epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
+    output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
+    output = math_ops.log(output)
 
   if isinstance(output.shape, (tuple, list)):
     output_rank = len(output.shape)
@@ -4424,7 +4569,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
 
   target = cast(target, 'int64')
 
-  # Try to adjust the shape so that rank of labels = 1 - rank of logits.
+  # Try to adjust the shape so that rank of labels = rank of logits - 1.
   output_shape = array_ops.shape_v2(output)
   target_rank = target.shape.ndims
 
@@ -4464,23 +4609,26 @@ def binary_crossentropy(target, output, from_logits=False):
   Returns:
       A tensor.
   """
-  if not from_logits:
-    if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
-        output.op.type != 'Sigmoid'):
-      epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
-      output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
+  if from_logits:
+    return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
-      # Compute cross entropy from probabilities.
-      bce = target * math_ops.log(output + epsilon())
-      bce += (1 - target) * math_ops.log(1 - output + epsilon())
-      return -bce
-    else:
+  if not isinstance(output, (ops.EagerTensor, variables_module.Variable)):
+    output = _backtrack_identity(output)
+    if output.op.type == 'Sigmoid':
       # When sigmoid activation function is used for output operation, we
       # use logits from the sigmoid function directly to compute loss in order
       # to prevent collapsing zero when training.
       assert len(output.op.inputs) == 1
       output = output.op.inputs[0]
-  return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
+      return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
+
+  epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
+  output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
+
+  # Compute cross entropy from probabilities.
+  bce = target * math_ops.log(output + epsilon())
+  bce += (1 - target) * math_ops.log(1 - output + epsilon())
+  return -bce
 
 
 @keras_export('keras.backend.sigmoid')
@@ -4957,6 +5105,7 @@ def separable_conv2d(x,
   return x
 
 
+@keras_export('keras.backend.depthwise_conv2d')
 def depthwise_conv2d(x,
                      depthwise_kernel,
                      strides=(1, 1),
@@ -5514,7 +5663,7 @@ def random_binomial(shape, p=0.0, dtype=None, seed=None):
     dtype = floatx()
   if seed is None:
     seed = np.random.randint(10e6)
-  return array_ops.where(
+  return array_ops.where_v2(
       random_ops.random_uniform(shape, dtype=dtype, seed=seed) <= p,
       array_ops.ones(shape, dtype=dtype), array_ops.zeros(shape, dtype=dtype))
 
@@ -5843,3 +5992,34 @@ def cast_variables_to_tensor(tensors):
 
 def _is_symbolic_tensor(x):
   return tensor_util.is_tensor(x) and not isinstance(x, ops.EagerTensor)
+
+
+def convert_inputs_if_ragged(inputs):
+  """Converts any ragged tensors to dense."""
+
+  def _convert_ragged_input(inputs):
+    if isinstance(inputs, ragged_tensor.RaggedTensor):
+      return inputs.to_tensor()
+    return inputs
+
+  flat_inputs = nest.flatten(inputs)
+  contains_ragged = py_any(
+      isinstance(i, ragged_tensor.RaggedTensor) for i in flat_inputs)
+
+  if not contains_ragged:
+    return inputs, None
+
+  inputs = nest.map_structure(_convert_ragged_input, inputs)
+  # Multiple mask are not yet supported, so one mask is used on all inputs.
+  # We approach this similarly when using row lengths to ignore steps.
+  nested_row_lengths = math_ops.cast(flat_inputs[0].nested_row_lengths()[0],
+                                     'int32')
+  return inputs, nested_row_lengths
+
+
+def maybe_convert_to_ragged(is_ragged_input, output, nested_row_lengths):
+  """Converts any ragged input back to its initial structure."""
+  if not is_ragged_input:
+    return output
+
+  return ragged_tensor.RaggedTensor.from_tensor(output, nested_row_lengths)

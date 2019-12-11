@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 namespace xla {
 namespace cpu {
 namespace {
-class CpuKeyValueSortTest : public CpuCodegenTest {};
+
+using CpuKeyValueSortTest = CpuCodegenTest;
 
 TEST_F(CpuKeyValueSortTest, SortR1) {
   const string hlo_text = R"(
@@ -43,8 +45,7 @@ ENTRY main {
 CHECK: call void @__xla_cpu_runtime_KeyValueSort
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   CpuAotCompilationOptions options{
       /*triple=*/"x86_64", /*cpu_name=*/"", /*features=*/"",

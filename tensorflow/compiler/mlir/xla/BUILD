@@ -12,18 +12,25 @@ package_group(
     packages = [
         "//babelfish/device/...",
         "//learning/brain/experimental/mlir/...",
+        "//learning/brain/experimental/swift_mlir/...",
         "//learning/brain/google/xla/kernels/...",
+        "//learning/brain/swift/swift_mlir/...",
         "//tensorflow/compiler/mlir/...",
+        "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/compiler/xla/...",
+        "//third_party/iree/...",
         "//third_party/mlir_edge/...",
     ],
 )
+
+exports_files(["ir/hlo_ops.td"])
 
 filegroup(
     name = "hlo_ops_td_files",
     srcs = [
         "ir/hlo_ops.td",
         "ir/hlo_ops_base.td",
+        "ir/hlo_utils.td",
         "ir/lhlo_ops.td",
         "@local_config_mlir//:OpBaseTdFiles",
     ],
@@ -34,9 +41,12 @@ gentbl(
     tbl_outs = [
         ("-gen-op-decls", "ir/hlo_ops.h.inc"),
         ("-gen-op-defs", "ir/hlo_ops.cc.inc"),
+        ("-gen-struct-attr-decls", "ir/hlo_structs.h.inc"),
+        ("-gen-struct-attr-defs", "ir/hlo_structs.cc.inc"),
     ],
     tblgen = "@local_config_mlir//:mlir-tblgen",
     td_file = "ir/hlo_ops.td",
+    td_includes = ["ir/hlo_utils.td"],
     td_srcs = [":hlo_ops_td_files"],
 )
 
@@ -71,8 +81,24 @@ gentbl(
     td_file = "transforms/legalize_tf_patterns.td",
     td_srcs = [
         ":hlo_ops_td_files",
+        "@llvm//:support",
         "@local_config_mlir//:StdOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+    ],
+)
+
+gentbl(
+    name = "xla_canonicalize_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "transforms/generated_canonicalize.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "transforms/canonicalize.td",
+    td_srcs = [
+        ":hlo_ops_td_files",
     ],
 )
 
@@ -81,16 +107,22 @@ cc_library(
     srcs = [
         "transforms/generated_legalize_tf.inc",
         "transforms/legalize_tf.cc",
+        "transforms/legalize_tf_control_flow.cc",
     ],
     deps = [
+        ":convert_op_folder",
         ":hlo",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/kernels:conv_grad_shape_utils",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
+        "@local_config_mlir//:Transforms",
     ],
     alwayslink = 1,
 )
@@ -98,14 +130,63 @@ cc_library(
 cc_library(
     name = "lhlo_legalize_to_affine",
     srcs = ["transforms/lhlo_legalize_to_affine.cc"],
+    hdrs = ["transforms/map_lhlo_to_scalar_op.h"],
     deps = [
-        "//tensorflow/compiler/mlir/xla:lhlo",
+        ":lhlo",
         "//tensorflow/compiler/xla:status",
         "@com_google_absl//absl/memory",
+        "@llvm//:support",
         "@local_config_mlir//:AffineOps",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "lhlo_legalize_to_linalg",
+    srcs = ["transforms/lhlo_legalize_to_linalg.cc"],
+    hdrs = ["transforms/map_lhlo_to_scalar_op.h"],
+    deps = [
+        ":lhlo",
+        "@com_google_absl//absl/memory",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Linalg",
+        "@local_config_mlir//:LinalgDialectRegistration",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "lhlo_fuse_linalg",
+    srcs = ["transforms/lhlo_fuse_linalg.cc"],
+    deps = [
+        ":lhlo",
+        "@com_google_absl//absl/memory",
+        "@local_config_mlir//:Linalg",
+        "@local_config_mlir//:LinalgDialectRegistration",
+        "@local_config_mlir//:Pass",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "hlo_legalize_to_lhlo",
+    srcs = ["transforms/hlo_legalize_to_lhlo.cc"],
+    deps = [
+        ":hlo",
+        ":lhlo",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Transforms",
     ],
     alwayslink = 1,
 )
@@ -130,12 +211,12 @@ cc_library(
     ],
     deps = [
         ":hlo",
-        "//tensorflow/compiler/mlir/tensorflow",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Support",
     ],
     alwayslink = 1,
 )
@@ -146,12 +227,46 @@ cc_library(
     deps = [
         ":hlo",
         ":xla_legalize_to_standard_inc_gen",
-        "//tensorflow/compiler/mlir/tensorflow",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
+    ],
+    alwayslink = 1,
+)
+
+gentbl(
+    name = "xla_lower_complex_inc_gen",
+    tbl_outs = [
+        ("-gen-rewriters", "transforms/generated_lower_complex.inc"),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "transforms/lower_complex_patterns.td",
+    td_srcs = [
+        ":hlo_ops_td_files",
+        "@llvm//:support",
+        "@local_config_mlir//:StdOpsTdFiles",
+    ],
+)
+
+cc_library(
+    name = "xla_lower",
+    srcs = [
+        "transforms/generated_lower_complex.inc",
+        "transforms/lower_complex.cc",
+        "transforms/lower_general_dot.cc",
+    ],
+    deps = [
+        ":hlo",
+        ":xla_dialect_registration",
+        "@llvm//:support",
+        "@local_config_mlir//:Analysis",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Support",
+        "@local_config_mlir//:Transforms",
     ],
     alwayslink = 1,
 )
@@ -162,15 +277,20 @@ cc_library(
         "ir/hlo_ops.cc",
         "ir/hlo_ops.cc.inc",
         "ir/hlo_ops.h.inc",
+        "ir/hlo_utils.cc",
     ],
     hdrs = [
         "ir/hlo_ops.h",
+        "ir/hlo_utils.h",
         "transforms/passes.h",
+        "transforms/rewriters.h",
     ],
     includes = ["include"],
     deps = [
+        ":convert_op_folder",
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_inc_gen",
+        ":xla_canonicalize_inc_gen",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -192,6 +312,7 @@ cc_library(
     hdrs = [
         "ir/lhlo_ops.h",
         "transforms/passes.h",
+        "transforms/rewriters.h",
     ],
     includes = ["include"],
     deps = [
@@ -204,6 +325,20 @@ cc_library(
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
         "@local_config_mlir//:TransformUtils",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "hlo_utils",
+    srcs = ["hlo_utils.cc"],
+    hdrs = ["hlo_utils.h"],
+    includes = ["include"],
+    deps = [
+        ":convert_op_folder",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla/service:hlo",
+        "@local_config_mlir//:IR",
     ],
     alwayslink = 1,
 )
@@ -229,7 +364,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
@@ -246,9 +381,9 @@ tf_cc_test(
         ":type_to_shape",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_proto_cc",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test_main",
         "@local_config_mlir//:IR",
     ],
@@ -264,12 +399,16 @@ cc_library(
     deps = [
         ":hlo",
         ":type_to_shape",
+        ":xla_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/stream_executor/lib",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -310,8 +449,8 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla:xla_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
         "@llvm//:support",
@@ -330,7 +469,7 @@ cc_library(
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service:hlo_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:lib",
         "@com_google_protobuf//:protobuf_headers",
         "@llvm//:support",
@@ -346,6 +485,7 @@ tf_native_cc_binary(
     deps = [
         "@llvm//:support",
         "@llvm//:tablegen",
+        "@local_config_mlir//:Support",
         "@local_config_mlir//:TableGen",
     ],
 )
@@ -354,8 +494,9 @@ genrule(
     name = "operator_writer_inc",
     srcs = [
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        "//tensorflow/compiler/mlir/xla:ir/hlo_ops.td",
-        "//tensorflow/compiler/mlir/xla:ir/hlo_ops_base.td",
+        ":ir/hlo_ops.td",
+        ":ir/hlo_ops_base.td",
+        ":ir/hlo_utils.td",
     ],
     outs = ["operator_writers.inc"],
     cmd = ("$(location :operator_writer_gen) " +
@@ -363,4 +504,13 @@ genrule(
            "$(location //tensorflow/compiler/mlir/xla:ir/hlo_ops.td) " +
            " -o $@"),
     tools = [":operator_writer_gen"],
+)
+
+cc_library(
+    name = "convert_op_folder",
+    srcs = ["convert_op_folder.cc"],
+    hdrs = ["convert_op_folder.h"],
+    deps = [
+        "@local_config_mlir//:IR",
+    ],
 )

@@ -260,10 +260,12 @@ void Pack8bitNeonOutOfOrder4Cols(const PackParams8bit& params) {
           /* Load q0 */
           "vld1.8 {d0, d1}, [%[src_ptr0]]\n"
           "add %[src_ptr0], %[src_ptr0], %[src_inc0]\n"
+          RUY_PREFETCH("pld [%[src_ptr0]]\n")
 
           /* Load q1 */
           "vld1.8 {d2, d3}, [%[src_ptr1]]\n"
           "add %[src_ptr1], %[src_ptr1], %[src_inc1]\n"
+          RUY_PREFETCH("pld [%[src_ptr1]]\n")
 
           "veor.8 q4, q0, q11\n"
           "veor.8 q5, q1, q11\n"
@@ -283,9 +285,11 @@ void Pack8bitNeonOutOfOrder4Cols(const PackParams8bit& params) {
           // Now do the same for src_ptr2 and src_ptr3.
           "vld1.8 {d0, d1}, [%[src_ptr2]]\n"
           "add %[src_ptr2], %[src_ptr2], %[src_inc2]\n"
+          RUY_PREFETCH("pld [%[src_ptr2]]\n")
 
           "vld1.8 {d2, d3}, [%[src_ptr3]]\n"
           "add %[src_ptr3], %[src_ptr3], %[src_inc3]\n"
+          RUY_PREFETCH("pld [%[src_ptr3]]\n")
 
           "veor.8 q4, q0, q11\n"
           "veor.8 q5, q1, q11\n"

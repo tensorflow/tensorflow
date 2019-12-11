@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/compiler/xla/service/cpu/runtime_matvec.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -78,12 +77,8 @@ void SingleThreadedMatMulDispatch(const void* run_options_ptr, T* out, T* lhs,
                                 transpose_lhs, transpose_rhs);
   }
 
-  if (m == 1 || n == 1) {
-    xla::EigenMatVec<T>(out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
-  } else {
-    MatMul<T, Eigen::Aligned16>(run_options_ptr, out, lhs, rhs, m, n, k,
-                                transpose_lhs, transpose_rhs);
-  }
+  MatMul<T, Eigen::Aligned16>(run_options_ptr, out, lhs, rhs, m, n, k,
+                              transpose_lhs, transpose_rhs);
 }
 
 }  // namespace
@@ -115,4 +110,14 @@ __xla_cpu_runtime_EigenSingleThreadedMatMulF64(const void* run_options_ptr,
                                                int32 transpose_rhs) {
   SingleThreadedMatMulDispatch<double>(run_options_ptr, out, lhs, rhs, m, n, k,
                                        transpose_lhs, transpose_rhs);
+}
+
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
+__xla_cpu_runtime_EigenSingleThreadedMatMulS32(const void* run_options_ptr,
+                                               int32* out, int32* lhs,
+                                               int32* rhs, int64 m, int64 n,
+                                               int64 k, int32 transpose_lhs,
+                                               int32 transpose_rhs) {
+  SingleThreadedMatMulDispatch<int32>(run_options_ptr, out, lhs, rhs, m, n, k,
+                                      transpose_lhs, transpose_rhs);
 }

@@ -27,32 +27,8 @@ namespace data {
 // Rewrites the input dataset using the given config.
 Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
                       std::function<RewriterConfig(void)> config_factory,
-                      bool optimize_function_library,
+                      bool optimize_function_library, bool record_fingerprint,
                       DatasetBase** rewritten_input);
-
-// Returns a stable hash of the portion of the graph `g` rooted at
-// `node`, by creating a Merkle tree-like structure.
-//
-// Specifically, this function recursively walks the graph from `node` by
-// following its inputs.
-//
-// The hash is computed by hashing its op name, device, attributes, and hashes
-// of its inputs (if applicable).
-//
-// There is currently no guarantee that the hash of a subgraph will stay the
-// same between TensorFlow builds.
-uint64 HashSubgraph(const GraphDef& g, const NodeDef* node);
-
-// Returns a stable hash of the function `f`.
-//
-// This function computes the hash by hashing the metadata of the
-// function (disregarding the auto-generated names and descriptions) and also
-// hashing the subgraph rooted at each of the output nodes.
-//
-// There is currently no guarantee that the hash of a function will stay the
-// same between TensorFlow builds.
-uint64 HashSubgraphFunction(const FunctionDefLibrary& library,
-                            const FunctionDef* f);
 
 }  // namespace data
 }  // namespace tensorflow

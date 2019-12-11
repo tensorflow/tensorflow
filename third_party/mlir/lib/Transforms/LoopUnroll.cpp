@@ -180,7 +180,7 @@ LogicalResult LoopUnroll::runOnAffineForOp(AffineForOp forOp) {
   return loopUnrollByFactor(forOp, kDefaultUnrollFactor);
 }
 
-std::unique_ptr<FunctionPassBase> mlir::createLoopUnrollPass(
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createLoopUnrollPass(
     int unrollFactor, int unrollFull,
     const std::function<unsigned(AffineForOp)> &getUnrollFactor) {
   return std::make_unique<LoopUnroll>(

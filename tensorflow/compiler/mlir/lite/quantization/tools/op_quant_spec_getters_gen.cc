@@ -36,11 +36,12 @@ using mlir::tblgen::Operator;
 // NOLINTNEXTLINE
 static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
   llvm::Regex acc_uniform_trait_regex{"AccumulatorUniformScale<([0-9]*),"};
+  llvm::Regex coeff_index_trait_regex{"AffineOpCoefficient<([0-9]*),"};
   llvm::Regex fixed_uniform_trait_regex{
       "FixedResultUniformScale<([0-9]+).*(true|false)>"};
   emitSourceFileHeader("Generated Ops Quant Spec Getters", os);
 
-  // Retrieve all the definitions derived from Op defintion and sort by record
+  // Retrieve all the definitions derived from Op definition and sort by record
   // name.
   std::vector<Record *> defs = records.getAllDerivedDefinitions("Op");
   llvm::sort(defs, LessRecord());
@@ -58,15 +59,6 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
 
         OUT(2) << "if (auto tfl = llvm::dyn_cast<" << op.getQualCppClassName()
                << ">(op)) {\n";
-
-        // There is a "NoQuantizableResult" trait, set the flag.
-        if (trait.equals("NoQuantizableResult")) {
-          OUT(4) << "spec->is_quantizable = false;\n";
-        }
-        // There is a "SameOperandsAndResultScale" trait, set the flag.
-        if (trait.equals("SameOperandsAndResultsScale")) {
-          OUT(4) << "spec->requires_same_scale = true;\n";
-        }
         // There is a "FixedResultUniformScale" trait, set the type for result.
         auto trait_str = opTrait->getTrait().str();
         if (fixed_uniform_trait_regex.match(trait_str, &matches)) {
@@ -83,7 +75,12 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
           OUT(4) << "spec->biases_params.emplace(std::make_pair(" << matches[1]
                  << ", std::make_pair(tfl.GetAllNonBiasOperands(),"
                  << "GetUniformQuantizedTypeForBias)));\n";
-
+          matches.clear();
+        }
+        // There is a "QuantChannelDim" trait, set the quantization dimension.
+        if (coeff_index_trait_regex.match(trait_str, &matches)) {
+          OUT(4) << "spec->coeff_op_quant_dim[tfl.GetCoefficientOperandIndex()"
+                 << "] = tfl.GetQuantizationDim();\n";
           matches.clear();
         }
 

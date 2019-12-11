@@ -32,12 +32,13 @@ from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import util as losses_util
+from tensorflow.python.platform import device_context
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
@@ -707,22 +708,6 @@ def zero_fraction(value, name=None):
     return array_ops.identity(zero_fraction_float32, "fraction")
 
 
-# copybara:strip_begin
-# TODO(b/138808492): Remove code inside copybara
-# to make TPU code and CPU code consistent.
-def _enclosing_tpu_context():
-  # pylint: disable=protected-access
-  context = ops.get_default_graph()._get_control_flow_context()
-  # pylint: enable=protected-access
-  while context is not None and not isinstance(
-      context, control_flow_ops.XLAControlFlowContext):
-    context = context.outer_context
-  return context
-
-
-# copybara:strip_end
-
-
 # pylint: disable=redefined-builtin
 @tf_export(v1=["nn.depthwise_conv2d"])
 def depthwise_conv2d(input,
@@ -782,11 +767,8 @@ def depthwise_conv2d(input,
     if rate is None:
       rate = [1, 1]
 
-    # copybara:strip_begin
-    # TODO(b/138808492): Remove code inside copybara
-    # to make TPU code and CPU code consistent.
     # Use depthwise_conv2d_native if executing on TPU.
-    if _enclosing_tpu_context() is not None:
+    if device_context.enclosing_tpu_context() is not None:
       if data_format == "NCHW":
         dilations = [1, 1, rate[0], rate[1]]
       else:
@@ -799,7 +781,6 @@ def depthwise_conv2d(input,
           data_format=data_format,
           dilations=dilations,
           name=name)
-    # copybara:strip_end
 
     def op(input_converted, _, padding):
       return nn_ops.depthwise_conv2d_native(
@@ -1394,7 +1375,7 @@ def batch_normalization(x,
       normalized over (the 'depth' dimension(s)), and dimension 1 for the
       others which are being normalized over.
       `mean` and `variance` in this case would typically be the outputs of
-      `tf.nn.moments(..., keep_dims=True)` during training, or running averages
+      `tf.nn.moments(..., keepdims=True)` during training, or running averages
       thereof during inference.
     * In the common case where the 'depth' dimension is the last dimension in
       the input tensor `x`, they may be one dimensional tensors of the same
@@ -1403,10 +1384,11 @@ def batch_normalization(x,
       fully-connected layers, and `[batch, height, width, depth]` for
       convolutions.
       `mean` and `variance` in this case would typically be the outputs of
-      `tf.nn.moments(..., keep_dims=False)` during training, or running averages
+      `tf.nn.moments(..., keepdims=False)` during training, or running averages
       thereof during inference.
 
-  See Source: [Batch Normalization: Accelerating Deep Network Training by
+  See equation 11 in Algorithm 2 of source: 
+  [Batch Normalization: Accelerating Deep Network Training by
   Reducing Internal Covariate Shift; S. Ioffe, C. Szegedy]
   (http://arxiv.org/abs/1502.03167).
 
@@ -1423,6 +1405,12 @@ def batch_normalization(x,
 
   Returns:
     the normalized, scaled, offset tensor.
+
+  References:
+    Batch Normalization - Accelerating Deep Network Training by Reducing
+    Internal Covariate Shift:
+      [Ioffe et al., 2015](http://arxiv.org/abs/1502.03167)
+      ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
   with ops.name_scope(name, "batchnorm", [x, mean, variance, scale, offset]):
     inv = math_ops.rsqrt(variance + variance_epsilon)
@@ -1446,6 +1434,7 @@ def fused_batch_norm(
     is_training=True,
     name=None):
   r"""Batch normalization.
+
 
   See Source: [Batch Normalization: Accelerating Deep Network Training by
   Reducing Internal Covariate Shift; S. Ioffe, C. Szegedy]
@@ -1471,6 +1460,12 @@ def fused_batch_norm(
 
   Raises:
     ValueError: If mean or variance is not None when is_training is True.
+
+  References:
+    Batch Normalization - Accelerating Deep Network Training by Reducing
+    Internal Covariate Shift:
+      [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
+      ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
   x = ops.convert_to_tensor(x, name="input")
   scale = ops.convert_to_tensor(scale, name="scale")
@@ -1517,7 +1512,6 @@ def fused_batch_norm(
       name=name)
   return y, batch_mean, batch_var
 
-
 @tf_export(v1=["nn.batch_norm_with_global_normalization"])
 def batch_norm_with_global_normalization(t=None,
                                          m=None,
@@ -1557,6 +1551,12 @@ def batch_norm_with_global_normalization(t=None,
 
   Returns:
      A batch-normalized `t`.
+
+  References:
+    Batch Normalization - Accelerating Deep Network Training by Reducing
+    Internal Covariate Shift:
+      [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
+      ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
   t = deprecated_argument_lookup("input", input, "t", t)
   m = deprecated_argument_lookup("mean", mean, "m", m)
@@ -1599,6 +1599,11 @@ def batch_norm_with_global_normalization_v2(input,
 
   Returns:
      A batch-normalized `t`.
+
+  References:
+    Batch Normalization - Accelerating Deep Network Training by Reducing Internal Covariate Shift:
+      [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
+      ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
   return batch_norm_with_global_normalization(t=input,
                                               m=mean,
@@ -1928,12 +1933,6 @@ def nce_loss(weights,
              name="nce_loss"):
   """Computes and returns the noise-contrastive estimation training loss.
 
-  See [Noise-contrastive estimation: A new estimation principle for
-  unnormalized statistical
-  models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
-  Also see our [Candidate Sampling Algorithms
-  Reference](https://www.tensorflow.org/extras/candidate_sampling.pdf)
-
   A common use case is to use this method for training, and calculate the full
   sigmoid loss for evaluation or inference. In this case, you must set
   `partition_strategy="div"` for the two losses to be consistent, as in the
@@ -1993,9 +1992,9 @@ def nce_loss(weights,
     remove_accidental_hits:  A `bool`.  Whether to remove "accidental hits"
         where a sampled class equals one of the target classes.  If set to
         `True`, this is a "Sampled Logistic" loss instead of NCE, and we are
-        learning to generate log-odds instead of log probabilities.  See
-        our [Candidate Sampling Algorithms Reference]
-        (https://www.tensorflow.org/extras/candidate_sampling.pdf).
+        learning to generate log-odds instead of log probabilities. See
+        our Candidate Sampling Algorithms Reference
+        ([pdf](https://www.tensorflow.org/extras/candidate_sampling.pdf)).
         Default is False.
     partition_strategy: A string specifying the partitioning strategy, relevant
         if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
@@ -2004,6 +2003,12 @@ def nce_loss(weights,
 
   Returns:
     A `batch_size` 1-D tensor of per-example NCE losses.
+
+  References:
+    Noise-contrastive estimation - A new estimation principle for unnormalized
+    statistical models:
+      [Gutmann et al., 2010](http://proceedings.mlr.press/v9/gutmann10a)
+      ([pdf](http://proceedings.mlr.press/v9/gutmann10a/gutmann10a.pdf))
   """
   logits, labels = _compute_sampled_logits(
       weights=weights,
@@ -2160,11 +2165,9 @@ def sampled_softmax_loss(weights,
         logits=logits)
   ```
 
-  See our [Candidate Sampling Algorithms Reference]
-  (https://www.tensorflow.org/extras/candidate_sampling.pdf)
-
-  Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
-  ([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.
+  See our Candidate Sampling Algorithms Reference
+  ([pdf](https://www.tensorflow.org/extras/candidate_sampling.pdf)).
+  Also see Section 3 of (Jean et al., 2014) for the math.
 
   Args:
     weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
@@ -2195,6 +2198,11 @@ def sampled_softmax_loss(weights,
   Returns:
     A `batch_size` 1-D tensor of per-example sampled softmax losses.
 
+  References:
+    On Using Very Large Target Vocabulary for Neural Machine Translation:
+      [Jean et al., 2014]
+      (https://aclanthology.coli.uni-saarland.de/papers/P15-1001/p15-1001)
+      ([pdf](http://aclweb.org/anthology/P15-1001))
   """
   logits, labels = _compute_sampled_logits(
       weights=weights,

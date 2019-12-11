@@ -30,7 +30,7 @@ for dtype in dtype_list:
 lhs = np.array([-2, 64, 101, 32], dtype=np.int8)
 rhs = np.array([-1, -5, -3, -14], dtype=np.int8)
 bitwise_ops.left_shift(lhs, rhs)
-# <tf.Tensor: id=139, shape=(4,), dtype=int8, numpy=array([ -2,  64, 101,  32], dtype=int8)>
+# <tf.Tensor: shape=(4,), dtype=int8, numpy=array([ -2,  64, 101,  32], dtype=int8)>
 ```
 
 END

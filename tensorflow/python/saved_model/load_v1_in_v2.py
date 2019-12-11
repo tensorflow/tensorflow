@@ -26,6 +26,7 @@ from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import function_deserialization
@@ -43,7 +44,7 @@ class _Initializer(tracking.CapturableResource):
   original SavedModel's initialization procedure.
 
   Created when `tf.saved_model.load` loads a TF 1.x-style SavedModel with an
-  initialization op. This object holds a function which runs the
+  initialization op. This object holds a function that runs the
   initialization. It does not require any manual user intervention;
   `tf.saved_model.save` will see this object and automatically add it to the
   exported SavedModel, and `tf.saved_model.load` runs the initialization
@@ -127,12 +128,26 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     signature_functions = {}
     for signature_key, signature_def in meta_graph_def.signature_def.items():
       if signature_def.inputs:
-        input_names, input_specs = zip(*signature_def.inputs.items())
+        original_input_names, input_specs = zip(*signature_def.inputs.items())
       else:
-        input_names = []
+        original_input_names = []
         input_specs = []
       # TODO(allenl): Support optional arguments
-      feeds = [wrapped.graph.as_graph_element(inp.name) for inp in input_specs]
+      feeds = [
+          wrap_function._get_element_from_tensor_info(input_spec, wrapped.graph)  # pylint: disable=protected-access
+          for input_spec in input_specs
+      ]
+      input_names = []
+      for original_input_name, feed in zip(original_input_names, feeds):
+        if isinstance(feed, sparse_tensor.SparseTensor):
+          # We have to give explicit name for SparseTensor arguments, because
+          # these are not present in the TensorInfo.
+          indices_name = "%s_indices" % original_input_name
+          values_name = "%s_values" % original_input_name
+          dense_shape_name = "%s_dense_shape" % original_input_name
+          input_names.extend([indices_name, values_name, dense_shape_name])
+        else:
+          input_names.append(original_input_name)
       fetches = {name: out for name, out in signature_def.outputs.items()}
       try:
         signature_fn = wrapped.prune(feeds=feeds, fetches=fetches)

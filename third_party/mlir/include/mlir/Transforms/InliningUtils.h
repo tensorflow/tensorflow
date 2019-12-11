@@ -24,12 +24,16 @@
 
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/Region.h"
 
 namespace mlir {
 
 class Block;
 class BlockAndValueMapping;
+class CallableOpInterface;
+class CallOpInterface;
 class FuncOp;
+class OpBuilder;
 class Operation;
 class Region;
 class Value;
@@ -105,6 +109,27 @@ public:
     llvm_unreachable(
         "must implement handleTerminator in the case of one inlined block");
   }
+
+  /// Attempt to materialize a conversion for a type mismatch between a call
+  /// from this dialect, and a callable region. This method should generate an
+  /// operation that takes 'input' as the only operand, and produces a single
+  /// result of 'resultType'. If a conversion can not be generated, nullptr
+  /// should be returned. For example, this hook may be invoked in the following
+  /// scenarios:
+  ///   func @foo(i32) -> i32 { ... }
+  ///
+  ///   // Mismatched input operand
+  ///   ... = foo.call @foo(%input : i16) -> i32
+  ///
+  ///   // Mismatched result type.
+  ///   ... = foo.call @foo(%input : i32) -> i16
+  ///
+  /// NOTE: This hook may be invoked before the 'isLegal' checks above.
+  virtual Operation *materializeCallConversion(OpBuilder &builder, Value *input,
+                                               Type resultType,
+                                               Location conversionLoc) const {
+    return nullptr;
+  }
 };
 
 /// This interface provides the hooks into the inlining interface.
@@ -114,7 +139,11 @@ class InlinerInterface
     : public DialectInterfaceCollection<DialectInlinerInterface> {
 public:
   using Base::Base;
-  virtual ~InlinerInterface();
+
+  /// Process a set of blocks that have been inlined. This callback is invoked
+  /// *before* inlined terminator operations have been processed.
+  virtual void
+  processInlinedBlocks(llvm::iterator_range<Region::iterator> inlinedBlocks) {}
 
   /// These hooks mirror the hooks for the DialectInlinerInterface, with default
   /// implementations that call the hook on the handler for the dialect 'op' is
@@ -153,7 +182,7 @@ public:
 /// remappings for the entry arguments to the region. 'resultsToReplace'
 /// corresponds to any results that should be replaced by terminators within the
 /// inlined region. 'inlineLoc' is an optional Location that, if provided, will
-/// be used to update the inlined operations's location information.
+/// be used to update the inlined operations' location information.
 /// 'shouldCloneInlinedRegion' corresponds to whether the source region should
 /// be cloned into the 'inlinePoint' or spliced directly.
 LogicalResult inlineRegion(InlinerInterface &interface, Region *src,
@@ -172,24 +201,15 @@ LogicalResult inlineRegion(InlinerInterface &interface, Region *src,
                            llvm::Optional<Location> inlineLoc = llvm::None,
                            bool shouldCloneInlinedRegion = true);
 
-/// This function inlines a FuncOp into another. This function returns failure
-/// if it is not possible to inline this FuncOp. If the function returned
-/// failure, then no changes to the module have been made.
-///
-/// Note that this only does one level of inlining. For example, if the
-/// instruction 'call B' is inlined into function 'A', and function 'B' also
-/// calls 'C', then the call to 'C' now exists inside the body of 'A'. Similarly
-/// this will inline a recursive FuncOp by one level.
-///
-/// 'callOperands' must correspond, 1-1, with the arguments to the provided
-/// FuncOp. 'callResults' must correspond, 1-1, with the results of the
-/// provided FuncOp. These results will be replaced by the operands of any
-/// return operations that are inlined. 'inlineLoc' should refer to the location
-/// that the FuncOp is being inlined into.
-LogicalResult inlineFunction(InlinerInterface &interface, FuncOp callee,
-                             Operation *inlinePoint,
-                             ArrayRef<Value *> callOperands,
-                             ArrayRef<Value *> callResults, Location inlineLoc);
+/// This function inlines a given region, 'src', of a callable operation,
+/// 'callable', into the location defined by the given call operation. This
+/// function returns failure if inlining is not possible, success otherwise. On
+/// failure, no changes are made to the module. 'shouldCloneInlinedRegion'
+/// corresponds to whether the source region should be cloned into the 'call' or
+/// spliced directly.
+LogicalResult inlineCall(InlinerInterface &interface, CallOpInterface call,
+                         CallableOpInterface callable, Region *src,
+                         bool shouldCloneInlinedRegion = true);
 
 } // end namespace mlir
 

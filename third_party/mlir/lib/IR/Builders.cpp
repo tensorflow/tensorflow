@@ -72,25 +72,6 @@ FunctionType Builder::getFunctionType(ArrayRef<Type> inputs,
   return FunctionType::get(inputs, results, context);
 }
 
-MemRefType Builder::getMemRefType(ArrayRef<int64_t> shape, Type elementType,
-                                  ArrayRef<AffineMap> affineMapComposition,
-                                  unsigned memorySpace) {
-  return MemRefType::get(shape, elementType, affineMapComposition, memorySpace);
-}
-
-VectorType Builder::getVectorType(ArrayRef<int64_t> shape, Type elementType) {
-  return VectorType::get(shape, elementType);
-}
-
-RankedTensorType Builder::getTensorType(ArrayRef<int64_t> shape,
-                                        Type elementType) {
-  return RankedTensorType::get(shape, elementType);
-}
-
-UnrankedTensorType Builder::getTensorType(Type elementType) {
-  return UnrankedTensorType::get(elementType);
-}
-
 TupleType Builder::getTupleType(ArrayRef<Type> elementTypes) {
   return TupleType::get(elementTypes, context);
 }
@@ -119,8 +100,24 @@ IntegerAttr Builder::getI64IntegerAttr(int64_t value) {
   return IntegerAttr::get(getIntegerType(64), APInt(64, value));
 }
 
+DenseIntElementsAttr Builder::getI32VectorAttr(ArrayRef<int32_t> values) {
+  return DenseElementsAttr::get(
+             VectorType::get(static_cast<int64_t>(values.size()),
+                             getIntegerType(32)),
+             values)
+      .cast<DenseIntElementsAttr>();
+}
+
 IntegerAttr Builder::getI32IntegerAttr(int32_t value) {
   return IntegerAttr::get(getIntegerType(32), APInt(32, value));
+}
+
+IntegerAttr Builder::getI16IntegerAttr(int16_t value) {
+  return IntegerAttr::get(getIntegerType(16), APInt(16, value));
+}
+
+IntegerAttr Builder::getI8IntegerAttr(int8_t value) {
+  return IntegerAttr::get(getIntegerType(8), APInt(8, value));
 }
 
 IntegerAttr Builder::getIntegerAttr(Type type, int64_t value) {
@@ -157,53 +154,23 @@ StringAttr Builder::getStringAttr(StringRef bytes) {
   return StringAttr::get(bytes, context);
 }
 
-StringAttr Builder::getStringAttr(StringRef bytes, Type type) {
-  return StringAttr::get(bytes, type);
-}
-
 ArrayAttr Builder::getArrayAttr(ArrayRef<Attribute> value) {
   return ArrayAttr::get(value, context);
 }
 
-AffineMapAttr Builder::getAffineMapAttr(AffineMap map) {
-  return AffineMapAttr::get(map);
-}
-
-IntegerSetAttr Builder::getIntegerSetAttr(IntegerSet set) {
-  return IntegerSetAttr::get(set);
-}
-
-TypeAttr Builder::getTypeAttr(Type type) { return TypeAttr::get(type); }
-
-SymbolRefAttr Builder::getSymbolRefAttr(Operation *value) {
+FlatSymbolRefAttr Builder::getSymbolRefAttr(Operation *value) {
   auto symName =
       value->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
   assert(symName && "value does not have a valid symbol name");
   return getSymbolRefAttr(symName.getValue());
 }
-SymbolRefAttr Builder::getSymbolRefAttr(StringRef value) {
+FlatSymbolRefAttr Builder::getSymbolRefAttr(StringRef value) {
   return SymbolRefAttr::get(value, getContext());
 }
-
-ElementsAttr Builder::getDenseElementsAttr(ShapedType type,
-                                           ArrayRef<Attribute> values) {
-  return DenseElementsAttr::get(type, values);
-}
-
-ElementsAttr Builder::getDenseIntElementsAttr(ShapedType type,
-                                              ArrayRef<int64_t> values) {
-  return DenseIntElementsAttr::get(type, values);
-}
-
-ElementsAttr Builder::getSparseElementsAttr(ShapedType type,
-                                            DenseIntElementsAttr indices,
-                                            DenseElementsAttr values) {
-  return SparseElementsAttr::get(type, indices, values);
-}
-
-ElementsAttr Builder::getOpaqueElementsAttr(Dialect *dialect, ShapedType type,
-                                            StringRef bytes) {
-  return OpaqueElementsAttr::get(dialect, type, bytes);
+SymbolRefAttr
+Builder::getSymbolRefAttr(StringRef value,
+                          ArrayRef<FlatSymbolRefAttr> nestedReferences) {
+  return SymbolRefAttr::get(value, nestedReferences, getContext());
 }
 
 ArrayAttr Builder::getI32ArrayAttr(ArrayRef<int32_t> values) {
@@ -247,7 +214,7 @@ ArrayAttr Builder::getStrArrayAttr(ArrayRef<StringRef> values) {
 
 ArrayAttr Builder::getAffineMapArrayAttr(ArrayRef<AffineMap> values) {
   auto attrs = functional::map(
-      [this](AffineMap v) -> Attribute { return getAffineMapAttr(v); }, values);
+      [](AffineMap v) -> Attribute { return AffineMapAttr::get(v); }, values);
   return getArrayAttr(attrs);
 }
 
@@ -270,7 +237,7 @@ Attribute Builder::getZeroAttr(Type type) {
     auto element = getZeroAttr(vtType.getElementType());
     if (!element)
       return {};
-    return getDenseElementsAttr(vtType, element);
+    return DenseElementsAttr::get(vtType, element);
   }
   default:
     break;
@@ -279,13 +246,8 @@ Attribute Builder::getZeroAttr(Type type) {
 }
 
 //===----------------------------------------------------------------------===//
-// Affine Expressions, Affine Maps, and Integet Sets.
+// Affine Expressions, Affine Maps, and Integer Sets.
 //===----------------------------------------------------------------------===//
-
-AffineMap Builder::getAffineMap(unsigned dimCount, unsigned symbolCount,
-                                ArrayRef<AffineExpr> results) {
-  return AffineMap::get(dimCount, symbolCount, results);
-}
 
 AffineExpr Builder::getAffineDimExpr(unsigned position) {
   return mlir::getAffineDimExpr(position, context);
@@ -297,12 +259,6 @@ AffineExpr Builder::getAffineSymbolExpr(unsigned position) {
 
 AffineExpr Builder::getAffineConstantExpr(int64_t constant) {
   return mlir::getAffineConstantExpr(constant, context);
-}
-
-IntegerSet Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,
-                                  ArrayRef<AffineExpr> constraints,
-                                  ArrayRef<bool> isEq) {
-  return IntegerSet::get(dimCount, symbolCount, constraints, isEq);
 }
 
 AffineMap Builder::getEmptyAffineMap() { return AffineMap::get(context); }
@@ -339,9 +295,8 @@ AffineMap Builder::getSingleDimShiftAffineMap(int64_t shift) {
 AffineMap Builder::getShiftedAffineMap(AffineMap map, int64_t shift) {
   SmallVector<AffineExpr, 4> shiftedResults;
   shiftedResults.reserve(map.getNumResults());
-  for (auto resultExpr : map.getResults()) {
+  for (auto resultExpr : map.getResults())
     shiftedResults.push_back(resultExpr + shift);
-  }
   return AffineMap::get(map.getNumDims(), map.getNumSymbols(), shiftedResults);
 }
 

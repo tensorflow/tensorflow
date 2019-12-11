@@ -17,12 +17,13 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_GREEDY_IN_ORDER_ASSIGNMENT_H_
 
 #include <algorithm>
+#include <list>
 #include <queue>
 #include <set>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/common/memory_management.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/internal.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -47,7 +48,9 @@ namespace gpu {
 template <typename TensorSizeT>
 Status GreedyInOrderAssignment(
     const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
-    ObjectsAssignment<TensorSizeT>* assignment) {
+    ObjectsAssignment<TensorSizeT>* assignment,
+    const UsageGraph* reallocation_graph = nullptr) {
+  std::vector<size_t> last_assigned_tensor;
   size_t num_records = usage_records.size();
   assignment->object_sizes.clear();
   assignment->object_ids.assign(num_records, kNotAssigned);
@@ -68,15 +71,26 @@ Status GreedyInOrderAssignment(
       objects_in_use.pop();
     }
     TensorSizeT tensor_size = usage_records[i].tensor_size;
-    if (pool.empty()) {
-      // No free shared object, creating a new one, assign i-th tensor to
-      // it and add to the queue of objects in use.
-      assignment->object_ids[i] = assignment->object_sizes.size();
-      assignment->object_sizes.push_back(tensor_size);
-      objects_in_use.push(
-          {usage_records[i].last_task, assignment->object_ids[i]});
-    } else {
-      auto best_it = pool.end();
+    auto best_it = pool.end();
+    size_t best_size_diff = 0;
+    if (reallocation_graph) {
+      for (auto pool_it = pool.begin(); pool_it != pool.end(); ++pool_it) {
+        size_t size_diff = AbsDiffInElements(pool_it->object_size, tensor_size);
+        if (best_it == pool.end() || size_diff < best_size_diff) {
+          const std::vector<size_t>& realloc_options =
+              (*reallocation_graph)[last_assigned_tensor[pool_it->object_id]];
+          size_t pos = std::lower_bound(realloc_options.begin(),
+                                        realloc_options.end(), i) -
+                       realloc_options.begin();
+          if (pos != realloc_options.size() && realloc_options[pos] == i) {
+            // We found, that memory of tensor, that was last assigned to
+            // object pool_it->object_id, can be reused for tensor i.
+            best_size_diff = size_diff;
+            best_it = pool_it;
+          }
+        }
+      }
+    } else if (!pool.empty()) {
       // Find shared object from pool, that will waste the least possible
       // amount of memory when reused for current tensor.
       auto pool_it = pool.lower_bound({tensor_size, 0});
@@ -101,11 +115,22 @@ Status GreedyInOrderAssignment(
             "No shared object is found in non-empty pool in "
             "GreedyInOrderAssignment.");
       }
+    }
+    if (best_it == pool.end()) {
+      // No free shared object, creating a new one, assign i-th tensor to
+      // it and add to the queue of objects in use.
+      assignment->object_ids[i] = assignment->object_sizes.size();
+      assignment->object_sizes.push_back(tensor_size);
+      last_assigned_tensor.push_back(i);
+      objects_in_use.push(
+          {usage_records[i].last_task, assignment->object_ids[i]});
+    } else {
       size_t shared_id = best_it->object_id;
       pool.erase(best_it);
       assignment->object_ids[i] = shared_id;
       assignment->object_sizes[shared_id] =
           std::max(assignment->object_sizes[shared_id], tensor_size);
+      last_assigned_tensor[shared_id] = i;
       objects_in_use.push(
           {usage_records[i].last_task, assignment->object_ids[i]});
     }

@@ -80,6 +80,9 @@ class EagerServiceImpl {
   Status CreateContext(const CreateContextRequest* request,
                        CreateContextResponse* response);
 
+  Status UpdateContext(const UpdateContextRequest* request,
+                       UpdateContextResponse* response);
+
   // Create a ServerContext for master eager context.
   Status CreateMasterContext(const tensorflow::uint64 context_id,
                              EagerContext* context);
@@ -98,12 +101,6 @@ class EagerServiceImpl {
 
   Status CloseContext(const CloseContextRequest* request,
                       CloseContextResponse* response);
-
-  Status RegisterFunction(const RegisterFunctionRequest* request,
-                          RegisterFunctionResponse* response);
-
-  Status SendTensor(const SendTensorRequest* request,
-                    SendTensorResponse* response);
 
  protected:
   // This is the server-side execution context. All state regarding execution of
@@ -127,7 +124,7 @@ class EagerServiceImpl {
       RecordAccess();
     }
 
-    ~ServerContext() {
+    ~ServerContext() override {
       // TFE_Context is responsible for shutting down master eager context.
       if (!is_master_) {
         ctx_->WaitForAndCloseRemoteContexts();
@@ -208,6 +205,9 @@ class EagerServiceImpl {
                    QueueResponse* queue_response);
   Status SendTensor(const SendTensorOp& send_tensor,
                     EagerContext* eager_context);
+  Status RegisterFunction(const RegisterFunctionOp& register_function,
+                          EagerContext* eager_context);
+  Status CleanupFunction(const CleanupFunctionOp& cleanup_function);
   const WorkerEnv* const env_;  // Not owned.
 
   mutex contexts_mu_;

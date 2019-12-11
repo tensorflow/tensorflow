@@ -27,7 +27,21 @@
 namespace mlir {
 namespace spirv {
 
-std::unique_ptr<ModulePassBase> createConvertStandardToSPIRVPass();
+class ModuleOp;
+/// Creates a module pass that converts composite types used by objects in the
+/// StorageBuffer, PhysicalStorageBuffer, Uniform, and PushConstant storage
+/// classes with layout information.
+/// Right now this pass only supports Vulkan layout rules.
+std::unique_ptr<OpPassBase<mlir::ModuleOp>>
+createDecorateSPIRVCompositeTypeLayoutPass();
+
+/// Creates a module pass that lowers the ABI attributes specified during SPIR-V
+/// Lowering. Specifically,
+/// 1) Creates the global variables for arguments of entry point function using
+/// the specification in the ABI attributes for each argument.
+/// 2) Inserts the EntryPointOp and the ExecutionModeOp for entry point
+/// functions using the specification in the EntryPointAttr.
+std::unique_ptr<OpPassBase<spirv::ModuleOp>> createLowerABIAttributesPass();
 
 } // namespace spirv
 } // namespace mlir

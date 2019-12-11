@@ -56,12 +56,7 @@ def ctc_loss(labels,
              logits=None):
   """Computes the CTC (Connectionist Temporal Classification) Loss.
 
-  This op implements the CTC loss as presented in the article:
-
-  [A. Graves, S. Fernandez, F. Gomez, J. Schmidhuber.
-  Connectionist Temporal Classification: Labeling Unsegmented Sequence Data
-  with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA,
-  pp. 369-376.](http://www.cs.toronto.edu/~graves/icml_2006.pdf)
+  This op implements the CTC loss as presented in (Graves et al., 2016).
 
   Input requirements:
 
@@ -155,6 +150,12 @@ def ctc_loss(labels,
 
   Raises:
     TypeError: if labels is not a `SparseTensor`.
+
+  References:
+      Connectionist Temporal Classification - Labeling Unsegmented Sequence Data
+      with Recurrent Neural Networks:
+        [Graves et al., 2016](https://dl.acm.org/citation.cfm?id=1143891)
+        ([pdf](http://www.cs.toronto.edu/~graves/icml_2006.pdf))
   """
   return _ctc_loss_impl(labels, inputs, sequence_length,
                         preprocess_collapse_repeated, ctc_merge_repeated,
@@ -649,12 +650,7 @@ def ctc_loss_v2(labels,
                 name=None):
   """Computes CTC (Connectionist Temporal Classification) loss.
 
-  This op implements the CTC loss as presented in the article:
-
-  [A. Graves, S. Fernandez, F. Gomez, J. Schmidhuber.
-  Connectionist Temporal Classification: Labeling Unsegmented Sequence Data
-  with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA,
-  pp. 369-376.](http://www.cs.toronto.edu/~graves/icml_2006.pdf)
+  This op implements the CTC loss as presented in (Graves et al., 2016).
 
   Notes:
 
@@ -690,6 +686,12 @@ def ctc_loss_v2(labels,
 
   Returns:
     loss: tensor of shape [batch_size], negative log probabilities.
+
+  References:
+      Connectionist Temporal Classification - Labeling Unsegmented Sequence Data
+      with Recurrent Neural Networks:
+        [Graves et al., 2016](https://dl.acm.org/citation.cfm?id=1143891)
+        ([pdf](http://www.cs.toronto.edu/~graves/icml_2006.pdf))
   """
   if isinstance(labels, sparse_tensor.SparseTensor):
     if blank_index is None:
@@ -751,21 +753,8 @@ def ctc_loss_dense(labels,
                    name=None):
   """Computes CTC (Connectionist Temporal Classification) loss.
 
-  This op implements the CTC loss as presented in the article:
-
-  [A. Graves, S. Fernandez, F. Gomez, J. Schmidhuber.
-  Connectionist Temporal Classification: Labeling Unsegmented Sequence Data
-  with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA,
-  pp. 369-376.](http://www.cs.toronto.edu/~graves/icml_2006.pdf)
-
-  Using the batched forward backward algorithm described in:
-
-  [Sim, K. C., Narayanan, A., Bagby, T., Sainath, T. N., & Bacchiani, M.
-  Improving the efficiency of forward-backward algorithm using batched
-    computation in TensorFlow.
-  Automatic Speech Recognition and Understanding Workshop (ASRU),
-    2017 IEEE (pp. 258-264).
-  ](https://ieeexplore.ieee.org/iel7/8260578/8268903/08268944.pdf)
+  This op implements the CTC loss as presented in (Graves et al., 2016),
+  using the batched forward backward algorithm described in (Sim et al., 2017).
 
   Notes:
     Significant differences from tf.compat.v1.nn.ctc_loss:
@@ -807,6 +796,16 @@ def ctc_loss_dense(labels,
 
   Returns:
     loss: tensor of shape [batch_size], negative log probabilities.
+
+  References:
+      Connectionist Temporal Classification - Labeling Unsegmented Sequence Data
+      with Recurrent Neural Networks:
+        [Graves et al., 2016](https://dl.acm.org/citation.cfm?id=1143891)
+        ([pdf](http://www.cs.toronto.edu/~graves/icml_2006.pdf))
+      Improving the efficiency of forward-backward algorithm using batched
+      computation in TensorFlow:
+        [Sim et al., 2017](https://ieeexplore.ieee.org/document/8268944)
+        ([pdf](http://bacchiani.net/resume/papers/ASRU2017.pdf))
   """
 
   with ops.name_scope(name, "ctc_loss_dense",

@@ -36,6 +36,7 @@ void SizeUtilTestValue(Integer value) {
 
   if (is_pot(value)) {
     EXPECT_EQ(floor_log2(value), ceil_log2(value));
+    EXPECT_EQ(floor_log2(value), pot_log2(value));
   } else {
     EXPECT_EQ(floor_log2(value) + 1, ceil_log2(value));
   }

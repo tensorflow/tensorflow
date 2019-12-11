@@ -1,3 +1,4 @@
+# Lint as python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +21,7 @@ from __future__ import print_function
 
 from abc import abstractmethod
 from contextlib import closing
+import errno
 import functools
 import gc
 import hashlib
@@ -40,9 +42,9 @@ import numpy as np
 import six
 from six.moves.urllib.error import HTTPError
 from six.moves.urllib.error import URLError
-from six.moves.urllib.request import urlopen
 
 from tensorflow.python.framework import ops
+from six.moves.urllib.request import urlopen
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
@@ -65,7 +67,7 @@ except ImportError:
 if sys.version_info[0] == 2:
 
   def urlretrieve(url, filename, reporthook=None, data=None):
-    """Replacement for `urlretrive` for Python 2.
+    """Replacement for `urlretrieve` for Python 2.
 
     Under Python 2, `urlretrieve` relies on `FancyURLopener` from legacy
     `urllib` module, known to have issues with proxy management.
@@ -73,12 +75,10 @@ if sys.version_info[0] == 2:
     Arguments:
         url: url to retrieve.
         filename: where to store the retrieved data locally.
-        reporthook: a hook function that will be called once
-            on establishment of the network connection and once
-            after each block read thereafter.
-            The hook will be passed three arguments;
-            a count of blocks transferred so far,
-            a block size in bytes, and the total size of the file.
+        reporthook: a hook function that will be called once on establishment of
+          the network connection and once after each block read thereafter. The
+          hook will be passed three arguments; a count of blocks transferred so
+          far, a block size in bytes, and the total size of the file.
         data: `data` argument passed to `urlopen`.
     """
 
@@ -220,8 +220,7 @@ def get_file(fname,
   if not os.access(datadir_base, os.W_OK):
     datadir_base = os.path.join('/tmp', '.keras')
   datadir = os.path.join(datadir_base, cache_subdir)
-  if not os.path.exists(datadir):
-    os.makedirs(datadir)
+  _makedirs_exist_ok(datadir)
 
   if untar:
     untar_fpath = os.path.join(datadir, fname)
@@ -283,15 +282,26 @@ def get_file(fname,
   return fpath
 
 
+def _makedirs_exist_ok(datadir):
+  if six.PY3:
+    os.makedirs(datadir, exist_ok=True)  # pylint: disable=unexpected-keyword-arg
+  else:
+    # Python 2 doesn't have the exist_ok arg, so we try-except here.
+    try:
+      os.makedirs(datadir)
+    except OSError as e:
+      if e.errno != errno.EEXIST:
+        raise
+
+
 def _hash_file(fpath, algorithm='sha256', chunk_size=65535):
   """Calculates a file sha256 or md5 hash.
 
   Example:
 
   ```python
-      >>> from keras.data_utils import _hash_file
-      >>> _hash_file('/path/to/file.zip')
-      'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+  _hash_file('/path/to/file.zip')
+  'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
   ```
 
   Arguments:

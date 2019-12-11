@@ -18,9 +18,11 @@
 python generate2.py --output_dir=/tmp/out
 ```
 
-Requires a local installation of:
-  https://github.com/tensorflow/docs/tree/master/tools
-  tf-nightly-2.0-preview
+Requires a local installation of `tensorflow_docs`:
+
+  ```
+  pip install git+https://github.com/tensorflow/docs
+  ```
 """
 
 from __future__ import absolute_import
@@ -76,51 +78,16 @@ flags.DEFINE_string("site_path", "",
 
 if tf.__version__.startswith('1'):
   PRIVATE_MAP = {
-      'tf.contrib.autograph': ['utils', 'operators'],
       'tf.test': ['mock'],
-      'tf.contrib.estimator': ['python'],
+      'tf': ['python', 'core', 'compiler', 'examples', 'tools', 'contrib'],
+      # There's some aliasing between the compats and v1/2s, so it's easier to
+      # block by name and location than by deleting, or hiding objects.
+      'tf.compat.v1.compat': ['v1', 'v2'],
+      'tf.compat.v2.compat': ['v1', 'v2']
   }
 
   DO_NOT_DESCEND_MAP = {
-      'tf': ['cli', 'lib', 'wrappers'],
-      'tf.contrib': [
-          'compiler',
-          'grid_rnn',
-          # Block contrib.keras to de-clutter the docs
-          'keras',
-          'labeled_tensor',
-          'quantization',
-          'session_bundle',
-          'slim',
-          'solvers',
-          'specs',
-          'tensor_forest',
-          'tensorboard',
-          'testing',
-          'tfprof',
-      ],
-      'tf.contrib.bayesflow': [
-          'special_math', 'stochastic_gradient_estimators',
-          'stochastic_variables'
-      ],
-      'tf.contrib.ffmpeg': ['ffmpeg_ops'],
-      'tf.contrib.graph_editor': [
-          'edit', 'match', 'reroute', 'subgraph', 'transform', 'select', 'util'
-      ],
-      'tf.contrib.keras': ['api', 'python'],
-      'tf.contrib.layers': ['feature_column', 'summaries'],
-      'tf.contrib.learn': [
-          'datasets',
-          'head',
-          'graph_actions',
-          'io',
-          'models',
-          'monitors',
-          'ops',
-          'preprocessing',
-          'utils',
-      ],
-      'tf.contrib.util': ['loader'],
+      'tf': ['cli', 'lib', 'wrappers', 'contrib'],
   }
 else:
   PRIVATE_MAP = {
@@ -132,19 +99,10 @@ else:
   }
   DO_NOT_DESCEND_MAP = {}
   tf.__doc__ = """
-    ## TensorFlow 2.0 RC
-
-    Caution:  This is a developer preview.  You will likely find some bugs,
-    performance issues, and more, and we encourage you to tell us about them.
-    We value your feedback!
-
-    These docs were generated from the beta build of TensorFlow 2.0.
-
-    You can install the exact version that was used to generate these docs
-    with:
+    ## TensorFlow
 
     ```
-    pip install tensorflow==2.0.0-rc0
+    pip install tensorflow
     ```
     """
 
@@ -164,7 +122,7 @@ if LooseVersion(tf.__version__) < LooseVersion('2'):
     other projects like [`tensorflow_io`](https://github.com/tensorflow/io), or
     [`tensorflow_addons`](https://github.com/tensorflow/addons). For instructions
     on how to upgrade see the
-    [Migration guide](https://www.tensorflow.org/beta/guide/migration_guide).
+    [Migration guide](https://www.tensorflow.org/guide/migrate).
     """
 else:
   tf.raw_ops.__doc__ += _raw_ops_doc

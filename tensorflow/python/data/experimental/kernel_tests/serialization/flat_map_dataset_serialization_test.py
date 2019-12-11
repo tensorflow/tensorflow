@@ -17,8 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -32,8 +36,10 @@ from tensorflow.python.platform import test
 
 
 class FlatMapDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCore(self):
     # Complicated way of saying range(start, start+25).
     def build_ds(start):
@@ -45,6 +51,7 @@ class FlatMapDatasetSerializationTest(
 
     self.run_core_tests(lambda: build_ds(0), 25)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMapThenFlatMap(self):
 
     def build_ds():
@@ -60,6 +67,7 @@ class FlatMapDatasetSerializationTest(
 
     self.run_core_tests(build_ds, 500)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCaptureDefunInMapFn(self):
 
     def build_ds():
@@ -76,6 +84,7 @@ class FlatMapDatasetSerializationTest(
 
     self.run_core_tests(build_ds, 100)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDisallowVariableCapture(self):
 
     def build_ds():
@@ -86,6 +95,7 @@ class FlatMapDatasetSerializationTest(
 
     self.verify_error_on_save(build_ds, 5, errors.FailedPreconditionError)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDisallowCapturingStatefulOps(self):
 
     def build_ds():
@@ -102,6 +112,7 @@ class FlatMapDatasetSerializationTest(
 
     self.verify_error_on_save(build_ds, 500, errors.FailedPreconditionError)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSparseCore(self):
 
     def _map_fn(i):

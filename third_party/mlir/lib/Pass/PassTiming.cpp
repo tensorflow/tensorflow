@@ -18,6 +18,7 @@
 #include "PassDetail.h"
 #include "mlir/Pass/PassManager.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/Format.h"
@@ -54,8 +55,22 @@ struct TimeRecord {
   double wall, user;
 };
 
+/// An enumeration of the different types of timers.
+enum class TimerKind {
+  /// This timer represents an ordered collection of pass timers, corresponding
+  /// to a pass pipeline.
+  Pipeline,
+
+  /// This timer represents a collection of pipeline timers.
+  PipelineCollection,
+
+  /// This timer represents an analysis or pass timer.
+  PassOrAnalysis
+};
+
 struct Timer {
-  explicit Timer(std::string &&name) : name(std::move(name)) {}
+  explicit Timer(std::string &&name, TimerKind kind)
+      : name(std::move(name)), kind(kind) {}
 
   /// Start the timer.
   void start() { startTime = std::chrono::system_clock::now(); }
@@ -68,18 +83,18 @@ struct Timer {
   }
 
   /// Get or create a child timer with the provided name and id.
-  Timer *getChildTimer(const void *id,
+  Timer *getChildTimer(const void *id, TimerKind kind,
                        std::function<std::string()> &&nameBuilder) {
     auto &child = children[id];
     if (!child)
-      child.reset(new Timer(nameBuilder()));
+      child = std::make_unique<Timer>(nameBuilder(), kind);
     return child.get();
   }
 
   /// Returns the total time for this timer in seconds.
   TimeRecord getTotalTime() {
-    // If we have a valid wall time, then we directly compute the seconds.
-    if (wallTime.count()) {
+    // If this is a pass or analysis timer, use the recorded time directly.
+    if (kind == TimerKind::PassOrAnalysis) {
       return TimeRecord(
           std::chrono::duration_cast<std::chrono::duration<double>>(wallTime)
               .count(),
@@ -87,7 +102,7 @@ struct Timer {
               .count());
     }
 
-    // Otheriwse, accumulate the timing from each of the children.
+    // Otherwise, accumulate the timing from each of the children.
     TimeRecord totalTime;
     for (auto &child : children)
       totalTime += child.second->getTotalTime();
@@ -102,39 +117,40 @@ struct Timer {
     if (wallTime < other.wallTime)
       wallTime = other.wallTime;
     userTime += other.userTime;
-    mergeChildren(std::move(other.children), /*isStructural=*/false);
+    mergeChildren(std::move(other.children));
   }
 
-  /// Merge the timer chilren in 'otherChildren' with the children of this
-  /// timer. If 'isStructural' is true, the children are merged lexographically
-  /// and 'otherChildren' must have the same number of elements as the children
-  /// of this timer. Otherwise, the timer children are merged based upon the
-  /// given timer key.
-  void mergeChildren(ChildrenMap &&otherChildren, bool isStructural) {
+  /// Merge the timer children in 'otherChildren' with the children of this
+  /// timer.
+  void mergeChildren(ChildrenMap &&otherChildren) {
     // Check for an empty children list.
     if (children.empty()) {
       children = std::move(otherChildren);
       return;
     }
 
-    if (isStructural) {
-      // If this is a structural merge, the number of children must be the same.
+    // Pipeline merges are handled separately as the children are merged
+    // lexicographically.
+    if (kind == TimerKind::Pipeline) {
       assert(children.size() == otherChildren.size() &&
-             "structural merge requires the same number of children");
-      auto it = children.begin(), otherIt = otherChildren.begin();
-      for (auto e = children.end(); it != e; ++it, ++otherIt)
-        it->second->merge(std::move(*otherIt->second));
+             "pipeline merge requires the same number of children");
+      for (auto it : llvm::zip(children, otherChildren))
+        std::get<0>(it).second->merge(std::move(*std::get<1>(it).second));
       return;
     }
 
-    // Otherwise, we merge based upon the child timers key.
-    for (auto &otherChild : otherChildren) {
-      auto &child = children[otherChild.first];
-      if (!child)
-        child = std::move(otherChild.second);
-      else
-        child->merge(std::move(*otherChild.second));
-    }
+    // Otherwise, we merge children based upon their timer key.
+    for (auto &otherChild : otherChildren)
+      mergeChild(std::move(otherChild));
+  }
+
+  /// Merge in the given child timer and id into this timer.
+  void mergeChild(ChildrenMap::value_type &&childIt) {
+    auto &child = children[childIt.first];
+    if (!child)
+      child = std::move(childIt.second);
+    else
+      child->merge(std::move(*childIt.second));
   }
 
   /// Raw timing information.
@@ -147,13 +163,20 @@ struct Timer {
 
   /// A descriptive name for this timer.
   std::string name;
+
+  /// The type of timer this instance represents.
+  TimerKind kind;
 };
 
 struct PassTiming : public PassInstrumentation {
-  PassTiming(PassTimingDisplayMode displayMode) : displayMode(displayMode) {}
-  ~PassTiming() { print(); }
+  PassTiming(PassDisplayMode displayMode) : displayMode(displayMode) {}
+  ~PassTiming() override { print(); }
 
   /// Setup the instrumentation hooks.
+  void runBeforePipeline(const OperationName &name,
+                         const PipelineParentInfo &parentInfo) override;
+  void runAfterPipeline(const OperationName &name,
+                        const PipelineParentInfo &parentInfo) override;
   void runBeforePass(Pass *pass, Operation *) override { startPassTimer(pass); }
   void runAfterPass(Pass *pass, Operation *) override;
   void runAfterPassFailed(Pass *pass, Operation *op) override {
@@ -174,11 +197,13 @@ struct PassTiming : public PassInstrumentation {
   /// Start a new timer for the given analysis.
   void startAnalysisTimer(llvm::StringRef name, AnalysisID *id);
 
-  /// Stop a pass timer.
-  void stopPassTimer(Pass *pass);
-
-  /// Stop the last active timer.
-  void stopTimer();
+  /// Pop the last active timer for the current thread.
+  Timer *popLastActiveTimer() {
+    auto tid = llvm::get_threadid();
+    auto &activeTimers = activeThreadTimers[tid];
+    assert(!activeTimers.empty() && "expected active timer");
+    return activeTimers.pop_back_val();
+  }
 
   /// Print the timing result in list mode.
   void printResultsAsList(raw_ostream &os, Timer *root, TimeRecord totalTime);
@@ -188,22 +213,24 @@ struct PassTiming : public PassInstrumentation {
                               TimeRecord totalTime);
 
   /// Returns a timer for the provided identifier and name.
-  Timer *getTimer(const void *id, std::function<std::string()> &&nameBuilder) {
+  Timer *getTimer(const void *id, TimerKind kind,
+                  std::function<std::string()> &&nameBuilder) {
     auto tid = llvm::get_threadid();
 
     // If there is no active timer then add to the root timer.
     auto &activeTimers = activeThreadTimers[tid];
+    Timer *parentTimer;
     if (activeTimers.empty()) {
       auto &rootTimer = rootTimers[tid];
       if (!rootTimer)
-        rootTimer.reset(new Timer("root"));
-      auto *timer = rootTimer->getChildTimer(id, std::move(nameBuilder));
-      activeTimers.push_back(timer);
-      return timer;
+        rootTimer = std::make_unique<Timer>("root", TimerKind::Pipeline);
+      parentTimer = rootTimer.get();
+    } else {
+      // Otherwise, add this to the active timer.
+      parentTimer = activeTimers.back();
     }
 
-    // Otherwise, add this to the active timer.
-    auto timer = activeTimers.back()->getChildTimer(id, std::move(nameBuilder));
+    auto timer = parentTimer->getChildTimer(id, kind, std::move(nameBuilder));
     activeTimers.push_back(timer);
     return timer;
   }
@@ -215,15 +242,55 @@ struct PassTiming : public PassInstrumentation {
   DenseMap<uint64_t, SmallVector<Timer *, 4>> activeThreadTimers;
 
   /// The display mode to use when printing the timing results.
-  PassTimingDisplayMode displayMode;
+  PassDisplayMode displayMode;
+
+  /// A mapping of pipeline timers that need to be merged into the parent
+  /// collection. The timers are mapped to the parent info to merge into.
+  DenseMap<PipelineParentInfo, SmallVector<Timer::ChildrenMap::value_type, 4>>
+      pipelinesToMerge;
 };
 } // end anonymous namespace
 
+void PassTiming::runBeforePipeline(const OperationName &name,
+                                   const PipelineParentInfo &parentInfo) {
+  // We don't actually want to time the piplelines, they gather their total
+  // from their held passes.
+  getTimer(name.getAsOpaquePointer(), TimerKind::Pipeline,
+           [&] { return ("'" + name.getStringRef() + "' Pipeline").str(); });
+}
+
+void PassTiming::runAfterPipeline(const OperationName &name,
+                                  const PipelineParentInfo &parentInfo) {
+  // Pop the timer for the pipeline.
+  auto tid = llvm::get_threadid();
+  auto &activeTimers = activeThreadTimers[tid];
+  assert(!activeTimers.empty() && "expected active timer");
+  activeTimers.pop_back();
+
+  // If the current thread is the same as the parent, there is nothing left to
+  // do.
+  if (tid == parentInfo.parentThreadID)
+    return;
+
+  // Otherwise, mark the pipeline timer for merging into the correct parent
+  // thread.
+  assert(activeTimers.empty() && "expected parent timer to be root");
+  auto *parentTimer = rootTimers[tid].get();
+  assert(parentTimer->children.size() == 1 &&
+         parentTimer->children.count(name.getAsOpaquePointer()) &&
+         "expected a single pipeline timer");
+  pipelinesToMerge[parentInfo].push_back(
+      std::move(*parentTimer->children.begin()));
+  rootTimers.erase(tid);
+}
+
 /// Start a new timer for the given pass.
 void PassTiming::startPassTimer(Pass *pass) {
-  Timer *timer = getTimer(pass, [pass]() -> std::string {
-    if (auto pipelineName = getAdaptorPassOpName(pass))
-      return ("'" + *pipelineName + "' Pipeline").str();
+  auto kind = isAdaptorPass(pass) ? TimerKind::PipelineCollection
+                                  : TimerKind::PassOrAnalysis;
+  Timer *timer = getTimer(pass, kind, [pass]() -> std::string {
+    if (auto *adaptor = getAdaptorPassBase(pass))
+      return adaptor->getName();
     return pass->getName();
   });
 
@@ -235,39 +302,28 @@ void PassTiming::startPassTimer(Pass *pass) {
 
 /// Start a new timer for the given analysis.
 void PassTiming::startAnalysisTimer(llvm::StringRef name, AnalysisID *id) {
-  Timer *timer = getTimer(id, [name] { return "(A) " + name.str(); });
+  Timer *timer = getTimer(id, TimerKind::PassOrAnalysis,
+                          [name] { return "(A) " + name.str(); });
   timer->start();
 }
 
 /// Stop a pass timer.
 void PassTiming::runAfterPass(Pass *pass, Operation *) {
-  auto tid = llvm::get_threadid();
-  auto &activeTimers = activeThreadTimers[tid];
-  assert(!activeTimers.empty() && "expected active timer");
-  Timer *timer = activeTimers.pop_back_val();
+  Timer *timer = popLastActiveTimer();
 
   // If this is an OpToOpPassAdaptorParallel, then we need to merge in the
-  // timing data for the other threads.
+  // timing data for the pipelines running on other threads.
   if (isa<OpToOpPassAdaptorParallel>(pass)) {
-    // The asychronous pipeline timers should exist as children of root timers
-    // for other threads.
-    for (auto &rootTimer : llvm::make_early_inc_range(rootTimers)) {
-      // Skip the current thread.
-      if (rootTimer.first == tid)
-        continue;
-      // Check that this thread has no active timers.
-      assert(activeThreadTimers[tid].empty() && "expected no active timers");
-
-      // Structurally merge this timers children into the parallel
-      // module-to-function pass timer.
-      timer->mergeChildren(std::move(rootTimer.second->children),
-                           /*isStructural=*/true);
-      rootTimers.erase(rootTimer.first);
+    auto toMerge = pipelinesToMerge.find({llvm::get_threadid(), pass});
+    if (toMerge != pipelinesToMerge.end()) {
+      for (auto &it : toMerge->second)
+        timer->mergeChild(std::move(it));
+      pipelinesToMerge.erase(toMerge);
     }
     return;
   }
 
-  // Adapator passes aren't timed directly, so we don't need to stop their
+  // Adaptor passes aren't timed directly, so we don't need to stop their
   // timers.
   if (!isAdaptorPass(pass))
     timer->stop();
@@ -275,18 +331,15 @@ void PassTiming::runAfterPass(Pass *pass, Operation *) {
 
 /// Stop a timer.
 void PassTiming::runAfterAnalysis(llvm::StringRef, AnalysisID *, Operation *) {
-  auto &activeTimers = activeThreadTimers[llvm::get_threadid()];
-  assert(!activeTimers.empty() && "expected active timer");
-  Timer *timer = activeTimers.pop_back_val();
-  timer->stop();
+  popLastActiveTimer()->stop();
 }
 
 /// Utility to print the timer heading information.
 static void printTimerHeader(llvm::raw_ostream &os, TimeRecord total) {
   os << "===" << std::string(73, '-') << "===\n";
   // Figure out how many spaces to description name.
-  unsigned Padding = (80 - kPassTimingDescription.size()) / 2;
-  os.indent(Padding) << kPassTimingDescription << '\n';
+  unsigned padding = (80 - kPassTimingDescription.size()) / 2;
+  os.indent(padding) << kPassTimingDescription << '\n';
   os << "===" << std::string(73, '-') << "===\n";
 
   // Print the total time followed by the section headers.
@@ -319,10 +372,10 @@ void PassTiming::print() {
 
   // Defer to a specialized printer for each display mode.
   switch (displayMode) {
-  case PassTimingDisplayMode::List:
+  case PassDisplayMode::List:
     printResultsAsList(*os, rootTimer.get(), totalTime);
     break;
-  case PassTimingDisplayMode::Pipeline:
+  case PassDisplayMode::Pipeline:
     printResultsAsPipeline(*os, rootTimer.get(), totalTime);
     break;
   }
@@ -340,8 +393,8 @@ void PassTiming::printResultsAsList(raw_ostream &os, Timer *root,
   llvm::StringMap<TimeRecord> mergedTimings;
 
   std::function<void(Timer *)> addTimer = [&](Timer *timer) {
-    // Check for timing information.
-    if (timer->wallTime.count())
+    // Only add timing information for passes and analyses.
+    if (timer->kind == TimerKind::PassOrAnalysis)
       mergedTimings[timer->name] += timer->getTotalTime();
     for (auto &children : timer->children)
       addTimer(children.second.get());
@@ -372,9 +425,33 @@ void PassTiming::printResultsAsPipeline(raw_ostream &os, Timer *root,
                                         TimeRecord totalTime) {
   std::function<void(unsigned, Timer *)> printTimer = [&](unsigned indent,
                                                           Timer *timer) {
+    // If this is a timer for a pipeline collection and the collection only has
+    // one pipeline child, then only print the child.
+    if (timer->kind == TimerKind::PipelineCollection &&
+        timer->children.size() == 1)
+      return printTimer(indent, timer->children.begin()->second.get());
+
     printTimeEntry(os, indent, timer->name, timer->getTotalTime(), totalTime);
-    for (auto &children : timer->children)
-      printTimer(indent + 2, children.second.get());
+
+    // If this timer is a pipeline, then print the children in-order.
+    if (timer->kind == TimerKind::Pipeline) {
+      for (auto &child : timer->children)
+        printTimer(indent + 2, child.second.get());
+      return;
+    }
+
+    // Otherwise, sort the children by name to give a deterministic ordering
+    // when emitting the time.
+    SmallVector<Timer *, 4> children;
+    children.reserve(timer->children.size());
+    for (auto &child : timer->children)
+      children.push_back(child.second.get());
+    llvm::array_pod_sort(children.begin(), children.end(),
+                         [](Timer *const *lhs, Timer *const *rhs) {
+                           return (*lhs)->name.compare((*rhs)->name);
+                         });
+    for (auto &child : children)
+      printTimer(indent + 2, child);
   };
 
   // Print each of the top level timers.
@@ -388,10 +465,10 @@ void PassTiming::printResultsAsPipeline(raw_ostream &os, Timer *root,
 
 /// Add an instrumentation to time the execution of passes and the computation
 /// of analyses.
-void PassManager::enableTiming(PassTimingDisplayMode displayMode) {
+void PassManager::enableTiming(PassDisplayMode displayMode) {
   // Check if pass timing is already enabled.
   if (passTiming)
     return;
-  addInstrumentation(new PassTiming(displayMode));
+  addInstrumentation(std::make_unique<PassTiming>(displayMode));
   passTiming = true;
 }

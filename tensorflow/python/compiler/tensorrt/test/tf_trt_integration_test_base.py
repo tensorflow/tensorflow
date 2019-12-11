@@ -347,7 +347,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         for expected_shape, actual_val in zip(expected_shapes, new_val):
           self.assertEqual(list(expected_shape), list(actual_val.shape))
         if val is not None:
-          self.assertAllClose(val, new_val, atol=1.e-06, rtol=1.e-06)
+          # Some ops may have nondeterministic output. E.g. Conv2D may use
+          # winograd algorithm. So we set atol/rtol be larger than 1.e-06.
+          self.assertAllClose(val, new_val, atol=1.e-05, rtol=1.e-05)
         val = new_val
       results.append(val)
 

@@ -18,11 +18,14 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import itertools
 import re
 import weakref
 
+from absl.testing import parameterized
 from six.moves import range
 
+from tensorflow.python.autograph.core import converter
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import lift_to_graph
@@ -71,7 +74,7 @@ class _HasDecoratedMethod(object):
   def f(self, x):
     return x * 3.
 
-class DefFunctionTest(test.TestCase):
+class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
   def testNoVariables(self):
 
@@ -133,6 +136,19 @@ class DefFunctionTest(test.TestCase):
       return state[0] * x
 
     self.assertAllEqual(fn(constant_op.constant(1.0)), 2.0)
+
+  def testFunctionMultipleVariableInitializer(self):
+
+    state = []
+
+    @def_function.function
+    def fn(x):
+      if not state:
+        state.append(variables.Variable(lambda: 2.0))
+        state.append(variables.Variable(lambda: 5.0))
+      return state[0] * x, state[1] * x
+
+    self.assertAllEqual(fn(constant_op.constant(1.0)), [2.0, 5.0])
 
   def testFunctionInitializationFunction(self):
 
@@ -338,7 +354,7 @@ class DefFunctionTest(test.TestCase):
 
       def make_z(self):
         if self.z is None:
-          with ops.name_scope('z_scope'):
+          with ops.name_scope('z_scope', skip_on_eager=False):
             self.z = variables.Variable(1., name='z')
 
     root = HasVars()
@@ -536,7 +552,6 @@ class DefFunctionTest(test.TestCase):
     self.assertAllClose([13., 14.], add_var(constant_op.constant(2.)))
 
   def testSameVariableTwice(self):
-
     v = variables.Variable(1.0)
 
     @def_function.function
@@ -544,6 +559,29 @@ class DefFunctionTest(test.TestCase):
       return a + b
 
     self.assertAllEqual(add(v, v), 2.0)
+
+  def testVariableUpdate(self):
+    v1 = variables.Variable(1.0)
+    v2 = variables.Variable(2.0)
+    v3 = variables.Variable(4, dtype=dtypes.int32)
+
+    trace_count = [0]
+
+    @def_function.function
+    def double_variable(x):
+      trace_count[0] += 1
+      x.assign_add(x.read_value())
+
+    self.assertEqual(trace_count[0], 0)
+    double_variable(v1)
+    self.assertEqual(trace_count[0], 1)
+    self.assertEqual(self.evaluate(v1), 2.0)
+    double_variable(v2)
+    self.assertEqual(trace_count[0], 1 if ops.Tensor._USE_EQUALITY else 2)
+    self.assertEqual(self.evaluate(v2), 4.0)
+    double_variable(v3)
+    self.assertEqual(trace_count[0], 2 if ops.Tensor._USE_EQUALITY else 3)
+    self.assertEqual(self.evaluate(v3), 8)
 
   def testShapeCache(self):
     @def_function.function
@@ -607,6 +645,52 @@ class DefFunctionTest(test.TestCase):
     func._decorate(decorator)
     self.assertEqual(func().numpy(), 2)
 
+  @parameterized.parameters(*itertools.product(
+      (None, (tensor_spec.TensorSpec([]),)),  # input_signature
+      (True, False),                          # autograph
+      (None, converter.Feature.ALL),          # autograph_options
+      (None, 'foo.bar'),                      # implements
+      (None, True, False),                    # relax_shapes
+      (True, False),                          # compile
+      (True, False),                          # override_function
+  ))
+  def testClone(self, input_signature, autograph, autograph_options, implements,
+                relax_shapes, compile_, override_function):
+    original_py_function = lambda x: x
+
+    compile_ = False
+    func = def_function.function(
+        func=original_py_function,
+        input_signature=input_signature,
+        autograph=autograph,
+        experimental_implements=implements,
+        experimental_autograph_options=autograph_options,
+        experimental_relax_shapes=relax_shapes,
+        experimental_compile=compile_)
+
+    if override_function:
+      cloned_py_function = lambda x: x + 1
+    else:
+      cloned_py_function = original_py_function
+
+    cloned = func._clone(python_function=cloned_py_function)
+
+    self.assertEqual(cloned_py_function, cloned._python_function)
+    self.assertEqual(func._name, cloned._name)
+    self.assertEqual(input_signature, cloned._input_signature)
+    self.assertEqual(autograph, cloned._autograph)
+    self.assertEqual(implements, cloned._implements)
+    self.assertEqual(autograph_options, cloned._experimental_autograph_options)
+    self.assertEqual(relax_shapes, cloned.experimental_relax_shapes)
+    self.assertEqual(compile_, cloned._experimental_compile)
+
+    # This test does not run with XLA JIT support linked in so we can only check
+    # the output of the function if compile is disabled.
+    if not compile_:
+      x = array_ops.zeros([])
+      self.assertEqual(self.evaluate(cloned(x)),
+                       self.evaluate(cloned_py_function(x)))
+
   def testLiftPlaceholderInitializedVariable(self):
     with ops.Graph().as_default():
       var_list = []
@@ -631,6 +715,18 @@ class DefFunctionTest(test.TestCase):
     msg = 'Functions cannot be decorated after they have been traced.'
     with self.assertRaisesRegexp(ValueError, msg):
       func._decorate(lambda f: f)
+
+  def testGetConcreteFunctionGraphLifetime(self):
+
+    @def_function.function
+    def func():
+      pass
+
+    graph = func.get_concrete_function().graph
+    del func
+
+    # If the graph is deleted, then an exception is raised on reading `captures`
+    self.assertEmpty(graph.captures)
 
 
 if __name__ == '__main__':

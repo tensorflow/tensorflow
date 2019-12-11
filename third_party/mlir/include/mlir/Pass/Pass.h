@@ -23,6 +23,7 @@
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/PointerIntPair.h"
+#include "llvm/ADT/Statistic.h"
 
 namespace mlir {
 namespace detail {
@@ -68,6 +69,35 @@ public:
   /// Returns the name of the operation that this pass operates on, or None if
   /// this is a generic OperationPass.
   llvm::Optional<StringRef> getOpName() const { return opName; }
+
+  /// Prints out the pass in the textual representation of pipelines. If this is
+  /// an adaptor pass, print with the op_name(sub_pass,...) format.
+  /// Note: The default implementation uses the class name and does not respect
+  /// options used to construct the pass. Override this method to allow for your
+  /// pass to be to be round-trippable to the textual format.
+  virtual void printAsTextualPipeline(raw_ostream &os);
+
+  /// This class represents a single pass statistic. This statistic functions
+  /// similarly to an unsigned integer value, and may be updated and incremented
+  /// accordingly. This class can be used to provide additional information
+  /// about the transformations and analyses performed by a pass.
+  class Statistic : public llvm::Statistic {
+  public:
+    /// The statistic is initialized by the pass owner, a name, and a
+    /// description.
+    Statistic(Pass *owner, const char *name, const char *description);
+
+    /// Assign the statistic to the given value.
+    Statistic &operator=(unsigned value);
+
+  private:
+    /// Hide some of the details of llvm::Statistic that we don't use.
+    using llvm::Statistic::getDebugType;
+  };
+
+  /// Returns the main statistics for this pass instance.
+  ArrayRef<Statistic *> getStatistics() const { return statistics; }
+  MutableArrayRef<Statistic *> getStatistics() { return statistics; }
 
 protected:
   explicit Pass(const PassID *passID,
@@ -117,6 +147,9 @@ private:
 
   /// The current execution state for the pass.
   llvm::Optional<detail::PassExecutionState> passState;
+
+  /// The set of statistics held by this pass.
+  std::vector<Statistic *> statistics;
 
   /// Allow access to 'clone' and 'run'.
   friend class OpPassManager;
@@ -227,19 +260,6 @@ public:
   }
 };
 
-/// Pass to transform an operation.
-///
-/// Operation passes must not:
-///   - modify any other operations within the parent region, as other threads
-///     may be manipulating them concurrently.
-///   - modify any state within the parent operation, this includes adding
-///     additional operations.
-///
-/// Derived function passes are expected to provide the following:
-///   - A 'void runOnOperation()' method.
-template <typename T>
-struct OperationPass : public detail::PassModel<T, Pass> {};
-
 /// Pass to transform an operation of a specific type.
 ///
 /// Operation passes must not:
@@ -250,27 +270,34 @@ struct OperationPass : public detail::PassModel<T, Pass> {};
 ///
 /// Derived function passes are expected to provide the following:
 ///   - A 'void runOnOperation()' method.
-template <typename OpT, typename PassT>
-class OpPass : public detail::PassModel<PassT, OpPassBase<OpT>> {
+template <typename PassT, typename OpT = void>
+class OperationPass : public detail::PassModel<PassT, OpPassBase<OpT>> {
 protected:
-  OpPass()
+  OperationPass()
       : detail::PassModel<PassT, OpPassBase<OpT>>(OpT::getOperationName()) {}
 
   /// Return the current operation being transformed.
   OpT getOperation() { return cast<OpT>(Pass::getOperation()); }
 };
 
-/// A model for providing function pass specific utilities.
+/// Pass to transform an operation.
 ///
-/// Function passes must not:
-///   - read or modify any other functions within the parent module, as
-///     other threads may be manipulating them concurrently.
-///   - modify any state within the parent module, this includes adding
-///     additional functions.
+/// Operation passes must not:
+///   - modify any other operations within the parent region, as other threads
+///     may be manipulating them concurrently.
+///   - modify any state within the parent operation, this includes adding
+///     additional operations.
+///
+/// Derived function passes are expected to provide the following:
+///   - A 'void runOnOperation()' method.
+template <typename PassT>
+struct OperationPass<PassT, void> : public detail::PassModel<PassT, Pass> {};
+
+/// A model for providing function pass specific utilities.
 ///
 /// Derived function passes are expected to provide the following:
 ///   - A 'void runOnFunction()' method.
-template <typename T> struct FunctionPass : public OpPass<FuncOp, T> {
+template <typename T> struct FunctionPass : public OperationPass<T, FuncOp> {
   /// The polymorphic API that runs the pass over the currently held function.
   virtual void runOnFunction() = 0;
 
@@ -288,7 +315,7 @@ template <typename T> struct FunctionPass : public OpPass<FuncOp, T> {
 ///
 /// Derived module passes are expected to provide the following:
 ///   - A 'void runOnModule()' method.
-template <typename T> struct ModulePass : public OpPass<ModuleOp, T> {
+template <typename T> struct ModulePass : public OperationPass<T, ModuleOp> {
   /// The polymorphic API that runs the pass over the currently held module.
   virtual void runOnModule() = 0;
 
@@ -298,11 +325,6 @@ template <typename T> struct ModulePass : public OpPass<ModuleOp, T> {
   /// Return the current module being transformed.
   ModuleOp getModule() { return this->getOperation(); }
 };
-
-/// Using directives defining legacy base classes.
-// TODO(riverriddle) These should be removed in favor of OpPassBase<T>.
-using FunctionPassBase = OpPassBase<FuncOp>;
-using ModulePassBase = OpPassBase<ModuleOp>;
 } // end namespace mlir
 
 #endif // MLIR_PASS_PASS_H

@@ -151,8 +151,6 @@ Status PartitionedCallOp::FillOutputDevices(
         // outputs empty, and rely on a Placer and colocation constraints to
         // infer correct placement for the function output.
         opts->output_devices.push_back("");
-      } else if (MTypeFromDType(dtype) == HOST_MEMORY) {
-        opts->output_devices.push_back(cpu_device.name());
       } else {
         opts->output_devices.push_back(opts->target);
       }
@@ -166,6 +164,12 @@ Status PartitionedCallOp::Instantiate(FunctionLibraryRuntime* lib,
                                       std::vector<Tensor>* inputs,
                                       FunctionLibraryRuntime::Handle* handle) {
   FunctionLibraryRuntime::InstantiateOptions opts;
+  const auto* config = (ctx->function_library())
+                           ? ctx->function_library()->config_proto()
+                           : nullptr;
+  if (config) {
+    opts.config_proto = *config;
+  }
 
 #ifndef __ANDROID__
   // Android tf library does not include grappler.
@@ -207,8 +211,6 @@ Status PartitionedCallOp::Instantiate(FunctionLibraryRuntime* lib,
     if (dtype == DT_RESOURCE) {
       const ResourceHandle& handle = tensor.flat<ResourceHandle>()(0);
       opts.input_devices.push_back(handle.device());
-    } else if (MTypeFromDType(dtype) == HOST_MEMORY) {
-      opts.input_devices.push_back(cpu_device->name());
     } else {
       opts.input_devices.push_back(opts.target);
     }

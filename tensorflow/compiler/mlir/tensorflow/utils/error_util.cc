@@ -24,8 +24,7 @@ StatusScopedDiagnosticHandler::StatusScopedDiagnosticHandler(
     : SourceMgrDiagnosticHandler(source_mgr_, context, diag_stream_),
       diag_stream_(diag_str_),
       propagate_(propagate) {
-  context->getDiagEngine().setHandler(
-      [this](Diagnostic diag) { this->handler(std::move(diag)); });
+  setHandler([this](Diagnostic& diag) { return this->handler(&diag); });
 }
 
 StatusScopedDiagnosticHandler::~StatusScopedDiagnosticHandler() {
@@ -63,27 +62,25 @@ Status StatusScopedDiagnosticHandler::Combine(Status status) {
   return status;
 }
 
-void StatusScopedDiagnosticHandler::handler(Diagnostic diag) {
+LogicalResult StatusScopedDiagnosticHandler::handler(Diagnostic* diag) {
 #ifndef NDEBUG
   size_t current_diag_str_size_ = diag_str_.size();
 #endif
 
   // Emit the diagnostic and flush the stream.
-  emitDiagnostic(diag);
+  emitDiagnostic(*diag);
   diag_stream_.flush();
 
 #ifndef NDEBUG
   // Emit non-errors to VLOG instead of the internal status.
-  if (diag.getSeverity() != DiagnosticSeverity::Error) {
+  if (diag->getSeverity() != DiagnosticSeverity::Error) {
     VLOG(1) << diag_str_.substr(current_diag_str_size_);
     diag_str_.resize(current_diag_str_size_);
   }
 #endif
 
-  // Propagate diagnostic if needed.
-  if (propagate_) {
-    propagateDiagnostic(std::move(diag));
-  }
+  // Return failure to signal propagation if necessary.
+  return failure(propagate_);
 }
 
 }  // namespace mlir

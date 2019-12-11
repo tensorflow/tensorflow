@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -1176,14 +1177,19 @@ Status TrtNodeValidator::ConvertConstToWeights(
   return status;
 }
 
-static void InitializeTrtPlugins() {
+static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
   static mutex plugin_mutex(LINKER_INITIALIZED);
   static bool plugin_initialized = false;
-  static Logger trt_logger;
   mutex_lock lock(plugin_mutex);
   if (plugin_initialized) return;
 
-  plugin_initialized = initLibNvInferPlugins(&trt_logger, "");
+  LOG(INFO) << "Linked TensorRT version: " << NV_TENSORRT_MAJOR << "."
+            << NV_TENSORRT_MINOR << "." << NV_TENSORRT_PATCH;
+  const int loaded_version = getInferLibVersion();
+  LOG(INFO) << "Loaded TensorRT version: " << loaded_version / 1000 << "."
+            << (loaded_version / 100) % 10 << "." << loaded_version % 100;
+
+  plugin_initialized = initLibNvInferPlugins(trt_logger, "");
   if (!plugin_initialized) {
     LOG(ERROR) << "Failed to initialize TensorRT plugins, and conversion may "
                   "fail later.";
@@ -1209,13 +1215,33 @@ static void InitializeTrtPlugins() {
   }
 }
 
-Converter::Converter(nvinfer1::INetworkDefinition* trt_network,
-                     TrtPrecisionMode precision_mode, bool use_calibration)
-    : trt_network_(trt_network),
-      precision_mode_(precision_mode),
-      use_calibration_(use_calibration) {
-  InitializeTrtPlugins();
+// static
+StatusOr<std::unique_ptr<Converter>> Converter::Create(
+    TrtPrecisionMode precision_mode, bool use_calibration,
+    nvinfer1::ILogger* trt_logger) {
+  std::unique_ptr<Converter> converter = absl::WrapUnique(
+      new Converter(precision_mode, use_calibration, trt_logger));
+  TF_RETURN_IF_ERROR(converter->Init(trt_logger));
+  return converter;
+}
+
+Converter::Converter(TrtPrecisionMode precision_mode, bool use_calibration,
+                     nvinfer1::ILogger* trt_logger)
+    : precision_mode_(precision_mode), use_calibration_(use_calibration) {
+  InitializeTrtPlugins(trt_logger);
   this->RegisterOpConverters();
+}
+
+Status Converter::Init(nvinfer1::ILogger* trt_logger) {
+  VLOG(1) << "Creating TensorRT builder";
+  trt_builder_.reset(nvinfer1::createInferBuilder(*trt_logger));
+
+  VLOG(1) << "Creating TensorRT network";
+  trt_network_.reset(trt_builder_->createNetwork());
+  if (!trt_network_) {
+    return errors::Internal("Failed to create TensorRT network object");
+  }
+  return Status::OK();
 }
 
 Status Converter::ConvertNode(const NodeDef& node_def) {
@@ -1328,6 +1354,47 @@ Status Converter::RenameAndMarkOutputTensors(
     VLOG(1) << "Marking output TRT tensor " << output.source_tensor_name
             << " with data type " << DebugString(output.trt_dtype)
             << ", which feeds TF node " << output.dest_node_name;
+  }
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "Created TensorRT network with the following layers:";
+    for (int i = 0; i < network()->getNbLayers(); i++) {
+      auto layer = network()->getLayer(i);
+      VLOG(2) << "    " << layer->getName() << " ("
+              << "type: " << static_cast<int>(layer->getType())
+              << ", precision: " << static_cast<int>(layer->getPrecision())
+              << ")";
+    }
+  }
+  return Status::OK();
+}
+
+Status Converter::BuildCudaEngine(
+    TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, int max_batch_size,
+    size_t max_workspace_size_bytes, nvinfer1::IGpuAllocator* allocator,
+    TRTInt8Calibrator* calibrator) {
+  VLOG(1) << "Configuring TensorRT builder";
+  trt_builder_->setMaxBatchSize(max_batch_size);
+  trt_builder_->setMaxWorkspaceSize(max_workspace_size_bytes);
+  trt_builder_->setGpuAllocator(allocator);
+  if (precision_mode_ == TrtPrecisionMode::FP16) {
+    trt_builder_->setFp16Mode(true);
+  } else if (precision_mode_ == TrtPrecisionMode::INT8) {
+    // Setting FP16 mode as well allows TRT to also consider FP16 kernels and
+    // use them in situations where they are faster than INT8 or where INT8 is
+    // not supported for a given layer.
+    trt_builder_->setFp16Mode(true);
+    trt_builder_->setInt8Mode(true);
+    if (use_calibration_) {
+      trt_builder_->setInt8Calibrator(calibrator);
+    } else {
+      trt_builder_->setInt8Calibrator(nullptr);
+    }
+  }
+
+  VLOG(1) << "Building TensorRT engine";
+  engine->reset(trt_builder_->buildCudaEngine(*network()));
+  if (engine->get() == nullptr) {
+    return errors::Internal("Failed to build TensorRT engine");
   }
   return Status::OK();
 }
@@ -1566,8 +1633,11 @@ void Converter::MaybeApplyQuantizationRanges() {
 #endif
 
   if (use_calibration()) return;
+#if !IS_TRT_VERSION_GE(6, 0, 0, 0)
   // Attempt to find tensors that are missing ranges, and set the corresponding
   // layer's precision to FP16 to avoid Builder::buildCudaEngine() failing.
+  // This is only needed for TensorRT 5 and before because
+  // TensorRT6 falls to FP16 internally.
   // TensorRT doesn't need ranges for intermediate tensors when layers are fused
   // so find fused layers first.
   // Get all tensors from network and deduce fused ops.
@@ -1696,6 +1766,7 @@ void Converter::MaybeApplyQuantizationRanges() {
       }
     }
   }
+#endif
 }
 
 void Converter::PropagateQuantizationRanges() {
@@ -2783,9 +2854,6 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
 
   // Asymmetric padding on Deconv not supported for now
   if (is_conv3d_backprop_input && attrs.get<string>("padding") == "SAME") {
-    const int tensor_c_idx = c_index - 1;
-    const int num_groups = (group == 0) ? tensor_dim.d[tensor_c_idx] : group;
-
     TRT_ShapedWeights weights =
         params->weight_store->GetTempWeights(weights_drsck);
 
@@ -2817,8 +2885,8 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
     }
   }
 
-  if (params->validation_only)
-    return Status::OK();  // Finished validation checks
+  // Finished validation checks
+  if (params->validation_only) return Status::OK();
 
   // Transpose to NCDHW (NCDHW is required for IConvLayer).
   const bool need_transpose = is_ndhwc;
@@ -2901,6 +2969,95 @@ Status ConvertConv3D(OpConverterParams* params) {
 
 Status ConvertConv3DBackpropInputV2(OpConverterParams* params) {
   return ConvertConv3DHelper(params, 1, /*is_conv3d_backprop_input=*/true);
+}
+
+Status ConvertPool3D(OpConverterParams* params) {
+  const int kNumDims = 5;
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  nvinfer1::PoolingType type;
+  if (node_def.op() == "MaxPool3D") {
+    type = nvinfer1::PoolingType::kMAX;
+  } else if (node_def.op() == "AvgPool3D") {
+    type = nvinfer1::PoolingType::kAVERAGE;
+  } else {
+    return errors::Unimplemented("Unsupported pooling type: ", node_def.op(),
+                                 ", at ", node_def.name());
+  }
+  TFAttrs attrs(node_def);
+  const string padding_type = attrs.get<string>("padding");
+  if ((padding_type != "SAME") && (padding_type != "VALID")) {
+    return errors::Unimplemented("Unsupported padding type: ", padding_type,
+                                 ", at ", node_def.name());
+  }
+  const auto data_format = attrs.get<string>("data_format");
+  const bool is_ndhwc = (data_format == "NDHWC");
+  const int c_index = is_ndhwc ? 4 : 1;
+  const int d_index = is_ndhwc ? 1 : 2;
+  const int h_index = is_ndhwc ? 2 : 3;
+  const int w_index = is_ndhwc ? 3 : 4;
+  const auto tf_stride = attrs.get<std::vector<int64>>("strides");
+  if (tf_stride.size() != kNumDims) {
+    return errors::InvalidArgument(
+        "Pooling strides field must specify 5 dimensions, at ",
+        node_def.name());
+  }
+  if (tf_stride[0] != 1 || tf_stride[c_index] != 1) {
+    return errors::Unimplemented(
+        "stride must be 1 for batch and channel dimensions, at ",
+        node_def.name());
+  }
+  const auto tf_kernel = attrs.get<std::vector<int64>>("ksize");
+  if (tf_kernel.size() != kNumDims) {
+    return errors::InvalidArgument(
+        "Pooling ksize field must specify 5 dimensions, at ", node_def.name());
+  }
+  if (tf_kernel[0] != 1 || tf_kernel[c_index] != 1) {
+    return errors::Unimplemented(
+        "ksize must be 1 for batch and channel dimensions, at ",
+        node_def.name());
+  }
+  if (params->validation_only) return Status::OK();
+
+  nvinfer1::ITensor* tensor = inputs.at(0).tensor();
+  if (data_format == "NDHWC") {
+    // NDHWC => NCDHW
+    TF_RETURN_IF_ERROR(
+        params->converter->TransposeTensor(tensor, {0, 4, 1, 2, 3}, &tensor));
+  }
+
+  const nvinfer1::Dims3 stride(tf_stride[d_index], tf_stride[h_index],
+                               tf_stride[w_index]);
+  const nvinfer1::Dims3 ksize(tf_kernel[d_index], tf_kernel[h_index],
+                              tf_kernel[w_index]);
+
+  nvinfer1::IPoolingLayer* layer =
+      params->converter->network()->addPoolingNd(*tensor, type, ksize);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+
+  params->converter->MarkQuantizationRangesAsInferrable(tensor,
+                                                        layer->getOutput(0));
+
+  layer->setStrideNd(stride);
+  // VALID padding is the default TRT behavior.
+  if (padding_type == "SAME") {
+    // SAME_UPPER means that post padding is preferred.
+    layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
+  }
+  layer->setName(node_def.name().c_str());
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+
+  if (data_format == "NDHWC") {
+    // NCDHW => NDHWC
+    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
+        output_tensor, {0, 2, 3, 4, 1}, &output_tensor));
+  }
+
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
 }
 #endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 
@@ -5211,6 +5368,18 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
       &plugin_inputs[0], static_cast<int>(plugin_inputs.size()), *plugin);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
+  // Set plugin outputs
+  nvinfer1::ITensor* output_nmsed_boxes = layer->getOutput(1);
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  // TRT6 fixes (removes) the extra last dimension in CombinedNMS outputs
+  nvinfer1::ITensor* output_num_detections = layer->getOutput(0);
+  nvinfer1::ITensor* output_nmsed_scores = layer->getOutput(2);
+  nvinfer1::ITensor* output_nmsed_classes = layer->getOutput(3);
+#else
+  nvinfer1::ITensor* output_num_detections = nullptr;
+  nvinfer1::ITensor* output_nmsed_scores = nullptr;
+  nvinfer1::ITensor* output_nmsed_classes = nullptr;
+
   auto shrink_last_dim = [params](nvinfer1::ITensor* in_tensor,
                                   nvinfer1::ITensor** out_tensor) {
     nvinfer1::Dims dims = in_tensor->getDimensions();
@@ -5224,18 +5393,13 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
         /*validation_only=*/false, out_tensor));
     return Status::OK();
   };
-
-  // Set plugin outputs
-  nvinfer1::ITensor* output_nmsed_boxes = layer->getOutput(1);
-  nvinfer1::ITensor* output_nmsed_scores = nullptr;
-  nvinfer1::ITensor* output_nmsed_classes = nullptr;
-  nvinfer1::ITensor* output_num_detections = nullptr;
   TF_RETURN_IF_ERROR(
       shrink_last_dim(layer->getOutput(2), &output_nmsed_scores));
   TF_RETURN_IF_ERROR(
       shrink_last_dim(layer->getOutput(3), &output_nmsed_classes));
   TF_RETURN_IF_ERROR(
       shrink_last_dim(layer->getOutput(0), &output_num_detections));
+#endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
 
   params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_boxes));
   params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_scores));
@@ -5244,7 +5408,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
 
   return Status::OK();
 }
-#endif  // CombinedNonMaxSuppression
+#endif  // IS_TRT_VERSION_GE(5, 1, 0, 0)
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 Status ConvertResize(OpConverterParams* params) {
@@ -5403,6 +5567,9 @@ static void RegisterValidatableOpConverters(
   for (auto resize_mode : {"ResizeBilinear", "ResizeNearestNeighbor"}) {
     (*registration)[resize_mode] = ConvertResize;
   }
+  for (auto pool_op_type : {"AvgPool3D", "MaxPool3D"}) {
+    (*registration)[pool_op_type] = ConvertPool3D;
+  }
 #endif
   (*registration)["Rsqrt"] = ConvertRsqrt;
   (*registration)["Slice"] = ConvertSlice;
@@ -5465,48 +5632,21 @@ void Converter::RegisterOpConverters() {
 Status ConvertGraphDefToEngine(
     const GraphDef& gdef, TrtPrecisionMode precision_mode, int max_batch_size,
     size_t max_workspace_size_bytes,
-    const std::vector<PartialTensorShape>& input_shapes, Logger* logger,
-    nvinfer1::IGpuAllocator* allocator, TRTInt8Calibrator* calibrator,
+    const std::vector<PartialTensorShape>& input_shapes,
+    nvinfer1::ILogger* trt_logger, nvinfer1::IGpuAllocator* allocator,
+    TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     bool* convert_successfully) {
   engine->reset();
   if (convert_successfully) *convert_successfully = false;
 
-  // Create the builder.
-  TrtUniquePtrType<nvinfer1::IBuilder> builder(
-      nvinfer1::createInferBuilder(*logger));
-  builder->setMaxBatchSize(max_batch_size);
-  builder->setMaxWorkspaceSize(max_workspace_size_bytes);
-  builder->setGpuAllocator(allocator);
-  if (precision_mode == TrtPrecisionMode::FP16) {
-    builder->setFp16Mode(true);
-  } else if (precision_mode == TrtPrecisionMode::INT8) {
-    // Setting FP16 mode as well allows TRT to also consider FP16 kernels and
-    // use them in situations where they are faster than INT8 or where INT8 is
-    // not supported for a given layer.
-    builder->setFp16Mode(true);
-    builder->setInt8Mode(true);
-    if (use_calibration) {
-      builder->setInt8Calibrator(calibrator);
-    } else {
-      builder->setInt8Calibrator(nullptr);
-    }
-  }
+  // Creating converter, TensorRT builder and network
+  auto statusor =
+      Converter::Create(precision_mode, use_calibration, trt_logger);
+  TF_RETURN_IF_ERROR(statusor.status());
+  auto converter = std::move(statusor.ValueOrDie());
 
-  // Create the network.
-  auto trt_network =
-      TrtUniquePtrType<nvinfer1::INetworkDefinition>(builder->createNetwork());
-  if (!trt_network) {
-    return errors::Internal("Failed to create TensorRT network object");
-  }
-
-  // Build the network
-  if (VLOG_IS_ON(1)) {
-    string mode_str;
-    TF_RETURN_IF_ERROR(TrtPrecisionModeToName(precision_mode, &mode_str));
-    VLOG(1) << "Starting engine conversion, precision mode: " << mode_str;
-  }
-  Converter converter(trt_network.get(), precision_mode, use_calibration);
+  VLOG(1) << "Starting to convert TensorFlow ops to TensorRT layers";
   std::vector<Converter::EngineOutputInfo> output_tensors;
   // Graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {
@@ -5552,8 +5692,8 @@ Status ConvertGraphDefToEngine(
       // TODO(laigd): the conversion should always happen at runtime where all
       // the shapes are known, and we can provide a mode to generate the
       // engines offline, by calling sess.run() and cache/serialize the engines.
-      TF_RETURN_IF_ERROR(
-          converter.AddInputTensor(node_name, trt_dtype, trt_dims, batch_size));
+      TF_RETURN_IF_ERROR(converter->AddInputTensor(node_name, trt_dtype,
+                                                   trt_dims, batch_size));
     } else if (IsEngineOutput(node_name)) {
       int32 slot_number = -1;
       if (node_def.op() == "Identity") {
@@ -5583,21 +5723,19 @@ Status ConvertGraphDefToEngine(
       output_tensors.at(slot_number) = {node_def.input(0), node_name,
                                         trt_dtype};
     } else {
-      TF_RETURN_IF_ERROR(converter.ConvertNode(node_def));
+      TF_RETURN_IF_ERROR(converter->ConvertNode(node_def));
     }
   }
-  TF_RETURN_IF_ERROR(converter.RenameAndMarkOutputTensors(output_tensors));
+  TF_RETURN_IF_ERROR(converter->RenameAndMarkOutputTensors(output_tensors));
   if (convert_successfully) *convert_successfully = true;
 
   // Apply user provided quantization ranges to tensors
-  converter.MaybeApplyQuantizationRanges();
+  converter->MaybeApplyQuantizationRanges();
 
   // Build the engine.
-  VLOG(1) << "Starting engine creation";
-  engine->reset(builder->buildCudaEngine(*converter.network()));
-  if (engine->get() == nullptr) {
-    return errors::Internal("Failed to build TensorRT engine");
-  }
+  TF_RETURN_IF_ERROR(converter->BuildCudaEngine(
+      engine, max_batch_size, max_workspace_size_bytes, allocator, calibrator));
+
   VLOG(1) << "Finished conversion";
   return Status::OK();
 }

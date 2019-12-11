@@ -37,8 +37,8 @@ TEST_F(OpenCLOperationTest, PaddingAppendWidth) {
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
 
   PadAttributes attr;
-  attr.prepended = HWC(0, 0, 0);
-  attr.appended = HWC(0, 1, 0);
+  attr.prepended = BHWC(0, 0, 0, 0);
+  attr.appended = BHWC(0, 0, 1, 0);
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -65,8 +65,8 @@ TEST_F(OpenCLOperationTest, PaddingPrependWidth) {
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
 
   PadAttributes attr;
-  attr.prepended = HWC(0, 1, 0);
-  attr.appended = HWC(0, 0, 0);
+  attr.prepended = BHWC(0, 0, 1, 0);
+  attr.appended = BHWC(0, 0, 0, 0);
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -93,8 +93,8 @@ TEST_F(OpenCLOperationTest, PaddingAppendHeight) {
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
 
   PadAttributes attr;
-  attr.prepended = HWC(0, 0, 0);
-  attr.appended = HWC(1, 0, 0);
+  attr.prepended = BHWC(0, 0, 0, 0);
+  attr.appended = BHWC(0, 1, 0, 0);
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -121,8 +121,8 @@ TEST_F(OpenCLOperationTest, PaddingPrependHeight) {
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
 
   PadAttributes attr;
-  attr.prepended = HWC(1, 0, 0);
-  attr.appended = HWC(0, 0, 0);
+  attr.prepended = BHWC(0, 1, 0, 0);
+  attr.appended = BHWC(0, 0, 0, 0);
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -149,8 +149,8 @@ TEST_F(OpenCLOperationTest, PaddingAppendChannels) {
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
 
   PadAttributes attr;
-  attr.prepended = HWC(0, 0, 0);
-  attr.appended = HWC(0, 0, 1);
+  attr.prepended = BHWC(0, 0, 0, 0);
+  attr.appended = BHWC(0, 0, 0, 1);
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -177,8 +177,8 @@ TEST_F(OpenCLOperationTest, PaddingPrependChannels) {
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
 
   PadAttributes attr;
-  attr.prepended = HWC(0, 0, 1);
-  attr.appended = HWC(0, 0, 0);
+  attr.prepended = BHWC(0, 0, 0, 1);
+  attr.appended = BHWC(0, 0, 0, 0);
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -205,8 +205,8 @@ TEST_F(OpenCLOperationTest, PaddingComplex) {
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
 
   PadAttributes attr;
-  attr.prepended = HWC(0, 1, 1);
-  attr.appended = HWC(1, 1, 0);
+  attr.prepended = BHWC(0, 0, 1, 1);
+  attr.appended = BHWC(0, 1, 1, 0);
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {

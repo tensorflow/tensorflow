@@ -20,32 +20,43 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 
 namespace mlir {
 namespace TFL {
 
 // A config that controls which passes get run as part TFLite converter.
 struct PassConfig {
-  PassConfig()
+  explicit PassConfig(QuantizationSpecs specs)
       : emit_builtin_tflite_ops(true),
-        run_quantize(false),
-        emit_quant_adaptor_ops(false),
         lower_tensor_list_ops(false),
-        trim_functions_whitelist({}) {}
+        trim_functions_whitelist({}),
+        quant_specs(specs),
+        skip_control_dialect(false),
+        form_clusters(false),
+        inline_functions(false) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
   bool emit_builtin_tflite_ops;
-  // If run_quantize is true, quantization passes will be added.
-  bool run_quantize;
-  // If `emit_quant_adaptor_ops` is true, Quantize and
-  // Dequantize ops are added as part of running quantization passes.
-  bool emit_quant_adaptor_ops;
   // If `lower_tensor_list_ops` is true, tensorlist ops will be lowered to basic
   // TF ops before legalization to TF Lite dialect.
   bool lower_tensor_list_ops;
   // The whitelist of functions that would be preserved after trimming.
   llvm::ArrayRef<std::string> trim_functions_whitelist;
+  // All information about quantization.
+  QuantizationSpecs quant_specs;
+  // If `skip_control_dialect` is true, TF executor dialect is not converted to
+  // TF control dialect prior to legalization to TF Lite.
+  // TODO(b/142911013): Remove flag once control dialect is removed.
+  bool skip_control_dialect;
+  // If `form_clusters` is true (and `skip_control_dialect` is true), clusters
+  // are formed by grouping consecutive ops of the same device, under a
+  // `tf_device.launch` op.
+  bool form_clusters;
+  // Inline function calls within the main function in the MLIR module, prior
+  // to legalization to TFLite.
+  bool inline_functions;
 };
 
 }  // namespace TFL

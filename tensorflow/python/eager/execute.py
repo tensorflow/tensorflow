@@ -136,7 +136,7 @@ def execute_with_cancellation(op_name,
 def execute_with_callbacks(op_name, num_outputs, inputs, attrs, ctx, name=None):
   """Monkey-patch to execute to enable execution callbacks."""
   tensors = quick_execute(op_name, num_outputs, inputs, attrs, ctx, name)
-  for callback in ctx.post_execution_callbacks:
+  for callback in ctx.op_callbacks:
     callback(op_name, tuple(inputs), attrs, tensors, name)
 
   return tensors
@@ -150,8 +150,8 @@ def must_record_gradient():
   return False
 
 
-def record_gradient(unused_op_name, unused_inputs, unused_attrs, unused_results,
-                    unused_name):
+def record_gradient(unused_op_name, unused_inputs, unused_attrs,
+                    unused_results):
   """Import backprop if you want gradients recorded."""
   pass
 
@@ -235,6 +235,8 @@ def make_tensor(v, arg_name):
 
 def args_to_matching_eager(l, ctx, default_dtype=None):
   """Convert sequence `l` to eager same-type Tensors."""
+  if (not l) and (default_dtype is not None):
+    return default_dtype, []  # List is empty; assume default dtype.
   EagerTensor = ops.EagerTensor  # pylint: disable=invalid-name
   for x in l:
     if not isinstance(x, EagerTensor):
@@ -251,19 +253,18 @@ def args_to_matching_eager(l, ctx, default_dtype=None):
       dtype = t.dtype
       break
 
-  internal_convert_to_tensor = ops.internal_convert_to_tensor
   if dtype is None:
     # Infer a dtype based on the first value, and use that dtype for the
     # remaining values.
     ret = []
     for t in l:
       ret.append(
-          internal_convert_to_tensor(
+          ops.convert_to_tensor(
               t, dtype, preferred_dtype=default_dtype, ctx=ctx))
       if dtype is None:
         dtype = ret[-1].dtype
   else:
-    ret = [internal_convert_to_tensor(t, dtype, ctx=ctx) for t in l]
+    ret = [ops.convert_to_tensor(t, dtype, ctx=ctx) for t in l]
 
   # TODO(slebedev): consider removing this as it leaks a Keras concept.
   # pylint: disable=protected-access
@@ -278,7 +279,7 @@ def args_to_matching_eager(l, ctx, default_dtype=None):
 
 
 def convert_to_mixed_eager_tensors(values, ctx):
-  v = [ops.internal_convert_to_tensor(t, ctx=ctx) for t in values]
+  v = [ops.convert_to_tensor(t, ctx=ctx) for t in values]
   types = [t._datatype_enum() for t in v]  # pylint: disable=protected-access
   return types, v
 
@@ -307,15 +308,15 @@ def args_to_mixed_eager_tensors(lists, ctx):
         break
     if dtype is None:
       # Convert the first one and use its dtype.
-      lists_ret[0].append(ops.internal_convert_to_tensor(lists[0][i], ctx=ctx))
+      lists_ret[0].append(ops.convert_to_tensor(lists[0][i], ctx=ctx))
       dtype = lists_ret[0][i].dtype
       for j in range(1, len(lists)):
         lists_ret[j].append(
-            ops.internal_convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
+            ops.convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
     else:
       # Convert everything to the found dtype.
       for j in range(len(lists)):
         lists_ret[j].append(
-            ops.internal_convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
+            ops.convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
     types.append(dtype.as_datatype_enum)
   return types, lists_ret

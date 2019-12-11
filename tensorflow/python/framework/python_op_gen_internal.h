@@ -33,6 +33,8 @@ bool IsPythonReserved(const string& s);
 bool IsOpWithUnderscorePrefix(const string& s);
 
 // Add a _ to the end of s if necessary to avoid a Python keyword or built-in.
+// Also convert namespace characters ('>') to '_' because python does not
+// support '>' in names
 string AvoidPythonReserved(const string& s);
 
 // Convert an AttrValue with type `type` to the Python representation for

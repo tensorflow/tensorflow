@@ -326,7 +326,8 @@ def _tile_ragged_splits(rt_input, multiples, const_multiples=None):
 
   >>> rt = tf.ragged.constant([[1, 2], [3]])
   >>> _tile_ragged_splits(rt, [3, 2])
-  [<tf.Tensor: ..., numpy=array([ 0,  4,  6, 10, 12, 16, 18])>]
+  [<tf.Tensor: shape=(7,), dtype=int64,
+  numpy=array([ 0,  4,  6, 10, 12, 16, 18])>]
   """
   ragged_rank = rt_input.ragged_rank
   nested_splits = rt_input.nested_row_splits
@@ -643,3 +644,54 @@ def stack_dynamic_partitions(data, partitions, num_partitions, name=None):
       with ops.control_dependencies([check]):
         return stack_dynamic_partitions(data.values, partitions.values,
                                         num_partitions)
+
+
+#===============================================================================
+# Reverse
+#===============================================================================
+def reverse(tensor, axis, name=None):
+  """Reverses a RaggedTensor along the specified axes.
+
+  #### Example:
+
+  >>> data = tf.ragged.constant([
+  ...   [[1, 2], [3, 4]], [[5, 6]], [[7, 8], [9, 10], [11, 12]]])
+  >>> tf.reverse(data, axis=[0, 2])
+  <tf.RaggedTensor [[[8, 7], [10, 9], [12, 11]], [[6, 5]], [[2, 1], [4, 3]]]>
+
+  Args:
+    tensor: A 'RaggedTensor' to reverse.
+    axis: A list or tuple of 'int' or a constant 1D 'tf.Tensor'. The indices
+      of the axes to reverse.
+    name: A name prefix for the returned tensor (optional).
+
+  Returns:
+    A 'RaggedTensor'.
+  """
+  type_error_msg = ('`axis` must be a list of int or a constant tensor'
+                    'when reversing axes in a ragged tensor')
+
+  with ops.name_scope(name, 'Reverse', [tensor, axis]):
+    if isinstance(axis, ops.Tensor):
+      axis = tensor_util.constant_value(axis)
+      if axis is None:
+        raise TypeError(type_error_msg)
+    elif not (isinstance(axis, (list, tuple)) and
+              all(isinstance(dim, int) for dim in axis)):
+      raise TypeError(type_error_msg)
+
+    tensor = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+        tensor, name='tensor')
+
+    # Allow usage of negative values to specify innermost axes.
+    axis = [ragged_util.get_positive_axis(dim, tensor.shape.rank)
+            for dim in axis]
+
+    # We only need to slice up to the max axis. If the axis list
+    # is empty, it should be 0.
+    slices = [slice(None)] * (max(axis) + 1 if axis else 0)
+
+    for dim in axis:
+      slices[dim] = slice(None, None, -1)
+
+    return tensor[tuple(slices)]

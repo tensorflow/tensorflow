@@ -26,7 +26,6 @@
 
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/StandardTypes.h"
-#include <type_traits>
 
 namespace mlir {
 
@@ -36,7 +35,7 @@ namespace detail {
 /// inside the Attribute.
 template <
     typename AttrClass,
-    // Require AttrClass to be a derived class from Atribute and get its
+    // Require AttrClass to be a derived class from Attribute and get its
     // value type
     typename ValueType =
         typename std::enable_if<std::is_base_of<Attribute, AttrClass>::value,
@@ -98,7 +97,7 @@ struct constant_int_op_binder {
       return false;
     auto type = op->getResult(0)->getType();
 
-    if (type.isa<IntegerType>()) {
+    if (type.isIntOrIndex()) {
       return attr_value_binder<IntegerAttr>(bind_value).match(attr);
     }
     if (type.isa<VectorType>() || type.isa<RankedTensorType>()) {
@@ -111,13 +110,21 @@ struct constant_int_op_binder {
   }
 };
 
-// The matcher that matches a given target constant scalar / vector splat /
-// tensor splat integer value.
+/// The matcher that matches a given target constant scalar / vector splat /
+/// tensor splat integer value.
 template <int64_t TargetValue> struct constant_int_value_matcher {
   bool match(Operation *op) {
     APInt value;
-
     return constant_int_op_binder(&value).match(op) && TargetValue == value;
+  }
+};
+
+/// The matcher that matches anything except the given target constant scalar /
+/// vector splat / tensor splat integer value.
+template <int64_t TargetNotValue> struct constant_int_not_value_matcher {
+  bool match(Operation *op) {
+    APInt value;
+    return constant_int_op_binder(&value).match(op) && TargetNotValue != value;
   }
 };
 
@@ -126,7 +133,105 @@ template <typename OpClass> struct op_matcher {
   bool match(Operation *op) { return isa<OpClass>(op); }
 };
 
+/// Trait to check whether T provides a 'match' method with type
+/// `OperationOrValue`.
+template <typename T, typename OperationOrValue>
+using has_operation_or_value_matcher_t =
+    decltype(std::declval<T>().match(std::declval<OperationOrValue>()));
+
+/// Statically switch to a Value matcher.
+template <typename MatcherClass>
+typename std::enable_if_t<is_detected<detail::has_operation_or_value_matcher_t,
+                                      MatcherClass, Value *>::value,
+                          bool>
+matchOperandOrValueAtIndex(Operation *op, unsigned idx, MatcherClass &matcher) {
+  return matcher.match(op->getOperand(idx));
+}
+
+/// Statically switch to an Operation matcher.
+template <typename MatcherClass>
+typename std::enable_if_t<is_detected<detail::has_operation_or_value_matcher_t,
+                                      MatcherClass, Operation *>::value,
+                          bool>
+matchOperandOrValueAtIndex(Operation *op, unsigned idx, MatcherClass &matcher) {
+  if (auto defOp = op->getOperand(idx)->getDefiningOp())
+    return matcher.match(defOp);
+  return false;
+}
+
+/// Terminal matcher, always returns true.
+struct AnyValueMatcher {
+  bool match(Value *op) const { return true; }
+};
+
+/// Binds to a specific value and matches it.
+struct PatternMatcherValue {
+  PatternMatcherValue(Value *val) : value(val) {}
+  bool match(Value *val) const { return val == value; }
+  Value *value;
+};
+
+template <typename TupleT, class CallbackT, std::size_t... Is>
+constexpr void enumerateImpl(TupleT &&tuple, CallbackT &&callback,
+                             std::index_sequence<Is...>) {
+  (void)std::initializer_list<int>{
+      0,
+      (callback(std::integral_constant<std::size_t, Is>{}, std::get<Is>(tuple)),
+       0)...};
+}
+
+template <typename... Tys, typename CallbackT>
+constexpr void enumerate(std::tuple<Tys...> &tuple, CallbackT &&callback) {
+  detail::enumerateImpl(tuple, std::forward<CallbackT>(callback),
+                        std::make_index_sequence<sizeof...(Tys)>{});
+}
+
+/// RecursivePatternMatcher that composes.
+template <typename OpType, typename... OperandMatchers>
+struct RecursivePatternMatcher {
+  RecursivePatternMatcher(OperandMatchers... matchers)
+      : operandMatchers(matchers...) {}
+  bool match(Operation *op) {
+    if (!isa<OpType>(op) || op->getNumOperands() != sizeof...(OperandMatchers))
+      return false;
+    bool res = true;
+    enumerate(operandMatchers, [&](size_t index, auto &matcher) {
+      res &= matchOperandOrValueAtIndex(op, index, matcher);
+    });
+    return res;
+  }
+  std::tuple<OperandMatchers...> operandMatchers;
+};
+
 } // end namespace detail
+
+/// Matches a value from a constant foldable operation and writes the value to
+/// bind_value.
+template <typename AttrT>
+inline detail::constant_op_binder<AttrT> m_Constant(AttrT *bind_value) {
+  return detail::constant_op_binder<AttrT>(bind_value);
+}
+
+/// Matches a constant scalar / vector splat / tensor splat integer one.
+inline detail::constant_int_value_matcher<1> m_One() {
+  return detail::constant_int_value_matcher<1>();
+}
+
+/// Matches the given OpClass.
+template <typename OpClass> inline detail::op_matcher<OpClass> m_Op() {
+  return detail::op_matcher<OpClass>();
+}
+
+/// Matches a constant scalar / vector splat / tensor splat integer zero.
+inline detail::constant_int_value_matcher<0> m_Zero() {
+  return detail::constant_int_value_matcher<0>();
+}
+
+/// Matches a constant scalar / vector splat / tensor splat integer that is any
+/// non-zero value.
+inline detail::constant_int_not_value_matcher<0> m_NonZero() {
+  return detail::constant_int_not_value_matcher<0>();
+}
 
 /// Entry point for matching a pattern over a Value.
 template <typename Pattern>
@@ -150,27 +255,15 @@ m_ConstantInt(IntegerAttr::ValueType *bind_value) {
   return detail::constant_int_op_binder(bind_value);
 }
 
-/// Matches a value from a constant foldable operation and writes the value to
-/// bind_value.
-template <typename AttrT>
-inline detail::constant_op_binder<AttrT> m_Constant(AttrT *bind_value) {
-  return detail::constant_op_binder<AttrT>(bind_value);
+template <typename OpType, typename... Matchers>
+auto m_Op(Matchers... matchers) {
+  return detail::RecursivePatternMatcher<OpType, Matchers...>(matchers...);
 }
 
-/// Matches a constant scalar / vector splat / tensor splat integer one.
-inline detail::constant_int_value_matcher<1> m_One() {
-  return detail::constant_int_value_matcher<1>();
-}
-
-/// Matches the given OpClass.
-template <typename OpClass> inline detail::op_matcher<OpClass> m_Op() {
-  return detail::op_matcher<OpClass>();
-}
-
-/// Matches a constant scalar / vector splat / tensor splat integer zero.
-inline detail::constant_int_value_matcher<0> m_Zero() {
-  return detail::constant_int_value_matcher<0>();
-}
+namespace matchers {
+inline auto m_Any() { return detail::AnyValueMatcher(); }
+inline auto m_Val(Value *v) { return detail::PatternMatcherValue(v); }
+} // namespace matchers
 
 } // end namespace mlir
 

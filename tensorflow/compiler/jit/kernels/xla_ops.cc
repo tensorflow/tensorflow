@@ -18,8 +18,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
+#include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -268,7 +270,7 @@ static Status BuildCompilationCache(OpKernelContext* ctx,
 }
 
 static Status CompileToLocalExecutable(
-    OpKernelContext* ctx, const NameAttrList& function,
+    OpKernelContext* ctx, const NameAttrList& function, bool has_ref_vars,
     const XlaPlatformInfo& platform_info, absl::Span<const int> resources,
     absl::Span<const int> constants, bool lazy, xla::LocalClient** client,
     std::map<int, OptionalTensor>* variables,
@@ -313,8 +315,10 @@ static Status CompileToLocalExecutable(
     options.shape_representation_fn =
         platform_info.xla_device_metadata()->shape_representation_fn();
   }
-  // TODO(b/138728225): Set options.alias_passthrough_params for clusters
-  // without ref variables.
+  // If reference variables are not present in the graph, we can safely alias
+  // passthrough parameters without performing a copy.
+  options.alias_passthrough_params =
+      !has_ref_vars && !platform_info.is_on_xla_device();
 
   std::map<int, Tensor> constant_args;
   for (int i : constants) {
@@ -322,11 +326,6 @@ static Status CompileToLocalExecutable(
   }
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
-  // If we resolve constants we never emit them on the device, meaning that if
-  // they are needed by a following computation the host has to transfer
-  // them. Not resolving constants is expected to be faster than resolving
-  // constants.
-  compile_options.resolve_compile_time_constants = true;
   // Optimization: where possible, have the computation return a naked array
   // rather than a one-element tuple.
   compile_options.always_return_tuple = false;
@@ -351,8 +350,8 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   {
     Status s = CompileToLocalExecutable(
-        ctx, function_, platform_info_, resources_, constants_, /*lazy=*/false,
-        &client, &variables, &kernel, &executable);
+        ctx, function_, /*has_ref_vars=*/true, platform_info_, resources_,
+        constants_, /*lazy=*/false, &client, &variables, &kernel, &executable);
     if (!s.ok() && (platform_info_.device_type().type_string() == DEVICE_CPU ||
                     platform_info_.device_type().type_string() == DEVICE_GPU)) {
       // Suggest auto jit if the failure was with GPU or CPU.
@@ -401,9 +400,10 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   const xla::HloInputOutputAliasConfig& input_output_alias =
       executable->executable()->module().input_output_alias_config();
-  OP_REQUIRES_OK(ctx, launch_context.PopulateOutputs(
-                          ctx, kernel, run_result.ConsumeValueOrDie(),
-                          /*missing_ctx_input_prefix=*/0, input_output_alias));
+  OP_REQUIRES_OK(
+      ctx, launch_context.PopulateOutputs(
+               ctx, kernel, run_result.ConsumeValueOrDie(),
+               /*missing_ctx_input_prefix=*/0, input_output_alias, variables));
   VLOG(1) << "Done";
 }
 
@@ -450,6 +450,14 @@ bool MustCompileAttr(OpKernelConstruction* ctx) {
                         ctx->GetAttr("must_compile", &must_compile));
   return must_compile;
 }
+
+bool HasRefVars(OpKernelConstruction* ctx) {
+  bool has_ref_vars;
+  OP_REQUIRES_OK_RETURN(ctx, false,
+                        ctx->GetAttr(kXlaHasReferenceVarsAttr, &has_ref_vars));
+  return has_ref_vars;
+}
+
 }  // namespace
 
 XlaLocalLaunchOp::XlaLocalLaunchOp(OpKernelConstruction* ctx)
@@ -466,7 +474,8 @@ XlaCompileOp::XlaCompileOp(OpKernelConstruction* ctx)
       resources_(ResourcesVector(ctx)),
       function_(FunctionAttr(ctx)),
       platform_info_(PlatformInfoFromContext(ctx)),
-      must_compile_(MustCompileAttr(ctx)) {}
+      must_compile_(MustCompileAttr(ctx)),
+      has_ref_vars_(HasRefVars(ctx)) {}
 
 void XlaCompileOp::Compute(OpKernelContext* ctx) {
   VLOG(3) << "XlaCompileOp " << def().name()
@@ -487,7 +496,7 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
     executable = nullptr;
   } else {
     Status status = CompileToLocalExecutable(
-        ctx, function_, platform_info_, resources_, constants_,
+        ctx, function_, has_ref_vars_, platform_info_, resources_, constants_,
         /*lazy=*/!must_compile_, &client, &variables, &kernel, &executable);
     if (must_compile_ || status.code() != error::UNIMPLEMENTED) {
       OP_REQUIRES_OK(ctx, status);
@@ -613,7 +622,17 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
       launch_context.PopulateOutputs(
           ctx, closure.compilation_result(), run_result.ConsumeValueOrDie(),
           /*missing_ctx_input_prefix=*/closure.num_constant_args(),
-          input_output_alias));
+          input_output_alias, closure.resource_var_snapshots()));
+}
+
+XlaMergeOp::XlaMergeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+void XlaMergeOp::Compute(OpKernelContext* ctx) {
+  VLOG(3) << "XlaMergeOp " << def().name();
+  int i = 0;
+  if (ctx->has_input(i) || ctx->has_input(++i)) {
+    ctx->set_output(0, ctx->input(i));
+  }
 }
 
 REGISTER_KERNEL_BUILDER(Name("XlaLaunch").Device(DEVICE_CPU), XlaLocalLaunchOp);
@@ -634,6 +653,10 @@ REGISTER_KERNEL_BUILDER(Name("_XlaCompile")
                         XlaCompileOp);
 
 REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_CPU), XlaRunOp);
-REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_GPU), XlaRunOp);
+REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_GPU).HostMemory("key"),
+                        XlaRunOp);
+
+REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_CPU), XlaMergeOp);
+REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_GPU), XlaMergeOp);
 
 }  // namespace tensorflow

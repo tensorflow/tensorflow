@@ -1,4 +1,5 @@
 *tensorflow*
+*toco*
 *perftools*gputools*
 *tf_*
 *TF_*

@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_MLIR_COMPILER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_MLIR_COMPILER_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/xla/service/compiler.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/emission_context.h"
 
 namespace xla {
 namespace mlir_gpu {
@@ -27,6 +29,9 @@ namespace mlir_gpu {
 // performs all lowering on the MLIR IR and finally converts MLIR to LLVMIR for
 // generation of a think suitable for XLAs runtime.
 class MlirCompiler : public Compiler {
+  using ErrorHandler =
+      std::function<void(const EmissionContext::ErrorMap&, HloModule*)>;
+
  public:
   MlirCompiler();
 
@@ -57,19 +62,29 @@ class MlirCompiler : public Compiler {
   }
 
   struct IRHook {
-    enum class LoweringStage { LHLO, GPU, LLVM };
+    enum class LoweringStage { LHLO, GPU, LLVM, KERNEL };
 
-    std::function<void(mlir::ModuleOp)> callback;
+    Status invoke(LoweringStage stage_, mlir::ModuleOp module) {
+      if (callback && stage == stage_) {
+        return callback(module);
+      }
+      return Status::OK();
+    }
+
+    std::function<Status(mlir::ModuleOp)> callback;
     LoweringStage stage;
   };
 
   void SetModuleHook(IRHook module_hook);
   void RemoveModuleHook();
+  void SetErrorHandler(ErrorHandler error_handler);
+  void RemoveErrorHandler();
 
  private:
   ::mlir::MLIRContext context_;
   int64 pointer_size_;
   IRHook module_hook_;
+  ErrorHandler error_handler_;
 };
 
 }  // namespace mlir_gpu

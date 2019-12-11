@@ -79,8 +79,8 @@ Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
     TF_RETURN_IF_ERROR(GetHandle(ctx, &container, &ta_handle));
     ResourceMgr* rm = ctx->resource_manager();
     if (rm == nullptr) return errors::Internal("No resource manager.");
-    TF_RETURN_IF_ERROR(rm->Lookup(ctx->step_container()->name(),
-                                  container + ta_handle, tensor_array));
+    TF_RETURN_IF_ERROR(
+        ctx->step_container()->Lookup(rm, container + ta_handle, tensor_array));
     return Status::OK();
   } else {
     return LookupResource(ctx, HandleFromInput(ctx, 0), tensor_array);
@@ -209,8 +209,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
         false /* multiple_writes_aggregate */, false /* is_grad */,
         -1 /* marked_size */, clear_after_read_);
 
-    TF_RETURN_IF_ERROR(
-        rm->Create(ctx->step_container()->name(), key, tensor_array));
+    TF_RETURN_IF_ERROR(ctx->step_container()->Create(rm, key, tensor_array));
 
     *output_tensor_array = tensor_array;
 
@@ -306,9 +305,8 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     output_handle(1) = strings::StrCat(tensor_array_name, "@", source_);
 
     TensorArray* tensor_array;
-    TF_RETURN_IF_ERROR(rm->Lookup(ctx->step_container()->name(),
-                                  strings::StrCat(container, tensor_array_name),
-                                  &tensor_array));
+    TF_RETURN_IF_ERROR(ctx->step_container()->Lookup(
+        rm, strings::StrCat(container, tensor_array_name), &tensor_array));
     core::ScopedUnref unref(tensor_array);
 
     // Once gradients are being calculated, the forward TensorArray
@@ -364,8 +362,8 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
       return (*ret)->CopyShapesFrom(tensor_array, &shape_to_prepend);
     };
 
-    Status s = rm->LookupOrCreate<TensorArray>(
-        ctx->step_container()->name(), key, output_tensor_array, creator);
+    Status s = ctx->step_container()->LookupOrCreate<TensorArray>(
+        rm, key, output_tensor_array, creator);
     (*output_tensor_array)->Unref();
 
     return s;

@@ -46,22 +46,26 @@ public:
 
   static StringRef getOperationName() { return "module"; }
 
-  static void build(Builder *builder, OperationState *result);
+  static void build(Builder *builder, OperationState &result,
+                    Optional<StringRef> name = llvm::None);
 
-  /// Construct a module from the given location.
-  static ModuleOp create(Location loc);
+  /// Construct a module from the given location with an optional name.
+  static ModuleOp create(Location loc, Optional<StringRef> name = llvm::None);
 
   /// Operation hooks.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
 
   /// Return body of this module.
   Region &getBodyRegion();
   Block *getBody();
 
+  /// Return the name of this module if present.
+  Optional<StringRef> getName();
+
   /// Print the this module in the custom top-level form.
-  void print(raw_ostream &os);
+  void print(raw_ostream &os, OpPrintingFlags flags = llvm::None);
   void dump();
 
   //===--------------------------------------------------------------------===//
@@ -111,51 +115,7 @@ class ModuleTerminatorOp
 public:
   using Op::Op;
   static StringRef getOperationName() { return "module_terminator"; }
-  static void build(Builder *, OperationState *) {}
-};
-
-//===----------------------------------------------------------------------===//
-// Module Manager.
-//===----------------------------------------------------------------------===//
-
-/// A class used to manage the symbols held by a module. This class handles
-/// ensures that symbols inserted into a module have a unique name, and provides
-/// efficent named lookup to held symbols.
-class ModuleManager {
-public:
-  ModuleManager(ModuleOp module) : module(module), symbolTable(module) {}
-
-  /// Look up a symbol with the specified name, returning null if no such
-  /// name exists. Names must never include the @ on them.
-  template <typename T, typename NameTy> T lookupSymbol(NameTy &&name) const {
-    return symbolTable.lookup<T>(name);
-  }
-
-  /// Insert a new symbol into the module, auto-renaming it as necessary.
-  void insert(Operation *op) {
-    symbolTable.insert(op);
-    module.push_back(op);
-  }
-  void insert(Block::iterator insertPt, Operation *op) {
-    symbolTable.insert(op);
-    module.insert(insertPt, op);
-  }
-
-  /// Remove the given symbol from the module symbol table and then erase it.
-  void erase(Operation *op) {
-    symbolTable.erase(op);
-    op->erase();
-  }
-
-  /// Return the internally held module.
-  ModuleOp getModule() const { return module; }
-
-  /// Return the context of the internal module.
-  MLIRContext *getContext() { return module.getContext(); }
-
-private:
-  ModuleOp module;
-  SymbolTable symbolTable;
+  static void build(Builder *, OperationState &) {}
 };
 
 /// This class acts as an owning reference to a module, and will automatically

@@ -5,6 +5,10 @@ TensorFlow Lite model and use it to recognize objects in images. The Python
 script accepts arguments specifying the model to use, the corresponding labels
 file, and the image to process.
 
+**Tip:**
+If you're using a Raspberry Pi, instead try the [classify_picamera.py example](
+https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/raspberry_pi).
+
 Before you begin,
 make sure you [have TensorFlow installed](https://www.tensorflow.org/install).
 

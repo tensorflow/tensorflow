@@ -28,14 +28,14 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
-using ::tflite::gpu::ConcatAttributes;
 using ::tflite::gpu::Axis;
 using ::tflite::gpu::BHWC;
+using ::tflite::gpu::ConcatAttributes;
 using ::tflite::gpu::DataType;
+using ::tflite::gpu::OperationType;
+using ::tflite::gpu::TensorRef;
 using ::tflite::gpu::metal::CompareVectors;
 using ::tflite::gpu::metal::SingleOpModel;
-using ::tflite::gpu::TensorRef;
-using ::tflite::gpu::OperationType;
 
 @interface ConcatTest : XCTestCase
 @end
@@ -66,11 +66,10 @@ using ::tflite::gpu::OperationType;
   XCTAssertTrue(model.PopulateTensor(0, {1, 3, 5, 7}));
   XCTAssertTrue(model.PopulateTensor(1, {2, 4, 6, 8}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1, 2, 3, 4, 5, 6, 7, 8}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
-
 
 - (void)testTwoInputTensorsByAlignedChannel {
   TensorRef<BHWC> input1, input2, output;
@@ -93,9 +92,9 @@ using ::tflite::gpu::OperationType;
   XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
   XCTAssertTrue(model.PopulateTensor(1, {5, 6, 7, 8}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1, 2, 3, 4, 5, 6, 7, 8}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testTwoInputTensorsByHeight {
@@ -119,9 +118,9 @@ using ::tflite::gpu::OperationType;
   XCTAssertTrue(model.PopulateTensor(0, {1, 2}));
   XCTAssertTrue(model.PopulateTensor(1, {3, 4, 5, 6}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1, 2, 3, 4, 5, 6}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testTwoInputTensorsByWidth {
@@ -145,8 +144,8 @@ using ::tflite::gpu::OperationType;
   XCTAssertTrue(model.PopulateTensor(0, {1, 4}));
   XCTAssertTrue(model.PopulateTensor(1, {2, 3, 5, 6}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1, 2, 3, 4, 5, 6}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 @end

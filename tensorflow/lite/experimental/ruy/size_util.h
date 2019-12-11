@@ -62,6 +62,12 @@ bool is_pot(Integer value) {
 }
 
 template <typename Integer>
+Integer pot_log2(Integer n) {
+  RUY_DCHECK(is_pot(n));
+  return floor_log2(n);
+}
+
+template <typename Integer>
 Integer round_down_pot(Integer value) {
   return static_cast<Integer>(1) << floor_log2(value);
 }
@@ -80,17 +86,6 @@ Integer round_down_pot(Integer value, Modulo modulo) {
 template <typename Integer, typename Modulo>
 Integer round_up_pot(Integer value, Modulo modulo) {
   return round_down_pot(value + modulo - 1, modulo);
-}
-
-template <typename Integer>
-Integer clamp(Integer x, Integer lo, Integer hi) {
-  if (x < lo) {
-    return lo;
-  } else if (x > hi) {
-    return hi;
-  } else {
-    return x;
-  }
 }
 
 }  // namespace ruy

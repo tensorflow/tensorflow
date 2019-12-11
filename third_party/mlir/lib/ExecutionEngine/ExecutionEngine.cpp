@@ -36,9 +36,12 @@
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/ToolOutputFile.h"
+
+#define DEBUG_TYPE "execution-engine"
 
 using namespace mlir;
 using llvm::dbgs;
@@ -77,12 +80,12 @@ void SimpleObjectCache::notifyObjectCompiled(const Module *M,
 std::unique_ptr<MemoryBuffer> SimpleObjectCache::getObject(const Module *M) {
   auto I = cachedObjects.find(M->getModuleIdentifier());
   if (I == cachedObjects.end()) {
-    dbgs() << "No object for " << M->getModuleIdentifier()
-           << " in cache. Compiling.\n";
+    LLVM_DEBUG(dbgs() << "No object for " << M->getModuleIdentifier()
+                      << " in cache. Compiling.\n");
     return nullptr;
   }
-  dbgs() << "Object for " << M->getModuleIdentifier()
-         << " loaded from cache.\n";
+  LLVM_DEBUG(dbgs() << "Object for " << M->getModuleIdentifier()
+                    << " loaded from cache.\n");
   return MemoryBuffer::getMemBuffer(I->second->getMemBufferRef());
 }
 
@@ -116,8 +119,8 @@ bool ExecutionEngine::setupTargetTriple(Module *llvmModule) {
     errs() << "NO target: " << errorMessage << "\n";
     return true;
   }
-  auto machine =
-      target->createTargetMachine(targetTriple, "generic", "", {}, {});
+  std::unique_ptr<llvm::TargetMachine> machine(
+      target->createTargetMachine(targetTriple, "generic", "", {}, {}));
   llvmModule->setDataLayout(machine->createDataLayout());
   llvmModule->setTargetTriple(targetTriple);
   return false;
@@ -195,6 +198,7 @@ ExecutionEngine::ExecutionEngine(bool enableObjectCache)
 
 Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
     ModuleOp m, std::function<Error(llvm::Module *)> transformer,
+    Optional<llvm::CodeGenOpt::Level> jitCodeGenOptLevel,
     ArrayRef<StringRef> sharedLibPaths, bool enableObjectCache) {
   auto engine = std::make_unique<ExecutionEngine>(enableObjectCache);
 
@@ -230,9 +234,12 @@ Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
     auto objectLayer = std::make_unique<RTDyldObjectLinkingLayer>(
         session, []() { return std::make_unique<SectionMemoryManager>(); });
     auto dataLayout = deserModule->getDataLayout();
+    llvm::orc::JITDylib *mainJD = session.getJITDylibByName("<main>");
+    if (!mainJD)
+      mainJD = &session.createJITDylib("<main>");
 
     // Resolve symbols that are statically linked in the current process.
-    session.getMainJITDylib().addGenerator(
+    mainJD->addGenerator(
         cantFail(DynamicLibrarySearchGenerator::GetForCurrentProcess(
             dataLayout.getGlobalPrefix())));
 
@@ -247,7 +254,8 @@ Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
       auto loaded = DynamicLibrarySearchGenerator::Load(
           libPath.data(), dataLayout.getGlobalPrefix());
       if (!loaded) {
-        errs() << "Could not load: " << libPath << "\n";
+        errs() << "Could not load " << libPath << ":\n  " << loaded.takeError()
+               << "\n";
         continue;
       }
       JD.addGenerator(std::move(*loaded));
@@ -261,6 +269,8 @@ Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
   // LLJITWithObjectCache example.
   auto compileFunctionCreator = [&](JITTargetMachineBuilder JTMB)
       -> Expected<IRCompileLayer::CompileFunction> {
+    if (jitCodeGenOptLevel)
+      JTMB.setCodeGenOptLevel(jitCodeGenOptLevel.getValue());
     auto TM = JTMB.createTargetMachine();
     if (!TM)
       return TM.takeError();

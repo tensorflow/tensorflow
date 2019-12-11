@@ -18,11 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
+import copy
 from absl import logging
 
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute.cluster_resolver import cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -33,6 +34,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 _GRPC_PREFIX = "grpc://"
+_LOCAL_MASTERS = ("", "local")
 
 
 @tf_export("config.experimental_connect_to_host")
@@ -103,17 +105,25 @@ def connect_to_cluster(cluster_spec_or_resolver,
       a cluster spec is passed. Will throw an error if the caller is currently
       already in some device scope.
   """
+  if not context.executing_eagerly():
+    raise ValueError(
+        "`tf.config.experimental_connect_to_cluster` can only be called in "
+        "eager mode."
+    )
   protocol = protocol or remote_utils.get_default_communication_protocol()
   if isinstance(cluster_spec_or_resolver, server_lib.ClusterSpec):
     cluster_spec = cluster_spec_or_resolver
   elif isinstance(cluster_spec_or_resolver, cluster_resolver.ClusterResolver):
+    if cluster_spec_or_resolver.master() in _LOCAL_MASTERS:
+      # Do nothing if the master is local.
+      return
     cluster_spec = cluster_spec_or_resolver.cluster_spec()
   else:
     raise ValueError(
         "`cluster_spec_or_resolver` must be a `ClusterSpec` or a "
         "`ClusterResolver`.")
 
-  cluster_def = cluster_spec.as_cluster_def()
+  cluster_def = copy.deepcopy(cluster_spec.as_cluster_def())
 
   # Automatically add local job, if not part of the cluster spec.
   if job_name not in cluster_spec.jobs:
@@ -125,12 +135,16 @@ def connect_to_cluster(cluster_spec_or_resolver,
     job_def.tasks[0] = "localhost:{}".format(local_port)
 
   server_def = ServerDef(
-      cluster=cluster_def, job_name=job_name, task_index=task_index,
-      protocol=protocol)
+      cluster=cluster_def,
+      job_name=job_name,
+      task_index=task_index,
+      protocol=protocol,
+      default_session_config=context.context().config)
 
-  # TODO(nareshmodi): Make this default since it works in more situations.
-  os.environ["TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC"] = "1"
-  context.set_server_def(server_def)
+  if context.get_server_def() is None:
+    context.set_server_def(server_def)
+  else:
+    context.update_server_def(server_def)
 
   if make_master_device_default and isinstance(
       cluster_spec_or_resolver,
@@ -153,23 +167,21 @@ def connect_to_cluster(cluster_spec_or_resolver,
 
     master_device = "/job:{}/replica:0/task:{}".format(master_job_name,
                                                        master_task_id)
-    if not _device_stack_is_empty():
-      raise ValueError("`connect_to_cluster` should not be called inside "
-                       "an existing device scope")
-    logging.info("Entering into master device scope: %s", master_device)
+    master_device = device_util.canonicalize(master_device)
+    current_device = device_util.current()
+    if current_device:
+      current_device = device_util.canonicalize(current_device)
+    if current_device and current_device != master_device:
+      raise ValueError("`connect_to_cluster` is called inside existing device "
+                       "scope %s, which is different from the master device "
+                       "scope %s to enter. This is not allowed." %
+                       (current_device, master_device))
     # TODO(b/138389076): Think of the entering device scope behavior in the
     # failure recovery case when dealing with preemptions.
-    ops.device(master_device).__enter__()
+    if not current_device:
+      logging.info("Entering into master device scope: %s", master_device)
+      ops.device(master_device).__enter__()
 
 
 def _strip_prefix(s, prefix):
   return s[len(prefix):] if s.startswith(prefix) else s
-
-
-def _device_stack_is_empty():
-  if context.executing_eagerly():
-    return not bool(context.context().device_name)
-  # pylint: disable=protected-access
-  device_stack = ops.get_default_graph()._device_functions_outer_to_inner
-  # pylint: enable=protected-access
-  return not bool(device_stack)

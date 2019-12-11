@@ -27,3 +27,8 @@ class NetworkSavedModelSaver(layer_serialization.LayerSavedModelSaver):
   @property
   def object_identifier(self):
     return '_tf_keras_network'
+
+  def _python_properties_internal(self):
+    metadata = super(NetworkSavedModelSaver, self)._python_properties_internal()
+    metadata['is_graph_network'] = self.obj._is_graph_network  # pylint: disable=protected-access
+    return metadata

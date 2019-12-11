@@ -72,13 +72,15 @@ public:
 
   /// Creates an execution engine for the given module.  If `transformer` is
   /// provided, it will be called on the LLVM module during JIT-compilation and
-  /// can be used, e.g., for reporting or optimization.
-  /// If `sharedLibPaths` are provided, the underlying JIT-compilation will open
-  /// and link the shared libraries for symbol resolution.
-  /// If `objectCache` is provided, JIT compiler will use it to store the object
-  /// generated for the given module.
+  /// can be used, e.g., for reporting or optimization. `jitCodeGenOptLevel`,
+  /// when provided, is used as the optimization level for target code
+  /// generation. If `sharedLibPaths` are provided, the underlying
+  /// JIT-compilation will open and link the shared libraries for symbol
+  /// resolution. If `objectCache` is provided, JIT compiler will use it to
+  /// store the object generated for the given module.
   static llvm::Expected<std::unique_ptr<ExecutionEngine>> create(
       ModuleOp m, std::function<llvm::Error(llvm::Module *)> transformer = {},
+      Optional<llvm::CodeGenOpt::Level> jitCodeGenOptLevel = llvm::None,
       ArrayRef<StringRef> sharedLibPaths = {}, bool enableObjectCache = false);
 
   /// Looks up a packed-argument function with the given name and returns a

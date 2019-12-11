@@ -28,6 +28,7 @@ from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import resource_variable_ops
 
 # pylint: disable=protected-access
 
@@ -672,7 +673,12 @@ class _ControlFlowState(object):
     if shape.is_fully_defined():
       # If the shape is known statically, just create a zero tensor with
       # the right shape in the grad loop context.
-      result = constant_op.constant(0, shape=shape.dims, dtype=val.dtype)
+      if val.dtype == dtypes.resource:
+        result = array_ops.zeros(
+            resource_variable_ops.variable_shape(val),
+            dtype=default_gradient.get_zeros_dtype(val))
+      else:
+        result = constant_op.constant(0, shape=shape.dims, dtype=val.dtype)
       if dead_branch:
         # op is a cond switch. Guard the zero tensor with a switch.
         pred = grad_state.history_map.get(op_ctxt.pred.name)

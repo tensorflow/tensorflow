@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/mlir_bridge_pass.h"
 
+#include <string>
+
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_os_ostream.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
@@ -73,6 +79,7 @@ static void DumpModule(mlir::ModuleOp module, llvm::StringRef file_prefix) {
   (void)file_writer->Close();
   VLOG(1) << "Dumped MLIR module to " << prefix;
 }
+
 // This runs the first phase of the "bridge", transforming the graph in a form
 // that can be executed with delegation of some computations to an accelerator.
 // This builds on the model of XLA where a subset of the graph is encapsulated
@@ -86,16 +93,22 @@ Status MlirBridgePass::Run(const GraphOptimizationPassOptions& options) {
   }
   GraphDebugInfo debug_info;
   mlir::MLIRContext context;
-  NodeSpecs specs;
-  ExporterConfigs confs;
+  GraphImportConfig specs;
+  specs.graph_as_function = true;
+
+  GraphExportConfig confs;
+  confs.graph_as_function = true;
   TF_ASSIGN_OR_RETURN(auto module,
                       ConvertGraphToMlir(**options.graph, debug_info,
                                          *options.flib_def, specs, &context));
 
+  AddDevicesToOp(*module, options.device_set);
+
   if (VLOG_IS_ON(1)) DumpModule(*module, "mlir_bridge_before_");
 
   // Run the bridge now
-  TF_RETURN_IF_ERROR(mlir::TFTPU::TPUBridge(*module));
+  TF_RETURN_IF_ERROR(
+      mlir::TFTPU::TPUBridge(*module, /*enable_logging=*/VLOG_IS_ON(1)));
 
   if (VLOG_IS_ON(1)) DumpModule(*module, "mlir_bridge_after_");
 

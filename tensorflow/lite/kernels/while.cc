@@ -16,14 +16,14 @@ limitations under the License.
 #include <cstring>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
-namespace custom {
+namespace builtin {
 namespace while_kernel {
 
 namespace {
@@ -333,6 +333,6 @@ TfLiteRegistration* Register_WHILE() {
   return &r;
 }
 
-}  // namespace custom
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

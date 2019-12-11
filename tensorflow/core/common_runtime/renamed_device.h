@@ -149,9 +149,8 @@ class RenamedDevice : public Device {
     return underlying_device_->MaybeRewriteGraph(graph);
   }
 
-  Status FillContextMap(const Graph* graph,
-                        DeviceContextMap* device_context_map) override {
-    return underlying_device_->FillContextMap(graph, device_context_map);
+  Status TryGetDeviceContext(DeviceContext** out_context) override {
+    return underlying_device_->TryGetDeviceContext(out_context);
   }
 
   // Returns the resource manager associated w/ this device.

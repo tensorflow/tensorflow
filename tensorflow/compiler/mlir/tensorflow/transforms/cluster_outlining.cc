@@ -44,16 +44,16 @@ struct ClusterOutliningPass : public ModulePass<ClusterOutliningPass> {
 
 void ReplaceLaunchReturnWithReturn(tf_device::ReturnOp launch_return_op,
                                    OpBuilder* builder) {
-  llvm::SmallVector<Value*, 4> operands(launch_return_op.getOperands());
-  builder->create<ReturnOp>(launch_return_op.getLoc(), operands);
+  builder->create<ReturnOp>(launch_return_op.getLoc(),
+                            launch_return_op.getOperands());
   launch_return_op.erase();
 }
 
 // Builds a function that outlines region attached to launch_op and inserts
 // built function into given module.
 FuncOp BuildFunction(StringRef device, llvm::ArrayRef<Value*> live_ins,
-                     tf_device::LaunchOp launch_op,
-                     ModuleManager* module_manager, OpBuilder* builder) {
+                     tf_device::LaunchOp launch_op, SymbolTable* symbol_table,
+                     OpBuilder* builder) {
   llvm::SmallVector<Type, 4> operand_types;
   operand_types.reserve(live_ins.size());
   for (Value* v : live_ins) operand_types.emplace_back(v->getType());
@@ -92,14 +92,14 @@ FuncOp BuildFunction(StringRef device, llvm::ArrayRef<Value*> live_ins,
   builder->setInsertionPoint(launch_return_op);
   ReplaceLaunchReturnWithReturn(launch_return_op, builder);
 
-  module_manager->insert(outlined_func);
+  symbol_table->insert(outlined_func);
   return outlined_func;
 }
 
 // Outlines body of `tf_device.launch` into a function and create a
 // `tf_device.launch_func` to invoke that function. `tf_device.launch` is
 // removed afterwards.`
-void OutlineLaunch(tf_device::LaunchOp launch_op, ModuleManager* module_manager,
+void OutlineLaunch(tf_device::LaunchOp launch_op, SymbolTable* symbol_table,
                    OpBuilder* builder) {
   llvm::SetVector<Value*> live_ins;
   getUsedValuesDefinedAbove(launch_op.body(), launch_op.body(), live_ins);
@@ -108,7 +108,7 @@ void OutlineLaunch(tf_device::LaunchOp launch_op, ModuleManager* module_manager,
       launch_op.getAttrOfType<StringAttr>(kDeviceAttr).getValue();
 
   FuncOp outlined_func = BuildFunction(device, live_ins.getArrayRef(),
-                                       launch_op, module_manager, builder);
+                                       launch_op, symbol_table, builder);
   launch_op.setAttr(builder->getIdentifier(kFuncAttr),
                     builder->getSymbolRefAttr(outlined_func.getName()));
 
@@ -124,16 +124,16 @@ void OutlineLaunch(tf_device::LaunchOp launch_op, ModuleManager* module_manager,
 
 void ClusterOutliningPass::runOnModule() {
   ModuleOp m = getModule();
-  ModuleManager module_manager(m);
+  SymbolTable symbol_table(m);
   OpBuilder builder(m.getContext());
   m.walk([&](tf_device::LaunchOp launch) {
-    OutlineLaunch(launch, &module_manager, &builder);
+    OutlineLaunch(launch, &symbol_table, &builder);
   });
 }
 
 }  // namespace
 
-std::unique_ptr<ModulePassBase> CreateClusterOutliningPass() {
+std::unique_ptr<OpPassBase<ModuleOp>> CreateClusterOutliningPass() {
   return std::make_unique<ClusterOutliningPass>();
 }
 

@@ -14,7 +14,7 @@ def tf_gen_op_wrapper_private_py(
         name,
         out = None,
         deps = [],
-        require_shape_functions = True,
+        require_shape_functions = False,
         visibility = []):
     if not name.endswith("_gen"):
         fail("name must end in _gen")

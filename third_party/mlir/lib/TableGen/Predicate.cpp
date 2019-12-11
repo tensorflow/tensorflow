@@ -170,7 +170,7 @@ static PredNode *buildPredicateTree(const tblgen::Pred &root,
   }
 
   // If the current combined predicate is a leaf substitution, append it to the
-  // list before contiuing.
+  // list before continuing.
   auto allSubstitutions = llvm::to_vector<4>(substitutions);
   if (rootNode->kind == PredCombinerKind::SubstLeaves) {
     const auto &substPred = static_cast<const tblgen::SubstLeavesPred &>(root);
@@ -223,7 +223,7 @@ static PredNode *propagateGroundTruth(
   // TODO(zinenko,jpienaar): we can support ground truth for rewritten
   // predicates by either (a) having our own unique'ing of the predicates
   // instead of relying on TableGen record pointers or (b) taking ground truth
-  // values optinally prefixed with a list of substitutions to apply, e.g.
+  // values optionally prefixed with a list of substitutions to apply, e.g.
   // "predX is true by itself as well as predSubY leaf substitution had been
   // applied to it".
   if (node->kind == PredCombinerKind::SubstLeaves) {

@@ -93,7 +93,7 @@ Status DynamicStitchShapeFunction(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->GetAttr("N", &num_partitions));
 
   bool all_indices_constant = true;
-  int32 max_index = 0;
+  int32 max_index = -1;
   ShapeHandle extra_shape = c->UnknownShape();
   for (int i = 0; i < num_partitions; ++i) {
     const Tensor* indices_t = c->input_tensor(i);

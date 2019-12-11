@@ -36,39 +36,6 @@ namespace cl {
 
 std::string GetCommonDefines(CalculationsPrecision precision);
 
-std::string GetGlobalAddress(TensorStorageType storage_type,
-                             const std::string& size_name,
-                             const std::string& var_name, const std::string& x,
-                             const std::string& y, const std::string& z);
-std::string ReadGlobalFLT4(TensorStorageType storage_type,
-                           const std::string& tensor_name,
-                           const std::string& size_name, const std::string& x,
-                           const std::string& y, const std::string& z);
-std::string ReadGlobalFLT4(TensorStorageType storage_type,
-                           const std::string& tensor_name,
-                           const std::string& global_address);
-std::string WriteGlobalFLT4(TensorStorageType storage_type,
-                            const std::string& tensor_name,
-                            const std::string& size_name,
-                            const std::string& var_name, const std::string& x,
-                            const std::string& y, const std::string& z);
-std::string WriteGlobalFLT4(TensorStorageType storage_type,
-                            const std::string& tensor_name,
-                            const std::string& var_name,
-                            const std::string& global_address);
-
-std::string GetDataType(DataType type);
-std::string GetDataType4(DataType type);
-
-std::string GetTensorDeclaration(TensorStorageType storage_type,
-                                 AccessType access, DataType data_type);
-
-std::string GetTensorDeclaration(TensorStorageType storage_type,
-                                 const std::string& tensor_name,
-                                 AccessType access, DataType data_type);
-
-std::string GenerateGlobal3DCoords(TensorStorageType storage_type);
-
 enum class TextureAddressMode {
   DONT_CARE,  // translated to CLK_ADDRESS_NONE
   ZERO,       // translated to CLK_ADDRESS_CLAMP
@@ -76,89 +43,138 @@ enum class TextureAddressMode {
 
 class TensorCodeGenerator {
  public:
-  TensorCodeGenerator(const std::string& name,
-                      const std::string& uniform_size_name,
-                      TensorStorageType storage_type, AccessType access);
+  struct SizeVariablesNames {
+    SizeVariablesNames() = default;
+    SizeVariablesNames(const std::string& width_name,
+                       const std::string& height_name,
+                       const std::string& depth_name);
+    SizeVariablesNames(const std::string& width_name,
+                       const std::string& height_name,
+                       const std::string& depth_name,
+                       const std::string& batch_name);
 
+    std::string width = "unknown";
+    std::string height = "unknown";
+    std::string channels = "unknown";
+    std::string depth = "unknown";
+    std::string batch = "unknown";
+  };
+  TensorCodeGenerator() = default;
   TensorCodeGenerator(const std::string& name,
                       const std::string& uniform_size_name,
                       const TensorDescriptor& descriptor);
 
-  std::string GetDeclaration() const;
+  TensorCodeGenerator(const std::string& name, const SizeVariablesNames& sizes,
+                      const TensorDescriptor& descriptor);
 
   std::string GetDeclaration(AccessType access) const;
+
+  std::string GetAddress(const std::string& var_name, const std::string& x,
+                         const std::string& y, const std::string& z) const;
+
+  std::string GetAddress(const std::string& var_name, const std::string& x,
+                         const std::string& y, const std::string& z,
+                         const std::string& b) const;
 
   // This function (and functions below) accept TextureAddressMode, but this
   // argument applicable only for texture types. Buffer types ignore this
   // parameter.
   std::string Read3D(
       const std::string& x, const std::string& y, const std::string& z,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
+  // Read4D supports BUFFER and IMAGE_BUFFER storage types.
+  std::string Read4D(
+      const std::string& x, const std::string& y, const std::string& z,
+      const std::string& b,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
   // Optimization for textures, so as in opencl we can use read_imagef for any
   // texture type.
   std::string ReadAsFloat3D(
       const std::string& x, const std::string& y, const std::string& z,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
-  std::string Read3D(
-      const std::string& global_address,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
-
-  // Optimization for textures, so as in opencl we can use read_imagef for any
-  // texture type.
-  std::string ReadAsFloat3D(
-      const std::string& global_address,
-      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
-
-  std::string GetAddress(const std::string& var_name, const std::string& x,
-                         const std::string& y, const std::string& z) const;
+  std::string ReadAsFloat4D(
+      const std::string& x, const std::string& y, const std::string& z,
+      const std::string& b,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
   std::string Write3D(const std::string& var_name, const std::string& x,
                       const std::string& y, const std::string& z) const;
 
-  std::string Write3D(const std::string& var_name,
-                      const std::string& global_address) const;
+  // Write4D supports BUFFER and IMAGE_BUFFER storage types.
+  std::string Write4D(const std::string& var_name, const std::string& x,
+                      const std::string& y, const std::string& z,
+                      const std::string& b) const;
+
+  std::string Read(
+      const std::string& global_address,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+  // Optimization for textures, so as in opencl we can use read_imagef for any
+  // texture type.
+  std::string ReadAsFloat(
+      const std::string& global_address,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+  std::string Write(const std::string& var_name,
+                    const std::string& global_address) const;
 
  private:
-  std::string name_;
-  std::string uniform_size_name_;
-  TensorStorageType storage_type_;
-  AccessType access_;
-  DataType data_type_ = DataType::UNKNOWN;
+  std::string GetGlobalAddressNoDeclaration(const std::string& x,
+                                            const std::string& y,
+                                            const std::string& z) const;
+  std::string GetGlobalAddressNoDeclaration(const std::string& x,
+                                            const std::string& y,
+                                            const std::string& z,
+                                            const std::string& b) const;
+  std::string DeclareAddress(const std::string& var_name,
+                             const std::string& address) const;
+
+  std::string tensor_name_;
+  SizeVariablesNames sizes_;
+  TensorDescriptor descriptor_;
 };
 
+// Calculates correct X coordinate when stride != 1 and batch != 1 for
+// DHWBC4, HDWBC4, HWBC layouts
+std::string GetXStrideCorrected(const std::string& src_x,
+                                const std::string& batch_size,
+                                const std::string& stride_x,
+                                const std::string& padding_x);
+
 template <DataType S, typename T>
-void RearrangeWeightsToOHWI4I4O(const ::tflite::gpu::Tensor<OHWI, S>& weights,
-                                absl::Span<T> dst) {
+void RearrangeWeightsToOHWIOGroupI4O4(
+    const ::tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,
+    absl::Span<T> dst) {
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
 
+  const int dst_groups = IntegralDivideRoundUp(dst_depth, out_group_size);
+
   int counter = 0;
-  for (int d = 0; d < dst_depth; ++d) {
+  for (int d = 0; d < dst_groups; ++d) {
     for (int y = 0; y < kernel_y; ++y) {
       for (int x = 0; x < kernel_x; ++x) {
         for (int s = 0; s < src_depth; ++s) {
-          T filters[4];
-          for (int i = 0; i < 4; ++i) {
+          for (int d_group = 0; d_group < out_group_size; ++d_group) {
             for (int j = 0; j < 4; ++j) {
-              const int s_ch = s * 4 + j;
-              const int d_ch = d * 4 + i;
-              if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
-                const int f_index =
-                    weights.shape.LinearIndex({d_ch, y, x, s_ch});
-                filters[j][i] = weights.data[f_index];
-              } else {
-                filters[j][i] = 0.0f;
+              T filter;
+              for (int i = 0; i < 4; ++i) {
+                const int s_ch = s * 4 + j;
+                const int d_ch = (d * out_group_size + d_group) * 4 + i;
+                if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
+                  const int f_index =
+                      weights.shape.LinearIndex({d_ch, y, x, s_ch});
+                  filter[i] = weights.data[f_index];
+                } else {
+                  filter[i] = 0.0f;
+                }
               }
+              dst[counter++] = filter;
             }
           }
-          dst[counter++] = filters[0];
-          dst[counter++] = filters[1];
-          dst[counter++] = filters[2];
-          dst[counter++] = filters[3];
         }
       }
     }

@@ -28,7 +28,7 @@ import sys
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_kernel_registry
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging
 
@@ -61,7 +61,7 @@ def get_ops_and_kernels(proto_fileformat, proto_files, default_ops_str):
     for node_def in graph_def.node:
       if not node_def.device:
         node_def.device = '/cpu:0'
-      kernel_class = pywrap_tensorflow.TryFindKernelClass(
+      kernel_class = _pywrap_kernel_registry.TryFindKernelClass(
           node_def.SerializeToString())
       op = str(node_def.op)
       if kernel_class or op in OPS_WITHOUT_KERNEL_WHITELIST:

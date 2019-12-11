@@ -23,6 +23,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 
@@ -78,6 +80,34 @@ class DefFunctionTest(test.TestCase):
     if not test.is_built_with_rocm():
       # XLA support is not yet enabled for TF ROCm
       run_and_check(xla_func)
+
+  def testControlFlow(self):
+
+    @def_function.function(experimental_compile=True)
+    def f(x):
+      assert control_flow_util.GraphOrParentsInXlaContext(
+          ops.get_default_graph())
+      x = ops.convert_to_tensor(x)
+
+      def body(i, a):
+        return i + 1, control_flow_ops.cond(i > 2, lambda: a + (x**2),
+                                            lambda: a + 3)
+
+      return control_flow_ops.while_loop(
+          lambda i, *_: i < 10,
+          body, (constant_op.constant(0), constant_op.constant(3.)),
+          maximum_iterations=10)[1]
+
+    @def_function.function(experimental_compile=True)
+    def g(x):
+      x = ops.convert_to_tensor(x)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = f(x)
+      return y, tape.gradient(y, x)
+
+    self.assertAllClose(40.0, f(2.0))
+    self.assertAllClose([40.0, 28.0], g(2.0))
 
 
 if __name__ == '__main__':

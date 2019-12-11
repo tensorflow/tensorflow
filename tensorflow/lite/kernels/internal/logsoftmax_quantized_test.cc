@@ -171,13 +171,19 @@ void RunOneLogSoftmaxTest(const uint8* input_data,
                                                      input_beta_left_shift);
 
   SoftmaxParams params;
+  float table[256];
   params.input_multiplier = input_beta_multiplier;
   params.input_left_shift = input_beta_left_shift;
   params.reverse_scaling_divisor = reverse_scaling_divisor;
   params.reverse_scaling_right_shift = reverse_scaling_right_shift;
   params.diff_min = diff_min;
-  optimized_ops::LogSoftmax(params, shape_common, input_data, shape_common,
-                            optimized_logsoftmax_output.data());
+
+  params.scale = 1.0f / 16.0f;
+  params.zero_point = 255;
+  params.table = table;
+  optimized_ops::PopulateSoftmaxLookupTable(&params, input_scale, beta);
+  optimized_ops::LogSoftmax(params, input_scale, shape_common, input_data,
+                            shape_common, optimized_logsoftmax_output.data());
   reference_ops::LogSoftmax(params, shape_common, input_data, shape_common,
                             reference_quant_logsoftmax_output.data());
 
@@ -186,7 +192,7 @@ void RunOneLogSoftmaxTest(const uint8* input_data,
                            shape_common, "Optimized vs float reference", false);
   CheckOutputData<uint8_t>(optimized_logsoftmax_output.data(),
                            reference_quant_logsoftmax_output.data(),
-                           shape_common, "Optimized vs quant reference", true);
+                           shape_common, "Optimized vs quant reference", false);
   CheckOutputData<uint8_t>(reference_quant_logsoftmax_output.data(),
                            reference_float_logsoftmax_output.data(),
                            shape_common, "Quant reference vs float reference",

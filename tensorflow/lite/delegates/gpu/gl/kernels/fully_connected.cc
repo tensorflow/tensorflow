@@ -32,9 +32,6 @@ namespace gpu {
 namespace gl {
 namespace {
 
-constexpr int kWorkPerThread = 4;
-constexpr int kVectorizedWidth = 4;  // Also number of 'offsetN' in kernel.
-
 class FullyConnectedBuffers : public NodeShader {
  public:
   Status GenerateCode(const GenerationContext& ctx,
@@ -42,17 +39,18 @@ class FullyConnectedBuffers : public NodeShader {
     auto attr = absl::any_cast<const FullyConnectedAttributes&>(
         ctx.node->operation.attributes);
 
-    // Number of float4 chunks needed.
     const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
     const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+
+    // This shader can work with any workgroup size, the values below work well
+    // for OpenGL.
+    constexpr int kWorkgroupHintX = 4;
+    constexpr int kWorkgroupHintY = 4;
 
     // TODO(akulik): check that input has h,w == 1,1
     std::vector<Variable> parameters = {
         {"src_depth", src_depth},
-        {"src_depth_x4", IntegralDivideRoundUp(src_depth, kVectorizedWidth)},
-        {"src_size", attr.weights.shape.i},
         {"dst_depth", dst_depth},
-        {"dst_size", attr.weights.shape.o},
     };
 
     // TODO(akulik): refactor indexed access to weights.
@@ -60,71 +58,54 @@ class FullyConnectedBuffers : public NodeShader {
         {"weights", MakeReadonlyObject(ConvertToPHWO4I4(attr.weights))}};
 
     std::string source = R"(
-  // setup
-  ivec2 tid = ivec2(gl_LocalInvocationID.xy);
-  vec4 sum = vec4(0.0);  // accumulator
-  int channel = int(tid.y);  // vector coord for every thread
-  int work_per_thread = int(gl_WorkGroupSize.x);
+  const int threads = int(gl_WorkGroupSize.y);
+  const int workers = int(gl_WorkGroupSize.x);
+  ivec3 tid = ivec3(gl_LocalInvocationID);
 
-  // matrix vector workgroup mul
-  uint offset0 = uint(gid.x * $src_depth$ * 4 + tid.y * 4 + 0);
-  uint offset1 = uint(gid.x * $src_depth$ * 4 + tid.y * 4 + 1);
-  uint offset2 = uint(gid.x * $src_depth$ * 4 + tid.y * 4 + 2);
-  uint offset3 = uint(gid.x * $src_depth$ * 4 + tid.y * 4 + 3);
-  uint offset_stride = 16u;  // src_depth_x4 == (src_size / 16)
-  for (int i = 0; i < $src_depth_x4$; ++i, channel += int(4)) {
-    vec4 v = $input_data_0[0, 0, channel]$;
-    vec4 m0 = $weights[ offset0 ]$;
-    vec4 m1 = $weights[ offset1 ]$;
-    vec4 m2 = $weights[ offset2 ]$;
-    vec4 m3 = $weights[ offset3 ]$;
-    offset0 += offset_stride;
-    offset1 += offset_stride;
-    offset2 += offset_stride;
-    offset3 += offset_stride;
-    sum.x += dot(v, m0);  // matrix * vector
-    sum.y += dot(v, m1);
-    sum.z += dot(v, m2);
-    sum.w += dot(v, m3);
+  if (gid.x < $dst_depth$) {
+    int offset = 4 * gid.x * $src_depth$ + 4 * tid.y;
+    int iterations = ($src_depth$ + threads-1) / threads;
+    for (int d = 0; d < iterations; d++, offset += 4 * threads) {
+      vec4 src = $input_data_0[0, 0, d * threads + tid.y]$;
+      value_0.x += dot(src, $weights[offset + 0]$);
+      value_0.y += dot(src, $weights[offset + 1]$);
+      value_0.z += dot(src, $weights[offset + 2]$);
+      value_0.w += dot(src, $weights[offset + 3]$);
+    }
+    sh_mem[workers * tid.y + tid.x] = value_0;
   }
-
-  // accumulate local partial sums
-  sh_mem[tid.x + tid.y * work_per_thread] = sum;
   memoryBarrierShared();
   barrier();
 
-  // accumulate global sums, write results
-  if (tid.y == 0 && gid.x < $dst_depth$) {
-    /*sum+=sh_mem[tid.x + 0 * work_per_thread];*/  // current thread
-    sum += sh_mem[tid.x + 1 * work_per_thread];
-    sum += sh_mem[tid.x + 2 * work_per_thread];
-    sum += sh_mem[tid.x + 3 * work_per_thread];
-    vec4 r0 = sum;
-)" + std::string(attr.bias.data.empty() ? R"( )" : R"(
-    r0 += $bias[gid.x]$;  )") +
-                         std::string(R"(
-    $output_data_0[0, 0, gid.x] = r0$;
+  if (tid.y > 0 || gid.x >= $dst_depth$) {
+    return;
   }
-)");
+
+  for (int t = 1; t < threads; t++) {
+    value_0 += sh_mem[workers * t + tid.x];
+  }
+)";
     if (!attr.bias.data.empty()) {
+      source += "  value_0 += $bias[gid.x]$;\n";
       objects.push_back({"bias", MakeReadonlyObject(attr.bias.data)});
     }
+    source += "  $output_data_0[0, 0, gid.x] = value_0$;";
 
     std::vector<Variable> shared_variables = {
-        {"sh_mem", std::vector<float4>(kWorkPerThread * kVectorizedWidth)},
+        // The actual size of sh_mem depends on the WorkgroupSize
+        {"sh_mem", std::vector<float4>(0)},
     };
 
     *generated_code = {
         /*parameters=*/std::move(parameters),
         /*objects=*/std::move(objects),
         /*shared_variables=*/std::move(shared_variables),
-        /*workload=*/uint3(dst_depth, kVectorizedWidth, 1),
-        /*workgroup=*/uint3(kWorkPerThread, kVectorizedWidth, 1),
+        /*workload=*/uint3(dst_depth, kWorkgroupHintY, 1),
+        /*workgroup=*/uint3(kWorkgroupHintX, kWorkgroupHintY, 1),
         /*source_code=*/std::move(source),
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::ONLY_DEFINITIONS,
     };
-
     return OkStatus();
   }
 };

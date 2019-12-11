@@ -42,38 +42,8 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
 
 #else  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
-inline std::int32_t mm512_get1_epi32(const __m512i v, int i) {
-  __m256i a =
-      i < 8 ? _mm512_extracti32x8_epi32(v, 0) : _mm512_extracti32x8_epi32(v, 1);
-  switch (i & ~8) {
-    case 0:
-      return _mm256_extract_epi32(a, 0);
-    case 1:
-      return _mm256_extract_epi32(a, 1);
-    case 2:
-      return _mm256_extract_epi32(a, 2);
-    case 3:
-      return _mm256_extract_epi32(a, 3);
-    case 4:
-      return _mm256_extract_epi32(a, 4);
-    case 5:
-      return _mm256_extract_epi32(a, 5);
-    case 6:
-      return _mm256_extract_epi32(a, 6);
-    case 7:
-      return _mm256_extract_epi32(a, 7);
-    default:
-      RUY_DCHECK(i < 16);
-      return 0;
-  }
-}
-
-inline __m512i mm512_set1_epi32(__m512i* v, int i, std::int32_t x) {
-  return *v = _mm512_mask_set1_epi32(*v, 1 << i, x);
-}
-
 void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512");
+  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512 8-bit");
 
   std::int32_t dst_stride;
   if ((params.dst_type_id == DstTypeId<std::int8_t>::kValue) ||
@@ -101,104 +71,387 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
     void* dst_ptr = dst_col_ptr;
     const std::int32_t* bias_ptr = bias_col_ptr;
 
+    const std::int32_t lhs_zero_point = params.lhs_zero_point;
+    const bool has_rhs_sums_offsets =
+        (params.flags & RUY_ASM_FLAG_HAS_RHS_SUMS) && lhs_zero_point;
+    std::int32_t rhs_sums_offsets[16];
+    if (has_rhs_sums_offsets) {
+      const __m512i rhs_sums_offset_v =
+          _mm512_mullo_epi32(_mm512_set1_epi32(lhs_zero_point),
+                             _mm512_loadu_epi32(&params.rhs_sums[col]));
+      _mm512_storeu_si512(reinterpret_cast<__m512i*>(rhs_sums_offsets),
+                          rhs_sums_offset_v);
+    }
+
     for (int row = params.start_row; row <= params.last_row; row += 16) {
       const int residual_rows = std::min(params.dst_rows - row, 16);
       const int residual_cols = std::min(params.dst_cols - col, 16);
 
-      __m512i accum_data_v[16];
-      __m512i accum_data_v_low[16];
-      __m512i accum_data_v_high[16];
+      __m512i accum_data_v0;
+      __m512i accum_data_v1;
+      __m512i accum_data_v2;
+      __m512i accum_data_v3;
+      __m512i accum_data_v4;
+      __m512i accum_data_v5;
+      __m512i accum_data_v6;
+      __m512i accum_data_v7;
+      __m512i accum_data_v8;
+      __m512i accum_data_v9;
+      __m512i accum_data_va;
+      __m512i accum_data_vb;
+      __m512i accum_data_vc;
+      __m512i accum_data_vd;
+      __m512i accum_data_ve;
+      __m512i accum_data_vf;
 
       // Initialize with bias.
       const __mmask16 row_mask =
           (static_cast<std::uint32_t>(1) << residual_rows) - 1;
-      const __m512i initial_accum_data =
-          _mm512_maskz_loadu_epi32(row_mask, bias_ptr);
-      __m512i initial_accum_data_low = initial_accum_data;
-      __m512i initial_accum_data_high = _mm512_setzero_epi32();
+      __m512i initial_accum_data = _mm512_maskz_loadu_epi32(row_mask, bias_ptr);
       bias_ptr += bias_ptr_block_increment;
 
-      for (int j = 0; j < 16; ++j) {
-        accum_data_v_low[j] = initial_accum_data_low;
-        accum_data_v_high[j] = initial_accum_data_high;
+      const std::int32_t rhs_zero_point = params.rhs_zero_point;
+      if ((params.flags & RUY_ASM_FLAG_HAS_LHS_SUMS) && rhs_zero_point) {
+        const __m512i lhs_sums_offset =
+            _mm512_mullo_epi32(_mm512_set1_epi32(rhs_zero_point),
+                               _mm512_loadu_epi32(&params.lhs_sums[row]));
+        initial_accum_data =
+            _mm512_sub_epi32(initial_accum_data, lhs_sums_offset);
       }
 
-      //
+      const std::int32_t prod_zp_depth = params.prod_zp_depth;
+      if (prod_zp_depth != 0) {
+        initial_accum_data = _mm512_add_epi32(initial_accum_data,
+                                              _mm512_set1_epi32(prod_zp_depth));
+      }
+
+      // Adjustments differing across columns.
+      if (has_rhs_sums_offsets) {
+        accum_data_v0 = _mm512_sub_epi32(
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[0]));
+        accum_data_v1 = _mm512_sub_epi32(
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[1]));
+        accum_data_v2 = _mm512_sub_epi32(
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[2]));
+        accum_data_v3 = _mm512_sub_epi32(
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[3]));
+        accum_data_v4 = _mm512_sub_epi32(
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[4]));
+        accum_data_v5 = _mm512_sub_epi32(
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[5]));
+        accum_data_v6 = _mm512_sub_epi32(
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[6]));
+        accum_data_v7 = _mm512_sub_epi32(
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[7]));
+        accum_data_v8 = _mm512_sub_epi32(
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[8]));
+        accum_data_v9 = _mm512_sub_epi32(
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[9]));
+        accum_data_va = _mm512_sub_epi32(
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[10]));
+        accum_data_vb = _mm512_sub_epi32(
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[11]));
+        accum_data_vc = _mm512_sub_epi32(
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[12]));
+        accum_data_vd = _mm512_sub_epi32(
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[13]));
+        accum_data_ve = _mm512_sub_epi32(
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[14]));
+        accum_data_vf = _mm512_sub_epi32(
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[15]));
+      } else {
+        accum_data_v0 = initial_accum_data;
+        accum_data_v1 = initial_accum_data;
+        accum_data_v2 = initial_accum_data;
+        accum_data_v3 = initial_accum_data;
+        accum_data_v4 = initial_accum_data;
+        accum_data_v5 = initial_accum_data;
+        accum_data_v6 = initial_accum_data;
+        accum_data_v7 = initial_accum_data;
+        accum_data_v8 = initial_accum_data;
+        accum_data_v9 = initial_accum_data;
+        accum_data_va = initial_accum_data;
+        accum_data_vb = initial_accum_data;
+        accum_data_vc = initial_accum_data;
+        accum_data_vd = initial_accum_data;
+        accum_data_ve = initial_accum_data;
+        accum_data_vf = initial_accum_data;
+      }
 
       const std::int8_t* lhs_ptr = lhs_col_ptr;
       const std::int8_t* rhs_ptr = rhs_col_ptr;
       for (int d = 0; d < params.depth; d += 4) {
         const __m512i lhs_data = _mm512_loadu_epi8(lhs_ptr);
-        __m512i rhs_data = _mm512_loadu_epi8(rhs_ptr);
+        __m512i rhs_data_8bit = _mm512_loadu_epi8(rhs_ptr);
+
+        // Each "int32" is two 16-bit RHS values, sign extended from 8-bit.
+        std::int32_t rhs_data[32];
+        const __m256i rhs_data_bottom_lane =
+            _mm512_castsi512_si256(rhs_data_8bit);
+        const __m256i rhs_data_top_lane =
+            _mm512_extracti32x8_epi32(rhs_data_8bit, 1);
+        const __m512i rhs_16_bit_dup_low =
+            _mm512_cvtepi8_epi16(rhs_data_bottom_lane);
+        const __m512i rhs_16_bit_dup_high =
+            _mm512_cvtepi8_epi16(rhs_data_top_lane);
+        // Now that we have cast the RHS data, we store it so that each value
+        // can be separately loaded in the accumulation loop.
+        _mm512_storeu_si512(reinterpret_cast<__m256i*>(rhs_data),
+                            rhs_16_bit_dup_low);
+        _mm512_storeu_si512(reinterpret_cast<__m256i*>(rhs_data + 16),
+                            rhs_16_bit_dup_high);
 
         // Take bytes 0, 1, 4, 5, 8, 9, ... and expand to 16-bit.
-        __m512i lhs_16_bit_low =
+        const __m512i lhs_16_bit_low =
             _mm512_cvtepi8_epi16(_mm512_cvtepi32_epi16(lhs_data));
         // Take bytes 2, 3, 6, 7, 10, 11, ... and expand to 16-bit.
-        __m512i lhs_16_bit_high = _mm512_cvtepi8_epi16(
+        const __m512i lhs_16_bit_high = _mm512_cvtepi8_epi16(
             _mm512_cvtepi32_epi16(_mm512_srli_epi32(lhs_data, 16)));
 
-        for (int j = 0; j < 16; ++j) {
-          // Mask that drops the 0th element.
-          static constexpr std::uint16_t shift_mask = 0xfffe;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+        // Process column 0.
+        {
+          __m512i accum_v = accum_data_v0;
+          constexpr int index = 0;
 
-          __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
-          __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+          const __m512i rhs_16_bit_dup_high =
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
-          accum_data_v_low[j] = _mm512_add_epi32(
-              accum_data_v_low[j],
-              _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
-          accum_data_v_high[j] = _mm512_add_epi32(
-              accum_data_v_high[j],
-              _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_data_v0 = accum_v;
+        }
+        // Process column 1.
+        {
+          __m512i accum_v = accum_data_v1;
+          constexpr int index = 2;
+
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+          const __m512i rhs_16_bit_dup_high =
+              _mm512_set1_epi32(rhs_data[index + 1]);
+
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_data_v1 = accum_v;
+        }
+        // Process column 2.
+        {
+          __m512i accum_v = accum_data_v2;
+          constexpr int index = 4;
+
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+          const __m512i rhs_16_bit_dup_high =
+              _mm512_set1_epi32(rhs_data[index + 1]);
+
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_data_v2 = accum_v;
+        }
+        // Process column 3.
+        {
+          __m512i accum_v = accum_data_v3;
+          constexpr int index = 6;
+
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+          const __m512i rhs_16_bit_dup_high =
+              _mm512_set1_epi32(rhs_data[index + 1]);
+
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_data_v3 = accum_v;
+        }
+        // Process column 4.
+        {
+          __m512i accum_v = accum_data_v4;
+          constexpr int index = 8;
+
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+          const __m512i rhs_16_bit_dup_high =
+              _mm512_set1_epi32(rhs_data[index + 1]);
+
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_data_v4 = accum_v;
+        }
+        // Process column 5.
+        {
+          __m512i accum_v = accum_data_v5;
+          constexpr int index = 10;
+
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+          const __m512i rhs_16_bit_dup_high =
+              _mm512_set1_epi32(rhs_data[index + 1]);
+
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_data_v5 = accum_v;
+        }
+        // Process column 6.
+        {
+          __m512i accum_v = accum_data_v6;
+          constexpr int index = 12;
+
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+          const __m512i rhs_16_bit_dup_high =
+              _mm512_set1_epi32(rhs_data[index + 1]);
+
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_data_v6 = accum_v;
+        }
+        // Process column 7.
+        {
+          __m512i accum_v = accum_data_v7;
+          constexpr int index = 14;
+
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+          const __m512i rhs_16_bit_dup_high =
+              _mm512_set1_epi32(rhs_data[index + 1]);
+
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_data_v7 = accum_v;
+        }
+        // Process column 8.
+        {
+          __m512i accum_v = accum_data_v8;
+          constexpr int index = 16;
+
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+          const __m512i rhs_16_bit_dup_high =
+              _mm512_set1_epi32(rhs_data[index + 1]);
+
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_data_v8 = accum_v;
+        }
+        // Process column 9.
+        {
+          __m512i accum_v = accum_data_v9;
+          constexpr int index = 18;
+
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+          const __m512i rhs_16_bit_dup_high =
+              _mm512_set1_epi32(rhs_data[index + 1]);
+
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_data_v9 = accum_v;
+        }
+        // Process column 10.
+        {
+          __m512i accum_v = accum_data_va;
+          constexpr int index = 20;
+
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+          const __m512i rhs_16_bit_dup_high =
+              _mm512_set1_epi32(rhs_data[index + 1]);
+
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_data_va = accum_v;
+        }
+        // Process column 11.
+        {
+          __m512i accum_v = accum_data_vb;
+          constexpr int index = 22;
+
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+          const __m512i rhs_16_bit_dup_high =
+              _mm512_set1_epi32(rhs_data[index + 1]);
+
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_data_vb = accum_v;
+        }
+        // Process column 12.
+        {
+          __m512i accum_v = accum_data_vc;
+          constexpr int index = 24;
+
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+          const __m512i rhs_16_bit_dup_high =
+              _mm512_set1_epi32(rhs_data[index + 1]);
+
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_data_vc = accum_v;
+        }
+        // Process column 13.
+        {
+          __m512i accum_v = accum_data_vd;
+          constexpr int index = 26;
+
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+          const __m512i rhs_16_bit_dup_high =
+              _mm512_set1_epi32(rhs_data[index + 1]);
+
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_data_vd = accum_v;
+        }
+        // Process column 14.
+        {
+          __m512i accum_v = accum_data_ve;
+          constexpr int index = 28;
+
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+          const __m512i rhs_16_bit_dup_high =
+              _mm512_set1_epi32(rhs_data[index + 1]);
+
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_data_ve = accum_v;
+        }
+        // Process column 15.
+        {
+          __m512i accum_v = accum_data_vf;
+          constexpr int index = 30;
+
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+          const __m512i rhs_16_bit_dup_high =
+              _mm512_set1_epi32(rhs_data[index + 1]);
+
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_v = _mm512_add_epi32(
+              accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+          accum_data_vf = accum_v;
         }
 
         lhs_ptr += 16 * 4;
         rhs_ptr += 16 * 4;
       }
-      for (int j = 0; j < 16; ++j) {
-        accum_data_v[j] =
-            _mm512_add_epi32(accum_data_v_low[j], accum_data_v_high[j]);
-      }
-
-      // Move most of this up to bias, or even outside row loop.
-
-      const std::int32_t lhs_zero_point = params.lhs_zero_point;
-      const std::int32_t rhs_zero_point = params.rhs_zero_point;
-      const std::int32_t prod_zp_depth = params.prod_zp_depth;
-      if ((params.flags & RUY_ASM_FLAG_HAS_LHS_SUMS) && rhs_zero_point) {
-        const __m512i lhs_sums_offset =
-            _mm512_mullo_epi32(_mm512_set1_epi32(rhs_zero_point),
-                               _mm512_loadu_epi32(&params.lhs_sums[row]));
-        for (int j = 0; j < 16; ++j) {
-          accum_data_v[j] = _mm512_sub_epi32(accum_data_v[j], lhs_sums_offset);
-        }
-      }
-      if (((params.flags & RUY_ASM_FLAG_HAS_RHS_SUMS) && lhs_zero_point) ||
-          prod_zp_depth) {
-        __m512i non_lhs_sums_offset =
-            _mm512_mullo_epi32(_mm512_set1_epi32(lhs_zero_point),
-                               _mm512_loadu_epi32(&params.rhs_sums[col]));
-        non_lhs_sums_offset = _mm512_sub_epi32(
-            non_lhs_sums_offset, _mm512_set1_epi32(prod_zp_depth));
-
-        for (int j = 0; j < 16; ++j) {
-          accum_data_v[j] = _mm512_sub_epi32(
-              accum_data_v[j],
-              _mm512_set1_epi32(mm512_get1_epi32(non_lhs_sums_offset, j)));
-        }
-      }
-
-      //
 
       if (params.dst_type_id != DstTypeId<std::int32_t>::kValue) {
         __m512i m_vector;
@@ -211,10 +464,8 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
                                               &params.multiplier_exponent[row]);
         } else {
           // These arrays have size LhsCols, and are pre-filled.
-          m_vector =
-              _mm512_maskz_loadu_epi32(row_mask, params.multiplier_fixedpoint);
-          e_vector =
-              _mm512_maskz_loadu_epi32(row_mask, params.multiplier_exponent);
+          m_vector = _mm512_set1_epi32(params.multiplier_fixedpoint[0]);
+          e_vector = _mm512_set1_epi32(params.multiplier_exponent[0]);
         }
 
         const __m512i m_64bit_low =
@@ -244,16 +495,17 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
             offset_vector,
             _mm512_cvtepi32_epi64(_mm512_extracti32x8_epi32(right_shift, 1)));
 
-        for (int j = 0; j < 16; ++j) {
-          accum_data_v[j] = _mm512_sllv_epi32(accum_data_v[j], left_shift);
+        // Shift and round column 0.
+        {
+          accum_data_v0 = _mm512_sllv_epi32(accum_data_v0, left_shift);
           // Apply the fixed-point part of the multiplier.
           __m512i scaled_v_low =
-              _mm512_mul_epi32(_mm512_cvtepi32_epi64(_mm512_extracti32x8_epi32(
-                                   accum_data_v[j], 0)),
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v0, 0)),
                                m_64bit_low);
           __m512i scaled_v_high =
-              _mm512_mul_epi32(_mm512_cvtepi32_epi64(_mm512_extracti32x8_epi32(
-                                   accum_data_v[j], 1)),
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v0, 1)),
                                m_64bit_high);
 
           scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
@@ -263,45 +515,458 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
           scaled_v_high =
               _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
 
-          accum_data_v[j] =
+          accum_data_v0 =
               _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
-          accum_data_v[j] = _mm512_inserti32x8(
-              accum_data_v[j], _mm512_cvtepi64_epi32(scaled_v_high), 1);
+          accum_data_v0 = _mm512_inserti32x8(
+              accum_data_v0, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+        }
+        // Shift and round column 1.
+        {
+          accum_data_v1 = _mm512_sllv_epi32(accum_data_v1, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m512i scaled_v_low =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v1, 0)),
+                               m_64bit_low);
+          __m512i scaled_v_high =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v1, 1)),
+                               m_64bit_high);
 
+          scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm512_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm512_srav_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
+
+          accum_data_v1 =
+              _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
+          accum_data_v1 = _mm512_inserti32x8(
+              accum_data_v1, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+        }
+        // Shift and round column 2.
+        {
+          accum_data_v2 = _mm512_sllv_epi32(accum_data_v2, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m512i scaled_v_low =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v2, 0)),
+                               m_64bit_low);
+          __m512i scaled_v_high =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v2, 1)),
+                               m_64bit_high);
+
+          scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm512_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm512_srav_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
+
+          accum_data_v2 =
+              _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
+          accum_data_v2 = _mm512_inserti32x8(
+              accum_data_v2, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+        }
+        // Shift and round column 3.
+        {
+          accum_data_v3 = _mm512_sllv_epi32(accum_data_v3, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m512i scaled_v_low =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v3, 0)),
+                               m_64bit_low);
+          __m512i scaled_v_high =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v3, 1)),
+                               m_64bit_high);
+
+          scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm512_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm512_srav_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
+
+          accum_data_v3 =
+              _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
+          accum_data_v3 = _mm512_inserti32x8(
+              accum_data_v3, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+        }
+        // Shift and round column 4.
+        {
+          accum_data_v4 = _mm512_sllv_epi32(accum_data_v4, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m512i scaled_v_low =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v4, 0)),
+                               m_64bit_low);
+          __m512i scaled_v_high =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v4, 1)),
+                               m_64bit_high);
+
+          scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm512_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm512_srav_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
+
+          accum_data_v4 =
+              _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
+          accum_data_v4 = _mm512_inserti32x8(
+              accum_data_v4, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+        }
+        // Shift and round column 5.
+        {
+          accum_data_v5 = _mm512_sllv_epi32(accum_data_v5, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m512i scaled_v_low =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v5, 0)),
+                               m_64bit_low);
+          __m512i scaled_v_high =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v5, 1)),
+                               m_64bit_high);
+
+          scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm512_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm512_srav_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
+
+          accum_data_v5 =
+              _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
+          accum_data_v5 = _mm512_inserti32x8(
+              accum_data_v5, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+        }
+        // Shift and round column 6.
+        {
+          accum_data_v6 = _mm512_sllv_epi32(accum_data_v6, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m512i scaled_v_low =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v6, 0)),
+                               m_64bit_low);
+          __m512i scaled_v_high =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v6, 1)),
+                               m_64bit_high);
+
+          scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm512_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm512_srav_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
+
+          accum_data_v6 =
+              _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
+          accum_data_v6 = _mm512_inserti32x8(
+              accum_data_v6, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+        }
+        // Shift and round column 7.
+        {
+          accum_data_v7 = _mm512_sllv_epi32(accum_data_v7, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m512i scaled_v_low =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v7, 0)),
+                               m_64bit_low);
+          __m512i scaled_v_high =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v7, 1)),
+                               m_64bit_high);
+
+          scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm512_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm512_srav_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
+
+          accum_data_v7 =
+              _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
+          accum_data_v7 = _mm512_inserti32x8(
+              accum_data_v7, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+        }
+        // Shift and round column 8.
+        {
+          accum_data_v8 = _mm512_sllv_epi32(accum_data_v8, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m512i scaled_v_low =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v8, 0)),
+                               m_64bit_low);
+          __m512i scaled_v_high =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v8, 1)),
+                               m_64bit_high);
+
+          scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm512_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm512_srav_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
+
+          accum_data_v8 =
+              _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
+          accum_data_v8 = _mm512_inserti32x8(
+              accum_data_v8, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+        }
+        // Shift and round column 9.
+        {
+          accum_data_v9 = _mm512_sllv_epi32(accum_data_v9, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m512i scaled_v_low =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v9, 0)),
+                               m_64bit_low);
+          __m512i scaled_v_high =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_v9, 1)),
+                               m_64bit_high);
+
+          scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm512_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm512_srav_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
+
+          accum_data_v9 =
+              _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
+          accum_data_v9 = _mm512_inserti32x8(
+              accum_data_v9, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+        }
+        // Shift and round column 10.
+        {
+          accum_data_va = _mm512_sllv_epi32(accum_data_va, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m512i scaled_v_low =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_va, 0)),
+                               m_64bit_low);
+          __m512i scaled_v_high =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_va, 1)),
+                               m_64bit_high);
+
+          scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm512_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm512_srav_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
+
+          accum_data_va =
+              _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
+          accum_data_va = _mm512_inserti32x8(
+              accum_data_va, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+        }
+        // Shift and round column 11.
+        {
+          accum_data_vb = _mm512_sllv_epi32(accum_data_vb, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m512i scaled_v_low =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_vb, 0)),
+                               m_64bit_low);
+          __m512i scaled_v_high =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_vb, 1)),
+                               m_64bit_high);
+
+          scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm512_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm512_srav_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
+
+          accum_data_vb =
+              _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
+          accum_data_vb = _mm512_inserti32x8(
+              accum_data_vb, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+        }
+        // Shift and round column 12.
+        {
+          accum_data_vc = _mm512_sllv_epi32(accum_data_vc, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m512i scaled_v_low =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_vc, 0)),
+                               m_64bit_low);
+          __m512i scaled_v_high =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_vc, 1)),
+                               m_64bit_high);
+
+          scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm512_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm512_srav_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
+
+          accum_data_vc =
+              _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
+          accum_data_vc = _mm512_inserti32x8(
+              accum_data_vc, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+        }
+        // Shift and round column 13.
+        {
+          accum_data_vd = _mm512_sllv_epi32(accum_data_vd, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m512i scaled_v_low =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_vd, 0)),
+                               m_64bit_low);
+          __m512i scaled_v_high =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_vd, 1)),
+                               m_64bit_high);
+
+          scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm512_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm512_srav_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
+
+          accum_data_vd =
+              _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
+          accum_data_vd = _mm512_inserti32x8(
+              accum_data_vd, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+        }
+        // Shift and round column 14.
+        {
+          accum_data_ve = _mm512_sllv_epi32(accum_data_ve, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m512i scaled_v_low =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_ve, 0)),
+                               m_64bit_low);
+          __m512i scaled_v_high =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_ve, 1)),
+                               m_64bit_high);
+
+          scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm512_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm512_srav_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
+
+          accum_data_ve =
+              _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
+          accum_data_ve = _mm512_inserti32x8(
+              accum_data_ve, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+        }
+        // Shift and round column 15.
+        {
+          accum_data_vf = _mm512_sllv_epi32(accum_data_vf, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m512i scaled_v_low =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_vf, 0)),
+                               m_64bit_low);
+          __m512i scaled_v_high =
+              _mm512_mul_epi32(_mm512_cvtepi32_epi64(
+                                   _mm512_extracti32x8_epi32(accum_data_vf, 1)),
+                               m_64bit_high);
+
+          scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm512_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm512_srav_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
+
+          accum_data_vf =
+              _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
+          accum_data_vf = _mm512_inserti32x8(
+              accum_data_vf, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+        }
 #if !RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)
-          RUY_DCHECK(false);
+        RUY_DCHECK(false);
 #endif
-        }
 
-        if (params.dst_zero_point) {
+        if (params.dst_zero_point != 0) {
           __m512i dst_zero_point = _mm512_set1_epi32(params.dst_zero_point);
-          for (int j = 0; j < 16; ++j) {
-            accum_data_v[j] = _mm512_add_epi32(accum_data_v[j], dst_zero_point);
-          }
-        }
-        __m512i clamp_max_v = _mm512_set1_epi32(params.clamp_max);
-        __m512i clamp_min_v = _mm512_set1_epi32(params.clamp_min);
-        for (int j = 0; j < 16; ++j) {
-          accum_data_v[j] = _mm512_min_epi32(accum_data_v[j], clamp_max_v);
-          accum_data_v[j] = _mm512_max_epi32(accum_data_v[j], clamp_min_v);
+          accum_data_v0 = _mm512_add_epi32(accum_data_v0, dst_zero_point);
+          accum_data_v1 = _mm512_add_epi32(accum_data_v1, dst_zero_point);
+          accum_data_v2 = _mm512_add_epi32(accum_data_v2, dst_zero_point);
+          accum_data_v3 = _mm512_add_epi32(accum_data_v3, dst_zero_point);
+          accum_data_v4 = _mm512_add_epi32(accum_data_v4, dst_zero_point);
+          accum_data_v5 = _mm512_add_epi32(accum_data_v5, dst_zero_point);
+          accum_data_v6 = _mm512_add_epi32(accum_data_v6, dst_zero_point);
+          accum_data_v7 = _mm512_add_epi32(accum_data_v7, dst_zero_point);
+          accum_data_v8 = _mm512_add_epi32(accum_data_v8, dst_zero_point);
+          accum_data_v9 = _mm512_add_epi32(accum_data_v9, dst_zero_point);
+          accum_data_va = _mm512_add_epi32(accum_data_va, dst_zero_point);
+          accum_data_vb = _mm512_add_epi32(accum_data_vb, dst_zero_point);
+          accum_data_vc = _mm512_add_epi32(accum_data_vc, dst_zero_point);
+          accum_data_vd = _mm512_add_epi32(accum_data_vd, dst_zero_point);
+          accum_data_ve = _mm512_add_epi32(accum_data_ve, dst_zero_point);
+          accum_data_vf = _mm512_add_epi32(accum_data_vf, dst_zero_point);
         }
       }
+
+      const __m512i clamp_max_v = _mm512_set1_epi32(params.clamp_max);
+      const __m512i clamp_min_v = _mm512_set1_epi32(params.clamp_min);
+
       const bool store_full_block =
           (residual_rows == 16) && (residual_cols == 16);
+
+      __m512i accum_data_v[16];
+
+      // In most cases we would make this conditional on (!store_full_block) and
+      // unwind the clamp-and-store loop, but the benefit appears small.
+      {
+        accum_data_v[0] = accum_data_v0;
+        accum_data_v[1] = accum_data_v1;
+        accum_data_v[2] = accum_data_v2;
+        accum_data_v[3] = accum_data_v3;
+        accum_data_v[4] = accum_data_v4;
+        accum_data_v[5] = accum_data_v5;
+        accum_data_v[6] = accum_data_v6;
+        accum_data_v[7] = accum_data_v7;
+        accum_data_v[8] = accum_data_v8;
+        accum_data_v[9] = accum_data_v9;
+        accum_data_v[10] = accum_data_va;
+        accum_data_v[11] = accum_data_vb;
+        accum_data_v[12] = accum_data_vc;
+        accum_data_v[13] = accum_data_vd;
+        accum_data_v[14] = accum_data_ve;
+        accum_data_v[15] = accum_data_vf;
+      }
 
       if (params.dst_type_id == DstTypeId<std::int8_t>::kValue) {
         std::int8_t* tmp_ptr = static_cast<std::int8_t*>(dst_ptr);
         const int block_col_offset = dst_stride;
         if (store_full_block) {
           for (int j = 0; j < 16; ++j) {
-            _mm_storeu_epi8(tmp_ptr, _mm512_cvtepi32_epi8(accum_data_v[j]));
-            tmp_ptr += block_col_offset;
+            __m512i result = accum_data_v[j];
+            result = _mm512_min_epi32(result, clamp_max_v);
+            result = _mm512_max_epi32(result, clamp_min_v);
+            _mm_storeu_epi8(tmp_ptr + j * block_col_offset,
+                            _mm512_cvtepi32_epi8(result));
           }
         } else {
           for (int j = 0; j < residual_cols; ++j) {
-            _mm_mask_storeu_epi8(tmp_ptr, row_mask,
-                                 _mm512_cvtepi32_epi8(accum_data_v[j]));
-            tmp_ptr += block_col_offset;
+            __m512i result = accum_data_v[j];
+            result = _mm512_min_epi32(result, clamp_max_v);
+            result = _mm512_max_epi32(result, clamp_min_v);
+            _mm_mask_storeu_epi8(tmp_ptr + j * block_col_offset, row_mask,
+                                 _mm512_cvtepi32_epi8(result));
           }
         }
         dst_ptr = static_cast<void*>(static_cast<std::int8_t*>(dst_ptr) + 16);
@@ -309,15 +974,20 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         std::uint8_t* tmp_ptr = static_cast<std::uint8_t*>(dst_ptr);
         const int block_col_offset = dst_stride;
         if (store_full_block) {
-          for (int j = 0; j < 16; ++j) {
-            _mm_storeu_epi8(tmp_ptr, _mm512_cvtepi32_epi8(accum_data_v[j]));
-            tmp_ptr += block_col_offset;
+          for (int j = 0; j < residual_cols; ++j) {
+            __m512i result = accum_data_v[j];
+            result = _mm512_min_epi32(result, clamp_max_v);
+            result = _mm512_max_epi32(result, clamp_min_v);
+            _mm_storeu_epi8(tmp_ptr + j * block_col_offset,
+                            _mm512_cvtepi32_epi8(result));
           }
         } else {
           for (int j = 0; j < residual_cols; ++j) {
-            _mm_mask_storeu_epi8(tmp_ptr, row_mask,
-                                 _mm512_cvtepi32_epi8(accum_data_v[j]));
-            tmp_ptr += block_col_offset;
+            __m512i result = accum_data_v[j];
+            result = _mm512_min_epi32(result, clamp_max_v);
+            result = _mm512_max_epi32(result, clamp_min_v);
+            _mm_mask_storeu_epi8(tmp_ptr + j * block_col_offset, row_mask,
+                                 _mm512_cvtepi32_epi8(result));
           }
         }
         dst_ptr = static_cast<void*>(static_cast<std::uint8_t*>(dst_ptr) + 16);
@@ -326,31 +996,33 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         const int block_col_offset = dst_stride;
         if (store_full_block) {
           for (int j = 0; j < 16; ++j) {
-            _mm256_storeu_epi16(tmp_ptr,
-                                _mm512_cvtepi32_epi16(accum_data_v[j]));
-            tmp_ptr += block_col_offset;
+            __m512i result = accum_data_v[j];
+            result = _mm512_min_epi32(result, clamp_max_v);
+            result = _mm512_max_epi32(result, clamp_min_v);
+            _mm256_storeu_epi16(tmp_ptr + j * block_col_offset,
+                                _mm512_cvtepi32_epi16(result));
           }
         } else {
           for (int j = 0; j < residual_cols; ++j) {
-            _mm256_mask_storeu_epi16(tmp_ptr, row_mask,
-                                     _mm512_cvtepi32_epi16(accum_data_v[j]));
-            tmp_ptr += block_col_offset;
+            __m512i result = accum_data_v[j];
+            result = _mm512_min_epi32(result, clamp_max_v);
+            result = _mm512_max_epi32(result, clamp_min_v);
+            _mm256_mask_storeu_epi16(tmp_ptr + j * block_col_offset, row_mask,
+                                     _mm512_cvtepi32_epi16(result));
           }
         }
         dst_ptr = static_cast<void*>(static_cast<std::int16_t*>(dst_ptr) + 16);
       } else if (params.dst_type_id == DstTypeId<std::int32_t>::kValue) {
         if (store_full_block) {
           std::int32_t* tmp_ptr = static_cast<std::int32_t*>(dst_ptr);
-          const int block_col_offset = dst_stride;
           for (int j = 0; j < 16; ++j) {
-            _mm512_storeu_epi32(tmp_ptr, accum_data_v[j]);
-            tmp_ptr += block_col_offset;
+            _mm512_storeu_epi32(tmp_ptr + j * dst_stride, accum_data_v[j]);
           }
         } else {
-          std::int32_t* dst_block_ptr = static_cast<std::int32_t*>(dst_ptr);
+          std::int32_t* tmp_ptr = static_cast<std::int32_t*>(dst_ptr);
           for (int j = 0; j < residual_cols; ++j) {
-            _mm512_mask_storeu_epi32(dst_block_ptr, row_mask, accum_data_v[j]);
-            dst_block_ptr += dst_stride;
+            _mm512_mask_storeu_epi32(tmp_ptr + j * dst_stride, row_mask,
+                                     accum_data_v[j]);
           }
         }
         dst_ptr = static_cast<void*>(static_cast<std::int32_t*>(dst_ptr) + 16);
@@ -365,10 +1037,10 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
                                      16 * params.dst_stride);
     rhs_col_ptr += 16 * params.rhs_stride;
   }  // End col-block loop.
-}
+}  // NOLINT(readability/fn_size)
 
 void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512");
+  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512 float");
 
   // As parameters are defined, we need to scale by sizeof(float).
   const std::int64_t lhs_stride = params.lhs_stride >> 2;
@@ -421,7 +1093,11 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         const float* rhs_ptr = rhs_col_ptr + 8 * mmm;
         for (int d = 0; d < (params.depth - 1); ++d) {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          // In this version RHS values are loaded individually rather than
+          // first loading together and then extract with broadcasting. This is
+          // because AVX flavours and instrinsics and compilers in combination
+          // do not handle this pattern of extraction very well.
+          const float* rhs_data = rhs_ptr;
           lhs_ptr += 16;
           rhs_ptr += 16;
 
@@ -454,7 +1130,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         }
         {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
           {
             const __m512 dup_rhs_element_j0 = _mm512_set1_ps(rhs_data[0]);
             accum_data_v0 =
@@ -526,7 +1202,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         const float* rhs_ptr = rhs_col_ptr + 8 * mmm;
         for (int d = 0; d < (params.depth - 1); ++d) {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
           lhs_ptr += 16;
           rhs_ptr += 16;
           {
@@ -558,7 +1234,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         }
         {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
           {
             const __m512 dup_rhs_element_j0 = _mm512_set1_ps(rhs_data[0]);
             accum_data_v0 =
@@ -646,7 +1322,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         const float* rhs_ptr = rhs_col_ptr + 8 * mmm;
         for (int d = 0; d < (params.depth - 1); ++d) {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
           lhs_ptr += 16;
           rhs_ptr += 16;
           {
@@ -678,7 +1354,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         }
         {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
           {
             const __m512 dup_rhs_element_j0 = _mm512_set1_ps(rhs_data[0]);
             accum_data_v0 =
@@ -777,7 +1453,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         const float* rhs_ptr = rhs_col_ptr + 8 * mmm;
         for (int d = 0; d < params.depth; ++d) {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
 
           for (int j = 0; j < 8; ++j) {
             const __m512 dup_rhs_element_j = _mm512_set1_ps(rhs_data[j]);

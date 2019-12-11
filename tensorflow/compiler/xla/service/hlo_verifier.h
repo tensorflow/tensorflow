@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VERIFIER_H_
 
 #include <memory>
-#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
 namespace xla {
@@ -102,6 +102,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleAfterAll(HloInstruction* token) override;
   Status HandleGetDimensionSize(HloInstruction* get_size) override;
+  Status HandleSetDimensionSize(HloInstruction* set_size) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
 
   Status FinishVisit(HloInstruction*) override { return Status::OK(); }
@@ -126,11 +127,15 @@ class ShapeVerifier : public DfsHloVisitor {
  private:
   // Helpers that switch on layout_sensitive_.
   bool ShapesSame(const Shape& a, const Shape& b,
-                  bool minor_to_major_only = false) {
+                  bool minor_to_major_only = false,
+                  bool ignore_memory_space = false) {
     if (!layout_sensitive_) {
       return ShapeUtil::Compatible(a, b);
     }
     Shape::Equal equal;
+    if (ignore_memory_space) {
+      equal.IgnoreMemorySpaceInLayout();
+    }
     if (minor_to_major_only) {
       equal.MinorToMajorOnlyInLayout();
     }

@@ -17,10 +17,13 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_INFERENCE_CONTEXT_H_
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
@@ -73,6 +76,8 @@ class InferenceContext {
 
   Status AddToQueue(CLCommandQueue* queue);
   Status Profile(ProfilingCommandQueue* queue, ProfilingInfo* result);
+  // for profiling and memory statistics
+  uint64_t GetSizeOfMemoryAllocatedForIntermediateTensors() const;
 
   Status SetInputTensor(ValueId id, const TensorFloat32& tensor,
                         CLCommandQueue* queue);
@@ -89,9 +94,21 @@ class InferenceContext {
   Status ConvertOperations(const CreationContext& creation_context,
                            const GraphFloat32& graph, ModelHints hints);
   void CreateLinks();
+  void ReserveGraphTensors(const CreateInferenceInfo& create_info,
+                           const CreationContext& creation_context,
+                           const GraphFloat32& graph);
   void Merge();
-  Status AllocateMemory(const GraphFloat32& graph, const CLDevice& device,
-                        CLContext* context);
+  Status AllocateMemory(const CLDevice& device, CLContext* context);
+
+  Status AllocateMemoryForBuffers(const CLDevice& device, CLContext* context);
+
+  Status AllocateMemoryForStrongShapes(const CLDevice& device,
+                                       CLContext* context);
+
+  // utility function
+  void GetUsages(const std::function<bool(const TensorDescriptor&)>& functor,
+                 std::map<ValueId, int2>* usages);
+
   void BindMemoryToOperations();
   Status Compile(const CreationContext& creation_context);
   Status Tune(const TuningParameters& tuning_parameters);
@@ -114,8 +131,41 @@ class InferenceContext {
   // Memory is allocated only once, in ConvertOperations, and is not modified
   //  anywhere.
   std::vector<CLNode> nodes_;
-  std::map<ValueId, Tensor> tensors_;
-  std::map<ValueId, ValueId> remap_from_graph_ids_to_shared_;
+
+  struct DummyTensor {
+    BHWC shape;
+    TensorDescriptor descriptor;
+
+    bool operator==(const DummyTensor& b) const {
+      return shape == b.shape && descriptor == b.descriptor;
+    }
+  };
+
+  class TensorReserver {
+   public:
+    ValueId Add(const DummyTensor& dummy) {
+      reservations_[next_] = dummy;
+      return next_++;
+    }
+    void Add(ValueId id, const DummyTensor& dummy) {
+      reservations_[id] = dummy;
+    }
+    void SetNext(ValueId id) { next_ = id; }
+    DummyTensor Get(ValueId id) { return reservations_[id]; }
+
+   private:
+    std::unordered_map<ValueId, DummyTensor> reservations_;
+    ValueId next_;
+  };
+  TensorReserver tensor_reserver_;
+
+  std::vector<Buffer> shared_buffers_;
+  std::vector<Tensor>
+      shared_buffer_tensors_;  // use references to memory from shared_buffers_
+  std::map<ValueId, int> graph_ids_to_shared_buffer_tensors_;
+
+  std::map<ValueId, Tensor> strong_shape_tensors_;
+  std::map<ValueId, ValueId> graph_ids_to_strong_shape_tensors_;
 
   std::vector<ValueId> input_ids_;
   std::vector<ValueId> output_ids_;

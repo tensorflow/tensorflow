@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/accuracy/ilsvrc/imagenet_model_evaluator.h"
 
-#include <dirent.h>
-
 #include <fstream>
 #include <iomanip>
 #include <mutex>  // NOLINT(build/c++11)
@@ -26,7 +24,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/accuracy/ilsvrc/default/custom_delegates.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"

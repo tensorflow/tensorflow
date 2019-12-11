@@ -56,6 +56,9 @@ FloatActivationsOpTest/PRelu,29
 LogisticOpTest/LogisticOpTest/Sigmoid(.+nt8)?/\d+
 LogisticOpTest/LogisticOpTest/Sigmoid/\d+
 TanhOpTest/TanhOpTest/Tanh(.+nt8)?/\d+,29
+FloatActivationsOpTest/HardSwish
+QuantizedActivationsOpTest/HardSwish
+QuantizedActivationsOpTest/HardSwishBias
 
 # add_test
 FloatAddOpModel/.+
@@ -126,7 +129,14 @@ ConcatenationOpTest/FourInputsQuantizedMixedRange,29
 ConcatenationOpTest/FourInputsQuantizedMixedRangeClampingLogic,29
 
 # conv_test
-ConvolutionOpTest/ConvolutionOpTest/.+/\d+,29
+ConvolutionOpTest/ConvolutionOpTest.SimpleTestFloatWithDilation/.+,29
+ConvolutionOpTest/ConvolutionOpTest.SimpleTestLargeIrregularQuantized/.+,29
+ConvolutionOpTest/ConvolutionOpTest.SimpleTestQuantizedOutputMultiplierGreaterThan1/.+,29
+ConvolutionOpTest/ConvolutionOpTest.SimpleTestQuantizedWithDilation/.+,29
+ConvolutionOpTest/ConvolutionOpTest.SimplePerChannelTest/.+,29
+ConvolutionOpTest/ConvolutionOpTest/.+Hybrid.+,29/
+ConvolutionOpTest/ConvolutionOpTest/.+/\d+
+
 
 # depthwise_conv_test
 .+ConvolutionOpTest/.+/\d+,29

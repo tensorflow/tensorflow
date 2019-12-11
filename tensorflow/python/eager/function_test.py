@@ -64,6 +64,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
@@ -79,6 +80,11 @@ from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
 
 
 def total_function_cache(defined):
@@ -127,11 +133,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     super(FunctionTest, self).setUp()
     cpus = config.list_physical_devices('CPU')
     # Set 4 virtual CPUs
-    config.set_virtual_device_configuration(cpus[0], [
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration()
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
     ])
 
   def testBasic(self):
@@ -141,6 +147,39 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     sq2 = matmul(sq, t, transpose_a=True)
     self.assertAllEqual(sq.numpy().reshape(-1), [10, 14, 14, 20])
     self.assertAllEqual(sq2.numpy().reshape(-1), [52, 76, 74, 108])
+
+  def testOnExitCallback(self):
+    values = []
+    def append_1():
+      values.append(1)
+
+    def append_2():
+      values.append(2)
+
+    def g(x):
+      old_values = list(values)
+      ops.add_exit_callback_to_default_func_graph(append_1)
+      self.assertEqual(old_values, values)
+      return x + 1
+
+    tf_g = def_function.function(g)
+
+    def f(x):
+      old_values = list(values)
+      ops.add_exit_callback_to_default_func_graph(append_2)
+      self.assertEqual(old_values, values)
+      return tf_g(x)
+
+    tf_f = def_function.function(f)
+    self.assertEmpty(values)
+    tf_f(constant_op.constant(1.0))
+    self.assertEqual(values, [1, 2])  # Once for g, once for f.
+    tf_f(constant_op.constant([1.0]))  # force a retrace
+    self.assertEqual(values, [1, 2, 1, 2])  # And again.
+
+  def testCannotAddExitCallbackWhenNotInFunctionScope(self):
+    with self.assertRaisesRegexp(RuntimeError, 'when not building a function.'):
+      ops.add_exit_callback_to_default_func_graph(lambda: None)
 
   def testVariable(self):
     v1 = variables.Variable(1.0)
@@ -158,6 +197,95 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     c = constant_op.constant(1.0)
     with self.assertRaisesRegexp(AttributeError, 'no attribute'):
       add(c)
+
+  def testImplementsAttributeBasic(self):
+    v = def_function.function(
+        experimental_implements='func')(lambda x, y: x + y)
+    with context.graph_mode(), self.cached_session():
+      a = array_ops.placeholder(dtypes.float32, ())
+      b = array_ops.placeholder(dtypes.float32, ())
+      v(a, b)
+      gradients_impl.gradients(v(a, b), [a, b])
+      fdefs = ops.get_default_graph().as_graph_def().library.function
+      self.assertLen(fdefs, 3)
+      not_present = 0
+      present = 0
+      for f in fdefs:
+        name = f.signature.name
+        if 'forward' in name or 'backward' in name:
+          not_present += 1
+          self.assertNotIn(function.IMPLEMENTS_ATTRIBUTE_NAME, f.attr, f)
+        else:
+          present += 1
+          self.assertEqual(f.attr[function.IMPLEMENTS_ATTRIBUTE_NAME].s,
+                           'func'.encode('ascii'), f)
+      self.assertEqual(not_present, 2, fdefs)
+      self.assertEqual(present, 1, fdefs)
+
+  def testImplementsAttributeAssertsOnSideInput(self):
+    with context.graph_mode(), self.cached_session():
+      z = array_ops.zeros(0)
+      v = def_function.function(
+          experimental_implements='func')(lambda x, y: x + y + z)
+      a = array_ops.ones((1.0,))
+      b = array_ops.ones((1.0,))
+      with self.assertRaisesRegexp(AssertionError,
+                                   'variables are always captured'):
+        v(a, b)
+      functions = ops.get_default_graph().as_graph_def().library.function
+      self.assertEmpty(functions)
+
+  def testImplementsAttributeWorksOnVariables(self):
+    with context.graph_mode(), self.cached_session():
+      v = def_function.function(
+          experimental_implements='func')(lambda x, y: x + y)
+      a = variables.Variable((1.0,))
+      b = variables.Variable((1.0,))
+      r1 = v(a, b)
+      _ = v(a, a)
+      functions = ops.get_default_graph().as_graph_def().library.function
+      # Verify that we created only one function
+      self.assertLen(functions, 1)
+      # Verify that eval() reads the current values.
+      a.initializer.run()
+      b.initializer.run()
+      self.assertEqual(r1.eval(), 2)
+
+      a.assign_add([1]).eval()
+      self.assertEqual(r1.eval(), 3)
+
+  def testImplementsAttributeWorksOnConstants(self):
+    with context.graph_mode(), self.cached_session():
+      v = def_function.function(
+          experimental_implements='func')(lambda x, y: x + y)
+      a = variables.Variable(1.0)
+      r1 = v(a, 2.)
+      r2 = v(2., a)
+      functions = ops.get_default_graph().as_graph_def().library.function
+      self.assertLen(functions, 1)
+      self.assertLen(functions[0].signature.input_arg, 2)
+      # Verify that eval() reads the current values.
+      a.initializer.run()
+      self.assertEqual(r1.eval(), 3)
+      self.assertEqual(r2.eval(), 3)
+
+  def testImplementsAttributeSpecializes(self):
+    with context.graph_mode(), self.cached_session():
+      v = def_function.function(
+          experimental_implements='func')(lambda x, y: x + y)
+      a = variables.Variable(1.0)
+      r1 = v(a, [2.])
+      r2 = v([2., 2], a)
+      functions = ops.get_default_graph().as_graph_def().library.function
+      self.assertLen(functions, 2)
+      # Ensure that all parameters are still there and haven't been inlined!
+
+      self.assertLen(functions[0].signature.input_arg, 2)
+      self.assertLen(functions[1].signature.input_arg, 2)
+      # Verify that eval() reads the current values.
+      a.initializer.run()
+      numpy.testing.assert_equal(r1.eval(), [3.])
+      numpy.testing.assert_equal(r2.eval(), [3., 3.])
 
   def testExternalControlDependency(self):
     with ops.Graph().as_default(), self.test_session():
@@ -195,16 +323,25 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(unknown_dim[0])
     self.assertLen(total_function_cache(func), 2)
 
-  def testCaptureNonTrainableVariable(self):
-
-    v = variables.Variable(1.0, trainable=False)
+  def testCapturesVariables(self):
+    a = variables.Variable(1.0, trainable=False)
+    b = variables.Variable(1.0)
+    cc = [None]
 
     @def_function.function
     def f():
-      return v + 1
+      c = cc[0]
+      if c is None:
+        c = cc[0] = variables.Variable(1.)
+      return a + b + c + 1
 
-    c = f.get_concrete_function()
-    self.assertEqual(len(list(c.graph.variables)), 1)  # pylint: disable=g-generic-assert
+    cf = f.get_concrete_function()
+    c = cc[0]
+
+    self.assertEqual(cf.variables, (a, b, c))
+    self.assertEqual(cf.trainable_variables, (b, c))
+    self.assertEqual(cf.graph.variables, (a, b, c))
+    self.assertEqual(cf.graph.trainable_variables, (b, c))
 
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
@@ -357,6 +494,34 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                     math_ops.matmul(b, a).numpy())
     self.assertAllClose(out, expected)
 
+  @parameterized.named_parameters(
+      dict(testcase_name='Defun',
+           function_decorator=function.defun),
+      dict(testcase_name='DefFunction',
+           function_decorator=def_function.function))
+  def testNestedFunctionGraphNotOutOfDate(self, function_decorator):
+    @function_decorator
+    def f():
+      return constant_op.constant(1.)
+
+    class _Model(object):
+
+      @function_decorator
+      def g(self):
+        self.f = f.get_concrete_function()
+
+    model = _Model()
+    model.g()
+    concrete = model.f
+    weak_g_graph = weakref.ref(model.g.get_concrete_function().graph)
+    self.assertIs(weak_g_graph(), concrete.graph.outer_graph)
+    weak_g = weakref.ref(model.g)
+    del model
+    self.assertIsNone(weak_g())
+    self.assertIsNone(weak_g_graph())
+    self.assertIsNotNone(concrete.graph.outer_graph)
+    self.assertIs(ops.get_default_graph(), concrete.graph.outer_graph)
+
   def testGraphEagerIsolation(self):
 
     @function.defun
@@ -401,6 +566,18 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     _ = pool.map(thread_func, list(range(num_threads)))
 
     self.assertLen(set(concrete_functions), 1)
+
+  def testGetConcreteFunctionThreadSafetyWithArgs(self):
+    @def_function.function
+    def add_100(*args):
+      return math_ops.add_n(args)
+
+    p = multiprocessing.pool.ThreadPool(2)
+    args = (constant_op.constant(1.),) * 100
+    f1, f2 = p.map(add_100.get_concrete_function, [args] * 2)
+    # I see about len(args) + max(0, len(args) - 3) arguments expected.
+    f1(*args)
+    del f2
 
   def testInputSpecGraphFunction(self):
     matmul = def_function.function(math_ops.matmul)
@@ -1030,6 +1207,23 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     for (input_component, output_component) in zip(input_flat, output_flat):
       self.assertAllEqual(input_component, output_component)
 
+  def testTracedCompositeDiscardsShapeInfo(self):
+    # SparseTensorSpec intentionally excludes info about the number of elements
+    # that are in a sparse tensor (which is recorded as st.indices.shape[0] and
+    # st.values.shape[0]).  Similarly, RaggedTensorSpec intentionally excludes
+    # info about the total number of values in a RaggedTensor (stored as
+    # rt.values.shape[0]).  This test checks that the placeholders created by
+    # tf.function() properly mask this shape info.
+    @def_function.function
+    def f(rt, st):
+      self.assertEqual(st.indices.shape.as_list()[:1], [None])
+      self.assertEqual(st.values.shape.as_list(), [None])
+      return (rt, st)
+
+    rt = ragged_factory_ops.constant([[1, 2], [3]])
+    st = sparse_tensor.SparseTensor([[0]], [0], [10])
+    f(rt, st)
+
   @test_util.run_gpu_only
   def testFunctionOnDevice(self):
     x = constant_op.constant([1.]).gpu()
@@ -1200,7 +1394,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testVariableNamesRespectNameScopesWithDefun(self):
     @def_function.function
     def create_variable():
-      with ops.name_scope('foo'):
+      with ops.name_scope('foo', skip_on_eager=False):
         v = resource_variable_ops.ResourceVariable(0.0, name='bar')
       self.assertEqual(v.name, 'foo/bar:0')
 
@@ -1210,7 +1404,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with context.graph_mode():
       @def_function.function
       def create_variable():
-        with ops.name_scope('foo'):
+        with ops.name_scope('foo', skip_on_eager=False):
           v = resource_variable_ops.ResourceVariable([1.0, 2.0], name='bar')
         self.assertEqual(v.name, 'foo/bar:0')
 
@@ -1861,6 +2055,27 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, 'does not match'):
       defined(rt5)
 
+  def testInputSignatureWithVariableArgs(self):
+
+    def f(v):
+      v.assign_add(1)
+
+    signature = [
+        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
+    ]
+    defined = function.defun(f, input_signature=signature)
+
+    v1 = variables.Variable(0)
+    v2 = variables.Variable(0)
+
+    defined(v1)
+    self.assertEqual(v1.numpy(), 1)
+    self.assertEqual(v2.numpy(), 0)
+
+    defined(v=v2)
+    self.assertEqual(v1.numpy(), 1)
+    self.assertEqual(v2.numpy(), 1)
+
   def testTensorKeywordArguments(self):
 
     def foo(a, b):
@@ -2371,6 +2586,76 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined([[a, b], c])
     self.assertLen(total_function_cache(defined), 2)
 
+  def testCacheKeyAttrsClass(self):
+    if attr is None:
+      self.skipTest('attr module is unavailable.')
+
+    @attr.s
+    class TestClass(object):
+      a = attr.ib()
+      b = attr.ib()
+
+    @function.defun
+    def defined(l):
+      return l
+
+    defined(
+        TestClass(
+            constant_op.constant(1.),
+            [constant_op.constant(2.),
+             constant_op.constant(3.)]))
+    self.assertLen(total_function_cache(defined), 1)
+    defined(
+        TestClass(
+            constant_op.constant(1.),
+            [constant_op.constant(2.),
+             constant_op.constant(3.)]))
+    self.assertLen(total_function_cache(defined), 1)
+
+    defined(
+        TestClass([constant_op.constant(1.),
+                   constant_op.constant(2.)], constant_op.constant(3.)))
+    self.assertLen(total_function_cache(defined), 2)
+
+  def testCacheKeyVariables(self):
+    @function.defun
+    def defined(a, b, c):
+      return a + b + c
+
+    x = resource_variable_ops.ResourceVariable(0.0)
+    y = resource_variable_ops.ResourceVariable(0.0)
+    z = resource_variable_ops.ResourceVariable(0.0)
+
+    # If tensor equality is not enabled, we always get a cache miss if the
+    # function is called with different variables. With equality enabled we
+    # should only get a miss if the aliasing changed.
+    defined(x, y, z)
+    self.assertLen(total_function_cache(defined), 1)
+
+    # Calling again is a cache hit
+    defined(x, y, z)
+    self.assertLen(total_function_cache(defined), 1)
+
+    # Re-arranging arguments doesn't change signature
+    defined(z, y, x)
+    self.assertLen(total_function_cache(defined),
+                   1 if ops.Tensor._USE_EQUALITY else 2)
+
+    # Aliasing causes cache miss
+    defined(x, x, z)
+    self.assertLen(total_function_cache(defined),
+                   2 if ops.Tensor._USE_EQUALITY else 3)
+
+    # Re-arranging arguments doesn't change signature
+    defined(y, y, z)
+    self.assertLen(total_function_cache(defined),
+                   2 if ops.Tensor._USE_EQUALITY else 4)
+
+    # Different alias positions causes cache miss
+    defined(z, y, y)
+    self.assertLen(total_function_cache(defined),
+                   3 if ops.Tensor._USE_EQUALITY else 5)
+
   def testDecoratedMethod(self):
     m = DefunnedMiniModel()
     instance_call_one = m.call(array_ops.ones([1, 2]), training=True)
@@ -2852,6 +3137,66 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # Cancellation after the function executes is a no-op.
     c_mgr.start_cancel()
+
+  def testAddFunctionCallback(self):
+    functions = []
+    def function_callback(f):
+      functions.append(f)
+
+    @def_function.function
+    def plus_one(x):
+      return x + 1
+
+    try:
+      function.add_function_callback(function_callback)
+      x_float32 = numpy.array(3.0, dtype=numpy.float32)
+      self.assertAllClose(plus_one(x_float32), 4.0)
+      self.assertLen(functions, 1)
+      # Function is already created. Executing it again should not invoke the
+      # function callback.
+      self.assertAllClose(plus_one(x_float32), 4.0)
+      self.assertLen(functions, 1)
+      # Signature change leads to a new Function being built.
+      x_float64 = numpy.array(3.0, dtype=numpy.float64)
+      self.assertAllClose(plus_one(x_float64), 4.0)
+      self.assertLen(functions, 2)
+    finally:
+      function.clear_function_callbacks()
+
+  def testRemoveFunctionCallback(self):
+    functions_1 = []
+    def function_callback_1(f):
+      functions_1.append(f)
+
+    functions_2 = []
+    def function_callback_2(f):
+      functions_2.append(f)
+
+    @def_function.function
+    def plus_one(x):
+      return x + 1
+
+    try:
+      function.add_function_callback(function_callback_1)
+      function.add_function_callback(function_callback_2)
+      self.assertAllClose(plus_one(numpy.array(3.0, dtype=numpy.float32)), 4.0)
+      self.assertLen(functions_1, 1)
+      self.assertLen(functions_2, 1)
+      function.remove_function_callback(function_callback_1)
+      # The 1st callback should not be invokved after remove_function_callback()
+      # is called.
+      self.assertAllClose(plus_one(numpy.array(3.0, dtype=numpy.float64)), 4.0)
+      self.assertLen(functions_1, 1)
+      self.assertLen(functions_2, 2)
+    finally:
+      function.clear_function_callbacks()
+
+  def testClearFunctionCallbacks(self):
+    function.add_function_callback(lambda f: None)
+    function.add_function_callback(lambda f: None)
+    self.assertLen(function._function_callbacks, 2)
+    function.clear_function_callbacks()
+    self.assertEmpty(function._function_callbacks)  # pylint:disable=protected-access
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

@@ -4,7 +4,7 @@ load("//third_party:repo.bzl", "third_party_http_archive")
 
 def repo():
     third_party_http_archive(
-        name = "jpeg",
+        name = "libjpeg_turbo",
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.0.tar.gz",
             "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.0.tar.gz",

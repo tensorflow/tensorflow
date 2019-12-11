@@ -114,6 +114,10 @@ class ParameterServerStrategy(distribute_lib.Strategy):
     extended = ParameterServerStrategyExtended(
         self, cluster_resolver=cluster_resolver)
     super(ParameterServerStrategy, self).__init__(extended)
+    distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
+        "ParameterServerStrategy")
+    distribute_lib.distribution_strategy_replica_gauge.get_cell("num_ps").set(
+        len(self.extended.parameter_devices))
 
 
 @tf_export(v1=["distribute.experimental.ParameterServerStrategy"])  # pylint: disable=missing-docstring
@@ -126,6 +130,11 @@ class ParameterServerStrategyV1(distribute_lib.StrategyV1):
     super(ParameterServerStrategyV1, self).__init__(
         ParameterServerStrategyExtended(
             self, cluster_resolver=cluster_resolver))
+    distribute_lib.distribution_strategy_gauge.get_cell("V1").set(
+        "ParameterServerStrategy")
+    distribute_lib.distribution_strategy_replica_gauge.get_cell("num_ps").set(
+        len(self.extended.parameter_devices))
+
   __init__.__doc__ = ParameterServerStrategy.__init__.__doc__
 
 
@@ -290,8 +299,9 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     self._task_id = None
 
     logging.info(
-        "ParameterServerStrategy with compute_devices = %r, "
-        "variable_device = %r", compute_devices, self._variable_device)
+        "ParameterServerStrategy (CentralStorageStrategy if you are using a "
+        "single machine) with compute_devices = %r, variable_device = %r",
+        compute_devices, self._variable_device)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate(colocate_with_variable, self)

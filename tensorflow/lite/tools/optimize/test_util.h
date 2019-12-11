@@ -76,6 +76,19 @@ extern const char* kModelMixed;
 // Test model with split op.
 extern const char* kModelSplit;
 
+// Test model with LSTM op that has layer norm, has projection, without
+// peephole, without cifg.
+extern const char* kLstmCalibrated;
+extern const char* kLstmQuantized;
+
+// Test model with LSTM op that has peephole, without layer norm, without
+// projection, without cifg.
+extern const char* kLstmCalibrated2;
+extern const char* kLstmQuantized2;
+
+// Test model with an unpack op.
+extern const char* kModelWithUnpack;
+
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {
  public:

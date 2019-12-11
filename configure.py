@@ -35,7 +35,7 @@ except ImportError:
 
 _DEFAULT_CUDA_VERSION = '10'
 _DEFAULT_CUDNN_VERSION = '7'
-_DEFAULT_TENSORRT_VERSION = '5'
+_DEFAULT_TENSORRT_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 
 _TF_OPENCL_VERSION = '1.2'
@@ -49,8 +49,8 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-_TF_MIN_BAZEL_VERSION = '0.24.1'
-_TF_MAX_BAZEL_VERSION = '0.26.1'
+_TF_MIN_BAZEL_VERSION = '1.0.0'
+_TF_MAX_BAZEL_VERSION = '1.1.0'
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
@@ -60,7 +60,8 @@ NCCL_LIB_PATHS = [
 APPLE_BAZEL_FILES = [
     'tensorflow/lite/experimental/ios/BUILD',
     'tensorflow/lite/experimental/objc/BUILD',
-    'tensorflow/lite/experimental/swift/BUILD'
+    'tensorflow/lite/experimental/swift/BUILD',
+    'tensorflow/lite/tools/benchmark/experimental/ios/BUILD'
 ]
 
 # List of files to move when building for iOS.
@@ -627,6 +628,7 @@ def prompt_loop_or_load_from_env(environ_cp,
                                  check_success,
                                  error_msg,
                                  suppress_default_error=False,
+                                 resolve_symlinks=False,
                                  n_ask_attempts=_DEFAULT_PROMPT_ASK_ATTEMPTS):
   """Loop over user prompts for an ENV param until receiving a valid response.
 
@@ -647,6 +649,7 @@ def prompt_loop_or_load_from_env(environ_cp,
       invalid response upon check_success(input) failure.
     suppress_default_error: (Bool) Suppress the above error message in favor of
       one from the check_success function.
+    resolve_symlinks: (Bool) Translate symbolic links into the real filepath.
     n_ask_attempts: (Integer) Number of times to query for valid input before
       raising an error and quitting.
 
@@ -678,6 +681,8 @@ def prompt_loop_or_load_from_env(environ_cp,
                          'Assuming to be a scripting mistake.' %
                          (var_name, n_ask_attempts))
 
+  if resolve_symlinks and os.path.islink(val):
+    val = os.path.realpath(val)
   environ_cp[var_name] = val
   return val
 
@@ -813,7 +818,7 @@ def get_ndk_api_level(environ_cp, android_ndk_home_path):
   android_ndk_api_level = prompt_loop_or_load_from_env(
       environ_cp,
       var_name='ANDROID_NDK_API_LEVEL',
-      var_default='18',  # 18 is required for GPU acceleration.
+      var_default='21',  # 21 is required for ARM64 support.
       ask_for_var=('Please specify the (min) Android NDK API level to use. '
                    '[Available levels: %s]') % api_levels,
       check_success=valid_api_level,
@@ -837,6 +842,7 @@ def set_gcc_host_compiler_path(environ_cp):
       var_default=default_gcc_host_compiler_path,
       ask_for_var='Please specify which gcc should be used by nvcc as the host compiler.',
       check_success=os.path.exists,
+      resolve_symlinks=True,
       error_msg='Invalid gcc path. %s cannot be found.',
   )
 
@@ -940,7 +946,7 @@ def set_tf_tensorrt_version(environ_cp):
 
   ask_tensorrt_version = (
       'Please specify the TensorRT version you want to use. '
-      '[Leave empty to  default to TensorRT %s]: ') % _DEFAULT_TENSORRT_VERSION
+      '[Leave empty to default to TensorRT %s]: ') % _DEFAULT_TENSORRT_VERSION
   tf_tensorrt_version = get_from_env_or_user_or_default(
       environ_cp, 'TF_TENSORRT_VERSION', ask_tensorrt_version,
       _DEFAULT_TENSORRT_VERSION)
@@ -1149,29 +1155,34 @@ def system_specific_test_config(env):
   """Add default build and test flags required for TF tests to bazelrc."""
   write_to_bazelrc('test --flaky_test_attempts=3')
   write_to_bazelrc('test --test_size_filters=small,medium')
-  write_to_bazelrc(
-      'test --test_tag_filters=-benchmark-test,-no_oss,-oss_serial')
-  write_to_bazelrc('test --build_tag_filters=-benchmark-test,-no_oss')
+
+  # Each instance of --test_tag_filters or --build_tag_filters overrides all
+  # previous instances, so we need to build up a complete list and write a
+  # single list of filters for the .bazelrc file.
+
+  # Filters to use with both --test_tag_filters and --build_tag_filters
+  test_and_build_filters = ['-benchmark-test', '-no_oss']
+  # Additional filters for --test_tag_filters beyond those in
+  # test_and_build_filters
+  test_only_filters = ['-oss_serial']
   if is_windows():
+    test_and_build_filters.append('-no_windows')
     if env.get('TF_NEED_CUDA', None) == '1':
-      write_to_bazelrc(
-          'test --test_tag_filters=-no_windows,-no_windows_gpu,-no_gpu')
-      write_to_bazelrc(
-          'test --build_tag_filters=-no_windows,-no_windows_gpu,-no_gpu')
+      test_and_build_filters += ['-no_windows_gpu', '-no_gpu']
     else:
-      write_to_bazelrc('test --test_tag_filters=-no_windows,-gpu')
-      write_to_bazelrc('test --build_tag_filters=-no_windows,-gpu')
+      test_and_build_filters.append('-gpu')
   elif is_macos():
-    write_to_bazelrc('test --test_tag_filters=-gpu,-nomac,-no_mac')
-    write_to_bazelrc('test --build_tag_filters=-gpu,-nomac,-no_mac')
+    test_and_build_filters += ['-gpu', '-nomac', '-no_mac']
   elif is_linux():
     if env.get('TF_NEED_CUDA', None) == '1':
-      write_to_bazelrc('test --test_tag_filters=-no_gpu')
-      write_to_bazelrc('test --build_tag_filters=-no_gpu')
+      test_and_build_filters.append('-no_gpu')
       write_to_bazelrc('test --test_env=LD_LIBRARY_PATH')
     else:
-      write_to_bazelrc('test --test_tag_filters=-gpu')
-      write_to_bazelrc('test --build_tag_filters=-gpu')
+      test_and_build_filters.append('-gpu')
+  write_to_bazelrc('test --test_tag_filters=%s' %
+                   ','.join(test_and_build_filters + test_only_filters))
+  write_to_bazelrc('test --build_tag_filters=%s' %
+                   ','.join(test_and_build_filters))
 
 
 def set_system_libs_flag(environ_cp):
@@ -1191,21 +1202,40 @@ def set_system_libs_flag(environ_cp):
     write_to_bazelrc('build --define=INCLUDEDIR=%s' % environ_cp['INCLUDEDIR'])
 
 
+def is_reduced_optimize_huge_functions_available(environ_cp):
+  """Check to see if the system supports /d2ReducedOptimizeHugeFunctions.
+
+  The above compiler flag is a new compiler flag introduced to the Visual Studio
+  compiler in version 16.4 (available in Visual Studio 2019, Preview edition
+  only, as of 2019-11-19). TensorFlow needs this flag to massively reduce
+  compile times, but until 16.4 is officially released, we can't depend on it.
+
+  See also https://groups.google.com/a/tensorflow.org/g/build/c/SsW98Eo7l3o
+
+  Because it's very annoying to check this manually (to check the MSVC installed
+  versions, you need to use the registry, and it's not clear if Bazel will be
+  using that install version anyway), we expect enviroments who know they may
+  use this flag to export TF_VC_VERSION=16.4
+
+  TODO(angerson, gunan): Remove this function when TensorFlow's minimum VS
+  version is upgraded to 16.4.
+
+  Arguments:
+    environ_cp: Environment of the current execution
+
+  Returns:
+    boolean, whether or not /d2ReducedOptimizeHugeFunctions is available on this
+    machine.
+  """
+  return float(environ_cp.get('TF_VC_VERSION', '0')) >= 16.4
+
+
 def set_windows_build_flags(environ_cp):
   """Set Windows specific build options."""
-  # The non-monolithic build is not supported yet
-  write_to_bazelrc('build --config monolithic')
-  # Suppress warning messages
-  write_to_bazelrc('build --copt=-w --host_copt=-w')
-  # Fix winsock2.h conflicts
-  write_to_bazelrc(
-      'build --copt=-DWIN32_LEAN_AND_MEAN --host_copt=-DWIN32_LEAN_AND_MEAN '
-      '--copt=-DNOGDI --host_copt=-DNOGDI')
-  # Output more verbose information when something goes wrong
-  write_to_bazelrc('build --verbose_failures')
-  # The host and target platforms are the same in Windows build. So we don't
-  # have to distinct them. This avoids building the same targets twice.
-  write_to_bazelrc('build --distinct_host_configuration=false')
+  if is_reduced_optimize_huge_functions_available(environ_cp):
+    write_to_bazelrc(
+        'build --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions'
+    )
 
   if get_var(
       environ_cp, 'TF_OVERRIDE_EIGEN_STRONG_INLINE', 'Eigen strong inline',
@@ -1349,13 +1379,6 @@ def main():
   else:
     environ_cp['TF_CONFIGURE_IOS'] = '0'
 
-  # The numpy package on ppc64le uses OpenBLAS which has multi-threading
-  # issues that lead to incorrect answers.  Set OMP_NUM_THREADS=1 at
-  # runtime to allow the Tensorflow testcases which compare numpy
-  # results to Tensorflow results to succeed.
-  if is_ppc64le():
-    write_action_env_to_bazelrc('OMP_NUM_THREADS', 1)
-
   xla_enabled_by_default = is_linux() or is_macos()
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 xla_enabled_by_default, 'xla')
@@ -1481,9 +1504,6 @@ def main():
   set_system_libs_flag(environ_cp)
   if is_windows():
     set_windows_build_flags(environ_cp)
-
-  # Add a config option to build TensorFlow 2.0 API.
-  write_to_bazelrc('build:v2 --define=tf_api_version=2')
 
   if get_var(environ_cp, 'TF_SET_ANDROID_WORKSPACE', 'android workspace', False,
              ('Would you like to interactively configure ./WORKSPACE for '

@@ -29,7 +29,6 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/learn/python/learn/datasets",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],

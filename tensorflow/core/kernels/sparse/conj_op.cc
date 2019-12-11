@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/cwise_ops.h"
+#include "tensorflow/core/kernels/cwise_ops_common.h"
 #include "tensorflow/core/kernels/sparse/kernels.h"
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
 
@@ -86,6 +87,10 @@ NOOP_CONJ_FUNCTOR(double);
 #undef NOOP_CONJ_FUNCTOR
 
 }  // namespace
+
+REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(
+    CONJ_VARIANT_UNARY_OP, DEVICE_CPU, CSRSparseMatrix,
+    (CSRSparseMatrixUnaryHelper<CPUDevice, CSRSparseMatrixConjFunctor>));
 
 #if GOOGLE_CUDA
 

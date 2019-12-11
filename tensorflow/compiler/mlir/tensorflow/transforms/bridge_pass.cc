@@ -23,10 +23,10 @@ limitations under the License.
 namespace {
 
 // Registers an existing pipeline builder function.
-static mlir::PassPipelineRegistration pipeline(
+mlir::PassPipelineRegistration<> tpu_pipeline(
     "tf-tpu-bridge",
     "Run all the passes involved in transforming the graph before execution so "
-    "that it is suitable for targetting TPUs.",
-    mlir::TFTPU::createTPUBridge);
+    "that it is suitable for targeting TPUs.",
+    mlir::TFTPU::CreateTPUBridge);
 
 }  // anonymous namespace

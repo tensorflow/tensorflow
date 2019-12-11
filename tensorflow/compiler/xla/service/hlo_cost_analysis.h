@@ -117,10 +117,15 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleGather(const HloInstruction* gather) override;
   Status HandleScatter(const HloInstruction* scatter) override;
   Status HandleGetDimensionSize(const HloInstruction* get_size) override;
+  Status HandleSetDimensionSize(const HloInstruction* set_size) override;
   Status FinishVisit(const HloInstruction* root) override;
 
   Status Preprocess(const HloInstruction* hlo) override;
   Status Postprocess(const HloInstruction* hlo) override;
+
+  // Decorates shape_size_ by returning 0 immediately if the shape does not have
+  // a layout.
+  int64 GetShapeSize(const Shape& shape) const;
 
   // Set the rates used to calculate the time taken by the computation. These
   // need to be set before visiting starts.
@@ -142,14 +147,27 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // Returns the respective cost computed for a particular HLO instruction, or 0
   // if the HLO was not found to have a cost in the analysis.
+  //
+  // Note that the cost for sub HLO instructions are also returned if asked. For
+  // example, body and condidition of a while, fused instructions within a
+  // fusion, or the add instruction of a reduce.
   int64 flop_count(const HloInstruction& hlo) const;
   int64 transcendental_count(const HloInstruction& hlo) const;
   int64 bytes_accessed(const HloInstruction& hlo) const;
+  int64 operand_bytes_accessed(const HloInstruction& hlo, int64 operand_num,
+                               ShapeIndex index = {}) const;
+  int64 output_bytes_accessed(const HloInstruction& hlo,
+                              ShapeIndex index = {}) const;
   float optimal_seconds(const HloInstruction& hlo) const;
 
   const Properties& properties() const { return properties_sum_; }
   const float property(const string& key) const {
     return GetProperty(key, properties());
+  }
+
+  // Returns the specified per-second rate used by cost analysis.
+  const float per_second_rate(const string& key) const {
+    return GetProperty(key, per_second_rates_);
   }
 
  protected:
@@ -165,25 +183,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       const ShapeSizeFunction& shape_size, const Properties& per_second_rates);
 
   // Returns the properties computed from visiting the computation rooted at the
-  // given hlo.
-  //
-  // The difference between ProcessNestedSubcomputation and
-  // ProcessUnnestedSubcomputation is that we expect to get profile results for
-  // an unnested subcomputation's individual instructions, while we expect that
-  // a nested subcomputation is completely subsumed by its parent.
-  //
-  // For example, subcomputations inside kFusion and kMap are considered nested,
-  // while subcomputations inside kWhile and kConditional are considered
-  // unnested.
-  //
-  // Another way of thinking of this is, kFusion is implemented on the GPU
-  // backend using just one GPU kernel, while kWhile's body is implemented as a
-  // sequence of kernels, one for each HLO therein.  Backends don't necessarily
-  // need to follow this same implementation strategy, but we assume they do for
-  // the purposes of this platform-generic cost analysis.
-  StatusOr<Properties> ProcessNestedSubcomputation(HloComputation* computation);
-  StatusOr<Properties> ProcessUnnestedSubcomputation(
-      HloComputation* computation);
+  // given hlo. The cost of visited sub HLO instructions is saved to
+  // hlo_properties_, which will be used by functions such as
+  // flop_count(hlo_instruction) to return cost of a particular HLO instruction.
+  StatusOr<Properties> ProcessSubcomputation(HloComputation* computation);
 
   // Utility function to handle all element-wise operations.
   Status HandleElementwiseOp(const HloInstruction* hlo_instruction);
@@ -200,13 +203,24 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   static float GetPropertyForHlo(const HloInstruction& hlo, const string& key,
                                  const HloToProperties& hlo_to_properties);
 
-  // Decorates shape_size_ by returning 0 immediately if the shape does not have
-  // a layout.
-  int64 GetShapeSize(const Shape& shape) const;
-
   // Traverses a fusion operand to find the actual bytes accessed by the fusion
   // node.
   int64 FusionParameterReadBytes(const HloInstruction* hlo) const;
+
+  // Set bytes accessed by the specified operand and shape index.
+  void SetOperandBytesAccessed(int64 operand_num, float value);
+  void SetOperandBytesAccessed(int64 operand_num, ShapeIndex index,
+                               float value);
+
+  // Set bytes accessed by the output at the shape index.
+  void SetOutputBytesAccessed(float value);
+  void SetOutputBytesAccessed(ShapeIndex index, float value);
+
+  // Return the key that is used to index into Properties for the specified
+  // input/output at the shape index.
+  static std::string GetOperandBytesAccessedKey(int64 operand_num,
+                                                ShapeIndex index = {});
+  static std::string GetOutputBytesAccessedKey(ShapeIndex index = {});
 
   // Function which computes the size of the top-level of a given shape (not
   // including nested elements, if any). If null then bytes_accessed methods

@@ -104,7 +104,7 @@ class FunctionTest : public ::testing::Test {
       return Status::OK();
     };
     Executor* exec;
-    TF_CHECK_OK(NewLocalExecutor(params, std::move(g), &exec));
+    TF_CHECK_OK(NewLocalExecutor(params, *g, &exec));
     exec_.reset(exec);
   }
 
@@ -164,8 +164,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     OptimizerOptions opts;
     device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
-        device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-        opts));
+        device_mgr_.get(), Env::Default(), &options.config,
+        TF_GRAPH_DEF_VERSION, lib_def_.get(), opts));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
     flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
@@ -603,8 +603,7 @@ class DummyExecutorRegistrar {
 
  private:
   class Factory : public ExecutorFactory {
-    Status NewExecutor(const LocalExecutorParams& params,
-                       std::unique_ptr<const Graph> graph,
+    Status NewExecutor(const LocalExecutorParams& params, const Graph& graph,
                        std::unique_ptr<Executor>* out_executor) override {
       return errors::Internal("This is a dummy.");
     }
@@ -1855,7 +1854,8 @@ TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
 
   Tensor y;
   FunctionLibraryRuntime::Options opts;
-  opts.rendezvous = new IntraProcessRendezvous(device_mgr_.get());
+  PrivateIntraProcessRendezvous rendezvous(device_mgr_.get());
+  opts.rendezvous = &rendezvous;
   opts.source_device = "/device:CPU:1";
   // Run on flr1_, flr2_ and make sure that the device it ran on was cpu:1.
   TF_CHECK_OK(Run(flr1_, handle, opts, {}, {&y}, true));
@@ -1870,7 +1870,6 @@ TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
       y,
       test::AsTensor<tstring>({"/job:localhost/replica:0/task:0/device:CPU:1"},
                               TensorShape({})));
-  opts.rendezvous->Unref();
 }
 
 namespace {

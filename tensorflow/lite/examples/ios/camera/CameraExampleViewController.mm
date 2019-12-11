@@ -417,7 +417,7 @@ void ProcessInputWithQuantizedModel(
 #if TFLITE_USE_GPU_DELEGATE
   TFLGpuDelegateOptions options;
   options.allow_precision_loss = true;
-  options.wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeActive;
+  options.wait_type = TFLGpuDelegateWaitTypeActive;
   delegate = TFLGpuDelegateCreate(&options);
   interpreter->ModifyGraphWithDelegate(delegate);
 #endif

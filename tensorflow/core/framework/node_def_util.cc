@@ -742,7 +742,7 @@ namespace {
 
 using ::tensorflow::strings::Scanner;
 
-bool IsValidOpName(StringPiece sp) {
+bool IsValidNodeName(StringPiece sp) {
   Scanner scanner(sp);
   scanner.One(Scanner::LETTER_DIGIT_DOT)
       .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
@@ -801,16 +801,16 @@ Status ValidateOpInput(const string& input_name, bool* is_control_input) {
   }
 }
 
-Status ValidateOpName(const string& op_name) {
-  if (IsValidOpName(op_name)) {
+Status ValidateNodeName(const string& node_name) {
+  if (IsValidNodeName(node_name)) {
     return Status::OK();
   } else {
-    return errors::InvalidArgument("Illegal op name '", op_name, "'");
+    return errors::InvalidArgument("Illegal op name '", node_name, "'");
   }
 }
 
 Status ValidateExternalNodeDefSyntax(const NodeDef& node_def) {
-  Status s = ValidateOpName(node_def.name());
+  Status s = ValidateNodeName(node_def.name());
   if (!s.ok()) {
     return AttachDef(s, node_def);
   }

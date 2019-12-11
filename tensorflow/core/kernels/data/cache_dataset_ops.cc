@@ -224,7 +224,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
             lockfile_created_(false),
             iteration_completed_(false) {}
 
-      ~FileWriterIterator() {
+      ~FileWriterIterator() override {
         if (!dataset()->env_->FileExists(MetaFilename(filename_)).ok()) {
           std::vector<string> cache_files;
           Status s = dataset()->env_->GetMatchingPaths(
@@ -419,7 +419,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             dataset()->env_->NewWritableFile(lockfile_, &lockfile));
         TF_RETURN_IF_ERROR(lockfile->Append(
-            strings::StrCat(kCreatedAt, ": ", dataset()->env_->NowSeconds())));
+            strings::StrCat(kCreatedAt, ": ", EnvTime::NowSeconds())));
 
         // At this point we know that
         // 1. There is no conflicting checkpoint with prefix `filename_`.
@@ -630,6 +630,57 @@ class CacheDatasetOp::FileDatasetV2 : public CacheDatasetOp::FileDataset {
   const Tensor resource_handle_;
 };
 
+namespace {
+template <typename T, typename FullNameFn>
+Status SaveCache(IteratorStateWriter* writer, T* cache, FullNameFn full_name) {
+  size_t cache_size = cache->size();
+  TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCacheSize), cache_size));
+  for (size_t i = 0; i < cache_size; i++) {
+    auto& element = cache->at(i);
+    TF_RETURN_IF_ERROR(writer->WriteScalar(
+        full_name(strings::StrCat(kCache, "[", i, "]", kSizeSuffix)),
+        element.size()));
+    for (size_t j = 0; j < element.size(); ++j) {
+      TF_RETURN_IF_ERROR(writer->WriteTensor(
+          full_name(strings::StrCat(kCache, "[", i, "][", j, "]")),
+          element[j]));
+    }
+  }
+  return Status::OK();
+}
+
+template <typename T, typename FullNameFn>
+Status RestoreCache(IteratorContext* ctx, IteratorStateReader* reader, T* cache,
+                    FullNameFn full_name) {
+  size_t cache_size;
+  {
+    int64 temp;
+    TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCacheSize), &temp));
+    cache_size = static_cast<size_t>(temp);
+  }
+  for (size_t i = 0; i < cache_size; ++i) {
+    std::vector<Tensor> element;
+    size_t element_size;
+    {
+      int64 temp;
+      TF_RETURN_IF_ERROR(reader->ReadScalar(
+          full_name(strings::StrCat(kCache, "[", i, "]", kSizeSuffix)), &temp));
+      element_size = static_cast<size_t>(temp);
+    }
+    element.reserve(element_size);
+    for (size_t j = 0; j < element_size; ++j) {
+      element.emplace_back();
+      TF_RETURN_IF_ERROR(reader->ReadTensor(
+          full_name(strings::StrCat(kCache, "[", i, "][", j, "]")),
+          &element.back()));
+    }
+    cache->emplace_back(std::move(element));
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
 class CacheDatasetOp::MemoryDataset : public DatasetBase {
  public:
   explicit MemoryDataset(OpKernelContext* ctx, const DatasetBase* input,
@@ -714,12 +765,7 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
               return Status::OK();
             }));
       }
-      mode_ = cache_->MaybeClaim() ? Mode::write : Mode::read;
       InitializeIterator();
-      if (mode_ == Mode::read && !cache_->IsCompleted()) {
-        return errors::Internal(
-            "Cache should only be read after it has been completed.");
-      }
       return iterator_->Initialize(ctx);
     }
 
@@ -739,27 +785,10 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
 
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kMode), mode_));
-      if (cache_->IsClaimed()) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCacheClaimed), ""));
-        size_t cache_size = cache_->size();
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kCacheSize), cache_size));
-        for (size_t i = 0; i < cache_size; i++) {
-          auto& element = cache_->at(i);
-          TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat(kCache, "[", i, "]", kSizeSuffix)),
-              element.size()));
-          for (size_t j = 0; j < element.size(); ++j) {
-            TF_RETURN_IF_ERROR(writer->WriteTensor(
-                full_name(strings::StrCat(kCache, "[", i, "][", j, "]")),
-                element[j]));
-          }
-        }
-        if (cache_->IsCompleted()) {
-          TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name(kCacheCompleted), ""));
-        }
+      if (cache_->IsCompleted()) {
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCacheCompleted), ""));
+        TF_RETURN_IF_ERROR(SaveCache(
+            writer, cache_, [this](const string& s) { return full_name(s); }));
       }
       return SaveInput(writer, iterator_);
     }
@@ -769,41 +798,12 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
       mutex_lock l(mu_);
       iterator_.reset();
       cache_->Reset();
-      {
-        int64 temp;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kMode), &temp));
-        mode_ = static_cast<Mode>(temp);
-      }
-      if (reader->Contains(full_name(kCacheClaimed))) {
-        CHECK(cache_->MaybeClaim());
-        size_t cache_size;
-        {
-          int64 temp;
-          TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCacheSize), &temp));
-          cache_size = static_cast<size_t>(temp);
-        }
-        for (size_t i = 0; i < cache_size; ++i) {
-          std::vector<Tensor> element;
-          size_t element_size;
-          {
-            int64 temp;
-            TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat(kCache, "[", i, "]", kSizeSuffix)),
-                &temp));
-            element_size = static_cast<size_t>(temp);
-          }
-          element.reserve(element_size);
-          for (size_t j = 0; j < element_size; ++j) {
-            element.emplace_back();
-            TF_RETURN_IF_ERROR(reader->ReadTensor(
-                full_name(strings::StrCat(kCache, "[", i, "][", j, "]")),
-                &element.back()));
-          }
-          cache_->emplace_back(std::move(element));
-        }
-        if (reader->Contains(full_name(kCacheCompleted))) {
-          cache_->Complete();
-        }
+      if (reader->Contains(full_name(kCacheCompleted))) {
+        std::vector<std::vector<Tensor>> temp_cache;
+        TF_RETURN_IF_ERROR(
+            RestoreCache(ctx, reader, &temp_cache,
+                         [this](const string& s) { return full_name(s); }));
+        cache_->Complete(std::move(temp_cache));
       }
       InitializeIterator();
       TF_RETURN_IF_ERROR(iterator_->Initialize(ctx));
@@ -814,13 +814,11 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
     class MemoryWriterIterator : public DatasetIterator<MemoryDataset> {
      public:
       explicit MemoryWriterIterator(const Params& params, MemoryCache* cache)
-          : DatasetIterator<MemoryDataset>(params), cache_(cache) {
-        CHECK(cache_);
-      }
+          : DatasetIterator<MemoryDataset>(params), cache_(cache) {}
 
       ~MemoryWriterIterator() override {
         mutex_lock l(mu_);
-        if (cache_->size() > 0 && !cache_->IsCompleted()) {
+        if (!temp_cache_.empty() && !cache_->IsCompleted()) {
           LOG(WARNING)
               << "The calling iterator did not fully read the dataset being "
                  "cached. In order to avoid unexpected truncation of the "
@@ -843,11 +841,11 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
         if (*end_of_sequence) {
-          cache_->Complete();
+          cache_->Complete(std::move(temp_cache_));
           return Status::OK();
         }
         RecordBufferEnqueue(ctx, *out_tensors);
-        cache_->emplace_back(*out_tensors);
+        temp_cache_.emplace_back(*out_tensors);
         return Status::OK();
       }
 
@@ -860,12 +858,22 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
 
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
+        if (!cache_->IsCompleted()) {
+          TF_RETURN_IF_ERROR(
+              SaveCache(writer, &temp_cache_,
+                        [this](const string& s) { return full_name(s); }));
+        }
         return SaveInput(writer, input_impl_);
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
+        if (!reader->Contains(full_name(kCacheCompleted))) {
+          TF_RETURN_IF_ERROR(
+              RestoreCache(ctx, reader, &temp_cache_,
+                           [this](const string& s) { return full_name(s); }));
+        }
         return RestoreInput(ctx, reader, input_impl_);
       }
 
@@ -873,7 +881,8 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
       mutex mu_;
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       MemoryCache* const cache_ GUARDED_BY(mu_);  // not owned.
-    };                                            // MemoryWriterIterator
+      std::vector<std::vector<Tensor>> temp_cache_ GUARDED_BY(mu_);
+    };  // MemoryWriterIterator
 
     class MemoryReaderIterator : public DatasetIterator<MemoryDataset> {
      public:
@@ -943,25 +952,21 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
     };  // MemoryReaderIterator
 
     void InitializeIterator() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      switch (mode_) {
-        case Mode::read:
-          iterator_ = absl::make_unique<MemoryReaderIterator>(
-              MemoryReaderIterator::Params{dataset(),
-                                           strings::StrCat(prefix(), kImpl)},
-              cache_);
-          break;
-        case Mode::write:
-          iterator_ = absl::make_unique<MemoryWriterIterator>(
-              MemoryWriterIterator::Params{dataset(),
-                                           strings::StrCat(prefix(), kImpl)},
-              cache_);
+      if (cache_->IsCompleted()) {
+        iterator_ = absl::make_unique<MemoryReaderIterator>(
+            MemoryReaderIterator::Params{dataset(),
+                                         strings::StrCat(prefix(), kImpl)},
+            cache_);
+      } else {
+        iterator_ = absl::make_unique<MemoryWriterIterator>(
+            MemoryWriterIterator::Params{dataset(),
+                                         strings::StrCat(prefix(), kImpl)},
+            cache_);
       }
     }
 
     mutex mu_;
     MemoryCache* cache_ GUARDED_BY(mu_);  // not owned.
-    enum Mode { read, write };
-    Mode mode_ GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> iterator_ GUARDED_BY(mu_);
   };  // MemoryIterator
 
@@ -972,8 +977,9 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
 class CacheDatasetOp::MemoryDatasetV2 : public CacheDatasetOp::MemoryDataset {
  public:
   explicit MemoryDatasetV2(OpKernelContext* ctx, const DatasetBase* input,
-                           MemoryCache* cache, const Tensor& resource_handle)
-      : MemoryDataset(ctx, input, cache), resource_handle_(resource_handle) {}
+                           MemoryCache* cache,
+                           std::unique_ptr<OwnedResourceHandle> handle)
+      : MemoryDataset(ctx, input, cache), handle_(std::move(handle)) {}
 
   Status CheckExternalState() const override {
     return errors::FailedPrecondition(DebugString(),
@@ -989,14 +995,16 @@ class CacheDatasetOp::MemoryDatasetV2 : public CacheDatasetOp::MemoryDataset {
     Node* filename_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(tstring(""), &filename_node));
     Node* resource_handle_node = nullptr;
-    TF_RETURN_IF_ERROR(b->AddTensor(resource_handle_, &resource_handle_node));
+    Tensor handle(DT_RESOURCE, TensorShape({}));
+    handle.scalar<ResourceHandle>()() = handle_->handle();
+    TF_RETURN_IF_ERROR(b->AddTensor(handle, &resource_handle_node));
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_node, filename_node, resource_handle_node}, output));
     return Status::OK();
   }
 
  private:
-  const Tensor resource_handle_;
+  std::unique_ptr<OwnedResourceHandle> handle_;
 };
 
 CacheDatasetOp::CacheDatasetOp(OpKernelConstruction* ctx)
@@ -1013,8 +1021,15 @@ void CacheDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     if (op_version_ == 2) {
       MemoryCache* cache = nullptr;
       OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 2), &cache));
-      // Transferring cache reference ownership onto `MemoryDatasetV2`.
-      *output = new MemoryDatasetV2(ctx, input, cache, ctx->input(2));
+
+      // Create a fresh handle for the resource because the input handle can
+      // become invalid after this op executes.
+      std::unique_ptr<OwnedResourceHandle> handle;
+      OP_REQUIRES_OK(
+          ctx, OwnedResourceHandle::Create(ctx, cache, kMemoryCache, &handle));
+
+      // Ownership of cache is transferred onto `MemoryDatasetV2`.
+      *output = new MemoryDatasetV2(ctx, input, cache, std::move(handle));
     } else {
       *output = new MemoryDataset(ctx, input, /*cache=*/nullptr);
     }

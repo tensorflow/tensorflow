@@ -30,6 +30,7 @@
 #include "mlir/Parser.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Support/ToolUtilities.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/Regex.h"
@@ -45,10 +46,10 @@ using llvm::SMLoc;
 /// This typically parses the main source file, runs zero or more optimization
 /// passes, then prints the output.
 ///
-static LogicalResult
-performActions(raw_ostream &os, bool verifyDiagnostics, bool verifyPasses,
-               SourceMgr &sourceMgr, MLIRContext *context,
-               const std::vector<const mlir::PassRegistryEntry *> &passList) {
+static LogicalResult performActions(raw_ostream &os, bool verifyDiagnostics,
+                                    bool verifyPasses, SourceMgr &sourceMgr,
+                                    MLIRContext *context,
+                                    const PassPipelineCLParser &passPipeline) {
   OwningModuleRef module(parseSourceFile(sourceMgr, context));
   if (!module)
     return failure();
@@ -57,9 +58,9 @@ performActions(raw_ostream &os, bool verifyDiagnostics, bool verifyPasses,
   PassManager pm(context, verifyPasses);
   applyPassManagerCLOptions(pm);
 
-  // Run each of the passes that were selected.
-  for (const auto *passEntry : passList)
-    passEntry->addToPipeline(pm);
+  // Build the provided pipeline.
+  if (failed(passPipeline.addToPipeline(pm)))
+    return failure();
 
   // Run the pipeline.
   if (failed(pm.run(*module)))
@@ -72,10 +73,10 @@ performActions(raw_ostream &os, bool verifyDiagnostics, bool verifyPasses,
 
 /// Parses the memory buffer.  If successfully, run a series of passes against
 /// it and print the result.
-static LogicalResult
-processBuffer(raw_ostream &os, std::unique_ptr<MemoryBuffer> ownedBuffer,
-              bool verifyDiagnostics, bool verifyPasses,
-              const std::vector<const mlir::PassRegistryEntry *> &passList) {
+static LogicalResult processBuffer(raw_ostream &os,
+                                   std::unique_ptr<MemoryBuffer> ownedBuffer,
+                                   bool verifyDiagnostics, bool verifyPasses,
+                                   const PassPipelineCLParser &passPipeline) {
   // Tell sourceMgr about this buffer, which is what the parser will pick up.
   SourceMgr sourceMgr;
   sourceMgr.AddNewSourceBuffer(std::move(ownedBuffer), SMLoc());
@@ -88,7 +89,7 @@ processBuffer(raw_ostream &os, std::unique_ptr<MemoryBuffer> ownedBuffer,
   if (!verifyDiagnostics) {
     SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, &context);
     return performActions(os, verifyDiagnostics, verifyPasses, sourceMgr,
-                          &context, passList);
+                          &context, passPipeline);
   }
 
   SourceMgrDiagnosticVerifierHandler sourceMgrHandler(sourceMgr, &context);
@@ -97,59 +98,29 @@ processBuffer(raw_ostream &os, std::unique_ptr<MemoryBuffer> ownedBuffer,
   // these actions succeed or fail, we only care what diagnostics they produce
   // and whether they match our expectations.
   performActions(os, verifyDiagnostics, verifyPasses, sourceMgr, &context,
-                 passList);
+                 passPipeline);
 
   // Verify the diagnostic handler to make sure that each of the diagnostics
   // matched.
   return sourceMgrHandler.verify();
 }
 
-/// Split the specified file on a marker and process each chunk independently
-/// according to the normal processBuffer logic.  This is primarily used to
-/// allow a large number of small independent parser tests to be put into a
-/// single test, but could be used for other purposes as well.
-static LogicalResult splitAndProcessFile(
-    raw_ostream &os, std::unique_ptr<MemoryBuffer> originalBuffer,
-    bool verifyDiagnostics, bool verifyPasses,
-    const std::vector<const mlir::PassRegistryEntry *> &passList) {
-  const char marker[] = "// -----";
-  auto *origMemBuffer = originalBuffer.get();
-  SmallVector<StringRef, 8> sourceBuffers;
-  origMemBuffer->getBuffer().split(sourceBuffers, marker);
-
-  // Add the original buffer to the source manager.
-  SourceMgr fileSourceMgr;
-  fileSourceMgr.AddNewSourceBuffer(std::move(originalBuffer), SMLoc());
-
-  bool hadUnexpectedResult = false;
-
-  // Process each chunk in turn.  If any fails, then return a failure of the
-  // tool.
-  for (auto &subBuffer : sourceBuffers) {
-    auto splitLoc = SMLoc::getFromPointer(subBuffer.data());
-    unsigned splitLine = fileSourceMgr.getLineAndColumn(splitLoc).first;
-    auto subMemBuffer = MemoryBuffer::getMemBufferCopy(
-        subBuffer, origMemBuffer->getBufferIdentifier() +
-                       Twine(" split at line #") + Twine(splitLine));
-    if (failed(processBuffer(os, std::move(subMemBuffer), verifyDiagnostics,
-                             verifyPasses, passList)))
-      hadUnexpectedResult = true;
-  }
-
-  return failure(hadUnexpectedResult);
-}
-
-LogicalResult
-mlir::MlirOptMain(raw_ostream &os, std::unique_ptr<MemoryBuffer> buffer,
-                  const std::vector<const mlir::PassRegistryEntry *> &passList,
-                  bool splitInputFile, bool verifyDiagnostics,
-                  bool verifyPasses) {
+LogicalResult mlir::MlirOptMain(raw_ostream &os,
+                                std::unique_ptr<MemoryBuffer> buffer,
+                                const PassPipelineCLParser &passPipeline,
+                                bool splitInputFile, bool verifyDiagnostics,
+                                bool verifyPasses) {
   // The split-input-file mode is a very specific mode that slices the file
   // up into small pieces and checks each independently.
   if (splitInputFile)
-    return splitAndProcessFile(os, std::move(buffer), verifyDiagnostics,
-                               verifyPasses, passList);
+    return splitAndProcessBuffer(
+        std::move(buffer),
+        [&](std::unique_ptr<MemoryBuffer> chunkBuffer, raw_ostream &os) {
+          return processBuffer(os, std::move(chunkBuffer), verifyDiagnostics,
+                               verifyPasses, passPipeline);
+        },
+        os);
 
   return processBuffer(os, std::move(buffer), verifyDiagnostics, verifyPasses,
-                       passList);
+                       passPipeline);
 }

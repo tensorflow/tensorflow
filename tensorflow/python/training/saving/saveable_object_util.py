@@ -28,6 +28,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 
 
@@ -147,6 +148,9 @@ def saveable_objects_for_op(op, name):
     slice_name = None
     # pylint: disable=protected-access
     for variable in op:
+      if isinstance(variable, saveable_object.SaveableObject):
+        yield variable
+        continue
       if not isinstance(variable, variables.Variable):
         raise ValueError("Slices must all be Variables: %s" % variable)
       if not variable._save_slice_info:
@@ -193,7 +197,7 @@ def saveable_objects_for_op(op, name):
         raise ValueError("Can only save/restore ResourceVariables when "
                          "executing eagerly, got type: %s." % type(op))
 
-      variable = ops.internal_convert_to_tensor(op, as_ref=True)
+      variable = ops.convert_to_tensor(op, as_ref=True)
       if not _tensor_comes_from_variable(variable):
         raise TypeError("names_to_saveables must be a dict mapping string "
                         "names to Tensors/Variables. Not a variable: %s" %
@@ -210,7 +214,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
   """Create a dictionary of names to operation lists.
 
   Args:
-    op_list: A list, tuple, or set of Variables or SaveableObjects.
+    op_list: A (nested) list, tuple, or set of Variables or SaveableObjects.
     convert_variable_to_tensor: Whether or not to convert single Variables
       with no slice info into Tensors.
 
@@ -226,6 +230,8 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
   if not isinstance(op_list, (list, tuple, set)):
     raise TypeError("Variables to save should be passed in a dict or a "
                     "list: %s" % op_list)
+  # List casting is necessary to support sets.
+  op_list = nest.flatten(list(op_list))
   # When ResourceVariables are converted to Tensors, read ops are added to the
   # graph. Sorting the op_list ensures that the resulting graph is always
   # constructed in a deterministic way:
@@ -281,7 +287,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
           if isinstance(var, resource_variable_ops.BaseResourceVariable):
             var = var._graph_element  # pylint: disable=protected-access
           else:
-            var = ops.internal_convert_to_tensor(var, as_ref=True)
+            var = ops.convert_to_tensor(var, as_ref=True)
           if not _tensor_comes_from_variable(var):
             raise TypeError("Variable to save is not a Variable: %s" % var)
         if var.op.type == "ReadVariableOp":

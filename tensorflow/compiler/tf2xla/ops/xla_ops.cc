@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -251,6 +252,9 @@ REGISTER_OP("XlaDot")
       // the result dimensions in order, rhs dimensions followed by lhs
       // dimensions except the contracted and batch dimensions.
       std::vector<shape_inference::DimensionHandle> output_dims;
+      for (int64 lhs_dim : dimension_numbers.lhs_batch_dimensions()) {
+        output_dims.emplace_back(c->Dim(lhs_shape_handle, lhs_dim));
+      }
       const int32 lhs_rank = c->Rank(lhs_shape_handle);
       for (int64 i = 0; i < lhs_rank; ++i) {
         if (absl::c_linear_search(
@@ -626,80 +630,31 @@ REGISTER_OP("XlaEinsum")
     .Attr("equation: string")
     .Attr("T: {complex64, bfloat16, float}")
     .SetShapeFn([](shape_inference::InferenceContext* context) {
-      shape_inference::ShapeHandle input_a = context->input(0);
-      shape_inference::ShapeHandle input_b = context->input(1);
-
-      int64 rank_a, rank_b;
-      if (context->RankKnown(input_a)) {
-        rank_a = context->Rank(input_a);
-      } else {
-        context->set_output(0, context->UnknownShape());
-        return Status::OK();
-      }
-      if (context->RankKnown(input_b)) {
-        rank_b = context->Rank(input_b);
-      } else {
-        context->set_output(0, context->UnknownShape());
-        return Status::OK();
-      }
       string equation;
       TF_RETURN_IF_ERROR(context->GetAttr("equation", &equation));
-
-      std::map<char, shape_inference::DimensionHandle> left_map;
-      std::map<char, shape_inference::DimensionHandle> right_map;
-      std::vector<shape_inference::DimensionHandle> dims;
-
-      std::vector<string> equation_split = absl::StrSplit(equation, "->");
-
-      if (equation_split.size() != 2) {
-        return errors::InvalidArgument("Expected one \"->\" in equation. Got: ",
-                                       equation);
-      }
-
-      std::vector<string> lhs_rhs_split =
-          absl::StrSplit(equation_split[0], ',');
-      if (lhs_rhs_split.size() != 2) {
+      // XlaEinsum supports only two-input einsum equations.
+      if (!absl::StrContains(equation, ",")) {
         return errors::InvalidArgument("Expected one \",\" in equation. Got: ",
                                        equation);
       }
-
-      if (rank_a != lhs_rhs_split[0].size()) {
-        return errors::InvalidArgument(absl::StrCat(
-            "Expected equation[0] with size: ", rank_a, " Got '",
-            lhs_rhs_split[0], "'", " with size: ", lhs_rhs_split[0].size()));
-      }
-
-      if (rank_b != lhs_rhs_split[1].size()) {
-        return errors::InvalidArgument(absl::StrCat(
-            "Expected equation[1] with size: ", rank_b, " Got '",
-            lhs_rhs_split[1], "'", " with size: ", lhs_rhs_split[1].size()));
-      }
-
-      for (int i = 0; i < lhs_rhs_split[0].size(); ++i) {
-        left_map[lhs_rhs_split[0][i]] = context->Dim(input_a, i);
-      }
-      for (int i = 0; i < lhs_rhs_split[1].size(); ++i) {
-        right_map[lhs_rhs_split[1][i]] = context->Dim(input_b, i);
-      }
-
-      for (const char& c : equation_split[1]) {
-        if (left_map.count(c)) {
-          dims.push_back(left_map[c]);
-        } else if (right_map.count(c)) {
-          dims.push_back(right_map[c]);
-        } else {
-          return errors::InvalidArgument("Invalid equation: ", equation);
-        }
-      }
-
-      context->set_output(0, context->MakeShape(dims));
-      return Status::OK();
+      // Use EinsumShape for the rest of the inference now that we know we must
+      // have a two-input einsum.
+      return shape_inference::EinsumShape(context);
     })
     .Doc(R"doc(
 An op which supports basic einsum op with 2 inputs and 1 output.
 
 This op has better TPU performnce since it doesn't have explicitly reshape and
 transpose operations as tf.einsum does.
+)doc");
+
+REGISTER_OP("XlaSharding")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+An op which shards the input based on the given sharding attribute.
 )doc");
 
 REGISTER_OP("XlaReplicaId")

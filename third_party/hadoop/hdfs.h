@@ -167,7 +167,7 @@ LIBHDFS_EXTERNAL
 void hdfsFileFreeReadStatistics(struct hdfsReadStatistics *stats);
 
 /**
- * hdfsConnectAsUser - Connect to a hdfs file system as a specific user
+ * hdfsConnectAsUser - Connect to an hdfs file system as a specific user
  * Connect to the hdfs.
  * @param nn   The NameNode.  See hdfsBuilderSetNameNode for details.
  * @param port The port on which the server is listening.
@@ -180,7 +180,7 @@ LIBHDFS_EXTERNAL
 hdfsFS hdfsConnectAsUser(const char *nn, tPort port, const char *user);
 
 /**
- * hdfsConnect - Connect to a hdfs file system.
+ * hdfsConnect - Connect to an hdfs file system.
  * Connect to the hdfs.
  * @param nn   The NameNode.  See hdfsBuilderSetNameNode for details.
  * @param port The port on which the server is listening.
@@ -377,7 +377,7 @@ LIBHDFS_EXTERNAL
 int hdfsDisconnect(hdfsFS fs);
 
 /**
- * hdfsOpenFile - Open a hdfs file in given mode.
+ * hdfsOpenFile - Open an hdfs file in given mode.
  * @param fs The configured filesystem handle.
  * @param path The full path to the file.
  * @param flags - an | of bits/fcntl.h file flags - supported flags are
@@ -397,7 +397,7 @@ hdfsFile hdfsOpenFile(hdfsFS fs, const char *path, int flags, int bufferSize,
                       short replication, tSize blocksize);
 
 /**
- * hdfsTruncateFile - Truncate a hdfs file to given length.
+ * hdfsTruncateFile - Truncate an hdfs file to given length.
  * @param fs The configured filesystem handle.
  * @param path The full path to the file.
  * @param newlength The size the file is to be truncated to

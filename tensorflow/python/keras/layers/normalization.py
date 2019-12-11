@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -41,11 +42,26 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 class BatchNormalizationBase(Layer):
-  """Base class of Batch normalization layer (Ioffe and Szegedy, 2014).
+  r"""Normalize and scale inputs or activations. (Ioffe and Szegedy, 2014).
 
   Normalize the activations of the previous layer at each batch,
   i.e. applies a transformation that maintains the mean activation
   close to 0 and the activation standard deviation close to 1.
+
+  Batch normalization differs from other layers in several key aspects:
+
+  1) Adding BatchNormalization with `training=True` to a model causes the
+  result of one example to depend on the contents of all other examples in a
+  minibatch. Be careful when padding batches or masking examples, as these can
+  change the minibatch statistics and affect other examples.
+
+  2) Updates to the weights (moving statistics) are based on the forward pass
+  of a model rather than the result of gradient computations.
+
+  3) When performing inference using a model containing batch normalization, it
+  is generally (though not always) desirable to use accumulated statistics
+  rather than mini-batch statistics. This is acomplished by passing
+  `training=False` when calling the model, or using `model.predict`.
 
   Arguments:
     axis: Integer, the axis that should be normalized
@@ -124,11 +140,31 @@ class BatchNormalizationBase(Layer):
   Output shape:
     Same shape as input.
 
-  References:
-    - [Batch Normalization: Accelerating Deep Network Training by Reducing
-      Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
-
   {{TRAINABLE_ATTRIBUTE_NOTE}}
+
+  Normalization equations:
+    Consider the intermediate activations \(x\) of a mini-batch of size
+    \\(m\\):
+
+    We can compute the mean and variance of the batch
+
+    \\({\mu_B} = \frac{1}{m} \sum_{i=1}^{m} {x_i}\\)
+
+    \\({\sigma_B^2} = \frac{1}{m} \sum_{i=1}^{m} ({x_i} - {\mu_B})^2\\)
+
+    and then compute a normalized \\(x\\), including a small factor
+    \\({\epsilon}\\) for numerical stability.
+
+    \\(\hat{x_i} = \frac{x_i - \mu_B}{\sqrt{\sigma_B^2 + \epsilon}}\\)
+
+    And finally \\(\hat{x}\) is linearly transformed by \({\gamma}\\)
+    and \\({\beta}\\), which are learned parameters:
+
+    \\({y_i} = {\gamma * \hat{x_i} + \beta}\\)
+
+  References:
+  - [Batch Normalization: Accelerating Deep Network Training by Reducing
+    Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
   """
 
   # By default, the base class uses V2 behavior. The BatchNormalization V1
@@ -849,7 +885,7 @@ def replace_in_base_docstring(replacements):
   string = BatchNormalizationBase.__doc__
   for old, new in replacements:
     assert old in string
-    string.replace(old, new)
+    string = string.replace(old, new)
   return string
 
 
@@ -946,6 +982,31 @@ class LayerNormalization(Layer):
 
     self.supports_masking = True
 
+    # Indicates whether a faster fused implementation can be used. This will be
+    # set to True or False in build()"
+    self._fused = None
+
+  def _fused_can_be_used(self, ndims):
+    """Return false if fused implementation cannot be used.
+
+    Check if the axis is contiguous and can be collapsed into the last axis.
+    The self.axis is assumed to have no duplicates.
+    """
+    axis = sorted(self.axis)
+    can_use_fused = False
+
+    if axis[-1] == ndims - 1 and axis[-1] - axis[0] == len(axis) - 1:
+      can_use_fused = True
+
+    # fused_batch_norm will silently raise epsilon to be at least 1.001e-5, so
+    # we cannot used the fused version if epsilon is below that value. Also, the
+    # variable dtype must be float32, as fused_batch_norm only supports float32
+    # variables.
+    if self.epsilon < 1.001e-5 or self.dtype != 'float32':
+      can_use_fused = False
+
+    return can_use_fused
+
   def build(self, input_shape):
     ndims = len(input_shape)
     if ndims is None:
@@ -954,6 +1015,8 @@ class LayerNormalization(Layer):
     # Convert axis to list and resolve negatives
     if isinstance(self.axis, int):
       self.axis = [self.axis]
+    elif isinstance(self.axis, tuple):
+      self.axis = list(self.axis)
     for idx, x in enumerate(self.axis):
       if x < 0:
         self.axis[idx] = ndims + x
@@ -990,15 +1053,14 @@ class LayerNormalization(Layer):
     else:
       self.beta = None
 
+    self._fused = self._fused_can_be_used(ndims)
+
     self.built = True
 
   def call(self, inputs):
     # Compute the axes along which to reduce the mean / variance
     input_shape = inputs.shape
     ndims = len(input_shape)
-
-    # Calculate the moments on the last axis (layer activations).
-    mean, variance = nn.moments(inputs, self.axis, keep_dims=True)
 
     # Broadcasting only necessary for norm where the axis is not just
     # the last dimension
@@ -1010,16 +1072,66 @@ class LayerNormalization(Layer):
           self.axis != [ndims - 1]):
         return array_ops.reshape(v, broadcast_shape)
       return v
-    scale, offset = _broadcast(self.gamma), _broadcast(self.beta)
 
-    # Compute layer normalization using the batch_normalization function.
-    outputs = nn.batch_normalization(
-        inputs,
-        mean,
-        variance,
-        offset=offset,
-        scale=scale,
-        variance_epsilon=self.epsilon)
+    if not self._fused:
+      # Calculate the moments on the last axis (layer activations).
+      mean, variance = nn.moments(inputs, self.axis, keep_dims=True)
+
+      scale, offset = _broadcast(self.gamma), _broadcast(self.beta)
+
+      # Compute layer normalization using the batch_normalization function.
+      outputs = nn.batch_normalization(
+          inputs,
+          mean,
+          variance,
+          offset=offset,
+          scale=scale,
+          variance_epsilon=self.epsilon)
+    else:
+      # Collapse dims before self.axis, and dims in self.axis
+      pre_dim, in_dim = (1, 1)
+      axis = sorted(self.axis)
+      tensor_shape = array_ops.shape(inputs)
+      for dim in range(0, ndims):
+        dim_tensor = tensor_shape[dim]
+        if dim < axis[0]:
+          pre_dim = pre_dim * dim_tensor
+        else:
+          assert dim in axis
+          in_dim = in_dim * dim_tensor
+
+      squeezed_shape = [1, pre_dim, in_dim, 1]
+      # This fused operation requires reshaped inputs to be NCHW.
+      data_format = 'NCHW'
+
+      inputs = array_ops.reshape(inputs, squeezed_shape)
+
+      def _set_const_tensor(val, dtype, shape):
+        return array_ops.fill(shape, constant_op.constant(val, dtype=dtype))
+
+      # self.gamma and self.beta have the wrong shape for fused_batch_norm, so
+      # we cannot pass them as the scale and offset parameters. Therefore, we
+      # create two constant tensors in correct shapes for fused_batch_norm and
+      # later contuct a separate calculation on the scale and offset.
+      scale = _set_const_tensor(1.0, inputs.dtype, [pre_dim])
+      offset = _set_const_tensor(0.0, inputs.dtype, [pre_dim])
+
+      # Compute layer normalization using the fused_batch_norm function.
+      outputs, _, _ = nn.fused_batch_norm(
+          inputs,
+          scale=scale,
+          offset=offset,
+          epsilon=self.epsilon,
+          data_format=data_format)
+
+      outputs = array_ops.reshape(outputs, tensor_shape)
+
+      scale, offset = _broadcast(self.gamma), _broadcast(self.beta)
+
+      if scale is not None:
+        outputs = outputs * scale
+      if offset is not None:
+        outputs = outputs + offset
 
     # If some components of the shape got lost due to adjustments, fix that.
     outputs.set_shape(input_shape)

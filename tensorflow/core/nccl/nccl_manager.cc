@@ -21,8 +21,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #if GOOGLE_CUDA
-#include "tensorflow/core/platform/cuda.h"
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -250,14 +251,18 @@ string NcclManager::GenerateCommunicatorKey() {
 
 Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
                                     NcclManager::Communicator** communicator) {
-  // Sort by executor to make ordering of executors deterministic.
+  // Sort by device ID, executor, and global rank to make ordering of
+  // participants deterministic.
   std::sort(collective->participants.begin(), collective->participants.end(),
             [](const std::unique_ptr<Participant>& a,
                const std::unique_ptr<Participant>& b) {
-              if (a->executor == b->executor) {
-                return a->global_rank < b->global_rank;
+              if (a->gpu_device_id != b->gpu_device_id) {
+                return a->gpu_device_id < b->gpu_device_id;
               }
-              return a->executor < b->executor;
+              if (a->executor != b->executor) {
+                return a->executor < b->executor;
+              }
+              return a->global_rank < b->global_rank;
             });
 
   mutex_lock l(mu_);
@@ -697,6 +702,9 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         if (p->output) {
           recvbuff = const_cast<char*>(p->output->tensor_data().data());
           num_elements = p->output->NumElements();
+        } else {
+          // Operate in-place if no output (for the src node).
+          recvbuff = const_cast<void*>(sendbuff);
         }
         if (num_elements < 0) {
           p->done_callback(errors::Internal(

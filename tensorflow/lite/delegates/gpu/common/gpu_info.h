@@ -82,6 +82,11 @@ struct GpuInfo {
   int max_array_texture_layers = 0;
 };
 
+inline bool IsOpenGl31OrAbove(const GpuInfo& gpu_info) {
+  return (gpu_info.major_version == 3 && gpu_info.minor_version >= 1) ||
+         gpu_info.major_version > 3;
+}
+
 // Analyzes `renderer` and returns matching `GpuType` and `GpuModel`.
 void GetGpuModelAndType(const std::string& renderer, GpuModel* gpu_model,
                         GpuType* gpu_type);

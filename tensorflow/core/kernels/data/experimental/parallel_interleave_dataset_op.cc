@@ -224,16 +224,18 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           workers_(dataset()->num_threads()),
           worker_thread_states_(dataset()->num_threads()) {}
 
-    ~Iterator() override {
-      mutex_lock l(mu_);
-      cancelled_ = true;
-      // Notify all workers in case they are blocked.
-      for (auto& worker : workers_) {
-        worker.cond_var.notify_all();
-      }
+    ~Iterator() override { CancelThreads(); }
+
+    string BuildTraceMeName() override {
+      return strings::StrCat(prefix(),
+                             "#cycle_length=", dataset()->cycle_length_,
+                             ",block_length=", dataset()->block_length_,
+                             ",deterministic=", !dataset()->sloppy_, "#");
     }
 
     Status Initialize(IteratorContext* ctx) override {
+      // TODO(jsimsa): Register cancellation callback once the implementation is
+      // refactored not to hold mu_ while calling `GetNext` on the input.
       TF_RETURN_IF_ERROR(
           dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
@@ -558,6 +560,14 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       WorkerThreadState() : output_elem(Status::OK()) {}
     };
 
+    void CancelThreads() LOCKS_EXCLUDED(mu_) {
+      mutex_lock l(mu_);
+      cancelled_ = true;
+      for (auto& worker : workers_) {
+        worker.cond_var.notify_all();
+      }
+    }
+
     Status EnsureWorkerThreadsStarted(IteratorContext* ctx)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (worker_threads_.empty()) {
@@ -716,7 +726,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           // CHECKPOINT_MARKER_C
           // Non-OK iterator creation status has been notified to the
           // client.
-          workers_[thread_index].cond_var.notify_one();
+          if (dataset()->sloppy_) {
+            sloppy_cond_var_.notify_one();
+          } else {
+            workers_[thread_index].cond_var.notify_one();
+          }
         } else {
           bool end_of_sequence = false;
           while (!end_of_sequence) {

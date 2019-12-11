@@ -43,7 +43,6 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging
 
 
 class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -59,7 +58,8 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10).map(
         lambda _: random_ops.random_uniform(()))
     with self.assertRaises(errors.FailedPreconditionError):
-      self.evaluate(dataset._as_serialized_graph())
+      self.evaluate(dataset._as_serialized_graph(
+          external_state_policy=dataset_ops.ExternalStatePolicy.FAIL))
 
   @combinations.generate(test_base.default_test_combinations())
   def testAsFunctionWithMap(self):
@@ -88,13 +88,13 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           variant, original_dataset.element_spec)
       self.assertDatasetProduces(revived_dataset, list(original_dataset))
 
-  def checkNumInputs(self, dataset, num_inputs):
+  def _testNumInputs(self, dataset, num_inputs):
     self.assertLen(dataset._inputs(), num_inputs)
 
   @combinations.generate(test_base.default_test_combinations())
   def testFixedLengthRecordInputs(self):
     dataset = readers.FixedLengthRecordDataset("", 42)
-    self.checkNumInputs(dataset, 0)
+    self._testNumInputs(dataset, 0)
 
   @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorInputs(self):
@@ -102,27 +102,27 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       yield 42
 
     dataset = dataset_ops.Dataset.from_generator(gen, dtypes.int32)
-    self.checkNumInputs(dataset, 1)
+    self._testNumInputs(dataset, 1)
 
   @combinations.generate(test_base.default_test_combinations())
   def testFromTensorsInputs(self):
     dataset = dataset_ops.Dataset.from_tensors([42])
-    self.checkNumInputs(dataset, 0)
+    self._testNumInputs(dataset, 0)
 
   @combinations.generate(test_base.default_test_combinations())
   def testRangeInputs(self):
     dataset = dataset_ops.Dataset.range(10)
-    self.checkNumInputs(dataset, 0)
+    self._testNumInputs(dataset, 0)
 
   @combinations.generate(test_base.default_test_combinations())
   def testTextLineInputs(self):
     dataset = readers.TextLineDataset("")
-    self.checkNumInputs(dataset, 0)
+    self._testNumInputs(dataset, 0)
 
   @combinations.generate(test_base.default_test_combinations())
   def testTFRecordInputs(self):
     dataset = readers.TFRecordDataset("")
-    self.checkNumInputs(dataset, 1)
+    self._testNumInputs(dataset, 1)
 
   @combinations.generate(
       combinations.combine(tf_api_version=1, mode=["eager", "graph"]))
@@ -134,58 +134,58 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
             dense_shape=np.array([3, 1])))
     self.assertEmpty(dataset_fn._inputs())
 
-  def checkUnaryInputs(self, dataset_fn):
+  def _testUnaryInputs(self, dataset_fn):
     input_dataset = dataset_ops.Dataset.range(0)
     self.assertEqual([input_dataset], dataset_fn(input_dataset)._inputs())
 
   @combinations.generate(test_base.default_test_combinations())
   def testBatchInputs(self):
-    self.checkUnaryInputs(lambda x: x.batch(10))
+    self._testUnaryInputs(lambda x: x.batch(10))
 
   @combinations.generate(test_base.default_test_combinations())
   def testCacheInputs(self):
-    self.checkUnaryInputs(lambda x: x.cache())
+    self._testUnaryInputs(lambda x: x.cache())
 
   @combinations.generate(test_base.default_test_combinations())
   def testFilterInputs(self):
-    self.checkUnaryInputs(lambda x: x.filter(lambda x: True))
+    self._testUnaryInputs(lambda x: x.filter(lambda x: True))
 
   @combinations.generate(test_base.default_test_combinations())
   def testFlatMapInputs(self):
-    self.checkUnaryInputs(
+    self._testUnaryInputs(
         lambda x: x.flat_map(lambda x: dataset_ops.Dataset.range(0)))
 
   @combinations.generate(test_base.default_test_combinations())
   def testMapInputs(self):
-    self.checkUnaryInputs(lambda x: x.map(lambda x: x))
+    self._testUnaryInputs(lambda x: x.map(lambda x: x))
 
   @combinations.generate(test_base.default_test_combinations())
   def testPaddedBatchInputs(self):
-    self.checkUnaryInputs(lambda x: x.padded_batch(10, []))
+    self._testUnaryInputs(lambda x: x.padded_batch(10, []))
 
   @combinations.generate(test_base.default_test_combinations())
   def testParallelMapInputs(self):
-    self.checkUnaryInputs(lambda x: x.map(lambda x: x, num_parallel_calls=2))
+    self._testUnaryInputs(lambda x: x.map(lambda x: x, num_parallel_calls=2))
 
   @combinations.generate(test_base.default_test_combinations())
   def testRepeatInputs(self):
-    self.checkUnaryInputs(lambda x: x.repeat())
+    self._testUnaryInputs(lambda x: x.repeat())
 
   @combinations.generate(test_base.default_test_combinations())
   def testShuffleInputs(self):
-    self.checkUnaryInputs(lambda x: x.shuffle(10))
+    self._testUnaryInputs(lambda x: x.shuffle(10))
 
   @combinations.generate(test_base.default_test_combinations())
   def testSkipInputs(self):
-    self.checkUnaryInputs(lambda x: x.skip(1))
+    self._testUnaryInputs(lambda x: x.skip(1))
 
   @combinations.generate(test_base.default_test_combinations())
   def testTakeInputs(self):
-    self.checkUnaryInputs(lambda x: x.take(1))
+    self._testUnaryInputs(lambda x: x.take(1))
 
   @combinations.generate(test_base.default_test_combinations())
   def testWindowInputs(self):
-    self.checkUnaryInputs(lambda x: x.window(10))
+    self._testUnaryInputs(lambda x: x.window(10))
 
   @combinations.generate(test_base.default_test_combinations())
   def testUnaryTransformationInputsApply(self):
@@ -194,7 +194,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertEqual([input_dataset], dataset._inputs())
 
-  def checkInputsWithInterleaveFn(self, dataset_fn, interleave_parallelism):
+  def _testInputsWithInterleaveFn(self, dataset_fn, interleave_parallelism):
     input_dataset = dataset_ops.Dataset.range(0)
     dataset = input_dataset.interleave(
         lambda x: dataset_ops.Dataset.range(0),
@@ -204,11 +204,11 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testParallelInterleaveInputs(self):
-    self.checkInputsWithInterleaveFn(lambda: dataset_ops.range(0), 2)
+    self._testInputsWithInterleaveFn(lambda: dataset_ops.range(0), 2)
 
   @combinations.generate(test_base.default_test_combinations())
   def testInterleaveInputs(self):
-    self.checkInputsWithInterleaveFn(lambda: dataset_ops.range(0), None)
+    self._testInputsWithInterleaveFn(lambda: dataset_ops.range(0), None)
 
   @combinations.generate(test_base.default_test_combinations())
   def testNoWarnings(self):
@@ -217,16 +217,16 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           lambda x: dataset_ops.Dataset.range(0), cycle_length=2)
       self.assertEmpty(mock_log.call_args_list)
 
-  def checkBinaryInputs(self, dataset_fn):
+  def _testBinaryInputs(self, dataset_fn):
     input1 = dataset_ops.Dataset.range(0)
     input2 = dataset_ops.Dataset.range(1)
     self.assertEqual([input1, input2], dataset_fn(input1, input2)._inputs())
 
   @combinations.generate(test_base.default_test_combinations())
   def testConcatenateInputs(self):
-    self.checkBinaryInputs(lambda x, y: x.concatenate(y))
+    self._testBinaryInputs(lambda x, y: x.concatenate(y))
 
-  def checkVariadicInputs(self, dataset_fn, input_datasets):
+  def _testVariadicInputs(self, dataset_fn, input_datasets):
     self.assertEqual(
         nest.flatten(input_datasets),
         dataset_fn(input_datasets)._inputs())
@@ -234,20 +234,20 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testZipOneInputs(self):
     input_datasets = dataset_ops.Dataset.range(0)
-    self.checkVariadicInputs(dataset_ops.Dataset.zip, input_datasets)
+    self._testVariadicInputs(dataset_ops.Dataset.zip, input_datasets)
 
   @combinations.generate(test_base.default_test_combinations())
   def testZipNestInputs(self):
     input_datasets = (dataset_ops.Dataset.range(0),
                       (dataset_ops.Dataset.range(1),
                        dataset_ops.Dataset.range(2)))
-    self.checkVariadicInputs(dataset_ops.Dataset.zip, input_datasets)
+    self._testVariadicInputs(dataset_ops.Dataset.zip, input_datasets)
 
   @combinations.generate(test_base.default_test_combinations())
   def testZipTupleInputs(self):
     input_datasets = (dataset_ops.Dataset.range(0),
                       dataset_ops.Dataset.range(1))
-    self.checkVariadicInputs(dataset_ops.Dataset.zip, input_datasets)
+    self._testVariadicInputs(dataset_ops.Dataset.zip, input_datasets)
 
   @combinations.generate(test_base.default_test_combinations())
   def testFunctions(self):
@@ -272,7 +272,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(2, inputs.count(ds2))
     self.assertEqual(1, inputs.count(ds3))
 
-  def checkDatasetSpec(self, tf_value, expected_element_structure):
+  def _testDatasetSpec(self, tf_value, expected_element_structure):
     dataset = dataset_ops.Dataset.from_tensors(0).map(lambda _: tf_value)
     dataset_structure = structure.type_spec_from_value(dataset)
     self.assertIsInstance(dataset_structure, dataset_ops.DatasetSpec)
@@ -306,12 +306,12 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testTensorDatasetSpec(self):
-    self.checkDatasetSpec(
+    self._testDatasetSpec(
         constant_op.constant(37.0), tensor_spec.TensorSpec([], dtypes.float32))
 
   @combinations.generate(test_base.default_test_combinations())
   def testSparseTensorDatasetSpec(self):
-    self.checkDatasetSpec(
+    self._testDatasetSpec(
         sparse_tensor.SparseTensor(
             indices=[[0]],
             values=constant_op.constant([0], dtype=dtypes.int32),
@@ -319,7 +319,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testNestDatasetSpec(self):
-    self.checkDatasetSpec(
+    self._testDatasetSpec(
         {
             "a": constant_op.constant(37.0),
             "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))
@@ -334,20 +334,19 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testDatasetDatasetSpec(self):
-    self.checkDatasetSpec(
+    self._testDatasetSpec(
         dataset_ops.Dataset.from_tensor_slices(
             constant_op.constant([1, 2, 3])),
         dataset_ops.DatasetSpec(tensor_spec.TensorSpec([], dtypes.int32)))
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionalDatasetSpec(self):
-    self.checkDatasetSpec(
+    self._testDatasetSpec(
         optional_ops.Optional.from_value(37.0),
         optional_ops.OptionalSpec(tensor_spec.TensorSpec([], dtypes.float32)))
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1], mode=["graph"]))
-  def testSkipEagerSameGraphErrorOneShot(self):
+  @combinations.generate(test_base.graph_only_combinations())
+  def testSameGraphError(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
       with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
@@ -355,26 +354,27 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(tf_api_version=[1], mode=["graph"]))
-  def testSkipEagerSameGraphErrorOneShotSimple(self):
+  def testSameGraphErrorOneShot(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
-      with test.mock.patch.object(tf_logging, "warning") as mock_log:
+      with self.assertRaisesRegexp(
+          ValueError, "Please ensure that all datasets in the pipeline are "
+          "created in the same graph as the iterator."):
         _ = dataset_ops.make_one_shot_iterator(dataset)
-        self.assertRegexpMatches(
-            str(mock_log.call_args), "Please ensure that all datasets in the "
-            "pipeline are created in the same graph as the iterator.")
 
   @combinations.generate(
       combinations.combine(tf_api_version=[1], mode=["graph"]))
-  def testSkipEagerSameGraphErrorInitializable(self):
+  def testSameGraphErrorInitializable(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
-        dataset = dataset.batch(2)
+      with self.assertRaisesRegexp(
+          ValueError, "Please ensure that all datasets in the pipeline are "
+          "created in the same graph as the iterator."):
+        _ = dataset_ops.make_initializable_iterator(dataset)
 
   @combinations.generate(
       combinations.times(
-          combinations.combine(tf_api_version=[1, 2], mode="eager"),
+          test_base.eager_only_combinations(),
           combinations.combine(execution_mode=[context.ASYNC, context.SYNC])))
   def testEagerIteration(self, execution_mode):
     with context.execution_mode(execution_mode):
@@ -430,6 +430,88 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(self.evaluate(f(dataset)), 10)
       self.assertEqual(self.evaluate(f(dataset2)), 45)
       self.assertEqual(trace_count[0], 1)
+
+  # pylint: disable=g-long-lambda,unnecessary-lambda
+  @combinations.generate(test_base.default_test_combinations())
+  def testLegacyStructureAPI(self):
+    components = (np.array([1, 2, 3], dtype=np.int64), (np.array([4., 5.]),
+                                                        np.array([6., 7.])),
+                  np.array([8, 9, 10], dtype=np.int64))
+
+    dataset = dataset_ops.Dataset.from_tensors(components)
+    self.assertEqual(
+        (dtypes.int64, (dtypes.float64, dtypes.float64), dtypes.int64),
+        dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual(([3], ([2], [2]), [3]),
+                     dataset_ops.get_legacy_output_shapes(dataset))
+
+    dataset = dataset.shuffle(10, 10)
+    self.assertEqual(
+        (dtypes.int64, (dtypes.float64, dtypes.float64), dtypes.int64),
+        dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual(([3], ([2], [2]), [3]),
+                     dataset_ops.get_legacy_output_shapes(dataset))
+
+    dataset = dataset.repeat(-1)
+    self.assertEqual(
+        (dtypes.int64, (dtypes.float64, dtypes.float64), dtypes.int64),
+        dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual(([3], ([2], [2]), [3]),
+                     dataset_ops.get_legacy_output_shapes(dataset))
+
+    dataset = dataset.filter(lambda x, y, z: True)
+    self.assertEqual(
+        (dtypes.int64, (dtypes.float64, dtypes.float64), dtypes.int64),
+        dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual(([3], ([2], [2]), [3]),
+                     dataset_ops.get_legacy_output_shapes(dataset))
+
+    dataset = dataset.take(5)
+    self.assertEqual(
+        (dtypes.int64, (dtypes.float64, dtypes.float64), dtypes.int64),
+        dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual(([3], ([2], [2]), [3]),
+                     dataset_ops.get_legacy_output_shapes(dataset))
+
+    dataset = dataset.map(lambda x, y, z: ((x, z), (y[0], y[1])))
+    self.assertEqual(
+        ((dtypes.int64, dtypes.int64), (dtypes.float64, dtypes.float64)),
+        dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual((([3], [3]), ([2], [2])),
+                     dataset_ops.get_legacy_output_shapes(dataset))
+
+    dataset = dataset.flat_map(lambda x, y: dataset_ops.Dataset.from_tensors(
+        ((x[0], x[1]), (y[0], y[1]))))
+    self.assertEqual(
+        ((dtypes.int64, dtypes.int64), (dtypes.float64, dtypes.float64)),
+        dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual((([3], [3]), ([2], [2])),
+                     dataset_ops.get_legacy_output_shapes(dataset))
+
+    dataset = dataset.batch(32)
+    self.assertEqual(
+        ((dtypes.int64, dtypes.int64), (dtypes.float64, dtypes.float64)),
+        dataset_ops.get_legacy_output_types(dataset))
+    dataset_output_shapes = dataset_ops.get_legacy_output_shapes(dataset)
+    self.assertEqual(
+        (([None, 3], [None, 3]), ([None, 2], [None, 2])),
+        nest.pack_sequence_as(
+            dataset_output_shapes,
+            [s.as_list() for s in nest.flatten(dataset_output_shapes)]))
+
+    # Define a separate set of components with matching leading
+    # dimension for the from-slices constructor.
+    components_for_slices = (np.array([1, 2, 3],
+                                      dtype=np.int64), (np.array([4., 5., 6.]),
+                                                        np.array([7., 8., 9.])),
+                             np.array([10, 11, 12], dtype=np.int64))
+
+    dataset = dataset_ops.Dataset.from_tensor_slices(components_for_slices)
+    self.assertEqual(
+        (dtypes.int64, (dtypes.float64, dtypes.float64), dtypes.int64),
+        dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual(([], ([], []), []),
+                     dataset_ops.get_legacy_output_shapes(dataset))
 
 
 if __name__ == "__main__":

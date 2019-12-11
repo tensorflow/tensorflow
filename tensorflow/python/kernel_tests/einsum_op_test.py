@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import benchmark
@@ -52,21 +53,25 @@ class EinsumOpTest(test.TestCase):
 
   def testUnary(self):
     self._check('->', ())
-    self._check('aa->', (3, 3))
-    self._check('aa->a', (3, 3))
-    self._check('aaa->', (3, 3, 3))
-    self._check('aaa->a', (3, 3, 3))
-    self._check('aab->a', (3, 3, 4))
     self._check('ab->', (3, 3))
     self._check('ab->ab', (3, 3))
     self._check('abc->b', (3, 4, 5))
     self._check('abc->ca', (3, 4, 5))
     self._check('abc->cab', (3, 4, 5))
+
+  def testUnaryWithRepeatedLabels(self):
+    self._check('aa->', (3, 3))
+    self._check('aa->a', (3, 3))
+    self._check('aaa->', (3, 3, 3))
+    self._check('aaa->a', (3, 3, 3))
+    self._check('aab->a', (3, 3, 4))
     self._check('aabcc->a', (3, 3, 5, 4, 4))
     self._check('aabcc->ac', (3, 3, 5, 4, 4))
     self._check('aabcd->ad', (3, 3, 5, 4, 4))
 
   def testUnaryEllipsis(self):
+    # Unary cases with ellipsis.
+    # Edge cases.
     self._check('...->...', ())
     self._check('...->', ())
     self._check('->...', ())
@@ -78,6 +83,7 @@ class EinsumOpTest(test.TestCase):
     self._check('a...a->a...', (2, 1, 2))
     self._check('a...a->a...', (2, 3, 4, 5, 2))
 
+    # Regular cases.
     self._check('...ijk->...ki', (3, 4, 5))
     self._check('...ijk->...ki', (1, 3, 4, 5))
     self._check('...ijk->...ki', (2, 2, 3, 4, 5))
@@ -85,27 +91,47 @@ class EinsumOpTest(test.TestCase):
     # Repeated indices.
     self._check('i...ii->...i', (3, 2, 3, 3))
 
-  def testBinary(self):
+  def testBinarySimple(self):
+    # Binary cases in XLA mode must have either (a) each index appearing exactly
+    # once in both the inputs (batch or contraction index), or (b) appearing
+    # exactly once in an input and in the output (free index).
     self._check(',->', (), ())
     self._check('a,a->', (3,), (3,))
     self._check('a,a->a', (3,), (3,))
-    self._check('ba,b->', (3, 2), (3,))
     self._check('ab,b->a', (3, 4), (4,))
     self._check('ab,ab->', (3, 4), (3, 4))
+    self._check('ab,bc->ac', (3, 4), (4, 5))
     self._check('nij,jk->nik', (5, 2, 3), (3, 4))
     self._check('abc,bad->abcd', (1, 2, 3), (2, 1, 4))
+    # Based on https://github.com/google/jax/issues/37#issuecomment-448572187
+    self._check('sa,shb->shab', (2, 1), (2, 3, 4))
+
+  def testReducedIndices(self):
+    self._check('ba,b->', (3, 2), (3,))
+    self._check('ab,ab->', (3, 4), (3, 4))
+    self._check('abce,badf->abcd', (1, 2, 3, 4), (2, 1, 4, 3))
+
+  def testRepeatedIndices(self):
     # Repeated indices.
     self._check('ijj,k->ik', (2, 3, 3), (4,))
     self._check('aba,a->b', (3, 4, 3), (3,))
     # From https://github.com/dask/dask/pull/3412#discussion_r182413444
     self._check('aab,bc->ac', (2, 2, 3), (3, 4))
     self._check('aab,bcc->ac', (2, 2, 3), (3, 4, 4))
-    # Based on https://github.com/google/jax/issues/37#issuecomment-448572187
-    self._check('sa,shb->shab', (2, 1), (2, 3, 4))
+
+  def testEllipsis(self):
+    # Batch matmul with ellipsis but without broadcasting.
+    self._check('...mk,...kn->...mn', (5, 1, 2, 3), (5, 1, 3, 4))
+    # Empty batch dimensions.
+    self._check('...mk,...kn->...mn', (2, 3), (3, 4))
+    # Tensor contraction with transpose.
+    self._check('...ija,aijb...->ba...ij', (1, 2, 2, 3, 1), (1, 2, 3, 4, 1, 2))
+    # Output subscripts may omit ellipsis when batch shape is empty.
+    self._check('...mk,...kn->mn', (2, 3), (3, 4))
+    self._check('...mk,kn->mn', (2, 3), (3, 4))
+    self._check('mk,...kn->mn', (2, 3), (3, 4))
 
   def testBroadcasting(self):
-    # Batch matmul without broadcasting.
-    self._check('...ij,...jk->...ik', (5, 1, 2, 3), (5, 1, 3, 4))
     # Batch matmul with broadcasting.
     self._check('...ij,...jk->...ik', (1, 2, 3), (3, 5))
     self._check('...ij,...jk->...ik', (2, 3), (1, 3, 5))
@@ -113,14 +139,17 @@ class EinsumOpTest(test.TestCase):
     self._check('...ij,...jk->...ik', (2, 3), (5, 3, 5))
     self._check('...ij,...jk->...ik', (3, 1, 2, 3), (1, 1, 7, 3, 5))
     self._check('i...j,j...k->...ik', (2, 1, 3, 1, 3), (3, 1, 7, 5))
+    # Following 2 from https://stackoverflow.com/a/19203475/1611416
+    self._check('...abc,...abcd->...d', (1, 1, 2, 3, 4), (5, 2, 3, 4, 6))
+    self._check('ab...,b->ab...', (2, 3, 1, 1, 5), (3,))
+    self._check('i...j,j...k->i...k', (3, 1, 2, 2), (2, 2, 3, 1, 4))
+
+  def testBroadcastingWithRepeatedIndices(self):
     # Broadcasting with repeated indices.
     self._check('ij,jk...k->i...', (3, 2), (2, 4, 1, 4))
     self._check('ij,jk...k->...i', (3, 2), (2, 4, 5, 4))
     self._check('ijj,jk...k->i...', (3, 2, 2), (2, 4, 1, 4))
     self._check('i...jj,jk...k->i...', (3, 3, 1, 2, 2), (2, 4, 1, 5, 4))
-    # Following 2 from # https://stackoverflow.com/a/19203475/1611416
-    self._check('...abc,...abcd->...d', (1, 1, 2, 3, 4), (5, 2, 3, 4, 6))
-    self._check('ab...,b->ab...', (2, 3, 1, 1, 5), (3,))
 
   def testDtypes(self):
     bfloat16 = dtypes.bfloat16.as_numpy_dtype
@@ -153,6 +182,7 @@ class EinsumOpTest(test.TestCase):
     ]:
       check(dtype)
 
+  @test_util.disable_xla('b/131919749')
   @test_util.run_in_graph_and_eager_modes
   def testInvalid(self):
     r = np.random.RandomState(0)
@@ -202,15 +232,150 @@ class EinsumOpTest(test.TestCase):
           ((4, 3), (None, 3)))
     check('...ij,...jk->...ik', ((3, 1, 2, 3), None), ((1, 7, 3, 4), None))
 
+  @test_util.disable_xla('b/131919749')
   def testOutputRepeatedLabels(self):
-    # This is the reverse operation of repeated input labels, to be used for
-    # computing symbolic gradients of einsum.
+    # This is the reverse operation of generalized traces, to be used for
+    # computing symbolic gradients of einsum. Note: this operation is not
+    # supported by np.einsum as it's only required for gradients.
     r = np.random.RandomState(0)
     a = r.randn(2, 2)
     s = 'a->aa'
     diag_a = np.diag(np.diag(a))
     b = self.evaluate(gen_linalg_ops.einsum([np.diag(a)], s))
     self.assertAllClose(diag_a, b, atol=1e-4, rtol=1e-4)
+
+  def testEmpty(self):
+    def check(equation, input_shapes, output_shape):
+      # All these cases result in an output filled with zeros, so we don't call
+      # np.einsum. Also np.einsum doesn't support generalized diagonals which
+      # are needed for EinsumOp gradients.
+      r = np.random.RandomState(0)
+      inputs = [np.array(r.randn(*shape)) for shape in input_shapes]
+      output = self.evaluate(gen_linalg_ops.einsum(inputs, equation))
+      self.assertAllClose(output, np.zeros(output_shape), atol=1e-4, rtol=1e-4)
+
+    # Contractions along zero-sized dimensons.
+    check('ab,bc->ac', [(0, 10), (10, 10)], (0, 10))
+    # From transformer xl.
+    check('ibnd,ijbn->jnd', [(1, 0, 5, 10), (1, 1, 0, 5)], (1, 5, 10))
+
+  @test_util.disable_xla('b/131919749')
+  def testEmptyWithRepeatedLabels(self):
+
+    def check(equation, input_shapes, output_shape):
+      # All these cases result in an output filled with zeros, so we don't call
+      # np.einsum. Also np.einsum doesn't support generalized diagonals which
+      # are needed for EinsumOp gradients.
+      r = np.random.RandomState(0)
+      inputs = [np.array(r.randn(*shape)) for shape in input_shapes]
+      output = self.evaluate(gen_linalg_ops.einsum(inputs, equation))
+      self.assertAllClose(output, np.zeros(output_shape), atol=1e-4, rtol=1e-4)
+
+    # Generalized traces with zero-sized dimensions.
+    check('aab,bc->ac', [(0, 0, 10), (10, 10)], (0, 10))
+    check('aaab,bc->c', [(0, 0, 0, 3), (3, 4)], (4,))
+    # Generalized diagonals along with contraction.
+    check('ab,bc->aaca', [(0, 10), (10, 5)], (0, 0, 5, 0))
+    check('ab,bc->aaa', [(0, 10), (10, 5)], (0, 0, 0))
+    check('ab,bc->cc', [(0, 10), (10, 5)], (5, 5))
+    check('ab,ab->aaa', [(0, 5), (0, 5)], (0, 0, 0))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class EinsumGradTest(test.TestCase):
+
+  def _check_gradient(self, s, *input_shapes):
+    with self.cached_session():
+      r = np.random.RandomState(0)
+      inputs = [np.array(r.randn(*shape), np.float64) for shape in input_shapes]
+      input_tensors = [constant_op.constant(x, shape=x.shape) for x in inputs]
+      analytical, numerical = gradient_checker_v2.compute_gradient(
+          lambda *xs: gen_linalg_ops.einsum(xs, s), input_tensors)
+      self.assertLess(
+          gradient_checker_v2.max_error(analytical, numerical), 1e-4)
+
+  @test_util.disable_xla('b/131919749')
+  def testUnary(self):
+    # Unary cases.
+    self._check_gradient('->', ())
+    self._check_gradient('aaa->a', (3, 3, 3))
+    self._check_gradient('aabcd->ad', (3, 3, 5, 4, 4))
+    self._check_gradient('aabcd->add', (3, 3, 5, 4, 4))
+    self._check_gradient('abcd->da', (3, 5, 4, 2))
+
+  @test_util.disable_xla('b/131919749')
+  def testUnaryEllipsis(self):
+    self._check_gradient('...->...', ())
+    self._check_gradient('...->', ())
+    self._check_gradient('->...', ())
+
+    # Tests from dask
+    self._check_gradient('a...a->a...', (2, 2))
+    self._check_gradient('a...a->', (2, 2))
+    self._check_gradient('a...a->...', (2, 5, 1, 2))
+    self._check_gradient('a...a->a...', (2, 1, 2))
+    self._check_gradient('a...a->a...', (2, 3, 4, 5, 2))
+
+    self._check_gradient('...ijk->...ki', (3, 4, 5))
+    self._check_gradient('...ijk->...ki', (1, 3, 4, 5))
+    self._check_gradient('...ijk->...ki', (2, 2, 3, 4, 5))
+    self._check_gradient('ab...cd->da...', (3, 5, 2, 3, 4, 2))
+
+  def testBinarySimple(self):
+    # Binary cases in XLA mode must have either (a) each index appearing exactly
+    # once in both the inputs (batch or contraction index), or (b) appearing
+    # exactly once in an input and in the output (free index).
+    self._check_gradient(',->', (), ())
+    self._check_gradient('a,a->', (3,), (3,))
+    self._check_gradient('a,a->a', (3,), (3,))
+    self._check_gradient('ab,b->a', (3, 4), (4,))
+    self._check_gradient('ab,ab->', (3, 4), (3, 4))
+    self._check_gradient('ab,bc->ac', (3, 4), (4, 5))
+    self._check_gradient('nij,jk->nik', (5, 2, 3), (3, 4))
+    self._check_gradient('abc,bad->abcd', (1, 2, 3), (2, 1, 4))
+    # Based on https://github.com/google/jax/issues/37#issuecomment-448572187
+    self._check_gradient('sa,shb->shab', (2, 1), (2, 3, 4))
+
+  def testEmpty(self):
+    # From Transformer XL.
+    self._check_gradient('ibnd,ijbn->jnd', (1, 0, 5, 10), (1, 1, 0, 5))
+
+  def testReducedIndices(self):
+    self._check_gradient('ba,b->', (3, 2), (3,))
+    self._check_gradient('ab,ab->', (3, 4), (3, 4))
+    self._check_gradient('ijkm,ijln->ijmn', (2, 3, 3, 4), (2, 3, 3, 2))
+    self._check_gradient('abce,badf->abcd', (1, 2, 3, 4), (2, 1, 4, 3))
+
+  @test_util.disable_xla('b/131919749')
+  def testReducedIndicesWithRepeatedLabels(self):
+    self._check_gradient('abce,badf->bcba', (1, 2, 3, 4), (2, 1, 4, 3))
+
+  @test_util.disable_xla('b/131919749')
+  def testRepeatedLabels(self):
+    # Repeated indices.
+    self._check_gradient('aba,a->b', (3, 4, 3), (3,))
+    self._check_gradient('ijj,k->ik', (2, 3, 3), (4,))
+    self._check_gradient('ill,k->ik', (2, 3, 3), (4,))
+    # From https://github.com/dask/dask/pull/3412#discussion_r182413444
+    self._check_gradient('aab,bc->ac', (1, 1, 3), (3, 4))
+    self._check_gradient('aab,bcc->ac', (2, 2, 3), (3, 4, 4))
+
+  @test_util.disable_xla('b/131919749')
+  def testEmptyWithRepeatedLabels(self):
+    self._check_gradient('aab,bc->ac', (0, 0, 10), (10, 10))
+    self._check_gradient('aab,bc->ac', (1, 1, 0), (0, 10))
+    self._check_gradient('aaab,bc->c', (0, 0, 0, 3), (3, 4))
+
+  def testBroadcasting(self):
+    self._check_gradient('...ij,...jk->...ik', (3, 2), (2, 4))
+    self._check_gradient('ij...,jk...->ik...', (3, 2, 1), (2, 4))
+    self._check_gradient('...ij,...jk->...ik', (3, 1, 3, 2), (1, 5, 2, 4))
+    self._check_gradient('i...j,j...k->i...k', (3, 1, 2, 2), (2, 2, 3, 1, 4))
+
+  @test_util.disable_xla('b/131919749')
+  def testBroadcastingWithRepeatedLabels(self):
+    self._check_gradient('ij,jk...k->i...', (3, 2), (2, 4, 1, 4))
+    self._check_gradient('aab,b...c->a...c', (1, 1, 3), (3, 1, 1, 4))
 
 
 class EinsumBenchmark(test.Benchmark):

@@ -43,6 +43,7 @@ void RunPass(const GraphDef& original, GraphDef* rewritten,
              FunctionLibraryDefinition* flib_def = nullptr) {
   std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
   GraphConstructorOptions opts;
+  opts.add_default_attributes = false;
   TF_ASSERT_OK(ConvertGraphDefToGraph(opts, original, graph.get()));
   GraphOptimizationPassOptions options;
   options.graph = &graph;

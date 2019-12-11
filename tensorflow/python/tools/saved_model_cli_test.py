@@ -211,7 +211,7 @@ Defined Functions:
     Option #1
       Callable with:
         Argument #1
-          y: TensorSpec(shape=(), dtype=tf.int32, name=u'y')
+          y: TensorSpec(shape=(), dtype=tf.int32, name='y')
         Argument #2
           DType: int
           Value: 7
@@ -220,9 +220,9 @@ Defined Functions:
     Option #1
       Callable with:
         Argument #1
-          a: TensorSpec(shape=(), dtype=tf.int32, name=u'a')
+          a: TensorSpec(shape=(), dtype=tf.int32, name='a')
         Argument #2
-          b: TensorSpec(shape=(), dtype=tf.int32, name=u'b')
+          b: TensorSpec(shape=(), dtype=tf.int32, name='b')
         Argument #3
           DType: bool
           Value: True
@@ -231,7 +231,7 @@ Defined Functions:
     Option #1
       Callable with:
         Argument #1
-          x: TensorSpec(shape=(2, 2), dtype=tf.float32, name=u'x')
+          x: TensorSpec(shape=(2, 2), dtype=tf.float32, name='x')
 """.strip()  # pylint: enable=line-too-long
     self.maxDiff = None  # Produce a useful error msg if the comparison fails
     self.assertMultiLineEqual(output, exp_out)

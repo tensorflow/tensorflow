@@ -18,6 +18,13 @@ tensorflow::swig::FlattenForData
 tensorflow::swig::AssertSameStructureForData
 tensorflow::swig::RegisterType
 
+[util_port] # util_port
+tensorflow::IsGoogleCudaEnabled
+tensorflow::IsBuiltWithROCm
+tensorflow::IsBuiltWithNvcc
+tensorflow::GpuSupportsHalfMatMulAndConv
+tensorflow::IsMklEnabled
+
 [stream_executor_pimpl] # stat_summarizer
 stream_executor::StreamExecutor::EnablePeerAccessTo
 stream_executor::StreamExecutor::CanEnablePeerAccessTo
@@ -32,3 +39,87 @@ tensorflow::tfprof::Profile
 tensorflow::tfprof::PrintModelAnalysis
 tensorflow::tfprof::SerializeToString
 
+[graph_analyzer_tool] # graph_analyzer
+tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
+
+[bfloat16_lib] # bfloat16
+tensorflow::RegisterNumpyBfloat16
+tensorflow::Bfloat16PyType
+
+[events_writer] # events_writer
+tensorflow::EventsWriter::Init
+tensorflow::EventsWriter::InitWithSuffix
+tensorflow::EventsWriter::WriteSerializedEvent
+tensorflow::EventsWriter::Flush
+tensorflow::EventsWriter::Close
+
+[py_func_lib] # py_func
+tensorflow::InitializePyTrampoline
+
+[framework_internal_impl] # op_def_registry, dtypes
+tensorflow::BaseType
+tensorflow::DataTypeString
+tensorflow::DataTypeIsComplex
+tensorflow::DataTypeIsFloating
+tensorflow::DataTypeIsInteger
+tensorflow::DataTypeIsQuantized
+tensorflow::DataTypeIsUnsigned
+tensorflow::DataTypeSize
+tensorflow::OpRegistry::Global
+tensorflow::OpRegistry::LookUpOpDef
+tensorflow::RemoveNonDeprecationDescriptionsFromOpDef
+
+[lib_internal_impl]  # device_lib
+tensorflow::Status::code
+tensorflow::Status::error_message
+tensorflow::Status::ok()
+
+[core_cpu_impl]  # device_lib
+tensorflow::Device::attributes
+tensorflow::DeviceFactory::AddDevices
+tensorflow::SessionOptions::SessionOptions
+tensorflow::DoQuantizeTrainingOnSerializedGraphDef
+
+[protos_all]  # device_lib, dtypes
+tensorflow::DataType_IsValid
+tensorflow::ConfigProto::ConfigProto
+tensorflow::ConfigProto::ParseFromString
+tensorflow::DeviceAttributes::SerializeToString
+
+[py_exception_registry] # py_exception_registry
+tensorflow::PyExceptionRegistry::Init
+tensorflow::PyExceptionRegistry::Lookup
+
+[kernel_registry] # kernel_registry
+tensorflow::swig::TryFindKernelClass
+
+[toco_python_api] # toco_python_api
+toco::TocoConvert
+toco::TocoGetPotentiallySupportedOps
+
+[transform_graph_lib] # transform_graph
+tensorflow::graph_transforms::TransformGraph
+tensorflow::graph_transforms::ParseTransformParameters
+
+[checkpoint_reader] # py_checkpoint_reader
+tensorflow::checkpoint::CheckpointReader
+tensorflow::checkpoint::CheckpointReader::Init
+tensorflow::checkpoint::CheckpointReader::DebugString
+tensorflow::checkpoint::CheckpointReader::GetVariableToShapeMap
+tensorflow::checkpoint::CheckpointReader::GetVariableToDataTypeMap
+tensorflow::checkpoint::CheckpointReader::GetTensor
+tensorflow::checkpoint::CheckpointReader::HasTensor
+
+[tensor_bundle] # py_checkpoint_reader
+tensorflow::BundleReader::BundleReader
+tensorflow::BundleReader::~BundleReader
+
+[ndarray_tensor] # py_checkpoint_reader
+tensorflow::TensorToNdarray
+
+[safe_ptr] # py_checkpoint_reader
+tensorflow::detail::PyDecrefDeleter
+tensorflow::make_safe
+
+[python_op_gen] # python_op_gen
+tensorflow::GetPythonWrappers

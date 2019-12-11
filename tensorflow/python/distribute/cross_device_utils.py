@@ -318,7 +318,8 @@ def build_collective_reduce(input_tensors,
                             num_workers,
                             collective_keys,
                             reduction_op='Add',
-                            unary_op='Id'):
+                            unary_op='Id',
+                            communication_hint='auto'):
   """Build a subgraph that does one full all-reduce, using the collective Op.
 
   Args:
@@ -330,6 +331,8 @@ def build_collective_reduce(input_tensors,
     collective_keys: a CollectiveKeys object.
     reduction_op: string naming the reduction op.
     unary_op: string naming the unary final op.
+    communication_hint: string providing hint to runtime for choosing collective
+      implementation.
 
   Returns:
     An array of final tensors, one per device, computed by the full reduction.
@@ -354,7 +357,7 @@ def build_collective_reduce(input_tensors,
       with ops.device(devices[d]):
         reduce_op = collective_ops.all_reduce(
             input_tensors[d], group_size, group_key, instance_key, reduction_op,
-            unary_op, subdiv_offsets)
+            unary_op, subdiv_offsets, communication_hint)
         out_tensors.append(reduce_op)
     return out_tensors
 

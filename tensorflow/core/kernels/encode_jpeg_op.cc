@@ -164,11 +164,11 @@ class EncodeJpegVariableQualityOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(quality.shape()),
                 errors::InvalidArgument("quality must be scalar: ",
                                         quality.shape().DebugString()));
+    adjusted_flags.quality = quality.scalar<int>()();
     OP_REQUIRES(context,
                 0 <= adjusted_flags.quality && adjusted_flags.quality <= 100,
                 errors::InvalidArgument("quality must be in [0,100], got ",
                                         adjusted_flags.quality));
-    adjusted_flags.quality = quality.scalar<int>()();
 
     // Autodetect format.
     int channels;

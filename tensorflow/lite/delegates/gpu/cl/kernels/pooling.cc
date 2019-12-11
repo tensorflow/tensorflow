@@ -26,137 +26,169 @@ namespace cl {
 namespace {
 
 std::string GetAveragePoolingKernelCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    const CLDevice& device,
+    const OperationDef& op_def, bool stride_correction, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  TensorCodeGenerator src_tensor("src_data",
+                                 {"src_size.x", "src_size.y", "src_size.z"},
+                                 op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data",
+                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
+                                 op_def.dst_tensors[0]);
 
   const auto address_mode = GetFastestZeroMode(device);
 
-  std::string code = GetCommonDefines(precision);
+  std::string c = GetCommonDefines(op_def.precision);
 
-  code += "__kernel void main_function(\n";
-  code += src_tensor.GetDeclaration(AccessType::READ);
-  code += GetArgsDeclaration(linked_operations);
-  code += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  code += "    int4 src_size,             \n";
-  code += "    int4 dst_size,             \n";
-  code += "    int2 kernel_size,          \n";
-  code += "    int2 padding,              \n";
-  code += "    int2 stride                \n";
-  code += ") {\n";
-  code += "  int X = get_global_id(0);\n";
-  code += "  int Y = get_global_id(1);\n";
-  code += "  int Z = get_global_id(2);\n";
-  code += "  if (X >= dst_size.x || Y >= dst_size.y) return; \n";
-  code += "  float4 r = (float4)(0.0f);\n";
-  code += "  float window_size = 0.0;\n";
-  code += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
-  code += "    int y_c = Y * stride.y - padding.y + ky;\n";
-  code += "    bool outside_y = y_c < 0 || y_c >= src_size.y;\n";
-  code += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
-  code += "      int x_c = X * stride.x - padding.x + kx;\n";
-  code += "      bool outside = outside_y || x_c < 0 || x_c >= src_size.x;\n";
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
-    code += "     r += !outside ? " +
-            src_tensor.ReadAsFloat3D("x_c", "y_c", "Z",
-                                     TextureAddressMode::DONT_CARE) +
-            " : (float4)(0.0f);\n";
+  const bool manual_clamp =
+      op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER ||
+      op_def.src_tensors[0].storage_type == TensorStorageType::IMAGE_BUFFER;
+
+  c += "__kernel void main_function(\n";
+  c += src_tensor.GetDeclaration(AccessType::READ);
+  c += GetArgsDeclaration(linked_operations);
+  c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
+  c += "    int4 src_size,             \n";
+  c += "    int4 dst_size,             \n";
+  c += "    int2 kernel_size,          \n";
+  c += "    int2 padding,              \n";
+  c += "    int2 stride                \n";
+  c += ") {\n";
+  c += "  int X = get_global_id(0);\n";
+  c += "  int Y = get_global_id(1);\n";
+  c += "  int Z = get_global_id(2);\n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) return;\n";
+  c += "  float4 r = (float4)(0.0f);\n";
+  c += "  float window_size = 0.0;\n";
+  if (stride_correction) {
+    c += "  int xs = " +
+         GetXStrideCorrected("X", "src_size.w", "stride.x", "padding.x") +
+         ";\n";
   } else {
-    code += "      r += " +
-            src_tensor.ReadAsFloat3D("x_c", "y_c", "Z", address_mode) + ";\n";
+    c += "  int xs = X * stride.x + padding.x;\n";
   }
-  code += "        window_size += !outside ? 1.0 : 0.0;\n";
-  code += "    }\n";
-  code += "  }\n";
+  c += "  int ys = Y * stride.y + padding.y;\n";
+  c += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
+  c += "    int y_c = ys + ky;\n";
+  c += "    bool outside_y = y_c < 0 || y_c >= src_size.y;\n";
+  c += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
+  if (op_def.batch_support) {
+    c += "      int x_c = xs + kx * src_size.w;\n";
+  } else {
+    c += "      int x_c = xs + kx;\n";
+  }
+  c += "      bool outside = outside_y || x_c < 0 || x_c >= src_size.x;\n";
+  if (manual_clamp) {
+    c += "     r += !outside ? " + src_tensor.ReadAsFloat3D("x_c", "y_c", "Z") +
+         " : (float4)(0.0f);\n";
+  } else {
+    c += "      r += " +
+         src_tensor.ReadAsFloat3D("x_c", "y_c", "Z", address_mode) + ";\n";
+  }
+  c += "        window_size += !outside ? 1.0 : 0.0;\n";
+  c += "    }\n";
+  c += "  }\n";
   // If window_size==0, window covered nothing. This situation is a sign of
   // incorrectly constructed operation. NaNs are expected as output.
-  code += "  FLT4 result = TO_FLT4(r / window_size);\n";
-  code += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  code += PostProcess(linked_operations, "result", "Z", "address");
-  code += "  " + dst_tensor.Write3D("result", "address");
-  code += "}\n";
+  c += "  FLT4 result = TO_FLT4(r / window_size);\n";
+  const LinkingContext context{"result", "X", "Y", "Z"};
+  c += PostProcess(linked_operations, context);
+  c += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");
+  c += "}\n";
 
-  return code;
+  return c;
 }
 
 std::string GetMaxPoolingKernelCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
+    const OperationDef& op_def, bool stride_correction,
     const std::vector<ElementwiseOperation*>& linked_operations,
     bool output_indices) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
-  TensorCodeGenerator indices_tensor("dst_indices", "dst_size", dst_descriptor);
+  TensorCodeGenerator src_tensor("src_data",
+                                 {"src_size.x", "src_size.y", "src_size.z"},
+                                 op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data",
+                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
+                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator indices_tensor("dst_indices",
+                                     {"dst_size.x", "dst_size.y", "dst_size.z"},
+                                     op_def.dst_tensors[1]);
 
-  std::string code = GetCommonDefines(precision);
+  std::string c = GetCommonDefines(op_def.precision);
 
-  code += "__kernel void main_function(\n";
-  code += src_tensor.GetDeclaration(AccessType::READ);
-  code += GetArgsDeclaration(linked_operations);
-  code += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
+  c += "__kernel void main_function(\n";
+  c += src_tensor.GetDeclaration(AccessType::READ);
+  c += GetArgsDeclaration(linked_operations);
+  c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
   if (output_indices) {
-    code += indices_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
+    c += indices_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
   }
-  code += "    int4 src_size,             \n";
-  code += "    int4 dst_size,             \n";
-  code += "    int2 kernel_size,          \n";
-  code += "    int2 padding,              \n";
-  code += "    int2 stride                \n";
-  code += ") {\n";
-  code += "  int X = get_global_id(0);\n";
-  code += "  int Y = get_global_id(1);\n";
-  code += "  int Z = get_global_id(2);\n";
-  code += "  if (X >= dst_size.x || Y >= dst_size.y) return; \n";
-  code += "  FLT4 maximum = (FLT4)(-10000.0f);\n";
+  c += "    int4 src_size,             \n";
+  c += "    int4 dst_size,             \n";
+  c += "    int2 kernel_size,          \n";
+  c += "    int2 padding,              \n";
+  c += "    int2 stride                \n";
+  c += ") {\n";
+  c += "  int X = get_global_id(0);\n";
+  c += "  int Y = get_global_id(1);\n";
+  c += "  int Z = get_global_id(2);\n";
+  c +=
+      "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) return; \n";
+  c += "  FLT4 maximum = (FLT4)(-10000.0f);\n";
   if (output_indices) {
-    code += "  FLT4 indexes = (FLT4)(0.0f);\n";
-    code += "  FLT index_counter = (FLT)(0.1f);\n";
+    c += "  FLT4 indexes = (FLT4)(0.0f);\n";
+    c += "  FLT index_counter = (FLT)(0.1f);\n";
   }
-  code += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
-  code += "    int y_c = Y * stride.y - padding.y + ky;\n";
-  code += "    bool outside_y = y_c < 0 || y_c >= src_size.y;\n";
-  code += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
-  code += "      int x_c = X * stride.x - padding.x + kx;\n";
-  code += "      bool outside_x = x_c < 0 || x_c >= src_size.x;\n";
-  code += "      if (!outside_x && !outside_y) {\n";
-  code += "        FLT4 src = " +
-          src_tensor.Read3D("x_c", "y_c", "Z", TextureAddressMode::DONT_CARE) +
-          ";\n";
+  if (stride_correction) {
+    c += "  int xs = " +
+         GetXStrideCorrected("X", "src_size.w", "stride.x", "padding.x") +
+         ";\n";
+  } else {
+    c += "  int xs = X * stride.x + padding.x;\n";
+  }
+  c += "  int ys = Y * stride.y + padding.y;\n";
+  c += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
+  c += "    int y_c = ys + ky;\n";
+  c += "    bool outside_y = y_c < 0 || y_c >= src_size.y;\n";
+  c += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
+  if (op_def.batch_support) {
+    c += "      int x_c = xs + kx * src_size.w;\n";
+  } else {
+    c += "      int x_c = xs + kx;\n";
+  }
+  c += "      bool outside_x = x_c < 0 || x_c >= src_size.x;\n";
+  c += "      if (!outside_x && !outside_y) {\n";
+  c += "        FLT4 src = " + src_tensor.Read3D("x_c", "y_c", "Z") + ";\n";
   if (output_indices) {
-    code += "        if (src.x > maximum.x) {\n";
-    code += "          indexes.x = index_counter;\n";
-    code += "          maximum.x = src.x;\n";
-    code += "        }\n";
-    code += "        if (src.y > maximum.y) {\n";
-    code += "          indexes.y = index_counter;\n";
-    code += "          maximum.y = src.y;\n";
-    code += "        }\n";
-    code += "        if (src.z > maximum.z) {\n";
-    code += "          indexes.z = index_counter;\n";
-    code += "          maximum.z = src.z;\n";
-    code += "        }\n";
-    code += "        if (src.w > maximum.w) {\n";
-    code += "          indexes.w = index_counter;\n";
-    code += "          maximum.w = src.w;\n";
-    code += "        }\n";
-    code += "        index_counter += (FLT)(1.0f);\n";
+    c += "        if (src.x > maximum.x) {\n";
+    c += "          indexes.x = index_counter;\n";
+    c += "          maximum.x = src.x;\n";
+    c += "        }\n";
+    c += "        if (src.y > maximum.y) {\n";
+    c += "          indexes.y = index_counter;\n";
+    c += "          maximum.y = src.y;\n";
+    c += "        }\n";
+    c += "        if (src.z > maximum.z) {\n";
+    c += "          indexes.z = index_counter;\n";
+    c += "          maximum.z = src.z;\n";
+    c += "        }\n";
+    c += "        if (src.w > maximum.w) {\n";
+    c += "          indexes.w = index_counter;\n";
+    c += "          maximum.w = src.w;\n";
+    c += "        }\n";
+    c += "        index_counter += (FLT)(1.0f);\n";
   }
-  code += "        maximum = max(src, maximum);\n";
-  code += "      };\n";
-  code += "    }\n";
-  code += "  }\n";
-  code += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  code += PostProcess(linked_operations, "maximum", "Z", "address");
-  code += "  " + dst_tensor.Write3D("maximum", "address");
+  c += "        maximum = max(src, maximum);\n";
+  c += "      };\n";
+  c += "    }\n";
+  c += "  }\n";
+  const LinkingContext context{"maximum", "X", "Y", "Z"};
+  c += PostProcess(linked_operations, context);
+  c += "  " + dst_tensor.Write3D("maximum", "X", "Y", "Z");
   if (output_indices) {
-    code += "  " + indices_tensor.Write3D("indexes", "address");
+    c += "  " + indices_tensor.Write3D("indexes", "X", "Y", "Z");
   }
-  code += "}\n";
+  c += "}\n";
 
-  return code;
+  return c;
 }
 
 }  // namespace
@@ -165,7 +197,7 @@ Pooling::Pooling(const OperationDef& definition,
                  const Pooling2DAttributes& attr)
     : GPUOperation(definition),
       stride_(attr.strides.w, attr.strides.h),
-      padding_(attr.padding.prepended.w, attr.padding.prepended.h),
+      padding_(-attr.padding.prepended.w, -attr.padding.prepended.h),
       kernel_size_(attr.kernel.w, attr.kernel.h),
       type_(attr.type),
       output_indices_(attr.output_indices) {}
@@ -196,16 +228,16 @@ Pooling& Pooling::operator=(Pooling&& kernel) {
 
 Status Pooling::Compile(const CreationContext& creation_context) {
   std::string code;
+  const bool stride_correction = definition_.batch_support && stride_.x != 1;
   switch (type_) {
     case PoolingType::AVERAGE:
-      code = GetAveragePoolingKernelCode(
-          definition_.src_tensors[0], definition_.dst_tensors[0],
-          definition_.precision, *creation_context.device, linked_operations_);
+      code = GetAveragePoolingKernelCode(definition_, stride_correction,
+                                         *creation_context.device,
+                                         linked_operations_);
       break;
     case PoolingType::MAX:
-      code = GetMaxPoolingKernelCode(
-          definition_.src_tensors[0], definition_.dst_tensors[0],
-          definition_.precision, linked_operations_, output_indices_);
+      code = GetMaxPoolingKernelCode(definition_, stride_correction,
+                                     linked_operations_, output_indices_);
       break;
     default:
       return InvalidArgumentError(
@@ -221,21 +253,22 @@ Status Pooling::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   if (output_indices_) {
-    RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[1]->GetMemoryPtr()));
+    RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[1]->GetMemoryPtrForWriting()));
   }
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_size_));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(padding_));
+  RETURN_IF_ERROR(
+      kernel_.SetBytesAuto(int2(padding_.x * src_[0]->Batch(), padding_.y)));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_));
 
   return OkStatus();
 }
 
 int3 Pooling::GetGridSize() const {
-  const int grid_x = dst_[0]->Width();
+  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
   const int grid_z = dst_[0]->Depth();
   return int3(grid_x, grid_y, grid_z);

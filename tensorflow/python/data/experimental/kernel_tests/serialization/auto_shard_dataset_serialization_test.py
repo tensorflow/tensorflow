@@ -19,18 +19,23 @@ from __future__ import print_function
 
 import os
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.experimental.ops import interleave_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
+from tensorflow.python.framework import combinations
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
 class AutoShardDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
   def _record(self, f, r):
     return compat.as_bytes("Record %d of file %d" % (r, f))
@@ -49,6 +54,7 @@ class AutoShardDatasetSerializationTest(
   def setUp(self):
     self._filenames = self._createFiles()
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCore(self):
 
     def build_dataset():

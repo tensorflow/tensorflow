@@ -39,38 +39,6 @@
 namespace mlir {
 namespace LLVM {
 
-// Convert an MLIR function type to LLVM IR.  Arguments of the function must of
-// MLIR LLVM IR dialect types.  Use `loc` as a location when reporting errors.
-// Return nullptr on errors.
-static llvm::FunctionType *convertFunctionType(llvm::LLVMContext &llvmContext,
-                                               FunctionType type, Location loc,
-                                               bool isVarArgs) {
-  assert(type && "expected non-null type");
-  if (type.getNumResults() > 1)
-    return emitError(loc, "LLVM functions can only have 0 or 1 result"),
-           nullptr;
-
-  SmallVector<llvm::Type *, 8> argTypes;
-  argTypes.reserve(type.getNumInputs());
-  for (auto t : type.getInputs()) {
-    auto wrappedLLVMType = t.dyn_cast<LLVM::LLVMType>();
-    if (!wrappedLLVMType)
-      return emitError(loc, "non-LLVM function argument type"), nullptr;
-    argTypes.push_back(wrappedLLVMType.getUnderlyingType());
-  }
-
-  if (type.getNumResults() == 0)
-    return llvm::FunctionType::get(llvm::Type::getVoidTy(llvmContext), argTypes,
-                                   isVarArgs);
-
-  auto wrappedResultType = type.getResult(0).dyn_cast<LLVM::LLVMType>();
-  if (!wrappedResultType)
-    return emitError(loc, "non-LLVM function result"), nullptr;
-
-  return llvm::FunctionType::get(wrappedResultType.getUnderlyingType(),
-                                 argTypes, isVarArgs);
-}
-
 // Create an LLVM IR constant of `llvmType` from the MLIR attribute `attr`.
 // This currently supports integer, floating point, splat and dense element
 // attributes and combinations thereof.  In case of error, report it to `loc`
@@ -78,11 +46,13 @@ static llvm::FunctionType *convertFunctionType(llvm::LLVMContext &llvmContext,
 llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
                                                    Attribute attr,
                                                    Location loc) {
+  if (!attr)
+    return llvm::UndefValue::get(llvmType);
   if (auto intAttr = attr.dyn_cast<IntegerAttr>())
     return llvm::ConstantInt::get(llvmType, intAttr.getValue());
   if (auto floatAttr = attr.dyn_cast<FloatAttr>())
     return llvm::ConstantFP::get(llvmType, floatAttr.getValue());
-  if (auto funcAttr = attr.dyn_cast<SymbolRefAttr>())
+  if (auto funcAttr = attr.dyn_cast<FlatSymbolRefAttr>())
     return functionMapping.lookup(funcAttr.getValue());
   if (auto splatAttr = attr.dyn_cast<SplatElementsAttr>()) {
     auto *sequentialType = cast<llvm::SequentialType>(llvmType);
@@ -224,7 +194,7 @@ LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
   auto convertCall = [this, &builder](Operation &op) -> llvm::Value * {
     auto operands = lookupValues(op.getOperands());
     ArrayRef<llvm::Value *> operandsRef(operands);
-    if (auto attr = op.getAttrOfType<SymbolRefAttr>("callee")) {
+    if (auto attr = op.getAttrOfType<FlatSymbolRefAttr>("callee")) {
       return builder.CreateCall(functionMapping.lookup(attr.getValue()),
                                 operandsRef);
     } else {
@@ -309,26 +279,74 @@ LogicalResult ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
   return success();
 }
 
+// Convert the LLVM dialect linkage type to LLVM IR linkage type.
+llvm::GlobalVariable::LinkageTypes convertLinkageType(LLVM::Linkage linkage) {
+  switch (linkage) {
+  case LLVM::Linkage::Private:
+    return llvm::GlobalValue::PrivateLinkage;
+  case LLVM::Linkage::Internal:
+    return llvm::GlobalValue::InternalLinkage;
+  case LLVM::Linkage::AvailableExternally:
+    return llvm::GlobalValue::AvailableExternallyLinkage;
+  case LLVM::Linkage::Linkonce:
+    return llvm::GlobalValue::LinkOnceAnyLinkage;
+  case LLVM::Linkage::Weak:
+    return llvm::GlobalValue::WeakAnyLinkage;
+  case LLVM::Linkage::Common:
+    return llvm::GlobalValue::CommonLinkage;
+  case LLVM::Linkage::Appending:
+    return llvm::GlobalValue::AppendingLinkage;
+  case LLVM::Linkage::ExternWeak:
+    return llvm::GlobalValue::ExternalWeakLinkage;
+  case LLVM::Linkage::LinkonceODR:
+    return llvm::GlobalValue::LinkOnceODRLinkage;
+  case LLVM::Linkage::WeakODR:
+    return llvm::GlobalValue::WeakODRLinkage;
+  case LLVM::Linkage::External:
+    return llvm::GlobalValue::ExternalLinkage;
+  }
+  llvm_unreachable("unknown linkage type");
+}
+
 // Create named global variables that correspond to llvm.mlir.global
 // definitions.
 void ModuleTranslation::convertGlobals() {
   for (auto op : mlirModule.getOps<LLVM::GlobalOp>()) {
-    llvm::Constant *cst;
-    llvm::Type *type;
-    // String attributes are treated separately because they cannot appear as
-    // in-function constants and are thus not supported by getLLVMConstant.
-    if (auto strAttr = op.value().dyn_cast<StringAttr>()) {
-      cst = llvm::ConstantDataArray::getString(
-          llvmModule->getContext(), strAttr.getValue(), /*AddNull=*/false);
-      type = cst->getType();
-    } else {
-      type = op.getType().getUnderlyingType();
-      cst = getLLVMConstant(type, op.value(), op.getLoc());
+    llvm::Type *type = op.getType().getUnderlyingType();
+    llvm::Constant *cst = llvm::UndefValue::get(type);
+    if (op.getValueOrNull()) {
+      // String attributes are treated separately because they cannot appear as
+      // in-function constants and are thus not supported by getLLVMConstant.
+      if (auto strAttr = op.getValueOrNull().dyn_cast_or_null<StringAttr>()) {
+        cst = llvm::ConstantDataArray::getString(
+            llvmModule->getContext(), strAttr.getValue(), /*AddNull=*/false);
+        type = cst->getType();
+      } else {
+        cst = getLLVMConstant(type, op.getValueOrNull(), op.getLoc());
+      }
+    } else if (Block *initializer = op.getInitializerBlock()) {
+      llvm::IRBuilder<> builder(llvmModule->getContext());
+      for (auto &op : initializer->without_terminator()) {
+        if (failed(convertOperation(op, builder)) ||
+            !isa<llvm::Constant>(valueMapping.lookup(op.getResult(0)))) {
+          emitError(op.getLoc(), "unemittable constant value");
+          return;
+        }
+      }
+      ReturnOp ret = cast<ReturnOp>(initializer->getTerminator());
+      cst = cast<llvm::Constant>(valueMapping.lookup(ret.getOperand(0)));
     }
 
-    auto *var = new llvm::GlobalVariable(*llvmModule, type, op.constant(),
-                                         llvm::GlobalValue::InternalLinkage,
-                                         cst, op.sym_name());
+    auto linkage = convertLinkageType(op.linkage());
+    bool anyExternalLinkage =
+        (linkage == llvm::GlobalVariable::ExternalLinkage ||
+         linkage == llvm::GlobalVariable::ExternalWeakLinkage);
+    auto addrSpace = op.addr_space().getLimitedValue();
+    auto *var = new llvm::GlobalVariable(
+        *llvmModule, type, op.constant(), linkage,
+        anyExternalLinkage ? nullptr : cst, op.sym_name(),
+        /*InsertBefore=*/nullptr, llvm::GlobalValue::NotThreadLocal, addrSpace);
+
     globalsMapping.try_emplace(op, var);
   }
 }
@@ -357,7 +375,7 @@ static Value *getPHISourceValue(Block *current, Block *pred,
              : terminator.getSuccessorOperand(1, index);
 }
 
-void ModuleTranslation::connectPHINodes(FuncOp func) {
+void ModuleTranslation::connectPHINodes(LLVMFuncOp func) {
   // Skip the first block, it cannot be branched to and its arguments correspond
   // to the arguments of the LLVM function.
   for (auto it = std::next(func.begin()), eit = func.end(); it != eit; ++it) {
@@ -388,7 +406,7 @@ static void topologicalSortImpl(llvm::SetVector<Block *> &blocks, Block *b) {
 }
 
 // Sort function blocks topologically.
-static llvm::SetVector<Block *> topologicalSort(FuncOp f) {
+static llvm::SetVector<Block *> topologicalSort(LLVMFuncOp f) {
   // For each blocks that has not been visited yet (i.e. that has no
   // predecessors), add it to the list and traverse its successors in DFS
   // preorder.
@@ -402,7 +420,7 @@ static llvm::SetVector<Block *> topologicalSort(FuncOp f) {
   return blocks;
 }
 
-LogicalResult ModuleTranslation::convertOneFunction(FuncOp func) {
+LogicalResult ModuleTranslation::convertOneFunction(LLVMFuncOp func) {
   // Clear the block and value mappings, they are only relevant within one
   // function.
   blockMapping.clear();
@@ -452,27 +470,28 @@ LogicalResult ModuleTranslation::convertOneFunction(FuncOp func) {
   return success();
 }
 
+LogicalResult ModuleTranslation::checkSupportedModuleOps(ModuleOp m) {
+  for (Operation &o : m.getBody()->getOperations())
+    if (!isa<LLVM::LLVMFuncOp>(&o) && !isa<LLVM::GlobalOp>(&o) &&
+        !isa<ModuleTerminatorOp>(&o))
+      return o.emitOpError("unsupported module-level operation");
+  return success();
+}
+
 LogicalResult ModuleTranslation::convertFunctions() {
   // Declare all functions first because there may be function calls that form a
   // call graph with cycles.
-  for (FuncOp function : mlirModule.getOps<FuncOp>()) {
-    mlir::BoolAttr isVarArgsAttr =
-        function.getAttrOfType<BoolAttr>("std.varargs");
-    bool isVarArgs = isVarArgsAttr && isVarArgsAttr.getValue();
-    llvm::FunctionType *functionType =
-        convertFunctionType(llvmModule->getContext(), function.getType(),
-                            function.getLoc(), isVarArgs);
-    if (!functionType)
-      return failure();
-    llvm::FunctionCallee llvmFuncCst =
-        llvmModule->getOrInsertFunction(function.getName(), functionType);
+  for (auto function : mlirModule.getOps<LLVMFuncOp>()) {
+    llvm::FunctionCallee llvmFuncCst = llvmModule->getOrInsertFunction(
+        function.getName(),
+        llvm::cast<llvm::FunctionType>(function.getType().getUnderlyingType()));
     assert(isa<llvm::Function>(llvmFuncCst.getCallee()));
     functionMapping[function.getName()] =
         cast<llvm::Function>(llvmFuncCst.getCallee());
   }
 
   // Convert functions.
-  for (FuncOp function : mlirModule.getOps<FuncOp>()) {
+  for (auto function : mlirModule.getOps<LLVMFuncOp>()) {
     // Ignore external functions.
     if (function.isExternal())
       continue;

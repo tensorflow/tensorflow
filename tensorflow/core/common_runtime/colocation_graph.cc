@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -116,6 +118,17 @@ bool ArePrioritiesSame(const PrioritizedDeviceTypeVector& a_types,
     }
   }
   return true;
+}
+
+bool IsXlaDevice(absl::string_view device_type) {
+  if (device_type == "XLA_CPU_JIT" || device_type == "XLA_GPU_JIT" ||
+      device_type == "XLA_TPU_JIT") {
+    // Symbolic XLA device.
+    return true;
+  }
+
+  return (device_type == "XLA_CPU" || device_type == "XLA_GPU" ||
+          device_type == "TPU");
 }
 
 }  // namespace
@@ -480,6 +493,28 @@ Status Member::AssignDevice(const Node& node) {
   return Status::OK();
 }
 
+void Member::MaybeExcludeXlaDevices() {
+  for (const auto& parsed_name :
+       {requested_device_name_, assigned_device_name_, resource_device_name_}) {
+    if (parsed_name.has_type && IsXlaDevice(parsed_name.type)) {
+      return;
+    }
+  }
+
+  PrioritizedDeviceTypeVector non_xla_types;
+  absl::c_copy_if(supported_device_types_, std::back_inserter(non_xla_types),
+                  [&](const std::pair<DeviceType, int32>& entry) {
+                    return !IsXlaDevice(entry.first.type_string());
+                  });
+
+  // TODO(b/141216278) Remove all XLA device types from the supported device
+  // types if the node has no requested/assigned/resource XLA device.
+  if (!non_xla_types.empty() &&
+      non_xla_types.size() < supported_device_types_.size()) {
+    supported_device_types_ = std::move(non_xla_types);
+  }
+}
+
 Status Member::LimitToPossibleDevices(const PossibleDevices& devices,
                                       bool allow_soft_placement) {
   TF_RETURN_IF_ERROR(DeviceNameUtils::MergeDevNames(
@@ -606,29 +641,27 @@ Status ColocationGraph::ColocateAllNodes() {
     // backing store of the std::vector<string> as well as the copies of the
     // strings within it).  Instead, we combine the query of the colocation
     // attribute with the calls to ColocateNodeToGroup.
-    bool found_spec = false;
     const AttrValue* attr_value =
         node->attrs().Find(kColocationAttrNameStringPiece);
-    if (attr_value != nullptr && attr_value->has_list()) {
-      for (const string& class_spec : attr_value->list().s()) {
-        StringPiece spec(class_spec);
-        if (absl::ConsumePrefix(&spec, kColocationGroupPrefixStringPiece)) {
-          found_spec = true;
-          TF_RETURN_IF_ERROR(
-              ColocateNodeToGroup(&colocation_group_root, node, spec));
+    if (attr_value != nullptr) {
+      if (attr_value->has_list()) {
+        for (const string& class_spec : attr_value->list().s()) {
+          StringPiece spec(class_spec);
+          if (absl::ConsumePrefix(&spec, kColocationGroupPrefixStringPiece)) {
+            TF_RETURN_IF_ERROR(
+                ColocateNodeToGroup(&colocation_group_root, node, spec));
+          }
         }
+      } else if (!attr_value->s().empty()) {
+        LOG(ERROR) << "The value for colocation attribute '_class' must be a "
+                      "list of strings, not a single string: "
+                   << node->DebugString();
       }
     }
 
-    // TODO(iga): Even when the node has a spec, we need to colocate the
-    // node to its "name group" because other nodes can still use
-    // "loc:@<this_node_name>" in their colocation specs.
-    if (!found_spec) {
-      // If the node does not specify a colocation group, then use the
-      // name of this node as the colocation group.
-      TF_RETURN_IF_ERROR(
-          ColocateNodeToGroup(&colocation_group_root, node, node->name()));
-    }
+    // Each node belongs to a colocation group with the node's name.
+    TF_RETURN_IF_ERROR(
+        ColocateNodeToGroup(&colocation_group_root, node, node->name()));
   }
 
   return Status::OK();
@@ -683,6 +716,16 @@ Status ColocationGraph::ColocateResourceAndRefEdges(
     }
 
     DataType input_type = dst->input_type(edge->dst_input());
+
+    // Colocate two DatasetOp nodes connected by edge of dtype=DT_VARIANT.
+    // This is needed to get around the issue in b/135705778.
+    if (input_type == DT_VARIANT &&
+        data::DatasetOpKernel::IsDatasetOp(&src->op_def()) &&
+        data::DatasetOpKernel::IsDatasetOp(&dst->op_def())) {
+      TF_RETURN_IF_ERROR(ColocateResourceOrRefEdge(src, dst));
+      continue;
+    }
+
     // Even though we can look inside function calling ops, we make an exception
     // here mostly for performance reasons. Looking inside function calling ops
     // is extra overhead. It is only necessary when they return resources. When
@@ -717,8 +760,14 @@ Status ColocationGraph::Initialize() {
   std::unordered_set<Node*> inspection_required;
   TF_RETURN_IF_ERROR(ColocateResourceAndRefEdges(&inspection_required));
   TF_RETURN_IF_ERROR(AddInspectionConstraints(inspection_required));
+  TF_RETURN_IF_ERROR(ColocateAllNodes());
 
-  return ColocateAllNodes();
+  for (Node* node : graph_.op_nodes()) {
+    int root_id = FindAndUpdateRoot(node->id());
+    members_[root_id].MaybeExcludeXlaDevices();
+  }
+
+  return Status::OK();
 }
 
 // pair containing a node and whether this node has a resource input

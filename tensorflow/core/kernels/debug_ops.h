@@ -16,9 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
 
+#include <numeric>
+
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #endif
+
+#if GOOGLE_CUDA
+#include "tensorflow/core/platform/cuda.h"
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/platform/rocm.h"
+#endif
+
 #ifdef TENSORFLOW_USE_SYCL
 #include "tensorflow/core/common_runtime/sycl/sycl_util.h"
 #endif  // TENSORFLOW_USE_SYCL
@@ -28,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/util/debug_events_writer.h"
 
 namespace tensorflow {
 
@@ -389,6 +402,488 @@ class DebugNumericSummaryOp : public BaseDebugOp {
   float upper_bound_;
   bool mute_if_healthy_;
 };
+
+// Identity op for tfdbg v2: Writes debug data using DebugEventsWriter.
+class DebugIdentityV2Op : public OpKernel {
+ public:
+  explicit DebugIdentityV2Op(OpKernelConstruction* context)
+      : OpKernel(context),
+        device_name_(context->device()->name()),
+        output_slot_(-1),
+        tensor_debug_mode_(0) {
+    std::vector<string> debug_urls;
+    OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls));
+    for (const string& debug_url : debug_urls) {
+      if (absl::StartsWith(debug_url, DebugIO::kFileURLScheme)) {
+        dump_roots_.emplace_back(
+            debug_url.substr(strlen(DebugIO::kFileURLScheme)));
+      } else {
+        context->SetStatus(
+            errors::Internal("Unsupported debug URL schema in: ", debug_url));
+      }
+    }
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("tfdbg_context_id", &tfdbg_context_id_));
+    OP_REQUIRES_OK(context, context->GetAttr("op_name", &op_name_));
+    OP_REQUIRES_OK(context, context->GetAttr("output_slot", &output_slot_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("tensor_debug_mode", &tensor_debug_mode_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& tensor = context->input(0);
+    for (const string& dump_root : dump_roots_) {
+      tfdbg::DebugEventsWriter* debug_events_writer =
+          tfdbg::DebugEventsWriter::GetDebugEventsWriter(dump_root);
+      debug_events_writer->WriteGraphExecutionTrace(
+          tfdbg_context_id_, device_name_, op_name_, output_slot_,
+          tensor_debug_mode_, tensor);
+    }
+    context->set_output(0, tensor);
+  }
+
+ private:
+  std::vector<string> dump_roots_;
+  string tfdbg_context_id_;
+  string device_name_;
+  string op_name_;
+  int32 output_slot_;
+  int32 tensor_debug_mode_;
+};
+
+typedef Eigen::ThreadPoolDevice CPUDevice;
+typedef Eigen::GpuDevice GPUDevice;
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+template <typename Tin, typename Tout>
+struct CurtHealthLaunch {
+  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[1]);
+};
+
+extern template struct CurtHealthLaunch<Eigen::half, float>;
+extern template struct CurtHealthLaunch<float, float>;
+extern template struct CurtHealthLaunch<double, float>;
+extern template struct CurtHealthLaunch<Eigen::half, double>;
+extern template struct CurtHealthLaunch<float, double>;
+extern template struct CurtHealthLaunch<double, double>;
+
+template <typename Tin, typename Tout>
+struct ConciseHealthLaunch {
+  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[3]);
+};
+
+extern template struct ConciseHealthLaunch<Eigen::half, float>;
+extern template struct ConciseHealthLaunch<float, float>;
+extern template struct ConciseHealthLaunch<double, float>;
+extern template struct ConciseHealthLaunch<Eigen::half, double>;
+extern template struct ConciseHealthLaunch<float, double>;
+extern template struct ConciseHealthLaunch<double, double>;
+
+template <typename Tin, typename Tout>
+struct FullHealthLaunch {
+  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[6]);
+};
+
+extern template struct FullHealthLaunch<Eigen::half, float>;
+extern template struct FullHealthLaunch<float, float>;
+extern template struct FullHealthLaunch<double, float>;
+extern template struct FullHealthLaunch<Eigen::half, double>;
+extern template struct FullHealthLaunch<float, double>;
+extern template struct FullHealthLaunch<double, double>;
+
+template <typename Tin, typename Tout>
+struct ReduceInfNanThreeSlotsLaunch {
+  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[3]);
+};
+
+extern template struct ReduceInfNanThreeSlotsLaunch<Eigen::half, float>;
+extern template struct ReduceInfNanThreeSlotsLaunch<float, float>;
+extern template struct ReduceInfNanThreeSlotsLaunch<double, float>;
+extern template struct ReduceInfNanThreeSlotsLaunch<Eigen::half, double>;
+extern template struct ReduceInfNanThreeSlotsLaunch<float, double>;
+extern template struct ReduceInfNanThreeSlotsLaunch<double, double>;
+
+#endif
+
+template <typename Device, typename Tin, typename Tout>
+class DebugNumericSummaryV2Op;
+
+// Numeric summary op for tfdbg v2: CPU Kernel.
+template <typename Tin, typename Tout>
+class DebugNumericSummaryV2Op<CPUDevice, Tin, Tout> : public OpKernel {
+ public:
+  explicit DebugNumericSummaryV2Op(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("tensor_debug_mode", &tensor_debug_mode_));
+    OP_REQUIRES_OK(context, context->GetAttr("tensor_id", &tensor_id_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& tensor = context->input(0);
+    auto in = tensor.flat<Tin>();
+    const Tin* data = in.data();
+    const int64 size = in.size();
+    Tensor* output_tensor;
+    Tout tensor_id = static_cast<Tout>(tensor_id_);
+    const Tout num_elem = static_cast<Tout>(context->input(0).NumElements());
+    // Disregard lossy cast if mode is REDUCE_INF_NAN_THREE_SLOTS because
+    // that mode does not make use of tensor_id.
+    if (tensor_debug_mode_ != 8) {
+      OP_REQUIRES(
+          context, tensor_id_ <= kMaxTensorId,
+          errors::InvalidArgument("DebugNumericSummaryV2Op requires "
+                                  "tensor_id to be less than or equal to "
+                                  "(2^",
+                                  std::numeric_limits<Tout>::digits,
+                                  "). Given tensor_id:", tensor_id_));
+    }
+
+    if (tensor_debug_mode_ == 2) {  // CURT_HEALTH
+      TensorShape shape({2});
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, shape, &output_tensor));
+      output_tensor->flat<Tout>()(0) = tensor_id;  // Slot tensor id
+      output_tensor->flat<Tout>()(1) = 0.0;        // Has inf or nan
+      int fp_props =
+          std::accumulate(data, data + size, 0, [](const int x, const Tin& y) {
+            return Eigen::numext::isfinite(y) ? x : 1;
+          });
+      if (fp_props) {
+        output_tensor->flat<Tout>()(1) = 1.0;
+      }
+    } else if (tensor_debug_mode_ == 3) {  // CONCISE_HEALTH
+      TensorShape shape({5});
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, shape, &output_tensor));
+      output_tensor->flat<Tout>()(0) = tensor_id;
+      output_tensor->flat<Tout>()(1) = num_elem;
+
+      // Accumlator value [neg_inf_count, pos_inf_count, nan_count]
+      Tout fp_props[3] = {0.0, 0.0, 0.0};
+      std::for_each(data, data + size, [&fp_props](const Tin& y) {
+        if (TF_PREDICT_TRUE(Eigen::numext::isfinite(y))) {
+          // Do nothing: common case.
+        } else if (Eigen::numext::isinf(y)) {
+          if (y < static_cast<Tin>(0.f)) {
+            ++fp_props[0];
+          } else {
+            ++fp_props[1];
+          }
+        } else if (Eigen::numext::isnan(y)) {
+          ++fp_props[2];
+        }
+      });
+      output_tensor->flat<Tout>()(2) = fp_props[0];  // Slot for -inf count
+      output_tensor->flat<Tout>()(3) = fp_props[1];  // Slot for inf count
+      output_tensor->flat<Tout>()(4) = fp_props[2];  // Slot for nan count
+    } else if (tensor_debug_mode_ == 4) {            // FULL HEALTH
+      TensorShape shape({11});
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, shape, &output_tensor));
+      int num_dims = tensor.dims();
+      output_tensor->flat<Tout>()(0) = tensor_id;
+      output_tensor->flat<Tout>()(1) = -1.0;  // TODO(144919262): Device ID
+      output_tensor->flat<Tout>()(2) = static_cast<Tout>(tensor.dtype());
+      output_tensor->flat<Tout>()(3) = static_cast<Tout>(num_dims);
+      output_tensor->flat<Tout>()(4) = num_elem;
+
+      // Accumlator value [neg_inf_count, pos_inf_count, nan_count, neg_count,
+      //                   zero_count, pos_count]
+      Tout fp_props[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+      std::for_each(data, data + size, [&fp_props](const Tin& y) {
+        if (TF_PREDICT_TRUE(Eigen::numext::isfinite(y))) {
+          if (y < static_cast<Tin>(0.f)) {
+            ++fp_props[3];
+          } else if (y == static_cast<Tin>(0.f)) {
+            ++fp_props[4];
+          } else {
+            ++fp_props[5];
+          }
+        } else if (Eigen::numext::isinf(y)) {
+          if (y < static_cast<Tin>(0.f)) {
+            ++fp_props[0];
+          } else {
+            ++fp_props[1];
+          }
+        } else if (Eigen::numext::isnan(y)) {
+          ++fp_props[2];
+        }
+      });
+      output_tensor->flat<Tout>()(5) = fp_props[0];   // Slot for -inf count
+      output_tensor->flat<Tout>()(6) = fp_props[1];   // Slot for inf count
+      output_tensor->flat<Tout>()(7) = fp_props[2];   // Slot for nan count.
+      output_tensor->flat<Tout>()(8) = fp_props[3];   // Slot for neg count.
+      output_tensor->flat<Tout>()(9) = fp_props[4];   // Slot for zero count.
+      output_tensor->flat<Tout>()(10) = fp_props[5];  // Slot for pos count.
+    } else if (tensor_debug_mode_ == 5) {             // SHAPE
+      TensorShape shape({10});
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, shape, &output_tensor));
+
+      int num_dims = tensor.dims();
+      output_tensor->flat<Tout>()(0) = tensor_id;
+      output_tensor->flat<Tout>()(1) = static_cast<Tout>(tensor.dtype());
+      output_tensor->flat<Tout>()(2) = static_cast<Tout>(num_dims);
+      output_tensor->flat<Tout>()(3) = num_elem;
+
+      // Tensor shape - stored as (6 columns)
+      // if num_dim is less than 6, we right pad the shape with zeros
+      // if num_dim is greater than 6, we truncate the head (left most) of the
+      // dimensions as they are more predictable than the last few (e.g. batch
+      // size as first dimension)
+      int dim_idx = 4;
+      for (int i = std::max(0, num_dims - kShapeDims);
+           i < std::max(6, num_dims); ++i) {
+        if (i < num_dims) {
+          output_tensor->flat<Tout>()(dim_idx++) =
+              static_cast<Tout>(tensor.dim_size(i));
+        } else {
+          output_tensor->flat<Tout>()(dim_idx++) = 0.0;
+        }
+      }
+    } else if (tensor_debug_mode_ == 8) {  // REDUCE_INF_NAN_THREE_SLOTS.
+      TensorShape shape({3});
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, shape, &output_tensor));
+      output_tensor->flat<Tout>()(0) = 0.0;  // Slot for -inf.
+      output_tensor->flat<Tout>()(1) = 0.0;  // Slot for inf.
+      output_tensor->flat<Tout>()(2) = 0.0;  // Slot for nan.
+
+      int fp_props =
+          std::accumulate(data, data + size, 0, [](const int x, const Tin& y) {
+            int result = x;
+            if (TF_PREDICT_TRUE(Eigen::numext::isfinite(y))) {
+              // Do nothing: common case.
+            } else if (Eigen::numext::isinf(y)) {
+              result |= y < static_cast<Tin>(0.f) ? kNegInfBit : kPosInfBit;
+            } else if (Eigen::numext::isnan(y)) {
+              result |= kNaNBit;
+            }
+            return result;
+          });
+
+      if (fp_props & kNegInfBit) {
+        output_tensor->flat<Tout>()(0) = -std::numeric_limits<Tout>::infinity();
+      }
+      if (fp_props & kPosInfBit) {
+        output_tensor->flat<Tout>()(1) = std::numeric_limits<Tout>::infinity();
+      }
+      if (fp_props & kNaNBit) {
+        output_tensor->flat<Tout>()(2) = std::numeric_limits<Tout>::quiet_NaN();
+      }
+    } else {
+      // TODO(cais): Implement other tensor debug modes in debug_event.proto.
+      context->SetStatus(errors::Unimplemented(
+          "Unimplemented tensor debug mode: ", tensor_debug_mode_));
+    }
+  }
+
+ private:
+  int tensor_debug_mode_;
+  int64 tensor_id_;
+  static constexpr int kShapeDims = 6;
+  static constexpr int kNegInfBit = 0x01;
+  static constexpr int kPosInfBit = 0x02;
+  static constexpr int kNaNBit = 0x04;
+  static constexpr int64 kMaxTensorId = 1L << std::numeric_limits<Tout>::digits;
+};
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+template <typename Tin, typename Tout>
+class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
+ public:
+  typedef GPUDevice Device;
+
+  explicit DebugNumericSummaryV2Op(OpKernelConstruction* context)
+      : AsyncOpKernel(context) {
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("tensor_debug_mode", &tensor_debug_mode_));
+    OP_REQUIRES_OK(context, context->GetAttr("tensor_id", &tensor_id_));
+  }
+
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    Tensor* output_tensor;
+    Tout tensor_id = static_cast<Tout>(tensor_id_);
+    const Tensor& tensor = context->input(0);
+    const Tout num_elem = static_cast<Tout>(tensor.NumElements());
+    const Device& d = context->eigen_device<Device>();
+    auto input = tensor.flat<Tin>();
+    auto check_cb = [this, done]() { done(); };
+    // Disregard lossy cast if mode is REDUCE_INF_NAN_THREE_SLOTS because
+    // that mode does not make use of tensor_id.
+    if (tensor_debug_mode_ != 8) {
+      OP_REQUIRES_ASYNC(
+          context, tensor_id_ <= kMaxTensorId,
+          errors::InvalidArgument("DebugNumericSummaryV2Op requires "
+                                  "tensor_id to be less than or equal to "
+                                  "(2^",
+                                  std::numeric_limits<Tout>::digits,
+                                  "). Given tensor_id:", tensor_id_),
+          done);
+    }
+
+    if (tensor_debug_mode_ == 2) {  // CURT_HEALTH.
+      TensorShape shape({2});
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, shape, &output_tensor));
+
+      auto* stream = context->op_device_context()->stream();
+      OP_REQUIRES_ASYNC(context, stream != nullptr,
+                        errors::Internal("No GPU stream available."), done);
+
+      se::DeviceMemoryBase output_tensor_ptr(
+          output_tensor->flat<Tout>().data(),
+          output_tensor->flat<Tout>().size());
+      stream->ThenMemZero(&output_tensor_ptr, 2 * sizeof(Tout));
+      // Copy tensor_id to slot zero
+      stream->ThenMemcpy(&output_tensor_ptr, &tensor_id, sizeof(Tout));
+      if (num_elem == 0) {
+        done();
+        return;
+      }
+
+      // Call the GPU kernels for the numerical (inf/nan) checks.
+      auto input = context->input(0).flat<Tin>();
+      CurtHealthLaunch<Tin, Tout>().Run(d, input.data(), input.size(),
+                                        output_tensor->flat<Tout>().data() + 1);
+
+      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+          stream, std::move(check_cb));
+    } else if (tensor_debug_mode_ == 3) {  // CONCISE_HEALTH.
+      TensorShape shape({5});
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, shape, &output_tensor));
+
+      auto* stream = context->op_device_context()->stream();
+      OP_REQUIRES_ASYNC(context, stream != nullptr,
+                        errors::Internal("No GPU stream available."), done);
+
+      se::DeviceMemoryBase output_tensor_ptr(
+          output_tensor->flat<Tout>().data(),
+          output_tensor->flat<Tout>().size());
+      stream->ThenMemset32(&output_tensor_ptr, 0, 5 * sizeof(Tout));
+      const Tout static_output[] = {tensor_id, num_elem};
+      stream->ThenMemcpy(&output_tensor_ptr, &static_output, 2 * sizeof(Tout));
+      if (num_elem == 0) {
+        done();
+        return;
+      }
+
+      // Call the GPU kernels for the numerical (inf/nan) checks.
+      ConciseHealthLaunch<Tin, Tout>().Run(
+          d, input.data(), input.size(),
+          output_tensor->flat<Tout>().data() + 2);
+
+      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+          stream, std::move(check_cb));
+    } else if (tensor_debug_mode_ == 4) {  // FULL HEALTH
+      TensorShape shape({11});
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, shape, &output_tensor));
+
+      auto* stream = context->op_device_context()->stream();
+      OP_REQUIRES_ASYNC(context, stream != nullptr,
+                        errors::Internal("No GPU stream available."), done);
+
+      se::DeviceMemoryBase output_tensor_ptr(
+          output_tensor->flat<Tout>().data(),
+          output_tensor->flat<Tout>().size());
+      stream->ThenMemset32(&output_tensor_ptr, 0, 11 * sizeof(Tout));
+
+      int num_dims = tensor.dims();
+      const Tout static_output[] = {tensor_id,
+                                    -1.0,  // TODO(144919262): Device ID
+                                    static_cast<Tout>(tensor.dtype()),
+                                    static_cast<Tout>(num_dims), num_elem};
+      stream->ThenMemcpy(&output_tensor_ptr, &static_output, 5 * sizeof(Tout));
+      if (num_elem == 0) {
+        done();
+        return;
+      }
+
+      // Call the GPU kernels for the numerical (inf/nan) checks and
+      // pos/neg/zero counts.
+      FullHealthLaunch<Tin, Tout>().Run(d, input.data(), input.size(),
+                                        output_tensor->flat<Tout>().data() + 5);
+
+      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+          stream, std::move(check_cb));
+    } else if (tensor_debug_mode_ == 5) {  // SHAPE
+      TensorShape shape({10});
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, shape, &output_tensor));
+
+      auto* stream = context->op_device_context()->stream();
+      OP_REQUIRES_ASYNC(context, stream != nullptr,
+                        errors::Internal("No GPU stream available."), done);
+
+      se::DeviceMemoryBase output_tensor_ptr(
+          output_tensor->flat<Tout>().data(),
+          output_tensor->flat<Tout>().size());
+
+      int num_dims = tensor.dims();
+      Tout static_output[10] = {tensor_id,
+                                static_cast<Tout>(tensor.dtype()),
+                                static_cast<Tout>(num_dims),
+                                num_elem,
+                                0.0,
+                                0.0,
+                                0.0,
+                                0.0,
+                                0.0,
+                                0.0};
+      // Tensor shape: right pad zeros, truncate head
+      int dim_idx = 4;
+      for (int i = std::max(0, num_dims - 6); i < num_dims; ++i) {
+        static_output[dim_idx++] = static_cast<Tout>(tensor.dim_size(i));
+      }
+      // Write to device stream
+      stream->ThenMemcpy(&output_tensor_ptr, &static_output, sizeof(Tout) * 10);
+      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+          stream, std::move(check_cb));
+    } else if (tensor_debug_mode_ == 8) {  // REDUCE_INF_NAN_THREE_SLOTS.
+      TensorShape shape({3});
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, shape, &output_tensor));
+
+      auto* stream = context->op_device_context()->stream();
+      OP_REQUIRES_ASYNC(context, stream != nullptr,
+                        errors::Internal("No GPU stream available."), done);
+
+      se::DeviceMemoryBase output_tensor_ptr(
+          output_tensor->flat<Tout>().data(),
+          output_tensor->flat<Tout>().size());
+      stream->ThenMemset32(&output_tensor_ptr, 0,
+                           output_tensor->flat<Tout>().size() * sizeof(Tout));
+      if (num_elem == 0) {
+        done();
+        return;
+      }
+
+      // Call the GPU kernels for the numerical (inf/nan) checks.
+      auto input = context->input(0).flat<Tin>();
+      ReduceInfNanThreeSlotsLaunch<Tin, Tout>().Run(
+          d, input.data(), input.size(), output_tensor->flat<Tout>().data());
+
+      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+          stream, std::move(check_cb));
+    } else {
+      // TODO(cais): Implement other tensor debug modes in debug_event.proto.
+      context->SetStatus(errors::Unimplemented(
+          "Unimplemented tensor debug mode: ", tensor_debug_mode_));
+      done();
+    }
+  }
+
+ private:
+  int tensor_debug_mode_;
+  int64 tensor_id_;
+  static constexpr int64 kMaxTensorId = 1L << std::numeric_limits<Tout>::digits;
+};
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow
 

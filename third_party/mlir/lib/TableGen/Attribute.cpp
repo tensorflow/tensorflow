@@ -44,8 +44,12 @@ static StringRef getValueAsString(const Init *init) {
 
 tblgen::AttrConstraint::AttrConstraint(const Record *record)
     : Constraint(Constraint::CK_Attr, record) {
-  assert(def->isSubClassOf("AttrConstraint") &&
+  assert(isSubClassOf("AttrConstraint") &&
          "must be subclass of TableGen 'AttrConstraint' class");
+}
+
+bool tblgen::AttrConstraint::isSubClassOf(StringRef className) const {
+  return def->isSubClassOf(className);
 }
 
 tblgen::Attribute::Attribute(const Record *record) : AttrConstraint(record) {
@@ -56,15 +60,15 @@ tblgen::Attribute::Attribute(const Record *record) : AttrConstraint(record) {
 tblgen::Attribute::Attribute(const DefInit *init) : Attribute(init->getDef()) {}
 
 bool tblgen::Attribute::isDerivedAttr() const {
-  return def->isSubClassOf("DerivedAttr");
+  return isSubClassOf("DerivedAttr");
 }
 
 bool tblgen::Attribute::isTypeAttr() const {
-  return def->isSubClassOf("TypeAttrBase");
+  return isSubClassOf("TypeAttrBase");
 }
 
 bool tblgen::Attribute::isEnumAttr() const {
-  return def->isSubClassOf("EnumAttrInfo");
+  return isSubClassOf("EnumAttrInfo");
 }
 
 StringRef tblgen::Attribute::getStorageType() const {
@@ -103,12 +107,12 @@ tblgen::Attribute tblgen::Attribute::getBaseAttr() const {
   return *this;
 }
 
-bool tblgen::Attribute::hasDefaultValueInitializer() const {
+bool tblgen::Attribute::hasDefaultValue() const {
   const auto *init = def->getValueInit("defaultValue");
   return !getValueAsString(init).empty();
 }
 
-StringRef tblgen::Attribute::getDefaultValueInitializer() const {
+StringRef tblgen::Attribute::getDefaultValue() const {
   const auto *init = def->getValueInit("defaultValue");
   return getValueAsString(init);
 }
@@ -144,12 +148,12 @@ StringRef tblgen::ConstantAttr::getConstantValue() const {
 
 tblgen::EnumAttrCase::EnumAttrCase(const llvm::DefInit *init)
     : Attribute(init) {
-  assert(def->isSubClassOf("EnumAttrCaseInfo") &&
+  assert(isSubClassOf("EnumAttrCaseInfo") &&
          "must be subclass of TableGen 'EnumAttrInfo' class");
 }
 
 bool tblgen::EnumAttrCase::isStrCase() const {
-  return def->isSubClassOf("StrEnumAttrCase");
+  return isSubClassOf("StrEnumAttrCase");
 }
 
 StringRef tblgen::EnumAttrCase::getSymbol() const {
@@ -161,7 +165,7 @@ int64_t tblgen::EnumAttrCase::getValue() const {
 }
 
 tblgen::EnumAttr::EnumAttr(const llvm::Record *record) : Attribute(record) {
-  assert(def->isSubClassOf("EnumAttrInfo") &&
+  assert(isSubClassOf("EnumAttrInfo") &&
          "must be subclass of TableGen 'EnumAttr' class");
 }
 
@@ -169,6 +173,8 @@ tblgen::EnumAttr::EnumAttr(const llvm::Record &record) : Attribute(&record) {}
 
 tblgen::EnumAttr::EnumAttr(const llvm::DefInit *init)
     : EnumAttr(init->getDef()) {}
+
+bool tblgen::EnumAttr::isBitEnum() const { return isSubClassOf("BitEnumAttr"); }
 
 StringRef tblgen::EnumAttr::getEnumClassName() const {
   return def->getValueAsString("className");
@@ -192,6 +198,10 @@ StringRef tblgen::EnumAttr::getStringToSymbolFnName() const {
 
 StringRef tblgen::EnumAttr::getSymbolToStringFnName() const {
   return def->getValueAsString("symbolToStringFnName");
+}
+
+StringRef tblgen::EnumAttr::getSymbolToStringFnRetType() const {
+  return def->getValueAsString("symbolToStringFnRetType");
 }
 
 StringRef tblgen::EnumAttr::getMaxEnumValFnName() const {
@@ -233,7 +243,7 @@ tblgen::Attribute tblgen::StructFieldAttr::getType() const {
 }
 
 tblgen::StructAttr::StructAttr(const llvm::Record *record) : Attribute(record) {
-  assert(def->isSubClassOf("StructAttr") &&
+  assert(isSubClassOf("StructAttr") &&
          "must be subclass of TableGen 'StructAttr' class");
 }
 

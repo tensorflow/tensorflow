@@ -37,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 
 
@@ -224,8 +225,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     tensor_repr = repr(t)
     self.assertTrue(tensor_repr.startswith("<"))
     self.assertTrue(tensor_repr.endswith(">"))
-    self.assertIn("id=%d, shape=%s, dtype=%s, numpy=\n%r" %
-                  (t._id, t.shape, t.dtype.name, t.numpy()), tensor_repr)
+    self.assertIn("shape=%s, dtype=%s, numpy=\n%r" %
+                  (t.shape, t.dtype.name, t.numpy()), tensor_repr)
 
   def testTensorStrReprObeyNumpyPrintOptions(self):
     orig_threshold = np.get_printoptions()["threshold"]
@@ -247,7 +248,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     t = _create_tensor(42)
     self.assertTrue(repr(t).startswith("<"))
     self.assertTrue(repr(t).endswith(">"))
-    self.assertIn("id=%d, shape=(), dtype=int32, numpy=42" % t._id, repr(t))
+    self.assertIn("shape=(), dtype=int32, numpy=42", repr(t))
 
   def testZeroSizeTensorStr(self):
     t = _create_tensor(np.zeros(0, dtype=np.float32))
@@ -257,9 +258,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     t = _create_tensor(np.zeros(0, dtype=np.float32))
     self.assertTrue(repr(t).startswith("<"))
     self.assertTrue(repr(t).endswith(">"))
-    self.assertIn("id=%d, shape=(0,), dtype=float32, numpy=%r" % (t._id,
-                                                                  t.numpy()),
-                  repr(t))
+    self.assertIn("shape=(0,), dtype=float32, numpy=%r" % t.numpy(), repr(t))
 
   def testStringTensor(self):
     t_np_orig = np.array([[b"a", b"ab"], [b"abc", b"abcd"]])
@@ -413,6 +412,21 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(
         np.array(memoryview(t)), np.array([0.0], dtype=np.float32))
 
+  def testResourceTensorCopy(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("GPU only")
+
+    with ops.device("GPU:0"):
+      v = resource_variable_ops.ResourceVariable(1.)
+
+    read_handle_on_gpu = resource_variable_ops.read_variable_op(
+        v.handle, dtypes.float32)
+    handle_on_cpu = v.handle.cpu()
+    read_handle_on_cpu = resource_variable_ops.read_variable_op(
+        handle_on_cpu, dtypes.float32)
+
+    self.assertAllEqual(read_handle_on_cpu, read_handle_on_gpu)
+
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):
 
@@ -524,6 +538,7 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(
         ValueError, "non-rectangular Python sequence"):
       constant_op.constant(l)
+
 
 if __name__ == "__main__":
   test.main()

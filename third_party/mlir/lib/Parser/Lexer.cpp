@@ -30,7 +30,7 @@ using namespace mlir;
 using llvm::SMLoc;
 using llvm::SourceMgr;
 
-// Returns true if 'c' is an allowable puncuation character: [$._-]
+// Returns true if 'c' is an allowable punctuation character: [$._-]
 // Returns false otherwise.
 static bool isPunct(char c) {
   return c == '$' || c == '.' || c == '_' || c == '-';
@@ -63,124 +63,126 @@ Token Lexer::emitError(const char *loc, const Twine &message) {
 }
 
 Token Lexer::lexToken() {
-  // Ignore whitespace.
   while (true) {
-    switch (*curPtr) {
+    const char *tokStart = curPtr;
+    switch (*curPtr++) {
+    default:
+      // Handle bare identifiers.
+      if (isalpha(curPtr[-1]))
+        return lexBareIdentifierOrKeyword(tokStart);
+
+      // Unknown character, emit an error.
+      return emitError(tokStart, "unexpected character");
+
     case ' ':
     case '\t':
     case '\n':
     case '\r':
-      ++curPtr;
+      // Handle whitespace.
       continue;
-    default:
-      // Terminate loop on non-whitespace, including either an embedded or
-      // final terminating nul character that llvm::MemoryBuffer guarantees
-      // will be there.
-      break;
-    }
-    break;
-  }
 
-  const char *tokStart = curPtr;
-  switch (*curPtr++) {
-  default:
-    // Handle bare identifiers.
-    if (isalpha(curPtr[-1]))
+    case '_':
+      // Handle bare identifiers.
       return lexBareIdentifierOrKeyword(tokStart);
 
-    // Unknown character, emit an error.
-    return emitError(tokStart, "unexpected character");
+    case 0:
+      // This may either be a nul character in the source file or may be the EOF
+      // marker that llvm::MemoryBuffer guarantees will be there.
+      if (curPtr - 1 == curBuffer.end())
+        return formToken(Token::eof, tokStart);
 
-  case '_':
-    // Handle bare identifiers.
-    return lexBareIdentifierOrKeyword(tokStart);
+      LLVM_FALLTHROUGH;
+    case ':':
+      return formToken(Token::colon, tokStart);
+    case ',':
+      return formToken(Token::comma, tokStart);
+    case '.':
+      return lexEllipsis(tokStart);
+    case '(':
+      return formToken(Token::l_paren, tokStart);
+    case ')':
+      return formToken(Token::r_paren, tokStart);
+    case '{':
+      return formToken(Token::l_brace, tokStart);
+    case '}':
+      return formToken(Token::r_brace, tokStart);
+    case '[':
+      return formToken(Token::l_square, tokStart);
+    case ']':
+      return formToken(Token::r_square, tokStart);
+    case '<':
+      return formToken(Token::less, tokStart);
+    case '>':
+      return formToken(Token::greater, tokStart);
+    case '=':
+      return formToken(Token::equal, tokStart);
 
-  case 0:
-    // This may either be a nul character in the source file or may be the EOF
-    // marker that llvm::MemoryBuffer guarantees will be there.
-    if (curPtr - 1 == curBuffer.end())
-      return formToken(Token::eof, tokStart);
+    case '+':
+      return formToken(Token::plus, tokStart);
+    case '*':
+      return formToken(Token::star, tokStart);
+    case '-':
+      if (*curPtr == '>') {
+        ++curPtr;
+        return formToken(Token::arrow, tokStart);
+      }
+      return formToken(Token::minus, tokStart);
 
-    LLVM_FALLTHROUGH;
-  case ':':
-    return formToken(Token::colon, tokStart);
-  case ',':
-    return formToken(Token::comma, tokStart);
-  case '.':
-    return lexEllipsis(tokStart);
-  case '(':
-    return formToken(Token::l_paren, tokStart);
-  case ')':
-    return formToken(Token::r_paren, tokStart);
-  case '{':
-    return formToken(Token::l_brace, tokStart);
-  case '}':
-    return formToken(Token::r_brace, tokStart);
-  case '[':
-    return formToken(Token::l_square, tokStart);
-  case ']':
-    return formToken(Token::r_square, tokStart);
-  case '<':
-    return formToken(Token::less, tokStart);
-  case '>':
-    return formToken(Token::greater, tokStart);
-  case '=':
-    return formToken(Token::equal, tokStart);
+    case '?':
+      return formToken(Token::question, tokStart);
 
-  case '+':
-    return formToken(Token::plus, tokStart);
-  case '*':
-    return formToken(Token::star, tokStart);
-  case '-':
-    if (*curPtr == '>') {
-      ++curPtr;
-      return formToken(Token::arrow, tokStart);
+    case '/':
+      if (*curPtr == '/') {
+        skipComment();
+        continue;
+      }
+      return emitError(tokStart, "unexpected character");
+
+    case '@':
+      return lexAtIdentifier(tokStart);
+
+    case '!':
+      LLVM_FALLTHROUGH;
+    case '^':
+      LLVM_FALLTHROUGH;
+    case '#':
+      LLVM_FALLTHROUGH;
+    case '%':
+      return lexPrefixedIdentifier(tokStart);
+    case '"':
+      return lexString(tokStart);
+
+    case '0':
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+    case '5':
+    case '6':
+    case '7':
+    case '8':
+    case '9':
+      return lexNumber(tokStart);
     }
-    return formToken(Token::minus, tokStart);
-
-  case '?':
-    return formToken(Token::question, tokStart);
-
-  case '/':
-    if (*curPtr == '/')
-      return lexComment();
-    return emitError(tokStart, "unexpected character");
-
-  case '@':
-    return lexAtIdentifier(tokStart);
-
-  case '!':
-    LLVM_FALLTHROUGH;
-  case '^':
-    LLVM_FALLTHROUGH;
-  case '#':
-    LLVM_FALLTHROUGH;
-  case '%':
-    return lexPrefixedIdentifier(tokStart);
-  case '"':
-    return lexString(tokStart);
-
-  case '0':
-  case '1':
-  case '2':
-  case '3':
-  case '4':
-  case '5':
-  case '6':
-  case '7':
-  case '8':
-  case '9':
-    return lexNumber(tokStart);
   }
 }
 
 /// Lex an '@foo' identifier.
 ///
-///   symbol-ref-id ::= `@` bare-id
+///   symbol-ref-id ::= `@` (bare-id | string-literal)
 ///
 Token Lexer::lexAtIdentifier(const char *tokStart) {
-  // These always start with a letter or underscore.
-  auto cur = *curPtr++;
+  char cur = *curPtr++;
+
+  // Try to parse a string literal, if present.
+  if (cur == '"') {
+    Token stringIdentifier = lexString(curPtr);
+    if (stringIdentifier.is(Token::error))
+      return stringIdentifier;
+    return formToken(Token::at_identifier, tokStart);
+  }
+
+  // Otherwise, these always start with a letter or underscore.
   if (!isalpha(cur) && cur != '_')
     return emitError(curPtr - 1,
                      "@ identifier expected to start with letter or '_'");
@@ -222,11 +224,11 @@ Token Lexer::lexBareIdentifierOrKeyword(const char *tokStart) {
   return Token(kind, spelling);
 }
 
-/// Lex a comment line, starting with a semicolon.
+/// Skip a comment line, starting with a '//'.
 ///
 ///   TODO: add a regex for comments here and to the spec.
 ///
-Token Lexer::lexComment() {
+void Lexer::skipComment() {
   // Advance over the second '/' in a '//' comment.
   assert(*curPtr == '/');
   ++curPtr;
@@ -236,12 +238,12 @@ Token Lexer::lexComment() {
     case '\n':
     case '\r':
       // Newline is end of comment.
-      return lexToken();
+      return;
     case 0:
       // If this is the end of the buffer, end the comment.
       if (curPtr - 1 == curBuffer.end()) {
         --curPtr;
-        return lexToken();
+        return;
       }
       LLVM_FALLTHROUGH;
     default:
@@ -275,7 +277,7 @@ Token Lexer::lexNumber(const char *tokStart) {
 
   // Handle the hexadecimal case.
   if (curPtr[-1] == '0' && *curPtr == 'x') {
-    // If we see stuff like 0xi32, this is a literal `0` follwed by an
+    // If we see stuff like 0xi32, this is a literal `0` followed by an
     // identifier `xi32`, stop after `0`.
     if (!isxdigit(curPtr[1]))
       return formToken(Token::integer, tokStart);
@@ -313,7 +315,7 @@ Token Lexer::lexNumber(const char *tokStart) {
 
 /// Lex an identifier that starts with a prefix followed by suffix-id.
 ///
-///   affine-map-id ::= `#` suffix-id
+///   attribute-id  ::= `#` suffix-id
 ///   ssa-id        ::= '%' suffix-id
 ///   block-id      ::= '^' suffix-id
 ///   type-id       ::= '!' suffix-id
@@ -369,7 +371,7 @@ Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
 Token Lexer::lexString(const char *tokStart) {
   assert(curPtr[-1] == '"');
 
-  while (1) {
+  while (true) {
     switch (*curPtr++) {
     case '"':
       return formToken(Token::string, tokStart);

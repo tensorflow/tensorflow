@@ -132,6 +132,24 @@ XLA_TEST_F(SlicingTest, TorchGatherDense) {
                            {input_data.get(), index_data.get()});
 }
 
+XLA_TEST_F(SlicingTest, TorchScatterDense) {
+  xla::XlaBuilder builder(TestName());
+
+  xla::XlaOp src, index, input;
+  auto input_data = CreateR2Parameter<int>({{0, 0, 0}, {0, 0, 0}}, 0, "input",
+                                           &builder, &input);
+  auto index_data =
+      CreateR2Parameter<int>({{1, 0}, {1, 2}}, 1, "index", &builder, &index);
+  auto src_data =
+      CreateR2Parameter<int>({{1, 2}, {3, 4}}, 2, "src", &builder, &src);
+  TorchScatterDense(input, index, src, 1,
+                    [](XlaOp l, XlaOp r) { return l + r; });
+
+  ComputeAndCompareR2<int>(
+      &builder, {{2, 1, 0}, {0, 3, 4}},
+      {input_data.get(), index_data.get(), src_data.get()});
+}
+
 XLA_TEST_F(SlicingTest, TorchIndexSelectOn0) {
   xla::XlaBuilder builder(TestName());
 

@@ -82,7 +82,7 @@ struct LoopUnrollAndJam : public FunctionPass<LoopUnrollAndJam> {
 };
 } // end anonymous namespace
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::createLoopUnrollAndJamPass(int unrollJamFactor) {
   return std::make_unique<LoopUnrollAndJam>(
       unrollJamFactor == -1 ? None : Optional<unsigned>(unrollJamFactor));
@@ -209,8 +209,8 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
   forOp.setStep(step * unrollJamFactor);
 
   auto *forOpIV = forOp.getInductionVar();
-  // Unroll and jam (appends unrollJamFactor-1 additional copies).
-  for (unsigned i = 1; i < unrollJamFactor; i++) {
+  // Unroll and jam (appends unrollJamFactor - 1 additional copies).
+  for (unsigned i = unrollJamFactor - 1; i >= 1; --i) {
     // Operand map persists across all sub-blocks.
     BlockAndValueMapping operandMapping;
     for (auto &subBlock : subBlocks) {
@@ -223,7 +223,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
       if (!forOpIV->use_empty()) {
         // iv' = iv + i, i = 1 to unrollJamFactor-1.
         auto d0 = builder.getAffineDimExpr(0);
-        auto bumpMap = builder.getAffineMap(1, 0, {d0 + i * step});
+        auto bumpMap = AffineMap::get(1, 0, {d0 + i * step});
         auto ivUnroll =
             builder.create<AffineApplyOp>(forInst->getLoc(), bumpMap, forOpIV);
         operandMapping.map(forOpIV, ivUnroll);
