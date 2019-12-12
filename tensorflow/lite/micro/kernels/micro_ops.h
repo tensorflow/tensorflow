@@ -74,6 +74,7 @@ TfLiteRegistration* Register_SOFTMAX();
 TfLiteRegistration* Register_SPLIT();
 TfLiteRegistration* Register_SQRT();
 TfLiteRegistration* Register_SQUARE();
+TfLiteRegistration* Register_SQUEEZE();
 TfLiteRegistration* Register_STRIDED_SLICE();
 TfLiteRegistration* Register_SVDF();
 TfLiteRegistration* Register_UNPACK();
