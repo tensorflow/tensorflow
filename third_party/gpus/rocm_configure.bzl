@@ -323,7 +323,7 @@ def _hipcc_is_hipclang(repository_ctx, rocm_config):
         ["grep", "HIP_COMPILER=clang", rocm_config.rocm_toolkit_path + "/hip/lib/.hipInfo"],
         empty_stdout_fine = True,
     )
-    result = grep_result.stdout
+    result = grep_result.stdout.strip()
     if result == "HIP_COMPILER=clang":
         return "True"
     return "False"
