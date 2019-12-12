@@ -54,6 +54,7 @@ inline bool IsUnknownOp(absl::string_view tf_op_type) {
 inline bool IsDatasetOp(absl::string_view tf_op_type) {
   return tf_op_type == kDatasetOp;
 }
+
 }  // namespace profiler
 }  // namespace tensorflow
 

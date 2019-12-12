@@ -788,6 +788,23 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "unstack_test",
+    size = "medium",
+    srcs = ["unstack_test.py"],
+    shard_count = 5,
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],

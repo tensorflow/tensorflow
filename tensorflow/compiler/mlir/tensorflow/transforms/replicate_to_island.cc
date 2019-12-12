@@ -64,8 +64,8 @@ llvm::SmallVector<tf_executor::IslandOp, 8> ExpandReplicateIntoReplicas(
 
   // Replace replicate terminator with YieldOp.
   builder->setInsertionPoint(&terminator);
-  builder->create<tf_executor::YieldOp>(
-      terminator.getLoc(), llvm::to_vector<8>(terminator.getOperands()));
+  builder->create<tf_executor::YieldOp>(terminator.getLoc(),
+                                        terminator.getOperands());
   terminator.erase();
 
   builder->setInsertionPoint(island_op);

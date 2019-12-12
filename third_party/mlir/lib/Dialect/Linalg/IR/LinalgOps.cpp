@@ -96,8 +96,8 @@ static ParseResult parseGenericOp(OpAsmParser &parser, OperationState &result) {
   Region &region = *result.addRegion();
   SmallVector<Type, 8> operandTypes, regionTypes;
   // Optional attributes may be added.
-  // Either Optional "fun" attribute or region must be specified.
-  if (!dictAttr.get("fun") &&
+  // Either Optional getFunAttrName() attribute or region must be specified.
+  if (!dictAttr.get(getFunAttrName()) &&
       parser.parseOptionalRegion(region, regionOperandsInfo, regionTypes))
     return failure();
   if (parser.parseOptionalAttrDict(result.attributes) ||
@@ -320,7 +320,7 @@ static ParseResult parseRangeOp(OpAsmParser &parser, OperationState &result) {
 // SliceOp
 //===----------------------------------------------------------------------===//
 void mlir::linalg::SliceOp::build(Builder *b, OperationState &result,
-                                  Value *base, ArrayRef<Value *> indexings) {
+                                  Value *base, ValueRange indexings) {
   result.addOperands(base);
   result.addOperands(indexings);
 
@@ -557,7 +557,7 @@ static ParseResult parseLinalgLibraryOp(OpAsmParser &parser,
 
 static LogicalResult verify(FillOp op) {
   auto viewType = op.getOutputViewType(0);
-  auto fillType = op.getValue()->getType();
+  auto fillType = op.value()->getType();
   if (viewType.getElementType() != fillType)
     return op.emitOpError("expects fill type to match view elemental type");
   return success();
@@ -812,4 +812,31 @@ std::string mlir::linalg::generateLibraryCallName(Operation *op) {
       types.begin(), types.end(), [&](Type t) { appendMangledType(ss, t); },
       [&]() { ss << "_"; });
   return ss.str();
+}
+
+static ArrayAttr getIndexingMaps(Operation *op) {
+  LinalgOp linalgOp = cast<LinalgOp>(op);
+  SmallVector<Attribute, 4> maps;
+  maps.reserve(linalgOp.getNumInputsAndOutputs());
+  for (AffineMap map : loopToOperandRangesMaps(op))
+    maps.push_back(AffineMapAttr::get(map));
+  return ArrayAttr::get(maps, op->getContext());
+}
+ArrayAttr mlir::linalg::ConvOp::indexing_maps() {
+  return getIndexingMaps(getOperation());
+}
+ArrayAttr mlir::linalg::CopyOp::indexing_maps() {
+  return getIndexingMaps(getOperation());
+}
+ArrayAttr mlir::linalg::DotOp::indexing_maps() {
+  return getIndexingMaps(getOperation());
+}
+ArrayAttr mlir::linalg::FillOp::indexing_maps() {
+  return getIndexingMaps(getOperation());
+}
+ArrayAttr mlir::linalg::MatmulOp::indexing_maps() {
+  return getIndexingMaps(getOperation());
+}
+ArrayAttr mlir::linalg::MatvecOp::indexing_maps() {
+  return getIndexingMaps(getOperation());
 }

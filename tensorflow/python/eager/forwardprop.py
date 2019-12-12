@@ -250,9 +250,9 @@ class ForwardAccumulator(object):
   ...     primal_out = primal ** tf.constant(3.5)
   >>> inner_jvp = inner.jvp(primal_out)
   >>> inner_jvp  # 3.5 * 1.1 ** 2.5
-  <tf.Tensor: shape=(), dtype=float32, numpy=4.441...>
+  <tf.Tensor: shape=(), dtype=float32, numpy=4.4417057>
   >>> outer.jvp(inner_jvp)  # 3.5 * 2.5 * 1.1 ** 1.5
-  <tf.Tensor: shape=(), dtype=float32, numpy=10.094...>
+  <tf.Tensor: shape=(), dtype=float32, numpy=10.094786>
 
   Reversing the collection in the last line to instead retrieve
   `inner.jvp(outer.jvp(primal_out))` will not work.

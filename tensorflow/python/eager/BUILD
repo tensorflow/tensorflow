@@ -112,6 +112,7 @@ cuda_py_test(
         ":cancellation",
         ":test",
     ],
+    python_version = "PY3",
 )
 
 py_library(
@@ -151,6 +152,7 @@ cuda_py_test(
         ":context",
         ":test",
     ],
+    python_version = "PY3",
 )
 
 py_library(
@@ -175,6 +177,7 @@ cuda_py_test(
         ":monitoring",
         ":test",
     ],
+    python_version = "PY3",
 )
 
 py_library(
@@ -197,6 +200,7 @@ cuda_py_test(
         ":test",
         "//tensorflow/python:constant_op",
     ],
+    python_version = "PY3",
 )
 
 py_library(
@@ -212,7 +216,7 @@ py_library(
 py_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     visibility = ["//tensorflow:internal"],
@@ -238,6 +242,7 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
     ],
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -259,6 +264,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:training",
     ],
+    python_version = "PY3",
     tags = [
         "no_rocm",
         "no_windows",  #TODO(b/139745667)
@@ -274,6 +280,7 @@ cuda_py_test(
         ":test",
         "//tensorflow/python/distribute:mirrored_strategy",
     ],
+    python_version = "PY3",
     shard_count = 5,
 )
 
@@ -293,6 +300,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:pywrap_tensorflow",
     ],
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -307,6 +315,7 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:math_ops",
     ],
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -322,6 +331,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
     ],
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -338,6 +348,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
     ],
+    python_version = "PY3",
     shard_count = 5,
 )
 
@@ -372,6 +383,7 @@ cuda_py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:test_ops",
     ],
+    python_version = "PY3",
     shard_count = 15,
 )
 
@@ -428,6 +440,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
     ],
+    python_version = "PY3",
 )
 
 py_library(
@@ -543,6 +556,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python/keras",
     ],
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -560,10 +574,12 @@ cuda_py_test(
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:random_ops",
     ],
+    python_version = "PY3",
 )
 
 tf_py_logged_benchmark(
     name = "benchmarks",
+    python_version = "PY3",
     target = "//tensorflow/python/eager:benchmarks_test",
 )
 
@@ -582,6 +598,7 @@ tf_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -606,6 +623,7 @@ cuda_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:tensor_shape",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -623,6 +641,7 @@ tf_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:test_ops",
     ],
+    python_version = "PY3",
 )
 
 py_library(
@@ -679,6 +698,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
     ],
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -692,6 +712,7 @@ cuda_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
     ],
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -705,6 +726,7 @@ cuda_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
     ],
+    python_version = "PY3",
     tags = [
         "no_mac",
         "no_windows",
@@ -715,6 +737,7 @@ cuda_py_test(
 tf_xla_py_test(
     name = "def_function_xla_test",
     srcs = ["def_function_xla_test.py"],
+    python_version = "PY3",
     tags = [
         "no_pip",
         "no_windows",
@@ -756,6 +779,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
     ],
+    python_version = "PY3",
 )
 
 py_library(
@@ -784,6 +808,7 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
     ],
     grpc_enabled = True,
+    python_version = "PY3",
     shard_count = 2,
     tags = [
         "no_oss",  # This test launches local server.
@@ -794,6 +819,7 @@ cuda_py_test(
 tpu_py_test(
     name = "remote_cloud_tpu_test",
     srcs = ["remote_cloud_tpu_test.py"],
+    python_version = "PY3",
     tags = [
         "notap",
     ],
@@ -816,4 +842,5 @@ cuda_py_test(
         ":remote",
         "//tensorflow/python:resource_variable_ops",
     ],
+    python_version = "PY3",
 )

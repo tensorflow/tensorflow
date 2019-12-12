@@ -450,7 +450,6 @@ py_library(
         "layers/cudnn_recurrent.py",
         "layers/dense_attention.py",
         "layers/embeddings.py",
-        "layers/image_preprocessing.py",
         "layers/kernelized.py",
         "layers/local.py",
         "layers/merge.py",
@@ -458,6 +457,7 @@ py_library(
         "layers/normalization.py",
         "layers/normalization_v2.py",
         "layers/pooling.py",
+        "layers/preprocessing/image_preprocessing.py",
         "layers/preprocessing/normalization.py",
         "layers/preprocessing/normalization_v1.py",
         "layers/preprocessing/text_vectorization.py",
@@ -553,6 +553,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:nn_ops",
     ],
+    python_version = "PY3",
     shard_count = 16,
     tags = ["notsan"],
 )
@@ -568,6 +569,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:nn_ops",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -580,6 +582,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -591,6 +594,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
@@ -607,6 +611,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:init_ops",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -618,6 +623,7 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -631,6 +637,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
     ],
+    python_version = "PY3",
     shard_count = 8,
     tags = ["notsan"],
 )
@@ -645,6 +652,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -656,6 +664,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -668,6 +677,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
 )
 
@@ -681,6 +691,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
 )
 
@@ -694,6 +705,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
 )
 
@@ -706,6 +718,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 20,
 )
 
@@ -718,6 +731,7 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -733,6 +747,7 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
     ],
+    python_version = "PY3",
     shard_count = 3,
 )
 
@@ -746,6 +761,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = ["no_rocm"],
 )
@@ -760,19 +776,21 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 8,
 )
 
 cuda_py_test(
     name = "image_preprocessing_test",
     size = "medium",
-    srcs = ["layers/image_preprocessing_test.py"],
+    srcs = ["layers/preprocessing/image_preprocessing_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
 )
 
@@ -786,6 +804,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -798,6 +817,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_rocm",
@@ -814,6 +834,7 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
@@ -828,6 +849,7 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 8,
     # TODO(b/127881287): Re-enable.
     tags = [
@@ -845,6 +867,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 3,
 )
 
@@ -858,6 +881,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 3,
 )
 
@@ -871,6 +895,7 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -882,6 +907,7 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -894,6 +920,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = ["no_windows"],
 )
@@ -908,6 +935,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -919,6 +947,7 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -931,6 +960,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_rocm",
@@ -949,6 +979,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     main = "normalization_test.py",
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -964,6 +995,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     main = "text_vectorization_test.py",
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -976,6 +1008,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = ["notsan"],
 )
@@ -990,6 +1023,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = ["notsan"],  # http://b/62136390
 )
@@ -1004,6 +1038,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "noasan",  # times out b/63678675
@@ -1021,6 +1056,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 10,
 )
 
@@ -1034,6 +1070,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 2,
 )
 
@@ -1047,6 +1084,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -1059,6 +1097,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 12,
     tags = ["no_rocm"],
 )
@@ -1073,6 +1112,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 12,
     tags = ["no_rocm"],
 )
@@ -1086,6 +1126,7 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -1112,6 +1153,7 @@ tf_py_test(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/eager:context",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -1126,6 +1168,7 @@ tf_py_test(
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_concat_ops",
     ],
+    python_version = "PY3",
     shard_count = 6,
     tags = [
         "noasan",  # http://b/78599823
@@ -1143,6 +1186,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "notsan",
@@ -1158,6 +1202,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = [
         "noasan",  # http://b/78599823
         "notsan",
@@ -1174,6 +1219,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = ["notsan"],
 )
 
@@ -1187,6 +1233,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 6,
     tags = [
         "noasan",  # times out
@@ -1204,6 +1251,7 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -1215,6 +1263,7 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -1225,6 +1274,7 @@ tf_py_test(
         ":keras",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -1246,6 +1296,7 @@ tf_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
     ],
+    python_version = "PY3",
     shard_count = 8,
     tags = ["no_windows"],  # b/135752236
 )
@@ -1260,6 +1311,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = [
         "no_windows",  # TODO: needs investigation on Windows
         "notsan",
@@ -1276,6 +1328,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -1288,6 +1341,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
     ],
+    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -1299,6 +1353,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = [
         "guitar",
         "multi_gpu",
@@ -1316,6 +1371,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
@@ -1331,6 +1387,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -1343,6 +1400,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -1355,6 +1413,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -1367,6 +1426,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -1379,6 +1439,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -1410,6 +1471,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = ["notsan"],
 )
 
@@ -1423,6 +1485,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 2,
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
@@ -1439,6 +1502,7 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
@@ -1454,6 +1518,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 20,
     tags = [
         "no_rocm",
@@ -1472,6 +1537,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
@@ -1491,6 +1557,7 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = [
         "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
@@ -1507,6 +1574,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 6,
     tags = [
         "noasan",  # TODO(b/132183295): Re-enable this.
@@ -1525,6 +1593,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 30,
     tags = [
         "no_rocm",
@@ -1543,6 +1612,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/feature_column:feature_column_py",
     ],
+    python_version = "PY3",
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
         "notsan",
@@ -1559,6 +1629,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = [
         "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
@@ -1576,6 +1647,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = [
         "no_oss",  # TODO(b/135021748) reenable
         "notsan",
@@ -1593,6 +1665,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:strategy_combinations",
     ],
+    python_version = "PY3",
     tags = [
         "no_oss",  # TODO(b/135021748) reenable
         "notsan",
@@ -1638,6 +1711,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_windows",
@@ -1655,6 +1729,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = ["notsan"],
 )
@@ -1669,6 +1744,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 8,
     tags = [
         "no-internal-py3",
@@ -1702,6 +1778,7 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = [
         "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
@@ -1718,6 +1795,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 8,
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
@@ -1734,6 +1812,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_windows",
@@ -1750,6 +1829,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
@@ -1766,6 +1846,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
     ],
+    python_version = "PY3",
     shard_count = 8,
     tags = ["notsan"],  # b/67509773
 )
@@ -1781,6 +1862,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
     ],
+    python_version = "PY3",
     shard_count = 4,
 )
 
@@ -1794,6 +1876,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -1806,6 +1889,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = ["notsan"],
 )
 
@@ -1820,6 +1904,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/feature_column:feature_column_v2",
     ],
+    python_version = "PY3",
 )
 
 tf_py_test(
@@ -1832,6 +1917,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_oss",  # TODO(b/119349471): Re-enable
@@ -1850,6 +1936,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_windows",
@@ -1866,6 +1953,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = ["notsan"],
 )
 
@@ -1885,4 +1973,5 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
     ],
+    python_version = "PY3",
 )

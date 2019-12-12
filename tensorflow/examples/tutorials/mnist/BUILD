@@ -51,7 +51,7 @@ py_binary(
     srcs = [
         "fully_connected_feed.py",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["optonly"],
     deps = [
@@ -66,7 +66,7 @@ py_binary(
     srcs = [
         "mnist_with_summaries.py",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":input_data",
@@ -85,7 +85,7 @@ py_binary(
     srcs = [
         "mnist_softmax_xla.py",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":input_data",
@@ -129,6 +129,7 @@ tf_py_test(
     main = "mnist_with_summaries.py",
     tags = [
         "no_pip",
+        "noasan",  # http://b/146080738
         "notsan",  # http://b/29184009
     ],
 )

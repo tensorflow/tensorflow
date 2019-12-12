@@ -281,6 +281,9 @@ public:
   /// Returns the current insertion point of the builder.
   Block::iterator getInsertionPoint() const { return insertPoint; }
 
+  /// Insert the given operation at the current insertion point and return it.
+  virtual Operation *insert(Operation *op);
+
   /// Add new block and set the insertion point to the end of it. The block is
   /// inserted at the provided insertion point of 'parent'.
   Block *createBlock(Region *parent, Region::iterator insertPt = {});
@@ -293,7 +296,7 @@ public:
   Block *getBlock() const { return block; }
 
   /// Creates an operation given the fields represented as an OperationState.
-  virtual Operation *createOperation(const OperationState &state);
+  Operation *createOperation(const OperationState &state);
 
   /// Create an operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
@@ -346,37 +349,27 @@ public:
   /// cloned sub-operations to the corresponding operation that is copied,
   /// and adds those mappings to the map.
   Operation *clone(Operation &op, BlockAndValueMapping &mapper) {
-    Operation *cloneOp = op.clone(mapper);
-    insert(cloneOp);
-    return cloneOp;
+    return insert(op.clone(mapper));
   }
-  Operation *clone(Operation &op) {
-    Operation *cloneOp = op.clone();
-    insert(cloneOp);
-    return cloneOp;
-  }
+  Operation *clone(Operation &op) { return insert(op.clone()); }
 
   /// Creates a deep copy of this operation but keep the operation regions
   /// empty. Operands are remapped using `mapper` (if present), and `mapper` is
   /// updated to contain the results.
   Operation *cloneWithoutRegions(Operation &op, BlockAndValueMapping &mapper) {
-    Operation *cloneOp = op.cloneWithoutRegions(mapper);
-    insert(cloneOp);
-    return cloneOp;
+    return insert(op.cloneWithoutRegions(mapper));
   }
   Operation *cloneWithoutRegions(Operation &op) {
-    Operation *cloneOp = op.cloneWithoutRegions();
-    insert(cloneOp);
-    return cloneOp;
+    return insert(op.cloneWithoutRegions());
+  }
+  template <typename OpT> OpT cloneWithoutRegions(OpT op) {
+    return cast<OpT>(cloneWithoutRegions(*op.getOperation()));
   }
 
 private:
   /// Attempts to fold the given operation and places new results within
   /// 'results'.
   void tryFold(Operation *op, SmallVectorImpl<Value *> &results);
-
-  /// Insert the given operation at the current insertion point.
-  void insert(Operation *op);
 
   Block *block = nullptr;
   Block::iterator insertPoint;

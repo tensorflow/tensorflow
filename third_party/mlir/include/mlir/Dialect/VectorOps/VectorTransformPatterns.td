@@ -19,25 +19,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef VECTOR_TRANSFORMS
-#define VECTOR_TRANSFORMS
+#ifndef VECTOR_TRANSFORM_PATTERNS
+#define VECTOR_TRANSFORM_PATTERNS
 
-include "mlir/Dialect/StandardOps/Ops.td"
-include "mlir/Dialect/VectorOps/VectorOps.td"
+include "mlir/IR/OpBase.td"
 
 class HasShape<list<int> shape> :
-  CPred<"hasShape($0, {" #  StrJoinInt<shape>.result # "})">;
+  CPred<"$0->getType().cast<ShapedType>().hasStaticShape({" #
+    StrJoinInt<shape>.result # "})">;
 
 class UnrollVectorOp<list<int> factors> : NativeCodeCall<
   "unrollSingleResultOpMatchingType($_builder, $0->getDefiningOp(), " #
     "{" # StrJoinInt<factors>.result # "})">;
 
-def : Pat<(AddFOp:$op_results $a, $b),
-          (UnrollVectorOp<[2, 2]> $op_results, $a, $b),
-          [(Constraint<HasShape<[4, 2]>> $a)]>;
-
-def : Pat<(AddFOp:$op_results $a, $b),
-          (UnrollVectorOp<[2, 2]> $op_results, $a, $b),
-          [(Constraint<HasShape<[4, 4]>> $a)]>;
-
-#endif // VECTOR_TRANSFORMS
+#endif // VECTOR_TRANSFORM_PATTERNS

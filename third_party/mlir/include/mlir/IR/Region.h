@@ -160,6 +160,43 @@ private:
   Operation *container;
 };
 
+/// This class provides an abstraction over the different types of ranges over
+/// Regions. In many cases, this prevents the need to explicitly materialize a
+/// SmallVector/std::vector. This class should be used in places that are not
+/// suitable for a more derived type (e.g. ArrayRef) or a template range
+/// parameter.
+class RegionRange
+    : public detail::indexed_accessor_range_base<
+          RegionRange,
+          llvm::PointerUnion<Region *, const std::unique_ptr<Region> *>,
+          Region *, Region *, Region *> {
+  /// The type representing the owner of this range. This is either a list of
+  /// values, operands, or results.
+  using OwnerT = llvm::PointerUnion<Region *, const std::unique_ptr<Region> *>;
+
+public:
+  using RangeBaseT::RangeBaseT;
+
+  RegionRange(MutableArrayRef<Region> regions = llvm::None);
+
+  template <typename Arg,
+            typename = typename std::enable_if_t<std::is_constructible<
+                ArrayRef<std::unique_ptr<Region>>, Arg>::value>>
+  RegionRange(Arg &&arg)
+      : RegionRange(ArrayRef<std::unique_ptr<Region>>(std::forward<Arg>(arg))) {
+  }
+  RegionRange(ArrayRef<std::unique_ptr<Region>> regions);
+
+private:
+  /// See `detail::indexed_accessor_range_base` for details.
+  static OwnerT offset_base(const OwnerT &owner, ptrdiff_t index);
+  /// See `detail::indexed_accessor_range_base` for details.
+  static Region *dereference_iterator(const OwnerT &owner, ptrdiff_t index);
+
+  /// Allow access to `offset_base` and `dereference_iterator`.
+  friend RangeBaseT;
+};
+
 } // end namespace mlir
 
 #endif // MLIR_IR_REGION_H

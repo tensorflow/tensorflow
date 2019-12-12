@@ -86,7 +86,8 @@ TfLiteStatus EvalHashtable(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* resource_handle_tensor =
       GetOutput(context, node, kResourceHandleTensor);
-  auto* resource_handle_data = GetTensorData<int32>(resource_handle_tensor);
+  auto* resource_handle_data =
+      GetTensorData<std::int32_t>(resource_handle_tensor);
   resource_handle_data[0] = resource_id;
 
   Subgraph* subgraph = reinterpret_cast<Subgraph*>(context->impl_);

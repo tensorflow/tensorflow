@@ -129,7 +129,7 @@ MultilineMessageKeyError.__name__ = KeyError.__name__
 
 
 class ErrorMetadataBase(object):
-  """Container objects attached to exceptions in converted code.
+  """Container objects attached to exceptions raised in user code.
 
   This metadata allows re-raising exceptions that occur in generated code, with
   a custom error message that includes a stack trace relative to user-readable
@@ -152,7 +152,7 @@ class ErrorMetadataBase(object):
     """Returns the message for the underlying exception."""
     lines = []
 
-    lines.append('in converted code:')
+    lines.append('in user code:')
     lines.append('')
 
     for frame_info in reversed(self.translated_stack):

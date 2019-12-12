@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines common utilities for generating documents from tablgen
+// This file defines common utilities for generating documents from tablegen
 // structures.
 //
 //===----------------------------------------------------------------------===//

@@ -31,5 +31,6 @@ cc_library(
         "//tensorflow/core/profiler:profiler_service_proto_cc",
         "//tensorflow/core/profiler/lib:profiler_lib",
         "//tensorflow/core/profiler/lib:profiler_session",
+        "@com_google_absl//absl/strings",
     ],
 )

@@ -134,11 +134,13 @@ struct TFE_Op {
     inference_ctx.reset();
   }
 
-  void Reset(TFE_Context* ctx, const char* op, bool is_function,
-             const tensorflow::AttrTypeMap* t,
-             TFE_OpInferenceContext* infer_ctx) {
-    operation.Reset(ctx->context, op, is_function, t, nullptr);
+  tensorflow::Status Reset(TFE_Context* ctx, const char* op, bool is_function,
+                           const tensorflow::AttrTypeMap* t,
+                           const char* raw_device_name,
+                           TFE_OpInferenceContext* infer_ctx) {
     inference_ctx.reset(infer_ctx);
+    return operation.Reset(ctx->context, op, is_function, t, raw_device_name,
+                           nullptr);
   }
 
   tensorflow::EagerOperation operation;
@@ -146,7 +148,8 @@ struct TFE_Op {
 };
 
 TFE_Op* NewOrResetOp(TFE_Context* ctx, const char* op_or_function_name,
-                     TF_Status* status, TFE_Op* op_to_reset = nullptr);
+                     const char* raw_device_name, TF_Status* status,
+                     TFE_Op* op_to_reset = nullptr);
 
 struct TFE_Profiler {
   explicit TFE_Profiler() { profiler = tensorflow::ProfilerSession::Create(); }

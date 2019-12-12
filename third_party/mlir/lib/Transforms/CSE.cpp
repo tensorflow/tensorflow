@@ -47,7 +47,7 @@ struct SimpleOperationInfo : public llvm::DenseMapInfo<Operation *> {
     //   - Result Types
     //   - Operands
     return hash_combine(
-        op->getName(), op->getAttrs(),
+        op->getName(), op->getAttrList().getDictionary(),
         hash_combine_range(op->result_type_begin(), op->result_type_end()),
         hash_combine_range(op->operand_begin(), op->operand_end()));
   }
@@ -68,7 +68,7 @@ struct SimpleOperationInfo : public llvm::DenseMapInfo<Operation *> {
         lhs->getNumResults() != rhs->getNumResults())
       return false;
     // Compare attributes.
-    if (lhs->getAttrs() != rhs->getAttrs())
+    if (lhs->getAttrList() != rhs->getAttrList())
       return false;
     // Compare operands.
     if (!std::equal(lhs->operand_begin(), lhs->operand_end(),
@@ -124,6 +124,10 @@ struct CSE : public OperationPass<CSE> {
 private:
   /// Operations marked as dead and to be erased.
   std::vector<Operation *> opsToErase;
+
+  /// Statistics for CSE.
+  Statistic numCSE{this, "num-cse'd", "Number of operations CSE'd"};
+  Statistic numDCE{this, "num-dce'd", "Number of operations trivially DCE'd"};
 };
 } // end anonymous namespace
 
@@ -143,6 +147,7 @@ LogicalResult CSE::simplifyOperation(ScopedMapTy &knownValues, Operation *op) {
   // If the operation is already trivially dead just add it to the erase list.
   if (op->use_empty()) {
     opsToErase.push_back(op);
+    ++numDCE;
     return success();
   }
 
@@ -160,6 +165,8 @@ LogicalResult CSE::simplifyOperation(ScopedMapTy &knownValues, Operation *op) {
         !op->getLoc().isa<UnknownLoc>()) {
       existing->setLoc(op->getLoc());
     }
+
+    ++numCSE;
     return success();
   }
 

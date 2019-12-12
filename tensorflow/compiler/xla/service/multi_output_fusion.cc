@@ -108,6 +108,11 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
       changed = true;
     }
   }
+  // Clean up state in case this pass is wrapped in an HloPassPipeline.
+  candidates_.clear();
+  candidates_index_.clear();
+  all_fusion_candidates_.clear();
+  reachability_.reset();
   return changed;
 }
 

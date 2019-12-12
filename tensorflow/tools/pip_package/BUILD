@@ -26,6 +26,7 @@ package(default_visibility = ["//visibility:private"])
 transitive_hdrs(
     name = "included_headers",
     deps = [
+        "//tensorflow/c/experimental:network",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -117,10 +118,10 @@ filegroup(
     name = "licenses",
     data = [
         "//:LICENSE",
-        "//third_party/icu/data:LICENSE",
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
+        "//third_party/icu/data:LICENSE",
         "@arm_neon_2_x86_sse//:LICENSE",
         "@astor_archive//:LICENSE",
         "@boringssl//:LICENSE",

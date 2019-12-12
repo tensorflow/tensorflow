@@ -33,7 +33,7 @@ TEST(PrepackedCacheTest, TestCacheEjection) {
   mat1.data_size = 16;
   mat1.sums_size = 8;
   prepacked_cache.AllocatePrepackedMatrix(&mat1);
-  auto cache_key1 = std::make_pair(reinterpret_cast<void*>(0), mat1.data);
+  auto cache_key1 = std::make_pair(nullptr, mat1.data);
   prepacked_cache.Insert(cache_key1, mat1);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   // Get a time point after the insertion into the cache.
@@ -49,7 +49,7 @@ TEST(PrepackedCacheTest, TestCacheEjection) {
   mat2.sums_size = 4;
   prepacked_cache.AllocatePrepackedMatrix(&mat2);
 
-  auto cache_key2 = std::make_pair(reinterpret_cast<void*>(0), mat2.data);
+  auto cache_key2 = std::make_pair(nullptr, mat2.data);
   prepacked_cache.Insert(cache_key2, mat2);
   // The cache size was exceeded by inserting mat2. Ensure that mat1 was
   // ejected.
@@ -67,7 +67,7 @@ TEST(PrepackedCacheTest, TestCacheBasic) {
   mat1.sums_size = 8;
   prepacked_cache.AllocatePrepackedMatrix(&mat1);
 
-  auto cache_key1 = std::make_pair(reinterpret_cast<void*>(0), mat1.data);
+  auto cache_key1 = std::make_pair(nullptr, mat1.data);
   prepacked_cache.Insert(cache_key1, mat1);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   EXPECT_NE(prepacked_cache.FindAndUpdate(cache_key1), prepacked_cache.cend());
@@ -77,7 +77,7 @@ TEST(PrepackedCacheTest, TestCacheBasic) {
   mat2.sums_size = 4;
   prepacked_cache.AllocatePrepackedMatrix(&mat2);
 
-  auto cache_key2 = std::make_pair(reinterpret_cast<void*>(0), mat2.data);
+  auto cache_key2 = std::make_pair(nullptr, mat2.data);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   prepacked_cache.Insert(cache_key2, mat2);
   // The cache size was not exceeded by inserting mat2. Ensure that mat1 was not
@@ -95,7 +95,7 @@ TEST(PrepackedCacheTest, TestCacheEjection2) {
   mat1.data_size = 16;
   mat1.sums_size = 8;
   prepacked_cache.AllocatePrepackedMatrix(&mat1);
-  auto cache_key1 = std::make_pair(reinterpret_cast<void*>(0), mat1.data);
+  auto cache_key1 = std::make_pair(nullptr, mat1.data);
   prepacked_cache.Insert(cache_key1, mat1);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
@@ -104,7 +104,7 @@ TEST(PrepackedCacheTest, TestCacheEjection2) {
   mat2.data_size = 16;
   mat2.sums_size = 8;
   prepacked_cache.AllocatePrepackedMatrix(&mat2);
-  auto cache_key2 = std::make_pair(reinterpret_cast<void*>(0), mat2.data);
+  auto cache_key2 = std::make_pair(nullptr, mat2.data);
   prepacked_cache.Insert(cache_key2, mat2);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
@@ -113,7 +113,7 @@ TEST(PrepackedCacheTest, TestCacheEjection2) {
   mat31.data_size = 16;
   mat31.sums_size = 8;
   prepacked_cache.AllocatePrepackedMatrix(&mat31);
-  auto cache_key3 = std::make_pair(reinterpret_cast<void*>(0), mat31.data);
+  auto cache_key3 = std::make_pair(nullptr, mat31.data);
   prepacked_cache.Insert(cache_key3, mat31);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
@@ -128,7 +128,7 @@ TEST(PrepackedCacheTest, TestCacheEjection2) {
   mat4.data_size = 16;
   mat4.sums_size = 8;
   prepacked_cache.AllocatePrepackedMatrix(&mat4);
-  auto cache_key4 = std::make_pair(reinterpret_cast<void*>(0), mat4.data);
+  auto cache_key4 = std::make_pair(nullptr, mat4.data);
   prepacked_cache.Insert(cache_key4, mat4);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
 

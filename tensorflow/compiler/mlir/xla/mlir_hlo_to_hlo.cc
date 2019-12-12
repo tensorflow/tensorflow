@@ -40,7 +40,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
+using ::stream_executor::port::StatusOr;
 using ::tensorflow::int16;
 using ::tensorflow::int32;
 using ::tensorflow::int64;
@@ -149,6 +151,7 @@ I64_ELEMENTS_ATTR_TO_VECTOR(permutation);
 I64_ELEMENTS_ATTR_TO_VECTOR(start_indices);
 I64_ELEMENTS_ATTR_TO_VECTOR(limit_indices);
 I64_ELEMENTS_ATTR_TO_VECTOR(strides);
+I64_ELEMENTS_ATTR_TO_VECTOR(slice_sizes);
 
 #undef I64_ELEMENTS_ATTR_TO_VECTOR
 
@@ -265,6 +268,30 @@ static xla::ComparisonDirection Convert_comparison_direction(
     llvm::StringRef comparison_direction_string) {
   return xla::StringToComparisonDirection(comparison_direction_string.str())
       .ValueOrDie();
+}
+
+static xla::GatherDimensionNumbers Convert_gather_dimension_numbers(
+    mlir::xla_hlo::GatherDimensionNumbers input) {
+  xla::GatherDimensionNumbers output;
+
+  auto offset_dims = ConvertDenseIntAttr(input.offset_dims());
+  std::copy(offset_dims.begin(), offset_dims.end(),
+            tensorflow::protobuf::RepeatedFieldBackInserter(
+                output.mutable_offset_dims()));
+
+  auto collapsed_slice_dims = ConvertDenseIntAttr(input.collapsed_slice_dims());
+  std::copy(collapsed_slice_dims.begin(), collapsed_slice_dims.end(),
+            tensorflow::protobuf::RepeatedFieldBackInserter(
+                output.mutable_collapsed_slice_dims()));
+
+  auto start_index_map = ConvertDenseIntAttr(input.start_index_map());
+  std::copy(start_index_map.begin(), start_index_map.end(),
+            tensorflow::protobuf::RepeatedFieldBackInserter(
+                output.mutable_start_index_map()));
+
+  output.set_index_vector_dim(
+      ConvertAPInt(input.index_vector_dim().getValue()));
+  return output;
 }
 
 static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
@@ -419,6 +446,14 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(BitcastConvertOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::BitcastConvertType(
+      value_map[op.operand()],
+      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+  return success();
+}
+
 LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   auto type = op.getType().dyn_cast<RankedTensorType>();
   if (!type) return failure();
@@ -496,13 +531,12 @@ LogicalResult ExportXlaOp(DynamicUpdateSliceOp op, OpLoweringContext ctx) {
 LogicalResult ExportXlaOp(FftOp op, OpLoweringContext ctx) { return failure(); }
 
 LogicalResult ExportXlaOp(GatherOp op, OpLoweringContext ctx) {
-  return failure();
-}
-
-LogicalResult ExportXlaOp(GetTupleElementOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  value_map[op] = xla::GetTupleElement(value_map[op.getOperand()],
-                                       op.index().getSExtValue());
+  xla::GatherDimensionNumbers dimension_numbers =
+      Convert_gather_dimension_numbers(op.dimension_numbers());
+  value_map[op] = xla::Gather(
+      value_map[op.operand()], value_map[op.start_indices()], dimension_numbers,
+      Convert_slice_sizes(op.slice_sizes()), op.indices_are_sorted());
   return success();
 }
 
@@ -629,6 +663,18 @@ LogicalResult ExportXlaOp(SelectAndScatterOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(SliceOp op, OpLoweringContext ctx) {
   return failure();
+}
+
+LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
+  xla::XlaComputation comparator;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.comparator(),
+                                                     &comparator)))
+    return failure();
+
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::Sort(GetTuple(op.operands(), ctx), comparator,
+                            op.dimension().getSExtValue(), op.is_stable());
+  return success();
 }
 
 LogicalResult ExportXlaOp(TupleOp op, OpLoweringContext ctx) {

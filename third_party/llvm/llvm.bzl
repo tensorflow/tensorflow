@@ -294,7 +294,7 @@ win32_cmake_vars = {
 
     # ThreadPoolExecutor global destructor and thread handshaking do not work
     # on this platform when used as a DLL.
-    # See: https://github.com/google/iree/issues/114
+    # See: https://bugs.llvm.org/show_bug.cgi?id=44211
     "LLVM_ENABLE_THREADS": 0,
 }
 

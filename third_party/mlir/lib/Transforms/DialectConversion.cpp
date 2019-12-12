@@ -416,7 +416,7 @@ struct ConversionPatternRewriterImpl {
   /// This class represents one requested operation replacement via 'replaceOp'.
   struct OpReplacement {
     OpReplacement() = default;
-    OpReplacement(Operation *op, ArrayRef<Value *> newValues)
+    OpReplacement(Operation *op, ValueRange newValues)
         : op(op), newValues(newValues.begin(), newValues.end()) {}
 
     Operation *op;
@@ -501,8 +501,8 @@ struct ConversionPatternRewriterImpl {
                            TypeConverter::SignatureConversion &conversion);
 
   /// PatternRewriter hook for replacing the results of an operation.
-  void replaceOp(Operation *op, ArrayRef<Value *> newValues,
-                 ArrayRef<Value *> valuesToRemoveIfDead);
+  void replaceOp(Operation *op, ValueRange newValues,
+                 ValueRange valuesToRemoveIfDead);
 
   /// Notifies that a block was split.
   void notifySplitBlock(Block *block, Block *continuation);
@@ -687,9 +687,9 @@ Block *ConversionPatternRewriterImpl::applySignatureConversion(
   return nullptr;
 }
 
-void ConversionPatternRewriterImpl::replaceOp(
-    Operation *op, ArrayRef<Value *> newValues,
-    ArrayRef<Value *> valuesToRemoveIfDead) {
+void ConversionPatternRewriterImpl::replaceOp(Operation *op,
+                                              ValueRange newValues,
+                                              ValueRange valuesToRemoveIfDead) {
   assert(newValues.size() == op->getNumResults());
 
   // Create mappings for each of the new result values.
@@ -769,9 +769,8 @@ ConversionPatternRewriter::ConversionPatternRewriter(MLIRContext *ctx,
 ConversionPatternRewriter::~ConversionPatternRewriter() {}
 
 /// PatternRewriter hook for replacing the results of an operation.
-void ConversionPatternRewriter::replaceOp(
-    Operation *op, ArrayRef<Value *> newValues,
-    ArrayRef<Value *> valuesToRemoveIfDead) {
+void ConversionPatternRewriter::replaceOp(Operation *op, ValueRange newValues,
+                                          ValueRange valuesToRemoveIfDead) {
   LLVM_DEBUG(llvm::dbgs() << "** Replacing operation : " << op->getName()
                           << "\n");
   impl->replaceOp(op, newValues, valuesToRemoveIfDead);
@@ -803,13 +802,6 @@ void ConversionPatternRewriter::replaceUsesOfBlockArgument(BlockArgument *from,
   impl->mapping.map(impl->mapping.lookupOrDefault(from), to);
 }
 
-/// Clone the given operation without cloning its regions.
-Operation *ConversionPatternRewriter::cloneWithoutRegions(Operation *op) {
-  Operation *newOp = OpBuilder::cloneWithoutRegions(*op);
-  impl->createdOps.push_back(newOp);
-  return newOp;
-}
-
 /// Return the converted value that replaces 'key'. Return 'key' if there is
 /// no such a converted value.
 Value *ConversionPatternRewriter::getRemappedValue(Value *key) {
@@ -826,7 +818,7 @@ Block *ConversionPatternRewriter::splitBlock(Block *block,
 
 /// PatternRewriter hook for merging a block into another.
 void ConversionPatternRewriter::mergeBlocks(Block *source, Block *dest,
-                                            ArrayRef<Value *> argValues) {
+                                            ValueRange argValues) {
   // TODO(riverriddle) This requires fixing the implementation of
   // 'replaceUsesOfBlockArgument', which currently isn't undoable.
   llvm_unreachable("block merging updates are currently not supported");
@@ -855,12 +847,11 @@ void ConversionPatternRewriter::cloneRegionBefore(
 }
 
 /// PatternRewriter hook for creating a new operation.
-Operation *
-ConversionPatternRewriter::createOperation(const OperationState &state) {
-  LLVM_DEBUG(llvm::dbgs() << "** Creating operation : " << state.name << "\n");
-  auto *result = OpBuilder::createOperation(state);
-  impl->createdOps.push_back(result);
-  return result;
+Operation *ConversionPatternRewriter::insert(Operation *op) {
+  LLVM_DEBUG(llvm::dbgs() << "** Inserting operation : " << op->getName()
+                          << "\n");
+  impl->createdOps.push_back(op);
+  return OpBuilder::insert(op);
 }
 
 /// PatternRewriter hook for updating the root operation in-place.

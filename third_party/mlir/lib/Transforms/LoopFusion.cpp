@@ -1561,10 +1561,10 @@ public:
               !canFuseSrcWhichWritesToLiveOut(srcId, dstId, srcStoreOp, mdg))
             continue;
 
-          // Dont create a private memref if 'writesToLiveInOrOut'.
+          // Don't create a private memref if 'writesToLiveInOrOut'.
           bool createPrivateMemref = !writesToLiveInOrOut;
-          // Dont create a private memref if 'srcNode' has in edges on 'memref',
-          // or if 'dstNode' has out edges on 'memref'.
+          // Don't create a private memref if 'srcNode' has in edges on
+          // 'memref', or if 'dstNode' has out edges on 'memref'.
           if (mdg->getIncomingMemRefAccesses(srcNode->id, memref) > 0 ||
               mdg->getOutEdgeCount(dstNode->id, memref) > 0) {
             createPrivateMemref = false;

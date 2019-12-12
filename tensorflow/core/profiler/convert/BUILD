@@ -4,6 +4,18 @@ package(
 )
 
 cc_library(
+    name = "run_metadata_to_trace_events",
+    srcs = ["run_metadata_to_trace_events.cc"],
+    hdrs = ["run_metadata_to_trace_events.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "op_metrics_to_record",
     srcs = ["op_metrics_to_record.cc"],
     hdrs = ["op_metrics_to_record.h"],
@@ -12,6 +24,14 @@ cc_library(
         "//tensorflow/core/profiler/utils:math_utils",
         "//tensorflow/core/profiler/utils:time_utils",
         "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_library(
+    name = "op_stack",
+    hdrs = ["op_stack.h"],
+    deps = [
+        "//tensorflow/core:lib",
     ],
 )
 

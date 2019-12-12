@@ -29,9 +29,11 @@ limitations under the License.
 using tensorflow::string;
 
 void TFE_OpReset(TFE_Context* ctx, const char* op_or_function_name,
-                 TF_Status* status, TFE_Op* op_to_reset) {
+                 const char* raw_device_name, TF_Status* status,
+                 TFE_Op* op_to_reset) {
   if (op_to_reset) {
-    NewOrResetOp(ctx, op_or_function_name, status, op_to_reset);
+    NewOrResetOp(ctx, op_or_function_name, raw_device_name, status,
+                 op_to_reset);
   } else {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  "op_to_reset should not be nullptr");

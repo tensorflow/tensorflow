@@ -27,7 +27,7 @@ different aspects of the IR - such as the output of a transformation pass.
 
 An example FileCheck test is shown below:
 
-```mlir {.mlir}
+```mlir
 // RUN: mlir-opt %s -cse | FileCheck %s
 
 // CHECK-LABEL: func @simple_constant
@@ -52,7 +52,7 @@ brittle tests that are essentially `diff` tests. FileCheck tests should be as
 self-contained as possible and focus on testing the minimal set of
 functionalities needed. Let's see an example:
 
-```mlir {.mlir}
+```mlir
 // RUN: mlir-opt %s -cse | FileCheck %s
 
 // CHECK-LABEL: func @simple_constant() -> (i32, i32)
@@ -89,7 +89,7 @@ IR output.
 If we naively remove the unrelated `CHECK` lines in our source file, we may end
 up with:
 
-```mlir {.mlir}
+```mlir
 // CHECK-LABEL: func @simple_constant
 func @simple_constant() -> (i32, i32) {
   // CHECK-NEXT: %result = constant 1 : i32
@@ -111,7 +111,7 @@ as well as named
 Utilizing the above, we end up with the example shown in the main
 [FileCheck tests](#filecheck-tests) section.
 
-```mlir {.mlir}
+```mlir
 // CHECK-LABEL: func @simple_constant
 func @simple_constant() -> (i32, i32) {
   /// Here we use a substitution variable as the output of the constant is
@@ -140,7 +140,7 @@ accessible via the `verify-diagnostics` flag in mlir-opt.
 
 An example .mlir test running under `mlir-opt` is shown below:
 
-```mlir {.mlir}
+```mlir
 // RUN: mlir-opt %s -split-input-file -verify-diagnostics
 
 // Expect an error on the same line.

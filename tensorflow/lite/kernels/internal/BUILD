@@ -51,9 +51,10 @@ cc_library(
     name = "scoped_profiling_label_wrapper",
     hdrs = ["scoped_profiling_label_wrapper.h"],
     copts = tflite_copts(),
-    deps = [
-        "@gemmlowp//:profiler",
-    ],
+    deps = select({
+        "//tensorflow/lite:gemmlowp_profiling": ["@gemmlowp//:profiler"],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -227,6 +228,7 @@ cc_library(
         "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",
         "optimized/integer_ops/softmax.h",
+        "optimized/integer_ops/transpose_conv.h",
         "optimized/optimized_ops.h",
     ],
     copts = tflite_copts(),
@@ -361,6 +363,7 @@ cc_test(
     name = "quantization_util_test",
     srcs = ["quantization_util_test.cc"],
     deps = [
+        ":common",
         ":quantization_util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -437,10 +440,12 @@ cc_library(
         "reference/mul.h",
         "reference/neg.h",
         "reference/non_max_suppression.h",
+        "reference/pad.h",
         "reference/pooling.h",
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
         "reference/quantize.h",
+        "reference/reduce.h",
         "reference/reference_ops.h",
         "reference/round.h",
         "reference/softmax.h",
@@ -496,10 +501,12 @@ cc_library(
         "reference/maximum_minimum.h",
         "reference/mul.h",
         "reference/neg.h",
+        "reference/pad.h",
         "reference/pooling.h",
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
         "reference/quantize.h",
+        "reference/reduce.h",
         "reference/reference_ops.h",
         "reference/round.h",
         "reference/softmax.h",

@@ -656,6 +656,20 @@ class BASE_HLO_BatchNormTrainingOp {
   }];
 }
 
+class BASE_HLO_BitcastConvertOp {
+  string summary = "BitcastConvert operator";
+
+  string description = [{
+    Similar to a 'tf.bitcast' in TensorFlow, performs an element-wise bitcast
+    operation from a data shape to a target shape. The dimensions must match,
+    and the conversion is an element-wise one. Bitcast is implemented as a
+    low-level cast, so machines with different floating-point representations
+    will give different results.
+
+    See https://www.tensorflow.org/xla/operation_semantics#bitcastconverttype.
+  }];
+}
+
 class BASE_HLO_BroadcastOp  {
   string summary = "Broadcast a tensor to a higher rank by prepending dimensions";
 
@@ -829,6 +843,17 @@ class BASE_HLO_SelectAndScatterOp {
     combined using the `scatter` function.
 
     See https://www.tensorflow.org/xla/operation_semantics#selectandscatter.
+  }];
+}
+
+class BASE_HLO_SortOp {
+  string summary = "Sort operator";
+
+  string description = [{
+    Sorts the given `operands` at the given `dimension` with the given
+    `comparator`.
+
+    See https://www.tensorflow.org/xla/operation_semantics#sort.
   }];
 }
 
