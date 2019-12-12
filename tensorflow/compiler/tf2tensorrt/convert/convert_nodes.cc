@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/py_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/strided_slice_op.h"
+#include "tensorflow/core/public/version.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -1371,6 +1373,27 @@ Status Converter::BuildCudaEngine(
       trt_builder_->setInt8Calibrator(nullptr);
     }
   }
+
+  string precision_mode_str;
+  TF_RETURN_IF_ERROR(TrtPrecisionModeToName(
+      precision_mode_, &precision_mode_str));
+  int trt_major_version;
+  int trt_minor_version;
+  int trt_patch_version;
+  GetLoadedTensorRTVersion(
+      &trt_major_version, &trt_minor_version, &trt_patch_version);
+  string trt_version = std::to_string(trt_major_version) + "." +
+                       std::to_string(trt_minor_version) + "." +
+                       std::to_string(trt_patch_version);
+  string trt_network_name =
+      "TF" + string(TF_VERSION_STRING) + "-" +
+      "TRT" + trt_version + "-" +
+      "Precision-" + precision_mode_str + "-" +
+      "Calibration-" + std::to_string(use_calibration_) + "-" +
+      "Max-Batch-Size-" + std::to_string(max_batch_size) + "-" +
+      "Max-Workspace-Size-" + std::to_string(max_workspace_size_bytes);
+  VLOG(1) << "Setting TensorRT network name to " << trt_network_name;
+  network()->setName(trt_network_name.c_str());
 
   VLOG(1) << "Building TensorRT engine";
   engine->reset(trt_builder_->buildCudaEngine(*network()));

@@ -529,6 +529,20 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
                                    EngineContext* engine_context) {
   VLOG(1) << "Executing TRT engine: " << name();
   auto& cuda_engine = engine_context->cuda_engine;
+
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "  Network name: " << cuda_engine->getName();
+    VLOG(2) << "  Activation size: " << cuda_engine->getDeviceMemorySize() << " bytes";
+    VLOG(2) << "  Workspace size: " << cuda_engine->getWorkspaceSize() << " bytes";
+    VLOG(2) << "  Datatype of " << cuda_engine->getNbBindings() << " inputs/outputs";
+    string binding_types = "";
+    for (int i=0; i < cuda_engine->getNbBindings(); i++) {
+      binding_types += "    " + string(cuda_engine->getBindingName(i))
+                    + ": " + convert::DebugString(cuda_engine->getBindingDataType(i)) + "\n";
+    }
+    VLOG(2) << binding_types;
+  }
+
   const bool kRetry = true;
   // All inputs must have the same batch size, so just get it from the first
   // input.

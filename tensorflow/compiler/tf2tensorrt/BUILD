@@ -335,6 +335,7 @@ tf_cuda_library(
         ":trt_logging",
         ":trt_resources",
         ":utils",
+        ":py_utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler/clusters:cluster",
