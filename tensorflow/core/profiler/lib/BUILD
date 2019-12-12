@@ -79,7 +79,6 @@ filegroup(
     srcs = [
         "profiler_session.cc",
         "profiler_session.h",
-        "profiler_utils.h",
         "scoped_annotation.h",
         "traceme.h",
     ],

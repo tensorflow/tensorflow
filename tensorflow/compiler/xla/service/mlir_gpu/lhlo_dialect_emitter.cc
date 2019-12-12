@@ -287,6 +287,21 @@ Status LhloDialectEmitter::HandleCompare(HloInstruction* compare) {
   return Status::OK();
 }
 
+Status LhloDialectEmitter::HandleConstant(HloInstruction* constant) {
+  auto shape = constant->shape();
+  if (!shape.IsArray() || shape.rank() != 0) {
+    return Unimplemented("non-scalar constants are not supported yet");
+  }
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*constant));
+  OpBuilder func_builder(function.getBody());
+
+  TF_ASSIGN_OR_RETURN(auto value, CreateDenseElementsAttrFromLiteral(
+                                      constant->literal(), func_builder));
+  func_builder.create<lhlo::ConstOp>(getLocation(constant), value,
+                                     *function.args_begin());
+  return Status::OK();
+}
+
 Status LhloDialectEmitter::HandleIota(HloInstruction* iota) {
   mlir::IntegerAttr iota_dim = builder_.getI64IntegerAttr(
       static_cast<HloIotaInstruction*>(iota)->iota_dimension());

@@ -684,4 +684,38 @@ def LLVM_ExpOp : LLVM_Op<"intr.exp", [NoSideEffect]>,
     $res = builder.CreateCall(fn, {$in});
   }];
 }
+
+def LLVM_LogOp : LLVM_Op<"intr.log", [NoSideEffect]>,
+                   Arguments<(ins LLVM_Type:$in)>,
+                   Results<(outs LLVM_Type:$res)> {
+  let llvmBuilder = [{
+    llvm::Module *module = builder.GetInsertBlock()->getModule();
+    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
+        module, llvm::Intrinsic::log, {$in->getType()});
+    $res = builder.CreateCall(fn, {$in});
+  }];
+}
+
+def LLVM_Log10Op : LLVM_Op<"intr.log10", [NoSideEffect]>,
+                   Arguments<(ins LLVM_Type:$in)>,
+                   Results<(outs LLVM_Type:$res)> {
+  let llvmBuilder = [{
+    llvm::Module *module = builder.GetInsertBlock()->getModule();
+    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
+        module, llvm::Intrinsic::log10, {$in->getType()});
+    $res = builder.CreateCall(fn, {$in});
+  }];
+}
+
+def LLVM_Log2Op : LLVM_Op<"intr.log2", [NoSideEffect]>,
+                   Arguments<(ins LLVM_Type:$in)>,
+                   Results<(outs LLVM_Type:$res)> {
+  let llvmBuilder = [{
+    llvm::Module *module = builder.GetInsertBlock()->getModule();
+    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
+        module, llvm::Intrinsic::log2, {$in->getType()});
+    $res = builder.CreateCall(fn, {$in});
+  }];
+}
+
 #endif // LLVMIR_OPS

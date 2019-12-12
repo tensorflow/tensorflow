@@ -22,8 +22,5 @@ def tf_saved_model_test(name, data):
     lit_test(
         name = name + ".py",
         data = [name] + data,
-        # TODO(b/146012975): PY3 reports ASAN leaks, while PY2 doesn't, disable
-        # until resolved as the leak reports is not specific to these.
-        tags = ["noasan"],
         driver = "@local_config_mlir//:run_lit.sh",
     )

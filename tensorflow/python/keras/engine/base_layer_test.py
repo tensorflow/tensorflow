@@ -694,8 +694,7 @@ class SymbolicSupportTest(test.TestCase):
       if hasattr(e, 'ag_error_metadata'):
         self.assertIn('easily_identifiable_name', str(e))
         # See ErrorMetadataBase in autograph/pyct/errors.py
-        # Topmost frame corresponds to `call` itself.
-        function_name = e.ag_error_metadata.translated_stack[-2].function_name
+        function_name = e.ag_error_metadata.translated_stack[-1].function_name
       else:
         tb = traceback.extract_tb(sys.exc_info()[2])
         last_entry = tb[-1]

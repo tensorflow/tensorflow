@@ -118,6 +118,15 @@ cc_library(
 )
 
 cc_library(
+    name = "xplane_schema",
+    hdrs = ["xplane_schema.h"],
+    visibility = [":friends"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "xplane_visitor",
     hdrs = ["xplane_visitor.h"],
     visibility = [":friends"],

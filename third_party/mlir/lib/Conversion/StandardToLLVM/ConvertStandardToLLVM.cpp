@@ -812,6 +812,15 @@ using BinaryOpLLVMOpLowering = NaryOpLLVMOpLowering<SourceOp, TargetOp, 2>;
 struct ExpOpLowering : public UnaryOpLLVMOpLowering<ExpOp, LLVM::ExpOp> {
   using Super::Super;
 };
+struct LogOpLowering : public UnaryOpLLVMOpLowering<LogOp, LLVM::LogOp> {
+  using Super::Super;
+};
+struct Log10OpLowering : public UnaryOpLLVMOpLowering<Log10Op, LLVM::Log10Op> {
+  using Super::Super;
+};
+struct Log2OpLowering : public UnaryOpLLVMOpLowering<Log2Op, LLVM::Log2Op> {
+  using Super::Super;
+};
 struct AddIOpLowering : public BinaryOpLLVMOpLowering<AddIOp, LLVM::AddOp> {
   using Super::Super;
 };
@@ -2004,6 +2013,9 @@ void mlir::populateStdToLLVMConversionPatterns(
       DivISOpLowering,
       DivIUOpLowering,
       ExpOpLowering,
+      LogOpLowering,
+      Log10OpLowering,
+      Log2OpLowering,
       FPExtLowering,
       FPTruncLowering,
       FuncOpConversion,

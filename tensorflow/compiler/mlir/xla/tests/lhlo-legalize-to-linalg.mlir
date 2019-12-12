@@ -18,7 +18,10 @@ func @element_wise(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 // CHECK-LABEL: func @element_wise_scalar
 func @element_wise_scalar(%lhs: memref<f32>, %rhs: memref<f32>,
           %result: memref<f32>) {
-// CHECK: "xla_lhlo.add"
+// CHECK: %[[LHS:.*]] = load
+// CHECK: %[[RHS:.*]] = load
+// CHECK: %[[RES:.*]] = addf %[[LHS]], %[[RHS]]
+// CHECK: store %[[RES]]
 // CHECK-NEXT: return
   "xla_lhlo.add"(%lhs, %rhs, %result)
       : (memref<f32>, memref<f32>, memref<f32>) -> ()

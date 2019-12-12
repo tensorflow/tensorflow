@@ -473,7 +473,8 @@ def tf_shared_library_deps():
 def tf_binary_dynamic_kernel_dsos():
     return if_dynamic_kernels(
         extra_deps = [
-            "//tensorflow/core/kernels:libtfkernel_all_kernels.so",
+            # TODO(gunan): Remove dependencies on these, and make them load dynamically.
+            # "//tensorflow/core/kernels:libtfkernel_all_kernels.so",
         ],
         otherwise = [],
     )
@@ -2150,7 +2151,6 @@ def gpu_py_test(
         main = None,
         args = [],
         shard_count = 1,
-        additional_deps = [],
         kernels = [],
         tags = [],
         flaky = 0,
@@ -2163,6 +2163,7 @@ def gpu_py_test(
     _ignored = [xla_enable_strict_auto_jit]
     if main == None:
         main = name + ".py"
+    additional_deps = kwargs.pop("additional_deps", []) + kwargs.pop("deps", [])
     for config in ["cpu", "gpu"]:
         test_name = name
         test_tags = tags
@@ -2189,7 +2190,7 @@ def gpu_py_test(
 
 register_extension_info(
     extension_name = "gpu_py_test",
-    label_regex_map = {"additional_deps": "additional_deps:{extension_name}"},
+    label_regex_map = {"deps": "additional_deps:{extension_name}"},
 )
 
 # terminology changes: saving cuda_* definition for compatibility
@@ -2198,7 +2199,7 @@ def cuda_py_test(*args, **kwargs):
 
 register_extension_info(
     extension_name = "cuda_py_test",
-    label_regex_map = {"additional_deps": "additional_deps:{extension_name}"},
+    label_regex_map = {"deps": "additional_deps:{extension_name}"},
 )
 
 def sycl_py_test(
@@ -2209,13 +2210,14 @@ def sycl_py_test(
         main = None,
         args = [],
         shard_count = 1,
-        additional_deps = [],
         kernels = [],
         tags = [],
         flaky = 0,
         xla_enabled = False,
-        grpc_enabled = False):
+        grpc_enabled = False,
+        **kwargs):
     test_tags = tags + tf_sycl_tests_tags()
+    additional_deps = kwargs.pop("additional_deps", []) + kwargs.pop("deps", [])
     tf_py_test(
         name = name,
         size = size,
@@ -2230,11 +2232,12 @@ def sycl_py_test(
         shard_count = shard_count,
         tags = test_tags,
         xla_enabled = xla_enabled,
+        **kwargs
     )
 
 register_extension_info(
     extension_name = "sycl_py_test",
-    label_regex_map = {"additional_deps": "additional_deps:{extension_name}"},
+    label_regex_map = {"deps": "additional_deps:{extension_name}"},
 )
 
 def py_tests(

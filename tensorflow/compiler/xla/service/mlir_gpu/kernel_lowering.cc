@@ -20,6 +20,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // TF:local_config_mlir
+#include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"  // TF:local_config_mlir
+#include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"  // TF:local_config_mlir
 #include "mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h"  // TF:local_config_mlir
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // TF:local_config_mlir
 #include "mlir/Dialect/GPU/GPUDialect.h"  // TF:local_config_mlir
@@ -69,6 +71,11 @@ struct FusionToLhloConverter
     ::mlir::xla_hlo::populateHLOToLHLOConversionPattern(&ctx, &patterns);
 
     getFunction().walk([&](FusionOp op) {
+      if (failed(applyPartialConversion(op, target, patterns, nullptr))) {
+        signalPassFailure();
+      }
+    });
+    getFunction().walk([&](mlir::xla_lhlo::ReduceOp op) {
       if (failed(applyPartialConversion(op, target, patterns, nullptr))) {
         signalPassFailure();
       }
@@ -266,12 +273,18 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
   pm.addPass(absl::make_unique<FusionToLhloConverter>());
   // Next, we can strip the outer fusion operation.
   pm.addPass(absl::make_unique<FusionOpRemover>());
+  pm.addPass(absl::make_unique<DumpPass>());
   // Transform lhlo operations to LinAlg.
   pm.addPass(::mlir::xla_lhlo::createLegalizeToLinalgPass());
+  pm.addPass(absl::make_unique<DumpPass>());
   // Fuse linalg operations. This will yield a single tiled loop nest where
   // the inner loops are single trip.
   pm.addPass(::mlir::xla_lhlo::createLhloFuseLinalg());
   pm.addPass(absl::make_unique<DumpPass>());
+  // Legalize reduce operations directly to GPU dialect.
+  pm.addPass(::mlir::xla_lhlo::createLegalizeToGpuPass());
+  pm.addPass(absl::make_unique<DumpPass>());
+  // Fuse linalg operations. This will yield a single tiled loop nest where
   // Go from linalg to normal loops.
   pm.addPass(::mlir::linalg::createConvertLinalgToLoopsPass());
   pm.addPass(absl::make_unique<DumpPass>());
@@ -309,13 +322,50 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
   return Status::OK();
 }
 
+namespace {
+
+/// A pass that does the final lowering to NVVM. It collects all the patterns
+/// that are currently required, currently mixing std, linalg and gpu.
+class LowerToNVVMPass : public ::mlir::ModulePass<LowerToNVVMPass> {
+ public:
+  void runOnModule() override {
+    ::mlir::ModuleOp m = getModule();
+    if (!m.getAttrOfType<::mlir::UnitAttr>(
+            ::mlir::gpu::GPUDialect::getKernelModuleAttrName())) {
+      return;
+    }
+
+    ::mlir::OwningRewritePatternList patterns;
+    ::mlir::LinalgTypeConverter converter(m.getContext());
+    ::mlir::populateStdToLLVMConversionPatterns(converter, patterns);
+    // TODO(b/145824979) Remove linalg once sliceop is in std.
+    ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns,
+                                                   &getContext());
+    ::mlir::populateGpuToNVVMConversionPatterns(converter, patterns);
+
+    ::mlir::ConversionTarget target(getContext());
+    target.addIllegalDialect<::mlir::gpu::GPUDialect>();
+    target.addIllegalOp<::mlir::LLVM::ExpOp>();
+    target.addLegalDialect<::mlir::LLVM::LLVMDialect>();
+    target.addLegalDialect<::mlir::NVVM::NVVMDialect>();
+    // TODO(csigg): Remove once we support replacing non-root ops.
+    target.addLegalOp<::mlir::gpu::YieldOp>();
+    if (failed(applyPartialConversion(m, target, patterns, &converter))) {
+      signalPassFailure();
+    }
+  }
+};
+
+}  // anonymous namespace
+
 Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
   // We cannot verify as the signature of the kernel is rewritten.
   ::mlir::PassManager pm(module.getContext(), /*verifyPasses=*/false);
 
   // Rewrite kernel functions to LLVM IR.
   auto& kernelPm = pm.nest<::mlir::ModuleOp>();
-  kernelPm.addPass(::mlir::createLowerGpuOpsToNVVMOpsPass());
+  kernelPm.addPass(::mlir::createLowerToCFGPass());
+  kernelPm.addPass(absl::make_unique<LowerToNVVMPass>());
   // Some basic cleanup.
   kernelPm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   kernelPm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());

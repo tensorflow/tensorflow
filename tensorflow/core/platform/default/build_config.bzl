@@ -621,9 +621,6 @@ def tf_additional_device_tracer_srcs():
 def tf_additional_cupti_utils_cuda_deps():
     return []
 
-def tf_additional_cupti_test_flags():
-    return []
-
 def tf_additional_test_deps():
     return []
 
@@ -745,3 +742,25 @@ def tf_protobuf_compiler_deps():
         ],
         otherwise = [clean_dep("@com_google_protobuf//:protobuf_headers")],
     )
+
+def tf_windows_aware_platform_deps(name):
+    return select({
+        "//tensorflow:windows": [
+            "//tensorflow/core/platform/windows:" + name,
+        ],
+        "//conditions:default": [
+            "//tensorflow/core/platform/default:" + name,
+        ],
+    })
+
+def tf_platform_deps(name):
+    return ["//tensorflow/core/platform/default:" + name]
+
+def tf_logging_deps():
+    return ["//tensorflow/core/platform/default:logging"]
+
+def tf_monitoring_deps():
+    return ["//tensorflow/core/platform/default:monitoring"]
+
+def tf_legacy_srcs_no_runtime_google():
+    return []

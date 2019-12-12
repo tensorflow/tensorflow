@@ -578,12 +578,37 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   if (!allocations->empty()) {
     prev_allocation = allocations->back().get();
   }
+  // Find a previous allocation that is in the default memory space (not
+  // necessarily the very last allocation).
+  MemorySpaceAssignment::Allocation* prev_allocation_in_default_mem = nullptr;
+  for (auto allocation_it = allocations->rbegin();
+       allocation_it != allocations->rend(); ++allocation_it) {
+    if ((*allocation_it)->memory_space() == MemorySpace::kDefault &&
+        (*allocation_it)->defining_position() == defining_position) {
+      prev_allocation_in_default_mem = allocation_it->get();
+      break;
+    }
+  }
 
   // Since copies couldn't be removed, create an allocation in the default
   // memory space.
-  if (prev_allocation != nullptr &&
-      prev_allocation->memory_space() == MemorySpace::kAlternate &&
-      prev_allocation->defining_position() == defining_position) {
+  if (prev_allocation_in_default_mem != nullptr) {
+    if (prev_allocation == prev_allocation_in_default_mem) {
+      // The latest allocation is also in the default memory, simply extend
+      // that.
+      prev_allocation->Extend(end_time);
+    } else {
+      // The latest allocation is different. Create a new allocation in default
+      // memory.
+      allocations->push_back(
+          absl::make_unique<MemorySpaceAssignment::Allocation>(
+              non_bitcast_operand, defining_position, MemorySpace::kDefault,
+              kDummyChunk, prev_allocation_in_default_mem->end_time(),
+              end_time));
+    }
+  } else if (prev_allocation != nullptr &&
+             prev_allocation->memory_space() == MemorySpace::kAlternate &&
+             prev_allocation->defining_position() == defining_position) {
     // If there was an allocation for this HloValue that was in the alternate
     // memory space, we also need to perform an eviction.
     // TODO(berkin): For now evictions happen relative to the most recent
@@ -631,13 +656,6 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
         return false;
       }
     }
-  } else if (prev_allocation != nullptr &&
-             prev_allocation->memory_space() == MemorySpace::kDefault &&
-             prev_allocation->defining_position() == defining_position) {
-    // If the previous allocation was in the default memory space and was
-    // defined by the same instruction, extend that.  Otherwise, create a new
-    // allocation.
-    prev_allocation->Extend(end_time);
   } else {
     allocations->push_back(absl::make_unique<MemorySpaceAssignment::Allocation>(
         non_bitcast_operand, defining_position, MemorySpace::kDefault,
