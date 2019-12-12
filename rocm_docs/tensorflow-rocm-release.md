@@ -7,11 +7,13 @@ This document is to list the ROCm compatibility for tensorflow-rocm release pack
 
 | tensorflow-rocm |  ROCm base  |  Installation Instruction  |
 | ------ | ------ |  -------- |
+|   2.1.0RC0  | ROCm2.10  | <https://pypi.org/project/tensorflow-rocm/2.1.0rc0> |
 |   2.0.1  | ROCm2.10  | <https://pypi.org/project/tensorflow-rocm/2.0.1> |
 |   2.0.0  | ROCm2.9  | <https://pypi.org/project/tensorflow-rocm/2.0.0> |
 |   2.0.0b3    |   ROCm2.7     | <https://pypi.org/project/tensorflow-rocm/2.0.0b3> |
 |   2.0.0b2    |   ROCm2.6     | <https://pypi.org/project/tensorflow-rocm/2.0.0b2> |
 |   2.0.0b1    |  ROCm2.6    | <https://pypi.org/project/tensorflow-rocm/2.0.0b1> |
+|   1.15.0    |  ROCm2.10      | <https://pypi.org/project/tensorflow-rocm/1.15.0> |
 |   1.15.0rc2    |  ROCm2.9      | <https://pypi.org/project/tensorflow-rocm/1.15.0rc2> |
 |   1.15.0rc1    |  ROCm2.8      | <https://pypi.org/project/tensorflow-rocm/1.15.0rc1> |
 |   1.14.4    |   ROCm2.10     | <https://pypi.org/project/tensorflow-rocm/1.14.4> |
