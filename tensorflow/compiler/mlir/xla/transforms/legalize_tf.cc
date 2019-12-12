@@ -149,7 +149,7 @@ tensorflow::TensorShape ToTensorShape(llvm::ArrayRef<T> sizes) {
       llvm::SmallVector<tensorflow::int64, 4>(sizes.begin(), sizes.end()));
 }
 
-// Returns minimum value for the given int or float element type.
+// Returns minimal value for the given int or float element type.
 static ConstOp GetMinValueForType(Type ty, Location loc,
                                   PatternRewriter *rewriter) {
   RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
@@ -163,6 +163,24 @@ static ConstOp GetMinValueForType(Type ty, Location loc,
     auto int_ty = ty.cast<IntegerType>();
     APInt min_val = APInt::getSignedMinValue(int_ty.getWidth());
     attr = DenseElementsAttr::get(scalar_ty, min_val);
+  }
+  return rewriter->create<ConstOp>(loc, attr);
+}
+
+// Returns maximal value for the given int or float element type.
+static ConstOp GetMaxValueForType(Type ty, Location loc,
+                                  PatternRewriter *rewriter) {
+  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
+
+  DenseElementsAttr attr;
+  if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
+    APFloat pos_inf =
+        APFloat::getInf(float_ty.getFloatSemantics(), /*negative=*/false);
+    attr = DenseElementsAttr::get(scalar_ty, pos_inf);
+  } else {
+    auto int_ty = ty.cast<IntegerType>();
+    APInt max_val = APInt::getSignedMaxValue(int_ty.getWidth());
+    attr = DenseElementsAttr::get(scalar_ty, max_val);
   }
   return rewriter->create<ConstOp>(loc, attr);
 }
@@ -2193,6 +2211,136 @@ class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
   }
 };
 
+// Converts TF unsorted segment reduction ops to XLA HLO scatter op.
+//
+// TF unsorted segment reduction op peforms the following calculation:
+//
+// Assume segment ids' shape is [SI0, SI1, ..., SIm] and data's  shape is
+// [D0, D1, ..., Dn]. Note that segment ids' shape must be a prefix of data's
+// shape, so we can have data's shape represented as [SI0, SI1, ..., SIm,
+// Dm+1, ..., Dn]. Then
+//   output[segment_ids[SI_i0, SI_i1, ..., SI_im], D_im+1, ..., D_in] =
+//      <ReductionOp> over data[SI_i0, SI_i1, ..., SI_im, D_im+1, ..., D_in]
+// where SI_iN is in the range of [0, SIN) and D_iN is in the range of [0, DN).
+//
+// The op will be translated to XLA HLO scatter with the following parameters:
+// * Update window dims is [segment_id_rank, data_rank).
+// * Inserted window dims is {0}.
+// * Scatter dims to operand dims mapping is {0}.
+// * Index vector dim is segment_id_rank.
+template <typename ConcreteClass, typename OpTy, typename ReductionOp>
+class GenericConvertUnsortedSegmentReductionOp : public OpRewritePattern<OpTy> {
+  using OpRewritePattern<OpTy>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(OpTy op,
+                                     PatternRewriter &rewriter) const override {
+    auto data_type = op.data()->getType().template dyn_cast<RankedTensorType>();
+    if (!data_type) return this->matchFailure();
+    int64_t data_rank = data_type.getRank();
+
+    auto segment_ids_type =
+        op.segment_ids()->getType().template dyn_cast<RankedTensorType>();
+    if (!segment_ids_type) return this->matchFailure();
+    int64_t segment_ids_rank = segment_ids_type.getRank();
+
+    DenseIntElementsAttr num_segments_attr;
+    if (!matchPattern(op.num_segments(), m_Constant(&num_segments_attr)))
+      return this->matchFailure();
+
+    // The final shape for TF unsorted segment reduction op is [num_segments] +
+    // data_shape[segment_ids_rank:].
+    SmallVector<int64_t, 4> output_shape;
+    output_shape.push_back((*num_segments_attr.begin()).getSExtValue());
+    auto suffix = data_type.getShape().drop_front(segment_ids_rank);
+    output_shape.append(suffix.begin(), suffix.end());
+    auto output_type =
+        RankedTensorType::get(output_shape, data_type.getElementType());
+
+    // Broadccast the initial value for reduction. This will become the
+    // 'operand' parameter to scatter to for the final scatter op.
+    Value *init = ConcreteClass::GetInitialValue(data_type.getElementType(),
+                                                 op.getLoc(), rewriter);
+    auto broadcasted_init = rewriter.create<xla_hlo::BroadcastOp>(
+        op.getLoc(), output_type, init,
+        GetI64ElementsAttr(output_shape, &rewriter));
+
+    // Parameters for the generated scatter op.
+    auto range = llvm::seq<int64_t>(segment_ids_rank, data_rank);
+    SmallVector<int64_t, 4> update_window_dims(range.begin(), range.end());
+    SmallVector<int64_t, 1> inserted_window_dims(1, 0);
+    SmallVector<int64_t, 1> scatter_dims_to_operand_dims(1, 0);
+    int64_t index_vector_dim = segment_ids_rank;
+
+    // Put all parameters in a StructAttr.
+    auto dims_attr = ScatterDimensionNumbers::get(
+        GetI64ElementsAttr(update_window_dims, &rewriter),
+        GetI64ElementsAttr(inserted_window_dims, &rewriter),
+        GetI64ElementsAttr(scatter_dims_to_operand_dims, &rewriter),
+        rewriter.getI64IntegerAttr(index_vector_dim), rewriter.getContext());
+
+    auto scatter =
+        rewriter.create<ScatterOp>(op.getLoc(), op.getType(), broadcasted_init,
+                                   op.segment_ids(), op.data(), dims_attr);
+    BuildReduceBody<ReductionOp>(data_type.getElementType(),
+                                 &scatter.update_computation(), &rewriter);
+
+    rewriter.replaceOp(op, scatter.getResult());
+    return this->matchSuccess();
+  }
+};
+
+class ConvertUnsortedSegmentMaxOp
+    : public GenericConvertUnsortedSegmentReductionOp<
+          ConvertUnsortedSegmentMaxOp, TF::UnsortedSegmentMaxOp, MaxOp> {
+ public:
+  using GenericConvertUnsortedSegmentReductionOp::
+      GenericConvertUnsortedSegmentReductionOp;
+
+  static Value *GetInitialValue(Type reduce_element_type, Location loc,
+                                PatternRewriter &rewriter) {
+    return GetMinValueForType(reduce_element_type, loc, &rewriter);
+  }
+};
+
+class ConvertUnsortedSegmentMinOp
+    : public GenericConvertUnsortedSegmentReductionOp<
+          ConvertUnsortedSegmentMinOp, TF::UnsortedSegmentMinOp, MinOp> {
+ public:
+  using GenericConvertUnsortedSegmentReductionOp::
+      GenericConvertUnsortedSegmentReductionOp;
+
+  static Value *GetInitialValue(Type reduce_element_type, Location loc,
+                                PatternRewriter &rewriter) {
+    return GetMaxValueForType(reduce_element_type, loc, &rewriter);
+  }
+};
+
+class ConvertUnsortedSegmentProdOp
+    : public GenericConvertUnsortedSegmentReductionOp<
+          ConvertUnsortedSegmentProdOp, TF::UnsortedSegmentProdOp, MulOp> {
+ public:
+  using GenericConvertUnsortedSegmentReductionOp::
+      GenericConvertUnsortedSegmentReductionOp;
+
+  static Value *GetInitialValue(Type reduce_element_type, Location loc,
+                                PatternRewriter &rewriter) {
+    return GetScalarConstOfType(reduce_element_type, loc, 1, &rewriter);
+  }
+};
+
+class ConvertUnsortedSegmentSumOp
+    : public GenericConvertUnsortedSegmentReductionOp<
+          ConvertUnsortedSegmentSumOp, TF::UnsortedSegmentSumOp, AddOp> {
+ public:
+  using GenericConvertUnsortedSegmentReductionOp::
+      GenericConvertUnsortedSegmentReductionOp;
+
+  static Value *GetInitialValue(Type reduce_element_type, Location loc,
+                                PatternRewriter &rewriter) {
+    return GetScalarConstOfType(reduce_element_type, loc, 0, &rewriter);
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
 LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
@@ -2215,7 +2363,9 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertStridedSliceOp, ConvertTopKV2Op, ConvertUnpackOp, ConvertMeanOp,
       ConvertSumOp, ConvertMaxOp, ConvertAllOp, ConvertAnyOp, ConvertTileOp,
       ConvertMaxPoolGradOp, ConvertOneHotOp, ConvertConv2DBackpropInputOp,
-      ConvertConv2DBackpropFilterOp>(op->getContext());
+      ConvertConv2DBackpropFilterOp, ConvertUnsortedSegmentMaxOp,
+      ConvertUnsortedSegmentMinOp, ConvertUnsortedSegmentProdOp,
+      ConvertUnsortedSegmentSumOp>(op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();

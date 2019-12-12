@@ -2178,3 +2178,61 @@ func @unpack_dynamic(%input: tensor<?x?x2xf32>) -> (tensor<?x?xf32>, tensor<?x?x
   %0:2 = "tf.Unpack"(%input) {axis = -1} : (tensor<?x?x2xf32>) -> (tensor<?x?xf32>, tensor<?x?xf32>)
   return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xf32>
 }
+
+//===----------------------------------------------------------------------===//
+// tf.UnsortedSegment{Max|Min|Prod|Sum} legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: @unsorted_segment_sum
+// CHECK-SAME: [[DATA:%.*]]: tensor<8x16x64xf32>
+// CHECK-SAME: [[SI:%.*]]: tensor<8x16xi32>
+func @unsorted_segment_sum(%data: tensor<8x16x64xf32>, %segment_ids : tensor<8x16xi32>) -> (tensor<4x64xf32>) {
+  %num_segments = "tf.Const"() {value = dense<4> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: [[ZERO:%.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: [[INIT:%.*]] = "xla_hlo.broadcast"([[ZERO]]) {broadcast_sizes = dense<[4, 64]> : tensor<2xi64>} : (tensor<f32>) -> tensor<4x64xf32>
+  // CHECK: [[SCATTER:%.*]] = "xla_hlo.scatter"([[INIT]], [[SI]], [[DATA]]) ( {
+  // CHECK: ^{{.*}}([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
+  // CHECK:   [[ADD:%.*]] = xla_hlo.add [[LHS]], [[RHS]] : tensor<f32>
+  // CHECK:   "xla_hlo.return"([[ADD]])
+  // CHECK: }) {indices_are_sorted = false, scatter_dimension_numbers = {index_vector_dim = 2 : i64, inserted_window_dims = dense<0> : tensor<1xi64>, scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>, update_window_dims = dense<2> : tensor<1xi64>}, unique_indices = false} : (tensor<4x64xf32>, tensor<8x16xi32>, tensor<8x16x64xf32>) -> tensor<4x64xf32>
+  // CHECK: return [[SCATTER]]
+  %0 = "tf.UnsortedSegmentSum"(%data, %segment_ids, %num_segments) : (tensor<8x16x64xf32>, tensor<8x16xi32>, tensor<i32>) -> (tensor<4x64xf32>)
+  return %0: tensor<4x64xf32>
+}
+
+// CHECK-LABEL: @unsorted_segment_prod
+// CHECK-SAME: [[DATA:%.*]]: tensor<8x?x64xf32>
+// CHECK-SAME: [[SI:%.*]]: tensor<?x16xi32>
+func @unsorted_segment_prod(%data: tensor<8x?x64xf32>, %segment_ids : tensor<?x16xi32>) -> (tensor<4x?xf32>) {
+  %num_segments = "tf.Const"() {value = dense<4> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: [[ONE:%.*]] = xla_hlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK: [[INIT:%.*]] = "xla_hlo.broadcast"([[ONE]]) {broadcast_sizes = dense<[4, 64]> : tensor<2xi64>} : (tensor<f32>) -> tensor<4x64xf32>
+  // CHECK: [[SCATTER:%.*]] = "xla_hlo.scatter"([[INIT]], [[SI]], [[DATA]]) ( {
+  // CHECK: ^{{.*}}([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
+  // CHECK:   [[MUL:%.*]] = xla_hlo.mul [[LHS]], [[RHS]] : tensor<f32>
+  // CHECK:   "xla_hlo.return"([[MUL]])
+  // CHECK: }) {indices_are_sorted = false, scatter_dimension_numbers = {index_vector_dim = 2 : i64, inserted_window_dims = dense<0> : tensor<1xi64>, scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>, update_window_dims = dense<2> : tensor<1xi64>}, unique_indices = false} : (tensor<4x64xf32>, tensor<?x16xi32>, tensor<8x?x64xf32>) -> tensor<4x?xf32>
+  // CHECK: return [[SCATTER]]
+  %0 = "tf.UnsortedSegmentProd"(%data, %segment_ids, %num_segments) : (tensor<8x?x64xf32>, tensor<?x16xi32>, tensor<i32>) -> (tensor<4x?xf32>)
+  return %0: tensor<4x?xf32>
+}
+
+// CHECK-LABEL: @unsorted_segment_min
+func @unsorted_segment_min(%data: tensor<8x?x64xf32>, %segment_ids : tensor<?x16xi32>) -> (tensor<4x?xf32>) {
+  %num_segments = "tf.Const"() {value = dense<4> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: xla_hlo.constant dense<0x7F800000> : tensor<f32>
+  // CHECK: xla_hlo.scatter
+  // CHECK: xla_hlo.min
+  %0 = "tf.UnsortedSegmentMin"(%data, %segment_ids, %num_segments) : (tensor<8x?x64xf32>, tensor<?x16xi32>, tensor<i32>) -> (tensor<4x?xf32>)
+  return %0: tensor<4x?xf32>
+}
+
+// CHECK-LABEL: @unsorted_segment_max
+func @unsorted_segment_max(%data: tensor<8x?x64xf32>, %segment_ids : tensor<?x16xi32>) -> (tensor<4x?xf32>) {
+  %num_segments = "tf.Const"() {value = dense<4> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: xla_hlo.constant dense<0xFF800000> : tensor<f32>
+  // CHECK: xla_hlo.scatter
+  // CHECK: xla_hlo.max
+  %0 = "tf.UnsortedSegmentMax"(%data, %segment_ids, %num_segments) : (tensor<8x?x64xf32>, tensor<?x16xi32>, tensor<i32>) -> (tensor<4x?xf32>)
+  return %0: tensor<4x?xf32>
+}
