@@ -16,6 +16,7 @@ limitations under the License.
 #include <aws/core/utils/crypto/Factories.h>
 #include <aws/core/utils/crypto/HMAC.h>
 #include <aws/core/utils/crypto/Hash.h>
+#include <aws/core/utils/crypto/SecureRandom.h>
 
 namespace tensorflow {
 static const char* AWSCryptoAllocationTag = "AWSCryptoAllocation";
@@ -30,6 +31,12 @@ class AWSSHA256HmacFactory : public Aws::Utils::Crypto::HMACFactory {
  public:
   std::shared_ptr<Aws::Utils::Crypto::HMAC> CreateImplementation()
       const override;
+};
+
+class AWSSecureRandomFactory : public Aws::Utils::Crypto::SecureRandomFactory {
+public:
+  std::shared_ptr<Aws::Utils::Crypto::SecureRandomBytes> CreateImplementation()
+  const override;
 };
 
 }  // namespace tensorflow

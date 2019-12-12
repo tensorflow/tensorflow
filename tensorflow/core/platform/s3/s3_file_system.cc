@@ -226,7 +226,7 @@ class S3WritableFile : public WritableFile {
       : bucket_(bucket),
         object_(object),
         s3_client_(s3_client),
-        transfer_manager(transfer_manager),
+        transfer_manager_(transfer_manager),
         sync_needed_(true),
         outfile_(Aws::MakeShared<Aws::Utils::TempFile>(
             kS3FileSystemAllocationTag, "/tmp/s3_filesystem_XXXXXX",
@@ -285,9 +285,15 @@ class S3WritableFile : public WritableFile {
       handle->WaitUntilFinished();
     }
     if (handle->GetStatus() != Aws::Transfer::TransferStatus::COMPLETED) {
-      return errors::Unknown(handle->GetLastError().GetExceptionName(), ": ",
-                             handle->GetFailedParts().size(), " failed parts. ",
-                             handle->GetLastError().GetMessage());
+      auto error = handle->GetLastError();
+      if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
+        return errors::FailedPrecondition("AWS Credentials have not been set properly. "
+                                          "Unable to access the specified S3 location");
+      } else {
+        return errors::Unknown(error.GetExceptionName(), ": ",
+                               handle->GetFailedParts().size(), " failed parts. ",
+                               handle->GetLastError().GetMessage());
+      }
     }
     outfile_->clear();
     outfile_->seekp(offset);
@@ -386,8 +392,7 @@ Status S3FileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
-  result->reset(new S3RandomAccessFile(bucket, object, this->GetTransferManager(),
-                                        this->GetS3Client()));
+  result->reset(new S3RandomAccessFile(bucket, object, this->GetS3Client()));
   return Status::OK();
 }
 
@@ -396,7 +401,7 @@ Status S3FileSystem::NewWritableFile(const string& fname,
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
   result->reset(new S3WritableFile(bucket, object, this->GetTransferManager(),
-                                    this->GetS3Client()));
+                                   this->GetS3Client()));
   return Status::OK();
 }
 
@@ -411,7 +416,8 @@ Status S3FileSystem::NewAppendableFile(const string& fname,
 
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
-  result->reset(new S3WritableFile(bucket, object, this->GetS3Client()));
+  result->reset(new S3WritableFile(bucket, object, this->GetTransferManager(),
+                                   this->GetS3Client()));
 
   while (true) {
     status = reader->Read(offset, kS3ReadAppendableFileBufferSize, &read_chunk,
