@@ -80,8 +80,21 @@ bool IsAll(const HloInstruction* op, int8 value) {
   }
 }
 
+bool IsAnyOperandComplex(const HloInstruction* hlo) {
+  for (auto operand : hlo->operands()) {
+    if (ShapeUtil::ElementIsComplex(operand->shape())) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool IsPositive(const HloInstruction* hlo,
                 const AlgebraicSimplifierOptions& options) {
+  // Utility only handles real types.
+  if (IsAnyOperandComplex(hlo)) {
+    return false;
+  }
   switch (hlo->opcode()) {
     case HloOpcode::kGetTupleElement: {
       const HloInstruction* gte_operand = hlo->operand(0);
@@ -113,6 +126,10 @@ bool IsPositive(const HloInstruction* hlo,
 
 bool IsNonNegative(const HloInstruction* hlo,
                    const AlgebraicSimplifierOptions& options) {
+  // Utility only handles real types.
+  if (IsAnyOperandComplex(hlo)) {
+    return false;
+  }
   switch (hlo->opcode()) {
     case HloOpcode::kMultiply: {
       return hlo->operand(0) == hlo->operand(1);
