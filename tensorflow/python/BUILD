@@ -1405,19 +1405,19 @@ py_library(
 cuda_py_test(
     name = "op_callbacks_test",
     srcs = ["framework/op_callbacks_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":client_testlib",
         ":control_flow_ops",
         ":framework_test_lib",
         ":script_ops",
         ":sparse_ops",
         ":sparse_tensor",
-        "//third_party/py/numpy",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
+        "//third_party/py/numpy",
     ],
-    python_version = "PY3",
 )
 
 py_library(
@@ -1525,16 +1525,16 @@ cuda_py_test(
     name = "config_test",
     size = "small",
     srcs = ["framework/config_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    tags = ["no_pip"],  # test_ops are not available in pip.
+    deps = [
+        ":client_testlib",
         ":config",
         ":constant_op",
-        ":client_testlib",
         ":platform",
         ":test_ops",
         ":util",
     ],
-    python_version = "PY3",
-    tags = ["no_pip"],  # test_ops are not available in pip.
 )
 
 py_library(
@@ -1985,7 +1985,13 @@ cuda_py_test(
     name = "function_test",
     size = "medium",
     srcs = ["framework/function_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    shard_count = 10,
+    tags = [
+        "noasan",
+        "optonly",
+    ],
+    deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
@@ -2004,14 +2010,8 @@ cuda_py_test(
         ":random_ops",
         ":variable_scope",
         ":variables",
-        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
-    ],
-    python_version = "PY3",
-    shard_count = 10,
-    tags = [
-        "noasan",
-        "optonly",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -2972,17 +2972,17 @@ cuda_py_test(
     name = "collective_ops_gpu_test",
     size = "small",
     srcs = ["ops/collective_ops_gpu_test.py"],
-    additional_deps = [
-        ":client_testlib",
-        ":collective_ops",
-        ":framework_for_generated_wrappers",
-        "//third_party/py/numpy",
-    ],
     python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_rocm",
         "no_windows",
+    ],
+    deps = [
+        ":client_testlib",
+        ":collective_ops",
+        ":framework_for_generated_wrappers",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -3648,14 +3648,14 @@ cuda_py_test(
     name = "mixed_precision_test",
     size = "small",
     srcs = ["training/experimental/mixed_precision_test.py"],
-    additional_deps = [
-        ":mixed_precision",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python:client_testlib",
-    ],
     python_version = "PY3",
     tags = [
         "no_rocm",
+    ],
+    deps = [
+        ":mixed_precision",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -3677,17 +3677,17 @@ cuda_py_test(
     name = "loss_scaling_gradient_tape_test",
     size = "medium",
     srcs = ["training/experimental/loss_scaling_gradient_tape_test.py"],
-    additional_deps = [
+    deps = [
         ":client_testlib",
         ":constant_op",
         ":framework_test_combinations_lib",
         ":loss_scale",
         ":loss_scaling_gradient_tape",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/eager:def_function",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -3954,18 +3954,18 @@ cuda_py_test(
     name = "stateful_random_ops_test",
     size = "medium",
     srcs = ["ops/stateful_random_ops_test.py"],
-    additional_deps = [
-        ":stateful_random_ops",
+    python_version = "PY3",
+    tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = False,
+    deps = [
         ":client_testlib",
         ":config",
         ":logging_ops",
         ":random_ops_gen",
-        "//tensorflow/python/kernel_tests/random:util",
+        ":stateful_random_ops",
         "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/kernel_tests/random:util",
     ],
-    python_version = "PY3",
-    tags = ["no_rocm"],
-    xla_enable_strict_auto_jit = False,
 )
 
 py_library(
@@ -4487,21 +4487,23 @@ cuda_py_test(
     name = "bitwise_ops_test",
     size = "small",
     srcs = ["ops/bitwise_ops_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    tags = ["no_windows"],
+    deps = [
         ":bitwise_ops",
         ":constant_op",
         ":dtypes",
         ":framework_test_lib",
     ],
-    python_version = "PY3",
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
     name = "control_flow_ops_test",
     size = "small",
     srcs = ["ops/control_flow_ops_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    shard_count = 2,
+    deps = [
         ":array_ops",
         ":cond_v2",
         ":control_flow_ops",
@@ -4523,15 +4525,14 @@ cuda_py_test(
         ":while_v2",
         "//tensorflow/python/eager:def_function",
     ],
-    python_version = "PY3",
-    shard_count = 2,
 )
 
 cuda_py_test(
     name = "gradient_checker_test",
     size = "medium",
     srcs = ["ops/gradient_checker_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -4541,7 +4542,6 @@ cuda_py_test(
         ":platform",
         "//third_party/py/numpy",
     ],
-    python_version = "PY3",
 )
 
 py_test(
@@ -4562,7 +4562,8 @@ cuda_py_test(
     name = "gradient_checker_v2_test",
     size = "medium",
     srcs = ["ops/gradient_checker_v2_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -4572,14 +4573,15 @@ cuda_py_test(
         ":platform",
         "//third_party/py/numpy",
     ],
-    python_version = "PY3",
 )
 
 cuda_py_test(
     name = "gradients_test",
     size = "medium",
     srcs = ["ops/gradients_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    tags = ["no_oss"],  # b/118709825
+    deps = [
         ":array_grad",
         ":array_ops",
         ":control_flow_grad",
@@ -4604,19 +4606,18 @@ cuda_py_test(
         ":test_ops",
         ":unconnected_gradients",
         ":variable_scope",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
         "//tensorflow/python/keras:engine",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
-    python_version = "PY3",
-    tags = ["no_oss"],  # b/118709825
 )
 
 cuda_py_test(
     name = "histogram_ops_test",
     size = "small",
     srcs = ["ops/histogram_ops_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -4625,28 +4626,30 @@ cuda_py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
-    python_version = "PY3",
 )
 
 cuda_py_test(
     name = "image_grad_test",
     size = "medium",
     srcs = ["ops/image_grad_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
         ":gradients",
         ":image_ops",
         "//third_party/py/numpy",
     ],
-    python_version = "PY3",
 )
 
 cuda_py_test(
     name = "image_ops_test",
     size = "medium",
     srcs = ["ops/image_ops_test.py"],
-    additional_deps = [
+    data = ["//tensorflow/core:image_testdata"],
+    python_version = "PY3",
+    shard_count = 5,
+    deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
@@ -4660,50 +4663,49 @@ cuda_py_test(
         ":platform_test",
         ":random_ops",
         ":variables",
-        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
     ],
-    data = ["//tensorflow/core:image_testdata"],
-    python_version = "PY3",
-    shard_count = 5,
 )
 
 cuda_py_test(
     name = "init_ops_test",
     size = "small",
     srcs = ["ops/init_ops_test.py"],
-    additional_deps = [
-        ":client_testlib",
-        ":init_ops",
-        ":framework_ops",
-        ":resource_variable_ops",
-        "//third_party/py/numpy",
-        "//tensorflow/python/eager:context",
-    ],
     python_version = "PY3",
+    deps = [
+        ":client_testlib",
+        ":framework_ops",
+        ":init_ops",
+        ":resource_variable_ops",
+        "//tensorflow/python/eager:context",
+        "//third_party/py/numpy",
+    ],
 )
 
 cuda_py_test(
     name = "init_ops_v2_test",
     size = "medium",
     srcs = ["ops/init_ops_v2_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":array_ops",
         ":client_testlib",
+        ":framework_ops",
         ":init_ops_v2",
         ":random_ops",
-        ":framework_ops",
-        "//third_party/py/numpy",
         "//tensorflow/python/eager:context",
+        "//third_party/py/numpy",
     ],
-    python_version = "PY3",
 )
 
 cuda_py_test(
     name = "math_grad_test",
     size = "small",
     srcs = ["ops/math_grad_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    tags = ["no_windows_gpu"],
+    deps = [
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -4713,15 +4715,15 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
     ],
-    python_version = "PY3",
-    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
     name = "math_ops_test",
     size = "small",
     srcs = ["ops/math_ops_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    tags = ["no_windows_gpu"],
+    deps = [
         ":array_ops",
         ":errors",
         ":framework_for_generated_wrappers",
@@ -4732,15 +4734,16 @@ cuda_py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
-    python_version = "PY3",
-    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
     name = "nn_batchnorm_test",
     size = "medium",
     srcs = ["ops/nn_batchnorm_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    shard_count = 4,
+    tags = ["no_windows"],
+    deps = [
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -4751,16 +4754,16 @@ cuda_py_test(
         ":nn_ops_gen",
         "//third_party/py/numpy",
     ],
-    python_version = "PY3",
-    shard_count = 4,
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
     name = "nn_fused_batchnorm_test",
     size = "large",
     srcs = ["ops/nn_fused_batchnorm_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    shard_count = 16,
+    tags = ["no_rocm"],
+    deps = [
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -4769,16 +4772,17 @@ cuda_py_test(
         ":nn_grad",
         "//third_party/py/numpy",
     ],
-    python_version = "PY3",
-    shard_count = 16,
-    tags = ["no_rocm"],
 )
 
 cuda_py_test(
     name = "nn_test",
     size = "medium",
     srcs = ["ops/nn_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    tags = ["no_windows"],
+    # TODO(b/130689556): Numerical differences due to fast math on CPU.
+    xla_enable_strict_auto_jit = False,
+    deps = [
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -4788,13 +4792,9 @@ cuda_py_test(
         ":partitioned_variables",
         ":variable_scope",
         ":variables",
-        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
-    python_version = "PY3",
-    tags = ["no_windows"],
-    # TODO(b/130689556): Numerical differences due to fast math on CPU.
-    xla_enable_strict_auto_jit = False,
 )
 
 py_test(
@@ -4814,7 +4814,8 @@ cuda_py_test(
     name = "nn_xent_test",
     size = "medium",
     srcs = ["ops/nn_xent_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
         ":gradients",
@@ -4822,7 +4823,6 @@ cuda_py_test(
         ":nn_grad",
         "//third_party/py/numpy",
     ],
-    python_version = "PY3",
 )
 
 py_test(
@@ -4841,7 +4841,10 @@ cuda_py_test(
     name = "special_math_ops_test",
     size = "medium",
     srcs = ["ops/special_math_ops_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    shard_count = 10,
+    tags = ["no_windows_gpu"],
+    deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
@@ -4850,9 +4853,6 @@ cuda_py_test(
         ":special_math_ops",
         "//third_party/py/numpy",
     ],
-    python_version = "PY3",
-    shard_count = 10,
-    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(
@@ -5841,7 +5841,13 @@ cuda_py_test(
     srcs = [
         "training/localhost_cluster_performance_test.py",
     ],
-    additional_deps = [
+    grpc_enabled = True,
+    python_version = "PY3",
+    tags = [
+        "no_oss",  # Test flaky due to port collisions.
+        "oss_serial",
+    ],
+    deps = [
         ":client",
         ":client_testlib",
         ":distributed_framework_test_lib",
@@ -5851,12 +5857,6 @@ cuda_py_test(
         ":variable_scope",
         ":variables",
         "//third_party/py/numpy",
-    ],
-    grpc_enabled = True,
-    python_version = "PY3",
-    tags = [
-        "no_oss",  # Test flaky due to port collisions.
-        "oss_serial",
     ],
 )
 
@@ -6015,32 +6015,32 @@ cuda_py_test(
     name = "timeline_test",
     size = "small",
     srcs = ["client/timeline_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    xla_enable_strict_auto_jit = False,  # Graph structure is different with autojit
+    deps = [
         ":client",
         ":client_testlib",
         ":framework_for_generated_wrappers",
         ":math_ops",
         "//tensorflow/core:protos_all_py",
     ],
-    python_version = "PY3",
-    xla_enable_strict_auto_jit = False,  # Graph structure is different with autojit
 )
 
 cuda_py_test(
     name = "virtual_gpu_test",
     size = "small",
     srcs = ["client/virtual_gpu_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    tags = [
+        "no_gpu",  # b/127386241
+        "no_windows_gpu",
+    ],
+    deps = [
         ":client",
         ":client_testlib",
         ":framework_for_generated_wrappers",
         ":math_ops",
         "//tensorflow/core:protos_all_py",
-    ],
-    python_version = "PY3",
-    tags = [
-        "no_gpu",  # b/127386241
-        "no_windows_gpu",
     ],
 )
 
@@ -6149,17 +6149,17 @@ cuda_py_test(
     name = "adam_test",
     size = "small",
     srcs = ["training/adam_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":array_ops",
+        ":client_testlib",
         ":framework",
         ":math_ops",
         ":platform",
-        ":training",
         ":platform_test",
-        ":client_testlib",
+        ":training",
         "//third_party/py/numpy",
     ],
-    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -6168,7 +6168,12 @@ cuda_py_test(
     srcs = [
         "training/moving_averages_test.py",
     ],
-    additional_deps = [
+    python_version = "PY3",
+    tags = [
+        "no_windows",  # b/139083295: bfloat16 tests fail on Windows
+        "notsan",
+    ],
+    deps = [
         ":array_ops",
         ":client_testlib",
         ":constant_op",
@@ -6178,11 +6183,6 @@ cuda_py_test(
         ":training",
         ":variable_scope",
         ":variables",
-    ],
-    python_version = "PY3",
-    tags = [
-        "no_windows",  # b/139083295: bfloat16 tests fail on Windows
-        "notsan",
     ],
 )
 
@@ -6265,7 +6265,9 @@ cuda_py_test(
     srcs = [
         "training/saver_test.py",
     ],
-    additional_deps = [
+    python_version = "PY3",
+    tags = ["multi_gpu"],
+    deps = [
         ":array_ops",
         ":client_testlib",
         ":control_flow_ops",
@@ -6275,26 +6277,24 @@ cuda_py_test(
         ":math_ops",
         ":nn_grad",
         ":nn_ops",
-        ":saver_test_utils",
         ":partitioned_variables",
         ":platform",
         ":platform_test",
         ":py_checkpoint_reader",
         ":random_ops",
         ":resource_variable_ops",
+        ":saver_test_utils",
         ":sparse_ops",
         ":summary",
         ":training",
         ":util",
         ":variable_scope",
         ":variables",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
-    python_version = "PY3",
-    tags = ["multi_gpu"],
 )
 
 cuda_py_test(
@@ -6303,7 +6303,8 @@ cuda_py_test(
     srcs = [
         "training/checkpoint_management_test.py",
     ],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":array_ops",
         ":client_testlib",
         ":control_flow_ops",
@@ -6313,25 +6314,24 @@ cuda_py_test(
         ":math_ops",
         ":nn_grad",
         ":nn_ops",
-        ":saver_test_utils",
         ":partitioned_variables",
         ":platform",
         ":platform_test",
         ":pywrap_tensorflow",
         ":random_ops",
         ":resource_variable_ops",
+        ":saver_test_utils",
         ":sparse_ops",
         ":summary",
         ":training",
         ":util",
         ":variable_scope",
         ":variables",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
-    python_version = "PY3",
 )
 
 tf_py_test(
@@ -6378,20 +6378,20 @@ cuda_py_test(
     name = "session_manager_test",
     size = "medium",  # TODO(irving): Can this be made small?
     srcs = ["training/session_manager_test.py"],
-    additional_deps = [
+    grpc_enabled = True,
+    main = "training/session_manager_test.py",
+    python_version = "PY3",
+    deps = [
         ":array_ops",
-        ":control_flow_ops",
         ":client",
         ":client_testlib",
+        ":control_flow_ops",
         ":errors",
         ":framework_for_generated_wrappers",
         ":platform",
         ":training",
         ":variables",
     ],
-    grpc_enabled = True,
-    main = "training/session_manager_test.py",
-    python_version = "PY3",
 )
 
 tf_py_test(
@@ -6839,7 +6839,10 @@ cuda_py_test(
     name = "layers_normalization_test",
     size = "medium",
     srcs = ["layers/normalization_test.py"],
-    additional_deps = [
+    main = "layers/normalization_test.py",
+    python_version = "PY3",
+    shard_count = 10,
+    deps = [
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -6850,9 +6853,6 @@ cuda_py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
-    main = "layers/normalization_test.py",
-    python_version = "PY3",
-    shard_count = 10,
 )
 
 # -----------------------------------------------------------------------------
@@ -6922,7 +6922,10 @@ cuda_py_test(
     name = "accumulate_n_benchmark",
     size = "medium",
     srcs = ["ops/accumulate_n_benchmark.py"],
-    additional_deps = [
+    main = "ops/accumulate_n_benchmark.py",
+    python_version = "PY3",
+    shard_count = 6,
+    deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
@@ -6934,15 +6937,14 @@ cuda_py_test(
         ":state_ops",
         ":state_ops_gen",
     ],
-    main = "ops/accumulate_n_benchmark.py",
-    python_version = "PY3",
-    shard_count = 6,
 )
 
 cuda_py_test(
     name = "batch_norm_benchmark",
     srcs = ["ops/batch_norm_benchmark.py"],
-    additional_deps = [
+    main = "ops/batch_norm_benchmark.py",
+    python_version = "PY3",
+    deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
@@ -6956,14 +6958,14 @@ cuda_py_test(
         ":random_ops",
         ":variables",
     ],
-    main = "ops/batch_norm_benchmark.py",
-    python_version = "PY3",
 )
 
 cuda_py_test(
     name = "collective_ops_benchmark",
     srcs = ["ops/collective_ops_benchmark.py"],
-    additional_deps = [
+    main = "ops/collective_ops_benchmark.py",
+    python_version = "PY3",
+    deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
@@ -6973,14 +6975,14 @@ cuda_py_test(
         ":variables",
         "//tensorflow/core:protos_all_py",
     ],
-    main = "ops/collective_ops_benchmark.py",
-    python_version = "PY3",
 )
 
 cuda_py_test(
     name = "concat_benchmark",
     srcs = ["ops/concat_benchmark.py"],
-    additional_deps = [
+    main = "ops/concat_benchmark.py",
+    python_version = "PY3",
+    deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
@@ -6991,29 +6993,29 @@ cuda_py_test(
         ":variables",
         "//tensorflow/core:protos_all_py",
     ],
-    main = "ops/concat_benchmark.py",
-    python_version = "PY3",
 )
 
 cuda_py_test(
     name = "control_flow_ops_benchmark",
     srcs = ["ops/control_flow_ops_benchmark.py"],
-    additional_deps = [
+    main = "ops/control_flow_ops_benchmark.py",
+    python_version = "PY3",
+    deps = [
         ":client_testlib",
         ":constant_op",
         ":control_flow_ops",
         ":framework_ops",
         "//tensorflow/python/eager:function",
     ],
-    main = "ops/control_flow_ops_benchmark.py",
-    python_version = "PY3",
 )
 
 cuda_py_test(
     name = "conv2d_benchmark",
     size = "large",
     srcs = ["ops/conv2d_benchmark.py"],
-    additional_deps = [
+    main = "ops/conv2d_benchmark.py",
+    python_version = "PY3",
+    deps = [
         ":client",
         ":client_testlib",
         ":control_flow_ops",
@@ -7023,17 +7025,17 @@ cuda_py_test(
         ":platform_benchmark",
         ":random_ops",
         ":variables",
-        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
     ],
-    main = "ops/conv2d_benchmark.py",
-    python_version = "PY3",
 )
 
 cuda_py_test(
     name = "split_benchmark",
     srcs = ["ops/split_benchmark.py"],
-    additional_deps = [
+    main = "ops/split_benchmark.py",
+    python_version = "PY3",
+    deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
@@ -7042,18 +7044,18 @@ cuda_py_test(
         ":platform",
         ":platform_benchmark",
         ":variables",
-        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
     ],
-    main = "ops/split_benchmark.py",
-    python_version = "PY3",
 )
 
 cuda_py_test(
     name = "transpose_benchmark",
     size = "medium",
     srcs = ["ops/transpose_benchmark.py"],
-    additional_deps = [
+    main = "ops/transpose_benchmark.py",
+    python_version = "PY3",
+    deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
@@ -7062,20 +7064,18 @@ cuda_py_test(
         ":platform",
         ":platform_benchmark",
         ":variables",
-        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
     ],
-    main = "ops/transpose_benchmark.py",
-    python_version = "PY3",
 )
 
 cuda_py_test(
     name = "matmul_benchmark",
     size = "medium",
     srcs = ["ops/matmul_benchmark.py"],
-    additional_deps = [":matmul_benchmark_main_lib"],
     main = "ops/matmul_benchmark.py",
     python_version = "PY3",
+    deps = [":matmul_benchmark_main_lib"],
 )
 
 py_library(
@@ -7101,7 +7101,10 @@ py_library(
 cuda_py_test(
     name = "session_benchmark",
     srcs = ["client/session_benchmark.py"],
-    additional_deps = [
+    grpc_enabled = True,
+    main = "client/session_benchmark.py",
+    python_version = "PY3",
+    deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
@@ -7111,23 +7114,20 @@ cuda_py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
-    grpc_enabled = True,
-    main = "client/session_benchmark.py",
-    python_version = "PY3",
 )
 
 cuda_py_test(
     name = "nn_grad_test",
     size = "small",
     srcs = ["ops/nn_grad_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
         ":nn_grad",
         ":nn_ops",
         "//third_party/py/numpy",
     ],
-    python_version = "PY3",
 )
 
 py_library(
@@ -7204,13 +7204,6 @@ cuda_py_test(
     srcs = [
         "grappler/cluster_test.py",
     ],
-    additional_deps = [
-        ":client_testlib",
-        ":framework_for_generated_wrappers",
-        ":tf_cluster",
-        ":tf_item",
-        "//tensorflow/core:protos_all_py",
-    ],
     python_version = "PY3",
     shard_count = 10,
     tags = [
@@ -7220,6 +7213,13 @@ cuda_py_test(
     ],
     # This test will not run on XLA because it primarily tests the TF Classic flow.
     xla_enable_strict_auto_jit = False,
+    deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":tf_cluster",
+        ":tf_item",
+        "//tensorflow/core:protos_all_py",
+    ],
 )
 
 py_library(
@@ -7318,21 +7318,21 @@ cuda_py_test(
     srcs = [
         "grappler/constant_folding_test.py",
     ],
-    additional_deps = [
-        ":client_testlib",
-        ":framework_for_generated_wrappers",
-        ":array_ops",
-        ":control_flow_ops",
-        ":dtypes",
-        ":functional_ops",
-        ":math_ops",
-        ":ops",
-        "//third_party/py/numpy",
-        "//tensorflow/core:protos_all_py",
-    ],
     python_version = "PY3",
     tags = [
         "grappler",
+    ],
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":control_flow_ops",
+        ":dtypes",
+        ":framework_for_generated_wrappers",
+        ":functional_ops",
+        ":math_ops",
+        ":ops",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -7461,21 +7461,6 @@ cuda_py_test(
     srcs = [
         "grappler/auto_mixed_precision_test.py",
     ],
-    additional_deps = [
-        ":client_testlib",
-        ":framework_for_generated_wrappers",
-        ":array_ops",
-        ":constant_op",
-        ":dtypes",
-        ":math_ops",
-        ":nn",
-        ":ops",
-        ":random_ops",
-        ":control_flow_ops",
-        ":training",
-        "//third_party/py/numpy",
-        "//tensorflow/core:protos_all_py",
-    ],
     python_version = "PY3",
     tags = [
         "grappler",
@@ -7483,6 +7468,21 @@ cuda_py_test(
     ],
     # This test analyzes the graph, but XLA changes the names of nodes.
     xla_enable_strict_auto_jit = False,
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":constant_op",
+        ":control_flow_ops",
+        ":dtypes",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":nn",
+        ":ops",
+        ":random_ops",
+        ":training",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -7513,13 +7513,6 @@ cuda_py_test(
     name = "nccl_ops_test",
     size = "small",
     srcs = ["ops/nccl_ops_test.py"],
-    additional_deps = [
-        ":nccl_ops",
-        ":array_ops",
-        ":client_testlib",
-        ":framework_test_lib",
-        ":platform_test",
-    ],
     python_version = "PY3",
     # Disabled on jenkins until errors finding nvmlShutdown are found.
     tags = [
@@ -7528,6 +7521,13 @@ cuda_py_test(
         "no_oss",
         "noguitar",
         "notap",
+    ],
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":framework_test_lib",
+        ":nccl_ops",
+        ":platform_test",
     ],
 )
 
@@ -7606,8 +7606,8 @@ py_test(
 cuda_py_test(
     name = "raw_ops_test",
     srcs = ["ops/raw_ops_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         "//tensorflow/python:client_testlib",
     ],
-    python_version = "PY3",
 )

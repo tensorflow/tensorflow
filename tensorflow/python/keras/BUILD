@@ -770,58 +770,58 @@ cuda_py_test(
     name = "convolutional_test",
     size = "medium",
     srcs = ["layers/convolutional_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
     python_version = "PY3",
     shard_count = 8,
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 cuda_py_test(
     name = "image_preprocessing_test",
     size = "medium",
     srcs = ["layers/preprocessing/image_preprocessing_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
     python_version = "PY3",
     shard_count = 4,
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 cuda_py_test(
     name = "convolutional_transpose_test",
     size = "medium",
     srcs = ["layers/convolutional_transpose_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
     python_version = "PY3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 cuda_py_test(
     name = "cudnn_recurrent_test",
     size = "medium",
     srcs = ["layers/cudnn_recurrent_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
     python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_rocm",
         "no_windows_gpu",
+    ],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -902,12 +902,12 @@ cuda_py_test(
     name = "embeddings_test",
     size = "medium",
     srcs = ["layers/embeddings_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python:client_testlib",
-    ],
     python_version = "PY3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 tf_py_test(
@@ -954,17 +954,17 @@ cuda_py_test(
     name = "normalization_test",
     size = "medium",
     srcs = ["layers/normalization_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
     python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_rocm",
         "notsan",
+    ],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1064,57 +1064,57 @@ cuda_py_test(
     name = "recurrent_v2_test",
     size = "medium",
     srcs = ["layers/recurrent_v2_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
     python_version = "PY3",
     shard_count = 2,
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 cuda_py_test(
     name = "separable_convolutional_test",
     size = "medium",
     srcs = ["layers/separable_convolutional_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
     python_version = "PY3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 cuda_py_test(
     name = "lstm_v2_test",
     size = "medium",
     srcs = ["layers/lstm_v2_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
     python_version = "PY3",
     shard_count = 12,
     tags = ["no_rocm"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 cuda_py_test(
     name = "gru_v2_test",
     size = "medium",
     srcs = ["layers/gru_v2_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
     python_version = "PY3",
     shard_count = 12,
     tags = ["no_rocm"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 tf_py_test(
@@ -1347,33 +1347,33 @@ tf_py_test(
 cuda_py_test(
     name = "multi_gpu_utils_test",
     srcs = ["utils/multi_gpu_utils_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
     python_version = "PY3",
     tags = [
         "guitar",
         "multi_gpu",
     ],
     xla_enable_strict_auto_jit = False,  # b/142744009
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 cuda_py_test(
     name = "training_gpu_test",
     size = "small",
     srcs = ["engine/training_gpu_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
     python_version = "PY3",
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

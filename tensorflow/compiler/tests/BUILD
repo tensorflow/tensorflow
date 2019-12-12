@@ -1271,7 +1271,8 @@ cuda_py_test(
     name = "xla_device_gpu_test",
     size = "small",
     srcs = ["xla_device_gpu_test.py"],
-    additional_deps = [
+    xla_enable_strict_auto_jit = False,
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -1279,16 +1280,16 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
     ],
-    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
     name = "jit_test",
     size = "medium",
     srcs = ["jit_test.py"],
-    additional_deps = [
+    shard_count = 5,
+    xla_enable_strict_auto_jit = False,
+    deps = [
         ":test_utils",
-        "//tensorflow/python/compiler/xla:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -1298,25 +1299,24 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python/compiler/xla:compiler_py",
     ],
-    shard_count = 5,
-    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
     name = "dense_layer_test",
     size = "medium",
     srcs = ["dense_layer_test.py"],
-    additional_deps = [
+    xla_enable_strict_auto_jit = False,
+    deps = [
         ":test_utils",
-        "//tensorflow/python/compiler/xla:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:layers",
         "//tensorflow/python:variables",
+        "//tensorflow/python/compiler/xla:compiler_py",
     ],
-    xla_enable_strict_auto_jit = False,
 )
 
 cc_library(
@@ -1391,7 +1391,8 @@ py_library(
 cuda_py_test(
     name = "lstm_test",
     srcs = ["lstm_test.py"],
-    additional_deps = [
+    xla_enable_strict_auto_jit = False,
+    deps = [
         ":lstm",
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1403,7 +1404,6 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],
-    xla_enable_strict_auto_jit = False,
 )
 
 # An example of ahead-of-time compilation using tfcompile.  The

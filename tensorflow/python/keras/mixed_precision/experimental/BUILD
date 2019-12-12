@@ -124,7 +124,8 @@ cuda_py_test(
     name = "loss_scale_optimizer_test",
     size = "small",
     srcs = ["loss_scale_optimizer_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":loss_scale_optimizer",
         ":test_util",
         "//tensorflow/python:client_testlib",
@@ -133,7 +134,6 @@ cuda_py_test(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
     ],
-    python_version = "PY3",
 )
 
 py_library(
@@ -150,30 +150,30 @@ cuda_py_test(
     name = "keras_test",
     size = "medium",
     srcs = ["keras_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    shard_count = 4,
+    tags = ["no_windows"],  # b/139083295: bfloat16 tests fail on Windows
+    deps = [
         ":test_util",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
     ],
-    python_version = "PY3",
-    shard_count = 4,
-    tags = ["no_windows"],  # b/139083295: bfloat16 tests fail on Windows
 )
 
 cuda_py_test(
     name = "layer_correctness_test",
     size = "medium",
     srcs = ["layer_correctness_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
+    python_version = "PY3",
+    tags = ["no_rocm"],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
     ],
-    python_version = "PY3",
-    tags = ["no_rocm"],
 )

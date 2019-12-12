@@ -80,20 +80,20 @@ cuda_py_test(
     name = "copy_to_device_test",
     size = "small",
     srcs = ["copy_to_device_test.py"],
-    additional_deps = [
-        "//tensorflow/python/data/experimental/ops:prefetching_ops",
+    tags = ["no_windows_gpu"],
+    deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python/compat:compat",
+        "//tensorflow/python/compat",
+        "//tensorflow/python/data/experimental/ops:prefetching_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
     ],
-    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(
@@ -497,17 +497,17 @@ cuda_py_test(
     name = "prefetch_to_device_test",
     size = "small",
     srcs = ["prefetch_to_device_test.py"],
-    additional_deps = [
-        "//tensorflow/python/data/experimental/ops:prefetching_ops",
+    tags = ["no_windows_gpu"],
+    deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/data/experimental/ops:prefetching_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
-    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(
@@ -624,8 +624,8 @@ cuda_py_test(
     name = "scan_test",
     size = "small",
     srcs = ["scan_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    tags = ["no_pip"],
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -641,8 +641,8 @@ cuda_py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
+        "//third_party/py/numpy",
     ],
-    tags = ["no_pip"],
 )
 
 tf_py_test(
@@ -829,7 +829,7 @@ cuda_py_test(
     name = "wrap_unwrap_test",
     size = "small",
     srcs = ["wrap_unwrap_test.py"],
-    additional_deps = [
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
