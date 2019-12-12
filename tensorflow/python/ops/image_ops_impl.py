@@ -1871,7 +1871,7 @@ def rgb_to_grayscale(images, name=None):
   >>> original = tf.constant([[[1.0, 2.0, 3.0]]])
   >>> converted = tf.image.rgb_to_grayscale(original)
   >>> print(converted.numpy())
-  [[[1.8149]]]
+  [[[1.81...]]]
 
   ```
   
