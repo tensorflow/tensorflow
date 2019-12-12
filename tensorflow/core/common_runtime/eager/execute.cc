@@ -537,7 +537,6 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     DVLOG(2) << "Creating new kernel for " << op->Name() << " on device "
              << DeviceNameOrUnspecified(op->Device());
     bool run_function_with_flr = false;
-    bool compile_with_xla = false;
     if (op->is_function()) {
       bool compile_with_xla;
       TF_RETURN_IF_ERROR(ShouldCompileWithXLA(op, ctx, &compile_with_xla));
@@ -586,8 +585,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
       // that we don't support legitimate sending/receiving across function
       // boundary.
       DVLOG(2) << "Running " << ndef.op() << " using multi-device function. "
-               << "compile_with_xla=" << compile_with_xla
-               << ". Full node_def=" << ndef.DebugString();
+               << "Full node_def=" << ndef.DebugString();
       std::function<int64()> get_op_id = nullptr;
 #if !defined(IS_MOBILE_PLATFORM)
       if (ctx->LazyCopyFunctionRemoteInputs()) {
@@ -602,12 +600,11 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
           get_op_id));
     } else {
       DVLOG(2) << "Running " << ndef.op() << " using op kernel. "
-               << "compile_with_xla=" << compile_with_xla
                << ". Full node_def=" << ndef.DebugString();
-      kernel.reset(new KernelAndDeviceOp(ctx->GetRendezvous(), ctx->LogMemory(),
-                                         flr, runner,
-                                         ctx->GetCollectiveExecutorHandle(),
-                                         ctx->HostCPU(), compile_with_xla));
+      kernel.reset(new KernelAndDeviceOp(
+          ctx->GetRendezvous(), ctx->LogMemory(), flr, runner,
+          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU(),
+          /*compile_with_xla=*/false));
     }
 
     TF_RETURN_IF_ERROR(kernel->Init(ndef, graph_collector));
