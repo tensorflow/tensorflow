@@ -524,8 +524,6 @@ struct OpData {
   bool is_layer_norm_lstm;
 
   // These fields are only used by full kernel.
-  int activation_state_tensor_index;
-  int cell_state_tensor_index;
   int scratch_tensor_index;
 };
 
@@ -559,6 +557,11 @@ constexpr int kOutputGateBiasTensor = 15;
 constexpr int kProjectionWeightsTensor = 16;  // Optional
 // Projection bias tensor of size {n_output}
 constexpr int kProjectionBiasTensor = 17;  // Optional
+
+// These state tensors are defined as variable tensors, and will be modified by
+// this op.
+constexpr int kInputActivationStateTensor = 18;
+constexpr int kInputCellStateTensor = 19;
 
 // Layer norm coefficient tensors of size {n_cell}, representing a diagonal
 // matrix.
@@ -612,15 +615,17 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node,
                          : nullptr;
   const TfLiteTensor* forget_layer_norm_coefficients =
       is_layer_norm_lstm
-          ? GetInput(context, node, kForgetLayerNormCoefficientsTensor)
+          ? GetOptionalInputTensor(context, node,
+                                   kForgetLayerNormCoefficientsTensor)
           : nullptr;
   const TfLiteTensor* cell_layer_norm_coefficients =
-      is_layer_norm_lstm
-          ? GetInput(context, node, kCellLayerNormCoefficientsTensor)
-          : nullptr;
+      is_layer_norm_lstm ? GetOptionalInputTensor(
+                               context, node, kCellLayerNormCoefficientsTensor)
+                         : nullptr;
   const TfLiteTensor* output_layer_norm_coefficients =
       is_layer_norm_lstm
-          ? GetInput(context, node, kOutputLayerNormCoefficientsTensor)
+          ? GetOptionalInputTensor(context, node,
+                                   kOutputLayerNormCoefficientsTensor)
           : nullptr;
 
   const TfLiteTensor* input_gate_bias =
@@ -640,9 +645,11 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node,
   TfLiteTensor* scratch_buffer = GetTemporary(context, node, /*index=*/0);
 
   TfLiteTensor* activation_state =
-      &context->tensors[op_data->activation_state_tensor_index];
+      GetVariableInput(context, node, kInputActivationStateTensor);
+  TF_LITE_ENSURE(context, activation_state != nullptr);
   TfLiteTensor* cell_state =
-      &context->tensors[op_data->cell_state_tensor_index];
+      GetVariableInput(context, node, kInputCellStateTensor);
+  TF_LITE_ENSURE(context, cell_state != nullptr);
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
