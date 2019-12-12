@@ -108,7 +108,7 @@ function build_container()
   fi
 
   #Add build arg for bfloat16 build
-  if [[ \${BUILD_TF_BFLOAT16_CONTAINERS} == "yes" ]]; then
+  if [[ ${BUILD_TF_BFLOAT16_CONTAINERS} == "yes" ]]; then
     TF_DOCKER_BUILD_ARGS+=("--build-arg CONFIG_BFLOAT16_BUILD=--enable-bfloat16")
   fi
 

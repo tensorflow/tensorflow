@@ -17,8 +17,8 @@ ARG BAZEL_VERSION=""
 
 # Upgrade Bazel version if argument is passed
 RUN if [ "${BAZEL_VERSION}" != "" ]; then \
-    curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
-    chmod +x bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
+        curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
+        chmod +x bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
         ./bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
         rm -rf bazel-$BAZEL_VERSION-installer-linux-x86_64.sh; \
     fi
