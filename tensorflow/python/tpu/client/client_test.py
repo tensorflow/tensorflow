@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # Lint as: python3
-"""Tests for cloud_tpu_client."""
+"""Tests for cloud tpu client."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,8 +21,8 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.python.distribute.cluster_resolver import cloud_tpu_client
 from tensorflow.python.platform import test
+from tensorflow.python.tpu.client import client
 
 mock = test.mock
 
@@ -85,19 +85,19 @@ class CloudTpuClientTest(test.TestCase):
   def testEnvironmentDiscoveryUrl(self):
     os.environ['TPU_API_DISCOVERY_URL'] = 'https://{api}.internal/{apiVersion}'
     self.assertEqual('https://{api}.internal/{apiVersion}',
-                     (cloud_tpu_client._environment_discovery_url()))
+                     (client._environment_discovery_url()))
 
   def testEnvironmentVarToNetworkEndpointsSingleIp(self):
     self.assertEqual(
         [{'ipAddress': '1.2.3.4', 'port': '1234'}],
-        list(cloud_tpu_client._environment_var_to_network_endpoints(
+        list(client._environment_var_to_network_endpoints(
             '1.2.3.4:1234')))
 
   def testEnvironmentVarToNetworkEndpointsSingleGrpcAddress(self):
     self.assertEqual(
         [{'ipAddress': '1.2.3.4', 'port': '2000'}],
         list(
-            cloud_tpu_client._environment_var_to_network_endpoints(
+            client._environment_var_to_network_endpoints(
                 'grpc://1.2.3.4:2000')))
 
   def testEnvironmentVarToNetworkEndpointsMultipleIps(self):
@@ -105,47 +105,47 @@ class CloudTpuClientTest(test.TestCase):
         [{'ipAddress': '1.2.3.4', 'port': '2000'},
          {'ipAddress': '5.6.7.8', 'port': '1234'}],
         list(
-            cloud_tpu_client._environment_var_to_network_endpoints(
+            client._environment_var_to_network_endpoints(
                 '1.2.3.4:2000,5.6.7.8:1234')))
 
   def testEnvironmentVarToNetworkEndpointsMultipleGrpcAddresses(self):
     self.assertEqual(
         [{'ipAddress': '1.2.3.4', 'port': '2000'},
          {'ipAddress': '5.6.7.8', 'port': '1234'}],
-        list(cloud_tpu_client._environment_var_to_network_endpoints(
+        list(client._environment_var_to_network_endpoints(
             'grpc://1.2.3.4:2000,grpc://5.6.7.8:1234')))
 
   def testEnvironmentVarToNetworkEndpointsMissingPortAndMixed(self):
     self.assertEqual(
         [{'ipAddress': '1.2.3.4', 'port': '2000'},
          {'ipAddress': '5.6.7.8', 'port': '8470'}],
-        list(cloud_tpu_client._environment_var_to_network_endpoints(
+        list(client._environment_var_to_network_endpoints(
             '1.2.3.4:2000,grpc://5.6.7.8')))
 
   def testInitializeNoArguments(self):
     with self.assertRaisesRegex(
         ValueError, 'Please provide a TPU Name to connect to.'):
-      cloud_tpu_client.CloudTPUClient()
+      client.Client()
 
   def testInitializeMultiElementTpuArray(self):
     with self.assertRaisesRegex(
         NotImplementedError,
         'Using multiple TPUs in a single session is not yet implemented'):
-      cloud_tpu_client.CloudTPUClient(tpu=['multiple', 'elements'])
+      client.Client(tpu=['multiple', 'elements'])
 
-  def assertClientContains(self, client):
-    self.assertEqual('tpu_name', client._tpu)
-    self.assertEqual(True, client._use_api)
-    self.assertEqual(None, client._credentials)
-    self.assertEqual('test-project', client._project)
-    self.assertEqual('us-central1-c', client._zone)
-    self.assertEqual(None, client._discovery_url)
+  def assertClientContains(self, c):
+    self.assertEqual('tpu_name', c._tpu)
+    self.assertEqual(True, c._use_api)
+    self.assertEqual(None, c._credentials)
+    self.assertEqual('test-project', c._project)
+    self.assertEqual('us-central1-c', c._zone)
+    self.assertEqual(None, c._discovery_url)
     self.assertEqual([{
         'ipAddress': '10.1.2.3',
         'port': '8470'
-    }], client.network_endpoints())
+    }], c.network_endpoints())
 
-  @mock.patch.object(cloud_tpu_client, '_request_compute_metadata',
+  @mock.patch.object(client, '_request_compute_metadata',
                      mock_request_compute_metadata)
   def testInitializeNoArgumentsWithEnvironmentVariable(self):
     os.environ['TPU_NAME'] = 'tpu_name'
@@ -156,11 +156,11 @@ class CloudTpuClientTest(test.TestCase):
             'health': 'HEALTHY'
         }
     }
-    client = cloud_tpu_client.CloudTPUClient(
+    c = client.Client(
         service=self.mock_service_client(tpu_map=tpu_map))
-    self.assertClientContains(client)
+    self.assertClientContains(c)
 
-  @mock.patch.object(cloud_tpu_client, '_request_compute_metadata',
+  @mock.patch.object(client, '_request_compute_metadata',
                      mock_request_compute_metadata)
   def testInitializeTpuName(self):
     tpu_map = {
@@ -170,42 +170,42 @@ class CloudTpuClientTest(test.TestCase):
             'health': 'HEALTHY'
         }
     }
-    client = cloud_tpu_client.CloudTPUClient(
+    c = client.Client(
         tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
-    self.assertClientContains(client)
+    self.assertClientContains(c)
 
-  @mock.patch.object(cloud_tpu_client, '_request_compute_metadata',
+  @mock.patch.object(client, '_request_compute_metadata',
                      mock_request_compute_metadata)
   def testInitializeIpAddress(self):
-    client = cloud_tpu_client.CloudTPUClient(tpu='grpc://1.2.3.4:8470')
-    self.assertEqual('grpc://1.2.3.4:8470', client._tpu)
-    self.assertEqual(False, client._use_api)
-    self.assertEqual(None, client._service)
-    self.assertEqual(None, client._credentials)
-    self.assertEqual(None, client._project)
-    self.assertEqual(None, client._zone)
-    self.assertEqual(None, client._discovery_url)
+    c = client.Client(tpu='grpc://1.2.3.4:8470')
+    self.assertEqual('grpc://1.2.3.4:8470', c._tpu)
+    self.assertEqual(False, c._use_api)
+    self.assertEqual(None, c._service)
+    self.assertEqual(None, c._credentials)
+    self.assertEqual(None, c._project)
+    self.assertEqual(None, c._zone)
+    self.assertEqual(None, c._discovery_url)
     self.assertEqual([{
         'ipAddress': '1.2.3.4',
         'port': '8470'
-    }], client.network_endpoints())
+    }], c.network_endpoints())
 
   def testInitializeWithoutMetadata(self):
-    client = cloud_tpu_client.CloudTPUClient(
+    c = client.Client(
         tpu='tpu_name', project='project', zone='zone')
-    self.assertEqual('tpu_name', client._tpu)
-    self.assertEqual(True, client._use_api)
-    self.assertEqual(None, client._service)
-    self.assertEqual(None, client._credentials)
-    self.assertEqual('project', client._project)
-    self.assertEqual('zone', client._zone)
-    self.assertEqual(None, client._discovery_url)
+    self.assertEqual('tpu_name', c._tpu)
+    self.assertEqual(True, c._use_api)
+    self.assertEqual(None, c._service)
+    self.assertEqual(None, c._credentials)
+    self.assertEqual('project', c._project)
+    self.assertEqual('zone', c._zone)
+    self.assertEqual(None, c._discovery_url)
 
   def testRecoverableNoApiAccess(self):
-    client = cloud_tpu_client.CloudTPUClient(tpu='grpc://1.2.3.4:8470')
-    self.assertEqual(True, client.recoverable())
+    c = client.Client(tpu='grpc://1.2.3.4:8470')
+    self.assertEqual(True, c.recoverable())
 
-  @mock.patch.object(cloud_tpu_client, '_request_compute_metadata',
+  @mock.patch.object(client, '_request_compute_metadata',
                      mock_request_compute_metadata)
   def testRecoverableNoState(self):
     tpu_map = {
@@ -214,11 +214,11 @@ class CloudTpuClientTest(test.TestCase):
             'port': '8470',
         }
     }
-    client = cloud_tpu_client.CloudTPUClient(
+    c = client.Client(
         tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
-    self.assertEqual(True, client.recoverable())
+    self.assertEqual(True, c.recoverable())
 
-  @mock.patch.object(cloud_tpu_client, '_request_compute_metadata',
+  @mock.patch.object(client, '_request_compute_metadata',
                      mock_request_compute_metadata)
   def testRecoverableReady(self):
     tpu_map = {
@@ -228,11 +228,11 @@ class CloudTpuClientTest(test.TestCase):
             'state': 'READY',
         }
     }
-    client = cloud_tpu_client.CloudTPUClient(
+    c = client.Client(
         tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
-    self.assertEqual(True, client.recoverable())
+    self.assertEqual(True, c.recoverable())
 
-  @mock.patch.object(cloud_tpu_client, '_request_compute_metadata',
+  @mock.patch.object(client, '_request_compute_metadata',
                      mock_request_compute_metadata)
   def testRecoverablePreempted(self):
     tpu_map = {
@@ -242,9 +242,9 @@ class CloudTpuClientTest(test.TestCase):
             'state': 'PREEMPTED',
         }
     }
-    client = cloud_tpu_client.CloudTPUClient(
+    c = client.Client(
         tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
-    self.assertEqual(False, client.recoverable())
+    self.assertEqual(False, c.recoverable())
 
 
 if __name__ == '__main__':

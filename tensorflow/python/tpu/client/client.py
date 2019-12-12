@@ -23,8 +23,6 @@ import os
 
 from six.moves.urllib import request
 
-from tensorflow.python.util import compat
-
 _GOOGLE_API_CLIENT_INSTALLED = True
 try:
   from apiclient import discovery  # pylint: disable=g-import-not-at-top
@@ -49,23 +47,23 @@ def _request_compute_metadata(path):
       '%s/computeMetadata/v1/%s' % (_GCE_METADATA_ENDPOINT, path),
       headers={'Metadata-Flavor': 'Google'})
   resp = request.urlopen(req)
-  return compat.as_bytes(resp.read())
+  return resp.read()
 
 
 def _environment_var_to_network_endpoints(endpoints):
   """Yields a dict with ip address and port."""
-  for endpoint in endpoints.split(compat.as_text(',')):
-    grpc_prefix = compat.as_text('grpc://')
+  for endpoint in endpoints.split(','):
+    grpc_prefix = 'grpc://'
     if endpoint.startswith(grpc_prefix):
       endpoint = endpoint.split(grpc_prefix)[1]
-    parts = endpoint.split(compat.as_text(':'))
+    parts = endpoint.split(':')
     ip_address = parts[0]
     port = _DEFAULT_ENDPOINT_PORT
     if len(parts) > 1:
       port = parts[1]
     yield {
-        'ipAddress': compat.as_text(ip_address),
-        'port': compat.as_text(port)
+        'ipAddress': ip_address,
+        'port': port
     }
 
 
@@ -79,7 +77,7 @@ def _get_tpu_name(tpu):
   return None
 
 
-class CloudTPUClient(object):
+class Client(object):
   """Client for working with the Cloud TPU API.
 
   This client is intended to be used for resolving tpu name to ip addresses.
@@ -108,7 +106,7 @@ class CloudTPUClient(object):
     if tpu is None:
       raise ValueError('Please provide a TPU Name to connect to.')
 
-    self._tpu = compat.as_text(tpu)
+    self._tpu = tpu
 
     self._use_api = not tpu.startswith('grpc://')
     self._service = service
@@ -124,12 +122,11 @@ class CloudTPUClient(object):
       if project:
         self._project = project
       else:
-        self._project = compat.as_str(
-            _request_compute_metadata('project/project-id'))
+        self._project = _request_compute_metadata('project/project-id')
       if zone:
         self._zone = zone
       else:
-        zone_path = compat.as_str(_request_compute_metadata('instance/zone'))
+        zone_path = _request_compute_metadata('instance/zone')
         self._zone = zone_path.split('/')[-1]
       self._discovery_url = _environment_discovery_url() or discovery_url
 
@@ -166,7 +163,7 @@ class CloudTPUClient(object):
     """Returns the TPU metadata object from the TPU Get API call."""
     try:
       full_name = 'projects/%s/locations/%s/nodes/%s' % (
-          self._project, self._zone, compat.as_text(self._tpu))
+          self._project, self._zone, self._tpu)
       service = self._tpu_service()
       r = service.projects().locations().nodes().get(name=full_name)
       return r.execute()
@@ -220,7 +217,7 @@ class CloudTPUClient(object):
 
     if 'state' in response and response['state'] != 'READY':
       raise RuntimeError('TPU "%s" is not yet ready; state: "%s"' %
-                         (compat.as_text(self._tpu), response['state']))
+                         (self._tpu, response['state']))
     if 'networkEndpoints' in response:
       return response['networkEndpoints']
     else:

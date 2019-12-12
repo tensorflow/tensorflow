@@ -21,10 +21,10 @@
 function install_ctpu {
   PIP_CMD="${1:-pip}"
 
-  # TPUClusterResolver has a runtime dependency on these Python libraries when
-  # resolving a Cloud TPU. It's very likely we want these installed if we're
+  # TPUClusterResolver has a runtime dependency cloud-tpu-client when
+  # resolving a Cloud TPU. It's very likely we want this installed if we're
   # using CTPU.
-  "${PIP_CMD}" install --user --upgrade google-api-python-client oauth2client
+  "${PIP_CMD}" install --user --upgrade cloud-tpu-client
 
   wget -nv "https://dl.google.com/cloud_tpu/ctpu/latest/linux/ctpu"
   chmod a+x ctpu
