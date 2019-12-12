@@ -301,13 +301,12 @@ def get_tensorrt_rewriter_config(conversion_params,
 
   rewriter_config_with_trt = rewriter_config_pb2.RewriterConfig()
 
-  if not disable_non_trt_optimizers:
-    # Layout optimizer may add Const nodes followed by Reshape nodes, thus we
-    # need to run constant folding again.
-    rewriter_config_with_trt.optimizers.extend(
-        ["constfold", "layout", "constfold"])
-
   if conversion_params.rewriter_config_template is None:
+    if not disable_non_trt_optimizers:
+      # Layout optimizer may add Const nodes followed by Reshape nodes, thus we
+      # need to run constant folding again.
+      rewriter_config_with_trt.optimizers.extend(
+          ["constfold", "layout", "constfold"])
     rewriter_config_with_trt.meta_optimizer_iterations = (
         rewriter_config_pb2.RewriterConfig.ONE)
     optimizer = rewriter_config_with_trt.custom_optimizers.add()
