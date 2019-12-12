@@ -1909,9 +1909,9 @@ def grayscale_to_rgb(images, name=None):
   >>> original = tf.constant([[[1.0], [2.0], [3.0]]])
   >>> converted = tf.image.grayscale_to_rgb(original)
   >>> print(converted.numpy())
-  [[[1., 1., 1.],
-    [2., 2., 2.],
-    [3., 3., 3.]]]
+  [[[1. 1. 1.]
+    [2. 2. 2.]
+    [3. 3. 3.]]]
 
   ```
   
