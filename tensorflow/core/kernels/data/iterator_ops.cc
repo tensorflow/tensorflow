@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -82,8 +83,10 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
         [cm = params.cancellation_manager]() { cm->StartCancel(); },
         &deregister_fn));
     auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
-    return captured_state->iterator->GetNext(IteratorContext(std::move(params)),
-                                             out_tensors, end_of_sequence);
+    auto val = captured_state->iterator->GetNext(
+        IteratorContext(std::move(params)), out_tensors, end_of_sequence);
+    metrics::RecordTFDataBytesFetched(GetTotalBytes(*out_tensors));
+    return val;
   }
   return errors::FailedPrecondition(
       "GetNext() failed because the iterator has not been initialized. Ensure "

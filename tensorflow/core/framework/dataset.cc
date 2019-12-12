@@ -348,6 +348,20 @@ int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
   return allocated_bytes;
 }
 
+int64 GetTotalBytes(const std::vector<Tensor>& element) {
+  int64 total_bytes = 0;
+  DatasetBase* dataset;
+  for (auto& tensor : element) {
+    if (tensor.dtype() == DT_VARIANT &&
+        GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+      total_bytes += dataset->TotalBytes();
+    } else {
+      total_bytes += tensor.TotalBytes();
+    }
+  }
+  return total_bytes;
+}
+
 Status GetDatasetFromVariantTensor(const Tensor& tensor,
                                    DatasetBase** out_dataset) {
   if (!(tensor.dtype() == DT_VARIANT &&

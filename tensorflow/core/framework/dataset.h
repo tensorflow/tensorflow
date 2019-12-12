@@ -653,6 +653,9 @@ class DatasetContext {
 // Returns the number of bytes allocated for the given tensor.
 int64 GetAllocatedBytes(const std::vector<Tensor>& element);
 
+// Returns the estimated memory usage in bytes of the given tensor.
+int64 GetTotalBytes(const std::vector<Tensor>& element);
+
 // Validates and extracts a `DatasetBase` object from `tensor`.
 //
 // `tensor` must have been written by a call to SetVariantTensorToDataset().
@@ -754,6 +757,9 @@ class DatasetBase : public core::RefCounted {
 
   // Returns the number of bytes allocated for tensors of this dataset.
   virtual int64 AllocatedBytes() const { return 0; }
+
+  // Returns the estimated number of bytes used for tensors of this dataset.
+  virtual int64 TotalBytes() const { return 0; }
 
   // Returns the cardinality of this dataset.
   virtual int64 Cardinality() const { return kUnknownCardinality; }
