@@ -34,6 +34,9 @@ namespace {
 // %res_val = tf.ReadVariableOp(%res)
 // %1 = tf.AddV2(%res_val, %0)
 // tf.AssignVariableOp(%res, %1)
+// NOTE: This pass does not support `use_locking=true` for a lot of resource
+// operations. So decomposition may not be correct outside of backends like XLA,
+// which automatically locks all resource variables.
 struct DecomposeResourceOps : public FunctionPass<DecomposeResourceOps> {
   void runOnFunction() override {
     // Add lowering patterns to the list.

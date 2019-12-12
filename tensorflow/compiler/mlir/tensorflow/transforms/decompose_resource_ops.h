@@ -25,6 +25,9 @@ namespace TF {
 // Populates rewrite patterns that decompose composite resource operations into
 // primitive ones like ReadVariableOp, AssignVariableOp and other computations
 // to facilitate transformations like resource op lifting.
+// NOTE: These patterns do not support `use_locking=true` for a lot of resource
+// operations. So decomposition may not be correct outside of backends like XLA,
+// which automatically locks all resource variables.
 void PopulateDecomposeResourceOpsPatterns(MLIRContext *context,
                                           OwningRewritePatternList *patterns);
 
