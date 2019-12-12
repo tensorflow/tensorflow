@@ -1820,6 +1820,12 @@ void HloInstruction::AddUser(HloInstruction* user) {
   }
 }
 
+int64 HloInstruction::UserId(HloInstruction* user) {
+  auto result = user_map_.find(user);
+  CHECK(result != user_map_.end());
+  return result->second;
+}
+
 bool HloInstruction::HasConstantOperand() const {
   for (const HloInstruction* operand : operands_) {
     if (operand->IsConstant()) {
