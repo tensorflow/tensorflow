@@ -306,23 +306,6 @@ def get_tensorrt_rewriter_config(conversion_params,
     # need to run constant folding again.
     rewriter_config_with_trt.optimizers.extend(
         ["constfold", "layout", "constfold"])
-  else:
-    off = rewriter_config_pb2.RewriterConfig.OFF
-    rewriter_config_with_trt.layout_optimizer = off
-    rewriter_config_with_trt.constant_folding = off
-    rewriter_config_with_trt.shape_optimization = off
-    rewriter_config_with_trt.remapping = off
-    rewriter_config_with_trt.arithmetic_optimization = off
-    rewriter_config_with_trt.dependency_optimization = off
-    rewriter_config_with_trt.loop_optimization = off
-    rewriter_config_with_trt.function_optimization = off
-    rewriter_config_with_trt.debug_stripper = off
-    rewriter_config_with_trt.disable_model_pruning = True
-    rewriter_config_with_trt.scoped_allocator_optimization = off
-    rewriter_config_with_trt.memory_optimization = (
-        rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
-    rewriter_config_with_trt.pin_to_host_optimization = off
-    rewriter_config_with_trt.auto_parallel.enable = False
 
   if conversion_params.rewriter_config_template is None:
     rewriter_config_with_trt.meta_optimizer_iterations = (
@@ -349,6 +332,26 @@ def get_tensorrt_rewriter_config(conversion_params,
   else:
     rewriter_config_with_trt.CopyFrom(
         conversion_params.rewriter_config_template)
+
+  # Disabling optimizers should happen after CopyFrom the temaplte
+  # otherwise the template can overwrite the disablement.
+  if disable_non_trt_optimizers:
+    off = rewriter_config_pb2.RewriterConfig.OFF
+    rewriter_config_with_trt.layout_optimizer = off
+    rewriter_config_with_trt.constant_folding = off
+    rewriter_config_with_trt.shape_optimization = off
+    rewriter_config_with_trt.remapping = off
+    rewriter_config_with_trt.arithmetic_optimization = off
+    rewriter_config_with_trt.dependency_optimization = off
+    rewriter_config_with_trt.loop_optimization = off
+    rewriter_config_with_trt.function_optimization = off
+    rewriter_config_with_trt.debug_stripper = off
+    rewriter_config_with_trt.disable_model_pruning = True
+    rewriter_config_with_trt.scoped_allocator_optimization = off
+    rewriter_config_with_trt.memory_optimization = (
+        rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
+    rewriter_config_with_trt.pin_to_host_optimization = off
+    rewriter_config_with_trt.auto_parallel.enable = False
 
   return rewriter_config_with_trt
 
