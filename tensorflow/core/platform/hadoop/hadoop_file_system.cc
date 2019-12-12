@@ -135,6 +135,24 @@ const LibHDFS* libhdfs() {
   return libhdfs;
 }
 
+Status SplitArchiveNameAndPath(StringPiece& path, string& nn) {
+  size_t index_end_archive_name = path.find(".har");
+  if (index_end_archive_name == path.npos) {
+    return errors::InvalidArgument(
+        "Hadoop archive path does not contain a .har extension");
+  }
+  // Case of hadoop archive. Namenode is the path to the archive.
+  nn = string("har://") + string(nn) +
+       string(path.substr(0, index_end_archive_name + 4));
+  // Remove the hadoop archive path to the path
+  path.remove_prefix(index_end_archive_name + 4);
+  if (path.empty()) {
+    // Root of the archive
+    path = "/";
+  }
+  return Status::OK();
+}
+
 // We rely on HDFS connection caching here. The HDFS client calls
 // org.apache.hadoop.fs.FileSystem.get(), which caches the connection
 // internally.
@@ -164,16 +182,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
     // https://github.com/tensorflow/tensorflow/blob/v1.0.0/third_party/hadoop/hdfs.h#L259
     libhdfs()->hdfsBuilderSetNameNode(builder, "default");
   } else if (scheme == "har") {
-    size_t index_end_archive_name = path.find(".har");
-    if (index_end_archive_name == path.npos) {
-      return errors::InvalidArgument(
-          "Hadoop archive path does not contain a .har extension");
-    }
-    // Case of hadoop archive. Namenode is the path to the archive.
-    nn = string("har://") + string(nn) +
-         string(path.substr(0, index_end_archive_name + 4));
-    // Remove the hadoop archive path to the path
-    path.remove_prefix(index_end_archive_name + 4);
+    SplitArchiveNameAndPath(path, nn);
     libhdfs()->hdfsBuilderSetNameNode(builder, nn.c_str());
   } else {
     libhdfs()->hdfsBuilderSetNameNode(builder,
