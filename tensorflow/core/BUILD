@@ -1252,6 +1252,7 @@ cc_library(
         "//tensorflow/core/kernels:checkpoint_ops",
         "//tensorflow/core/kernels:clustering_ops",
         "//tensorflow/core/kernels:collective_ops",
+        "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:ctc_ops",
         "//tensorflow/core/kernels:cudnn_rnn_kernels",
@@ -1340,12 +1341,21 @@ cc_library(
 )
 
 cc_library(
+    name = "dynamic_kernels_impl",
+    visibility = [":__subpackages__"],
+    deps = [],
+)
+
+cc_library(
     name = "all_kernels",
     visibility = ["//visibility:public"],
     deps = if_dynamic_kernels(
         [],
-        otherwise = [":all_kernels_impl"],
+        otherwise = [":dynamic_kernels_impl"],
     ) + [
+        # TODO(gunan): Split this up and load the resulting kernels dynamically once
+        # the dependency issues are resolved.
+        ":all_kernels_impl",
         # TODO(gunan): Work on the API between these and rest of TF and make
         # these also dynamically loading.
         "//tensorflow/core/kernels:dataset_ops",  # Depends on grappler
@@ -1374,6 +1384,20 @@ cc_library(
     deps = [
         ":tensorflow_opensource",
         "//tensorflow/core/platform/default/build_config:tensorflow_platform_specific",
+    ],
+)
+
+cc_library(
+    name = "testlib_kernels_impl",
+    deps = [
+        "//tensorflow/core/kernels:aggregate_ops",
+        "//tensorflow/core/kernels:bcast_ops",
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:constant_op",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:random_ops",
+        "//tensorflow/core/kernels:reduction_ops",
+        "//tensorflow/core/kernels:reshape_op",
     ],
 )
 
@@ -1418,22 +1442,12 @@ cc_library(
         ":tensor_testutil",
         ":test",
         ":testlib_ops",
+        # TODO(gunan): resolve dependency issues and load these kernels dynamically.
+        ":testlib_kernels_impl",
         "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
-    ] + if_dynamic_kernels(
-        [],
-        otherwise = [
-            "//tensorflow/core/kernels:aggregate_ops",
-            "//tensorflow/core/kernels:bcast_ops",
-            "//tensorflow/core/kernels:cast_op",
-            "//tensorflow/core/kernels:constant_op",
-            "//tensorflow/core/kernels:identity_op",
-            "//tensorflow/core/kernels:random_ops",
-            "//tensorflow/core/kernels:reduction_ops",
-            "//tensorflow/core/kernels:reshape_op",
-        ],
-    ),
+    ],
 )
 
 cc_library(
