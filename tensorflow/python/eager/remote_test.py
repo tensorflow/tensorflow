@@ -94,12 +94,8 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
         c = variable_b + 1
       return c, i + variable_b
 
-    with self.assertRaises(errors.UnimplementedError) as cm:
-      remote_output(constant_op.constant([1]))
-
-    self.assertIn(
-        'Currently, outputting tensors on remote devices is not supported.',
-        cm.exception.message)
+    self.assertAllEqual(
+        remote_output(constant_op.constant([1]))[0].numpy(), 2)
 
   def testMultiDeviceFunctionAmbiguousDevice(self):
 
@@ -175,6 +171,19 @@ class MultiWorkersTest(test.TestCase, parameterized.TestCase):
     ops.device(None).__enter__()
     # Reset the context to avoid polluting other test cases.
     context._reset_context()
+
+  @test_util.eager_lazy_remote_copy_on_and_off
+  def testReturnRemoteArgument(self):
+
+    @def_function.function
+    def local_func(i):
+      return i
+
+    with ops.device('/job:worker/replica:0/task:0'):
+      x = constant_op.constant([2, 1])
+
+    with ops.device('/job:worker/replica:0/task:1'):
+      self.assertAllEqual(local_func(x), [2, 1])
 
   @test_util.eager_lazy_remote_copy_on_and_off
   def testMultiDeviceFunctionOnLocalDevice(self):
