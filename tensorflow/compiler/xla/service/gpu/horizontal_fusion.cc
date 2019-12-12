@@ -90,6 +90,91 @@ class HorizontalFusionImpl {
   HloComputation* computation_;
 };  // HorizontalFusionImpl
 
+bool IsFusionSupported(const HloInstruction& instr) {
+  // Support only kLoop fusion now.
+  if (!instr.IsLoopFusion()) {
+    return false;
+  }
+
+  return true;
+}
+
+bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
+                                  const HloInstruction& consumer) {
+  return absl::c_all_of(instr.users(), [&](const HloInstruction* user) {
+    if (user->opcode() == HloOpcode::kGetTupleElement) {
+      // Skip GTE.
+      return IsConsumerTheOnlyNonRootUser(*user, consumer);
+    } else if (user == &consumer) {
+      // `user` is consumer.
+      return true;
+    } else if (user == user->parent()->root_instruction()) {
+      // Consumed by ROOT is always fine, since it is impossible to create
+      // cycles through ROOT.
+      return true;
+    } else {
+      return false;
+    }
+  });
+}
+
+// Returns whether `instr` is a profitable candidate to be horizontally fused.
+// Since the primary benefit of horizontal fusion comes from reducing the
+// kernel launch overhead, we want to exclude the instructions with
+// insignificant kernel launch overhead. In other words, we exclude instructions
+// if their computation latencies are longer than launch latencies. We estimate
+// the computation latency of a given instruction by its shapes and the
+// instruction count in its fused computation. We roughly observe that if a
+// fusion instruction has shapes smaller than `kShapeThreshold` and has fewer
+// instructions than `kInstrCountThreshold`, it is launch-latency-bound and
+// profitable by horizontal fusion.
+bool IsProfitableFusionCandidate(const HloInstruction& instr) {
+  CHECK(instr.opcode() == HloOpcode::kFusion);
+  constexpr int64 kShapeThreshold = 128 * 2048;
+  constexpr int64 kInstrCountThreshold = 30;
+  auto root = instr.fused_expression_root();
+
+  // Too large shapes are not easily profitable.
+  if (root->opcode() == HloOpcode::kTuple) {
+    // Since all output shapes are the same, use the first shape as the
+    // representative.
+    auto shape = root->operand(0)->shape();
+    if (ShapeUtil::ElementsIn(shape) > kShapeThreshold) {
+      return false;
+    }
+  } else {
+    auto shape = root->shape();
+    if (ShapeUtil::ElementsIn(shape) > kShapeThreshold) {
+      return false;
+    }
+  }
+
+  // Having too many instructions is not easily profitable.
+  if (instr.fused_instruction_count() > kInstrCountThreshold) {
+    return false;
+  }
+
+  return true;
+}
+
+// Returns whether `fusion_instr` has only row-major layouts.
+// The horizontal fusion excludes computations with non-row-major layouts,
+// because fusing computations with different layouts can result in uncoalesced
+// memory accesses and cause great performance overhead.
+bool HasOnlyRowMajorLayout(const HloInstruction& fusion_instr) {
+  CHECK(fusion_instr.opcode() == HloOpcode::kFusion);
+  auto instrs = fusion_instr.fused_instructions_computation()->instructions();
+  for (auto instr : instrs) {
+    if (instr->shape().layout().format() != DENSE) {
+      continue;
+    }
+    if (!LayoutUtil::IsMonotonicWithDim0Major(instr->shape().layout())) {
+      return false;
+    }
+  }
+  return true;
+};
+
 void HorizontalFusionImpl::FusionCandidates::Initialize(
     HloInstruction* consumer) {
   // First, find out all fusion instructions. We will filter out
@@ -102,97 +187,19 @@ void HorizontalFusionImpl::FusionCandidates::Initialize(
     }
   }
 
-  auto is_supported_fusion = [&](const HloInstruction& instr) -> bool {
-    // Support only kLoop fusion.
-    if (!instr.IsLoopFusion()) {
-      return false;
-    }
-
-    return true;
-  };
-
-  std::function<bool(const HloInstruction&)> is_consumer_the_only_user =
-      [&](const HloInstruction& instr) {
-        return absl::c_all_of(instr.users(), [&](const HloInstruction* user) {
-          if (user->opcode() == HloOpcode::kGetTupleElement) {
-            // Skip GTE.
-            return is_consumer_the_only_user(*user);
-          } else if (user == consumer) {
-            // user is consumer.
-            return true;
-          } else if (user == user->parent()->root_instruction()) {
-            // Consumed by ROOT is always fine, since it is impossible to create
-            // cycles through ROOT.
-            return true;
-          } else {
-            return false;
-          }
-        });
-      };
-
-  auto is_profitable = [](const HloInstruction& instr) -> bool {
-    // Since the primary benefit of horizontal fusion comes from reducing the
-    // kernel launch overhead, we want to exclude the instructions whose launch
-    // overhead is not significant. To do so, We estimate the amount of the
-    // computation of the instruction by its shapes and number of instructions.
-    // We roughly observe that if a fusion instruction has shapes smaller
-    // than `kShapeThreshold` and has fewer instructions than
-    // `kInstrCountThreshold`, it is launch-latency-bound.
-    constexpr int64 kShapeThreshold = 128 * 2048;
-    constexpr int64 kInstrCountThreshold = 30;
-    auto root = instr.fused_expression_root();
-
-    // Too large shapes are not easily profitable.
-    if (root->opcode() == HloOpcode::kTuple) {
-      // Since all output shapes are the same, use the first shape as the
-      // representative.
-      auto shape = root->operand(0)->shape();
-      if (ShapeUtil::ElementsIn(shape) > kShapeThreshold) {
-        return false;
-      }
-    } else {
-      auto shape = root->shape();
-      if (ShapeUtil::ElementsIn(shape) > kShapeThreshold) {
-        return false;
-      }
-    }
-
-    // Having too many instructions is not easily profitable.
-    if (instr.fused_instruction_count() > kInstrCountThreshold) {
-      return false;
-    }
-
-    return true;
-  };
-
-  // Do not fuse computations with non-row-major layouts because it may
-  // increase bandwidth pressure.
-  auto all_row_major = [](const HloInstruction& fusion_instr) -> bool {
-    auto instrs = fusion_instr.fused_instructions_computation()->instructions();
-    for (auto instr : instrs) {
-      if (instr->shape().layout().format() != DENSE) {
-        continue;
-      }
-      if (!LayoutUtil::IsMonotonicWithDim0Major(instr->shape().layout())) {
-        return false;
-      }
-    }
-    return true;
-  };
-
   for (auto instr : fusion_instrs) {
-    if (!is_supported_fusion(*instr)) {
+    if (!IsFusionSupported(*instr)) {
       VLOG(2) << "Reject unsupported fusion instr " << instr->ToString();
       continue;
-    } else if (!is_consumer_the_only_user(*instr)) {
+    } else if (!IsConsumerTheOnlyNonRootUser(*instr, *consumer)) {
       VLOG(2) << "Reject maybe illegal instr " << instr->ToString()
               << "; including it may create cycles in HLO.";
       continue;
-    } else if (!is_profitable(*instr)) {
+    } else if (!IsProfitableFusionCandidate(*instr)) {
       VLOG(2) << "Reject may-not-be profitable fusion instr "
               << instr->ToString();
       continue;
-    } else if (!all_row_major(*instr)) {
+    } else if (!HasOnlyRowMajorLayout(*instr)) {
       VLOG(2) << "Reject non-row-major fusion instr " << instr->ToString();
       continue;
     } else {
