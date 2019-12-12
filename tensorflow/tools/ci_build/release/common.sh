@@ -129,6 +129,7 @@ function install_pip_deps {
 
   # LINT.IfChange(ubuntu_pip_installations)
   # TODO(aselle): Change all these to be --user instead of sudo.
+  ${SUDO_CMD} ${PIP_CMD} install keras_applications==1.0.8 --no-deps
   ${SUDO_CMD} ${PIP_CMD} install keras_preprocessing==1.1.0 --no-deps
   ${SUDO_CMD} ${PIP_CMD} install gast==0.2.2
   ${SUDO_CMD} ${PIP_CMD} install h5py==2.8.0
@@ -160,6 +161,7 @@ function install_ubuntu_16_pip_deps {
 
   # LINT.IfChange(ubuntu_16_pip_installations)
   "${PIP_CMD}" install --user --upgrade attrs
+  "${PIP_CMD}" install keras_applications==1.0.8 --no-deps --user
   "${PIP_CMD}" install keras_preprocessing==1.1.0 --no-deps --user
   "${PIP_CMD}" install numpy==1.14.5 --user
   "${PIP_CMD}" install --user --upgrade "future>=0.17.1"
@@ -203,6 +205,7 @@ function install_macos_pip_deps {
 
   # TODO(aselle): Change all these to be --user instead of sudo.
   ${SUDO_CMD} ${PIP_CMD} install --upgrade setuptools==39.1.0
+  ${SUDO_CMD} ${PIP_CMD} install keras_applications==1.0.8 --no-deps
   ${SUDO_CMD} ${PIP_CMD} install keras_preprocessing==1.1.0 --no-deps
   ${SUDO_CMD} ${PIP_CMD} install --upgrade mock portpicker scipy grpcio
   ${SUDO_CMD} ${PIP_CMD} install six==1.12.0

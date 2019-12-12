@@ -141,6 +141,7 @@ filegroup(
         "@highwayhash//:LICENSE",
         "@hwloc//:COPYING",
         "@icu//:icu4c/LICENSE",
+        "@keras_applications_archive//:LICENSE",
         "@kissfft//:COPYING",
         "@libjpeg_turbo//:LICENSE.md",
         "@lmdb//:LICENSE",

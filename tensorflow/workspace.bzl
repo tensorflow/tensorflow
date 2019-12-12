@@ -31,6 +31,7 @@ load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
+load("//third_party/keras_applications_archive:workspace.bzl", keras_applications = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
 
 def initialize_third_party():
@@ -41,6 +42,7 @@ def initialize_third_party():
     highwayhash()
     hwloc()
     icu()
+    keras_applications()
     kissfft()
     jpeg()
     nasm()
