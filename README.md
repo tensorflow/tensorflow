@@ -51,14 +51,7 @@ Windows)*:
 $ pip install tensorflow-gpu
 ```
 
-## Upgrade Tensorflow
-
-
-To update Tensorflow to the latest version(currently 2.0)
-
-```
-$ pip install --upgrade tensorflow
-```
+To update TensorFlow to the latest version, add `--upgrade` flag to the above commands.
 
 
 *Nightly binaries are available for testing using the
