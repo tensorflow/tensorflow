@@ -275,12 +275,15 @@ def _check_trt_version_compatibility():
         " minor/patch upgrades are backward compatible")
 
 
-def get_tensorrt_rewriter_config(conversion_params, is_v2=False):
+def get_tensorrt_rewriter_config(conversion_params,
+                                 is_v2=False,
+                                 disable_non_trt_optimizers=False):
   """Returns a RewriterConfig proto for TRT transformation.
 
   Args:
     conversion_params: a TrtConversionParams instance.
     is_v2: whether we're getting a RewriterConfig for TF 2.0.
+    disable_non_trt_optimizers: Turn off all default Grappler optimizers.
 
   Returns:
     A RewriterConfig proto which sets a TensorRTOptimizer to run Grappler.
@@ -297,11 +300,31 @@ def get_tensorrt_rewriter_config(conversion_params, is_v2=False):
   _check_conversion_params(conversion_params, is_v2=is_v2)
 
   rewriter_config_with_trt = rewriter_config_pb2.RewriterConfig()
-  if conversion_params.rewriter_config_template is None:
+
+  if not disable_non_trt_optimizers:
     # Layout optimizer may add Const nodes followed by Reshape nodes, thus we
     # need to run constant folding again.
     rewriter_config_with_trt.optimizers.extend(
         ["constfold", "layout", "constfold"])
+  else:
+    off = rewriter_config_pb2.RewriterConfig.OFF
+    rewriter_config_with_trt.layout_optimizer = off
+    rewriter_config_with_trt.constant_folding = off
+    rewriter_config_with_trt.shape_optimization = off
+    rewriter_config_with_trt.remapping = off
+    rewriter_config_with_trt.arithmetic_optimization = off
+    rewriter_config_with_trt.dependency_optimization = off
+    rewriter_config_with_trt.loop_optimization = off
+    rewriter_config_with_trt.function_optimization = off
+    rewriter_config_with_trt.debug_stripper = off
+    rewriter_config_with_trt.disable_model_pruning = True
+    rewriter_config_with_trt.scoped_allocator_optimization = off
+    rewriter_config_with_trt.memory_optimization = (
+        rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
+    rewriter_config_with_trt.pin_to_host_optimization = off
+    rewriter_config_with_trt.auto_parallel.enable = False
+
+  if conversion_params.rewriter_config_template is None:
     rewriter_config_with_trt.meta_optimizer_iterations = (
         rewriter_config_pb2.RewriterConfig.ONE)
     optimizer = rewriter_config_with_trt.custom_optimizers.add()

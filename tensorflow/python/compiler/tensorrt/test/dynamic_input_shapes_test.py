@@ -84,11 +84,16 @@ class DynamicInputShapesTest(trt_test.TfTrtIntegrationTestBase):
     """Return a ConversionParams for test."""
     conversion_params = super(DynamicInputShapesTest,
                               self).GetConversionParams(run_params)
-    return conversion_params._replace(
-        maximum_cached_engines=10,
+    conversion_params._replace(
+        maximum_cached_engines=10)
+    rewrite_config_with_trt = self.GetTrtRewriterConfig(
+        run_params=run_params,
+        conversion_params=conversion_params,
         # Disable layout optimizer, since it will convert BiasAdd with NHWC
         # format to NCHW format under four dimentional input.
-        rewriter_config_template=trt_test.OptimizerDisabledRewriterConfig())
+        disable_non_trt_optimizers=True)
+    return conversion_params._replace(
+        rewriter_config_template=rewrite_config_with_trt)
 
   def ExpectedEnginesToBuild(self, run_params):
     return ["TRTEngineOp_0"]
