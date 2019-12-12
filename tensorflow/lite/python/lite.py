@@ -998,7 +998,12 @@ class TFLiteConverter(TFLiteConverterBase):
           "are not enabled.")
 
     optimized_graph = self._graph_def
-    if self.inference_type != constants.QUANTIZED_UINT8:
+    # if it is not uint8 or int8 with post-training quantization, it is not
+    # quantization aware training, then graph optimization is applied.
+    # Graph optimization is disabled for quantization aware training.
+    if (self.inference_type != constants.QUANTIZED_UINT8 or
+        (self.inference_type == constants.INT8 and
+         (post_training_optimize or weight_only_quantize))):
       try:
         optimized_graph = _run_graph_optimizations(
             self._graph_def,
