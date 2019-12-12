@@ -1872,6 +1872,7 @@ def rgb_to_grayscale(images, name=None):
   >>> converted = tf.image.rgb_to_grayscale(original)
   >>> print(converted.numpy())
   [[[1.8149]]]
+
   ```
   
   Args:
@@ -1911,6 +1912,7 @@ def grayscale_to_rgb(images, name=None):
   [[[1., 1., 1.],
     [2., 2., 2.],
     [3., 3., 3.]]]
+
   ```
   
   Args:
