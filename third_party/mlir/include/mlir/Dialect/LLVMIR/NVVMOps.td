@@ -90,8 +90,8 @@ def NVVM_Barrier0Op : NVVM_Op<"barrier0"> {
   let printer = [{ printNVVMIntrinsicOp(p, this->getOperation()); }];
 }
 
-def NVVM_ShflDownOp :
-  NVVM_Op<"shfl.sync.down">,
+def NVVM_ShflBflyOp :
+  NVVM_Op<"shfl.sync.bfly">,
   Results<(outs LLVM_Type:$res)>,
   Arguments<(ins LLVM_Type:$dst,
                  LLVM_Type:$val,
@@ -99,12 +99,12 @@ def NVVM_ShflDownOp :
                  LLVM_Type:$mask_and_clamp,
                  OptionalAttr<UnitAttr>:$return_value_and_is_valid)> {
   string llvmBuilder = [{
-      auto intId = getShflDownIntrinsicId(
+      auto intId = getShflBflyIntrinsicId(
           $_resultType, static_cast<bool>($return_value_and_is_valid));
       $res = createIntrinsicCall(builder,
           intId, {$dst, $val, $offset, $mask_and_clamp});
   }];
-  let parser = [{ return parseNVVMShflSyncDownOp(parser, result); }];
+  let parser = [{ return parseNVVMShflSyncBflyOp(parser, result); }];
   let printer = [{ printNVVMIntrinsicOp(p, this->getOperation()); }];
   let verifier = [{
     if (!getAttrOfType<UnitAttr>("return_value_and_is_valid"))

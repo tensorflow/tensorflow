@@ -337,7 +337,7 @@ private:
           for (int i = 1; i < kWarpSize; i <<= 1) {
             Value *offset = rewriter.create<LLVM::ConstantOp>(
                 loc, int32Type, rewriter.getI32IntegerAttr(i));
-            Value *shfl = rewriter.create<NVVM::ShflDownOp>(
+            Value *shfl = rewriter.create<NVVM::ShflBflyOp>(
                 loc, shflTy, activeMask, value, offset, maskAndClamp,
                 returnValueAndIsValidAttr);
             Value *isActiveSrcLane = rewriter.create<LLVM::ExtractValueOp>(
@@ -366,7 +366,7 @@ private:
           for (int i = 1; i < kWarpSize; i <<= 1) {
             Value *offset = rewriter.create<LLVM::ConstantOp>(
                 loc, int32Type, rewriter.getI32IntegerAttr(i));
-            Value *shflValue = rewriter.create<NVVM::ShflDownOp>(
+            Value *shflValue = rewriter.create<NVVM::ShflBflyOp>(
                 loc, type, activeMask, value, offset, maskAndClamp,
                 /*return_value_and_is_valid=*/UnitAttr());
             value = accumFactory(loc, value, shflValue, rewriter);
