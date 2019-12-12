@@ -167,8 +167,7 @@ void ResourceAliasAnalysis::AnalyzeFunction(FuncOp func_op) {
         }
       }
     } else if (auto while_op = llvm::dyn_cast<TF::WhileOp>(op)) {
-      auto body = module.lookupSymbol<FuncOp>(while_op.body());
-      assert(body && "tf.While: missing body function");
+      auto body = llvm::cast<FuncOp>(module.lookupSymbol(while_op.body()));
       // If a result is a passthrough of the body input, use the corresponding
       // operand's resource IDs.
       for (auto result : llvm::enumerate(while_op.getResults())) {
@@ -186,10 +185,10 @@ void ResourceAliasAnalysis::AnalyzeFunction(FuncOp func_op) {
         }
       }
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(op)) {
-      auto then_branch = module.lookupSymbol<FuncOp>(if_op.then_branch());
-      assert(then_branch && "tf.If: missing then-branch function");
-      auto else_branch = module.lookupSymbol<FuncOp>(if_op.else_branch());
-      assert(else_branch && "tf.If: missing else-branch function");
+      auto then_branch =
+          llvm::cast<FuncOp>(module.lookupSymbol(if_op.then_branch()));
+      auto else_branch =
+          llvm::cast<FuncOp>(module.lookupSymbol(if_op.else_branch()));
       // If a result is a passthrough of both branches' inputs, merge the
       // resource IDs of corresponding operands for the two inputs.
       for (auto result : llvm::enumerate(if_op.getResults())) {
