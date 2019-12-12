@@ -98,18 +98,7 @@ Status KernelAndDeviceOp::Init(const NodeDef& ndef,
         "A valid FunctionLibraryRuntime must be provided when running ops "
         "based on OpKernel.");
   }
-  if (compile_with_xla_) {
-#if defined(IS_MOBILE_PLATFORM) || defined(PLATFORM_WINDOWS)
-    return errors::Unimplemented(
-        "Compile with XLA is not available on mobile devices and windows.");
-#else   // !IS_MOBILE_PLATFORM && !PLATFORM_WINDOWS
-    std::unique_ptr<OpKernel> kernel;
-    TF_RETURN_IF_ERROR(CreateXlaKernel(flr_, ndef, &kernel));
-    k = kernel.release();
-#endif  // !IS_MOBILE_PLATFORM && !PLATFORM_WINDOWS
-  } else {
-    TF_RETURN_IF_ERROR(flr_->CreateKernel(ndef, &k));
-  }
+  TF_RETURN_IF_ERROR(flr_->CreateKernel(ndef, &k));
   kernel_.reset(k);
 
   input_alloc_attrs_.resize(kernel_->num_inputs());

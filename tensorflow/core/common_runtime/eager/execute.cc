@@ -603,8 +603,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                << ". Full node_def=" << ndef.DebugString();
       kernel.reset(new KernelAndDeviceOp(
           ctx->GetRendezvous(), ctx->LogMemory(), flr, runner,
-          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU(),
-          /*compile_with_xla=*/false));
+          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU()));
     }
 
     TF_RETURN_IF_ERROR(kernel->Init(ndef, graph_collector));
