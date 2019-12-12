@@ -1944,6 +1944,49 @@ static LogicalResult Verify(UnpackOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// Unsorted segment reduction ops
+//===----------------------------------------------------------------------===//
+
+template <class Op>
+static LogicalResult VerifyUnsortedSegmentReduction(Op op) {
+  if (!HasRankAtMost(op.num_segments(), 0))
+    return op.emitOpError("number of segments should be a 0-D tensor");
+
+  auto data_type = op.data()->getType().template dyn_cast<RankedTensorType>();
+  auto segment_ids_type =
+      op.segment_ids()->getType().template dyn_cast<RankedTensorType>();
+  if (data_type && segment_ids_type) {
+    if (data_type.getRank() < segment_ids_type.getRank())
+      return op.emitOpError(
+          "requires segment ids rank to be less than or equal to data's rank");
+
+    int index = 0;
+    for (auto shape_pair :
+         llvm::zip_first(segment_ids_type.getShape(), data_type.getShape())) {
+      int64_t segment_id_dim = std::get<0>(shape_pair);
+      int64_t data_dim = std::get<1>(shape_pair);
+      if (!ShapedType::isDynamic(segment_id_dim) &&
+          !ShapedType::isDynamic(data_dim) && segment_id_dim != data_dim)
+        return op.emitOpError(
+                   "requires segment ids shape to be a prefix of data shape, "
+                   "but dimension #")
+               << index << " differs: " << segment_id_dim << " vs. "
+               << data_dim;
+      ++index;
+    }
+  }
+
+  DenseIntElementsAttr num_segments_attr;
+  if (matchPattern(op.num_segments(), m_Constant(&num_segments_attr))) {
+    int64_t num_segments = (*num_segments_attr.begin()).getSExtValue();
+    if (num_segments < 0)
+      return op.emitOpError("num of segments cannot be negative");
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // VariableShapeOp
 //===----------------------------------------------------------------------===//
 
