@@ -969,7 +969,7 @@ void OpEmitter::genSeparateArgParamBuilder() {
     // Emit separate arg build with collective type, unless there is only one
     // variadic result, in which case the above would have already generated
     // the same build method.
-    if (op.getNumResults() == 1 && !op.getResult(0).isVariadic())
+    if (!(op.getNumResults() == 1 && op.getResult(0).isVariadic()))
       emit(attrType, TypeParamKind::Collective, /*inferType=*/false);
   }
 }
