@@ -938,6 +938,7 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python:nn_grad",
     ],
+    shard_count = 10,
 )
 
 tf_py_test(
