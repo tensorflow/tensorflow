@@ -34,14 +34,15 @@ namespace gpu {
 // gain.
 //
 // Theoretically speaking, we can (horizontally) fuse kernels as long as no
-// new cycles are created after the fusion. However, it requires a somewhat
+// cycles are created after the fusion. However, it requires a somewhat
 // cumbersome cycle detection checks; also, we observe that naive horizontal
 // fusion of arbitrary kernels may not be profitable due to control divergence
-// and possible increase of memory bandwidth pressure (if some instructions are
-// not row-major). In practice, a simple yet effective heuristic is used to
-// avoid these issues while addressing the known beneficial cases. That is, we
-// simply search for fusion candidates by looking at computations whose outputs
-// are all consumed by the same instruction. This addresses the training
+// and possible increase of memory bandwidth pressure due to uncoalesced memory
+// accesses (note that horizontal fusion does not change the amount of memory
+// read+written at all). In practice, a simple yet effective heuristic is used
+// to avoid these issues while addressing the known beneficial cases. That is,
+// we simply search for fusion candidates by looking for instructions whose
+// outputs are all consumed by the same instruction. This addresses the training
 // optimizer cases well, as they are typically consumed only by the ROOT tuple
 // of the entry computation.
 //

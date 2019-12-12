@@ -267,7 +267,7 @@ Status GpuCompiler::OptimizeHloModule(
     fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
-    HloPassFix<HloPassPipeline> horizontal_fusion("horizontal_fusion");
+    HloPassPipeline horizontal_fusion("horizontal_fusion");
     horizontal_fusion.AddPass<GpuHorizontalFusion>();
     horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                                       /*only_fusion_computations=*/true);
