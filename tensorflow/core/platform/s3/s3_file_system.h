@@ -17,12 +17,30 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_S3_S3_FILE_SYSTEM_H_
 
 #include <aws/s3/S3Client.h>
+#include <aws/core/utils/StringUtils.h>
+#include <aws/s3/model/CompletedMultipartUpload.h>
 #include <aws/transfer/TransferManager.h>
 #include <aws/core/utils/threading/Executor.h>
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
+
+struct PartState {
+  int partNumber;
+  Status status;
+};
+
+struct MultiPartCopyAsyncContext: public Aws::Client::AsyncCallerContext {
+  int partNumber;
+  std::map<int, PartState>* incompletePartStates;
+  std::map<int, PartState>* finishedPartStates;
+  Aws::String eTag;
+
+  // lock and cv for multi part copy
+  std::mutex* multi_part_copy_mutex;
+  std::condition_variable* multi_part_copy_cv;
+};
 
 class S3FileSystem : public FileSystem {
  public:
@@ -86,8 +104,20 @@ class S3FileSystem : public FileSystem {
   std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> GetExecutor();
   std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> executor_;
 
+  Status MultiPartCopy(const string& source_bucket, const string& source_key,
+                       const Aws::String& target_bucket, const Aws::String& target_key);
+  Status AbortMultiPartCopy(Aws::String target_bucket, Aws::String target_key, Aws::String uploadID);
+  Status CompleteMultiPartCopy(Aws::String target_bucket, Aws::String target_key, Aws::String uploadId,
+                               Aws::S3::Model::CompletedMultipartUpload completedMPURequest);
+  void MultiPartCopyCallback(const Aws::S3::Model::UploadPartCopyRequest& request,
+                             const Aws::S3::Model::UploadPartCopyOutcome& uploadPartCopyOutcome,
+                             const std::shared_ptr<const Aws::Client::AsyncCallerContext>& multiPartContext);
+
   // Lock held when checking for s3_client_ and transfer_manager_ initialization
   mutex initialization_lock_;
+
+  // size to split objects during multipart upload
+  uint64 multipart_part_size_;
 };
 
 }  // namespace tensorflow
