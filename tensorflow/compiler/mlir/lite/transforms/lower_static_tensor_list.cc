@@ -71,9 +71,7 @@ class TensorListPatternRewriter : public PatternRewriter {
   explicit TensorListPatternRewriter(FuncOp fn)
       : PatternRewriter(fn.getContext()) {}
 
-  Operation *createOperation(const OperationState &state) override {
-    return OpBuilder::createOperation(state);
-  }
+  Operation *insert(Operation *op) override { return OpBuilder::insert(op); }
 };
 
 /// Lower TensorList ops in functions for subsequent legalization.

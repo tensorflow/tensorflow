@@ -802,13 +802,6 @@ void ConversionPatternRewriter::replaceUsesOfBlockArgument(BlockArgument *from,
   impl->mapping.map(impl->mapping.lookupOrDefault(from), to);
 }
 
-/// Clone the given operation without cloning its regions.
-Operation *ConversionPatternRewriter::cloneWithoutRegions(Operation *op) {
-  Operation *newOp = OpBuilder::cloneWithoutRegions(*op);
-  impl->createdOps.push_back(newOp);
-  return newOp;
-}
-
 /// Return the converted value that replaces 'key'. Return 'key' if there is
 /// no such a converted value.
 Value *ConversionPatternRewriter::getRemappedValue(Value *key) {
@@ -854,12 +847,11 @@ void ConversionPatternRewriter::cloneRegionBefore(
 }
 
 /// PatternRewriter hook for creating a new operation.
-Operation *
-ConversionPatternRewriter::createOperation(const OperationState &state) {
-  LLVM_DEBUG(llvm::dbgs() << "** Creating operation : " << state.name << "\n");
-  auto *result = OpBuilder::createOperation(state);
-  impl->createdOps.push_back(result);
-  return result;
+Operation *ConversionPatternRewriter::insert(Operation *op) {
+  LLVM_DEBUG(llvm::dbgs() << "** Inserting operation : " << op->getName()
+                          << "\n");
+  impl->createdOps.push_back(op);
+  return OpBuilder::insert(op);
 }
 
 /// PatternRewriter hook for updating the root operation in-place.
