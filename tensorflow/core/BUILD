@@ -1496,6 +1496,7 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
+        "//tensorflow/compiler/jit:mobile_srcs_no_runtime",
         "//tensorflow/core/framework:attr_value_proto_text_srcs",
         "//tensorflow/core/framework:mobile_srcs_no_runtime",
         "//tensorflow/core/lib/bfloat16:bfloat16.cc",

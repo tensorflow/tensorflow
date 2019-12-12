@@ -27,6 +27,17 @@ package_group(
     ],
 )
 
+# defs.cc/h only contains string constants, and can be included in mobile
+# builds.
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "defs.cc",
+        "defs.h",
+    ],
+    visibility = [":friends"],
+)
+
 # Target that bundles up the XLA CPU and GPU JIT devices.
 cc_library(
     name = "jit",

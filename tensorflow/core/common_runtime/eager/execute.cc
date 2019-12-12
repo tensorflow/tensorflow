@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -73,11 +74,6 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-
-// Copy of the definition in third_party/tensorflow/compiler/jit/defs.h
-// Copied here because we don't currently compile XLA on windows. So, can't
-// depend on it directly.
-const char* const kXlaCompileAttr = "_XlaCompile";
 
 // Using absl::StrJoin with lambda does not work in tf-lite builds.
 std::vector<string> DevicesToString(const std::vector<Device*> devices) {
