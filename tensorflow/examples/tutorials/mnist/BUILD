@@ -129,6 +129,7 @@ tf_py_test(
     main = "mnist_with_summaries.py",
     tags = [
         "no_pip",
+        "noasan",  # http://b/146080738
         "notsan",  # http://b/29184009
     ],
 )
