@@ -2095,7 +2095,6 @@ def tf_py_test(
         args = [],
         tags = [],
         shard_count = 1,
-        additional_deps = [],
         additional_visibility = [],
         kernels = [],
         flaky = 0,
@@ -2105,6 +2104,7 @@ def tf_py_test(
         **kwargs):
     """Create one or more python tests with extra tensorflow dependencies."""
     xla_test_true_list = []
+    additional_deps = kwargs.pop("additional_deps", []) + kwargs.pop("deps", [])
 
     # xla_enable_strict_auto_jit is used to run Tensorflow unit tests with all XLA compilable
     # kernels compiled with XLA.
@@ -2140,7 +2140,7 @@ def tf_py_test(
 
 register_extension_info(
     extension_name = "tf_py_test",
-    label_regex_map = {"additional_deps": "deps:{extension_name}"},
+    label_regex_map = {"deps": "deps:{extension_name}"},
 )
 
 def gpu_py_test(
@@ -2190,7 +2190,7 @@ def gpu_py_test(
 
 register_extension_info(
     extension_name = "gpu_py_test",
-    label_regex_map = {"deps": "additional_deps:{extension_name}"},
+    label_regex_map = {"deps": "deps:{extension_name}"},
 )
 
 # terminology changes: saving cuda_* definition for compatibility
@@ -2199,7 +2199,7 @@ def cuda_py_test(*args, **kwargs):
 
 register_extension_info(
     extension_name = "cuda_py_test",
-    label_regex_map = {"deps": "additional_deps:{extension_name}"},
+    label_regex_map = {"deps": "deps:{extension_name}"},
 )
 
 def sycl_py_test(
@@ -2237,14 +2237,13 @@ def sycl_py_test(
 
 register_extension_info(
     extension_name = "sycl_py_test",
-    label_regex_map = {"deps": "additional_deps:{extension_name}"},
+    label_regex_map = {"deps": "deps:{extension_name}"},
 )
 
 def py_tests(
         name,
         srcs,
         size = "medium",
-        additional_deps = [],
         kernels = [],
         data = [],
         tags = [],
@@ -2254,6 +2253,7 @@ def py_tests(
         xla_enabled = False,
         grpc_enabled = False,
         **kwargs):
+    additional_deps = kwargs.pop("additional_deps", []) + kwargs.pop("deps", [])
     for src in srcs:
         test_name = src.split("/")[-1].split(".")[0]
         if prefix:
@@ -2278,7 +2278,6 @@ def gpu_py_tests(
         name,
         srcs,
         size = "medium",
-        additional_deps = [],
         kernels = [],
         data = [],
         shard_count = 1,
@@ -2292,6 +2291,7 @@ def gpu_py_tests(
     # XLA tests once enough compute resources are available.
     _ignored = [xla_enable_strict_auto_jit]
     test_tags = tags + tf_gpu_tests_tags()
+    additional_deps = kwargs.pop("additional_deps", []) + kwargs.pop("deps", [])
     py_tests(
         name = name,
         size = size,
