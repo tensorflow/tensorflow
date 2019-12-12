@@ -3169,7 +3169,7 @@ void IrEmitterUnnested::EmitElementForInputFusibleSlices(
     }
     llvm::Value* guarding_cond = b_.CreateAnd(index_within_ranges);
 
-    auto emit_slice_elem_func = [&]() -> void {
+    auto emit_slice_elem_func = [&] {
       const std::vector<llvm::Value*>& src_multidim = index.multidim();
       std::vector<llvm::Value*> dst_multidim(src_multidim.size());
       for (size_t dim = 0; dim < src_multidim.size(); ++dim) {
@@ -3206,14 +3206,13 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
 
-  auto loop_body_generator =
-      [&](const llvm_ir::IrArray::Index index) -> Status {
-    EmitElementForInputFusibleSlices(unnested_hlo, index);
-    return Status::OK();
-  };
   Status emit_status =
-      ParallelLoopEmitter(loop_body_generator, element_shape, launch_dimensions,
-                          &b_)
+      ParallelLoopEmitter(
+          [&](const llvm_ir::IrArray::Index index) -> Status {
+            EmitElementForInputFusibleSlices(unnested_hlo, index);
+            return Status::OK();
+          },
+          element_shape, launch_dimensions, &b_)
           .EmitLoop(IrName(unnested_hlo),
                     GetIndexTypeForKernel(
                         unnested_hlo, launch_dimensions.launch_bound(), &b_));
