@@ -2127,14 +2127,6 @@ inline void BatchToSpaceND(
         const T* in =
             input1_data + Offset(input1_shape, in_batch, in_h, in_w, 0);
         memcpy(out, in, depth * sizeof(T));
-
-        if (out_w < 0 || out_w >= output_width) {
-          continue;
-        }
-        T* out = output_data + Offset(output_shape, out_batch, out_h, out_w, 0);
-        const T* in =
-            input1_data + Offset(input1_shape, in_batch, in_h, in_w, 0);
-        memcpy(out, in, depth * sizeof(T));
       }
     }
   }
