@@ -2393,20 +2393,7 @@ def sparse_tensor_dense_matmul(mat_a,
   """
   # pylint: enable=line-too-long
 
-  if isinstance(mat_a, sparse_tensor.SparseTensor):
-    mat_a = _convert_to_sparse_tensor(mat_a)
-    with ops.name_scope(name, "SparseTensorDenseMatMul",
-                        [mat_a.indices, mat_a.values, mat_b]) as name:
-      mat_b = ops.convert_to_tensor(mat_b, name="b")
-      return gen_sparse_ops.sparse_tensor_dense_mat_mul(
-          a_indices=mat_a.indices,
-          a_values=mat_a.values,
-          a_shape=mat_a.dense_shape,
-          b=mat_b,
-          adjoint_a=adjoint_a,
-          adjoint_b=adjoint_b)
-
-  elif isinstance(mat_b, sparse_tensor.SparseTensor):
+  if isinstance(mat_b, sparse_tensor.SparseTensor) or isinstance(mat_b, sparse_tensor.SparseTensorValue):
 
     if adjoint_a == True and adjoint_b == False:
       return array_ops.transpose(sparse_tensor_dense_matmul(mat_b, mat_a,
@@ -2424,6 +2411,19 @@ def sparse_tensor_dense_matmul(mat_a,
       return array_ops.transpose(sparse_tensor_dense_matmul(mat_b, mat_a,
                                                             adjoint_a=False,
                                                             adjoint_b=False))
+
+  else:
+    mat_a = _convert_to_sparse_tensor(mat_a)
+    with ops.name_scope(name, "SparseTensorDenseMatMul",
+                        [mat_a.indices, mat_a.values, mat_b]) as name:
+      mat_b = ops.convert_to_tensor(mat_b, name="b")
+      return gen_sparse_ops.sparse_tensor_dense_mat_mul(
+          a_indices=mat_a.indices,
+          a_values=mat_a.values,
+          a_shape=mat_a.dense_shape,
+          b=mat_b,
+          adjoint_a=adjoint_a,
+          adjoint_b=adjoint_b)
 
 @tf_export("sparse.softmax", v1=["sparse.softmax", "sparse_softmax"])
 @deprecation.deprecated_endpoints("sparse_softmax")
