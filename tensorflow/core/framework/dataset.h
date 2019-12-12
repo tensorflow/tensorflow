@@ -60,6 +60,12 @@ namespace data {
 constexpr int kInfiniteCardinality = -1;
 constexpr int kUnknownCardinality = -2;
 
+// This constant is a magic number that is used (as a prefix) to identify keys
+// used for serialization of iterator state.
+constexpr char kFullNameRandomHex[] = "60d899aa0d8ce4351e7c3b419e92d25b";
+constexpr char kPipe[] = "|";
+constexpr char kColon[] = ":";
+
 class DatasetBase;
 class SerializationContext;
 
@@ -892,7 +898,12 @@ class DatasetBaseIterator : public IteratorBase {
                                  bool* end_of_sequence) = 0;
 
   string full_name(const string& name) const {
-    return strings::StrCat(params_.prefix, ":", name);
+    if (str_util::StrContains(name, kColon)) {
+      LOG(ERROR) << name << " should not contain " << kColon;
+    }
+
+    return strings::StrCat(kFullNameRandomHex, kPipe, params_.prefix, kColon,
+                           name);
   }
 
   // By default we model iterators using an unknown node, which acts as
