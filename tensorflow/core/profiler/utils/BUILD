@@ -119,10 +119,13 @@ cc_library(
 
 cc_library(
     name = "xplane_schema",
+    srcs = ["xplane_schema.cc"],
     hdrs = ["xplane_schema.h"],
     visibility = [":friends"],
     deps = [
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

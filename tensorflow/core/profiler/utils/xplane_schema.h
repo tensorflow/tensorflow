@@ -17,11 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace profiler {
-
-constexpr int kNumStatTypes = 27;
 
 enum StatType {
   kUnknown = 0,
@@ -55,29 +55,17 @@ enum StatType {
   kHloModule,
 };
 
-constexpr absl::string_view kStatTypeStrMap[] = {
-    "unknown",         "id",
-    "parent_step_id",  "function_step_id",
-    "device_ordinal",  "chip_ordinal",
-    "node_ordinal",    "model_id",
-    "queue_addr",      "request_id",
-    "run_id",          "correlation_id",
-    "graph_type",      "step_num",
-    "iter_num",        "index_on_host",
-    "bytes_reserved",  "bytes_allocated",
-    "bytes_available", "fragmentation",
-    "kernel_details",  "group_id",
-    "step_name",       "level 0",
-    "tf_op",           "hlo_op",
-    "hlo_module",
-};
+ABSL_CONST_INIT extern const int kNumStatTypes;
+
+absl::Span<const absl::string_view> GetStatTypeStrMap();
 
 inline absl::string_view GetStatTypeStr(StatType stat_type) {
-  return kStatTypeStrMap[stat_type];
+  DCHECK_LT(stat_type, kNumStatTypes);
+  return GetStatTypeStrMap()[stat_type];
 }
 
 inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
-  return kStatTypeStrMap[stat_type] == stat_name;
+  return GetStatTypeStr(stat_type) == stat_name;
 }
 
 }  // namespace profiler
