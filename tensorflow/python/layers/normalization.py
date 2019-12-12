@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 
-from tensorflow.python.keras import layers as keras_layers
+from tensorflow.python.keras.layers import normalization as keras_normalization
 from tensorflow.python.layers import base
 from tensorflow.python.ops import init_ops
 from tensorflow.python.util import deprecation
@@ -28,7 +28,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export(v1=['layers.BatchNormalization'])
-class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
+class BatchNormalization(keras_normalization.BatchNormalization, base.Layer):
   """Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
   "Batch Normalization: Accelerating Deep Network Training by Reducing
@@ -170,7 +170,7 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
 @deprecation.deprecated(
     date=None, instructions='Use keras.layers.BatchNormalization instead.  In '
     'particular, `tf.control_dependencies(tf.GraphKeys.UPDATE_OPS)` should not '
-    'be used (consult the `tf.keras.layers.batch_normalization` '
+    'be used (consult the `tf.keras.layers.BatchNormalization` '
     'documentation).')
 @tf_export(v1=['layers.batch_normalization'])
 def batch_normalization(inputs,

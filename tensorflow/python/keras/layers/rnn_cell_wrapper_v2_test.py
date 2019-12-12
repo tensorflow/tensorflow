@@ -256,7 +256,7 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, "does not work with "):
       wrapper_cls(cell)
 
-    cell = layers.LSTMCell_v2(10)
+    cell = layers.LSTMCellV2(10)
     with self.assertRaisesRegexp(ValueError, "does not work with "):
       wrapper_cls(cell)
 
