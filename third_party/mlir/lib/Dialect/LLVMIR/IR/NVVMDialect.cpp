@@ -70,9 +70,9 @@ static LLVM::LLVMDialect *getLlvmDialect(OpAsmParser &parser) {
 }
 
 // <operation> ::=
-//     `llvm.nvvm.shfl.sync.bfly %dst, %val, %offset, %clamp_and_mask`
+//     `llvm.nvvm.shfl.sync.down %dst, %val, %offset, %clamp_and_mask`
 //      ({return_value_and_is_valid})? : result_type
-static ParseResult parseNVVMShflSyncBflyOp(OpAsmParser &parser,
+static ParseResult parseNVVMShflSyncDownOp(OpAsmParser &parser,
                                            OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 8> ops;
   Type resultType;
