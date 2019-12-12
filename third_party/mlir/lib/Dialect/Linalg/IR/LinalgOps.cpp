@@ -60,18 +60,16 @@ static void printGenericOp(OpAsmPrinter &p, GenericOpType op) {
   llvm::StringSet<> linalgTraitAttrsSet;
   linalgTraitAttrsSet.insert(attrNames.begin(), attrNames.end());
   SmallVector<NamedAttribute, 8> attrs;
-  for (auto attr : op.getAttrs()) {
+  for (auto attr : op.getAttrs())
     if (linalgTraitAttrsSet.count(attr.first.strref()) > 0)
       attrs.push_back(attr);
-  }
+
   auto dictAttr = DictionaryAttr::get(attrs, op.getContext());
-  p << op.getOperationName() << " " << dictAttr << " ";
-  p.printOperands(op.getOperands());
+  p << op.getOperationName() << " " << dictAttr << " " << op.getOperands();
   if (!op.region().empty())
     p.printRegion(op.region());
   p.printOptionalAttrDict(op.getAttrs(), attrNames);
-  p << ": ";
-  interleaveComma(op.getOperandTypes(), p);
+  p << ": " << op.getOperandTypes();
 }
 
 static void print(OpAsmPrinter &p, GenericOp op) { printGenericOp(p, op); }
@@ -342,14 +340,13 @@ void mlir::linalg::SliceOp::build(Builder *b, OperationState &result,
 }
 
 static void print(OpAsmPrinter &p, SliceOp op) {
-  p << SliceOp::getOperationName() << " " << *op.view() << "[";
-  p.printOperands(op.indexings());
-  p << "] ";
+  auto indexings = op.indexings();
+  p << SliceOp::getOperationName() << " " << *op.view() << "[" << indexings
+    << "] ";
   p.printOptionalAttrDict(op.getAttrs());
   p << " : " << op.getBaseViewType();
-  for (auto indexing : op.indexings()) {
-    p << ", " << indexing->getType();
-  }
+  if (!indexings.empty())
+    p << ", " << op.indexings().getTypes();
   p << ", " << op.getType();
 }
 
@@ -455,16 +452,11 @@ static ParseResult parseTransposeOp(OpAsmParser &parser,
 
 static void print(OpAsmPrinter &p, YieldOp op) {
   p << op.getOperationName();
-  if (op.getNumOperands() > 0) {
-    p << ' ';
-    p.printOperands(op.operand_begin(), op.operand_end());
-  }
+  if (op.getNumOperands() > 0)
+    p << ' ' << op.getOperands();
   p.printOptionalAttrDict(op.getAttrs());
-  if (op.getNumOperands() > 0) {
-    p << " : ";
-    interleaveComma(op.getOperands(), p,
-                    [&](Value *e) { p.printType(e->getType()); });
-  }
+  if (op.getNumOperands() > 0)
+    p << " : " << op.getOperandTypes();
 }
 
 static ParseResult parseYieldOp(OpAsmParser &parser, OperationState &result) {
@@ -536,12 +528,9 @@ static LogicalResult verify(YieldOp op) {
 // Where %0, %1 and %2 are ssa-values of type MemRefType with strides.
 static void printLinalgLibraryOp(OpAsmPrinter &p, Operation *op) {
   assert(op->getAbstractOperation() && "unregistered operation");
-  p << op->getName().getStringRef() << "(";
-  interleaveComma(op->getOperands(), p, [&](Value *v) { p << *v; });
-  p << ")";
+  p << op->getName().getStringRef() << "(" << op->getOperands() << ")";
   p.printOptionalAttrDict(op->getAttrs());
-  p << " : ";
-  interleaveComma(op->getOperands(), p, [&](Value *v) { p << v->getType(); });
+  p << " : " << op->getOperandTypes();
 }
 
 static ParseResult parseLinalgLibraryOp(OpAsmParser &parser,

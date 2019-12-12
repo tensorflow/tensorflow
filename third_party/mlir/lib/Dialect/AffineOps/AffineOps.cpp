@@ -1985,18 +1985,12 @@ static ParseResult parseAffineMinOp(OpAsmParser &parser,
 static void print(OpAsmPrinter &p, AffineMinOp op) {
   p << op.getOperationName() << ' '
     << op.getAttr(AffineMinOp::getMapAttrName());
-  auto begin = op.operand_begin();
-  auto end = op.operand_end();
+  auto operands = op.getOperands();
   unsigned numDims = op.map().getNumDims();
-  p << '(';
-  p.printOperands(begin, begin + numDims);
-  p << ')';
+  p << '(' << operands.take_front(numDims) << ')';
 
-  if (begin + numDims != end) {
-    p << '[';
-    p.printOperands(begin + numDims, end);
-    p << ']';
-  }
+  if (operands.size() != numDims)
+    p << '[' << operands.drop_front(numDims) << ']';
   p.printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"map"});
 }
 

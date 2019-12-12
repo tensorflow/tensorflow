@@ -177,9 +177,8 @@ static void printGEPOp(OpAsmPrinter &p, GEPOp &op) {
   SmallVector<Type, 8> types(op.getOperandTypes());
   auto funcTy = FunctionType::get(types, op.getType(), op.getContext());
 
-  p << op.getOperationName() << ' ' << *op.base() << '[';
-  p.printOperands(std::next(op.operand_begin()), op.operand_end());
-  p << ']';
+  p << op.getOperationName() << ' ' << *op.base() << '['
+    << op.getOperands().drop_front() << ']';
   p.printOptionalAttrDict(op.getAttrs());
   p << " : " << funcTy;
 }
@@ -312,10 +311,7 @@ static void printCallOp(OpAsmPrinter &p, CallOp &op) {
   else
     p << *op.getOperand(0);
 
-  p << '(';
-  p.printOperands(llvm::drop_begin(op.getOperands(), isDirect ? 0 : 1));
-  p << ')';
-
+  p << '(' << op.getOperands().drop_front(isDirect ? 0 : 1) << ')';
   p.printOptionalAttrDict(op.getAttrs(), {"callee"});
 
   // Reconstruct the function MLIR function type from operand and result types.
@@ -938,8 +934,7 @@ static void printGlobalOp(OpAsmPrinter &p, GlobalOp op) {
   // Print the trailing type unless it's a string global.
   if (op.getValueOrNull().dyn_cast_or_null<StringAttr>())
     return;
-  p << " : ";
-  p.printType(op.type());
+  p << " : " << op.type();
 
   Region &initializer = op.getInitializerRegion();
   if (!initializer.empty())
@@ -1346,8 +1341,7 @@ static LogicalResult verify(LLVMFuncOp op) {
 static void printNullOp(OpAsmPrinter &p, LLVM::NullOp op) {
   p << NullOp::getOperationName();
   p.printOptionalAttrDict(op.getAttrs());
-  p << " : ";
-  p.printType(op.getType());
+  p << " : " << op.getType();
 }
 
 // <operation> = `llvm.mlir.null` : type
