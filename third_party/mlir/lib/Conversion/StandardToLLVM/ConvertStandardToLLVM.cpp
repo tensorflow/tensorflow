@@ -1200,6 +1200,56 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
   bool useAlloca;
 };
 
+// A `tanh` is converted into a call to the `tanh` function.
+struct TanhOpLowering : public LLVMLegalizationPattern<TanhOp> {
+  using LLVMLegalizationPattern<TanhOp>::LLVMLegalizationPattern;
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    using LLVMFuncOpT = LLVM::LLVMFuncOp;
+    using LLVMTypeT = LLVM::LLVMType;
+
+    OperandAdaptor<TanhOp> transformed(operands);
+    LLVMTypeT operandType =
+        transformed.operand()->getType().dyn_cast_or_null<LLVM::LLVMType>();
+
+    if (!operandType)
+      return matchFailure();
+
+    std::string functionName;
+    if (operandType.isFloatTy())
+      functionName = "tanhf";
+    else if (operandType.isDoubleTy())
+      functionName = "tanh";
+    else
+      return matchFailure();
+
+    // Get a reference to the tanh function, inserting it if necessary.
+    Operation *tanhFunc =
+        SymbolTable::lookupNearestSymbolFrom(op, functionName);
+
+    LLVMFuncOpT tanhLLVMFunc;
+    if (tanhFunc) {
+      tanhLLVMFunc = cast<LLVMFuncOpT>(tanhFunc);
+    } else {
+      PatternRewriter::InsertionGuard insertGuard(rewriter);
+      auto module = op->getParentOfType<ModuleOp>();
+      rewriter.setInsertionPointToStart(module.getBody());
+      tanhLLVMFunc = rewriter.create<LLVMFuncOpT>(
+          module.getLoc(), functionName,
+          LLVMTypeT::getFunctionTy(operandType, operandType,
+                                   /*isVarArg=*/false));
+    }
+
+    rewriter.replaceOpWithNewOp<LLVM::CallOp>(
+        op, operandType, rewriter.getSymbolRefAttr(tanhLLVMFunc),
+        transformed.operand());
+    return matchSuccess();
+  }
+};
+
 struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
   using LLVMLegalizationPattern<MemRefCastOp>::LLVMLegalizationPattern;
 
@@ -2038,6 +2088,7 @@ void mlir::populateStdToLLVMConversionPatterns(
       SubFOpLowering,
       SubIOpLowering,
       SubViewOpLowering,
+      TanhOpLowering,
       TruncateIOpLowering,
       ViewOpLowering,
       XOrOpLowering,
