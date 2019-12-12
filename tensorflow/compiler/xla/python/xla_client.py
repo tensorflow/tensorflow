@@ -597,7 +597,7 @@ class Computation(object):
 
 # An Executable is a C++ class that duck types with the following API:
 # class Executable(object):
-#   def DeviceOrdinals(self) -> [int]:
+#   def local_devices(self) -> [Device]:
 #   def Execute(self, arguments : [Buffer]) -> Buffer:
 #     """Execute on one replica with Buffer arguments and return value."""
 #
@@ -627,7 +627,7 @@ def execute_with_python_values(executable, arguments=(), backend=None):
 
   def put(arg):
     return Buffer.from_pyval(
-        arg, device=executable.DeviceOrdinals()[0], backend=backend)
+        arg, device=executable.local_devices()[0], backend=backend)
 
   arguments = [put(arg) for arg in arguments]
   return executable.Execute(arguments).to_py()
@@ -646,9 +646,9 @@ def execute_with_python_values_replicated(executable, arguments, backend=None):
     A list of python values, one per replica.
   """
   backend = backend or get_local_backend()
-  device_ordinals = executable.DeviceOrdinals()
+  devices = executable.local_devices()
   # pylint: disable=g-complex-comprehension
-  flat_args = [(arg, device_ordinals[replica])
+  flat_args = [(arg, devices[replica])
                for replica, replica_args in enumerate(arguments)
                for arg in replica_args]
   flat_arg_buffers = [
