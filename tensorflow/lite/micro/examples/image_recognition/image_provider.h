@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_IMAGE_RECOGNITION_IMAGE_PROVIDER_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_IMAGE_RECOGNITION_IMAGE_PROVIDER_H_
+#ifndef TENSORFLOW_LITE_MICRO_EXAMPLES_IMAGE_RECOGNITION_IMAGE_PROVIDER_H_
+#define TENSORFLOW_LITE_MICRO_EXAMPLES_IMAGE_RECOGNITION_IMAGE_PROVIDER_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
 
 TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter);
 
@@ -38,4 +38,4 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter);
 TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int image_width,
                       int image_height, int channels, uint8_t* image_data);
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_IMAGE_RECOGNITION_IMAGE_PROVIDER_H_
+#endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_IMAGE_RECOGNITION_IMAGE_PROVIDER_H_

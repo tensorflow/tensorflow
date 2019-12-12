@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_IMAGE_RECOGNITION_UTIL_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_IMAGE_RECOGNITION_UTIL_H_
+#ifndef TENSORFLOW_LITE_MICRO_EXAMPLES_IMAGE_RECOGNITION_UTIL_H_
+#define TENSORFLOW_LITE_MICRO_EXAMPLES_IMAGE_RECOGNITION_UTIL_H_
 
 #include <stdint.h>
 #include <string.h>
@@ -61,4 +61,4 @@ void reshape_cifar_image(uint8_t* image_data, int num_bytes) {
   }
 }
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_IMAGE_RECOGNITION_UTIL_H_
+#endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_IMAGE_RECOGNITION_UTIL_H_

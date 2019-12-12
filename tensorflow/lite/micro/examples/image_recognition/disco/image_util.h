@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_RECOGNITION_DISCO_IMAGE_UTIL_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_RECOGNITION_DISCO_IMAGE_UTIL_H_
+#ifndef TENSORFLOW_LITE_MICRO_EXAMPLES_MICRO_RECOGNITION_DISCO_IMAGE_UTIL_H_
+#define TENSORFLOW_LITE_MICRO_EXAMPLES_MICRO_RECOGNITION_DISCO_IMAGE_UTIL_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
 
 #define NUM_IN_CH 2
 #define IN_IMG_WIDTH 160
@@ -29,4 +29,4 @@ void ResizeConvertImage(tflite::ErrorReporter* error_reporter,
                         int out_frame_height, int channels,
                         const uint8_t* in_frame, uint8_t* out_frame);
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_RECOGNITION_DISCO_IMAGE_UTIL_H_
+#endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_MICRO_RECOGNITION_DISCO_IMAGE_UTIL_H_

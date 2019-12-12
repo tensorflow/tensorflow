@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/image_recognition/image_recognition_model.h"
-#include "tensorflow/lite/experimental/micro/examples/image_recognition/util.h"
-#include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
-#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
-#include "tensorflow/lite/experimental/micro/micro_interpreter.h"
-#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
+#include "tensorflow/lite/micro/examples/image_recognition/image_recognition_model.h"
+#include "tensorflow/lite/micro/examples/image_recognition/util.h"
+#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
+#include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
-#include "tensorflow/lite/experimental/micro/examples/image_recognition/first_10_cifar_images.h"
+#include "tensorflow/lite/micro/examples/image_recognition/first_10_cifar_images.h"
 
 #define IMAGE_ARRAY \
-  tensorflow_lite_experimental_micro_tools_make_downloads_cifar10_test_batch_bin
+  tensorflow_lite_micro_tools_make_downloads_cifar10_test_batch_bin
 
 #define IMAGE_BYTES 3072
 #define LABEL_BYTES 1

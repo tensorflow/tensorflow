@@ -26,7 +26,7 @@ These instructions have been tested on Ubuntu 16.04.
 
 ### Building the test case
 ```
-$ make -f tensorflow/lite/experimental/micro/tools/make/Makefile image_recognition_test
+$ make -f tensorflow/lite/micro/tools/make/Makefile image_recognition_test
 ```
 This will build and run the test case. As input, the test case uses
 the first 10 images of the test batch included in the [CIFAR10](https://www.cs.toronto.edu/~kriz/cifar.html)
@@ -50,14 +50,14 @@ for Windows, Mac OS X and Linux.
 #### Compiling and flashing
 In order to generate the mbed project, run the following command:
 ```
-$ make -f tensorflow/lite/experimental/micro/tools/make/Makefile TAGS=disco_f746ng generate_image_recognition_mbed_project
+$ make -f tensorflow/lite/micro/tools/make/Makefile TAGS=disco_f746ng generate_image_recognition_mbed_project
 ```
 This will copy all of the necessary files needed to build and flash the
 application.
 
 Navigate to the output folder:
 ```
-$ cd tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/prj/image_recognition/mbed/
+$ cd tensorflow/lite/micro/tools/make/gen/linux_x86_64/prj/image_recognition/mbed/
 ```
 
 The following instructions for compiling and flashing can also be found in the

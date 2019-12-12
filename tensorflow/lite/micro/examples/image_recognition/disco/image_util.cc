@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/image_recognition/disco/image_util.h"
+#include "tensorflow/lite/micro/examples/image_recognition/disco/image_util.h"
 
 void ResizeConvertImage(tflite::ErrorReporter* error_reporter,
                         int in_frame_width, int in_frame_height,

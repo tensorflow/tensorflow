@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/image_recognition/image_provider.h"
+#include "tensorflow/lite/micro/examples/image_recognition/image_provider.h"
 
 #include "BSP_DISCO_F746NG/Drivers/BSP/STM32746G-Discovery/stm32746g_discovery_camera.h"
 

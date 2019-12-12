@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_RECOGNITION_DISCO_DISPLAY_UTIL_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_RECOGNITION_DISCO_DISPLAY_UTIL_H_
+#ifndef TENSORFLOW_LITE_MICRO_EXAMPLES_MICRO_RECOGNITION_DISCO_DISPLAY_UTIL_H_
+#define TENSORFLOW_LITE_MICRO_EXAMPLES_MICRO_RECOGNITION_DISCO_DISPLAY_UTIL_H_
 
 #include <stdint.h>
 
@@ -30,4 +30,4 @@ void print_prediction(const char* prediction);
 
 void print_confidence(uint8_t max_score);
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_RECOGNITION_DISCO_DISPLAY_UTIL_H_
+#endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_MICRO_RECOGNITION_DISCO_DISPLAY_UTIL_H_

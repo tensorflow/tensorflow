@@ -15,18 +15,18 @@ limitations under the License.
 
 #include "mbed.h"
 
-#include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
-#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
-#include "tensorflow/lite/experimental/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
+#include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
-#include "tensorflow/lite/experimental/micro/examples/image_recognition/disco/display_util.h"
-#include "tensorflow/lite/experimental/micro/examples/image_recognition/disco/image_util.h"
-#include "tensorflow/lite/experimental/micro/examples/image_recognition/image_provider.h"
-#include "tensorflow/lite/experimental/micro/examples/image_recognition/util.h"
+#include "tensorflow/lite/micro/examples/image_recognition/disco/display_util.h"
+#include "tensorflow/lite/micro/examples/image_recognition/disco/image_util.h"
+#include "tensorflow/lite/micro/examples/image_recognition/image_provider.h"
+#include "tensorflow/lite/micro/examples/image_recognition/util.h"
 
-#include "tensorflow/lite/experimental/micro/examples/image_recognition/image_recognition_model.h"
+#include "tensorflow/lite/micro/examples/image_recognition/image_recognition_model.h"
 
 #define NUM_OUT_CH 3
 #define CNN_IMG_SIZE 32

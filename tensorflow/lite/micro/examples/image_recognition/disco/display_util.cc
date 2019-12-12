@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/image_recognition/disco/display_util.h"
+#include "tensorflow/lite/micro/examples/image_recognition/disco/display_util.h"
 
 #include "LCD_DISCO_F746NG/LCD_DISCO_F746NG.h"
 
