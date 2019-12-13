@@ -132,6 +132,14 @@ class PrefetchIntervalPicker {
   // Returns true if the available prefetch intervals have been exhausted.
   virtual bool Done() const = 0;
 
+  // Returns a debug string for the current state of the prefetch interval
+  // picker.
+  virtual std::string ToDebugString() const = 0;
+
+  // Returns a debug string for no-copy allocation.
+  virtual std::string ToNoCopyDebugString(const Shape& shape, int64 start_time,
+                                          int64 end_time) const = 0;
+
  protected:
   const absl::flat_hash_map<const HloInstruction*, int64>*
       instruction_schedule_ = nullptr;
@@ -162,6 +170,10 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
 
   int64 Next() override;
   bool Done() const override;
+
+  std::string ToDebugString() const override;
+  std::string ToNoCopyDebugString(const Shape& shape, int64 start_time,
+                                  int64 end_time) const override;
 
  private:
   int64 min_overlap_count_;
@@ -198,6 +210,10 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
 
   int64 Next() override;
   bool Done() const override;
+
+  std::string ToDebugString() const override;
+  std::string ToNoCopyDebugString(const Shape& shape, int64 start_time,
+                                  int64 end_time) const override;
 
  private:
   // Returns the elapsed time in seconds between the logical interval that
@@ -525,6 +541,14 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   HeapSimulator::Result Finish() override;
 
  private:
+  // A struct representing an asynchronous copy with its logical start and end
+  // time and its destination memory space.
+  struct AsynchronousCopy {
+    int64 start_time;
+    int64 end_time;
+    MemorySpace destination;
+  };
+
   // Finds an allocation for the given interval. Internally, it will attempt to
   // find a suitable chunk candidate within the heap size and prefetch interval
   // limits, and append the new allocation(s) to allocations. The new
@@ -569,6 +593,18 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   bool ViolatesMaximumOutstandingAsyncCopies(int64 start_time,
                                              int64 end_time) const;
 
+  // Returns true if the addition of an asynchronous copy in the the given time
+  // interval would violate the asynchronous copy ordering. E.g., consider the
+  // following scenario:
+  //                                  CS          CD
+  //  already committed async copy:   +-----------+
+  //                new async copy:     +--------+
+  //
+  // The new asynchronous copy would violate the ordering guarantee because the
+  // copy start is after an already committed asynchronous copy while its copy
+  // done is before the committed copy.
+  bool ViolatesAsynchronousCopyOrdering(int64 start_time, int64 end_time) const;
+
   // Adds an asynchronous copy to the allocations.
   void AddAsyncCopy(const MemorySpaceAssignment::Allocation& prev_allocation,
                     MemorySpace memory_space, Chunk chunk, int64 start_time,
@@ -593,8 +629,11 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // We use a interval tree to keep track of the number of outstanding
   // asynchronous copies.
   BufferIntervalTree async_copy_interval_tree_;
+  // Given the logical time for CopyDone in key, stores the earliest time for
+  // the corresponding CopyStart.
+  std::map<int64, int64> async_copy_range_map_;
   std::vector<std::pair<BufferInterval, ChunkCandidate>> pending_chunks_;
-  std::vector<std::pair<int64, int64>> pending_async_copies_;
+  std::vector<AsynchronousCopy> pending_async_copies_;
   // This map contains required memory assignments for HloValues (e.g., input
   // and outputs).
   absl::flat_hash_map<const HloValue*, std::vector<RequiredMemoryAssignment>>
