@@ -39,6 +39,7 @@ namespace tensorflow {
 // symbols can be removed from .so exports.
 class AllocationDescription;
 class Allocator;
+class OpKernelContext;
 class Tensor;
 class TensorBuffer;
 class TensorCApi;
@@ -49,6 +50,7 @@ class Var;
 
 namespace batch_util {
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
+Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64 index);
 }  // namespace batch_util
 
 /// @ingroup core
@@ -631,11 +633,10 @@ class Tensor {
     TF_CHECK_OK(BitcastFrom(other, dtype, shape));
   }
 
+ private:
   // Returns true if the refcount on buf_ and any possible underlying root
   // buffer is one.
   bool RefCountIsOne() const;
-
- private:
   void CheckType(DataType expected_dtype) const;
   void CheckTypeAndIsAligned(DataType expected_dtype) const;
   void CheckIsAlignedAndSingleElement() const;
@@ -658,10 +659,24 @@ class Tensor {
   friend class AutoReloadVariableOp;  // For access to set_shape.
   friend class TensorTestHelper;      // For access to set_shape.
   friend class CastOpBase;            // For access to set_dtype.
+  friend class OpKernelContext;       // For access to RefCountIsOne().
   friend class ScopedAllocator;       // For access to buf_.
+  friend class XlaTensor;             // For access to RefCountIsOne().
+  template <typename Device, typename T>
+  friend class AssignVariableOp;  // For access to RefCountIsOne().
+  template <typename Device, typename T>
+  friend Status PrepareToUpdateVariable(
+      OpKernelContext* ctx, Tensor* tensor,
+      bool copy_on_read_mode);  // For access to RefCountIsOne().
+  template <typename Device, typename T>
+  friend Status EnsureSparseVariableAccess(
+      OpKernelContext* ctx, Var* var);  // For access to RefCountIsOne().
   friend Status batch_util::CopyElementToSlice(
       Tensor element, Tensor* parent,
-      int64 index);  // For access to base<T>().
+      int64 index);  // For access to RefCountIsOne().
+  friend Status batch_util::MaybeMoveSliceToElement(
+      Tensor* parent, Tensor* element,
+      int64 index);  // For access to RefCountIsOne().
 
   bool CanUseDMA() const;
 
