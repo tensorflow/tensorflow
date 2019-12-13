@@ -1618,6 +1618,7 @@ cc_library(
     deps = [
         ":mobile_additional_lib_deps",
         ":protos_all_cc_impl",
+        "//tensorflow/core/util:stats_calculator_portable",
         "//third_party/eigen3",
         "@com_google_protobuf//:protobuf",
         "@double_conversion//:double-conversion",
@@ -1642,6 +1643,7 @@ cc_library(
     deps = [
         ":mobile_additional_lib_deps",
         ":protos_all_cc_impl",
+        "//tensorflow/core/util:stats_calculator_portable",
         "//third_party/eigen3",
         "@com_google_protobuf//:protobuf",
         "@double_conversion//:double-conversion",
