@@ -85,30 +85,6 @@ std::vector<string> DevicesToString(const std::vector<Device*> devices) {
   return v;
 }
 
-// Initializes the step stats if needed.
-void MaybeInitializeStepStats(StepStats* step_stats, EagerContext* ctx) {
-  // Lazily initialize the RunMetadata with information about all devices if
-  // this is the first call.
-  while (step_stats->dev_stats_size() < ctx->devices()->size()) {
-    int device_idx = step_stats->dev_stats_size();
-    auto* dev_stats = step_stats->add_dev_stats();
-    dev_stats->set_device(ctx->devices()->at(device_idx)->name());
-  }
-}
-
-int StepStatsDeviceIndex(StepStats* step_stats, EagerContext* ctx,
-                         Device* device) {
-  // Find the current device's index.
-  for (int i = 0; i < ctx->devices()->size(); ++i) {
-    if (ctx->devices()->at(i) == device ||
-        ctx->devices()->at(i)->name() == device->name()) {
-      return i;
-    }
-  }
-  // TODO(apassos) do not fall back to host CPU if device is unknown.
-  return 0;
-}
-
 const string& DeviceNameOrUnspecified(Device* device) {
   static string* unspecified_string = new string("<unspecified>");
   return (device == nullptr) ? *unspecified_string : device->name();
@@ -716,7 +692,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   if (op->Device() == nullptr) {
     tensorflow::Device* device = nullptr;
     string device_name = op->GetDeviceName();
-    TF_RETURN_IF_ERROR(ctx->FindDeviceByName(device_name, &device));
+    TF_RETURN_IF_ERROR(ctx->FindDeviceFromName(device_name.c_str(), &device));
     op->SetDevice(device);
   }
 
