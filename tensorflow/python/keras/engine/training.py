@@ -242,6 +242,12 @@ class Model(network.Network, version_utils.VersionSelector):
             You can also pass a list (len = len(outputs)) of lists of metrics
             such as `metrics=[['accuracy'], ['accuracy', 'mse']]` or
             `metrics=['accuracy', ['accuracy', 'mse']]`.
+            When you pass the strings 'accuracy' or 'acc', we convert this to
+            one of `tf.keras.metrics.BinaryAccuracy`,
+            `tf.keras.metrics.CategoricalAccuracy`,
+            `tf.keras.metrics.SparseCategoricalAccuracy` based on the loss
+            function used and the model output shape. We do a similar conversion
+            for the strings 'crossentropy' and 'ce' as well.
         loss_weights: Optional list or dictionary specifying scalar
             coefficients (Python floats) to weight the loss contributions
             of different model outputs.
