@@ -3539,13 +3539,13 @@ sycl_py_test(
     name = "basic_gpu_test",
     size = "small",
     srcs = ["basic_gpu_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:math_ops_gen",
+        "//third_party/py/numpy",
     ],
 )
 
