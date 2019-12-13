@@ -22,7 +22,7 @@ from __future__ import print_function
 import functools
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -185,7 +185,7 @@ def pfor(loop_fn, iters, parallel_iterations=None):
   # XLA compilation. The latter is so that we don't compile operations like
   # tf.placeholder that are created by the loop body.
   if context.executing_eagerly() or _is_under_xla_context():
-    f = function.defun(f)
+    f = def_function.function(f)
   return f()
 
 
