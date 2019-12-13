@@ -1056,9 +1056,27 @@ XlaHloDialect::XlaHloDialect(MLIRContext* context)
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.cc.inc"
       >();
   addInterfaces<HLOInlinerInterface>();
-
+  addTypes<TokenType>();
   // Support unknown operations because not all XLA operations are registered.
   // allowUnknownOperations();
+}
+
+Type XlaHloDialect::parseType(DialectAsmParser& parser) const {
+  StringRef data_type;
+  if (parser.parseKeyword(&data_type)) return Type();
+
+  if (data_type == "token") return TokenType::get(getContext());
+  parser.emitError(parser.getNameLoc())
+      << "unknown xla_hlo type: " << data_type;
+  return nullptr;
+}
+
+void XlaHloDialect::printType(Type type, DialectAsmPrinter& os) const {
+  if (type.isa<TokenType>()) {
+    os << "token";
+    return;
+  }
+  os << "<unknown xla_hlo type>";
 }
 
 }  // namespace xla_hlo

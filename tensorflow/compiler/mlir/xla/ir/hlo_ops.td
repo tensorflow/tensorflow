@@ -41,6 +41,9 @@ class HLO_Op<string mnemonic, list<OpTrait> traits> :
 // XLA type definitions.
 //===----------------------------------------------------------------------===//
 
+// Token type.
+def HLO_Token : Type<CPred<"$_self.isa<TokenType>()">, "token">;
+
 // Any integer tensor types
 def HLO_IntTensor : TensorOf<[HLO_Int]>;
 
