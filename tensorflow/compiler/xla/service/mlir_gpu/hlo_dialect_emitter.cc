@@ -47,10 +47,18 @@ StatusOr<Value*> InsertMlirOp(
     HloOpcode opcode, OpBuilder func_builder, Location loc, ArrayRef<Type> rets,
     ArrayRef<Value*> args, ArrayRef<std::pair<Identifier, Attribute>> attrs) {
   switch (opcode) {
+    case HloOpcode::kAbs:
+      return {func_builder.create<hlo::AbsOp>(loc, rets, args, attrs)};
     case HloOpcode::kAdd:
       return {func_builder.create<hlo::AddOp>(loc, rets, args, attrs)};
     case HloOpcode::kAnd:
       return {func_builder.create<hlo::AndOp>(loc, rets, args, attrs)};
+    case HloOpcode::kCeil:
+      return {func_builder.create<hlo::CeilOp>(loc, rets, args, attrs)};
+    case HloOpcode::kConvert:
+      return {func_builder.create<hlo::ConvertOp>(loc, rets, args, attrs)};
+    case HloOpcode::kCos:
+      return {func_builder.create<hlo::CosOp>(loc, rets, args, attrs)};
     case HloOpcode::kDivide:
       return {func_builder.create<hlo::DivOp>(loc, rets, args, attrs)};
     case HloOpcode::kExp:
@@ -61,10 +69,18 @@ StatusOr<Value*> InsertMlirOp(
       return {func_builder.create<hlo::MinOp>(loc, rets, args, attrs)};
     case HloOpcode::kMultiply:
       return {func_builder.create<hlo::MulOp>(loc, rets, args, attrs)};
+    case HloOpcode::kNegate:
+      return {func_builder.create<hlo::NegOp>(loc, rets, args, attrs)};
+    case HloOpcode::kRemainder:
+      return {func_builder.create<hlo::RemOp>(loc, rets, args, attrs)};
     case HloOpcode::kSelect:
       return {func_builder.create<hlo::SelectOp>(loc, rets, args, attrs)};
+    case HloOpcode::kSign:
+      return {func_builder.create<hlo::SignOp>(loc, rets, args, attrs)};
     case HloOpcode::kSubtract:
       return {func_builder.create<hlo::SubOp>(loc, rets, args, attrs)};
+    case HloOpcode::kTanh:
+      return {func_builder.create<hlo::TanhOp>(loc, rets, args, attrs)};
     default:
       return tensorflow::errors::Internal(absl::StrCat(
           "HLO Opcode ", HloOpcodeString(opcode), " is not supported."));

@@ -62,11 +62,23 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
                     ArrayRef<Type> rets, ArrayRef<Value*> args,
                     ArrayRef<std::pair<Identifier, Attribute>> attrs) {
   switch (opcode) {
+    case HloOpcode::kAbs:
+      func_builder.create<lhlo::AbsOp>(loc, rets, args, attrs);
+      break;
     case HloOpcode::kAdd:
       func_builder.create<lhlo::AddOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kAnd:
       func_builder.create<lhlo::AndOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kCeil:
+      func_builder.create<lhlo::CeilOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kConvert:
+      func_builder.create<lhlo::ConvertOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kCos:
+      func_builder.create<lhlo::CosOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kDivide:
       func_builder.create<lhlo::DivOp>(loc, rets, args, attrs);
@@ -83,11 +95,23 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
     case HloOpcode::kMultiply:
       func_builder.create<lhlo::MulOp>(loc, rets, args, attrs);
       break;
+    case HloOpcode::kNegate:
+      func_builder.create<lhlo::NegOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kRemainder:
+      func_builder.create<lhlo::RemOp>(loc, rets, args, attrs);
+      break;
     case HloOpcode::kSelect:
       func_builder.create<lhlo::SelectOp>(loc, rets, args, attrs);
       break;
+    case HloOpcode::kSign:
+      func_builder.create<lhlo::SignOp>(loc, rets, args, attrs);
+      break;
     case HloOpcode::kSubtract:
       func_builder.create<lhlo::SubOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kTanh:
+      func_builder.create<lhlo::TanhOp>(loc, rets, args, attrs);
       break;
     default:
       return tensorflow::errors::Internal(absl::StrCat(
