@@ -59,9 +59,11 @@ __global__ void FillKernel(
 template <typename Distribution>
 void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
     OpKernelContext* ctx, const GPUDevice& d, Distribution dist,
-    int64 output_size, int64 alg_tag_skip, ScopedUnlockUnrefVar* not_used,
-    Tensor* state_tensor,
+    UpdateVariableAndFill_Philox_Arg* arg,
     typename Distribution::ResultElementType* output_data) {
+  int64 output_size = arg->output_size;
+  int64 alg_tag_skip = arg->alg_tag_skip;
+  Tensor* state_tensor = arg->state_tensor;
   OP_REQUIRES(
       ctx, alg_tag_skip == 0,
       errors::InvalidArgument(
@@ -71,13 +73,11 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
   auto state_tensor_flat = state_tensor->flat<StateElementType>();
   auto state_size = state_tensor_flat.size();
   auto state_data = state_tensor_flat.data();
-
   // maximize occupancy
   const int kGroupSize = Distribution::kResultElementCount;
   int work_element_count = (output_size + kGroupSize - 1) / kGroupSize;
   GpuLaunchConfig cfg =
       GetGpuLaunchConfig(work_element_count, d, FillKernel<Distribution>, 0, 0);
-
   int zero = 0;
 #if GOOGLE_CUDA
   cudaMemcpyToSymbol(thread_counter, &zero, sizeof(int));
@@ -106,6 +106,7 @@ void RngSkip_Philox<GPUDevice>::operator()(const GPUDevice& d, int64 delta,
 
 // clang-format off
 // NVCC cannot handle ">>" properly
+
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, Eigen::half> >;
 template struct UpdateVariableAndFill_Philox<
