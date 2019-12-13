@@ -5,7 +5,12 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_copts",
     "tf_generate_proto_text_sources",
+)
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
 )
 
 package(
@@ -15,136 +20,75 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-# Export all files for which we do not yet provide a dedicated build rule.
-# This avoids breading all the rules in tensorflow/core/BUILD.
+# Export all header files for which we do not yet provide a dedicated build
+# rule. This avoids breading all the rules in tensorflow/core/BUILD.
 exports_files(
     srcs = [
-        "allocator.cc",
-        "allocator.h",
-        "allocator_registry.cc",
         "allocator_registry.h",
-        "attr_value_util.cc",
         "attr_value_util.h",
         "bounds_check.h",
-        "cancellation.cc",
         "cancellation.h",
-        "collective.cc",
         "collective.h",
-        "common_shape_fns.cc",
         "common_shape_fns.h",
         "control_flow.h",
-        "cpu_allocator_impl.cc",
-        "dataset.cc",
         "dataset.h",
         "dataset_stateful_op_whitelist.h",
-        "device_base.cc",
         "device_base.h",
-        "fake_input.cc",
-        "fake_input.h",
-        "function.cc",
         "function.h",
-        "function_handle_cache.cc",
         "function_handle_cache.h",
-        "function_testlib.cc",
-        "function_testlib.h",
-        "graph_def_util.cc",
         "graph_def_util.h",
-        "graph_to_functiondef.cc",
         "graph_to_functiondef.h",
-        "kernel_def_builder.cc",
         "kernel_def_builder.h",
-        "kernel_def_util.cc",
         "kernel_def_util.h",
-        "load_library.cc",
-        "log_memory.cc",
         "log_memory.h",
-        "logging.cc",
         "logging.h",
-        "lookup_interface.cc",
         "lookup_interface.h",
-        "memory_types.cc",
         "memory_types.h",
-        "model.cc",
         "model.h",
-        "node_def_builder.cc",
         "node_def_builder.h",
-        "node_def_util.cc",
         "node_def_util.h",
         "numeric_op.h",
-        "op.cc",
         "op.h",
-        "op_def_builder.cc",
         "op_def_builder.h",
-        "op_def_util.cc",
         "op_def_util.h",
-        "op_gen_lib.cc",
-        "op_gen_lib.h",
-        "op_kernel.cc",
         "op_kernel.h",
-        "op_segment.cc",
         "op_segment.h",
-        "ops_util.cc",
         "ops_util.h",
         "partial_tensor_shape.h",
         "queue_interface.h",
-        "reader_base.cc",
-        "reader_base.h",
         "reader_interface.h",
         "reader_op_kernel.h",
         "register_types.h",
         "register_types_traits.h",
-        "rendezvous.cc",
         "rendezvous.h",
-        "resource_handle.cc",
         "resource_handle.h",
-        "resource_mgr.cc",
         "resource_mgr.h",
         "resource_op_kernel.h",
         "resource_var.h",
-        "run_handler.cc",
         "run_handler.h",
-        "run_handler_util.cc",
         "run_handler_util.h",
         "selective_registration.h",
         "session_state.h",
-        "shape_inference.cc",
         "shape_inference.h",
-        "shape_inference_testutil.cc",
-        "shape_inference_testutil.h",
         "shared_ptr_variant.h",
         "stats_aggregator.h",
-        "tensor.cc",
         "tensor.h",
-        "tensor_reference.cc",
         "tensor_reference.h",
-        "tensor_shape.cc",
         "tensor_shape.h",
-        "tensor_slice.cc",
         "tensor_slice.h",
-        "tensor_testutil.cc",
-        "tensor_testutil.h",
         "tensor_types.h",
-        "tensor_util.cc",
         "tensor_util.h",
         "thread_factory.h",
-        "tracking_allocator.cc",
         "tracking_allocator.h",
         "type_index.h",
         "type_traits.h",
-        "typed_allocator.cc",
         "typed_allocator.h",
-        "types.cc",
         "types.h",
-        "unique_tensor_references.cc",
         "unique_tensor_references.h",
-        "variant.cc",
         "variant.h",
         "variant_encode_decode.h",
-        "variant_op_registry.cc",
         "variant_op_registry.h",
-        "variant_tensor_data.cc",
         "variant_tensor_data.h",
-        "versions.cc",
         "versions.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -153,48 +97,11 @@ exports_files(
 # List of exported test source files that do not yet have local build rules.
 exports_files(
     srcs = [
-        "allocator_test.cc",
-        "attr_value_util_test.cc",
-        "bfloat16_test.cc",
-        "cancellation_test.cc",
-        "common_shape_fns_test.cc",
-        "dataset_test.cc",
-        "device_base_test.cc",
-        "function_test.cc",
-        "graph_def_util_test.cc",
-        "graph_to_functiondef_test.cc",
-        "kernel_def_builder_test.cc",
-        "kernel_def_util_test.cc",
-        "memory_types_test.cc",
-        "model_test.cc",
-        "node_def_builder_test.cc",
-        "node_def_util_test.cc",
-        "op_compatibility_test.cc",
-        "op_def_builder_test.cc",
-        "op_def_util_test.cc",
         "op_gen_lib_test.cc",
-        "op_kernel_test.cc",
-        "op_registration_test.cc",
         "op_segment_test.cc",
-        "partial_tensor_shape_test.cc",
-        "rendezvous_test.cc",
-        "resource_mgr_test.cc",
-        "resource_op_kernel_test.cc",
         "run_handler_test.cc",
         "run_handler_util_test.cc",
-        "shape_inference_test.cc",
-        "shape_inference_testutil_test.cc",
-        "tensor_shape_test.cc",
-        "tensor_slice_test.cc",
-        "tensor_test.cc",
-        "tensor_testutil_test.cc",
-        "tensor_util_test.cc",
-        "tracking_allocator_test.cc",
-        "types_test.cc",
-        "unique_tensor_references_test.cc",
         "variant_op_copy_test.cc",
-        "variant_op_registry_test.cc",
-        "variant_test.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -315,8 +222,223 @@ filegroup(
     ],
 )
 
+filegroup(
+    name = "android_test_hdrs",
+    srcs = [
+        ":fake_input.h",
+        ":shape_inference_testutil.h",
+        ":tensor_testutil.h",
+    ],
+)
+
+filegroup(
+    name = "android_test_srcs",
+    srcs = [
+        ":android_test_srcs_no_core",
+        ":fake_input.cc",
+    ],
+)
+
+filegroup(
+    name = "android_test_srcs_no_core",
+    srcs = [
+        ":shape_inference_testutil.cc",
+        ":tensor_testutil.cc",
+    ],
+)
+
+filegroup(
+    name = "test_srcs",
+    srcs = [
+        "allocator_test.cc",
+        "attr_value_util_test.cc",
+        "bfloat16_test.cc",
+        "cancellation_test.cc",
+        "common_shape_fns_test.cc",
+        "dataset_test.cc",
+        "device_base_test.cc",
+        "function_test.cc",
+        "graph_def_util_test.cc",
+        "graph_to_functiondef_test.cc",
+        "kernel_def_builder_test.cc",
+        "kernel_def_util_test.cc",
+        "memory_types_test.cc",
+        "model_test.cc",
+        "node_def_builder_test.cc",
+        "node_def_util_test.cc",
+        "op_compatibility_test.cc",
+        "op_def_builder_test.cc",
+        "op_def_util_test.cc",
+        "op_kernel_test.cc",
+        "op_registration_test.cc",
+        "partial_tensor_shape_test.cc",
+        "rendezvous_test.cc",
+        "resource_mgr_test.cc",
+        "shape_inference_test.cc",
+        "shape_inference_testutil_test.cc",
+        "tensor_shape_test.cc",
+        "tensor_slice_test.cc",
+        "tensor_test.cc",
+        "tensor_testutil_test.cc",
+        "tensor_util_test.cc",
+        "tracking_allocator_test.cc",
+        "types_test.cc",
+        "unique_tensor_references_test.cc",
+        "variant_op_registry_test.cc",
+        "variant_test.cc",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+# Put this test in its own filegroup so that it is compiled and run separately
+# since it relies on global state, i.e. the ResourceManager being untouched.
+filegroup(
+    name = "resource_op_kernel_test_srcs",
+    srcs = ["resource_op_kernel_test.cc"],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
 # Individual targets. These should be prefered over tensorflow/core:framework
 # whenever possible.
+
+# This is redundant with the "tensorflow/core:framework" target. It's useful for
+# applications that want to depend on a minimal subset of TensorFlow (e.g. XLA).
+cc_library(
+    name = "allocator",
+    srcs = [
+        "allocator.cc",
+        "allocator_registry.h",
+        "numeric_types.h",
+        "tracking_allocator.cc",
+        "tracking_allocator.h",
+        "type_traits.h",
+    ],
+    hdrs = [
+        "allocator.h",
+    ],
+    features = ["parse_headers"],
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "//third_party/eigen3",
+        "//tensorflow/core:lib",
+    ] + if_static(extra_deps = [":allocator_registry_impl"]),
+    alwayslink = 1,
+)
+
+# This target will be included in libtensorflow_framework.so via the
+# framework_internal_impl target.
+# All other dependencies on this target need to go through if_static guard,
+# as otherwise duplicate registration in the registry will cause crashes.
+cc_library(
+    name = "allocator_registry_impl",
+    srcs = [
+        "allocator.h",
+        "allocator_registry.cc",
+        "allocator_registry.h",
+        "cpu_allocator_impl.cc",
+        "numeric_types.h",
+        "tracking_allocator.h",
+        "type_traits.h",
+    ],
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tensor_testutil",
+    testonly = 1,
+    srcs = ["tensor_testutil.cc"],
+    hdrs = ["tensor_testutil.h"],
+    copts = tf_copts(),
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "shape_inference_testutil",
+    testonly = 1,
+    srcs = ["shape_inference_testutil.cc"],
+    hdrs = ["shape_inference_testutil.h"],
+    copts = tf_copts(),
+    deps = [
+        ":node_def_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "reader_base",
+    srcs = ["reader_base.cc"],
+    hdrs = ["reader_base.h"],
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        ":reader_base_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "op_gen_lib",
+    srcs = ["op_gen_lib.cc"],
+    hdrs = ["op_gen_lib.h"],
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        ":api_def_proto_cc",
+        ":attr_value_proto_cc",
+        ":op_def_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/util/proto:proto_utils",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "fake_input",
+    testonly = 1,
+    srcs = ["fake_input.cc"],
+    hdrs = ["fake_input.h"],
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        ":attr_value_proto_cc",
+        ":op_def_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "function_testlib",
+    testonly = 1,
+    srcs = ["function_testlib.cc"],
+    hdrs = ["function_testlib.h"],
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        ":function_proto_cc",
+        ":graph_proto_cc",
+        ":node_def_proto_cc",
+        ":tensor_testutil",
+        ":versions_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
 cc_library(
     name = "bfloat16",
     srcs = ["bfloat16.cc"],
@@ -346,8 +468,15 @@ cc_library(
 # been cleaned up.
 exports_files(
     srcs = [
+        "allocator.h",
         "bfloat16.h",
+        "fake_input.h",
+        "function_testlib.h",
         "numeric_types.h",
+        "op_gen_lib.h",
+        "reader_base.h",
+        "shape_inference_testutil.h",
+        "tensor_testutil.h",
     ],
 )
 

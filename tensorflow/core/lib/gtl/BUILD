@@ -8,6 +8,8 @@ package(
         "//tensorflow/core/lib/strings:__pkg__",
         # tensorflow/core/lib/histogram uses array_slice
         "//tensorflow/core/lib/histogram:__pkg__",
+        # tensorflow/core/framework uses map_util
+        "//tensorflow/core/framework:__pkg__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
