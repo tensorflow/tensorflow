@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -165,6 +166,8 @@ Shape TypeToShape(mlir::Type type) {
       }
       return ShapeUtil::MakeTupleShape(shapes);
     }
+    case mlir::xla_hlo::HLOTypes::Token:
+      return ShapeUtil::MakeTokenShape();
     default:
       break;
   }

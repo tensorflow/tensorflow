@@ -379,6 +379,7 @@ cc_library(
     srcs = ["type_to_shape.cc"],
     hdrs = ["type_to_shape.h"],
     deps = [
+        ":hlo",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/xla:shape_util",

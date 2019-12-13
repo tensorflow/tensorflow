@@ -327,6 +327,25 @@ def HLO_XorOp : HLO_BinaryLogicalElementwiseOp<"xor">, BASE_HLO_XorOp;
 //===----------------------------------------------------------------------===//
 // XLA control flow op definitions.
 //===----------------------------------------------------------------------===//
+
+def HLO_AfterAllOp : HLO_Op<"after_all", []> {
+
+  string summary = "AfterAll operator";
+
+  string description = [{
+    AfterAll takes a variadic number of tokens and produces a single token.
+    Tokens are primitive types which can be threaded between side-effecting
+    operations to enforce ordering. AfterAll can be used as a join of tokens
+    for ordering a operation after a set operations.
+
+    See https://www.tensorflow.org/xla/operation_semantics#afterall.
+  }];
+
+  let arguments = (ins Variadic<HLO_Token>:$operands);
+  let results = (outs HLO_Token);
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_ConditionalOp: HLO_Op<"conditional", [NoSideEffect]> {
   string summary = "Conditional operator";
 
