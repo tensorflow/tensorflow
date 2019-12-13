@@ -2382,7 +2382,7 @@ def tf_py_build_info_genrule(name, out, **kwargs):
             " --is_config_rocm " + if_rocm("True", "False") +
             " --key_value " +
             if_cuda(" cuda_version_number=$${TF_CUDA_VERSION:-} cudnn_version_number=$${TF_CUDNN_VERSION:-} ", "") +
-            if_windows(" msvcp_dll_name=msvcp140.dll ", "") +
+            if_windows(" msvcp_dll_names=msvcp140.dll,msvcp140_1.dll ", "") +
             if_windows_cuda(" ".join([
                 "nvcuda_dll_name=nvcuda.dll",
                 "cudart_dll_name=cudart64_$$(echo $${TF_CUDA_VERSION:-} | sed \"s/\\.//\").dll",
