@@ -62,6 +62,12 @@ class HorizontalFusionImpl {
  private:
   Status Fuse(absl::Span<HloInstruction*> fused_fusion_instrs);
 
+  // Horizontally fuses `fused_fusion_instrs`. We support only loop fusions
+  // and require their numbers of outputs to be the same, because the code
+  // generation (of slice input fusion) requires all the concatenated outputs
+  // have the same shapes.
+  // Returns the fused computation in `uniq_computation` and the operands that
+  // are used by `uniq_computation`.
   Status CreateFusedComputation(
       absl::Span<HloInstruction*> fused_fusion_instrs,
       std::unique_ptr<HloComputation>* uniq_computation,
@@ -220,7 +226,7 @@ void HorizontalFusionImpl::FusionCandidates::Initialize(
             });
 }
 
-// Get a next span of fusion instructions to be fused.
+// Gets a next span of fusion instructions to be fused.
 absl::Span<HloInstruction*>
 HorizontalFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
   if (pos_ >= fusion_instrs_.size()) {

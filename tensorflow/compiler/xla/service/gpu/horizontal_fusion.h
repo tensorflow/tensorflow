@@ -43,12 +43,13 @@ namespace gpu {
 // to avoid these issues while addressing the known beneficial cases. That is,
 // we simply search for fusion candidates by looking for instructions whose
 // outputs are all consumed by the same instruction. This addresses the training
-// optimizer cases well, as they are typically consumed only by the ROOT tuple
-// of the entry computation.
+// optimizer cases well, as the candidate instructions are typically consumed
+// only by the ROOT tuple of the entry computation.
 //
 // The following illustrates the mechanism of the horizontal fusion. Before
-// fusion, there are two trivial kernels. One has only a Mul op, while the other
-// consists of only an Add op.
+// fusion, there are two trivial kernels in the illustrating example. One has
+// only a Mul op, while the other consists of only an Add op. Since they are
+// only consumed by the same tuple instruction, horizontal fusion is triggered.
 //
 // i0 i1   i2 i3
 //  | |     | |
@@ -57,6 +58,9 @@ namespace gpu {
 //   |       |
 //   v       v
 //   o0      o1
+//    |      |
+//    v      v
+//     tuple
 //
 // We horizontally fuse them into the below pattern.
 //
@@ -79,19 +83,21 @@ namespace gpu {
 //   |       |
 //   v       v
 //   o0      o1
+//    |      |
+//    v      v
+//     tuple
 //
 // Note that this style provides an important advantage that kernels of
 // different shapes can be horizontally fused. The first pair of reshapes
 // (i.e., Reshape0 and Reshape1) reshape the dims to 1 dimension, so that the
 // outputs of the fused kernels can (always) be concatenated. The second pair
 // of reshapes (Reshape2 and Reshape3) restore the original shapes to the
-// output tensors. In addition, the concatenate increases the kernel dims by
-// combining the dims of two fused kernels.
+// output tensors.
 //
 // No extra copies are introduced by the horizontal fusion. Besides Reshape2
-// and Reshape3, the rest instructions are fused into an input fusion. Reshape2
-// and Reshape3 are converted into bitcasts.
-//
+// and Reshape3, the other instructions are fused into an input fusion; the
+// output dims of the concatenate will be used as the dims for kernel launch.
+// Reshape2 and Reshape3 are converted into bitcasts.
 class GpuHorizontalFusion : public HloModulePass {
  public:
   GpuHorizontalFusion() {}
