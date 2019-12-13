@@ -23,6 +23,9 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+// Name of XPlane that contains TraceMe events.
+ABSL_CONST_INIT extern const absl::string_view kHostThreads;
+
 enum StatType {
   kUnknown = 0,
   // TraceMe arguments.
