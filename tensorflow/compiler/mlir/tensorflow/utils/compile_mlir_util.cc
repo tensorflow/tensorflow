@@ -209,8 +209,7 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
                                    bool use_tuple_args, bool return_tuple) {
   mlir::PassManager tf2xla(module_op.getContext());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-  tf2xla.addNestedPass<mlir::FuncOp>(
-      mlir::xla_hlo::createLegalizeTFControlFlowPass());
+  tf2xla.addPass(mlir::xla_hlo::createLegalizeTFControlFlowPass());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::xla_hlo::createLegalizeTFPass());
 
   {
