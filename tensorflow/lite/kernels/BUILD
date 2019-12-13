@@ -1,4 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 
@@ -359,6 +360,7 @@ cc_library(
     hdrs = [
         "op_macros.h",
     ],
+    build_for_embedded = True,
     copts = tflite_copts(),
 )
 

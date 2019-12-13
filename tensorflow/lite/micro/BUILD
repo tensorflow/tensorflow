@@ -2,6 +2,10 @@ load(
     "//tensorflow/lite/micro/testing:micro_test.bzl",
     "tflite_micro_cc_test",
 )
+load(
+    "//tensorflow/lite/micro:build_def.bzl",
+    "cc_library",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -35,6 +39,7 @@ cc_library(
         "simple_memory_allocator.h",
         "test_helpers.h",
     ],
+    build_for_embedded = True,
     copts = [
         "-Werror",
         "-Wdouble-promotion",
@@ -59,6 +64,7 @@ cc_library(
     hdrs = [
         "micro_utils.h",
     ],
+    build_for_embedded = True,
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
