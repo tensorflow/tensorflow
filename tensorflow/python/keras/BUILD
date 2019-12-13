@@ -129,6 +129,7 @@ py_library(
     name = "engine",
     srcs = [
         "engine/__init__.py",
+        "engine/compile_utils.py",
         "engine/input_layer.py",
         "engine/network.py",
         "engine/node.py",
@@ -1524,6 +1525,18 @@ tf_py_test(
         "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
         "notsan",
+    ],
+)
+
+tf_py_test(
+    name = "compile_utils_test",
+    size = "medium",
+    srcs = ["engine/compile_utils_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
