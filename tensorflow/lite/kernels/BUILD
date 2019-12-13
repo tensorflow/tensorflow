@@ -463,6 +463,7 @@ cc_library(
         "mul.cc",
         "neg.cc",
         "non_max_suppression.cc",
+        "numeric_verify.cc",
         "one_hot.cc",
         "pack.cc",
         "pad.cc",
@@ -506,6 +507,7 @@ cc_library(
         "zeros_like.cc",
     ],
     hdrs = [
+        "dequantize.h",
     ],
     copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
     visibility = ["//visibility:private"],
@@ -873,6 +875,23 @@ cc_test(
     name = "dequantize_test",
     size = "small",
     srcs = ["dequantize_test.cc"],
+    tags = ["tflite_nnapi"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels/internal:types",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "numeric_verify_test",
+    size = "small",
+    srcs = ["numeric_verify_test.cc"],
     tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
