@@ -171,23 +171,13 @@ TfLiteStatus PopulateQuantizedLstmParams(
       GetOptionalInputTensor(context, node, kCellToOutputWeightsTensor);
 
   const TfLiteTensor* input_layer_norm_coefficients =
-      is_layer_norm_lstm ? GetOptionalInputTensor(
-                               context, node, kInputLayerNormCoefficientsTensor)
-                         : nullptr;
+      GetOptionalInputTensor(context, node, kInputLayerNormCoefficientsTensor);
   const TfLiteTensor* forget_layer_norm_coefficients =
-      is_layer_norm_lstm
-          ? GetOptionalInputTensor(context, node,
-                                   kForgetLayerNormCoefficientsTensor)
-          : nullptr;
+      GetOptionalInputTensor(context, node, kForgetLayerNormCoefficientsTensor);
   const TfLiteTensor* cell_layer_norm_coefficients =
-      is_layer_norm_lstm ? GetOptionalInputTensor(
-                               context, node, kCellLayerNormCoefficientsTensor)
-                         : nullptr;
+      GetOptionalInputTensor(context, node, kCellLayerNormCoefficientsTensor);
   const TfLiteTensor* output_layer_norm_coefficients =
-      is_layer_norm_lstm
-          ? GetOptionalInputTensor(context, node,
-                                   kOutputLayerNormCoefficientsTensor)
-          : nullptr;
+      GetOptionalInputTensor(context, node, kOutputLayerNormCoefficientsTensor);
 
   const TfLiteTensor* projection_weights =
       GetOptionalInputTensor(context, node, kProjectionWeightsTensor);
@@ -1091,7 +1081,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
   OpData* op_data = static_cast<OpData*>(node->user_data);
-  const bool is_layer_norm_lstm = op_data->is_layer_norm_lstm;
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
 
@@ -1121,23 +1110,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetOptionalInputTensor(context, node, kCellToOutputWeightsTensor);
 
   const TfLiteTensor* input_layer_norm_coefficients =
-      is_layer_norm_lstm ? GetOptionalInputTensor(
-                               context, node, kInputLayerNormCoefficientsTensor)
-                         : nullptr;
+      GetOptionalInputTensor(context, node, kInputLayerNormCoefficientsTensor);
   const TfLiteTensor* forget_layer_norm_coefficients =
-      is_layer_norm_lstm
-          ? GetOptionalInputTensor(context, node,
-                                   kForgetLayerNormCoefficientsTensor)
-          : nullptr;
+      GetOptionalInputTensor(context, node, kForgetLayerNormCoefficientsTensor);
   const TfLiteTensor* cell_layer_norm_coefficients =
-      is_layer_norm_lstm ? GetOptionalInputTensor(
-                               context, node, kCellLayerNormCoefficientsTensor)
-                         : nullptr;
+      GetOptionalInputTensor(context, node, kCellLayerNormCoefficientsTensor);
   const TfLiteTensor* output_layer_norm_coefficients =
-      is_layer_norm_lstm
-          ? GetOptionalInputTensor(context, node,
-                                   kOutputLayerNormCoefficientsTensor)
-          : nullptr;
+      GetOptionalInputTensor(context, node, kOutputLayerNormCoefficientsTensor);
 
   const TfLiteTensor* input_gate_bias =
       GetOptionalInputTensor(context, node, kInputGateBiasTensor);

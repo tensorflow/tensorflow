@@ -338,8 +338,6 @@ TfLiteStatus EvalFloat(
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights == nullptr);
-  const bool use_peephole = (cell_to_output_weights != nullptr);
-  const bool is_layer_norm_lstm = (forget_layer_norm_coefficients != nullptr);
 
   // Index the scratch buffers pointers to the global scratch buffer.
   float* scratch_buffer_ptr = GetTensorData<float>(scratch_buffer);
@@ -360,56 +358,37 @@ TfLiteStatus EvalFloat(
 
   // Check optional tensors, the respective pointers can be null.
   const float* input_to_input_weights_ptr =
-      (use_cifg) ? nullptr : GetTensorData<float>(input_to_input_weights);
+      GetTensorData<float>(input_to_input_weights);
   const float* recurrent_to_input_weights_ptr =
-      (use_cifg) ? nullptr : GetTensorData<float>(recurrent_to_input_weights);
-  const float* input_gate_bias_ptr =
-      (use_cifg) ? nullptr : GetTensorData<float>(input_gate_bias);
+      GetTensorData<float>(recurrent_to_input_weights);
+  const float* input_gate_bias_ptr = GetTensorData<float>(input_gate_bias);
   const float* cell_to_input_weights_ptr =
-      (use_peephole && !use_cifg) ? GetTensorData<float>(cell_to_input_weights)
-                                  : nullptr;
+      GetTensorData<float>(cell_to_input_weights);
   const float* cell_to_forget_weights_ptr =
-      (use_peephole) ? GetTensorData<float>(cell_to_forget_weights) : nullptr;
+      GetTensorData<float>(cell_to_forget_weights);
   const float* cell_to_output_weights_ptr =
-      (use_peephole) ? GetTensorData<float>(cell_to_output_weights) : nullptr;
+      GetTensorData<float>(cell_to_output_weights);
   const float* input_layer_norm_coefficients_ptr =
-      (is_layer_norm_lstm && !use_cifg)
-          ? GetTensorData<float>(input_layer_norm_coefficients)
-          : nullptr;
+      GetTensorData<float>(input_layer_norm_coefficients);
   const float* forget_layer_norm_coefficients_ptr =
-      is_layer_norm_lstm ? GetTensorData<float>(forget_layer_norm_coefficients)
-                         : nullptr;
+      GetTensorData<float>(forget_layer_norm_coefficients);
   const float* cell_layer_norm_coefficients_ptr =
-      is_layer_norm_lstm ? GetTensorData<float>(cell_layer_norm_coefficients)
-                         : nullptr;
+      GetTensorData<float>(cell_layer_norm_coefficients);
   const float* output_layer_norm_coefficients_ptr =
-      is_layer_norm_lstm ? GetTensorData<float>(output_layer_norm_coefficients)
-                         : nullptr;
+      GetTensorData<float>(output_layer_norm_coefficients);
   const float* projection_weights_ptr =
-      (projection_weights == nullptr)
-          ? nullptr
-          : GetTensorData<float>(projection_weights);
-  const float* projection_bias_ptr =
-      (projection_bias == nullptr) ? nullptr
-                                   : GetTensorData<float>(projection_bias);
+      GetTensorData<float>(projection_weights);
+  const float* projection_bias_ptr = GetTensorData<float>(projection_bias);
 
   const float* aux_input_ptr = nullptr;
-  const float* aux_input_to_input_weights_ptr = nullptr;
-  const float* aux_input_to_forget_weights_ptr = nullptr;
-  const float* aux_input_to_cell_weights_ptr = nullptr;
-  const float* aux_input_to_output_weights_ptr = nullptr;
-  if (aux_input_size > 0) {
-    if (!use_cifg) {
-      aux_input_to_input_weights_ptr =
-          GetTensorData<float>(aux_input_to_input_weights);
-    }
-    aux_input_to_forget_weights_ptr =
-        GetTensorData<float>(aux_input_to_forget_weights);
-    aux_input_to_cell_weights_ptr =
-        GetTensorData<float>(aux_input_to_cell_weights);
-    aux_input_to_output_weights_ptr =
-        GetTensorData<float>(aux_input_to_output_weights);
-  }
+  const float* aux_input_to_input_weights_ptr =
+      GetTensorData<float>(aux_input_to_input_weights);
+  const float* aux_input_to_forget_weights_ptr =
+      GetTensorData<float>(aux_input_to_forget_weights);
+  const float* aux_input_to_cell_weights_ptr =
+      GetTensorData<float>(aux_input_to_cell_weights);
+  const float* aux_input_to_output_weights_ptr =
+      GetTensorData<float>(aux_input_to_output_weights);
 
   const int output_batch_leading_dim =
       output->dims->data[output->dims->size - 1];
@@ -579,8 +558,6 @@ constexpr int kOutputTensor = 0;
 TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node,
                        Logger* logger) {
   const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
-  OpData* op_data = static_cast<OpData*>(node->user_data);
-  const bool is_layer_norm_lstm = op_data->is_layer_norm_lstm;
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
 
@@ -610,23 +587,13 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node,
       GetOptionalInputTensor(context, node, kCellToOutputWeightsTensor);
 
   const TfLiteTensor* input_layer_norm_coefficients =
-      is_layer_norm_lstm ? GetOptionalInputTensor(
-                               context, node, kInputLayerNormCoefficientsTensor)
-                         : nullptr;
+      GetOptionalInputTensor(context, node, kInputLayerNormCoefficientsTensor);
   const TfLiteTensor* forget_layer_norm_coefficients =
-      is_layer_norm_lstm
-          ? GetOptionalInputTensor(context, node,
-                                   kForgetLayerNormCoefficientsTensor)
-          : nullptr;
+      GetOptionalInputTensor(context, node, kForgetLayerNormCoefficientsTensor);
   const TfLiteTensor* cell_layer_norm_coefficients =
-      is_layer_norm_lstm ? GetOptionalInputTensor(
-                               context, node, kCellLayerNormCoefficientsTensor)
-                         : nullptr;
+      GetOptionalInputTensor(context, node, kCellLayerNormCoefficientsTensor);
   const TfLiteTensor* output_layer_norm_coefficients =
-      is_layer_norm_lstm
-          ? GetOptionalInputTensor(context, node,
-                                   kOutputLayerNormCoefficientsTensor)
-          : nullptr;
+      GetOptionalInputTensor(context, node, kOutputLayerNormCoefficientsTensor);
 
   const TfLiteTensor* input_gate_bias =
       GetOptionalInputTensor(context, node, kInputGateBiasTensor);
