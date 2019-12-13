@@ -37,17 +37,6 @@ message FunctionDef {
   }
   map<uint32, ArgAttrs> arg_attr = 7;
 
-  // Unique IDs for each resource argument, used to track aliasing resources. If
-  // Argument A and Argument B alias each other, then
-  // resource_arg_unique_ids[A.index] == resource_arg_unique_ids[B.index].
-  //
-  // If this field is empty, none of the arguments could alias; otherwise, every
-  // resource argument should have an entry in this field.
-  //
-  // When instantiated, the unique IDs will be attached to the _Arg nodes'
-  // "_resource_arg_unique_id" attribute.
-  map<uint32, uint32> resource_arg_unique_id = 8;
-
   // NOTE: field id 2 deleted on Jan 11, 2017, GraphDef version 21.
   reserved 2;
 

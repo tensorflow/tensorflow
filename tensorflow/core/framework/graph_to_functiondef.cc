@@ -432,7 +432,6 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     const string& input_name = node_names.GetInputName(node->name());
     argdef->set_name(input_name);
     FunctionDef::ArgAttrs arg_attrs;
-    int64 resource_arg_unique_id = -1;
     for (const auto& attr : node->attrs()) {
       // Only copy internal attributes. These attributes will be applied to
       // _Arg/Placeholder nodes when this FunctionDef is converted to graph,
@@ -441,15 +440,9 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
       if (absl::StartsWith(attr.first, "_")) {
         arg_attrs.mutable_attr()->insert(attr);
       }
-      if (attr.first == "_resource_arg_unique_id") {
-        resource_arg_unique_id = attr.second.i();
-      }
     }
     if (arg_attrs.attr_size() > 0) {
       (*fdef->mutable_arg_attr())[i] = std::move(arg_attrs);
-    }
-    if (resource_arg_unique_id >= 0) {
-      (*fdef->mutable_resource_arg_unique_id())[idx] = resource_arg_unique_id;
     }
     tensor_renaming[strings::StrCat(node->name(), ":", idx)] = input_name;
   }

@@ -163,15 +163,11 @@ class ImporterBase {
   StatusOr<mlir::FunctionType> InferLibFunctionType(const FunctionBody& fbody);
 
   // Extracts arg and ret nodes from FunctionBody.
-  // `resource_arg_unique_ids` will be filled with the unique IDs of resource
-  // variables, as a list of {index, ID} pairs.
   void GetArgsAndRetsFromFunctionBody(
       const FunctionBody& fbody,
       absl::InlinedVector<OutputTensor, 4>* arg_nodes,
       absl::InlinedVector<OutputTensor, 4>* ret_nodes,
-      absl::InlinedVector<Node*, 4>* control_ret_nodes,
-      absl::InlinedVector<std::pair<int64_t, int64_t>, 4>*
-          resource_arg_unique_ids);
+      absl::InlinedVector<Node*, 4>* control_ret_nodes);
 
   // Prepares converting the graph to an MLIR module. This step removes the
   // backedges of the graph, orders the nodes and infers the shapes.
@@ -184,9 +180,7 @@ class ImporterBase {
                  const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
                  const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
                  const absl::InlinedVector<Node*, 4>& control_ret_nodes,
-                 llvm::ArrayRef<mlir::NamedAttribute> attrs,
-                 const absl::InlinedVector<std::pair<int64_t, int64_t>, 4>&
-                     resource_arg_unique_ids);
+                 llvm::ArrayRef<mlir::NamedAttribute> attrs);
 
   // Finds out the function definition for the given function name from the
   // graph and converts it to a function of the module. This method is called
@@ -1006,9 +1000,7 @@ StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
 void ImporterBase::GetArgsAndRetsFromFunctionBody(
     const FunctionBody& fbody, absl::InlinedVector<OutputTensor, 4>* arg_nodes,
     absl::InlinedVector<OutputTensor, 4>* ret_nodes,
-    absl::InlinedVector<Node*, 4>* control_ret_nodes,
-    absl::InlinedVector<std::pair<int64_t, int64_t>, 4>*
-        resource_arg_unique_ids) {
+    absl::InlinedVector<Node*, 4>* control_ret_nodes) {
   arg_nodes->reserve(fbody.arg_nodes.size());
   ret_nodes->reserve(fbody.ret_nodes.size());
   for (auto arg : fbody.arg_nodes) {
@@ -1016,9 +1008,6 @@ void ImporterBase::GetArgsAndRetsFromFunctionBody(
   }
   for (auto ret : fbody.ret_nodes) {
     ret_nodes->emplace_back(ret, 0);
-  }
-  for (const auto& entry : fbody.fdef.resource_arg_unique_id()) {
-    resource_arg_unique_ids->push_back(entry);
   }
   *control_ret_nodes = fbody.control_ret_nodes;
 }
@@ -1112,14 +1101,12 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   absl::InlinedVector<OutputTensor, 4> arg_nodes;
   absl::InlinedVector<OutputTensor, 4> ret_nodes;
   absl::InlinedVector<Node*, 4> control_ret_nodes;
-  absl::InlinedVector<std::pair<int64_t, int64_t>, 4> resource_arg_unique_ids;
   GetArgsAndRetsFromFunctionBody(*fbody, &arg_nodes, &ret_nodes,
-                                 &control_ret_nodes, &resource_arg_unique_ids);
+                                 &control_ret_nodes);
 
   TF_RETURN_IF_ERROR(child_importer.Convert(
       mlir_func_name, func_type, arg_nodes, ret_nodes, control_ret_nodes,
-      llvm::makeArrayRef(attributes.begin(), attributes.end()),
-      resource_arg_unique_ids));
+      llvm::makeArrayRef(attributes.begin(), attributes.end())));
   return Status::OK();
 }
 
@@ -1134,9 +1121,7 @@ Status ImporterBase::Convert(
     const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
     const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
     const absl::InlinedVector<Node*, 4>& control_ret_nodes,
-    llvm::ArrayRef<mlir::NamedAttribute> attrs,
-    const absl::InlinedVector<std::pair<int64_t, int64_t>, 4>&
-        resource_arg_unique_ids) {
+    llvm::ArrayRef<mlir::NamedAttribute> attrs) {
   // TODO(b/122040776): Uses debug info for FunctionDef.
   auto function = mlir::FuncOp::create(mlir::UnknownLoc::get(context_),
                                        func_name, func_type, attrs);
@@ -1159,14 +1144,8 @@ Status ImporterBase::Convert(
   // pairs.
   TF_RETURN_IF_ERROR(AddBackedges());
 
-  TF_RETURN_IF_ERROR(ConvertFunctionArgAndRets(function, graph,
-                                               func_type.getInputs(), arg_nodes,
-                                               ret_nodes, control_ret_nodes));
-  for (const auto& entry : resource_arg_unique_ids) {
-    function.setArgAttr(entry.first, "tf.resource_arg_unique_id",
-                        builder_.getI64IntegerAttr(entry.second));
-  }
-  return Status::OK();
+  return ConvertFunctionArgAndRets(function, graph, func_type.getInputs(),
+                                   arg_nodes, ret_nodes, control_ret_nodes);
 }
 
 Status ImporterBase::ConvertFunctionArgAndRets(
@@ -1731,14 +1710,10 @@ class GraphDefImporter : public ImporterBase {
   // output nodes, for function graphs. Arguments and return values are
   // determined by node op type. Type and shape information of the function are
   // inferred by the shape refiner in ImporterBase.
-  // `resource_arg_unique_ids` will be filled with the unique IDs of resource
-  // variables, as a list of {index, ID} pairs.
   StatusOr<mlir::FunctionType> GetArgsRetsAndTypesFromFunctionGraph(
       mlir::MLIRContext* context,
       absl::InlinedVector<OutputTensor, 4>* arg_nodes,
-      absl::InlinedVector<OutputTensor, 4>* ret_nodes,
-      absl::InlinedVector<std::pair<int64_t, int64_t>, 4>*
-          resource_arg_unique_ids);
+      absl::InlinedVector<OutputTensor, 4>* ret_nodes);
 };
 
 StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
@@ -1759,7 +1734,6 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
   absl::InlinedVector<OutputTensor, 4> arg_nodes;
   absl::InlinedVector<OutputTensor, 4> ret_nodes;
   absl::InlinedVector<Node*, 4> control_ret_nodes;
-  absl::InlinedVector<std::pair<int64_t, int64_t>, 4> resource_arg_unique_ids;
   llvm::SmallVector<mlir::NamedAttribute, 1> attrs;
   if (specs.graph_as_function) {
     if (specs.prune_unused_nodes || !specs.inputs.empty() ||
@@ -1768,10 +1742,9 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
           "Pruning of graph is currently unsupported when the main graph is "
           "converted to a function.");
 
-    TF_ASSIGN_OR_RETURN(
-        func_type,
-        importer.GetArgsRetsAndTypesFromFunctionGraph(
-            context, &arg_nodes, &ret_nodes, &resource_arg_unique_ids));
+    TF_ASSIGN_OR_RETURN(func_type,
+                        importer.GetArgsRetsAndTypesFromFunctionGraph(
+                            context, &arg_nodes, &ret_nodes));
 
     if (!arg_nodes.empty() || !ret_nodes.empty()) {
       mlir::Builder b(context);
@@ -1832,8 +1805,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
                       {producer, min_consumer, bad_consumers})));
 
   TF_RETURN_IF_ERROR(importer.ImporterBase::Convert(
-      "main", func_type, arg_nodes, ret_nodes, control_ret_nodes, attrs,
-      resource_arg_unique_ids));
+      "main", func_type, arg_nodes, ret_nodes, control_ret_nodes, attrs));
   return module;
 }
 
@@ -1946,9 +1918,7 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
 StatusOr<mlir::FunctionType>
 GraphDefImporter::GetArgsRetsAndTypesFromFunctionGraph(
     mlir::MLIRContext* context, absl::InlinedVector<OutputTensor, 4>* arg_nodes,
-    absl::InlinedVector<OutputTensor, 4>* ret_nodes,
-    absl::InlinedVector<std::pair<int64_t, int64_t>, 4>*
-        resource_arg_unique_ids) {
+    absl::InlinedVector<OutputTensor, 4>* ret_nodes) {
   auto add_node = [](Node* node, absl::InlinedVector<OutputTensor, 4>* nodes) {
     auto* attr = node->attrs().Find("index");
     if (!attr)
@@ -1989,12 +1959,6 @@ GraphDefImporter::GetArgsRetsAndTypesFromFunctionGraph(
     TF_ASSIGN_OR_RETURN(auto type,
                         InferOutputType(*arg_node.node, /*idx=*/0, builder));
     arg_types.push_back(type);
-    tensorflow::int64 resource_arg_unique_id;
-    if (TryGetNodeAttr(arg_node.node->attrs(), "_resource_arg_unique_id",
-                       &resource_arg_unique_id)) {
-      resource_arg_unique_ids->emplace_back(arg_node.index,
-                                            resource_arg_unique_id);
-    }
   }
 
   llvm::SmallVector<mlir::Type, 4> ret_types;
