@@ -727,6 +727,18 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(Type type, ElementsAttr attr) {
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U16, uint16)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U32, uint32)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U64, uint64)
+    case xla::PrimitiveType::BF16: {
+      xla::Array<double> source_data(shape.dimensions());
+      auto attr_values = attr.getValues<APFloat>();
+      std::vector<double> values_double(source_data.num_elements());
+      for (auto index_and_value : llvm::enumerate(attr_values)) {
+        values_double[index_and_value.index()] =
+            index_and_value.value().convertToDouble();
+      }
+      source_data.SetValues(values_double);
+      return xla::LiteralUtil::ConvertF64ToBF16(
+          xla::LiteralUtil::CreateFromArray(source_data));
+    }
     default:
       return tensorflow::errors::Internal(absl::StrCat(
           "Unsupported type: ", xla::PrimitiveType_Name(shape.element_type())));

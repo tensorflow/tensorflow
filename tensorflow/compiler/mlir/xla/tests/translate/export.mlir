@@ -249,6 +249,9 @@ func @main() -> tensor<2x2x1x1xf32> {
   // CHECK:  s32[2,2] constant({ { 3, 2 }, { 1, 4 } })
   %cst_5 = constant dense<[[3, 2], [1, 4]]> : tensor<2x2xi32>
 
+  // CHECK: bf16[4] constant({1, 2, 3, 4})
+  %cst_6 = constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
+
   return %cst_0 : tensor<2x2x1x1xf32>
 }
 
