@@ -515,9 +515,6 @@ def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
   );
 
   let results = (outs HLO_Tensor:$result);
-
-  let hasCustomHLOConverter = 1;
-
   let hasCanonicalizer = 1;
 }
 
@@ -530,9 +527,6 @@ def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
   );
 
   let results = (outs HLO_Tensor:$result);
-
-  // TODO(b/129422361) Requires a custom constructor.
-  let hasCustomHLOConverter = 1;
 }
 
 
