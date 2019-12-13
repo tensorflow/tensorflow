@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 import random
 import time
 
@@ -34,9 +35,11 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -136,6 +139,42 @@ class FIFOQueueTest(test.TestCase):
     self.evaluate(q2.enqueue(2))
     self.assertAllEqual(self.evaluate(q2.dequeue()), 2)
     self.assertAllEqual(self.evaluate(q.dequeue()), 1)
+
+  def testQueueInFunction(self):
+
+    class _M(module.Module):
+
+      def __init__(self):
+        self.q1 = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
+        self.q2 = None
+
+      @def_function.function
+      def uses_queues(self, x):
+        if self.q2 is None:
+          self.q2 = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
+        self.q2.enqueue(x)
+        self.q2.enqueue(x + 3)
+        self.q1.enqueue(self.q2.dequeue())
+
+    m = _M()
+    self.evaluate(m.uses_queues(constant_op.constant(2)))
+    self.assertAllEqual(2, self.evaluate(m.q1.dequeue()))
+    self.assertAllEqual(5, self.evaluate(m.q2.dequeue()))
+    if context.executing_eagerly():
+      q1_handle = m.q1.queue_ref
+      q2_handle = m.q2.queue_ref
+      del m
+      gc.collect()
+      # If executing eagerly, deleting the Module should clean up the queue
+      # resources.
+      with self.assertRaisesRegexp(errors_impl.NotFoundError,
+                                   r"Resource .* does not exist."):
+        gen_resource_variable_ops.destroy_resource_op(
+            q1_handle, ignore_lookup_error=False)
+      with self.assertRaisesRegexp(errors_impl.NotFoundError,
+                                   r"Resource .* does not exist."):
+        gen_resource_variable_ops.destroy_resource_op(
+            q2_handle, ignore_lookup_error=False)
 
   def testEnqueueDictWithoutNames(self):
     q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
@@ -332,11 +371,11 @@ class FIFOQueueTest(test.TestCase):
       q.enqueue_many((7, [[1, 2], [3, 4], [5, 6]]))
 
   def testEnqueueManyEmptyTypeConversion(self):
+    q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.float32), (
+        (), ()))
 
     @def_function.function
     def _f():
-      q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.float32), (
-          (), ()))
       enq = q.enqueue_many(([], []))
       self.assertEqual(dtypes_lib.int32, enq.inputs[1].dtype)
       self.assertEqual(dtypes_lib.float32, enq.inputs[2].dtype)
@@ -344,12 +383,11 @@ class FIFOQueueTest(test.TestCase):
     _f()
 
   def testEnqueueWrongType(self):
+    q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.float32), (
+        (), ()))
 
     @def_function.function
     def _f():
-      q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.float32), (
-          (), ()))
-
       with self.assertRaises(ValueError):
         q.enqueue((array_ops.placeholder(dtypes_lib.int32),
                    array_ops.placeholder(dtypes_lib.int32)))
