@@ -31,7 +31,7 @@ namespace {
 absl::InlinedVector<HloInstruction*, 2> GetOutputsOfFusion(
     const HloInstruction& instr) {
   CHECK(instr.opcode() == HloOpcode::kFusion);
-  auto root = instr.fused_expression_root();
+  HloInstruction* root = instr.fused_expression_root();
   if (root->opcode() != HloOpcode::kTuple) {
     return {root};
   } else {
@@ -39,10 +39,10 @@ absl::InlinedVector<HloInstruction*, 2> GetOutputsOfFusion(
   }
 }
 
-// Return the number of outputs of the fused computation.
+// Returns the number of outputs of the fused computation.
 size_t GetOutputSizeOfFusion(const HloInstruction& instr) {
   CHECK(instr.opcode() == HloOpcode::kFusion);
-  auto root = instr.fused_expression_root();
+  const HloInstruction* root = instr.fused_expression_root();
   if (root->opcode() != HloOpcode::kTuple) {
     return 1;
   } else {
@@ -62,10 +62,12 @@ class HorizontalFusionImpl {
  private:
   Status Fuse(absl::Span<HloInstruction*> fused_fusion_instrs);
 
-  // Horizontally fuses `fused_fusion_instrs`. We support only loop fusions
-  // and require their numbers of outputs to be the same, because the code
-  // generation (of slice input fusion) requires all the concatenated outputs
-  // have the same shapes.
+  // Horizontally fuses `fused_fusion_instrs`. It is required that each of
+  // `fused_fusion_instrs` is a kLoop fusion. Also, we require their numbers of
+  // outputs to be the same, so that each output will be fused/concatenated with
+  // the same number of outputs from other fused fusion instrs. Then, all the
+  // fused outputs still have the same shapes for kernel generation.
+  //
   // Returns the fused computation in `uniq_computation` and the operands that
   // are used by `uniq_computation`.
   Status CreateFusedComputation(
@@ -82,14 +84,14 @@ class HorizontalFusionImpl {
       Initialize(consumer);
     }
 
-    // Get a span of fusions to be fused.
+    // Gets a span of fusions to be fused.
     absl::Span<HloInstruction*> GetNextSpanOfFusions();
 
    private:
     void Initialize(HloInstruction*);
 
     std::vector<HloInstruction*> fusion_instrs_;
-    // pos_ points to the start position of next span.
+    // `pos_` points to the start position of the next span.
     size_t pos_;
   };
 
