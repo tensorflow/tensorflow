@@ -255,55 +255,48 @@ struct DeadTempBufferRemoval : mlir::FunctionPass<DeadTempBufferRemoval> {
   }
 };
 
-// Neat little helper pass to dump the IR inbetween passes.
-struct DumpPass : public mlir::ModulePass<DumpPass> {
-  void runOnModule() override {
-#if DEBUG
-    getModule().dump();
-#endif
-  }
-};
+void EnableIRPrinting(mlir::PassManager* passManager) {
+  auto enable_if_vlog_is_on = [](mlir::Pass* pass, mlir::Operation* op) {
+    return VLOG_IS_ON(1);
+  };
+  passManager->enableIRPrinting(/*shouldPrintBeforePass=*/{},
+                                /*shouldPrintAfterPass=*/enable_if_vlog_is_on,
+                                /*printModuleScope=*/false,
+                                /*printAfterOnlyOnChange=*/true, llvm::dbgs());
+  passManager->disableMultithreading();
+}
 
 }  // namespace
 
 Status LowerLHLOToGPU(mlir::ModuleOp module) {
   mlir::PassManager pm(module.getContext());
+  EnableIRPrinting(&pm);
 
   // First, lower bodies of fusion operations from hlo to lhlo.
   pm.addPass(absl::make_unique<FusionToLhloConverter>());
   // Next, we can strip the outer fusion operation.
   pm.addPass(absl::make_unique<FusionOpRemover>());
-  pm.addPass(absl::make_unique<DumpPass>());
   // Transform lhlo operations to LinAlg.
   pm.addPass(::mlir::xla_lhlo::createLegalizeToLinalgPass());
-  pm.addPass(absl::make_unique<DumpPass>());
   // Fuse linalg operations. This will yield a single tiled loop nest where
   // the inner loops are single trip.
   pm.addPass(::mlir::xla_lhlo::createLhloFuseLinalg());
-  pm.addPass(absl::make_unique<DumpPass>());
   // Legalize reduce operations directly to GPU dialect.
   pm.addPass(::mlir::xla_lhlo::createLegalizeToGpuPass());
-  pm.addPass(absl::make_unique<DumpPass>());
   // Fuse linalg operations. This will yield a single tiled loop nest where
   // Go from linalg to normal loops.
   pm.addPass(::mlir::linalg::createConvertLinalgToLoopsPass());
-  pm.addPass(absl::make_unique<DumpPass>());
   // Canonicalize the code to simplify index computations.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
-  pm.addPass(absl::make_unique<DumpPass>());
   // The innermost loops will be single-trip.
   pm.addPass(absl::make_unique<SingleTripLoopRemoval>());
-  pm.addPass(absl::make_unique<DumpPass>());
   // Run CSE to ensure that loads and stores to the same subview get
   // recognized as such.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
-  pm.addPass(absl::make_unique<DumpPass>());
   // Forward stores to buffers to loads.
   pm.addPass(absl::make_unique<StoreForwardingPass>());
-  pm.addPass(absl::make_unique<DumpPass>());
   // Remove now unused temporary buffers.
   pm.addPass(absl::make_unique<DeadTempBufferRemoval>());
-  pm.addPass(absl::make_unique<DumpPass>());
   // Coalesce generated loops to have 1d loops.
   pm.addPass(::mlir::createLoopCoalescingPass());
   // Transform the now 1d loops to gpu launches.
@@ -318,7 +311,6 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
   if (failed(pm.run(module))) {
     return InternalError("Lowering to GPU kernels failed.");
   }
-
   return Status::OK();
 }
 
@@ -361,6 +353,7 @@ class LowerToNVVMPass : public ::mlir::ModulePass<LowerToNVVMPass> {
 Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
   // We cannot verify as the signature of the kernel is rewritten.
   ::mlir::PassManager pm(module.getContext(), /*verifyPasses=*/false);
+  EnableIRPrinting(&pm);
 
   // Rewrite kernel functions to LLVM IR.
   auto& kernelPm = pm.nest<::mlir::ModuleOp>();
