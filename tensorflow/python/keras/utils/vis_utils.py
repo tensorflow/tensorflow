@@ -186,6 +186,7 @@ def model_to_dot(model,
         outputlabels = format_shape(layer.output_shape)
       except AttributeError:
         outputlabels = '?'
+      kernellabels = format_shape(layer.kernel_size) if hasattr(layer, 'kernel_size') else '?'
       if hasattr(layer, 'input_shape'):
         inputlabels = format_shape(layer.input_shape)
       elif hasattr(layer, 'input_shapes'):
@@ -193,9 +194,10 @@ def model_to_dot(model,
             [format_shape(ishape) for ishape in layer.input_shapes])
       else:
         inputlabels = '?'
-      label = '%s\n|{input:|output:}|{{%s}|{%s}}' % (label,
+      label = '%s\n|{input:|output:|kernel:}|{{%s}|{%s}|{%s}}' % (label,
                                                      inputlabels,
-                                                     outputlabels)
+                                                     outputlabels,
+                                                     kernellabels)
 
     if not expand_nested or not isinstance(layer, network.Network):
       node = pydot.Node(layer_id, label=label)
