@@ -220,7 +220,7 @@ def should_overwrite(filepath, overwrite):
 
 
 def convert_output_metrics(metrics_config, custom_objects):
-  from google3.third_party.tensorflow.python.keras import metrics as metrics_module  # pylint:disable=g-import-not-at-top
+  from tensorflow.python.keras import metrics as metrics_module  # pylint:disable=g-import-not-at-top
   if isinstance(metrics_config, list):
     return [convert_output_metrics(mc, custom_objects) for mc in metrics_config]
   elif (isinstance(metrics_config, dict) or
