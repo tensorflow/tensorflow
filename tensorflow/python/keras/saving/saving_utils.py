@@ -220,6 +220,18 @@ def should_overwrite(filepath, overwrite):
   return True
 
 
+def convert_output_metrics(metrics_config, custom_objects):
+  from google3.third_party.tensorflow.python.keras import metrics as metrics_module  # pylint:disable=g-import-not-at-top
+  if isinstance(metrics_config, list):
+    return [convert_output_metrics(mc, custom_objects) for mc in metrics_config]
+  elif (isinstance(metrics_config, dict) or
+        (metrics_config not in ['accuracy', 'acc', 'crossentropy', 'ce'])):
+    # Do not deserialize accuracy and cross-entropy strings as we have special
+    # case handling for these in compile, based on model output shape.
+    return metrics_module.deserialize(metrics_config, custom_objects)
+  return metrics_config
+
+
 def compile_args_from_training_config(training_config, custom_objects=None):
   """Return model.compile arguments from training config."""
   if custom_objects is None:
@@ -229,34 +241,49 @@ def compile_args_from_training_config(training_config, custom_objects=None):
   optimizer = optimizers.deserialize(
       optimizer_config, custom_objects=custom_objects)
 
-  # Recover loss functions and metrics.
-  loss_config = training_config['loss']  # Deserialize loss class.
-  if isinstance(loss_config, dict) and 'class_name' in loss_config:
+  # Recover losses.
+  loss_config = training_config['loss']
+  if isinstance(loss_config, list):  # Loss fed to compile as a list.
+    loss = [losses.deserialize(lc, custom_objects) for lc in loss_config]
+  elif isinstance(loss_config, dict) and 'class_name' not in loss_config:
+    # Loss fed to compile as a dict.
+    loss = {
+        k: losses.deserialize(v, custom_objects)
+        for (k, v) in loss_config.items()
+    }
+  else:  # Loss fed to compile as a str/ function/ class instance.
     loss = losses.deserialize(loss_config, custom_objects)
-  else:
-    loss = nest.map_structure(
-      lambda obj: losses.deserialize(obj, custom_objects),
-      loss_config)
-  
+
+  # Recover metrics.
   metrics_config = training_config['metrics']
-  if isinstance(metrics_config, dict) and 'class_name' in metrics_config:
-    metrics_obj = metrics.deserialize(metrics_config, custom_objects)
-  elif isinstance(metrics_config, list):
-    metrics_obj = [ metrics.deserialize(obj, custom_objects) for obj in metrics_config ]
-  else:
-    metrics_obj = nest.map_structure(
-      lambda obj: metrics.deserialize(obj, custom_objects),
-      metrics_config)
-  
+  if isinstance(metrics_config, dict):  # Metrics fed to compile as a dict.
+    metrics = {
+        k: convert_output_metrics(v, custom_objects)
+        for (k, v) in metrics_config.items()
+    }
+  elif isinstance(metrics_config, list):  # Metrics fed to compile as a list.
+    metrics = [
+        convert_output_metrics(m, custom_objects) for m in metrics_config
+    ]
+  else:  # No metrics.
+    metrics = None
+
+  # Recover weighted metrics.
   weighted_metrics_config = training_config['weighted_metrics']
-  if isinstance(weighted_metrics_config, dict) and 'class_name' in weighted_metrics_config:
-    weighted_metrics = metrics.deserialize(weighted_metrics_config, custom_objects)
+  if isinstance(weighted_metrics_config, dict):
+    # Metrics fed to compile as a dict.
+    weighted_metrics = {
+        k: convert_output_metrics(v, custom_objects)
+        for (k, v) in weighted_metrics_config.items()
+    }
   elif isinstance(weighted_metrics_config, list):
-    weighted_metrics = [ metrics.deserialize(obj, custom_objects) for obj in weighted_metrics_config ]
-  else:
-    weighted_metrics = nest.map_structure(
-      lambda obj: metrics.deserialize(obj, custom_objects),
-      weighted_metrics_config)
+    # Metrics fed to compile as a list.
+    weighted_metrics = [
+        convert_output_metrics(m, custom_objects)
+        for m in weighted_metrics_config
+    ]
+  else:  # No metrics.
+    weighted_metrics = None
 
   sample_weight_mode = training_config['sample_weight_mode']
   loss_weights = training_config['loss_weights']
@@ -264,7 +291,7 @@ def compile_args_from_training_config(training_config, custom_objects=None):
   return dict(
       optimizer=optimizer,
       loss=loss,
-      metrics=metrics_obj,
+      metrics=metrics,
       weighted_metrics=weighted_metrics,
       loss_weights=loss_weights,
       sample_weight_mode=sample_weight_mode)
