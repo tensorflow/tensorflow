@@ -34,7 +34,6 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 %PIP_EXE% install opt_einsum --upgrade
 %PIP_EXE% install pandas --upgrade --no-deps
 %PIP_EXE% install protobuf --upgrade --no-deps
-%PIP_EXE% install keras_applications==1.0.8 --upgrade --no-deps
 %PIP_EXE% install keras_preprocessing==1.1.0 --upgrade --no-deps
 %PIP_EXE% install wrapt --upgrade --no-deps
 
