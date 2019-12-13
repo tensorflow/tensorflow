@@ -24,7 +24,6 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
-from tensorflow.python.keras import metrics
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
