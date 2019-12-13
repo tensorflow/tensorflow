@@ -36,6 +36,10 @@ namespace ops {
 namespace builtin {
 namespace lstm_eval {
 
+inline float GetTensorScale(const TfLiteTensor* tensor) {
+  return tensor == nullptr ? 1.0f : tensor->params.scale;
+}
+
 namespace {
 // Performs an LSTM batch inference step for input specified by input_ptr.
 // The LSTM cell is specified by the pointers to its weights (*_weights_ptr) and
@@ -1348,7 +1352,6 @@ TfLiteStatus EvalHybrid(
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to get the condition.
   const bool use_cifg = (input_to_input_weights == nullptr);
-  const bool use_peephole = (cell_to_output_weights != nullptr);
 
   float* scratch_buffer_ptr = GetTensorData<float>(scratch_buffer);
   float* input_gate_scratch = nullptr;
@@ -1364,55 +1367,6 @@ TfLiteStatus EvalHybrid(
     cell_scratch = scratch_buffer_ptr + n_cell * n_batch;
     forget_gate_scratch = scratch_buffer_ptr + 2 * n_cell * n_batch;
     output_gate_scratch = scratch_buffer_ptr + 3 * n_cell * n_batch;
-  }
-
-  float input_to_input_weights_scale = 1.0f;
-  float recurrent_to_input_weights_scale = 1.0f;
-  if (!use_cifg) {
-    input_to_input_weights_scale = input_to_input_weights->params.scale;
-    recurrent_to_input_weights_scale = recurrent_to_input_weights->params.scale;
-  }
-
-  float cell_to_input_weights_scale = 1.0f;
-  float cell_to_forget_weights_scale = 1.0f;
-  float cell_to_output_weights_scale = 1.0f;
-  if (use_peephole) {
-    if (!use_cifg) {
-      cell_to_input_weights_scale = cell_to_input_weights->params.scale;
-    }
-    cell_to_forget_weights_scale = cell_to_forget_weights->params.scale;
-    cell_to_output_weights_scale = cell_to_output_weights->params.scale;
-  }
-
-  const float projection_weights_scale =
-      (projection_weights == nullptr) ? 1.0f : projection_weights->params.scale;
-
-  const float input_to_forget_weights_scale =
-      input_to_forget_weights->params.scale;
-  const float input_to_cell_weights_scale = input_to_cell_weights->params.scale;
-  const float input_to_output_weights_scale =
-      input_to_output_weights->params.scale;
-  const float recurrent_to_forget_weights_scale =
-      recurrent_to_forget_weights->params.scale;
-  const float recurrent_to_cell_weights_scale =
-      recurrent_to_cell_weights->params.scale;
-  const float recurrent_to_output_weights_scale =
-      recurrent_to_output_weights->params.scale;
-
-  float aux_input_to_input_weights_scale = 0.0f;
-  float aux_input_to_forget_weights_scale = 0.0f;
-  float aux_input_to_cell_weights_scale = 0.0f;
-  float aux_input_to_output_weights_scale = 0.0f;
-  if (aux_input_size > 0) {
-    if (!use_cifg) {
-      aux_input_to_input_weights_scale =
-          aux_input_to_input_weights->params.scale;
-    }
-    aux_input_to_forget_weights_scale =
-        aux_input_to_forget_weights->params.scale;
-    aux_input_to_cell_weights_scale = aux_input_to_cell_weights->params.scale;
-    aux_input_to_output_weights_scale =
-        aux_input_to_output_weights->params.scale;
   }
 
   const int output_batch_leading_dim =
@@ -1435,35 +1389,35 @@ TfLiteStatus EvalHybrid(
 
       LstmStepWithAuxInput(
           input_ptr, GetTensorData<int8_t>(input_to_input_weights),
-          input_to_input_weights_scale,
+          GetTensorScale(input_to_input_weights),
           GetTensorData<int8_t>(input_to_forget_weights),
-          input_to_forget_weights_scale,
+          GetTensorScale(input_to_forget_weights),
           GetTensorData<int8_t>(input_to_cell_weights),
-          input_to_cell_weights_scale,
+          GetTensorScale(input_to_cell_weights),
           GetTensorData<int8_t>(input_to_output_weights),
-          input_to_output_weights_scale, aux_input_ptr,
+          GetTensorScale(input_to_output_weights), aux_input_ptr,
           GetTensorData<int8_t>(aux_input_to_input_weights),
-          aux_input_to_input_weights_scale,
+          GetTensorScale(aux_input_to_input_weights),
           GetTensorData<int8_t>(aux_input_to_forget_weights),
-          aux_input_to_forget_weights_scale,
+          GetTensorScale(aux_input_to_forget_weights),
           GetTensorData<int8_t>(aux_input_to_cell_weights),
-          aux_input_to_cell_weights_scale,
+          GetTensorScale(aux_input_to_cell_weights),
           GetTensorData<int8_t>(aux_input_to_output_weights),
-          aux_input_to_output_weights_scale,
+          GetTensorScale(aux_input_to_output_weights),
           GetTensorData<int8_t>(recurrent_to_input_weights),
-          recurrent_to_input_weights_scale,
+          GetTensorScale(recurrent_to_input_weights),
           GetTensorData<int8_t>(recurrent_to_forget_weights),
-          recurrent_to_forget_weights_scale,
+          GetTensorScale(recurrent_to_forget_weights),
           GetTensorData<int8_t>(recurrent_to_cell_weights),
-          recurrent_to_cell_weights_scale,
+          GetTensorScale(recurrent_to_cell_weights),
           GetTensorData<int8_t>(recurrent_to_output_weights),
-          recurrent_to_output_weights_scale,
+          GetTensorScale(recurrent_to_output_weights),
           GetTensorData<int8_t>(cell_to_input_weights),
-          cell_to_input_weights_scale,
+          GetTensorScale(cell_to_input_weights),
           GetTensorData<int8_t>(cell_to_forget_weights),
-          cell_to_forget_weights_scale,
+          GetTensorScale(cell_to_forget_weights),
           GetTensorData<int8_t>(cell_to_output_weights),
-          cell_to_output_weights_scale,
+          GetTensorScale(cell_to_output_weights),
           GetTensorData<float>(input_layer_norm_coefficients),
           GetTensorData<float>(forget_layer_norm_coefficients),
           GetTensorData<float>(cell_layer_norm_coefficients),
@@ -1472,7 +1426,8 @@ TfLiteStatus EvalHybrid(
           GetTensorData<float>(forget_gate_bias),
           GetTensorData<float>(cell_bias),
           GetTensorData<float>(output_gate_bias),
-          GetTensorData<int8_t>(projection_weights), projection_weights_scale,
+          GetTensorData<int8_t>(projection_weights),
+          GetTensorScale(projection_weights),
           GetTensorData<float>(projection_bias), params, n_batch, n_cell,
           n_input, aux_input_size, n_output, output_batch_leading_dim,
           input_gate_scratch, forget_gate_scratch, cell_scratch,
@@ -1518,35 +1473,35 @@ TfLiteStatus EvalHybrid(
 
         LstmStepWithAuxInput(
             input_ptr, GetTensorData<int8_t>(input_to_input_weights),
-            input_to_input_weights_scale,
+            GetTensorScale(input_to_input_weights),
             GetTensorData<int8_t>(input_to_forget_weights),
-            input_to_forget_weights_scale,
+            GetTensorScale(input_to_forget_weights),
             GetTensorData<int8_t>(input_to_cell_weights),
-            input_to_cell_weights_scale,
+            GetTensorScale(input_to_cell_weights),
             GetTensorData<int8_t>(input_to_output_weights),
-            input_to_output_weights_scale, aux_input_ptr,
+            GetTensorScale(input_to_output_weights), aux_input_ptr,
             GetTensorData<int8_t>(aux_input_to_input_weights),
-            aux_input_to_input_weights_scale,
+            GetTensorScale(aux_input_to_input_weights),
             GetTensorData<int8_t>(aux_input_to_forget_weights),
-            aux_input_to_forget_weights_scale,
+            GetTensorScale(aux_input_to_forget_weights),
             GetTensorData<int8_t>(aux_input_to_cell_weights),
-            aux_input_to_cell_weights_scale,
+            GetTensorScale(aux_input_to_cell_weights),
             GetTensorData<int8_t>(aux_input_to_output_weights),
-            aux_input_to_output_weights_scale,
+            GetTensorScale(aux_input_to_output_weights),
             GetTensorData<int8_t>(recurrent_to_input_weights),
-            recurrent_to_input_weights_scale,
+            GetTensorScale(recurrent_to_input_weights),
             GetTensorData<int8_t>(recurrent_to_forget_weights),
-            recurrent_to_forget_weights_scale,
+            GetTensorScale(recurrent_to_forget_weights),
             GetTensorData<int8_t>(recurrent_to_cell_weights),
-            recurrent_to_cell_weights_scale,
+            GetTensorScale(recurrent_to_cell_weights),
             GetTensorData<int8_t>(recurrent_to_output_weights),
-            recurrent_to_output_weights_scale,
+            GetTensorScale(recurrent_to_output_weights),
             GetTensorData<int8_t>(cell_to_input_weights),
-            cell_to_input_weights_scale,
+            GetTensorScale(cell_to_input_weights),
             GetTensorData<int8_t>(cell_to_forget_weights),
-            cell_to_forget_weights_scale,
+            GetTensorScale(cell_to_forget_weights),
             GetTensorData<int8_t>(cell_to_output_weights),
-            cell_to_output_weights_scale,
+            GetTensorScale(cell_to_output_weights),
             GetTensorData<float>(input_layer_norm_coefficients),
             GetTensorData<float>(forget_layer_norm_coefficients),
             GetTensorData<float>(cell_layer_norm_coefficients),
@@ -1555,7 +1510,8 @@ TfLiteStatus EvalHybrid(
             GetTensorData<float>(forget_gate_bias),
             GetTensorData<float>(cell_bias),
             GetTensorData<float>(output_gate_bias),
-            GetTensorData<int8_t>(projection_weights), projection_weights_scale,
+            GetTensorData<int8_t>(projection_weights),
+            GetTensorScale(projection_weights),
             GetTensorData<float>(projection_bias), params,
             /*n_batch=*/1, n_cell, n_input, aux_input_size, n_output,
             output_batch_leading_dim, input_gate_scratch_ptr,
