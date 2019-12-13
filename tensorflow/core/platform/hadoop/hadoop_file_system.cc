@@ -142,9 +142,9 @@ Status SplitArchiveNameAndPath(StringPiece& path, string& nn) {
         "Hadoop archive path does not contain a .har extension");
   }
   // Case of hadoop archive. Namenode is the path to the archive.
-  nn = string("har://") + string(nn) +
-       string(path.substr(0, index_end_archive_name + 4));
-  // Remove the hadoop archive path to the path
+  std::ostringstream namenodestream;
+  namenodestream << "har://" << nn << path.substr(0, index_end_archive_name + 4);
+  nn = namenodestream.str();
   path.remove_prefix(index_end_archive_name + 4);
   if (path.empty()) {
     // Root of the archive
