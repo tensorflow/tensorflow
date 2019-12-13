@@ -71,6 +71,10 @@ void RewriteCalls(
     fn = new_fn;
   }
 
+  // Other libraries using tfcompile could also have generated a function with
+  // tbe same name and body.  Tell the linker to discard all but one instance.
+  fn->setLinkage(llvm::GlobalVariable::LinkOnceODRLinkage);
+
   llvm::LLVMContext* context = &module->getContext();
 
   llvm::BasicBlock* fn_body = llvm::BasicBlock::Create(*context, "body", fn);
