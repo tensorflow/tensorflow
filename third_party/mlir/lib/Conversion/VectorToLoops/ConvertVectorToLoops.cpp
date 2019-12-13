@@ -21,8 +21,8 @@
 
 #include <type_traits>
 
-#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/Conversion/VectorToLoops/ConvertVectorToLoops.h"
+#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/AffineExpr.h"
@@ -270,7 +270,7 @@ PatternMatchResult VectorTransferRewriter<TransferReadOp>::matchAndRewrite(
   VectorView vectorView(transfer.vector());
   SmallVector<IndexHandle, 8> ivs = makeIndexHandles(vectorView.rank());
   SmallVector<ValueHandle *, 8> pivs =
-      makeIndexHandlePointers(MutableArrayRef<IndexHandle>(ivs));
+      makeHandlePointers(MutableArrayRef<IndexHandle>(ivs));
   coalesceCopy(transfer, &pivs, &vectorView);
 
   auto lbs = vectorView.getLbs();
@@ -332,7 +332,8 @@ PatternMatchResult VectorTransferRewriter<TransferWriteOp>::matchAndRewrite(
   ValueHandle vectorValue(transfer.vector());
   VectorView vectorView(transfer.vector());
   SmallVector<IndexHandle, 8> ivs = makeIndexHandles(vectorView.rank());
-  SmallVector<ValueHandle *, 8> pivs = makeIndexHandlePointers(ivs);
+  SmallVector<ValueHandle *, 8> pivs =
+      makeHandlePointers(MutableArrayRef<IndexHandle>(ivs));
   coalesceCopy(transfer, &pivs, &vectorView);
 
   auto lbs = vectorView.getLbs();
