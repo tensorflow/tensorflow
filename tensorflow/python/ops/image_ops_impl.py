@@ -1870,8 +1870,10 @@ def rgb_to_grayscale(images, name=None):
   Usage Example:
     ```
     >>> import tensorflow as tf
-    >>> x = tf.random.normal(shape=(256, 256, 3))
-    >>> tf.image.rgb_to_grayscale(x)
+    >>> x = tf.constant([[[2.0, 5.0, 3.0]]])
+    >>> y = tf.image.rgb_to_grayscale(x)
+    >>> print(y.numpy())
+    [[[3.8748]]]
     ```
 
   Args:
@@ -2925,8 +2927,10 @@ def rgb_to_yiq(images):
   Usage Example:
     ```
     >>> import tensorflow as tf
-    >>> x = tf.random.normal(shape=(256, 256, 3))
-    >>> tf.image.rgb_to_yiq(x)
+    >>> x = tf.constant([[[2.0, 5.0, 3.0]]])
+    >>> y = tf.image.rgb_to_yiq(x)
+    >>> print(y.numpy())
+    [[[ 3.875     -0.4305972 -1.6449057]]]
     ```
 
   Args:
