@@ -1926,6 +1926,17 @@ def is_non_decreasing(x, name=None):
 
   See also:  `is_strictly_increasing`
 
+  ```python
+  >>> x1 = tf.constant([1.0, 1.0, 3.0])
+  >>> tf.print(tf.math.is_non_decreasing(x1))
+  1
+
+  >>> x2 = tf.constant([3.0, 1.0, 2.0])
+  >>> tf.print(tf.math.is_non_decreasing(x1))
+  0
+
+  ```
+
   Args:
     x: Numeric `Tensor`.
     name: A name for this operation (optional).  Defaults to "is_non_decreasing"
@@ -1959,6 +1970,17 @@ def is_strictly_increasing(x, name=None):
   If `x` has less than two elements, it is trivially strictly increasing.
 
   See also:  `is_non_decreasing`
+
+  ```python
+  >>> x1 = tf.constant([1.0, 2.0, 3.0])
+  >>> tf.print(tf.math.is_strictly_increasing(x1))
+  1
+
+  >>> x2 = tf.constant([3.0, 1.0, 2.0])
+  >>> tf.print(tf.math.is_strictly_increasing(x1))
+  0
+
+  ```
 
   Args:
     x: Numeric `Tensor`.
