@@ -2930,7 +2930,7 @@ def rgb_to_yiq(images):
     >>> x = tf.constant([[[2.0, 5.0, 3.0]]])
     >>> y = tf.image.rgb_to_yiq(x)
     >>> print(y.numpy())
-    [[[ 3.875     -0.4305972 -1.6449057]]]
+    [[[ 3.875     -0.43... -1.6...]]]
     ```
 
   Args:
