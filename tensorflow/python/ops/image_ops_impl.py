@@ -1867,6 +1867,13 @@ def rgb_to_grayscale(images, name=None):
   last dimension of the output is 1, containing the Grayscale value of the
   pixels.
 
+  Usage Example:
+    ```
+    >>> import tensorflow as tf
+    >>> x = tf.random.normal(shape=(256, 256, 3))
+    >>> tf.image.rgb_to_grayscale(x)
+    ```
+
   Args:
     images: The RGB tensor to convert. The last dimension must have size 3 and
       should contain RGB values.
@@ -1874,13 +1881,6 @@ def rgb_to_grayscale(images, name=None):
 
   Returns:
     The converted grayscale image(s).
-  
-  Usage Example:
-  ```
-  >>> import tensorflow as tf
-  >>> x = tf.random.normal(shape=(256, 256, 3))
-  >>> tf.image.rgb_to_grayscale(x)
-  ```
   
   """
   with ops.name_scope(name, 'rgb_to_grayscale', [images]) as name:
@@ -2921,6 +2921,13 @@ def rgb_to_yiq(images):
   Outputs a tensor of the same shape as the `images` tensor, containing the YIQ
   value of the pixels.
   The output is only well defined if the value in images are in [0,1].
+  
+  Usage Example:
+    ```
+    >>> import tensorflow as tf
+    >>> x = tf.random.normal(shape=(256, 256, 3))
+    >>> tf.image.rgb_to_yiq(x)
+    ```
 
   Args:
     images: 2-D or higher rank. Image data to convert. Last dimension must be
@@ -2928,13 +2935,6 @@ def rgb_to_yiq(images):
 
   Returns:
     images: tensor with the same shape as `images`.
-  
-  Usage Example:
-  ```
-  >>> import tensorflow as tf
-  >>> x = tf.random.normal(shape=(256, 256, 3))
-  >>> tf.image.rgb_to_yiq(x)
-  ```
 
   """
   images = ops.convert_to_tensor(images, name='images')
