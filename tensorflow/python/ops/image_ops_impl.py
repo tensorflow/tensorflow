@@ -1874,6 +1874,14 @@ def rgb_to_grayscale(images, name=None):
 
   Returns:
     The converted grayscale image(s).
+  
+  Usage Example:
+  ```python
+  >>> import tensorflow as tf
+  >>> x = tf.random.normal(shape=(256, 256, 3))
+  >>> tf.image.rgb_to_grayscale(x)
+  ```
+  
   """
   with ops.name_scope(name, 'rgb_to_grayscale', [images]) as name:
     images = ops.convert_to_tensor(images, name='images')
@@ -2920,6 +2928,14 @@ def rgb_to_yiq(images):
 
   Returns:
     images: tensor with the same shape as `images`.
+  
+  Usage Example:
+  ```python
+  >>> import tensorflow as tf
+  >>> x = tf.random.normal(shape=(256, 256, 3))
+  >>> tf.image.rgb_to_yiq(x)
+  ```
+
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
