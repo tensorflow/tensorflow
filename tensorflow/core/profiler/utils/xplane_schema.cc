@@ -22,7 +22,7 @@ const absl::string_view kHostThreads = "Host Threads";
 
 const int kNumStatTypes = static_cast<int>(StatType::kHloModule) + 1;
 
-static constexpr absl::string_view kStatTypeStrMap[kNumStatTypes] = {
+static absl::string_view kStatTypeStrMap[kNumStatTypes] = {
     "unknown",         "id",
     "parent_step_id",  "function_step_id",
     "device_ordinal",  "chip_ordinal",
