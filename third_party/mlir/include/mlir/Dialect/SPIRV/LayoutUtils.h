@@ -63,7 +63,7 @@ public:
   /// Checks whether a type is legal in terms of Vulkan layout info
   /// decoration. A type is dynamically illegal if it's a composite type in the
   /// StorageBuffer, PhysicalStorageBuffer, Uniform, and PushConstant Storage
-  /// Classes without layout informtation.
+  /// Classes without layout information.
   static bool isLegalType(Type type);
 
 private:

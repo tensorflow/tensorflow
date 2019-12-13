@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/kernels/activation_functor.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -395,22 +394,10 @@ void PortableApplySigmoid(const int16_t* input, int32_t n_batch,
   }
 }
 
-void PortableApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output) {
-  using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
-  for (int batch = 0; batch < n_batch; ++batch) {
-    for (int i = 0; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      F0 tanh_input = F0::FromRaw(input[index]);
-      F0 tanh_output = gemmlowp::tanh(tanh_input);
-      output[index] = tanh_output.raw();
-    }
-  }
-}
-
-void PortableApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output) {
-  using FX = gemmlowp::FixedPoint<std::int16_t, 3>;
+template <int IntegerBits>
+void PortableApplyTanhImpl(const int16_t* input, int32_t n_batch,
+                           int32_t n_input, int16_t* output) {
+  using FX = gemmlowp::FixedPoint<std::int16_t, IntegerBits>;
   using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
   for (int batch = 0; batch < n_batch; ++batch) {
     for (int i = 0; i < n_input; ++i) {
@@ -422,18 +409,25 @@ void PortableApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
   }
 }
 
-void PortableApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output) {
-  using FX = gemmlowp::FixedPoint<std::int16_t, 4>;
-  using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
-  for (int batch = 0; batch < n_batch; ++batch) {
-    for (int i = 0; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      FX tanh_input = FX::FromRaw(input[index]);
-      F0 tanh_output = gemmlowp::tanh(tanh_input);
-      output[index] = tanh_output.raw();
-    }
+void PortableApplyTanh(int32_t integer_bits, const int16_t* input,
+                       int32_t n_batch, int32_t n_input, int16_t* output) {
+  assert(integer_bits <= 6);
+#define DISPATCH_TANH(i)                                       \
+  case i:                                                      \
+    PortableApplyTanhImpl<i>(input, n_batch, n_input, output); \
+    break;
+  switch (integer_bits) {
+    DISPATCH_TANH(0);
+    DISPATCH_TANH(1);
+    DISPATCH_TANH(2);
+    DISPATCH_TANH(3);
+    DISPATCH_TANH(4);
+    DISPATCH_TANH(5);
+    DISPATCH_TANH(6);
+    default:
+      return;
   }
+#undef DISPATCH_TANH
 }
 
 void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
@@ -514,7 +508,7 @@ void PortableVectorVectorCwiseProduct(const float* vector1,
                                       const float* vector2, int v_size,
                                       float* result) {
   for (int v = 0; v < v_size; v++) {
-    *result++ = *vector1++ * *vector2++;
+    result[v] = vector1[v] * vector2[v];
   }
 }
 
@@ -555,28 +549,20 @@ void PortableVectorVectorCwiseProductAccumulate(const float* vector1,
                                                 const float* vector2,
                                                 int v_size, float* result) {
   for (int v = 0; v < v_size; v++) {
-    *result++ += *vector1++ * *vector2++;
+    result[v] += vector1[v] * vector2[v];
   }
 }
 
-void PortableVectorBatchVectorCwiseProduct(const float* vector, int v_size,
-                                           const float* batch_vector,
-                                           int n_batch, float* result) {
+void PortableVectorBatchVectorCwiseProductAccumulate(
+    const int16_t* vector, int v_size, const int16_t* batch_vector, int n_batch,
+    int32_t multiplier, int shift, int16_t* result) {
   for (int b = 0; b < n_batch; b++) {
     for (int v = 0; v < v_size; v++) {
-      *result++ = vector[v] * *batch_vector++;
-    }
-  }
-}
-
-void PortableVectorBatchVectorCwiseProductAccumulate(const float* vector,
-                                                     int v_size,
-                                                     const float* batch_vector,
-                                                     int n_batch,
-                                                     float* result) {
-  for (int b = 0; b < n_batch; b++) {
-    for (int v = 0; v < v_size; v++) {
-      *result++ += vector[v] * *batch_vector++;
+      int32_t prod = vector[v] * *batch_vector++;
+      prod = MultiplyByQuantizedMultiplier(prod, multiplier, shift);
+      int32_t output = prod + *result;
+      output = std::max(std::min(32767, output), -32768);
+      *result++ = output;
     }
   }
 }
@@ -588,23 +574,6 @@ void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
       batch_vector[i] += vector[i];
     }
     batch_vector += v_size;
-  }
-}
-
-void PortableApplySigmoidToVector(const float* vector, int v_size,
-                                  float* result) {
-  auto sigmoid_func = ActivationFunctor(kTfLiteActSigmoid);
-  for (int v = 0; v < v_size; v++) {
-    *result++ = (sigmoid_func)(*vector++);
-  }
-}
-
-void PortableApplyActivationToVector(const float* vector, int v_size,
-                                     TfLiteFusedActivation activation,
-                                     float* result) {
-  auto activation_func = ActivationFunctor(activation);
-  for (int v = 0; v < v_size; v++) {
-    *result++ = (activation_func)(*vector++);
   }
 }
 

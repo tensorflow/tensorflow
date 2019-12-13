@@ -20,6 +20,7 @@
 
 #include "mlir/Dialect/Linalg/IR/LinalgTraits.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
@@ -84,7 +85,6 @@ SmallVector<AffineMap, 4> loopToOperandRangesMaps(Operation *op);
 
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Linalg/IR/LinalgLibraryOps.h.inc"
-
 
 } // namespace linalg
 } // namespace mlir

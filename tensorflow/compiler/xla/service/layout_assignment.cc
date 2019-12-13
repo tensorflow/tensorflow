@@ -432,6 +432,12 @@ bool IsLayoutConstrainedCustomCall(HloInstruction* instruction) {
   return custom_call != nullptr && custom_call->layout_constrained();
 }
 
+bool IsLayoutConstrainedAllReduce(const HloInstruction* instruction) {
+  const HloAllReduceInstruction* all_reduce =
+      DynCast<HloAllReduceInstruction>(instruction);
+  return all_reduce != nullptr && all_reduce->constrain_layout();
+}
+
 }  // namespace
 
 Status LayoutAssignment::AddMandatoryConstraints(
@@ -516,6 +522,19 @@ Status LayoutAssignment::AddMandatoryConstraints(
         TF_RETURN_IF_ERROR(
             constraints->SetBufferLayout(new_shape.layout(), *buffer));
       }
+    } else if (IsLayoutConstrainedAllReduce(instruction)) {
+      if (instruction->shape().IsTuple()) {
+        for (int64 i = 0; i < instruction->operand_count(); ++i) {
+          TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
+              ShapeUtil::GetTupleElementShape(instruction->shape(), i),
+              instruction, i));
+        }
+      } else {
+        TF_RETURN_IF_ERROR(constraints->SetOperandLayout(instruction->shape(),
+                                                         instruction, 0));
+      }
+      TF_RETURN_IF_ERROR(
+          constraints->SetInstructionLayout(instruction->shape(), instruction));
     } else if (instruction->IsCrossModuleAllReduce()) {
       CHECK(get_channel_constraints(instruction))
           << "Multi-module layout assignment requires ChannelLayoutConstraints";
@@ -933,8 +952,10 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
               const Shape& instruction_subshape =
                   ShapeUtil::GetSubshape(instruction->shape(), index);
               for (const LogicalBuffer* buffer : buffers) {
-                if (!Shape::Equal().MinorToMajorOnlyInLayout()(
-                        instruction_subshape, buffer->shape())) {
+                if (!Shape::Equal()
+                         .IgnoreDynamicDimension()
+                         .MinorToMajorOnlyInLayout()(instruction_subshape,
+                                                     buffer->shape())) {
                   return InternalError(
                       "Layout of instruction %s at index {%s} does not match "
                       "source LogicalBuffer %s: %s vs %s",
@@ -996,8 +1017,9 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
       FindOrDie(computation_layouts_, module->entry_computation())
           .result_layout();
   if (result_layout.LayoutIsSet()) {
-    TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
-        module->result_shape(), result_layout.shape()));
+    TF_RET_CHECK(
+        Shape::Equal().IgnoreDynamicDimension().MinorToMajorOnlyInLayout()(
+            module->result_shape(), result_layout.shape()));
   }
   return Status::OK();
 }
@@ -1765,7 +1787,8 @@ Status LayoutAssignment::ClearComputationLayouts(HloComputation* computation) {
     }
     // Some instructions carry mandatory layouts in their shape.
     if (instruction->opcode() != HloOpcode::kInfeed &&
-        !IsLayoutConstrainedCustomCall(instruction)) {
+        !IsLayoutConstrainedCustomCall(instruction) &&
+        !IsLayoutConstrainedAllReduce(instruction)) {
       LayoutUtil::ClearLayout(instruction->mutable_shape());
     }
   }
@@ -1983,9 +2006,10 @@ Status LayoutAssignment::PropagateComputationLayouts(
             << ": " << computed_computation_layout.result_layout().ToString();
     *result_layout = computed_computation_layout.result_layout();
   } else {
-    TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
-        computed_computation_layout.result_layout().shape(),
-        result_layout->shape()));
+    TF_RET_CHECK(
+        Shape::Equal().IgnoreDynamicDimension().MinorToMajorOnlyInLayout()(
+            computed_computation_layout.result_layout().shape(),
+            result_layout->shape()));
   }
   return Status::OK();
 }
@@ -2116,7 +2140,6 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kConditional:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
-    case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:
@@ -2204,6 +2227,8 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kTuple:
     case HloOpcode::kGetDimensionSize:
       return true;
+    case HloOpcode::kAllReduce:
+      return IsLayoutConstrainedAllReduce(instruction);
   }
 }
 

@@ -100,6 +100,14 @@ IntegerAttr Builder::getI64IntegerAttr(int64_t value) {
   return IntegerAttr::get(getIntegerType(64), APInt(64, value));
 }
 
+DenseIntElementsAttr Builder::getI32VectorAttr(ArrayRef<int32_t> values) {
+  return DenseElementsAttr::get(
+             VectorType::get(static_cast<int64_t>(values.size()),
+                             getIntegerType(32)),
+             values)
+      .cast<DenseIntElementsAttr>();
+}
+
 IntegerAttr Builder::getI32IntegerAttr(int32_t value) {
   return IntegerAttr::get(getIntegerType(32), APInt(32, value));
 }
@@ -298,6 +306,13 @@ AffineMap Builder::getShiftedAffineMap(AffineMap map, int64_t shift) {
 
 OpBuilder::~OpBuilder() {}
 
+/// Insert the given operation at the current insertion point and return it.
+Operation *OpBuilder::insert(Operation *op) {
+  if (block)
+    block->getOperations().insert(insertPoint, op);
+  return op;
+}
+
 /// Add new block and set the insertion point to the end of it. The block is
 /// inserted at the provided insertion point of 'parent'.
 Block *OpBuilder::createBlock(Region *parent, Region::iterator insertPt) {
@@ -320,10 +335,7 @@ Block *OpBuilder::createBlock(Block *insertBefore) {
 
 /// Create an operation given the fields represented as an OperationState.
 Operation *OpBuilder::createOperation(const OperationState &state) {
-  assert(block && "createOperation() called without setting builder's block");
-  auto *op = Operation::create(state);
-  insert(op);
-  return op;
+  return insert(Operation::create(state));
 }
 
 /// Attempts to fold the given operation and places new results within
@@ -350,10 +362,4 @@ void OpBuilder::tryFold(Operation *op, SmallVectorImpl<Value *> &results) {
   llvm::transform(foldResults, std::back_inserter(results),
                   [](OpFoldResult result) { return result.get<Value *>(); });
   op->erase();
-}
-
-/// Insert the given operation at the current insertion point.
-void OpBuilder::insert(Operation *op) {
-  if (block)
-    block->getOperations().insert(insertPoint, op);
 }

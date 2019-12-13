@@ -50,9 +50,14 @@ enum TfLiteGpuInferenceUsage {
 };
 
 enum TfLiteGpuInferencePriority {
-  TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION = 0,
-  TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY = 1,
-  TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE = 2,
+  // AUTO priority is needed when a single priority is the most important
+  // factor. For example,
+  // priority1 = MIN_LATENCY would result in the configuration that achieves
+  // maximum performance.
+  TFLITE_GPU_INFERENCE_PRIORITY_AUTO = 0,
+  TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION = 1,
+  TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY = 2,
+  TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE = 3,
 };
 
 // IMPORTANT: Always use TfLiteGpuDelegateOptionsV2Default() method to create
@@ -78,6 +83,15 @@ typedef struct {
   //   but moving it to priority2 or priority3 would result in F16 calculation.
   //
   // Priority is defined in TfLiteGpuInferencePriority.
+  // AUTO priority can only be used when higher priorities are fully specified.
+  // For example:
+  //   VALID:   priority1 = MIN_LATENCY, priority2 = AUTO, priority3 = AUTO
+  //   VALID:   priority1 = MIN_LATENCY, priority2 = MAX_PRECISION,
+  //            priority3 = AUTO
+  //   INVALID: priority1 = AUTO, priority2 = MIN_LATENCY, priority3 = AUTO
+  //   INVALID: priority1 = MIN_LATENCY, priority2 = AUTO,
+  //            priority3 = MAX_PRECISION
+  // Invalid priorities will result in error.
   int32_t inference_priority1;
   int32_t inference_priority2;
   int32_t inference_priority3;
@@ -87,8 +101,8 @@ typedef struct {
 //   is_precision_loss_allowed = false
 //   inference_preference = TFLITE_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER
 //   priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION
-//   priority2 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY
-//   priority3 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE
+//   priority2 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO
+//   priority3 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO
 TFL_CAPI_EXPORT TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2Default();
 
 // Creates a new delegate instance that need to be destroyed with

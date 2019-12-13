@@ -20,7 +20,7 @@
 #include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
-#include "mlir/Conversion/VectorConversions/VectorConversions.h"
+#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
@@ -99,21 +99,6 @@ static Type convertLinalgType(Type t, LLVMTypeConverter &lowering) {
   auto *context = t.getContext();
   auto int64Ty = lowering.convertType(IntegerType::get(64, context))
                      .cast<LLVM::LLVMType>();
-
-  // A buffer descriptor contains the pointer to a flat region of storage and
-  // the size of the region.
-  //
-  // template <typename Elem, size_t Rank>
-  // struct {
-  //   void *baseAlloc;
-  //   Elem *ptr;
-  //   int64_t size;
-  // };
-  if (auto bufferType = t.dyn_cast<BufferType>()) {
-    auto voidPtrTy = LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
-    auto ptrTy = getPtrToElementType(bufferType, lowering);
-    return LLVMType::getStructTy(voidPtrTy, ptrTy, int64Ty);
-  }
 
   // Range descriptor contains the range bounds and the step as 64-bit integers.
   //
@@ -340,6 +325,28 @@ public:
   }
 };
 
+template <typename LinalgOp>
+static SmallVector<Type, 4> ExtractOperandTypes(Operation *op) {
+  return SmallVector<Type, 4>{op->getOperandTypes()};
+}
+
+template <>
+SmallVector<Type, 4> ExtractOperandTypes<IndexedGenericOp>(Operation *op) {
+  auto ctx = op->getContext();
+  auto indexedGenericOp = cast<IndexedGenericOp>(op);
+  auto numLoops = indexedGenericOp.getNumLoops();
+
+  SmallVector<Type, 4> result;
+  result.reserve(numLoops + op->getNumOperands());
+  for (unsigned i = 0; i < numLoops; ++i) {
+    result.push_back(IndexType::get(ctx));
+  }
+  for (auto type : op->getOperandTypes()) {
+    result.push_back(type);
+  }
+  return result;
+}
+
 // Get a SymbolRefAttr containing the library function name for the LinalgOp.
 // If the library function does not exist, insert a declaration.
 template <typename LinalgOp>
@@ -359,7 +366,7 @@ static FlatSymbolRefAttr getLibraryCallSymbolRef(Operation *op,
     return fnNameAttr;
   }
 
-  SmallVector<Type, 4> inputTypes(op->getOperandTypes());
+  SmallVector<Type, 4> inputTypes(ExtractOperandTypes<LinalgOp>(op));
   assert(op->getNumResults() == 0 &&
          "Library call for linalg operation can be generated only for ops that "
          "have void return types");
@@ -395,10 +402,8 @@ public:
     if (!libraryCallName)
       return this->matchFailure();
 
-    SmallVector<Value *, 4> operands(op.getOperands().begin(),
-                                     op.getOperands().end());
-    rewriter.replaceOpWithNewOp<mlir::CallOp>(op, libraryCallName.getValue(),
-                                              ArrayRef<Type>{}, operands);
+    rewriter.replaceOpWithNewOp<mlir::CallOp>(
+        op, libraryCallName.getValue(), ArrayRef<Type>{}, op.getOperands());
     return this->matchSuccess();
   }
 };
@@ -422,11 +427,43 @@ public:
     if (!libraryCallName)
       return matchFailure();
 
-    SmallVector<Value *, 4> operands(op.getOperands().begin(),
-                                     op.getOperands().end());
+    rewriter.replaceOpWithNewOp<mlir::CallOp>(
+        op, libraryCallName.getValue(), ArrayRef<Type>{}, op.getOperands());
+    return matchSuccess();
+  }
+};
+
+/// Conversion pattern specialization for IndexedGenericOp.
+template <>
+class LinalgOpConversion<IndexedGenericOp>
+    : public OpRewritePattern<IndexedGenericOp> {
+public:
+  using OpRewritePattern<IndexedGenericOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(IndexedGenericOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto libraryCallName =
+        getLibraryCallSymbolRef<IndexedGenericOp>(op, rewriter);
+    if (!libraryCallName)
+      return this->matchFailure();
+
+    // TODO(pifon, ntv): Use induction variables values instead of zeros, when
+    // IndexedGenericOp is tiled.
+    auto zero = rewriter.create<mlir::ConstantOp>(
+        op.getLoc(), rewriter.getIntegerAttr(rewriter.getIndexType(), 0));
+    auto indexedGenericOp = cast<IndexedGenericOp>(op);
+    auto numLoops = indexedGenericOp.getNumLoops();
+    SmallVector<Value *, 4> operands;
+    operands.reserve(numLoops + op.getNumOperands());
+    for (unsigned i = 0; i < numLoops; ++i) {
+      operands.push_back(zero);
+    }
+    for (auto operand : op.getOperands()) {
+      operands.push_back(operand);
+    }
     rewriter.replaceOpWithNewOp<mlir::CallOp>(op, libraryCallName.getValue(),
                                               ArrayRef<Type>{}, operands);
-    return matchSuccess();
+    return this->matchSuccess();
   }
 };
 
@@ -516,6 +553,6 @@ mlir::linalg::createConvertLinalgToLLVMPass() {
   return std::make_unique<ConvertLinalgToLLVMPass>();
 }
 
-static PassRegistration<ConvertLinalgToLLVMPass>
-    pass("convert-linalg-to-llvm",
-         "Convert the operations from the linalg dialect into the LLVM dialect");
+static PassRegistration<ConvertLinalgToLLVMPass> pass(
+    "convert-linalg-to-llvm",
+    "Convert the operations from the linalg dialect into the LLVM dialect");

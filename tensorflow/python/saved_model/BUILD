@@ -386,26 +386,26 @@ py_library(
 cuda_py_test(
     name = "load_test",
     srcs = ["load_test.py"],
-    additional_deps = [
+    shard_count = 10,
+    tags = [
+        "no_gpu",  # TODO(b/136560979): flaky
+        "no_mac",  # TODO(b/124822121): Re-enable this test.
+    ],
+    deps = [
         ":load",
         ":save",
-        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:cond_v2",  # b/118513001
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:cond_v2",  # b/118513001
-        "//tensorflow/python:while_v2",  # b/118513001
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lib",
         "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:while_v2",  # b/118513001
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/module",
-        "//tensorflow/python/training/tracking:tracking",
-    ],
-    shard_count = 10,
-    tags = [
-        "no_mac",  # TODO(b/124822121): Re-enable this test.
-        "nogpu",  # TODO(b/136560979): flaky
+        "//tensorflow/python/training/tracking",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

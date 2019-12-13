@@ -113,7 +113,7 @@ class HloPrintOptions {
         .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
         .set_print_metadata(false)
         .set_print_backend_config(false)
-        .set_compact_operands(true)
+        .set_compact_operands(false)
         .set_print_operand_names(false)
         .set_print_operand_shape(true)
         .set_print_program_shape(false)
@@ -607,7 +607,7 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAllReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const std::vector<ReplicaGroup>& replica_groups,
+      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id);
 
   // An all-to-all op takes N array operands of the same shape and scatters them
@@ -1000,6 +1000,11 @@ class HloInstruction {
 
   // Returns the users of this instruction.
   const std::vector<HloInstruction*>& users() const { return users_; }
+
+  // Returns the index of the user in the users() vector.
+  //
+  // Precondition: `user` is a user of the instruction.
+  int64 UserId(HloInstruction* user);
 
   // Returns true if this instruction is a user of 'instruction'.
   bool IsUserOf(const HloInstruction* instruction) const {

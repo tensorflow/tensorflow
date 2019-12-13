@@ -94,16 +94,17 @@ class Subgraph {
   inline TfLiteStatus SetTensorParametersReadOnly(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantization quantization,
-      const char* buffer, size_t bytes,
-      const Allocation* allocation = nullptr) {
+      const char* buffer, size_t bytes, const Allocation* allocation = nullptr,
+      TfLiteSparsity* sparsity = nullptr) {
     return SetTensorParametersReadOnly(tensor_index, type, name, dims.size(),
                                        dims.data(), quantization, buffer, bytes,
-                                       allocation);
+                                       allocation, sparsity);
   }
   TfLiteStatus SetTensorParametersReadOnly(
       int tensor_index, TfLiteType type, const char* name, const size_t rank,
       const int* dims, TfLiteQuantization quantization, const char* buffer,
-      size_t bytes, const Allocation* allocation = nullptr);
+      size_t bytes, const Allocation* allocation = nullptr,
+      TfLiteSparsity* sparsity = nullptr);
 
   // Set description of inputs/outputs/data/fptrs for node `node_index`.
   // This variant assumes an external buffer has been allocated of size
@@ -531,7 +532,7 @@ class Subgraph {
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
-  TfLiteContext context_;
+  TfLiteContext context_ = {};
 
   // A pointer to the external contexts (kTfLiteMaxExternalContexts) array that
   // sits inside the associated TFLite interpreter instance.

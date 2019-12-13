@@ -452,6 +452,11 @@ def _test_cond(use_placeholder, shapes_info, dtype):
       if 0 in shapes_info.shape[-2:]:
         return
 
+      # ROCm platform does not yet support complex types
+      if test.is_built_with_rocm() and \
+         ((dtype == dtypes.complex64) or (dtype == dtypes.complex128)):
+        return
+
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       # Ensure self-adjoint and PD so we get finite condition numbers.
       operator, mat = self.operator_and_matrix(

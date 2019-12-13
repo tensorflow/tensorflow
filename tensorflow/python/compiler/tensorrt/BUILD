@@ -79,9 +79,22 @@ py_library(
 cuda_py_test(
     name = "trt_convert_test",
     srcs = ["trt_convert_test.py"],
-    additional_deps = [
+    data = [
+        "test/testdata/tftrt_2.0_saved_model/saved_model.pb",
+        "test/testdata/tftrt_2.0_saved_model/variables/variables.data-00000-of-00002",
+        "test/testdata/tftrt_2.0_saved_model/variables/variables.data-00001-of-00002",
+        "test/testdata/tftrt_2.0_saved_model/variables/variables.index",
+    ],
+    python_version = "PY3",
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_pip",
+        "no_rocm",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
         ":trt_convert_py",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:graph_util",
@@ -93,12 +106,7 @@ cuda_py_test(
         "//tensorflow/python/saved_model:utils",
         "//tensorflow/python/tools:freeze_graph_lib",
         "//tensorflow/python/tools:saved_model_utils",
-    ],
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_rocm",
-        "no_windows",
-        "nomac",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -131,6 +139,7 @@ cuda_py_tests(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_rocm",
@@ -150,6 +159,7 @@ cuda_py_tests(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    python_version = "PY3",
     tags = [
         "no_rocm",
         "no_windows",
@@ -161,18 +171,12 @@ cuda_py_tests(
 cuda_py_test(
     name = "quantization_mnist_test",
     srcs = ["test/quantization_mnist_test.py"],
-    additional_deps = [
-        ":tf_trt_integration_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python/keras:keras",
-        "//tensorflow/python/estimator:estimator",
-    ],
     data = [
-        "test/testdata/checkpoint",
-        "test/testdata/model.ckpt-46900.data-00000-of-00001",
-        "test/testdata/model.ckpt-46900.index",
+        "test/testdata/mnist/checkpoint",
+        "test/testdata/mnist/model.ckpt-46900.data-00000-of-00001",
+        "test/testdata/mnist/model.ckpt-46900.index",
     ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_oss",  # TODO(b/125290478): allow running in at least some OSS configurations.
@@ -181,5 +185,12 @@ cuda_py_test(
         "no_tap",  # It is not able to download the mnist data.
         "no_windows",
         "nomac",
+    ],
+    deps = [
+        ":tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/keras",
     ],
 )

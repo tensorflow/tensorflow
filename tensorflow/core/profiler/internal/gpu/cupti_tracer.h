@@ -41,6 +41,10 @@ struct MemcpyDetails {
   // This contains CUpti_ActivityMemcpyKind for activity event (on device).
   // For events from other CuptiTracerEventSource, it is always 0.
   int8 kind;
+  // CUpti_ActivityMemoryKind of source.
+  int8 src_mem_kind;
+  // CUpti_ActivityMemoryKind of destination.
+  int8 dst_mem_kind;
 };
 
 struct MemAllocDetails {

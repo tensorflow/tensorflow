@@ -40,7 +40,7 @@ def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     spv-address-of-op ::= ssa-id `=` `spv._address_of` symbol-ref-id
                                      `:` spirv-pointer-type
     ```
@@ -89,7 +89,7 @@ def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     spv-constant-op ::= ssa-id `=` `spv.constant` attribute-value
                         (`:` spirv-type)?
     ```
@@ -118,6 +118,13 @@ def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
   let extraClassDeclaration = [{
     // Returns true if a constant can be built for the given `type`.
     static bool isBuildableWith(Type type);
+
+    // Creates a constant zero/one of the given `type` at the current insertion
+    // point of `builder` and returns it.
+    static spirv::ConstantOp getZero(Type type, Location loc,
+                                     OpBuilder *builder);
+    static spirv::ConstantOp getOne(Type type, Location loc,
+                                    OpBuilder *builder);
   }];
 
   let hasOpcode = 0;
@@ -153,7 +160,7 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     execution-model ::= "Vertex" | "TesellationControl" |
                         <and other SPIR-V execution models...>
 
@@ -210,7 +217,7 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope, Symbol]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     variable-op ::= `spv.globalVariable` spirv-type symbol-ref-id
                     (`initializer(` symbol-ref-id `)`)?
                     (`bind(` integer-literal, integer-literal `)`)?
@@ -246,7 +253,9 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope, Symbol]> {
     }]>,
     OpBuilder<[{Builder *builder, OperationState &state,
                 Type type, StringRef name, unsigned descriptorSet,
-                unsigned binding}]>
+                unsigned binding}]>,
+    OpBuilder<[{Builder *builder, OperationState &state,
+                Type type, StringRef name, spirv::BuiltIn builtin}]>
   ];
 
   let results = (outs);
@@ -286,7 +295,7 @@ def SPV_ModuleOp : SPV_Op<"module",
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     addressing-model ::= `"Logical"` | `"Physical32"` | `"Physical64"`
     memory-model ::= `"Simple"` | `"GLSL450"` | `"OpenCL"` | `"VulkanKHR"`
     spv-module-op ::= `spv.module` addressing-model memory-model
@@ -322,13 +331,17 @@ def SPV_ModuleOp : SPV_Op<"module",
 
   let regions = (region SizedRegion<1>:$body);
 
-  let builders = [OpBuilder<"Builder *, OperationState &state">,
-                  OpBuilder<[{Builder *, OperationState &state,
-                              IntegerAttr addressing_model,
-                              IntegerAttr memory_model,
-                              /*optional*/ArrayAttr capabilities = nullptr,
-                              /*optional*/ArrayAttr extensions = nullptr,
-                              /*optional*/ArrayAttr extended_instruction_sets = nullptr}]>];
+  let builders =
+    [OpBuilder<"Builder *, OperationState &state">,
+     OpBuilder<[{Builder *, OperationState &state,
+                 IntegerAttr addressing_model,
+                 IntegerAttr memory_model}]>,
+     OpBuilder<[{Builder *, OperationState &state,
+                 spirv::AddressingModel addressing_model,
+                 spirv::MemoryModel memory_model,
+                 /*optional*/ ArrayRef<spirv::Capability> capabilities = {},
+                 /*optional*/ ArrayRef<spirv::Extension> extensions = {},
+                 /*optional*/ ArrayAttr extended_instruction_sets = nullptr}]>];
 
   // We need to ensure the block inside the region is properly terminated;
   // the auto-generated builders do not guarantee that.
@@ -382,7 +395,7 @@ def SPV_ReferenceOfOp : SPV_Op<"_reference_of", [NoSideEffect]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     spv-reference-of-op ::= ssa-id `=` `spv._reference_of` symbol-ref-id
                                        `:` spirv-scalar-type
     ```
@@ -423,7 +436,7 @@ def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope, Symbol]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     spv-spec-constant-op ::= `spv.specConstant` symbol-ref-id
                              `spec_id(` integer `)`
                              `=` attribute-value (`:` spirv-type)?

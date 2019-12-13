@@ -178,15 +178,32 @@ Status DynamicDimensionInferenceVisitor::HandleBroadcast(HloInstruction* hlo) {
 }
 
 Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
+  if (hlo->custom_call_target() == "PadToStatic") {
+    for (int64 i = 0; i < hlo->operand(0)->shape().rank(); ++i) {
+      if (hlo->operand(0)->shape().is_dynamic_dimension(i)) {
+        HloInstruction* dynamic_size =
+            hlo->parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
+                ShapeUtil::MakeScalarShape(S32), hlo, i + 1));
+        // PadToStatic converts a dynamic dimension to static dimension. It then
+        // returns the padded data output and the dynamic sizes of input
+        // dimensions.
+        ShapeIndex data_output = {0};
+        parent_->SetDynamicSize(hlo, data_output, i, dynamic_size,
+                                {.stride = 1, .multiple_of = 1});
+      }
+    }
+    return Status::OK();
+  }
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size,
                DimensionConstraint constraint) {
-        if (hlo->custom_call_target() != "Unpad" ||
+        if (hlo->custom_call_target() != "SliceToDynamic" ||
             absl::StartsWith(hlo->custom_call_target(), "Resize")) {
           return Unimplemented(
               "CustomCall is not supported to have a dynamic dimension");
         }
+
         parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size, constraint);
         return Status::OK();
       });
@@ -419,14 +436,47 @@ Status DynamicDimensionInferenceVisitor::HandleConvolution(
 
 Status DynamicDimensionInferenceVisitor::HandleConcatenate(
     HloInstruction* hlo) {
+  // First handle concatenate dimensions. We do this by iterating through all
+  // operands while tracking both dynamic and static dimensions.
+
+  // static_size is used to keep track of the concated size of static
+  // dimensions.
+  int64 static_size = 0;
+  std::vector<HloInstruction*> dynamic_concat_dims;
+  for (int64 i = 0; i < hlo->operand_count(); ++i) {
+    HloInstruction* dynamic_size = parent_->GetDynamicSize(
+        hlo->mutable_operand(i), {}, hlo->concatenate_dimension());
+    if (dynamic_size == nullptr) {
+      // This is a static dimension.
+      static_size +=
+          hlo->operand(i)->shape().dimensions(hlo->concatenate_dimension());
+    } else {
+      dynamic_concat_dims.push_back(dynamic_size);
+    }
+  }
+  // If concat dimension is dynamic, calculate its size by summing up static
+  // dims and dynamic dims together.
+  if (!dynamic_concat_dims.empty()) {
+    HloInstruction* dim_size_total =
+        hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
+            LiteralUtil::CreateR0<int32>(static_size)));
+    for (HloInstruction* dynamic_dim : dynamic_concat_dims) {
+      dim_size_total = hlo->parent()->AddInstruction(
+          HloInstruction::CreateBinary(dim_size_total->shape(), HloOpcode::kAdd,
+                                       dim_size_total, dynamic_dim));
+    }
+    parent_->SetDynamicSize(hlo, {}, hlo->concatenate_dimension(),
+                            dim_size_total, {.stride = 1, .multiple_of = 1});
+  }
+
+  // Simply pass through non-concat dynamic dimensions.
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size,
                DimensionConstraint constraint) {
         int64 concatenate_dimension = hlo->concatenate_dimension();
         if (concatenate_dimension == dimension) {
-          return Unimplemented("Dynamic concatenation is not supported yet: %s",
-                               operand->ToString());
+          return Status::OK();
         }
         parent_->SetDynamicSize(hlo, index, dimension, dynamic_size,
                                 constraint);
@@ -1318,9 +1368,9 @@ Status DynamicDimensionInference::ForwardDynamicSize(HloInstruction* inst,
     DynamicDimension dynamic_dimension{inst, index, dim};
     auto iter = dynamic_mapping_.find(dynamic_dimension);
     if (iter != dynamic_mapping_.end()) {
-      dynamic_mapping_.try_emplace(dynamic_dimension_new, iter->second);
-      constraint_mapping_.try_emplace(dynamic_dimension_new,
-                                      constraint_mapping_[dynamic_dimension]);
+      dynamic_mapping_.insert({dynamic_dimension_new, iter->second});
+      constraint_mapping_.insert(
+          {dynamic_dimension_new, constraint_mapping_[dynamic_dimension]});
       auto iter = per_hlo_dynamic_dimensions_.try_emplace(new_inst);
       iter.first->second.emplace(dynamic_dimension_new);
     }

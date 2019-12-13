@@ -22,6 +22,7 @@ import sys
 
 import numpy as np
 
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -212,6 +213,28 @@ class GeneratorSpec(type_spec.TypeSpec):
     return (self.shape, self.dtype)
 
 
+def _create_variable(*args, **kwargs):
+  """Creates a variable, and check that it's not MirroredVariable.
+
+  Args:
+    *args: positional arguments passed along to `variables.Variable.
+    **kwargs: keyword arguments passed along to `variables.Variable.
+
+  Returns:
+    The created variable.
+  """
+  if ds_context.has_strategy():
+    raise ValueError(
+        "Creating a generator within a strategy scope is disallowed, because "
+        "there is ambiguity on how to replicate a generator (e.g. should it be "
+        "copied so such each replica will get the same random numbers, or "
+        "should it be 'split' into different generators that generate "
+        "different random numbers).")
+    # TODO(wangpeng): Link to the RNG guide for solutions in such cases.
+  var = variables.Variable(*args, **kwargs)
+  return var
+
+
 @tf_export("random.experimental.Generator")
 class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
   """Random-number generator.
@@ -231,7 +254,7 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
     decreasing precedence:
     (1) If `copy_from` is not None, the new generator is initialized by copying
         information from another generator.
-    (3) If `state` and `alg` are not None (they must be set together), the new
+    (2) If `state` and `alg` are not None (they must be set together), the new
         generator is initialized by a state.
 
     Args:
@@ -246,12 +269,20 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
         [https://www.thesalmons.org/john/random123/papers/random123sc11.pdf]).
         Note `RNG_ALG_PHILOX` guarantees the same numbers are produced (given
         the same random state) across all architextures (CPU, GPU, XLA etc).
+
+    Throws:
+      ValueError: if the generator is created inside a synchronous
+        `tf.distribute` strategy such as `MirroredStrategy` or `TPUStrategy`,
+        because there is ambiguity on how to replicate a generator (e.g. should
+        it be copied so such each replica will get the same random numbers, or
+        should it be "split" into different generators that generate
+        different random numbers).
     """
     if copy_from is not None:
       # All other arguments should be None
       assert (alg or state) is None
-      self._state_var = variables.Variable(copy_from.state, dtype=STATE_TYPE,
-                                           trainable=False)
+      self._state_var = _create_variable(copy_from.state, dtype=STATE_TYPE,
+                                         trainable=False)
       self._alg = copy_from.algorithm
 
     else:
@@ -262,8 +293,8 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
       else:
         state = _convert_to_state_tensor(state)
         _check_state_shape(state.shape, alg)
-        self._state_var = variables.Variable(state, dtype=STATE_TYPE,
-                                             trainable=False)
+        self._state_var = _create_variable(state, dtype=STATE_TYPE,
+                                           trainable=False)
       self._alg = alg
 
   @classmethod
@@ -278,6 +309,14 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
 
     Returns:
       The new generator.
+
+    Throws:
+      ValueError: if the generator is created inside a synchronous
+        `tf.distribute` strategy such as `MirroredStrategy` or `TPUStrategy`,
+        because there is ambiguity on how to replicate a generator (e.g. should
+        it be copied so such each replica will get the same random numbers, or
+        should it be "split" into different generators that generate
+        different random numbers).
     """
     return cls(alg=alg, state=state)
 
@@ -299,6 +338,14 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
 
     Returns:
       The new generator.
+
+    Throws:
+      ValueError: if the generator is created inside a synchronous
+        `tf.distribute` strategy such as `MirroredStrategy` or `TPUStrategy`,
+        because there is ambiguity on how to replicate a generator (e.g. should
+        it be copied so such each replica will get the same random numbers, or
+        should it be "split" into different generators that generate
+        different random numbers).
     """
     if alg is None:
       # TODO(wangpeng): more sophisticated algorithm selection
@@ -318,6 +365,14 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
 
     Returns:
       The new generator.
+
+    Throws:
+      ValueError: if the generator is created inside a synchronous
+        `tf.distribute` strategy such as `MirroredStrategy` or `TPUStrategy`,
+        because there is ambiguity on how to replicate a generator (e.g. should
+        it be copied so such each replica will get the same random numbers, or
+        should it be "split" into different generators that generate
+        different random numbers).
     """
     if alg is None:
       # TODO(wangpeng): more sophisticated algorithm selection
@@ -342,6 +397,14 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
 
     Returns:
       The new generator.
+
+    Throws:
+      ValueError: if the generator is created inside a synchronous
+        `tf.distribute` strategy such as `MirroredStrategy` or `TPUStrategy`,
+        because there is ambiguity on how to replicate a generator (e.g. should
+        it be copied so such each replica will get the same random numbers, or
+        should it be "split" into different generators that generate
+        different random numbers).
     """
     counter = _convert_to_state_tensor(counter)
     key = _convert_to_state_tensor(key)

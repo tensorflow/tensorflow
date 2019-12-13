@@ -566,9 +566,9 @@ def MakeNdarray(tensor):
   """Create a numpy ndarray from a tensor.
 
   Create a numpy ndarray with the same shape and data as the tensor.
-  
+
   For example:
-  
+
   ```python
   # Tensor a has shape (2,3)
   a = tf.constant([[1,2,3],[4,5,6]])

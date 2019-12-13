@@ -34,6 +34,12 @@ def LLVM_Dialect : Dialect {
 def LLVM_Type : Type<CPred<"$_self.isa<::mlir::LLVM::LLVMType>()">,
                      "LLVM dialect type">;
 
+// Type constraint accepting only wrapped LLVM integer types.
+def LLVMInt : TypeConstraint<
+  And<[LLVM_Type.predicate,
+       CPred<"$_self.cast<::mlir::LLVM::LLVMType>().isIntegerTy()">]>,
+  "LLVM dialect integer">;
+
 // Base class for LLVM operations. Defines the interface to the llvm::IRBuilder
 // used to translate to LLVM IR proper.
 class LLVM_OpBase<Dialect dialect, string mnemonic, list<OpTrait> traits = []> :

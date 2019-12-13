@@ -199,6 +199,7 @@ tf_py_test(
 tf_xla_py_test(
     name = "util_xla_test",
     srcs = ["util_xla_test.py"],
+    python_version = "PY3",
     tags = [
         "no_pip",
         "no_windows",

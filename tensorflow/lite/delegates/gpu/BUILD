@@ -6,6 +6,11 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files([
+    "gpu_delegate.h",
+    "metal_delegate.h",
+])
+
 # Primary purpose of this config is to replace ::util::Status with our custom
 # light implementation ::tflite::gpu::StatusLite to reduce binary size.  Besides
 # that, certain features that were hard to communicate without full open source
@@ -37,6 +42,7 @@ cc_library(
         "//conditions:default": [],
     }),
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/types:span",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
@@ -106,7 +112,7 @@ objc_library(
     ],
 )
 
-# build -c opt --config android_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always :libtensorflowlite_gpu_gl.so
+# build -c opt --config android_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt --linkopt -s --strip always :libtensorflowlite_gpu_gl.so
 cc_binary(
     name = "libtensorflowlite_gpu_gl.so",
     linkopts = [
@@ -115,8 +121,12 @@ cc_binary(
         "//tensorflow:android": [
             "-lEGL",
             "-lGLESv3",
+            "-fvisibility=hidden",
         ],
-        "//conditions:default": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-fvisibility=hidden",
+        ],
     }),
     linkshared = 1,
     linkstatic = 1,
@@ -127,7 +137,7 @@ cc_binary(
     deps = [":gl_delegate"],
 )
 
-# build -c opt --config android_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always :libtensorflowlite_gpu_delegate.so
+# build -c opt --config android_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt --linkopt -s --strip always :libtensorflowlite_gpu_delegate.so
 cc_binary(
     name = "libtensorflowlite_gpu_delegate.so",
     linkopts = [
@@ -136,8 +146,12 @@ cc_binary(
         "//tensorflow:android": [
             "-lEGL",
             "-lGLESv3",
+            "-fvisibility=hidden",
         ],
-        "//conditions:default": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-fvisibility=hidden",
+        ],
     }),
     linkshared = 1,
     linkstatic = 1,

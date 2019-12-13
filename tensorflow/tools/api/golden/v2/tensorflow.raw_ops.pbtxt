@@ -605,6 +605,18 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'tag\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "CSRSparseMatrixComponents"
+    argspec: "args=[\'csr_sparse_matrix\', \'index\', \'type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "CSRSparseMatrixToDense"
+    argspec: "args=[\'sparse_input\', \'type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "CSRSparseMatrixToSparseTensor"
+    argspec: "args=[\'sparse_matrix\', \'type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "CSVDataset"
     argspec: "args=[\'filenames\', \'compression_type\', \'buffer_size\', \'header\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'select_cols\', \'record_defaults\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -954,7 +966,7 @@ tf_module {
   }
   member_method {
     name: "DebugNumericSummaryV2"
-    argspec: "args=[\'input\', \'tensor_debug_mode\', \'tensor_id\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'-1\', \'None\'], "
+    argspec: "args=[\'input\', \'output_dtype\', \'tensor_debug_mode\', \'tensor_id\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'-1\', \'-1\', \'None\'], "
   }
   member_method {
     name: "DecodeAndCropJpeg"
@@ -1031,6 +1043,10 @@ tf_module {
   member_method {
     name: "DeleteSessionTensor"
     argspec: "args=[\'handle\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "DenseToCSRSparseMatrix"
+    argspec: "args=[\'dense_input\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "DenseToDenseSetOperation"
@@ -3953,6 +3969,50 @@ tf_module {
     argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'a_is_sparse\', \'b_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'None\'], "
   }
   member_method {
+    name: "SparseMatrixAdd"
+    argspec: "args=[\'a\', \'b\', \'alpha\', \'beta\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixMatMul"
+    argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'adjoint_a\', \'adjoint_b\', \'transpose_output\', \'conjugate_output\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'False\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixMul"
+    argspec: "args=[\'a\', \'b\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixNNZ"
+    argspec: "args=[\'sparse_matrix\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixOrderingAMD"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixSoftmax"
+    argspec: "args=[\'logits\', \'type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixSoftmaxGrad"
+    argspec: "args=[\'softmax\', \'grad_softmax\', \'type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixSparseCholesky"
+    argspec: "args=[\'input\', \'permutation\', \'type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixSparseMatMul"
+    argspec: "args=[\'a\', \'b\', \'type\', \'transpose_a\', \'transpose_b\', \'adjoint_a\', \'adjoint_b\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixTranspose"
+    argspec: "args=[\'input\', \'type\', \'conjugate\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixZeros"
+    argspec: "args=[\'dense_shape\', \'type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "SparseReduceMax"
     argspec: "args=[\'input_indices\', \'input_values\', \'input_shape\', \'reduction_axes\', \'keep_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
@@ -4046,6 +4106,10 @@ tf_module {
   }
   member_method {
     name: "SparseTensorSliceDataset"
+    argspec: "args=[\'indices\', \'values\', \'dense_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseTensorToCSRSparseMatrix"
     argspec: "args=[\'indices\', \'values\', \'dense_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {

@@ -72,7 +72,7 @@ Let's break down the anatomy of this MLIR operation:
         are always constant. Here we define a boolean attribute named 'inplace'
         that has a constant value of true.
 
--   `(tensor<2x3xf64) -> tensor<3x2xf64>`
+-   `(tensor<2x3xf64>) -> tensor<3x2xf64>`
 
     *   This refers to the type of the operation in a functional form, spelling
         the types of the arguments in parentheses and the type of the return
@@ -270,16 +270,17 @@ types, etc). We can always get an instance of our toy operation by using LLVM's
 casting infrastructure:
 
 ```c++
-void processConstantOp(mlir::Operation *op) {
-  ConstantOp op = llvm::dyn_cast<ConstantOp>(op);
+void processConstantOp(mlir::Operation *operation) {
+  ConstantOp op = llvm::dyn_cast<ConstantOp>(operation);
 
   // This operation is not an instance of `ConstantOp`.
   if (!op)
     return;
 
   // Get the internal operation instance back.
-  mlir::Operation *internalOp = op.getOperation();
-  assert(internalOp == op && "these operation instances are the same");
+  mlir::Operation *internalOperation = op.getOperation();
+  assert(internalOperation == operation &&
+         "these operation instances are the same");
 }
 ```
 
@@ -395,7 +396,7 @@ documents.
 ```tablegen
 def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
   // Provide a summary and description for this operation. This can be used to
-  // auto-generate documenatation of the operations within our dialect.
+  // auto-generate documentation of the operations within our dialect.
   let summary = "constant operation";
   let description = [{
     Constant operation turns a literal into an SSA value. The data is attached
@@ -433,7 +434,7 @@ invariants of the operation have already been verified:
 ```tablegen
 def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
   // Provide a summary and description for this operation. This can be used to
-  // auto-generate documenatation of the operations within our dialect.
+  // auto-generate documentation of the operations within our dialect.
   let summary = "constant operation";
   let description = [{
     Constant operation turns a literal into an SSA value. The data is attached
@@ -473,7 +474,7 @@ the implementation inline.
 ```tablegen
 def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
   // Provide a summary and description for this operation. This can be used to
-  // auto-generate documenatation of the operations within our dialect.
+  // auto-generate documentation of the operations within our dialect.
   let summary = "constant operation";
   let description = [{
     Constant operation turns a literal into an SSA value. The data is attached

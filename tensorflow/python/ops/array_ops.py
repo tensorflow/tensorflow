@@ -245,18 +245,32 @@ def fill(dims, value, name=None):
 @tf_export("identity")
 @dispatch.add_dispatch_support
 def identity(input, name=None):  # pylint: disable=redefined-builtin
-  r"""Return a tensor with the same shape and contents as input.
+  r"""Return a Tensor with the same shape and contents as input.
+
+  The return value is not the same Tensor as the original, but contains the same
+  values.  This operation is fast when used on the same device.
 
   For example:
 
-  ```python
-  import tensorflow as tf
-  val0 = tf.ones((1,), dtype=tf.float32)
-  a = tf.atan2(val0, val0)
-  a_identity = tf.identity(a)
-  print(a.numpy())          #[0.7853982]
-  print(a_identity.numpy()) #[0.7853982]
-  ```
+  >>> a = tf.constant([0.78])
+  >>> a_identity = tf.identity(a)
+  >>> a.numpy()
+  array([0.78], dtype=float32)
+  >>> a_identity.numpy()
+  array([0.78], dtype=float32)
+
+  Calling `tf.identity` on a variable will make a Tensor that represents the
+  value of that variable at the time it is called. This is equivalent to calling
+  `<variable>.read_value()`.
+
+  >>> a = tf.Variable(5)
+  >>> a_identity = tf.identity(a)
+  >>> a.assign_add(1)
+  <tf.Variable ... shape=() dtype=int32, numpy=6>
+  >>> a.numpy()
+  6
+  >>> a_identity.numpy()
+  5
 
   Args:
     input: A `Tensor`.
@@ -429,6 +443,41 @@ listdiff.__doc__ = gen_array_ops.list_diff.__doc__ + "\n" + listdiff.__doc__
                         "Please switch to tf.sets.difference().")
 @tf_export(v1=["setdiff1d"])
 def setdiff1d(x, y, index_dtype=dtypes.int32, name=None):
+  """Computes the difference between two lists of numbers or strings.
+
+  Given a list x and a list y, this operation returns a list out that
+  represents all values that are in x but not in y. The returned list
+  out is sorted in the same order that the numbers appear in x
+  (duplicates are preserved). This operation also returns a list idx
+  that represents the position of each out element in x.
+
+  In other words:
+
+  ```python
+  out[i] = x[idx[i]] for i in [0, 1, ..., len(out) - 1]
+  ```
+
+  Example usage:
+
+  >>> x = [1, 2, 3, 4, 5, 6]
+  >>> y = [1, 3, 5]
+  >>> setdiff1d(x,y)
+  ListDiff(out=<tf.Tensor: id=2, shape=(3,), dtype=int32,
+  numpy=array([2, 4, 6], dtype=int32)>, idx=<tf.Tensor: id=3,
+  shape=(3,), dtype=int32, numpy=array([1, 3, 5], dtype=int32)>)
+
+  Args:
+    x: A Tensor. 1-D. Values to keep.
+    y: A Tensor. Must have the same type as x. 1-D. Values to remove.
+    out_idx: An optional tf.DType from: tf.int32, tf.int64. Defaults to
+      tf.int32.
+    name: A name for the operation (optional).
+
+  Returns:
+    A tuple of Tensor objects (out, idx).
+    out: A Tensor. Has the same type as x.
+    idx: A Tensor of type out_idx.
+  """
   return gen_array_ops.list_diff(x, y, index_dtype, name)
 
 
@@ -543,8 +592,8 @@ def shape(input, name=None, out_type=dtypes.int32):
   Args:
     input: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
-    out_type: (Optional) The specified output type of the operation (`int32` or
-      `int64`). Defaults to `tf.int32`.
+    out_type: (Optional) The specified output type of the operation (`int32`
+    or `int64`). Defaults to `tf.int32`.
 
   Returns:
     A `Tensor` of type `out_type`.
@@ -610,10 +659,9 @@ def size_v2(input, out_type=dtypes.int32, name=None):
 
   For example:
 
-  ```python
-  t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
-  tf.size(t)  # 12
-  ```
+  >>> t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
+  >>> tf.size(t)
+  <tf.Tensor: shape=(), dtype=int32, numpy=12>
 
   Args:
     input: A `Tensor` or `SparseTensor`.
@@ -1738,6 +1786,39 @@ def sparse_mask(a, mask_indices, name=None):
 
 @tf_export("unique")
 def unique(x, out_idx=dtypes.int32, name=None):
+  """Finds unique elements in a 1-D tensor.
+
+  This operation returns a tensor `y` containing all of the unique elements
+  of `x` sorted in the same order that they occur in `x`. This operation
+  also returns a tensor `idx` the same size as `x` that contains the index
+  of each value of `x` in the unique output `y`. In other words:
+
+
+    y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]
+
+  Example usage:
+
+  >>> x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
+  >>> y, idx = unique(x)
+  >>> y
+  <tf.Tensor: id=5, shape=(5,), dtype=int32,
+  numpy=array([1, 2, 4, 7, 8], dtype=int32)>
+  >>> idx
+  <tf.Tensor: id=6, shape=(9,), dtype=int32,
+  numpy=array([0, 0, 1, 2, 2, 2, 3, 4, 4], dtype=int32)>
+
+  Args:
+    x: A Tensor. 1-D.
+    out_idx: An optional tf.DType from: tf.int32, tf.int64. Defaults to
+      tf.int32.
+    name: A name for the operation (optional).
+
+  Returns:
+    A tuple of Tensor objects (y, idx).
+      y: A Tensor. Has the same type as x.
+      idx: A Tensor of type out_idx.
+
+  """
   # TODO(yongtang): switch to v2 once API deprecation
   # period (3 weeks) pass.
   # TODO(yongtang): The documentation should also
@@ -1750,6 +1831,44 @@ unique.__doc__ = gen_array_ops.unique.__doc__
 
 @tf_export("unique_with_counts")
 def unique_with_counts(x, out_idx=dtypes.int32, name=None):
+  """Finds unique elements in a 1-D tensor.
+
+  This operation returns a tensor `y` containing all of the unique elements
+  of `x` sorted in the same order that they occur in `x`. This operation
+  also returns a tensor `idx` the same size as `x` that contains the index
+  of each value of `x` in the unique output `y`. Finally, it returns a
+  third tensor `count` that contains the count of each element of `y`
+  in `x`. In other words:
+
+    y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]
+
+  Example usage:
+
+  >>> x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
+  >>> y, idx, count = unique_with_counts(x)
+  >>> y
+  <tf.Tensor: id=8, shape=(5,), dtype=int32,
+  numpy=array([1, 2, 4, 7, 8], dtype=int32)>
+  >>> idx
+  <tf.Tensor: id=9, shape=(9,), dtype=int32,
+  numpy=array([0, 0, 1, 2, 2, 2, 3, 4, 4], dtype=int32)>
+  >>> count
+  <tf.Tensor: id=10, shape=(5,), dtype=int32,
+  numpy=array([2, 1, 3, 1, 2], dtype=int32)>
+
+  Args:
+    x: A Tensor. 1-D.
+    out_idx: An optional tf.DType from: tf.int32, tf.int64. Defaults to
+      tf.int32.
+    name: A name for the operation (optional).
+
+  Returns:
+    A tuple of Tensor objects (y, idx, count).
+      y: A Tensor. Has the same type as x.
+      idx: A Tensor of type out_idx.
+      count: A Tensor of type out_idx.
+
+  """
   # TODO(yongtang): switch to v2 once API deprecation
   # period (3 weeks) pass.
   # TODO(yongtang): The documentation should also
@@ -1762,11 +1881,11 @@ unique_with_counts.__doc__ = gen_array_ops.unique_with_counts.__doc__
 
 @tf_export("split")
 def split(value, num_or_size_splits, axis=0, num=None, name="split"):
-  """Splits a tensor into sub tensors.
+  """Splits a tensor `value` into a list of sub tensors.
 
-  If `num_or_size_splits` is an integer, then `value` is split along dimension
-  `axis` into `num_split` smaller tensors. This requires that `num_split` evenly
-  divides `value.shape[axis]`.
+  If `num_or_size_splits` is an integer, then `value` is split along the
+  dimension `axis` into `num_split` smaller tensors. This requires that
+  `value.shape[axis]` is divisible by `num_split`.
 
   If `num_or_size_splits` is a 1-D Tensor (or list), we call it `size_splits`
   and `value` is split into `len(size_splits)` elements. The shape of the `i`-th
@@ -1775,17 +1894,21 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
 
   For example:
 
-  ```python
-  # 'value' is a tensor with shape [5, 30]
-  # Split 'value' into 3 tensors with sizes [4, 15, 11] along dimension 1
-  split0, split1, split2 = tf.split(value, [4, 15, 11], 1)
-  tf.shape(split0)  # [5, 4]
-  tf.shape(split1)  # [5, 15]
-  tf.shape(split2)  # [5, 11]
-  # Split 'value' into 3 tensors along dimension 1
-  split0, split1, split2 = tf.split(value, num_or_size_splits=3, axis=1)
-  tf.shape(split0)  # [5, 10]
-  ```
+  >>> x = tf.Variable(tf.random.uniform([5, 30], -1, 1))
+
+  Split `x` into 3 tensors along dimension 1
+  >>> s0, s1, s2 = tf.split(x, num_or_size_splits=3, axis=1)
+  >>> tf.shape(s0).numpy()
+  array([ 5, 10], dtype=int32)
+
+  Split `x` into 3 tensors with sizes [4, 15, 11] along dimension 1
+  >>> split0, split1, split2 = tf.split(x, [4, 15, 11], 1)
+  >>> tf.shape(split0).numpy()
+  array([5, 4], dtype=int32)
+  >>> tf.shape(split1).numpy()
+  array([ 5, 15], dtype=int32)
+  >>> tf.shape(split2).numpy()
+  array([ 5, 11], dtype=int32)
 
   Args:
     value: The `Tensor` to split.
@@ -1801,8 +1924,8 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
     name: A name for the operation (optional).
 
   Returns:
-    if `num_or_size_splits` is a scalar returns `num_or_size_splits` `Tensor`
-    objects; if `num_or_size_splits` is a 1-D Tensor returns
+    if `num_or_size_splits` is a scalar returns a list of `num_or_size_splits`
+    `Tensor` objects; if `num_or_size_splits` is a 1-D Tensor returns
     `num_or_size_splits.get_shape[0]` `Tensor` objects resulting from splitting
     `value`.
 
@@ -2734,7 +2857,7 @@ def ones_like_v2(
     input,  # pylint: disable=redefined-builtin
     dtype=None,
     name=None):
-  """Creates a tensor with all elements set to one.
+  """Creates a tensor of all ones that has the same shape as the input.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the
   same type and shape as `tensor` with all elements set to 1. Optionally,
@@ -2742,10 +2865,11 @@ def ones_like_v2(
 
   For example:
 
-  ```python
-  tensor = tf.constant([[1, 2, 3], [4, 5, 6]])
-  tf.ones_like(tensor)  # [[1, 1, 1], [1, 1, 1]]
-  ```
+  >>> tensor = tf.constant([[1, 2, 3], [4, 5, 6]])
+  >>> tf.ones_like(tensor)
+  <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
+    array([[1, 1, 1],
+           [1, 1, 1]], dtype=int32)>
 
   Args:
     input: A `Tensor`.
@@ -4073,38 +4197,89 @@ def where(condition, x=None, y=None, name=None):
 
 @tf_export("where", v1=["where_v2"])
 def where_v2(condition, x=None, y=None, name=None):
-  """Return the elements, either from `x` or `y`, depending on the `condition`.
+  """Return the elements where `condition` is `True` (multiplexing `x` and `y`).
 
-  If both `x` and `y` are None, then this operation returns the coordinates of
-  true elements of `condition`.  The coordinates are returned in a 2-D tensor
-  where the first dimension (rows) represents the number of true elements, and
-  the second dimension (columns) represents the coordinates of the true
-  elements. Keep in mind, the shape of the output tensor can vary depending on
-  how many true values there are in input. Indices are output in row-major
-  order.
+  This operator has two modes: in one mode both `x` and `y` are provided, in
+  another mode neither are provided. `condition` is always expected to be a
+  `tf.Tensor` of type `bool`.
 
-  If both non-None, `condition`, `x` and `y` must be broadcastable to the same
-  shape.
+  #### Retrieving indices of `True` elements
 
-  The `condition` tensor acts as a mask that chooses, based on the value at each
-  element, whether the corresponding element / row in the output should be taken
-  from `x` (if true) or `y` (if false).
+  If `x` and `y` are not provided (both are None):
+
+  `tf.where` will return the indices of `condition` that are `True`, in
+  the form of a 2-D tensor with shape (n, d).
+  (Where n is the number of matching indices in `condition`,
+  and d is the number of dimensions in `condition`).
+
+  Indices are output in row-major order.
+
+  >>> tf.where([True, False, False, True])
+  <tf.Tensor: shape=(2, 1), dtype=int64, numpy=
+  array([[0],
+         [3]])>
+
+  >>> tf.where([[True, False], [False, True]])
+  <tf.Tensor: shape=(2, 2), dtype=int64, numpy=
+  array([[0, 0],
+         [1, 1]])>
+
+  >>> tf.where([[[True, False], [False, True], [True, True]]])
+  <tf.Tensor: shape=(4, 3), dtype=int64, numpy=
+  array([[0, 0, 0],
+         [0, 1, 1],
+         [0, 2, 0],
+         [0, 2, 1]])>
+
+  #### Multiplexing between `x` and `y`
+
+  If `x` and `y` are provided (both have non-None values):
+
+  `tf.where` will choose an output shape from the shapes of `condition`, `x`,
+  and `y` that all three shapes are
+  [broadcastable](https://docs.scipy.org/doc/numpy/reference/ufuncs.html) to.
+
+  The `condition` tensor acts as a mask that chooses whether the corresponding
+  element / row in the output should be taken from `x`
+  (if the elemment in `condition is True) or `y` (if it is false).
+
+  >>> tf.where([True, False, False, True], [1,2,3,4], [100,200,300,400])
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 200, 300,   4],
+  dtype=int32)>
+  >>> tf.where([True, False, False, True], [1,2,3,4], [100])
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 100, 100,   4],
+  dtype=int32)>
+  >>> tf.where([True, False, False, True], [1,2,3,4], 100)
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 100, 100,   4],
+  dtype=int32)>
+  >>> tf.where([True, False, False, True], 1, 100)
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 100, 100,   1],
+  dtype=int32)>
+
+  >>> tf.where(True, [1,2,3,4], 100)
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([1, 2, 3, 4],
+  dtype=int32)>
+  >>> tf.where(False, [1,2,3,4], 100)
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([100, 100, 100, 100],
+  dtype=int32)>
 
   Args:
-    condition: A `Tensor` of type `bool`
-    x: A Tensor which is of the same type as `y`, and may be broadcastable with
-      `condition` and `y`.
-    y: A Tensor which is of the same type as `x`, and may be broadcastable with
-      `condition` and `x`.
+    condition: A `tf.Tensor` of type `bool`
+    x: If provided, a Tensor which is of the same type as `y`, and has a shape
+      broadcastable with `condition` and `y`.
+    y: If provided, a Tensor which is of the same type as `y`, and has a shape
+      broadcastable with `condition` and `x`.
     name: A name of the operation (optional).
 
   Returns:
-    A `Tensor` with the same type as `x` and `y`, and shape that
-      is broadcast from `condition`, `x`, and `y`, if `x`, `y` are non-None.
+    If `x` and `y` are provided:
+      A `Tensor` with the same type as `x` and `y`, and shape that
+      is broadcast from `condition`, `x`, and `y`.
     Otherwise, a `Tensor` with shape `(num_true, dim_size(condition))`.
 
   Raises:
-    ValueError: When exactly one of `x` or `y` is non-None.
+    ValueError: When exactly one of `x` or `y` is non-None, or the shapes
+      are not all broadcastable.
   """
   if x is None and y is None:
     with ops.name_scope(name, "Where", [condition]) as name:
@@ -5080,6 +5255,34 @@ def extract_image_patches(  # pylint: disable=missing-docstring
     padding=None,
     name=None,
     sizes=None):
+  """Extract patches from images and put them in the "depth" output dimension.
+
+  Args:
+    `images`: A `Tensor`. Must be one of the following types: `float32`,
+      `float64`, `int32`, `uint8`, `int16`, `int8`, `int64`, `bfloat16`,
+      `uint16`, `half`, `uint32`, `uint64`. 4-D Tensor with shape
+    `[batch, in_rows, in_cols, depth]`. `ksizes`: A list of `ints` that has
+      length `>= 4`. The size of the sliding window for each
+    dimension of `images`. `strides`: A list of `ints` that has length `>= 4`.
+      1-D of length 4. How far the centers of two consecutive
+    patches are in the images. Must be:
+    `[1, stride_rows, stride_cols, 1]`. `rates`: A list of `ints`
+    that has length `>= 4`. 1-D of length 4. Must be: `[1, rate_rows, rate_cols,
+      1]`. This is the input stride, specifying how far two consecutive patch
+      samples are in the input. Equivalent to extracting patches with
+      `patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1)`,
+      followed by subsampling them spatially by a factor of `rates`. This is
+      equivalent to `rate` in dilated (a.k.a. Atrous) convolutions.
+    `padding`: A `string` from: "SAME", "VALID". The type of padding algorithm
+      to use.
+    We specify the size-related attributes as:  ``` ksizes = [1, ksize_rows,
+      ksize_cols, 1] strides = [1, strides_rows, strides_cols, 1] rates = [1,
+      rates_rows, rates_cols, 1]
+    name: A name for the operation (optional). ```
+
+  Returns:
+    A Tensor. Has the same type as images.
+  """
   ksizes = deprecation.deprecated_argument_lookup("sizes", sizes, "ksizes",
                                                   ksizes)
   return gen_array_ops.extract_image_patches(images, ksizes, strides, rates,

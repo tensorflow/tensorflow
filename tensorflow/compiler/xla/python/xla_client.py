@@ -76,13 +76,6 @@ class Backend(object):
   def buffer_from_pyval(self, pyval, device=None):
     """Allocates a fresh buffer and populates it with `pyval`."""
 
-  def buffers_from_pyvals(self, pyvals_and_devices):
-    """Allocates buffers and populates them with `pyvals`."""
-    return [
-        self.buffer_from_pyval(pyval, device)
-        for pyval, device in pyvals_and_devices
-    ]
-
   @abc.abstractmethod
   def make_tuple(self, c_buffers, device):
     """Makes a tuple from a sequence of backend buffer objects."""
@@ -90,6 +83,23 @@ class Backend(object):
   @abc.abstractmethod
   def compile(self, computation, compile_options):
     """Compiles a computation. Returns an executable."""
+
+  @abc.abstractmethod
+  def get_default_device_assignment(self, num_replicas):
+    """Returns the default device assignment that `compile` would use.
+
+    If `compile_options.device_assignment` isn't set, `compile` will pick a
+    deterministic device assignment based on the number of replicas, possibly
+    optimizing for device locality. This method returns that assignment, which
+    is useful for e.g. manually replicating a value before passing it to a
+    compiled executable.
+
+    Args:
+      num_replicas: the number of replicas needed.
+
+    Returns:
+      A list of Devices of length `num_replicas` indexed by replica ID.
+    """
 
 
 class LocalBackend(Backend):
@@ -142,6 +152,9 @@ class LocalBackend(Backend):
                                         compile_options.argument_layouts,
                                         options, self.client,
                                         compile_options.device_assignment)
+
+  def get_default_device_assignment(self, num_replicas):
+    return self.client.GetDefaultDeviceAssignment(num_replicas)
 
   def serialize(self, executable):
     return self.client.SerializeExecutable(executable)
@@ -385,22 +398,6 @@ class Buffer(object):
     return backend.buffer_from_pyval(pyval, device)
 
   @staticmethod
-  def from_pyvals(pyvals_and_devices, backend=None):
-    """Copies multiple Python values to freshly allocated on-device buffers.
-
-    Arguments:
-      pyvals_and_devices: a list of `(pyval, device)` pairs, where `pyval` is a
-        Python value to copy (e.g., a NumPy array), and `device` is an integer
-        device ordinal.
-      backend: a Backend object, or `None` to use the default local backend.
-
-    Returns:
-      A list of `Buffer` objects corresponding to `pyvals_and_devices`.
-    """
-    backend = backend or get_local_backend()
-    return backend.buffers_from_pyvals(pyvals_and_devices)
-
-  @staticmethod
   def make_tuple(buffers, device, backend=None):
     backend = backend or get_local_backend()
     return backend.make_tuple(buffers, device)
@@ -594,10 +591,13 @@ class Computation(object):
   def GetReturnValueShape(self):
     return self._c_computation.GetProgramShape().result_shape()
 
+  def Hash(self):
+    return self._c_computation.Hash()
+
 
 # An Executable is a C++ class that duck types with the following API:
 # class Executable(object):
-#   def DeviceOrdinals(self) -> [int]:
+#   def local_devices(self) -> [Device]:
 #   def Execute(self, arguments : [Buffer]) -> Buffer:
 #     """Execute on one replica with Buffer arguments and return value."""
 #
@@ -627,7 +627,7 @@ def execute_with_python_values(executable, arguments=(), backend=None):
 
   def put(arg):
     return Buffer.from_pyval(
-        arg, device=executable.DeviceOrdinals()[0], backend=backend)
+        arg, device=executable.local_devices()[0], backend=backend)
 
   arguments = [put(arg) for arg in arguments]
   return executable.Execute(arguments).to_py()
@@ -646,12 +646,14 @@ def execute_with_python_values_replicated(executable, arguments, backend=None):
     A list of python values, one per replica.
   """
   backend = backend or get_local_backend()
-  device_ordinals = executable.DeviceOrdinals()
+  devices = executable.local_devices()
   # pylint: disable=g-complex-comprehension
-  flat_args = [(arg, device_ordinals[replica])
+  flat_args = [(arg, devices[replica])
                for replica, replica_args in enumerate(arguments)
                for arg in replica_args]
-  flat_arg_buffers = Buffer.from_pyvals(flat_args, backend=backend)
+  flat_arg_buffers = [
+      backend.buffer_from_pyval(pyval, device) for pyval, device in flat_args
+  ]
   arg_buffers = []
   for replica_args in arguments:
     arg_buffers.append(flat_arg_buffers[:len(replica_args)])
@@ -1011,7 +1013,7 @@ class ComputationBuilder(object):
     """
     replica_groups_protos = _get_replica_groups_protos(replica_groups)
     return ops.AllReduce(operand, computation.computation,
-                         replica_groups_protos, None)
+                         replica_groups_protos, None, None)
 
   def AllToAll(self,
                operand,
@@ -1706,6 +1708,7 @@ _OTHER_OPS = [
     'Dot',
     'GetTupleElement',
     'ReducePrecision',
+    'RegularizedIncompleteBeta',
     'Rev',
     'Select',
     'SliceInDim',

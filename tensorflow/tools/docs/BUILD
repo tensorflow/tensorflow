@@ -22,6 +22,7 @@ py_test(
     ],
     deps = [
         "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
 

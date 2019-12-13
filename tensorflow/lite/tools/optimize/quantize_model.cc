@@ -282,10 +282,9 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
 }
 
 // Apply constraints to ops if they have any.
-// We have made the restriction that for int8 quantized concat, the inputs and
-// outpus must have the same scale and zero point. The other ones with
-// constraints(averagepool, maxpool, gather, softmax, tanh etc) are handled in
-// QuantizeWeightsAndInput.
+// We have made the restriction that for int8 quantized concat, minimum, and
+// maximum, the inputs and outputs must have the same scale and zero point.
+// The other ones with constraints are handled in QuantizeWeightsAndInput.
 TfLiteStatus ApplyConstraints(ModelT* model,
                               const std::unordered_set<string>& operator_names,
                               ErrorReporter* error_reporter) {
@@ -301,7 +300,6 @@ TfLiteStatus ApplyConstraints(ModelT* model,
       if (!property.quantizable) {
         continue;
       }
-      // Basically only Concat passes this check.
       if (!property.arbitrary_inputs ||
           !property.restrict_same_input_output_scale) {
         continue;
@@ -311,8 +309,7 @@ TfLiteStatus ApplyConstraints(ModelT* model,
       TensorT* output_tensor = subgraph->tensors[op->outputs[0]].get();
       if (!utils::QuantizationParametersExist(output_tensor)) {
         error_reporter->Report(
-            "Unable to get scale or zero point from the tensor at %d, which "
-            "is the output tensor for concat.",
+            "Unable to get scale or zero point from the tensor at %d.",
             op->outputs[0]);
         return kTfLiteError;
       }
@@ -322,8 +319,7 @@ TfLiteStatus ApplyConstraints(ModelT* model,
         TensorT* input_tensor = subgraph->tensors[op->inputs[input_idx]].get();
         if (!utils::QuantizationParametersExist(input_tensor)) {
           error_reporter->Report(
-              "Unable to get scale or zero point from tensor at %d, which is "
-              "an input tensor of concat.",
+              "Unable to get scale or zero point from tensor at %d.",
               op->inputs[input_idx]);
           return kTfLiteError;
         }
@@ -715,6 +711,11 @@ TfLiteStatus QuantizeIntemediateTensors(ModelT* model,
 // Quantize tensros that have shared range. For example, in LSTM, the output
 // tensor and input state tensor should share the same range because they are
 // using the same scale and zero point.
+// We have to model this explicitely because the output is modeled as an extra
+// tensor in LSTM. In calibrator, state tensors are logged both before and after
+// the inferece so the range is fully captured. But output, although it is
+// identical to activation, is not a state tensor the input value (range) of the
+// very first inference is not captured.
 TfLiteStatus QuantizeSharedRange(ModelT* model, ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
@@ -992,6 +993,9 @@ TfLiteStatus EnsureBiasScaleCompatibility(
 
       // Loop over all bias tensors.
       for (const int bias_idx : property.biases) {
+        if (op->inputs[bias_idx] == kTfLiteOptionalTensor) {
+          continue;
+        }
         TensorT* bias_tensor = subgraph->tensors[op->inputs[bias_idx]].get();
         int32_t channel_dim_size = bias_tensor->shape[0];
         if (bias_tensor->shape.size() != 1) {

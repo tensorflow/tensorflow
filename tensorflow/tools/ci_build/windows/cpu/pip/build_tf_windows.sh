@@ -104,7 +104,7 @@ if [[ "$RELEASE_BUILD" == 1 ]]; then
   # Overriding eigen strong inline speeds up the compiling of conv_grad_ops_3d.cc and conv_ops_3d.cc
   # by 20 minutes. See https://github.com/tensorflow/tensorflow/issues/10521
   # Because this hurts the performance of TF, we don't override it in release build.
-  export TF_OVERRIDE_EIGEN_STRONG_INLINE=1
+  export TF_OVERRIDE_EIGEN_STRONG_INLINE=0
 else
   export TF_OVERRIDE_EIGEN_STRONG_INLINE=1
 fi
@@ -121,7 +121,7 @@ if [[ "$TF_NIGHTLY" == 1 ]]; then
     EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME} --nightly_flag"
   fi
 else
-  if [[ -v ${PROJECT_NAME}  ]]; then
+  if [[ -v PROJECT_NAME  ]]; then
     EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME}"
   fi
 fi

@@ -156,10 +156,18 @@ const std::map<string, string>& GetKnownBrokenNnapiTests() {
 const std::map<string, string>& GetKnownQuantizeBrokenTests() {
   static const std::map<string, string>* const kQuantizeBrokenTests =
       new std::map<string, string>({
-          {R"(^\/conv.*fully_quantize=True)", "134594898"},
-          {R"(^\/depthwiseconv.*fully_quantize=True)", "134594898"},
           {R"(^\/sum.*fully_quantize=True)", "134594898"},
           {R"(^\/l2norm.*fully_quantize=True)", "134594898"},
+      });
+  return *kQuantizeBrokenTests;
+}
+
+const std::map<string, int>& GetQuantizeTestsError() {
+  static const std::map<string, int>* const kQuantizeBrokenTests =
+      new std::map<string, int>({
+          {R"(^\/conv_relu1.*fully_quantize=True)", 18},
+          {R"(^\/conv_relu6.*fully_quantize=True)", 8},
+          {R"(^\/maximum.*fully_quantize=True)", 8},
       });
   return *kQuantizeBrokenTests;
 }
@@ -299,10 +307,16 @@ TEST_P(OpsTest, RunZipTests) {
   tflite::testing::TfLiteDriver test_driver(
       FLAGS_use_nnapi ? TfLiteDriver::DelegateType::kNnapi
                       : TfLiteDriver::DelegateType::kNone);
+
+  auto quantized_tests_error = GetQuantizeTestsError();
   bool fully_quantize = false;
   if (test_path.find("fully_quantize=True") != std::string::npos) {
-    // TODO(b/134594898): Tighten this constraint.
-    test_driver.SetThreshold(0.2, 0.1);
+    for (const auto& p : quantized_tests_error) {
+      if (RE2::PartialMatch(test_name, p.first)) {
+        test_driver.SetQuantizationErrorMultiplier(p.second);
+        break;
+      }
+    }
     fully_quantize = true;
   }
 
@@ -313,7 +327,6 @@ TEST_P(OpsTest, RunZipTests) {
     auto kBrokenNnapiTests = GetKnownBrokenNnapiTests();
     broken_tests.insert(kBrokenNnapiTests.begin(), kBrokenNnapiTests.end());
   }
-  auto quantize_broken_tests = GetKnownQuantizeBrokenTests();
 
   bool result = tflite::testing::ParseAndRunTests(&tflite_stream, &test_driver);
   string message = test_driver.GetErrorMessage();
@@ -346,7 +359,7 @@ TEST_P(OpsTest, RunZipTests) {
     if (!result) {
       string bug_number;
       // See if the tests are potential quantize failures.
-      for (const auto& p : quantize_broken_tests) {
+      for (const auto& p : GetKnownQuantizeBrokenTests()) {
         if (RE2::PartialMatch(test_name, p.first)) {
           bug_number = p.second;
           break;

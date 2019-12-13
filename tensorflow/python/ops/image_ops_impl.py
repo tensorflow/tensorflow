@@ -1392,10 +1392,10 @@ def _resize_image_with_pad_common(image, target_height, target_width,
     _, height, width, _ = _ImageDimensions(image, rank=4)
 
     # convert values to float, to ease divisions
-    f_height = math_ops.cast(height, dtype=dtypes.float64)
-    f_width = math_ops.cast(width, dtype=dtypes.float64)
-    f_target_height = math_ops.cast(target_height, dtype=dtypes.float64)
-    f_target_width = math_ops.cast(target_width, dtype=dtypes.float64)
+    f_height = math_ops.cast(height, dtype=dtypes.float32)
+    f_width = math_ops.cast(width, dtype=dtypes.float32)
+    f_target_height = math_ops.cast(target_height, dtype=dtypes.float32)
+    f_target_width = math_ops.cast(target_width, dtype=dtypes.float32)
 
     # Find the ratio by which the image must be adjusted
     # to fit within the target
@@ -2232,6 +2232,35 @@ tf_export(
         gen_image_ops.extract_jpeg_shape)
 
 
+@tf_export('image.encode_png')
+def encode_png(image, compression=-1, name=None):
+  r"""PNG-encode an image.
+
+  `image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`
+  where `channels` is:
+
+  *   1: for grayscale.
+  *   2: for grayscale + alpha.
+  *   3: for RGB.
+  *   4: for RGBA.
+
+  The ZLIB compression level, `compression`, can be -1 for the PNG-encoder
+  default or a value from 0 to 9.  9 is the highest compression level,
+  generating the smallest output, but is slower.
+
+  Args:
+    image: A `Tensor`. Must be one of the following types: `uint8`, `uint16`.
+      3-D with shape `[height, width, channels]`.
+    compression: An optional `int`. Defaults to `-1`. Compression level.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `string`.
+  """
+  return gen_image_ops.encode_png(
+      ops.convert_to_tensor(image), compression, name)
+
+
 @tf_export(
     'io.decode_image',
     'image.decode_image',
@@ -2945,6 +2974,14 @@ def rgb_to_yuv(images):
 
   Returns:
     images: tensor with the same shape as `images`.
+    
+  Usage Example:
+  ```python
+  >> import tensorflow as tf
+  >> x = tf.random.normal(shape=(256, 256, 3))
+  >> tf.image.rgb_to_yuv(x)
+  ```
+    
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(

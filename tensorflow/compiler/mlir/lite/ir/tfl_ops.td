@@ -32,7 +32,7 @@ def TFL_Dialect : Dialect {
     Invariants:
 
     * All values are of Tensor type (in particular, scalars are
-      represented using zero-dimentional tensors);
+      represented using zero-dimensional tensors);
   }];
 
   let cppNamespace = "TFL";
@@ -190,6 +190,12 @@ class TFL_TFTypesWithSameBits<int i, int j, int num> :
         CPred<"getElementTypeOrSelf($_op.getResult(" # i # ")).isa<mlir::TF::Uint" # num # "Type>()">]>,
     Or<[CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isa<mlir::TF::Quint" # num # "Type>()">,
         CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isa<mlir::TF::Uint" # num # "Type>()">]>]>;
+
+class TFL_OperandHasRankLessThan<int n, int m> :
+  PredOpTrait<"operand " # n # " is maximum " # m # "-D",
+    Or<[TFL_OperandIsUnrankedPred<n>,
+      CPred<"$_op.getOperand(" # n #
+      ")->getType().cast<ShapedType>().getRank() <= " # m>]>>;
 
 // This is a quantization-aware version of TCresVTEtIsSameAsOp
 class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
@@ -571,6 +577,19 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [NoSideEffect,
   ];
 }
 
+def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [NoSideEffect]> {
+  let summary = "External const op.";
+
+  let description = [{
+    External const op holds a `buffer_index` which points to a constant
+    in the flatbuffer.
+  }];
+
+  let arguments = (ins I32Attr:$buffer_index);
+
+  let results = (outs AnyTensor:$output);
+}
+
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0>;
 
 def TFL_CosOp: TFL_Op<"cos", [
@@ -597,7 +616,7 @@ def TFL_FCWO_Default  : StrEnumAttrCase<"DEFAULT">;
 def TFL_FCWO_Shuffled4x16i8  : StrEnumAttrCase<"SHUFFLED4x16INT8">;
 
 def TFL_FullyConnectedOptionsWeightFormatAttr :
-    StrEnumAttr<"FullyConectedOptionsWeightsFormat",
+    StrEnumAttr<"FullyConnectedOptionsWeightsFormat",
                 "fully connected options weights format", [
       TFL_FCWO_Default, TFL_FCWO_Shuffled4x16i8
     ]>;
@@ -1409,7 +1428,8 @@ def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
 }
 
 def TFL_MaximumOp : TFL_Op<"maximum", [
-    Broadcastable, NoSideEffect, Commutative, SameOperandsAndResultsScale]> {
+    Broadcastable, NoSideEffect, Commutative, SameOperandsAndResultsScale,
+    TFL_OperandHasRankLessThan<0, 4>, TFL_OperandHasRankLessThan<1, 4>]> {
   let summary = "Max operator";
   let description = [{
     Element-wise max operation.
@@ -1605,7 +1625,8 @@ def TFL_ReduceProdOp: TFL_Op<"reduce_prod", [NoSideEffect]> {
 }
 
 def TFL_MinimumOp : TFL_Op<"minimum", [
-    Broadcastable, NoSideEffect, Commutative, SameOperandsAndResultsScale]> {
+    Broadcastable, NoSideEffect, Commutative, SameOperandsAndResultsScale,
+    TFL_OperandHasRankLessThan<0, 4>, TFL_OperandHasRankLessThan<1, 4>]> {
   let summary = "Min operator";
   let description = [{
     Element-wise min operation.
@@ -1865,9 +1886,9 @@ def TFL_ReluOp: TFL_Op<"relu", [NoSideEffect,
       x -> max(0, x)
   }];
 
-  let arguments = (ins AnyTensor:$x);
+  let arguments = (ins TensorOf<[F32, QUI8, I8]>:$x);
 
-  let results = (outs AnyTensor:$y);
+  let results = (outs TensorOf<[F32, QUI8, I8]>:$y);
 }
 
 def TFL_Relu6Op: TFL_Op<"relu6", [NoSideEffect,
@@ -1880,9 +1901,24 @@ def TFL_Relu6Op: TFL_Op<"relu6", [NoSideEffect,
       x -> max(0, min(6, x))
   }];
 
-  let arguments = (ins AnyTensor:$x);
+  let arguments = (ins TensorOf<[F32, QUI8, I8]>:$x);
 
-  let results = (outs AnyTensor:$y);
+  let results = (outs TensorOf<[F32, QUI8, I8]>:$y);
+}
+
+def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [NoSideEffect,
+                                  SameOperandsAndResultShape,
+                                  SameOperandsAndResultsScale]> {
+  let summary = "Relu1 operator";
+
+  let description = [{
+    Element-wise Relu1 operator
+      x -> max(-1, min(1, x))
+  }];
+
+  let arguments = (ins TensorOf<[F32, QUI8, I8]>:$x);
+
+  let results = (outs TensorOf<[F32, QUI8, I8]>:$y);
 }
 
 def TFL_ReshapeOp: TFL_Op<"reshape", [

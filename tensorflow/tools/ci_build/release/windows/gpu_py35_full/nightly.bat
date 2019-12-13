@@ -17,7 +17,4 @@ SET PYTHON_DIRECTORY=Python35
 
 CALL tensorflow\tools\ci_build\release\common_win.bat
 
-call tensorflow\tools\ci_build\windows\gpu\pip\run.bat --extra_build_flags "--config=v2" --extra_test_flags "--test_env=TF2_BEHAVIOR=1" --project_name "tensorflow"
-
-for %%a in ("%~dp0\.") do set "PARENT_DIR=%%~nxa"
-bash -l tensorflow\tools\ci_build\release\windows\%PARENT_DIR%\release_pip_rename.sh
+call tensorflow\tools\ci_build\windows\gpu\pip\run.bat --extra_build_flags "--config=v2" --extra_test_flags "--test_env=TF2_BEHAVIOR=1"

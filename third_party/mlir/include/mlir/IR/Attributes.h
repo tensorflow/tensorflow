@@ -321,12 +321,12 @@ public:
   }
 
   /// Verify the construction invariants for a double value.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc, MLIRContext *ctx,
-                               Type type, double value);
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc, MLIRContext *ctx,
-                               Type type, const APFloat &value);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *ctx, Type type,
+                                                    double value);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *ctx, Type type,
+                                                    const APFloat &value);
 };
 
 //===----------------------------------------------------------------------===//
@@ -403,10 +403,11 @@ public:
   StringRef getAttrData() const;
 
   /// Verify the construction of an opaque attribute.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, Identifier dialect,
-                               StringRef attrData, Type type);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *context,
+                                                    Identifier dialect,
+                                                    StringRef attrData,
+                                                    Type type);
 
   static bool kindof(unsigned kind) {
     return kind == StandardAttributes::Opaque;
@@ -640,12 +641,12 @@ protected:
   /// Return the current index for this iterator, adjusted for the case of a
   /// splat.
   ptrdiff_t getDataIndex() const {
-    bool isSplat = this->object.getInt();
+    bool isSplat = this->base.getInt();
     return isSplat ? 0 : this->index;
   }
 
-  /// Return the data object pointer.
-  const char *getData() const { return this->object.getPointer(); }
+  /// Return the data base pointer.
+  const char *getData() const { return this->base.getPointer(); }
 };
 } // namespace detail
 
@@ -1372,6 +1373,13 @@ public:
   NamedAttributeList(DictionaryAttr attrs = nullptr)
       : attrs((attrs && !attrs.empty()) ? attrs : nullptr) {}
   NamedAttributeList(ArrayRef<NamedAttribute> attributes);
+
+  bool operator!=(const NamedAttributeList &other) const {
+    return !(*this == other);
+  }
+  bool operator==(const NamedAttributeList &other) const {
+    return attrs == other.attrs;
+  }
 
   /// Return the underlying dictionary attribute. This may be null, if this list
   /// has no attributes.

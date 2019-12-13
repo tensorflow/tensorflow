@@ -42,6 +42,7 @@ cc_library(
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor",
+        "//tensorflow/core/profiler/lib:traceme",
     ]),
     alwayslink = 1,
 )

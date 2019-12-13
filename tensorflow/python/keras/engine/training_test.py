@@ -18,8 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import io
 import logging
+import re
 import sys
 
 from absl.testing import parameterized
@@ -244,7 +246,7 @@ class CompileTest(keras_parameterized.TestCase):
           run_eagerly=testing_utils.should_run_eagerly(),
           experimental_run_tf_function=testing_utils.should_run_tf_function())
 
-  @keras_parameterized.run_all_keras_modes
+  @tf_test_util.run_deprecated_v1
   def test_compile_with_session_kwargs(self):
     model = testing_utils.get_small_sequential_mlp(
         num_hidden=10, num_classes=2, input_dim=3)
@@ -257,24 +259,6 @@ class CompileTest(keras_parameterized.TestCase):
           optimizer='adam',
           loss='mse',
           foo=True)
-
-    if testing_utils.should_run_eagerly():
-      # Test that Session kwargs cannot be used with run_eagerly
-      with self.assertRaisesRegexp(
-          ValueError,
-          r'not supported when `run_eagerly=True`'):
-        model.compile(
-            optimizer='adam',
-            loss='mse',
-            run_eagerly=True,
-            feed_dict={})
-    else:
-      # Test that Session kwargs trigger legacy path execution
-      model.compile(
-          optimizer='adam',
-          loss='mse',
-          feed_dict={})
-      self.assertFalse(model._experimental_run_tf_function)
 
 
 class TrainingTest(keras_parameterized.TestCase):
@@ -752,6 +736,125 @@ class TrainingTest(keras_parameterized.TestCase):
         'input_b': input_b_np
     })
     self.assertEqual(len(out), 2)
+
+  def _make_sequence_input_functions(self, input_type):
+    # train and test
+    xy_namedtuple = collections.namedtuple('xy_namedtuple', ['x', 'y'])
+
+    # predict
+    x_namedtuple = collections.namedtuple('x_namedtuple', ['x'])
+
+    if input_type == 'dataset':
+      dataset = dataset_ops.Dataset.range(16).map(
+          lambda _: array_ops.ones(shape=(1,)))
+
+      xy_dataset = dataset_ops.Dataset.zip((dataset, dataset)).batch(4)
+      x_dataset = dataset.batch(4)
+      def xy_function(use_namedtuple):
+        return xy_dataset.map(xy_namedtuple) if use_namedtuple else xy_dataset
+
+      def x_function(use_namedtuple):
+        return x_dataset.map(x_namedtuple) if use_namedtuple else x_dataset
+
+      return xy_function, x_function
+
+    elif input_type == 'generator':
+      def xy_generator(use_namedtuple):
+        x, y = np.ones((4, 1)), np.ones((4, 1))
+        for _ in range(4):
+          if use_namedtuple:
+            yield xy_namedtuple(x, y)
+          else:
+            yield x, y
+
+      def x_generator(use_namedtuple):
+        x = np.ones((4, 1))
+        for _ in range(4):
+          if use_namedtuple:
+            yield x_namedtuple(x)
+          else:
+            yield x
+
+      return xy_generator, x_generator
+
+    elif input_type == 'sequence':
+      class XYSequence(data_utils.Sequence):
+
+        def __init__(self, use_namedtuple):
+          self._use_namedtuple = use_namedtuple
+          super(XYSequence, self).__init__()
+
+        def __getitem__(self, idx):
+          x, y = np.ones((4, 1)), np.ones((4, 1))
+          if self._use_namedtuple:
+            return xy_namedtuple(x, y)
+          return x, y
+
+        def __len__(self):
+          return 4
+
+      class XSequence(data_utils.Sequence):
+
+        def __init__(self, use_namedtuple):
+          self._use_namedtuple = use_namedtuple
+          super(XSequence, self).__init__()
+
+        def __getitem__(self, idx):
+          x = np.ones((4, 1))
+          if self._use_namedtuple:
+            return x_namedtuple(x)
+          return x
+
+        def __len__(self):
+          return 4
+
+      return XYSequence, XSequence
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  @keras_parameterized.run_with_all_model_types
+  @parameterized.named_parameters(
+      ('dataset', 'dataset'),
+      ('generator', 'generator'),
+      ('sequence', 'sequence'),
+  )
+  def test_sequence_input_types(self, input_type):
+    """Ensure that namedtuples and tuples are plumbed identically."""
+    if not testing_utils.should_run_tf_function():
+      self.skipTest('Improved checking is only present in data_adapter.')
+
+    xy_function, x_function = self._make_sequence_input_functions(input_type)
+    fit_kwargs, evaluate_kwargs, predict_kwargs = {}, {}, {}
+    if input_type == 'generator':
+      fit_kwargs['steps_per_epoch'] = 4
+      evaluate_kwargs['steps'] = 4
+      predict_kwargs['steps'] = 4
+
+    model = testing_utils.get_small_mlp(1, 1, 1)
+    model.compile(
+        loss='mse',
+        optimizer='sgd',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    model.fit(xy_function(use_namedtuple=False), **fit_kwargs)
+    model.evaluate(xy_function(use_namedtuple=False), **evaluate_kwargs)
+    model.predict(x_function(use_namedtuple=False), **predict_kwargs)
+
+    xy_pattern = re.escape(
+        "Received namedtuple (<class '__main__.xy_namedtuple'>) with fields "
+        "`('x', 'y')` as input.")
+    x_pattern = re.escape(
+        "Received namedtuple (<class '__main__.x_namedtuple'>) with fields "
+        "`('x',)` as input.")
+
+    with self.assertRaisesRegex(ValueError, xy_pattern):
+      model.fit(xy_function(use_namedtuple=True), **fit_kwargs)
+
+    with self.assertRaisesRegex(ValueError, xy_pattern):
+      model.evaluate(xy_function(use_namedtuple=True), **evaluate_kwargs)
+
+    with self.assertRaisesRegex(ValueError, x_pattern):
+      model.predict(x_function(use_namedtuple=True), **predict_kwargs)
 
   @keras_parameterized.run_all_keras_modes
   @keras_parameterized.run_with_all_model_types
@@ -1403,6 +1506,38 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertAllClose(history.history['loss'], [4., 3.6, 3.2, 2.8, 2.4], 1e-3)
 
   @keras_parameterized.run_all_keras_modes
+  def test_add_loss_with_sample_weight_correctness(self):
+
+    class Bias(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.bias = self.add_variable('bias', (1,), initializer='zeros')
+
+      def call(self, inputs):
+        return inputs + self.bias
+
+    inputs = keras.Input(shape=(1,))
+    targets = keras.Input(shape=(1,))
+    sw = keras.Input(shape=(1,))
+    outputs = Bias()(inputs)
+    model = keras.Model([inputs, targets, sw], outputs)
+
+    model.add_loss(2 * math_ops.reduce_mean(
+        sw * keras.losses.mean_absolute_error(targets, outputs)))
+    model.add_loss(keras.losses.MeanAbsoluteError()(targets, outputs, sw))
+    model.compile(
+        keras.optimizer_v2.gradient_descent.SGD(0.025),
+        loss=keras.losses.MeanAbsoluteError(),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    x = np.array([[0.], [1.], [2.]])
+    y = np.array([[0.5], [2.], [3.5]])
+    w = np.array([1.25, 0.5, 1.25])
+    history = model.fit([x, y, w], y, batch_size=3, epochs=5, sample_weight=w)
+    self.assertAllClose(history.history['loss'], [4., 3.6, 3.2, 2.8, 2.4], 1e-3)
+
+  @keras_parameterized.run_all_keras_modes
   def test_unconditional_add_loss_correctness(self):
 
     class MyLayer(keras.layers.Layer):
@@ -1675,23 +1810,10 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
         experimental_run_tf_function=False)
     err_msg = 'When passing input data as arrays, do not specify'
 
-    if testing_utils.should_run_eagerly():
-      with self.assertRaisesRegex(ValueError, err_msg):
-        model.fit(x=np.zeros((100, 1)), y=np.ones((100, 1)), steps_per_epoch=4)
-
-      with self.assertRaisesRegex(ValueError, err_msg):
-        model.evaluate(x=np.zeros((100, 1)), y=np.ones((100, 1)), steps=4)
-
-      with self.assertRaisesRegex(ValueError, err_msg):
-        model.predict(np.zeros((100, 1)), steps=4)
-    else:
-      with test.mock.patch.object(logging, 'warning') as mock_log:
-        model._standardize_user_data(
-            np.zeros((100, 1)),
-            np.ones((100, 1)),
-            check_steps=True,
-            steps=4)
-        self.assertRegexpMatches(str(mock_log.call_args), err_msg)
+    with test.mock.patch.object(logging, 'warning') as mock_log:
+      model._standardize_user_data(
+          np.zeros((100, 1)), np.ones((100, 1)), check_steps=True, steps=4)
+      self.assertRegexpMatches(str(mock_log.call_args), err_msg)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
@@ -2971,7 +3093,7 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       self.assertEqual(out[0].shape, (10 * 3, 4))
       self.assertEqual(out[1].shape, (10 * 3, 4))
 
-  @keras_parameterized.run_all_keras_modes
+  @tf_test_util.run_deprecated_v1
   def test_target_tensors(self):
     with self.cached_session():
       # single-output, as list

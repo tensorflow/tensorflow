@@ -386,12 +386,13 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
         experimental_run_tf_function=testing_utils.should_run_tf_function())
     new_model.train_on_batch(inp, out)
 
-    # Create new tensors for inputs and targets
+    # Create new tensors for inputs.
     input_a = keras.Input(shape=(4,))
-    target_a = keras.Input(shape=(4,))
     new_model = models.clone_and_build_model(
-        model, input_tensors=input_a, target_tensors=[target_a],
-        compile_clone=False, in_place_reset=is_subclassed)
+        model,
+        input_tensors=input_a,
+        compile_clone=False,
+        in_place_reset=is_subclassed)
     with self.assertRaisesRegexp(RuntimeError, 'must compile'):
       new_model.evaluate(inp, out)
     with self.assertRaisesRegexp(RuntimeError, 'must compile'):
@@ -428,7 +429,7 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
     new_model.train_on_batch(inp, out)
     new_model.evaluate(inp, out)
 
-    # Create new tensors for inputs and targets
+    # Create new tensors for inputs.
     input_a = keras.Input(shape=(4,), name='a')
     new_model = models.clone_and_build_model(
         model, input_tensors=input_a, compile_clone=True,
@@ -437,10 +438,12 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
     new_model.train_on_batch(inp, out)
     new_model.evaluate(inp, out)
 
-    target_a = keras.Input(shape=(4,), name='b')
     new_model = models.clone_and_build_model(
-        model, input_tensors=input_a, target_tensors=[target_a],
-        compile_clone=True, in_place_reset=is_subclassed)
+        model,
+        input_tensors=input_a,
+        target_tensors=None,
+        compile_clone=True,
+        in_place_reset=is_subclassed)
     self._assert_same_compile_params(new_model)
     new_model.train_on_batch(inp, out)
     new_model.evaluate(inp, out)

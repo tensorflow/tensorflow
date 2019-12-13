@@ -65,6 +65,9 @@ std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass();
 // Lowers from LHLO dialect to Linalg dialect.
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLinalgPass();
 
+// Lowers from LHLO dialect to GPU dialect.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToGpuPass();
+
 // Fuses linalg ops obtained after LHLO lowering.
 std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg();
 

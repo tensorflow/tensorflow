@@ -355,17 +355,6 @@ cc_test(
 )
 
 cc_library(
-    name = "activation_functor",
-    hdrs = [
-        "activation_functor.h",
-    ],
-    copts = tflite_copts(),
-    deps = [
-        "//tensorflow/lite/c:common",
-    ],
-)
-
-cc_library(
     name = "op_macros",
     hdrs = [
         "op_macros.h",
@@ -520,6 +509,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":cpu_backend_context",
+        ":cpu_backend_threadpool",
         ":eigen_support",
         ":kernel_util",
         ":lstm_eval",
@@ -528,7 +518,6 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:audio_utils",
         "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -614,7 +603,6 @@ cc_library(
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_utils",
-        "//third_party/eigen3",
         "@gemmlowp",
     ],
 )

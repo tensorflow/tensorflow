@@ -108,6 +108,7 @@ tf_cuda_library(
         ":tf_attrtype",
         ":tf_status_internal",
         ":tf_file_statistics",
+        ":tf_tensor_internal",
     ] + select({
         "//tensorflow:with_xla_support": [
             "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -197,6 +198,12 @@ cc_library(
 )
 
 cc_library(
+    name = "tf_status_headers",
+    hdrs = ["tf_status.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "tf_file_statistics",
     hdrs = ["tf_file_statistics.h"],
     visibility = ["//visibility:public"],
@@ -245,6 +252,7 @@ tf_cuda_library(
         "tf_tensor.h",
         "tf_tensor_internal.h",
     ],
+    visibility = ["//tensorflow/c:__subpackages__"],
     deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -253,6 +261,7 @@ tf_cuda_library(
             ":tf_datatype",
             ":tf_status",
             "//tensorflow/core:framework",
+            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )

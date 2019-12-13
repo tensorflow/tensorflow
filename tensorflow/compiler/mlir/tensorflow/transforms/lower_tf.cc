@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace mlir {
@@ -57,22 +58,13 @@ static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
 static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
   RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
   if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
-    const auto &float_semantics = float_ty.getFloatSemantics();
-    Builder builder(ty.getContext());
-    if (&float_semantics == &APFloat::IEEEsingle())
-      return DenseElementsAttr::get(scalar_ty,
-                                    builder.getF32FloatAttr(raw_value));
-    if (&float_semantics == &APFloat::IEEEdouble())
-      return DenseElementsAttr::get(scalar_ty,
-                                    builder.getF64FloatAttr(raw_value));
-
-    assert(false && "unhandled IEEE float kind");
-    return {};
+    FloatAttr attr = FloatAttr::get(float_ty, raw_value);
+    return DenseElementsAttr::get(scalar_ty, attr);
   }
 
   auto int_ty = ty.cast<IntegerType>();
-  APInt value(int_ty.getWidth(), raw_value, /*isSigned=*/true);
-  return DenseElementsAttr::get(scalar_ty, value);
+  IntegerAttr attr = IntegerAttr::get(int_ty, raw_value);
+  return DenseElementsAttr::get(scalar_ty, attr);
 }
 
 // Returns reduction indices to use while lowering tf.BiasAddGrad op to tf.Sum
@@ -108,6 +100,39 @@ Type InferExpandDimsType(Type ty, int64_t axis, Builder *builder) {
   shape.insert(shape.begin() + axis, 1);
   return RankedTensorType::get(shape, ranked_ty.getElementType());
 }
+
+// Lowers AddN op to a sequence of AddV2 ops to accumulate operands.
+//
+//   %result = "tf.AddN"(%0, %1, %2)
+//
+// is lowered to:
+//
+//   %sum_0 = "tf.AddV2"(%0, %1)
+//   %result = "tf.AddV2"(%sum_0, %2)
+//
+class LowerAddNOp : public OpRewritePattern<TF::AddNOp> {
+ public:
+  explicit LowerAddNOp(MLIRContext *context)
+      : OpRewritePattern<TF::AddNOp>(context) {}
+
+  PatternMatchResult matchAndRewrite(TF::AddNOp op,
+                                     PatternRewriter &rewriter) const override {
+    // TODO(hinsu): Support variant with TensorList type. tf.AddV2 doesn't
+    // support variant type so variant types require special handling.
+    if (getElementTypeOrSelf(op.getType()).isa<VariantType>())
+      return matchFailure();
+
+    // TODO(hinsu): Improve parallelism by splitting operands in two halves and
+    // accumulating them first.
+    Value *result = *op.inputs().begin();
+    for (Value *operand : llvm::drop_begin(op.inputs(), 1)) {
+      result = rewriter.create<TF::AddV2Op>(op.getLoc(), result, operand);
+    }
+
+    rewriter.replaceOp(op, result);
+    return matchSuccess();
+  }
+};
 
 // Lowers Pack op to ConcatV2 op after changing shape of the inputs with
 // ExpandDims op.
@@ -159,6 +184,7 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
+  patterns->insert<LowerAddNOp>(context);
   patterns->insert<LowerPackOp>(context);
   populateWithGenerated(context, patterns);
 }

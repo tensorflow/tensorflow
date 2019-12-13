@@ -465,6 +465,16 @@ class BASE_HLO_XorOp {
   }];
 }
 
+class BASE_HLO_AllReduceOp {
+  string summary = "AllReduce operator";
+
+  string description = [{
+    Performs a custom reduction across replicas.
+
+    See https://www.tensorflow.org/xla/operation_semantics#allreduce.
+  }];
+}
+
 class BASE_HLO_ReduceOp {
   string summary = "Reduce operator";
 
@@ -646,6 +656,20 @@ class BASE_HLO_BatchNormTrainingOp {
   }];
 }
 
+class BASE_HLO_BitcastConvertOp {
+  string summary = "BitcastConvert operator";
+
+  string description = [{
+    Similar to a 'tf.bitcast' in TensorFlow, performs an element-wise bitcast
+    operation from a data shape to a target shape. The dimensions must match,
+    and the conversion is an element-wise one. Bitcast is implemented as a
+    low-level cast, so machines with different floating-point representations
+    will give different results.
+
+    See https://www.tensorflow.org/xla/operation_semantics#bitcastconverttype.
+  }];
+}
+
 class BASE_HLO_BroadcastOp  {
   string summary = "Broadcast a tensor to a higher rank by prepending dimensions";
 
@@ -698,7 +722,7 @@ class BASE_HLO_ClampOp  {
 }
 
 class BASE_HLO_ConcatenateOp {
-   string summary = "XLA's concantenate op";
+   string summary = "XLA's concatenate op";
 
    string description = [{
      Concatenates a set of tensors along the specified dimension.
@@ -819,6 +843,17 @@ class BASE_HLO_SelectAndScatterOp {
     combined using the `scatter` function.
 
     See https://www.tensorflow.org/xla/operation_semantics#selectandscatter.
+  }];
+}
+
+class BASE_HLO_SortOp {
+  string summary = "Sort operator";
+
+  string description = [{
+    Sorts the given `operands` at the given `dimension` with the given
+    `comparator`.
+
+    See https://www.tensorflow.org/xla/operation_semantics#sort.
   }];
 }
 

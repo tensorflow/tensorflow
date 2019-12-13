@@ -38,6 +38,15 @@ namespace mlir {
 namespace xla_lhlo {
 namespace {
 
+ArrayAttr GetNParallelLoopsAttrs(unsigned nParallelLoops, Builder b) {
+  auto parallelLoopTypeAttr = b.getStringAttr("parallel");
+  SmallVector<Attribute, 3> iteratorTypes;
+  for (int i = 0; i < nParallelLoops; ++i) {
+    iteratorTypes.push_back(parallelLoopTypeAttr);
+  }
+  return b.getArrayAttr(iteratorTypes);
+}
+
 template <typename LhloOp>
 class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
  public:
@@ -78,19 +87,12 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
       result_or_body_arg.emplace_back(memrefType.getElementType());
     }
 
-    // Pointwise-ops have all surrounding loops parallel, so the loop triple is
-    // [argDim, 0, 0].
-    SmallVector<Attribute, 3> loop_types{rewriter.getI64IntegerAttr(nloops),
-                                         rewriter.getI64IntegerAttr(0),
-                                         rewriter.getI64IntegerAttr(0)};
-    // Define the number of input memref/output memrefs.
-    SmallVector<Attribute, 2> nmemrefs{
-        rewriter.getI64IntegerAttr(bodyArgTypes.size()),
-        rewriter.getI64IntegerAttr(bodyResultTypes.size())};
-
     auto linalgOp = rewriter.create<linalg::GenericOp>(
-        loc, args, rewriter.getArrayAttr(indexingMaps),
-        rewriter.getArrayAttr(loop_types), rewriter.getArrayAttr(nmemrefs),
+        loc, args,
+        rewriter.getI64IntegerAttr(bodyArgTypes.size()),     // args_in
+        rewriter.getI64IntegerAttr(bodyResultTypes.size()),  // args_out
+        rewriter.getArrayAttr(indexingMaps),
+        GetNParallelLoopsAttrs(nloops, rewriter),
         /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
@@ -107,7 +109,35 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
     rewriter.setInsertionPointToEnd(block);
     Operation* op = MapLhloOpToStdScalarOp<LhloOp>(
         llvm::cast<LhloOp>(lhlo_op), bodyResultTypes, bodyArgs, rewriter);
-    rewriter.create<linalg::YieldOp>(loc, llvm::to_vector<1>(op->getResults()));
+    rewriter.create<linalg::YieldOp>(loc, op->getResults());
+    rewriter.eraseOp(lhlo_op);
+    return ConversionPattern::matchSuccess();
+  }
+};
+
+template <typename LhloOp>
+class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
+ public:
+  using OpConversionPattern<LhloOp>::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      LhloOp lhlo_op, ArrayRef<Value*> args,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = lhlo_op.getLoc();
+    auto argType =
+        lhlo_op.getOperand(0)->getType().template dyn_cast<ShapedType>();
+    if (!argType || !argType.getElementType().isIntOrFloat() ||
+        (argType.getRank() != 0)) {
+      return ConversionPattern::matchFailure();
+    }
+
+    // Create two loads from the input.
+    auto lhs = rewriter.create<LoadOp>(loc, lhlo_op.lhs());
+    auto rhs = rewriter.create<LoadOp>(loc, lhlo_op.rhs());
+    Operation* op = MapLhloOpToStdScalarOp<LhloOp>(
+        llvm::cast<LhloOp>(lhlo_op), argType.getElementType(),
+        llvm::ArrayRef<Value*>{lhs, rhs}, rewriter);
+    rewriter.create<StoreOp>(loc, op->getResult(0), lhlo_op.out());
     rewriter.eraseOp(lhlo_op);
     return ConversionPattern::matchSuccess();
   }
@@ -120,14 +150,54 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
   PatternMatchResult matchAndRewrite(
       BroadcastInDimOp broadcastOp, ArrayRef<Value*> args,
       ConversionPatternRewriter& rewriter) const final {
-    unsigned operandIndex = 0;
-    unsigned resultIndex = 1;
     auto operandMemrefType =
-        broadcastOp.getOperand(operandIndex)->getType().dyn_cast<MemRefType>();
+        broadcastOp.operand()->getType().dyn_cast<MemRefType>();
     auto resultMemrefType =
-        broadcastOp.getOperand(resultIndex)->getType().dyn_cast<MemRefType>();
+        broadcastOp.output()->getType().dyn_cast<MemRefType>();
     if (!operandMemrefType || !resultMemrefType) return matchFailure();
+    auto broadcastDims = broadcastOp.broadcast_dimensions();
+    if (!broadcastDims.hasValue()) return matchFailure();
 
+    return broadcastDims.getValue().getIntValues().empty()
+               ? emitScalarBroadcast(broadcastOp, args, resultMemrefType,
+                                     &rewriter)
+               : emitNonScalarBroadcast(broadcastOp, args, operandMemrefType,
+                                        resultMemrefType, &rewriter);
+  }
+
+ private:
+  PatternMatchResult emitScalarBroadcast(
+      BroadcastInDimOp broadcastOp, ArrayRef<Value*> args,
+      MemRefType resultMemrefType, ConversionPatternRewriter* rewriter) const {
+    unsigned nloops = resultMemrefType.getRank();
+    SmallVector<Attribute, 1> indexingMaps{
+        AffineMapAttr::get(rewriter->getMultiDimIdentityMap(nloops))};
+    auto loc = broadcastOp.getLoc();
+    auto linalgOp = rewriter->create<linalg::GenericOp>(
+        loc, broadcastOp.output(),
+        rewriter->getI64IntegerAttr(0),  // args_in
+        rewriter->getI64IntegerAttr(1),  // args_out
+        rewriter->getArrayAttr(indexingMaps),
+        GetNParallelLoopsAttrs(nloops, *rewriter),
+        /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
+
+    // Add a block to the region.
+    auto* region = &linalgOp.region();
+    auto* block = rewriter->createBlock(region, region->end());
+    block->addArguments(resultMemrefType.getElementType());
+
+    rewriter->setInsertionPointToEnd(block);
+    auto scalar =
+        rewriter->create<LoadOp>(loc, broadcastOp.operand(), llvm::None);
+    rewriter->create<linalg::YieldOp>(loc, scalar.getResult());
+    rewriter->eraseOp(broadcastOp);
+    return matchSuccess();
+  }
+
+  PatternMatchResult emitNonScalarBroadcast(
+      BroadcastInDimOp broadcastOp, ArrayRef<Value*> args,
+      MemRefType operandMemrefType, MemRefType resultMemrefType,
+      ConversionPatternRewriter* rewriter) const {
     SmallVector<Type, 4> bodyArgTypes{operandMemrefType.getElementType()};
 
     unsigned nloops = resultMemrefType.getRank();
@@ -138,9 +208,6 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
 
       auto operandShape = operandMemrefType.getShape();
       int index = 0;
-      if (!broadcastOp.broadcast_dimensions().hasValue()) {
-        return matchFailure();
-      }
       for (const auto& broadcastSize :
            broadcastOp.broadcast_dimensions().getValue().getIntValues()) {
         int size = broadcastSize.getSExtValue();
@@ -152,37 +219,28 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
     }
 
     // Construct the indexing maps needed for linalg.generic ops.
-    SmallVector<Attribute, 2> indexingMaps;
-    indexingMaps.emplace_back(AffineMapAttr::get(
-        AffineMap::get(nloops, /*symbolCount=*/0, dimExprs)));
-    indexingMaps.emplace_back(
-        AffineMapAttr::get(rewriter.getMultiDimIdentityMap(nloops)));
-
-    // Broadcast op has all surrounding loops parallel, so the loop triple is
-    // [argDim, 0, 0].
-    SmallVector<Attribute, 3> loop_types{rewriter.getI64IntegerAttr(nloops),
-                                         rewriter.getI64IntegerAttr(0),
-                                         rewriter.getI64IntegerAttr(0)};
-    // Define the number of input memref/output memrefs.
-    SmallVector<Attribute, 2> nmemrefs{
-        rewriter.getI64IntegerAttr(bodyArgTypes.size()),
-        rewriter.getI64IntegerAttr(1)};
+    SmallVector<Attribute, 2> indexingMaps{
+        AffineMapAttr::get(AffineMap::get(nloops, /*symbolCount=*/0, dimExprs)),
+        AffineMapAttr::get(rewriter->getMultiDimIdentityMap(nloops))};
 
     auto loc = broadcastOp.getLoc();
-    auto linalgOp = rewriter.create<linalg::GenericOp>(
-        loc, args, rewriter.getArrayAttr(indexingMaps),
-        rewriter.getArrayAttr(loop_types), rewriter.getArrayAttr(nmemrefs),
+    auto linalgOp = rewriter->create<linalg::GenericOp>(
+        loc, args,
+        rewriter->getI64IntegerAttr(bodyArgTypes.size()),  // args_in
+        rewriter->getI64IntegerAttr(1),                    // args_out
+        rewriter->getArrayAttr(indexingMaps),
+        GetNParallelLoopsAttrs(nloops, *rewriter),
         /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
     auto* region = &linalgOp.region();
-    auto* block = rewriter.createBlock(region, region->end());
+    auto* block = rewriter->createBlock(region, region->end());
     block->addArguments(bodyArgTypes);
     block->addArguments(resultMemrefType.getElementType());
 
-    rewriter.setInsertionPointToEnd(block);
-    rewriter.create<linalg::YieldOp>(loc, block->getArgument(operandIndex));
-    rewriter.eraseOp(broadcastOp);
+    rewriter->setInsertionPointToEnd(block);
+    rewriter->create<linalg::YieldOp>(loc, block->getArgument(0));
+    rewriter->eraseOp(broadcastOp);
     return matchSuccess();
   }
 };
@@ -207,19 +265,13 @@ class IotaConverter : public OpConversionPattern<IotaOp> {
     indexingMaps.emplace_back(
         AffineMapAttr::get(rewriter.getMultiDimIdentityMap(nloops)));
 
-    // Pointwise-ops have all surrounding loops parallel, so the loop triple is
-    // [argDim, 0, 0].
-    SmallVector<Attribute, 3> loop_types{rewriter.getI64IntegerAttr(nloops),
-                                         rewriter.getI64IntegerAttr(0),
-                                         rewriter.getI64IntegerAttr(0)};
-    // Define the number of input memref/output memrefs.
-    SmallVector<Attribute, 2> nmemrefs{rewriter.getI64IntegerAttr(0),
-                                       rewriter.getI64IntegerAttr(1)};
-
     auto loc = iotaOp.getLoc();
     auto linalgOp = rewriter.create<linalg::IndexedGenericOp>(
-        loc, args, rewriter.getArrayAttr(indexingMaps),
-        rewriter.getArrayAttr(loop_types), rewriter.getArrayAttr(nmemrefs),
+        loc, args,
+        rewriter.getI64IntegerAttr(0),  // args_in
+        rewriter.getI64IntegerAttr(1),  // args_out
+        rewriter.getArrayAttr(indexingMaps),
+        GetNParallelLoopsAttrs(nloops, rewriter),
         /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
@@ -258,7 +310,9 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_lhlo::MinOp>,
                    PointwiseToLinalgConverter<xla_lhlo::MulOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SelectOp>,
-                   PointwiseToLinalgConverter<xla_lhlo::SubOp>>(context);
+                   PointwiseToLinalgConverter<xla_lhlo::SubOp>,
+                   ScalarPointwiseToStandardConverter<xla_lhlo::AddOp>
+                  >(context);
   // clang-format on
 }
 
@@ -276,9 +330,10 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
 //     %0 = addf %arg4, %arg5 : f32
 //     "linalg.yield"(%0) : (f32) -> ()
 //   }) {
+//     args_in = 2,
+//     args_out = 1,
 //     indexing_maps = [#map0, #map0, #map0],
-//     n_loop_types = [2, 0, 0],
-//     n_views = [2, 1]
+//     iterator_types = ["parallel", "parallel"],
 //   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 // }
 struct LhloLegalizeToLinalg : public FunctionPass<LhloLegalizeToLinalg> {

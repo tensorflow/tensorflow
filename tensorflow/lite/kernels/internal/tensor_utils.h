@@ -16,7 +16,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_TENSOR_UTILS_H_
 
 #include <algorithm>
+#include <cmath>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 
@@ -231,33 +233,15 @@ void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
 
 // Apply Tanh to a quantized vector.
 // Parameters:
+//     - integer_bits: the integer bits of the input.
+//                     Currently supports 0, 1, 2, 3, 4, 5, 6.
 //     - input: batch vector of size n_batch * n_input; 16 bit.
 //     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - output:  the 16 bit output
-// The input is in Q0.15 format and the output is in Q0.15 format.
-void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output);
-
-// Apply Tanh to a quantized vector.
-// Parameters:
-//     - input: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batches.
-//     - n_input: the size for input and output.
-//     - output:  the 16 bit output
-// The input is in Q3.12 format and the output is in Q0.15 format.
-void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output);
-
-// Apply Tanh to a quantized vector.
-// Parameters:
-//     - input: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batches.
-//     - n_input: the size for input and output.
-//     - output:  the 16 bit output
-// The input is in Q4.11 format and the output is in Q0.15 format.
-void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output);
+// The input is in Qm.15-m format and the output is in Q0.15 format.
+void ApplyTanh(int32_t integer_bits, const int16_t* input, int32_t n_batch,
+               int32_t n_input, int16_t* output);
 
 // Element-wise multiplication of two quantized vectors.
 // Parameters:
@@ -377,16 +361,38 @@ void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                       int result_stride);
 
 // Cwise product of a vector and a batch-vector.
-void VectorBatchVectorCwiseProduct(const float* vector, int v_size,
-                                   const float* batch_vector, int n_batch,
-                                   float* result);
+template <typename T>
+inline void VectorBatchVectorCwiseProduct(const T* vector, int v_size,
+                                          const T* batch_vector, int n_batch,
+                                          T* result) {
+  for (int b = 0; b < n_batch; b++) {
+    VectorVectorCwiseProduct(vector, batch_vector, v_size, result);
+    // Update the pointers.
+    result += v_size;
+    batch_vector += v_size;
+  }
+}
 
 // Cwise product and accumulate of a vector and a batch-vector. Since it's a MAC
 // operation, the assumption here is that result array is initialized to valid
 // values.
-void VectorBatchVectorCwiseProductAccumulate(const float* vector, int v_size,
-                                             const float* batch_vector,
-                                             int n_batch, float* result);
+template <typename T>
+inline void VectorBatchVectorCwiseProductAccumulate(const T* vector, int v_size,
+                                                    const T* batch_vector,
+                                                    int n_batch, T* result) {
+  for (int b = 0; b < n_batch; b++) {
+    VectorVectorCwiseProductAccumulate(vector, batch_vector, v_size, result);
+    // Update the pointers.
+    result += v_size;
+    batch_vector += v_size;
+  }
+}
+
+// Same as above, but inputs are 16bit integer and output is 16bit integer.
+void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,
+                                             const int16_t* batch_vector,
+                                             int n_batch, int32_t multiplier,
+                                             int shift, int16_t* result);
 
 // Add another vector for each batch in the batch vector.
 void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
@@ -401,12 +407,78 @@ void VectorBatchVectorAssign(const T* vector, int v_size, int n_batch,
   }
 }
 
-// Apply sigmoid to elements of a vector.
-void ApplySigmoidToVector(const float* vector, int v_size, float* result);
+// Apply Rectified Linear to elements of a vector.
+inline void ApplyReluToVector(const float* __restrict__ vector, int v_size,
+                              float* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    result[v] = std::max(0.0f, vector[v]);
+  }
+}
 
-// Apply activation function to elements of a vector.
-void ApplyActivationToVector(const float* vector, int v_size,
-                             TfLiteFusedActivation activation, float* result);
+// Apply Rectified Linear 1 (cap to [-1;1]) to elements of a vector
+inline void ApplyRelu1ToVector(const float* __restrict__ vector, int v_size,
+                               float* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    result[v] = std::max(-1.0f, std::min(vector[v], 1.0f));
+  }
+}
+
+// Apply Rectified Linear 6 (cap to [0;6]) to elements of a vector
+inline void ApplyRelu6ToVector(const float* __restrict__ vector, int v_size,
+                               float* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    result[v] = std::max(0.0f, std::min(vector[v], 6.0f));
+  }
+}
+
+// Apply tanh to elements of a vector
+inline void ApplyTanhToVector(const float* __restrict__ vector, int v_size,
+                              float* __restrict__ result) {
+  using VectorMap = Eigen::Map<Eigen::Vector<float, Eigen::Dynamic>>;
+  VectorMap input_map(const_cast<float* __restrict__>(vector), v_size);
+  VectorMap output_map(result, v_size);
+  output_map.array() = input_map.array().tanh();
+}
+
+// Apply signbit to elements of a vector
+inline void ApplySignbitToVector(const float* __restrict__ vector, int v_size,
+                                 float* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    result[v] = std::signbit(vector[v]);
+  }
+}
+
+// Apply sigmoid to elements of a vector.
+inline void ApplySigmoidToVector(const float* __restrict__ vector, int v_size,
+                                 float* __restrict__ result) {
+  using VectorMap = Eigen::Map<Eigen::Vector<float, Eigen::Dynamic>>;
+  VectorMap input_map(const_cast<float* __restrict__>(vector), v_size);
+  VectorMap output_map(result, v_size);
+  output_map.array() = input_map.array().logistic();
+}
+
+// Apply appropriate activation function to elements of a vector.
+inline void ApplyActivationToVector(const float* __restrict__ vector,
+                                    int v_size,
+                                    TfLiteFusedActivation activation,
+                                    float* __restrict__ result) {
+  switch (activation) {
+    case kTfLiteActNone:
+      return;
+    case kTfLiteActRelu:
+      return ApplyReluToVector(vector, v_size, result);
+    case kTfLiteActRelu1:
+      return ApplyRelu1ToVector(vector, v_size, result);
+    case kTfLiteActRelu6:
+      return ApplyRelu6ToVector(vector, v_size, result);
+    case kTfLiteActTanh:
+      return ApplyTanhToVector(vector, v_size, result);
+    case kTfLiteActSignBit:
+      return ApplySignbitToVector(vector, v_size, result);
+    case kTfLiteActSigmoid:
+      return ApplySigmoidToVector(vector, v_size, result);
+  }
+}
 
 // Compute "1.0f - elements of vector" (used in CIFG).
 void Sub1Vector(const float* vector, int v_size, float* result);

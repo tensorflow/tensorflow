@@ -46,17 +46,6 @@ py_library(
 cuda_py_test(
     name = "model_analyzer_test",
     srcs = ["model_analyzer_test.py"],
-    additional_deps = [
-        ":profile_context",
-        ":model_analyzer",
-        "//tensorflow/python/profiler/internal:model_analyzer_testlib",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:distributed_framework_test_lib",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:variables",
-    ],
     python_version = "PY3",
     tags = [
         "no_pip",
@@ -64,23 +53,34 @@ cuda_py_test(
         "oss_serial",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+    deps = [
+        ":model_analyzer",
+        ":profile_context",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:distributed_framework_test_lib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/profiler/internal:model_analyzer_testlib",
+    ],
 )
 
 cuda_py_test(
     name = "profiler_test",
     srcs = ["profiler_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    tags = ["no_pip"],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+    deps = [
         ":model_analyzer",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
-        "//tensorflow/python/profiler/internal:model_analyzer_testlib",
         "//tensorflow/python:variables",
+        "//tensorflow/python/profiler/internal:model_analyzer_testlib",
     ],
-    python_version = "PY3",
-    tags = ["no_pip"],
-    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_library(
@@ -126,21 +126,21 @@ py_library(
 cuda_py_test(
     name = "profile_context_test",
     srcs = ["profile_context_test.py"],
-    additional_deps = [
-        ":profile_context",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
-        "//tensorflow/python/profiler/internal:model_analyzer_testlib",
-        "//tensorflow/python:variables",
-    ],
     python_version = "PY3",
     tags = [
         "no_gpu",  # b/136036359
         "no_pip",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+    deps = [
+        ":profile_context",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/profiler/internal:model_analyzer_testlib",
+    ],
 )
 
 py_library(

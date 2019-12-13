@@ -244,6 +244,32 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
 
     auto colocated_intervals = GetSortedColocatedIntervals(interval);
 
+    if (AreIntervalsReservedInAlternateMemory(colocated_intervals)) {
+      VLOG(4) << "Interval " << interval.buffer->ToShortString()
+              << " is reserved in the alternate memory. Total reserved bytes = "
+              << reserved_in_bytes_;
+      for (const BufferInterval* colocated_interval : colocated_intervals) {
+        const HloValue* value = colocated_interval->buffer;
+        // Color all of the aliased reserved buffers here because reserved
+        // alternate memory allocations will not have an entry in preset
+        // allocations that is normally used for coloring.
+        for (auto& position : value->positions()) {
+          VLOG(3) << "Coloring " << position.ToString();
+          Shape* shape = ShapeUtil::GetMutableSubshape(
+              position.instruction->mutable_shape(), position.index);
+          CHECK(shape->IsArray()) << "Coloring a shape that is not an array: "
+                                  << position.ToString();
+          shape->mutable_layout()->set_memory_space(
+              options_.alternate_memory_space);
+        }
+      }
+      // Increment the reserved part of alternate memory so that it is not
+      // available for other buffers. Since all colocated intervals should have
+      // the same size, just use the first one.
+      reserved_in_bytes_ += options_.size_fn(*colocated_intervals[0]->buffer);
+      continue;
+    }
+
     if (colocated_intervals.size() > 1 &&
         !options_.allocate_across_sequential_calls) {
       VLOG(4) << "Not allocating " << interval.buffer->ToShortString()
@@ -366,10 +392,8 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
 }
 
 void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
-  // Go through the parameters and outputs and pin them to default memory by
-  // adding a required assignment.
-  // TODO(berkin): If these values are already marked alternate memory, use
-  // those instead.
+  // Go through the parameters and outputs and pin them to the corresponding
+  // memory by adding a required assignment.
   const HloModule& module = alias_analysis_.dataflow_analysis().module();
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
   HloComputation* entry_computation = module.entry_computation();
@@ -379,16 +403,22 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
         instruction_schedule.at(parameter_instruction);
     ShapeUtil::ForEachSubshape(
         parameter_instruction->shape(),
-        [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+        [&](const Shape& subshape, const ShapeIndex& index) {
+          MemorySpace memory_space = MemorySpace::kDefault;
+          if (subshape.has_layout() && subshape.layout().memory_space() ==
+                                           options_.alternate_memory_space) {
+            memory_space = MemorySpace::kAlternate;
+          }
           for (const HloBuffer* buffer :
                alias_analysis_.ComputeBuffersAt(parameter_instruction, index)) {
             for (const HloValue* value : buffer->values()) {
               VLOG(3) << "Adding required assignment for parameter value = "
                       << value->ToShortString()
-                      << " time = " << parameter_instruction_time;
+                      << " time = " << parameter_instruction_time << " space = "
+                      << (memory_space == MemorySpace::kDefault ? "def"
+                                                                : "alt");
               required_assignments_[value].push_back(
-                  {/*memory_space=*/MemorySpace::kDefault,
-                   /*time=*/parameter_instruction_time});
+                  {memory_space, /*time=*/parameter_instruction_time});
             }
           }
         });
@@ -397,19 +427,54 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
   int64 root_instruction_time = instruction_schedule.at(root_instruction);
   ShapeUtil::ForEachSubshape(
       root_instruction->shape(),
-      [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+      [&](const Shape& subshape, const ShapeIndex& index) {
+        MemorySpace memory_space = MemorySpace::kDefault;
+        if (subshape.has_layout() && subshape.layout().memory_space() ==
+                                         options_.alternate_memory_space) {
+          memory_space = MemorySpace::kAlternate;
+        }
         for (const HloBuffer* buffer :
              alias_analysis_.ComputeBuffersAt(root_instruction, index)) {
           for (const HloValue* value : buffer->values()) {
             VLOG(3) << "Adding required assignment for output value = "
                     << value->ToShortString()
-                    << " time = " << root_instruction_time;
+                    << " time = " << root_instruction_time << " space = "
+                    << (memory_space == MemorySpace::kDefault ? "def" : "alt");
             required_assignments_[value].push_back(
-                {/*memory_space=*/MemorySpace::kDefault,
-                 /*time=*/root_instruction_time});
+                {memory_space, /*time=*/root_instruction_time});
           }
         }
       });
+}
+
+bool AlternateMemoryBestFitHeap::AreIntervalsReservedInAlternateMemory(
+    absl::Span<const BufferInterval* const> colocated_intervals) const {
+  auto is_position_in_alternate_memory = [&](const HloPosition& position) {
+    const Shape& shape = position.shape();
+    return shape.has_layout() &&
+           shape.layout().memory_space() == options_.alternate_memory_space;
+  };
+
+  const HloModule& module = alias_analysis_.dataflow_analysis().module();
+  const HloComputation* entry_computation = module.entry_computation();
+  const HloInstruction* root_instruction =
+      entry_computation->root_instruction();
+  for (const BufferInterval* colocated_interval : colocated_intervals) {
+    const HloValue* value = colocated_interval->buffer;
+    if (value->defining_instruction()->opcode() == HloOpcode::kParameter &&
+        value->defining_instruction()->parent() == entry_computation &&
+        is_position_in_alternate_memory(value->defining_position())) {
+      return true;
+    }
+
+    for (const HloPosition& position : value->positions()) {
+      if (position.instruction == root_instruction &&
+          is_position_in_alternate_memory(position)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 void AlternateMemoryBestFitHeap::CommitPendingChunks() {
@@ -482,8 +547,11 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   if (required_assignment_it != required_assignments_.end()) {
     for (const RequiredMemoryAssignment& required_assignment :
          required_assignment_it->second) {
-      VLOG(3) << "Required assignment at time = " << required_assignment.time;
-      // TODO(berkin): Handle memory requirements for alternate memory space.
+      VLOG(3) << "Required assignment at time = " << required_assignment.time
+              << " space = "
+              << (required_assignment.memory_space == MemorySpace::kDefault
+                      ? "def"
+                      : "alt");
       if (required_assignment.memory_space == MemorySpace::kDefault) {
         if (required_assignment.time == start_time) {
           definition_requires_buffer_in_default_mem = true;
@@ -510,12 +578,37 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   if (!allocations->empty()) {
     prev_allocation = allocations->back().get();
   }
+  // Find a previous allocation that is in the default memory space (not
+  // necessarily the very last allocation).
+  MemorySpaceAssignment::Allocation* prev_allocation_in_default_mem = nullptr;
+  for (auto allocation_it = allocations->rbegin();
+       allocation_it != allocations->rend(); ++allocation_it) {
+    if ((*allocation_it)->memory_space() == MemorySpace::kDefault &&
+        (*allocation_it)->defining_position() == defining_position) {
+      prev_allocation_in_default_mem = allocation_it->get();
+      break;
+    }
+  }
 
   // Since copies couldn't be removed, create an allocation in the default
   // memory space.
-  if (prev_allocation != nullptr &&
-      prev_allocation->memory_space() == MemorySpace::kAlternate &&
-      prev_allocation->defining_position() == defining_position) {
+  if (prev_allocation_in_default_mem != nullptr) {
+    if (prev_allocation == prev_allocation_in_default_mem) {
+      // The latest allocation is also in the default memory, simply extend
+      // that.
+      prev_allocation->Extend(end_time);
+    } else {
+      // The latest allocation is different. Create a new allocation in default
+      // memory.
+      allocations->push_back(
+          absl::make_unique<MemorySpaceAssignment::Allocation>(
+              non_bitcast_operand, defining_position, MemorySpace::kDefault,
+              kDummyChunk, prev_allocation_in_default_mem->end_time(),
+              end_time));
+    }
+  } else if (prev_allocation != nullptr &&
+             prev_allocation->memory_space() == MemorySpace::kAlternate &&
+             prev_allocation->defining_position() == defining_position) {
     // If there was an allocation for this HloValue that was in the alternate
     // memory space, we also need to perform an eviction.
     // TODO(berkin): For now evictions happen relative to the most recent
@@ -563,13 +656,6 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
         return false;
       }
     }
-  } else if (prev_allocation != nullptr &&
-             prev_allocation->memory_space() == MemorySpace::kDefault &&
-             prev_allocation->defining_position() == defining_position) {
-    // If the previous allocation was in the default memory space and was
-    // defined by the same instruction, extend that.  Otherwise, create a new
-    // allocation.
-    prev_allocation->Extend(end_time);
   } else {
     allocations->push_back(absl::make_unique<MemorySpaceAssignment::Allocation>(
         non_bitcast_operand, defining_position, MemorySpace::kDefault,
@@ -613,7 +699,7 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
     }
     ChunkCandidate chunk_candidate = FindChunkCandidate(alternate_mem_interval);
     // Check if the new heap size fits within limits.
-    if (chunk_candidate.heap_size < options_.max_size_in_bytes) {
+    if (chunk_candidate.heap_size < available_heap_size()) {
       VLOG(3) << "Move the buffer to alternate memory at "
               << alternate_mem_interval.start
               << ". Offset = " << chunk_candidate.chunk.offset
@@ -748,7 +834,7 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
   alternate_mem_interval.end = end_time;
   // Check if the new heap size fits within limits. Also ensure if a
   // preferred offset was provided, that offset was used.
-  if (chunk_candidate.heap_size <= options_.max_size_in_bytes &&
+  if (chunk_candidate.heap_size <= available_heap_size() &&
       (preferred_offset == -1 ||
        preferred_offset == chunk_candidate.chunk.offset)) {
     VLOG(3) << "Keep the buffer in alternate memory. Offset = "
@@ -1130,7 +1216,15 @@ Status MemorySpaceAssignment::SimplifyGraph() {
           // Ensure the exported preset assignments don't contain a refence to
           // the removed instruction.
           preset_assignments_->RemoveAssignmentForInstruction(instruction);
-          flattened_instruction_sequence_.remove_instruction(instruction);
+          // Instead of deleting the instruction from the schedule, replace it
+          // with a nullptr. This is needed because FixSchedule relies on the
+          // logical time that is the index into flattened_instructions_ for
+          // scheduling asynchronous copies.
+          auto instruction_it =
+              absl::c_find(flattened_instructions_, instruction);
+          if (instruction_it != flattened_instructions_.end()) {
+            *instruction_it = nullptr;
+          }
           TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
           computation_modified = true;
         } else if (instruction->opcode() == HloOpcode::kGetTupleElement) {
@@ -1228,12 +1322,12 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
 
       // If the copy start doesn't happen to be scheduled at the correct
       // computation, delay it until the correct computation starts.
-      const auto& flattened_instructions =
-          flattened_instruction_sequence_.instructions();
       int64 copy_start_schedule_after =
           copy_allocation->copy_start_schedule_after();
+      // Accessing flattened_instructions_ here without checking if it is
+      // nullptr is safe because this method is called before SimplifyGraph.
       while (copy_allocation->instruction()->parent() !=
-             flattened_instructions[copy_start_schedule_after]->parent()) {
+             flattened_instructions_[copy_start_schedule_after]->parent()) {
         VLOG(4) << "Delaying CopyStart (" << copy_start_schedule_after << " to "
                 << (copy_start_schedule_after + 1) << ") for "
                 << copy_allocation->copy_start()->ToString()
@@ -1264,8 +1358,7 @@ Status MemorySpaceAssignment::FixSchedule() {
     VLOG(4) << "Scheduling: " << computation->ToString();
 
     for (int64 instruction_index = 0;
-         instruction_index <
-         flattened_instruction_sequence_.instructions().size();
+         instruction_index < flattened_instructions_.size();
          ++instruction_index) {
       auto insts_before_iter = schedule_before_.find(instruction_index);
       if (insts_before_iter != schedule_before_.end()) {
@@ -1276,10 +1369,11 @@ Status MemorySpaceAssignment::FixSchedule() {
           }
         }
       }
-      HloInstruction* instruction =
-          flattened_instruction_sequence_.instructions()[instruction_index];
-      // Insert only if not previously inserted.
-      if (!inserted_instructions.contains(instruction) &&
+      HloInstruction* instruction = flattened_instructions_[instruction_index];
+      // Insert only if it is not deleted (SimplifyGraph sets it to nullptr if
+      // it was deleted) and not previously inserted.
+      if (instruction != nullptr &&
+          !inserted_instructions.contains(instruction) &&
           instruction->parent() == computation) {
         EnsureInstructionAndOperandsInserted(instruction, &new_sequence,
                                              &inserted_instructions);

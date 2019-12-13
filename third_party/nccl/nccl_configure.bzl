@@ -72,6 +72,11 @@ def _nccl_configure_impl(repository_ctx):
         nccl_version = repository_ctx.os.environ[_TF_NCCL_VERSION].strip()
         nccl_version = nccl_version.split(".")[0]
 
+    cuda_config = find_cuda_config(repository_ctx, ["cuda"])
+    cuda_version = cuda_config["cuda_version"].split(".")
+    cuda_major = cuda_version[0]
+    cuda_minor = cuda_version[1]
+
     if nccl_version == "":
         # Alias to open source build from @nccl_archive.
         repository_ctx.file("BUILD", _NCCL_ARCHIVE_BUILD_CONTENT)
@@ -84,9 +89,18 @@ def _nccl_configure_impl(repository_ctx):
 
         # Round-about way to make the list unique.
         gpu_architectures = dict(zip(gpu_architectures, gpu_architectures)).keys()
-        repository_ctx.template("build_defs.bzl", _label("build_defs.bzl.tpl"), {
+        config_wrap = {
             "%{gpu_architectures}": str(gpu_architectures),
-        })
+            "%{use_bin2c_path}": "False",
+        }
+        if (int(cuda_major), int(cuda_minor)) <= (10, 1):
+            config_wrap["%{use_bin2c_path}"] = "True"
+
+        repository_ctx.template(
+            "build_defs.bzl",
+            _label("build_defs.bzl.tpl"),
+            config_wrap,
+        )
     else:
         # Create target for locally installed NCCL.
         config = find_cuda_config(repository_ctx, ["nccl"])

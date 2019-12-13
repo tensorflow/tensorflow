@@ -287,6 +287,7 @@ tf_py_test(
     size = "small",
     srcs = ["iterator_cluster_test.py"],
     additional_deps = [
+        ":test_base",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
@@ -315,17 +316,10 @@ cuda_py_test(
     name = "iterator_test",
     size = "medium",
     srcs = ["iterator_test.py"],
-    additional_deps = [
+    grpc_enabled = True,
+    deps = [
         ":test_base",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python/data/ops:readers",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/data/util:structure",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/tracking:util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -346,11 +340,18 @@ cuda_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
-        "//tensorflow/python/compat:compat",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/training/tracking:util",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
-    grpc_enabled = True,
 )
 
 tf_py_test(
@@ -400,31 +401,32 @@ tf_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/ops/ragged",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
     name = "multi_device_iterator_test",
     size = "medium",
     srcs = ["multi_device_iterator_test.py"],
-    additional_deps = [
+    tags = [
+        "no_gpu",  #TODO(b/141255188): Enable test after bug is resolved.
+        "no_oss",
+        "no_windows_gpu",
+    ],
+    deps = [
         ":test_base",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:multi_device_iterator_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/data/experimental/ops:testing",
-        "//tensorflow/python/data/experimental/ops:optimization_options",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
-    ],
-    tags = [
-        "no_oss",
-        "no_windows_gpu",
-        "nogpu",  #TODO(b/141255188): Enable test after bug is resolved.
+        "//tensorflow/python/data/experimental/ops:optimization_options",
+        "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -432,14 +434,15 @@ cuda_py_test(
     name = "memory_cleanup_test",
     size = "medium",
     srcs = ["memory_cleanup_test.py"],
-    additional_deps = [
+    tags = ["notsan"],  # b/144706539
+    deps = [
         ":test_base",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -464,20 +467,20 @@ cuda_py_test(
     name = "optional_test",
     size = "small",
     srcs = ["optional_test.py"],
-    additional_deps = [
+    deps = [
         ":test_base",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/data/ops:optional_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/ops:optional_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -547,17 +550,17 @@ cuda_py_test(
     name = "reduce_test",
     size = "small",
     srcs = ["reduce_test.py"],
-    additional_deps = [
+    deps = [
         ":test_base",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

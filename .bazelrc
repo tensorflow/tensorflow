@@ -100,9 +100,9 @@ build --apple_platform_type=macos
 # iOS configs for each architecture and the fat binary builds.
 build:ios --apple_platform_type=ios
 build:ios --apple_bitcode=embedded --copt=-fembed-bitcode
+build:ios --copt=-Wno-c++11-narrowing
 build:ios_armv7 --config=ios
 build:ios_armv7 --cpu=ios_armv7
-build:ios_armv7 --copt -Wno-c++11-narrowing
 build:ios_arm64 --config=ios
 build:ios_arm64 --cpu=ios_arm64
 build:ios_i386 --config=ios
@@ -111,7 +111,6 @@ build:ios_x86_64 --config=ios
 build:ios_x86_64 --cpu=ios_x86_64
 build:ios_fat --config=ios
 build:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
-build:ios_fat --copt -Wno-c++11-narrowing
 
 # Config to use a mostly-static build and disable modular op registration
 # support (this will revert to loading TensorFlow with RTLD_GLOBAL in Python).
@@ -202,18 +201,25 @@ build --define=allow_oversize_protos=true
 build --spawn_strategy=standalone
 build -c opt
 
-# By default, build TF in C++ 14 mode.
-build --cxxopt=-std=c++14
-build --host_cxxopt=-std=c++14
-
 # Make Bazel print out all options from rc files.
 build --announce_rc
 
 # Other build flags.
 build --define=grpc_no_ares=true
 
-# Prevent regression of https://github.com/bazelbuild/bazel/issues/7362
-build --incompatible_remove_legacy_whole_archive
+# See https://github.com/bazelbuild/bazel/issues/7362 for information on what
+# --incompatible_remove_legacy_whole_archive flag does.
+# This flag is set to true in Bazel 1.0 and newer versions. We tried to migrate
+# Tensorflow to the default, however test coverage wasn't enough to catch the
+# errors.
+# There is ongoing work on Bazel team's side to provide support for transitive
+# shared libraries. As part of migrating to transitive shared libraries, we
+# hope to provide a better mechanism for control over symbol exporting, and
+# then tackle this issue again.
+#
+# TODO: Remove this line once TF doesn't depend on Bazel wrapping all library
+# archives in -whole_archive -no_whole_archive.
+build --noincompatible_remove_legacy_whole_archive
 
 # Modular TF build options
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
@@ -224,13 +230,59 @@ build:c++17 --cxxopt=-std=c++1z
 build:c++17 --cxxopt=-stdlib=libc++
 build:c++1z --config=c++17
 
-# Default paths for TF_SYSTEM_LIBS
-build --define=PREFIX=/usr
-build --define=LIBDIR=$(PREFIX)/lib
-build --define=INCLUDEDIR=$(PREFIX)/include
+# Enable using platform specific build settings
+build --enable_platform_specific_config
 
 # Suppress C++ compiler warnings, otherwise build logs become 10s of MBs.
-build --copt=-w
+build:linux --copt=-w
+build:macos --copt=-w
+build:windows --copt=/w
+
+# Default paths for TF_SYSTEM_LIBS
+build:linux --define=PREFIX=/usr
+build:linux --define=LIBDIR=$(PREFIX)/lib
+build:linux --define=INCLUDEDIR=$(PREFIX)/include
+build:macos --define=PREFIX=/usr
+build:macos --define=LIBDIR=$(PREFIX)/lib
+build:macos --define=INCLUDEDIR=$(PREFIX)/include
+# TF_SYSTEM_LIBS do not work on windows.
+
+# By default, build TF in C++ 14 mode.
+build:linux --cxxopt=-std=c++14
+build:linux --host_cxxopt=-std=c++14
+build:macos --cxxopt=-std=c++14
+build:macos --host_cxxopt=-std=c++14
+build:windows --cxxopt=/std:c++14
+build:windows --host_cxxopt=/std:c++14
+
+# On windows, we still link everything into a single DLL.
+build:windows --config=monolithic
+
+# On linux and macos, we dynamically link small amount of kernels
+build:linux --config=dynamic_kernels
+build:macos --config=dynamic_kernels
+
+# Make sure to include as little of windows.h as possible
+build:windows --copt=-DWIN32_LEAN_AND_MEAN
+build:windows --host_copt=-DWIN32_LEAN_AND_MEAN
+build:windows --copt=-DNOGDI
+build:windows --host_copt=-DNOGDI
+
+# Misc build options we need for windows.
+build:windows --linkopt=/DEBUG
+build:windows --host_linkopt=/DEBUG
+build:windows --linkopt=/OPT:REF
+build:windows --host_linkopt=/OPT:REF
+build:windows --linkopt=/OPT:ICF
+build:windows --host_linkopt=/OPT:ICF
+build:windows --experimental_strict_action_env=true
+build:windows --incompatible_windows_native_test_wrapper
+
+# Verbose failure logs when something goes wrong
+build:windows --verbose_failures
+
+# On windows, we never cross compile
+build:windows --distinct_host_configuration=false
 
 # Suppress all warning messages.
 build:short_logs --output_filter=DONT_MATCH_ANYTHING
@@ -335,20 +387,6 @@ build:rbe_win --javabase="@org_tensorflow//third_party/toolchains/preconfig/win_
 build:rbe_win --platforms="@org_tensorflow//third_party/toolchains/preconfig/win_1803:rbe_windows_1803"
 build:rbe_win --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
 
-# Misc build options we need for windows
-build:rbe_win --copt=-DWIN32_LEAN_AND_MEAN
-build:rbe_win --host_copt=-DWIN32_LEAN_AND_MEAN
-build:rbe_win --copt=-DNOGDI
-build:rbe_win --host_copt=-DNOGDI
-build:rbe_win --linkopt=/DEBUG
-build:rbe_win --host_linkopt=/DEBUG
-build:rbe_win --linkopt=/OPT:REF
-build:rbe_win --host_linkopt=/OPT:REF
-build:rbe_win --linkopt=/OPT:ICF
-build:rbe_win --host_linkopt=/OPT:ICF
-build:rbe_win --config=monolithic
-build:rbe_win --experimental_strict_action_env=true
-build:rbe_win --incompatible_windows_native_test_wrapper
 # TODO(gunan): Remove once we use MSVC 2019 with latest patches.
 build:rbe_win --define=override_eigen_strong_inline=true
 

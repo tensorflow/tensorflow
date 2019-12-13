@@ -32,6 +32,11 @@ tf_proto_library_cc(
 )
 
 cc_library(
+    name = "c_api",
+    hdrs = ["c_api.h"],
+)
+
+cc_library(
     name = "tpu_driver",
     srcs = [
         "tpu_driver.cc",

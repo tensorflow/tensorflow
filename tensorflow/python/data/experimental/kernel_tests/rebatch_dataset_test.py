@@ -32,8 +32,8 @@ from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -47,13 +47,11 @@ def _flat_shapes(dataset):
   return nest.flatten(dataset_ops.get_legacy_output_shapes(dataset))
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  drop_remainder_cases = [("WithDropRemainder", True),
-                          ("WithoutDropRemainder", False)]
-
-  @parameterized.named_parameters(drop_remainder_cases)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(drop_remainder=[True, False])))
   def testBasic(self, drop_remainder):
     dataset = dataset_ops.Dataset.range(1024).batch(
         32, drop_remainder=drop_remainder)
@@ -64,13 +62,16 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected_output = [[k for k in range(i, i + 8)] for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testScalarInputError(self):
     dataset = dataset_ops.Dataset.range(1024)
     distribute._RebatchDataset(dataset.batch(4), num_replicas=4)
     with self.assertRaisesRegexp(ValueError, "at least one dimension"):
       distribute._RebatchDataset(dataset, num_replicas=4)
 
-  @parameterized.named_parameters(drop_remainder_cases)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(drop_remainder=[True, False])))
   def testBatchNotDivisibleByNumReplicas(self, drop_remainder):
     dataset = dataset_ops.Dataset.range(1024).batch(
         32, drop_remainder=drop_remainder)
@@ -89,6 +90,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       i += 4
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testBatchSizeNotDivisibleByNumReplicas2(self):
     dataset = dataset_ops.Dataset.range(32).batch(16, drop_remainder=True)
     rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=5)
@@ -102,6 +104,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected_output.extend([[]])  # Last replica gets an empty batch
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTupleOutput(self):
     dataset = dataset_ops.Dataset.range(1024).map(lambda x: (x, x)).batch(32)
     rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
@@ -110,6 +113,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                        for i in range(0, 1024, 8)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNestedDictionaryOutput(self):
     dataset = dataset_ops.Dataset.range(1024).map(
         lambda x: {"a": x, "b": {"c": x}}).batch(32)
@@ -119,7 +123,9 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                        for i in range(0, 1024, 8)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
-  @parameterized.named_parameters(drop_remainder_cases)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(drop_remainder=[True, False])))
   def testFinalPartialBatch(self, drop_remainder):
     dataset = dataset_ops.Dataset.range(1032).batch(
         32, drop_remainder=drop_remainder)
@@ -136,7 +142,9 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           [[k for k in range(i, i + 2)] for i in range(1024, 1032, 2)])
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
-  @parameterized.named_parameters(drop_remainder_cases)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(drop_remainder=[True, False])))
   def testFinalPartialBatchAfterRebatch(self, drop_remainder):
     dataset = dataset_ops.Dataset.range(34).batch(
         32, drop_remainder=drop_remainder)
@@ -150,6 +158,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       expected_output += [[32], [33], [], []]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMultipleBatches(self):
     dataset = dataset_ops.Dataset.range(128).batch(4).batch(8)
     self.assertEqual([[None, None]],
@@ -170,6 +179,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                        for i in range(0, 128, 8)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMapAndBatch(self):
     dataset = dataset_ops.Dataset.range(1024).apply(
         batching.map_and_batch(math_ops.square, 32))
@@ -180,6 +190,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                        for i in range(0, 1024, 8)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMapAndBatchWithCapturedInput(self):
     captured_t = variables.Variable(42)
     dataset = dataset_ops.Dataset.range(1024).apply(
@@ -193,6 +204,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         rebatched_dataset, expected_output, requires_initialization=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPaddedBatch(self):
     dataset = dataset_ops.Dataset.range(128).batch(
         4, drop_remainder=True).padded_batch(
@@ -213,6 +225,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                        for i in range(0, 128, 8)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testConcatenate(self):
     dataset1 = dataset_ops.Dataset.range(64).batch(8)
     dataset2 = dataset_ops.Dataset.range(32).batch(8)
@@ -224,6 +237,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                        [[i, i + 1] for i in range(0, 32, 2)])
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testConcatenateDifferentShapes(self):
     dataset1 = dataset_ops.Dataset.range(64).batch(16)
     dataset2 = dataset_ops.Dataset.range(32).batch(8)
@@ -235,6 +249,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                        [[i, i + 1] for i in range(0, 32, 2)])
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testZip(self):
     dataset1 = dataset_ops.Dataset.range(64).batch(8)
     dataset2 = dataset_ops.Dataset.range(32).batch(8)
@@ -245,6 +260,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected_output = [([i, i + 1], [i, i + 1]) for i in range(0, 32, 2)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testZipDifferentShapes(self):
     dataset1 = dataset_ops.Dataset.range(64).batch(16)
     dataset2 = dataset_ops.Dataset.range(32).batch(8)
@@ -256,6 +272,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                        for i in range(0, 32, 2)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFlatMapBatching(self):
     dataset = dataset_ops.Dataset.range(2).flat_map(
         lambda _: dataset_ops.Dataset.range(32).batch(  # pylint: disable=g-long-lambda
@@ -274,6 +291,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                        for i in range(0, 32, 8)]  # generates 4 elements
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testInterleaveBatching(self):
     dataset = dataset_ops.Dataset.range(2).interleave(
         lambda _: dataset_ops.Dataset.range(32).batch(  # pylint: disable=g-long-lambda
@@ -290,6 +308,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected_output += expected_output
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testParallelInterleaveBatching(self):
     dataset = dataset_ops.Dataset.range(2).interleave(
         lambda _: dataset_ops.Dataset.range(32).batch(  # pylint: disable=g-long-lambda
@@ -307,6 +326,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected_output += expected_output
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testGroupByWindowStaticBatch(self):
     dataset = dataset_ops.Dataset.from_tensor_slices(
         [[array_ops.constant(i, dtype=dtypes.int64)] * 3 for i in range(40)])
@@ -326,6 +346,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                        for k in range(2)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testGroupByWindowDynamicBatch(self):
     # {0, 1, 0, 1, ...}
     dataset = dataset_ops.Dataset.range(40).map(lambda x: x % 2)
@@ -350,6 +371,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected_output = [[value] * batch_size for batch_size, value in pairs]
     self.assertDatasetProduces(dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testGroupByWindowDynamicBatchWithPartialBatch(self):
     # {0, 1, 0, 1, ...}
     dataset = dataset_ops.Dataset.range(40).map(lambda x: x % 2)
@@ -371,6 +393,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected_output = [[value] * batch_size for batch_size, value in pairs]
     self.assertDatasetProduces(dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testGroupByWindowDynamicBatchWithPartialBatchWithDropRemainder(self):
     # This test exercises nested batch functionality, dynamic batch size
     # and drop_remainder=True together.
@@ -395,6 +418,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected_output = [[value] * batch_size for batch_size, value in pairs]
     self.assertDatasetProduces(dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testScanAfterBatch(self):
     dataset = dataset_ops.Dataset.range(40).batch(10).apply(
         scan_ops.scan(np.int64(2), lambda state, value: (state, value * state)))
@@ -405,6 +429,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected_output = [[i * 2 for i in range(j*5, (j+1)*5)] for j in range(8)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMakeBatchedFeaturesDataset(self):
     # Set up
     fn = os.path.join(self.get_temp_dir(), "tf_record.txt")
@@ -438,6 +463,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     } for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testRaggedTensorDataset(self):
     # Set up a dataset that produces ragged tensors with a static batch size.
     row_lengths = np.random.randint(8, size=128)

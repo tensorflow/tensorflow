@@ -1,5 +1,6 @@
 op {
   graph_op_name: "SparseMatrixZeros"
+  visibility: HIDDEN
   in_arg {
     name: "dense_shape"
     description: "The desired matrix shape."

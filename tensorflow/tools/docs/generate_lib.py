@@ -229,10 +229,9 @@ def add_dict_to_dict(add_from, add_to):
 # Exclude some libraries in contrib from the documentation altogether.
 def _get_default_private_map():
   return {
-      'tf.contrib.autograph': ['utils', 'operators'],
       'tf.test': ['mock'],
+      'tf': ['contrib'],
       'tf.compat': ['v1', 'v2'],
-      'tf.contrib.estimator': ['python'],
   }
 
 
@@ -241,44 +240,6 @@ def _get_default_do_not_descend_map():
   # TODO(markdaoust): Use docs_controls decorators, locally, instead.
   return {
       'tf': ['cli', 'lib', 'wrappers'],
-      'tf.contrib': [
-          'compiler',
-          'grid_rnn',
-          # Block contrib.keras to de-clutter the docs
-          'keras',
-          'labeled_tensor',
-          'quantization',
-          'session_bundle',
-          'slim',
-          'solvers',
-          'specs',
-          'tensor_forest',
-          'tensorboard',
-          'testing',
-          'tfprof',
-      ],
-      'tf.contrib.bayesflow': [
-          'special_math', 'stochastic_gradient_estimators',
-          'stochastic_variables'
-      ],
-      'tf.contrib.ffmpeg': ['ffmpeg_ops'],
-      'tf.contrib.graph_editor': [
-          'edit', 'match', 'reroute', 'subgraph', 'transform', 'select', 'util'
-      ],
-      'tf.contrib.keras': ['api', 'python'],
-      'tf.contrib.layers': ['feature_column', 'summaries'],
-      'tf.contrib.learn': [
-          'datasets',
-          'head',
-          'graph_actions',
-          'io',
-          'models',
-          'monitors',
-          'ops',
-          'preprocessing',
-          'utils',
-      ],
-      'tf.contrib.util': ['loader'],
   }
 
 

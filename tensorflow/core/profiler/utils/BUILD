@@ -36,9 +36,22 @@ cc_library(
     deps = [
         ":math_utils",
         ":tf_op_utils",
-        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "op_utils",
+    srcs = ["op_utils.cc"],
+    hdrs = ["op_utils.h"],
+    deps = [
+        ":op_metrics_db_utils",
+        ":tf_op_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -101,6 +114,18 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "xplane_schema",
+    srcs = ["xplane_schema.cc"],
+    hdrs = ["xplane_schema.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

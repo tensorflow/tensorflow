@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/cancellation.h"
 
+#include <forward_list>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -28,8 +30,14 @@ CancellationManager::CancellationManager()
       is_cancelled_(false),
       next_cancellation_token_(0) {}
 
+CancellationManager::CancellationManager(CancellationManager* parent)
+    : is_cancelling_(false), next_cancellation_token_(0), parent_(parent) {
+  is_cancelled_ = parent->RegisterChild(this);
+}
+
 void CancellationManager::StartCancel() {
   gtl::FlatMap<CancellationToken, CancelCallback> callbacks_to_run;
+  std::forward_list<CancellationManager*> children_to_cancel;
   Notification* cancelled_notification = nullptr;
   {
     mutex_lock l(mu_);
@@ -39,6 +47,16 @@ void CancellationManager::StartCancel() {
     is_cancelling_ = true;
     if (state_) {
       std::swap(state_->callbacks, callbacks_to_run);
+
+      // Remove all children from the list of children.
+      CancellationManager* child = state_->first_child;
+      while (child != nullptr) {
+        children_to_cancel.push_front(child);
+        child->is_removed_from_parent_ = true;
+        child = child->next_sibling_;
+      }
+      state_->first_child = nullptr;
+
       cancelled_notification = &state_->cancelled_notification;
     }
   }
@@ -49,6 +67,9 @@ void CancellationManager::StartCancel() {
   // cancelled_notification_ is notified.
   for (auto key_and_value : callbacks_to_run) {
     key_and_value.second();
+  }
+  for (CancellationManager* child : children_to_cancel) {
+    child->StartCancel();
   }
   {
     mutex_lock l(mu_);
@@ -100,6 +121,65 @@ bool CancellationManager::DeregisterCallback(CancellationToken token) {
   }
 }
 
+bool CancellationManager::RegisterChild(CancellationManager* child) {
+  mutex_lock l(mu_);
+  if (is_cancelled_.load(std::memory_order_relaxed) || is_cancelling_) {
+    child->is_removed_from_parent_ = true;
+    return true;
+  }
+
+  if (!state_) {
+    state_ = absl::make_unique<State>();
+  }
+
+  // Push `child` onto the front of the list of children.
+  CancellationManager* current_head = state_->first_child;
+  state_->first_child = child;
+  child->prev_sibling_ = nullptr;
+  child->next_sibling_ = current_head;
+  if (current_head) {
+    current_head->prev_sibling_ = child;
+  }
+
+  return false;
+}
+
+void CancellationManager::DeregisterChild(CancellationManager* child) {
+  DCHECK_EQ(child->parent_, this);
+  Notification* cancelled_notification = nullptr;
+  {
+    mutex_lock l(mu_);
+    if (!child->is_removed_from_parent_) {
+      // Remove the child from this manager's list of children.
+      DCHECK(state_);
+
+      if (child->prev_sibling_ == nullptr) {
+        // The child was at the head of the list.
+        DCHECK_EQ(state_->first_child, child);
+        state_->first_child = child->next_sibling_;
+      } else {
+        child->prev_sibling_->next_sibling_ = child->next_sibling_;
+      }
+
+      if (child->next_sibling_ != nullptr) {
+        child->next_sibling_->prev_sibling_ = child->prev_sibling_;
+      }
+
+      child->is_removed_from_parent_ = true;
+    }
+    if (is_cancelling_) {
+      cancelled_notification = &state_->cancelled_notification;
+    }
+  }
+
+  // Wait for an ongoing call to StartCancel() to finish. This wait ensures that
+  // the caller of DeregisterChild does not return immediately and free a child
+  // that may currently be being cancelled by StartCancel().
+  if (cancelled_notification) {
+    cancelled_notification->WaitForNotification();
+  }
+}
+
 bool CancellationManager::TryDeregisterCallback(CancellationToken token) {
   mutex_lock lock(mu_);
   if (is_cancelled_ || is_cancelling_) {
@@ -113,6 +193,9 @@ bool CancellationManager::TryDeregisterCallback(CancellationToken token) {
 }
 
 CancellationManager::~CancellationManager() {
+  if (parent_) {
+    parent_->DeregisterChild(this);
+  }
   if (state_) {
     StartCancel();
   }

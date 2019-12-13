@@ -164,7 +164,8 @@ class TensorArrayTest(xla_test.XLATestCase):
             dtype=tf_dtype, tensor_array_name="foo", size=3)
 
         # Unpack a matrix into vectors.
-        w1 = ta.unstack(convert([[1.0, 1.1], [2.0, 2.1], [3.0, 3.1]]))
+        w1 = ta.unstack(
+            convert([[1.0, 1.03125], [2.0, 2.03125], [3.0, 3.03125]]))
         r0 = w1.read(0)
         r1 = w1.read(1)
         r2 = w1.read(2)
@@ -172,9 +173,9 @@ class TensorArrayTest(xla_test.XLATestCase):
 
       d0, d1, d2 = self.evaluate(xla.compile(fn))
 
-      self.assertAllEqual(convert([1.0, 1.1]), d0)
-      self.assertAllEqual(convert([2.0, 2.1]), d1)
-      self.assertAllEqual(convert([3.0, 3.1]), d2)
+      self.assertAllEqual(convert([1.0, 1.03125]), d0)
+      self.assertAllEqual(convert([2.0, 2.03125]), d1)
+      self.assertAllEqual(convert([3.0, 3.03125]), d2)
 
       def fn():
         # Reset ta because we're going to change the shape, else shape

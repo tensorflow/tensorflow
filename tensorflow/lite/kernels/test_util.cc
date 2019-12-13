@@ -88,6 +88,24 @@ int SingleOpModel::AddInput(const TensorData& t, bool is_variable) {
   return id;
 }
 
+int SingleOpModel::AddIntermediate(TensorType type,
+                                   const std::vector<float>& scale,
+                                   const std::vector<int64_t>& zero_point) {
+  // Currently supports only int16 intermediate types.
+  // TODO(jianlijianli): make use of the type.
+  int id = tensors_.size();
+  flatbuffers::Offset<QuantizationParameters> q_params =
+      CreateQuantizationParameters(builder_, /*min=*/0, /*max=*/0,
+                                   builder_.CreateVector<float>(scale),
+                                   builder_.CreateVector<int64_t>(zero_point));
+  tensors_.push_back(CreateTensor(builder_, builder_.CreateVector<int>({}),
+                                  type,
+                                  /*buffer=*/0,
+                                  /*name=*/0, q_params, false));
+  intermediates_.push_back(id);
+  return id;
+}
+
 int SingleOpModel::AddNullInput() {
   int id = kTfLiteOptionalTensor;
   inputs_.push_back(id);
@@ -108,7 +126,8 @@ void SingleOpModel::SetBuiltinOp(BuiltinOperator type,
       builder_, /*opcode_index=*/0, builder_.CreateVector<int32_t>(inputs_),
       builder_.CreateVector<int32_t>(outputs_), builtin_options_type,
       builtin_options,
-      /*custom_options=*/0, CustomOptionsFormat_FLEXBUFFERS));
+      /*custom_options=*/0, CustomOptionsFormat_FLEXBUFFERS, 0,
+      builder_.CreateVector<int32_t>(intermediates_)));
 }
 
 void SingleOpModel::SetCustomOp(

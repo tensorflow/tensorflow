@@ -95,15 +95,14 @@ public:
   /// SSA values in namesToUse.  This may only be used for IsolatedFromAbove
   /// operations.  If any entry in namesToUse is null, the corresponding
   /// argument name is left alone.
-  virtual void shadowRegionArgs(Region &region,
-                                ArrayRef<Value *> namesToUse) = 0;
+  virtual void shadowRegionArgs(Region &region, ValueRange namesToUse) = 0;
 
   /// Prints an affine map of SSA ids, where SSA id names are used in place
   /// of dims/symbols.
   /// Operand values must come from single-result sources, and be valid
   /// dimensions/symbol identifiers according to mlir::isValidDim/Symbol.
   virtual void printAffineMapOfSSAIds(AffineMapAttr mapAttr,
-                                      ArrayRef<Value *> operands) = 0;
+                                      ValueRange operands) = 0;
 
   /// Print an optional arrow followed by a type list.
   void printOptionalArrowTypeList(ArrayRef<Type> types) {
@@ -155,6 +154,18 @@ inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Value &value) {
   p.printOperand(&value);
   return p;
 }
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Value *value) {
+  return p << *value;
+}
+
+template <typename T,
+          typename std::enable_if<std::is_convertible<T &, ValueRange>::value &&
+                                      !std::is_convertible<T &, Value *>::value,
+                                  T>::type * = nullptr>
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const T &values) {
+  p.printOperands(values);
+  return p;
+}
 
 inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Type type) {
   p.printType(type);
@@ -171,11 +182,26 @@ inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Attribute attr) {
 // FunctionType with the Type version above, not have it match this.
 template <typename T, typename std::enable_if<
                           !std::is_convertible<T &, Value &>::value &&
+                              !std::is_convertible<T &, Value *>::value &&
                               !std::is_convertible<T &, Type &>::value &&
-                              !std::is_convertible<T &, Attribute &>::value,
+                              !std::is_convertible<T &, Attribute &>::value &&
+                              !std::is_convertible<T &, ValueRange>::value &&
+                              !llvm::is_one_of<T, bool>::value,
                           T>::type * = nullptr>
 inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const T &other) {
   p.getStream() << other;
+  return p;
+}
+
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, bool value) {
+  return p << (value ? StringRef("true") : "false");
+}
+
+template <typename IteratorT>
+inline OpAsmPrinter &
+operator<<(OpAsmPrinter &p,
+           const iterator_range<ValueTypeIterator<IteratorT>> &types) {
+  interleaveComma(types, p);
   return p;
 }
 
