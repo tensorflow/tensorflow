@@ -155,7 +155,7 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
   std::vector<const tensorflow::Tensor*> input_tensors(op->getNumOperands());
   std::vector<tensorflow::PartialTensorShape> input_shapes(
       op->getNumOperands());
-  std::vector<tensorflow::Tensor> tensors;
+  std::vector<tensorflow::Tensor> tensors(op->getNumOperands());
   for (auto it : llvm::enumerate(op->getOperands())) {
     Value* operand = it.value();
     size_t index = it.index();
@@ -163,8 +163,7 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
     // If the operand is constant, then convert it to Tensor.
     ElementsAttr attr;
     if (matchPattern(operand, m_Constant(&attr))) {
-      tensors.emplace_back();
-      tensorflow::Tensor* input_tensor = &tensors.back();
+      tensorflow::Tensor* input_tensor = &tensors[index];
       auto status = tensorflow::ConvertToTensor(attr, input_tensor);
       if (status.ok()) {
         input_tensors[index] = input_tensor;
