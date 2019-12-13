@@ -1302,10 +1302,12 @@ Status DirectSession::CreateExecutors(
       options_.config.experimental().has_session_metadata()
           ? &options_.config.experimental().session_metadata()
           : nullptr;
+  const CustomKernelCreator* custom_kernel_creator =
+      GetDefaultCustomKernelCreator();
   func_info->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_.get(), options_.env, &options_.config, graph_def_version,
       func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first,
-      nullptr, nullptr, session_metadata));
+      nullptr, custom_kernel_creator, session_metadata));
 
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {
