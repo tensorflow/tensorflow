@@ -1742,7 +1742,7 @@ def adjust_gamma(image, gamma=1, gain=1):
     For gamma less than 1, the histogram will shift towards right and
     the output image will be brighter than the input image.
   References:
-    [1] http://en.wikipedia.org/wiki/Gamma_correction
+    [Wikipedia](http://en.wikipedia.org/wiki/Gamma_correction)
   """
 
   with ops.name_scope(None, 'adjust_gamma', [image, gamma, gain]) as name:
