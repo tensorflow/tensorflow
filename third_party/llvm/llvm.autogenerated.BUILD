@@ -1740,6 +1740,28 @@ cc_library(
 )
 
 cc_library(
+    name = "frontend_open_mp",
+    srcs = glob([
+        "lib/Frontend/OpenMP/*.c",
+        "lib/Frontend/OpenMP/*.cpp",
+        "lib/Frontend/OpenMP/*.inc",
+        "lib/Frontend/OpenMP/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Frontend/OpenMP/*.h",
+        "include/llvm/Frontend/OpenMP/*.def",
+        "include/llvm/Frontend/OpenMP/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":core",
+        ":support",
+        ":transform_utils",
+    ],
+)
+
+cc_library(
     name = "fuzz_mutate",
     srcs = glob([
         "lib/FuzzMutate/*.c",
