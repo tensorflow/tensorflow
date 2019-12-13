@@ -142,16 +142,6 @@ Status PyRegisterCustomCallTarget(const std::string& fn_name,
   return Status::OK();
 }
 
-StatusOr<std::shared_ptr<Device>> LookupDeviceOrdinal(
-    PyLocalClient* client, int device_ordinal, absl::string_view caller_name) {
-  if (device_ordinal < 0 || device_ordinal >= client->local_device_count()) {
-    return InvalidArgument(
-        "%s got bad device_ordinal: %d (num_local_devices=%d)", caller_name,
-        device_ordinal, client->local_device_count());
-  }
-  return client->local_devices()[device_ordinal];
-}
-
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
@@ -391,27 +381,13 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return result;
            })
-      // TODO(phawkins): delete overload that accepts a device_ordinal after
-      // all callers have been updated to pass a Device.
       .def("TransferToInfeed",
            [](PyLocalClient* client, const LiteralSlice& literal,
               int device_ordinal) {
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
-             TF_ASSIGN_OR_RETURN(std::shared_ptr<Device> device,
-                                 LookupDeviceOrdinal(client, device_ordinal,
-                                                     "TransferToInfeed"));
-             return client->TransferToInfeed(literal, device);
+             return client->TransferToInfeed(literal, device_ordinal);
            })
-      .def("TransferToInfeed",
-           [](PyLocalClient* client, const LiteralSlice& literal,
-              std::shared_ptr<Device> device) {
-             GlobalPyRefManager()->CollectGarbage();
-             py::gil_scoped_release gil_release;
-             return client->TransferToInfeed(literal, device);
-           })
-      // TODO(phawkins): delete overload that accepts a device_ordinal after
-      // all callers have been updated to pass a Device.
       .def("TransferFromOutfeed",
            [](PyLocalClient* client, const Shape& shape,
               int device_ordinal) -> StatusOr<py::object> {
@@ -419,24 +395,8 @@ PYBIND11_MODULE(xla_extension, m) {
              std::shared_ptr<Literal> literal_shared;
              {
                py::gil_scoped_release gil_release;
-               TF_ASSIGN_OR_RETURN(std::shared_ptr<Device> device,
-                                   LookupDeviceOrdinal(client, device_ordinal,
-                                                       "TransferFromOutfeed"));
-               TF_ASSIGN_OR_RETURN(Literal literal,
-                                   client->TransferFromOutfeed(shape, device));
-               literal_shared = std::make_shared<Literal>(std::move(literal));
-             }
-             return LiteralToPython(std::move(literal_shared));
-           })
-      .def("TransferFromOutfeed",
-           [](PyLocalClient* client, const Shape& shape,
-              std::shared_ptr<Device> device) -> StatusOr<py::object> {
-             GlobalPyRefManager()->CollectGarbage();
-             std::shared_ptr<Literal> literal_shared;
-             {
-               py::gil_scoped_release gil_release;
-               TF_ASSIGN_OR_RETURN(Literal literal,
-                                   client->TransferFromOutfeed(shape, device));
+               TF_ASSIGN_OR_RETURN(Literal literal, client->TransferFromOutfeed(
+                                                        shape, device_ordinal));
                literal_shared = std::make_shared<Literal>(std::move(literal));
              }
              return LiteralToPython(std::move(literal_shared));
@@ -480,7 +440,7 @@ PYBIND11_MODULE(xla_extension, m) {
             py::gil_scoped_release gil_release;
             return PyLocalBuffer::FromLiterals(
                 std::move(leaves), tree.shape, std::move(py_buffer_ref),
-                std::move(client), std::move(device));
+                std::move(client), device->local_device_ordinal());
           })
       .def_static("make_tuple",
                   [](const std::vector<PyLocalBuffer*> buffers,
@@ -494,15 +454,15 @@ PYBIND11_MODULE(xla_extension, m) {
                           "Cannot make tuple on device '%s' with '%s' backend",
                           device->DebugString(), client->platform_name());
                     }
-                    return PyLocalBuffer::MakeTuple(buffers, std::move(client),
-                                                    std::move(device));
+                    return PyLocalBuffer::MakeTuple(
+                        buffers, client, device->local_device_ordinal());
                   })
       .def("copy_to_device",
            [](PyLocalBuffer* buffer, std::shared_ptr<Device> dst_device) {
              CHECK(dst_device != nullptr);
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
-             return buffer->CopyToDevice(std::move(dst_device));
+             return buffer->CopyToDevice(dst_device->local_device_ordinal());
            })
       .def("delete", &PyLocalBuffer::Delete)
       .def("destructure", &PyLocalBuffer::DestructureTuple)
@@ -525,7 +485,10 @@ PYBIND11_MODULE(xla_extension, m) {
              return LiteralToPython(std::move(literal));
            })
       .def("shape", &PyLocalBuffer::on_host_shape)
-      .def("device", &PyLocalBuffer::device)
+      .def("device",
+           [](PyLocalBuffer* buffer) -> std::shared_ptr<Device> {
+             return buffer->client()->local_devices()[buffer->device_ordinal()];
+           })
       .def("platform", &PyLocalBuffer::platform_name)
       .def("is_deleted",
            [](const PyLocalBuffer& buffer) {

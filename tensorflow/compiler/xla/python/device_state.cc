@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/python/local_device_state.h"
+#include "tensorflow/compiler/xla/python/device_state.h"
 
 #include <memory>
 #include <vector>
@@ -24,13 +24,12 @@ limitations under the License.
 
 namespace xla {
 
-LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
-                                   bool synchronous_deallocation,
-                                   bool asynchronous, bool allow_event_reuse)
+DeviceState::DeviceState(se::StreamExecutor* executor,
+                         bool synchronous_deallocation, bool asynchronous,
+                         bool allow_event_reuse)
     : synchronous_deallocation_(synchronous_deallocation),
       event_pool_(allow_event_reuse),
-      compute_semaphore_(/*capacity=*/asynchronous ? 32 : 1),
-      executor_(executor) {
+      compute_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
   compute_stream_ = absl::make_unique<se::Stream>(executor);
   host_to_device_stream_ = absl::make_unique<se::Stream>(executor);
   device_to_host_stream_ = absl::make_unique<se::Stream>(executor);
@@ -51,14 +50,14 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
                                                      "py_xla_callback");
 }
 
-LocalDeviceState::~LocalDeviceState() {
+DeviceState::~DeviceState() {
   Status status = SynchronizeAllActivity();
   if (!status.ok()) {
     LOG(ERROR) << "Error when closing device: " << status;
   }
 }
 
-Status LocalDeviceState::SynchronizeAllActivity() {
+Status DeviceState::SynchronizeAllActivity() {
   Status status;
   // TODO(phawkins): in theory the call to SynchronizeAllActivity below should
   // suffice. However on the Host platform SynchronizeAllActivity is a dummy
@@ -74,9 +73,10 @@ Status LocalDeviceState::SynchronizeAllActivity() {
   return status;
 }
 
-Status LocalDeviceState::ThenMemcpyDeviceToDevice(
-    se::Stream* transfer_stream, se::Stream* dst_stream,
-    se::DeviceMemoryBase src_buffer, se::DeviceMemoryBase dst_buffer) {
+Status DeviceState::ThenMemcpyDeviceToDevice(se::Stream* transfer_stream,
+                                             se::Stream* dst_stream,
+                                             se::DeviceMemoryBase src_buffer,
+                                             se::DeviceMemoryBase dst_buffer) {
   // The default implementation simply calls ThenMemcpyD2D, and assumes that
   // the buffer addresses identify the devices. This does not work
   // on all platforms; this method is virtual so it can be overridden.
@@ -84,14 +84,14 @@ Status LocalDeviceState::ThenMemcpyDeviceToDevice(
   return Status::OK();
 }
 
-void LocalDeviceState::ThenExecuteOnCallbackThread(
+void DeviceState::ThenExecuteOnCallbackThread(
     se::Stream* stream, std::function<void()> callback) const {
   stream->ThenDoHostCallback([this, callback]() mutable {
     callback_thread_->Schedule(std::move(callback));
   });
 }
 
-se::Stream* LocalDeviceState::GetDeviceToDeviceStream() {
+se::Stream* DeviceState::GetDeviceToDeviceStream() {
   absl::MutexLock lock(&mu_);
   int i = next_device_to_device_stream_;
   next_device_to_device_stream_ =

@@ -39,9 +39,10 @@ std::string TpuDevice::DebugString() const {
 }
 
 static std::shared_ptr<Device> MakeDevice(const std::string& platform_name,
-                                          int id) {
+                                          int id, int local_device_ordinal) {
   CHECK_EQ(platform_name, "tpu");
-  return std::make_shared<TpuDevice>(id, /*local_device_state=*/nullptr, "tpu");
+  CHECK_EQ(id, local_device_ordinal);  // Every device must be local for now.
+  return std::make_shared<TpuDevice>(id, local_device_ordinal, "tpu");
 }
 
 StatusOr<std::shared_ptr<PyTpuClient>> PyTpuClient::Get(
@@ -66,7 +67,7 @@ StatusOr<std::shared_ptr<PyTpuClient>> PyTpuClient::Get(
   LOG(INFO) << "Creating " << num_cores << " TPU device(s).";
   devices.reserve(num_cores);
   for (int i = 0; i < num_cores; ++i) {
-    devices.push_back(MakeDevice("tpu", i));
+    devices.push_back(MakeDevice("tpu", i, i));
   }
 
   return std::make_shared<PyTpuClient>("tpu", std::move(client),
@@ -86,8 +87,8 @@ PyTpuClient::PyTpuClient(std::string platform_name,
     CHECK(id_to_device_.insert({device->id(), device}).second)
         << "Duplicate device id: " << device->id();
 
-    if (device->id() != -1) {
-      int idx = device->id();
+    if (device->local_device_ordinal() != -1) {
+      int idx = device->local_device_ordinal();
       CHECK(local_devices_[idx] == nullptr) << idx;
       CHECK_LT(idx, local_devices_.size());
       local_devices_[idx] = device;
@@ -508,7 +509,7 @@ PyTpuExecutable::ExecuteResult PyTpuExecutable::ExecuteHelper(
   const int device_id = device_assignment_(replica, 0);
   std::shared_ptr<Device> device = LookupDevice(*client_, device_id);
   CHECK_EQ(device->host_id(), client_->host_id());
-  int device_ordinal = device->id();
+  int device_ordinal = device->local_device_ordinal();
   tensorflow::profiler::TraceMe traceme("PyTpuExecutable::Execute");
   VLOG(3) << "Replica " << replica
           << " mapped to device ordinal for execution: " << device_ordinal;
@@ -741,7 +742,7 @@ PyTpuExecutable::ExecutePerReplica(
     const int device_id = (*device_assignment)(replica, 0);
     std::shared_ptr<Device> device = LookupDevice(*client, device_id);
     CHECK_EQ(device->host_id(), client->host_id());
-    int device_ordinal = device->id();
+    int device_ordinal = device->local_device_ordinal();
     loaded_programs[replica] = client->driver()->LoadProgram(
         device_ordinal, compiled_program.get(), {});
   }
