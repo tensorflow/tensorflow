@@ -16,26 +16,26 @@ tf_py_test(
     name = "as_string_op_test",
     size = "small",
     srcs = ["as_string_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    tags = ["no_windows"],
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:string_ops",
+        "//third_party/py/numpy",
     ],
-    tags = ["no_windows"],
 )
 
 tf_py_test(
     name = "attention_ops_test",
     size = "small",
     srcs = ["attention_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:image_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -43,54 +43,53 @@ tf_py_test(
     name = "barrier_ops_test",
     size = "medium",  # NOTE(ebrevdo): This test is NOT small.
     srcs = ["barrier_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    shard_count = 20,
+    # TODO(b/129706424): Re-enable this test on Mac.
+    tags = ["no_mac"],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//third_party/py/numpy",
     ],
-    shard_count = 20,
-    # TODO(b/129706424): Re-enable this test on Mac.
-    tags = ["no_mac"],
 )
 
 tf_py_test(
     name = "base64_ops_test",
     size = "small",
     srcs = ["base64_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    tags = ["nomac"],  # b/35468214
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:string_ops",
+        "//third_party/py/numpy",
     ],
-    tags = ["nomac"],  # b/35468214
 )
 
 tf_py_test(
     name = "batch_gather_op_test",
     srcs = ["batch_gather_op_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
+    tags = [
+        "no_gpu",  # b/127001953
+    ],
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
-    ],
-    tags = [
-        "no_gpu",  # b/127001953
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
 tf_py_test(
     name = "batch_scatter_ops_test",
     srcs = ["batch_scatter_ops_test.py"],
-    additional_deps = [
-        "//tensorflow/python/eager:context",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -102,6 +101,7 @@ tf_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -109,7 +109,7 @@ tf_py_test(
     name = "bcast_ops_test",
     size = "small",
     srcs = ["bcast_ops_test.py"],
-    additional_deps = [
+    deps = [
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:client_testlib",
     ],
@@ -183,13 +183,13 @@ tf_py_test(
     name = "candidate_sampler_ops_test",
     size = "small",
     srcs = ["candidate_sampler_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:candidate_sampling_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -197,8 +197,7 @@ tf_py_test(
     name = "checkpoint_ops_test",
     size = "medium",
     srcs = ["checkpoint_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:checkpoint_ops_gen",
         "//tensorflow/python:client_testlib",
@@ -212,6 +211,7 @@ tf_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -240,14 +240,14 @@ tf_py_test(
     name = "clip_ops_test",
     size = "small",
     srcs = ["clip_ops_test.py"],
-    additional_deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:clip_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
-    ],
     tags = [
         "no_gpu",  # b/127001953
         "no_windows",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )
 
@@ -255,8 +255,7 @@ tf_py_test(
     name = "conditional_accumulator_test",
     size = "small",
     srcs = ["conditional_accumulator_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:data_flow_ops",
@@ -265,6 +264,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -272,12 +272,12 @@ tf_py_test(
     name = "ctc_decoder_ops_test",
     size = "small",
     srcs = ["ctc_decoder_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:ctc_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -345,13 +345,13 @@ tf_py_test(
     name = "decode_csv_op_test",
     size = "small",
     srcs = ["decode_csv_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python/eager:context",
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:parsing_ops",
+        "//tensorflow/python/eager:context",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -359,7 +359,7 @@ tf_py_test(
     name = "decode_png_op_test",
     size = "small",
     srcs = ["decode_png_op_test.py"],
-    additional_deps = [
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -372,7 +372,7 @@ tf_py_test(
     name = "decode_bmp_op_test",
     size = "small",
     srcs = ["decode_bmp_op_test.py"],
-    additional_deps = [
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -384,40 +384,40 @@ tf_py_test(
 tf_py_test(
     name = "decode_jpeg_op_test",
     srcs = ["decode_jpeg_op_test.py"],
-    additional_deps = [
+    data = ["//tensorflow/core:image_testdata"],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:platform",
     ],
-    data = ["//tensorflow/core:image_testdata"],
 )
 
 tf_py_test(
     name = "decode_image_op_test",
     size = "small",
     srcs = ["decode_image_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    data = ["//tensorflow/core:image_testdata"],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:nn_grad",
+        "//third_party/py/numpy",
     ],
-    data = ["//tensorflow/core:image_testdata"],
 )
 
 tf_py_test(
     name = "decode_raw_op_test",
     size = "small",
     srcs = ["decode_raw_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:parsing_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -425,12 +425,12 @@ tf_py_test(
     name = "decode_compressed_op_test",
     size = "small",
     srcs = ["decode_compressed_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:parsing_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -450,13 +450,13 @@ tf_py_test(
     name = "draw_bounding_box_op_test",
     size = "small",
     srcs = ["draw_bounding_box_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:math_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -464,12 +464,12 @@ tf_py_test(
     name = "edit_distance_op_test",
     size = "small",
     srcs = ["edit_distance_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -477,8 +477,7 @@ tf_py_test(
     name = "fifo_queue_test",
     size = "small",
     srcs = ["fifo_queue_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -487,6 +486,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -494,7 +494,7 @@ tf_py_test(
     name = "fingerprint_op_test",
     size = "small",
     srcs = ["fingerprint_op_test.py"],
-    additional_deps = [
+    deps = [
         "//third_party/py/numpy",
     ],
 )
@@ -503,45 +503,45 @@ tf_py_test(
     name = "fractional_avg_pool_op_test",
     size = "small",
     srcs = ["fractional_avg_pool_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    shard_count = 5,
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
+        "//third_party/py/numpy",
     ],
-    shard_count = 5,
 )
 
 tf_py_test(
     name = "fractional_max_pool_op_test",
     size = "small",
     srcs = ["fractional_max_pool_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    shard_count = 5,
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
+        "//third_party/py/numpy",
     ],
-    shard_count = 5,
 )
 
 tf_py_test(
     name = "identity_op_py_test",
     size = "small",
     srcs = ["identity_op_py_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -549,13 +549,13 @@ tf_py_test(
     name = "identity_n_op_py_test",
     size = "small",
     srcs = ["identity_n_op_py_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -575,7 +575,7 @@ tf_py_test(
     name = "record_input_test",
     size = "medium",
     srcs = ["record_input_test.py"],
-    additional_deps = [
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:io_ops",
@@ -587,7 +587,7 @@ tf_py_test(
     name = "io_ops_test",
     size = "small",
     srcs = ["io_ops_test.py"],
-    additional_deps = [
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
@@ -598,12 +598,12 @@ tf_py_test(
     name = "listdiff_op_test",
     size = "small",
     srcs = ["listdiff_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -611,14 +611,14 @@ tf_py_test(
     name = "logging_ops_logging_level_test",
     size = "small",
     srcs = ["logging_ops_logging_level_test.py"],
-    additional_deps = [
+    tags = [
+        "no_windows",
+    ],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:logging_ops",
-    ],
-    tags = [
-        "no_windows",
     ],
 )
 
@@ -641,7 +641,8 @@ tf_py_test(
     name = "lookup_ops_test",
     size = "small",
     srcs = ["lookup_ops_test.py"],
-    additional_deps = [
+    grpc_enabled = True,
+    deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -651,16 +652,13 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
     ],
-    grpc_enabled = True,
 )
 
 tf_py_test(
     name = "losses_test",
     size = "medium",
     srcs = ["losses_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python/ops/losses",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -671,6 +669,8 @@ tf_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/ops/losses",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -678,25 +678,25 @@ tf_py_test(
     name = "matrix_exponential_op_test",
     size = "medium",
     srcs = ["matrix_exponential_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    shard_count = 16,
+    tags = ["no_windows_gpu"],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
+        "//third_party/py/numpy",
     ],
-    shard_count = 16,
-    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(
     name = "matrix_logarithm_op_test",
     size = "medium",
     srcs = ["matrix_logarithm_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -786,8 +786,7 @@ tf_py_test(
     name = "parsing_ops_test",
     size = "medium",
     srcs = ["parsing_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -796,6 +795,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -803,8 +803,7 @@ tf_py_test(
     name = "parse_single_example_op_test",
     size = "small",
     srcs = ["parse_single_example_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -813,6 +812,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -820,8 +820,7 @@ tf_py_test(
     name = "partitioned_variables_test",
     size = "small",
     srcs = ["partitioned_variables_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -830,6 +829,7 @@ tf_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -837,14 +837,14 @@ tf_py_test(
     name = "priority_queue_test",
     size = "medium",
     srcs = ["priority_queue_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn_grad",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -871,12 +871,12 @@ tf_py_test(
     name = "regex_replace_op_test",
     size = "small",
     srcs = ["regex_replace_op_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:string_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -884,12 +884,12 @@ tf_py_test(
     name = "regex_full_match_op_test",
     size = "small",
     srcs = ["regex_full_match_op_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:string_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -897,7 +897,7 @@ tf_py_test(
     name = "save_restore_ops_test",
     size = "small",
     srcs = ["save_restore_ops_test.py"],
-    additional_deps = [
+    deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -929,24 +929,23 @@ tf_py_test(
     name = "segment_reduction_ops_test",
     size = "medium",
     srcs = ["segment_reduction_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    shard_count = 10,
+    deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:variables",
         "//tensorflow/python:nn_grad",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
-    shard_count = 10,
 )
 
 tf_py_test(
     name = "sparse_add_op_test",
     size = "small",
     srcs = ["sparse_add_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -954,6 +953,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_grad",
         "//tensorflow/python:sparse_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -961,13 +961,13 @@ tf_py_test(
     name = "sparse_concat_op_test",
     size = "small",
     srcs = ["sparse_concat_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -975,13 +975,13 @@ tf_py_test(
     name = "sparse_conditional_accumulator_test",
     size = "small",
     srcs = ["sparse_conditional_accumulator_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -989,14 +989,14 @@ tf_py_test(
     name = "sparse_reorder_op_test",
     size = "small",
     srcs = ["sparse_reorder_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_grad",
         "//tensorflow/python:sparse_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1004,13 +1004,13 @@ tf_py_test(
     name = "sparse_reshape_op_test",
     size = "small",
     srcs = ["sparse_reshape_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1018,11 +1018,11 @@ tf_py_test(
     name = "sparse_split_op_test",
     size = "small",
     srcs = ["sparse_split_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:sparse_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1030,12 +1030,12 @@ tf_py_test(
     name = "sparse_slice_op_test",
     size = "small",
     srcs = ["sparse_slice_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:sparse_grad",
         "//tensorflow/python:sparse_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1043,12 +1043,12 @@ tf_py_test(
     name = "sparse_to_dense_op_py_test",
     size = "small",
     srcs = ["sparse_to_dense_op_py_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1056,11 +1056,11 @@ tf_py_test(
     name = "sparsemask_op_test",
     size = "small",
     srcs = ["sparsemask_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1068,12 +1068,12 @@ tf_py_test(
     name = "string_format_op_test",
     size = "small",
     srcs = ["string_format_op_test.py"],
-    additional_deps = [
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:string_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:string_ops",
     ],
 )
 
@@ -1081,7 +1081,7 @@ tf_py_test(
     name = "string_join_op_test",
     size = "small",
     srcs = ["string_join_op_test.py"],
-    additional_deps = [
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:string_ops",
     ],
@@ -1091,18 +1091,18 @@ tf_py_test(
     name = "string_split_op_test",
     size = "small",
     srcs = ["string_split_op_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python/ops/ragged:ragged_string_ops",
         "//tensorflow/python:util",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1110,11 +1110,7 @@ tf_py_test(
     name = "string_bytes_split_op_test",
     size = "small",
     srcs = ["string_bytes_split_op_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python/ops/ragged:ragged_factory_ops",
-        "//tensorflow/python/ops/ragged:ragged_string_ops",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -1122,6 +1118,10 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:string_ops",
         "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1129,7 +1129,7 @@ tf_py_test(
     name = "string_length_op_test",
     size = "small",
     srcs = ["string_length_op_test.py"],
-    additional_deps = [
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:string_ops",
@@ -1140,13 +1140,13 @@ tf_py_test(
     name = "string_strip_op_test",
     size = "small",
     srcs = ["string_strip_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:string_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1154,13 +1154,13 @@ tf_py_test(
     name = "string_lower_op_test",
     size = "small",
     srcs = ["string_lower_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:string_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1168,13 +1168,13 @@ tf_py_test(
     name = "string_upper_op_test",
     size = "small",
     srcs = ["string_upper_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:string_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1182,12 +1182,12 @@ tf_py_test(
     name = "substr_op_test",
     size = "small",
     srcs = ["substr_op_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:string_ops",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1222,7 +1222,7 @@ tf_py_test(
     name = "summary_v1_ops_test",
     size = "small",
     srcs = ["summary_v1_ops_test.py"],
-    additional_deps = [
+    deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -1235,15 +1235,15 @@ tf_py_test(
     name = "summary_v1_tensor_op_test",
     size = "small",
     srcs = ["summary_v1_tensor_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "@six_archive//:six",
+    deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:summary",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -1251,7 +1251,7 @@ tf_py_test(
     name = "template_test",
     size = "small",
     srcs = ["template_test.py"],
-    additional_deps = [
+    deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -1301,7 +1301,7 @@ tf_py_test(
     name = "unicode_script_op_test",
     size = "small",
     srcs = ["unicode_script_op_test.py"],
-    additional_deps = [
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -1343,17 +1343,17 @@ tf_py_test(
     name = "unicode_encode_op_test",
     size = "small",
     srcs = ["unicode_encode_op_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/ops/ragged:ragged_tensor_value",
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_string_ops",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:ragged_tensor_value",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1361,11 +1361,11 @@ tf_py_test(
     name = "unicode_transcode_op_test",
     size = "small",
     srcs = ["unicode_transcode_op_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:string_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1373,19 +1373,19 @@ tf_py_test(
     name = "unicode_decode_op_test",
     size = "small",
     srcs = ["unicode_decode_op_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/ops/ragged:ragged_factory_ops",
-        "//tensorflow/python/ops/ragged:ragged_string_ops",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python/ops/ragged:ragged",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1393,10 +1393,10 @@ tf_py_test(
     name = "unique_op_test",
     size = "small",
     srcs = ["unique_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1404,8 +1404,8 @@ tf_py_test(
     name = "variable_scope_test",
     size = "small",
     srcs = ["variable_scope_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    tags = ["no_windows"],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:errors",
@@ -1414,25 +1414,24 @@ tf_py_test(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:wrap_function",
+        "//third_party/py/numpy",
     ],
-    tags = ["no_windows"],
 )
 
 tf_py_test(
     name = "variables_test",
     size = "small",
     srcs = ["variables_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
+    tags = ["no_windows"],  # b/133869052
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
@@ -1445,8 +1444,9 @@ tf_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:function",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
-    tags = ["no_windows"],  # b/133869052
 )
 
 cuda_py_test(
@@ -1520,8 +1520,8 @@ tf_py_test(
     name = "reader_ops_test",
     size = "small",
     srcs = ["reader_ops_test.py"],
-    additional_deps = [
-        "@six_archive//:six",
+    data = ["//tensorflow/core:lmdb_testdata"],
+    deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:data_flow_ops",
@@ -1531,8 +1531,8 @@ tf_py_test(
         "//tensorflow/python:lib",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "@six_archive//:six",
     ],
-    data = ["//tensorflow/core:lmdb_testdata"],
 )
 
 cuda_py_test(
@@ -1800,7 +1800,7 @@ tf_py_test(
     name = "control_flow_util_test",
     size = "small",
     srcs = ["control_flow_util_test.py"],
-    additional_deps = [
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_ops_gen",
@@ -1813,7 +1813,7 @@ tf_py_test(
     name = "control_flow_util_v2_test",
     size = "small",
     srcs = ["control_flow_util_v2_test.py"],
-    additional_deps = [
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:constant_op",
@@ -2566,13 +2566,13 @@ tf_py_test(
     name = "sparse_serialization_ops_test",
     size = "small",
     srcs = ["sparse_serialization_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -2580,8 +2580,7 @@ tf_py_test(
     name = "sparse_tensors_map_ops_test",
     size = "small",
     srcs = ["sparse_tensors_map_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -2589,6 +2588,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -2957,16 +2957,16 @@ tf_py_test(
     name = "neon_depthwise_conv_op_test",
     size = "medium",
     srcs = ["neon_depthwise_conv_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    tags = ["no_windows"],
+    deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
+        "//third_party/py/numpy",
     ],
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -3405,19 +3405,19 @@ tf_py_test(
     name = "eig_op_test",
     size = "medium",
     srcs = ["eig_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:math_ops",
-    ],
     data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
     shard_count = 20,
     tags = [
         "no_rocm",  # flaky test
         "no_windows",
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//third_party/py/numpy",
     ],
     # b/127344411: xla_enable_strict_auto_jit = True,
 )
@@ -3553,8 +3553,7 @@ tf_py_test(
     name = "sets_test",
     size = "medium",
     srcs = ["sets_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:errors",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -3563,6 +3562,7 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:sets",
         "//tensorflow/python:sparse_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -3570,8 +3570,8 @@ tf_py_test(
     name = "weights_broadcast_test",
     size = "small",
     srcs = ["weights_broadcast_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    shard_count = 3,
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -3580,16 +3580,17 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:weights_broadcast_ops",
+        "//third_party/py/numpy",
     ],
-    shard_count = 3,
 )
 
 tf_py_test(
     name = "metrics_test",
     size = "medium",
     srcs = ["metrics_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    shard_count = 20,
+    tags = ["no_windows_gpu"],
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:data_flow_grad",
@@ -3601,23 +3602,22 @@ tf_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
-    shard_count = 20,
-    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(
     name = "confusion_matrix_test",
     size = "small",
     srcs = ["confusion_matrix_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:confusion_matrix",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -3637,26 +3637,26 @@ tf_py_test(
     name = "sparse_cross_op_test",
     size = "small",
     srcs = ["sparse_cross_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    tags = ["no_windows"],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
+        "//third_party/py/numpy",
     ],
-    tags = ["no_windows"],
 )
 
 tf_py_test(
     name = "garbage_collection_test",
     size = "small",
     srcs = ["garbage_collection_test.py"],
-    additional_deps = [
-        "//tensorflow/python/eager:context",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:dtypes",
         "//tensorflow/python:tensor_array_ops",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -3670,15 +3670,15 @@ tf_py_test(
     name = "ackermann_test",
     size = "small",
     srcs = ["ackermann_test.py"],
-    additional_deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
-    ],
     data = [":ackermann_op.so"],
     tags = [
         "no_pip",
         "notap",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -3691,16 +3691,16 @@ tf_py_test(
     name = "duplicate_op_test",
     size = "small",
     srcs = ["duplicate_op_test.py"],
-    additional_deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-    ],
     data = [":duplicate_op.so"],
     tags = [
         "no_pip",
         "notap",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -3713,16 +3713,16 @@ tf_py_test(
     name = "invalid_op_test",
     size = "small",
     srcs = ["invalid_op_test.py"],
-    additional_deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
-    ],
     data = [":invalid_op.so"],
     tags = [
         "no_pip",
         "notap",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
     ],
 )
 

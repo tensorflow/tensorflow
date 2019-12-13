@@ -41,20 +41,20 @@ py_library(
 tf_py_test(
     name = "all_reduce_test",
     srcs = ["all_reduce_test.py"],
-    additional_deps = [
+    deps = [
         ":all_reduce",
-        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:state_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -379,10 +379,11 @@ py_library(
 tf_py_test(
     name = "mirrored_function_strategy_test",
     srcs = ["mirrored_function_strategy_test.py"],
-    additional_deps = [
+    tags = ["no_pip"],
+    deps = [
         ":distribute_lib",
-        ":strategy_combinations",
         ":mirrored_function_strategy",
+        ":strategy_combinations",
         ":values",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
@@ -390,7 +391,6 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
     ],
-    tags = ["no_pip"],
 )
 
 py_library(
@@ -830,7 +830,7 @@ tf_py_test(
     name = "sharded_variable_test",
     size = "small",
     srcs = ["sharded_variable_test.py"],
-    additional_deps = [
+    deps = [
         ":sharded_variable",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

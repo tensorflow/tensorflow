@@ -100,7 +100,8 @@ tf_py_test(
     name = "tfprof_logger_test",
     size = "small",
     srcs = ["tfprof_logger_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":tfprof_logger",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/profiler:protos_all_py",
@@ -110,7 +111,6 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
-    python_version = "PY3",
 )
 
 py_library(

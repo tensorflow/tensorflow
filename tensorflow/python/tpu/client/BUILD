@@ -37,7 +37,10 @@ tf_py_test(
     name = "client_py_test",
     size = "small",
     srcs = ["client_test.py"],
-    additional_deps = [
+    grpc_enabled = True,
+    main = "client_test.py",
+    python_version = "PY3",
+    deps = [
         ":client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -45,16 +48,16 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training_server_lib",
     ],
-    grpc_enabled = True,
-    main = "client_test.py",
-    python_version = "PY3",
 )
 
 tf_py_test(
     name = "client_py2_test",
     size = "small",
     srcs = ["client_test.py"],
-    additional_deps = [
+    grpc_enabled = True,
+    main = "client_test.py",
+    python_version = "PY2",
+    deps = [
         ":client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -62,7 +65,4 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training_server_lib",
     ],
-    grpc_enabled = True,
-    main = "client_test.py",
-    python_version = "PY2",
 )
