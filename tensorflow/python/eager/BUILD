@@ -586,7 +586,8 @@ tf_py_logged_benchmark(
 tf_py_test(
     name = "tape_test",
     srcs = ["tape_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":backprop",
         ":context",
         ":test",
@@ -598,7 +599,6 @@ tf_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
-    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -629,19 +629,19 @@ cuda_py_test(
 tf_py_test(
     name = "pywrap_tfe_test",
     srcs = ["pywrap_tfe_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":backprop",
         ":context",
         ":core",
         ":test",
-        "//third_party/py/numpy",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:test_ops",
+        "//third_party/py/numpy",
     ],
-    python_version = "PY3",
 )
 
 py_library(
@@ -691,14 +691,14 @@ tf_py_test(
     name = "lift_to_graph_test",
     size = "medium",
     srcs = ["lift_to_graph_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         "lift_to_graph",
-        "//tensorflow/python/eager:test",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
+        "//tensorflow/python/eager:test",
     ],
-    python_version = "PY3",
 )
 
 cuda_py_test(
@@ -774,12 +774,12 @@ py_library(
 tf_py_test(
     name = "wrap_function_test",
     srcs = ["wrap_function_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":wrap_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
     ],
-    python_version = "PY3",
 )
 
 py_library(
