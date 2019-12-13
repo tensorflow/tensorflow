@@ -254,7 +254,7 @@ def compile_args_from_training_config(training_config, custom_objects=None):
     loss = losses.deserialize(loss_config, custom_objects)
 
   # Recover metrics.
-  metrics_config = training_config['metrics']
+  metrics_config = training_config.get('metrics', None)
   if isinstance(metrics_config, dict):  # Metrics fed to compile as a dict.
     metrics = {
         k: convert_output_metrics(v, custom_objects)
@@ -268,7 +268,7 @@ def compile_args_from_training_config(training_config, custom_objects=None):
     metrics = None
 
   # Recover weighted metrics.
-  weighted_metrics_config = training_config['weighted_metrics']
+  weighted_metrics_config = training_config.get('weighted_metrics', None)
   if isinstance(weighted_metrics_config, dict):
     # Metrics fed to compile as a dict.
     weighted_metrics = {
