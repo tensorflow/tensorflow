@@ -424,11 +424,8 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
         "@com_google_absl//absl/strings",
         "@llvm//:core",
-        "@llvm//:support",
     ],
 )
 

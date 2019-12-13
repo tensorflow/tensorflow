@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
-#include "llvm/Support/Alignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
@@ -238,7 +237,7 @@ void DotOpEmitter::EmitTiledLlvmIrGemm() {
 
   int64 size_bytes = m * n * ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
   b_->CreateMemSet(target, b_->getInt8(0), /*Size=*/size_bytes,
-                   llvm::Align::None());
+                   /*Align=*/1);
 
   int64 max_target_vector_width =
       target_machine_features_.vector_register_num_elements(
