@@ -988,6 +988,20 @@ def HLO_ReturnOp : HLO_Op<"return", [Terminator]> {
   // TODO(hinsu): Implement custom printer and parser.
 }
 
+def HLO_TorchIndexSelectOp : HLO_Op<"torch_index_select", [NoSideEffect]> {
+  let arguments = (ins
+    HLO_Tensor:$input,
+    HLO_Tensor:$index,
+    I64Attr:$dim,
+    I64Attr:$batch_dims
+  );
+
+  let results = (outs HLO_Tensor);
+
+  // TODO(hinsu): Canonicalize to lower this client side HLO op to server
+  // side HLO ops.
+}
+
 //===----------------------------------------------------------------------===//
 // XLA RngUniform Operator.
 //===----------------------------------------------------------------------===//

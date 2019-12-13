@@ -892,6 +892,44 @@ static LogicalResult Verify(FusedBatchNormOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// GatherV2Op
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(GatherV2Op op) {
+  int64_t batch_dims = op.batch_dims().getSExtValue();
+  if (auto ty = op.indices()->getType().dyn_cast<RankedTensorType>()) {
+    int64_t rank = ty.getRank();
+    if (batch_dims > rank || batch_dims < -rank)
+      return op.emitOpError()
+             << "batch_dims (" << batch_dims << ") must be in range [" << -rank
+             << ", " << rank + 1 << ")";
+    if (batch_dims < 0) batch_dims += rank;
+  }
+
+  if (!HasRankAtMost(op.axis(), 1))
+    return op.emitOpError("requires axis to have rank at most 1");
+
+  DenseIntElementsAttr axis_attr;
+  if (matchPattern(op.axis(), m_Constant(&axis_attr))) {
+    int64_t axis = (*axis_attr.begin()).getSExtValue();
+    if (auto ty = op.params()->getType().dyn_cast<RankedTensorType>()) {
+      int64_t rank = ty.getRank();
+      if (axis >= rank || axis < -rank)
+        return op.emitOpError() << "axis (" << axis << ") must be in range ["
+                                << -rank << ", " << rank << ")";
+      if (axis < 0) axis += rank;
+    }
+
+    if (batch_dims >= 0 && axis >= 0 && axis < batch_dims) {
+      return op.emitOpError() << "requires axis (" << axis
+                              << ") to be greater than or equal to batch_dims ("
+                              << batch_dims << ")";
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // IfOp
 //===----------------------------------------------------------------------===//
 

@@ -2137,6 +2137,10 @@ See also `tf.batch_gather` and `tf.gather_nd`.
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr Tparams = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Taxis = TF_DerivedOperandTypeAttr<2>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_GreaterOp : TF_Op<"Greater", [Broadcastable, NoSideEffect]>,

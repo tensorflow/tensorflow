@@ -176,6 +176,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:CallOpInterfacesIncGen",

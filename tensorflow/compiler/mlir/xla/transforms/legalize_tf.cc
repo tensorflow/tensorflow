@@ -100,10 +100,22 @@ static DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {
   return DenseIntElementsAttr::get(ty, attr.getValue());
 }
 
+// Returns axis in HLO format from TF elements attr with exactly one element
+// containing axis in the TensorFlow format. TensorFlow format supports negative
+// indexing unlike HLO.
 static IntegerAttr GetHLOAxisFromTFAxis(ElementsAttr attr, int64_t rank,
                                         Builder *b) {
   SmallVector<uint64_t, 1> index(attr.getType().getRank(), 0);
   int64_t axis = attr.getValue<IntegerAttr>(index).getInt();
+  if (axis < 0) {
+    axis += rank;
+  }
+  return b->getI64IntegerAttr(axis);
+}
+
+static IntegerAttr GetHLOAxisFromTFAxis(IntegerAttr attr, int64_t rank,
+                                        Builder *b) {
+  int64_t axis = attr.getInt();
   if (axis < 0) {
     axis += rank;
   }

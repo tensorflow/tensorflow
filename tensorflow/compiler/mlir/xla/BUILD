@@ -426,6 +426,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/stream_executor/lib",
         "@llvm//:support",
