@@ -522,6 +522,7 @@ cc_library(
 
 cc_library(
     name = "array",
+    srcs = ["array.cc"],
     hdrs = ["array.h"],
     deps = [
         ":status",
