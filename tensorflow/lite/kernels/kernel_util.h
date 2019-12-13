@@ -33,6 +33,9 @@ inline const TfLiteTensor* GetInput(TfLiteContext* context,
   return &context
               ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
 }
+// Note: You must check if result is not null:
+// TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
+// TF_LITE_ENSURE(context, my_tensor != nullptr);
 inline TfLiteTensor* GetVariableInput(TfLiteContext* context,
                                       const TfLiteNode* node, int index) {
   TfLiteTensor* tensor =
