@@ -93,7 +93,7 @@ def quant_DequantizeCastOp : quant_Op<"dcast", [NoSideEffect]> {
 def quant_StorageCastOp : quant_Op<"scast", [NoSideEffect]> {
   let arguments = (ins quant_RealOrStorageValueType:$arg);
   let results = (outs quant_RealOrStorageValueType);
-  let hasCanonicalizer = 0b1;
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//

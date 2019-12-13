@@ -659,6 +659,7 @@ def DeallocOp : Std_Op<"dealloc"> {
   let arguments = (ins AnyMemRef:$memref);
 
   let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def DimOp : Std_Op<"dim", [NoSideEffect]> {
@@ -691,7 +692,6 @@ def DimOp : Std_Op<"dim", [NoSideEffect]> {
   }];
 
   let hasFolder = 1;
-  let hasCanonicalizer = 1;
 }
 
 def DivFOp : FloatArithmeticOp<"divf"> {
@@ -834,7 +834,7 @@ def LoadOp : Std_Op<"load"> {
     operand_range getIndices() { return {operand_begin() + 1, operand_end()}; }
   }];
 
-  let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def LogOp : FloatUnaryOp<"log"> {
@@ -1137,7 +1137,7 @@ def StoreOp : Std_Op<"store"> {
       }
   }];
 
-  let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def SubFOp : FloatArithmeticOp<"subf"> {
