@@ -29,12 +29,96 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/tests/filecheck.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
 class HorizontalFusionTest : public HloTestBase {};
+
+TEST_F(HorizontalFusionTest, BasicTest) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ HloModule BasicTest
+
+ fused_computation.1 {
+   arg.1 = f16[1024]{0} parameter(0)
+   arg.2 = f16[1024]{0} parameter(1)
+   ROOT mul.1 = f16[1024]{0} multiply(arg.1, arg.2)
+ }
+
+ fused_computation.2 {
+   arg.1 = f16[123]{0} parameter(0)
+   arg.2 = f16[123]{0} parameter(1)
+   ROOT add.1 = f16[123]{0} add(arg.1, arg.2)
+ }
+
+ ENTRY entry_computation {
+   arg.1 = f16[1024]{0} parameter(0)
+   arg.2 = f16[1024]{0} parameter(1)
+   arg.3 = f16[123]{0} parameter(2)
+   arg.4 = f16[123]{0} parameter(3)
+   fusion.1 = f16[1024]{0}
+       fusion(arg.1, arg.2), kind=kLoop, calls=fused_computation.1
+   fusion.2 = f16[123]{0}
+       fusion(arg.3, arg.4), kind=kLoop, calls=fused_computation.2
+   ROOT tuple.1 = (f16[1024]{0}, f16[123]{0})
+       tuple(fusion.1, fusion.2)
+ }
+)").ValueOrDie();
+
+  EXPECT_TRUE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(HloDCE().Run(module.get()).ValueOrDie());
+
+  StatusOr<bool> filecheck_result = RunFileCheck(module->ToString(),
+                                                 R"(
+      CHECK-LABEL: horizontally_fused_computation
+      CHECK-DAG: multiply(
+      CHECK-DAG: add(
+      CHECK-DAG: reshape(
+      CHECK-DAG: reshape(
+      CHECK: concatenate(
+      CHECK-DAG: slice(
+      CHECK-DAG: slice(
+  )");
+  ASSERT_TRUE(filecheck_result.ok());
+  EXPECT_TRUE(filecheck_result.ValueOrDie());
+}
+
+// Horizontal fusion should not be triggered as fusion will create cycles.
+TEST_F(HorizontalFusionTest, NegativeTest) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ HloModule NegativeTest
+
+ fused_computation.1 {
+   arg.1 = f16[123]{0} parameter(0)
+   arg.2 = f16[123]{0} parameter(1)
+   ROOT mul.1 = f16[123]{0} multiply(arg.1, arg.2)
+ }
+
+ fused_computation.2 {
+   arg.1 = f16[123]{0} parameter(0)
+   arg.2 = f16[123]{0} parameter(1)
+   ROOT add.1 = f16[123]{0} add(arg.1, arg.2)
+ }
+
+ ENTRY entry_computation {
+   arg.1 = f16[123]{0} parameter(0)
+   arg.2 = f16[123]{0} parameter(1)
+   arg.3 = f16[123]{0} parameter(2)
+   arg.4 = f16[123]{0} parameter(3)
+   fusion.1 = f16[123]{0}
+       fusion(arg.1, arg.2), kind=kLoop, calls=fused_computation.1
+   add.2 = f16[123]{0} add(fusion.1, arg.4)
+   fusion.2 = f16[123]{0}
+       fusion(add.2, arg.3), kind=kLoop, calls=fused_computation.2
+   ROOT tuple.1 = (f16[123]{0}, f16[123]{0}, f16[123]{0})
+       tuple(fusion.1, fusion.2, add.2)
+ }
+)").ValueOrDie();
+
+  EXPECT_FALSE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
+}
 
 TEST_F(HorizontalFusionTest, HorizontalFusionAfterVerticalFusion) {
   auto module = ParseAndReturnVerifiedModule(R"(
@@ -60,7 +144,7 @@ TEST_F(HorizontalFusionTest, HorizontalFusionAfterVerticalFusion) {
   ROOT tuple = (f32[4,1024]{1,0}, f32[321,5]{1,0}) tuple(add.1, add.2)
 })").ValueOrDie();
 
-  HloPassFix<HloPassPipeline> fusion("fusion");
+  HloPassPipeline fusion("fusion");
   fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/false);
   fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/true);
   EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());

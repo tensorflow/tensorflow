@@ -1713,6 +1713,7 @@ tf_cc_test(
         ":instruction_fusion",
         ":multi_output_fusion",
         "//tensorflow/compiler/jit:xla_gpu_jit",
+        "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
