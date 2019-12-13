@@ -296,10 +296,29 @@ class IotaConverter : public OpConversionPattern<IotaOp> {
   }
 };
 
+class ConstConverter : public OpConversionPattern<ConstOp> {
+ public:
+  using OpConversionPattern<ConstOp>::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      ConstOp constOp, ArrayRef<Value*> args,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = constOp.getLoc();
+    auto valueAttr = constOp.value().cast<DenseElementsAttr>();
+    if (valueAttr.getType().getRank() != 0) return matchFailure();
+    auto stdConstOp =
+        rewriter.create<mlir::ConstantOp>(loc, valueAttr.getValue({}));
+    rewriter.create<mlir::StoreOp>(loc, stdConstOp, constOp.getOperand());
+    rewriter.eraseOp(constOp);
+    return matchSuccess();
+  }
+};
+
 void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<BroadcastInDimConverter,
+                   ConstConverter,
                    IotaConverter,
                    PointwiseToLinalgConverter<xla_lhlo::AddOp>,
                    PointwiseToLinalgConverter<xla_lhlo::AndOp>,

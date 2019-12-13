@@ -179,3 +179,13 @@ func @broadcast_scalar(%operand: memref<f32>, %result: memref<7x10x6xf32>) {
 // CHECK-NEXT: ^bb0(%[[RESULT:.*]]: f32):
 // CHECK-NEXT: %[[CONST:.*]] = load %{{.*}} : memref<f32>
 // CHECK-NEXT:   linalg.yield %[[CONST]] : f32
+
+// -----
+
+// CHECK-LABEL: func @constant
+func @constant(%value: memref<i32>) {
+  "xla_lhlo.constant"(%value) {value = dense<10> : tensor<i32>} : (memref<i32>) -> ()
+  return
+}
+// CHECK: %[[CONSTANT:.*]] = constant 10 : i32
+// CHECK: store %[[CONSTANT]], %{{.*}}[] : memref<i32>
