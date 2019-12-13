@@ -47,6 +47,11 @@ class AffineOpsDialect : public Dialect {
 public:
   AffineOpsDialect(MLIRContext *context);
   static StringRef getDialectNamespace() { return "affine"; }
+
+  /// Materialize a single constant operation from a given attribute value with
+  /// the desired resultant type.
+  Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
+                                 Location loc) override;
 };
 
 /// The "affine.apply" operation applies an affine map to a list of operands,

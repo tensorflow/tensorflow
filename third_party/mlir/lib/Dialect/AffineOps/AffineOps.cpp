@@ -99,6 +99,14 @@ AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
   addInterfaces<AffineInlinerInterface, AffineSideEffectsInterface>();
 }
 
+/// Materialize a single constant operation from a given attribute value with
+/// the desired resultant type.
+Operation *AffineOpsDialect::materializeConstant(OpBuilder &builder,
+                                                 Attribute value, Type type,
+                                                 Location loc) {
+  return builder.create<ConstantOp>(loc, type, value);
+}
+
 /// A utility function to check if a given region is attached to a function.
 static bool isFunctionRegion(Region *region) {
   return llvm::isa<FuncOp>(region->getParentOp());

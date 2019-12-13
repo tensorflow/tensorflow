@@ -40,12 +40,20 @@ using namespace mlir::vector;
 // VectorOpsDialect
 //===----------------------------------------------------------------------===//
 
-mlir::vector::VectorOpsDialect::VectorOpsDialect(MLIRContext *context)
+VectorOpsDialect::VectorOpsDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
 #include "mlir/Dialect/VectorOps/VectorOps.cpp.inc"
       >();
+}
+
+/// Materialize a single constant operation from a given attribute value with
+/// the desired resultant type.
+Operation *VectorOpsDialect::materializeConstant(OpBuilder &builder,
+                                                 Attribute value, Type type,
+                                                 Location loc) {
+  return builder.create<ConstantOp>(loc, type, value);
 }
 
 //===----------------------------------------------------------------------===//

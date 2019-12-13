@@ -163,6 +163,14 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
   addInterfaces<StdInlinerInterface>();
 }
 
+/// Materialize a single constant operation from a given attribute value with
+/// the desired resultant type.
+Operation *StandardOpsDialect::materializeConstant(OpBuilder &builder,
+                                                   Attribute value, Type type,
+                                                   Location loc) {
+  return builder.create<ConstantOp>(loc, type, value);
+}
+
 void mlir::printDimAndSymbolList(Operation::operand_iterator begin,
                                  Operation::operand_iterator end,
                                  unsigned numDims, OpAsmPrinter &p) {
