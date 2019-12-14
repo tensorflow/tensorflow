@@ -548,14 +548,14 @@ class Model(network.Network, version_utils.VersionSelector):
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
               - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
               - dataset
-              
+
             For the first two cases, `batch_size` must be provided.
             For the last case, `validation_steps` could be provided.
         shuffle: Boolean (whether to shuffle the training data
-            before each epoch) or str (for 'batch').
-            'batch' is a special option for dealing with the
-            limitations of HDF5 data; it shuffles in batch-sized chunks.
-            Has no effect when `steps_per_epoch` is not `None`.
+            before each epoch) or str (for 'batch'). This argument is ignored
+            when `x` is a generator. 'batch' is a special option for dealing
+            with the limitations of HDF5 data; it shuffles in batch-sized
+            chunks. Has no effect when `steps_per_epoch` is not `None`.
         class_weight: Optional dictionary mapping class indices (integers)
             to a weight (float) value, used for weighting the loss function
             (during training only).
