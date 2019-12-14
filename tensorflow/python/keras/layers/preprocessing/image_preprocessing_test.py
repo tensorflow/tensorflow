@@ -43,7 +43,7 @@ class ResizingTest(keras_parameterized.TestCase):
     orig_width = 8
     channels = 3
     kwargs.update({'height': expected_height, 'width': expected_width})
-    with self.cached_session(use_gpu=True):
+    with tf_test_util.use_gpu():
       testing_utils.layer_test(
           image_preprocessing.Resizing,
           kwargs=kwargs,
@@ -114,7 +114,7 @@ class CenterCropTest(keras_parameterized.TestCase):
         (num_samples, orig_height, orig_width, channels)).astype(np.float32)
     expected_output = get_numpy_center_crop(
         input_images, expected_height, expected_width)
-    with self.cached_session(use_gpu=True):
+    with tf_test_util.use_gpu():
       testing_utils.layer_test(
           image_preprocessing.CenterCrop,
           kwargs=kwargs,
@@ -171,7 +171,7 @@ class RandomCropTest(keras_parameterized.TestCase):
     orig_width = 8
     channels = 3
     kwargs = {'height': expected_height, 'width': expected_width}
-    with self.cached_session(use_gpu=True):
+    with tf_test_util.use_gpu():
       testing_utils.layer_test(
           image_preprocessing.RandomCrop,
           kwargs=kwargs,
@@ -202,7 +202,7 @@ class RandomCropTest(keras_parameterized.TestCase):
     with test.mock.patch.object(
         stateless_random_ops, 'stateless_random_uniform',
         return_value=mock_offset):
-      with self.cached_session(use_gpu=True):
+      with tf_test_util.use_gpu():
         layer = image_preprocessing.RandomCrop(height, width)
         inp = np.random.random((12, 5, 8, 3))
         actual_output = layer(inp, training=1)
@@ -226,7 +226,7 @@ class RandomCropTest(keras_parameterized.TestCase):
     np.random.seed(1337)
     height, width = 3, 3
     inp = np.random.random((12, 10, 6, 3))
-    with self.cached_session(use_gpu=True):
+    with tf_test_util.use_gpu():
       layer = image_preprocessing.RandomCrop(height, width)
       actual_output = layer(inp, training=0)
       resized_inp = image_ops.resize_images_v2(
@@ -238,7 +238,7 @@ class RandomCropTest(keras_parameterized.TestCase):
     np.random.seed(1337)
     height, width = 4, 6
     inp = np.random.random((12, 8, 16, 3))
-    with self.cached_session(use_gpu=True):
+    with tf_test_util.use_gpu():
       layer = image_preprocessing.RandomCrop(height, width)
       actual_output = layer(inp, training=0)
       resized_inp = image_ops.resize_images_v2(
