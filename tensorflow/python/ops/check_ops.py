@@ -2121,25 +2121,16 @@ def ensure_shape(x, shape, name=None):
 
   For example:
 
-  >>> # tf.placeholder() is not compatible with eager execution
-  ...
-  >>> tf.compat.v1.disable_eager_execution()
-  >>> x = tf.compat.v1.placeholder(tf.int32)
-  >>> print(x.shape)
-  TensorShape(None)
-  >>> y = x * 2
-  >>> print(y.shape)
-  TensorShape(None)
-  >>> y = tf.ensure_shape(y, (None, 3, 3))
-  >>> print(y.shape)
-  TensorShape([Dimension(None), Dimension(3), Dimension(3)])
-  >>> with tf.compat.v1.Session() as sess:
-  >>>   sess.run(y, feed_dict={x: [1, 2, 3]})
+  >>> @tf.function(input_signature=[tf.TensorSpec(dtype=tf.float32, shape=None)])
+  >>> def f(tensor):
+  >>>   return tf.ensure_shape(x, [3, 3])
+  >>>
+  >>> f(tf.zeros([3, 3])) # Passes
+  >>> f([1, 2, 3]) # fails
   Traceback (most recent call last):
-      ...
-  InvalidArgumentError: Shape of tensor mul [3] is not compatible with
-   expected shape [?,3,3].
-
+  ...
+  InvalidArgumentError:  Shape of tensor x [3] is not compatible with expected shape [3,3].
+  
   The above example raises `tf.errors.InvalidArgumentError`,
   because the shape (3,) is not compatible with the shape (None, 3, 3)
 
