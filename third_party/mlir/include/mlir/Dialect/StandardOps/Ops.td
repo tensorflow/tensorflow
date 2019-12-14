@@ -1086,7 +1086,16 @@ def SplatOp : Std_Op<"splat", [NoSideEffect]> {
       %1 = splat %0 : vector<8xi32>
       %2 = splat %0 : tensor<4x8xi32>
 
-    // TODO: handle broadcast to dynamically shaped tensors.
+    TODO: Extend this operation to broadcast to dynamically shaped tensors in
+    the same way dynamically shaped memrefs are handled.
+
+    // Broadcasts %s to a 2-d dynamically shaped tensor, with %m, %n binding
+    // to the sizes of the two dynamic dimensions.
+
+      %m = "foo"() : () -> (index)
+      %n = "bar"() : () -> (index)
+      %t = splat %s [%m, %n] : tensor<?x?xi32>
+
   }];
 
   let arguments = (ins AnyTypeOf<[AnyInteger, AnyFloat],
