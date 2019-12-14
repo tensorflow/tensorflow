@@ -276,8 +276,6 @@ llvm_target_list = [
             ("-gen-dag-isel", "lib/Target/AMDGPU/AMDGPUGenDAGISel.inc"),
             ("-gen-callingconv", "lib/Target/AMDGPU/AMDGPUGenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/AMDGPU/AMDGPUGenSubtargetInfo.inc"),
-            ("-gen-tgt-intrinsic-impl", "lib/Target/AMDGPU/AMDGPUGenIntrinsicImpl.inc"),
-            ("-gen-tgt-intrinsic-enums", "lib/Target/AMDGPU/AMDGPUGenIntrinsicEnums.inc"),
             ("-gen-emitter", "lib/Target/AMDGPU/AMDGPUGenMCCodeEmitter.inc"),
             ("-gen-dfa-packetizer", "lib/Target/AMDGPU/AMDGPUGenDFAPacketizer.inc"),
             ("-gen-asm-writer", "lib/Target/AMDGPU/AMDGPUGenAsmWriter.inc"),
