@@ -461,14 +461,23 @@ class MemorySpaceAssignment {
       const MemorySpaceAssignmentCostAnalysis& cost_analysis);
 
  private:
-  MemorySpaceAssignment(
-      HloModule* module, int64 alternate_memory_space,
-      absl::Span<HloInstruction* const> flattened_instructions)
+  MemorySpaceAssignment(HloModule* module, int64 alternate_memory_space,
+                        const HloLiveRange& hlo_live_range)
       : module_(module),
         alternate_memory_space_(alternate_memory_space),
-        flattened_instructions_(flattened_instructions.begin(),
-                                flattened_instructions.end()),
-        preset_assignments_(absl::make_unique<PresetAssignments>()) {}
+        flattened_instructions_(hlo_live_range.flattened_instruction_sequence()
+                                    .instructions()
+                                    .begin(),
+                                hlo_live_range.flattened_instruction_sequence()
+                                    .instructions()
+                                    .end()),
+        computations_in_schedule_(),
+        preset_assignments_(absl::make_unique<PresetAssignments>()) {
+    for (const auto& computation_and_bound :
+         hlo_live_range.computation_span_times()) {
+      computations_in_schedule_.insert(computation_and_bound.first);
+    }
+  }
 
   // Process calls Process methods of the allocations after the allocations have
   // been finalized.
@@ -497,6 +506,7 @@ class MemorySpaceAssignment {
   HloModule* module_;
   int64 alternate_memory_space_;
   std::vector<HloInstruction*> flattened_instructions_;
+  absl::flat_hash_set<const HloComputation*> computations_in_schedule_;
   AllocationMap allocation_map_;
   std::unique_ptr<PresetAssignments> preset_assignments_;
 

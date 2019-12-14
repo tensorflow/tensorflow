@@ -1008,8 +1008,7 @@ MemorySpaceAssignment::Run(HloModule* module, const Options& options) {
                       HloLiveRange::Run(module->schedule(), *alias_analysis,
                                         entry_computation));
   MemorySpaceAssignment memory_space_assignment(
-      module, options.alternate_memory_space,
-      hlo_live_range->flattened_instruction_sequence().instructions());
+      module, options.alternate_memory_space, *hlo_live_range);
   auto algorithm = absl::make_unique<AlternateMemoryBestFitHeap>(
       &memory_space_assignment.allocation_map_, options, *alias_analysis,
       *hlo_live_range);
@@ -1252,9 +1251,13 @@ void PresetAssignments::RemoveAssignmentForInstruction(
 
 Status MemorySpaceAssignment::SimplifyGraph() {
   for (HloComputation* computation : module_->MakeNonfusionComputations()) {
-    // FixSchedule can miss unused parameters. Just remove unused parameters
-    // here so that FixSchedule doesn't have to deal with them.
-    TF_RETURN_IF_ERROR(computation->RemoveUnusedParametersFromAnyComputation());
+    // Parallel computations aren't in the schedule and don't need to be
+    // modified.
+    if (!computations_in_schedule_.contains(computation)) {
+      VLOG(4) << "Not simplifying " << computation->name()
+              << " because it's not in the schedule.";
+      continue;
+    }
     // We perform limited DCE and forward the tuple operand in patterns like
     // GetTupleElement(Tuple(a, b), 0). This is mostly because memory space
     // assignment is ran late in compilation (after DCE and arithmetic
@@ -1373,6 +1376,13 @@ Status MemorySpaceAssignment::FixSchedule() {
   HloSchedule& schedule = module_->schedule();
   for (const HloComputation* computation :
        module_->MakeNonfusionComputations()) {
+    // Parallel computations aren't in the schedule and don't need to be
+    // modified.
+    if (!computations_in_schedule_.contains(computation)) {
+      VLOG(4) << "Not scheduling " << computation->name()
+              << " because it's not in the schedule.";
+      continue;
+    }
     CHECK(schedule.is_computation_scheduled(computation));
     HloInstructionSequence new_sequence;
 
