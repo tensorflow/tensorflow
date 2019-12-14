@@ -1873,7 +1873,7 @@ def rgb_to_grayscale(images, name=None):
     >>> x = tf.constant([[[2.0, 5.0, 3.0]]])
     >>> y = tf.image.rgb_to_grayscale(x)
     >>> print(y.numpy())
-    [[[3.8748]]]
+    [[[3.8...]]]
     ```
 
   Args:
@@ -2930,7 +2930,7 @@ def rgb_to_yiq(images):
     >>> x = tf.constant([[[2.0, 5.0, 3.0]]])
     >>> y = tf.image.rgb_to_yiq(x)
     >>> print(y.numpy())
-    [[[ 3.875     -0.43... -1.6...]]]
+    [[[ 3.875     -1.14... -1.25...]]]
     ```
 
   Args:
