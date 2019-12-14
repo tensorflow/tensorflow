@@ -23,9 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -72,42 +70,38 @@ class SinglePassSearch {
 
 bool CanCreateXlaKernel(const FunctionLibraryRuntime& flr,
                         const NodeDef& node_def) {
-  VLOG(2) << "Called CanCreateXlaKernel, input: " << SummarizeNodeDef(node_def);
-  NameAttrList attr_list;
-  if (!NameAndAttrsFromFunctionCall(node_def, &attr_list).ok()) {
-    return false;
-  }
-  std::string func_name = attr_list.name();
   const FunctionDef* function_def =
-      flr.GetFunctionLibraryDefinition()->Find(func_name);
+      flr.GetFunctionLibraryDefinition()->Find(node_def.name());
   if (function_def == nullptr) {
     // The node def is not calling a function. Individual ops can be
     // run directly using on-demand mode, no need to create XlaLaunch
     // kernel for them.
-    VLOG(2) << "Not creating XlaLaunch kernel for " << func_name
-            << " because it does not seem to be a function";
     return false;
   }
 
   // If kXlaCompileAttr is set on the node_def, use its value.
   const auto& it = node_def.attr().find(kXlaCompileAttr);
   if (it != node_def.attr().end()) {
-    bool value = it->second.b();
-    VLOG(2) << "Found " << kXlaCompileAttr
-            << " attribute  with value = " << value
-            << " on node: " << SummarizeNodeDef(node_def);
-    return value;
+    return it->second.b();
   }
 
-  // Otherwise, look for it on the custom defition.
-  const auto& fit = function_def->attr().find(kXlaCompileAttr);
-  if (fit != function_def->attr().end()) {
-    bool value = fit->second.b();
-    VLOG(2) << "Found " << kXlaCompileAttr << " attribute on function "
-            << func_name << " with value = " << value;
-    return value;
+  // kXlaCompileAttr is not set on node_def, check if it is set on
+  // FunctionDef.
+  bool xla_compile = false;
+  Status status = flr.GetFunctionLibraryDefinition()->GetAttr(
+      node_def, kXlaCompileAttr, &xla_compile);
+  if (!status.ok() || !xla_compile) {
+    if (VLOG_IS_ON(3)) {
+      if (!status.ok()) {
+        VLOG(3) << "No " << kXlaCompileAttr << " attr defined for "
+                << node_def.op() << ". status=" << status.ToString();
+      } else {
+        VLOG(3) << node_def.op() << " is explicitly marked not to be compiled";
+      }
+    }
+    return false;
   }
-  return false;
+  return true;
 }
 
 // Given a FunctionLibraryRuntime and a NodeDef calling a function in the
@@ -124,11 +118,8 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
   FunctionLibraryRuntime::Handle handle;
   // If node_def is not instantiable, e.g., the function does not exist,
   // simply bail out.
-  NameAttrList function;
-  TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node_def, &function));
-
   TF_RETURN_IF_ERROR(
-      flr->Instantiate(function.name(), AttrSlice(&function.attr()), &handle));
+      flr->Instantiate(node_def.op(), AttrSlice(&node_def.attr()), &handle));
   *fbody = flr->GetFunctionBody(handle);
   CHECK(*fbody);  // Can't be nullptr since we just instantiated it.
   const DataTypeVector& arg_types = (*fbody)->arg_types;
@@ -250,7 +241,9 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
 
   // Create the kernel.
   NameAttrList function;
-  TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node_def, &function));
+  function.set_name(node_def.op());
+  *(function.mutable_attr()) = node_def.attr();
+
   Device* dev = flr->device();
   Status s;
   OpKernelConstruction construction(
