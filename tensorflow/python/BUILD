@@ -3961,7 +3961,6 @@ cuda_py_test(
         "//tensorflow/python/distribute:mirrored_strategy",
     ],
     python_version = "PY3",
-    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
 )
 
