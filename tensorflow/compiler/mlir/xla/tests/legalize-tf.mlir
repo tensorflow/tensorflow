@@ -2231,6 +2231,10 @@ func @unsorted_segment_max(%data: tensor<8x?x64xf32>, %segment_ids : tensor<?x16
   return %0: tensor<4x?xf32>
 }
 
+//===----------------------------------------------------------------------===//
+// tf.GatherV2 legalization
+//===----------------------------------------------------------------------===//
+
 // CHECK-LABEL: @gather_v2
 func @gather_v2(%arg0: tensor<16x2x3xf32>, %arg1: tensor<16x5xi32>) -> tensor<16x2x5x3xf32> {
   // CHECK: "xla_hlo.torch_index_select"(%arg0, %arg1) {batch_dims = 1 : i64, dim = 2 : i64} : (tensor<16x2x3xf32>, tensor<16x5xi32>) -> tensor<16x2x5x3xf32>
@@ -2253,4 +2257,48 @@ func @gather_v2_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xi32>) -> tensor<*
   %0 = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
   %1 = "tf.GatherV2"(%arg0, %arg1, %0) {batch_dims = -1 : i64} : (tensor<*xf32>, tensor<*xi32>, tensor<1xi32>) -> tensor<*xf32>
   return %1 : tensor<*xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// tf.StridedSliceGrad legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: strided_slice_grad
+// CHECK-SAME: [[GRAD:%.*]]: tensor<4x16x1022xf32>
+func @strided_slice_grad(%grad: tensor<4x16x1022xf32>) -> tensor<4x128x1024xf32> {
+
+  // For StridedSlice
+  // Dim #:        0,   1,   2
+  // Input shape: [4, 128, 1024]
+  // Begin:        1,   4,   -3
+  // End:          8,  65,   42
+  // Stride:       1,   4,   -1
+  // Begin mask:   1,   0,    0  (= 1)
+  // End mask:     0,   0,    1  (= 4)
+
+  // So result shape:
+  // Dim #0: begin mask (1) -> begin = 0; end 8 cannonicalized to 4: so 4
+  // Dim #1: 4 to 65 stride 4: so 16
+  // Dim #2: begin -3 + 1024 = 1021; end mask (1) -> end = -1: so 1022
+  // result shape: [4, 16, 1022]
+
+  // To pad back:
+  // Dim #:        0,   1,   2
+  // Pad low:      0,   4,   0
+  // Pad interm:   0,   3,   0
+  // Pad high:     0,  63,   2
+
+  %shape = "tf.Const"() {value = dense<[4, 128, 1024]> : tensor<3xi32>} : () -> (tensor<3xi32>)
+  %begin = "tf.Const"() {value = dense<[1, 4, -3]> : tensor<3xi32>} : () -> (tensor<3xi32>)
+  %end = "tf.Const"() {value = dense<[8, 65, 42]> : tensor<3xi32>} : () -> (tensor<3xi32>)
+  %strides = "tf.Const"() {value = dense<[1, 4, -1]> : tensor<3xi32>} : () -> (tensor<3xi32>)
+
+  // CHECK: [[RESHAPE:%.*]] = "xla_hlo.reshape"(%arg0) : (tensor<4x16x1022xf32>) -> tensor<4x16x1022xf32>
+  // CHECK: [[REVERSE:%.*]] = "xla_hlo.reverse"([[RESHAPE]]) {dimensions = dense<2> : tensor<1xi64>} : (tensor<4x16x1022xf32>) -> tensor<4x16x1022xf32>
+  // CHECK: [[ZERO:%.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: [[PAD:%.*]] = "xla_hlo.pad"([[REVERSE]], [[ZERO]]) {edge_padding_high = dense<[0, 63, 2]> : tensor<3xi64>, edge_padding_low = dense<[0, 4, 0]> : tensor<3xi64>, interior_padding = dense<[0, 3, 0]> : tensor<3xi64>} : (tensor<4x16x1022xf32>, tensor<f32>) -> tensor<4x128x1024xf32>
+
+  %0 = "tf.StridedSliceGrad"(%shape, %begin, %end, %strides, %grad) {begin_mask = 1, end_mask = 4} : (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<4x16x1022xf32>) -> tensor<4x128x1024xf32>
+  // CHECK: return [[PAD]]
+  return %0: tensor<4x128x1024xf32>
 }

@@ -1790,12 +1790,14 @@ void SumOp::build(Builder *builder, OperationState &result, Value *input,
 //   elements. Here, the number of elements should be less than 32 to support
 //   32-bit mask attributes.
 // - None of the strides values are zero.
-//
-static LogicalResult Verify(StridedSliceOp op) {
+// - Ellipsis mask can have at most one bit set.
+
+template <class OpTy>
+static LogicalResult VerifyStridedSliceBase(OpTy op) {
   // Expected size for operands begin, end and strides vector operands.
   int64_t expected_size = -1;
 
-  for (Value *val : llvm::drop_begin(op.getOperands(), 1)) {
+  for (Value *val : {op.begin(), op.end(), op.strides()}) {
     auto operand_ty = val->getType().dyn_cast<ShapedType>();
     if (!operand_ty || !operand_ty.hasStaticShape()) {
       // TensorFlow constant ops may have non-static shape because the shape is
@@ -1835,9 +1837,138 @@ static LogicalResult Verify(StridedSliceOp op) {
       return op.emitOpError("requires non-zero strides");
   }
 
-  // TODO(hinsu): Validate attributes.
+  // Use bit compares to ensure ellipsis_mask is 0 or a power of 2, i.e. there
+  // exists only no more than one ellipsis.
+  uint32_t ellipsis_mask = op.ellipsis_mask().getZExtValue();
+  if (ellipsis_mask != 0 && !llvm::isPowerOf2_32(ellipsis_mask))
+    return op.emitOpError("cannot have multiple ellipses");
 
   return success();
+}
+
+// Clamps the given `val`: returns `low` if `val` is less than `low`; returns
+// `high` if `high` is less than `val`; otherwise returns `val`.
+template <class T>
+constexpr const T &Clamp(const T &val, const T &low, const T &high) {
+  assert(!(high < low));
+  return (val < low) ? low : (high < val) ? high : val;
+}
+
+// For the given `input_shape`, calculates the sliced shape using the given
+// `begin`, `end`, and `stride` ranges and `begin_mask` and `end_mask` masks.
+// Updates the result back to `input_shape`. At the same time, canonicalizes
+// `begin`, `end`, and `strides. The calculation follows tf.StridedSlice op
+// semantics.
+static void CalculateSlicedShapeAndBoundRanges(
+    MutableArrayRef<int64_t> input_shape, int32_t begin_mask, int32_t end_mask,
+    MutableArrayRef<int64_t> begin, MutableArrayRef<int64_t> end,
+    MutableArrayRef<int64_t> stride) {
+  assert(input_shape.size() <= 32);  // Only 32-bit masks are supported.
+
+  // Make sure ranges' ranks are consistent with the input.
+  assert(input_shape.size() == begin.size());
+  assert(input_shape.size() == end.size());
+  assert(input_shape.size() == stride.size());
+
+  for (int i = 0, e = input_shape.size(); i < e; ++i) {
+    if (ShapedType::isDynamic(input_shape[i])) continue;
+
+    int64_t dim_i = input_shape[i];
+    int64_t begin_i = begin[i];
+    int64_t end_i = end[i];
+    int64_t stride_i = stride[i];
+
+    // [0]: mask for begin, [1]: mask for end
+    int64_t masks[] = {begin_mask & (1 << i), end_mask & (1 << i)};
+    // [0]: bound for begin, [1]: bound for end
+    int64_t bounds[] = {stride_i > 0 ? 0 : -1,
+                        stride_i > 0 ? dim_i : dim_i - 1};
+
+    // Canonicalizes the given range `point` (begin/end) according to the
+    // current dimension. `c` means case: 0 for begin, 1 for end.
+    auto canonicalize = [&](int64_t point, int c) {
+      if (masks[c]) return stride_i > 0 ? bounds[c] : bounds[(c + 1) & 1];
+
+      // Add dim as offset to negative range point.
+      point = point < 0 ? dim_i + point : point;
+      return Clamp(point, bounds[0], bounds[1]);
+    };
+
+    begin_i = canonicalize(begin_i, 0);
+    end_i = canonicalize(end_i, 1);
+
+    int64_t interval_len = end_i - begin_i;
+    int64_t size_i = 0;
+    // If internal length is zero or has different sign from stride, it's a
+    // degenerated case: we are slicing nothing. Otherwise, calculate the sliced
+    // size.
+    if (interval_len != 0 && (interval_len < 0) == (stride_i < 0))
+      size_i = (interval_len / stride_i) + (interval_len % stride_i != 0);
+
+    input_shape[i] = size_i;
+    begin[i] = begin_i;
+    end[i] = end_i;
+    stride[i] = stride_i;
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// StridedSliceGradOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(StridedSliceGradOp op) {
+  auto shape_type = op.shape()->getType().dyn_cast<RankedTensorType>();
+  if (shape_type && shape_type.getRank() != 1)
+    return op.emitOpError("'shape' operand must be 1D tensor, but got ")
+           << shape_type.getRank() << "D tensor";
+
+  if (failed(VerifyStridedSliceBase(op))) return failure();
+
+  // TODO(antiagainst): verify the gradient op.dy()'s shape is consistent with
+  // the sliced type from StridedSlice.
+
+  return success();
+}
+
+bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
+    SmallVectorImpl<int64_t> *shape, SmallVectorImpl<int64_t> *begin_indices,
+    SmallVectorImpl<int64_t> *end_indices, SmallVectorImpl<int64_t> *strides) {
+  if (this->ellipsis_mask().getZExtValue() ||
+      this->new_axis_mask().getZExtValue() ||
+      this->shrink_axis_mask().getZExtValue())
+    return false;  // TODO(antiagainst): support these masks
+
+  DenseIntElementsAttr shape_attr;
+  DenseIntElementsAttr begin_indices_attr, end_indices_attr, strides_attr;
+  if (!matchPattern(this->shape(), m_Constant(&shape_attr)) ||
+      !matchPattern(this->begin(), m_Constant(&begin_indices_attr)) ||
+      !matchPattern(this->end(), m_Constant(&end_indices_attr)) ||
+      !matchPattern(this->strides(), m_Constant(&strides_attr)))
+    return false;
+
+  int rank = std::distance(shape_attr.begin(), shape_attr.end());
+
+  shape->clear();
+  shape->reserve(rank);
+  begin_indices->clear();
+  begin_indices->reserve(rank);
+  end_indices->clear();
+  end_indices->reserve(rank);
+  strides->clear();
+  strides->reserve(rank);
+
+  for (const APInt &dim : shape_attr) shape->push_back(dim.getSExtValue());
+  for (const APInt &index : begin_indices_attr)
+    begin_indices->push_back(index.getSExtValue());
+  for (const APInt &index : end_indices_attr)
+    end_indices->push_back(index.getSExtValue());
+  for (const APInt &stride : strides_attr)
+    strides->push_back(stride.getSExtValue());
+
+  CalculateSlicedShapeAndBoundRanges(*shape, this->begin_mask().getZExtValue(),
+                                     this->end_mask().getZExtValue(),
+                                     *begin_indices, *end_indices, *strides);
+  return true;
 }
 
 //===----------------------------------------------------------------------===//
