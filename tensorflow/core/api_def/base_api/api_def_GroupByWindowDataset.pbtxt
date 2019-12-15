@@ -1,5 +1,6 @@
 op {
   graph_op_name: "GroupByWindowDataset"
+  visibility: HIDDEN
   attr {
     name: "key_func"
     description: <<END

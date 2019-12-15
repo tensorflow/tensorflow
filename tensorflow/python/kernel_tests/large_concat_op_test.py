@@ -32,10 +32,10 @@ class LargeConcatOpTest(test.TestCase):
       a = array_ops.ones([2**31 + 6], dtype=dtypes.int8)
       b = array_ops.zeros([1024], dtype=dtypes.int8)
       onezeros = array_ops.concat([a, b], 0)
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       # TODO(dga):  Add more depth to this test to validate correctness,
       # not just non-crashingness, once other large tensor fixes have gone in.
-      _ = onezeros.eval()
+      _ = self.evaluate(onezeros)
 
 
 if __name__ == "__main__":

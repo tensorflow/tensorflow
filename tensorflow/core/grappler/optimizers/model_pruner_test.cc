@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
+
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/no_op.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -29,254 +32,330 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+constexpr char kDeviceCPU0[] = "/device:CPU:0";
+constexpr char kDeviceGPU0[] = "/device:GPU:0";
+
 class ModelPrunerTest : public GrapplerTest {};
 
 TEST_F(ModelPrunerTest, NoPruning) {
   // This trivial graph is so basic there's nothing to prune.
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
   GrapplerItem item;
-  CHECK(fake_input.NextItem(&item));
+  ASSERT_TRUE(fake_input.NextItem(&item));
 
   ModelPruner pruner;
   GraphDef output;
-  Status s = pruner.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(s);
+  TF_ASSERT_OK(pruner.Optimize(nullptr, item, &output));
 
-  EXPECT_EQ(item.graph.node_size(), output.node_size());
-  for (int i = 0; i < item.graph.node_size(); ++i) {
-    const NodeDef& original = item.graph.node(i);
-    const NodeDef& optimized = output.node(i);
-    EXPECT_EQ(original.name(), optimized.name());
-    EXPECT_EQ(original.op(), optimized.op());
-    EXPECT_EQ(original.input_size(), optimized.input_size());
-    for (int j = 0; j < original.input_size(); ++j) {
-      EXPECT_EQ(original.input(j), optimized.input(j));
-    }
-  }
+  CompareGraphs(item.graph, output);
 }
 
 TEST_F(ModelPrunerTest, StopGradientPruning) {
   // Build a simple graph with a few trivially prunable ops.
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-
-  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
-  Output b = ops::Sqrt(s.WithOpName("b"), {a});
-  Output c = ops::StopGradient(s.WithOpName("c"), b);
-  Output d = ops::StopGradient(s.WithOpName("d"), c);
-  Output e = ops::Sqrt(s.WithOpName("e"), {d});
-
   GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  {
+    tensorflow::Scope s = CreateScopeWithDevice(kDeviceCPU0);
+
+    Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+    Output b = ops::Sqrt(s.WithOpName("b"), {a});
+    Output c = ops::StopGradient(s.WithOpName("c"), b);
+    Output d = ops::StopGradient(s.WithOpName("d"), c);
+    Output e = ops::Sqrt(s.WithOpName("e"), {d});
+
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  }
 
   ModelPruner pruner;
   GraphDef output;
-  Status status = pruner.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  TF_ASSERT_OK(pruner.Optimize(nullptr, item, &output));
 
-  EXPECT_EQ(5, output.node_size());
-  const NodeDef& new_a = output.node(0);
-  EXPECT_EQ(NodeName(a.name()), new_a.name());
-  const NodeDef& new_b = output.node(1);
-  EXPECT_EQ(NodeName(b.name()), new_b.name());
-  const NodeDef& new_c = output.node(2);
-  EXPECT_EQ(NodeName(c.name()), new_c.name());
-  const NodeDef& new_d = output.node(3);
-  EXPECT_EQ(NodeName(d.name()), new_d.name());
-  const NodeDef& new_e = output.node(4);
-  EXPECT_EQ(NodeName(e.name()), new_e.name());
+  GraphDef expected;
+  {
+    tensorflow::Scope s = CreateScopeWithDevice(kDeviceCPU0);
 
-  EXPECT_EQ(1, new_e.input_size());
-  EXPECT_EQ(NodeName(b.name()), new_e.input(0));
-  EXPECT_EQ(1, new_d.input_size());
-  EXPECT_EQ(NodeName(b.name()), new_d.input(0));
+    Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+    Output b = ops::Sqrt(s.WithOpName("b"), {a});
+    Output c = ops::StopGradient(s.WithOpName("c"), b);
+    Output d = ops::StopGradient(s.WithOpName("d"), b);
+    Output e = ops::Sqrt(s.WithOpName("e"), {b});
+
+    TF_ASSERT_OK(s.ToGraphDef(&expected));
+  }
+
+  CompareGraphs(expected, output);
 
   std::vector<string> fetch = {"e"};
   auto expected_tensors = EvaluateNodes(item.graph, fetch);
   auto actual_tensors = EvaluateNodes(output, fetch);
-  EXPECT_EQ(1, expected_tensors.size());
-  EXPECT_EQ(1, actual_tensors.size());
-  test::ExpectTensorEqual<float>(expected_tensors[0], actual_tensors[0]);
+  ASSERT_EQ(expected_tensors.size(), 1);
+  ASSERT_EQ(actual_tensors.size(), 1);
+  test::ExpectTensorEqual<float>(actual_tensors[0], expected_tensors[0]);
 }
 
 TEST_F(ModelPrunerTest, IdentityPruning) {
   // Build a simple graph with a few trivially prunable ops.
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-
-  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
-  Output b = ops::Sqrt(s.WithOpName("b"), {a});
-  Output c = ops::Identity(s.WithOpName("c"), b);
-  Output d = ops::Identity(s.WithOpName("d"), c);
-  Output e = ops::Sqrt(s.WithOpName("e"), {d});
-
   GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  {
+    tensorflow::Scope s = CreateScopeWithDevice(kDeviceCPU0);
+
+    Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+    Output b = ops::Sqrt(s.WithOpName("b"), {a});
+    Output c = ops::Identity(s.WithOpName("c"), b);
+    Output d = ops::Identity(s.WithOpName("d"), c);
+    Output e = ops::Sqrt(s.WithOpName("e"), {d});
+
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  }
 
   ModelPruner pruner;
   GraphDef output;
-  Status status = pruner.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  TF_ASSERT_OK(pruner.Optimize(nullptr, item, &output));
 
-  EXPECT_EQ(5, output.node_size());
-  const NodeDef& new_a = output.node(0);
-  EXPECT_EQ(NodeName(a.name()), new_a.name());
-  const NodeDef& new_b = output.node(1);
-  EXPECT_EQ(NodeName(b.name()), new_b.name());
-  const NodeDef& new_c = output.node(2);
-  EXPECT_EQ(NodeName(c.name()), new_c.name());
-  const NodeDef& new_d = output.node(3);
-  EXPECT_EQ(NodeName(d.name()), new_d.name());
-  const NodeDef& new_e = output.node(4);
-  EXPECT_EQ(NodeName(e.name()), new_e.name());
+  GraphDef expected;
+  {
+    tensorflow::Scope s = CreateScopeWithDevice(kDeviceCPU0);
 
-  EXPECT_EQ(1, new_e.input_size());
-  EXPECT_EQ(NodeName(b.name()), new_e.input(0));
-  EXPECT_EQ(1, new_d.input_size());
-  EXPECT_EQ(NodeName(b.name()), new_d.input(0));
-  EXPECT_EQ(1, new_c.input_size());
-  EXPECT_EQ(NodeName(b.name()), new_c.input(0));
+    Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+    Output b = ops::Sqrt(s.WithOpName("b"), {a});
+    Output c = ops::Identity(s.WithOpName("c"), b);
+    Output d = ops::Identity(s.WithOpName("d"), b);
+    Output e = ops::Sqrt(s.WithOpName("e"), {b});
+
+    TF_ASSERT_OK(s.ToGraphDef(&expected));
+  }
+
+  CompareGraphs(expected, output);
 
   std::vector<string> fetch = {"e"};
-  auto expected_tensors = EvaluateNodes(item.graph, fetch);
   auto actual_tensors = EvaluateNodes(output, fetch);
-  EXPECT_EQ(1, expected_tensors.size());
-  EXPECT_EQ(1, actual_tensors.size());
-  test::ExpectTensorEqual<float>(expected_tensors[0], actual_tensors[0]);
+  ASSERT_EQ(actual_tensors.size(), 1);
+  auto expected_tensors = EvaluateNodes(item.graph, fetch);
+  ASSERT_EQ(expected_tensors.size(), 1);
+  test::ExpectTensorEqual<float>(actual_tensors[0], expected_tensors[0]);
+}
+
+TEST_F(ModelPrunerTest, IdentityNInputPruning) {
+  GrapplerItem item;
+  {
+    tensorflow::Scope s = CreateScopeWithDevice(kDeviceCPU0);
+
+    Output a = ops::Const(s.WithOpName("a"), 2.0f, {10, 10});
+    Output b = ops::Sqrt(s.WithOpName("b"), {a});
+    // Node "c" is pruned along with fanins of node "c".
+    Output c = ops::Const(s.WithOpName("c"), 3.0f, {10, 10});
+    // Node "d" will be pruned because it only has control outputs.
+    Output d = ops::Const(s.WithOpName("d"), 4.0f, {10, 10});
+    auto e =
+        ops::IdentityN(s.WithOpName("e").WithControlDependencies(d), {a, b, c});
+    auto f = ops::IdentityN(s.WithOpName("f"), {e[2], e[1], e[0]});
+    Output g = ops::Sqrt(s.WithOpName("g"), {f[1]});
+    Output h = ops::Sqrt(s.WithOpName("h"), {f[2]});
+
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  }
+
+  item.fetch = {"g", "h"};
+  ModelPruner pruner;
+  GraphDef output;
+  TF_ASSERT_OK(pruner.Optimize(nullptr, item, &output));
+
+  GraphDef expected;
+  {
+    tensorflow::Scope s = CreateScopeWithDevice(kDeviceCPU0);
+
+    Output a = ops::Const(s.WithOpName("a"), 2.0f, {10, 10});
+    Output b = ops::Sqrt(s.WithOpName("b"), {a});
+    auto e = ops::IdentityN(s.WithOpName("e"), {a, b});
+    auto f = ops::IdentityN(s.WithOpName("f"), {e[1], e[0]});
+    Output g = ops::Sqrt(s.WithOpName("g"), {f[0]});
+    Output h = ops::Sqrt(s.WithOpName("h"), {f[1]});
+
+    TF_ASSERT_OK(s.ToGraphDef(&expected));
+  }
+
+  CompareGraphs(expected, output);
+
+  auto actual_tensors = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(actual_tensors.size(), 2);
+  auto expected_tensors = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(expected_tensors.size(), 2);
+  for (int i = 0; i < actual_tensors.size(); i++) {
+    test::ExpectTensorEqual<float>(actual_tensors[i], expected_tensors[i]);
+  }
+}
+
+TEST_F(ModelPrunerTest, IdentityNInputPruningWithIdentityNInFetch) {
+  GrapplerItem item;
+  {
+    tensorflow::Scope s = CreateScopeWithDevice(kDeviceCPU0);
+
+    Output a = ops::Const(s.WithOpName("a"), 2.0f, {10, 10});
+    Output b = ops::Sqrt(s.WithOpName("b"), {a});
+    Output c = ops::Const(s.WithOpName("c"), 3.0f, {10, 10});
+    // d will be pruned because it only has control outputs.
+    Output d = ops::Const(s.WithOpName("d"), 4.0f, {10, 10});
+    auto e =
+        ops::IdentityN(s.WithOpName("e").WithControlDependencies(d), {a, b, c});
+    auto f = ops::IdentityN(s.WithOpName("f"), {e[0], e[1], e[2]});
+    auto g = ops::IdentityN(s.WithOpName("g"), {f[1]});
+
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  }
+
+  item.fetch = {"g"};
+  ModelPruner pruner;
+  GraphDef output;
+  TF_ASSERT_OK(pruner.Optimize(nullptr, item, &output));
+
+  GraphDef expected;
+  {
+    tensorflow::Scope s = CreateScopeWithDevice(kDeviceCPU0);
+
+    Output a = ops::Const(s.WithOpName("a"), 2.0f, {10, 10});
+    Output b = ops::Sqrt(s.WithOpName("b"), {a});
+    auto e = ops::IdentityN(s.WithOpName("e"), {b});
+    // Single output IdentityN (node "f") was pruned.
+    auto g = ops::IdentityN(s.WithOpName("g"), {e[0]});
+
+    TF_ASSERT_OK(s.ToGraphDef(&expected));
+  }
+
+  CompareGraphs(expected, output);
+
+  auto actual_tensors = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(actual_tensors.size(), 1);
+  auto expected_tensors = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(expected_tensors.size(), 1);
+  test::ExpectTensorEqual<float>(actual_tensors[0], expected_tensors[0]);
 }
 
 TEST_F(ModelPrunerTest, NoOpPruning) {
   // Build a simple graph with a few trivially prunable ops.
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-
-  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
-  Output b = ops::AddN(s.WithOpName("b"), {a});
-  Output c = ops::AddN(s.WithOpName("c"), {b});
-  Output d = ops::AddN(s.WithOpName("d").WithControlDependencies(b), {c});
-  Output e = ops::AddN(s.WithOpName("e"), {d});
-
   GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  {
+    tensorflow::Scope s = CreateScopeWithDevice(kDeviceCPU0);
+
+    Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+    Output b = ops::AddN(s.WithOpName("b"), {a});
+    Output c = ops::AddN(s.WithOpName("c"), {b});
+    Output d = ops::AddN(s.WithOpName("d").WithControlDependencies(b), {c});
+    Output e = ops::AddN(s.WithOpName("e"), {d});
+
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  }
 
   ModelPruner pruner;
   GraphDef output;
-  Status status = pruner.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  TF_ASSERT_OK(pruner.Optimize(nullptr, item, &output));
 
-  EXPECT_EQ(5, output.node_size());
-  const NodeDef& new_a = output.node(0);
-  EXPECT_EQ(NodeName(a.name()), new_a.name());
-  const NodeDef& new_b = output.node(1);
-  EXPECT_EQ(NodeName(b.name()), new_b.name());
-  const NodeDef& new_c = output.node(2);
-  EXPECT_EQ(NodeName(c.name()), new_c.name());
-  const NodeDef& new_d = output.node(3);
-  EXPECT_EQ(NodeName(d.name()), new_d.name());
-  const NodeDef& new_e = output.node(4);
-  EXPECT_EQ(NodeName(e.name()), new_e.name());
+  GraphDef expected;
+  {
+    tensorflow::Scope s = CreateScopeWithDevice(kDeviceCPU0);
 
-  for (const auto& new_node : output.node()) {
-    if (new_node.name() != "a") {
-      EXPECT_EQ(1, new_node.input_size());
-      EXPECT_EQ("a", new_node.input(0));
-    }
+    Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+    Output b = ops::AddN(s.WithOpName("b"), {a});
+    Output c = ops::AddN(s.WithOpName("c"), {a});
+    Output d = ops::AddN(s.WithOpName("d"), {a});
+    Output e = ops::AddN(s.WithOpName("e"), {a});
+
+    TF_ASSERT_OK(s.ToGraphDef(&expected));
   }
 
+  CompareGraphs(expected, output);
+
   std::vector<string> fetch = {"e"};
-  auto expected_tensors = EvaluateNodes(item.graph, fetch);
   auto actual_tensors = EvaluateNodes(output, fetch);
-  EXPECT_EQ(1, expected_tensors.size());
-  EXPECT_EQ(1, actual_tensors.size());
-  test::ExpectTensorEqual<float>(expected_tensors[0], actual_tensors[0]);
+  ASSERT_EQ(actual_tensors.size(), 1);
+  auto expected_tensors = EvaluateNodes(item.graph, fetch);
+  ASSERT_EQ(expected_tensors.size(), 1);
+  test::ExpectTensorEqual<float>(actual_tensors[0], expected_tensors[0]);
 }
 
 TEST_F(ModelPrunerTest, PreserveIdentities) {
-  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
-  ops::Variable v_in(scope.WithOpName("v_in"), {3}, DT_FLOAT);
-  ops::Variable v_ctrl(scope.WithOpName("v_ctrl"), {}, DT_BOOL);
-  ops::Switch s(scope.WithOpName("switch"), v_in, v_ctrl);
-  // id0 is preserved because it is fed by a Switch and drives a
-  // control dependency.
-  Output id0 = ops::Identity(scope.WithOpName("id0"), s.output_true);
-  // id1 is preserved because it feeds a Merge.
-  Output id1 = ops::Identity(
-      scope.WithOpName("id1").WithControlDependencies(v_ctrl), s.output_false);
-  Output id2 = ops::Identity(scope.WithOpName("id2"), id0);
-  Output id3 =
-      ops::Identity(scope.WithOpName("id3").WithControlDependencies(id0), id1);
-  auto merge = ops::Merge(scope.WithOpName("merge"), {id0, id1});
-
   GrapplerItem item;
-  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
-  item.fetch.push_back("id2");
-  item.fetch.push_back("id3");
-  item.fetch.push_back("merge");
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 
+    ops::Variable v_in(scope.WithOpName("v_in"), {3}, DT_FLOAT);
+    ops::Variable v_ctrl(scope.WithOpName("v_ctrl"), {}, DT_BOOL);
+    ops::Switch s(scope.WithOpName("switch"), v_in, v_ctrl);
+    // id0 is preserved because it is fed by a Switch and drives a control
+    // dependency.
+    Output id0 = ops::Identity(scope.WithOpName("id0"), s.output_true);
+    // id1 is preserved because it feeds a Merge.
+    Output id1 =
+        ops::Identity(scope.WithOpName("id1").WithControlDependencies(v_ctrl),
+                      s.output_false);
+    Output id2 = ops::Identity(scope.WithOpName("id2"), id0);
+    Output id3 = ops::Identity(
+        scope.WithOpName("id3").WithControlDependencies(id0), id1);
+    auto merge = ops::Merge(scope.WithOpName("merge"), {id0, id1});
+
+    TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+  }
+
+  item.fetch = {"id2", "id3", "merge"};
   ModelPruner pruner;
   GraphDef output;
-  Status status = pruner.Optimize(nullptr, item, &output);
+  TF_ASSERT_OK(pruner.Optimize(nullptr, item, &output));
 
-  TF_EXPECT_OK(status);
-  EXPECT_EQ(item.graph.node_size(), output.node_size());
+  CompareGraphs(item.graph, output);
 
   auto v_in_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3}));
   Tensor v_ctrl_t(DT_BOOL, TensorShape({}));
   v_ctrl_t.flat<bool>()(0) = true;
-  auto expected_tensors = EvaluateNodes(
-      item.graph, {"merge", "id2"}, {{"v_in", v_in_t}, {"v_ctrl", v_ctrl_t}});
   auto actual_tensors = EvaluateNodes(output, {"merge", "id2"},
                                       {{"v_in", v_in_t}, {"v_ctrl", v_ctrl_t}});
-  EXPECT_EQ(2, expected_tensors.size());
-  EXPECT_EQ(2, actual_tensors.size());
-  for (int i = 0; i < expected_tensors.size(); i++) {
-    test::ExpectTensorEqual<float>(expected_tensors[i], actual_tensors[i]);
+  ASSERT_EQ(actual_tensors.size(), 2);
+  auto expected_tensors = EvaluateNodes(
+      item.graph, {"merge", "id2"}, {{"v_in", v_in_t}, {"v_ctrl", v_ctrl_t}});
+  ASSERT_EQ(expected_tensors.size(), 2);
+  for (int i = 0; i < actual_tensors.size(); i++) {
+    test::ExpectTensorEqual<float>(actual_tensors[i], expected_tensors[i]);
   }
 }
 
 TEST_F(ModelPrunerTest, PruningSkipsRefOutputs) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-
-  // Make graph of Identity(Identity(Identity(Identity(Variable)))).
-  Output a = ops::Variable(s.WithOpName("a"), {}, DT_INT64);
-  Output b = ops::Identity(s.WithOpName("b"), a);
-  Output c = ops::Identity(s.WithOpName("c"), b);
-  Output d = ops::Identity(s.WithOpName("d"), c);
-  Output e = ops::Identity(s.WithOpName("e"), d);
-
-  // Run pruner.
   GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  {
+    tensorflow::Scope s = CreateScopeWithDevice(kDeviceCPU0);
+
+    // Make graph of Identity(Identity(Identity(Identity(Variable)))).
+    Output a = ops::Variable(s.WithOpName("a"), {}, DT_INT64);
+    Output b = ops::Identity(s.WithOpName("b"), a);
+    Output c = ops::Identity(s.WithOpName("c"), b);
+    Output d = ops::Identity(s.WithOpName("d"), c);
+    Output e = ops::Identity(s.WithOpName("e"), d);
+
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  }
+
   ModelPruner pruner;
   GraphDef output;
-  Status status = pruner.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  TF_ASSERT_OK(pruner.Optimize(nullptr, item, &output));
 
-  // Get the updated nodes.
-  ASSERT_EQ(5, output.node_size());
-  const NodeDef& new_a = output.node(0);
-  const NodeDef& new_b = output.node(1);
-  const NodeDef& new_c = output.node(2);
-  const NodeDef& new_d = output.node(3);
-  const NodeDef& new_e = output.node(4);
-  EXPECT_EQ("a", new_a.name());
-  EXPECT_EQ("b", new_b.name());
-  EXPECT_EQ("c", new_c.name());
-  EXPECT_EQ("d", new_d.name());
-  EXPECT_EQ("e", new_e.name());
+  GraphDef expected;
+  {
+    tensorflow::Scope s = CreateScopeWithDevice(kDeviceCPU0);
 
-  // Verify the connections. Identity "b" can't be removed from the chain
-  // because it is converting a reference input to a non-reference, so c,d,e all
-  // refer to it as an input.
-  EXPECT_EQ("a", new_b.input(0));
-  EXPECT_EQ("b", new_c.input(0));
-  EXPECT_EQ("b", new_d.input(0));
-  EXPECT_EQ("b", new_e.input(0));
+    Output a = ops::Variable(s.WithOpName("a"), {}, DT_INT64);
+    Output b = ops::Identity(s.WithOpName("b"), a);
+    Output c = ops::Identity(s.WithOpName("c"), b);
+    Output d = ops::Identity(s.WithOpName("d"), b);
+    Output e = ops::Identity(s.WithOpName("e"), b);
+
+    TF_ASSERT_OK(s.ToGraphDef(&expected));
+  }
+
+  CompareGraphs(expected, output);
 
   std::vector<string> fetch = {"e"};
   auto a_t = GenerateRandomTensor<DT_INT64>(TensorShape({}));
-  auto expected_tensors = EvaluateNodes(item.graph, fetch, {{"a", a_t}});
   auto actual_tensors = EvaluateNodes(output, fetch, {{"a", a_t}});
-  EXPECT_EQ(1, expected_tensors.size());
-  EXPECT_EQ(1, actual_tensors.size());
-  test::ExpectTensorEqual<int64>(expected_tensors[0], actual_tensors[0]);
+  ASSERT_EQ(actual_tensors.size(), 1);
+  auto expected_tensors = EvaluateNodes(item.graph, fetch, {{"a", a_t}});
+  ASSERT_EQ(expected_tensors.size(), 1);
+  test::ExpectTensorEqual<int64>(actual_tensors[0], expected_tensors[0]);
 }
 
 // TODO(rmlarsen): Reenable this test when the issues with
@@ -329,77 +408,184 @@ TEST_F(ModelPrunerTest, PruningForwardsCtrlDependencies) {
 
 TEST_F(ModelPrunerTest, PruningPerservesFetch) {
   // Build a simple graph with a few trivially prunable ops.
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-
-  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
-  Output b = ops::Sqrt(s.WithOpName("b"), {a});
-  Output c = ops::Identity(s.WithOpName("c"), b);
-  Output d = ops::Identity(s.WithOpName("d"), c);
-
   GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  item.fetch.push_back("c");
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
+    Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+    Output b = ops::Sqrt(s.WithOpName("b"), {a});
+    Output c = ops::Identity(s.WithOpName("c"), b);
+    Output d = ops::Identity(s.WithOpName("d"), c);
+
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  }
+
+  item.fetch = {"c"};
   ModelPruner pruner;
   GraphDef output;
-  Status status = pruner.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  TF_ASSERT_OK(pruner.Optimize(nullptr, item, &output));
 
-  EXPECT_EQ(3, output.node_size());
-  const NodeDef& new_a = output.node(0);
-  EXPECT_EQ(NodeName(a.name()), new_a.name());
-  const NodeDef& new_b = output.node(1);
-  EXPECT_EQ(NodeName(b.name()), new_b.name());
-  const NodeDef& new_c = output.node(2);
-  EXPECT_EQ(NodeName(c.name()), new_c.name());
+  GraphDef expected;
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  auto expected_tensors = EvaluateNodes(item.graph, item.fetch);
+    Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+    Output b = ops::Sqrt(s.WithOpName("b"), {a});
+    Output c = ops::Identity(s.WithOpName("c"), b);
+
+    TF_ASSERT_OK(s.ToGraphDef(&expected));
+  }
+
+  CompareGraphs(expected, output);
+
   auto actual_tensors = EvaluateNodes(output, item.fetch);
-  EXPECT_EQ(1, expected_tensors.size());
-  EXPECT_EQ(1, actual_tensors.size());
-  test::ExpectTensorEqual<float>(expected_tensors[0], actual_tensors[0]);
+  ASSERT_EQ(actual_tensors.size(), 1);
+  auto expected_tensors = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(expected_tensors.size(), 1);
+  test::ExpectTensorEqual<float>(actual_tensors[0], expected_tensors[0]);
 }
 
 TEST_F(ModelPrunerTest, PruningPerservesCrossDeviceIdentity) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output c = ops::Const(s.WithOpName("c").WithDevice("/cpu:0"), 0.0f, {10, 10});
-
-  // Node i1 should be preserved.
-  Output i1 = ops::Identity(s.WithOpName("i1").WithDevice("/device:GPU:0"), c);
-  Output a1 = ops::Sqrt(s.WithOpName("a1").WithDevice("/device:GPU:0"), {i1});
-  Output a2 = ops::Sqrt(s.WithOpName("a2").WithDevice("/device:GPU:0"), {i1});
-
-  // Node i2 should be pruned since it resides on the sender's device.
-  Output i2 = ops::Identity(s.WithOpName("i2").WithDevice("/cpu:0"), c);
-  Output a3 = ops::Sqrt(s.WithOpName("a3").WithDevice("/device:GPU:0"), {i2});
-  Output a4 = ops::Sqrt(s.WithOpName("a4").WithDevice("/device:GPU:0"), {i2});
-
   GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  item.fetch = {"a1", "a2", "a3", "a4"};
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
+    Output c =
+        ops::Const(s.WithOpName("c").WithDevice(kDeviceCPU0), 0.0f, {10, 10});
+
+    // Node i1 should be preserved.
+    Output i1 = ops::Identity(s.WithOpName("i1").WithDevice(kDeviceGPU0), c);
+    Output a1 = ops::Identity(s.WithOpName("a1").WithDevice(kDeviceGPU0), i1);
+    Output a2 = ops::Identity(s.WithOpName("a2").WithDevice(kDeviceGPU0), i1);
+
+    // Node i2 should be pruned since it resides on the sender's device.
+    Output i2 = ops::Identity(s.WithOpName("i2").WithDevice(kDeviceCPU0), c);
+    Output a3 = ops::Identity(s.WithOpName("a3").WithDevice(kDeviceGPU0), i2);
+    Output a4 = ops::Identity(s.WithOpName("a4").WithDevice(kDeviceGPU0), i2);
+
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  }
+
+  item.fetch = {"a1", "a2", "a3", "a4"};
   ModelPruner pruner;
   GraphDef output;
-  Status status = pruner.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  TF_ASSERT_OK(pruner.Optimize(nullptr, item, &output));
 
-  for (const auto& node : output.node()) {
-    if (node.name() == "a1" || node.name() == "a2") {
-      EXPECT_EQ("i1", node.input(0));
-    } else if (node.name() == "a3" || node.name() == "a4") {
-      EXPECT_EQ("c", node.input(0));
-    }
+  GraphDef expected;
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    Output c =
+        ops::Const(s.WithOpName("c").WithDevice(kDeviceCPU0), 0.0f, {10, 10});
+
+    // Node i1 should be preserved.
+    Output i1 = ops::Identity(s.WithOpName("i1").WithDevice(kDeviceGPU0), c);
+    Output a1 = ops::Identity(s.WithOpName("a1").WithDevice(kDeviceGPU0), i1);
+    Output a2 = ops::Identity(s.WithOpName("a2").WithDevice(kDeviceGPU0), i1);
+
+    // Node i2 should be pruned since it resides on the sender's device.
+    Output a3 = ops::Identity(s.WithOpName("a3").WithDevice(kDeviceGPU0), c);
+    Output a4 = ops::Identity(s.WithOpName("a4").WithDevice(kDeviceGPU0), c);
+
+    TF_ASSERT_OK(s.ToGraphDef(&expected));
   }
+
+  CompareGraphs(expected, output);
+
   if (GetNumAvailableGPUs() > 0) {
-    auto expected_tensors = EvaluateNodes(item.graph, item.fetch);
     auto actual_tensors = EvaluateNodes(output, item.fetch);
-    EXPECT_EQ(4, expected_tensors.size());
-    EXPECT_EQ(4, actual_tensors.size());
-    for (int i = 0; i < expected_tensors.size(); i++) {
-      test::ExpectTensorNear<float>(expected_tensors[i], actual_tensors[i],
+    ASSERT_EQ(actual_tensors.size(), 4);
+    auto expected_tensors = EvaluateNodes(item.graph, item.fetch);
+    ASSERT_EQ(expected_tensors.size(), 4);
+    for (int i = 0; i < actual_tensors.size(); i++) {
+      test::ExpectTensorNear<float>(actual_tensors[i], expected_tensors[i],
                                     1e-6);
     }
   }
+}
+
+TEST_F(ModelPrunerTest, PruneNoOpsWithoutInputs) {
+  GrapplerItem item;
+  {
+    tensorflow::Scope s = CreateScopeWithDevice(kDeviceCPU0);
+
+    // Add an explicit no-op node without inputs. It should be pruned even
+    // though it has a path to the fetch node.
+    auto n1 = ops::NoOp(s.WithOpName("no_op1"));
+    Output c1 = ops::Const(s.WithOpName("c1"), 0.0f, {1, 1});
+    // Add an explicit no-op node with a control input. It should not be pruned.
+    auto n2 = ops::NoOp(s.WithOpName("no_op2").WithControlDependencies(c1));
+    // Add NoOps as control inputs to fetch node.
+    Output id1 = ops::Identity(
+        s.WithOpName("id1").WithControlDependencies({n1, n2}), c1);
+
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  }
+
+  item.fetch = {"id1"};
+  ModelPruner pruner;
+  GraphDef output;
+  TF_ASSERT_OK(pruner.Optimize(nullptr, item, &output));
+
+  GraphDef expected;
+  {
+    tensorflow::Scope s = CreateScopeWithDevice(kDeviceCPU0);
+
+    Output c1 = ops::Const(s.WithOpName("c1"), 0.0f, {1, 1});
+    auto n2 = ops::NoOp(s.WithOpName("no_op2").WithControlDependencies(c1));
+    Output id1 =
+        ops::Identity(s.WithOpName("id1").WithControlDependencies({n2}), c1);
+
+    TF_ASSERT_OK(s.ToGraphDef(&expected));
+  }
+
+  CompareGraphs(expected, output);
+}
+
+TEST_F(ModelPrunerTest, PruneConstantsWithoutInputsAndOutputs) {
+  GrapplerItem item;
+  {
+    tensorflow::Scope s = CreateScopeWithDevice(kDeviceCPU0);
+
+    // c0 has an non-control output => will NOT be pruned.
+    Output c0 = ops::Const(s.WithOpName("c0"), 0.0f, {1, 1});
+    // c1 has neither inputs nor outputs => will be pruned.
+    Output c1 = ops::Const(s.WithOpName("c1"), 1.0f, {1, 1});
+    // c2 has a control input and a control output  => will NOT be pruned.
+    Output c2 = ops::Const(s.WithOpName("c2").WithControlDependencies({c0}),
+                           2.0f, {1, 1});
+    // c3 has no inputs and one control output  => will be pruned.
+    Output c3 = ops::Const(s.WithOpName("c3"), 3.0f, {1, 1});
+    Output id1 = ops::Identity(s.WithOpName("id1")
+                                   .WithControlDependencies({c2})
+                                   .WithControlDependencies({c3}),
+                               c0);
+
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  }
+
+  item.fetch = {"id1"};
+  ModelPruner pruner;
+  GraphDef output;
+  Status status = pruner.Optimize(nullptr, item, &output);
+  TF_ASSERT_OK(status);
+
+  GraphDef expected;
+  {
+    tensorflow::Scope s = CreateScopeWithDevice(kDeviceCPU0);
+
+    // c0 has an non-control output => will NOT be pruned.
+    Output c0 = ops::Const(s.WithOpName("c0"), 0.0f, {1, 1});
+    // c2 has a control input and a control output  => will NOT be pruned.
+    Output c2 = ops::Const(s.WithOpName("c2").WithControlDependencies({c0}),
+                           2.0f, {1, 1});
+    Output id1 =
+        ops::Identity(s.WithOpName("id1").WithControlDependencies({c2}), c0);
+
+    TF_ASSERT_OK(s.ToGraphDef(&expected));
+  }
+
+  CompareGraphs(expected, output);
 }
 
 }  // namespace

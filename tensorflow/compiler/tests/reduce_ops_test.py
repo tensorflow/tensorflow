@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import functools
 import itertools
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
@@ -30,22 +31,24 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
-class ReduceOpsTest(xla_test.XLATestCase):
-
+@parameterized.named_parameters(('32_bit_index', dtypes.int32),
+                                ('64_bit_index', dtypes.int64))
+class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   def _testReduction(self,
                      tf_reduce_fn,
                      np_reduce_fn,
                      dtype,
                      test_inputs,
+                     index_dtype,
                      rtol=1e-4,
                      atol=1e-4):
     """Tests that the output of 'tf_reduce_fn' matches numpy's output."""
 
     for test_input in test_inputs:
-      with self.test_session() as sess:
+      with self.session() as sess:
         with self.test_scope():
           a = array_ops.placeholder(dtype)
-          index = array_ops.placeholder(dtypes.int32)
+          index = array_ops.placeholder(index_dtype)
           out = tf_reduce_fn(a, index)
         result = sess.run(out, {a: test_input, index: [0]})
         self.assertAllClose(
@@ -88,23 +91,25 @@ class ReduceOpsTest(xla_test.XLATestCase):
       np.array([], dtype=np.bool).reshape(0, 3),
       np.array([[False, True, False], [True, True, False]]),
   ]
+  ONES = [np.ones([34000, 2])]
 
-  def testReduceSumF32(self):
-    self._testReduction(math_ops.reduce_sum, np.sum, np.float32, self.REAL_DATA)
+  def testReduceSumF32(self, index_dtype):
+    self._testReduction(math_ops.reduce_sum, np.sum, np.float32, self.REAL_DATA,
+                        index_dtype)
 
-  def testReduceSumC64(self):
+  def testReduceSumC64(self, index_dtype):
     self._testReduction(math_ops.reduce_sum, np.sum, np.complex64,
-                        self.COMPLEX_DATA)
+                        self.COMPLEX_DATA, index_dtype)
 
-  def testReduceProdF32(self):
+  def testReduceProdF32(self, index_dtype):
     self._testReduction(math_ops.reduce_prod, np.prod, np.float32,
-                        self.REAL_DATA)
+                        self.REAL_DATA, index_dtype)
 
-  def testReduceProdC64(self):
+  def testReduceProdC64(self, index_dtype):
     self._testReduction(math_ops.reduce_prod, np.prod, np.complex64,
-                        self.COMPLEX_DATA)
+                        self.COMPLEX_DATA, index_dtype)
 
-  def testReduceMin(self):
+  def testReduceMin(self, index_dtype):
 
     def reference_min(dtype, inp, axis):
       """Wrapper around np.amin that returns +infinity for an empty input."""
@@ -119,9 +124,9 @@ class ReduceOpsTest(xla_test.XLATestCase):
         [np.float32, np.int32, np.int64]):
       self._testReduction(math_ops.reduce_min,
                           functools.partial(reference_min, dtype), dtype,
-                          self.REAL_DATA)
+                          self.REAL_DATA, index_dtype)
 
-  def testReduceMax(self):
+  def testReduceMax(self, index_dtype):
 
     def reference_max(dtype, inp, axis):
       """Wrapper around np.amax that returns -infinity for an empty input."""
@@ -137,23 +142,30 @@ class ReduceOpsTest(xla_test.XLATestCase):
         [np.float32, np.int32, np.int64]):
       self._testReduction(math_ops.reduce_max,
                           functools.partial(reference_max, dtype), dtype,
-                          self.REAL_DATA)
+                          self.REAL_DATA, index_dtype)
 
-  def testReduceMeanF32(self):
+  def testReduceMeanF32(self, index_dtype):
     # TODO(phawkins): mean on XLA currently returns 0 instead of NaN when
     # reducing across zero inputs.
     self._testReduction(math_ops.reduce_mean, np.mean, np.float32,
-                        self.NONEMPTY_REAL_DATA)
+                        self.NONEMPTY_REAL_DATA, index_dtype)
 
-  def testReduceMeanC64(self):
+  def testReduceMeanF16(self, index_dtype):
+    if np.float16 in self.all_types:
+      self._testReduction(math_ops.reduce_mean, np.mean, np.float16, self.ONES,
+                          index_dtype)
+
+  def testReduceMeanC64(self, index_dtype):
     self._testReduction(math_ops.reduce_mean, np.mean, np.complex64,
-                        self.NONEMPTY_COMPLEX_DATA)
+                        self.NONEMPTY_COMPLEX_DATA, index_dtype)
 
-  def testReduceAll(self):
-    self._testReduction(math_ops.reduce_all, np.all, np.bool, self.BOOL_DATA)
+  def testReduceAll(self, index_dtype):
+    self._testReduction(math_ops.reduce_all, np.all, np.bool, self.BOOL_DATA,
+                        index_dtype)
 
-  def testReduceAny(self):
-    self._testReduction(math_ops.reduce_any, np.any, np.bool, self.BOOL_DATA)
+  def testReduceAny(self, index_dtype):
+    self._testReduction(math_ops.reduce_any, np.any, np.bool, self.BOOL_DATA,
+                        index_dtype)
 
 
 class ReduceOpPrecisionTest(xla_test.XLATestCase):
@@ -178,7 +190,7 @@ class ReduceOpPrecisionTest(xla_test.XLATestCase):
     """
 
     for test_input in test_inputs:
-      with self.test_session() as sess:
+      with self.session() as sess:
         with self.test_scope():
           a = array_ops.placeholder(dtype)
           index = array_ops.placeholder(dtypes.int32)
@@ -213,7 +225,7 @@ class ReduceOpPrecisionTest(xla_test.XLATestCase):
 
     bf16_max = np.float32(dtypes.bfloat16.max)
     f32_max = dtypes.float32.max
-    value = min(bf16_max, f32_max - bf16_max)
+    value = min(bf16_max, f32_max - bf16_max) / 2
     self._testReduceSum(
         dtypes.bfloat16.as_numpy_dtype(value), dtypes.bfloat16.as_numpy_dtype,
         itertools.permutations([bf16_max, value, bf16_max * (-1.0)], 3))

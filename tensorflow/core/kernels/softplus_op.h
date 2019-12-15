@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SOFTPLUS_OP_H_
-#define TENSORFLOW_KERNELS_SOFTPLUS_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SOFTPLUS_OP_H_
+#define TENSORFLOW_CORE_KERNELS_SOFTPLUS_OP_H_
 // Functor definition for SoftplusOp and SoftplusGradOp, must be compilable by
 // nvcc.
 
+// clang-format off
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+// clang-format on
 #include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
@@ -73,4 +76,4 @@ struct SoftplusGrad {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_SOFTPLUS_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SOFTPLUS_OP_H_

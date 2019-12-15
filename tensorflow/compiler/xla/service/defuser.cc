@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -48,7 +49,7 @@ Status Defuse(HloInstruction* fusion_instruction) {
       fusion_instruction->fused_instructions_computation();
 
   // A map from fused instruction to its defused clone.
-  tensorflow::gtl::FlatMap<const HloInstruction*, HloInstruction*>
+  absl::flat_hash_map<const HloInstruction*, HloInstruction*>
       defused_instructions;
   // Initialize map to contain the fusion instruction parameters mapping
   // to the operands of the fusion instruction.

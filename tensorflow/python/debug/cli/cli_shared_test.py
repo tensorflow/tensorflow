@@ -105,6 +105,7 @@ class TimeToReadableStrTest(test_util.TensorFlowTestCase):
       cli_shared.time_to_readable_str(100, force_time_unit="ks")
 
 
+@test_util.run_deprecated_v1
 class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -148,10 +149,6 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
     self.assertEqual([(2, 12, "bold")], run_start_intro.font_attr_segs[15])
     self.assertEqual("run -f <filter_name>:", run_start_intro.lines[17][2:])
     self.assertEqual([(2, 22, "bold")], run_start_intro.font_attr_segs[17])
-    annot = run_start_intro.font_attr_segs[21][0]
-    self.assertEqual(2, annot[0])
-    self.assertEqual(16, annot[1])
-    self.assertEqual("invoke_stepper", annot[2][0].content)
 
     # Verify short description.
     description = cli_shared.get_run_short_description(12, self.const_a, None)
@@ -162,8 +159,6 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
                   run_start_intro.annotations)
     menu = run_start_intro.annotations[debugger_cli_common.MAIN_MENU_KEY]
     self.assertEqual("run", menu.caption_to_item("run").content)
-    self.assertEqual("invoke_stepper",
-                     menu.caption_to_item("invoke_stepper").content)
     self.assertEqual("exit", menu.caption_to_item("exit").content)
 
   def testSparseTensorAsFeedShouldHandleNoNameAttribute(self):
@@ -324,6 +319,7 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
     self.assertEqual("run #1: 1 fetch (a:0); 1 feed (foo)", short_description)
 
 
+@test_util.run_deprecated_v1
 class GetErrorIntroTest(test_util.TensorFlowTestCase):
 
   def setUp(self):

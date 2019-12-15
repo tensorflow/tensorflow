@@ -1,0 +1,12 @@
+path: "tensorflow.UnconnectedGradients"
+tf_class {
+  is_instance: "<enum \'UnconnectedGradients\'>"
+  member {
+    name: "NONE"
+    mtype: "<enum \'UnconnectedGradients\'>"
+  }
+  member {
+    name: "ZERO"
+    mtype: "<enum \'UnconnectedGradients\'>"
+  }
+}

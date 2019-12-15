@@ -22,5 +22,5 @@ limitations under the License.
 // numerical computation using data flow graphs. This package provides
 // functionality to build and execute such graphs and depends on
 // TensorFlow being available. For installation instructions see
-// https://www.tensorflow.org/code/tensorflow/go/README.md
+// https://github.com/tensorflow/tensorflow/blob/master/tensorflow/go/README.md
 package tensorflow

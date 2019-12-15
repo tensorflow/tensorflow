@@ -91,48 +91,10 @@ class TypeResolver {
 
 Type TypeResolver::TypeOf(const OpDef_ArgDef& arg_def, bool* iterable_out) {
   *iterable_out = false;
-  if (!arg_def.number_attr().empty()) {
-    // when number_attr is set, argument has to be a list of tensors
-    *iterable_out = true;
-    visited_attrs_.insert(std::make_pair(arg_def.number_attr(), Type::Int()));
-  }
-
   Type type = Type::Wildcard();
   if (arg_def.type() != DataType::DT_INVALID) {
-    // resolve type from DataType
-    switch (arg_def.type()) {
-      case DataType::DT_BOOL:
-        type = Type::Class("Boolean");
-        break;
-      case DataType::DT_STRING:
-        type = Type::Class("String");
-        break;
-      case DataType::DT_FLOAT:
-        type = Type::Class("Float");
-        break;
-      case DataType::DT_DOUBLE:
-        type = Type::Class("Double");
-        break;
-      case DataType::DT_UINT8:
-        type = Type::Class("UInt8", "org.tensorflow.types");
-        break;
-      case DataType::DT_INT32:
-        type = Type::Class("Integer");
-        break;
-      case DataType::DT_INT64:
-        type = Type::Class("Long");
-        break;
-      case DataType::DT_RESOURCE:
-        // TODO(karllessard) create a Resource utility class that could be
-        // used to store a resource and its type (passed in a second argument).
-        // For now, we need to force a wildcard and we will unfortunately lose
-        // track of the resource type.
-        break;
-      default:
-        // Any other datatypes does not have a equivalent in Java and must
-        // remain a wildcard (e.g. DT_COMPLEX64, DT_QINT8, ...)
-        break;
-    }
+    type = Type::ForDataType(arg_def.type());
+
   } else if (!arg_def.type_attr().empty()) {
     // resolve type from attribute (if already visited, retrieve its type)
     if (IsAttributeVisited(arg_def.type_attr())) {
@@ -155,6 +117,11 @@ Type TypeResolver::TypeOf(const OpDef_ArgDef& arg_def, bool* iterable_out) {
     LOG(FATAL) << "Cannot resolve data type of argument \"" << arg_def.name()
                << "\" in operation \"" << op_def_.name() << "\"";
   }
+  if (!arg_def.number_attr().empty()) {
+    // when number_attr is set, argument has to be a list of tensors
+    *iterable_out = true;
+    visited_attrs_.insert(std::make_pair(arg_def.number_attr(), Type::Int()));
+  }
   return type;
 }
 
@@ -163,7 +130,7 @@ std::pair<Type, Type> TypeResolver::TypesOf(const OpDef_AttrDef& attr_def,
   std::pair<Type, Type> types = MakeTypePair(Type::Wildcard());
   *iterable_out = false;
   StringPiece attr_type = attr_def.type();
-  if (str_util::ConsumePrefix(&attr_type, "list(")) {
+  if (absl::ConsumePrefix(&attr_type, "list(")) {
     attr_type.remove_suffix(1);  // remove closing brace
     *iterable_out = true;
   }
@@ -241,7 +208,7 @@ string ParseDocumentation(const string& inp) {
   markups_subexpr.push_back("`+");           // inlined code and code blocks
   markups_subexpr.push_back("\\*{1,2}\\b");  // text emphasis
   markups_subexpr.push_back("\\[");          // hyperlinks
-  const RE2 markup_expr("(" + str_util::Join(markups_subexpr, "|") + ")");
+  const RE2 markup_expr("(" + absl::StrJoin(markups_subexpr, "|") + ")");
 
   bool in_list = false;
   string input = inp;
@@ -252,9 +219,9 @@ string ParseDocumentation(const string& inp) {
       break;  // end of loop
     }
     javadoc_text << text;
-    if (str_util::StartsWith(markup, "\n")) {
+    if (absl::StartsWith(markup, "\n")) {
       javadoc_text << "\n";
-      if (str_util::StrContains(markup, "*")) {
+      if (absl::StrContains(markup, "*")) {
         // new list item
         javadoc_text << (in_list ? "</li>\n" : "<ul>\n") << "<li>\n";
         in_list = true;
@@ -262,18 +229,18 @@ string ParseDocumentation(const string& inp) {
         // end of list
         javadoc_text << "</li>\n</ul>\n";
         in_list = false;
-      } else if (!str_util::StartsWith(input, "```")) {
+      } else if (!absl::StartsWith(input, "```")) {
         // new paragraph (not required if a <pre> block follows)
         javadoc_text << "<p>\n";
       }
-    } else if (str_util::StartsWith(markup, "```")) {
+    } else if (absl::StartsWith(markup, "```")) {
       // code blocks
       if (FindAndCut(&input, "(```\\s*\n*)", &text)) {
         javadoc_text << "<pre>{@code\n" << text << "}</pre>\n";
       } else {
         javadoc_text << markup;
       }
-    } else if (str_util::StartsWith("(" + markup + ")", "`")) {
+    } else if (absl::StartsWith("(" + markup + ")", "`")) {
       // inlined code
       if (FindAndCut(&input, markup, &text)) {
         javadoc_text << "{@code " << text << "}";
@@ -294,13 +261,13 @@ string ParseDocumentation(const string& inp) {
       } else {
         javadoc_text << markup;
       }
-    } else if (str_util::StartsWith(markup, "[")) {
+    } else if (absl::StartsWith(markup, "[")) {
       // hyperlinks
       string label;
       string link;
       if (RE2::PartialMatch(input, "([^\\[]+)\\]\\((http.+)\\)", &label,
                             &link) &&
-          str_util::StartsWith(input, label + link)) {
+          absl::StartsWith(input, label + link)) {
         input = input.substr(label.size() + link.size());
         javadoc_text << "<a href=\"" << link << "\">"
                      << ParseDocumentation(label) << "</a>";
@@ -337,7 +304,7 @@ AttributeSpec CreateAttribute(const OpDef_AttrDef& attr_def,
   bool iterable = false;
   std::pair<Type, Type> types = type_resolver->TypesOf(attr_def, &iterable);
   Type var_type = types.first.kind() == Type::GENERIC
-                      ? Type::Class("Class").add_parameter(types.first)
+                      ? Type::ClassOf(types.first)
                       : types.first;
   if (iterable) {
     var_type = Type::ListOf(var_type);
@@ -346,7 +313,8 @@ AttributeSpec CreateAttribute(const OpDef_AttrDef& attr_def,
       attr_api_def.name(),
       Variable::Create(SnakeToCamelCase(attr_api_def.rename_to()), var_type),
       types.first, types.second, ParseDocumentation(attr_api_def.description()),
-      iterable, attr_api_def.has_default_value());
+      iterable,
+      attr_def.has_default_value() ? &attr_def.default_value() : nullptr);
 }
 
 ArgumentSpec CreateOutput(const OpDef_ArgDef& output_def,

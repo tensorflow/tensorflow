@@ -266,7 +266,7 @@ class BatchToSpaceOp : public OpKernel {
 TF_CALL_REAL_NUMBER_TYPES(REGISTER);
 #undef REGISTER
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER(T)                                        \
   REGISTER_KERNEL_BUILDER(Name("BatchToSpaceND")           \
                               .Device(DEVICE_GPU)          \
@@ -282,6 +282,6 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER);
 #undef REGISTER
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

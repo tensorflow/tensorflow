@@ -53,6 +53,13 @@ NVCC_PATH = '%{nvcc_path}'
 PREFIX_DIR = os.path.dirname(GCC_HOST_COMPILER_PATH)
 NVCC_VERSION = '%{cuda_version}'
 
+
+# TODO(amitpatankar): Benchmark enabling all capabilities by default.
+# Environment variable for supported TF CUDA Compute Capabilities
+# eg. export TF_CUDA_COMPUTE_CAPABILITIES=3.5,3.7,5.2,6.0,6.1,7.0
+CUDA_COMPUTE_ENV_VAR = 'TF_CUDA_COMPUTE_CAPABILITIES'
+DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,6.0'
+
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))
 
@@ -95,6 +102,7 @@ def GetHostCompilerOptions(argv):
   parser.add_argument('--sysroot', nargs=1)
   parser.add_argument('-g', nargs='*', action='append')
   parser.add_argument('-fno-canonical-system-headers', action='store_true')
+  parser.add_argument('-no-canonical-prefixes', action='store_true')
 
   args, _ = parser.parse_known_args(argv)
 
@@ -108,6 +116,8 @@ def GetHostCompilerOptions(argv):
     opts += ' -g' + ' -g'.join(sum(args.g, []))
   if args.fno_canonical_system_headers:
     opts += ' -fno-canonical-system-headers'
+  if args.no_canonical_prefixes:
+    opts += ' -no-canonical-prefixes'
   if args.sysroot:
     opts += ' --sysroot ' + args.sysroot[0]
 
@@ -186,7 +196,7 @@ def InvokeNvcc(argv, log=False):
     return 1
 
   opt = (' -O2' if (len(opt_option) > 0 and int(opt_option[0]) > 0)
-         else ' -g -G')
+         else ' -g')
 
   includes = (' -I ' + ' -I '.join(include_options)
               if len(include_options) > 0

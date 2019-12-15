@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/distributed_runtime/test_utils.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -36,13 +37,15 @@ class TestableDeviceResolverDistributed : public DeviceResolverDistributed {
                                     const string& task)
       : DeviceResolverDistributed(dev_mgr, worker_cache, task) {}
 
-  gtl::FlatMap<string, DeviceAttributes>& attr_table() { return attr_table_; }
+  absl::flat_hash_map<string, DeviceAttributes>& attr_table() {
+    return attr_table_;
+  }
 };
 
 // Create a fake 'Device' whose only interesting attribute is a non-default
-// DeviceLocality.
-static Device* NewDevice(const string& type, const string& name,
-                         int numa_node) {
+// DeviceLocality and incarnation.
+static std::unique_ptr<Device> NewDevice(const string& type, const string& name,
+                                         int numa_node, uint64 incarnation) {
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
@@ -53,7 +56,8 @@ static Device* NewDevice(const string& type, const string& name,
   attr.set_name(name);
   attr.set_device_type(type);
   attr.mutable_locality()->set_numa_node(numa_node);
-  return new FakeDevice(attr);
+  attr.set_incarnation(incarnation);
+  return absl::make_unique<FakeDevice>(attr);
 }
 
 // Create a fake WorkerInterface that responds to requests without RPCs,
@@ -65,7 +69,7 @@ class FakeWorker : public TestWorkerInterface {
       : name_(name), device_mgr_(dev_mgr), device_resolver_(dres) {}
 
   void GetStatusAsync(const GetStatusRequest* request,
-                      GetStatusResponse* response,
+                      GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
     std::vector<DeviceAttributes> dev_attr;
     device_mgr_->ListDeviceAttributes(&dev_attr);
@@ -108,7 +112,6 @@ class FakeCache : public TestWorkerCache {
     WorkerInterface* wi = it->second;
     GetStatusRequest req;
     GetStatusResponse resp;
-    Notification note;
     Status status = wi->GetStatus(&req, &resp);
     if (!status.ok()) {
       done(status);
@@ -142,33 +145,86 @@ class DeviceResDistTest : public ::testing::Test {
   }
 
   void DefineWorkers(int num_workers, int num_devices,
-                     const string& device_type) {
+                     const string& device_type,
+                     uint64 device_incarnation_base) {
     for (int w = 0; w < num_workers; ++w) {
       string name = strings::StrCat("/job:worker/replica:0/task:", w);
-      DefineWorker(name, device_type, num_devices);
+      DefineWorker(name, device_type, num_devices,
+                   w * num_devices + device_incarnation_base);
     }
   }
 
   void DefineWorker(const string& worker_name, const string& device_type,
-                    int num_devices) {
-    std::vector<Device*> devices;
+                    int num_devices, uint64 device_incarnation_base) {
+    std::vector<std::unique_ptr<Device>> devices;
     for (int i = 0; i < num_devices; ++i) {
       devices.push_back(NewDevice(
           device_type,
-          strings::StrCat(worker_name, "/device:", device_type, ":", i), i));
+          strings::StrCat(worker_name, "/device:", device_type, ":", i), i,
+          device_incarnation_base + i));
     }
-    DeviceMgr* dev_mgr = new DeviceMgr(devices);
+    DeviceMgr* dev_mgr = new StaticDeviceMgr(std::move(devices));
     TestableDeviceResolverDistributed* dev_res =
         new TestableDeviceResolverDistributed(dev_mgr, &wc_, worker_name);
     resolvers_[worker_name] = dev_res;
     device_mgrs_.push_back(dev_mgr);
     std::vector<string>* dv = &dev_by_task_[worker_name];
-    for (auto d : devices) {
+    dv->clear();
+    for (auto* d : dev_mgr->ListDevices()) {
       dv->push_back(d->name());
     }
     FakeWorker* fw = new FakeWorker(worker_name, dev_mgr, dev_res);
     workers_.push_back(fw);
     wc_.AddWorker(worker_name, fw);
+  }
+
+  void RestartWorker(const string& worker_name, const string& device_type,
+                     int num_devices, uint64 device_incarnation_base) {
+    for (auto it : resolvers_) {
+      it.second->ClearCache();
+    }
+    // `DefineWorker` creates a device resolver and a worker and adds them to
+    // resolvers_ and workers_.  Recreating the worker would overwrite these map
+    // entries.  We destroy the old device resolver here; all other objects are
+    // cleaned up in the destructor.
+    delete resolvers_[worker_name];
+    DefineWorker(worker_name, device_type, num_devices,
+                 device_incarnation_base);
+  }
+
+  void ResolveIncarnationsAndValidate(
+      const int num_workers, const int num_devices, const string& worker_prefix,
+      const string& device_type,
+      const std::vector<std::vector<uint64>>& expected_incarnations) {
+    for (int w = 0; w < num_workers; ++w) {
+      const string worker_name = absl::StrCat(worker_prefix, w);
+      auto* device_resolver = resolvers_[worker_name];
+      const string device_prefix =
+          absl::StrCat(worker_name, "/device:", device_type, ":");
+      for (int peer_w = 0; peer_w < num_workers; ++peer_w) {
+        const string peer_worker_name = absl::StrCat(worker_prefix, peer_w);
+        for (int d = 0; d < num_devices; ++d) {
+          const string device_name =
+              absl::StrCat(peer_worker_name, "/device:", device_type, ":", d);
+          DeviceNameUtils::ParsedName parsed;
+          ASSERT_TRUE(DeviceNameUtils::ParseFullName(device_name, &parsed));
+          // NOLINT prevents linter from suggesting absl::Notification as a
+          // replacement, which is not available in OSS.
+          Notification note;  // NOLINT
+          Status status;
+          DeviceAttributes attributes;
+          device_resolver->GetDeviceAttributesAsync(
+              device_name, peer_worker_name, &attributes,
+              [&note, &status](const Status& s) {
+                status = s;
+                note.Notify();
+              });
+          note.WaitForNotification();
+          TF_EXPECT_OK(status);
+          EXPECT_EQ(attributes.incarnation(), expected_incarnations[peer_w][d]);
+        }
+      }
+    }
   }
 
   FakeCache wc_;
@@ -179,7 +235,8 @@ class DeviceResDistTest : public ::testing::Test {
 };
 
 TEST_F(DeviceResDistTest, Workers3Devices4) {
-  DefineWorkers(3, 4, "CPU");
+  DefineWorkers(/*num_workers=*/3, /*num_devices=*/4, /*device_type=*/"CPU",
+                /*device_incarnation_base=*/1);
   // Check that every device is available from every task.
   for (auto it : resolvers_) {
     DeviceResolverDistributed* dres = it.second;
@@ -190,15 +247,15 @@ TEST_F(DeviceResDistTest, Workers3Devices4) {
         ASSERT_TRUE(DeviceNameUtils::ParseFullName(dev_name, &parsed));
         Notification note;
         Status status;
-        DeviceLocality locality;
-        dres->GetLocalityAsync(dev_name, task_name, &locality,
-                               [this, &note, &status](const Status& s) {
-                                 status = s;
-                                 note.Notify();
-                               });
+        DeviceAttributes attributes;
+        dres->GetDeviceAttributesAsync(dev_name, task_name, &attributes,
+                                       [&note, &status](const Status& s) {
+                                         status = s;
+                                         note.Notify();
+                                       });
         note.WaitForNotification();
         TF_EXPECT_OK(status);
-        EXPECT_EQ(parsed.id, locality.numa_node());
+        EXPECT_EQ(parsed.id, attributes.locality().numa_node());
       }
     }
   }
@@ -211,6 +268,43 @@ TEST_F(DeviceResDistTest, Workers3Devices4) {
     dres->ClearTask("/job:worker/replica:0/task:0");
     EXPECT_EQ(4, it.second->attr_table().size());
   }
+}
+
+TEST_F(DeviceResDistTest, DeviceIncarnationChangesOnFailure) {
+  constexpr int num_workers = 3;
+  constexpr int num_devices = 4;
+  constexpr int failing_worker_index = 1;
+  const string device_type = "CPU";
+  constexpr uint64 device_incarnation_base = 100;
+  DefineWorkers(num_workers, num_devices, device_type, device_incarnation_base);
+  const string worker_prefix = "/job:worker/replica:0/task:";
+  const string failing_worker =
+      absl::StrCat(worker_prefix, failing_worker_index);
+
+  // Check device incarnations match expected.
+  std::vector<std::vector<uint64>> expected_incarnations(num_workers);
+  for (int w = 0; w < num_workers; ++w) {
+    expected_incarnations[w].resize(num_devices);
+    for (int d = 0; d < num_devices; ++d) {
+      expected_incarnations[w][d] =
+          w * num_devices + d + device_incarnation_base;
+    }
+  }
+  ResolveIncarnationsAndValidate(num_workers, num_devices, worker_prefix,
+                                 device_type, expected_incarnations);
+
+  // Restart worker `failing_worker`.
+  constexpr uint64 restart_incarnation_base = 200;
+  RestartWorker(failing_worker, device_type, num_devices,
+                restart_incarnation_base);
+  for (int d = 0; d < num_devices; ++d) {
+    expected_incarnations[failing_worker_index][d] =
+        d + restart_incarnation_base;
+  }
+
+  // Check incarnations have changed for `failing worker`.
+  ResolveIncarnationsAndValidate(num_workers, num_devices, worker_prefix,
+                                 device_type, expected_incarnations);
 }
 
 }  // namespace

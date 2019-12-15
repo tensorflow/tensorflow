@@ -20,6 +20,9 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
 
@@ -27,21 +30,19 @@ from tensorflow.python.platform import test
 class DecodeCSVOpTest(test.TestCase):
 
   def _test(self, args, expected_out=None, expected_err_re=None):
-    with self.test_session() as sess:
+    if expected_err_re is None:
       decode = parsing_ops.decode_csv(**args)
+      out = self.evaluate(decode)
 
-      if expected_err_re is None:
-        out = sess.run(decode)
-
-        for i, field in enumerate(out):
-          if field.dtype == np.float32 or field.dtype == np.float64:
-            self.assertAllClose(field, expected_out[i])
-          else:
-            self.assertAllEqual(field, expected_out[i])
-
-      else:
-        with self.assertRaisesOpError(expected_err_re):
-          sess.run(decode)
+      for i, field in enumerate(out):
+        if field.dtype == np.float32 or field.dtype == np.float64:
+          self.assertAllClose(field, expected_out[i])
+        else:
+          self.assertAllEqual(field, expected_out[i])
+    else:
+      with self.assertRaisesWithPredicateMatch(Exception, expected_err_re):
+        decode = parsing_ops.decode_csv(**args)
+        self.evaluate(decode)
 
   def testSimple(self):
     args = {
@@ -52,6 +53,31 @@ class DecodeCSVOpTest(test.TestCase):
     expected_out = [[1, 2, 3]]
 
     self._test(args, expected_out)
+
+  def testSimpleWithScalarDefaults(self):
+    args = {
+        "records": ["1,4", "2,5", "3,6"],
+        "record_defaults": [1, 2],
+    }
+
+    expected_out = [[1, 2, 3], [4, 5, 6]]
+
+    self._test(args, expected_out)
+
+  def testSimpleWith2DDefaults(self):
+    args = {
+        "records": ["1", "2", "3"],
+        "record_defaults": [[[0]]],
+    }
+
+    if context.executing_eagerly():
+      err_spec = errors.InvalidArgumentError, (
+          "Each record default should be at "
+          "most rank 1")
+    else:
+      err_spec = ValueError, "Shape must be at most rank 1 but is rank 2"
+    with self.assertRaisesWithPredicateMatch(*err_spec):
+      self._test(args)
 
   def testSimpleNoQuoteDelimiter(self):
     args = {
@@ -292,6 +318,16 @@ class DecodeCSVOpTest(test.TestCase):
     }
     # Only successfully parses one of the columns
     self._test(args, expected_err_re="Expect 2 fields but have 1 in record 0")
+
+  def testNumpyAttribute(self):
+    args = {
+        "record_defaults": np.zeros(5),
+        "records": constant_op.constant("1,2,3,4,5"),
+    }
+    if context.executing_eagerly():
+      self._test(args, expected_out=[1, 2, 3, 4, 5])
+    else:
+      self._test(args, expected_err_re="Expected list for 'record_defaults'")
 
 
 if __name__ == "__main__":

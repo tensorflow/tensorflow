@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +23,9 @@ import argparse
 import os
 import sys
 
+import six
+from six.moves import range
+
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
@@ -31,6 +35,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import app
 from tensorflow.python.training import saver as saver_lib
@@ -46,10 +51,10 @@ def tfadd(_):
 
 def tfadd_with_ckpt(out_dir):
   x = array_ops.placeholder(dtypes.int32, name='x_hold')
-  y = variables.Variable(constant_op.constant([0]), name='y_saved')
+  y = variables.VariableV1(constant_op.constant([0]), name='y_saved')
   math_ops.add(x, y, name='x_y_sum')
 
-  init_op = variables.initialize_all_variables()
+  init_op = variables.global_variables_initializer()
   saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V1)
   with session.Session() as sess:
     sess.run(init_op)
@@ -61,10 +66,10 @@ def tfadd_with_ckpt(out_dir):
 
 def tfadd_with_ckpt_saver(out_dir):
   x = array_ops.placeholder(dtypes.int32, name='x_hold')
-  y = variables.Variable(constant_op.constant([0]), name='y_saved')
+  y = variables.VariableV1(constant_op.constant([0]), name='y_saved')
   math_ops.add(x, y, name='x_y_sum')
 
-  init_op = variables.initialize_all_variables()
+  init_op = variables.global_variables_initializer()
   saver = saver_lib.Saver(name='abcprefix', write_version=saver_pb2.SaverDef.V1)
   with session.Session() as sess:
     sess.run(init_op)
@@ -75,7 +80,7 @@ def tfadd_with_ckpt_saver(out_dir):
     # Without the SaverDef, the restore op won't be named correctly.
     saver_file = os.path.join(out_dir, 'test_graph_tfadd_with_ckpt_saver.saver')
     with open(saver_file, 'wb') as f:
-      f.write(saver.as_saver_def().SerializeToString())
+      f.write(six.ensure_binary(saver.as_saver_def().SerializeToString()))
 
 
 def tfassert_eq(_):
@@ -142,6 +147,32 @@ def tfsplits(_):
   array_ops.identity(y, name='result')
 
 
+def tftop_k(_):
+  x = array_ops.placeholder(dtypes.int32, shape=[5], name='x')
+  output = nn_ops.top_k(x, 2, name='values')
+  array_ops.identity(output[1], name='indices')
+
+
+def tfvariable(_):
+  x = variables.Variable(1000.0, name='x')
+  old_x = x.value()
+  with ops.control_dependencies([old_x]):
+    new_x = x.assign_add(42.0)
+  array_ops.stack([old_x, new_x], name='result')
+
+
+def tfvariable_sequential_updates(_):
+  x = variables.Variable(1.0, name='x')
+  y = variables.Variable(1.0, name='y')
+  updates = control_flow_ops.no_op()
+  for _ in range(3):
+    with ops.control_dependencies([updates]):
+      x_val = x.read_value() + y
+      updates = x.assign_sub(0.1 * x_val)
+
+  array_ops.identity(updates, name='result')
+
+
 def write_graph(build_graph, out_dir):
   """Build a graph using build_graph and write it out."""
   g = ops.Graph()
@@ -149,7 +180,7 @@ def write_graph(build_graph, out_dir):
     build_graph(out_dir)
     filename = os.path.join(out_dir, 'test_graph_%s.pb' % build_graph.__name__)
     with open(filename, 'wb') as f:
-      f.write(g.as_graph_def().SerializeToString())
+      f.write(six.ensure_binary(g.as_graph_def().SerializeToString()))
 
 
 def main(_):
@@ -163,6 +194,9 @@ def main(_):
   write_graph(tfmatmul, FLAGS.out_dir)
   write_graph(tfmatmulandadd, FLAGS.out_dir)
   write_graph(tfsplits, FLAGS.out_dir)
+  write_graph(tftop_k, FLAGS.out_dir)
+  write_graph(tfvariable, FLAGS.out_dir)
+  write_graph(tfvariable_sequential_updates, FLAGS.out_dir)
 
 
 if __name__ == '__main__':

@@ -19,16 +19,15 @@ limitations under the License.
 #include <string>
 #include <tuple>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_format.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -46,7 +45,7 @@ std::unique_ptr<Array2D<float>> MaybeTransposeArray2D(const Array2D<T>& array,
   if (transpose) {
     std::swap(output_width, output_height);
   }
-  auto output = MakeUnique<Array2D<float>>(output_height, output_width);
+  auto output = absl::make_unique<Array2D<float>>(output_height, output_width);
   for (int y = 0; y < array.height(); y++) {
     for (int x = 0; x < array.width(); x++) {
       if (transpose) {
@@ -93,7 +92,7 @@ std::unique_ptr<Array2D<float>> EigenMatrixMultiply(const Array2D<float>& a,
 
   // Since we're going to transpose c before returning it. Swap the order of the
   // dimension sizes to ensure the returned array is properly dimensioned.
-  auto c_transpose = MakeUnique<Array2D<float>>(n, m);
+  auto c_transpose = absl::make_unique<Array2D<float>>(n, m);
   if (single_threaded) {
     __xla_cpu_runtime_EigenSingleThreadedMatMulF32(
         nullptr, c_transpose->data(), a_transpose->data(), b_transpose->data(),
@@ -101,8 +100,7 @@ std::unique_ptr<Array2D<float>> EigenMatrixMultiply(const Array2D<float>& a,
   } else {
     tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "XLAEigen",
                                         2);
-    tensorflow::EigenThreadPoolWrapper tp(&pool);
-    Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+    Eigen::ThreadPoolDevice device(pool.AsEigenThreadPool(), pool.NumThreads());
     ExecutableRunOptions run_options;
     run_options.set_intra_op_thread_pool(&device);
 
@@ -142,10 +140,10 @@ class EigenMatMulTest : public CpuRuntimeTest,
     bool transpose_rhs = std::get<2>(info.param);
     bool single_threaded = std::get<3>(info.param);
 
-    return tensorflow::strings::Printf(
-        "EigenMatMul_%lld_%lld_%lld_%s%s%s_threaded", shape.m, shape.k, shape.n,
-        transpose_lhs ? "Tlhs_" : "", transpose_rhs ? "Trhs_" : "",
-        single_threaded ? "single" : "multi");
+    return absl::StrFormat("EigenMatMul_%d_%d_%d_%s%s%s_threaded", shape.m,
+                           shape.k, shape.n, transpose_lhs ? "Tlhs_" : "",
+                           transpose_rhs ? "Trhs_" : "",
+                           single_threaded ? "single" : "multi");
   }
 };
 
@@ -162,11 +160,12 @@ TEST_P(EigenMatMulTest, DoIt) {
   CheckMatrixMultiply(*a, *b, *c);
 }
 
-INSTANTIATE_TEST_CASE_P(EigenMatMulTestInstantiaion, EigenMatMulTest,
-                        ::testing::Combine(::testing::ValuesIn(MatMulShapes),
-                                           ::testing::Bool(), ::testing::Bool(),
-                                           ::testing::Bool()),
-                        EigenMatMulTest::Name);
+INSTANTIATE_TEST_SUITE_P(EigenMatMulTestInstantiaion, EigenMatMulTest,
+                         ::testing::Combine(::testing::ValuesIn(MatMulShapes),
+                                            ::testing::Bool(),
+                                            ::testing::Bool(),
+                                            ::testing::Bool()),
+                         EigenMatMulTest::Name);
 
 #ifdef INTEL_MKL
 class MKLMatMulTest : public CpuRuntimeTest,
@@ -178,10 +177,10 @@ class MKLMatMulTest : public CpuRuntimeTest,
     bool transpose_rhs = std::get<2>(info.param);
     bool single_threaded = std::get<3>(info.param);
 
-    return tensorflow::strings::Printf(
-        "MKLMatMul_%lld_%lld_%lld_%s%s%s_threaded", shape.m, shape.k, shape.n,
-        transpose_lhs ? "Tlhs_" : "", transpose_rhs ? "Trhs_" : "",
-        single_threaded ? "single" : "multi");
+    return absl::StrFormat("MKLMatMul_%d_%d_%d_%s%s%s_threaded", shape.m,
+                           shape.k, shape.n, transpose_lhs ? "Tlhs_" : "",
+                           transpose_rhs ? "Trhs_" : "",
+                           single_threaded ? "single" : "multi");
   }
 };
 
@@ -204,7 +203,7 @@ std::unique_ptr<Array2D<float>> MKLMatrixMultiply(const Array2D<float>& a,
 
   // Since we're going to transpose c before returning it, swap the order of the
   // dimension sizes to ensure the returned array is properly dimensioned.
-  auto c_transpose = MakeUnique<Array2D<float>>(n, m);
+  auto c_transpose = absl::make_unique<Array2D<float>>(n, m);
   if (single_threaded) {
     __xla_cpu_runtime_MKLSingleThreadedMatMulF32(
         nullptr, c_transpose->data(), a_transpose->data(), b_transpose->data(),

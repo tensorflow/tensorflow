@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/compiler/xla/service/call_graph.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -96,7 +97,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     if (it == subcomputation_hlo_to_new_hlo_.end()) {
       return NotFound(
           "Could not find mapping from subcomputation HLO %s to a cloned HLO.",
-          subcomputation_hlo->ToString().c_str());
+          subcomputation_hlo->ToString());
     }
     return it->second;
   }
@@ -142,11 +143,11 @@ StatusOr<bool> CallInliner::Run(HloModule* module) {
   bool did_mutate = false;
   TF_RETURN_IF_ERROR(
       call_graph->VisitNodes([&](const CallGraphNode& node) -> Status {
-        for (const CallSite& callsite : node.caller_callsites()) {
-          VLOG(1) << "Visiting callsite: " << callsite.ToString();
-          if (callsite.instruction()->opcode() == HloOpcode::kCall) {
-            HloInstruction* call = callsite.instruction();
-            TF_RETURN_IF_ERROR(Inline(call).status());
+        VLOG(1) << "Visiting node: " << node.ToString();
+        for (HloInstruction* instruction :
+             node.computation()->MakeInstructionPostOrder()) {
+          if (instruction->opcode() == HloOpcode::kCall) {
+            TF_RETURN_IF_ERROR(Inline(instruction).status());
             did_mutate = true;
           }
         }

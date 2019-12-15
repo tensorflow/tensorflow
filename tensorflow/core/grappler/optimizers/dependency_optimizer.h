@@ -30,11 +30,12 @@ namespace grappler {
 class DependencyOptimizer : public GraphOptimizer {
  public:
   DependencyOptimizer() {}
-  explicit DependencyOptimizer(RewriterConfig::Toggle opt_level)
-      : opt_level_(opt_level) {}
+  explicit DependencyOptimizer(RewriterConfig::Toggle opt_level) {}
   ~DependencyOptimizer() override {}
 
   string name() const override { return "dependency_optimizer"; };
+
+  bool UsesFunctionLibrary() const override { return false; }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
@@ -48,7 +49,8 @@ class DependencyOptimizer : public GraphOptimizer {
   bool BypassingNodeIsBeneficial(
       const NodeDef& node, const std::vector<NodeDef*>& input_nodes,
       const std::vector<NodeDef*>& output_nodes) const;
-
+  int NumEdgesIfBypassed(const NodeDef& node,
+                         const std::vector<NodeDef*>& output_nodes) const;
   // Returns true if node is not an Identity node or if it is an Identity
   // that is safe to remove.
   bool SafeToRemoveIdentity(const NodeDef& node) const;
@@ -69,10 +71,10 @@ class DependencyOptimizer : public GraphOptimizer {
   // Main driver of dependency optimizations.
   Status OptimizeDependencies();
   // Replaces multiple cross-device control edges from the same device with a
-  // single control edge.
-  void GroupCrossDeviceControlEdges();
+  // single control edge.  If `host_granularity` is true then group control
+  // edges from all devices on the same host.
+  void GroupCrossDeviceControlEdges(bool host_granularity);
 
-  RewriterConfig::Toggle opt_level_;
   bool fetch_nodes_known_;
   std::unordered_set<string> nodes_to_preserve_;
   std::unique_ptr<NodeMap> node_map_;

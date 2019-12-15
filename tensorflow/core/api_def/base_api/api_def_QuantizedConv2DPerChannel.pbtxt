@@ -1,0 +1,67 @@
+op {
+  graph_op_name: "QuantizedConv2DPerChannel"
+  visibility : HIDDEN
+  in_arg {
+    name: "input"
+    description: "The original input tensor."
+  }
+  in_arg {
+    name: "filter"
+    description: "The original filter tensor."
+  }
+  in_arg {
+    name: "min_input"
+    description: "The minimum value of the input tensor"
+  }
+  in_arg {
+    name: "max_input"
+    description: "The maximum value of the input tensor."
+  }
+  in_arg {
+    name: "min_filter"
+    description: "The minimum value of the filter tensor."
+  }
+  in_arg {
+    name: "max_filter"
+    description: "The maximum value of the filter tensor."
+  }  
+  out_arg {
+    name: "output"
+    description: "The output tensor."
+  }
+  out_arg {
+    name: "min_output"
+    description: "The minimum value of the final output tensor."
+  }
+  out_arg {
+    name: "max_output"
+    description: "The maximum value of the final output tensor."
+  }
+  attr {
+    name: "Tinput"
+    description: <<END
+The quantized type of input tensor that needs to be converted. 
+END
+  }
+  attr {
+    name: "Tfilter"
+    description: <<END
+The quantized type of filter tensor that needs to be converted. 
+END
+  }
+  attr {
+    name: "out_type"
+    description: <<END
+The quantized type of output tensor that needs to be converted.
+END
+  }
+  attr {
+    name: "strides"
+    description: "list of stride values."
+  }
+  attr {
+    name: "dilations"
+    description: "list of dilation values."
+  }
+  summary: "Computes QuantizedConv2D per channel."
+}

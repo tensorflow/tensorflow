@@ -59,8 +59,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools as _functools
-import traceback as _traceback
+import inspect
+
+from tensorflow.python.util import tf_stack
 
 
 def make_decorator(target,
@@ -83,9 +84,8 @@ def make_decorator(target,
     The `decorator_func` argument with new metadata attached.
   """
   if decorator_name is None:
-    frame = _traceback.extract_stack(limit=2)[0]
-    # frame name is tuple[2] in python2, and object.name in python3
-    decorator_name = getattr(frame, 'name', frame[2])  # Caller's name
+    frame = tf_stack.extract_stack(limit=2)[0]
+    decorator_name = frame.name
   decorator = TFDecorator(decorator_name, target, decorator_doc,
                           decorator_argspec)
   setattr(decorator_func, '_tf_decorator', decorator)
@@ -93,11 +93,107 @@ def make_decorator(target,
   # the following attributes.
   if hasattr(target, '__name__'):
     decorator_func.__name__ = target.__name__
+  if hasattr(target, '__qualname__'):
+    decorator_func.__qualname__ = target.__qualname__
   if hasattr(target, '__module__'):
     decorator_func.__module__ = target.__module__
+  if hasattr(target, '__dict__'):
+    # Copy dict entries from target which are not overridden by decorator_func.
+    for name in target.__dict__:
+      if name not in decorator_func.__dict__:
+        decorator_func.__dict__[name] = target.__dict__[name]
   if hasattr(target, '__doc__'):
     decorator_func.__doc__ = decorator.__doc__
   decorator_func.__wrapped__ = target
+  # Keeping a second handle to `target` allows callers to detect whether the
+  # decorator was modified using `rewrap`.
+  decorator_func.__original_wrapped__ = target
+  return decorator_func
+
+
+def _has_tf_decorator_attr(obj):
+  """Checks if object has _tf_decorator attribute.
+
+  This check would work for mocked object as well since it would
+  check if returned attribute has the right type.
+
+  Args:
+    obj: Python object.
+  """
+  return (
+      hasattr(obj, '_tf_decorator') and
+      isinstance(getattr(obj, '_tf_decorator'), TFDecorator))
+
+
+def rewrap(decorator_func, previous_target, new_target):
+  """Injects a new target into a function built by make_decorator.
+
+  This function allows replacing a function wrapped by `decorator_func`,
+  assuming the decorator that wraps the function is written as described below.
+
+  The decorator function must use `<decorator name>.__wrapped__` instead of the
+  wrapped function that is normally used:
+
+  Example:
+
+      # Instead of this:
+      def simple_parametrized_wrapper(*args, **kwds):
+        return wrapped_fn(*args, **kwds)
+
+      tf_decorator.make_decorator(simple_parametrized_wrapper, wrapped_fn)
+
+      # Write this:
+      def simple_parametrized_wrapper(*args, **kwds):
+        return simple_parametrized_wrapper.__wrapped__(*args, **kwds)
+
+      tf_decorator.make_decorator(simple_parametrized_wrapper, wrapped_fn)
+
+  Note that this process modifies decorator_func.
+
+  Args:
+    decorator_func: Callable returned by `wrap`.
+    previous_target: Callable that needs to be replaced.
+    new_target: Callable to replace previous_target with.
+
+  Returns:
+    The updated decorator. If decorator_func is not a tf_decorator, new_target
+    is returned.
+  """
+  # Because the process mutates the decorator, we only need to alter the
+  # innermost function that wraps previous_target.
+  cur = decorator_func
+  innermost_decorator = None
+  target = None
+  while _has_tf_decorator_attr(cur):
+    innermost_decorator = cur
+    target = getattr(cur, '_tf_decorator')
+    if target.decorated_target is previous_target:
+      break
+    cur = target.decorated_target
+    assert cur is not None
+
+  # If decorator_func is not a decorator, new_target replaces it directly.
+  if innermost_decorator is None:
+    # Consistency check. The caller should always pass the result of
+    # tf_decorator.unwrap as previous_target. If decorator_func is not a
+    # decorator, that will have returned decorator_func itself.
+    assert decorator_func is previous_target
+    return new_target
+
+  target.decorated_target = new_target
+
+  if inspect.ismethod(innermost_decorator):
+    # Bound methods can't be assigned attributes. Thankfully, they seem to
+    # be just proxies for their unbound counterpart, and we can modify that.
+    if hasattr(innermost_decorator, '__func__'):
+      innermost_decorator.__func__.__wrapped__ = new_target
+    elif hasattr(innermost_decorator, 'im_func'):
+      innermost_decorator.im_func.__wrapped__ = new_target
+    else:
+      innermost_decorator.__wrapped__ = new_target
+  else:
+    innermost_decorator.__wrapped__ = new_target
+
   return decorator_func
 
 
@@ -120,9 +216,11 @@ def unwrap(maybe_tf_decorator):
   while True:
     if isinstance(cur, TFDecorator):
       decorators.append(cur)
-    elif hasattr(cur, '_tf_decorator'):
+    elif _has_tf_decorator_attr(cur):
       decorators.append(getattr(cur, '_tf_decorator'))
     else:
+      break
+    if not hasattr(decorators[-1], 'decorated_target'):
       break
     cur = decorators[-1].decorated_target
   return decorators, cur
@@ -146,6 +244,8 @@ class TFDecorator(object):
     self._decorator_argspec = decorator_argspec
     if hasattr(target, '__name__'):
       self.__name__ = target.__name__
+    if hasattr(target, '__qualname__'):
+      self.__qualname__ = target.__qualname__
     if self._decorator_doc:
       self.__doc__ = self._decorator_doc
     elif hasattr(target, '__doc__') and target.__doc__:
@@ -153,8 +253,8 @@ class TFDecorator(object):
     else:
       self.__doc__ = ''
 
-  def __get__(self, obj, objtype):
-    return _functools.partial(self.__call__, obj)
+  def __get__(self, instance, owner):
+    return self._decorated_target.__get__(instance, owner)
 
   def __call__(self, *args, **kwargs):
     return self._decorated_target(*args, **kwargs)
@@ -162,6 +262,10 @@ class TFDecorator(object):
   @property
   def decorated_target(self):
     return self._decorated_target
+
+  @decorated_target.setter
+  def decorated_target(self, decorated_target):
+    self._decorated_target = decorated_target
 
   @property
   def decorator_name(self):

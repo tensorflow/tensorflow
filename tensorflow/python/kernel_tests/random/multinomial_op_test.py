@@ -66,12 +66,13 @@ class MultinomialTest(test.TestCase):
             logits, num_samples, output_dtype=output_dtype))
         self.assertAllEqual([[1] * num_samples, [2] * num_samples], samples)
 
+  @test_util.run_deprecated_v1
   def testOneOpMultipleStepsIndependent(self):
-    with self.test_session(use_gpu=True) as sess:
+    with test_util.use_gpu():
       sample_op1, _ = self._make_ops(10)
       # Consecutive runs shouldn't yield identical output.
-      sample1a = sess.run(sample_op1)
-      sample1b = sess.run(sample_op1)
+      sample1a = self.evaluate(sample_op1)
+      sample1b = self.evaluate(sample_op1)
       self.assertFalse(np.equal(sample1a, sample1b).all())
 
   def testEagerOneOpMultipleStepsIndependent(self):
@@ -81,26 +82,27 @@ class MultinomialTest(test.TestCase):
       self.assertFalse(np.equal(sample1.numpy(), sample2.numpy()).all())
 
   def testTwoOpsIndependent(self):
-    with self.test_session(use_gpu=True) as sess:
+    with test_util.use_gpu():
       sample_op1, sample_op2 = self._make_ops(32)
-      sample1, sample2 = sess.run([sample_op1, sample_op2])
+      sample1, sample2 = self.evaluate([sample_op1, sample_op2])
       # We expect sample1 and sample2 to be independent.
       # 1 in 2^32 chance of this assertion failing.
       self.assertFalse(np.equal(sample1, sample2).all())
 
+  @test_util.run_deprecated_v1
   def testTwoOpsSameSeedDrawSameSequences(self):
-    with self.test_session(use_gpu=True) as sess:
+    with test_util.use_gpu():
       sample_op1, sample_op2 = self._make_ops(1000, seed=1)
-      sample1, sample2 = sess.run([sample_op1, sample_op2])
+      sample1, sample2 = self.evaluate([sample_op1, sample_op2])
       self.assertAllEqual(sample1, sample2)
 
   def testLargeLogits(self):
     for neg in [True, False]:
-      with self.test_session(use_gpu=True):
+      with test_util.use_gpu():
         logits = np.array([[1000.] * 5])
         if neg:
           logits *= -1
-        samples = random_ops.multinomial(logits, 10).eval()
+        samples = self.evaluate(random_ops.multinomial(logits, 10))
       # Sampled classes should be in-range.
       self.assertTrue((samples >= 0).all())
       self.assertTrue((samples < 5).all())
@@ -157,10 +159,10 @@ class MultinomialTest(test.TestCase):
     Returns:
       Frequencies from sampled classes; shape [batch_size, num_classes].
     """
-    with self.test_session(use_gpu=True) as sess:
+    with test_util.use_gpu():
       random_seed.set_random_seed(1618)
       op = sampler(constant_op.constant(logits), num_samples)
-      d = sess.run(op)
+      d = self.evaluate(op)
 
     batch_size, num_classes = logits.shape
     freqs_mat = []
@@ -186,25 +188,27 @@ class MultinomialTest(test.TestCase):
 
   def testEmpty(self):
     classes = 5
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       for batch in 0, 3:
         for samples in 0, 7:
-          x = random_ops.multinomial(
-              array_ops.zeros([batch, classes]), samples).eval()
+          x = self.evaluate(
+              random_ops.multinomial(
+                  array_ops.zeros([batch, classes]), samples))
           self.assertEqual(x.shape, (batch, samples))
 
+  @test_util.run_deprecated_v1
   def testEmptyClasses(self):
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       x = random_ops.multinomial(array_ops.zeros([5, 0]), 7)
       with self.assertRaisesOpError("num_classes should be positive"):
-        x.eval()
+        self.evaluate(x)
 
   def testNegativeMinLogits(self):
     random_seed.set_random_seed(78844)
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       logits = constant_op.constant([[np.finfo(np.float32).min] * 1023 + [0]])
       num_samples = 1000
-      samples = random_ops.multinomial(logits, num_samples).eval()
+      samples = self.evaluate(random_ops.multinomial(logits, num_samples))
       self.assertAllEqual([[1023] * num_samples], samples)
 
 

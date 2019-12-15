@@ -16,17 +16,39 @@ limitations under the License.
 #include "tensorflow/core/kernels/pooling_ops_common.h"
 
 #include <vector>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 
 #if GOOGLE_CUDA
+#include "third_party/gpus/cudnn/cudnn.h"
+#endif  // GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/gpu_utils.h"
+#if TENSORFLOW_USE_ROCM
+#include "tensorflow/core/kernels/conv_ops_gpu.h"
+#endif
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
+
+namespace {
+
+template <typename T>
+struct RawType {
+  using type = T;
+};
+
+template <>
+struct RawType<qint8> {
+  using type = int8;
+};
+
+}  // namespace
 
 PoolParameters::PoolParameters(OpKernelContext* context,
                                const std::vector<int32>& ksize,
@@ -110,30 +132,7 @@ TensorShape PoolParameters::forward_output_shape() {
   }
 }
 
-#ifdef GOOGLE_CUDA
-
-namespace {
-template <typename T>
-se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
-  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory), size * sizeof(T));
-  se::DeviceMemory<T> typed(wrapped);
-  return typed;
-}
-}  // namespace
-
-// Forward declarations of the functor specializations for GPU.
-namespace functor {
-#define DECLARE_GPU_SPEC(T)                                         \
-  template <>                                                       \
-  void TransformDepth<GPUDevice, T, Eigen::DenseIndex>::operator()( \
-      const GPUDevice& d, typename TTypes<T, 4>::ConstTensor in,    \
-      const Eigen::DSizes<Eigen::DenseIndex, 4>& shuffle,           \
-      typename TTypes<T, 4>::Tensor out);                           \
-  extern template struct TransformDepth<GPUDevice, T, Eigen::DenseIndex>;
-
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC)
-#undef DECLARE_GPU_SPEC
-}  // namespace functor
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename T>
 void DnnPoolingOp<T>::Compute(OpKernelContext* context,
@@ -156,7 +155,10 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
     return;
   }
 
-  /// For now, cudnn does not support NHWC format, so we need to convert it
+  int batch_size = params.tensor_in_batch;
+  int depth = params.depth;
+#if CUDNN_VERSION < 7300
+  /// Earlier versions do not support NHWC format, so we need to convert it
   /// to NCHW before calling cudnn. We need to get rid of this once it is done
   Tensor transformed_input;
   if (data_format == FORMAT_NHWC) {
@@ -181,7 +183,31 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
   } else {
     transformed_output = *tensor_out;
   }
-
+  se::dnn::DataLayout data_layout = se::dnn::DataLayout::kBatchDepthYX;
+#else
+  auto& transformed_input = tensor_in;
+  auto& transformed_output = *tensor_out;
+  se::dnn::DataLayout data_layout;
+  switch (data_format) {
+    case FORMAT_NHWC:
+      data_layout = se::dnn::DataLayout::kBatchYXDepth;
+      break;
+    case FORMAT_NCHW:
+      data_layout = se::dnn::DataLayout::kBatchDepthYX;
+      break;
+    case FORMAT_NCHW_VECT_C:
+      // NCHW_VECT_C is not supported by cudnnPoolingForward(), but can be
+      // emulated via NHWC.
+      data_layout = se::dnn::DataLayout::kBatchYXDepth;
+      batch_size *= depth / 4;
+      depth = 4;
+      break;
+    default:
+      OP_REQUIRES(context, false,
+                  errors::InvalidArgument("Unsupported format: ",
+                                          ToString(data_format)));
+  }
+#endif
   /// Get ready to call cudnn
   se::dnn::PoolingDescriptor pooling_desc;
   pooling_desc.set_pooling_mode(pooling_mode)
@@ -194,43 +220,63 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
       .set_propagate_nans(propagate_nans);
 
   se::dnn::BatchDescriptor input_desc;
-  input_desc.set_count(params.tensor_in_batch)
+  input_desc.set_count(batch_size)
       .set_height(params.tensor_in_rows)
       .set_width(params.tensor_in_cols)
-      .set_feature_map_count(params.depth)
-      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+      .set_feature_map_count(depth)
+      .set_layout(data_layout);
 
   se::dnn::BatchDescriptor output_desc;
-  output_desc.set_count(params.tensor_in_batch)
+  output_desc.set_count(batch_size)
       .set_height(params.out_height)
       .set_width(params.out_width)
-      .set_feature_map_count(params.depth)
-      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+      .set_feature_map_count(depth)
+      .set_layout(data_layout);
 
-  auto input_data = AsDeviceMemory(transformed_input.template flat<T>().data(),
-                                   transformed_input.template flat<T>().size());
+  auto input_data =
+      AsDeviceMemory(reinterpret_cast<const typename RawType<T>::type*>(
+                         transformed_input.template flat<T>().data()),
+                     transformed_input.template flat<T>().size());
+
   auto output_data =
-      AsDeviceMemory(transformed_output.template flat<T>().data(),
+      AsDeviceMemory(reinterpret_cast<const typename RawType<T>::type*>(
+                         transformed_output.template flat<T>().data()),
                      transformed_output.template flat<T>().size());
 
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
+#if TENSORFLOW_USE_ROCM
+  static int64 PoolingScratchSize = GetDnnWorkspaceLimit(
+      // default value is in bytes despite the name of the environment variable
+      "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
+  );
+
+  DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
+  bool status =
+      stream
+          ->ThenPoolForward(pooling_desc, input_desc, input_data, output_desc,
+                            &output_data, &scratch_allocator)
+          .ok();
+#else
   bool status = stream
                     ->ThenPoolForward(pooling_desc, input_desc, input_data,
                                       output_desc, &output_data)
                     .ok();
+#endif
   OP_REQUIRES(context, status,
-              errors::Internal("cudnn PoolForward launch failed"));
-
+              errors::Internal("dnn PoolForward launch failed"));
+#if CUDNN_VERSION < 7300
   if (data_format == FORMAT_NHWC) {
     /// Transform the output data from NCHW back to NHWC
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
-    functor::NCHWToNHWC<GPUDevice, T, 4>()(
+    using RT = typename RawType<T>::type;
+    functor::NCHWToNHWC<GPUDevice, RT, 4>()(
         context->eigen_device<Device>(),
-        toConstTensor(transformed_output).template tensor<T, 4>(),
-        tensor_out->tensor<T, 4>());
+        toConstTensor(transformed_output).template tensor<RT, 4>(),
+        tensor_out->tensor<RT, 4>());
   }
+#endif
 }
 
 template <typename T>
@@ -258,6 +304,7 @@ void DnnPoolingGradOp<T>::Compute(
     return;
   }
 
+#if CUDNN_VERSION < 7300
   /// For now, cudnn does not support NHWC format, so we need to convert it
   /// to NCHW before calling cudnn. We need to get rid of this once it is done
   Tensor transformed_input;
@@ -323,6 +370,40 @@ void DnnPoolingGradOp<T>::Compute(
         context->eigen_device<Device>(), out_backprop.tensor<T, 4>(),
         transformed_output_backprop.tensor<T, 4>());
   }
+  se::dnn::DataLayout data_layout = se::dnn::DataLayout::kBatchDepthYX;
+#else
+  Tensor transformed_input;
+  if (!tensor_in) {
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DataTypeToEnum<T>::value,
+                                          tensor_in_shape, &transformed_input));
+  } else {
+    transformed_input = *tensor_in;
+  }
+  Tensor transformed_output;
+  if (!tensor_out) {
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                   out_backprop.shape(),
+                                                   &transformed_output));
+  } else {
+    transformed_output = *tensor_out;
+  }
+  Tensor transformed_input_backprop = *input_backprop;
+  Tensor transformed_output_backprop = out_backprop;
+  se::dnn::DataLayout data_layout;
+  switch (data_format) {
+    case FORMAT_NHWC:
+      data_layout = se::dnn::DataLayout::kBatchYXDepth;
+      break;
+    case FORMAT_NCHW:
+      data_layout = se::dnn::DataLayout::kBatchDepthYX;
+      break;
+    default:
+      OP_REQUIRES(context, false,
+                  errors::InvalidArgument("Unsupported format: ",
+                                          ToString(data_format)));
+  }
+#endif  // CUDNN_VERSION < 7300
 
   /// Get ready to call cudnn
   se::dnn::PoolingDescriptor pooling_desc;
@@ -340,14 +421,14 @@ void DnnPoolingGradOp<T>::Compute(
       .set_height(params.out_height)
       .set_width(params.out_width)
       .set_feature_map_count(params.depth)
-      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(data_layout);
 
   se::dnn::BatchDescriptor orig_input_desc;
   orig_input_desc.set_count(params.tensor_in_batch)
       .set_height(params.tensor_in_rows)
       .set_width(params.tensor_in_cols)
       .set_feature_map_count(params.depth)
-      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(data_layout);
 
   auto orig_output_data =
       AsDeviceMemory(transformed_output.template flat<T>().data(),
@@ -365,15 +446,32 @@ void DnnPoolingGradOp<T>::Compute(
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
+#if TENSORFLOW_USE_ROCM
+  static int64 PoolingScratchSize = GetDnnWorkspaceLimit(
+      // default value is in bytes despite the name of the environment variable
+      "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
+  );
+
+  DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
+  bool status = stream
+                    ->ThenPoolBackward(pooling_desc, orig_input_desc,
+                                       orig_input_data, orig_output_desc,
+                                       orig_output_data, output_backprop_data,
+                                       &input_backprop_data, &scratch_allocator)
+                    .ok();
+#else
   bool status =
       stream
           ->ThenPoolBackward(pooling_desc, orig_input_desc, orig_input_data,
                              orig_output_desc, orig_output_data,
                              output_backprop_data, &input_backprop_data)
           .ok();
-  OP_REQUIRES(context, status,
-              errors::Internal("cudnn PoolBackward launch failed"));
+#endif
 
+  OP_REQUIRES(context, status,
+              errors::Internal("dnn PoolBackward launch failed"));
+
+#if CUDNN_VERSION < 7300
   if (data_format == FORMAT_NHWC) {
     /// Transform the output data from NCHW back to NHWC.
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
@@ -382,14 +480,20 @@ void DnnPoolingGradOp<T>::Compute(
         toConstTensor(transformed_input_backprop).template tensor<T, 4>(),
         input_backprop->tensor<T, 4>());
   }
+#endif  // CUDNN_VERSION < 7300
 }
 
 #define DEFINE_DNN_OPS(T)         \
   template class DnnPoolingOp<T>; \
   template class DnnPoolingGradOp<T>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_DNN_OPS)
+
+#if CUDNN_VERSION >= 7300
+template class DnnPoolingOp<qint8>;
+#endif
+
 #undef DEFINE_DNN_OPS
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

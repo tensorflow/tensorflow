@@ -42,8 +42,8 @@ class SparsifyGatherTest : public ::testing::Test {
                       const std::vector<NodeDef*>& inputs, GraphDef* graph_def,
                       bool control_dep = false) {
     NodeDef* node_def = graph_def->add_node();
-    node_def->set_name(std::string(name));
-    node_def->set_op(std::string(op));
+    node_def->set_name(string(name));
+    node_def->set_op(string(op));
     if (!control_dep) {
       std::for_each(inputs.begin(), inputs.end(), [&node_def](NodeDef* input) {
         node_def->add_input(input->name());
@@ -107,7 +107,7 @@ class SparsifyGatherTest : public ::testing::Test {
           CreateNode("save/Const", "Const", {}, &graph_def);
 
       Tensor tensor_names_values(DT_STRING, TensorShape({1}));
-      test::FillValues<string>(&tensor_names_values, {"w"});
+      test::FillValues<tstring>(&tensor_names_values, {"w"});
       NodeDef* tensor_names_node =
           CreateNode("save/RestoreV2/tensor_names", "Const", {}, &graph_def);
       SetNodeTensorAttr<string>("value", tensor_names_values,
@@ -116,7 +116,7 @@ class SparsifyGatherTest : public ::testing::Test {
       NodeDef* tensor_shapes_slices_node = CreateNode(
           "save/RestoreV2/shape_and_slices", "Const", {}, &graph_def);
       Tensor shapes_slices_val(DT_STRING, TensorShape({1}));
-      shapes_slices_val.flat<string>()(0) = "4 1 0,4:0,1";
+      shapes_slices_val.flat<tstring>()(0) = "4 1 0,4:0,1";
       SetNodeTensorAttr<string>("value", shapes_slices_val,
                                 tensor_shapes_slices_node);
 
@@ -320,15 +320,15 @@ class SparsifyGatherTest : public ::testing::Test {
       NodeDef* tensor_names_node =
           CreateNode("save/RestoreV2/tensor_names", "Const", {}, &graph_def);
       Tensor tensor_names_values(DT_STRING, TensorShape({2}));
-      test::FillValues<string>(&tensor_names_values, {"w1", "w2"});
+      test::FillValues<tstring>(&tensor_names_values, {"w1", "w2"});
       SetNodeTensorAttr<string>("value", tensor_names_values,
                                 tensor_names_node);
 
       NodeDef* tensor_shapes_slices_node = CreateNode(
           "save/RestoreV2/shape_and_slices", "Const", {}, &graph_def);
       Tensor shapes_slices_val(DT_STRING, TensorShape({2}));
-      shapes_slices_val.flat<string>()(0) = "4 1 0,4:0,1";
-      shapes_slices_val.flat<string>()(1) = "4 1 0,4:0,1";
+      shapes_slices_val.flat<tstring>()(0) = "4 1 0,4:0,1";
+      shapes_slices_val.flat<tstring>()(1) = "4 1 0,4:0,1";
       SetNodeTensorAttr<string>("value", shapes_slices_val,
                                 tensor_shapes_slices_node);
 

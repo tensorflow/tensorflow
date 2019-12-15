@@ -33,10 +33,10 @@ constexpr char kSavedModelFilenamePb[] = "saved_model.pb";
 /// SavedModel text format proto filename.
 constexpr char kSavedModelFilenamePbTxt[] = "saved_model.pbtxt";
 
-/// SavedModel legacy init op key.
+/// SavedModel legacy init op collection key. Used in v1 SavedModels.
 constexpr char kSavedModelLegacyInitOpKey[] = "legacy_init_op";
 
-/// SavedModel main op key.
+/// SavedModel main op collection key. Used in v1 SavedModels.
 constexpr char kSavedModelMainOpKey[] = "saved_model_main_op";
 
 /// Directory in which to save the SavedModel variables.
@@ -44,6 +44,14 @@ constexpr char kSavedModelVariablesDirectory[] = "variables";
 
 /// SavedModel variables filename.
 constexpr char kSavedModelVariablesFilename[] = "variables";
+
+/// SavedModel SignatureDef keys for the initialization and train ops. Used in
+/// V2 SavedModels.
+constexpr char kSavedModelInitOpSignatureKey[] = "__saved_model_init_op";
+constexpr char kSavedModelTrainOpSignatureKey[] = "__saved_model_train_op";
+
+// Key in the TensorBundle for the object graph proto.
+constexpr char kObjectGraphProtoKey[] = "_CHECKPOINTABLE_OBJECT_GRAPH";
 
 }  // namespace tensorflow
 

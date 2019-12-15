@@ -1,0 +1,36 @@
+{
+  features: {
+    feature: {
+      age: {
+        float_list: {
+          value: [29.0, 2, 3, 4]
+        }
+      }
+    },
+    feature: {
+      movie_ratings: {
+        float_list: {
+          value: [9.0,9.7]
+        }
+      }
+    },
+    feature: {
+      suggestion_purchased: {
+        float_list: {
+          value: [1.0, 2, 3, 4, 5]
+        }
+      }
+    },
+    feature: {
+      purchase_price: {
+        float_list: {
+          value: [9.99, 8.88, 7.77, 6.66, 5.55],
+          value: [4.44, 3.33, 2.22, 1.11],
+          value: [1.11, 2.22, 3.33],
+          value: [4.44, 5.55],
+          value: 0
+        }
+      }
+    }
+  }
+}

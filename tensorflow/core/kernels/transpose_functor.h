@@ -225,7 +225,7 @@ Status DoTransposeImpl(const Device& d, const Tensor& in,
       break;
 
     case DT_STRING:
-      Transpose<Device, string>::run(d, in, perm, out);
+      Transpose<Device, tstring>::run(d, in, perm, out);
       break;
 
     default:

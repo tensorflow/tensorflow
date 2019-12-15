@@ -19,23 +19,31 @@ from __future__ import print_function
 
 import abc
 
-from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
+import six
+
+from tensorflow.python.data.util import structure
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
-from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
-class Optional(object):
-  """Wraps a nested structure of tensors that may/may not be present at runtime.
+@tf_export("data.experimental.Optional")
+@six.add_metaclass(abc.ABCMeta)
+class Optional(composite_tensor.CompositeTensor):
+  """Wraps a value that may/may not be present at runtime.
 
   An `Optional` can represent the result of an operation that may fail as a
   value, rather than raising an exception and halting execution. For example,
-  `tf.contrib.data.get_next_as_optional` returns an `Optional` that either
-  contains the next value from a `tf.data.Iterator` if one exists, or a "none"
-  value that indicates the end of the sequence has been reached.
+  `tf.data.experimental.get_next_as_optional` returns an `Optional` that either
+  contains the next value from a `tf.compat.v1.data.Iterator` if one exists, or
+  a "none" value that indicates the end of the sequence has been reached.
+
+  `Optional` can only be used by values that are convertible to `Tensor` or
+  `CompositeTensor`.
   """
 
   @abc.abstractmethod
@@ -52,7 +60,7 @@ class Optional(object):
 
   @abc.abstractmethod
   def get_value(self, name=None):
-    """Returns a nested structure of values wrapped by this optional.
+    """Returns the value wrapped by this optional.
 
     If this optional does not have a value (i.e. `self.has_value()` evaluates
     to `False`), this operation will raise `tf.errors.InvalidArgumentError`
@@ -62,117 +70,67 @@ class Optional(object):
       name: (Optional.) A name for the created operation.
 
     Returns:
-      A nested structure of `tf.Tensor` and/or `tf.SparseTensor` objects.
+      The wrapped value.
     """
     raise NotImplementedError("Optional.get_value()")
 
   @abc.abstractproperty
-  def output_classes(self):
-    """Returns the class of each component of this optional.
-
-    The expected values are `tf.Tensor` and `tf.SparseTensor`.
+  def value_structure(self):
+    """The structure of the components of this optional.
 
     Returns:
-      A nested structure of Python `type` objects corresponding to each
-      component of this optional.
+      A `Structure` object representing the structure of the components of this
+        optional.
     """
-    raise NotImplementedError("Optional.output_classes")
-
-  @abc.abstractproperty
-  def output_shapes(self):
-    """Returns the shape of each component of this optional.
-
-    Returns:
-      A nested structure of `tf.TensorShape` objects corresponding to each
-      component of this optional.
-    """
-    raise NotImplementedError("Optional.output_shapes")
-
-  @abc.abstractproperty
-  def output_types(self):
-    """Returns the type of each component of this optional.
-
-    Returns:
-      A nested structure of `tf.DType` objects corresponding to each component
-      of this optional.
-    """
-    raise NotImplementedError("Optional.output_types")
+    raise NotImplementedError("Optional.value_structure")
 
   @staticmethod
   def from_value(value):
     """Returns an `Optional` that wraps the given value.
 
     Args:
-      value: A nested structure of `tf.Tensor` and/or `tf.SparseTensor` objects.
+      value: A value to wrap. The value must be convertible to `Tensor` or
+        `CompositeTensor`.
 
     Returns:
       An `Optional` that wraps `value`.
     """
-    # TODO(b/110122868): Consolidate this destructuring logic with the
-    # similar code in `Dataset.from_tensors()`.
     with ops.name_scope("optional") as scope:
       with ops.name_scope("value"):
-        value = nest.pack_sequence_as(value, [
-            sparse_tensor_lib.SparseTensor.from_value(t)
-            if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(
-                t, name="component_%d" % i)
-            for i, t in enumerate(nest.flatten(value))
-        ])
-
-      encoded_value = nest.flatten(sparse.serialize_sparse_tensors(value))
-      output_classes = sparse.get_classes(value)
-      output_shapes = nest.pack_sequence_as(
-          value, [t.get_shape() for t in nest.flatten(value)])
-      output_types = nest.pack_sequence_as(
-          value, [t.dtype for t in nest.flatten(value)])
+        value_structure = structure.type_spec_from_value(value)
+        encoded_value = structure.to_tensor_list(value_structure, value)
 
     return _OptionalImpl(
         gen_dataset_ops.optional_from_value(encoded_value, name=scope),
-        output_shapes, output_types, output_classes)
+        value_structure)
 
   @staticmethod
-  def none_from_structure(output_shapes, output_types, output_classes):
+  def none_from_structure(value_structure):
     """Returns an `Optional` that has no value.
 
-    NOTE: This method takes arguments that define the structure of the value
+    NOTE: This method takes an argument that defines the structure of the value
     that would be contained in the returned `Optional` if it had a value.
 
     Args:
-      output_shapes: A nested structure of `tf.TensorShape` objects
-        corresponding to each component of this optional.
-      output_types: A nested structure of `tf.DType` objects corresponding to
-        each component of this optional.
-      output_classes: A nested structure of Python `type` objects corresponding
-        to each component of this optional.
+      value_structure: A `Structure` object representing the structure of the
+        components of this optional.
 
     Returns:
       An `Optional` that has no value.
     """
-    return _OptionalImpl(gen_dataset_ops.optional_none(), output_shapes,
-                         output_types, output_classes)
+    return _OptionalImpl(gen_dataset_ops.optional_none(), value_structure)
 
 
 class _OptionalImpl(Optional):
-  """Concrete implementation of `tf.contrib.data.Optional`.
+  """Concrete implementation of `tf.data.experimental.Optional`.
 
   NOTE(mrry): This implementation is kept private, to avoid defining
   `Optional.__init__()` in the public API.
   """
 
-  def __init__(self, variant_tensor, output_shapes, output_types,
-               output_classes):
-    # TODO(b/110122868): Consolidate the structure validation logic with the
-    # similar logic in `Iterator.from_structure()` and
-    # `Dataset.from_generator()`.
-    output_types = nest.map_structure(dtypes.as_dtype, output_types)
-    output_shapes = nest.map_structure_up_to(
-        output_types, tensor_shape.as_shape, output_shapes)
-    nest.assert_same_structure(output_types, output_shapes)
-    nest.assert_same_structure(output_types, output_classes)
+  def __init__(self, variant_tensor, value_structure):
     self._variant_tensor = variant_tensor
-    self._output_shapes = output_shapes
-    self._output_types = output_types
-    self._output_classes = output_classes
+    self._value_structure = value_structure
 
   def has_value(self, name=None):
     return gen_dataset_ops.optional_has_value(self._variant_tensor, name=name)
@@ -182,28 +140,62 @@ class _OptionalImpl(Optional):
     # in `Iterator.get_next()` and `StructuredFunctionWrapper`.
     with ops.name_scope(name, "OptionalGetValue",
                         [self._variant_tensor]) as scope:
-      return sparse.deserialize_sparse_tensors(
-          nest.pack_sequence_as(
-              self._output_types,
-              gen_dataset_ops.optional_get_value(
-                  self._variant_tensor,
-                  name=scope,
-                  output_types=nest.flatten(
-                      sparse.as_dense_types(self._output_types,
-                                            self._output_classes)),
-                  output_shapes=nest.flatten(
-                      sparse.as_dense_shapes(self._output_shapes,
-                                             self._output_classes)))),
-          self._output_types, self._output_shapes, self._output_classes)
+      return structure.from_tensor_list(
+          self._value_structure,
+          gen_dataset_ops.optional_get_value(
+              self._variant_tensor,
+              name=scope,
+              output_types=structure.get_flat_tensor_types(
+                  self._value_structure),
+              output_shapes=structure.get_flat_tensor_shapes(
+                  self._value_structure)))
 
   @property
-  def output_classes(self):
-    return self._output_classes
+  def value_structure(self):
+    return self._value_structure
 
   @property
-  def output_shapes(self):
-    return self._output_shapes
+  def _type_spec(self):
+    return OptionalSpec.from_value(self)
+
+
+@tf_export(
+    "OptionalSpec", v1=["OptionalSpec", "data.experimental.OptionalStructure"])
+class OptionalSpec(type_spec.TypeSpec):
+  """Represents an optional potentially containing a structured value."""
+
+  __slots__ = ["_value_structure"]
+
+  def __init__(self, value_structure):
+    self._value_structure = value_structure
 
   @property
-  def output_types(self):
-    return self._output_types
+  def value_type(self):
+    return _OptionalImpl
+
+  def _serialize(self):
+    return (self._value_structure,)
+
+  @property
+  def _component_specs(self):
+    return [tensor_spec.TensorSpec((), dtypes.variant)]
+
+  def _to_components(self, value):
+    return [value._variant_tensor]  # pylint: disable=protected-access
+
+  def _from_components(self, flat_value):
+    # pylint: disable=protected-access
+    return _OptionalImpl(flat_value[0], self._value_structure)
+
+  @staticmethod
+  def from_value(value):
+    return OptionalSpec(value.value_structure)
+
+  def _to_legacy_output_types(self):
+    return self
+
+  def _to_legacy_output_shapes(self):
+    return self
+
+  def _to_legacy_output_classes(self):
+    return self

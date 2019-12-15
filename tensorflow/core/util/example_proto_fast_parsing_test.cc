@@ -42,7 +42,7 @@ string SerializedToReadable(string serialized) {
   string result;
   result += '"';
   for (char c : serialized)
-    result += strings::StrCat("\\x", strings::Hex(c, strings::ZERO_PAD_2));
+    result += strings::StrCat("\\x", strings::Hex(c, strings::kZeroPad2));
   result += '"';
   return result;
 }
@@ -273,7 +273,7 @@ static void AddSparseFeature(const char* feature_name, DataType dtype,
 
 TEST(FastParse, StatsCollection) {
   const size_t kNumExamples = 13;
-  std::vector<string> serialized(kNumExamples, ExampleWithSomeFeatures());
+  std::vector<tstring> serialized(kNumExamples, ExampleWithSomeFeatures());
 
   FastParseExampleConfig config_dense;
   AddDenseFeature("bytes_list", DT_STRING, {2}, false, 2, &config_dense);
@@ -417,8 +417,9 @@ TEST(TestFastParseExample, Empty) {
   Result result;
   FastParseExampleConfig config;
   config.sparse.push_back({"test", DT_STRING});
-  Status status = FastParseExample(config, gtl::ArraySlice<string>(),
-                                   gtl::ArraySlice<string>(), nullptr, &result);
+  Status status =
+      FastParseExample(config, gtl::ArraySlice<tstring>(),
+                       gtl::ArraySlice<tstring>(), nullptr, &result);
   EXPECT_TRUE(status.ok()) << status;
 }
 

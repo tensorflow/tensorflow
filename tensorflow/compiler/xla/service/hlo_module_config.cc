@@ -18,20 +18,23 @@ limitations under the License.
 #include <atomic>
 #include <vector>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 
-using tensorflow::strings::StrAppend;
+using absl::StrAppend;
 
 HloModuleConfig::HloModuleConfig(const ProgramShape& program_shape,
                                  bool ignore_layouts)
     : entry_computation_layout_(
           ComputationLayout(program_shape, ignore_layouts)) {}
+
+HloModuleConfig::HloModuleConfig(ComputationLayout entry_computation_layout)
+    : entry_computation_layout_(std::move(entry_computation_layout)) {}
 
 void HloModuleConfig::SetDefaultComputationLayout(
     const ProgramShape& program_shape) {
@@ -39,15 +42,14 @@ void HloModuleConfig::SetDefaultComputationLayout(
 }
 
 string HloModuleConfig::compilation_cache_key() const {
-  string key =
-      tensorflow::strings::StrCat("profiling=", hlo_profiling_enabled());
+  string key = absl::StrCat("profiling=", hlo_profiling_enabled());
   StrAppend(&key, "::(");
   std::vector<string> params;
   for (const ShapeLayout& param_layout :
        entry_computation_layout_->parameter_layouts()) {
     params.push_back(param_layout.shape().DebugString());
   }
-  StrAppend(&key, tensorflow::str_util::Join(params, ", "), ") => ",
+  StrAppend(&key, absl::StrJoin(params, ", "), ") => ",
             entry_computation_layout_->result_shape().SerializeAsString());
   if (seed() != 0) {
     // TODO(b/32083678): force recompilation to reset global state.
@@ -62,6 +64,7 @@ string HloModuleConfig::compilation_cache_key() const {
     StrAppend(&key, "::intra_op_parallelism_threads=",
               intra_op_parallelism_threads());
   }
+  StrAppend(&key, "::alias_passthrough_params=", alias_passthrough_params_);
   return key;
 }
 

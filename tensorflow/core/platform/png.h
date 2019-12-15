@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_PNG_H_
-#define TENSORFLOW_PLATFORM_PNG_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_PNG_H_
+#define TENSORFLOW_CORE_PLATFORM_PNG_H_
 
 #include "tensorflow/core/platform/platform.h"
 
 #if defined(PLATFORM_GOOGLE) && !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/platform/google/build_config/png.h"
+#include "png.h"  // TF:png
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_WINDOWS) || \
     defined(PLATFORM_POSIX_ANDROID) || defined(IS_MOBILE_PLATFORM)
 #include <png.h>
@@ -27,4 +27,4 @@ limitations under the License.
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif
 
-#endif  // TENSORFLOW_PLATFORM_PNG_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_PNG_H_

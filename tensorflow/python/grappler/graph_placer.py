@@ -19,8 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import time
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.grappler import cluster as gcluster
@@ -54,9 +54,9 @@ def PlaceGraph(metagraph,
     cluster = gcluster.Cluster()
 
   # Optimize the metagraph to speedup the placement
-  rewriter_config = rewriter_config_pb2.RewriterConfig()
+  config = config_pb2.ConfigProto()
   optimized_graph = tf_optimizer.OptimizeGraph(
-      rewriter_config, metagraph, verbose=verbose, cluster=cluster)
+      config, metagraph, verbose=verbose, cluster=cluster)
   optimized_metagraph = meta_graph_pb2.MetaGraphDef()
   optimized_metagraph.CopyFrom(metagraph)
   optimized_metagraph.graph_def.CopyFrom(optimized_graph)

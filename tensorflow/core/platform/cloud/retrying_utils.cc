@@ -14,19 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/retrying_utils.h"
-#include "tensorflow/core/lib/core/errors.h"
+
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
 
 namespace tensorflow {
 
 namespace {
-
-// In case of failure, every call will be retried kMaxRetries times.
-constexpr int kMaxRetries = 10;
-// Maximum backoff time in microseconds.
-constexpr int64 kMaximumBackoffMicroseconds = 32000000;  // 32 seconds.
 
 bool IsRetriable(error::Code code) {
   switch (code) {
@@ -43,49 +39,49 @@ bool IsRetriable(error::Code code) {
 }  // namespace
 
 Status RetryingUtils::CallWithRetries(const std::function<Status()>& f,
-                                      const int64 initial_delay_microseconds) {
-  return CallWithRetries(f, initial_delay_microseconds, [](int64 micros) {
-    return Env::Default()->SleepForMicroseconds(micros);
-  });
+                                      const RetryConfig& config) {
+  return CallWithRetries(
+      f,
+      [](int64 micros) { return Env::Default()->SleepForMicroseconds(micros); },
+      config);
 }
 
 Status RetryingUtils::CallWithRetries(
-    const std::function<Status()>& f, const int64 initial_delay_microseconds,
-    const std::function<void(int64)>& sleep_usec) {
+    const std::function<Status()>& f,
+    const std::function<void(int64)>& sleep_usec, const RetryConfig& config) {
   int retries = 0;
   while (true) {
     auto status = f();
     if (!IsRetriable(status.code())) {
       return status;
     }
-    if (retries >= kMaxRetries) {
+    if (retries >= config.max_retries) {
       // Return AbortedError, so that it doesn't get retried again somewhere
       // at a higher level.
       return Status(
           error::ABORTED,
           strings::StrCat(
-              "All ", kMaxRetries,
+              "All ", config.max_retries,
               " retry attempts failed. The last failure: ", status.ToString()));
     }
     int64 delay_micros = 0;
-    if (initial_delay_microseconds > 0) {
+    if (config.init_delay_time_us > 0) {
       const int64 random_micros = random::New64() % 1000000;
-      delay_micros = std::min(initial_delay_microseconds << retries,
-                              kMaximumBackoffMicroseconds) +
+      delay_micros = std::min(config.init_delay_time_us << retries,
+                              config.max_delay_time_us) +
                      random_micros;
     }
-    LOG(INFO) << "The operation failed and will be automatically retried in "
-              << (delay_micros / 1000000.0) << " seconds (attempt "
-              << (retries + 1) << " out of " << kMaxRetries
-              << "), caused by: " << status.ToString();
+    VLOG(1) << "The operation failed and will be automatically retried in "
+            << (delay_micros / 1000000.0) << " seconds (attempt "
+            << (retries + 1) << " out of " << config.max_retries
+            << "), caused by: " << status.ToString();
     sleep_usec(delay_micros);
     retries++;
   }
 }
 
 Status RetryingUtils::DeleteWithRetries(
-    const std::function<Status()>& delete_func,
-    const int64 initial_delay_microseconds) {
+    const std::function<Status()>& delete_func, const RetryConfig& config) {
   bool is_retried = false;
   return RetryingUtils::CallWithRetries(
       [delete_func, &is_retried]() {
@@ -96,7 +92,7 @@ Status RetryingUtils::DeleteWithRetries(
         is_retried = true;
         return status;
       },
-      initial_delay_microseconds);
+      config);
 }
 
 }  // namespace tensorflow

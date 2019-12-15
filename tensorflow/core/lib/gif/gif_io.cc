@@ -82,9 +82,20 @@ uint8* Decode(const void* srcdata, int datasize,
     return nullptr;
   }
 
+  // Don't request more memory than needed for each frame, preventing OOM
+  int max_frame_width = 0;
+  int max_frame_height = 0;
+  for (int k = 0; k < gif_file->ImageCount; k++) {
+    SavedImage* si = &gif_file->SavedImages[k];
+    if (max_frame_height < si->ImageDesc.Height)
+      max_frame_height = si->ImageDesc.Height;
+    if (max_frame_width < si->ImageDesc.Width)
+      max_frame_width = si->ImageDesc.Width;
+  }
+
   const int num_frames = gif_file->ImageCount;
-  const int width = gif_file->SWidth;
-  const int height = gif_file->SHeight;
+  const int width = max_frame_width;
+  const int height = max_frame_height;
   const int channel = 3;
 
   uint8* const dstdata = allocate_output(num_frames, width, height, channel);
@@ -129,6 +140,10 @@ uint8* Decode(const void* srcdata, int datasize,
     ColorMapObject* color_map = this_image->ImageDesc.ColorMap
                                     ? this_image->ImageDesc.ColorMap
                                     : gif_file->SColorMap;
+    if (color_map == nullptr) {
+      *error_string = strings::StrCat("missing color map for frame ", k);
+      return nullptr;
+    }
 
     for (int i = imgTop; i < imgBottom; ++i) {
       uint8* p_dst = this_dst + i * width * channel;
@@ -136,6 +151,14 @@ uint8* Decode(const void* srcdata, int datasize,
         GifByteType color_index =
             this_image->RasterBits[(i - img_desc->Top) * (img_desc->Width) +
                                    (j - img_desc->Left)];
+
+        if (color_index >= color_map->ColorCount) {
+          *error_string = strings::StrCat("found color index ", color_index,
+                                          " outside of color map range ",
+                                          color_map->ColorCount);
+          return nullptr;
+        }
+
         const GifColorType& gif_color = color_map->Colors[color_index];
         p_dst[j * channel + 0] = gif_color.Red;
         p_dst[j * channel + 1] = gif_color.Green;

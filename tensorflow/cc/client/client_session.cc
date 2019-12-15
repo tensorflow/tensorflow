@@ -141,6 +141,15 @@ Status ClientSession::RunCallable(CallableHandle handle,
                                        run_metadata);
 }
 
+Status ClientSession::RunCallable(CallableHandle handle,
+                                  const std::vector<Tensor>& feed_tensors,
+                                  std::vector<Tensor>* fetch_tensors,
+                                  RunMetadata* run_metadata,
+                                  const thread::ThreadPoolOptions& options) {
+  return impl()->session_->RunCallable(handle, feed_tensors, fetch_tensors,
+                                       run_metadata, options);
+}
+
 Status ClientSession::ReleaseCallable(CallableHandle handle) {
   return impl()->session_->ReleaseCallable(handle);
 }

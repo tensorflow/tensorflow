@@ -69,7 +69,7 @@ class GraphMemory {
 
   void InferFromTrace(const StepStats& timeline);
 
-  GrapplerItem item_;
+  const GrapplerItem& item_;
   std::unordered_map<string, int64> worst_case_memory_usage_;
   std::unordered_map<string, MemoryUsage> peak_usage_;
   const MemoryUsage unknown_usage_;

@@ -22,6 +22,7 @@ import collections
 import os
 import re
 
+import absl
 import numpy as np
 
 from tensorflow.python.debug.lib import profiling
@@ -30,6 +31,9 @@ from tensorflow.python.debug.lib import profiling
 _TENSORFLOW_BASEDIR = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.normpath(os.path.abspath(__file__))))))
+
+_ABSL_BASEDIR = os.path.dirname(absl.__file__)
+
 
 UNCOMPILED_SOURCE_SUFFIXES = (".py")
 COMPILED_SOURCE_SUFFIXES = (".pyc", ".pyo")
@@ -76,14 +80,15 @@ def guess_is_tensorflow_py_library(py_file_path):
         "Input file path (%s) is not a Python source file." % py_file_path)
   py_file_path = _norm_abs_path(py_file_path)
 
-  return (py_file_path.startswith(_TENSORFLOW_BASEDIR) and
+  return ((py_file_path.startswith(_TENSORFLOW_BASEDIR) or
+           py_file_path.startswith(_ABSL_BASEDIR)) and
           not py_file_path.endswith("_test.py") and
-          not os.path.dirname(py_file_path).endswith(
-              os.path.normpath("python/debug/examples")))
+          (os.path.normpath("tensorflow/python/debug/examples") not in
+           os.path.normpath(py_file_path)))
 
 
 def load_source(source_file_path):
-  with open(source_file_path, "rU") as f:
+  with open(source_file_path, "r") as f:
     source_text = f.read()
   source_lines = source_text.split("\n")
   line_num_width = int(np.ceil(np.log10(len(source_lines)))) + 3

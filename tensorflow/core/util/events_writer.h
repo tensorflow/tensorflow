@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_EVENTS_WRITER_H_
-#define TENSORFLOW_UTIL_EVENTS_WRITER_H_
+#ifndef TENSORFLOW_CORE_UTIL_EVENTS_WRITER_H_
+#define TENSORFLOW_CORE_UTIL_EVENTS_WRITER_H_
 
 #include <memory>
 #include <string>
@@ -95,4 +95,4 @@ class EventsWriter {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_EVENTS_WRITER_H_
+#endif  // TENSORFLOW_CORE_UTIL_EVENTS_WRITER_H_

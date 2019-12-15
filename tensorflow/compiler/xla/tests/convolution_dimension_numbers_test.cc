@@ -17,11 +17,11 @@ limitations under the License.
 #include <array>
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -88,13 +88,12 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidOutputDimensionNumbers) {
 
 XLA_TEST_F(ConvolutionDimensionNumbersTest,
            TwoConvsWithDifferentDimensionNumbers) {
-  auto input_array = MakeUnique<Array4D<float>>(2, 3, 5, 5);
+  auto input_array = absl::make_unique<Array4D<float>>(2, 3, 5, 5);
   input_array->FillWithMultiples(0.1);
-  auto weight_array = MakeUnique<Array4D<float>>(4, 3, 1, 1);
+  auto weight_array = absl::make_unique<Array4D<float>>(4, 3, 1, 1);
   weight_array->FillWithMultiples(0.2);
   auto weight_data =
-      client_
-          ->TransferToServer(*LiteralUtil::CreateR4FromArray4D(*weight_array))
+      client_->TransferToServer(LiteralUtil::CreateR4FromArray4D(*weight_array))
           .ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());

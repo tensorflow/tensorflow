@@ -13,16 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_BFLOAT16_H_
-#define TENSORFLOW_FRAMEWORK_BFLOAT16_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_BFLOAT16_H_
+#define TENSORFLOW_CORE_FRAMEWORK_BFLOAT16_H_
 
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/types.h"
-
-#if defined(PLATFORM_WINDOWS)
-#include "tensorflow/core/platform/windows/cpu_info.h"
-#endif
 
 // Compact 16-bit encoding of floating point numbers. This representation uses
 // 1 bit for the sign, 8 bits for the exponent and 7 bits for the mantissa.  It
@@ -60,4 +56,4 @@ void BFloat16ToFloat(const bfloat16* src, float* dst, int64 size);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_BFLOAT16_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_BFLOAT16_H_

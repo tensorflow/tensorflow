@@ -22,12 +22,14 @@ limitations under the License.
 #endif
 #include <fstream>
 #include <utility>
+
+#include "absl/strings/match.h"
 #include "include/json/json.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/base64.h"
+#include "tensorflow/core/platform/base64.h"
 #include "tensorflow/core/platform/cloud/retrying_utils.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/path.h"
 
 namespace tensorflow {
 
@@ -43,6 +45,11 @@ constexpr char kGoogleAuthTokenForTesting[] = "GOOGLE_AUTH_TOKEN_FOR_TESTING";
 
 // The environment variable which can override '~/.config/gcloud' if set.
 constexpr char kCloudSdkConfig[] = "CLOUDSDK_CONFIG";
+
+// The environment variable used to skip attempting to fetch GCE credentials:
+// setting this to 'true' (case insensitive) will skip attempting to contact
+// the GCE metadata service.
+constexpr char kNoGceCheck[] = "NO_GCE_CHECK";
 
 // The default path to the gcloud config folder, relative to the home folder.
 constexpr char kGCloudConfigFolder[] = ".config/gcloud/";
@@ -135,8 +142,7 @@ Status GoogleAuthProvider::GetToken(string* t) {
   mutex_lock lock(mu_);
   const uint64 now_sec = env_->NowSeconds();
 
-  if (!current_token_.empty() &&
-      now_sec + kExpirationTimeMarginSec < expiration_timestamp_sec_) {
+  if (now_sec + kExpirationTimeMarginSec < expiration_timestamp_sec_) {
     *t = current_token_;
     return Status::OK();
   }
@@ -147,10 +153,25 @@ Status GoogleAuthProvider::GetToken(string* t) {
   }
 
   auto token_from_files_status = GetTokenFromFiles();
-  auto token_from_gce_status =
-      token_from_files_status.ok() ? Status::OK() : GetTokenFromGce();
+  if (token_from_files_status.ok()) {
+    *t = current_token_;
+    return Status::OK();
+  }
 
-  if (token_from_files_status.ok() || token_from_gce_status.ok()) {
+  char* no_gce_check_var = std::getenv(kNoGceCheck);
+  bool skip_gce_check = no_gce_check_var != nullptr &&
+                        absl::EqualsIgnoreCase(no_gce_check_var, "true");
+  Status token_from_gce_status;
+  if (skip_gce_check) {
+    token_from_gce_status =
+        Status(error::CANCELLED,
+               strings::StrCat("GCE check skipped due to presence of $",
+                               kNoGceCheck, " environment variable."));
+  } else {
+    token_from_gce_status = GetTokenFromGce();
+  }
+
+  if (token_from_gce_status.ok()) {
     *t = current_token_;
     return Status::OK();
   }
@@ -166,8 +187,13 @@ Status GoogleAuthProvider::GetToken(string* t) {
   // so return an empty token instead of failing.
   *t = "";
 
-  // From now on, always return the empty token.
-  expiration_timestamp_sec_ = UINT64_MAX;
+  // We only want to keep returning our empty token if we've tried and failed
+  // the (potentially slow) task of detecting GCE.
+  if (skip_gce_check) {
+    expiration_timestamp_sec_ = 0;
+  } else {
+    expiration_timestamp_sec_ = UINT64_MAX;
+  }
   current_token_ = "";
 
   return Status::OK();

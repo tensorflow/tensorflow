@@ -20,14 +20,15 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace monitoring {
@@ -72,7 +73,7 @@ class MetricCollector {
         registration_time_millis_(registration_time_millis),
         collector_(collector),
         point_set_(point_set) {
-    point_set_->metric_name = std::string(metric_def->name());
+    point_set_->metric_name = string(metric_def->name());
   }
 
   const MetricDef<metric_kind, Value, NumLabels>* const metric_def_;
@@ -261,7 +262,7 @@ class Collector {
     auto* const point_set = [&]() {
       mutex_lock l(mu_);
       return collected_metrics_->point_set_map
-          .insert(std::make_pair(std::string(metric_def->name()),
+          .insert(std::make_pair(string(metric_def->name()),
                                  std::unique_ptr<PointSet>(new PointSet())))
           .first->second.get();
     }();

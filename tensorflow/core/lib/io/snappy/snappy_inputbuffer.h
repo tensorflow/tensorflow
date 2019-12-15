@@ -54,7 +54,7 @@ class SnappyInputBuffer : public InputStreamInterface {
   //   If input_buffer_ is smaller in size than a compressed block.
   // others:
   //   If reading from file failed.
-  Status ReadNBytes(int64 bytes_to_read, string* result) override;
+  Status ReadNBytes(int64 bytes_to_read, tstring* result) override;
 
   int64 Tell() const override;
 
@@ -86,7 +86,7 @@ class SnappyInputBuffer : public InputStreamInterface {
   // bytes have been read or `next_out_` is reached.
   // Returns the number of bytes read and advances the `next_out_`
   // pointer to the next location to read from.
-  size_t ReadBytesFromCache(size_t bytes_to_read, string* result);
+  size_t ReadBytesFromCache(size_t bytes_to_read, tstring* result);
 
   // Reads the length of the next *compressed* block and stores in `length`.
   // The length is stored in 4 bytes in little endian notation.
@@ -118,6 +118,9 @@ class SnappyInputBuffer : public InputStreamInterface {
 
   // Number of unread bytes bytes available at `next_out_` in `output_buffer_`.
   size_t avail_out_ = 0;
+
+  // Number of *uncompressed* bytes that have been read from this stream.
+  int64 bytes_read_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(SnappyInputBuffer);
 };

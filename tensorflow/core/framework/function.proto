@@ -30,6 +30,24 @@ message FunctionDef {
   // Attributes specific to this function definition.
   map<string, AttrValue> attr = 5;
 
+  // Attributes for function arguments. These attributes are the same set of
+  // valid attributes as to _Arg nodes.
+  message ArgAttrs {
+    map<string, AttrValue> attr = 1;
+  }
+  map<uint32, ArgAttrs> arg_attr = 7;
+
+  // Unique IDs for each resource argument, used to track aliasing resources. If
+  // Argument A and Argument B alias each other, then
+  // resource_arg_unique_ids[A.index] == resource_arg_unique_ids[B.index].
+  //
+  // If this field is empty, none of the arguments could alias; otherwise, every
+  // resource argument should have an entry in this field.
+  //
+  // When instantiated, the unique IDs will be attached to the _Arg nodes'
+  // "_resource_arg_unique_id" attribute.
+  map<uint32, uint32> resource_arg_unique_id = 8;
+
   // NOTE: field id 2 deleted on Jan 11, 2017, GraphDef version 21.
   reserved 2;
 
@@ -76,6 +94,10 @@ message FunctionDef {
   // A mapping from the output arg names from `signature` to the
   // outputs from `node_def` that should be returned by the function.
   map<string, string> ret = 4;
+
+  // A mapping from control output names from `signature` to node names in
+  // `node_def` which should be control outputs of this function.
+  map<string, string> control_ret = 6;
 }
 
 // GradientDef defines the gradient function of a function defined in

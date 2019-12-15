@@ -19,9 +19,36 @@ namespace tensorflow {
 
 const std::unordered_set<std::string>* GetExcludedOps() {
   static std::unordered_set<std::string>* excluded_ops =
-      new std::unordered_set<std::string>(
-          {"BigQueryReader", "GenerateBigQueryReaderPartitions",
-           "GcsConfigureBlockCache", "GcsConfigureCredentials"});
+      new std::unordered_set<std::string>({
+          "BigQueryReader",
+          "GenerateBigQueryReaderPartitions",
+          "GcsConfigureBlockCache",
+          "GcsConfigureCredentials",
+#ifdef INTEL_MKL
+          // QuantizedFusedOps for Intel CPU
+          "QuantizedConcatV2",
+          "QuantizedConv2DAndRequantize",
+          "QuantizedConv2DWithBias",
+          "QuantizedConv2DWithBiasAndRequantize",
+          "QuantizedConv2DAndRelu",
+          "QuantizedConv2DAndReluAndRequantize",
+          "QuantizedConv2DWithBiasAndRelu",
+          "QuantizedConv2DWithBiasAndReluAndRequantize",
+          "QuantizedConv2DWithBiasSumAndRelu",
+          "QuantizedConv2DWithBiasSumAndReluAndRequantize",
+          "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize",
+          "QuantizedMatMulWithBias"
+          "QuantizedMatMulWithBiasAndRelu"
+          "QuantizedMatMulWithBiasAndReluAndRequantize",
+#endif  // INTEL_MKL
+#ifdef GOOGLE_TENSORRT
+          "CreateTRTResourceHandle",
+          "InitializeTRTResource",
+          "SerializeTRTResource",
+          "GetCalibrationDataOp",
+          "TRTEngineOp",
+#endif  // GOOGLE_TENSORRT
+      });
   return excluded_ops;
 }
 }  // namespace tensorflow

@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -34,15 +36,20 @@ namespace tensorflow {
 namespace {
 
 TEST(GPUDebugAllocatorTest, OverwriteDetection_None) {
-  const CudaGpuId cuda_gpu_id(0);
-  GPUDebugAllocator a(new GPUBFCAllocator(cuda_gpu_id, 1 << 30, ""),
-                      cuda_gpu_id);
-  auto stream_exec = GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
+  const PlatformGpuId platform_gpu_id(0);
+  GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
+  GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
+                      platform_gpu_id);
+  auto stream_exec =
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
 
   for (int s : {8}) {
     std::vector<int64> cpu_array(s);
     memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64));
-    int64* gpu_array = a.Allocate<int64>(cpu_array.size());
+    int64* gpu_array =
+        TypedAllocator::Allocate<int64>(&a, cpu_array.size(), {});
     se::DeviceMemory<int64> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
     ASSERT_TRUE(stream_exec->SynchronousMemcpy(&gpu_array_ptr, &cpu_array[0],
                                                s * sizeof(int64)));
@@ -58,15 +65,19 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Header) {
   for (int s : {8, 211}) {
     EXPECT_DEATH(
         {
-          const CudaGpuId cuda_gpu_id(0);
-          GPUDebugAllocator a(new GPUBFCAllocator(cuda_gpu_id, 1 << 30, ""),
-                              cuda_gpu_id);
+          const PlatformGpuId platform_gpu_id(0);
+          GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+              GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+              platform_gpu_id, false /*use_unified_memory*/, {}, {});
+          GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
+                              platform_gpu_id);
           auto stream_exec =
-              GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
+              GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
 
           std::vector<int64> cpu_array(s);
           memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64));
-          int64* gpu_array = a.Allocate<int64>(cpu_array.size());
+          int64* gpu_array =
+              TypedAllocator::Allocate<int64>(&a, cpu_array.size(), {});
 
           se::DeviceMemory<int64> gpu_array_ptr{
               se::DeviceMemoryBase{gpu_array}};
@@ -91,15 +102,19 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
   for (int s : {8, 22}) {
     EXPECT_DEATH(
         {
-          const CudaGpuId cuda_gpu_id(0);
-          GPUDebugAllocator a(new GPUBFCAllocator(cuda_gpu_id, 1 << 30, ""),
-                              cuda_gpu_id);
+          const PlatformGpuId platform_gpu_id(0);
+          GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+              GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+              platform_gpu_id, false /*use_unified_memory*/, {}, {});
+          GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
+                              platform_gpu_id);
           auto stream_exec =
-              GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
+              GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
 
           std::vector<int64> cpu_array(s);
           memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64));
-          int64* gpu_array = a.Allocate<int64>(cpu_array.size());
+          int64* gpu_array =
+              TypedAllocator::Allocate<int64>(&a, cpu_array.size(), {});
 
           se::DeviceMemory<int64> gpu_array_ptr{
               se::DeviceMemoryBase{gpu_array}};
@@ -121,16 +136,20 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
 }
 
 TEST(GPUDebugAllocatorTest, ResetToNan) {
-  const CudaGpuId cuda_gpu_id(0);
-  GPUNanResetAllocator a(new GPUBFCAllocator(cuda_gpu_id, 1 << 30, ""),
-                         cuda_gpu_id);
-  auto stream_exec = GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
+  const PlatformGpuId platform_gpu_id(0);
+  GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
+  GPUNanResetAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
+                         platform_gpu_id);
+  auto stream_exec =
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
 
   std::vector<float> cpu_array(1024);
   std::vector<float> cpu_array_result(1024);
 
   // Allocate 1024 floats
-  float* gpu_array = a.Allocate<float>(cpu_array.size());
+  float* gpu_array = TypedAllocator::Allocate<float>(&a, cpu_array.size(), {});
   se::DeviceMemory<float> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
   ASSERT_TRUE(stream_exec->SynchronousMemcpy(&cpu_array[0], gpu_array_ptr,
                                              cpu_array.size() * sizeof(float)));
@@ -161,19 +180,23 @@ TEST(GPUDebugAllocatorTest, ResetToNan) {
 }
 
 TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
-  const CudaGpuId cuda_gpu_id(0);
+  const PlatformGpuId platform_gpu_id(0);
   // NaN reset must be the outer-most allocator.
+  GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUNanResetAllocator a(
-      new GPUDebugAllocator(new GPUBFCAllocator(cuda_gpu_id, 1 << 30, ""),
-                            cuda_gpu_id),
-      cuda_gpu_id);
-  auto stream_exec = GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
+      new GPUDebugAllocator(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
+                            platform_gpu_id),
+      platform_gpu_id);
+  auto stream_exec =
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
 
   std::vector<float> cpu_array(1024);
   std::vector<float> cpu_array_result(1024);
 
   // Allocate 1024 floats
-  float* gpu_array = a.Allocate<float>(cpu_array.size());
+  float* gpu_array = TypedAllocator::Allocate<float>(&a, cpu_array.size(), {});
   se::DeviceMemory<float> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
   ASSERT_TRUE(stream_exec->SynchronousMemcpy(&cpu_array[0], gpu_array_ptr,
                                              cpu_array.size() * sizeof(float)));
@@ -204,19 +227,25 @@ TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
 }
 
 TEST(GPUDebugAllocatorTest, TracksSizes) {
-  const CudaGpuId cuda_gpu_id(0);
-  GPUDebugAllocator a(new GPUBFCAllocator(cuda_gpu_id, 1 << 30, ""),
-                      cuda_gpu_id);
+  const PlatformGpuId platform_gpu_id(0);
+  GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
+  GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
+                      platform_gpu_id);
   EXPECT_EQ(true, a.TracksAllocationSizes());
 }
 
 TEST(GPUDebugAllocatorTest, AllocatedVsRequested) {
-  const CudaGpuId cuda_gpu_id(0);
+  const PlatformGpuId platform_gpu_id(0);
+  GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUNanResetAllocator a(
-      new GPUDebugAllocator(new GPUBFCAllocator(cuda_gpu_id, 1 << 30, ""),
-                            cuda_gpu_id),
-      cuda_gpu_id);
-  float* t1 = a.Allocate<float>(1);
+      new GPUDebugAllocator(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
+                            platform_gpu_id),
+      platform_gpu_id);
+  float* t1 = TypedAllocator::Allocate<float>(&a, 1, {});
   EXPECT_EQ(4, a.RequestedSize(t1));
   EXPECT_EQ(256, a.AllocatedSize(t1));
   a.DeallocateRaw(t1);
@@ -225,4 +254,4 @@ TEST(GPUDebugAllocatorTest, AllocatedVsRequested) {
 }  // namespace
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

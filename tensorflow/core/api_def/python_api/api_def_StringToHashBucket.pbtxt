@@ -1,10 +1,4 @@
 op {
   graph_op_name: "StringToHashBucket"
-  endpoint {
-    name: "strings.to_hash_bucket"
-  }
-  endpoint {
-    name: "string_to_hash_bucket"
-    deprecated: true
-  }
+  visibility: HIDDEN
 }

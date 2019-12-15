@@ -12,6 +12,62 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
+# Functions "ndtr" and "ndtri" are derived from calculations made in:
+# https://root.cern.ch/doc/v608/SpecFuncCephesInv_8cxx_source.html
+# In the following email exchange, the author gives his consent to redistribute
+# derived works under an Apache 2.0 license.
+#
+# From: Stephen Moshier <steve@moshier.net>
+# Date: Sat, Jun 9, 2018 at 2:36 PM
+# Subject: Re: Licensing cephes under Apache (BSD-like) license.
+# To: rif <rif@google.com>
+#
+#
+#
+# Hello Rif,
+#
+# Yes, Google may distribute Cephes files under the Apache 2 license.
+#
+# If clarification is needed, I do not favor BSD over other free licenses.
+# I would agree that Apache 2 seems to cover the concern you mentioned
+# about sublicensees.
+#
+# Best wishes for good luck with your projects!
+# Steve Moshier
+#
+#
+#
+# On Thu, 31 May 2018, rif wrote:
+#
+# > Hello Steve.
+# > My name is Rif. I work on machine learning software at Google.
+# >
+# > Your cephes software continues to be incredibly useful and widely used. I
+# > was wondering whether it would be permissible for us to use the Cephes code
+# > under the Apache 2.0 license, which is extremely similar in permissions to
+# > the BSD license (Wikipedia comparisons). This would be quite helpful to us
+# > in terms of avoiding multiple licenses on software.
+# >
+# > I'm sorry to bother you with this (I can imagine you're sick of hearing
+# > about this by now), but I want to be absolutely clear we're on the level and
+# > not misusing your important software. In former conversation with Eugene
+# > Brevdo (ebrevdo@google.com), you wrote "If your licensing is similar to BSD,
+# > the formal way that has been handled is simply to add a statement to the
+# > effect that you are incorporating the Cephes software by permission of the
+# > author." I wanted to confirm that (a) we could use the Apache license, (b)
+# > that we don't need to (and probably you don't want to) keep getting
+# > contacted about individual uses, because your intent is generally to allow
+# > this software to be reused under "BSD-like" license, and (c) you're OK
+# > letting incorporators decide whether a license is sufficiently BSD-like?
+# >
+# > Best,
+# >
+# > rif
+# >
+# >
+# >
+
 """Special Math Ops."""
 
 from __future__ import absolute_import
@@ -93,11 +149,10 @@ def _ndtr(x):
       0.5 * np.sqrt(2.), dtype=x.dtype, name="half_sqrt_2")
   w = x * half_sqrt_2
   z = math_ops.abs(w)
-  y = array_ops.where(math_ops.less(z, half_sqrt_2),
-                      1. + math_ops.erf(w),
-                      array_ops.where(math_ops.greater(w, 0.),
-                                      2. - math_ops.erfc(z),
-                                      math_ops.erfc(z)))
+  y = array_ops.where_v2(
+      math_ops.less(z, half_sqrt_2), 1. + math_ops.erf(w),
+      array_ops.where_v2(
+          math_ops.greater(w, 0.), 2. - math_ops.erfc(z), math_ops.erfc(z)))
   return 0.5 * y
 
 
@@ -135,7 +190,7 @@ def _ndtri(p):
 
   # Constants used in piece-wise rational approximations. Taken from the cephes
   # library:
-  # https://github.com/scipy/scipy/blob/master/scipy/special/cephes/ndtri.c
+  # https://root.cern.ch/doc/v608/SpecFuncCephesInv_8cxx_source.html
   p0 = list(reversed([-5.99633501014107895267E1,
                       9.80010754185999661536E1,
                       -5.66762857469070293439E1,
@@ -194,11 +249,11 @@ def _ndtri(p):
       return array_ops.zeros_like(var)
     return coeffs[0] + _create_polynomial(var, coeffs[1:]) * var
 
-  maybe_complement_p = array_ops.where(p > -np.expm1(-2.), 1. - p, p)
+  maybe_complement_p = array_ops.where_v2(p > -np.expm1(-2.), 1. - p, p)
   # Write in an arbitrary value in place of 0 for p since 0 will cause NaNs
   # later on. The result from the computation when p == 0 is not used so any
   # number that doesn't result in NaNs is fine.
-  sanitized_mcp = array_ops.where(
+  sanitized_mcp = array_ops.where_v2(
       maybe_complement_p <= 0.,
       array_ops.fill(array_ops.shape(p), np.array(0.5, p.dtype.as_numpy_dtype)),
       maybe_complement_p)
@@ -224,15 +279,15 @@ def _ndtri(p):
   x_for_small_p = first_term - second_term_small_p
   x_otherwise = first_term - second_term_otherwise
 
-  x = array_ops.where(sanitized_mcp > np.exp(-2.),
-                      x_for_big_p,
-                      array_ops.where(z >= 8.0, x_for_small_p, x_otherwise))
+  x = array_ops.where_v2(
+      sanitized_mcp > np.exp(-2.), x_for_big_p,
+      array_ops.where_v2(z >= 8.0, x_for_small_p, x_otherwise))
 
-  x = array_ops.where(p > 1. - np.exp(-2.), x, -x)
+  x = array_ops.where_v2(p > 1. - np.exp(-2.), x, -x)
   infinity_scalar = constant_op.constant(np.inf, dtype=p.dtype)
   infinity = array_ops.fill(array_ops.shape(p), infinity_scalar)
-  x_nan_replaced = array_ops.where(
-      p <= 0.0, -infinity, array_ops.where(p >= 1.0, infinity, x))
+  x_nan_replaced = array_ops.where_v2(p <= 0.0, -infinity,
+                                      array_ops.where_v2(p >= 1.0, infinity, x))
   return x_nan_replaced
 
 
@@ -305,7 +360,8 @@ def log_ndtr(x, series_order=3, name="log_ndtr"):
     else:
       raise TypeError("x.dtype=%s is not supported." % x.dtype)
 
-    # The basic idea here was ported from py/scipy/special/cephes/ndtr.c.
+    # The basic idea here was ported from:
+    #   https://root.cern.ch/doc/v608/SpecFuncCephesInv_8cxx_source.html
     # We copy the main idea, with a few changes
     # * For x >> 1, and X ~ Normal(0, 1),
     #     Log[P[X < x]] = Log[1 - P[X < -x]] approx -P[X < -x],
@@ -318,13 +374,13 @@ def log_ndtr(x, series_order=3, name="log_ndtr"):
     #   the gradient of a select involves the calculation 1*dy+0*(-inf)=nan
     #   regardless of whether dy is finite. Note that the minimum is a NOP if
     #   the branch is chosen.
-    return array_ops.where(
+    return array_ops.where_v2(
         math_ops.greater(x, upper_segment),
         -_ndtr(-x),  # log(1-x) ~= -x, x << 1
-        array_ops.where(math_ops.greater(x, lower_segment),
-                        math_ops.log(_ndtr(math_ops.maximum(x, lower_segment))),
-                        _log_ndtr_lower(math_ops.minimum(x, lower_segment),
-                                        series_order)))
+        array_ops.where_v2(
+            math_ops.greater(x, lower_segment),
+            math_ops.log(_ndtr(math_ops.maximum(x, lower_segment))),
+            _log_ndtr_lower(math_ops.minimum(x, lower_segment), series_order)))
 
 
 def _log_ndtr_lower(x, series_order):
@@ -427,4 +483,4 @@ def log_cdf_laplace(x, name="log_cdf_laplace"):
     # internally by log1p, rather than being done explicitly here.
     upper_solution = math_ops.log1p(-0.5 * safe_exp_neg_x)
 
-    return array_ops.where(x < 0., lower_solution, upper_solution)
+    return array_ops.where_v2(x < 0., lower_solution, upper_solution)

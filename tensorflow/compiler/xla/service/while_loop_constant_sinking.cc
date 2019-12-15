@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
+#include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace xla {
 
@@ -32,7 +32,7 @@ static Status ReplaceUsesWhileKeepingLoopInvariance(
 
   std::vector<HloInstruction*> users;
   users.reserve(old_instr->user_count());
-  c_copy(old_instr->users(), std::back_inserter(users));
+  absl::c_copy(old_instr->users(), std::back_inserter(users));
 
   for (auto* user : users) {
     for (int64 i = 0, e = user->operand_count(); i < e; i++) {
@@ -46,8 +46,9 @@ static Status ReplaceUsesWhileKeepingLoopInvariance(
   return Status::OK();
 }
 
-StatusOr<bool> WhileLoopConstantSinking::TrySinkingConstantsIntoWhileBody(
+StatusOr<bool> WhileLoopConstantSinking::TrySinkingConstantsIntoWhileLoop(
     HloInstruction* while_instr) {
+  HloComputation* while_cond = while_instr->while_condition();
   HloComputation* while_body = while_instr->while_body();
 
   const HloInstruction& init_value = *while_instr->operand(0);
@@ -57,23 +58,47 @@ StatusOr<bool> WhileLoopConstantSinking::TrySinkingConstantsIntoWhileBody(
 
   bool changed = false;
 
-  for (HloInstruction* invariant_gte :
-       WhileUtil::GetInvariantGTEsForWhileBody(*while_body)) {
-    int64 index = invariant_gte->tuple_index();
+  absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>
+      conditional_gte_index_to_insts =
+          WhileUtil::GetGTEsMapForWhileConditional(*while_cond);
+  std::vector<HloInstruction*> invariant_body_gtes =
+      WhileUtil::GetInvariantGTEsForWhileBody(*while_body);
+
+  for (HloInstruction* invariant_body_gte : invariant_body_gtes) {
+    int64 index = invariant_body_gte->tuple_index();
     const HloInstruction& invariant_value = *init_value.operand(index);
 
-    // Should have at least one user that's not while_body_root.
-    if (invariant_gte->user_count() <= 1) {
+    // Original value should be a constant.
+    if (invariant_value.opcode() != HloOpcode::kConstant) {
       continue;
     }
 
-    if (invariant_value.opcode() == HloOpcode::kConstant) {
-      auto* constant_instr =
+    // Sink into the while_body.
+    // Should have at least one user that's not while_body_root.
+    if (invariant_body_gte->user_count() > 1) {
+      HloInstruction* constant_instr =
           while_body->AddInstruction(invariant_value.Clone(/*suffix=*/".sunk"));
       TF_RETURN_IF_ERROR(ReplaceUsesWhileKeepingLoopInvariance(
-          invariant_gte, constant_instr, while_body->root_instruction(),
+          invariant_body_gte, constant_instr, while_body->root_instruction(),
           index));
       changed = true;
+    }
+
+    // Check if there is a corresponding GTE in while_conditional.
+    auto it = conditional_gte_index_to_insts.find(index);
+    if (it == conditional_gte_index_to_insts.end()) {
+      continue;
+    }
+
+    for (HloInstruction* invariant_cond_gte : it->second) {
+      // Should have at least one user.
+      if (invariant_cond_gte->user_count() > 0) {
+        HloInstruction* constant_instr = while_cond->AddInstruction(
+            invariant_value.Clone(/*suffix=*/".sunk"));
+        TF_RETURN_IF_ERROR(
+            invariant_cond_gte->ReplaceAllUsesWith(constant_instr));
+        changed = true;
+      }
     }
   }
 
@@ -108,17 +133,15 @@ StatusOr<bool> WhileLoopConstantSinking::Run(HloModule* module) {
     //
     // This will let us sink the constant into the outer while first and then
     // into the inner while in a single run of this pass.
-    c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
-              [](const HloInstruction* instr) {
-                return instr->opcode() == HloOpcode::kWhile;
-              });
+    absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
+                    [](const HloInstruction* instr) {
+                      return instr->opcode() == HloOpcode::kWhile;
+                    });
   }
 
   for (HloInstruction* while_instr : while_instrs) {
-    // We only sink into while loop bodies, but this can be extended to
-    // transform conditions as well.
     TF_ASSIGN_OR_RETURN(bool result,
-                        TrySinkingConstantsIntoWhileBody(while_instr));
+                        TrySinkingConstantsIntoWhileLoop(while_instr));
     changed |= result;
   }
 

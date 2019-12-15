@@ -20,14 +20,14 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/kernels/conv_grad_ops.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -50,11 +50,43 @@ class GenericFftOp : public XlaOpKernel {
         errors::InvalidArgument("input must be at least 1 dimensional"));
 
     std::vector<int64> fft_length;
+    xla::XlaOp input = ctx->Input(0);
     if (fft_type_ == FftType::RFFT || fft_type_ == FftType::IRFFT) {
       OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &fft_length));
       OP_REQUIRES(ctx, fft_length.size() == fft_rank_,
                   errors::InvalidArgument("fft_length must be length ",
                                           fft_rank_, " vector"));
+
+      // Zero pad or truncate the axes we're doing FFT on.
+      absl::InlinedVector<int64, 4> slice_sizes = input_shape.dim_sizes();
+      std::vector<std::pair<int64, int64>> padding_sizes(slice_sizes.size());
+      std::vector<int64> expected_sizes = fft_length;
+      // IRFFT wants the innermost axis to be n / 2 + 1.
+      if (fft_type_ == FftType::IRFFT) {
+        expected_sizes[fft_rank_ - 1] = fft_length[fft_rank_ - 1] / 2 + 1;
+      }
+      for (int i = 0; i < fft_rank_; i++) {
+        int index = input_shape.dims() - fft_rank_ + i;
+        OP_REQUIRES(
+            ctx,
+            input_shape.dim_size(index) == 0 ||
+                input_shape.dim_size(index) >= expected_sizes[i],
+            errors::InvalidArgument(
+                "Input dimension ", index, " must have length of at least ",
+                expected_sizes[i], " but got: ", input_shape.dim_size(index)));
+        if (input_shape.dim_size(index) > expected_sizes[i]) {
+          slice_sizes[index] = expected_sizes[i];
+        } else {
+          padding_sizes[index].second =
+              expected_sizes[i] - input_shape.dim_size(index);
+        }
+      }
+
+      std::vector<int64> start_indices(input_shape.dims(), 0);
+      std::vector<int64> strides(input_shape.dims(), 1);
+      input = xla::Pad(xla::Slice(input, start_indices, slice_sizes, strides),
+                       XlaHelpers::Zero(ctx->builder(), ctx->input_type(0)),
+                       xla::MakeEdgePaddingConfig(padding_sizes));
     } else {
       // Innermost axis provides the FFT length.
       for (int i = 0; i < fft_rank_; i++) {
@@ -63,7 +95,7 @@ class GenericFftOp : public XlaOpKernel {
       }
     }
 
-    xla::XlaOp fft = xla::Fft(ctx->Input(0), fft_type_, fft_length);
+    xla::XlaOp fft = xla::Fft(input, fft_type_, fft_length);
     ctx->SetOutput(0, fft);
   }
 
@@ -106,9 +138,21 @@ class RFFTOp : public GenericFftOp {
   explicit RFFTOp(OpKernelConstruction* ctx)
       : GenericFftOp(ctx, /*fft_type=*/FftType::RFFT, /*fft_rank=*/FFTRank) {}
 };
-REGISTER_XLA_OP(Name("RFFT").CompileTimeConstInput("fft_length"), RFFTOp<1>);
-REGISTER_XLA_OP(Name("RFFT2D").CompileTimeConstInput("fft_length"), RFFTOp<2>);
-REGISTER_XLA_OP(Name("RFFT3D").CompileTimeConstInput("fft_length"), RFFTOp<3>);
+REGISTER_XLA_OP(Name("RFFT")
+                    .TypeConstraint("Treal", DT_FLOAT)
+                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .CompileTimeConstantInput("fft_length"),
+                RFFTOp<1>);
+REGISTER_XLA_OP(Name("RFFT2D")
+                    .TypeConstraint("Treal", DT_FLOAT)
+                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .CompileTimeConstantInput("fft_length"),
+                RFFTOp<2>);
+REGISTER_XLA_OP(Name("RFFT3D")
+                    .TypeConstraint("Treal", DT_FLOAT)
+                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .CompileTimeConstantInput("fft_length"),
+                RFFTOp<3>);
 
 template <int FFTRank>
 class IRFFTOp : public GenericFftOp {
@@ -116,10 +160,20 @@ class IRFFTOp : public GenericFftOp {
   explicit IRFFTOp(OpKernelConstruction* ctx)
       : GenericFftOp(ctx, /*fft_type=*/FftType::IRFFT, /*fft_rank=*/FFTRank) {}
 };
-REGISTER_XLA_OP(Name("IRFFT").CompileTimeConstInput("fft_length"), IRFFTOp<1>);
-REGISTER_XLA_OP(Name("IRFFT2D").CompileTimeConstInput("fft_length"),
+REGISTER_XLA_OP(Name("IRFFT")
+                    .TypeConstraint("Treal", DT_FLOAT)
+                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .CompileTimeConstantInput("fft_length"),
+                IRFFTOp<1>);
+REGISTER_XLA_OP(Name("IRFFT2D")
+                    .TypeConstraint("Treal", DT_FLOAT)
+                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .CompileTimeConstantInput("fft_length"),
                 IRFFTOp<2>);
-REGISTER_XLA_OP(Name("IRFFT3D").CompileTimeConstInput("fft_length"),
+REGISTER_XLA_OP(Name("IRFFT3D")
+                    .TypeConstraint("Treal", DT_FLOAT)
+                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .CompileTimeConstantInput("fft_length"),
                 IRFFTOp<3>);
 
 }  // namespace

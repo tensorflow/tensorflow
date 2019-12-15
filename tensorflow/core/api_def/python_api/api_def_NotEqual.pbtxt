@@ -1,10 +1,4 @@
 op {
   graph_op_name: "NotEqual"
-  endpoint {
-    name: "math.not_equal"
-  }
-  endpoint {
-    name: "not_equal"
-    deprecated: true
-  }
+  visibility: HIDDEN
 }

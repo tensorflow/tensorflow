@@ -81,8 +81,9 @@ class FlattenCallGraphTest : public HloTestBase {
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     HloInstruction* zero = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
-    builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt, param0, zero));
+    builder.AddInstruction(
+        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param0,
+                                      zero, ComparisonDirection::kGt));
     return builder.Build();
   }
 
@@ -108,7 +109,7 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
   //    c
   //
   // Calls are made via kCall, kWhile, and kMap instructions.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* cond_computation =
       module->AddEmbeddedComputation(MakeConditionComputation());
   HloComputation* c_computation =
@@ -149,7 +150,7 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
 
 // Test corner case of a computation used as a body and a loop condition.
 TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* cond_computation;
   {
     HloComputation::Builder builder(TestName() + ".cond");
@@ -158,9 +159,9 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
             0, ShapeUtil::MakeShape(PRED, {}), "param0"));
     HloInstruction* false_constant = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-    builder.AddInstruction(
-        HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
-                                     HloOpcode::kEq, param0, false_constant));
+    builder.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), param0, false_constant,
+        ComparisonDirection::kEq));
     cond_computation = module->AddEmbeddedComputation(builder.Build());
   }
 
@@ -201,7 +202,7 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
 //     C
 //
 TEST_F(FlattenCallGraphTest, FlattenCalls) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* c_computation =
       module->AddEmbeddedComputation(MakeScalarComputation());
 
@@ -224,7 +225,7 @@ TEST_F(FlattenCallGraphTest, FlattenCalls) {
 }
 
 TEST_F(FlattenCallGraphTest, FlattenCallsInConditional) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* sub_computation =
       module->AddEmbeddedComputation(MakeScalarComputation());
 

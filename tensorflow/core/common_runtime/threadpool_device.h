@@ -29,7 +29,6 @@ class ThreadPoolDevice : public LocalDevice {
                    Allocator* allocator);
   ~ThreadPoolDevice() override;
 
-  void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
   Allocator* GetAllocator(AllocatorAttributes attr) override;
   Allocator* GetScopedAllocator(AllocatorAttributes attr,
                                 int64 step_id) override;
@@ -39,6 +38,9 @@ class ThreadPoolDevice : public LocalDevice {
   Status MakeTensorFromProto(const TensorProto& tensor_proto,
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override;
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
+                              const DeviceContext* device_context,
+                              StatusCallback done) override;
 
   Status Sync() override { return Status::OK(); }
 

@@ -1,0 +1,25 @@
+op {
+  name: "OutfeedDequeueTuple"
+  output_arg {
+    name: "outputs"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "shapes"
+    type: "list(shape)"
+  }
+  attr {
+    name: "device_ordinal"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  is_stateful: true
+}

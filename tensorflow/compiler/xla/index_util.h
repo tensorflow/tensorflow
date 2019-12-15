@@ -20,9 +20,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace xla {
@@ -35,7 +36,7 @@ class IndexUtil {
   // on the shape and its layout. The first index in the multi_index is
   // dimension 0.
   static int64 MultidimensionalIndexToLinearIndex(
-      const Shape& shape, tensorflow::gtl::ArraySlice<int64> multi_index);
+      const Shape& shape, absl::Span<const int64> multi_index);
 
   // Converts a linear index into multidimensional index (eg {x, y, z}) based on
   // the shape and its layout. The first index in the returned multidimensional
@@ -58,12 +59,10 @@ class IndexUtil {
   //
   // Returns true iff the indices were successfully bumped; false if we've hit
   // the limit where it can no longer be bumped in-bounds.
-  static bool BumpIndices(const Shape& shape,
-                          tensorflow::gtl::MutableArraySlice<int64> indices);
+  static bool BumpIndices(const Shape& shape, absl::Span<int64> indices);
 
   // Calculates the stride size (in number of elements, not byte size) of a
-  // given logical shape dimension (from 0 to rank-1). If available, padded
-  // dimensions are used.
+  // given logical shape dimension (from 0 to rank-1).
   // Example:
   //  GetDimensionStride(F32[5,8,10,4]{3,2,1,0}, 1) ==
   //    sizeof(dimension(3)) * sizeof(dimension(2)) == 4 * 10
@@ -71,15 +70,14 @@ class IndexUtil {
 
   // Returns true iff the given multi-index is contained in the bounds for the
   // shape.
-  static bool IndexInBounds(const Shape& shape,
-                            tensorflow::gtl::ArraySlice<int64> index);
+  static bool IndexInBounds(const Shape& shape, absl::Span<const int64> index);
 
   // Compares the given indices in lexicographic order.  lhs[0] and rhs[0] are
   // compared first, and lhs[rank-1] and rhs[rank-1] last.  If lhs is larger,
   // then -1 is returned. If rhs is larger, then 1 is returned.  Otherwise, 0 is
   // returned.
-  static int CompareIndices(tensorflow::gtl::ArraySlice<int64> lhs,
-                            tensorflow::gtl::ArraySlice<int64> rhs);
+  static int CompareIndices(absl::Span<const int64> lhs,
+                            absl::Span<const int64> rhs);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(IndexUtil);

@@ -1,17 +1,16 @@
 # Description:
 #   TensorFlow C++ inference example for labeling images.
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
 exports_files(["data/grace_hopper.jpg"])
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 tf_cc_binary(
     name = "label_image",
@@ -57,6 +56,7 @@ py_binary(
     name = "label_image_py",
     srcs = ["label_image.py"],
     main = "label_image.py",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",

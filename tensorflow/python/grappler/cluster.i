@@ -131,8 +131,8 @@ struct GCluster {
 
 
 static GCluster TF_NewCluster(bool allow_soft_placement,
-                   bool disable_detailed_stats, TF_Status* out_status) {
-    int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
+                   bool disable_detailed_stats, TF_Status* status) {
+  int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
   int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
   int timeout_s = 60 * 10;
   tensorflow::grappler::Cluster* cluster_ =
@@ -141,24 +141,23 @@ static GCluster TF_NewCluster(bool allow_soft_placement,
   cluster_->DisableDetailedStats(disable_detailed_stats);
   cluster_->AllowSoftPlacement(allow_soft_placement);
   cluster_->SetNumWarmupSteps(10);
-  tensorflow::Status status = cluster_->Provision();
-  tensorflow::Set_TF_Status_from_Status(out_status, status);
+  tensorflow::Status s = cluster_->Provision();
+  tensorflow::Set_TF_Status_from_Status(status, s);
   return GCluster(cluster_);
 }
 
 static GCluster TF_NewVirtualCluster(
-    const std::vector<tensorflow::NamedDevice>& named_devices,
-    TF_Status* out_status) {
+    const std::vector<tensorflow::NamedDevice>& named_devices, TF_Status* status) {
   std::unordered_map<string, tensorflow::DeviceProperties> devices;
   for (const auto& named_device : named_devices) {
     devices[named_device.name()]= named_device.properties();
   }
-  tensorflow::grappler::Cluster*cluster_ =
+  tensorflow::grappler::Cluster* cluster_ =
       new tensorflow::grappler::VirtualCluster(devices);
   PyGILState_STATE gstate = PyGILState_Ensure();
-  tensorflow::Status status = cluster_->Provision();
+  tensorflow::Status s = cluster_->Provision();
   PyGILState_Release(gstate);
-  tensorflow::Set_TF_Status_from_Status(out_status, status);
+  tensorflow::Set_TF_Status_from_Status(status, s);
   return GCluster(cluster_);
 }
 
@@ -176,13 +175,13 @@ tensorflow::Status _GetOpPerformanceDataAndRunTime(
   tensorflow::Status status = cost_measure->Initialize(item);
   if (!status.ok()) return status;
 
-  tensorflow::CostGraphDef cost_graph;
+  tensorflow::RunMetadata run_metadata;
   TF_RETURN_IF_ERROR(
-      cost_measure->PredictCosts(item.graph, &cost_graph, costs));
+      cost_measure->PredictCosts(item.graph, &run_metadata, costs));
 
   if (op_performance_data) {
     *op_performance_data = tensorflow::grappler::CostGraphToOpPerformanceData(
-        cost_graph, item.graph);
+        run_metadata.cost_graph(), item.graph);
   }
   return tensorflow::Status::OK();
 }
@@ -308,7 +307,7 @@ static PyObject* TF_GetSupportedDevices(GCluster cluster, GItem item) {
 
 static double TF_EstimatePerformance(const tensorflow::NamedDevice& device) {
   tensorflow::grappler::OpLevelCostEstimator estimator;
-  tensorflow::grappler::OpLevelCostEstimator::DeviceInfo info =
+  tensorflow::grappler::DeviceInfo info =
       estimator.GetDeviceInfo(device.properties());
   return info.gigaops;
 }
@@ -316,7 +315,7 @@ static double TF_EstimatePerformance(const tensorflow::NamedDevice& device) {
 static PyObject* TF_MeasureCosts(
     GItem item,
     GCluster cluster,
-    bool generate_timeline, TF_Status* out_status) {
+    bool generate_timeline, TF_Status* status) {
   tensorflow::OpPerformanceList op_performance_data;
   tensorflow::StepStats step_stats;
 
@@ -324,25 +323,25 @@ static PyObject* TF_MeasureCosts(
   tensorflow::grappler::MeasuringCostEstimator cost_measure(cluster.get(), num_measurements, 0);
 
   tensorflow::grappler::Costs costs;
-  tensorflow::Status status = _GetOpPerformanceDataAndRunTime(
+  tensorflow::Status s = _GetOpPerformanceDataAndRunTime(
       *item, &cost_measure, &op_performance_data, &costs);
   double run_time = FLT_MAX;
-  if (status.ok()) {
+  if (s.ok()) {
     run_time = static_cast<double>(costs.execution_time.count()) / 1e9;
   }
   if (generate_timeline) {
     tensorflow::RunMetadata metadata;
-    tensorflow::Status s = cluster->Run(
+    tensorflow::Status run_status = cluster->Run(
         item->graph, item->feed, item->fetch, &metadata);
-    if (s.ok()) {
+    if (run_status.ok()) {
       step_stats = metadata.step_stats();
     } else {
-      status = s;
+      s = run_status;
     }
   }
 
-  tensorflow::Set_TF_Status_from_Status(out_status, status);
-  if (!status.ok()) {
+  tensorflow::Set_TF_Status_from_Status(status, s);
+  if (!s.ok()) {
     Py_RETURN_NONE;
   }
   PyGILState_STATE gstate = PyGILState_Ensure();
@@ -370,9 +369,9 @@ static PyObject* TF_MeasureCosts(
     Py_XDECREF(op_perf_objs);
     Py_XDECREF(run_time_obj);
     Py_XDECREF(metadata_obj);
-    status = tensorflow::Status(tensorflow::error::Code::INTERNAL,
-                                "Error setting return tuples.");
-    tensorflow::Set_TF_Status_from_Status(out_status, status);
+    s = tensorflow::Status(tensorflow::error::Code::INTERNAL,
+                           "Error setting return tuples.");
+    tensorflow::Set_TF_Status_from_Status(status, s);
     Py_INCREF(Py_None);
     ret = Py_None;
   }
@@ -384,23 +383,23 @@ static PyObject* TF_MeasureCosts(
 static PyObject* TF_DeterminePeakMemoryUsage(
     GItem item,
     GCluster cluster,
-    TF_Status* out_status) {
+    TF_Status* status) {
   if (item.is_none() || cluster.is_none()) {
-    tensorflow::Status status(tensorflow::error::Code::INTERNAL,
-                              "You need both a cluster and an item to determine peak memory usage");
-    tensorflow::Set_TF_Status_from_Status(out_status, status);
+    tensorflow::Status s(tensorflow::error::Code::INTERNAL,
+                         "You need both a cluster and an item to determine peak memory usage");
+    tensorflow::Set_TF_Status_from_Status(status, s);
     Py_RETURN_NONE;
   }
   tensorflow::grappler::GraphMemory memory(*item);
 
-  tensorflow::Status status;
+  tensorflow::Status s;
   if (cluster->DetailedStatsEnabled()) {
-    status = memory.InferDynamically(cluster.get());
+    s = memory.InferDynamically(cluster.get());
   } else {
-    status = memory.InferStatically(cluster->GetDevices());
+    s = memory.InferStatically(cluster->GetDevices());
   }
-  if (!status.ok()) {
-    tensorflow::Set_TF_Status_from_Status(out_status, status);
+  if (!s.ok()) {
+    tensorflow::Set_TF_Status_from_Status(status, s);
     Py_RETURN_NONE;
   }
 
@@ -434,10 +433,10 @@ static PyObject* TF_DeterminePeakMemoryUsage(
 
 // Wrap these functions.
 static GCluster TF_NewCluster(
-    bool allow_soft_placement, bool disable_detailed_stats, TF_Status* out_status);
+    bool allow_soft_placement, bool disable_detailed_stats, TF_Status* status);
 static GCluster TF_NewVirtualCluster(
     const std::vector<tensorflow::NamedDevice>& named_devices,
-    TF_Status* out_status);
+    TF_Status* status);
 static void TF_ShutdownCluster(GCluster cluster);
 static PyObject* TF_ListDevices(GCluster cluster);
 static PyObject* TF_ListAvailableOps();
@@ -445,7 +444,7 @@ static PyObject* TF_GetSupportedDevices(GCluster cluster, GItem item);
 static float TF_EstimatePerformance(const tensorflow::NamedDevice& device);
 static PyObject* TF_MeasureCosts(
     GItem item, GCluster cluster,
-    bool generate_timeline, TF_Status* out_status);
+    bool generate_timeline, TF_Status* status);
 static PyObject* TF_DeterminePeakMemoryUsage(
     GItem item, GCluster cluster,
-    TF_Status* out_status);
+    TF_Status* status);

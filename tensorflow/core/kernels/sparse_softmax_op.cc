@@ -62,12 +62,8 @@ class SparseSoftmaxOp : public OpKernel {
                 errors::InvalidArgument(
                     "Input should have rank >= 2, but received shape: ",
                     shape_t->SummarizeValue(3)));
-    OP_REQUIRES(context,
-                indices_t->dim_size(0) < std::numeric_limits<int>::max(),
-                errors::InvalidArgument(
-                    "Number of non-zero elements exceeds int32 range"));
 
-    const int nnz = static_cast<int>(indices_t->dim_size(0));
+    const int64 nnz = indices_t->dim_size(0);
     const int rank = static_cast<int>(indices_t->dim_size(1));
     SparseTensor st;
     OP_REQUIRES_OK(
@@ -90,7 +86,7 @@ class SparseSoftmaxOp : public OpKernel {
     // { 0, ..., rank-1 }.
     const ArraySlice<int64> kReorderDims(dims);
     // All but the last dim -- the class dimension to be max-reduced along.
-    const ArraySlice<int64> kGroupByDims(kReorderDims, 0, rank - 1);
+    const ArraySlice<int64> kGroupByDims = kReorderDims.subspan(0, rank - 1);
     st.Reorder<T>(kReorderDims);
     int count = 0;
 

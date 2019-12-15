@@ -22,10 +22,10 @@ limitations under the License.
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -40,7 +40,7 @@ ParallelLoopEmitter::ParallelLoopEmitter(
 
 ParallelLoopEmitter::ParallelLoopEmitter(
     const llvm_ir::ElementGenerator& target_element_generator,
-    tensorflow::gtl::ArraySlice<llvm_ir::IrArray> target_arrays,
+    absl::Span<const llvm_ir::IrArray> target_arrays,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b,
     int unroll_factor)
     : LoopEmitter(target_element_generator, target_arrays, b),
@@ -57,8 +57,8 @@ ParallelLoopEmitter::ParallelLoopEmitter(
       unroll_factor_(unroll_factor) {}
 
 std::vector<llvm_ir::IrArray::Index>
-ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
-    tensorflow::StringPiece loop_name, llvm::Type* index_type) {
+ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
+                                                   llvm::Type* index_type) {
   // Emit the following code in LLVM IR:
   //   linear_index = blockIdx.x * blockDim.x + threadIdx.x;
   //   if (linear_index < num_elements) {
@@ -73,8 +73,8 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
   VLOG(3) << "EmitIndexAndSetExitBasicBlock unroll_factor " << unroll_factor_;
   CHECK_NE(index_type, nullptr);
   std::vector<llvm_ir::IrArray::Index> array_indices;
-  llvm::Value* block_id = llvm_ir::EmitCallToIntrinsic(
-      llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x, {}, {}, b_);
+  llvm::Value* block_id =
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b_);
   llvm_ir::AddRangeMetadata(0, launch_dimensions_.block_count(),
                             static_cast<llvm::Instruction*>(block_id));
   block_id = b_->CreateZExtOrTrunc(block_id, index_type, "block_id");
@@ -83,8 +83,8 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
   //   "It is guaranteed that [...] 0  <=  %tid.x <  %ntid.x"
   //
   // %ntid.x is currently specified as 1024.
-  llvm::Value* thread_id = llvm_ir::EmitCallToIntrinsic(
-      llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, b_);
+  llvm::Value* thread_id =
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b_);
   llvm_ir::AddRangeMetadata(0, launch_dimensions_.threads_per_block(),
                             static_cast<llvm::Instruction*>(thread_id));
   thread_id = b_->CreateZExtOrTrunc(thread_id, index_type, "thread_id");

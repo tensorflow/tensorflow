@@ -1,0 +1,12 @@
+op {
+  name: "WorkerHeartbeat"
+  input_arg {
+    name: "request"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "response"
+    type: DT_STRING
+  }
+  is_stateful: true
+}

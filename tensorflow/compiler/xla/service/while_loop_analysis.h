@@ -16,18 +16,30 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_ANALYSIS_H_
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 
 namespace xla {
 
 // Returns the precise trip count of the loop if it's statically known,
-// nullopt otherwise. max_value_returned limits the number of steps that are
-// evaluated while trying to brute force a loop trip count, trip counts larger
-// than max_value_returned result in nullopt.
-tensorflow::gtl::optional<int64> ComputeWhileLoopTripCount(
-    HloInstruction *while_op, int64 max_value_returned = 128);
+// nullopt otherwise.
+//
+// max_brute_force_iters limits the number of steps that are evaluated while
+// trying to brute force a loop trip count. trip counts larger than
+// max_brute_force_iters may be returned if we can pattern-match the loop
+// condition.
+absl::optional<int64> ComputeWhileLoopTripCount(
+    HloInstruction *while_op, int64 max_brute_force_iters = 128);
 
+// Returns an upper bound on the trip count of the loop if it's statically
+// known, nullopt otherwise.
+absl::optional<int64> ComputeWhileLoopTripCountUpperBound(
+    HloInstruction *while_op);
+
+// Returns the tuple index of the loop induction variable if there is such an
+// induction variable detected. Otherwise returns nullopt.
+absl::optional<int64> GetLoopInductionVarTupleIdx(
+    const HloInstruction *while_op);
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_ANALYSIS_H_

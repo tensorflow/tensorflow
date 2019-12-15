@@ -26,13 +26,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -116,6 +114,21 @@ class Array4D : public Array<T> {
         for (int64 height = 0; height < this->height(); ++height) {
           for (int64 width = 0; width < this->width(); ++width) {
             (*this)(plane, depth, height, width) = value(height, width);
+          }
+        }
+      }
+    }
+  }
+
+  // Fills all of the {p,x} with the array provided, which specifies {z,y}.
+  void FillWithZY(const Array2D<T>& value) {
+    CHECK_EQ(value.height(), depth());
+    CHECK_EQ(value.width(), height());
+    for (int64 plane = 0; plane < planes(); ++plane) {
+      for (int64 depth = 0; depth < this->depth(); ++depth) {
+        for (int64 height = 0; height < this->height(); ++height) {
+          for (int64 width = 0; width < this->width(); ++width) {
+            (*this)(plane, depth, height, width) = value(depth, height);
           }
         }
       }

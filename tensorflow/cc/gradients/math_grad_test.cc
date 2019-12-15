@@ -33,6 +33,7 @@ using ops::AddN;
 using ops::BatchMatMul;
 using ops::Const;
 using ops::Div;
+using ops::DivNoNan;
 using ops::MatMul;
 using ops::Max;
 using ops::Maximum;
@@ -48,7 +49,6 @@ using ops::SegmentSum;
 using ops::SquaredDifference;
 using ops::Sub;
 using ops::Sum;
-using ops::UnsafeDiv;
 
 // TODO(andydavis) Test gradient function against numeric gradients output.
 // TODO(andydavis) As more gradients are added move common test functions
@@ -89,7 +89,9 @@ class CWiseUnaryGradTest : public ::testing::Test {
     COMPLEX,
     ANGLE,
     LGAMMA,
-    ERF
+    ERF,
+    ERFINV,
+    NDTRI
   };
 
   template <typename X_T, typename Y_T>
@@ -199,6 +201,12 @@ class CWiseUnaryGradTest : public ::testing::Test {
         break;
       case ERF:
         y = Erf(scope_, x);
+        break;
+      case ERFINV:
+        y = Erfinv(scope_, x);
+        break;
+      case NDTRI:
+        y = Ndtri(scope_, x);
         break;
     }
 
@@ -567,6 +575,20 @@ TEST_F(CWiseUnaryGradTest, Erf_Complex) {
   }
 }
 
+TEST_F(CWiseUnaryGradTest, Ndtri) {
+  auto x_fn = [this](const int i) {
+    return RV({0.1, 0.2, 0.3, 0.5, 0.7, 0.9});
+  };
+  TestCWiseGrad<float, float>(NDTRI, x_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Erfinv) {
+  auto x_fn = [this](const int i) {
+    return RV({-0.9, -0.3, -0.1, 0.2, 0.6, 0.8});
+  };
+  TestCWiseGrad<float, float>(ERFINV, x_fn);
+}
+
 class MathGradTest : public ::testing::Test {
  protected:
   MathGradTest() : root_(Scope::NewRootScope().WithDevice("/cpu:0")) {}
@@ -854,13 +876,13 @@ TEST_F(NaryGradTest, RealDiv) {
   RunTest({x}, {x_shape}, {y}, {x_shape});
 }
 
-TEST_F(NaryGradTest, UnsafeDiv) {
+TEST_F(NaryGradTest, DivNoNan) {
   {
     TensorShape x_shape({3, 2, 5});
     const auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
     // Test x / (1 + |x|) rather than x_1 / x_2 to avoid triggering large
     // division errors in the numeric estimator used by the gradient checker.
-    const auto y = UnsafeDiv(
+    const auto y = DivNoNan(
         scope_, x, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x)));
     RunTest({x}, {x_shape}, {y}, {x_shape});
   }
@@ -868,7 +890,7 @@ TEST_F(NaryGradTest, UnsafeDiv) {
     // Return 0 gradient (rather than NaN) for division by zero.
     const auto x = Placeholder(scope_, DT_FLOAT);
     const auto zero = Const<float>(scope_, 0.0);
-    const auto y = UnsafeDiv(scope_, x, zero);
+    const auto y = DivNoNan(scope_, x, zero);
 
     std::vector<Output> grad_outputs;
     TF_EXPECT_OK(AddSymbolicGradients(scope_, {y}, {x}, &grad_outputs));

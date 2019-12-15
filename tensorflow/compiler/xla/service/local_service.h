@@ -18,18 +18,18 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/service.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 
@@ -48,7 +48,7 @@ class LocalService : public Service {
   // compiler is responsible for freeing any memory it allocates this way.
   StatusOr<std::unique_ptr<Executable>> CompileExecutable(
       const XlaComputation& computation,
-      const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
+      const absl::Span<const Shape* const> argument_layouts,
       const ExecutableBuildOptions& build_options);
 
   // Returns the device ordinal that corresponds to the given replica number.
@@ -62,6 +62,11 @@ class LocalService : public Service {
   // as long as the handle is valid.
   StatusOr<const ShapedBuffer*> GlobalDataToShapedBuffer(
       const GlobalDataHandle& data, int replica_number);
+
+  // Registers a vector of shaped buffers of device memory, one per replica, and
+  // returns a corresponding handle that can be used for talking to XLA clients.
+  StatusOr<GlobalDataHandle> RegisterReplicatedBuffers(
+      std::vector<ScopedShapedBuffer> replicated_buffers, const string& tag);
 
  private:
   explicit LocalService(const ServiceOptions& options,

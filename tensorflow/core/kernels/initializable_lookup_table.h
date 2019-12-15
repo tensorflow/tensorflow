@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_INITIALIZABLE_LOOKUP_TABLE_H_
-#define TENSORFLOW_KERNELS_INITIALIZABLE_LOOKUP_TABLE_H_
+#ifndef TENSORFLOW_CORE_KERNELS_INITIALIZABLE_LOOKUP_TABLE_H_
+#define TENSORFLOW_CORE_KERNELS_INITIALIZABLE_LOOKUP_TABLE_H_
+
+#include <atomic>
 
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/platform/macros.h"
@@ -51,6 +53,12 @@ class InitializableLookupTable : public LookupInterface {
         "Insert not supported by InitializableLookupTable implementations");
   }
 
+  // Returns errors::Unimplemented.
+  Status Remove(OpKernelContext* ctx, const Tensor& keys) final {
+    return errors::Unimplemented(
+        "Remove not supported by InitializableLookupTable implementations");
+  }
+
   Status ExportValues(OpKernelContext* context) override {
     return errors::Unimplemented(
         "ExportValues not supported by InitializableLookupTable "
@@ -58,18 +66,16 @@ class InitializableLookupTable : public LookupInterface {
   }
 
   Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
-                      const Tensor& values) final {
-    return errors::Unimplemented(
-        "ImportValues not supported by InitializableLookupTable "
-        "implementations");
-  }
+                      const Tensor& values) final;
 
   TensorShape key_shape() const final { return TensorShape(); }
 
   TensorShape value_shape() const final { return TensorShape(); }
 
   // Returns whether the table was initialized and is ready to serve lookups.
-  bool is_initialized() const { return is_initialized_; }
+  bool is_initialized() const {
+    return is_initialized_.load(std::memory_order_acquire);
+  }
 
   // Initializes the table from the given init table iterator.
   //
@@ -151,11 +157,66 @@ class InitializableLookupTable : public LookupInterface {
   virtual Status DoFind(const Tensor& keys, Tensor* values,
                         const Tensor& default_value) = 0;
 
+  virtual Status AreEntriesSame(const InitTableIterator& iter, bool* result);
+
   mutex mu_;
-  bool is_initialized_ = false;
+
+ private:
+  std::atomic<bool> is_initialized_{false};
+};
+
+// Iterator to initialize tables given 'keys' and 'values' tensors.
+//
+// The two tensors are returned in the first iteration. It doesn't loop
+// over each element of the tensor since insertions in the lookup table can
+// process batches.
+class KeyValueTensorIterator
+    : public InitializableLookupTable::InitTableIterator {
+ public:
+  // keys and values are not owned by the iterator.
+  explicit KeyValueTensorIterator(const Tensor* keys, const Tensor* values)
+      : keys_(keys), values_(values), valid_(true), status_(Status::OK()) {
+    TensorShape key_shape = keys_->shape();
+    if (!key_shape.IsSameSize(values_->shape())) {
+      valid_ = false;
+      status_ = errors::InvalidArgument(
+          "keys and values should have the same dimension.",
+          key_shape.DebugString(), " vs ", values_->shape().DebugString());
+    }
+    if (key_shape.num_elements() == 0) {
+      valid_ = false;
+      status_ =
+          errors::InvalidArgument("keys and values cannot be empty tensors.");
+    }
+  }
+
+  bool Valid() const override { return valid_; }
+
+  void Next() override {
+    valid_ = false;
+    status_ = errors::OutOfRange("No more data.");
+  }
+
+  const Tensor& keys() const override { return *keys_; }
+
+  const Tensor& values() const override { return *values_; }
+
+  Status status() const override { return status_; }
+
+  int64 total_size() const override {
+    return keys_ == nullptr ? -1 : keys_->NumElements();
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(KeyValueTensorIterator);
+
+  const Tensor* keys_;    // Doesn't own it.
+  const Tensor* values_;  // Doesn't own it.
+  bool valid_;            // true if the iterator points to an existing range.
+  Status status_;
 };
 
 }  // namespace lookup
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_INITIALIZABLE_LOOKUP_TABLE_H_
+#endif  // TENSORFLOW_CORE_KERNELS_INITIALIZABLE_LOOKUP_TABLE_H_

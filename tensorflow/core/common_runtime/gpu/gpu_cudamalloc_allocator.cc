@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #ifdef GOOGLE_CUDA
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #endif  // GOOGLE_CUDA
 
@@ -27,10 +27,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-GPUcudaMallocAllocator::GPUcudaMallocAllocator(VisitableAllocator* allocator,
-                                               CudaGpuId cuda_gpu_id)
+GPUcudaMallocAllocator::GPUcudaMallocAllocator(Allocator* allocator,
+                                               PlatformGpuId platform_gpu_id)
     : base_allocator_(allocator) {
-  stream_exec_ = GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
+  stream_exec_ =
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
 }
 
 GPUcudaMallocAllocator::~GPUcudaMallocAllocator() { delete base_allocator_; }
@@ -60,14 +61,10 @@ void GPUcudaMallocAllocator::DeallocateRaw(void* ptr) {
 #endif  // GOOGLE_CUDA
 }
 
-void GPUcudaMallocAllocator::AddAllocVisitor(Visitor visitor) {
-  return base_allocator_->AddAllocVisitor(visitor);
+absl::optional<AllocatorStats> GPUcudaMallocAllocator::GetStats() {
+  return base_allocator_->GetStats();
 }
 
-void GPUcudaMallocAllocator::AddFreeVisitor(Visitor visitor) {
-  return base_allocator_->AddFreeVisitor(visitor);
-}
-
-bool GPUcudaMallocAllocator::TracksAllocationSizes() { return false; }
+bool GPUcudaMallocAllocator::TracksAllocationSizes() const { return false; }
 
 }  // namespace tensorflow

@@ -111,7 +111,7 @@ class Input {
     Initializer(const T& v) {  // NOLINT(runtime/explicit)
       typedef typename RealType<T>::type RealT;
       Tensor t(DataTypeToEnum<RealT>::v(), TensorShape());
-      t.flat<T>()(0) = RealT(v);
+      t.flat<RealT>()(0) = RealT(v);
       tensor = t;
     }
 
@@ -125,7 +125,7 @@ class Input {
       typedef typename RealType<T>::type RealT;
       Tensor t(DataTypeToEnum<RealT>::v(), shape);
       for (int64 i = 0; i < t.NumElements(); ++i) {
-        t.flat<T>()(i) = RealT(v);
+        t.flat<RealT>()(i) = RealT(v);
       }
       tensor = t;
     }
@@ -150,7 +150,7 @@ class Input {
     Initializer(const std::initializer_list<T>& v, const TensorShape& shape) {
       typedef typename RealType<T>::type RealT;
       Tensor t(DataTypeToEnum<RealT>::v(), shape);
-      if (t.NumElements() != v.size()) {
+      if (t.NumElements() != static_cast<int64>(v.size())) {
         status = errors::InvalidArgument(
             "Cannot construct a tensor with ", t.NumElements(),
             " from an initializer list with ", v.size(), " elements");
@@ -170,7 +170,7 @@ class Input {
     // START_SKIP_DOXYGEN
     template <typename T, bool = std::is_convertible<T, string>::value>
     struct RealType {
-      typedef string type;
+      typedef tstring type;
     };
 
     template <typename T>

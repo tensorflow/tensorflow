@@ -155,7 +155,7 @@ class AdadeltaOptimizerTest(test.TestCase):
                   rtol=1e-5)
 
   def testBasic(self):
-    with self.test_session():
+    with self.cached_session():
       self.doTestBasic(use_resource=False)
 
   @test_util.run_in_graph_and_eager_modes(reset_test=True)
@@ -166,9 +166,10 @@ class AdadeltaOptimizerTest(test.TestCase):
     with context.eager_mode():
       self.doTestBasic(use_resource=True, use_callable_params=True)
 
+  @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
         pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
@@ -177,12 +178,11 @@ class AdadeltaOptimizerTest(test.TestCase):
             1.0, 1.0, 1.0).minimize(loss)
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd
         sgd_op.run()
         # Validate updated params
-        self.assertAllCloseAccordingToType(
-            [[-111, -138]], var0.eval())
+        self.assertAllCloseAccordingToType([[-111, -138]], self.evaluate(var0))
 
 
 if __name__ == "__main__":

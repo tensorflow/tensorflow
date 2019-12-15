@@ -21,16 +21,16 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -122,15 +122,16 @@ class ShapeTree {
   // Return the shape represented with this ShapeTree.
   const Shape& shape() const { return *shape_; }
 
-  // Replaces *only* the underlying shape of this ShapeTree. The caller must own
-  // the Shape object and hence shape_storage_ is not updated.
-  //
-  // Only safe to use this if the ShapeTree was constructed with 'explicit
-  // ShapeTree(const Shape* shape)' or is moved from one such ShapeTree. The
-  // caller must ensure that the input shape is consistent with the underlying
-  // tree.
+  // A ShapeTree object can own the underlying Shape pointer (via the
+  // shape_storage_ member), or can point to a Shape object owned by the caller.
+  // This API replaces the underlying Shape object to the one supplied by the
+  // caller, whom must ensure the object remain valid for the whole lifetime of
+  // this ShapeTree object, and also that the Shape is consistent with it.
   void replace_shape_ptr(const Shape* shape) {
-    CHECK(shape_storage_.get() == nullptr);
+    if (shape_storage_ != nullptr) {
+      DCHECK_EQ(*shape, *shape_storage_);
+      shape_storage_ = nullptr;
+    }
     shape_ = shape;
   }
 
@@ -224,14 +225,13 @@ class ShapeTree {
   // REQUIRES: index must exist in the ShapeTree.
   iterator find(ShapeIndexView index) {
     Node* element = Lookup(index);
-    return iterator(&nodes_, typename std::vector<Node>::iterator(element),
-                    /*iterate_leaves_only=*/false);
+    auto element_iter = nodes_.begin() + (element - &nodes_[0]);
+    return iterator(&nodes_, element_iter, /*iterate_leaves_only=*/false);
   }
   const_iterator find(ShapeIndexView index) const {
     Node* element = Lookup(index);
-    return iterator(&nodes_,
-                    typename std::vector<Node>::const_iterator(element),
-                    /*iterate_leaves_only=*/false);
+    auto element_iter = nodes_.cbegin() + (element - &nodes_[0]);
+    return const_iterator(&nodes_, element_iter, /*iterate_leaves_only=*/false);
   }
 
   // Returns the number of leaf nodes in the tree.
@@ -262,6 +262,25 @@ class ShapeTree {
   template <typename Fn>
   Status ForEachMutableElementWithStatus(const Fn& func);
 
+  // Maps each element to generate a new tree with the same shape.
+  template <typename U>
+  ShapeTree<U> Map(const std::function<U(const T&)>& func) {
+    ShapeTree<U> result(shape_storage_);
+    ForEachElement([&](const ShapeIndex& index, const T& t) {
+      *result.mutable_element(index) = func(t);
+    });
+    return result;
+  }
+
+  template <typename U>
+  ShapeTree<U> Map(const std::function<U(T*)>& func) {
+    ShapeTree<U> result(shape_storage_);
+    ForEachMutableElement([&](const ShapeIndex& index, T* t) {
+      *result.mutable_element(index) = func(t);
+    });
+    return result;
+  }
+
   // Copy the subtree of values from 'other' rooted at ShapeIndex
   // 'source_base_index' into the subtree of value in this ShapeTree rooted at
   // 'target_base_index'.
@@ -271,6 +290,8 @@ class ShapeTree {
   void CopySubtreeFrom(const ShapeTree<T>& other,
                        const ShapeIndex& source_base_index,
                        const ShapeIndex& target_base_index);
+
+  StatusOr<ShapeTree<T>> SubShapeTree(const ShapeIndex& index) const;
 
   bool operator==(const ShapeTree<T>& other) const;
   bool operator!=(const ShapeTree<T>& other) const { return !(*this == other); }
@@ -377,7 +398,7 @@ class ShapeTreeIterator
 template <typename T>
 int64 ShapeTree<T>::CountSubshapes(const Shape& shape) {
   int64 current_count = 1;
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     int64 count = ShapeUtil::TupleElementCount(shape);
     for (int i = 0; i < count; ++i) {
       current_count += CountSubshapes(shape.tuple_shapes(i));
@@ -389,7 +410,7 @@ int64 ShapeTree<T>::CountSubshapes(const Shape& shape) {
 template <typename T>
 void ShapeTree<T>::InitChildren(const Shape& shape, const T& init_value,
                                 Node* node, Index* index) {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     const int64 size = ShapeUtil::TupleElementCount(shape);
 #ifndef NDEBUG
     index->children_count = size;
@@ -425,7 +446,7 @@ void ShapeTree<T>::InitChildren(const Shape& shape, const T& init_value,
 
 template <typename T>
 void ShapeTree<T>::InitChildren(const Shape& shape, Node* node, Index* index) {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     const int64 size = ShapeUtil::TupleElementCount(shape);
 #ifndef NDEBUG
     index->children_count = size;
@@ -463,9 +484,6 @@ template <typename T>
 ShapeTree<T>::ShapeTree(Shape shape)
     : shape_storage_(std::make_shared<Shape>(std::move(shape))),
       shape_(shape_storage_.get()) {
-  // The shape_ field is just used to hold the structure of the shape.
-  // It should not be relied upon to store layout information.
-  LayoutUtil::ClearLayout(shape_storage_.get());
   const int64 count = CountSubshapes(*shape_);
   nodes_.reserve(count);
   nodes_.emplace_back(ShapeIndex{});
@@ -502,9 +520,6 @@ template <typename T>
 ShapeTree<T>::ShapeTree(Shape shape, const T& init_value)
     : shape_storage_(std::make_shared<Shape>(std::move(shape))),
       shape_(shape_storage_.get()) {
-  // The shape_ field is just used to hold the structure of the shape.
-  // It should not be relied upon to store layout information.
-  LayoutUtil::ClearLayout(shape_storage_.get());
   const int64 count = CountSubshapes(*shape_);
   nodes_.reserve(count);
   nodes_.emplace_back(ShapeIndex{}, init_value);
@@ -653,14 +668,23 @@ void ShapeTree<T>::CopySubtreeFrom(const ShapeTree<T>& other,
 }
 
 template <typename T>
+StatusOr<ShapeTree<T>> ShapeTree<T>::SubShapeTree(
+    const ShapeIndex& index) const {
+  TF_ASSIGN_OR_RETURN(const Shape* sub_shape,
+                      ShapeUtil::TryGetSubshape(shape(), index));
+  ShapeTree<T> sub_shape_tree(*sub_shape);
+  sub_shape_tree.CopySubtreeFrom(*this, index, {});
+  return std::move(sub_shape_tree);
+}
+
+template <typename T>
 bool ShapeTree<T>::operator==(const ShapeTree<T>& other) const {
   bool equal = true;
-  ForEachElement(
-      [this, &other, &equal](const ShapeIndex& index, const T& data) {
-        if (data != other.element(index)) {
-          equal = false;
-        }
-      });
+  ForEachElement([&other, &equal](const ShapeIndex& index, const T& data) {
+    if (data != other.element(index)) {
+      equal = false;
+    }
+  });
   return equal;
 }
 

@@ -24,18 +24,23 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
+#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/platform.h"
 
 namespace tensorflow {
 
 namespace {
+constexpr char kHostPlatform[] = "Host";
+
 // Returns the index of the result in the temp buffers.
 xla::StatusOr<size_t> ComputeResultIndex(
     const xla::BufferAssignment& buffer_assignment) {
@@ -80,8 +85,10 @@ XlaJitCompiledCpuFunction::Compile(
     const GraphDef& graph_def, const tf2xla::Config& config,
     const xla::ExecutableBuildOptions& build_options) {
   // Convert the graph_def into an xla::XlaComputation.
+  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                      xla::PlatformUtil::GetPlatform(kHostPlatform));
   TF_ASSIGN_OR_RETURN(xla::LocalClient * client,
-                      xla::ClientLibrary::GetOrCreateLocalClient());
+                      xla::ClientLibrary::GetOrCreateLocalClient(platform));
   xla::XlaComputation computation;
   TF_RETURN_IF_ERROR(tensorflow::ConvertGraphDefToXla(graph_def, config, client,
                                                       &computation));
@@ -120,7 +127,7 @@ XlaJitCompiledCpuFunction::Compile(
       cpu_executable->buffer_assignment();
 
   // Compute buffer infos and the result index, needed to run the raw function.
-  std::vector<cpu_function_runtime::BufferInfo> buffer_infos =
+  std::vector<xla::cpu_function_runtime::BufferInfo> buffer_infos =
       xla::cpu::CreateBufferInfosFromBufferAssignment(buffer_assignment);
   std::vector<int32> arg_index_table =
       xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
@@ -133,25 +140,36 @@ XlaJitCompiledCpuFunction::Compile(
   jit->executable_ = std::move(executable);
   jit->buffer_infos_ = std::move(buffer_infos);
   jit->arg_index_table_ = std::move(arg_index_table);
-  jit->program_shape_ = std::move(program_shape);
-  jit->static_data_.set_raw_function(raw_function);
-  jit->static_data_.set_buffer_infos(jit->buffer_infos_.data());
-  jit->static_data_.set_num_buffers(jit->buffer_infos_.size());
-  jit->static_data_.set_arg_index_table(jit->arg_index_table_.data());
-  jit->static_data_.set_num_args(jit->arg_index_table_.size());
-  jit->static_data_.set_result_index(result_index);
+  jit->program_shape_ =
+      absl::make_unique<xla::ProgramShapeProto>(program_shape->ToProto());
+  XlaCompiledCpuFunction::set_static_data_raw_function(&jit->static_data_,
+                                                       raw_function);
+  XlaCompiledCpuFunction::set_static_data_buffer_infos(
+      &jit->static_data_, jit->buffer_infos_.data());
+  XlaCompiledCpuFunction::set_static_data_num_buffers(
+      &jit->static_data_, jit->buffer_infos_.size());
+  XlaCompiledCpuFunction::set_static_data_arg_index_table(
+      &jit->static_data_, jit->arg_index_table_.data());
+  XlaCompiledCpuFunction::set_static_data_num_args(
+      &jit->static_data_, jit->arg_index_table_.size());
+  XlaCompiledCpuFunction::set_static_data_result_index(&jit->static_data_,
+                                                       result_index);
   // Optional metadata is collected and set below.
   CollectNames(config.feed(), &jit->nonempty_arg_names_, &jit->arg_names_);
   CollectNames(config.fetch(), &jit->nonempty_result_names_,
                &jit->result_names_);
-  jit->static_data_.set_arg_names(jit->arg_names_.data());
-  jit->static_data_.set_result_names(jit->result_names_.data());
-  jit->static_data_.set_program_shape(jit->program_shape_.get());
+  XlaCompiledCpuFunction::set_static_data_arg_names(&jit->static_data_,
+                                                    jit->arg_names_.data());
+  XlaCompiledCpuFunction::set_static_data_result_names(
+      &jit->static_data_, jit->result_names_.data());
+  XlaCompiledCpuFunction::set_static_data_program_shape(
+      &jit->static_data_, jit->program_shape_.get());
 
   if (cpu_executable->hlo_profiling_enabled()) {
-    jit->static_data_.set_hlo_profile_printer_data(
-        &cpu_executable->hlo_profile_printer_data());
-    jit->static_data_.set_profile_counters_size(
+    XlaCompiledCpuFunction::set_static_data_hlo_profile_printer_data(
+        &jit->static_data_, &cpu_executable->hlo_profile_printer_data());
+    XlaCompiledCpuFunction::set_static_data_profile_counters_size(
+        &jit->static_data_,
         cpu_executable->hlo_profile_printer_data().profile_counters_size());
   }
 

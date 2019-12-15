@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace Eigen {
@@ -46,7 +47,6 @@ class DeviceSimple : public DeviceBase {
 
  private:
   DeviceBase::CpuWorkerThreads eigen_worker_threads_;
-  std::unique_ptr<Eigen::ThreadPoolInterface> eigen_threadpool_wrapper_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
 };
 

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -42,19 +42,15 @@ namespace interpreter {
 // buffer allocation. Refer to interpreter/README.md for more.
 class InterpreterExecutable : public Executable {
  public:
-  InterpreterExecutable(std::unique_ptr<const HloModule> hlo_module,
+  InterpreterExecutable(std::unique_ptr<HloModule> hlo_module,
                         std::unique_ptr<HloEvaluator> evaluator);
   ~InterpreterExecutable() override;
 
-  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
+  StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
       HloExecutionProfile* hlo_execution_profile) override
       LOCKS_EXCLUDED(evaluator_lock_);
-
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
 
   static int64 ShapeSizeBytes(const Shape& shape);
 

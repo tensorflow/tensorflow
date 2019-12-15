@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_FILL_FUNCTOR_H_
-#define TENSORFLOW_KERNELS_FILL_FUNCTOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_FILL_FUNCTOR_H_
+#define TENSORFLOW_CORE_KERNELS_FILL_FUNCTOR_H_
 
 #define EIGEN_USE_THREADS
 
@@ -54,9 +54,9 @@ struct SetZeroFunctor<Eigen::SyclDevice, T> {
 #endif  // TENSORFLOW_USE_SYCL
 
 template <>
-struct SetZeroFunctor<Eigen::ThreadPoolDevice, string> {
+struct SetZeroFunctor<Eigen::ThreadPoolDevice, tstring> {
   void operator()(const Eigen::ThreadPoolDevice& d,
-                  typename TTypes<string>::Flat out);
+                  typename TTypes<tstring>::Flat out);
 };
 
 template <typename Device, typename T>
@@ -81,12 +81,12 @@ struct SetOneFunctor<Eigen::SyclDevice, T> {
 #endif  // TENSORFLOW_USE_SYCL
 
 template <>
-struct SetOneFunctor<Eigen::ThreadPoolDevice, string> {
+struct SetOneFunctor<Eigen::ThreadPoolDevice, tstring> {
   void operator()(const Eigen::ThreadPoolDevice& d,
-                  typename TTypes<string>::Flat out);
+                  typename TTypes<tstring>::Flat out);
 };
 
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_FILL_FUNCTOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_FILL_FUNCTOR_H_

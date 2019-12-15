@@ -670,7 +670,7 @@ class DebugDumpDir(object):
     self._node_traceback = {}
     if self._python_graph:
       for op in self._python_graph.get_operations():
-        self._node_traceback[op.name] = op.traceback
+        self._node_traceback[op.name] = tuple(map(tuple, op.traceback))
 
   @property
   def python_graph(self):
@@ -947,9 +947,10 @@ class DebugDumpDir(object):
       3) The parallel_iteration attribute of while-loop Enter ops are set to 1.
 
     Returns:
-      A dict mapping device names (`str`s) to reconstructed `tf.GraphDef`s.
+      A dict mapping device names (`str`s) to reconstructed
+      `tf.compat.v1.GraphDef`s.
     """
-    non_debug_graphs = dict()
+    non_debug_graphs = {}
     for key in self._debug_graphs:
       non_debug_graphs[key] = self._debug_graphs[key].non_debug_graph_def
     return non_debug_graphs

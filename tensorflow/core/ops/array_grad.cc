@@ -354,6 +354,27 @@ Status TransposeGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Transpose", TransposeGrad);
 
+Status GatherNdGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FDH::Define(
+      // Arg defs
+      {"params: Tparams", "indices: Tindices", "doutput: Tparams"},
+      // Ret val defs
+      {"dparams: Tparams", "dindices: Tindices"},
+      // Attr defs
+      {"Tparams: type", "Tindices: type"},
+      // Nodes
+      {
+        {{"x_shape"}, "Shape", {"params"}, {{"T", "$Tparams"}}},
+        {{"dparams"}, "ScatterNd", {"indices", "doutput", "x_shape"},
+         {{"T", "$Tparams"}, {"Tindices", "$Tindices"}}},
+        {{"dindices"}, "ZerosLike", {"indices"}, {{"T", "$Tindices"}}},
+      });
+  // clang-format on
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("GatherNd", GatherNdGrad);
+
 Status ConjugateTransposeGrad(const AttrSlice& attrs, FunctionDef* g) {
   *g = FDH::Define(
       // Arg defs
@@ -528,5 +549,31 @@ Status StridedSliceGradGrad(const AttrSlice& attrs, FunctionDef* g) {
   return Status::OK();
 }
 REGISTER_OP_GRADIENT("StridedSliceGrad", StridedSliceGradGrad);
+
+Status BroadcastToGrad(const AttrSlice& attrs, FunctionDef* g) {
+  DataType itype;
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Tidx", &itype));
+  if (itype != DT_INT32) {
+    return errors::Unimplemented(
+        "BroadcastToGrad for int64 index are not supported.");
+  }
+  std::vector<FDH::Node> nodes = {
+      {{"sx"}, "Shape", {"x"}, {{"T", "$T"}}},
+      {{"rx", "ry"}, "BroadcastGradientArgs", {"sx", "shape"}},
+      {{"sum_gx"}, "Sum", {"dy", "rx"}, {{"T", "$T"}}},
+      {{"dx"}, "Reshape", {"sum_gx", "sx"}, {{"T", "$T"}}},
+      {{"dshape"}, "ZerosLike", {"shape"}, {{"T", "$Tidx"}}}};
+  *g = FDH::Define(
+      // Arg defs
+      {"x: T", "shape: int32", "dy: T"},
+      // Ret val defs
+      {"dx: T", "dshape: Tidx"},
+      // Attr defs
+      {{"T: type"}, {"Tidx: {int32, int64}"}},
+      // Nodes
+      nodes);
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("BroadcastTo", BroadcastToGrad);
 
 }  // end namespace tensorflow

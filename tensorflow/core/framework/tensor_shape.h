@@ -47,7 +47,7 @@ class TensorShapeRep {
   TensorShapeRep(const TensorShapeRep& b);
   void operator=(const TensorShapeRep& b);
 
-  /// Move the specified shape.  After moving, <b> is safe for destruction and
+  /// Move the specified shape.  After moving, `b` is safe for destruction and
   // can be reassigned into, but its dimensions and number of elements can be
   // nonsensical (e.g., negative dimension sizes, or number of elements not
   // properly recomputed).
@@ -184,6 +184,9 @@ class TensorShapeBase : public TensorShapeRep {
   /// status otherwise.
   static Status IsValidShape(const TensorShapeProto& proto);
 
+  /// Returns `true` iff this is a valid tensor shape.
+  bool IsValid();
+
   /// \brief Add a dimension to the end ("inner-most").
   /// REQUIRES: `size >= 0`
   void AddDim(int64 size);
@@ -254,8 +257,16 @@ class TensorShapeBase : public TensorShapeRep {
   TensorShapeIter<Shape> begin() const;
   TensorShapeIter<Shape> end() const;
 
+ protected:
+  // Optimized constructor for a shape representing an empty vector.
+  //
+  // This constructor is provided to optimize the default constructor for
+  // `Tensor`.
+  explicit TensorShapeBase(DataType dt);
+
  private:
   void RecomputeNumElements();
+  void InitDims(gtl::ArraySlice<int64> dim_sizes);
 
   // True for PartialTensorShape, false for TensorShape
   static constexpr bool kIsPartial =
@@ -300,13 +311,17 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   bool operator!=(const TensorShape& b) const { return !IsSameSize(b); }
 
   /// Fill `*dsizes` from `*this`.
-  template <int NDIMS>
-  Eigen::DSizes<Eigen::DenseIndex, NDIMS> AsEigenDSizes() const;
+  /// Notice: Using IndexType=int32 in combination with To32Bit() can
+  /// significantly improve performance on GPU.
+  template <int NDIMS, typename IndexType = Eigen::DenseIndex>
+  Eigen::DSizes<IndexType, NDIMS> AsEigenDSizes() const;
 
   /// Same as `AsEigenDSizes()` but allows for `NDIMS > dims()` -- in
   /// which case we pad the rest of the sizes with 1.
-  template <int NDIMS>
-  Eigen::DSizes<Eigen::DenseIndex, NDIMS> AsEigenDSizesWithPadding() const;
+  /// Notice: Using IndexType=int32 in combination with To32Bit() can
+  /// significantly improve performance on GPU.
+  template <int NDIMS, typename IndexType = Eigen::DenseIndex>
+  Eigen::DSizes<IndexType, NDIMS> AsEigenDSizesWithPadding() const;
 
  private:
   // These CHECK fail to ease debugging.
@@ -314,6 +329,9 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   void CheckDimsEqual(int NDIMS) const;
   // REQUIRES: dims() >= NDIMS
   void CheckDimsAtLeast(int NDIMS) const;
+
+  // For access to TensorShapeBase(DataType).
+  friend class Tensor;
 };
 
 /// Represents the value of one dimension in a TensorShape.
@@ -458,20 +476,19 @@ class PartialTensorShapeUtils {
 // Template method implementation details below
 // ----------------------------------------------------------------------------
 
-template <int NDIMS>
-Eigen::DSizes<Eigen::DenseIndex, NDIMS> TensorShape::AsEigenDSizes() const {
+template <int NDIMS, typename IndexType>
+Eigen::DSizes<IndexType, NDIMS> TensorShape::AsEigenDSizes() const {
   CheckDimsEqual(NDIMS);
-  return AsEigenDSizesWithPadding<NDIMS>();
+  return AsEigenDSizesWithPadding<NDIMS, IndexType>();
 }
 
-template <int NDIMS>
-Eigen::DSizes<Eigen::DenseIndex, NDIMS> TensorShape::AsEigenDSizesWithPadding()
-    const {
+template <int NDIMS, typename IndexType>
+Eigen::DSizes<IndexType, NDIMS> TensorShape::AsEigenDSizesWithPadding() const {
   CheckDimsAtLeast(NDIMS);
   static_assert(NDIMS <= TensorShape::MaxDimensions(), "Too many dimensions");
-  Eigen::DSizes<Eigen::DenseIndex, NDIMS> dsizes;
+  Eigen::DSizes<IndexType, NDIMS> dsizes;
   for (int d = 0; d < dims(); d++) {
-    dsizes[d] = dim_size(d);
+    dsizes[d] = static_cast<IndexType>(dim_size(d));
   }
   for (int d = dims(); d < NDIMS; d++) {
     dsizes[d] = 1;
@@ -541,9 +558,29 @@ inline TensorShape::operator const PartialTensorShape&() const {
   return *static_cast<const PartialTensorShape*>(rep);
 }
 
+template <class Shape>
+inline TensorShapeBase<Shape>::TensorShapeBase(DataType dt) {
+  set_tag(REP16);
+  set_data_type(dt);
+
+  // Optimized implementation of InitDims() where the shape is statically known
+  // to be {0}.
+  set_ndims_byte(1);
+  uint16* dst = as16()->dims_;
+  *dst = 0;
+  set_num_elements(0);
+}
+
 // Declare explicit instantiations in .cc file
 extern template class TensorShapeBase<TensorShape>;
 extern template class TensorShapeBase<PartialTensorShape>;
+
+// A convenient struct to represent a (DataType, PartialTensorShape) pair. It's
+// often used in shape inference.
+struct DtypeAndPartialTensorShape {
+  DataType dtype;
+  PartialTensorShape shape;
+};
 
 }  // namespace tensorflow
 

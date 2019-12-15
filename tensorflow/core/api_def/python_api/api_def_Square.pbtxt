@@ -1,4 +1,16 @@
 op {
   graph_op_name: "Square"
-  visibility: HIDDEN
+  endpoint {
+    name: "math.square"
+  }
+  endpoint {
+    name: "square"
+  }
+  description: <<END
+I.e., \\(y = x * x = x^2\\).
+
+>>> tf.math.square([-2., 0., 3.])
+<tf.Tensor: shape=(3,), dtype=float32, numpy=array([4., 0., 9.], dtype=float32)>
+
+END
 }

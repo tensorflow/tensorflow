@@ -48,7 +48,7 @@ class WhileTest : public ClientLibraryTestBase {};
 // while (result < 5) {
 //   result = result + 1;
 // }
-TEST_F(WhileTest, WhileWithScalarS32Result) {
+XLA_TEST_F(WhileTest, WhileWithScalarS32Result) {
   auto result_shape = ShapeUtil::MakeShape(S32, {});
 
   // Create a computation for the condition: repeat for 5 iterations.
@@ -84,7 +84,7 @@ TEST_F(WhileTest, WhileWithScalarS32Result) {
 // while (result < 5) {
 //   result = result + 1;
 // }
-TEST_F(WhileTest, WhileWithScalarS64Result) {
+XLA_TEST_F(WhileTest, WhileWithScalarS64Result) {
   auto result_shape = ShapeUtil::MakeShape(S64, {});
 
   // Create a computation for the condition: repeat for 5 iterations.
@@ -114,7 +114,7 @@ TEST_F(WhileTest, WhileWithScalarS64Result) {
   ComputeAndCompareR0<int64>(&builder, 5, {});
 }
 
-TEST_F(WhileTest, WhileWithScalarResultNonConstInit) {
+XLA_TEST_F(WhileTest, WhileWithScalarResultNonConstInit) {
   auto result_shape = ShapeUtil::MakeShape(S32, {});
   auto orig_shape = ShapeUtil::MakeShape(S32, {2});
 
@@ -147,7 +147,7 @@ TEST_F(WhileTest, WhileWithScalarResultNonConstInit) {
   ComputeAndCompareR0<int32>(&builder, 5, {});
 }
 
-TEST_F(WhileTest, WhileWithPredicateResult) {
+XLA_TEST_F(WhileTest, WhileWithPredicateResult) {
   auto result_shape = ShapeUtil::MakeShape(PRED, {});
 
   // Create a computation for the condition: run until condition is true.
@@ -184,7 +184,7 @@ TEST_F(WhileTest, WhileWithPredicateResult) {
 // while (result.sum() < 15.5f) {
 //   result = result + vector<float>(0);
 // }
-TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileWithEmptyVectorResult)) {
+XLA_TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileWithEmptyVectorResult)) {
   Shape result_shape = ShapeUtil::MakeShape(F32, {0});
 
   // Create a computation for the reduction.
@@ -238,7 +238,7 @@ TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileWithEmptyVectorResult)) {
 // while (result.sum() < 15.5f) {
 //   result = result + vector<float>(8, 0.125f);
 // }
-TEST_F(WhileTest, WhileWithVectorResult) {
+XLA_TEST_F(WhileTest, WhileWithVectorResult) {
   Shape result_shape = ShapeUtil::MakeShape(F32, {8});
 
   // Create a computation for the reduction.
@@ -298,7 +298,7 @@ TEST_F(WhileTest, WhileWithVectorResult) {
 //   result = result + vector<float>(8, 0.125f);
 // }
 // tuple = tuple { while }
-TEST_F(WhileTest, WhileWithVectorResultIntoTuple) {
+XLA_TEST_F(WhileTest, WhileWithVectorResultIntoTuple) {
   Shape result_shape = ShapeUtil::MakeShape(F32, {8});
 
   // Create a computation for the reduction.
@@ -348,12 +348,12 @@ TEST_F(WhileTest, WhileWithVectorResultIntoTuple) {
   // have all reached 2.0.
   auto expected_data =
       LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f});
-  auto expected = LiteralUtil::MakeTuple({expected_data.get()});
-  VLOG(2) << "expected = " << ShapeUtil::HumanString(expected->shape());
-  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
+  auto expected = LiteralUtil::MakeTuple({&expected_data});
+  VLOG(2) << "expected = " << ShapeUtil::HumanString(expected.shape());
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-TEST_F(WhileTest, WhileWithPermutationAndTupleResult) {
+XLA_TEST_F(WhileTest, WhileWithPermutationAndTupleResult) {
   std::vector<Shape> shape_elements = {
       ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(F32, {3}),
       ShapeUtil::MakeShape(F32, {3}), ShapeUtil::MakeShape(F32, {3})};
@@ -401,14 +401,13 @@ TEST_F(WhileTest, WhileWithPermutationAndTupleResult) {
   auto expected_w1 = LiteralUtil::CreateR1<float>({1.0f, 1.0f, 1.0f});
   auto expected_w2 = LiteralUtil::CreateR1<float>({2.0f, 2.0f, 2.0f});
   auto expected_w3 = LiteralUtil::CreateR1<float>({3.0f, 3.0f, 3.0f});
-  auto expected =
-      LiteralUtil::MakeTuple({expected_counter.get(), expected_w2.get(),
-                              expected_w3.get(), expected_w1.get()});
-  VLOG(2) << "expected = " << ShapeUtil::HumanString(expected->shape());
-  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
+  auto expected = LiteralUtil::MakeTuple(
+      {&expected_counter, &expected_w2, &expected_w3, &expected_w1});
+  VLOG(2) << "expected = " << ShapeUtil::HumanString(expected.shape());
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-TEST_F(WhileTest, WhileWithPermutationAndVectorResult) {
+XLA_TEST_F(WhileTest, WhileWithPermutationAndVectorResult) {
   std::vector<Shape> shape_elements = {
       ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(F32, {3}),
       ShapeUtil::MakeShape(F32, {3}), ShapeUtil::MakeShape(F32, {3})};
@@ -466,7 +465,7 @@ TEST_F(WhileTest, WhileWithPermutationAndVectorResult) {
 //   get<0>(result) = get<0>(result) + 1;
 //   get<1>(result) = get<1>(result) + vector<float>(10, 1.0f);
 // }
-TEST_F(WhileTest, WhileWithTupleResult) {
+XLA_TEST_F(WhileTest, WhileWithTupleResult) {
   std::vector<Shape> shape_elements = {ShapeUtil::MakeShape(S32, {}),
                                        ShapeUtil::MakeShape(F32, {10})};
   Shape result_shape = ShapeUtil::MakeTupleShape(shape_elements);
@@ -510,13 +509,12 @@ TEST_F(WhileTest, WhileWithTupleResult) {
   auto expected_counter = LiteralUtil::CreateR0<int32>(5);
   auto expected_data = LiteralUtil::CreateR1<float>(
       {5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f});
-  auto expected =
-      LiteralUtil::MakeTuple({expected_counter.get(), expected_data.get()});
-  VLOG(2) << "expected = " << ShapeUtil::HumanString(expected->shape());
-  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
+  auto expected = LiteralUtil::MakeTuple({&expected_counter, &expected_data});
+  VLOG(2) << "expected = " << ShapeUtil::HumanString(expected.shape());
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-TEST_F(WhileTest, WhileWithPredicateTupleResult) {
+XLA_TEST_F(WhileTest, WhileWithPredicateTupleResult) {
   std::vector<Shape> shape_elements = {ShapeUtil::MakeShape(S32, {}),
                                        ShapeUtil::MakeShape(PRED, {})};
   Shape result_shape = ShapeUtil::MakeTupleShape(shape_elements);
@@ -557,12 +555,12 @@ TEST_F(WhileTest, WhileWithPredicateTupleResult) {
 
   auto expected_counter = LiteralUtil::CreateR0<int32>(5);
   auto expected_predicate = LiteralUtil::CreateR0<bool>(true);
-  auto expected = LiteralUtil::MakeTuple(
-      {expected_counter.get(), expected_predicate.get()});
-  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0));
+  auto expected =
+      LiteralUtil::MakeTuple({&expected_counter, &expected_predicate});
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0));
 }
 
-TEST_F(WhileTest, WhileWithTupleConstantScalarResult) {
+XLA_TEST_F(WhileTest, WhileWithTupleConstantScalarResult) {
   std::vector<Shape> shape_elements = {ShapeUtil::MakeShape(S32, {}),
                                        ShapeUtil::MakeShape(S32, {})};
   Shape result_shape = ShapeUtil::MakeTupleShape(shape_elements);
@@ -602,10 +600,9 @@ TEST_F(WhileTest, WhileWithTupleConstantScalarResult) {
 
   auto expected_counter = LiteralUtil::CreateR0<int32>(5);
   auto expected_data = LiteralUtil::CreateR0<int32>(7);
-  auto expected =
-      LiteralUtil::MakeTuple({expected_counter.get(), expected_data.get()});
-  VLOG(2) << "expected = " << ShapeUtil::HumanString(expected->shape());
-  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
+  auto expected = LiteralUtil::MakeTuple({&expected_counter, &expected_data});
+  VLOG(2) << "expected = " << ShapeUtil::HumanString(expected.shape());
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
 // Tests two while nodes when the result type T is a Tuple and the second
@@ -622,7 +619,7 @@ TEST_F(WhileTest, WhileWithTupleConstantScalarResult) {
 //        get<1>(w1) = get<1>(w1) + vector<float>(10, 1.0f);
 //      }
 // result = get<1>(w0) + get<1>(w1)
-TEST_F(WhileTest, TwoWhileWithTupleResult) {
+XLA_TEST_F(WhileTest, TwoWhileWithTupleResult) {
   std::vector<Shape> shape_elements = {ShapeUtil::MakeShape(S32, {}),
                                        ShapeUtil::MakeShape(F32, {10})};
   Shape result_shape = ShapeUtil::MakeTupleShape(shape_elements);
@@ -701,7 +698,7 @@ TEST_F(WhileTest, TwoWhileWithTupleResult) {
 }
 
 // Test while nodes that share the while body computation.
-TEST_F(WhileTest, TwoWhileLoopsAndSharedBody) {
+XLA_TEST_F(WhileTest, TwoWhileLoopsAndSharedBody) {
   std::vector<Shape> shape_elements = {ShapeUtil::MakeShape(S32, {}),
                                        ShapeUtil::MakeShape(F32, {10})};
   Shape result_shape = ShapeUtil::MakeTupleShape(shape_elements);
@@ -766,9 +763,7 @@ TEST_F(WhileTest, TwoWhileLoopsAndSharedBody) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-// Test while nodes that share the while body computation.
-// TODO(b/37245345): Fails on GPU backend.
-TEST_F(WhileTest, DISABLED_ON_GPU(WhileLoopsWithSharedBodyAndInit)) {
+XLA_TEST_F(WhileTest, WhileLoopsWithSharedBodyAndInit) {
   std::vector<Shape> shape_elements = {ShapeUtil::MakeShape(S32, {}),
                                        ShapeUtil::MakeShape(F32, {10})};
   Shape result_shape = ShapeUtil::MakeTupleShape(shape_elements);
@@ -866,7 +861,7 @@ XLA_TEST_F(WhileTest, WhileWithDynamicUpdateSlice) {
     // Update.
     auto update = ConvertElementType(Broadcast(out0, {2}), F32);
     // Starts = iteration * 2;
-    auto starts = Reshape(Mul(iteration, ConstantR0<int32>(&builder, 2)), {1});
+    auto starts = Mul(iteration, ConstantR0<int32>(&builder, 2));
     // UpdateSlice.
     auto out1 = DynamicUpdateSlice(input, update, starts);
 
@@ -886,10 +881,9 @@ XLA_TEST_F(WhileTest, WhileWithDynamicUpdateSlice) {
   auto expected_counter = LiteralUtil::CreateR0<int32>(5);
   auto expected_data = LiteralUtil::CreateR1<float>(
       {1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 4.0f, 5.0f, 5.0f});
-  auto expected =
-      LiteralUtil::MakeTuple({expected_counter.get(), expected_data.get()});
-  VLOG(2) << "expected = " << ShapeUtil::HumanString(expected->shape());
-  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
+  auto expected = LiteralUtil::MakeTuple({&expected_counter, &expected_data});
+  VLOG(2) << "expected = " << ShapeUtil::HumanString(expected.shape());
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
 // Tests a while node when the result type T is a vector of S32.
@@ -907,7 +901,7 @@ XLA_TEST_F(WhileTest, WhileWithDynamicUpdateSlice) {
 // Per backend the values generated can be different as the different backends
 // use different random number generators.
 // TODO(b/32240857): Extend test to verify outputs.
-TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileWithPrngScalarResult)) {
+XLA_TEST_F(WhileTest, WhileWithPrngScalarResult) {
   auto v6s32 = ShapeUtil::MakeShape(S32, {6});
 
   // Create a computation for the condition: repeat for count iterations.
@@ -953,7 +947,7 @@ TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileWithPrngScalarResult)) {
   }
 }
 
-TEST_F(WhileTest, WhileThatSwapsParameterWithTupleElement) {
+XLA_TEST_F(WhileTest, WhileThatSwapsParameterWithTupleElement) {
   auto element_shape = ShapeUtil::MakeShape(F32, {2});
 
   XlaBuilder outer("outer");
@@ -977,15 +971,15 @@ TEST_F(WhileTest, WhileThatSwapsParameterWithTupleElement) {
 
   auto expected_element = LiteralUtil::CreateR1<float>({1, 1});
   auto expected =
-      LiteralUtil::MakeTuple({expected_element.get(), expected_element.get()});
+      LiteralUtil::MakeTuple({&expected_element, &expected_element});
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> parameter_data,
-      client_->TransferToServer(*LiteralUtil::CreateR1<float>({42, 42})));
-  ComputeAndCompareTuple(&outer, *expected, {parameter_data.get()},
+      client_->TransferToServer(LiteralUtil::CreateR1<float>({42, 42})));
+  ComputeAndCompareTuple(&outer, expected, {parameter_data.get()},
                          ErrorSpec(1e-6));
 }
 
-TEST_F(WhileTest, WhileThatSwapsParameterWithBroadcast) {
+XLA_TEST_F(WhileTest, WhileThatSwapsParameterWithBroadcast) {
   auto element_shape = ShapeUtil::MakeShape(F32, {2});
 
   XlaBuilder outer("outer");
@@ -1005,12 +999,12 @@ TEST_F(WhileTest, WhileThatSwapsParameterWithBroadcast) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> parameter_data,
-      client_->TransferToServer(*LiteralUtil::CreateR1<float>({42, 42})));
+      client_->TransferToServer(LiteralUtil::CreateR1<float>({42, 42})));
   ComputeAndCompareR1<float>(&outer, {1.0f, 1.0f}, {parameter_data.get()},
                              ErrorSpec(1e-6));
 }
 
-TEST_F(WhileTest, WhileThatTurnsScalarParameterToTupleElement) {
+XLA_TEST_F(WhileTest, WhileThatTurnsScalarParameterToTupleElement) {
   auto element_shape = ShapeUtil::MakeShape(F32, {});
 
   XlaBuilder outer("outer");
@@ -1031,7 +1025,7 @@ TEST_F(WhileTest, WhileThatTurnsScalarParameterToTupleElement) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> parameter_data,
-      client_->TransferToServer(*LiteralUtil::CreateR0<float>(42)));
+      client_->TransferToServer(LiteralUtil::CreateR0<float>(42)));
   ComputeAndCompareR0<float>(&outer, 43.0f, {parameter_data.get()},
                              ErrorSpec(1e-6));
 }
@@ -1044,7 +1038,7 @@ TEST_F(WhileTest, WhileThatTurnsScalarParameterToTupleElement) {
 //   result[0] = result[0] + 1;
 //   result[1] = result[1] + 1;
 // }
-TEST_F(WhileTest, WhileWithMixedTupleElements) {
+XLA_TEST_F(WhileTest, WhileWithMixedTupleElements) {
   auto result_shape = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(S32, {})});
 
@@ -1070,12 +1064,12 @@ TEST_F(WhileTest, WhileWithMixedTupleElements) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> parameter_data,
-      client_->TransferToServer(*LiteralUtil::CreateR0<int32>(1)));
+      client_->TransferToServer(LiteralUtil::CreateR0<int32>(1)));
 
   auto add1 = LiteralUtil::CreateR0<int32>(15);
   auto add2 = LiteralUtil::CreateR0<int32>(16);
-  auto expected = LiteralUtil::MakeTuple({add1.get(), add2.get()});
-  ComputeAndCompareTuple(&outer, *expected, {parameter_data.get()},
+  auto expected = LiteralUtil::MakeTuple({&add1, &add2});
+  ComputeAndCompareTuple(&outer, expected, {parameter_data.get()},
                          ErrorSpec(1e-6));
 }
 
@@ -1152,7 +1146,7 @@ XLA_TEST_F(WhileTest, NestedWhileWithScalarResult) {
 // while (f(result).get<0>()) {
 //   result = result + 1;
 // }
-TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileWithCallInsideCondition)) {
+XLA_TEST_F(WhileTest, WhileWithCallInsideCondition) {
   auto result_shape = ShapeUtil::MakeShape(S32, {});
 
   // Create a computation for the condition: repeat for 5 iterations.
@@ -1192,7 +1186,7 @@ TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileWithCallInsideCondition)) {
   ComputeAndCompareR0<int32>(&builder, 5, {});
 }
 
-TEST_F(WhileTest, WhileWithLoopInvariantOperation) {
+XLA_TEST_F(WhileTest, WhileWithLoopInvariantOperation) {
   auto matrix_shape = ShapeUtil::MakeShape(F32, {2, 2});
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
   auto while_shape = ShapeUtil::MakeTupleShape(
@@ -1228,7 +1222,7 @@ TEST_F(WhileTest, WhileWithLoopInvariantOperation) {
   GetTupleElement(while_instruction, 3);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto param_value, client_->TransferToServer(*LiteralUtil::CreateR2<float>(
+      auto param_value, client_->TransferToServer(LiteralUtil::CreateR2<float>(
                             {{1.0, 2.0}, {-1.0, -2.0}})));
 
   ComputeAndCompareR2<float>(
@@ -1236,7 +1230,7 @@ TEST_F(WhileTest, WhileWithLoopInvariantOperation) {
       {param_value.get()}, ErrorSpec(4e-5));
 }
 
-TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileInfeedCondition)) {
+XLA_TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileInfeedCondition)) {
   auto while_shape = ShapeUtil::MakeShape(S32, {});
 
   XlaComputation condition;
@@ -1258,9 +1252,9 @@ TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileInfeedCondition)) {
   XlaBuilder builder(TestName());
   While(condition, body, ConstantR0<int32>(&builder, 0));
 
-  TF_ASSERT_OK(client_->TransferToInfeed(*LiteralUtil::CreateR0<bool>(true)));
-  TF_ASSERT_OK(client_->TransferToInfeed(*LiteralUtil::CreateR0<bool>(true)));
-  TF_ASSERT_OK(client_->TransferToInfeed(*LiteralUtil::CreateR0<bool>(false)));
+  TF_ASSERT_OK(client_->TransferToInfeed(LiteralUtil::CreateR0<bool>(true)));
+  TF_ASSERT_OK(client_->TransferToInfeed(LiteralUtil::CreateR0<bool>(true)));
+  TF_ASSERT_OK(client_->TransferToInfeed(LiteralUtil::CreateR0<bool>(false)));
 
   ComputeAndCompareR0<int32>(&builder, 2, {});
 }
@@ -1271,7 +1265,7 @@ void BM_WhileLoop(int num_iters) {
 
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
   auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
-  StreamExecutorMemoryAllocator allocator(platform, executors);
+  se::StreamExecutorMemoryAllocator allocator(platform, executors);
   LocalClient* client =
       ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie();
 
@@ -1305,9 +1299,9 @@ void BM_WhileLoop(int num_iters) {
     auto one = ConstantR0<float>(&builder, 1.0);
     auto update = Broadcast(one, {1, 1024, 1024});
     // Starts = iteration * 2;
-    auto starts = ConstantR1<int32>(&builder, {0, 0, 0});
+    auto zero = ConstantR0<int32>(&builder, 0);
     // UpdateSlice.
-    auto out1 = DynamicUpdateSlice(input, update, starts);
+    auto out1 = DynamicUpdateSlice(input, update, {zero, zero, zero});
     Tuple(&builder, {out0, out1});
     body = builder.Build().ConsumeValueOrDie();
   }

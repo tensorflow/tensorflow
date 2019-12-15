@@ -23,6 +23,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -31,10 +33,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/hash/hash.h"
 
 namespace xla {
 
@@ -103,6 +103,9 @@ int64 CseHash(const HloInstruction* instruction) {
   for (auto operand : instruction->operands()) {
     hash = tensorflow::Hash64Combine(hash, operand->unique_id());
   }
+  if (instruction->opcode() == HloOpcode::kConstant) {
+    hash = tensorflow::Hash64Combine(hash, instruction->literal().Hash());
+  }
   return hash;
 }
 
@@ -110,6 +113,7 @@ int64 CseHash(const HloInstruction* instruction) {
 
 StatusOr<bool> HloCSE::Run(HloModule* module) {
   bool changed = false;
+
   const std::function<bool(const HloInstruction*, const HloInstruction*)>
       eq_instructions = std::equal_to<const HloInstruction*>();
   const std::function<bool(const HloComputation*, const HloComputation*)>
@@ -133,14 +137,16 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
     // HLO instructions are grouped into equivalency classes by using the
     // cse_equal predicate defined above. This set holds a representative
     // instruction for each class.
-    tensorflow::gtl::FlatSet<HloInstruction*, decltype(&CseHash),
-                             decltype(cse_equal)>
+    absl::flat_hash_set<HloInstruction*, decltype(&CseHash),
+                        decltype(cse_equal)>
         representatives(/*N=*/computation->instruction_count() + 1, &CseHash,
                         cse_equal);
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       // If the instruction has zero operands (constants, parameters, etc.) skip
       // over it.
-      if (instruction->operand_count() == 0) {
+      if (instruction->operand_count() == 0 &&
+          instruction->opcode() != HloOpcode::kPartitionId &&
+          instruction->opcode() != HloOpcode::kReplicaId) {
         continue;
       }
       // Skip instructions which have side effects.
@@ -148,16 +154,15 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
         continue;
       }
 
-      auto it = representatives.find(instruction);
-      if (it != representatives.end()) {
-        HloInstruction* equivalent_instruction = *it;
+      auto pair = representatives.insert(instruction);
+      if (!pair.second) {
+        HloInstruction* equivalent_instruction = *pair.first;
         TF_RETURN_IF_ERROR(
             instruction->ReplaceAllUsesWith(equivalent_instruction));
         TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
         changed = true;
         continue;
       }
-      representatives.insert(instruction);
     }
   }
   return changed;

@@ -37,7 +37,7 @@ TEST(TextLiteralWriterTest, WritesFloatLiteral) {
   });
   string path =
       tensorflow::io::JoinPath(tensorflow::testing::TmpDir(), "/whatever");
-  ASSERT_IS_OK(TextLiteralWriter::WriteToPath(*literal, path));
+  ASSERT_IS_OK(TextLiteralWriter::WriteToPath(literal, path));
   string contents;
   TF_CHECK_OK(tensorflow::ReadFileToString(tensorflow::Env::Default(), path,
                                            &contents));

@@ -22,14 +22,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/padding.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -42,7 +43,8 @@ class ReferenceUtil {
   template <typename T>
   static std::unique_ptr<Array2D<T>> TransposeArray2D(
       const Array2D<T>& operand) {
-    auto result = MakeUnique<Array2D<T>>(operand.width(), operand.height());
+    auto result =
+        absl::make_unique<Array2D<T>>(operand.width(), operand.height());
     for (int64 w = 0; w < operand.width(); ++w) {
       for (int64 h = 0; h < operand.height(); ++h) {
         (*result)(w, h) = operand(h, w);
@@ -53,12 +55,11 @@ class ReferenceUtil {
   }
 
   // Returns the result of a matrix multiply `lhs x rhs`.
-  static std::unique_ptr<Array2D<Eigen::half>> MatmulArray2D(
-      const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs);
-  static std::unique_ptr<Array2D<float>> MatmulArray2D(
-      const Array2D<float>& lhs, const Array2D<float>& rhs);
-  static std::unique_ptr<Array2D<double>> MatmulArray2D(
-      const Array2D<double>& lhs, const Array2D<double>& rhs);
+  template <typename T>
+  static std::unique_ptr<Array2D<T>> MatmulArray2D(const Array2D<T>& lhs,
+                                                   const Array2D<T>& rhs) {
+    return HloEvaluator::MatmulArray2D(lhs, rhs);
+  }
 
   // Converts the input operand to use f64 values instead of f32 values.
   static std::unique_ptr<Array2D<double>> Array2DF32ToF64(
@@ -143,8 +144,7 @@ class ReferenceUtil {
   // Returns the result of reducing the 4D array to a vector, reducing away
   // the dimensions specified in dims.
   static std::vector<float> Reduce4DTo1D(
-      const Array4D<float>& array, float init,
-      tensorflow::gtl::ArraySlice<int64> dims,
+      const Array4D<float>& array, float init, absl::Span<const int64> dims,
       const std::function<float(float, float)>& reduce_function);
 
   // Broadcast 1D dimension to 4D, from the dimension `broadcast_from_dim`.
@@ -155,8 +155,7 @@ class ReferenceUtil {
   // Returns the result of reducing the 3D array to a 2D array, reducing away
   // the dimensions specified in dims.
   static std::unique_ptr<Array2D<float>> Reduce3DTo2D(
-      const Array3D<float>& array, float init,
-      tensorflow::gtl::ArraySlice<int64> dims,
+      const Array3D<float>& array, float init, absl::Span<const int64> dims,
       const std::function<float(float, float)>& reduce_function);
 
   // Applies map_function to each element in the input (2D array) and returns
@@ -178,47 +177,33 @@ class ReferenceUtil {
 
   // Windowed reductions with Add as the function to apply.
   static std::unique_ptr<std::vector<float>> ReduceWindow1DAdd(
-      const tensorflow::gtl::ArraySlice<float>& operand, float init,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
-  static std::unique_ptr<Array2D<float>> ReduceWindow2DAdd(
-      const Array2D<float>& operand, float init,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+      absl::Span<const float> operand, float init,
+      absl::Span<const int64> window, absl::Span<const int64> stride,
+      Padding padding);
   static std::unique_ptr<Array3D<float>> ReduceWindow3DAdd(
-      const Array3D<float>& operand, float init,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+      const Array3D<float>& operand, float init, absl::Span<const int64> window,
+      absl::Span<const int64> stride, Padding padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DAdd(
-      const Array4D<float>& operand, float init,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+      const Array4D<float>& operand, float init, absl::Span<const int64> window,
+      absl::Span<const int64> stride, Padding padding);
 
   // Windowed reductions with a generic reduce function.
   static std::unique_ptr<std::vector<float>> ReduceWindow1DGeneric(
-      const tensorflow::gtl::ArraySlice<float>& operand, float init,
+      absl::Span<const float> operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride,
-      const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding);
-  static std::unique_ptr<Array2D<float>> ReduceWindow2DGeneric(
-      const Array2D<float>& operand, float init,
-      const std::function<float(float, float)>& reduce_func,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride,
-      const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding);
+      absl::Span<const int64> window, absl::Span<const int64> stride,
+      absl::Span<const std::pair<int64, int64>> padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
       const Array4D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+      absl::Span<const int64> window, absl::Span<const int64> stride,
+      Padding padding);
   // With arbitrary padding.
   static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
       const Array4D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride,
-      const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding);
+      absl::Span<const int64> window, absl::Span<const int64> stride,
+      absl::Span<const std::pair<int64, int64>> padding);
 
   // Batch normalize data.
   static std::unique_ptr<Array4D<float>> BatchNorm4D(
@@ -231,8 +216,8 @@ class ReferenceUtil {
   // TODO(b/74533103) Switch tests to evaluator and remove this implementation.
   static std::unique_ptr<Array4D<float>> SelectAndScatter4DGePlus(
       const Array4D<float>& operand, const Array4D<float>& source, float init,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride, bool same_padding);
+      absl::Span<const int64> window, absl::Span<const int64> stride,
+      bool same_padding);
 
   // Concatenates the lhs and rhs arrays along the concatenate_dimension.
   // E.g. if concatenate_dimension is 0, the "n1"/height dimension is
@@ -242,7 +227,7 @@ class ReferenceUtil {
                                               const Array2D<T>& rhs,
                                               int concatenate_dimension) {
     CHECK(0 <= concatenate_dimension && concatenate_dimension < 2);
-    auto result = MakeUnique<Array2D<T>>(
+    auto result = absl::make_unique<Array2D<T>>(
         concatenate_dimension == 0 ? lhs.n1() + rhs.n1() : lhs.n1(),
         concatenate_dimension == 1 ? lhs.n2() + rhs.n2() : lhs.n2());
     for (int64 i0 = 0; i0 < result->n1(); ++i0) {
@@ -276,7 +261,8 @@ class ReferenceUtil {
         out_dims[i] = lhs_dims[i] + rhs_dims[i];
       }
     }
-    auto result = MakeUnique<Array3D<T>>(out_dims[0], out_dims[1], out_dims[2]);
+    auto result =
+        absl::make_unique<Array3D<T>>(out_dims[0], out_dims[1], out_dims[2]);
     for (int64 i0 = 0; i0 < result->n1(); ++i0) {
       for (int64 i1 = 0; i1 < result->n2(); ++i1) {
         for (int64 i2 = 0; i2 < result->n3(); ++i2) {
@@ -310,8 +296,8 @@ class ReferenceUtil {
         out_dims[i] = lhs_dims[i] + rhs_dims[i];
       }
     }
-    auto result = MakeUnique<Array4D<T>>(out_dims[0], out_dims[1], out_dims[2],
-                                         out_dims[3]);
+    auto result = absl::make_unique<Array4D<T>>(out_dims[0], out_dims[1],
+                                                out_dims[2], out_dims[3]);
     for (int64 i0 = 0; i0 < result->n1(); ++i0) {
       for (int64 i1 = 0; i1 < result->n2(); ++i1) {
         for (int64 i2 = 0; i2 < result->n3(); ++i2) {
@@ -332,8 +318,8 @@ class ReferenceUtil {
 
   // Slices with index clamping
   template <typename T>
-  static std::vector<T> ClampSlice1D(
-      const tensorflow::gtl::ArraySlice<T>& input, int64 start, int64 size) {
+  static std::vector<T> ClampSlice1D(absl::Span<const T> input, int64 start,
+                                     int64 size) {
     start = std::min<int64>(std::max<int64>(0, start), input.size() - size);
     std::vector<T> result;
     for (int64 i = 0; i < size; ++i) {
@@ -355,9 +341,9 @@ class ReferenceUtil {
     CHECK_LE(limits[1], input.n2());
     CHECK_GE(strides[0], 1);
     CHECK_GE(strides[1], 1);
-    auto result =
-        MakeUnique<Array2D<T>>(CeilOfRatio(limits[0] - starts[0], strides[0]),
-                               CeilOfRatio(limits[1] - starts[1], strides[1]));
+    auto result = absl::make_unique<Array2D<T>>(
+        CeilOfRatio(limits[0] - starts[0], strides[0]),
+        CeilOfRatio(limits[1] - starts[1], strides[1]));
     for (int64 i0 = 0; i0 < result->n1(); ++i0) {
       for (int64 i1 = 0; i1 < result->n2(); ++i1) {
         (*result)(i0, i1) =
@@ -381,10 +367,10 @@ class ReferenceUtil {
     CHECK_GE(strides[0], 1);
     CHECK_GE(strides[1], 1);
     CHECK_GE(strides[2], 1);
-    auto result =
-        MakeUnique<Array3D<T>>(CeilOfRatio(limits[0] - starts[0], strides[0]),
-                               CeilOfRatio(limits[1] - starts[1], strides[1]),
-                               CeilOfRatio(limits[2] - starts[2], strides[2]));
+    auto result = absl::make_unique<Array3D<T>>(
+        CeilOfRatio(limits[0] - starts[0], strides[0]),
+        CeilOfRatio(limits[1] - starts[1], strides[1]),
+        CeilOfRatio(limits[2] - starts[2], strides[2]));
 
     for (int64 i0 = 0; i0 < result->n1(); ++i0) {
       for (int64 i1 = 0; i1 < result->n2(); ++i1) {
@@ -415,11 +401,11 @@ class ReferenceUtil {
     CHECK_GE(strides[1], 1);
     CHECK_GE(strides[2], 1);
     CHECK_GE(strides[3], 1);
-    auto result =
-        MakeUnique<Array4D<T>>(CeilOfRatio(limits[0] - starts[0], strides[0]),
-                               CeilOfRatio(limits[1] - starts[1], strides[1]),
-                               CeilOfRatio(limits[2] - starts[2], strides[2]),
-                               CeilOfRatio(limits[3] - starts[3], strides[3]));
+    auto result = absl::make_unique<Array4D<T>>(
+        CeilOfRatio(limits[0] - starts[0], strides[0]),
+        CeilOfRatio(limits[1] - starts[1], strides[1]),
+        CeilOfRatio(limits[2] - starts[2], strides[2]),
+        CeilOfRatio(limits[3] - starts[3], strides[3]));
     for (int64 i0 = 0; i0 < result->n1(); ++i0) {
       for (int64 i1 = 0; i1 < result->n2(); ++i1) {
         for (int64 i2 = 0; i2 < result->n3(); ++i2) {
@@ -460,8 +446,8 @@ class ReferenceUtil {
   template <typename F>
   static std::unique_ptr<Array4D<float>> MapWithIndexArray4D(
       const Array4D<float>& input, F&& map_function) {
-    auto result = MakeUnique<Array4D<float>>(input.planes(), input.depth(),
-                                             input.height(), input.width());
+    auto result = absl::make_unique<Array4D<float>>(
+        input.planes(), input.depth(), input.height(), input.width());
     for (int64 plane = 0; plane < input.planes(); ++plane) {
       for (int64 depth = 0; depth < input.depth(); ++depth) {
         for (int64 height = 0; height < input.height(); ++height) {
@@ -495,8 +481,8 @@ class ReferenceUtil {
   template <typename F>
   static std::unique_ptr<Array4D<float>> MapWithIndexArray4D(
       const Array4D<float>& lhs, const Array4D<float>& rhs, F&& map_function) {
-    auto result = MakeUnique<Array4D<float>>(lhs.planes(), lhs.depth(),
-                                             lhs.height(), lhs.width());
+    auto result = absl::make_unique<Array4D<float>>(lhs.planes(), lhs.depth(),
+                                                    lhs.height(), lhs.width());
     for (int64 plane = 0; plane < lhs.planes(); ++plane) {
       for (int64 depth = 0; depth < lhs.depth(); ++depth) {
         for (int64 height = 0; height < lhs.height(); ++height) {
@@ -530,7 +516,7 @@ class ReferenceUtil {
     int64 out1 =
         in1 + low_padding1 + high_padding1 + (in1 - 1) * interior_padding1;
 
-    auto result = MakeUnique<Array2D<NativeT>>(out0, out1);
+    auto result = absl::make_unique<Array2D<NativeT>>(out0, out1);
     result->Fill(pad);
     int64 o0 = low_padding0;
     for (int64 i0 = 0; i0 < in0; ++i0) {
@@ -631,7 +617,7 @@ class ReferenceUtil {
     Array4D<NativeT> result(output_bounds[0], output_bounds[1],
                             output_bounds[2], output_bounds[3]);
     result.Each(
-        [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT* value) {
+        [&](absl::Span<const int64> indices, NativeT* value) {
           for (int i = 0; i < 4; ++i) {
             bool in_low_padding = indices[i] < pad_low[i];
             bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];
@@ -669,7 +655,7 @@ class ReferenceUtil {
   static std::unique_ptr<Array2D<T1>> ApplyElementwise2D(
       F&& f, const Array2D<T1>& array1, const Array2D<Ts>&... arrays) {
     AssertSameSize2D(array1, arrays...);
-    auto result = MakeUnique<Array2D<T1>>(array1.n1(), array1.n2());
+    auto result = absl::make_unique<Array2D<T1>>(array1.n1(), array1.n2());
     for (int64 i = 0; i < array1.n1(); ++i) {
       for (int64 j = 0; j < array1.n2(); ++j) {
         (*result)(i, j) = f(array1(i, j), arrays(i, j)...);

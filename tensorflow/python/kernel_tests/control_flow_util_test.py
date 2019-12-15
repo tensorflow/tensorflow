@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -32,6 +33,7 @@ from tensorflow.python.platform import test
 
 class ControlFlowUtilTest(test.TestCase):
 
+  @test_util.run_v1_only("b/120545219")
   def testIsSwitch(self):
     switch_false, _ = control_flow_ops.switch(1, True)
     switch = switch_false.op
@@ -44,6 +46,7 @@ class ControlFlowUtilTest(test.TestCase):
 
     self.assertFalse(control_flow_util.IsSwitch(test_ops.int_output().op))
 
+  @test_util.run_v1_only("b/120545219")
   def testIsLoopEnter(self):
     enter = gen_control_flow_ops.enter(1, frame_name="name").op
     self.assertTrue(control_flow_util.IsLoopEnter(enter))
@@ -61,6 +64,7 @@ class ControlFlowUtilTest(test.TestCase):
 
     self.assertFalse(control_flow_util.IsLoopEnter(test_ops.int_output().op))
 
+  @test_util.run_v1_only("b/120545219")
   def testIsLoopExit(self):
     exit_op = control_flow_ops.exit(1).op
     self.assertTrue(control_flow_util.IsLoopExit(exit_op))

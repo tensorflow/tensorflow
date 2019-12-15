@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -43,6 +44,14 @@ class Identity(bijector.Bijector):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self, validate_args=False, name="identity"):
     super(Identity, self).__init__(
         forward_min_event_ndims=0,

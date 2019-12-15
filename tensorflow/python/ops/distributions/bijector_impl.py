@@ -34,6 +34,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import object_identity
 
 
 __all__ = [
@@ -64,12 +65,14 @@ class _Mapping(collections.namedtuple(
   @property
   def x_key(self):
     """Returns key used for caching Y=g(X)."""
-    return (self.x,) + self._deep_tuple(tuple(sorted(self.kwargs.items())))
+    return ((object_identity.Reference(self.x),) +
+            self._deep_tuple(tuple(sorted(self.kwargs.items()))))
 
   @property
   def y_key(self):
     """Returns key used for caching X=g^{-1}(Y)."""
-    return (self.y,) + self._deep_tuple(tuple(sorted(self.kwargs.items())))
+    return ((object_identity.Reference(self.y),) +
+            self._deep_tuple(tuple(sorted(self.kwargs.items()))))
 
   def merge(self, x=None, y=None, ildj_map=None, kwargs=None, mapping=None):
     """Returns new _Mapping with args merged with self.
@@ -104,11 +107,11 @@ class _Mapping(collections.namedtuple(
 
   def _merge_dicts(self, old=None, new=None):
     """Helper to merge two dictionaries."""
-    old = dict() if old is None else old
-    new = dict() if new is None else new
+    old = {} if old is None else old
+    new = {} if new is None else new
     for k, v in six.iteritems(new):
       val = old.get(k, None)
-      if val is not None and val != v:
+      if val is not None and val is not v:
         raise ValueError("Found different value for existing key "
                          "(key:{} old_value:{} new_value:{}".format(
                              k, old[k], v))
@@ -119,7 +122,7 @@ class _Mapping(collections.namedtuple(
     """Helper to merge which handles merging one value."""
     if old is None:
       return new
-    elif new is not None and old != new:
+    elif new is not None and old is not new:
       raise ValueError("Incompatible values: %s != %s" % (old, new))
     return old
 
@@ -462,7 +465,7 @@ class Bijector(object):
 
 
   ```python
-  abs = tf.contrib.distributions.bijectors.AbsoluteValue()
+  abs = tfp.distributions.bijectors.AbsoluteValue()
 
   abs.forward(-1.)
   ==> 1.
@@ -567,6 +570,7 @@ class Bijector(object):
     self._constant_ildj_map = {}
     self._validate_args = validate_args
     self._dtype = dtype
+    # These dicts can only be accessed using _Mapping.x_key or _Mapping.y_key
     self._from_y = {}
     self._from_x = {}
     if name:
@@ -825,10 +829,21 @@ class Bijector(object):
           min_event_ndims=self.inverse_min_event_ndims,
           event_ndims=event_ndims)):
         if not self._is_injective:  # No caching for non-injective
-          ildjs = self._inverse_log_det_jacobian(y, **kwargs)
-          return tuple(self._reduce_jacobian_det_over_event(
-              y, ildj, self.inverse_min_event_ndims, event_ndims)
-                       for ildj in ildjs)
+          try:
+            ildjs = self._inverse_log_det_jacobian(y, **kwargs)
+            return tuple(self._reduce_jacobian_det_over_event(
+                y, ildj, self.inverse_min_event_ndims, event_ndims)
+                         for ildj in ildjs)
+          except NotImplementedError as original_exception:
+            try:
+              x = self._inverse(y, **kwargs)
+              fldjs = self._forward_log_det_jacobian(x, **kwargs)
+              return tuple(self._reduce_jacobian_det_over_event(
+                  x, -fldj, self.forward_min_event_ndims, event_ndims)
+                           for fldj in fldjs)
+            except NotImplementedError:
+              raise original_exception
+
         mapping = self._lookup(y=y, kwargs=kwargs)
         if mapping.ildj_map is not None and event_ndims in mapping.ildj_map:
           return mapping.ildj_map[event_ndims]
@@ -917,11 +932,21 @@ class Bijector(object):
           return -1. * self._constant_ildj_map[event_ndims]
         x = ops.convert_to_tensor(x, name="x")
         self._maybe_assert_dtype(x)
-        if not self._is_injective:
-          fldjs = self._forward_log_det_jacobian(x, **kwargs)  # No caching.
-          return tuple(self._reduce_jacobian_det_over_event(
-              x, fldj, self.forward_min_event_ndims, event_ndims)
-                       for fldj in fldjs)
+        if not self._is_injective:  # No caching for non-injective
+          try:
+            fldjs = self._forward_log_det_jacobian(x, **kwargs)  # No caching.
+            return tuple(self._reduce_jacobian_det_over_event(
+                x, fldj, self.forward_min_event_ndims, event_ndims)
+                         for fldj in fldjs)
+          except NotImplementedError as original_exception:
+            try:
+              y = self._forward(x, **kwargs)
+              ildjs = self._inverse_log_det_jacobian(y, **kwargs)
+              return tuple(self._reduce_jacobian_det_over_event(
+                  y, -ildj, self.inverse_min_event_ndims, event_ndims)
+                           for ildj in ildjs)
+            except NotImplementedError:
+              raise original_exception
         mapping = self._lookup(x=x, kwargs=kwargs)
         if mapping.ildj_map is not None and event_ndims in mapping.ildj_map:
           return -mapping.ildj_map[event_ndims]
@@ -1011,12 +1036,6 @@ class Bijector(object):
   def _reduce_jacobian_det_over_event(
       self, y, ildj, min_event_ndims, event_ndims):
     """Reduce jacobian over event_ndims - min_event_ndims."""
-
-    if not self.is_constant_jacobian:
-      return math_ops.reduce_sum(
-          ildj,
-          self._get_event_reduce_dims(min_event_ndims, event_ndims))
-
     # In this case, we need to tile the Jacobian over the event and reduce.
     y_rank = array_ops.rank(y)
     y_shape = array_ops.shape(y)[

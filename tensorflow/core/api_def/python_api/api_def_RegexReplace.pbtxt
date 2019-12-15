@@ -1,10 +1,4 @@
 op {
   graph_op_name: "RegexReplace"
-  endpoint {
-    name: "strings.regex_replace"
-  }
-  endpoint {
-    name: "regex_replace"
-    deprecated: true
-  }
+  visibility: HIDDEN
 }

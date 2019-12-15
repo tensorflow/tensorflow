@@ -19,19 +19,25 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import time
 import numpy as np
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 def _create_checkpoints(sess, checkpoint_dir):
@@ -84,7 +90,7 @@ class CheckpointsTest(test.TestCase):
 
   def testNoTensor(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       _, _, _, _ = _create_checkpoints(session, checkpoint_dir)
     with self.assertRaises(errors_impl.OpError):
       self.assertAllEqual(
@@ -92,7 +98,7 @@ class CheckpointsTest(test.TestCase):
 
   def testGetTensor(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       v1, v2, v3, v4 = _create_checkpoints(session, checkpoint_dir)
     self.assertAllEqual(
         checkpoint_utils.load_variable(checkpoint_dir, "var1"), v1)
@@ -105,7 +111,7 @@ class CheckpointsTest(test.TestCase):
 
   def testGetAllVariables(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       _create_checkpoints(session, checkpoint_dir)
     self.assertEqual(
         checkpoint_utils.list_variables(checkpoint_dir),
@@ -114,12 +120,12 @@ class CheckpointsTest(test.TestCase):
 
   def testInitFromCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       v1, v2, v3, v4 = _create_checkpoints(session, checkpoint_dir)
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope("some_scope"):
           my1 = variable_scope.get_variable("my1", [1, 10])
           with variable_scope.variable_scope("some_other_scope"):
@@ -148,12 +154,12 @@ class CheckpointsTest(test.TestCase):
 
   def testInitialValueComesFromCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       v1, _, _, _ = _create_checkpoints(session, checkpoint_dir)
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope(
             "some_scope", initializer=init_ops.zeros_initializer()):
           my1 = variable_scope.get_variable("my1", [1, 10])
@@ -178,7 +184,7 @@ class CheckpointsTest(test.TestCase):
 
   def testInitWithScopeDoesNotCaptureSuffixes(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       _, _, _, v4 = _create_checkpoints(session, checkpoint_dir)
 
     with ops.Graph().as_default() as g:
@@ -190,35 +196,32 @@ class CheckpointsTest(test.TestCase):
 
       checkpoint_utils.init_from_checkpoint(checkpoint_dir,
                                             {"useful_scope/": "useful_scope/"})
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         session.run(variables.global_variables_initializer())
         self.assertAllEqual(my4.eval(session), v4)
         self.assertAllEqual(my5.eval(session), my5_init)
 
   def testRestoreRunsOnSameDevice(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       _create_checkpoints(session, checkpoint_dir)
 
     with ops.Graph().as_default():
       with ops.device("/job:ps"):
         with variable_scope.variable_scope("useful_scope"):
-          my4 = variable_scope.get_variable("var4", [9, 9])
+          variable_scope.get_variable("var4", [9, 9])
 
       checkpoint_utils.init_from_checkpoint(checkpoint_dir,
                                             {"useful_scope/": "useful_scope/"})
-      # initializer runs on the same task but always on CPU.
-      self.assertEqual(my4._initializer_op.op.inputs[1].device,
-                       "/job:ps/device:CPU:0")
 
   def testInitFromRootCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       v1, v2, v3, v4 = _create_checkpoints(session, checkpoint_dir)
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope("some_scope"):
           my1 = variable_scope.get_variable("var1", [1, 10])
           my2 = variable_scope.get_variable("var2", [10, 10])
@@ -237,12 +240,12 @@ class CheckpointsTest(test.TestCase):
 
   def testInitToRootCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       v1, v2, v3, v4 = _create_checkpoints(session, checkpoint_dir)
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         my1 = variable_scope.get_variable("var1", [1, 10])
         my2 = variable_scope.get_variable("var2", [10, 10])
         my3 = variable_scope.get_variable("var3", [100, 100])
@@ -260,12 +263,12 @@ class CheckpointsTest(test.TestCase):
 
   def testInitFromPartitionVar(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       v1 = _create_partition_checkpoints(session, checkpoint_dir)
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope("some_scope"):
           my1 = variable_scope.get_variable(
               name="my1",
@@ -303,7 +306,7 @@ class CheckpointsTest(test.TestCase):
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope("some_scope"):
           my1 = variable_scope.get_variable(
               name="my1",
@@ -322,12 +325,12 @@ class CheckpointsTest(test.TestCase):
 
   def testInitFromCheckpointMissing(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       _, _, _, _ = _create_checkpoints(session, checkpoint_dir)
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope("some_scope"):
           _ = variable_scope.get_variable("my1", [10, 10])
           _ = variable_scope.get_variable(
@@ -367,12 +370,12 @@ class CheckpointsTest(test.TestCase):
 
   def testNoAdditionalReadOpsForResourceVariables(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       v1, _, _, _ = _create_checkpoints(session, checkpoint_dir)
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         my1 = resource_variable_ops.ResourceVariable([[0.0] * 10], name="my1")
 
         with ops.name_scope("init_from_checkpoint"):
@@ -391,6 +394,96 @@ class CheckpointsTest(test.TestCase):
             op.type != "Identity")
     ]
     self.assertEqual(ops_in_init_from_checkpoint_scope, [])
+
+
+class CheckpointIteratorTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testReturnsEmptyIfNoCheckpointsFound(self):
+    checkpoint_dir = os.path.join(self.get_temp_dir(), "no_checkpoints_found")
+
+    num_found = 0
+    for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
+      num_found += 1
+    self.assertEqual(num_found, 0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testReturnsSingleCheckpointIfOneCheckpointFound(self):
+    checkpoint_dir = os.path.join(self.get_temp_dir(), "one_checkpoint_found")
+    if not gfile.Exists(checkpoint_dir):
+      gfile.MakeDirs(checkpoint_dir)
+
+    save_path = os.path.join(checkpoint_dir, "model.ckpt")
+
+    a = resource_variable_ops.ResourceVariable(5)
+    self.evaluate(a.initializer)
+    checkpoint = trackable_utils.Checkpoint(a=a)
+    checkpoint.save(file_prefix=save_path)
+
+    num_found = 0
+    for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
+      num_found += 1
+    self.assertEqual(num_found, 1)
+
+  @test_util.run_v1_only("Tests v1-style checkpoint sharding")
+  def testReturnsSingleCheckpointIfOneShardedCheckpoint(self):
+    checkpoint_dir = os.path.join(self.get_temp_dir(),
+                                  "one_checkpoint_found_sharded")
+    if not gfile.Exists(checkpoint_dir):
+      gfile.MakeDirs(checkpoint_dir)
+
+    global_step = variables.Variable(0, name="v0")
+
+    # This will result in 3 different checkpoint shard files.
+    with ops.device("/cpu:0"):
+      variables.Variable(10, name="v1")
+    with ops.device("/cpu:1"):
+      variables.Variable(20, name="v2")
+
+    saver = saver_lib.Saver(sharded=True)
+
+    with session_lib.Session(
+        target="",
+        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as session:
+
+      session.run(variables.global_variables_initializer())
+      save_path = os.path.join(checkpoint_dir, "model.ckpt")
+      saver.save(session, save_path, global_step=global_step)
+
+    num_found = 0
+    for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
+      num_found += 1
+    self.assertEqual(num_found, 1)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTimeoutFn(self):
+    timeout_fn_calls = [0]
+    def timeout_fn():
+      timeout_fn_calls[0] += 1
+      return timeout_fn_calls[0] > 3
+
+    results = list(
+        checkpoint_utils.checkpoints_iterator(
+            "/non-existent-dir", timeout=0.1, timeout_fn=timeout_fn))
+    self.assertEqual([], results)
+    self.assertEqual(4, timeout_fn_calls[0])
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class WaitForNewCheckpointTest(test.TestCase):
+
+  def testReturnsNoneAfterTimeout(self):
+    start = time.time()
+    ret = checkpoint_utils.wait_for_new_checkpoint(
+        "/non-existent-dir", "foo", timeout=1.0, seconds_to_sleep=0.5)
+    end = time.time()
+    self.assertIsNone(ret)
+
+    # We've waited one second.
+    self.assertGreater(end, start + 0.5)
+
+    # The timeout kicked in.
+    self.assertLess(end, start + 1.1)
 
 
 if __name__ == "__main__":

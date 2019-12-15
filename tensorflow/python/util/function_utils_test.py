@@ -50,7 +50,7 @@ class FnArgsTest(test.TestCase):
 
     self.assertEqual(('a', 'b'), function_utils.fn_args(Foo()))
 
-  def test_bounded_method(self):
+  def test_bound_method(self):
 
     class Foo(object):
 
@@ -58,6 +58,15 @@ class FnArgsTest(test.TestCase):
         return a + b
 
     self.assertEqual(('a', 'b'), function_utils.fn_args(Foo().bar))
+
+  def test_bound_method_no_self(self):
+
+    class Foo(object):
+
+      def bar(*args):  # pylint:disable=no-method-argument
+        return args[1] + args[2]
+
+    self.assertEqual((), function_utils.fn_args(Foo().bar))
 
   def test_partial_function(self):
     expected_test_arg = 123
@@ -133,6 +142,101 @@ class FnArgsTest(test.TestCase):
 
     self.assertEqual(3, double_wrapped_fn(3))
     self.assertEqual(3, double_wrapped_fn(a=3))
+
+
+class HasKwargsTest(test.TestCase):
+
+  def test_simple_function(self):
+
+    fn_has_kwargs = lambda **x: x
+    self.assertTrue(function_utils.has_kwargs(fn_has_kwargs))
+
+    fn_has_no_kwargs = lambda x: x
+    self.assertFalse(function_utils.has_kwargs(fn_has_no_kwargs))
+
+  def test_callable(self):
+
+    class FooHasKwargs(object):
+
+      def __call__(self, **x):
+        del x
+    self.assertTrue(function_utils.has_kwargs(FooHasKwargs()))
+
+    class FooHasNoKwargs(object):
+
+      def __call__(self, x):
+        del x
+    self.assertFalse(function_utils.has_kwargs(FooHasNoKwargs()))
+
+  def test_bound_method(self):
+
+    class FooHasKwargs(object):
+
+      def fn(self, **x):
+        del x
+    self.assertTrue(function_utils.has_kwargs(FooHasKwargs().fn))
+
+    class FooHasNoKwargs(object):
+
+      def fn(self, x):
+        del x
+    self.assertFalse(function_utils.has_kwargs(FooHasNoKwargs().fn))
+
+  def test_partial_function(self):
+    expected_test_arg = 123
+
+    def fn_has_kwargs(test_arg, **x):
+      if test_arg != expected_test_arg:
+        return ValueError('partial fn does not work correctly')
+      return x
+
+    wrapped_fn = functools.partial(fn_has_kwargs, test_arg=123)
+    self.assertTrue(function_utils.has_kwargs(wrapped_fn))
+    some_kwargs = dict(x=1, y=2, z=3)
+    self.assertEqual(wrapped_fn(**some_kwargs), some_kwargs)
+
+    def fn_has_no_kwargs(x, test_arg):
+      if test_arg != expected_test_arg:
+        return ValueError('partial fn does not work correctly')
+      return x
+
+    wrapped_fn = functools.partial(fn_has_no_kwargs, test_arg=123)
+    self.assertFalse(function_utils.has_kwargs(wrapped_fn))
+    some_arg = 1
+    self.assertEqual(wrapped_fn(some_arg), some_arg)
+
+  def test_double_partial(self):
+    expected_test_arg1 = 123
+    expected_test_arg2 = 456
+
+    def fn_has_kwargs(test_arg1, test_arg2, **x):
+      if test_arg1 != expected_test_arg1 or test_arg2 != expected_test_arg2:
+        return ValueError('partial does not work correctly')
+      return x
+
+    wrapped_fn = functools.partial(fn_has_kwargs, test_arg2=456)
+    double_wrapped_fn = functools.partial(wrapped_fn, test_arg1=123)
+
+    self.assertTrue(function_utils.has_kwargs(double_wrapped_fn))
+    some_kwargs = dict(x=1, y=2, z=3)
+    self.assertEqual(double_wrapped_fn(**some_kwargs), some_kwargs)
+
+    def fn_has_no_kwargs(x, test_arg1, test_arg2):
+      if test_arg1 != expected_test_arg1 or test_arg2 != expected_test_arg2:
+        return ValueError('partial does not work correctly')
+      return x
+
+    wrapped_fn = functools.partial(fn_has_no_kwargs, test_arg2=456)
+    double_wrapped_fn = functools.partial(wrapped_fn, test_arg1=123)
+
+    self.assertFalse(function_utils.has_kwargs(double_wrapped_fn))
+    some_arg = 1
+    self.assertEqual(double_wrapped_fn(some_arg), some_arg)
+
+  def test_raises_type_error(self):
+    with self.assertRaisesRegexp(
+        TypeError, 'fn should be a function-like object'):
+      function_utils.has_kwargs('not a function')
 
 
 class GetFuncNameTest(test.TestCase):

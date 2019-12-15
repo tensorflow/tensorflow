@@ -10,6 +10,10 @@ tf_class {
     name: "ndims"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "rank"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'dims\'], varargs=None, keywords=None, defaults=None"

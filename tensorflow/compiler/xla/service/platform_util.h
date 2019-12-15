@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_PLATFORM_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_PLATFORM_UTIL_H_
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -43,27 +44,19 @@ class PlatformUtil {
   // platform. Otherwise returns an error.
   static StatusOr<se::Platform*> GetDefaultPlatform();
 
-  // Convenience function which returns the sole supported platform. If
-  // exactly one supported platform is present, then this platform is the
-  // default platform. Otherwise returns an error.
-  static StatusOr<se::Platform*> GetSolePlatform();
-
   // Returns the platform according to the given name. Returns error if there is
   // no such platform.
   static StatusOr<se::Platform*> GetPlatform(const string& platform_name);
 
-  // Returns exactly one platform that does not have given name. Returns error
-  // if there is no such platform, or there are multiple such platforms.
-  static StatusOr<se::Platform*> GetPlatformExceptFor(
-      const string& platform_name);
-
-  // Returns a vector of StreamExecutors for the given platform. The vector is
-  // indexed by device ordinal (device numbering used by StreamExecutor). If an
-  // element is nullptr, then the device is present by not supported by XLA.
+  // Returns a vector of StreamExecutors for the given platform.
+  // If populated, only the devices in allowed_devices will have
+  // their StreamExecutors initialized, otherwise all StreamExecutors will be
+  // initialized and returned.
   //
   // If the platform has no visible devices, a not-found error is returned.
   static StatusOr<std::vector<se::StreamExecutor*>> GetStreamExecutors(
-      se::Platform* platform);
+      se::Platform* platform,
+      const absl::optional<std::set<int>>& allowed_devices = absl::nullopt);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(PlatformUtil);

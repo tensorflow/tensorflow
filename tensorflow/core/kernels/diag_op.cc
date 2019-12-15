@@ -17,9 +17,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/diag_op.h"
 
@@ -194,7 +194,7 @@ TF_CALL_complex128(REGISTER_DIAGPARTOP);
 #undef REGISTER_DIAGPARTOP
 
 // Register the GPU kernels.
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
@@ -242,6 +242,6 @@ TF_CALL_complex64(REGISTER_DIAGPARTOP_GPU);
 TF_CALL_complex128(REGISTER_DIAGPARTOP_GPU);
 #undef REGISTER_DIAGPARTOP_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

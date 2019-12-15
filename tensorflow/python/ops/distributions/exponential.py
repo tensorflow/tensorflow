@@ -27,6 +27,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import gamma
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -36,7 +37,7 @@ __all__ = [
 ]
 
 
-@tf_export("distributions.Exponential")
+@tf_export(v1=["distributions.Exponential"])
 class Exponential(gamma.Gamma):
   """Exponential distribution.
 
@@ -70,6 +71,14 @@ class Exponential(gamma.Gamma):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                rate,
                validate_args=False,
@@ -114,6 +123,9 @@ class Exponential(gamma.Gamma):
   def rate(self):
     return self._rate
 
+  def _log_survival_function(self, value):
+    return self._log_prob(value) - math_ops.log(self._rate)
+
   def _sample_n(self, n, seed=None):
     shape = array_ops.concat([[n], array_ops.shape(self._rate)], 0)
     # Uniform variates must be sampled from the open-interval `(0, 1)` rather
@@ -135,6 +147,10 @@ class Exponential(gamma.Gamma):
 class ExponentialWithSoftplusRate(Exponential):
   """Exponential with softplus transform on `rate`."""
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "Use `tfd.Exponential(tf.nn.softplus(rate)).",
+      warn_once=True)
   def __init__(self,
                rate,
                validate_args=False,

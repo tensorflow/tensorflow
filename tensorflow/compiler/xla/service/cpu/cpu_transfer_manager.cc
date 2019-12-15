@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -27,13 +29,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/stream_executor.h"
 
 namespace xla {
 
@@ -95,7 +96,7 @@ Status CpuTransferManager::TransferLiteralToInfeed(
   VLOG(2) << "Transferring literal to infeed with shape: "
           << ShapeUtil::HumanString(shape);
 
-  if (!ShapeUtil::IsTuple(shape)) {
+  if (!shape.IsTuple()) {
     int64 size = GetByteSizeRequirement(shape);
     return TransferBufferToInfeed(executor, size, literal.untyped_data());
   }
@@ -103,7 +104,7 @@ Status CpuTransferManager::TransferLiteralToInfeed(
   if (ShapeUtil::IsNestedTuple(shape)) {
     return Unimplemented(
         "Infeed with a nested tuple shape is not supported: %s",
-        ShapeUtil::HumanString(literal.shape()).c_str());
+        ShapeUtil::HumanString(literal.shape()));
   }
 
   // For a tuple, we transfer each of its elements to the device and
@@ -127,7 +128,8 @@ Status CpuTransferManager::TransferLiteralToInfeed(
     buffers.push_back(buffer);
   }
 
-  cpu::runtime::XfeedManager* xfeed_manager = cpu::runtime::GetXfeedManager();
+  cpu::runtime::XfeedManager* xfeed_manager =
+      cpu::runtime::GetXfeedManager(executor->device_ordinal());
   xfeed_manager->infeed()->EnqueueBuffersAtomically(buffers);
 
   cleanup.release();
@@ -140,7 +142,8 @@ Status CpuTransferManager::TransferBufferToInfeed(se::StreamExecutor* executor,
   TF_ASSIGN_OR_RETURN(cpu::runtime::XfeedBuffer * buffer,
                       TransferBufferToInfeedInternal(executor, size, source));
 
-  cpu::runtime::XfeedManager* xfeed_manager = cpu::runtime::GetXfeedManager();
+  cpu::runtime::XfeedManager* xfeed_manager =
+      cpu::runtime::GetXfeedManager(executor->device_ordinal());
   xfeed_manager->infeed()->EnqueueBuffersAtomically({buffer});
 
   return Status::OK();
@@ -151,11 +154,11 @@ CpuTransferManager::TransferBufferToInfeedInternal(se::StreamExecutor* executor,
                                                    int64 size,
                                                    const void* source) {
   if (size > std::numeric_limits<int32>::max()) {
-    return InvalidArgument("Infeed shape is too large: needs %lld bytes", size);
+    return InvalidArgument("Infeed shape is too large: needs %d bytes", size);
   }
 
   if (size <= 0) {
-    return InvalidArgument("Infeed shape must have positive size; got %lld",
+    return InvalidArgument("Infeed shape must have positive size; got %d",
                            size);
   }
 
@@ -174,12 +177,12 @@ CpuTransferManager::TransferBufferToInfeedInternal(se::StreamExecutor* executor,
 Status CpuTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, const Shape& literal_shape,
     MutableBorrowingLiteral literal) {
-  if (!ShapeUtil::IsTuple(literal_shape)) {
+  if (!literal_shape.IsTuple()) {
     int64 size = GetByteSizeRequirement(literal_shape);
     // Note: OSS build didn't like implicit conversion from
     // literal_shape.dimensions() to the array slice on 2017-07-10.
-    tensorflow::gtl::ArraySlice<int64> dimensions(
-        tensorflow::bit_cast<const int64*>(literal_shape.dimensions().data()),
+    absl::Span<const int64> dimensions(
+        absl::bit_cast<const int64*>(literal_shape.dimensions().data()),
         literal_shape.dimensions().size());
     TF_ASSIGN_OR_RETURN(
         Shape received_shape,
@@ -224,7 +227,7 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
 
 StatusOr<Shape> CpuTransferManager::TransferTupleBuffersFromOutfeed(
     se::StreamExecutor* executor,
-    tensorflow::gtl::ArraySlice<std::pair<void*, int64>> buffer_data) {
+    absl::Span<const std::pair<void*, int64>> buffer_data) {
   return TransferBuffersFromOutfeedInternal(executor, buffer_data,
                                             /*is_tuple=*/true);
 }
@@ -237,18 +240,17 @@ StatusOr<Shape> CpuTransferManager::TransferArrayBufferFromOutfeed(
 
 StatusOr<Shape> CpuTransferManager::TransferBuffersFromOutfeedInternal(
     se::StreamExecutor* executor,
-    tensorflow::gtl::ArraySlice<std::pair<void*, int64>> buffer_data,
-    bool is_tuple) {
+    absl::Span<const std::pair<void*, int64>> buffer_data, bool is_tuple) {
   std::vector<std::unique_ptr<CpuOutfeedBuffer>> buffers;
   for (auto b : buffer_data) {
     int64 size = b.second;
     if (size > std::numeric_limits<int32>::max()) {
-      return InvalidArgument("Outfeed shape is too large: needs %lld bytes",
+      return InvalidArgument("Outfeed shape is too large: needs %d bytes",
                              size);
     }
 
     if (size <= 0) {
-      return InvalidArgument("Outfeed shape must have positive size; got %lld",
+      return InvalidArgument("Outfeed shape must have positive size; got %d",
                              size);
     }
 
@@ -256,7 +258,7 @@ StatusOr<Shape> CpuTransferManager::TransferBuffersFromOutfeedInternal(
     VLOG(2)
         << "Enqueueing outfeed buffer (for the device to populate) of length "
         << size_32 << "B";
-    buffers.emplace_back(MakeUnique<CpuOutfeedBuffer>(b.first, size_32));
+    buffers.emplace_back(absl::make_unique<CpuOutfeedBuffer>(b.first, size_32));
   }
 
   std::vector<cpu::runtime::XfeedBuffer*> buffer_pointers;
@@ -265,7 +267,8 @@ StatusOr<Shape> CpuTransferManager::TransferBuffersFromOutfeedInternal(
     buffer_pointers.push_back(b.get());
   }
 
-  cpu::runtime::XfeedManager* xfeed_manager = cpu::runtime::GetXfeedManager();
+  cpu::runtime::XfeedManager* xfeed_manager =
+      cpu::runtime::GetXfeedManager(executor->device_ordinal());
   xfeed_manager->outfeed()->EnqueueBuffersAtomically(buffer_pointers);
   VLOG(2) << "Waiting for buffer to be notified as populated.";
   std::vector<Shape> outfed_shapes;
@@ -283,7 +286,7 @@ StatusOr<Shape> CpuTransferManager::TransferBuffersFromOutfeedInternal(
 }  // namespace xla
 
 static std::unique_ptr<xla::TransferManager> CreateCpuTransferManager() {
-  return xla::MakeUnique<xla::CpuTransferManager>();
+  return absl::make_unique<xla::CpuTransferManager>();
 }
 
 static bool InitModule() {

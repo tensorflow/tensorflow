@@ -1,0 +1,133 @@
+//===- TokenKinds.def - MLIR Token Description ------------------*- C++ -*-===//
+//
+// Copyright 2019 The MLIR Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// =============================================================================
+//
+// This file is intended to be #include'd multiple times to extract information
+// about tokens for various clients in the lexer.
+//
+//===----------------------------------------------------------------------===//
+
+#if !defined(TOK_MARKER) && !defined(TOK_IDENTIFIER) && !defined(TOK_LITERAL)&&\
+    !defined(TOK_PUNCTUATION) && !defined(TOK_OPERATOR) && !defined(TOK_KEYWORD)
+#  error Must define one of the TOK_ macros.
+#endif
+
+#ifndef TOK_MARKER
+#define TOK_MARKER(X)
+#endif
+#ifndef TOK_IDENTIFIER
+#define TOK_IDENTIFIER(NAME)
+#endif
+#ifndef TOK_LITERAL
+#define TOK_LITERAL(NAME)
+#endif
+#ifndef TOK_PUNCTUATION
+#define TOK_PUNCTUATION(NAME, SPELLING)
+#endif
+#ifndef TOK_OPERATOR
+#define TOK_OPERATOR(NAME, SPELLING)
+#endif
+#ifndef TOK_KEYWORD
+#define TOK_KEYWORD(SPELLING)
+#endif
+
+
+// Markers
+TOK_MARKER(eof)
+TOK_MARKER(error)
+
+// Identifiers.
+TOK_IDENTIFIER(bare_identifier)        // foo
+TOK_IDENTIFIER(at_identifier)          // @foo
+TOK_IDENTIFIER(hash_identifier)        // #foo
+TOK_IDENTIFIER(percent_identifier)     // %foo
+TOK_IDENTIFIER(caret_identifier)       // ^foo
+TOK_IDENTIFIER(exclamation_identifier) // !foo
+
+// Literals
+TOK_LITERAL(floatliteral)               // 2.0
+TOK_LITERAL(integer)                    // 42
+TOK_LITERAL(string)                     // "foo"
+TOK_LITERAL(inttype)                    // i421
+
+// Punctuation.
+TOK_PUNCTUATION(arrow,            "->")
+TOK_PUNCTUATION(at,               "@")
+TOK_PUNCTUATION(colon,            ":")
+TOK_PUNCTUATION(comma,            ",")
+TOK_PUNCTUATION(question,         "?")
+TOK_PUNCTUATION(l_paren,          "(")
+TOK_PUNCTUATION(r_paren,          ")")
+TOK_PUNCTUATION(l_brace,          "{")
+TOK_PUNCTUATION(r_brace,          "}")
+TOK_PUNCTUATION(l_square,         "[")
+TOK_PUNCTUATION(r_square,         "]")
+TOK_PUNCTUATION(less,             "<")
+TOK_PUNCTUATION(greater,          ">")
+TOK_PUNCTUATION(equal,            "=")
+TOK_PUNCTUATION(ellipsis,         "...")
+// TODO: More punctuation.
+
+// Operators.
+TOK_OPERATOR(plus,               "+")
+TOK_OPERATOR(minus,              "-")
+TOK_OPERATOR(star,               "*")
+// TODO: More operator tokens
+
+// Keywords.  These turn "foo" into Token::kw_foo enums.
+
+// NOTE: Please key these alphabetized to make it easier to find something in
+// this list and to cater to OCD.
+TOK_KEYWORD(attributes)
+TOK_KEYWORD(bf16)
+TOK_KEYWORD(ceildiv)
+TOK_KEYWORD(complex)
+TOK_KEYWORD(dense)
+TOK_KEYWORD(f16)
+TOK_KEYWORD(f32)
+TOK_KEYWORD(f64)
+TOK_KEYWORD(false)
+TOK_KEYWORD(floordiv)
+TOK_KEYWORD(for)
+TOK_KEYWORD(func)
+TOK_KEYWORD(index)
+TOK_KEYWORD(loc)
+TOK_KEYWORD(max)
+TOK_KEYWORD(memref)
+TOK_KEYWORD(min)
+TOK_KEYWORD(mod)
+TOK_KEYWORD(none)
+TOK_KEYWORD(offset)
+TOK_KEYWORD(opaque)
+TOK_KEYWORD(size)
+TOK_KEYWORD(sparse)
+TOK_KEYWORD(step)
+TOK_KEYWORD(strides)
+TOK_KEYWORD(symbol)
+TOK_KEYWORD(tensor)
+TOK_KEYWORD(to)
+TOK_KEYWORD(true)
+TOK_KEYWORD(tuple)
+TOK_KEYWORD(type)
+TOK_KEYWORD(unit)
+TOK_KEYWORD(vector)
+
+#undef TOK_MARKER
+#undef TOK_IDENTIFIER
+#undef TOK_LITERAL
+#undef TOK_PUNCTUATION
+#undef TOK_OPERATOR
+#undef TOK_KEYWORD

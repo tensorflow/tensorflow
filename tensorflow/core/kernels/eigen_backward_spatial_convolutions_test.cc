@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/eigen_backward_spatial_convolutions.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/eigen_backward_cuboid_convolutions.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -894,6 +893,7 @@ TEST(EigenBackwardSpatialConvolutionsTest,
 
 TEST(EigenBackwardSpatialConvolutionsTest,
      test_simple_spatial_convolution_backward_kernel_valid) {
+  const int num_batches = 5;
   const int input_depth = 2;
   const int input_rows = 3;
   const int input_cols = 4;
@@ -903,9 +903,10 @@ TEST(EigenBackwardSpatialConvolutionsTest,
   const int output_rows = input_rows - patch_rows + 1;
   const int output_cols = input_cols - patch_cols + 1;
 
-  Tensor<float, 3> input(input_depth, input_rows, input_cols);
+  Tensor<float, 4> input(input_depth, input_rows, input_cols, num_batches);
   Tensor<float, 4> kernel(output_depth, input_depth, patch_rows, patch_cols);
-  Tensor<float, 3> output_backward(output_depth, output_rows, output_cols);
+  Tensor<float, 4> output_backward(output_depth, output_rows, output_cols,
+                                   num_batches);
 
   output_backward = output_backward.constant(11.0f) + output_backward.random();
   input = input.constant(2.0f) + input.random();
@@ -924,14 +925,16 @@ TEST(EigenBackwardSpatialConvolutionsTest,
       for (int r = 0; r < patch_rows; ++r) {
         for (int c = 0; c < patch_cols; ++c) {
           float expected = 0.0f;
-          for (int i = 0; i < input_rows; ++i) {
-            for (int j = 0; j < input_cols; ++j) {
-              int output_i = i - r;
-              int output_j = j - c;
-              if (output_i >= 0 && output_i < output_rows && output_j >= 0 &&
-                  output_j < output_cols) {
-                expected +=
-                    input(id, i, j) * output_backward(od, output_i, output_j);
+          for (int b = 0; b < num_batches; ++b) {
+            for (int i = 0; i < input_rows; ++i) {
+              for (int j = 0; j < input_cols; ++j) {
+                int output_i = i - r;
+                int output_j = j - c;
+                if (output_i >= 0 && output_i < output_rows && output_j >= 0 &&
+                    output_j < output_cols) {
+                  expected += input(id, i, j, b) *
+                              output_backward(od, output_i, output_j, b);
+                }
               }
             }
           }
@@ -944,6 +947,7 @@ TEST(EigenBackwardSpatialConvolutionsTest,
 
 TEST(EigenBackwardSpatialConvolutionsTest,
      test_simple_spatial_convolution_backward_kernel_valid_row_major) {
+  const int num_batches = 5;
   const int input_depth = 2;
   const int input_rows = 3;
   const int input_cols = 4;
@@ -953,11 +957,12 @@ TEST(EigenBackwardSpatialConvolutionsTest,
   const int output_rows = input_rows - patch_rows + 1;
   const int output_cols = input_cols - patch_cols + 1;
 
-  Tensor<float, 3, RowMajor> input(input_cols, input_rows, input_depth);
+  Tensor<float, 4, RowMajor> input(num_batches, input_cols, input_rows,
+                                   input_depth);
   Tensor<float, 4, RowMajor> kernel(patch_cols, patch_rows, input_depth,
                                     output_depth);
-  Tensor<float, 3, RowMajor> output_backward(output_cols, output_rows,
-                                             output_depth);
+  Tensor<float, 4, RowMajor> output_backward(num_batches, output_cols,
+                                             output_rows, output_depth);
 
   output_backward = output_backward.constant(11.0f) + output_backward.random();
   input = input.constant(2.0f) + input.random();
@@ -976,14 +981,16 @@ TEST(EigenBackwardSpatialConvolutionsTest,
       for (int r = 0; r < patch_rows; ++r) {
         for (int c = 0; c < patch_cols; ++c) {
           float expected = 0.0f;
-          for (int i = 0; i < input_rows; ++i) {
-            for (int j = 0; j < input_cols; ++j) {
-              int output_i = i - r;
-              int output_j = j - c;
-              if (output_i >= 0 && output_i < output_rows && output_j >= 0 &&
-                  output_j < output_cols) {
-                expected +=
-                    input(j, i, id) * output_backward(output_j, output_i, od);
+          for (int b = 0; b < num_batches; ++b) {
+            for (int i = 0; i < input_rows; ++i) {
+              for (int j = 0; j < input_cols; ++j) {
+                int output_i = i - r;
+                int output_j = j - c;
+                if (output_i >= 0 && output_i < output_rows && output_j >= 0 &&
+                    output_j < output_cols) {
+                  expected += input(b, j, i, id) *
+                              output_backward(b, output_j, output_i, od);
+                }
               }
             }
           }
@@ -1214,13 +1221,13 @@ TEST(EigenBackwardSpatialConvolutionsTest,
 
   const array<DenseIndex, 4> kernel_strides({in_stride, in_stride, 1, 1});
 
-  const Tensor<float, 4, RowMajor> kernel_backward =
-      SpatialConvolutionBackwardKernel(input, output_backward, patch_rows,
-                                       patch_cols, 1, 1, in_stride, in_stride);
   const Tensor<float, 4, RowMajor> expected_kernel_backward =
       SpatialConvolutionBackwardKernel(input, output_backward, patch_rows_eff,
                                        patch_cols_eff)
           .stride(kernel_strides);
+  const Tensor<float, 4, RowMajor> kernel_backward =
+      SpatialConvolutionBackwardKernel(input, output_backward, patch_rows,
+                                       patch_cols, 1, 1, in_stride, in_stride);
 
   EXPECT_EQ(kernel_backward.dimension(0), patch_cols);
   EXPECT_EQ(kernel_backward.dimension(1), patch_rows);
@@ -1248,11 +1255,14 @@ TEST(EigenBackwardSpatialConvolutionsTest,
   const int output_cols = input_cols - patch_cols + 1;
   const int output_planes = input_planes - patch_planes + 1;
 
-  Tensor<float, 4> input(input_depth, input_planes, input_rows, input_cols);
+  // TODO(ezhulenev): Support backward kernel convolution without batch
+  // dimension.
+  Tensor<float, 5> input(input_depth, input_planes, input_rows, input_cols,
+                         /*num_batches*/ 1);
   Tensor<float, 5> kernel(output_depth, input_depth, patch_planes, patch_rows,
                           patch_cols);
-  Tensor<float, 4> output_backward(output_depth, output_planes, output_rows,
-                                   output_cols);
+  Tensor<float, 5> output_backward(output_depth, output_planes, output_rows,
+                                   output_cols, /*num_batches*/ 1);
 
   output_backward = output_backward.constant(11.0f) + output_backward.random();
   input = input.constant(2.0f) + input.random();
@@ -1282,9 +1292,9 @@ TEST(EigenBackwardSpatialConvolutionsTest,
                   if (output_i >= 0 && output_i < output_planes &&
                       output_j >= 0 && output_j < output_rows &&
                       output_k >= 0 && output_k < output_cols) {
-                    expected +=
-                        input(id, i, j, k) *
-                        output_backward(od, output_i, output_j, output_k);
+                    expected += input(id, i, j, k, /*batch*/ 0) *
+                                output_backward(od, output_i, output_j,
+                                                output_k, /*batch*/ 0);
                   }
                 }
               }
@@ -1311,12 +1321,14 @@ TEST(EigenBackwardSpatialConvolutionsTest,
   const int output_cols = input_cols - patch_cols + 1;
   const int output_planes = input_planes - patch_planes + 1;
 
-  Tensor<float, 4, RowMajor> input(input_cols, input_rows, input_planes,
-                                   input_depth);
+  // TODO(ezhulenev): Support backward kernel convolution without batch
+  // dimension.
+  Tensor<float, 5, RowMajor> input(/*num_batches*/ 1, input_cols, input_rows,
+                                   input_planes, input_depth);
   Tensor<float, 5, RowMajor> kernel(patch_cols, patch_rows, patch_planes,
                                     input_depth, output_depth);
-  Tensor<float, 4, RowMajor> output_backward(output_cols, output_rows,
-                                             output_planes, output_depth);
+  Tensor<float, 5, RowMajor> output_backward(
+      /*num_batches*/ 1, output_cols, output_rows, output_planes, output_depth);
 
   output_backward = output_backward.constant(11.0f) + output_backward.random();
   input = input.constant(2.0f) + input.random();
@@ -1346,9 +1358,9 @@ TEST(EigenBackwardSpatialConvolutionsTest,
                   if (output_i >= 0 && output_i < output_planes &&
                       output_j >= 0 && output_j < output_rows &&
                       output_k >= 0 && output_k < output_cols) {
-                    expected +=
-                        input(k, j, i, id) *
-                        output_backward(output_k, output_j, output_i, od);
+                    expected += input(/*batch*/ 0, k, j, i, id) *
+                                output_backward(/*batch*/ 0, output_k, output_j,
+                                                output_i, od);
                   }
                 }
               }

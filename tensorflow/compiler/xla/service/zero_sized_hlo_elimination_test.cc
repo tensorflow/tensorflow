@@ -45,7 +45,7 @@ class ZeroSizedHloEliminationTest : public HloTestBase {
                 0, ShapeUtil::MakeShape(F32, {3, 0}), "zero sized param"))) {}
 
   StatusOr<bool> RunZeroSizedElimination() {
-    auto module = CreateNewModule("zero_sized_elimination_test_module");
+    auto module = CreateNewVerifiedModule("zero_sized_elimination_test_module");
     module->AddEntryComputation(builder_.Build());
     return ZeroSizedHloElimination{}.Run(module.get());
   }
@@ -68,8 +68,9 @@ TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateParameter) {
 
 TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateSideEffects) {
   auto token = builder_.AddInstruction(HloInstruction::CreateToken());
-  builder_.AddInstruction(
+  auto send = builder_.AddInstruction(
       HloInstruction::CreateSend(zero_sized_param_, token, 0));
+  builder_.AddInstruction(HloInstruction::CreateSendDone(send));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
   EXPECT_FALSE(changed);
 }
@@ -79,6 +80,19 @@ TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateConstant) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR1({})));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
   EXPECT_FALSE(changed);
+}
+
+TEST_F(ZeroSizedHloEliminationTest, ZeroSizedInstructionWithoutLayoutFolded) {
+  Shape op_shape = ShapeUtil::MakeShape(F32, {4, 0});
+  op_shape.clear_layout();
+  HloInstruction* param1 = builder_.AddInstruction(
+      HloInstruction::CreateParameter(1, op_shape, "zero sized param 1"));
+  HloInstruction* param2 = builder_.AddInstruction(
+      HloInstruction::CreateParameter(2, op_shape, "zero sized param 2"));
+  builder_.AddInstruction(
+      HloInstruction::CreateBinary(op_shape, HloOpcode::kAdd, param1, param2));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
+  EXPECT_TRUE(changed);
 }
 
 }  // namespace

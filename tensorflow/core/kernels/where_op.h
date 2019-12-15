@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_WHERE_OP_H_
-#define TENSORFLOW_KERNELS_WHERE_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_WHERE_OP_H_
+#define TENSORFLOW_CORE_KERNELS_WHERE_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -27,7 +27,6 @@ namespace tensorflow {
 #define TF_CALL_WHERE_GPU_TYPES(m) \
   TF_CALL_int8(m);                 \
   TF_CALL_uint8(m);                \
-  TF_CALL_int32(m);                \
   TF_CALL_int64(m);                \
   TF_CALL_float(m);                \
   TF_CALL_double(m);               \
@@ -63,4 +62,4 @@ struct Where {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_WHERE_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_WHERE_OP_H_

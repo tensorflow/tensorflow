@@ -1,0 +1,24 @@
+op {
+  graph_op_name: "LoadTPUEmbeddingAdagradParameters"
+  visibility: HIDDEN
+  in_arg {
+    name: "parameters"
+    description: <<END
+Value of parameters used in the Adagrad optimization algorithm.
+END
+  }
+  in_arg {
+    name: "accumulators"
+    description: <<END
+Value of accumulators used in the Adagrad optimization algorithm.
+END
+  }
+  summary: "Load Adagrad embedding parameters."
+  description: <<END
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+END
+}

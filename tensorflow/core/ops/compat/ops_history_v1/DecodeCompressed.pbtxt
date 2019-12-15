@@ -1,0 +1,18 @@
+op {
+  name: "DecodeCompressed"
+  input_arg {
+    name: "bytes"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "compression_type"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}

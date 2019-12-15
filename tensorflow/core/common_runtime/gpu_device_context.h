@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_GPU_DEVICE_CONTEXT_H_
-#define TENSORFLOW_COMMON_RUNTIME_GPU_DEVICE_CONTEXT_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_DEVICE_CONTEXT_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_DEVICE_CONTEXT_H_
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -30,18 +30,28 @@ class GPUDeviceContext : public DeviceContext {
  public:
   // Does not take ownership of streams.
   GPUDeviceContext(int stream_id, se::Stream* stream,
+#if TENSORFLOW_USE_ROCM
+                   se::Stream* nccl_stream,
+#endif
                    se::Stream* host_to_device_stream,
                    se::Stream* device_to_host_stream,
                    gtl::InlinedVector<se::Stream*, 4> device_to_device_stream)
       : stream_id_(stream_id),
         stream_(stream),
+#if TENSORFLOW_USE_ROCM
+        nccl_stream_(nccl_stream),
+#endif
         host_to_device_stream_(host_to_device_stream),
         device_to_host_stream_(device_to_host_stream),
-        device_to_device_stream_(device_to_device_stream) {}
+        device_to_device_stream_(device_to_device_stream) {
+  }
 
   ~GPUDeviceContext() override {}
 
   se::Stream* stream() const override { return stream_; }
+#if TENSORFLOW_USE_ROCM
+  se::Stream* nccl_stream() const { return nccl_stream_; }
+#endif
   se::Stream* host_to_device_stream() const { return host_to_device_stream_; }
   se::Stream* device_to_host_stream() const { return device_to_host_stream_; }
   se::Stream* device_to_device_stream(int index) const {
@@ -50,21 +60,32 @@ class GPUDeviceContext : public DeviceContext {
   int stream_id() const { return stream_id_; }
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-                             Tensor* device_tensor,
-                             StatusCallback done) const override;
+                             Tensor* device_tensor, StatusCallback done,
+                             bool sync_dst_compute) const override;
 
   void CopyDeviceTensorToCPU(const Tensor* device_tensor, StringPiece edge_name,
                              Device* device, Tensor* cpu_tensor,
                              StatusCallback done) override;
 
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
+                              Tensor* output_tensor,
+                              StatusCallback done) const override;
+
   void MaintainLifetimeOnStream(const Tensor* t,
                                 se::Stream* stream) const override {}
+
+  Status ThenExecute(Device* device, se::Stream* stream,
+                     std::function<void()> func) override;
 
  private:
   int stream_id_;
   // The default primary stream to use for this context.
   // All the memory belongs to this stream.
   se::Stream* stream_;
+#if TENSORFLOW_USE_ROCM
+  // The stream to use for nccl operations.
+  se::Stream* nccl_stream_;
+#endif
   // The stream to use for copying data from host into GPU.
   se::Stream* host_to_device_stream_;
   // The stream to use for copying data from GPU to host.
@@ -75,4 +96,4 @@ class GPUDeviceContext : public DeviceContext {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_GPU_DEVICE_CONTEXT_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_DEVICE_CONTEXT_H_

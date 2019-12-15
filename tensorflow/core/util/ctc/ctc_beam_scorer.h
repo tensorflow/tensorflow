@@ -1,4 +1,3 @@
-// LINT.IfChange
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// LINT.IfChange
 
 // Collection of scoring classes that can be extended and provided to the
 // CTCBeamSearchDecoder to incorporate additional scoring logic (such as a
@@ -34,7 +34,7 @@ namespace ctc {
 // be subclassed and provided as an argument to CTCBeamSearchDecoder, if complex
 // scoring is required. Its main purpose is to provide a thin layer for
 // integrating language model scoring easily.
-template <typename CTCBeamState>
+template <typename T, typename CTCBeamState>
 class BaseBeamScorer {
  public:
   virtual ~BaseBeamScorer() {}
@@ -56,8 +56,8 @@ class BaseBeamScorer {
   //
   // The score returned should be a log-probability. In the simplest case, as
   // there's no state expansion logic, the expansion score is zero.
-  virtual float GetStateExpansionScore(const CTCBeamState& state,
-                                       float previous_score) const {
+  virtual T GetStateExpansionScore(const CTCBeamState& state,
+                                   T previous_score) const {
     return previous_score;
   }
   // GetStateEndExpansionScore should be an inexpensive method to retrieve the
@@ -65,8 +65,8 @@ class BaseBeamScorer {
   // multiplied (log-addition) with the final probability of the beam.
   //
   // The score returned should be a log-probability.
-  virtual float GetStateEndExpansionScore(const CTCBeamState& state) const {
-    return 0;
+  virtual T GetStateEndExpansionScore(const CTCBeamState& state) const {
+    return T(0);
   }
 };
 
@@ -74,4 +74,4 @@ class BaseBeamScorer {
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SCORER_H_
-// LINT.ThenChange(//tensorflow/contrib/lite/experimental/kernels/ctc_beam_scorer.h)
+// LINT.ThenChange(//tensorflow/lite/experimental/kernels/ctc_beam_scorer.h)

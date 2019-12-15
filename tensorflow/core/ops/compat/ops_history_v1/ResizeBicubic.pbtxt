@@ -1,0 +1,123 @@
+op {
+  name: "ResizeBicubic"
+  input_arg {
+    name: "images"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "resized_images"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResizeBicubic"
+  input_arg {
+    name: "images"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "resized_images"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_UINT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResizeBicubic"
+  input_arg {
+    name: "images"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "resized_images"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_UINT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "half_pixel_centers"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}

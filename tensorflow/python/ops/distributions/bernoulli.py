@@ -28,10 +28,11 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("distributions.Bernoulli")
+@tf_export(v1=["distributions.Bernoulli"])
 class Bernoulli(distribution.Distribution):
   """Bernoulli distribution.
 
@@ -39,6 +40,14 @@ class Bernoulli(distribution.Distribution):
   `1` outcome (vs a `0` outcome).
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                logits=None,
                probs=None,
@@ -111,7 +120,7 @@ class Bernoulli(distribution.Distribution):
     return array_ops.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   def _sample_n(self, n, seed=None):
     new_shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)

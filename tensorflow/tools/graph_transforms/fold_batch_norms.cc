@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -38,7 +37,7 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
       input_graph_def,  // clang-format off
       {"Mul",                // mul_node
         {
-          {"Conv2D|MatMul",  // conv_node
+          {"Conv2D|MatMul|DepthwiseConv2dNative",  // conv_node
             {
               {"*"},         // input_node
               {"Const"},     // weights_node
@@ -73,8 +72,15 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
 
         // Make sure all the inputs really are vectors, with as many entries as
         // there are columns in the weights.
-        const int weights_cols_index = conv_node.op() == "Conv2D" ? 3 : 1;
-        const int64 weights_cols = weights.shape().dim_size(weights_cols_index);
+        int64 weights_cols;
+        if (conv_node.op() == "Conv2D") {
+          weights_cols = weights.shape().dim_size(3);
+        } else if (conv_node.op() == "DepthwiseConv2dNative") {
+          weights_cols =
+              weights.shape().dim_size(2) * weights.shape().dim_size(3);
+        } else {
+          weights_cols = weights.shape().dim_size(1);
+        }
         if ((mul_values.shape().dims() != 1) ||
             (mul_values.shape().dim_size(0) != weights_cols)) {
           return errors::InvalidArgument(
@@ -83,14 +89,13 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
         }
 
         // Multiply the original weights by the scale vector.
-        auto weights_matrix = weights.flat_inner_dims<float>();
+        auto weights_vector = weights.flat<float>();
         Tensor scaled_weights(DT_FLOAT, weights.shape());
-        auto scaled_weights_matrix = scaled_weights.flat_inner_dims<float>();
-        for (int64 row = 0; row < weights_matrix.dimension(0); ++row) {
-          for (int64 col = 0; col < weights_cols; ++col) {
-            scaled_weights_matrix(row, col) =
-                weights_matrix(row, col) * mul_values.flat<float>()(col);
-          }
+        auto scaled_weights_vector = scaled_weights.flat<float>();
+        for (int64 row = 0; row < weights_vector.dimension(0); ++row) {
+          scaled_weights_vector(row) =
+              weights_vector(row) *
+              mul_values.flat<float>()(row % weights_cols);
         }
 
         // Construct the new nodes.

@@ -26,6 +26,7 @@ import tempfile
 from google.protobuf import text_format
 
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import test_util
@@ -37,7 +38,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_module
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
-from tensorflow.python.training.checkpointable import util
+from tensorflow.python.training.tracking import util
 
 
 class LatestCheckpointWithRelativePaths(test.TestCase):
@@ -61,6 +62,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
     finally:
       shutil.rmtree(tempdir)
 
+  @test_util.run_deprecated_v1
   def testNameCollision(self):
     # Make sure we have a clean directory to work in.
     with self.tempDir() as tempdir:
@@ -72,7 +74,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
         # Collides with the default name of the checkpoint state file.
         filepath = os.path.join(traindir, "checkpoint")
 
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           unused_a = variables.Variable(0.0)  # So that Saver saves something.
           variables.global_variables_initializer().run()
 
@@ -98,6 +100,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
           self.assertIsNotNone(
               checkpoint_management.latest_checkpoint(traindir))
 
+  @test_util.run_deprecated_v1
   def testRelativePath(self):
     # Make sure we have a clean directory to work in.
     with self.tempDir() as tempdir:
@@ -112,7 +115,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
         filename = "snapshot"
         filepath = os.path.join(traindir, filename)
 
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           # Build a simple graph.
           v0 = variables.Variable(0.0)
           inc = v0.assign_add(1.0)
@@ -122,12 +125,12 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
           # Record a short training history.
           variables.global_variables_initializer().run()
           save.save(sess, filepath, global_step=0)
-          inc.eval()
+          self.evaluate(inc)
           save.save(sess, filepath, global_step=1)
-          inc.eval()
+          self.evaluate(inc)
           save.save(sess, filepath, global_step=2)
 
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           # Build a new graph with different initialization.
           v0 = variables.Variable(-1.0)
 
@@ -269,10 +272,11 @@ class SaverUtilsTest(test.TestCase):
   def tearDown(self):
     gfile.DeleteRecursively(self._base_dir)
 
+  @test_util.run_deprecated_v1
   def testCheckpointExists(self):
     for sharded in (False, True):
       for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
-        with self.test_session(graph=ops_lib.Graph()) as sess:
+        with self.session(graph=ops_lib.Graph()) as sess:
           unused_v = variables.Variable(1.0, name="v")
           variables.global_variables_initializer().run()
           saver = saver_module.Saver(sharded=sharded, write_version=version)
@@ -287,10 +291,11 @@ class SaverUtilsTest(test.TestCase):
           ckpt_prefix = checkpoint_management.latest_checkpoint(self._base_dir)
           self.assertTrue(checkpoint_management.checkpoint_exists(ckpt_prefix))
 
+  @test_util.run_deprecated_v1
   def testGetCheckpointMtimes(self):
     prefixes = []
     for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
-      with self.test_session(graph=ops_lib.Graph()) as sess:
+      with self.session(graph=ops_lib.Graph()) as sess:
         unused_v = variables.Variable(1.0, name="v")
         variables.global_variables_initializer().run()
         saver = saver_module.Saver(write_version=version)
@@ -301,10 +306,11 @@ class SaverUtilsTest(test.TestCase):
     self.assertEqual(2, len(mtimes))
     self.assertTrue(mtimes[1] >= mtimes[0])
 
+  @test_util.run_deprecated_v1
   def testRemoveCheckpoint(self):
     for sharded in (False, True):
       for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
-        with self.test_session(graph=ops_lib.Graph()) as sess:
+        with self.session(graph=ops_lib.Graph()) as sess:
           unused_v = variables.Variable(1.0, name="v")
           variables.global_variables_initializer().run()
           saver = saver_module.Saver(sharded=sharded, write_version=version)
@@ -333,6 +339,49 @@ class CheckpointManagerTest(test.TestCase):
     self.assertFalse(checkpoint_management.checkpoint_exists(first_path))
 
   @test_util.run_in_graph_and_eager_modes
+  def testKeepAll(self):
+    checkpoint = util.Checkpoint()
+    directory = os.path.join(
+        self.get_temp_dir(),
+        # Avoid sharing directories between eager and graph
+        # TODO(allenl): stop run_in_graph_and_eager_modes reusing directories
+        str(context.executing_eagerly()))
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint, directory, max_to_keep=None)
+    first_path = manager.save()
+    second_path = manager.save()
+    third_path = manager.save()
+    self.assertTrue(checkpoint_management.checkpoint_exists(third_path))
+    self.assertTrue(checkpoint_management.checkpoint_exists(second_path))
+    self.assertTrue(checkpoint_management.checkpoint_exists(first_path))
+    self.assertEqual(third_path, manager.latest_checkpoint)
+    self.assertEqual([first_path, second_path, third_path],
+                     manager.checkpoints)
+    del manager
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint, directory, max_to_keep=None)
+    fourth_path = manager.save()
+    self.assertEqual([first_path, second_path, third_path, fourth_path],
+                     manager.checkpoints)
+    del manager
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint, directory, max_to_keep=3)
+    self.assertEqual([first_path, second_path, third_path, fourth_path],
+                     manager.checkpoints)
+    self.assertTrue(checkpoint_management.checkpoint_exists(fourth_path))
+    self.assertTrue(checkpoint_management.checkpoint_exists(third_path))
+    self.assertTrue(checkpoint_management.checkpoint_exists(second_path))
+    self.assertTrue(checkpoint_management.checkpoint_exists(first_path))
+    fifth_path = manager.save()
+    self.assertEqual([third_path, fourth_path, fifth_path],
+                     manager.checkpoints)
+    self.assertTrue(checkpoint_management.checkpoint_exists(fifth_path))
+    self.assertTrue(checkpoint_management.checkpoint_exists(fourth_path))
+    self.assertTrue(checkpoint_management.checkpoint_exists(third_path))
+    self.assertFalse(checkpoint_management.checkpoint_exists(second_path))
+    self.assertFalse(checkpoint_management.checkpoint_exists(first_path))
+
+  @test_util.run_in_graph_and_eager_modes
   @test.mock.patch.object(checkpoint_management, "time")
   def testSaveRestoreState(self, mock_time):
     directory = self.get_temp_dir()
@@ -345,8 +394,6 @@ class CheckpointManagerTest(test.TestCase):
     mock_time.time.return_value = first_time
     first_manager.save()
     state = checkpoint_management.get_checkpoint_state(directory)
-    self.assertEqual([first_time], state.all_model_checkpoint_timestamps)
-    self.assertEqual(3., state.last_preserved_timestamp)
     second_time = first_time + 3610.
     second_name = os.path.join(directory, "ckpt-2")
     mock_time.time.return_value = second_time
@@ -354,7 +401,6 @@ class CheckpointManagerTest(test.TestCase):
     state = checkpoint_management.get_checkpoint_state(directory)
     self.assertEqual([first_time, second_time],
                      state.all_model_checkpoint_timestamps)
-    self.assertEqual(3., state.last_preserved_timestamp)
     self.assertEqual([first_name, second_name], first_manager.checkpoints)
     self.assertEqual(second_name, first_manager.latest_checkpoint)
     del first_manager
@@ -511,6 +557,19 @@ class CheckpointManagerTest(test.TestCase):
     state = checkpoint_management.get_checkpoint_state(directory)
     # Only the most recent two checkpoints are saved
     self.assertEqual([path, last_path], state.all_model_checkpoint_paths)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCustomCheckpointPrefix(self):
+    directory = self.get_temp_dir()
+    checkpoint = util.Checkpoint()
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint, directory, max_to_keep=2, checkpoint_name="ckpt_name")
+    path = manager.save(checkpoint_number=5)
+    self.assertEqual(os.path.basename(path), "ckpt_name-5")
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint, directory, max_to_keep=2)
+    path = manager.save(checkpoint_number=5)
+    self.assertEqual(os.path.basename(path), "ckpt-5")
 
 
 if __name__ == "__main__":

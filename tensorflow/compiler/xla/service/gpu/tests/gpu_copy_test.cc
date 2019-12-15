@@ -16,15 +16,14 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -38,8 +37,7 @@ class GpuCopyTest : public GpuCodegenTest {};
 TEST_F(GpuCopyTest, UseMemcpy) {
   HloComputation::Builder builder(TestName());
 
-  std::unique_ptr<Literal> literal =
-      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  Literal literal = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   HloInstruction* constant = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
   builder.AddInstruction(HloInstruction::CreateUnary(
@@ -47,7 +45,7 @@ TEST_F(GpuCopyTest, UseMemcpy) {
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   // There should not be any kernel prefixed "copy".

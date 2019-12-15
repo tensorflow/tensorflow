@@ -132,7 +132,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
     // Copy the lower triangular part of the input matrices to the output and
     // set the strictly upper triangular part to zero. We use a pre-existing
     // kernel MatrixBandPart to do this for all matrices in the batch at once,
-    // before we launch each of the Cholesky factorization kernels in paralle.
+    // before we launch each of the Cholesky factorization kernels.
     auto input_reshaped = input.template flat_inner_dims<Scalar, 3>();
     auto output_reshaped = output->template flat_inner_dims<Scalar, 3>();
     functor::MatrixBandPartFunctor<GPUDevice, Scalar> band_part;
@@ -143,16 +143,57 @@ class CholeskyOpGpu : public AsyncOpKernel {
     // Launch a Cholesky kernel for each matrix in the batch.
     const int64 batch_size = input_reshaped.dimension(0);
     std::vector<DeviceLapackInfo> dev_info;
-    dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "potrf"));
-    // TODO(rmlarsen): Parallelize over batches if it turns out to be
-    // an important use case.
-    for (int batch = 0; batch < batch_size; ++batch) {
+
+#if CUDA_VERSION >= 9020
+    // Decide whether to use the batched API.
+    // TODO(rmlarsen): The value 128 was found to be optimal for the equivalent
+    // split in matrix_solve_op. Tune this heuristic.
+    constexpr int kMaxMatrixSizeToBatchSizeRatio = 128;
+    const bool use_batched_solver =
+        n <= kMaxMatrixSizeToBatchSizeRatio * batch_size;
+    if (use_batched_solver) {
+      // For small matrices or large batch sizes, we use the batched interface
+      // from cuSolver.
+      auto output_reshaped_ptrs = solver->GetScratchSpace<uint8>(
+          sizeof(Scalar*) * batch_size, "input_copt_ptrs",
+          /* on_host */ true);
+      const Scalar** output_reshaped_ptrs_base =
+          reinterpret_cast<const Scalar**>(output_reshaped_ptrs.mutable_data());
+      for (int batch = 0; batch < batch_size; ++batch) {
+        output_reshaped_ptrs_base[batch] = &output_reshaped(batch, 0, 0);
+      }
+      dev_info.push_back(
+          solver->GetDeviceLapackInfo(batch_size, "potrfBatched"));
       OP_REQUIRES_OK_ASYNC(context,
-                           solver->Potrf(CUBLAS_FILL_MODE_UPPER, n,
-                                         &output_reshaped(batch, 0, 0), n,
-                                         &dev_info.back()(batch)),
+                           solver->PotrfBatched(CUBLAS_FILL_MODE_UPPER, n,
+                                                output_reshaped_ptrs_base, n,
+                                                &dev_info.back(), batch_size),
                            done);
+      // TODO(rmlarsen): We have to clear the upper triangle of the output
+      // due to a bug in potrfBatched. Remove this workaround once the bug
+      // is fixed.
+      auto input_reshaped = const_cast<const Tensor*>(output)
+                                ->template flat_inner_dims<Scalar, 3>();
+      auto output_reshaped = output->template flat_inner_dims<Scalar, 3>();
+      functor::MatrixBandPartFunctor<GPUDevice, Scalar> band_part;
+      band_part(context, context->eigen_device<GPUDevice>(),
+                n /* num_lower_diags */, 0 /* num_upper_diags */,
+                input_reshaped, output_reshaped);
+    } else {
+#endif
+
+      dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "potrf"));
+      for (int batch = 0; batch < batch_size; ++batch) {
+        OP_REQUIRES_OK_ASYNC(context,
+                             solver->Potrf(CUBLAS_FILL_MODE_UPPER, n,
+                                           &output_reshaped(batch, 0, 0), n,
+                                           &dev_info.back()(batch)),
+                             done);
+      }
+
+#if CUDA_VERSION >= 9020
     }
+#endif
 
     // Register callback to check info after kernels finish.
     auto info_checker = [context, done](

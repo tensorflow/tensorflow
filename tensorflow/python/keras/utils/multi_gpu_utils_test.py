@@ -21,6 +21,11 @@ import numpy as np
 
 from tensorflow.python import data
 from tensorflow.python import keras
+from tensorflow.python.eager import context
+from tensorflow.python.framework import config
+from tensorflow.python.framework import test_util
+from tensorflow.python.keras.utils import multi_gpu_utils
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.platform import test
 
 
@@ -33,8 +38,21 @@ def check_if_compatible_devices(gpus=2):
     return False
   return True
 
-
+@test_util.run_all_in_deprecated_graph_mode_only
 class TestMultiGPUModel(test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    super(TestMultiGPUModel, self).__init__(methodName)
+    gpu_devices = config.list_physical_devices('GPU')
+    xla_gpu_devices = config.list_physical_devices('XLA_GPU')
+    # NOTE: XLA devices don't support the set_logical_device_configuration
+    # codepaths.
+    if len(gpu_devices) == 1 and not xla_gpu_devices:
+      # A GPU is available, simulate 2 instead.
+      config.set_logical_device_configuration(gpu_devices[0], [
+          context.LogicalDeviceConfiguration(500),
+          context.LogicalDeviceConfiguration(500)
+      ])
 
   def test_multi_gpu_test_simple_model(self):
     gpus = 2
@@ -46,9 +64,9 @@ class TestMultiGPUModel(test.TestCase):
     target_gpu_id = [0, 1]
 
     if not check_if_compatible_devices(gpus=gpus):
-      return
+      self.skipTest('multi gpu only')
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(hidden_dim,
                                    input_shape=(input_dim,)))
@@ -57,10 +75,11 @@ class TestMultiGPUModel(test.TestCase):
       x = np.random.random((num_samples, input_dim))
       y = np.random.random((num_samples, output_dim))
 
-      parallel_model = keras.utils.multi_gpu_model(model, gpus=gpus)
+      parallel_model = multi_gpu_utils.multi_gpu_model(model, gpus=gpus)
       parallel_model.compile(loss='mse', optimizer='rmsprop')
       parallel_model.fit(x, y, epochs=epochs)
-      parallel_model = keras.utils.multi_gpu_model(model, gpus=target_gpu_id)
+      parallel_model = multi_gpu_utils.multi_gpu_model(
+          model, gpus=target_gpu_id)
       parallel_model.compile(loss='mse', optimizer='rmsprop')
       parallel_model.fit(x, y, epochs=epochs)
 
@@ -76,9 +95,9 @@ class TestMultiGPUModel(test.TestCase):
     target_gpu_id = [0, 1]
 
     if not check_if_compatible_devices(gpus=gpus):
-      return
+      self.skipTest('multi gpu only')
 
-    with self.test_session():
+    with self.cached_session():
       input_a = keras.Input((input_dim_a,))
       input_b = keras.Input((input_dim_b,))
       a = keras.layers.Dense(hidden_dim)(input_a)
@@ -93,19 +112,20 @@ class TestMultiGPUModel(test.TestCase):
       a_y = np.random.random((num_samples, output_dim_a))
       b_y = np.random.random((num_samples, output_dim_b))
 
-      parallel_model = keras.utils.multi_gpu_model(model, gpus=gpus)
+      parallel_model = multi_gpu_utils.multi_gpu_model(model, gpus=gpus)
       parallel_model.compile(loss='mse', optimizer='rmsprop')
       parallel_model.fit([a_x, b_x], [a_y, b_y], epochs=epochs)
 
-      parallel_model = keras.utils.multi_gpu_model(model, gpus=target_gpu_id)
+      parallel_model = multi_gpu_utils.multi_gpu_model(
+          model, gpus=target_gpu_id)
       parallel_model.compile(loss='mse', optimizer='rmsprop')
       parallel_model.fit([a_x, b_x], [a_y, b_y], epochs=epochs)
 
   def test_multi_gpu_test_invalid_devices(self):
     if not check_if_compatible_devices(gpus=2):
-      return
+      self.skipTest('multi gpu only')
 
-    with self.test_session():
+    with self.cached_session():
       input_shape = (1000, 10)
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(10,
@@ -117,21 +137,21 @@ class TestMultiGPUModel(test.TestCase):
       x = np.random.random(input_shape)
       y = np.random.random((input_shape[0], 1))
       with self.assertRaises(ValueError):
-        parallel_model = keras.utils.multi_gpu_model(
+        parallel_model = multi_gpu_utils.multi_gpu_model(
             model, gpus=len(keras.backend._get_available_gpus()) + 1)
         parallel_model.fit(x, y, epochs=2)
 
       with self.assertRaises(ValueError):
-        parallel_model = keras.utils.multi_gpu_model(
+        parallel_model = multi_gpu_utils.multi_gpu_model(
             model, gpus=[0, 2, 4, 6, 8])
         parallel_model.fit(x, y, epochs=2)
 
       with self.assertRaises(ValueError):
-        parallel_model = keras.utils.multi_gpu_model(model, gpus=1)
+        parallel_model = multi_gpu_utils.multi_gpu_model(model, gpus=1)
         parallel_model.fit(x, y, epochs=2)
 
       with self.assertRaises(ValueError):
-        parallel_model = keras.utils.multi_gpu_model(model, gpus=[0])
+        parallel_model = multi_gpu_utils.multi_gpu_model(model, gpus=[0])
         parallel_model.fit(x, y, epochs=2)
 
   def test_nested_model_with_tensor_input(self):
@@ -142,15 +162,14 @@ class TestMultiGPUModel(test.TestCase):
     num_classes = 10
 
     if not check_if_compatible_devices(gpus=gpus):
-      return
+      self.skipTest('multi gpu only')
 
-    with self.test_session():
+    with self.cached_session():
       input_shape = (num_samples,) + shape
       x_train = np.random.randint(0, 255, input_shape)
       y_train = np.random.randint(0, num_classes, (input_shape[0],))
-      keras.backend.set_learning_phase(True)
 
-      y_train = keras.utils.to_categorical(y_train, num_classes)
+      y_train = np_utils.to_categorical(y_train, num_classes)
 
       x_train = x_train.astype('float32')
       y_train = y_train.astype('float32')
@@ -158,7 +177,7 @@ class TestMultiGPUModel(test.TestCase):
       dataset = data.Dataset.from_tensor_slices((x_train, y_train))
       dataset = dataset.repeat()
       dataset = dataset.batch(4)
-      iterator = dataset.make_one_shot_iterator()
+      iterator = data.make_one_shot_iterator(dataset)
 
       inputs, targets = iterator.get_next()
 
@@ -171,7 +190,7 @@ class TestMultiGPUModel(test.TestCase):
 
       output = model(input_tensor)
       outer_model = keras.Model(input_tensor, output)
-      parallel_model = keras.utils.multi_gpu_model(outer_model, gpus=gpus)
+      parallel_model = multi_gpu_utils.multi_gpu_model(outer_model, gpus=gpus)
 
       parallel_model.compile(
           loss='categorical_crossentropy',
@@ -180,6 +199,49 @@ class TestMultiGPUModel(test.TestCase):
           target_tensors=[targets])
       parallel_model.fit(epochs=1, steps_per_epoch=3)
 
+  def test_multi_gpu_with_multi_input_layers(self):
+    gpus = 2
+
+    if not check_if_compatible_devices(gpus=gpus):
+      self.skipTest('multi gpu only')
+
+    with self.cached_session():
+      inputs = keras.Input((4, 3))
+      init_state = keras.Input((3,))
+      outputs = keras.layers.SimpleRNN(
+          3, return_sequences=True)(inputs, initial_state=init_state)
+      x = [np.random.randn(2, 4, 3), np.random.randn(2, 3)]
+      y = np.random.randn(2, 4, 3)
+      model = keras.Model([inputs, init_state], outputs)
+      parallel_model = multi_gpu_utils.multi_gpu_model(model, gpus=gpus)
+      parallel_model.compile(loss='mean_squared_error', optimizer='adam')
+      parallel_model.train_on_batch(x, y)
+
+  def test_multi_gpu_with_siamese_network(self):
+    gpus = 2
+
+    if not check_if_compatible_devices(gpus=gpus):
+      self.skipTest('multi gpu only')
+
+    with self.cached_session():
+      input_shape = (3,)
+      nested_model = keras.models.Sequential([
+          keras.layers.Dense(32, input_shape=input_shape),
+          keras.layers.Dense(1)
+      ], name='nested')
+
+      input1 = keras.Input(input_shape)
+      input2 = keras.Input(input_shape)
+      score1 = nested_model(input1)
+      score2 = nested_model(input2)
+      score_sum = keras.layers.Add(name='add')([score1, score2])
+
+      siamese = keras.models.Model(inputs=[input1, input2],
+                                   outputs=[score_sum, score1, score2],
+                                   name='siamese')
+      parallel_siamese = multi_gpu_utils.multi_gpu_model(siamese, gpus)
+      self.assertEqual(parallel_siamese.output_names,
+                       ['add', 'nested', 'nested_1'])
 
 if __name__ == '__main__':
   test.main()

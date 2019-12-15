@@ -20,8 +20,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
@@ -32,8 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace llvm {
@@ -44,14 +45,13 @@ class TargetOptions;
 namespace xla {
 namespace llvm_ir {
 
-// Convert a std::string (used by LLVM's interfaces) to string.
-string AsString(const std::string& str);
-
-// Convert a tensorflow::StringPiece to a llvm::StringRef. Note: both
-// tensorflow::StringPiece and llvm::StringRef are non-owning pointers into a
+// Convert a absl::string_view to a llvm::StringRef. Note: both
+// absl::string_view and llvm::StringRef are non-owning pointers into a
 // string in memory. This method is used to feed strings to LLVM
 // & Clang APIs that expect llvm::StringRef.
-llvm::StringRef AsStringRef(tensorflow::StringPiece str);
+inline llvm::StringRef AsStringRef(absl::string_view str) {
+  return llvm::StringRef(str.data(), str.size());
+}
 
 template <typename T>
 llvm::ArrayRef<T> AsArrayRef(const std::vector<T>& vec) {
@@ -59,7 +59,7 @@ llvm::ArrayRef<T> AsArrayRef(const std::vector<T>& vec) {
 }
 
 template <typename T>
-llvm::ArrayRef<T> AsArrayRef(const tensorflow::gtl::ArraySlice<T>& slice) {
+llvm::ArrayRef<T> AsArrayRef(const absl::Span<const T>& slice) {
   return llvm::ArrayRef<T>(slice.data(), slice.size());
 }
 
@@ -70,7 +70,7 @@ string DumpToString(const T& entity) {
   llvm::raw_string_ostream ostream(buffer_string);
   entity.print(ostream);
   ostream.flush();
-  return AsString(buffer_string);
+  return buffer_string;
 }
 
 // Dump the given LLVM module to a string. This requires a function distinct
@@ -88,8 +88,8 @@ string DumpModuleToString(const llvm::Module& module);
 //   - removing all '%'s.
 //
 string IrName(string a);
-string IrName(tensorflow::StringPiece a, tensorflow::StringPiece b);
-string IrName(const HloInstruction* a, tensorflow::StringPiece b = "");
+string IrName(absl::string_view a, absl::string_view b);
+string IrName(const HloInstruction* a, absl::string_view b = "");
 
 // Removes special characters from a function name.
 //
@@ -101,11 +101,9 @@ string SanitizeFunctionName(string function_name);
 // intrinsics (for example, "minnum") must include a type in overloaded_types
 // for each overloaded type. Typically, overloaded intrinsics have only a single
 // overloaded type.
-llvm::Value* EmitCallToIntrinsic(
-    llvm::Intrinsic::ID intrinsic_id,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<llvm::Type*> overloaded_types,
-    llvm::IRBuilder<>* b);
+llvm::CallInst* EmitCallToIntrinsic(
+    llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
 
 // Emit float max. Emit maxnum intrinsic is fast math is disabled, or
 // fcmp+select otherwise
@@ -143,18 +141,15 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
                                                          int32* shape_size,
                                                          llvm::IRBuilder<>* b);
 
-// Inverses the encoding of a Shape protobuf into an LLVM global variable.
-//
-// This is intended to be called from the runtime to decode the llvm::Constants
-// that are created via ConvertShapeToSelfDescribingConstant and subsequently
-// embedded into the program.
-StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
-                                                  int32 size_bytes);
-
 // Converts a given literal to an IR Constant. Literals have known constant
 // values at IR emission time.
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module);
+
+// Allocates a tile of shared memory.
+llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
+                                               llvm::Type* tile_type,
+                                               absl::string_view name);
 
 // Inserts an allocate of the requested type at the entry point of the
 // function that the builder is currently building. The insert point
@@ -164,21 +159,23 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
 // This can be useful to avoid e.g. executing an alloca every time
 // through a loop.
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
-                                            tensorflow::StringPiece name,
+                                            absl::string_view name,
                                             llvm::IRBuilder<>* b,
                                             int alignment = 0);
 
 // As EmitAllocaAtFunctionEntry, but allocates element_count entries
 // instead of a single element.
-llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(
-    llvm::Type* type, llvm::Value* element_count, tensorflow::StringPiece name,
-    llvm::IRBuilder<>* b, int alignment = 0);
+llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
+                                                     llvm::Value* element_count,
+                                                     absl::string_view name,
+                                                     llvm::IRBuilder<>* b,
+                                                     int alignment = 0);
 
 // Creates a basic block with the same context and function as for the
 // builder. Inserts at the end of the function if insert_before is
 // null.
 llvm::BasicBlock* CreateBasicBlock(llvm::BasicBlock* insert_before,
-                                   tensorflow::StringPiece name,
+                                   absl::string_view name,
                                    llvm::IRBuilder<>* b);
 
 // Struct with data on a conditional branch in a diamond shape created
@@ -210,7 +207,7 @@ struct LlvmIfData {
 // Currently the insertion point of the builder must be a well-formed
 // block with a terminator. If you need to use this for a
 // non-terminated block, just make the function able to do that too.
-LlvmIfData EmitIfThenElse(llvm::Value* condition, tensorflow::StringPiece name,
+LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
                           llvm::IRBuilder<>* b, bool emit_else = true);
 
 // Emits a compare operation between "lhs" and "rhs" with the given predicate,
@@ -258,12 +255,7 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout);
 
 // Gets an llvm::FastMathFlags that reflects the settings in the given
 // module config.
-llvm::FastMathFlags GetFastMathFlags(bool fast_math_enabled);
-
-// Sets values in the given TargetOptions struct according to the given
-// compilation options.
-void SetTargetOptions(bool fast_math_enabled,
-                      llvm::TargetOptions* target_options);
+llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config);
 
 // Computes a conservative union of the metadata in "a" and "b".  For
 // aliasing-related metadata, this means the result can be applied to
@@ -273,20 +265,19 @@ std::map<int, llvm::MDNode*> MergeMetadata(
     llvm::LLVMContext* context, const std::map<int, llvm::MDNode*>& a,
     const std::map<int, llvm::MDNode*>& b);
 
-// Dumps out `llvm_module` to a file in the directory named `directory_name`,
-// creating the directory if necessary.  A sanitized version of
-// `hlo_module_name` is incorporated into the file name.  If `optimized` is true
-// then a suffix of "-with-opt.ll" is used, else a suffix of "-no-opt.ll" is
-// used.
-Status DumpIRToDirectory(const string& directory_name,
-                         const string& hlo_module_name,
-                         const llvm::Module& llvm_module, bool optimized);
+// Dumps out `llvm_module` to the path specified in DebugOptions, if dumping is
+// enabled for the given HLO module.
+//
+// A sanitized version of `hlo_module_name` is incorporated into the file name.
+// If `optimized` is true then a suffix of "-with-opt.ll" is used, else a suffix
+// of "-no-opt.ll" is used.
+void DumpIrIfEnabled(const HloModule& hlo_module,
+                     const llvm::Module& llvm_module, bool optimized);
 
-llvm::Function* CreateFunction(llvm::FunctionType* function_type,
-                               llvm::GlobalValue::LinkageTypes linkage,
-                               bool enable_fast_math, bool optimize_for_size,
-                               tensorflow::StringPiece name,
-                               llvm::Module* module);
+llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
+                                  llvm::GlobalValue::LinkageTypes linkage,
+                                  const HloModuleConfig& module_config,
+                                  absl::string_view name, llvm::Module* module);
 
 // Extracts the xla_backend_extra_options from `config` and passes those that
 // don't start with xla_ to LLVM.
@@ -301,18 +292,20 @@ std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilder<>* b,
 std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
     llvm::IRBuilder<>* b, llvm::Value* value_64bits);
 
-// Checks whether a global variable is already created to represent a
-// state passed between RNG calls implemented with Philox algorithm. If not,
-// creates such a variable. Returns the global variable.
-llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
-    llvm::Module* module, llvm::IRBuilder<>* b);
+// Checks whether a global variable is already created to represent the state
+// of a random number generator. If not, creates such a variable. Returns the
+// global variable.
+llvm::GlobalVariable* GetOrCreateVariableRngState(llvm::Module* module,
+                                                  llvm::IRBuilder<>* b);
 
-// Adds a value to the global state variable each time when a RNG hlo is
-// executed. The value of this global state variable is added to the seed
-// of the Philox RNG algorithm so that calling the same RNG Hlo multiple times
-// should rarely produce the same result.
-void IncrementVariableForPhiloxRngState(int64 value, llvm::Module* module,
-                                        llvm::IRBuilder<>* b);
+// Adds a delta value to the global state variable and return the old value of
+// the variable.
+llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
+                                  llvm::IRBuilder<>* b);
+
+// Gets the LLVM address space that should be used for global variables (e.g.
+// XLA's rng state).
+unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module);
 }  // namespace llvm_ir
 }  // namespace xla
 

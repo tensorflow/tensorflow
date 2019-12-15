@@ -1,10 +1,9 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 cc_library(
     name = "decode",
@@ -24,6 +23,7 @@ cc_library(
         ":local_descriptor_pool_registration",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -68,5 +68,22 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:platform_base",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@com_google_protobuf//:protobuf_headers",
+    ],
+)
+
+tf_cc_test(
+    name = "proto_utils_test",
+    srcs = ["proto_utils_test.cc"],
+    deps = [
+        ":proto_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_googletest//:gtest_main",
     ],
 )

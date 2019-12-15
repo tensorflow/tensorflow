@@ -18,13 +18,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -48,14 +47,14 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
       shape_(target_array.GetShape()),
       b_(b) {}
 
-static LoopEmitter::BodyEmitter MakeBodyEmitterForMultiOutputFusion(
+static LoopEmitter::BodyEmitter MakeBodyEmitterForMultiOutput(
     const ElementGenerator& target_element_generator,
     const std::vector<IrArray>& target_arrays, llvm::IRBuilder<>* b) {
   return [=](const llvm_ir::IrArray::Index array_index) {
     TF_ASSIGN_OR_RETURN(llvm::Value * target_element,
                         target_element_generator(array_index));
     CHECK(target_element->getType()->isStructTy())
-        << "This BodyEmitter is for multi-output fusion, but target element "
+        << "This BodyEmitter is for multi-output, but target element "
            "generator does not produce values of struct type.";
     CHECK_EQ(target_element->getType()->getStructNumElements(),
              target_arrays.size());
@@ -69,9 +68,9 @@ static LoopEmitter::BodyEmitter MakeBodyEmitterForMultiOutputFusion(
 }
 
 LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
-                         tensorflow::gtl::ArraySlice<IrArray> target_arrays,
+                         absl::Span<const IrArray> target_arrays,
                          llvm::IRBuilder<>* b)
-    : body_emitter_(MakeBodyEmitterForMultiOutputFusion(
+    : body_emitter_(MakeBodyEmitterForMultiOutput(
           target_element_generator,
           std::vector<IrArray>(target_arrays.begin(), target_arrays.end()), b)),
       shape_(target_arrays[0].GetShape()),
@@ -86,7 +85,7 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
 }
 
 std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
-    tensorflow::StringPiece loop_name, llvm::Type* index_type) {
+    absl::string_view loop_name, llvm::Type* index_type) {
   CHECK_NE(index_type, nullptr);
   if (ShapeUtil::IsScalar(shape_)) {
     // No loop needed, so set exit_bb_ to nullptr.
@@ -99,15 +98,16 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
   // class so emit loops in order from most-major dimension down to most-minor
   // dimension (of the target shape).
   ForLoopNest loop_nest(loop_name, b_);
-  IrArray::Index array_index(index_type, shape_.dimensions_size());
+  std::vector<llvm::Value*> array_multi_index(shape_.dimensions_size());
   for (int i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
     int64 dimension = LayoutUtil::Major(shape_.layout(), i);
     std::unique_ptr<ForLoop> loop = loop_nest.AddLoop(
         /*start_index=*/0,
         /*end_index=*/shape_.dimensions(dimension),
-        /*suffix=*/tensorflow::strings::Printf("dim.%lld", dimension));
-    array_index[dimension] = loop->GetIndVarValue();
+        /*suffix=*/absl::StrFormat("dim.%d", dimension));
+    array_multi_index[dimension] = loop->GetIndVarValue();
   }
+  IrArray::Index array_index(array_multi_index, shape_, index_type);
 
   // Set IR builder insertion point to the loop body basic block of the
   // innermost loop.
@@ -122,7 +122,7 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
   return {array_index};
 }
 
-Status LoopEmitter::EmitLoop(tensorflow::StringPiece loop_name,
+Status LoopEmitter::EmitLoop(absl::string_view loop_name,
                              llvm::Type* index_type) {
   if (index_type == nullptr) {
     index_type = b_->getInt64Ty();

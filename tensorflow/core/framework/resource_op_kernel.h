@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_RESOURCE_OP_KERNEL_H_
-#define TENSORFLOW_FRAMEWORK_RESOURCE_OP_KERNEL_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_RESOURCE_OP_KERNEL_H_
+#define TENSORFLOW_CORE_FRAMEWORK_RESOURCE_OP_KERNEL_H_
 
 #include <string>
 
@@ -96,7 +96,7 @@ class ResourceOpKernel : public OpKernel {
       }
 
       if (!has_resource_type_) {
-        auto h = handle_.AccessTensor(context)->template flat<string>();
+        auto h = handle_.AccessTensor(context)->template flat<tstring>();
         h(0) = cinfo_.container();
         h(1) = cinfo_.name();
       }
@@ -136,4 +136,4 @@ class ResourceOpKernel : public OpKernel {
 };
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_RESOURCE_OP_KERNEL_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_RESOURCE_OP_KERNEL_H_

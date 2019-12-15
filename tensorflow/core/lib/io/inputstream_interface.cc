@@ -28,7 +28,7 @@ Status InputStreamInterface::SkipNBytes(int64 bytes_to_skip) {
   if (bytes_to_skip < 0) {
     return errors::InvalidArgument("Can't skip a negative number of bytes");
   }
-  string unused;
+  tstring unused;
   // Read kDefaultSkipSize at a time till bytes_to_skip.
   while (bytes_to_skip > 0) {
     int64 bytes_to_read = std::min<int64>(kMaxSkipSize, bytes_to_skip);

@@ -19,9 +19,9 @@ limitations under the License.
 #include <functional>
 #include <map>
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
 namespace stream_executor {
@@ -54,11 +54,11 @@ class ExecutorCache {
   struct Entry {
     ~Entry();
 
-    // Mutex that locks the contents of each entry. The 'mutex_' of the
+    // Mutex that guards the contents of each entry. The 'mutex_' of the
     // ExecutorCache class protects both the 'cache_' and the existence of each
     // Entry, but not the Entry's contents. 'configurations_mutex' protects the
     // contents of the entry after 'mutex_' has been dropped.
-    mutex configurations_mutex;
+    absl::Mutex configurations_mutex;
 
     // Vector of cached {config, executor} pairs.
     std::vector<
@@ -69,7 +69,7 @@ class ExecutorCache {
   // Maps ordinal number to a list of cached executors for that ordinal.
   // We key off of ordinal (instead of just looking up all fields in the
   // StreamExecutorConfig) for a slight improvement in lookup time.
-  mutex mutex_;
+  absl::Mutex mutex_;
   std::map<int, Entry> cache_ GUARDED_BY(mutex_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(ExecutorCache);

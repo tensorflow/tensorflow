@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/shape_tree.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -51,10 +52,10 @@ class ShapeTreeTest : public ::testing::Test {
 
 TEST_F(ShapeTreeTest, DefaultConstructor) {
   ShapeTree<int> int_tree;
-  EXPECT_TRUE(ShapeUtil::IsNil(int_tree.shape()));
+  EXPECT_TRUE(ShapeUtil::IsEmptyTuple(int_tree.shape()));
 
   ShapeTree<bool> bool_tree;
-  EXPECT_TRUE(ShapeUtil::IsNil(bool_tree.shape()));
+  EXPECT_TRUE(ShapeUtil::IsEmptyTuple(bool_tree.shape()));
 }
 
 void ShapeTreeTest::TestShapeConstructor(const Shape& shape,
@@ -242,7 +243,7 @@ TEST_F(ShapeTreeTest, InvalidIndexingNestedTuple) {
 TEST_F(ShapeTreeTest, ShapeTreeOfNonCopyableType) {
   ShapeTree<std::unique_ptr<int>> shape_tree{tuple_shape_};
   EXPECT_EQ(shape_tree.element({2}).get(), nullptr);
-  *shape_tree.mutable_element({2}) = MakeUnique<int>(42);
+  *shape_tree.mutable_element({2}) = absl::make_unique<int>(42);
   EXPECT_EQ(*shape_tree.element({2}), 42);
 }
 

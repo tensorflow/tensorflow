@@ -13,18 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_HTTP_REQUEST_H_
-#define TENSORFLOW_CORE_PLATFORM_HTTP_REQUEST_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_HTTP_REQUEST_H_
+#define TENSORFLOW_CORE_PLATFORM_CLOUD_HTTP_REQUEST_H_
 
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
+
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -188,4 +189,4 @@ class HttpRequest {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_HTTP_REQUEST_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_HTTP_REQUEST_H_

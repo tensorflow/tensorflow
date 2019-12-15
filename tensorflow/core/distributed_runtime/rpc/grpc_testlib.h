@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_TESTLIB_H_
-#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_TESTLIB_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_TESTLIB_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_TESTLIB_H_
 
 #include <memory>
 #include <string>
@@ -49,6 +49,11 @@ class TestCluster {
   // returned.
   static Status MakeTestCluster(const SessionOptions& options, int n,
                                 std::unique_ptr<TestCluster>* out_cluster);
+
+  // As above, but allows overridding the server binary path via `binary_path`.
+  static Status MakeTestCluster(const string& binary_path,
+                                const SessionOptions& options, int n,
+                                std::unique_ptr<TestCluster>* out_cluster);
   ~TestCluster();
 
   // Returns a vector of string "<hostname>:<port>" pairs that may be
@@ -71,4 +76,4 @@ class TestCluster {
 }  // end namespace test
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_TESTLIB_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_TESTLIB_H_

@@ -15,8 +15,8 @@ limitations under the License.
 
 // Utilities for saving/restoring tensor slice checkpoints.
 
-#ifndef TENSORFLOW_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
-#define TENSORFLOW_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
+#ifndef TENSORFLOW_CORE_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
+#define TENSORFLOW_CORE_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
 
 #include <string>  // for string
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -179,29 +179,29 @@ inline void Fill(const Eigen::half* data, size_t n, TensorProto* t) {
 // Custom implementation for string.
 
 template <>
-struct SaveTypeTraits<string> {
+struct SaveTypeTraits<tstring> {
   static constexpr bool supported = true;
   typedef const string* SavedType;
   typedef protobuf::RepeatedPtrField<string> RepeatedField;
 };
 
 template <>
-inline const string* const* TensorProtoData<string>(const TensorProto& t) {
-  static_assert(SaveTypeTraits<string>::supported,
-                "Specified type string not supported for Restore");
+inline const string* const* TensorProtoData<tstring>(const TensorProto& t) {
+  static_assert(SaveTypeTraits<tstring>::supported,
+                "Specified type tstring not supported for Restore");
   return t.string_val().data();
 }
 
 template <>
-inline protobuf::RepeatedPtrField<string>* MutableTensorProtoData<string>(
+inline protobuf::RepeatedPtrField<string>* MutableTensorProtoData<tstring>(
     TensorProto* t) {
-  static_assert(SaveTypeTraits<string>::supported,
-                "Specified type string not supported for Save");
+  static_assert(SaveTypeTraits<tstring>::supported,
+                "Specified type tstring not supported for Save");
   return t->mutable_string_val();
 }
 
 template <>
-inline void Fill(const string* data, size_t n, TensorProto* t) {
+inline void Fill(const tstring* data, size_t n, TensorProto* t) {
   typename protobuf::RepeatedPtrField<string> copy(data, data + n);
   t->mutable_string_val()->Swap(&copy);
 }
@@ -210,4 +210,4 @@ inline void Fill(const string* data, size_t n, TensorProto* t) {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
+#endif  // TENSORFLOW_CORE_UTIL_SAVED_TENSOR_SLICE_UTIL_H_

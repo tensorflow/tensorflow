@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/graph/graph.h"
@@ -41,6 +42,8 @@ struct RewriteGraphMetadata;
 struct GraphExecutionStateOptions {
   const DeviceSet* device_set = nullptr;
   const SessionOptions* session_options = nullptr;
+  // Unique session identifier. Can be empty.
+  string session_handle;
   // A map from node name to device name, representing the unchangeable
   // placement of stateful nodes.
   std::unordered_map<string, string> stateful_placements;
@@ -50,17 +53,20 @@ struct GraphExecutionStateOptions {
 // BuildGraphOptions.
 struct ClientGraph {
   explicit ClientGraph(std::unique_ptr<FunctionLibraryDefinition> flib,
-                       DataTypeVector feed_types, DataTypeVector fetch_types)
+                       DataTypeVector feed_types, DataTypeVector fetch_types,
+                       int64 collective_graph_key)
       : flib_def(std::move(flib)),
         graph(flib_def.get()),
         feed_types(std::move(feed_types)),
-        fetch_types(std::move(fetch_types)) {}
+        fetch_types(std::move(fetch_types)),
+        collective_graph_key(collective_graph_key) {}
   // Each client-graph gets its own function library since optimization passes
   // post rewrite for execution might want to introduce new functions.
   std::unique_ptr<FunctionLibraryDefinition> flib_def;
   Graph graph;
   DataTypeVector feed_types;
   DataTypeVector fetch_types;
+  int64 collective_graph_key;
 };
 
 // GraphExecutionState is responsible for generating an
@@ -93,22 +99,16 @@ class GraphExecutionState {
 
   // Creates a new `GraphExecutionState` for the given
   // `graph_def`, which represents the entire graph for a session.
-  //
-  // N.B. This method uses `GraphDef::Swap()` and leaves `graph_def`
-  // in an undefined state. If it is necessary to use `*graph_def`
-  // after this call, make an explicit copy of the graph before
-  // calling this method.
   static Status MakeForBaseGraph(
-      GraphDef* graph_def, const GraphExecutionStateOptions& options,
+      GraphDef&& graph_def, const GraphExecutionStateOptions& options,
       std::unique_ptr<GraphExecutionState>* out_state);
 
   // Creates a new `GraphExecutionState` and `SimpleClientGraph`
   // for the subgraph of `original_graph_def` defined by
   // `subgraph_options`.
   static Status MakeForPrunedGraph(
-      const FunctionDefLibrary& func_def_lib,
+      const GraphExecutionState& base_execution_state,
       const GraphExecutionStateOptions& options,
-      const GraphDef& original_graph_def,
       const BuildGraphOptions& subgraph_options,
       std::unique_ptr<GraphExecutionState>* out_state,
       std::unique_ptr<ClientGraph>* out_client_graph);
@@ -152,10 +152,6 @@ class GraphExecutionState {
     }
   }
 
-  // Returns a reference to the current graph_def.  Use must
-  // not extend beyond lifetime of GrahExecutionState object.
-  const GraphDef& original_graph_def() { return original_graph_def_; }
-
   // Returns the map of stateful placements as a map of
   // node name to placement string.
   std::unordered_map<string, string> GetStatefulPlacements() const {
@@ -163,10 +159,11 @@ class GraphExecutionState {
   }
 
  private:
-  GraphExecutionState(GraphDef* graph_def,
+  GraphExecutionState(std::unique_ptr<GraphDef>&& graph_def,
+                      std::unique_ptr<FunctionLibraryDefinition>&& flib_def,
                       const GraphExecutionStateOptions& options);
 
-  Status InitBaseGraph(const BuildGraphOptions& options);
+  Status InitBaseGraph(std::unique_ptr<Graph>&& graph);
 
   // Map of placed stateful nodes, i.e. nodes for which is_stateful()
   // is true, such as "params" and "queue" nodes.  Once placed these
@@ -186,9 +183,18 @@ class GraphExecutionState {
       const BuildGraphOptions& options, std::unique_ptr<Graph>* optimized_graph,
       std::unique_ptr<FunctionLibraryDefinition>* optimized_flib);
 
-  GraphDef original_graph_def_;            // Immutable after ctor.
+  // The GraphExecutionState must store a copy of the original GraphDef if
+  // either of the following conditions holds:
+  //
+  // * `session_options_.config.graph_options().place_pruned_graph()` is true.
+  // * `session_options_.config.experimental().optimize_for_static_graph()` is
+  //   false.
+  const std::unique_ptr<GraphDef> original_graph_def_;
+
   const DeviceSet* device_set_;            // Not owned
   const SessionOptions* session_options_;  // Not owned
+  // Unique session identifier. Can be empty.
+  string session_handle_;
 
   // Map from name to Node for the full graph in placed_.
   NodeNameToCostIdMap node_name_to_cost_id_map_;

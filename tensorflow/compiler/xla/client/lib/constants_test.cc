@@ -155,5 +155,12 @@ XLA_TEST_F(ConstantsTest, MaxValueF32) {
                              {});
 }
 
+XLA_TEST_F(ConstantsTest, NanValueF32) {
+  XlaBuilder builder(TestName());
+  NanValue(&builder, F32);
+  ComputeAndCompareR0<float>(&builder, std::numeric_limits<float>::quiet_NaN(),
+                             {});
+}
+
 }  // namespace
 }  // namespace xla

@@ -14,7 +14,7 @@ load(
 )
 
 tf_cc_binary(
-    name = "s3_file_system.so",
+    name = "libs3_file_system_shared.so",
     srcs = [
         "aws_crypto.cc",
         "aws_crypto.h",
@@ -34,8 +34,8 @@ tf_cc_binary(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "@aws",
+        "@com_google_protobuf//:protobuf_headers",
         "@curl",
-        "@protobuf_archive//:protobuf_headers",
     ],
 )
 
@@ -65,6 +65,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:stringprintf",
         "@aws",
     ],
     alwayslink = 1,
@@ -83,6 +84,8 @@ cc_library(
         ":aws_logging",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:str_util",
         "@aws",
     ],
     alwayslink = 1,
@@ -103,6 +106,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
         "@aws",
     ],
 )

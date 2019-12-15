@@ -16,7 +16,7 @@
 # pylint: disable=unused-import,g-bad-import-order
 """Neural network support.
 
-See the @{$python/nn} guide.
+See the [Neural network](https://tensorflow.org/api_guides/python/nn) guide.
 """
 from __future__ import absolute_import
 from __future__ import division

@@ -1,0 +1,48 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
+
+node {
+  name: "unnamed"
+  op: "foo"
+  experimental_debug_info {
+  }
+}
+node {
+  name: "unnamed1"
+  op: "bar"
+  experimental_debug_info {
+  }
+}
+library {
+  function {
+    signature {
+      name: "bar"
+    }
+  }
+  function {
+    signature {
+      name: "foo"
+    }
+    node_def {
+      name: "unnamed"
+      op: "bar"
+      experimental_debug_info {
+        original_node_names: "unnamed"
+      }
+    }
+  }
+}
+versions {
+  producer: 29
+  min_consumer: 12
+}
+
+# Verify that functions from the library are properly imported.
+
+# CHECK-LABEL:  func @main() {
+# CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = false, f = @foo0}
+# CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = false, f = @bar0}
+
+# CHECK-LABEL:  func @foo0() {
+# CHECK: "tf.LegacyCall"() {_disable_call_shape_inference = false, f = @bar0}
+
+# CHECK-LABEL:  func @bar0() {

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -38,8 +39,12 @@ class XlaCompileOnDemandOp : public OpKernel {
 
  private:
   XlaCompiler::Argument CreateCompilerArgument(OpKernelContext* ctx, int64 i);
-  bool ShouldArgumentBeConstant(const OpKernel* op_kernel, int64 argument_idx);
-  bool MustArgumentBeConstant(const OpKernel* op_kernel, int64 argument_idx);
+  Status ShouldArgumentBeConstant(const OpKernel* op_kernel, int64 argument_idx,
+                                  FunctionLibraryRuntime* flib_runtime,
+                                  bool* result);
+  Status MustArgumentBeConstant(const OpKernel* op_kernel, int64 argument_idx,
+                                FunctionLibraryRuntime* flib_runtime,
+                                bool* result);
   Status Compile(OpKernelContext* ctx, const XlaDevice::Metadata& metadata,
                  const XlaCompiler::CompilationResult** result,
                  xla::LocalExecutable** executable);

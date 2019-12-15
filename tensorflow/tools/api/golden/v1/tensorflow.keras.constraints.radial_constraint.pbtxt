@@ -1,0 +1,13 @@
+path: "tensorflow.keras.constraints.radial_constraint"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras.constraints.RadialConstraint\'>"
+  is_instance: "<class \'tensorflow.python.keras.constraints.Constraint\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

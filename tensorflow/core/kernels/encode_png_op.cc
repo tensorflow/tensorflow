@@ -16,12 +16,12 @@ limitations under the License.
 // See docs in ../ops/image_ops.cc
 
 #include <memory>
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/platform/logging.h"
@@ -78,17 +78,17 @@ class EncodePngOp : public OpKernel {
                    context->allocate_output(0, TensorShape({}), &output));
     if (desired_channel_bits_ == 8) {
       OP_REQUIRES(context,
-                  png::WriteImageToBuffer(image.flat<uint8>().data(), width,
-                                          height, width * channels, channels,
-                                          desired_channel_bits_, compression_,
-                                          &output->scalar<string>()(), nullptr),
+                  png::WriteImageToBuffer(
+                      image.flat<uint8>().data(), width, height,
+                      width * channels, channels, desired_channel_bits_,
+                      compression_, &output->scalar<tstring>()(), nullptr),
                   errors::Internal("PNG encoding failed"));
     } else {
       OP_REQUIRES(context,
                   png::WriteImageToBuffer(
                       image.flat<uint16>().data(), width, height,
                       width * channels * 2, channels, desired_channel_bits_,
-                      compression_, &output->scalar<string>()(), nullptr),
+                      compression_, &output->scalar<tstring>()(), nullptr),
                   errors::Internal("PNG encoding failed"));
     }
   }

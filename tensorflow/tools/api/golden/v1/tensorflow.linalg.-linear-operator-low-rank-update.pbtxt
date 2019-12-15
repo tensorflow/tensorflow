@@ -2,7 +2,14 @@ path: "tensorflow.linalg.LinearOperatorLowRankUpdate"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.linalg.linear_operator_low_rank_update.LinearOperatorLowRankUpdate\'>"
   is_instance: "<class \'tensorflow.python.ops.linalg.linear_operator.LinearOperator\'>"
+  is_instance: "<class \'tensorflow.python.module.module.Module\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
   is_instance: "<type \'object\'>"
+  member {
+    name: "H"
+    mtype: "<type \'property\'>"
+  }
   member {
     name: "base_operator"
     mtype: "<type \'property\'>"
@@ -56,6 +63,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "name_scope"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "range_dimension"
     mtype: "<type \'property\'>"
   }
@@ -64,7 +75,15 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "submodules"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "tensor_rank"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "trainable_variables"
     mtype: "<type \'property\'>"
   }
   member {
@@ -75,6 +94,10 @@ tf_class {
     name: "v"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "variables"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'base_operator\', \'u\', \'diag_update\', \'v\', \'is_diag_update_positive\', \'is_non_singular\', \'is_self_adjoint\', \'is_positive_definite\', \'is_square\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'LinearOperatorLowRankUpdate\'], "
@@ -82,6 +105,10 @@ tf_class {
   member_method {
     name: "add_to_tensor"
     argspec: "args=[\'self\', \'x\', \'name\'], varargs=None, keywords=None, defaults=[\'add_to_tensor\'], "
+  }
+  member_method {
+    name: "adjoint"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'adjoint\'], "
   }
   member_method {
     name: "assert_non_singular"
@@ -100,6 +127,14 @@ tf_class {
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'batch_shape_tensor\'], "
   }
   member_method {
+    name: "cholesky"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'cholesky\'], "
+  }
+  member_method {
+    name: "cond"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'cond\'], "
+  }
+  member_method {
     name: "determinant"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'det\'], "
   }
@@ -110,6 +145,14 @@ tf_class {
   member_method {
     name: "domain_dimension_tensor"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'domain_dimension_tensor\'], "
+  }
+  member_method {
+    name: "eigvals"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'eigvals\'], "
+  }
+  member_method {
+    name: "inverse"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'inverse\'], "
   }
   member_method {
     name: "log_abs_determinant"
@@ -150,5 +193,9 @@ tf_class {
   member_method {
     name: "trace"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'trace\'], "
+  }
+  member_method {
+    name: "with_name_scope"
+    argspec: "args=[\'cls\', \'method\'], varargs=None, keywords=None, defaults=None"
   }
 }

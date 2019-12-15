@@ -73,7 +73,7 @@ half sign_imp(half value) {
 }
 
 half round_imp(half value) {
-  return half(round(static_cast<float>(std::move(value))));
+  return half(std::round(static_cast<float>(std::move(value))));
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -126,9 +126,8 @@ INSTANTIATE_TEST_CASE_P(half, UnaryPredTest,
                         ::testing::Values(UnaryPredTestParam{
                             [](half x) { return isfinite(x); }, &IsFinite}));
 
-using BinaryBuildFuncTy =
-    std::function<void(const xla::XlaOp& x, const xla::XlaOp& y,
-                       tensorflow::gtl::ArraySlice<int64>)>;
+using BinaryBuildFuncTy = std::function<void(
+    const xla::XlaOp& x, const xla::XlaOp& y, absl::Span<const int64>)>;
 
 struct BinaryOpTestParam {
   std::function<half(half, half)> compute_func;
@@ -164,8 +163,8 @@ XLA_TEST_P(BinaryOpTest, Ops) {
 }
 
 half atan2_imp(half x, half y) {
-  return half(atan2(static_cast<float>(std::move(x)),
-                    static_cast<float>(std::move(y))));
+  return half(std::atan2(static_cast<float>(std::move(x)),
+                         static_cast<float>(std::move(y))));
 }
 
 INSTANTIATE_TEST_CASE_P(

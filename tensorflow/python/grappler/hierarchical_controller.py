@@ -572,7 +572,7 @@ class HierarchicalController(Controller):
     logits = array_ops.reshape(logits,
                                [batch_size * self.num_ops, self.num_groups])
     actions = random_ops.multinomial(logits, 1, seed=self.hparams.seed)
-    actions = math_ops.to_int32(actions)
+    actions = math_ops.cast(actions, dtypes.int32)
     actions = array_ops.reshape(actions, [batch_size, self.num_ops])
     action_label = array_ops.reshape(actions, [-1])
     log_probs = nn_ops.sparse_softmax_cross_entropy_with_logits(
@@ -883,7 +883,7 @@ class HierarchicalController(Controller):
                                                  actions.read(i - 1))
       )
       if self.hparams.keep_prob is not None:
-        signal = nn_ops.dropout(signal, self.hparams.keep_prob)
+        signal = nn_ops.dropout(signal, rate=(1 - self.hparams.keep_prob))
       next_c, next_h = lstm(signal, prev_c, prev_h, w_lstm, forget_bias)
       query = math_ops.matmul(next_h, attn_w_2)
       query = array_ops.reshape(
@@ -924,7 +924,7 @@ class HierarchicalController(Controller):
         next_y = array_ops.slice(y, [0, i], [-1, 1])
       else:
         raise NotImplementedError
-      next_y = math_ops.to_int32(next_y)
+      next_y = math_ops.cast(next_y, dtypes.int32)
       next_y = array_ops.reshape(next_y, [self.hparams.num_children])
       actions = actions.write(i, next_y)
       log_probs += nn_ops.sparse_softmax_cross_entropy_with_logits(
@@ -1037,7 +1037,7 @@ class HierarchicalController(Controller):
     Args:
       loss: scalar tf tensor
       tf_variables: list of training variables, typically
-        tf.trainable_variables()
+        tf.compat.v1.trainable_variables()
       global_step: global_step
       grad_bound: max gradient norm
       lr_init: initial learning rate

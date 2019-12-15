@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gc
+import pickle
 import warnings
 
 from tensorflow.core.lib.core import error_codes_pb2
@@ -69,6 +70,10 @@ class ErrorsTest(test.TestCase):
           isinstance(
               errors_impl._make_specific_exception(None, None, None,
                                                    error_code), exc_type))
+      # error_code_from_exception_type and exception_type_from_error_code should
+      # be consistent with operation result.
+      self.assertEqual(error_code,
+                       errors_impl.error_code_from_exception_type(exc_type))
       # pylint: enable=protected-access
 
   def testKnownErrorClassForEachErrorCodeInProto(self):
@@ -97,15 +102,49 @@ class ErrorsTest(test.TestCase):
     self.assertTrue("Unknown error code: 37" in str(w[0].message))
     self.assertTrue(isinstance(exc, errors_impl.OpError))
 
+    with warnings.catch_warnings(record=True) as w:
+      # pylint: disable=protected-access
+      exc = errors_impl.error_code_from_exception_type("Unknown")
+      # pylint: enable=protected-access
+    self.assertEqual(1, len(w))
+    self.assertTrue("Unknown class exception" in str(w[0].message))
+    self.assertTrue(isinstance(exc, errors_impl.OpError))
+
   def testStatusDoesNotLeak(self):
     try:
-      with errors.raise_exception_on_not_ok_status() as status:
-        pywrap_tensorflow.DeleteFile(
-            compat.as_bytes("/DOES_NOT_EXIST/"), status)
+      pywrap_tensorflow.DeleteFile(compat.as_bytes("/DOES_NOT_EXIST/"))
     except:
       pass
     gc.collect()
     self.assertEqual(0, self._CountReferences(c_api_util.ScopedTFStatus))
+
+  def testPickleable(self):
+    for error_code in [
+        errors.CANCELLED,
+        errors.UNKNOWN,
+        errors.INVALID_ARGUMENT,
+        errors.DEADLINE_EXCEEDED,
+        errors.NOT_FOUND,
+        errors.ALREADY_EXISTS,
+        errors.PERMISSION_DENIED,
+        errors.UNAUTHENTICATED,
+        errors.RESOURCE_EXHAUSTED,
+        errors.FAILED_PRECONDITION,
+        errors.ABORTED,
+        errors.OUT_OF_RANGE,
+        errors.UNIMPLEMENTED,
+        errors.INTERNAL,
+        errors.UNAVAILABLE,
+        errors.DATA_LOSS,
+    ]:
+      # pylint: disable=protected-access
+      exc = errors_impl._make_specific_exception(None, None, None, error_code)
+      # pylint: enable=protected-access
+      unpickled = pickle.loads(pickle.dumps(exc))
+      self.assertEqual(exc.node_def, unpickled.node_def)
+      self.assertEqual(exc.op, unpickled.op)
+      self.assertEqual(exc.message, unpickled.message)
+      self.assertEqual(exc.error_code, unpickled.error_code)
 
 
 if __name__ == "__main__":

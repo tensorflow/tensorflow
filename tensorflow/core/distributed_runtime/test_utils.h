@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_map>
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -30,7 +31,7 @@ namespace tensorflow {
 class TestWorkerInterface : public WorkerInterface {
  public:
   void GetStatusAsync(const GetStatusRequest* request,
-                      GetStatusResponse* response,
+                      GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
     done(errors::Unimplemented("GetStatusAsync"));
   }
@@ -138,7 +139,20 @@ class TestWorkerCache : public WorkerCacheInterface {
     }
   }
 
-  WorkerInterface* CreateWorker(const string& target) override {
+  void ListWorkersInJob(const string& job_name,
+                        std::vector<string>* workers) const override {
+    workers->clear();
+    for (auto it : workers_) {
+      DeviceNameUtils::ParsedName device_name;
+      CHECK(DeviceNameUtils::ParseFullName(it.first, &device_name));
+      CHECK(device_name.has_job);
+      if (job_name == device_name.job) {
+        workers->push_back(it.first);
+      }
+    }
+  }
+
+  WorkerInterface* GetOrCreateWorker(const string& target) override {
     auto it = workers_.find(target);
     if (it != workers_.end()) {
       return it->second;
@@ -147,6 +161,11 @@ class TestWorkerCache : public WorkerCacheInterface {
   }
 
   void ReleaseWorker(const string& target, WorkerInterface* worker) override {}
+
+  Status GetEagerClientCache(
+      std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
+    return errors::Unimplemented("Unimplemented.");
+  }
 
   bool GetDeviceLocalityNonBlocking(const string& device,
                                     DeviceLocality* locality) override {

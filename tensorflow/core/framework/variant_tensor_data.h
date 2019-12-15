@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_VARIANT_TENSOR_DATA_H
-#define TENSORFLOW_FRAMEWORK_VARIANT_TENSOR_DATA_H
+#ifndef TENSORFLOW_CORE_FRAMEWORK_VARIANT_TENSOR_DATA_H_
+#define TENSORFLOW_CORE_FRAMEWORK_VARIANT_TENSOR_DATA_H_
 
 #include <algorithm>
 #include <vector>
 
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 class VariantTensorDataProto;
-class Tensor;
 
 // The serialization format for Variant objects. Objects with references to
 // other Tensors can simply store those tensors in the `tensors` field, and
@@ -37,9 +37,11 @@ class Tensor;
 // separate so that kernels do not need to depend on protos.
 class VariantTensorData {
  public:
-  VariantTensorData();
-  VariantTensorData(const VariantTensorDataProto& proto);
-  ~VariantTensorData();
+  VariantTensorData() = default;
+
+  // TODO(b/118823936): This silently returns if the proto is invalid.
+  // Consider calling FromProto explicitly instead.
+  VariantTensorData(VariantTensorDataProto proto);
 
   // Name of the type of objects being serialized.
   const string& type_name() const { return type_name_; }
@@ -60,20 +62,31 @@ class VariantTensorData {
     return GetMetadata<T>(value, PODResolver<T>());
   }
 
+  string& metadata_string() { return metadata_; }
+
+  const string& metadata_string() const { return metadata_; }
+
   // Tensors contained within objects being serialized.
   int tensors_size() const;
   const Tensor& tensors(int index) const;
   const std::vector<Tensor>& tensors() const;
   Tensor* add_tensors();
 
+  // A more general version of add_tensors. Parameters are perfectly forwarded
+  // to the constructor of the tensor added here.
+  template <typename... TensorConstructorArgs>
+  Tensor* add_tensor(TensorConstructorArgs&&... args);
+
   // Conversion to and from VariantTensorDataProto
   void ToProto(VariantTensorDataProto* proto) const;
-  bool FromProto(const VariantTensorDataProto& proto);
+  // This allows optimizations via std::move.
+  bool FromProto(VariantTensorDataProto proto);
+  bool FromConstProto(const VariantTensorDataProto& proto);
 
   // Serialization via VariantTensorDataProto
   string SerializeAsString() const;
   bool SerializeToString(string* buf);
-  bool ParseFromString(const string& s);
+  bool ParseFromString(string s);
 
   string DebugString() const;
 
@@ -112,4 +125,4 @@ string ProtoDebugString(const VariantTensorData& object);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_VARIANT_TENSOR_DATA_H
+#endif  // TENSORFLOW_CORE_FRAMEWORK_VARIANT_TENSOR_DATA_H_

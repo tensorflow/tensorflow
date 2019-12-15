@@ -18,12 +18,13 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -83,7 +84,8 @@ class ChannelTracker {
 
   // Mapping from ChannelHandle value to the corresponding registered
   // Channel object.
-  std::map<int64, Channel> opaque_to_channel_ GUARDED_BY(channel_mutex_);
+  absl::flat_hash_map<int64, Channel> opaque_to_channel_
+      GUARDED_BY(channel_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ChannelTracker);
 };

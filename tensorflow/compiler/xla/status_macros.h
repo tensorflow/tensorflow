@@ -30,6 +30,10 @@ limitations under the License.
 namespace xla {
 namespace status_macros {
 
+// This is a useful error message when encountering XLA Compiler errors that
+// could be handled with the non-strict AutoJit mode.
+extern const char kPossibleAutoJitAlternative[];
+
 // Stream object used to collect error messages in MAKE_ERROR macros
 // or append error messages with APPEND_ERROR.  It accepts any
 // arguments with operator<< to build an error string, and then has an
@@ -182,29 +186,5 @@ class StatusAdaptorForMacros {
                                              tensorflow::error::INTERNAL) \
       .with_log_stack_trace()                                             \
       .add_ret_check_failure(#condition)
-
-#define TF_ASSERT_OK_AND_ASSIGN(lhs, rexpr)                             \
-  TF_ASSERT_OK_AND_ASSIGN_IMPL(                                         \
-      TF_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, \
-      rexpr);
-
-#define TF_ASSERT_OK_AND_ASSIGN_IMPL(statusor, lhs, rexpr)  \
-  auto statusor = (rexpr);                                  \
-  ASSERT_TRUE(statusor.status().ok()) << statusor.status(); \
-  lhs = std::move(statusor.ValueOrDie())
-
-#define TF_STATUS_MACROS_CONCAT_NAME(x, y) TF_STATUS_MACROS_CONCAT_IMPL(x, y)
-#define TF_STATUS_MACROS_CONCAT_IMPL(x, y) x##y
-
-#define TF_ASSIGN_OR_RETURN(lhs, rexpr) \
-  TF_ASSIGN_OR_RETURN_IMPL(             \
-      TF_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, rexpr)
-
-#define TF_ASSIGN_OR_RETURN_IMPL(statusor, lhs, rexpr) \
-  auto statusor = (rexpr);                             \
-  if (TF_PREDICT_FALSE(!statusor.ok())) {              \
-    return statusor.status();                          \
-  }                                                    \
-  lhs = std::move(statusor.ValueOrDie())
 
 #endif  // TENSORFLOW_COMPILER_XLA_STATUS_MACROS_H_

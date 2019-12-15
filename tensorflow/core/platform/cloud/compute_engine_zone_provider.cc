@@ -16,7 +16,8 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/compute_engine_zone_provider.h"
 
 #include <utility>
-#include "tensorflow/core/lib/strings/str_util.h"
+
+#include "tensorflow/core/platform/str_util.h"
 namespace tensorflow {
 
 namespace {
@@ -43,7 +44,7 @@ Status ComputeEngineZoneProvider::GetZone(string* zone) {
     *zone = cached_zone;
   } else {
     LOG(ERROR) << "Failed to parse the zone name from location: "
-               << location.ToString();
+               << string(location);
   }
 
   return Status::OK();

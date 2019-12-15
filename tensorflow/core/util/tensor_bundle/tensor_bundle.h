@@ -58,8 +58,8 @@ limitations under the License.
 //       "/fs/model/train/ckpt-step/ckpt" /* merged prefix */);
 //
 
-#ifndef TENSORFLOW_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_
-#define TENSORFLOW_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_
+#ifndef TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_
+#define TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_
 
 #include "tensorflow/core/protobuf/tensor_bundle.pb.h"
 
@@ -172,7 +172,7 @@ class BundleWriter {
 //
 // Once merged, makes a best effort to delete the old metadata files.
 // Returns OK iff all bundles are successfully merged.
-Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
+Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
                     StringPiece merged_prefix);
 
 // On construction, silently attempts to read the metadata associated with
@@ -300,6 +300,10 @@ class BundleReader {
   // the header entry in the metadata table.
   int num_shards_;
 
+  // Flag that this class sets to true when the endianness of the target bundle
+  // differs from that of the current system's processor architecture.
+  bool need_to_swap_bytes_;
+
   friend class TensorBundleAlignmentTest;  // For testing data alignment.
 
   TF_DISALLOW_COPY_AND_ASSIGN(BundleReader);
@@ -346,4 +350,4 @@ class FileOutputBuffer {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_
+#endif  // TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_

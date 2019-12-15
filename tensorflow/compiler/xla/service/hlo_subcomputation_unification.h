@@ -22,9 +22,9 @@ namespace xla {
 
 // Unify subcomputations of a `HloModule`: if any computations are equal, choose
 // one arbitrarily to use and delete the others.
-class HloSubcomputationUnification : public HloPassInterface {
+class HloSubcomputationUnification : public HloModulePass {
  public:
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "subcomputation-unification";
   }
 

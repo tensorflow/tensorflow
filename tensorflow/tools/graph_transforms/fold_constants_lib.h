@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_FOLD_CONSTANTS_H_
-#define TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_FOLD_CONSTANTS_H_
+#ifndef TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_FOLD_CONSTANTS_LIB_H_
+#define TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_FOLD_CONSTANTS_LIB_H_
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -40,4 +40,4 @@ Status RemoveUnusedNodes(const GraphDef& input_graph_def,
 }  // namespace graph_transforms
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_FOLD_CONSTANTS_H_
+#endif  // TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_FOLD_CONSTANTS_LIB_H_

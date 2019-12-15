@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_JAVA_TENSOR_JNI_H_
-#define TENSORFLOW_JAVA_TENSOR_JNI_H_
+#ifndef TENSORFLOW_JAVA_SRC_MAIN_NATIVE_TENSOR_JNI_H_
+#define TENSORFLOW_JAVA_SRC_MAIN_NATIVE_TENSOR_JNI_H_
 
 #include <jni.h>
 
@@ -153,4 +153,4 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_readNDArray(JNIEnv *, jclass,
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
-#endif  // TENSORFLOW_JAVA_TENSOR_JNI_H_
+#endif  // TENSORFLOW_JAVA_SRC_MAIN_NATIVE_TENSOR_JNI_H_

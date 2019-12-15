@@ -1,0 +1,17 @@
+path: "tensorflow.CriticalSection"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.critical_section_ops.CriticalSection\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'name\', \'shared_name\', \'critical_section_def\', \'import_scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "execute"
+    argspec: "args=[\'self\', \'fn\', \'exclusive_resource_access\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+}

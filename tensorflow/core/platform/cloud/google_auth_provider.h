@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_GOOGLE_AUTH_PROVIDER_H_
-#define TENSORFLOW_CORE_PLATFORM_GOOGLE_AUTH_PROVIDER_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_GOOGLE_AUTH_PROVIDER_H_
+#define TENSORFLOW_CORE_PLATFORM_CLOUD_GOOGLE_AUTH_PROVIDER_H_
 
 #include <memory>
 #include "tensorflow/core/platform/cloud/auth_provider.h"
@@ -51,7 +51,7 @@ class GoogleAuthProvider : public AuthProvider {
   /// Gets the bearer token from Google Compute Engine environment.
   Status GetTokenFromGce() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Gets the bearer token from the systen env variable, for testing purposes.
+  /// Gets the bearer token from the system env variable, for testing purposes.
   Status GetTokenForTesting() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   std::unique_ptr<OAuthClient> oauth_client_;
@@ -65,4 +65,4 @@ class GoogleAuthProvider : public AuthProvider {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_GOOGLE_AUTH_PROVIDER_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_GOOGLE_AUTH_PROVIDER_H_

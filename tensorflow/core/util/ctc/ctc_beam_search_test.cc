@@ -19,19 +19,20 @@ limitations under the License.
 #include "tensorflow/core/util/ctc/ctc_beam_search.h"
 
 #include <cmath>
+
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace {
 
-typedef std::vector<std::vector<std::vector<float>>> TestData;
-using tensorflow::ctc::CTCBeamSearchDecoder;
-using tensorflow::ctc::CTCDecoder;
+template <class T>
+using TestData = std::vector<std::vector<std::vector<T>>>;
 
 // The HistoryBeamState is used to keep track of the current candidate and
 // caches the expansion score (needed by the scorer).
+template <class T>
 struct HistoryBeamState {
-  float score;
+  T score;
   std::vector<int> labels;
 };
 
@@ -40,48 +41,48 @@ struct HistoryBeamState {
 // a prefix of a dictionary word it gets a low probability at each step.
 //
 // The dictionary itself is hard-coded a static const variable of the class.
+template <class T, class BeamState>
 class DictionaryBeamScorer
-    : public tensorflow::ctc::BaseBeamScorer<HistoryBeamState> {
+    : public tensorflow::ctc::BaseBeamScorer<T, BeamState> {
  public:
-  void InitializeState(HistoryBeamState* root) const override {
-    root->score = 0;
-  }
+  DictionaryBeamScorer()
+      : tensorflow::ctc::BaseBeamScorer<T, BeamState>(),
+        dictionary_({{3}, {3, 1}}) {}
 
-  void ExpandState(const HistoryBeamState& from_state, int from_label,
-                   HistoryBeamState* to_state, int to_label) const override {
+  void InitializeState(BeamState* root) const override { root->score = 0; }
+
+  void ExpandState(const BeamState& from_state, int from_label,
+                   BeamState* to_state, int to_label) const override {
     // Keep track of the current complete candidate by storing the labels along
     // the expansion path in the beam state.
     to_state->labels.push_back(to_label);
     SetStateScoreAccordingToDict(to_state);
   }
 
-  void ExpandStateEnd(HistoryBeamState* state) const override {
+  void ExpandStateEnd(BeamState* state) const override {
     SetStateScoreAccordingToDict(state);
   }
 
-  float GetStateExpansionScore(const HistoryBeamState& state,
-                               float previous_score) const override {
+  T GetStateExpansionScore(const BeamState& state,
+                           T previous_score) const override {
     return previous_score + state.score;
   }
 
-  float GetStateEndExpansionScore(
-      const HistoryBeamState& state) const override {
+  T GetStateEndExpansionScore(const BeamState& state) const override {
     return state.score;
   }
 
   // Simple dictionary used when scoring the beams to check if they are prefixes
   // of dictionary words (see SetStateScoreAccordingToDict below).
-  static const std::vector<std::vector<int>> dictionary_;
+  const std::vector<std::vector<int>> dictionary_;
 
  private:
-  void SetStateScoreAccordingToDict(HistoryBeamState* state) const;
+  void SetStateScoreAccordingToDict(BeamState* state) const;
 };
 
-const std::vector<std::vector<int>> DictionaryBeamScorer::dictionary_ = {
-    {3}, {3, 1}};
-
-void DictionaryBeamScorer::SetStateScoreAccordingToDict(
-    HistoryBeamState* state) const {
+template <class T, class BeamState>
+void DictionaryBeamScorer<T, BeamState>::SetStateScoreAccordingToDict(
+    BeamState* state) const {
   // Check if the beam can still be a dictionary word (e.g. prefix of one).
   const std::vector<int>& candidate = state->labels;
   for (int w = 0; w < dictionary_.size(); ++w) {
@@ -92,32 +93,35 @@ void DictionaryBeamScorer::SetStateScoreAccordingToDict(
     }
     if (std::equal(word.begin(), word.begin() + candidate.size(),
                    candidate.begin())) {
-      state->score = std::log(1.0);
+      state->score = std::log(T(1.0));
       return;
     }
   }
   // At this point, the candidate certainly can't be in the dictionary.
-  state->score = std::log(0.01);
+  state->score = std::log(T(0.01));
 }
 
-TEST(CtcBeamSearch, DecodingWithAndWithoutDictionary) {
+template <class T>
+void ctc_beam_search_decoding_with_and_without_dictionary() {
   const int batch_size = 1;
   const int timesteps = 5;
   const int top_paths = 3;
   const int num_classes = 6;
 
   // Plain decoder using hibernating beam search algorithm.
-  CTCBeamSearchDecoder<>::DefaultBeamScorer default_scorer;
-  CTCBeamSearchDecoder<> decoder(num_classes, 10 * top_paths, &default_scorer);
+  typename tensorflow::ctc::CTCBeamSearchDecoder<T>::DefaultBeamScorer
+      default_scorer;
+  tensorflow::ctc::CTCBeamSearchDecoder<T> decoder(num_classes, 10 * top_paths,
+                                                   &default_scorer);
 
   // Dictionary decoder, allowing only two dictionary words : {3}, {3, 1}.
-  DictionaryBeamScorer dictionary_scorer;
-  CTCBeamSearchDecoder<HistoryBeamState> dictionary_decoder(
-      num_classes, top_paths, &dictionary_scorer);
+  DictionaryBeamScorer<T, HistoryBeamState<T>> dictionary_scorer;
+  tensorflow::ctc::CTCBeamSearchDecoder<T, HistoryBeamState<T>>
+      dictionary_decoder(num_classes, top_paths, &dictionary_scorer);
 
-  // Raw data containers (arrays of floats, ints, etc.).
+  // Raw data containers (arrays of floats64, ints, etc.).
   int sequence_lengths[batch_size] = {timesteps};
-  float input_data_mat[timesteps][batch_size][num_classes] = {
+  T input_data_mat[timesteps][batch_size][num_classes] = {
       {{0, 0.6, 0, 0.4, 0, 0}},
       {{0, 0.5, 0, 0.5, 0, 0}},
       {{0, 0.4, 0, 0.6, 0, 0}},
@@ -134,34 +138,40 @@ TEST(CtcBeamSearch, DecodingWithAndWithoutDictionary) {
   }
 
   // Plain output, without any additional scoring.
-  std::vector<CTCDecoder::Output> expected_output = {
-      {{1, 3}, {1, 3, 1}, {3, 1, 3}},
-  };
+  std::vector<typename tensorflow::ctc::CTCDecoder<T>::Output> expected_output =
+      {
+          {{1, 3}, {1, 3, 1}, {3, 1, 3}},
+      };
 
   // Dictionary outputs: preference for dictionary candidates. The
   // second-candidate is there, despite it not being a dictionary word, due to
   // stronger probability in the input to the decoder.
-  std::vector<CTCDecoder::Output> expected_dict_output = {
-      {{3}, {1, 3}, {3, 1}},
-  };
+  std::vector<typename tensorflow::ctc::CTCDecoder<T>::Output>
+      expected_dict_output = {
+          {{3}, {1, 3}, {3, 1}},
+      };
 
   // Convert data containers to the format accepted by the decoder, simply
   // mapping the memory from the container to an Eigen::ArrayXi,::MatrixXf,
   // using Eigen::Map.
   Eigen::Map<const Eigen::ArrayXi> seq_len(&sequence_lengths[0], batch_size);
-  std::vector<Eigen::Map<const Eigen::MatrixXf>> inputs;
+  std::vector<
+      Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>>
+      inputs;
   inputs.reserve(timesteps);
   for (int t = 0; t < timesteps; ++t) {
     inputs.emplace_back(&input_data_mat[t][0][0], batch_size, num_classes);
   }
 
   // Prepare containers for output and scores.
-  std::vector<CTCDecoder::Output> outputs(top_paths);
-  for (CTCDecoder::Output& output : outputs) {
+  std::vector<typename tensorflow::ctc::CTCDecoder<T>::Output> outputs(
+      top_paths);
+  for (typename tensorflow::ctc::CTCDecoder<T>::Output& output : outputs) {
     output.resize(batch_size);
   }
-  float score[batch_size][top_paths] = {{0.0}};
-  Eigen::Map<Eigen::MatrixXf> scores(&score[0][0], batch_size, top_paths);
+  T score[batch_size][top_paths] = {{0.0}};
+  Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> scores(
+      &score[0][0], batch_size, top_paths);
 
   EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
   for (int path = 0; path < top_paths; ++path) {
@@ -169,8 +179,9 @@ TEST(CtcBeamSearch, DecodingWithAndWithoutDictionary) {
   }
 
   // Prepare dictionary outputs.
-  std::vector<CTCDecoder::Output> dict_outputs(top_paths);
-  for (CTCDecoder::Output& output : dict_outputs) {
+  std::vector<typename tensorflow::ctc::CTCDecoder<T>::Output> dict_outputs(
+      top_paths);
+  for (typename tensorflow::ctc::CTCDecoder<T>::Output& output : dict_outputs) {
     output.resize(batch_size);
   }
   EXPECT_TRUE(
@@ -180,38 +191,45 @@ TEST(CtcBeamSearch, DecodingWithAndWithoutDictionary) {
   }
 }
 
-TEST(CtcBeamSearch, AllBeamElementsHaveFiniteScores) {
+template <class T>
+void ctc_beam_search_decoding_all_beam_elements_have_finite_scores() {
   const int batch_size = 1;
   const int timesteps = 1;
   const int top_paths = 3;
   const int num_classes = 6;
 
   // Plain decoder using hibernating beam search algorithm.
-  CTCBeamSearchDecoder<>::DefaultBeamScorer default_scorer;
-  CTCBeamSearchDecoder<> decoder(num_classes, top_paths, &default_scorer);
+  typename tensorflow::ctc::CTCBeamSearchDecoder<T>::DefaultBeamScorer
+      default_scorer;
+  tensorflow::ctc::CTCBeamSearchDecoder<T> decoder(num_classes, top_paths,
+                                                   &default_scorer);
 
-  // Raw data containers (arrays of floats, ints, etc.).
+  // Raw data containers (arrays of floats64, ints, etc.).
   int sequence_lengths[batch_size] = {timesteps};
-  float input_data_mat[timesteps][batch_size][num_classes] = {
+  T input_data_mat[timesteps][batch_size][num_classes] = {
       {{0.4, 0.3, 0, 0, 0, 0.5}}};
 
   // Convert data containers to the format accepted by the decoder, simply
   // mapping the memory from the container to an Eigen::ArrayXi,::MatrixXf,
   // using Eigen::Map.
   Eigen::Map<const Eigen::ArrayXi> seq_len(&sequence_lengths[0], batch_size);
-  std::vector<Eigen::Map<const Eigen::MatrixXf>> inputs;
+  std::vector<
+      Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>>
+      inputs;
   inputs.reserve(timesteps);
   for (int t = 0; t < timesteps; ++t) {
     inputs.emplace_back(&input_data_mat[t][0][0], batch_size, num_classes);
   }
 
   // Prepare containers for output and scores.
-  std::vector<CTCDecoder::Output> outputs(top_paths);
-  for (CTCDecoder::Output& output : outputs) {
+  std::vector<typename tensorflow::ctc::CTCDecoder<T>::Output> outputs(
+      top_paths);
+  for (typename tensorflow::ctc::CTCDecoder<T>::Output& output : outputs) {
     output.resize(batch_size);
   }
-  float score[batch_size][top_paths] = {{0.0}};
-  Eigen::Map<Eigen::MatrixXf> scores(&score[0][0], batch_size, top_paths);
+  T score[batch_size][top_paths] = {{0.0}};
+  Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> scores(
+      &score[0][0], batch_size, top_paths);
 
   EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
   // Make sure all scores are finite.
@@ -226,8 +244,9 @@ TEST(CtcBeamSearch, AllBeamElementsHaveFiniteScores) {
 
 typedef int LabelState;  // The state is simply the final label.
 
+template <class T>
 class RapidlyDroppingLabelScorer
-    : public tensorflow::ctc::BaseBeamScorer<LabelState> {
+    : public tensorflow::ctc::BaseBeamScorer<T, LabelState> {
  public:
   void InitializeState(LabelState* root) const override {}
 
@@ -238,75 +257,84 @@ class RapidlyDroppingLabelScorer
 
   void ExpandStateEnd(LabelState* state) const override {}
 
-  float GetStateExpansionScore(const LabelState& state,
-                               float previous_score) const override {
+  T GetStateExpansionScore(const LabelState& state,
+                           T previous_score) const override {
     // Drop off rapidly for later labels.
-    const float kRapidly = 100;
+    const T kRapidly = 100;
     return previous_score - kRapidly * state;
   }
 
-  float GetStateEndExpansionScore(const LabelState& state) const override {
-    return 0;
+  T GetStateEndExpansionScore(const LabelState& state) const override {
+    return T(0);
   }
 };
 
-TEST(CtcBeamSearch, LabelSelection) {
+template <class T>
+void ctc_beam_search_label_selection() {
   const int batch_size = 1;
   const int timesteps = 3;
   const int top_paths = 5;
   const int num_classes = 6;
 
   // Decoder which drops off log-probabilities for labels 0 >> 1 >> 2 >> 3.
-  RapidlyDroppingLabelScorer scorer;
-  CTCBeamSearchDecoder<LabelState> decoder(num_classes, top_paths, &scorer);
+  RapidlyDroppingLabelScorer<T> scorer;
+  tensorflow::ctc::CTCBeamSearchDecoder<T, LabelState> decoder(
+      num_classes, top_paths, &scorer);
 
-  // Raw data containers (arrays of floats, ints, etc.).
+  // Raw data containers (arrays of floats64, ints, etc.).
   int sequence_lengths[batch_size] = {timesteps};
   // Log probabilities, slightly preferring later labels, this decision
   // should be overridden by the scorer which strongly prefers earlier labels.
   // The last one is empty label, and for simplicity  we give it an extremely
   // high cost to ignore it. We also use the first label to break up the
   // repeated label sequence.
-  float input_data_mat[timesteps][batch_size][num_classes] = {
+  T input_data_mat[timesteps][batch_size][num_classes] = {
       {{-1e6, 1, 2, 3, 4, -1e6}},
       {{1e6, 0, 0, 0, 0, -1e6}},  // force label 0 to break up repeated
       {{-1e6, 1.1, 2.2, 3.3, 4.4, -1e6}},
   };
 
   // Expected output without label selection
-  std::vector<CTCDecoder::Output> expected_default_output = {
-      {{1, 0, 1}, {1, 0, 2}, {2, 0, 1}, {1, 0, 3}, {2, 0, 2}},
-  };
+  std::vector<typename tensorflow::ctc::CTCDecoder<T>::Output>
+      expected_default_output = {
+          {{1, 0, 1}, {1, 0, 2}, {2, 0, 1}, {1, 0, 3}, {2, 0, 2}},
+      };
 
   // Expected output with label selection limiting to 2 items
   // this is suboptimal because only labels 3 and 4 were allowed to be seen.
-  std::vector<CTCDecoder::Output> expected_output_size2 = {
-      {{3, 0, 3}, {3, 0, 4}, {4, 0, 3}, {4, 0, 4}, {3}},
-  };
+  std::vector<typename tensorflow::ctc::CTCDecoder<T>::Output>
+      expected_output_size2 = {
+          {{3, 0, 3}, {3, 0, 4}, {4, 0, 3}, {4, 0, 4}, {3}},
+      };
 
   // Expected output with label width of 2.0. This would permit three labels at
   // the first timestep, but only two at the last.
-  std::vector<CTCDecoder::Output> expected_output_width2 = {
-      {{2, 0, 3}, {2, 0, 4}, {3, 0, 3}, {3, 0, 4}, {4, 0, 3}},
-  };
+  std::vector<typename tensorflow::ctc::CTCDecoder<T>::Output>
+      expected_output_width2 = {
+          {{2, 0, 3}, {2, 0, 4}, {3, 0, 3}, {3, 0, 4}, {4, 0, 3}},
+      };
 
   // Convert data containers to the format accepted by the decoder, simply
   // mapping the memory from the container to an Eigen::ArrayXi,::MatrixXf,
   // using Eigen::Map.
   Eigen::Map<const Eigen::ArrayXi> seq_len(&sequence_lengths[0], batch_size);
-  std::vector<Eigen::Map<const Eigen::MatrixXf>> inputs;
+  std::vector<
+      Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>>
+      inputs;
   inputs.reserve(timesteps);
   for (int t = 0; t < timesteps; ++t) {
     inputs.emplace_back(&input_data_mat[t][0][0], batch_size, num_classes);
   }
 
   // Prepare containers for output and scores.
-  std::vector<CTCDecoder::Output> outputs(top_paths);
-  for (CTCDecoder::Output& output : outputs) {
+  std::vector<typename tensorflow::ctc::CTCDecoder<T>::Output> outputs(
+      top_paths);
+  for (typename tensorflow::ctc::CTCDecoder<T>::Output& output : outputs) {
     output.resize(batch_size);
   }
-  float score[batch_size][top_paths] = {{0.0}};
-  Eigen::Map<Eigen::MatrixXf> scores(&score[0][0], batch_size, top_paths);
+  T score[batch_size][top_paths] = {{0.0}};
+  Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> scores(
+      &score[0][0], batch_size, top_paths);
 
   EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
   for (int path = 0; path < top_paths; ++path) {
@@ -314,14 +342,14 @@ TEST(CtcBeamSearch, LabelSelection) {
   }
 
   // Try label selection size 2
-  decoder.SetLabelSelectionParameters(2, -1);
+  decoder.SetLabelSelectionParameters(2, T(-1));
   EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
   for (int path = 0; path < top_paths; ++path) {
     EXPECT_EQ(outputs[path][0], expected_output_size2[0][path]);
   }
 
   // Try label selection width 2.0
-  decoder.SetLabelSelectionParameters(0, 2.0);
+  decoder.SetLabelSelectionParameters(0, T(2.0));
   EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
   for (int path = 0; path < top_paths; ++path) {
     EXPECT_EQ(outputs[path][0], expected_output_width2[0][path]);
@@ -329,18 +357,42 @@ TEST(CtcBeamSearch, LabelSelection) {
 
   // Try both size 2 and width 2.0: the former is more constraining, so
   // it's equivalent to that.
-  decoder.SetLabelSelectionParameters(2, 2.0);
+  decoder.SetLabelSelectionParameters(2, T(2.0));
   EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
   for (int path = 0; path < top_paths; ++path) {
     EXPECT_EQ(outputs[path][0], expected_output_size2[0][path]);
   }
 
   // Size 4 and width > 3.3 are equivalent to no label selection
-  decoder.SetLabelSelectionParameters(4, 3.3001);
+  decoder.SetLabelSelectionParameters(4, T(3.3001));
   EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
   for (int path = 0; path < top_paths; ++path) {
     EXPECT_EQ(outputs[path][0], expected_default_output[0][path]);
   }
+}
+
+TEST(CtcBeamSearch, FloatDecodingWithAndWithoutDictionary) {
+  ctc_beam_search_decoding_with_and_without_dictionary<float>();
+}
+
+TEST(CtcBeamSearch, DoubleDecodingWithAndWithoutDictionary) {
+  ctc_beam_search_decoding_with_and_without_dictionary<double>();
+}
+
+TEST(CtcBeamSearch, FloatAllBeamElementsHaveFiniteScores) {
+  ctc_beam_search_decoding_all_beam_elements_have_finite_scores<float>();
+}
+
+TEST(CtcBeamSearch, DoubleAllBeamElementsHaveFiniteScores) {
+  ctc_beam_search_decoding_all_beam_elements_have_finite_scores<double>();
+}
+
+TEST(CtcBeamSearch, FloatLabelSelection) {
+  ctc_beam_search_label_selection<float>();
+}
+
+TEST(CtcBeamSearch, DoubleLabelSelection) {
+  ctc_beam_search_label_selection<double>();
 }
 
 }  // namespace

@@ -16,15 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_IR_FUNCTION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_IR_FUNCTION_H_
 
+#include "absl/types/span.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 namespace cpu {
@@ -52,8 +53,7 @@ namespace cpu {
 class IrFunction {
  public:
   IrFunction(const string& function_name, llvm::Function::LinkageTypes linkage,
-             const bool optimize_for_size_requested,
-             const bool enable_fast_math, llvm::Module* llvm_module,
+             const HloModuleConfig& module_config, llvm::Module* llvm_module,
              llvm::IRBuilder<>* b, int64 num_dynamic_loop_bounds);
   ~IrFunction();
 
@@ -80,8 +80,9 @@ class IrFunction {
   // Get the llvm::Value* that represents this functions parameters argument.
   llvm::Value* parameters_arg() { return parameters_arg_; }
 
-  // Get the llvm::Value* that represents this functions "temps" argument.
-  llvm::Value* temp_buffers_arg() { return temp_buffers_arg_; }
+  // Get the llvm::Value* that represents this functions "buffer_table"
+  // argument.
+  llvm::Value* buffer_table_arg() { return buffer_table_arg_; }
 
   // Get the llvm::Value* that represents this functions "prof_counters"
   // argument.
@@ -91,7 +92,7 @@ class IrFunction {
   // Initialize an llvm::Function with standard signature based on arguments.
   void Initialize(const string& function_name,
                   llvm::Function::LinkageTypes linkage,
-                  bool optimize_for_size_requested, bool enable_fast_math);
+                  const HloModuleConfig& module_config);
 
   // Emit ir to read and return the ir value for the dynamic loop bound at
   // 'offset' from the "dynamic_loop_bounds" argument of this function.
@@ -108,17 +109,17 @@ class IrFunction {
   llvm::Argument* result_arg_;
   llvm::Value* exec_run_options_arg_;
   llvm::Value* parameters_arg_;
-  llvm::Value* temp_buffers_arg_;
+  llvm::Value* buffer_table_arg_;
   llvm::Value* dynamic_loop_bounds_arg_ = nullptr;
   llvm::Value* profile_counters_arg_;
 };
 
 // Returns an array of compute function call argument ir values.
 std::vector<llvm::Value*> GetArrayFunctionCallArguments(
-    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
-    llvm::IRBuilder<>* b, tensorflow::StringPiece name,
-    llvm::Value* return_value_buffer, llvm::Value* exec_run_options_arg,
-    llvm::Value* temp_buffers_arg, llvm::Value* profile_counters_arg);
+    absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilder<>* b,
+    absl::string_view name, llvm::Value* return_value_buffer,
+    llvm::Value* exec_run_options_arg, llvm::Value* buffer_table_arg,
+    llvm::Value* profile_counters_arg);
 
 // Emits a call to a runtime fork/join function which dispatches parallel
 // calls to 'parallel_function' (and joins threads before returning).

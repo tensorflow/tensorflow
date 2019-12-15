@@ -27,11 +27,16 @@ limitations under the License.
 
 #include <stdlib.h>
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -46,12 +51,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -79,9 +84,9 @@ class ReduceTest : public ClientLibraryTestBase {
     }, 4);
     // clang-format on
     CHECK(ShapeUtil::Equal(
-        literal_3d_->shape(),
+        literal_3d_.shape(),
         ShapeUtil::MakeShape(F32, {/*z=*/4, /*y=*/2, /*x=*/3})))
-        << literal_3d_->shape().ShortDebugString();
+        << literal_3d_.shape().ShortDebugString();
   }
 
   // Runs an R1 => R0 reduction test with the given number of elements.
@@ -100,10 +105,9 @@ class ReduceTest : public ClientLibraryTestBase {
         input_data[i] *= -1;
       }
     }
-    std::unique_ptr<Literal> input_literal =
-        LiteralUtil::CreateR1(AsSlice(input_data));
+    Literal input_literal = LiteralUtil::CreateR1(AsSlice(input_data));
     std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+        client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
     float expected = 0.0;
     for (float item : input_data) {
@@ -113,8 +117,7 @@ class ReduceTest : public ClientLibraryTestBase {
                                ErrorSpec(0.001));
   }
 
-  void RunR1ToR0PredTest(bool and_reduce,
-                         tensorflow::gtl::ArraySlice<int> input_data) {
+  void RunR1ToR0PredTest(bool and_reduce, absl::Span<const int> input_data) {
     const int element_count = input_data.size();
     XlaBuilder builder(TestName());
     const Shape input_shape = ShapeUtil::MakeShape(S32, {element_count});
@@ -133,9 +136,9 @@ class ReduceTest : public ClientLibraryTestBase {
     Reduce(pred_values, init_value, reduce,
            /*dimensions_to_reduce=*/{0});
 
-    std::unique_ptr<Literal> input_literal = LiteralUtil::CreateR1(input_data);
+    Literal input_literal = LiteralUtil::CreateR1(input_data);
     std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+        client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
     bool expected = and_reduce;
     for (bool item : input_data) {
@@ -174,12 +177,11 @@ class ReduceTest : public ClientLibraryTestBase {
 
     Array2D<uint8> input_data(rows, cols);
     input_data.FillRandom(0, 1);
-    std::unique_ptr<Literal> input_literal =
-        LiteralUtil::CreateR2FromArray2D(input_data);
+    Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
     input_literal =
-        input_literal->Relayout(LayoutUtil::MakeLayout({minor, major}));
+        input_literal.Relayout(LayoutUtil::MakeLayout({minor, major}));
     std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+        client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
     std::array<bool, cols> expected;
     for (int64 colno = 0; colno < cols; ++colno) {
@@ -208,12 +210,11 @@ class ReduceTest : public ClientLibraryTestBase {
 
     Array2D<float> input_data(rows, cols);
     input_data.FillRandom(3.14f, 0.04);
-    std::unique_ptr<Literal> input_literal =
-        LiteralUtil::CreateR2FromArray2D(input_data);
+    Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
     input_literal =
-        input_literal->Relayout(LayoutUtil::MakeLayout({minor, major}));
+        input_literal.Relayout(LayoutUtil::MakeLayout({minor, major}));
     std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+        client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
     float expected = 0.0;
     for (int64 rowno = 0; rowno < rows; ++rowno) {
@@ -236,12 +237,11 @@ class ReduceTest : public ClientLibraryTestBase {
 
     Array2D<float> input_data(rows, cols);
     input_data.FillRandom(3.14f, 0.04);
-    std::unique_ptr<Literal> input_literal =
-        LiteralUtil::CreateR2FromArray2D(input_data);
+    Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
     input_literal =
-        input_literal->Relayout(LayoutUtil::MakeLayout({minor, major}));
+        input_literal.Relayout(LayoutUtil::MakeLayout({minor, major}));
     std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+        client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
     std::vector<float> expected;
     for (int64 colno = 0; colno < cols; ++colno) {
@@ -259,8 +259,8 @@ class ReduceTest : public ClientLibraryTestBase {
   void ComputeAndCompareGeneric(
       typename std::enable_if<std::is_floating_point<NativeT>::value,
                               XlaBuilder>::type* builder,
-      tensorflow::gtl::ArraySlice<NativeT> expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+      absl::Span<const NativeT> expected,
+      absl::Span<GlobalData* const> arguments) {
     ComputeAndCompareR1<NativeT>(builder, expected, arguments,
                                  ErrorSpec(0.01, 1e-4));
   }
@@ -269,8 +269,8 @@ class ReduceTest : public ClientLibraryTestBase {
   void ComputeAndCompareGeneric(
       typename std::enable_if<std::is_integral<NativeT>::value,
                               XlaBuilder>::type* builder,
-      tensorflow::gtl::ArraySlice<NativeT> expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+      absl::Span<const NativeT> expected,
+      absl::Span<GlobalData* const> arguments) {
     ComputeAndCompareR1<NativeT>(builder, expected, arguments);
   }
 
@@ -294,15 +294,14 @@ class ReduceTest : public ClientLibraryTestBase {
 
     Array2D<NativeT> input_data(rows, cols);
     input_data.FillUnique(initial_value);
-    std::unique_ptr<Literal> input_literal =
-        LiteralUtil::CreateR2FromArray2D(input_data);
+    Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
     input_literal =
-        input_literal->Relayout(LayoutUtil::MakeLayout({minor, major}));
+        input_literal.Relayout(LayoutUtil::MakeLayout({minor, major}));
     std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+        client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
     // NativeT can be bool, and std::vector<bool> does not convert to
-    // ArraySlice.
+    // Span.
     std::unique_ptr<NativeT[]> expected(new NativeT[cols]);
     for (int64 colno = 0; colno < cols; ++colno) {
       NativeT column_result = initial_value;
@@ -314,7 +313,7 @@ class ReduceTest : public ClientLibraryTestBase {
     }
 
     ComputeAndCompareGeneric<NativeT>(
-        &builder, tensorflow::gtl::ArraySlice<NativeT>(expected.get(), cols),
+        &builder, absl::Span<const NativeT>(expected.get(), cols),
         {input_global_data.get()});
   }
 
@@ -351,8 +350,8 @@ class ReduceTest : public ClientLibraryTestBase {
         reference_reduction_function_for_uints, unsigned_int_identity);
   }
 
-  std::unique_ptr<Literal> literal_2d_;
-  std::unique_ptr<Literal> literal_3d_;
+  Literal literal_2d_;
+  Literal literal_3d_;
   uint32 seed_ = 0xdeadbeef;
 };
 
@@ -449,17 +448,16 @@ XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
 
   Array2D<float> input_data(rows, cols);
   input_data.FillRandom(3.14f, 0.04);
-  std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR2FromArray2D(input_data);
-  input_literal = input_literal->Relayout(LayoutUtil::MakeLayout({0, 1}));
+  Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
+  input_literal = input_literal.Relayout(LayoutUtil::MakeLayout({0, 1}));
   std::unique_ptr<GlobalData> input_global_data =
-      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
   std::vector<float> expected;
   for (int64 colno = 0; colno < cols; ++colno) {
     float column_sum = 0;
     for (int64 rowno = 0; rowno < rows; ++rowno) {
-      column_sum += log(input_data(rowno, colno));
+      column_sum += std::log(input_data(rowno, colno));
     }
     expected.push_back(column_sum);
   }
@@ -481,17 +479,16 @@ XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
 
   Array2D<float> input_data(rows, cols);
   input_data.FillRandom(3.14f, 0.04);
-  std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR2FromArray2D(input_data);
-  input_literal = input_literal->Relayout(LayoutUtil::MakeLayout({0, 1}));
+  Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
+  input_literal = input_literal.Relayout(LayoutUtil::MakeLayout({0, 1}));
   std::unique_ptr<GlobalData> input_global_data =
-      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
   std::vector<float> expected;
   for (int64 colno = 0; colno < cols; ++colno) {
     float column_sum = 0;
     for (int64 rowno = 0; rowno < rows; ++rowno) {
-      column_sum += log(input_data(rowno, colno));
+      column_sum += std::log(input_data(rowno, colno));
     }
     expected.push_back(column_sum);
   }
@@ -510,10 +507,9 @@ XLA_TEST_F(ReduceTest, TransposeAndReduceR3_12x111x50_To_R2) {
   XlaOp transpose = Transpose(input, /*permutation=*/{1, 0, 2});
   Reduce(transpose, zero, add_f32, /*dimensions_to_reduce=*/{0});
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> input_data,
-                          MakeFakeLiteral(input_shape));
+  TF_ASSERT_OK_AND_ASSIGN(Literal input_data, MakeFakeLiteral(input_shape));
 
-  ComputeAndCompare(&builder, {std::move(*input_data)}, ErrorSpec(0.01, 1e-4));
+  ComputeAndCompare(&builder, {std::move(input_data)}, ErrorSpec(0.01, 1e-4));
 }
 
 XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
@@ -530,17 +526,16 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
 
   Array3D<float> input_data(rows, 2, cols / 2);
   input_data.FillRandom(3.14f, 0.04);
-  std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR3FromArray3D(input_data);
+  Literal input_literal = LiteralUtil::CreateR3FromArray3D(input_data);
   std::unique_ptr<GlobalData> input_global_data =
-      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
   std::vector<float> expected;
   for (int64 major = 0; major < 2; ++major) {
     for (int64 colno = 0; colno < cols / 2; ++colno) {
       float column_sum = 0;
       for (int64 rowno = 0; rowno < rows; ++rowno) {
-        column_sum += tanh(input_data(rowno, major, colno));
+        column_sum += std::tanh(input_data(rowno, major, colno));
       }
       expected.push_back(column_sum);
     }
@@ -556,12 +551,11 @@ struct BoundsLayout {
 };
 
 void PrintTo(const BoundsLayout& spec, std::ostream* os) {
-  *os << tensorflow::strings::Printf(
-      "R%luToR%lu%s_%s_Reduce%s", spec.bounds.size(),
-      spec.bounds.size() - spec.reduce_dims.size(),
-      tensorflow::str_util::Join(spec.bounds, "x").c_str(),
-      tensorflow::str_util::Join(spec.layout, "").c_str(),
-      tensorflow::str_util::Join(spec.reduce_dims, "").c_str());
+  *os << absl::StrFormat("R%uToR%u%s_%s_Reduce%s", spec.bounds.size(),
+                         spec.bounds.size() - spec.reduce_dims.size(),
+                         absl::StrJoin(spec.bounds, "x"),
+                         absl::StrJoin(spec.layout, ""),
+                         absl::StrJoin(spec.reduce_dims, ""));
 }
 
 // Add-reduces a broadcasted scalar matrix among dimension 1 and 0.
@@ -595,7 +589,7 @@ XLA_TEST_F(ReduceTest, MaxReduce2DToR0) {
   Array2D<float> input(300, 250);
   input.FillRandom(214.0f);
   auto input_literal = LiteralUtil::CreateR2FromArray2D(input);
-  Reduce(ConstantLiteral(&builder, *input_literal),
+  Reduce(ConstantLiteral(&builder, input_literal),
          ConstantR0<float>(&builder, FLT_MIN), max, {0, 1});
   auto input_max = FLT_MIN;
   input.Each(
@@ -610,7 +604,7 @@ XLA_TEST_F(ReduceTest, MinReduce2DToR0) {
   Array2D<float> input(150, 130);
   input.FillRandom(214.0f);
   auto input_literal = LiteralUtil::CreateR2FromArray2D(input);
-  Reduce(ConstantLiteral(&builder, *input_literal),
+  Reduce(ConstantLiteral(&builder, input_literal),
          ConstantR0<float>(&builder, FLT_MAX), min, {0, 1});
 
   auto input_min = FLT_MAX;
@@ -627,7 +621,7 @@ XLA_TEST_F(ReduceTest, UnsignedInt_MinReduce) {
   auto initial_value =
       ConstantR0<uint32>(&builder, std::numeric_limits<uint32>::max());
 
-  Reduce(ConstantLiteral(&builder, *input_literal), initial_value, min, {0, 1});
+  Reduce(ConstantLiteral(&builder, input_literal), initial_value, min, {0, 1});
   ComputeAndCompareR0<uint32>(&builder, 1, {});
 }
 
@@ -639,14 +633,14 @@ XLA_TEST_F(ReduceTest, UnsignedInt_MaxReduce) {
   auto initial_value =
       ConstantR0<uint32>(&builder, std::numeric_limits<uint32>::min());
 
-  Reduce(ConstantLiteral(&builder, *input_literal), initial_value, max, {0, 1});
+  Reduce(ConstantLiteral(&builder, input_literal), initial_value, max, {0, 1});
   ComputeAndCompareR0<uint32>(&builder, 2, {});
 }
 
 // Reduces a matrix among dimension 1.
 XLA_TEST_F(ReduceTest, Reduce2DAmong1) {
   XlaBuilder builder(TestName());
-  auto m = ConstantLiteral(&builder, *literal_2d_);
+  auto m = ConstantLiteral(&builder, literal_2d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   Reduce(m, ConstantR0<float>(&builder, 0.0f), add, {1});
 
@@ -657,7 +651,7 @@ XLA_TEST_F(ReduceTest, Reduce2DAmong1) {
 XLA_TEST_F(ReduceTest, Reduce2DAmong0and1) {
   // Reduce a matrix among dimensions 0 and 1 (sum it up to a scalar).
   XlaBuilder builder(TestName());
-  auto m = ConstantLiteral(&builder, *literal_2d_);
+  auto m = ConstantLiteral(&builder, literal_2d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   Reduce(m, ConstantR0<float>(&builder, 0.0f), add, {0, 1});
 
@@ -667,7 +661,7 @@ XLA_TEST_F(ReduceTest, Reduce2DAmong0and1) {
 // Tests 2D matrix ReduceToRow operation.
 XLA_TEST_F(ReduceTest, Reduce2DAmongY) {
   XlaBuilder builder("reduce_among_y");
-  auto m = ConstantLiteral(&builder, *literal_2d_);
+  auto m = ConstantLiteral(&builder, literal_2d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   Reduce(m, ConstantR0<float>(&builder, 0.0f), add, {0});
 
@@ -677,7 +671,7 @@ XLA_TEST_F(ReduceTest, Reduce2DAmongY) {
 
 XLA_TEST_F(ReduceTest, ReduceR3AmongDims_1_2) {
   XlaBuilder builder(TestName());
-  auto m = ConstantLiteral(&builder, *literal_3d_);
+  auto m = ConstantLiteral(&builder, literal_3d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   Reduce(m, ConstantR0<float>(&builder, 0.0f), add, {1, 2});
 
@@ -687,7 +681,7 @@ XLA_TEST_F(ReduceTest, ReduceR3AmongDims_1_2) {
 
 XLA_TEST_F(ReduceTest, ReduceR3AmongDims_0_1) {
   XlaBuilder builder(TestName());
-  auto m = ConstantLiteral(&builder, *literal_3d_);
+  auto m = ConstantLiteral(&builder, literal_3d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   Reduce(m, ConstantR0<float>(&builder, 0.0f), add, {0, 1});
 
@@ -697,7 +691,7 @@ XLA_TEST_F(ReduceTest, ReduceR3AmongDims_0_1) {
 
 XLA_TEST_F(ReduceTest, ReduceR3ToR0) {
   XlaBuilder builder(TestName());
-  auto m = ConstantLiteral(&builder, *literal_3d_);
+  auto m = ConstantLiteral(&builder, literal_3d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   Reduce(m, ConstantR0<float>(&builder, 0.0f), add, {0, 1, 2});
 
@@ -707,7 +701,7 @@ XLA_TEST_F(ReduceTest, ReduceR3ToR0) {
 
 XLA_TEST_F(ReduceTest, ReduceR3AmongDim0) {
   XlaBuilder builder(TestName());
-  auto m = ConstantLiteral(&builder, *literal_3d_);
+  auto m = ConstantLiteral(&builder, literal_3d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   Reduce(m, ConstantR0<float>(&builder, 0.0f), add, {0});
 
@@ -722,7 +716,7 @@ XLA_TEST_F(ReduceTest, ReduceR3AmongDim0) {
 
 XLA_TEST_F(ReduceTest, ReduceR3AmongDim1) {
   XlaBuilder builder(TestName());
-  auto m = ConstantLiteral(&builder, *literal_3d_);
+  auto m = ConstantLiteral(&builder, literal_3d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   Reduce(m, ConstantR0<float>(&builder, 0.0f), add, {1});
 
@@ -739,7 +733,7 @@ XLA_TEST_F(ReduceTest, ReduceR3AmongDim1) {
 
 XLA_TEST_F(ReduceTest, ReduceR3AmongDim2) {
   XlaBuilder builder(TestName());
-  auto m = ConstantLiteral(&builder, *literal_3d_);
+  auto m = ConstantLiteral(&builder, literal_3d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   Reduce(m, ConstantR0<float>(&builder, 0.0f), add, {2});
 
@@ -824,12 +818,12 @@ XLA_TEST_P(ReduceR3ToR2Test, ReduceR3ToR2) {
 
   auto input_literal = LiteralUtil::CreateR3FromArray3D(input_array);
   input_literal =
-      input_literal->Relayout(LayoutUtil::MakeLayout(GetParam().layout));
+      input_literal.Relayout(LayoutUtil::MakeLayout(GetParam().layout));
   std::unique_ptr<GlobalData> input_data =
-      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
   auto input_activations =
-      Parameter(&builder, 0, input_literal->shape(), "input");
+      Parameter(&builder, 0, input_literal.shape(), "input");
   XlaComputation add = CreateScalarAddComputation(F32, &builder);
   Reduce(input_activations, ConstantR0<float>(&builder, 0.0f), add,
          GetParam().reduce_dims);
@@ -866,21 +860,17 @@ INSTANTIATE_TEST_CASE_P(
                       BoundsLayout{{2, 300, 784}, {2, 1, 0}, {1}},
                       BoundsLayout{{2, 300, 784}, {2, 1, 0}, {0}}));
 
-// TODO(b/64093391) Disabled on GPU due to an assertion failure when running
-// IrEmitterUnnested::EmitInitializer() for the Reduce operator.  Failed on
-// 2017-07-26.
-XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(OperationOnConstantAsInitValue)) {
+XLA_TEST_F(ReduceTest, OperationOnConstantAsInitValue) {
   XlaBuilder builder(TestName());
   XlaComputation max_f32 = CreateScalarMaxComputation(F32, &builder);
 
   auto a = ConstantR0<float>(&builder, 2.0f);
   auto a2 = Abs(a);
 
-  std::unique_ptr<Literal> b_literal =
-      LiteralUtil::CreateR1<float>({1.0f, 4.0f});
+  Literal b_literal = LiteralUtil::CreateR1<float>({1.0f, 4.0f});
   std::unique_ptr<GlobalData> b_data =
-      client_->TransferToServer(*b_literal).ConsumeValueOrDie();
-  auto b = Parameter(&builder, 0, b_literal->shape(), "b");
+      client_->TransferToServer(b_literal).ConsumeValueOrDie();
+  auto b = Parameter(&builder, 0, b_literal.shape(), "b");
   Reduce(b, a2, max_f32, {0});
 
   ComputeAndCompareR0<float>(&builder, 4.0f, {b_data.get()});
@@ -907,9 +897,9 @@ class ReduceInitializerTest : public ReduceTest {
     std::vector<T> input_arr(num_elems, std::numeric_limits<T>::lowest());
     auto input_literal = LiteralUtil::CreateR1<T>(input_arr);
     auto input_data =
-        client_->TransferToServer(*input_literal).ConsumeValueOrDie();
-    Reduce(Parameter(&builder, 0, input_literal->shape(), "input"), init,
-           max_fn, {0});
+        client_->TransferToServer(input_literal).ConsumeValueOrDie();
+    Reduce(Parameter(&builder, 0, input_literal.shape(), "input"), init, max_fn,
+           {0});
 
     ComputeAndCompareR0<T>(&builder, initializer, {input_data.get()});
   }
@@ -955,13 +945,12 @@ XLA_TEST_F(ReduceTest, ReduceIdentity) {
   float operand[] = {42.0f};
   float init = 58.5f;
   float expected = 42.0f;
-  std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR1<float>(operand);
+  Literal input_literal = LiteralUtil::CreateR1<float>(operand);
   std::unique_ptr<GlobalData> input_global_data =
-      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
-  std::unique_ptr<Literal> input_literal2 = LiteralUtil::CreateR0<float>(init);
+      client_->TransferToServer(input_literal).ConsumeValueOrDie();
+  Literal input_literal2 = LiteralUtil::CreateR0<float>(init);
   std::unique_ptr<GlobalData> input_global_data2 =
-      client_->TransferToServer(*input_literal2).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal2).ConsumeValueOrDie();
   ComputeAndCompareR0<float>(
       &builder, expected, {input_global_data.get(), input_global_data2.get()},
       ErrorSpec(0.0001));
@@ -992,6 +981,214 @@ XLA_TEST_F(ReduceTest, OrReduceU64) {
   std::vector<uint64> expected = {0X3BFDFF7ABEFEFEF0LL, 0XFFFFFFFFFFFFFFF7LL,
                                   0xCAFEBEEFABABABABLL};
   ComputeAndCompareR1<uint64>(&builder, expected, {});
+}
+
+XLA_TEST_F(ReduceTest, R0ReduceInDisguise) {
+  XlaBuilder builder(TestName());
+  XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
+  constexpr int element_count = 127;
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {element_count, 1});
+  auto input = Parameter(&builder, 0, input_shape, "input");
+  auto zero = ConstantR0<float>(&builder, 0.0);
+  Reduce(input, zero, add_f32, /*dimensions_to_reduce=*/{0});
+
+  Array2D<float> input_data(element_count, 1);
+  input_data.FillRandom(3.0f);
+  Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
+  std::unique_ptr<GlobalData> input_global_data =
+      client_->TransferToServer(input_literal).ConsumeValueOrDie();
+
+  float expected = absl::c_accumulate(input_data, 0.0f);
+  ComputeAndCompareR1<float>(&builder, {expected}, {input_global_data.get()},
+                             ErrorSpec(0.001));
+}
+
+class ReduceHloTest : public HloTestBase {};
+
+XLA_TEST_F(ReduceHloTest, HandleReductionToVectorAndOtherReduction) {
+  absl::string_view hlo_string = R"(
+  HloModule HandleReductionToVectorAndOtherReduction
+
+  add {
+    acc = f32[] parameter(1)
+    op = f32[] parameter(0)
+    ROOT out = f32[] add(acc, op)
+  }
+
+  ENTRY main {
+    iota.3 = s32[2,2]{1,0} iota(), iota_dimension=0
+    iota.2 = s32[2,2]{1,0} iota(), iota_dimension=1
+    compare.0 = pred[2,2]{1,0} compare(iota.3, iota.2), direction=EQ
+    broadcast = pred[2,2,2,2]{3,2,1,0} broadcast(compare.0), dimensions={2,3}
+    param_0.16 = f32[2,2,2,2]{3,2,1,0} parameter(0)
+    constant_4 = f32[] constant(0)
+    broadcast.9 = f32[2,2,2,2]{3,2,1,0} broadcast(constant_4), dimensions={}
+    select.0 = f32[2,2,2,2]{3,2,1,0} select(broadcast, param_0.16, broadcast.9)
+    reduce.1 = f32[2,2,2]{2,1,0} reduce(select.0, constant_4), dimensions={2},
+               to_apply=add
+    abs.0 = f32[2,2,2]{2,1,0} abs(reduce.1)
+    log.0 = f32[2,2,2]{2,1,0} log(abs.0)
+    reduce.0 = f32[2,2]{1,0} reduce(log.0, constant_4), dimensions={2},
+               to_apply=add
+    ROOT tuple = (f32[2,2]{1,0}, f64[2,2,2]{2,1,0}) tuple(reduce.0, reduce.1)
+  }
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+class VariadicReduceTest : public HloTestBase {};
+
+XLA_TEST_F(VariadicReduceTest, Reduce_R3x2_to_R2x2_simple) {
+  absl::string_view hlo_string = R"(
+  HloModule Reduce_R3x2_to_R1x2_simple
+
+  add {
+    op1 = f32[] parameter(0)
+    op2 = f32[] parameter(1)
+    acc1 = f32[] parameter(2)
+    acc2 = f32[] parameter(3)
+    out1 = f32[] add(acc1, op1)
+    out2 = f32[] add(acc2, op2)
+    ROOT result = (f32[], f32[]) tuple(out1, out2)
+  }
+
+  ENTRY main {
+    inp1 = f32[3,4,5] parameter(0)
+    inp2 = f32[3,4,5] parameter(1)
+    zero = f32[] constant(0)
+
+    ROOT out = (f32[3,5], f32[3,5]) reduce(inp1, inp2, zero, zero),
+      dimensions={1},
+      to_apply=add
+  }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+XLA_TEST_F(VariadicReduceTest, Reduce_R3x2_to_R1x2_simple) {
+  absl::string_view hlo_string = R"(
+  HloModule Reduce_R3x2_to_R1x2_simple
+
+  add {
+    op1 = f32[] parameter(0)
+    op2 = f32[] parameter(1)
+    acc1 = f32[] parameter(2)
+    acc2 = f32[] parameter(3)
+    out1 = f32[] add(acc1, op1)
+    out2 = f32[] add(acc2, op2)
+    ROOT result = (f32[], f32[]) tuple(out1, out2)
+  }
+
+  ENTRY main {
+    inp1 = f32[10,20,3] parameter(0)
+    inp2 = f32[10,20,3] parameter(1)
+    zero = f32[] constant(0)
+
+    ROOT out = (f32[10], f32[10]) reduce(inp1, inp2, zero, zero),
+      dimensions={1,2},
+      to_apply=add
+  }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+XLA_TEST_F(VariadicReduceTest, Reduce_R1x2_to_R0x2_simple) {
+  absl::string_view hlo_string = R"(
+  HloModule Reduce_R1x2_to_R0x2_simple
+
+  add {
+    op1 = f32[] parameter(0)
+    op2 = f32[] parameter(1)
+    acc1 = f32[] parameter(2)
+    acc2 = f32[] parameter(3)
+    out1 = f32[] add(acc1, op1)
+    out2 = f32[] add(acc2, op2)
+    ROOT result = (f32[], f32[]) tuple(out1, out2)
+  }
+
+  ENTRY main {
+    inp1 = f32[100] parameter(0)
+    inp2 = f32[100] parameter(1)
+    zero = f32[] constant(0)
+
+    ROOT out = (f32[], f32[]) reduce(inp1, inp2, zero, zero),
+      dimensions={0},
+      to_apply=add
+  }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+XLA_TEST_F(VariadicReduceTest, Reduce_R1x2_to_R0x2_argmax) {
+  absl::string_view hlo_string = R"(
+    HloModule Reduce_R1x2_to_R0x2_argmax
+
+    argmax {
+      running_max = f32[] parameter(0)
+      running_max_idx = u32[] parameter(1)
+      current_value = f32[] parameter(2)
+      current_value_idx = u32[] parameter(3)
+
+      current = (f32[], u32[]) tuple(running_max, running_max_idx)
+      potential = (f32[], u32[]) tuple(current_value, current_value_idx)
+
+      cmp_code = pred[] compare(current_value, running_max), direction=GT
+
+      new_max = f32[] select(cmp_code, current_value, running_max)
+      new_idx = u32[] select(cmp_code, current_value_idx, running_max_idx)
+
+      ROOT out = (f32[], u32[]) tuple(new_max, new_idx)
+    }
+
+    ENTRY main {
+      input = f32[100] parameter(0)
+      idxs = u32[100]{0} iota(), iota_dimension=0
+      zero = f32[] constant(0)
+      zero_idx = u32[] constant(0)
+
+      ROOT out = (f32[], u32[]) reduce(
+        input, idxs, zero, zero_idx),
+        dimensions={0},
+        to_apply=%argmax
+    }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+XLA_TEST_F(VariadicReduceTest, ReduceMultiOutputVariadicAnd) {
+  absl::string_view hlo_string = R"(
+    HloModule VariadicReduceMultiOutput
+
+    VariadicAnd {
+      value = pred[] parameter(0)
+      value_idx = u32[] parameter(1)
+      current_value = pred[] parameter(2)
+      current_value_idx = u32[] parameter(3)
+      ROOT out = (pred[], u32[]) tuple(value, value_idx)
+    }
+
+    ENTRY CheckBuffer {
+      test_value = f32[] parameter(0)
+      buffer = f32[100] parameter(1)
+      value_broadcast = f32[100] broadcast(test_value), dimensions={}
+      comparison_result = pred[100] compare(buffer, value_broadcast), direction=EQ
+      true_constant = pred[] constant(true)
+
+      zero_idx = u32[] constant(0)
+      idxs = u32[100]{0} iota(), iota_dimension=0
+      out = (pred[], u32[]) reduce(
+         comparison_result, idxs, true_constant, zero_idx
+      ), dimensions={0}, to_apply=VariadicAnd
+
+      ROOT returned = u32[] get-tuple-element(out), index=1
+    }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
 }  // namespace

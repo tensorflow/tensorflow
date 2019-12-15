@@ -33,25 +33,38 @@ from tensorflow.python.lib.io.file_io import rename as Rename
 from tensorflow.python.lib.io.file_io import stat as Stat
 from tensorflow.python.lib.io.file_io import walk as Walk
 # pylint: enable=unused-import
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('gfile.GFile', 'gfile.Open')
+@tf_export('io.gfile.GFile', v1=['gfile.GFile', 'gfile.Open', 'io.gfile.GFile'])
 class GFile(_FileIO):
   """File I/O wrappers without thread locking.
 
-  Note, that this  is somewhat like builtin Python  file I/O, but
-  there are  semantic differences to  make it more  efficient for
-  some backing filesystems.  For example, a write  mode file will
-  not  be opened  until the  first  write call  (to minimize  RPC
-  invocations in network filesystems).
+  The main roles of the `tf.gfile` module are:
+
+  1. To provide an API that is close to Python's file I/O objects, and
+  2. To provide an implementation based on TensorFlow's C++ FileSystem API.
+
+  The C++ FileSystem API supports multiple file system implementations,
+  including local files, Google Cloud Storage (using a `gs://` prefix, and
+  HDFS (using an `hdfs://` prefix). TensorFlow exports these as `tf.gfile`,
+  so that you can use these implementations for saving and loading checkpoints,
+  writing to TensorBoard logs, and accessing training data (among other uses).
+  However, if all your files are local, you can use the regular Python file
+  API without any problem.
+
+  *Note*: though similar to Python's I/O implementation, there are semantic
+  differences to make `tf.gfile` more efficient for backing filesystems. For
+  example, a write mode file will not be opened until the first write call, to
+  minimize RPC invocations in network filesystems.
   """
 
   def __init__(self, name, mode='r'):
     super(GFile, self).__init__(name=name, mode=mode)
 
 
-@tf_export('gfile.FastGFile')
+@tf_export(v1=['gfile.FastGFile'])
 class FastGFile(_FileIO):
   """File I/O wrappers without thread locking.
 
@@ -62,6 +75,7 @@ class FastGFile(_FileIO):
   invocations in network filesystems).
   """
 
+  @deprecated(None, 'Use tf.gfile.GFile.')
   def __init__(self, name, mode='r'):
     super(FastGFile, self).__init__(name=name, mode=mode)
 

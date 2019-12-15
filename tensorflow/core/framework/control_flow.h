@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_CONTROL_FLOW_H_
-#define TENSORFLOW_FRAMEWORK_CONTROL_FLOW_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_CONTROL_FLOW_H_
+#define TENSORFLOW_CORE_FRAMEWORK_CONTROL_FLOW_H_
 
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
@@ -55,4 +55,4 @@ struct FrameAndIterHash {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_CONTROL_FLOW_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_CONTROL_FLOW_H_

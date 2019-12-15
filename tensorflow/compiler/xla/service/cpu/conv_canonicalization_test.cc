@@ -84,9 +84,10 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(
           F32, {kOutputFeatureCount, kBatchSize, output_size, output_size}),
-      input, kernel, conv_window_, dnums));
+      input, kernel, /*feature_group_count=*/1, /*batch_group_count=*/1,
+      conv_window_, dnums, DefaultPrecisionConfig(2)));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
 
@@ -146,9 +147,10 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(
           F32, {kBatchSize, output_size, output_size, kOutputFeatureCount}),
-      input, kernel, conv_window_, dnums));
+      input, kernel, /*feature_group_count=*/1, /*batch_group_count=*/1,
+      conv_window_, dnums, DefaultPrecisionConfig(2)));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features(

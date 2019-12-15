@@ -15,11 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_jit_compiled_cpu_function.h"
 
+#include <memory>
+#include <string>
+
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/service/compiler.h"
+#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -27,9 +34,15 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/stream_executor/multi_platform_manager.h"
+#include "tensorflow/stream_executor/platform.h"
 
 namespace tensorflow {
 namespace {
+
+using ::testing::HasSubstr;
+
+PLATFORM_DEFINE_ID(kFakePlatformId);
 
 AttrValue TypeAttrValue(DataType type) {
   AttrValue attr_value;
@@ -116,13 +129,13 @@ TEST(XlaJitCompiledCpuFunction, Sum) {
   // Check program shape.
   using xla::ShapeUtil;
   const xla::Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
-  const xla::ProgramShape* program_shape = function.ProgramShape();
-  ASSERT_TRUE(program_shape != nullptr);
-  ASSERT_EQ(program_shape->parameters_size(), 2);
-  EXPECT_TRUE(ShapeUtil::Compatible(program_shape->parameters(0), s32));
-  EXPECT_TRUE(ShapeUtil::Compatible(program_shape->parameters(1), s32));
+  ASSERT_TRUE(function.ProgramShape() != nullptr);
+  const xla::ProgramShape program_shape(*function.ProgramShape());
+  ASSERT_EQ(program_shape.parameters_size(), 2);
+  EXPECT_TRUE(ShapeUtil::Compatible(program_shape.parameters(0), s32));
+  EXPECT_TRUE(ShapeUtil::Compatible(program_shape.parameters(1), s32));
 
-  const xla::Shape& result = program_shape->result();
+  const xla::Shape& result = program_shape.result();
   ASSERT_EQ(result.element_type(), xla::TUPLE);
   ASSERT_EQ(ShapeUtil::TupleElementCount(result), 1);
   const xla::Shape& result0 = ShapeUtil::GetTupleElementShape(result, 0);
@@ -141,6 +154,69 @@ TEST(XlaJitCompiledCpuFunction, SumWithJunkAttr) {
   EXPECT_FALSE(XlaJitCompiledCpuFunction::Compile(graph_def, config,
                                                   xla::ExecutableBuildOptions())
                    .ok());
+}
+
+TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
+  class FakePlatform : public se::Platform {
+   public:
+    FakePlatform() : name_("FakePlatform") {}
+    ~FakePlatform() override {}
+
+    se::Platform::Id id() const override { return kFakePlatformId; }
+
+    int VisibleDeviceCount() const override { return 0; }
+
+    const string& Name() const override { return name_; }
+
+    se::port::StatusOr<std::unique_ptr<se::DeviceDescription>>
+    DescriptionForDevice(int ordinal) const override {
+      return std::unique_ptr<se::DeviceDescription>(nullptr);
+    }
+
+    se::port::StatusOr<se::StreamExecutor*> ExecutorForDevice(
+        int ordinal) override {
+      return nullptr;
+    }
+
+    se::port::StatusOr<se::StreamExecutor*> ExecutorForDeviceWithPluginConfig(
+        int ordinal, const se::PluginConfig& config) override {
+      return nullptr;
+    }
+
+    se::port::StatusOr<se::StreamExecutor*> GetExecutor(
+        const se::StreamExecutorConfig& config) override {
+      return nullptr;
+    }
+
+    se::port::StatusOr<std::unique_ptr<se::StreamExecutor>> GetUncachedExecutor(
+        const se::StreamExecutorConfig& config) override {
+      return std::unique_ptr<se::StreamExecutor>(nullptr);
+    }
+
+    void RegisterTraceListener(
+        std::unique_ptr<se::TraceListener> listener) override {}
+
+    void UnregisterTraceListener(se::TraceListener* listener) override {}
+
+   private:
+    string name_;
+  };
+
+  TF_EXPECT_OK(se::MultiPlatformManager::RegisterPlatform(
+      absl::make_unique<FakePlatform>()));
+  xla::Compiler::RegisterCompilerFactory(kFakePlatformId, []() {
+    return std::unique_ptr<xla::Compiler>(nullptr);
+  });
+
+  EXPECT_THAT(xla::PlatformUtil::GetDefaultPlatform().status().error_message(),
+              HasSubstr("FakePlatform"));
+
+  GraphDef graph_def = SumGraph();
+  tf2xla::Config config = SumConfig();
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<XlaJitCompiledCpuFunction> jit,
+      XlaJitCompiledCpuFunction::Compile(graph_def, config,
+                                         xla::ExecutableBuildOptions()));
 }
 
 }  // namespace

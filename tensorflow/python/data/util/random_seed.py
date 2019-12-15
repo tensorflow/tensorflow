@@ -29,7 +29,8 @@ from tensorflow.python.ops import math_ops
 def get_seed(seed):
   """Returns the local seeds an operation should use given an op-specific seed.
 
-  See `tf.get_seed` for more details. This wrapper adds support for the case
+  See `tf.compat.v1.get_seed` for more details. This wrapper adds support for
+  the case
   where `seed` may be a tensor.
 
   Args:
@@ -49,7 +50,7 @@ def get_seed(seed):
   else:
     with ops.name_scope("seed2") as scope:
       seed2 = ops.convert_to_tensor(seed2, dtype=dtypes.int64)
-      seed2 = array_ops.where(
+      seed2 = array_ops.where_v2(
           math_ops.logical_and(
               math_ops.equal(seed, 0), math_ops.equal(seed2, 0)),
           constant_op.constant(2**31 - 1, dtype=dtypes.int64),

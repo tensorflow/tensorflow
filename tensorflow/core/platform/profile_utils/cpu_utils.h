@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // This class is designed to get accurate profile for programs.
 
-#ifndef TENSORFLOW_PLATFORM_PROFILEUTILS_CPU_UTILS_H__
-#define TENSORFLOW_PLATFORM_PROFILEUTILS_CPU_UTILS_H__
+#ifndef TENSORFLOW_CORE_PLATFORM_PROFILE_UTILS_CPU_UTILS_H_
+#define TENSORFLOW_CORE_PLATFORM_PROFILE_UTILS_CPU_UTILS_H_
 
 #include <chrono>
 #include <memory>
@@ -93,6 +93,22 @@ class CpuUtils {
     }
     // Returning dummy clock when can't access to the counter
     return DUMMY_CYCLE_CLOCK;
+#elif defined(__powerpc64__) || defined(__ppc64__)
+    uint64 __t;
+    __asm__ __volatile__("mfspr %0,268" : "=r"(__t));
+    return __t;
+
+#elif defined(__powerpc__) || defined(__ppc__)
+    uint64 upper, lower, tmp;
+    __asm__ volatile(
+        "0:                     \n"
+        "\tmftbu   %0           \n"
+        "\tmftb    %1           \n"
+        "\tmftbu   %2           \n"
+        "\tcmpw    %2,%0        \n"
+        "\tbne     0b           \n"
+        : "=r"(upper), "=r"(lower), "=r"(tmp));
+    return ((static_cast<uint64>(upper) << 32) | lower);
 #else
     // TODO(satok): Support generic way to emulate clock count.
     // TODO(satok): Support other architectures if wanted.
@@ -164,4 +180,4 @@ class CpuUtils {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_PROFILEUTILS_CPU_UTILS_H__
+#endif  // TENSORFLOW_CORE_PLATFORM_PROFILE_UTILS_CPU_UTILS_H_

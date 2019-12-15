@@ -35,15 +35,8 @@ TF_SRC_DIR = "tensorflow"
 VERSION_H = "%s/core/public/version.h" % TF_SRC_DIR
 SETUP_PY = "%s/tools/pip_package/setup.py" % TF_SRC_DIR
 README_MD = "./README.md"
-DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel" % TF_SRC_DIR
-GPU_DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel-gpu" % TF_SRC_DIR
-CPU_MKL_DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel-mkl" % TF_SRC_DIR
-RELEVANT_FILES = [TF_SRC_DIR,
-                  VERSION_H,
-                  SETUP_PY,
-                  README_MD,
-                  DEVEL_DOCKERFILE,
-                  GPU_DEVEL_DOCKERFILE]
+TENSORFLOW_BZL = "%s/tensorflow.bzl" % TF_SRC_DIR
+RELEVANT_FILES = [TF_SRC_DIR, VERSION_H, SETUP_PY, README_MD]
 
 # Version type parameters.
 NIGHTLY_VERSION = 1
@@ -84,18 +77,25 @@ class Version(object):
       identifier_string: extension string eg. (-rc0)
       version_type: version parameter ((REGULAR|NIGHTLY)_VERSION)
     """
-    self.string = "%s.%s.%s%s" % (major,
-                                  minor,
-                                  patch,
-                                  identifier_string)
     self.major = major
     self.minor = minor
     self.patch = patch
     self.identifier_string = identifier_string
     self.version_type = version_type
+    self._update_string()
+
+  def _update_string(self):
+    self.string = "%s.%s.%s%s" % (self.major,
+                                  self.minor,
+                                  self.patch,
+                                  self.identifier_string)
 
   def __str__(self):
     return self.string
+
+  def set_identifier_string(self, identifier_string):
+    self.identifier_string = identifier_string
+    self._update_string()
 
   @property
   def pep_440_str(self):
@@ -211,42 +211,14 @@ def update_readme(old_version, new_version):
                          "%s-" % pep_440_str, README_MD)
 
 
-def update_md_files(old_version, new_version):
-  """Update the md doc files.
-
-  Args:
-    old_version: Version object of current version
-    new_version: Version object of new version
-  """
-
-  old_pep_version = old_version.pep_440_str
-  new_pep_version = new_version.pep_440_str
-  for filename in ["linux", "mac", "windows", "sources"]:
-    filepath = "%s/docs_src/install/install_%s.md" % (TF_SRC_DIR,
-                                                      filename)
-
-    if filename == "sources" and "rc0" in new_pep_version:
-      replace_string_in_line("(?<!<td>)tensorflow-%s" % old_pep_version,
-                             "tensorflow-%s" % new_pep_version, filepath)
-      replace_string_in_line("(?<!<td>)tensorflow_gpu-%s" % old_pep_version,
-                             "tensorflow_gpu-%s" % new_pep_version, filepath)
-    else:
-      replace_string_in_line("tensorflow-%s" % old_pep_version,
-                             "tensorflow-%s" % new_pep_version, filepath)
-      replace_string_in_line("tensorflow_gpu-%s" % old_pep_version,
-                             "tensorflow_gpu-%s" % new_pep_version, filepath)
-    replace_string_in_line("TensorFlow %s" % old_pep_version,
-                           "TensorFlow %s" % new_pep_version, filepath)
-
-  for filename in ["java", "go", "c"]:
-    filepath = "%s/docs_src/install/install_%s.md" % (TF_SRC_DIR,
-                                                      filename)
-    replace_string_in_line(r"x86_64-%s" % old_version,
-                           "x86_64-%s" % new_version, filepath)
-    replace_string_in_line(r"libtensorflow-%s.jar" % old_version,
-                           "libtensorflow-%s.jar" % new_version, filepath)
-    replace_string_in_line(r"<version>%s<\/version>" % old_version,
-                           "<version>%s</version>" % new_version, filepath)
+def update_tensorflow_bzl(old_version, new_version):
+  """Update tensorflow.bzl."""
+  old_mmp = "%s.%s.%s" % (old_version.major, old_version.minor,
+                          old_version.patch)
+  new_mmp = "%s.%s.%s" % (new_version.major, new_version.minor,
+                          new_version.patch)
+  replace_string_in_line('VERSION = "%s"' % old_mmp,
+                         'VERSION = "%s"' % new_mmp, TENSORFLOW_BZL)
 
 
 def major_minor_change(old_version, new_version):
@@ -256,24 +228,6 @@ def major_minor_change(old_version, new_version):
   if major_mismatch or minor_mismatch:
     return True
   return False
-
-
-def update_dockerfiles(old_version, new_version):
-  """Update dockerfiles if there was a major change."""
-  if major_minor_change(old_version, new_version):
-    old_r_major_minor = "r%s.%s" % (old_version.major, old_version.minor)
-    r_major_minor = "r%s.%s" % (new_version.major, new_version.minor)
-
-    print("Detected Major.Minor change.")
-    print("Updating pattern %s to %s in additional files"
-          % (old_r_major_minor, r_major_minor))
-
-    # Update dockerfiles
-    replace_string_in_line(old_r_major_minor, r_major_minor, DEVEL_DOCKERFILE)
-    replace_string_in_line(old_r_major_minor, r_major_minor,
-                           GPU_DEVEL_DOCKERFILE)
-    replace_string_in_line(old_r_major_minor, r_major_minor,
-                           CPU_MKL_DEVEL_DOCKERFILE)
 
 
 def check_for_lingering_string(lingering_string):
@@ -321,15 +275,14 @@ def main():
   """
 
   parser = argparse.ArgumentParser(description="Cherry picking automation.")
-  group = parser.add_mutually_exclusive_group(required=True)
 
   # Arg information
-  group.add_argument("--version",
-                     help="<new_major_ver>.<new_minor_ver>.<new_patch_ver>",
-                     default="")
-  group.add_argument("--nightly",
-                     help="disable the service provisioning step",
-                     action="store_true")
+  parser.add_argument("--version",
+                      help="<new_major_ver>.<new_minor_ver>.<new_patch_ver>",
+                      default="")
+  parser.add_argument("--nightly",
+                      help="disable the service provisioning step",
+                      action="store_true")
 
   args = parser.parse_args()
 
@@ -337,21 +290,24 @@ def main():
   old_version = get_current_semver_version()
 
   if args.nightly:
-    # Dev minor version is one ahead of official.
-    nightly_minor_ver = int(old_version.minor) + 1
-    new_version = Version(old_version.major,
-                          str(nightly_minor_ver),
-                          old_version.patch,
-                          "-dev" + time.strftime("%Y%m%d"),
-                          NIGHTLY_VERSION)
+    if args.version:
+      new_version = Version.parse_from_string(args.version, NIGHTLY_VERSION)
+      new_version.set_identifier_string("-dev" + time.strftime("%Y%m%d"))
+    else:
+      # Dev minor version is one ahead of official.
+      nightly_minor_ver = int(old_version.minor) + 1
+      new_version = Version(old_version.major,
+                            str(nightly_minor_ver),
+                            old_version.patch,
+                            "-dev" + time.strftime("%Y%m%d"),
+                            NIGHTLY_VERSION)
   else:
     new_version = Version.parse_from_string(args.version, REGULAR_VERSION)
 
   update_version_h(old_version, new_version)
   update_setup_dot_py(old_version, new_version)
   update_readme(old_version, new_version)
-  update_md_files(old_version, new_version)
-  update_dockerfiles(old_version, new_version)
+  update_tensorflow_bzl(old_version, new_version)
 
   # Print transition details.
   print("Major: %s -> %s" % (old_version.major, new_version.major))
@@ -359,12 +315,6 @@ def main():
   print("Patch: %s -> %s\n" % (old_version.patch, new_version.patch))
 
   check_for_old_version(old_version, new_version)
-  if "rc0" in str(new_version):
-    print("\n\n\033[93mNOTE: Please update the tensorflow/docs_src/install/"
-          "install_sources.md and add a line for tensorflow-%s and "
-          "tensorflow_gpu-%s in the tested source configurations "
-          "table.\033[0m\n" % (new_version.pep_440_str,
-                               new_version.pep_440_str))
 
 
 if __name__ == "__main__":

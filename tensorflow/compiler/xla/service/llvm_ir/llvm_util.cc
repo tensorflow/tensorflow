@@ -19,23 +19,27 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/base/casts.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -57,14 +61,6 @@ llvm::Module* ModuleFromIRBuilder(llvm::IRBuilder<>* b) {
 
 }  // namespace
 
-string AsString(const std::string& str) {
-  return string(str.data(), str.length());
-}
-
-llvm::StringRef AsStringRef(tensorflow::StringPiece str) {
-  return llvm::StringRef(str.data(), str.size());
-}
-
 std::unique_ptr<llvm::Module> DropConstantInitializers(
     const llvm::Module& module) {
   std::unique_ptr<llvm::Module> cloned_module = CloneModule(module);
@@ -80,14 +76,12 @@ string DumpModuleToString(const llvm::Module& module) {
   llvm::raw_string_ostream ostream(buffer_string);
   module.print(ostream, nullptr);
   ostream.flush();
-  return AsString(buffer_string);
+  return buffer_string;
 }
 
-llvm::Value* EmitCallToIntrinsic(
-    llvm::Intrinsic::ID intrinsic_id,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<llvm::Type*> overloaded_types,
-    llvm::IRBuilder<>* b) {
+llvm::CallInst* EmitCallToIntrinsic(
+    llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b) {
   llvm::Module* module = ModuleFromIRBuilder(b);
   llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
       module, intrinsic_id, AsArrayRef(overloaded_types));
@@ -189,10 +183,19 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       }
       return cplx_t;
     }
-    // A Tuple contains an array of pointers. Use i8*.
+    case C128: {
+      auto cplx_t = module->getTypeByName("complex128");
+      if (cplx_t == nullptr) {
+        return llvm::StructType::create(
+            {llvm::Type::getDoubleTy(module->getContext()),
+             llvm::Type::getDoubleTy(module->getContext())},
+            "complex128", /*isPacked=*/true);
+      }
+      return cplx_t;
+    }  // A Tuple contains an array of pointers. Use i8*.
     case TUPLE:
     // An Opaque is like a void*, use i8*.
-    case OPAQUE:
+    case OPAQUE_TYPE:
       return llvm::Type::getInt8PtrTy(module->getContext());
     case TOKEN:
       // Tokens do not have a physical representation, but the compiler needs
@@ -220,10 +223,10 @@ int GetSizeInBits(llvm::Type* type) {
 
 llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
   llvm::Type* result_type = PrimitiveTypeToIrType(shape.element_type(), module);
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     // A tuple buffer is an array of pointers.
     result_type = llvm::ArrayType::get(result_type, shape.tuple_shapes_size());
-  } else if (ShapeUtil::IsArray(shape)) {
+  } else if (shape.IsArray()) {
     for (int64 dimension : LayoutUtil::MinorToMajor(shape)) {
       result_type =
           llvm::ArrayType::get(result_type, shape.dimensions(dimension));
@@ -240,15 +243,7 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
     return InternalError("Encoded shape size exceeded int32 size limit.");
   }
   *shape_size = static_cast<int32>(encoded_shape.size());
-  return b->CreateGlobalStringPtr(llvm_ir::AsStringRef(encoded_shape));
-}
-
-StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
-                                                  int32 size_bytes) {
-  Shape shape;
-  TF_RET_CHECK(shape.ParseFromArray(shape_ptr, size_bytes));
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  return shape;
+  return b->CreateGlobalStringPtr(encoded_shape);
 }
 
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
@@ -261,31 +256,44 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
       /*AddNull=*/false);
 }
 
+llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
+                                               llvm::Type* tile_type,
+                                               absl::string_view name) {
+  // Both AMDGPU and NVPTX use the same address space for shared memory.
+  const int kGPUSharedMemoryAddrSpace = 3;
+  return new llvm::GlobalVariable(
+      *module, tile_type,
+      /*isConstant=*/false, llvm::GlobalValue::PrivateLinkage,
+      llvm::UndefValue::get(tile_type), AsStringRef(name), nullptr,
+      llvm::GlobalValue::NotThreadLocal, kGPUSharedMemoryAddrSpace);
+}
+
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
-                                            tensorflow::StringPiece name,
+                                            absl::string_view name,
                                             llvm::IRBuilder<>* b,
                                             int alignment) {
   return EmitAllocaAtFunctionEntryWithCount(type, nullptr, name, b, alignment);
 }
 
-llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(
-    llvm::Type* type, llvm::Value* element_count, tensorflow::StringPiece name,
-    llvm::IRBuilder<>* b, int alignment) {
-  llvm::IRBuilder<>::InsertPoint insert_point = b->saveIP();
+llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
+                                                     llvm::Value* element_count,
+                                                     absl::string_view name,
+                                                     llvm::IRBuilder<>* b,
+                                                     int alignment) {
+  llvm::IRBuilder<>::InsertPointGuard guard(*b);
   llvm::Function* function = b->GetInsertBlock()->getParent();
   b->SetInsertPoint(&function->getEntryBlock(),
                     function->getEntryBlock().getFirstInsertionPt());
   llvm::AllocaInst* alloca =
       b->CreateAlloca(type, element_count, AsStringRef(name));
   if (alignment != 0) {
-    alloca->setAlignment(alignment);
+    alloca->setAlignment(llvm::MaybeAlign(alignment));
   }
-  b->restoreIP(insert_point);
   return alloca;
 }
 
 llvm::BasicBlock* CreateBasicBlock(llvm::BasicBlock* insert_before,
-                                   tensorflow::StringPiece name,
+                                   absl::string_view name,
                                    llvm::IRBuilder<>* b) {
   return llvm::BasicBlock::Create(
       /*Context=*/b->getContext(),
@@ -294,27 +302,25 @@ llvm::BasicBlock* CreateBasicBlock(llvm::BasicBlock* insert_before,
       /*InsertBefore*/ insert_before);
 }
 
-LlvmIfData EmitIfThenElse(llvm::Value* condition, tensorflow::StringPiece name,
+LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
                           llvm::IRBuilder<>* b, bool emit_else) {
   llvm_ir::LlvmIfData if_data;
   if_data.if_block = b->GetInsertBlock();
   if_data.true_block =
-      CreateBasicBlock(nullptr, tensorflow::strings::StrCat(name, "-true"), b);
+      CreateBasicBlock(nullptr, absl::StrCat(name, "-true"), b);
   if_data.false_block =
-      emit_else ? CreateBasicBlock(
-                      nullptr, tensorflow::strings::StrCat(name, "-false"), b)
+      emit_else ? CreateBasicBlock(nullptr, absl::StrCat(name, "-false"), b)
                 : nullptr;
 
   // Add a terminator to the if block, if necessary.
   if (if_data.if_block->getTerminator() == nullptr) {
     b->SetInsertPoint(if_data.if_block);
-    if_data.after_block = CreateBasicBlock(
-        nullptr, tensorflow::strings::StrCat(name, "-after"), b);
+    if_data.after_block =
+        CreateBasicBlock(nullptr, absl::StrCat(name, "-after"), b);
     b->CreateBr(if_data.after_block);
   } else {
     if_data.after_block = if_data.if_block->splitBasicBlock(
-        b->GetInsertPoint(),
-        AsStringRef(tensorflow::strings::StrCat(name, "-after")));
+        b->GetInsertPoint(), absl::StrCat(name, "-after"));
   }
 
   // Our basic block should now end with an unconditional branch.  Remove it;
@@ -363,11 +369,10 @@ static void LogS64(const char* tag, int64 value) {
 void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b) {
   llvm::FunctionType* log_function_type = llvm::FunctionType::get(
       b->getVoidTy(), {b->getInt64Ty(), b->getInt64Ty()}, /*isVarArg=*/false);
-  b->CreateCall(
-      log_function_type,
-      b->CreateIntToPtr(b->getInt64(tensorflow::bit_cast<int64>(&LogS64)),
-                        log_function_type->getPointerTo()),
-      {b->getInt64(tensorflow::bit_cast<int64>(tag)), value});
+  b->CreateCall(log_function_type,
+                b->CreateIntToPtr(b->getInt64(absl::bit_cast<int64>(&LogS64)),
+                                  log_function_type->getPointerTo()),
+                {b->getInt64(absl::bit_cast<int64>(tag)), value});
 }
 
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment) {
@@ -413,14 +418,14 @@ string IrName(string a) {
   return a;
 }
 
-string IrName(tensorflow::StringPiece a, tensorflow::StringPiece b) {
+string IrName(absl::string_view a, absl::string_view b) {
   if (!a.empty() && !b.empty()) {
-    return IrName(tensorflow::strings::StrCat(a, ".", b));
+    return IrName(absl::StrCat(a, ".", b));
   }
-  return IrName(tensorflow::strings::StrCat(a, b));
+  return IrName(absl::StrCat(a, b));
 }
 
-string IrName(const HloInstruction* a, tensorflow::StringPiece b) {
+string IrName(const HloInstruction* a, absl::string_view b) {
   return IrName(a->name(), b);
 }
 
@@ -488,24 +493,20 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
   return ShapeUtil::ByteSizeOf(shape, pointer_size);
 }
 
-llvm::FastMathFlags GetFastMathFlags(bool fast_math_enabled) {
+llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config) {
   llvm::FastMathFlags flags;
-  if (fast_math_enabled) {
-    // Fast implies AllowReassoc, NoInfs, NoNaNs, NoSignedZeros,
-    // AllowReciprocal, AllowContract, and ApproxFunc.
-    flags.setFast();
+  const auto& options = module_config.debug_options();
+  if (!options.xla_cpu_enable_fast_math()) {
+    return flags;
   }
+  // Fast implies AllowReassoc, NoInfs, NoNaNs, NoSignedZeros, AllowReciprocal,
+  // AllowContract, and ApproxFunc.
+  flags.setFast();
+  flags.setNoNaNs(!options.xla_cpu_fast_math_honor_nans());
+  flags.setNoInfs(!options.xla_cpu_fast_math_honor_infs());
+  flags.setAllowReciprocal(!options.xla_cpu_fast_math_honor_division());
+  flags.setApproxFunc(!options.xla_cpu_fast_math_honor_functions());
   return flags;
-}
-
-void SetTargetOptions(bool fast_math_enabled,
-                      llvm::TargetOptions* target_options) {
-  // In LLVM backend flags, UnsafeFPMath does not explicitly imply
-  // NoInfs, etc.
-  target_options->UnsafeFPMath = fast_math_enabled;
-  target_options->NoInfsFPMath = fast_math_enabled;
-  target_options->NoNaNsFPMath = fast_math_enabled;
-  target_options->NoSignedZerosFPMath = fast_math_enabled;
 }
 
 std::map<int, llvm::MDNode*> MergeMetadata(
@@ -556,14 +557,6 @@ std::map<int, llvm::MDNode*> MergeMetadata(
   return result;
 }
 
-static string GetProcessUniqueIrFileName(tensorflow::StringPiece prefix) {
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  static NameUniquer* uniquer = new NameUniquer(/*separator=*/"-");
-
-  tensorflow::mutex_lock lock(mu);
-  return uniquer->GetUniqueName(prefix);
-}
-
 static Status CreateAndWriteStringToFile(const string& directory_name,
                                          const string& file_name,
                                          const string& text) {
@@ -577,54 +570,52 @@ static Status CreateAndWriteStringToFile(const string& directory_name,
   return Status::OK();
 }
 
-Status DumpIRToDirectory(const string& directory_name,
-                         const string& hlo_module_name,
-                         const llvm::Module& llvm_module, bool optimized) {
+void DumpIrIfEnabled(const HloModule& hlo_module,
+                     const llvm::Module& llvm_module, bool optimized) {
+  const auto& debug_opts = hlo_module.config().debug_options();
+  if (!DumpingEnabledForHloModule(hlo_module)) {
+    return;
+  }
   // We can end up compiling different modules with the same name when using
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
-  string unique_and_safe_file_name = GetProcessUniqueIrFileName(
-      tensorflow::strings::StrCat("ir-", SanitizeFileName(hlo_module_name), "-",
-                                  optimized ? "with" : "no", "-opt"));
-
-  string ir_file_name = tensorflow::io::JoinPath(
-      directory_name,
-      tensorflow::strings::StrCat(unique_and_safe_file_name, ".ll"));
+  string suffix = absl::StrCat("ir-", optimized ? "with" : "no", "-opt");
+  DumpToFileInDirOrStdout(hlo_module, absl::StrCat(suffix, ".ll"),
+                          DumpModuleToString(llvm_module));
 
   // For some models the embedded constants can be huge, so also dump the module
-  // with the constants stripped to get IR that is easier to manipulate.
-  string ir_no_constant_initializers_file_name = tensorflow::io::JoinPath(
-      directory_name,
-      tensorflow::strings::StrCat(unique_and_safe_file_name, "-noconst.ll"));
-
-  TF_RETURN_IF_ERROR(CreateAndWriteStringToFile(
-      directory_name, ir_file_name, DumpModuleToString(llvm_module)));
-  return CreateAndWriteStringToFile(
-      directory_name, ir_no_constant_initializers_file_name,
-      DumpModuleToString(*DropConstantInitializers(llvm_module)));
+  // with the constants stripped to get IR that is easier to manipulate.  Skip
+  // this if we're dumping to stdout; there's no point in duplicating everything
+  // when writing to the terminal.
+  if (!DumpingToStdout(debug_opts)) {
+    DumpToFileInDir(hlo_module, absl::StrCat(suffix, "-noconst.ll"),
+                    DumpModuleToString(*DropConstantInitializers(llvm_module)));
+  }
 }
 
-llvm::Function* CreateFunction(llvm::FunctionType* function_type,
-                               llvm::GlobalValue::LinkageTypes linkage,
-                               bool enable_fast_math, bool optimize_for_size,
-                               tensorflow::StringPiece name,
-                               llvm::Module* module) {
+llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
+                                  llvm::GlobalValue::LinkageTypes linkage,
+                                  const HloModuleConfig& module_config,
+                                  absl::string_view name,
+                                  llvm::Module* module) {
   llvm::Function* function =
       llvm::Function::Create(function_type, linkage, AsStringRef(name), module);
   function->setCallingConv(llvm::CallingConv::C);
   function->addFnAttr("no-frame-pointer-elim", "false");
 
-  if (enable_fast_math) {
-    function->addFnAttr("unsafe-fp-math", "true");
-    function->addFnAttr("no-infs-fp-math", "true");
-    function->addFnAttr("no-nans-fp-math", "true");
-    function->addFnAttr("no-signed-zeros-fp-math", "true");
-  }
+  // Generate unwind information so that GDB can crawl through the stack frames
+  // created by the JIT compiled code.
+  function->setHasUWTable();
+
+  // Tensorflow always flushes denormals to zero, let LLVM know that flushing
+  // denormals is safe. This allows vectorization using ARM's neon instruction
+  // set.
+  function->addFnAttr("denormal-fp-math", "preserve-sign");
 
   // Add the optize attribute to the function if optimizing for size. This
   // controls internal behavior of some optimization passes (e.g. loop
   // unrolling).
-  if (optimize_for_size) {
+  if (cpu::options::OptimizeForSizeRequested(module_config)) {
     function->addFnAttr(llvm::Attribute::OptimizeForSize);
   }
 
@@ -638,7 +629,7 @@ void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
     fake_argv_storage.push_back("");
     for (const auto& it : options) {
       // Skip options the XLA backend itself consumes.
-      if (!tensorflow::str_util::StartsWith(it.first, "xla_")) {
+      if (!absl::StartsWith(it.first, "xla_")) {
         if (it.second.empty()) {
           fake_argv_storage.push_back(it.first);
         } else {
@@ -678,34 +669,54 @@ std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
   return std::make_pair(low_32bits, high_32bits);
 }
 
-llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
-    llvm::Module* module, llvm::IRBuilder<>* b) {
-  static const char* kPhiloxRngStateVariableName = "philox_rng_state";
+unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module) {
+  const unsigned kAMDGPUGlobalMemoryAddrSpace = 1;
+  llvm::Triple target_triple = llvm::Triple(module.getTargetTriple());
+  if (target_triple.getArch() == llvm::Triple::amdgcn) {
+    // AMDGPU uses 1 for global memory address space.
+    return kAMDGPUGlobalMemoryAddrSpace;
+  }
+  return 0;
+}
+
+llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
+                                                     llvm::IRBuilder<>* b) {
+  static const char* kRngStateVariableName = "rng_state";
   llvm::GlobalVariable* state_ptr =
-      module->getNamedGlobal(kPhiloxRngStateVariableName);
+      module->getNamedGlobal(kRngStateVariableName);
   if (!state_ptr) {
+    unsigned global_address_space = GetGlobalMemoryAddressSpace(*module);
+    llvm::Type* state_type = b->getInt128Ty();
+    // Use a non-zero initial value as zero state can cause the result of the
+    // first random number generation not passing the chi-square test. The
+    // values used here are arbitrarily chosen, any non-zero values should be
+    // fine.
     state_ptr = new llvm::GlobalVariable(
         /*M=*/*module,
-        /*Ty=*/b->getInt64Ty(),
+        /*Ty=*/state_type,
         /*isConstant=*/false,
         /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
-        /*Initializer=*/b->getInt64(0),
-        /*Name=*/kPhiloxRngStateVariableName);
+        /*Initializer=*/llvm::ConstantInt::get(b->getInt128Ty(), 0x7012395ull),
+        /*Name=*/kRngStateVariableName,
+        /*InsertBefore=*/nullptr,
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/global_address_space,
+        /*isExternallyInitialized=*/false);
   }
   return state_ptr;
 }
 
-void IncrementVariableForPhiloxRngState(int64 value, llvm::Module* module,
-                                        llvm::IRBuilder<>* builder) {
+llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
+                                  llvm::IRBuilder<>* builder) {
   llvm::GlobalVariable* state_ptr =
-      GetOrCreateVariableForPhiloxRngState(module, builder);
-  llvm::Value* state_value_old = builder->CreateLoad(state_ptr, "load_state");
-  // If the 64-bit value overflows, we use the wraparound value. This should
-  // be fine in practice as we only add one to the value each time when a RNG is
-  // executed.
+      GetOrCreateVariableForRngState(module, builder);
+  llvm::LoadInst* state_value_old =
+      builder->CreateLoad(state_ptr, "load_state");
   llvm::Value* state_value_new = builder->CreateAdd(
-      state_value_old, builder->getInt64(value), "inc_state");
+      state_value_old,
+      llvm::ConstantInt::get(state_value_old->getType(), delta));
   builder->CreateStore(state_value_new, state_ptr);
+  return state_value_old;
 }
 
 }  // namespace llvm_ir

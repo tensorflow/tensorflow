@@ -14,77 +14,163 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/utils/frame.h"
+
 #include <deque>
-#include <stack>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/op_types.h"
-#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 namespace grappler {
 
-Status IdentifyFrames(const GraphDef& graph, FrameMap* frame_map,
-                      int* num_frames) {
-  NodeMap node_map(const_cast<GraphDef*>(&graph));
-  return IdentifyFramesWithNodeMap(graph, node_map, frame_map, num_frames);
-}
+namespace {}  // namespace
 
-Status IdentifyFramesWithNodeMap(const GraphDef& graph, const NodeMap& node_map,
-                                 FrameMap* frame_map, int* num_frames) {
-  std::deque<std::pair<const NodeDef*, std::vector<int>>> ready_nodes;
-  for (const NodeDef& node : graph.node()) {
-    if (node.input_size() == 0) {
-      std::vector<int> empty;
-      ready_nodes.emplace_back(&node, empty);
-      (*frame_map)[&node] = empty;
+template <typename GraphViewT>
+inline Status FrameView::InferFromGraphViewT(const GraphViewT& graph_view) {
+  if (is_inferred_) {
+    return errors::Internal("FrameView was already inferred from the graph");
+  }
+  is_inferred_ = true;
+
+  std::deque<int> ready_node_indices;
+
+  // All nodes without inputs are automatically added to the ready queue.
+  for (const auto& node : graph_view.GetNodes()) {
+    if (node.NumRegularFanins() + node.NumControllingFanins() == 0) {
+      ready_node_indices.push_back(node.node_index());
+      node_to_frames_[node.node()] = node_has_no_frames_;
     }
   }
-  std::map<string, int> name_to_id;
-  while (!ready_nodes.empty()) {
-    auto ready_node = ready_nodes.front();
-    for (const auto& fanout : node_map.GetOutputs(ready_node.first->name())) {
-      if (frame_map->count(fanout) < 1) {
-        std::vector<int> frame_ids = ready_node.second;
-        if (IsExit(*ready_node.first)) {
-          frame_ids.pop_back();
-        }
-        if (IsEnter(*fanout)) {
-          CHECK(fanout->attr().count("frame_name"))
-              << "Missing frame name for the Enter node " << fanout->name();
-          string name = fanout->attr().at("frame_name").s();
-          int id;
-          if (name_to_id.count(name)) {
-            id = name_to_id[name];
-          } else {
-            id = name_to_id.size();
-            name_to_id[name] = id;
-          }
-          frame_ids.push_back(id);
-        }
-        ready_nodes.emplace_back(fanout, frame_ids);
-        (*frame_map)[fanout] = frame_ids;
-      } else {
-        auto frame_ids_fanout = (*frame_map)[fanout];
-        auto frame_ids_node = ready_node.second;
-        if (IsEnter(*fanout)) {
-          frame_ids_fanout.pop_back();
-        }
-        if (IsExit(*ready_node.first)) {
-          frame_ids_node.pop_back();
-        }
-        if (frame_ids_node != frame_ids_fanout) {
+
+  const auto* graph = graph_view.graph();
+
+  // We assign unique int id to each frame, and use this map to track what
+  // frames we've already seen in the graph.
+  absl::flat_hash_map<string, int> frame_name_to_id;
+
+  auto process_fanout = [this, graph](
+                            absl::flat_hash_map<string, int>* frame_name_to_id,
+                            std::deque<int>* ready_node_indices,
+                            const NodeDef* ready_node, int fanout_node_index) {
+    const NodeDef* fanout_node = &graph->node(fanout_node_index);
+    if (!node_to_frames_.contains(fanout_node)) {
+      // If we have never seen this node before, we add all frames from the
+      // incoming node (and pop/push frames if coming from Exit/Enter nodes).
+      std::vector<int> frame_ids = node_to_frames_[ready_node];
+
+      if (IsExit(*ready_node)) {
+        frame_ids.pop_back();
+      }
+
+      if (IsEnter(*fanout_node)) {
+        const AttrValue* frame_name_attr =
+            AttrSlice(*fanout_node).Find("frame_name");
+
+        if (!frame_name_attr) {
           return errors::InvalidArgument(
-              "Invalid graph: Frame ids for node ", ready_node.first->name(),
-              " does not match frame ids for it's fanout.");
+              "Missing frame name for the Enter node: ",
+              SummarizeNodeDef(*fanout_node));
         }
+
+        const string& frame_name = frame_name_attr->s();
+        int frame_id;
+
+        if (frame_name_to_id->contains(frame_name)) {
+          frame_id = (*frame_name_to_id)[frame_name];
+        } else {
+          frame_id = static_cast<int>(frame_name_to_id->size());
+          (*frame_name_to_id)[frame_name] = frame_id;
+        }
+
+        frame_ids.push_back(frame_id);
+      }
+
+      ready_node_indices->push_back(fanout_node_index);
+      node_to_frames_[fanout_node] = std::move(frame_ids);
+
+    } else {
+      // If we've already seen this node before, we need to make sure that graph
+      // is correct and same nodes doesn't have incoming edges with conflicting
+      // frames (all inputs must be produces in the same frame).
+
+      std::vector<int> frame_ids_fanout = node_to_frames_[fanout_node];
+      std::vector<int> frame_ids_node = node_to_frames_[ready_node];
+
+      if (IsEnter(*fanout_node)) {
+        frame_ids_fanout.pop_back();
+      }
+      if (IsExit(*ready_node)) {
+        frame_ids_node.pop_back();
+      }
+
+      if (frame_ids_node != frame_ids_fanout) {
+        return errors::InvalidArgument(
+            "Invalid graph: Frame ids for node ", ready_node->name(),
+            " does not match frame ids for it's fanout ", fanout_node->name());
       }
     }
-    ready_nodes.pop_front();
+    return Status::OK();
+  };
+
+  while (!ready_node_indices.empty()) {
+    const int ready_node_index = ready_node_indices.front();
+    ready_node_indices.pop_front();
+    const auto* ready_node_view = graph_view.GetNode(ready_node_index);
+    const NodeDef* ready_node_def = ready_node_view->node();
+
+    for (const auto& regular_fanouts_port_i :
+         ready_node_view->GetRegularFanouts()) {
+      for (const auto& regular_fanout : regular_fanouts_port_i) {
+        TF_RETURN_IF_ERROR(process_fanout(&frame_name_to_id,
+                                          &ready_node_indices, ready_node_def,
+                                          regular_fanout.node_index()));
+      }
+    }
+
+    for (const auto& controlled_fanout :
+         ready_node_view->GetControlledFanouts()) {
+      TF_RETURN_IF_ERROR(process_fanout(&frame_name_to_id, &ready_node_indices,
+                                        ready_node_def,
+                                        controlled_fanout.node_index()));
+    }
   }
-  *num_frames = name_to_id.size();
+
+  num_frames_ = static_cast<int>(frame_name_to_id.size());
   return Status::OK();
+}
+
+Status FrameView::InferFromGraphView(const utils::GraphView& graph_view) {
+  return InferFromGraphViewT(graph_view);
+}
+
+Status FrameView::InferFromGraphView(
+    const utils::MutableGraphView& graph_view) {
+  return InferFromGraphViewT(graph_view);
+}
+
+Status FrameView::InferFromGraph(const GraphDef& graph) {
+  Status status;
+  utils::GraphView graph_view(&graph, &status);
+  TF_RETURN_IF_ERROR(status);
+  return InferFromGraphViewT(graph_view);
+}
+
+const std::vector<int>& FrameView::Frames(const NodeDef& node) const {
+  DCHECK(is_inferred_) << "FrameView is not initialized";
+  auto frames = node_to_frames_.find(&node);
+  if (frames == node_to_frames_.end()) {
+    LOG(WARNING) << "Node '" << node.name()
+                 << "' doesn't belong to the graph used for initialization";
+    return node_has_no_frames_;
+  } else {
+    return frames->second;
+  }
+}
+
+bool FrameView::IsInFrame(const NodeDef& node) const {
+  return !Frames(node).empty();
 }
 
 }  // namespace grappler

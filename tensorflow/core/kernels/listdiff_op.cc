@@ -104,7 +104,7 @@ class ListDiffOp : public OpKernel {
                           ListDiffOp<type, int64>)
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_LISTDIFF);
-REGISTER_LISTDIFF(string);
+REGISTER_LISTDIFF(tstring);
 #undef REGISTER_LISTDIFF
 
 }  // namespace tensorflow

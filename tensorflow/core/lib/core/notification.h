@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_NOTIFICATION_H_
-#define TENSORFLOW_UTIL_NOTIFICATION_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_NOTIFICATION_H_
+#define TENSORFLOW_CORE_LIB_CORE_NOTIFICATION_H_
 
 // Notification implementation is platform-dependent, to support
 // alternative synchronization primitives.
 #include "tensorflow/core/platform/notification.h"
 
-#endif  // TENSORFLOW_UTIL_NOTIFICATION_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_NOTIFICATION_H_

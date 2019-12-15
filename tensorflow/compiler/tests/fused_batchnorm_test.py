@@ -29,6 +29,11 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
 
+DATA_FORMATS = (
+    ("_data_format_NHWC", "NHWC"),
+    ("_data_format_NCHW", "NCHW"),
+)
+
 
 class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
 
@@ -41,8 +46,10 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     element_count = np.size(x) / int(np.shape(x)[-1])
     mean = x_sum / element_count
     var = x_square_sum / element_count - mean * mean
+    factor = element_count / max(element_count - 1, 1)
+    corrected_var = var * factor
     normalized = (x - mean) / np.sqrt(var + epsilon)
-    return (normalized * scale + offset), mean, var
+    return (normalized * scale + offset), mean, var, corrected_var
 
   def _reference_grad(self, x, grad_y, scale, mean, var, epsilon, data_format):
     # Use the following formulas to calculate gradients:
@@ -65,12 +72,7 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     grad_offset = np.sum(grad_y, axis=(0, 1, 2))
     return grad_x, grad_scale, grad_offset
 
-  @parameterized.named_parameters(
-      ("_data_format_NHWC", "NHWC"),
-      ("_data_format_NCHW", "NCHW"),
-      ("_data_format_HWNC", "HWNC"),
-      ("_data_format_HWCN", "HWCN"),
-  )
+  @parameterized.named_parameters(*DATA_FORMATS)
   def testInference(self, data_format):
     channel = 3
     x_shape = [2, 2, 6, channel]
@@ -80,10 +82,10 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     offset_val = np.random.random_sample(scale_shape).astype(np.float32)
     epsilon = 0.001
     data_format_src = "NHWC"
-    y_ref, mean_ref, var_ref = self._reference_training(
+    y_ref, mean_ref, var_ref, _ = self._reference_training(
         x_val, scale_val, offset_val, epsilon, data_format_src)
 
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       # To avoid constant folding
       x_val_converted = test_utils.ConvertBetweenDataFormats(
           x_val, data_format_src, data_format)
@@ -123,10 +125,12 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     var_val = np.random.random_sample(scale_shape).astype(np.float32)
     epsilon = 0.001
     data_format_src = "NHWC"
-    y_ref, mean_ref, var_ref = self._reference_training(
+    # When in training mode, fused_batchnorm applies an implicit Bessel's
+    # correction. So we have to use the corrected variance here, as well.
+    y_ref, mean_ref, _, var_ref_corr = self._reference_training(
         x_val, scale_val, offset_val, epsilon, data_format_src)
 
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       # To avoid constant folding
       x_val_converted = test_utils.ConvertBetweenDataFormats(
           x_val, data_format_src, data_format)
@@ -168,32 +172,17 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
       })
       self.assertAllClose(mean_val, mean_ref, atol=1e-3)
       self.assertAllClose(y_val, y_ref_converted, atol=1e-3)
-      self.assertAllClose(var_val, var_ref, atol=1e-3)
+      self.assertAllClose(var_val, var_ref_corr, atol=1e-3)
 
-  @parameterized.named_parameters(
-      ("_data_format_NHWC", "NHWC"),
-      ("_data_format_NCHW", "NCHW"),
-      ("_data_format_HWNC", "HWNC"),
-      ("_data_format_HWCN", "HWCN"),
-  )
+  @parameterized.named_parameters(*DATA_FORMATS)
   def testLearning(self, data_format):
     self._testLearning(False, data_format)
 
-  @parameterized.named_parameters(
-      ("_data_format_NHWC", "NHWC"),
-      ("_data_format_NCHW", "NCHW"),
-      ("_data_format_HWNC", "HWNC"),
-      ("_data_format_HWCN", "HWCN"),
-  )
+  @parameterized.named_parameters(*DATA_FORMATS)
   def testLearningWithGradientChecker(self, data_format):
     self._testLearning(True, data_format)
 
-  @parameterized.named_parameters(
-      ("_data_format_NHWC", "NHWC"),
-      ("_data_format_NCHW", "NCHW"),
-      ("_data_format_HWNC", "HWNC"),
-      ("_data_format_HWCN", "HWCN"),
-  )
+  @parameterized.named_parameters(*DATA_FORMATS)
   def testGradientTraining(self, data_format):
     # TODO(b/64270657): Use gradient_checker here in addition to comparing with
     # this reference implementation.
@@ -206,11 +195,25 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     mean_val = np.random.random_sample(scale_shape).astype(np.float32)
     var_val = np.random.random_sample(scale_shape).astype(np.float32)
     epsilon = 0.001
+
+    # The TensorFlow FusedBatchNormGrad training operation takes two inputs with
+    # implementation defined values.  In theory the only correct value these
+    # inputs are the corresponding reserve_space_{1|2} outputs from the
+    # FusedBatchNorm training operation.  However, in practice, we rely on the
+    # first one being mean on {C|G}PU, and the second one being variance on CPU
+    # and inverse(sqrt(variance + epsilon)) on GPU (we test this assumption
+    # separately).
+    reserve_space_1_val = mean_val
+    if self.device == "XLA_GPU":
+      reserve_space_2_val = np.reciprocal(np.sqrt(var_val + epsilon))
+    else:
+      reserve_space_2_val = var_val
+
     data_format_src = "NHWC"
     grad_x_ref, grad_scale_ref, grad_offset_ref = self._reference_grad(
         x_val, grad_val, scale_val, mean_val, var_val, epsilon, data_format_src)
 
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       grad_val_converted = test_utils.ConvertBetweenDataFormats(
           grad_val, data_format_src, data_format)
       x_val_converted = test_utils.ConvertBetweenDataFormats(
@@ -222,18 +225,26 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
           np.float32, shape=x_val_converted.shape, name="grad")
       x = array_ops.placeholder(
           np.float32, shape=x_val_converted.shape, name="x")
-      mean = array_ops.placeholder(np.float32, shape=scale_shape, name="mean")
-      var = array_ops.placeholder(np.float32, shape=scale_shape, name="var")
+      reserve_space_1 = array_ops.placeholder(
+          np.float32, shape=scale_shape, name="reserve_space_1")
+      reserve_space_2 = array_ops.placeholder(
+          np.float32, shape=scale_shape, name="reserve_space_2")
       scale = array_ops.placeholder(np.float32, shape=scale_shape, name="scale")
       grad_x, grad_scale, grad_offset, _, _ = gen_nn_ops.fused_batch_norm_grad(
-          grad, x, scale, mean, var, data_format=data_format, is_training=True)
+          grad,
+          x,
+          scale,
+          reserve_space_1,
+          reserve_space_2,
+          data_format=data_format,
+          is_training=True)
 
       grad_x_val, grad_scale_val, grad_offset_val = sess.run(
           [grad_x, grad_scale, grad_offset], {
               grad: grad_val_converted,
               x: x_val_converted,
-              mean: mean_val,
-              var: var_val,
+              reserve_space_1: reserve_space_1_val,
+              reserve_space_2: reserve_space_2_val,
               scale: scale_val
           })
 
@@ -241,12 +252,7 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
       self.assertAllClose(grad_scale_val, grad_scale_ref, atol=1e-2)
       self.assertAllClose(grad_offset_val, grad_offset_ref, atol=1e-3)
 
-  @parameterized.named_parameters(
-      ("_data_format_NHWC", "NHWC"),
-      ("_data_format_NCHW", "NCHW"),
-      ("_data_format_HWNC", "HWNC"),
-      ("_data_format_HWCN", "HWCN"),
-  )
+  @parameterized.named_parameters(*DATA_FORMATS)
   def testGradientInference(self, data_format):
     # TODO(b/64270657): Use gradient_checker here in addition to comparing with
     # this reference implementation.
@@ -260,7 +266,7 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     var_val = np.random.random_sample(scale_shape).astype(np.float32)
     data_format_src = "NHWC"
 
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       grad_val_converted = test_utils.ConvertBetweenDataFormats(
           grad_val, data_format_src, data_format)
       x_val_converted = test_utils.ConvertBetweenDataFormats(

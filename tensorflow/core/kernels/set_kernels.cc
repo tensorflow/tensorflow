@@ -53,7 +53,7 @@ void CheckRankAtLeast2(OpKernelContext* ctx, const TensorShape& shape) {
 Status GroupShape(const VarDimArray& input_shape, ShapeArray* grouped_shape) {
   if (input_shape.size() < 2) {
     // TODO(irving): Why can't 2 be 1 here?
-    return errors::InvalidArgument("Shape [", str_util::Join(input_shape, ","),
+    return errors::InvalidArgument("Shape [", absl::StrJoin(input_shape, ","),
                                    "] has rank ", input_shape.size(), " < 2");
   }
   // grouped_shape is input_shape[:-1]
@@ -269,7 +269,7 @@ void SetSizeOp<T>::Compute(OpKernelContext* ctx) {
 
   // Group by all but last dimension, create a set of group values, and add set
   // size to output.
-  VarDimArray group_ix(set_st.order(), 0, set_st.order().size() - 1);
+  VarDimArray group_ix = set_st.order().subspan(0, set_st.order().size() - 1);
   std::set<T> group_set;
   for (const auto& group : set_st.group(group_ix)) {
     PopulateFromSparseGroup<T>(ctx, group, set_st.shape(), &group_set);
@@ -291,7 +291,7 @@ _SET_SIZE_REGISTER_KERNEL_BUILDER(int32);
 _SET_SIZE_REGISTER_KERNEL_BUILDER(int64);
 _SET_SIZE_REGISTER_KERNEL_BUILDER(uint8);
 _SET_SIZE_REGISTER_KERNEL_BUILDER(uint16);
-_SET_SIZE_REGISTER_KERNEL_BUILDER(string);
+_SET_SIZE_REGISTER_KERNEL_BUILDER(tstring);
 #undef _SET_SIZE_REGISTER_KERNEL_BUILDER
 
 enum InputTypes {
@@ -380,8 +380,8 @@ void SetOperationOp<T>::ApplySetOperation(const std::set<T>& set1,
 Status CheckShapesMatch(VarDimArray shape1, VarDimArray shape2) {
   if (shape1 != shape2) {
     return errors::InvalidArgument("Mismatched shapes [",
-                                   str_util::Join(shape1, ","), "] vs [",
-                                   str_util::Join(shape2, ","), "]");
+                                   absl::StrJoin(shape1, ","), "] vs [",
+                                   absl::StrJoin(shape2, ","), "]");
   }
   return Status::OK();
 }
@@ -500,8 +500,8 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
 
   std::set<T> set1_group_set;
   std::set<T> set2_group_set;
-  auto set2_grouper = set2_st.group(
-      VarDimArray(set2_st.order(), 0, set2_st.order().size() - 1));
+  auto set2_grouper =
+      set2_st.group(set2_st.order().subspan(0, set2_st.order().size() - 1));
   auto set2_group_it = set2_grouper.begin();
   std::vector<int64> group_indices;
   int64 num_elements;
@@ -621,11 +621,11 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
 
   std::set<T> set1_group_set;
   std::set<T> set2_group_set;
-  auto set1_grouper = set1_st.group(
-      VarDimArray(set1_st.order(), 0, set1_st.order().size() - 1));
+  auto set1_grouper =
+      set1_st.group(set1_st.order().subspan(0, set1_st.order().size() - 1));
   auto set1_group_it = set1_grouper.begin();
-  auto set2_grouper = set2_st.group(
-      VarDimArray(set2_st.order(), 0, set2_st.order().size() - 1));
+  auto set2_grouper =
+      set2_st.group(set2_st.order().subspan(0, set2_st.order().size() - 1));
   auto set2_group_it = set2_grouper.begin();
 
   // Group by rows, and iterate over rows of both sets in parallel, creating a
@@ -716,7 +716,7 @@ _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int32);
 _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int64);
 _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint8);
 _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint16);
-_DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(string);
+_DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(tstring);
 #undef _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER
 
 template <typename T>
@@ -737,7 +737,7 @@ _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int32);
 _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int64);
 _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint8);
 _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint16);
-_DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(string);
+_DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(tstring);
 #undef _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER
 
 template <typename T>
@@ -758,7 +758,7 @@ _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int32);
 _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int64);
 _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint8);
 _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint16);
-_SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(string);
+_SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(tstring);
 #undef _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER
 
 }  // namespace tensorflow

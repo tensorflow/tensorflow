@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_CONTROL_FLOW_H_
-#define TENSORFLOW_GRAPH_CONTROL_FLOW_H_
+#ifndef TENSORFLOW_CORE_GRAPH_CONTROL_FLOW_H_
+#define TENSORFLOW_CORE_GRAPH_CONTROL_FLOW_H_
 
 #include <vector>
 
@@ -25,6 +25,15 @@ namespace tensorflow {
 
 // Control flow info for a graph node.
 struct ControlFlowInfo {
+  // 'frame' and 'parent_frame' are pointers to:
+  //
+  // a) One of the Enter nodes corresponding to the loop body, if the node
+  //    executes inside a loop. If multiple tensors enter the while loop, it's
+  //    undefined which Enter node will be used.
+  //
+  // b) SOURCE node (node.id() == Graph::kSourceId), if the node is not inside
+  //    any of the while loops.
+
   const Node* frame = nullptr;         // frame of a node
   const Node* parent_frame = nullptr;  // parent frame of a node
   string frame_name;                   // frame name of a node
@@ -48,4 +57,4 @@ Status BuildControlFlowInfo(const Graph* g, std::vector<ControlFlowInfo>* info,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_CONTROL_FLOW_H_
+#endif  // TENSORFLOW_CORE_GRAPH_CONTROL_FLOW_H_

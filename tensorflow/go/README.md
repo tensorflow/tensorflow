@@ -10,7 +10,7 @@ Construct and execute TensorFlow graphs in Go.
 
 ## Quickstart
 
-Refer to [Installing TensorFlow for Go](https://www.tensorflow.org/install/install_go)
+Refer to [Installing TensorFlow for Go](https://www.tensorflow.org/install/lang_go)
 
 ## Building the TensorFlow C library from source
 
@@ -23,15 +23,14 @@ from source.
 
 -   [bazel](https://www.bazel.build/versions/master/docs/install.html)
 -   Environment to build TensorFlow from source code
-    ([Linux](https://www.tensorflow.org/install/install_sources#PrepareLinux)
-    or [OS
-    X](https://www.tensorflow.org/install/install_sources#PrepareMac)).
-    If you don't need GPU support, then try the following:
+    ([Linux or macOS](https://www.tensorflow.org/install/source)). If you don't
+    need GPU support, then try the following:
 
     ```sh
     sudo apt-get install python swig python-numpy # Linux
     brew install swig                             # OS X with homebrew
     ```
+- [Protocol buffer compiler (protoc) 3.x](https://github.com/google/protobuf/releases/)
 
 ### Build
 
@@ -51,12 +50,14 @@ from source.
 
     This can take a while (tens of minutes, more if also building for GPU).
 
-3.  Make `libtensorflow.so` available to the linker. This can be done by either:
+3.  Make `libtensorflow.so` and `libtensorflow_framework.so` available to the
+    linker. This can be done by either:
 
     a. Copying it to a system location, e.g.,
 
     ```sh
     sudo cp ${GOPATH}/src/github.com/tensorflow/tensorflow/bazel-bin/tensorflow/libtensorflow.so /usr/local/lib
+    sudo cp ${GOPATH}/src/github.com/tensorflow/tensorflow/bazel-bin/tensorflow/libtensorflow_framework.so /usr/local/lib
     ```
 
     OR
@@ -74,6 +75,7 @@ from source.
 4.  Build and test:
 
     ```sh
+    go generate github.com/tensorflow/tensorflow/tensorflow/go/op
     go test github.com/tensorflow/tensorflow/tensorflow/go
     ```
 

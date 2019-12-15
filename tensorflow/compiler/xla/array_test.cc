@@ -163,7 +163,7 @@ TEST(ArrayTest, Each) {
   arr.FillWithMultiples(1);
 
   int64 each_count = 0, each_sum = 0;
-  arr.Each([&](tensorflow::gtl::ArraySlice<int64> idx, int cell) {
+  arr.Each([&](absl::Span<const int64> idx, int cell) {
     int64 lin_idx = idx[0] * 12 + idx[1] * 4 + idx[2];
     EXPECT_EQ(lin_idx, cell);
     each_count++;

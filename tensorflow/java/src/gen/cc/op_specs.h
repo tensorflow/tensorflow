@@ -94,18 +94,21 @@ class AttributeSpec {
   // jni_type: the type of this attribute in JNI layer (see OperationBuilder)
   // description: a description of this attribute, in javadoc
   // iterable: true if this attribute is a list
-  // has_default_value: true if this attribute has a default value if not set
+  // default_value: default value for this attribute or nullptr if none. Any
+  //                value referenced by this pointer must outlive the lifetime
+  //                of the AttributeSpec. This is guaranteed if the value is
+  //                issued by an OpDef of the global OpRegistry.
   AttributeSpec(const string& op_def_name, const Variable& var,
                 const Type& type, const Type& jni_type,
                 const string& description, bool iterable,
-                bool has_default_value)
+                const AttrValue* default_value)
       : op_def_name_(op_def_name),
         var_(var),
         type_(type),
         description_(description),
         iterable_(iterable),
         jni_type_(jni_type),
-        has_default_value_(has_default_value) {}
+        default_value_(default_value) {}
 
   const string& op_def_name() const { return op_def_name_; }
   const Variable& var() const { return var_; }
@@ -113,7 +116,8 @@ class AttributeSpec {
   const string& description() const { return description_; }
   bool iterable() const { return iterable_; }
   const Type& jni_type() const { return jni_type_; }
-  bool has_default_value() const { return has_default_value_; }
+  bool has_default_value() const { return default_value_ != nullptr; }
+  const AttrValue* default_value() const { return default_value_; }
 
  private:
   const string op_def_name_;
@@ -122,7 +126,7 @@ class AttributeSpec {
   const string description_;
   const bool iterable_;
   const Type jni_type_;
-  const bool has_default_value_;
+  const AttrValue* default_value_;
 };
 
 class OpSpec {

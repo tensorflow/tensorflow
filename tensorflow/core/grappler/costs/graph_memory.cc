@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -36,7 +37,7 @@ Status GraphMemory::InferStatically(
   TF_RETURN_IF_ERROR(cluster.Provision());
   TF_RETURN_IF_ERROR(cluster.Initialize(item_));
   RunMetadata metadata;
-  Status s = cluster.Run(item_.graph, item_.feed, item_.fetch, &metadata);
+  Status s = cluster.Run(item_, &metadata);
   // The virtual cluster returns the RESOURCE_EXHAUSTED error when it detects
   // that the model would run out of memory. We still get the metadata we need
   // out of the simulation, so we just ignore this error.
@@ -54,8 +55,7 @@ Status GraphMemory::InferDynamically(Cluster* cluster) {
 
   TF_RETURN_IF_ERROR(cluster->Initialize(item_));
   RunMetadata metadata;
-  TF_RETURN_IF_ERROR(
-      cluster->Run(item_.graph, item_.feed, item_.fetch, &metadata));
+  TF_RETURN_IF_ERROR(cluster->Run(item_, &metadata));
   InferFromTrace(metadata.step_stats());
   return Status::OK();
 }

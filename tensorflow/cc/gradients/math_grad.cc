@@ -441,21 +441,20 @@ Status RealDivGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("RealDiv", RealDivGrad);
 
-Status UnsafeDivGrad(const Scope& scope, const Operation& op,
-                     const std::vector<Output>& grad_inputs,
-                     std::vector<Output>* grad_outputs) {
+Status DivNoNanGrad(const Scope& scope, const Operation& op,
+                    const std::vector<Output>& grad_inputs,
+                    std::vector<Output>* grad_outputs) {
   auto x_1 = ConjugateHelper(scope, op.input(0));
   auto x_2 = ConjugateHelper(scope, op.input(1));
   // y = x_1 / x_2
   // dy/dx_1 = 1/x_2
   // dy/dx_2 = -x_1/x_2^2
-  auto gx_1 = UnsafeDiv(scope, grad_inputs[0], x_2);
-  auto gx_2 =
-      Mul(scope, grad_inputs[0],
-          UnsafeDiv(scope, UnsafeDiv(scope, Neg(scope, x_1), x_2), x_2));
+  auto gx_1 = DivNoNan(scope, grad_inputs[0], x_2);
+  auto gx_2 = Mul(scope, grad_inputs[0],
+                  DivNoNan(scope, DivNoNan(scope, Neg(scope, x_1), x_2), x_2));
   return BinaryGradCommon(scope, op, grad_outputs, gx_1, gx_2);
 }
-REGISTER_GRADIENT_OP("UnsafeDiv", UnsafeDivGrad);
+REGISTER_GRADIENT_OP("DivNoNan", DivNoNanGrad);
 
 Status SquaredDifferenceGrad(const Scope& scope, const Operation& op,
                              const std::vector<Output>& grad_inputs,
@@ -767,6 +766,40 @@ Status ErfGrad(const Scope& scope, const Operation& op,
   return grad_scope.status();
 }
 REGISTER_GRADIENT_OP("Erf", ErfGrad);
+
+Status ErfinvGrad(const Scope& scope, const Operation& op,
+                  const std::vector<Output>& grad_inputs,
+                  std::vector<Output>* grad_outputs) {
+  auto grad = grad_inputs[0];
+  auto root_pi_over_two =
+      Cast(scope, Const(scope, std::sqrt(M_PI) / 2), grad.type());
+  Scope grad_scope = scope.WithControlDependencies(grad);
+  auto x = ConjugateHelper(grad_scope, op.input(0));
+  // grad * sqrt(pi) / 2 * exp(erfinv(x) ** 2)
+  auto dx = Mul(grad_scope, Mul(grad_scope, grad, root_pi_over_two),
+                Exp(grad_scope, Square(grad_scope, op.output(0))));
+  grad_outputs->push_back(dx);
+  return grad_scope.status();
+}
+REGISTER_GRADIENT_OP("Erfinv", ErfinvGrad);
+
+Status NdtriGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  auto grad = grad_inputs[0];
+  auto root_two_pi =
+      Cast(scope, Const(scope, std::sqrt(2 * M_PI)), grad.type());
+  auto two = Cast(scope, Const(scope, 2), grad.type());
+  Scope grad_scope = scope.WithControlDependencies(grad);
+  auto x = ConjugateHelper(grad_scope, op.input(0));
+  // grad * sqrt(2 * pi) * exp(ndtri(x) ** 2 / 2)
+  auto dx = Mul(
+      grad_scope, Mul(grad_scope, grad, root_two_pi),
+      Exp(grad_scope, Div(grad_scope, Square(grad_scope, op.output(0)), two)));
+  grad_outputs->push_back(dx);
+  return grad_scope.status();
+}
+REGISTER_GRADIENT_OP("Ndtri", NdtriGrad);
 
 Status LgammaGrad(const Scope& scope, const Operation& op,
                   const std::vector<Output>& grad_inputs,

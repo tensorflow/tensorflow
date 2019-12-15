@@ -396,12 +396,12 @@ class ImportGraphDefTest(test.TestCase):
 
       # Run the imported graph.
       # TODO(b/76173421): make this work (currently DCHECKS)
-      # with self.test_session() as sess:
-      #   sess.run(imported_init)
-      #   self.assertEqual(sess.run(imported_var), 1.0)
-      #   self.assertEqual(sess.run(imported_assign), 2.0)
-      #   self.assertEqual(list(sess.run(imported_shape)), [])
-      #   self.assertEqual(list(sess.run(new_var_shape)), [])
+      # with self.cached_session() as sess:
+      #   self.evaluate(imported_init)
+      #   self.assertEqual(self.evaluate(imported_var), 1.0)
+      #   self.assertEqual(self.evaluate(imported_assign), 2.0)
+      #   self.assertEqual(list(self.evaluate(imported_shape)), [])
+      #   self.assertEqual(list(self.evaluate(new_var_shape)), [])
 
   def testWhileLoop(self):
     # Produce GraphDef containing while loop.
@@ -417,8 +417,8 @@ class ImportGraphDefTest(test.TestCase):
       imported_r, = importer.import_graph_def(graph_def,
                                               return_elements=[r.name])
       self.assertEqual(imported_r.name, "import/" + r.name)
-      with self.test_session() as sess:
-        self.assertEqual(sess.run(imported_r), 10)
+      with self.cached_session() as sess:
+        self.assertEqual(self.evaluate(imported_r), 10)
 
   def testImportWhileLoopInCond(self):
     # Produce GraphDef containing while loop.
@@ -436,7 +436,7 @@ class ImportGraphDefTest(test.TestCase):
       pred = array_ops.placeholder(dtypes.bool)
       out = control_flow_ops.cond(pred, ImportFn,
                                   lambda: constant_op.constant(1))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         self.assertEqual(sess.run(out, {pred: True}), 10)
         self.assertEqual(sess.run(out, {pred: False}), 1)
 
@@ -457,8 +457,8 @@ class ImportGraphDefTest(test.TestCase):
       out = control_flow_ops.while_loop(
           lambda i: i < 2, ImportFn, [0],
           shape_invariants=[tensor_shape.TensorShape(None)])
-      with self.test_session() as sess:
-        self.assertEqual(sess.run(out), 10)
+      with self.cached_session() as sess:
+        self.assertEqual(self.evaluate(out), 10)
 
   def testTypeMismatchInGraphDef(self):
     # TODO(skyewm): improve error message
@@ -929,8 +929,8 @@ class ImportGraphDefTest(test.TestCase):
           input_map={"a:0": constant_op.constant(5.0)},
           name="",
           return_elements=["id:0"])
-      with self.test_session():
-        self.assertEqual(5.0, t.eval())
+      with self.cached_session():
+        self.assertEqual(5.0, self.evaluate(t))
 
   def testInvalidInputForReturnOperations(self):
     with ops.Graph().as_default():
@@ -958,7 +958,7 @@ class ImportGraphDefTest(test.TestCase):
       array_ops.stack([c, c], name="pack")
     gdef = g.as_graph_def()
 
-    with self.test_session():
+    with self.cached_session():
       pack, = importer.import_graph_def(gdef, return_elements=["pack"])
       self.assertAllEqual(pack.outputs[0].eval(), [5.0, 5.0])
 
@@ -1063,7 +1063,7 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual([10], biases_grad.get_shape())
 
   def testLargeGraph(self):
-    with self.test_session():
+    with self.cached_session():
       # The default message byte limit is 64M. Ours is 2G with a warning at 512.
       # Adding a 130M entries float32 tensor should exceed the warning, but not
       # the hard limit.
@@ -1071,7 +1071,7 @@ class ImportGraphDefTest(test.TestCase):
       tensor_input = np.ones(input_shape, dtype=np.float32)
       t = constant_op.constant(tensor_input, shape=input_shape)
       g = array_ops.identity(t)
-      g.eval()
+      self.evaluate(g)
 
   def testVersion(self):
     v0 = versions.GRAPH_DEF_VERSION_MIN_CONSUMER
@@ -1205,7 +1205,7 @@ class ImportGraphDefTest(test.TestCase):
           gdef, return_elements=["p1:0", "p2:0", "f:0", "f:1"], name="")
       grad = gradients_impl.gradients([a], [p1, p2])
 
-      with self.test_session(graph=g2) as sess:
+      with self.session(graph=g2) as sess:
         feed_dict = {p1: 1, p2: 2}
         a_val, b_val, grad_val = sess.run([a, b, grad], feed_dict=feed_dict)
         self.assertEqual(a_val, 3.0)
@@ -1225,7 +1225,7 @@ class ImportGraphDefTest(test.TestCase):
       # functions created in g2).
       grad = gradients_impl.gradients([a], [p1, p2])
 
-      with self.test_session(graph=g3) as sess:
+      with self.session(graph=g3) as sess:
         feed_dict = {p1: 1, p2: 2}
         a_val, b_val, grad_val = sess.run([a, b, grad], feed_dict=feed_dict)
         self.assertEqual(a_val, 3.0)
@@ -1254,8 +1254,8 @@ class ImportGraphDefTest(test.TestCase):
 
     z = TestFunc()
 
-    with self.test_session():
-      z_val = z.eval()
+    with self.cached_session():
+      z_val = self.evaluate(z)
       self.assertEqual(z_val, -2.0)
 
   def testImportGraphWithFunctionTwice(self):
@@ -1284,7 +1284,7 @@ class ImportGraphDefTest(test.TestCase):
       z2 = importer.import_graph_def(gdef, return_elements=["z:0"],
                                      input_map=input_map)[0]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       z1_val, z2_val = sess.run((z1, z2))
       self.assertAllEqual(z1_val, z2_val)
 

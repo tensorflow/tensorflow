@@ -132,5 +132,39 @@ TEST_F(StreamPoolTest, BadStreamDiscarded) {
   EXPECT_EQ(stream2_ptr, stream3_ptr);
 }
 
+TEST_F(StreamPoolTest, BadStreamAfterReturnDiscarded) {
+  std::unique_ptr<se::StreamExecutor> executor = NewStreamExecutor();
+  StreamPool pool;
+
+  // Borrow a stream.
+  StreamPool::Ptr stream1 = pool.BorrowStream(executor.get());
+  EXPECT_TRUE(stream1->ok());
+
+  // Return the stream, but hold a handle to it.
+  se::Stream* stream1_ptr = stream1.get();
+  stream1 = nullptr;
+
+  // Now stream1 is back in the pool, force an error on the stream. Here we call
+  // a method that requires DNN support, which we know the Host platform doesn't
+  // support.
+  stream1_ptr->ThenDepthConcatenate({}, {}, nullptr);
+  EXPECT_FALSE(stream1_ptr->ok());
+
+  // Borrow stream2.
+  StreamPool::Ptr stream2 = pool.BorrowStream(executor.get());
+  EXPECT_TRUE(stream2->ok());
+
+  // The underlying streams should be different. They would have been
+  // the same, but since we forced an error on stream1, it cannot be
+  // put back into the pool. Sadly we can't just check:
+  //    EXPECT_NE(stream1_ptr, stream2_ptr);
+  //
+  // The above should hold logically, but it may fail if the new
+  // stream instance allocated for stream2 happens to reside in the
+  // same memory address as stream1, which has been deleted.
+  //
+  // The check that stream2->ok() serves as a good-enough check.
+}
+
 }  // namespace
 }  // namespace xla

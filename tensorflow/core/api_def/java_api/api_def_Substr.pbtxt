@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Substr"
+  endpoint {
+    name: "strings.Substr"
+  }
+}

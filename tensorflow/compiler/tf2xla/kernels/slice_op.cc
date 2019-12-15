@@ -15,17 +15,18 @@ limitations under the License.
 
 // XLA-specific Slice Op.
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/mem.h"
 
 namespace tensorflow {
@@ -42,8 +43,8 @@ class SliceOp : public XlaOpKernel {
 
     OP_REQUIRES(
         ctx,
-        IsLegacyVector(begin_tensor_shape) &&
-            IsLegacyVector(size_tensor_shape) &&
+        TensorShapeUtils::IsVector(begin_tensor_shape) &&
+            TensorShapeUtils::IsVector(size_tensor_shape) &&
             begin_tensor_shape.num_elements() == input_shape.dims() &&
             size_tensor_shape.num_elements() == input_shape.dims(),
         errors::InvalidArgument(
@@ -111,9 +112,10 @@ class SliceOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(
-    Name("Slice").CompileTimeConstInput("begin").CompileTimeConstInput("size"),
-    SliceOp);
+REGISTER_XLA_OP(Name("Slice")
+                    .CompileTimeConstantInput("begin")
+                    .CompileTimeConstantInput("size"),
+                SliceOp);
 
 }  // namespace
 }  // namespace tensorflow

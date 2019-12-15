@@ -100,7 +100,7 @@ class UnaryOpsComposition : public OpKernel {
     OP_REQUIRES_OK(context,
                    support_.ExportComputeFns(op_names_, &fns_, &cost_));
 
-    VLOG(2) << "Composed unary op: [" << str_util::Join(op_names_, ", ")
+    VLOG(2) << "Composed unary op: [" << absl::StrJoin(op_names_, ", ")
             << "]; cost=" << cost_;
   }
 

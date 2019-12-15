@@ -71,12 +71,12 @@ TEST_F(SwitchOpTest, Int32Success_2_3_s0) {
 
 TEST_F(SwitchOpTest, StringSuccess_s1) {
   Initialize(DT_STRING);
-  AddInputFromArray<string>(TensorShape({6}), {"A", "b", "C", "d", "E", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"A", "b", "C", "d", "E", "f"});
   AddInputFromArray<bool>(TensorShape({}), {true});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_STRING, TensorShape({6}));
-  test::FillValues<string>(&expected, {"A", "b", "C", "d", "E", "f"});
-  test::ExpectTensorEqual<string>(expected, *GetOutput(1));
+  test::FillValues<tstring>(&expected, {"A", "b", "C", "d", "E", "f"});
+  test::ExpectTensorEqual<tstring>(expected, *GetOutput(1));
   EXPECT_EQ(nullptr, GetOutput(0));
 }
 

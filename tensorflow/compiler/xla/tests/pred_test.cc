@@ -31,7 +31,7 @@ class PredTest : public ClientLibraryTestBase {
  protected:
   void TestCompare(bool lhs, bool rhs, bool expected,
                    std::function<XlaOp(const xla::XlaOp&, const xla::XlaOp&,
-                                       tensorflow::gtl::ArraySlice<int64>)>
+                                       absl::Span<const int64>)>
                        op) {
     XlaBuilder builder(TestName());
     XlaOp lhs_op = ConstantR0<bool>(&builder, lhs);
@@ -87,8 +87,8 @@ TEST_F(PredTest, ConstantR2Pred) {
   XlaBuilder builder(TestName());
   ConstantR2<bool>(&builder, {{false, true, true}, {true, false, false}});
   const string expected = R"(pred[2,3] {
-  { 011 },
-  { 100 }
+  { 0, 1, 1 },
+  { 1, 0, 0 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }

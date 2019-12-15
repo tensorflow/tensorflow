@@ -18,15 +18,17 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/allocation_tracker.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/channel_tracker.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/service/compilation_cache.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/execution_tracker.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
@@ -37,10 +39,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 
@@ -51,7 +53,7 @@ class ServiceOptions {
   ServiceOptions& set_platform(se::Platform* platform);
   se::Platform* platform() const;
 
-  // Set the number of replicas to use when compiling replicated
+  // Set the default number of replicas to use when compiling replicated
   // programs.
   ServiceOptions& set_number_of_replicas(int number_of_replicas);
   int number_of_replicas() const;
@@ -60,10 +62,17 @@ class ServiceOptions {
   ServiceOptions& set_intra_op_parallelism_threads(int num_threads);
   int intra_op_parallelism_threads() const;
 
+  // Sets the allowed_devices set for selectively constructing stream executors
+  // on the platform.
+  ServiceOptions& set_allowed_devices(
+      const absl::optional<std::set<int>>& allowed_devices);
+  const absl::optional<std::set<int>>& allowed_devices() const;
+
  private:
   se::Platform* platform_ = nullptr;
   int number_of_replicas_ = 1;
   int intra_op_parallelism_threads_ = -1;
+  absl::optional<std::set<int>> allowed_devices_;
 };
 
 // The XLA service object, which is the same across all platforms. It maintains
@@ -90,11 +99,14 @@ class Service : public ServiceInterface {
   Status DeconstructTuple(const DeconstructTupleRequest* arg,
                           DeconstructTupleResponse* result) override;
 
-  // Executes a computation with the provided global data passed as
-  // immutable arguments. The request contains the whole computation graph.
-  // Returns global data output and execution timing.
-  Status ExecuteGraph(const ExecuteGraphRequest* arg,
-                      ExecuteResponse* result) override;
+  // Compiles a computation into an executable. The request contains the whole
+  // computation graph. Returns the handle to the executable.
+  Status Compile(const CompileRequest* arg, CompileResponse* result) override;
+
+  // Executes an executable with the provided global data passes as immutable
+  // arguments. The request contains the handle to the executable. Returns
+  // global data output and execution timing.
+  Status Execute(const ExecuteRequest* arg, ExecuteResponse* result) override;
 
   // Executes one or more computations in parallel with the provided global data
   // passed as immutable arguments. Returns global data output for each
@@ -171,17 +183,22 @@ class Service : public ServiceInterface {
   const Backend& backend() const { return *execute_backend_; }
   Backend* mutable_backend() { return execute_backend_.get(); }
 
+  // Create a Hlo module config for the given program shape and arguments.
+  // execution_options is optional; if not given a default is used.
+  StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
+      const ProgramShape& program_shape,
+      absl::Span<const Shape* const> argument_shapes,
+      const ExecutionOptions* execution_options,
+      const AotCompilationOptions* aot_options = nullptr);
+
  private:
   // A private overload for Service itself, used by other methods within this
   // class.
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const ExecutionOptions& execution_options);
-
-  // Picks a parallel response and fills the result.
-  Status PickParallelResponse(const ExecuteParallelResponse& parallel_result,
-                              ExecuteResponse* result);
+      absl::Span<const ShapedBuffer* const> arguments,
+      const ExecutionOptions& execution_options,
+      const AotCompilationOptions* aot_options = nullptr);
 
   // Prepare the executors for executing parallel.
   StatusOr<std::vector<se::StreamExecutor*>> GetExecutors(
@@ -191,7 +208,7 @@ class Service : public ServiceInterface {
   // Prepare the arguments for executing parallel.
   StatusOr<std::vector<std::vector<const ShapedBuffer*>>> GetArguments(
       const ExecutionOptions& execution_options,
-      tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments);
+      absl::Span<const GlobalDataHandle* const> arguments) const;
 
  protected:
   friend class LocalExecutable;
@@ -207,15 +224,8 @@ class Service : public ServiceInterface {
   // the corresponding replica.
   StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
   ResolveAndValidateArguments(
-      tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-      tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors);
-
-  // Create a Hlo module config for the given program shape and arguments.
-  // execution_options is optional; if not given a default is used.
-  StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
-      const ProgramShape& program_shape,
-      tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
-      const ExecutionOptions* execution_options);
+      absl::Span<const GlobalDataHandle* const> arguments,
+      absl::Span<se::StreamExecutor* const> stream_executors) const;
 
   // Builds an Executable for the given parameters.
   //
@@ -226,7 +236,7 @@ class Service : public ServiceInterface {
       const HloModuleProto& module_proto,
       std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
       se::StreamExecutor* executor,
-      DeviceMemoryAllocator* device_allocator = nullptr);
+      se::DeviceMemoryAllocator* device_allocator = nullptr);
 
   // Same as BuildExecutable() above, but builds a list of Executables for the
   // given computations that may interact with each other.
@@ -234,7 +244,7 @@ class Service : public ServiceInterface {
       const std::vector<const HloModuleProto*>& module_protos,
       std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
       Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
-      DeviceMemoryAllocator* device_allocator);
+      se::DeviceMemoryAllocator* device_allocator);
 
   // Runs the given executable with the given arguments and register the result
   // in the allocation tracker. The handle of the result from the tracker is
@@ -242,26 +252,18 @@ class Service : public ServiceInterface {
   // ExecutionProfile object which will be filled in with profile data.
   StatusOr<GlobalDataHandle> ExecuteAndRegisterResult(
       Executable* executable,
-      const tensorflow::gtl::ArraySlice<std::vector<const ShapedBuffer*>>
-          arguments,
-      Backend* backend, const string& result_tag, ExecutionProfile* profile);
+      absl::Span<const std::vector<const ShapedBuffer*>> arguments,
+      Backend* backend, const DeviceHandle& device_handle,
+      const string& result_tag, ExecutionProfile* profile);
 
   // Runs the given executables with the given arguments and register the result
   // from each executable in the allocation tracker. The handles of the result
   // from the tracker are returned.
   StatusOr<std::vector<GlobalDataHandle>> ExecuteParallelAndRegisterResult(
-      tensorflow::gtl::ArraySlice<Executable*> executables,
-      tensorflow::gtl::ArraySlice<std::vector<std::vector<const ShapedBuffer*>>>
-          arguments,
-      Backend* backend,
-      tensorflow::gtl::ArraySlice<DeviceHandle> device_handles,
-      tensorflow::gtl::ArraySlice<string> result_tags,
-      ExecutionProfile* profile);
-
-  // Executes a single computation which has more than one target device.
-  // The N devices are expected to all return an empty tuple, but one, which
-  // will be the result of this computation.
-  Status ExecuteOneToN(const ExecuteGraphRequest* arg, ExecuteResponse* result);
+      absl::Span<Executable* const> executables,
+      absl::Span<const std::vector<std::vector<const ShapedBuffer*>>> arguments,
+      Backend* backend, absl::Span<const DeviceHandle> device_handles,
+      absl::Span<const string> result_tags, ExecutionProfile* profile);
 
   // Convenience function which checks whether the given client_shape
   // (presumably passed by the client to set the result layout) is valid for the
@@ -275,13 +277,14 @@ class Service : public ServiceInterface {
   StatusOr<std::vector<se::StreamExecutor*>> Replicas(
       const Backend& backend, const DeviceHandle& device_handle) const;
 
-  Status MaybeDumpHloModule(const HloModule& module) const;
-
   // Returns the device handle that represents the replicated device for a
   // single computation that is not model-parallelized.
   DeviceHandle SingleComputationDeviceHandle() const;
 
   ServiceOptions options_;
+
+  // Cache containing previously built Executables.
+  CompilationCache compilation_cache_;
 
   // Tracks channels created via the API.
   ChannelTracker channel_tracker_;

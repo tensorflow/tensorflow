@@ -19,10 +19,12 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace xla {
 
@@ -38,19 +40,17 @@ namespace xla {
 //      fused and their fusion profit scores.
 //
 //  Function Perform() applies the optimization. It picks up the most profitable
-//  pair in the worklist_, check if it's legal to fuse and fuse the pair.
-//  After fusion, it updates the associated structure such as reachability_,
+//  pair in the worklist_, checks if it's legal to fuse and fuses the pair.
+//  After fusion, it updates the associated structures such as reachability_,
 //  candidates_ and worklist_.
 //  Note that the reachability map is updated based on the original computation.
 //  This works because the reachability is monotonically increasing with
 //  instruction fusion.
-class MultiOutputFusion : public HloPassInterface {
+class MultiOutputFusion : public HloModulePass {
  public:
-  MultiOutputFusion(int64 fuel) : fuel_(fuel) {}
+  MultiOutputFusion() = default;
 
-  tensorflow::StringPiece name() const override {
-    return "multi_output_fusion";
-  }
+  absl::string_view name() const override { return "multi_output_fusion"; }
 
   // Run multi-output fusion on the given module. Returns whether the module
   // was changed.
@@ -69,7 +69,8 @@ class MultiOutputFusion : public HloPassInterface {
   virtual bool IsFusible(HloInstruction* instr) = 0;
 
   // This function estimates the savings by merging instr1 and instr2 into one
-  // multi-output fusion instruction.
+  // multi-output fusion instruction. It returns a result in kib. (The result
+  // is intentionally not granules, because this method is not TPU-specific.)
   virtual int64 GetProfit(HloInstruction* instr1, HloInstruction* instr2) = 0;
 
   // Whether fusing the instruction can reduce memory reads.
@@ -94,7 +95,7 @@ class MultiOutputFusion : public HloPassInterface {
   // Update the reachability map after fusing instr1 and instr2.
   void UpdateReachability(
       HloInstruction* instr1, HloInstruction* instr2,
-      tensorflow::gtl::ArraySlice<HloInstruction*> instrs_to_update,
+      absl::Span<HloInstruction* const> instrs_to_update,
       const std::function<bool(HloInstruction*)>& skip = nullptr);
 
   // Hook for multi-output fusion along producer-consumer edges.
@@ -105,19 +106,6 @@ class MultiOutputFusion : public HloPassInterface {
   virtual bool DoProducerConsumerMultiOutputFusion();
 
  private:
-  // Update the internal data structures after instr1 and instr2 are fused into
-  // one fusion instruction.
-  void Update(HloInstruction* instr1, HloInstruction* instr2);
-
-  // Optimization fuel is a compiler debugging technique that makes an
-  // optimization pass stop what it is doing after having made N changes to the
-  // program, where N is the fuel. By varying N, this can be used to find the
-  // first single change that makes a test fail.
-  int64 fuel_;
-
-  // Computation for the pass.
-  HloComputation* computation_;
-
   // An internal data structure for each instruction in current computation.
   // When an instruction is removed, member 'hlo' is set to nullptr.
   struct FusionCandidate {
@@ -125,16 +113,6 @@ class MultiOutputFusion : public HloPassInterface {
     std::list<std::pair<HloInstruction*, int64>> fusibles;
     explicit FusionCandidate(HloInstruction* hlo) : hlo(hlo) {}
   };
-  std::vector<FusionCandidate> candidates_;
-
-  // A map that maps an instruction to the index_.
-  tensorflow::gtl::FlatMap<HloInstruction*, int> candidates_index_;
-
-  // The reachability map of current computation.
-  std::unique_ptr<HloReachabilityMap> reachability_;
-
-  // This stores all the candidate instructions in current computation.
-  std::vector<HloInstruction*> all_fusion_candidates_;
 
   // The pair of candidates to be fused and the profit score.
   struct ToBeFused {
@@ -145,7 +123,10 @@ class MultiOutputFusion : public HloPassInterface {
         : instr1(instr1), instr2(instr2), score(score) {}
     bool operator<(const ToBeFused& rhs) const { return score < rhs.score; }
   };
-  std::priority_queue<ToBeFused> worklist_;
+
+  // Update the internal data structures after instr1 and instr2 are fused into
+  // one fusion instruction.
+  void Update(HloInstruction* instr1, HloInstruction* instr2);
 
   int64 get_candidate_id(HloInstruction* instr) {
     return FindOrDie(candidates_index_, instr);
@@ -162,6 +143,21 @@ class MultiOutputFusion : public HloPassInterface {
   bool is_connected(HloInstruction* instr1, HloInstruction* instr2) {
     return reachability_->IsConnected(instr1, instr2);
   }
+
+  std::vector<FusionCandidate> candidates_;
+  std::priority_queue<ToBeFused> worklist_;
+
+  // A map that maps an instruction to the index_.
+  absl::flat_hash_map<HloInstruction*, int> candidates_index_;
+
+  // The reachability map of current computation.
+  std::unique_ptr<HloReachabilityMap> reachability_;
+
+  // This stores all the candidate instructions in current computation.
+  std::vector<HloInstruction*> all_fusion_candidates_;
+
+  // Computation for the pass.
+  HloComputation* computation_;
 };
 
 }  // namespace xla

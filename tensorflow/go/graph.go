@@ -53,6 +53,17 @@ type Graph struct {
 	c *C.TF_Graph
 }
 
+// The GraphImportOptions struct holds parameters for the ImportWithOptions function.
+type GraphImportOptions struct {
+	// Node prefix
+	Prefix string
+
+	// Execution device
+	Device string
+
+	// TODO: extend this structure to support more options from TF_ImportGraphDefOptions
+}
+
 // NewGraph returns a new Graph.
 func NewGraph() *Graph {
 	g := &Graph{C.TF_NewGraph()}
@@ -83,9 +94,51 @@ func (g *Graph) WriteTo(w io.Writer) (int64, error) {
 	// A []byte slice backed by C memory.
 	// See: https://github.com/golang/go/wiki/cgo#turning-c-arrays-into-go-slices
 	length := int(buf.length)
-	slice := (*[1 << 30]byte)(unsafe.Pointer(buf.data))[:length:length]
+	var slice []byte
+	if unsafe.Sizeof(unsafe.Pointer(nil)) == 8 {
+		slice = (*[1<<50 - 1]byte)(unsafe.Pointer(buf.data))[:length:length]
+	} else {
+		slice = (*[1 << 30]byte)(unsafe.Pointer(buf.data))[:length:length]
+	}
 	n, err := w.Write(slice)
 	return int64(n), err
+}
+
+// ImportWithOptions imports the nodes and edges from a serialized representation of
+// another Graph into g.
+//
+// Multiple options can be specified for the newly imported nodes.
+func (g *Graph) ImportWithOptions(def []byte, options GraphImportOptions) error {
+	cprefix := C.CString(options.Prefix)
+	defer C.free(unsafe.Pointer(cprefix))
+
+	opts := C.TF_NewImportGraphDefOptions()
+	defer C.TF_DeleteImportGraphDefOptions(opts)
+	C.TF_ImportGraphDefOptionsSetPrefix(opts, cprefix)
+
+	if len(options.Device) != 0 {
+		cdev := C.CString(options.Device)
+		defer C.free(unsafe.Pointer(cdev))
+		C.TF_ImportGraphDefOptionsSetDefaultDevice(opts, cdev)
+	}
+
+	buf := C.TF_NewBuffer()
+	defer C.TF_DeleteBuffer(buf)
+	buf.length = C.size_t(len(def))
+	buf.data = C.CBytes(def)
+	if buf.data == nil {
+		return fmt.Errorf("unable to allocate memory")
+	}
+	defer C.free(buf.data)
+
+	status := newStatus()
+
+	C.TF_GraphImportGraphDef(g.c, buf, opts, status.c)
+	if err := status.Err(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Import imports the nodes and edges from a serialized representation of
@@ -93,32 +146,7 @@ func (g *Graph) WriteTo(w io.Writer) (int64, error) {
 //
 // Names of imported nodes will be prefixed with prefix.
 func (g *Graph) Import(def []byte, prefix string) error {
-	cprefix := C.CString(prefix)
-	defer C.free(unsafe.Pointer(cprefix))
-
-	opts := C.TF_NewImportGraphDefOptions()
-	defer C.TF_DeleteImportGraphDefOptions(opts)
-	C.TF_ImportGraphDefOptionsSetPrefix(opts, cprefix)
-
-	buf := C.TF_NewBuffer()
-	defer C.TF_DeleteBuffer(buf)
-	// Would have preferred to use C.CBytes, but that does not play well
-	// with "go vet" till https://github.com/golang/go/issues/17201 is
-	// resolved.
-	buf.length = C.size_t(len(def))
-	buf.data = C.malloc(buf.length)
-	if buf.data == nil {
-		return fmt.Errorf("unable to allocate memory")
-	}
-	defer C.free(buf.data)
-	C.memcpy(buf.data, unsafe.Pointer(&def[0]), buf.length)
-
-	status := newStatus()
-	C.TF_GraphImportGraphDef(g.c, buf, opts, status.c)
-	if err := status.Err(); err != nil {
-		return err
-	}
-	return nil
+	return g.ImportWithOptions(def, GraphImportOptions{Prefix: prefix})
 }
 
 // Operation returns the Operation named name in the Graph, or nil if no such
@@ -135,7 +163,7 @@ func (g *Graph) Operation(name string) *Operation {
 
 // Operations returns a list of all operations in the graph
 func (g *Graph) Operations() []Operation {
-	var pos C.size_t = 0
+	var pos C.size_t
 	ops := []Operation{}
 	for {
 		cop := C.TF_GraphNextOperation(g.c, &pos)
@@ -145,6 +173,68 @@ func (g *Graph) Operations() []Operation {
 		ops = append(ops, Operation{cop, g})
 	}
 	return ops
+}
+
+// AddGradients adds operations to compute the partial derivatives of the sum of tensors in y
+// with respect to tensors in x, i.e., d(y[0] + y[1] + ...) / d x[0], d(y[0] + y[1] + ... ) / d x[1] etc.
+//
+// prefix, if non-empty, is the name prefix used for all operations added to the graph to compute
+// these gradients.
+func (g *Graph) AddGradients(prefix string, y []Output, x []Output, dx []Output) ([]Output, error) {
+	var (
+		cprefix *C.char
+
+		cy  = make([]C.TF_Output, len(y))
+		cx  = make([]C.TF_Output, len(x))
+		cdx = make([]C.TF_Output, len(dx))
+		cdy = make([]C.TF_Output, len(x))
+
+		pcy  *C.TF_Output
+		pcx  *C.TF_Output
+		pcdx *C.TF_Output
+		pcdy *C.TF_Output
+
+		status = newStatus()
+	)
+
+	if len(y) > 0 {
+		pcy = &cy[0]
+		for i, o := range y {
+			cy[i] = o.c()
+		}
+	}
+	if len(x) > 0 {
+		pcx = &cx[0]
+		for i, o := range x {
+			cx[i] = o.c()
+		}
+		pcdy = &cdy[0]
+	}
+	if len(dx) > 0 {
+		pcdx = &cdx[0]
+		for i, o := range dx {
+			cdx[i] = o.c()
+		}
+	}
+
+	// If prefix is "", the C.TF_AddGradientsWithPrefix need cprefix to be nil but not ""
+	if len(prefix) != 0 {
+		cprefix = C.CString(prefix)
+		defer C.free(unsafe.Pointer(cprefix))
+	}
+
+	C.TF_AddGradientsWithPrefix(g.c, cprefix, pcy, C.int(len(y)), pcx, C.int(len(x)), pcdx, status.c, pcdy)
+
+	if err := status.Err(); err != nil {
+		return nil, err
+	}
+	dy := make([]Output, len(x))
+	for i, co := range cdy {
+		op := &Operation{co.oper, g}
+		dy[i] = Output{op, int(co.index)}
+	}
+
+	return dy, nil
 }
 
 // OpSpec is the specification of an Operation to be added to a Graph

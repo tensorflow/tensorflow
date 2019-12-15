@@ -57,9 +57,9 @@ namespace {
 
 class GatherNdOpTest : public OpsTestBase {
  protected:
-  void MakeOp(DataType index_type) {
+  void MakeOp(DataType param_type, DataType index_type) {
     TF_ASSERT_OK(NodeDefBuilder("myop", "GatherNd")
-                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(param_type))
                      .Input(FakeInput(index_type))
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
@@ -67,7 +67,7 @@ class GatherNdOpTest : public OpsTestBase {
 };
 
 TEST_F(GatherNdOpTest, Simple) {
-  MakeOp(DT_INT32);
+  MakeOp(DT_FLOAT, DT_INT32);
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5}), {0, 1, 2, 8, 4});
@@ -78,6 +78,32 @@ TEST_F(GatherNdOpTest, Simple) {
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2}));
   test::FillValues<float>(&expected, {8, 4});
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
+TEST_F(GatherNdOpTest, Quantized_UINT8) {
+  MakeOp(DT_QUINT8, DT_INT32);
+
+  // Feed and run
+  AddInputFromArray<quint8>(TensorShape({5}), {0, 1, 2, 8, 4});
+  AddInputFromArray<int32>(TensorShape({2, 1}), {3, 4});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output.
+  Tensor expected(allocator(), DT_QUINT8, TensorShape({2}));
+  test::FillValues<quint8>(&expected, {8, 4});
+  test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
+}
+
+TEST_F(GatherNdOpTest, Quantized_INT8) {
+  MakeOp(DT_QINT8, DT_INT32);
+
+  AddInputFromArray<qint8>(TensorShape({5}), {0, 1, 2, 8, 4});
+  AddInputFromArray<int32>(TensorShape({2, 1}), {3, 4});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_QINT8, TensorShape({2}));
+  test::FillValues<qint8>(&expected, {8, 4});
+  test::ExpectTensorEqual<qint8>(expected, *GetOutput(0));
 }
 
 constexpr int kLookups = 2000;

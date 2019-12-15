@@ -1,0 +1,42 @@
+op {
+  name: "IteratorFromStringHandle"
+  input_arg {
+    name: "string_handle"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "resource_handle"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
+}
+op {
+  name: "IteratorFromStringHandle"
+  input_arg {
+    name: "string_handle"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "resource_handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  is_stateful: true
+}

@@ -6,6 +6,8 @@ filegroup(
 )
 
 HEADERS = [
+    "include/json/allocator.h",
+    "include/json/assertions.h",
     "include/json/autolink.h",
     "include/json/config.h",
     "include/json/features.h",
@@ -23,7 +25,7 @@ genrule(
     cmd = """
       for i in $(OUTS); do
         i=$${i##*/}
-        ln -vsf /usr/include/jsoncpp/json/$$i $(@D)/include/json/$$i
+        ln -sf $(INCLUDEDIR)/jsoncpp/json/$$i $(@D)/include/json/$$i
       done
     """,
 )

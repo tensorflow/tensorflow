@@ -13,15 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/platform/s3/aws_logging.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
 
 #include <aws/core/Aws.h>
 #include <aws/core/utils/logging/AWSLogging.h>
 #include <aws/core/utils/logging/LogSystemInterface.h>
 
 #include <cstdarg>
+
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
 
@@ -69,12 +70,32 @@ void AWSLogSystem::LogMessage(Aws::Utils::Logging::LogLevel log_level,
 }
 
 namespace {
+
+// Taken from tensorflow/core/platform/default/logging.cc
+int ParseInteger(const char* str, size_t size) {
+  string integer_str(str, size);
+  std::istringstream ss(integer_str);
+  int level = 0;
+  ss >> level;
+  return level;
+}
+
+// Taken from tensorflow/core/platform/default/logging.cc
+int64 LogLevelStrToInt(const char* tf_env_var_val) {
+  if (tf_env_var_val == nullptr) {
+    return 0;
+  }
+  return ParseInteger(tf_env_var_val, strlen(tf_env_var_val));
+}
+
 static const char* kAWSLoggingTag = "AWSLogging";
 
 Aws::Utils::Logging::LogLevel ParseLogLevelFromEnv() {
   Aws::Utils::Logging::LogLevel log_level = Aws::Utils::Logging::LogLevel::Info;
 
-  const int64_t level = tensorflow::internal::MinLogLevelFromEnv();
+  const int64_t level = getenv("AWS_LOG_LEVEL")
+                            ? LogLevelStrToInt(getenv("AWS_LOG_LEVEL"))
+                            : tensorflow::internal::MinLogLevelFromEnv();
 
   switch (level) {
     case INFO:

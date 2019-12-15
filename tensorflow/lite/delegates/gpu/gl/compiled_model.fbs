@@ -1,0 +1,169 @@
+// Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+include "common.fbs";
+
+namespace tflite.gpu.gl.data;
+
+file_identifier "AFCM";
+
+file_extension "flow";
+
+// Encapsulates entire OpenGL program with all necessary dependencies and
+// parameters.
+table Program {
+  // A collection of objects this program refers to.
+  objects:[Object];
+
+  // Uniform parameters to be set before execution.
+  parameters:[UniformParameter];
+
+  // Defines the number of work groups.
+  number_workgroups:Uint3;
+
+  // Defines the size of a workgroup.
+  workgroup_size:Uint3;
+
+  // Reference to a shader in this compiled model.
+  shader_index:uint32;
+
+  // Contains binary code that was once created after successful shader
+  // compilation. Normally it is much faster to instantiate a program from
+  // compiled binary.
+  binary:ProgramBinary;
+}
+
+// Compiled binary representation of a program.
+table ProgramBinary {
+  format:uint32;  // GLenum
+
+  // Compiled binary shader blob extracted from GL.
+  binary:[ubyte];
+}
+
+enum ParameterType : byte {
+  INT32 = 0,
+  UINT32 = 1,
+  FLOAT32 = 2,
+  INT32_2 = 3,
+}
+
+enum DataType : byte {
+  UNKNOWN = 0,
+  FLOAT32 = 1,
+  FLOAT16 = 2,
+  INT32 = 3,
+  INT16 = 4,
+}
+
+union DataVariant {
+  DataInt32,
+  DataFloat,
+  DataUint32,
+}
+
+table DataFloat {
+  data:[float];
+}
+
+table DataInt32 {
+  data:[int32];
+}
+
+table DataUint32 {
+  data:[uint32];
+}
+
+table UniformParameter {
+  name:string;
+
+  type:ParameterType;
+
+  // Data is optional. If it is known in advance, it is encoded here, otherwise
+  // a parameter will be set in runtime.
+  data:DataVariant;
+}
+
+enum AccessType : byte {
+  READ = 0,
+  WRITE = 1,
+  READ_WRITE = 2,
+}
+
+enum ObjectType : byte {
+  UNKNOWN = 0,
+  BUFFER = 1,
+  TEXTURE = 2,
+}
+
+union ObjectVariant {
+  ObjectData,
+  ObjectRef,
+}
+
+union ObjectSize {
+  Uint1,
+  Uint2,
+  Uint3,
+}
+
+table Object {
+  access:AccessType;
+
+  binding:uint32;
+
+  data_type:DataType;
+
+  type:ObjectType;
+
+  size:ObjectSize;
+
+  object:ObjectVariant;
+}
+
+// Represents a reference to another object provided by object manager.
+table ObjectRef {
+  // Unique global identifier to be used by an object manager to lookup this
+  // buffer.
+  global_id:uint32;
+}
+
+table ObjectData {
+  data:[uint8];
+}
+
+// Represents entire model as a collection of programs, inputs and outputs.
+table CompiledModel {
+  parameters:Parameters;
+
+  // A collection of shaders used by programs.
+  shaders:[string];
+
+  // A collection of programs that need to be executed in the same order.
+  programs:[Program];
+}
+
+table Parameters {
+  // indicated flow engine version that compiled this model. If engine version
+  // does not match compiled model, then a model need to be recompiled. 
+  // version:uint32; // not implemented
+
+  // Could potentially be used to track environment when a model was compiled
+  // and detect whether it was changed and model recompilation is needed.
+  // environment_hash:uint32; // not implemented
+
+  dynamic_batch:bool;
+}
+
+root_type CompiledModel;

@@ -1,0 +1,25 @@
+op {
+  name: "RandomGammaGrad"
+  input_arg {
+    name: "alpha"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sample"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}

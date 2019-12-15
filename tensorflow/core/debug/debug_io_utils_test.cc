@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdlib>
 #include <unordered_set>
 
 #include "tensorflow/core/debug/debug_io_utils.h"
@@ -21,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/debug/debug_node_key.h"
 #include "tensorflow/core/debug/debugger_event_metadata.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -45,8 +47,8 @@ class DebugIOUtilsTest : public ::testing::Test {
     tensor_a_->flat<float>()(3) = 0.0;
 
     tensor_b_.reset(new Tensor(DT_STRING, TensorShape{2}));
-    tensor_b_->flat<string>()(0) = "corge";
-    tensor_b_->flat<string>()(1) = "garply";
+    tensor_b_->flat<tstring>()(0) = "corge";
+    tensor_b_->flat<tstring>()(1) = "garply";
   }
 
   Env* env_;
@@ -180,8 +182,8 @@ TEST_F(DebugIOUtilsTest, DumpStringTensorToFileSunnyDay) {
 
   // Verify tensor shape and value.
   ASSERT_EQ(tensor_b_->shape(), b_prime.shape());
-  for (int i = 0; i < b_prime.flat<string>().size(); ++i) {
-    ASSERT_EQ(tensor_b_->flat<string>()(i), b_prime.flat<string>()(i));
+  for (int i = 0; i < b_prime.flat<tstring>().size(); ++i) {
+    ASSERT_EQ(tensor_b_->flat<tstring>()(i), b_prime.flat<tstring>()(i));
   }
 
   // Tear down temporary file and directories.
@@ -452,6 +454,51 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
     ASSERT_EQ(0, undeleted_files);
     ASSERT_EQ(0, undeleted_dirs);
   }
+}
+
+class DiskUsageLimitTest : public ::testing::Test {
+ public:
+  void Initialize() {
+    setenv("TFDBG_DISK_BYTES_LIMIT", "", 1);
+    DebugFileIO::resetDiskByteUsage();
+    DebugFileIO::global_disk_bytes_limit_ = 0;
+  }
+};
+
+TEST_F(DiskUsageLimitTest, RequestWithZeroByteIsOkay) {
+  Initialize();
+  ASSERT_TRUE(DebugFileIO::requestDiskByteUsage(0L));
+}
+
+TEST_F(DiskUsageLimitTest, ExceedingLimitAfterOneCall) {
+  Initialize();
+  ASSERT_FALSE(DebugFileIO::requestDiskByteUsage(100L * 1024L * 1024L * 1024L));
+}
+
+TEST_F(DiskUsageLimitTest, ExceedingLimitAfterTwoCalls) {
+  Initialize();
+  ASSERT_TRUE(DebugFileIO::requestDiskByteUsage(50L * 1024L * 1024L * 1024L));
+  ASSERT_FALSE(DebugFileIO::requestDiskByteUsage(50L * 1024L * 1024L * 1024L));
+  ASSERT_TRUE(DebugFileIO::requestDiskByteUsage(1024L));
+}
+
+TEST_F(DiskUsageLimitTest, ResetDiskByteUsageWorks) {
+  Initialize();
+  ASSERT_TRUE(DebugFileIO::requestDiskByteUsage(50L * 1024L * 1024L * 1024L));
+  ASSERT_FALSE(DebugFileIO::requestDiskByteUsage(50L * 1024L * 1024L * 1024L));
+  DebugFileIO::resetDiskByteUsage();
+  ASSERT_TRUE(DebugFileIO::requestDiskByteUsage(50L * 1024L * 1024L * 1024L));
+}
+
+TEST_F(DiskUsageLimitTest, CustomEnvVarIsObeyed) {
+  Initialize();
+  setenv("TFDBG_DISK_BYTES_LIMIT", "1024", 1);
+  ASSERT_FALSE(DebugFileIO::requestDiskByteUsage(1024L));
+  ASSERT_TRUE(DebugFileIO::requestDiskByteUsage(1000L));
+  ASSERT_TRUE(DebugFileIO::requestDiskByteUsage(23L));
+  ASSERT_FALSE(DebugFileIO::requestDiskByteUsage(1L));
+  DebugFileIO::resetDiskByteUsage();
+  ASSERT_TRUE(DebugFileIO::requestDiskByteUsage(1023L));
 }
 
 }  // namespace

@@ -1,5 +1,3 @@
-# -*- Python -*-
-
 """Build macro that compiles a TensorFlow graph into a cc_library.
 
 To use from your BUILD file, add the following line to load the macro:
@@ -22,6 +20,7 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
+load("//tensorflow:tensorflow.bzl", "tfcompile_extra_flags")
 
 def tf_library(
         name,
@@ -38,8 +37,9 @@ def tf_library(
         tfcompile_tool = "//tensorflow/compiler/aot:tfcompile",
         include_standard_runtime_deps = True,
         enable_xla_hlo_profiling = False,
+        mlir_components = None,
         deps = None,
-        tags = None):
+        tags = []):
     """Runs tfcompile to compile a TensorFlow graph into executable code.
 
     Given an invocation of tf_library(name="foo", ...), generates the following
@@ -88,6 +88,8 @@ def tf_library(
       enable_xla_hlo_profiling: Enable XLA HLO profiling in the generated
         program, and emit metadata that lets us pretty-print the gathered
         profile counters.
+      mlir_components: When the value is "Bridge", use MLIR to translate
+        GraphDef to HLO.
       deps: a list of deps to include on the build rules for the generated
         library, added to the standard deps if standard_runtime_deps is True.
       tags: tags to apply to subsidiary build rules.
@@ -105,12 +107,18 @@ def tf_library(
         freeze_file = freeze_name + ".pb"
 
         # First run tfcompile to generate the list of out_nodes.
+        #
+        # Here and below, we set CUDA_VISIBLE_DEVICES='' to prevent the code we
+        # launch from using any GPUs which might be present.  This is important
+        # because builds may run concurrently with tests, and tests need to be
+        # able to assume that they have control of the full GPU.
         out_nodes_file = "out_nodes_" + freeze_name
         native.genrule(
             name = ("gen_" + out_nodes_file),
             srcs = [config],
             outs = [out_nodes_file],
-            cmd = ("$(location " + tfcompile_tool + ")" +
+            cmd = ("CUDA_VISIBLE_DEVICES='' " +
+                   "$(location " + tfcompile_tool + ")" +
                    " --config=$(location " + config + ")" +
                    " --dump_fetch_nodes > $@"),
             tools = [tfcompile_tool],
@@ -142,9 +150,12 @@ def tf_library(
                 out_nodes_file,
             ] + freeze_saver_srcs,
             outs = [freeze_file],
-            cmd = ("$(location " +
-                   "//tensorflow/python/tools:freeze_graph)" +
-                   freeze_args),
+            cmd = (
+                "CUDA_VISIBLE_DEVICES='' " +
+                "$(location " +
+                "//tensorflow/python/tools:freeze_graph)" +
+                freeze_args
+            ),
             tools = ["//tensorflow/python/tools:freeze_graph"],
             tags = tags,
         )
@@ -154,7 +165,10 @@ def tf_library(
     header_file = name + ".h"
     metadata_object_file = name + "_tfcompile_metadata.o"
     function_object_file = name + "_tfcompile_function.o"
-    ep = ("__" + native.package_name() + "__" + name).replace("/", "_")
+
+    # The XLA backends morph kernal name prefix __ that is not in the form of
+    # __xla_.
+    ep = ("__xla_" + native.package_name() + "__" + name).replace("/", "_")
     if type(tfcompile_flags) == type(""):
         flags = tfcompile_flags
     else:
@@ -162,10 +176,24 @@ def tf_library(
             "'" + arg.replace("'", "'\\''") + "'"
             for arg in (tfcompile_flags or [])
         ])
+
+    # Do this before we append the `select` into `flags`, because doing so
+    # transforms `flags` into a variable of type `select`, and we can't call
+    # `find` on such an object.
+    need_xla_data_proto = flags and flags.find("--gen_program_shape") != -1
+
+    flags = tfcompile_extra_flags() + flags
+
     if enable_xla_hlo_profiling:
         profiling_flag = "--xla_hlo_profile"
     else:
         profiling_flag = ""
+
+    if mlir_components:
+        mlir_flag = "--mlir_components=" + mlir_components
+    else:
+        mlir_flag = ""
+
     native.genrule(
         name = ("gen_" + name),
         srcs = [
@@ -177,16 +205,19 @@ def tf_library(
             metadata_object_file,
             function_object_file,
         ],
-        cmd = ("$(location " + tfcompile_tool + ")" +
-               " --graph=$(location " + tfcompile_graph + ")" +
-               " --config=$(location " + config + ")" +
-               " --entry_point=" + ep +
-               " --cpp_class=" + cpp_class +
-               " --target_triple=" + target_llvm_triple() +
-               " --out_header=$(@D)/" + header_file +
-               " --out_metadata_object=$(@D)/" + metadata_object_file +
-               " --out_function_object=$(@D)/" + function_object_file +
-               " " + flags + " " + profiling_flag),
+        cmd = (
+            "CUDA_VISIBLE_DEVICES='' " +
+            "$(location " + tfcompile_tool + ")" +
+            " --graph=$(location " + tfcompile_graph + ")" +
+            " --config=$(location " + config + ")" +
+            " --entry_point=" + ep +
+            " --cpp_class=" + cpp_class +
+            " --target_triple=" + target_llvm_triple() +
+            " --out_header=$(@D)/" + header_file +
+            " --out_metadata_object=$(@D)/" + metadata_object_file +
+            " --out_function_object=$(@D)/" + function_object_file +
+            " " + flags + " " + profiling_flag + " " + mlir_flag
+        ),
         tools = [tfcompile_tool],
         visibility = visibility,
         testonly = testonly,
@@ -195,7 +226,7 @@ def tf_library(
         #
         # Note that setting the local=1 attribute on a *test target* causes the
         # test infrastructure to skip that test.  However this is a genrule, not
-        # a test target, and runs with --genrule_strategy=forced_forge, meaning
+        # a test target, and runs with --strategy=Genrule=forced_forge, meaning
         # the local=1 attribute is ignored, and the genrule is still run.
         #
         # https://www.bazel.io/versions/master/docs/be/general.html#genrule
@@ -216,14 +247,17 @@ def tf_library(
         outs = [
             session_module_pb,
         ],
-        cmd = ("$(location " + tfcompile_tool + ")" +
-               " --graph=$(location " + tfcompile_graph + ")" +
-               " --config=$(location " + config + ")" +
-               " --entry_point=" + ep +
-               " --cpp_class=" + cpp_class +
-               " --target_triple=" + target_llvm_triple() +
-               " --out_session_module=$(@D)/" + session_module_pb +
-               " " + flags),
+        cmd = (
+            "CUDA_VISIBLE_DEVICES='' " +
+            "$(location " + tfcompile_tool + ")" +
+            " --graph=$(location " + tfcompile_graph + ")" +
+            " --config=$(location " + config + ")" +
+            " --entry_point=" + ep +
+            " --cpp_class=" + cpp_class +
+            " --target_triple=" + target_llvm_triple() +
+            " --out_session_module=$(@D)/" + session_module_pb +
+            " " + flags
+        ),
         tools = [tfcompile_tool],
         visibility = visibility,
         testonly = testonly,
@@ -233,7 +267,6 @@ def tf_library(
 
     # The cc_library rule packaging up the header and object file, and needed
     # kernel implementations.
-    need_xla_data_proto = (flags and flags.find("--gen_program_shape") != -1)
     native.cc_library(
         name = name,
         srcs = [function_object_file, metadata_object_file],
@@ -249,15 +282,14 @@ def tf_library(
         ] + (need_xla_data_proto and [
             # If we're generating the program shape, we must depend on the
             # proto.
-            "//tensorflow/compiler/xla:xla_data_proto",
+            "//tensorflow/compiler/xla:xla_data_proto_cc",
         ] or []) + (enable_xla_hlo_profiling and [
-            "//tensorflow/compiler/xla/service:hlo_profile_printer_data",
+            "//tensorflow/compiler/xla/service:hlo_profile_printer_data_cc",
         ] or []) + (include_standard_runtime_deps and [
             # TODO(cwhipkey): only depend on kernel code that the model actually
             # needed.
-            "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_1d",
-            "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_2d",
             "//tensorflow/compiler/xla/service/cpu:runtime_conv2d",
+            "//tensorflow/compiler/xla/service/cpu:runtime_key_value_sort",
             "//tensorflow/compiler/xla/service/cpu:runtime_matmul",
             "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_conv2d",
             "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
@@ -267,7 +299,7 @@ def tf_library(
     )
 
     # Variables used for gen_test and gen_benchmark.
-    cpp_class_split = cpp_class.rsplit("::", maxsplit = 2)
+    cpp_class_split = cpp_class.rsplit("::", 2)
     if len(cpp_class_split) == 1:
         no_ns_name = cpp_class_split[0]
     else:
@@ -374,7 +406,8 @@ def target_llvm_triple():
         "//tensorflow:android_arm": "armv7-none-android",
         "//tensorflow:android_arm64": "aarch64-none-android",
         "//tensorflow:android_x86": "i686-none-android",
+        "//tensorflow:ios": "arm64-none-ios",
         "//tensorflow:linux_ppc64le": "ppc64le-ibm-linux-gnu",
-        "//tensorflow:darwin": "x86_64-none-darwin",
+        "//tensorflow:macos": "x86_64-none-darwin",
         "//conditions:default": "x86_64-pc-linux",
     })

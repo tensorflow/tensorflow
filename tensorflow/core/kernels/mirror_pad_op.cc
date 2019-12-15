@@ -173,7 +173,7 @@ namespace functor {
   DECLARE_CPU_SPEC(T, int64, 5);
 
 TF_CALL_POD_TYPES(DECLARE_CPU_SPECS);
-TF_CALL_string(DECLARE_CPU_SPECS);
+TF_CALL_tstring(DECLARE_CPU_SPECS);
 
 #undef DECLARE_CPU_SPEC
 #undef DECLARE_CPU_SPECS
@@ -195,10 +195,10 @@ TF_CALL_string(DECLARE_CPU_SPECS);
 
 // Note that we do register for bool type, but not in the gradient op.
 TF_CALL_POD_TYPES(REGISTER_KERNEL);
-TF_CALL_string(REGISTER_KERNEL);
+TF_CALL_tstring(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace functor {
 // Forward declarations of the functor specializations for GPU.
 #define DECLARE_GPU_SPEC(T, Tpaddings, i)                     \
@@ -243,7 +243,7 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Gradient op.
 template <typename Device, typename T, typename Tpaddings>
@@ -404,7 +404,7 @@ TF_CALL_NUMBER_TYPES(DECLARE_CPU_SPECS);
 TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace functor {
 // Forward declarations of the functor specializations for GPU.
 #define DECLARE_GPU_SPEC(T, Tpaddings, k)                     \
@@ -450,6 +450,6 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

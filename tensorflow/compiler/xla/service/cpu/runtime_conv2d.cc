@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d_impl.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_lightweight_check.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -34,6 +35,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConvF32(
     int64 lhs_col_dilation, int64 rhs_row_dilation, int64 rhs_col_dilation) {
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
+  XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
   tensorflow::xla::EigenConvImpl(
       *run_options->intra_op_thread_pool(), out, lhs, rhs, input_batch,
       input_rows, input_cols, input_channels, kernel_rows, kernel_cols,
@@ -53,6 +55,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConvF16(
     int64 rhs_col_dilation) {
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
+  XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
   tensorflow::xla::EigenConvImpl(
       *run_options->intra_op_thread_pool(), out, lhs, rhs, input_batch,
       input_rows, input_cols, input_channels, kernel_rows, kernel_cols,

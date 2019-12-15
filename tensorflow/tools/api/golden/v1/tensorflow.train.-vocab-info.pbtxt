@@ -4,6 +4,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.training.warm_starting_util.VocabInfo\'>"
   is_instance: "<type \'tuple\'>"
   member {
+    name: "axis"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "backup_initializer"
     mtype: "<type \'property\'>"
   }
