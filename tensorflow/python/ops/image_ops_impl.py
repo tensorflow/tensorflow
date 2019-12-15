@@ -773,7 +773,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
 
   This op does nothing if `offset_*` is zero and the image already has size
   `target_height` by `target_width`.
-
+  
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
@@ -792,6 +792,12 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
     ValueError: If the shape of `image` is incompatible with the `offset_*` or
       `target_*` arguments, or either `offset_height` or `offset_width` is
       negative.
+      
+  Usage example:
+    import tensorflow as tf
+    x=tf.random.uniform((28,28,1))
+    tf.image.pad_to_bounding_box(x,28,28,100,100)
+    
   """
   with ops.name_scope(None, 'pad_to_bounding_box', [image]):
     image = ops.convert_to_tensor(image, name='image')
