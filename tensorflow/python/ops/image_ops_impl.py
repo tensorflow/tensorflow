@@ -467,9 +467,8 @@ def flip_left_right(image):
     
   Usage Example:
     ```
-    >>> import tensorflow
-    >>> image = tensorflow.random.normal(shape=(256, 256, 3))
-    >>> tensorflow.image.flip_left_right(image)
+    >>> image = tf.random.normal(shape=(256, 256, 3))
+    >>> tf.image.flip_left_right(image)
     <tf.Tensor 'flip_left_right/ReverseV2:0' shape=(256, 256, 3) dtype=float32>
     ```
   """
