@@ -55,7 +55,7 @@ class S3FileSystemTest : public ::testing::Test {
     content->resize(file_size);
     StringPiece result;
     TF_RETURN_IF_ERROR(
-        reader->Read(0, file_size, &result, gtl::string_as_array(content)));
+        reader->Read(0, file_size, &result, &(*content)[0]));
     if (file_size != result.size()) {
       return errors::DataLoss("expected ", file_size, " got ", result.size(),
                               " bytes");
