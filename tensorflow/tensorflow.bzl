@@ -1177,7 +1177,8 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}_gpu",
 )
 
-# Create a cc_test for each of the tensorflow tests listed in "tests"
+# Create a cc_test for each of the tensorflow tests listed in "tests", along
+# with a test suite of the given name, if provided.
 def tf_cc_tests(
         srcs,
         deps,
@@ -1187,10 +1188,14 @@ def tf_cc_tests(
         size = "medium",
         args = None,
         linkopts = [],
-        kernels = []):
+        kernels = [],
+        create_named_test_suite = False,
+        visibility = None):
+    test_names = []
     for src in srcs:
+        test_name = src_to_test_name(src)
         tf_cc_test(
-            name = src_to_test_name(src),
+            name = test_name,
             size = size,
             srcs = [src],
             args = args,
@@ -1199,6 +1204,17 @@ def tf_cc_tests(
             linkstatic = linkstatic,
             tags = tags,
             deps = deps,
+            visibility = visibility,
+        )
+        test_names.append(test_name)
+
+    # Add a test suite with the generated tests if a name was provided and
+    # it does not conflict any of the test names.
+    if create_named_test_suite:
+        native.test_suite(
+            name = name,
+            tests = test_names,
+            visibility = visibility,
         )
 
 def tf_cc_test_mkl(

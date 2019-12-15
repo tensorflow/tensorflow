@@ -3623,8 +3623,16 @@ tf_cc_test(
     ],
 )
 
-tf_cc_tests(
+test_suite(
     name = "higher_level_tests",
+    tests = [
+        ":core_higher_level_tests",
+        "//tensorflow/core/framework:higher_level_tests",
+    ],
+)
+
+tf_cc_tests(
+    name = "core_higher_level_tests",
     size = "small",
     srcs = [
         "common_runtime/buf_rendezvous_test.cc",
@@ -3652,8 +3660,6 @@ tf_cc_tests(
         "graph/subgraph_test.cc",
         "graph/tensor_id_test.cc",
         "graph/validate_test.cc",
-        "//tensorflow/core/framework:resource_op_kernel_test_srcs",
-        "//tensorflow/core/framework:test_srcs",
         "//tensorflow/core/util:bcast_test.cc",
         "//tensorflow/core/util:command_line_flags_test.cc",
         "//tensorflow/core/util:debug_events_writer_test.cc",
@@ -3679,6 +3685,7 @@ tf_cc_tests(
         "//tensorflow/core/util:work_sharder_test.cc",
         "//tensorflow/core/util/sparse:higher_level_tests_group",
     ],
+    create_named_test_suite = True,
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -3768,7 +3775,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_tests(
+tf_cc_test(
     name = "collective_order_test",
     size = "small",
     srcs = [
@@ -4736,7 +4743,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_tests(
+tf_cc_test(
     name = "ops_tests",
     size = "small",
     srcs = [
@@ -4806,7 +4813,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_tests(
+tf_cc_test(
     name = "common_runtime_input_colocation_exemption_registry_test",
     size = "small",
     srcs = ["common_runtime/input_colocation_exemption_registry_test.cc"],
@@ -4819,7 +4826,7 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_tests(
+tf_cc_test(
     name = "common_runtime_lower_function_call_test",
     size = "small",
     srcs = ["common_runtime/lower_function_call_op_test.cc"],
@@ -4843,7 +4850,7 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_tests(
+tf_cc_test(
     name = "common_runtime_lower_if_op_test",
     size = "small",
     srcs = ["common_runtime/lower_if_op_test.cc"],
@@ -4867,7 +4874,7 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_tests(
+tf_cc_test(
     name = "common_runtime_lower_case_op_test",
     size = "small",
     srcs = ["common_runtime/lower_case_op_test.cc"],
@@ -4891,7 +4898,7 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_tests(
+tf_cc_test(
     name = "common_runtime_lower_while_op_test",
     size = "small",
     srcs = ["common_runtime/lower_while_op_test.cc"],
@@ -4915,7 +4922,7 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_tests(
+tf_cc_test(
     name = "common_runtime_lower_functional_ops_test",
     size = "small",
     srcs = ["common_runtime/lower_functional_ops_test.cc"],
