@@ -1390,7 +1390,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Unlike `tf.data.Dataset.batch`, the input elements to be batched may have
     different shapes, and this transformation will pad each component to the
-    respective shape in `padding_shapes`. The `padding_shapes` argument
+    respective shape in `padded_shapes`. The `padded_shapes` argument
     determines the resulting shape for each dimension of each component in an
     output element:
 
