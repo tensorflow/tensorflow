@@ -51,21 +51,20 @@ public:
                   ConversionPatternRewriter &rewriter) const override;
 };
 
-/// Pattern to convert a kernel function in GPU dialect (a FuncOp with the
-/// attribute gpu.kernel) within a spv.module.
-class KernelFnConversion final : public SPIRVOpLowering<FuncOp> {
+/// Pattern to convert a kernel function in GPU dialect within a spv.module.
+class KernelFnConversion final : public SPIRVOpLowering<gpu::GPUFuncOp> {
 public:
   KernelFnConversion(MLIRContext *context, SPIRVTypeConverter &converter,
                      ArrayRef<int64_t> workGroupSize,
                      PatternBenefit benefit = 1)
-      : SPIRVOpLowering<FuncOp>(context, converter, benefit) {
+      : SPIRVOpLowering<gpu::GPUFuncOp>(context, converter, benefit) {
     auto config = workGroupSize.take_front(3);
     workGroupSizeAsInt32.assign(config.begin(), config.end());
     workGroupSizeAsInt32.resize(3, 1);
   }
 
   PatternMatchResult
-  matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
+  matchAndRewrite(gpu::GPUFuncOp funcOp, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override;
 
 private:
@@ -93,6 +92,17 @@ public:
 
   PatternMatchResult
   matchAndRewrite(ModuleTerminatorOp terminatorOp, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override;
+};
+
+/// Pattern to convert a gpu.return into a SPIR-V return.
+// TODO: This can go to DRR when GPU return has operands.
+class GPUReturnOpConversion final : public SPIRVOpLowering<gpu::ReturnOp> {
+public:
+  using SPIRVOpLowering<gpu::ReturnOp>::SPIRVOpLowering;
+
+  PatternMatchResult
+  matchAndRewrite(gpu::ReturnOp returnOp, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
 
@@ -204,11 +214,58 @@ PatternMatchResult LaunchConfigConversion<SourceOp, builtin>::matchAndRewrite(
 }
 
 //===----------------------------------------------------------------------===//
-// FuncOp with gpu.kernel attribute.
+// GPUFuncOp
 //===----------------------------------------------------------------------===//
 
+// Legalizes a GPU function as an entry SPIR-V function.
+static FuncOp
+lowerAsEntryFunction(gpu::GPUFuncOp funcOp, SPIRVTypeConverter &typeConverter,
+                     ConversionPatternRewriter &rewriter,
+                     spirv::EntryPointABIAttr entryPointInfo,
+                     ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo) {
+  auto fnType = funcOp.getType();
+  if (fnType.getNumResults()) {
+    funcOp.emitError("SPIR-V lowering only supports entry functions"
+                     "with no return values right now");
+    return nullptr;
+  }
+  if (fnType.getNumInputs() != argABIInfo.size()) {
+    funcOp.emitError(
+        "lowering as entry functions requires ABI info for all arguments");
+    return nullptr;
+  }
+  // For entry functions need to make the signature void(void). Compute the
+  // replacement value for all arguments and replace all uses.
+  TypeConverter::SignatureConversion signatureConverter(fnType.getNumInputs());
+  {
+    for (auto argType : enumerate(funcOp.getType().getInputs())) {
+      auto convertedType = typeConverter.convertType(argType.value());
+      signatureConverter.addInputs(argType.index(), convertedType);
+    }
+  }
+  auto newFuncOp = rewriter.create<FuncOp>(
+      funcOp.getLoc(), funcOp.getName(),
+      rewriter.getFunctionType(signatureConverter.getConvertedTypes(),
+                               llvm::None),
+      ArrayRef<NamedAttribute>());
+  for (const auto &namedAttr : funcOp.getAttrs()) {
+    if (namedAttr.first.is(impl::getTypeAttrName()) ||
+        namedAttr.first.is(SymbolTable::getSymbolAttrName()))
+      continue;
+    newFuncOp.setAttr(namedAttr.first, namedAttr.second);
+  }
+  rewriter.inlineRegionBefore(funcOp.getBody(), newFuncOp.getBody(),
+                              newFuncOp.end());
+  rewriter.applySignatureConversion(&newFuncOp.getBody(), signatureConverter);
+  rewriter.eraseOp(funcOp);
+
+  spirv::setABIAttrs(newFuncOp, entryPointInfo, argABIInfo);
+  return newFuncOp;
+}
+
 PatternMatchResult
-KernelFnConversion::matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
+KernelFnConversion::matchAndRewrite(gpu::GPUFuncOp funcOp,
+                                    ArrayRef<Value *> operands,
                                     ConversionPatternRewriter &rewriter) const {
   if (!gpu::GPUDialect::isKernel(funcOp)) {
     return matchFailure();
@@ -223,8 +280,8 @@ KernelFnConversion::matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
   auto context = rewriter.getContext();
   auto entryPointAttr =
       spirv::getEntryPointABIAttr(workGroupSizeAsInt32, context);
-  FuncOp newFuncOp = spirv::lowerAsEntryFunction(
-      funcOp, typeConverter, rewriter, entryPointAttr, argABI);
+  FuncOp newFuncOp = lowerAsEntryFunction(funcOp, typeConverter, rewriter,
+                                          entryPointAttr, argABI);
   if (!newFuncOp) {
     return matchFailure();
   }
@@ -275,6 +332,20 @@ PatternMatchResult KernelModuleTerminatorConversion::matchAndRewrite(
 }
 
 //===----------------------------------------------------------------------===//
+// GPU return inside kernel functions to SPIR-V return.
+//===----------------------------------------------------------------------===//
+
+PatternMatchResult GPUReturnOpConversion::matchAndRewrite(
+    gpu::ReturnOp returnOp, ArrayRef<Value *> operands,
+    ConversionPatternRewriter &rewriter) const {
+  if (!operands.empty())
+    return matchFailure();
+
+  rewriter.replaceOpWithNewOp<spirv::ReturnOp>(returnOp);
+  return matchSuccess();
+}
+
+//===----------------------------------------------------------------------===//
 // GPU To SPIRV Patterns.
 //===----------------------------------------------------------------------===//
 
@@ -285,7 +356,8 @@ void populateGPUToSPIRVPatterns(MLIRContext *context,
                                 ArrayRef<int64_t> workGroupSize) {
   patterns.insert<KernelFnConversion>(context, typeConverter, workGroupSize);
   patterns.insert<
-      ForOpConversion, KernelModuleConversion, KernelModuleTerminatorConversion,
+      GPUReturnOpConversion, ForOpConversion, KernelModuleConversion,
+      KernelModuleTerminatorConversion,
       LaunchConfigConversion<gpu::BlockDimOp, spirv::BuiltIn::WorkgroupSize>,
       LaunchConfigConversion<gpu::BlockIdOp, spirv::BuiltIn::WorkgroupId>,
       LaunchConfigConversion<gpu::GridDimOp, spirv::BuiltIn::NumWorkgroups>,

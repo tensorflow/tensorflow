@@ -94,9 +94,9 @@ LogicalResult GPUDialect::verifyOperationAttribute(Operation *op,
     // Check that `launch_func` refers to a well-formed kernel function.
     StringRef kernelName = launchOp.kernel();
     Operation *kernelFunc = kernelModule.lookupSymbol(kernelName);
-    auto kernelStdFunction = dyn_cast_or_null<::mlir::FuncOp>(kernelFunc);
+    auto kernelGPUFunction = dyn_cast_or_null<gpu::GPUFuncOp>(kernelFunc);
     auto kernelLLVMFunction = dyn_cast_or_null<LLVM::LLVMFuncOp>(kernelFunc);
-    if (!kernelStdFunction && !kernelLLVMFunction)
+    if (!kernelGPUFunction && !kernelLLVMFunction)
       return launchOp.emitOpError("kernel function '")
              << kernelName << "' is undefined";
     if (!kernelFunc->getAttrOfType<mlir::UnitAttr>(
@@ -107,7 +107,7 @@ LogicalResult GPUDialect::verifyOperationAttribute(Operation *op,
     unsigned actualNumArguments = launchOp.getNumKernelOperands();
     unsigned expectedNumArguments = kernelLLVMFunction
                                         ? kernelLLVMFunction.getNumArguments()
-                                        : kernelStdFunction.getNumArguments();
+                                        : kernelGPUFunction.getNumArguments();
     if (expectedNumArguments != actualNumArguments)
       return launchOp.emitOpError("got ")
              << actualNumArguments << " kernel operands but expected "
@@ -488,7 +488,7 @@ void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 void LaunchFuncOp::build(Builder *builder, OperationState &result,
-                         ::mlir::FuncOp kernelFunc, Value *gridSizeX,
+                         GPUFuncOp kernelFunc, Value *gridSizeX,
                          Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
                          Value *blockSizeY, Value *blockSizeZ,
                          ValueRange kernelOperands) {
@@ -505,7 +505,7 @@ void LaunchFuncOp::build(Builder *builder, OperationState &result,
 }
 
 void LaunchFuncOp::build(Builder *builder, OperationState &result,
-                         ::mlir::FuncOp kernelFunc, KernelDim3 gridSize,
+                         GPUFuncOp kernelFunc, KernelDim3 gridSize,
                          KernelDim3 blockSize, ValueRange kernelOperands) {
   build(builder, result, kernelFunc, gridSize.x, gridSize.y, gridSize.z,
         blockSize.x, blockSize.y, blockSize.z, kernelOperands);
@@ -716,6 +716,18 @@ void printGPUFuncOp(OpAsmPrinter &p, GPUFuncOp op) {
                                 {op.getNumWorkgroupAttributionsAttrName(),
                                  GPUDialect::getKernelFuncAttrName()});
   p.printRegion(op.getBody(), /*printEntryBlockArgs=*/false);
+}
+
+void GPUFuncOp::setType(FunctionType newType) {
+  auto oldType = getType();
+  assert(newType.getNumResults() == oldType.getNumResults() &&
+         "unimplemented: changes to the number of results");
+
+  SmallVector<char, 16> nameBuf;
+  for (int i = newType.getNumInputs(), e = oldType.getNumInputs(); i < e; i++)
+    removeAttr(getArgAttrName(i, nameBuf));
+
+  setAttr(getTypeAttrName(), TypeAttr::get(newType));
 }
 
 /// Hook for FunctionLike verifier.
