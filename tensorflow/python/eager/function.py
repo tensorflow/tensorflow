@@ -380,6 +380,11 @@ def remove_function_callback(function_callback):
   _function_callbacks.remove(function_callback)
 
 
+def clear_function_callbacks():
+  """Clear all function callbacks, if any have been regisered."""
+  _function_callbacks.clear()
+
+
 _FORWARD_PREFIX = "__forward_"
 _BACKWARD_PREFIX = "__backward_"
 _INFERENCE_PREFIX = "__inference_"

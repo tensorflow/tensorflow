@@ -290,7 +290,7 @@ class. See [Constraints](#constraints) for more information.
 ### Operation interfaces
 
 [Operation interfaces](Interfaces.md#operation-interfaces) are a mechanism by
-which to opaquely call methods and access information on an *Op instance,
+which to opaquely call methods and access information on an *Op instance*,
 without knowing the exact operation type. Operation interfaces defined in C++
 can be accessed in the ODS framework via the `OpInterfaceTrait` class. Aside
 from using pre-existing interfaces in the C++ API, the ODS framework also
@@ -414,7 +414,7 @@ The following builders are generated:
 // All result-types/operands/attributes have one aggregate parameter.
 static void build(Builder *tblgen_builder, OperationState &tblgen_state,
                   ArrayRef<Type> resultTypes,
-                  ArrayRef<Value> operands,
+                  ValueRange operands,
                   ArrayRef<NamedAttribute> attributes);
 
 // Each result-type/operand/attribute has a separate parameter. The parameters
@@ -433,7 +433,19 @@ static void build(Builder *tblgen_builder, OperationState &tblgen_state,
                   Value *i32_operand, Value *f32_operand, ...,
                   APInt i32_attr, StringRef f32_attr, ...);
 
-// (And potentially others depending on the specific op.)
+// Each operand/attribute has a separate parameter but result type is aggregate.
+static void build(Builder *tblgen_builder, OperationState &tblgen_state,
+                  ArrayRef<Type> resultTypes,
+                  Value *i32_operand, Value *f32_operand, ...,
+                  IntegerAttr i32_attr, FloatAttr f32_attr, ...);
+
+// All operands/attributes have aggregate parameters.
+// Generated if InferTypeOpInterface interface is specified.
+static void build(Builder *tblgen_builder, OperationState &tblgen_state,
+                  ValueRange operands,
+                  ArrayRef<NamedAttribute> attributes);
+
+// (And manually specified builders depending on the specific op.)
 ```
 
 The first form provides basic uniformity so that we can create ops using the

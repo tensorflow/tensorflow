@@ -107,9 +107,6 @@ filegroup(
 tf_py_test(
     name = "feature_column_test",
     srcs = ["feature_column_test.py"],
-    additional_deps = [
-        ":feature_column_test_main_lib",
-    ],
     tags = [
         "no_rocm",
         "no_cuda",
@@ -117,15 +114,18 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
+    deps = [
+        ":feature_column_test_main_lib",
+    ],
 )
 
 tf_py_test(
     name = "dense_features_test",
     srcs = ["dense_features_test.py"],
-    additional_deps = [
+    tags = ["no_pip"],
+    deps = [
         ":feature_column_test_main_lib",
     ],
-    tags = ["no_pip"],
 )
 
 py_library(
@@ -160,7 +160,6 @@ py_library(
 tf_py_test(
     name = "feature_column_v2_test",
     srcs = ["feature_column_v2_test.py"],
-    additional_deps = [":feature_column_v2_test_main_lib"],
     shard_count = 5,
     tags = [
         "no_rocm",
@@ -169,15 +168,16 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
+    deps = [":feature_column_v2_test_main_lib"],
 )
 
 tf_py_test(
     name = "dense_features_v2_test",
     srcs = ["dense_features_v2_test.py"],
-    additional_deps = [
+    tags = ["no_pip"],
+    deps = [
         ":feature_column_v2_test_main_lib",
     ],
-    tags = ["no_pip"],
 )
 
 py_library(
@@ -225,10 +225,8 @@ py_library(
 tf_py_test(
     name = "sequence_feature_column_test",
     srcs = ["sequence_feature_column_test.py"],
-    additional_deps = [
+    deps = [
         ":feature_column_v2",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -238,13 +236,15 @@ tf_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
 py_test(
     name = "sequence_feature_column_integration_test",
     srcs = ["sequence_feature_column_integration_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -261,10 +261,10 @@ py_test(
 tf_py_test(
     name = "serialization_test",
     srcs = ["serialization_test.py"],
-    additional_deps = [
+    deps = [
         ":feature_column_v2",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

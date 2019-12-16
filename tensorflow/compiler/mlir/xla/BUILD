@@ -163,6 +163,25 @@ cc_library(
 )
 
 cc_library(
+    name = "lhlo_legalize_to_gpu",
+    srcs = ["transforms/lhlo_legalize_to_gpu.cc"],
+    hdrs = ["transforms/map_lhlo_to_scalar_op.h"],
+    deps = [
+        ":lhlo",
+        "@com_google_absl//absl/memory",
+        "@llvm//:support",
+        "@local_config_mlir//:GPUDialect",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Linalg",
+        "@local_config_mlir//:LoopOps",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "lhlo_fuse_linalg",
     srcs = ["transforms/lhlo_fuse_linalg.cc"],
     deps = [
@@ -360,6 +379,7 @@ cc_library(
     srcs = ["type_to_shape.cc"],
     hdrs = ["type_to_shape.h"],
     deps = [
+        ":hlo",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/xla:shape_util",
@@ -407,6 +427,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/stream_executor/lib",
         "@llvm//:support",

@@ -65,6 +65,15 @@ cc_library(
 cc_library(
     name = "random",
     hdrs = ["random.h"],
+    visibility = [
+        "//tensorflow/c/eager:__pkg__",
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/core:__pkg__",
+        "//tensorflow/core/lib/gtl:__pkg__",
+        "//tensorflow/core/lib/io:__pkg__",
+        "//tensorflow/core/lib/strings:__pkg__",
+        "//tensorflow/core/platform:__subpackages__",
+    ],
     deps = [
         "//tensorflow/core/platform:random",
     ],

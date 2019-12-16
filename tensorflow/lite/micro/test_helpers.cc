@@ -385,6 +385,10 @@ TfLiteTensor CreateSymmetricPerChannelQuantizedTensor(
   SignedSymmetricPerChannelQuantize(input, dims, quantized_dimension, quantized,
                                     &scales[1]);
 
+  for (int i = 0; i < channel_count; i++) {
+    zero_points[i + 1] = 0;
+  }
+
   affine_quant->scale = FloatArrayFromFloats(scales);
   affine_quant->zero_point = IntArrayFromInts(zero_points);
   affine_quant->quantized_dimension = quantized_dimension;

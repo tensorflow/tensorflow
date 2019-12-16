@@ -365,9 +365,9 @@ class CollectiveAllReduceStrategyTestBase(
         computed_value = sess.run([values.select_replica(r, next_element)
                                    for r in range(len(devices))])
         if ignore_order:
-          self.assertCountEqual(expected_value, computed_value)
+          self.assertCountEqual(list(expected_value), list(computed_value))
         else:
-          self.assertEqual(expected_value, computed_value)
+          self.assertEqual(list(expected_value), list(computed_value))
 
       with self.assertRaises(errors.OutOfRangeError):
         next_element = iterator.get_next()
@@ -383,9 +383,9 @@ class CollectiveAllReduceStrategyTestBase(
           computed_value = sess.run([values.select_replica(r, next_element)
                                      for r in range(len(devices))])
           if ignore_order:
-            self.assertCountEqual(expected_value, computed_value)
+            self.assertCountEqual(list(expected_value), list(computed_value))
           else:
-            self.assertEqual(expected_value, computed_value)
+            self.assertEqual(list(expected_value), list(computed_value))
 
 
 class DistributedCollectiveAllReduceStrategyTest(

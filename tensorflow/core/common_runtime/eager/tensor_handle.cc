@@ -657,13 +657,12 @@ Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx) {
   if (ctx == nullptr) {
     return nullptr;
   }
-  const auto& map = *ctx->device_map();
-  auto it = map.find(handle.device());
-  if (it == map.end()) {
+  Device* device = nullptr;
+  if (!ctx->FindDeviceFromName(handle.device().c_str(), &device).ok()) {
     LOG(ERROR) << "Cannot find resource device: " << handle.device() << ".";
     return nullptr;
   }
-  return it->second;
+  return device;
 }
 
 string TensorHandle::DebugString() const {

@@ -13,9 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 #
-# Creates the project file distributions for the TensorFlow Lite Micro test and
-# example targets aimed at embedded platforms.
+# This script takes a single argument to differentiate between running it as
+# part of presubmit checks or not.
+#
+# This will generate a subset of targets:
+#   test_mbed.sh PRESUBMIT
+#
+# This will run generate all the targets:
+#   test_mbed.sh
+#
 
 set -e
 
@@ -24,15 +32,27 @@ ROOT_DIR=${SCRIPT_DIR}/../../../../..
 cd ${ROOT_DIR}
 pwd
 
-make -f tensorflow/lite/micro/tools/make/Makefile \
-  clean clean_downloads
+source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
+
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
+
+TARGET=mbed
+
+# We limit the number of projects that we build as part of the presubmit checks
+# to keep the overall time low, but build everything as part of the nightly
+# builds.
+if [[ ${1} == "PRESUBMIT" ]]; then
+  PROJECTS="generate_hello_world_mbed_project generate_micro_speech_mbed_project"
+else
+  PROJECTS=generate_projects
+fi
 
 make -f tensorflow/lite/micro/tools/make/Makefile \
-  TARGET=mbed \
+  TARGET=${TARGET} \
   TAGS="portable_optimized disco_f746ng" \
-  generate_projects
+  ${PROJECTS}
 
-tensorflow/lite/micro/tools/ci_build/install_mbed_cli.sh
+readable_run tensorflow/lite/micro/tools/ci_build/install_mbed_cli.sh
 
 for PROJECT_PATH in tensorflow/lite/micro/tools/make/gen/mbed_*/prj/*/mbed; do
   PROJECT_PARENT_DIR=$(dirname ${PROJECT_PATH})
@@ -45,8 +65,5 @@ for PROJECT_PATH in tensorflow/lite/micro/tools/make/gen/mbed_*/prj/*/mbed; do
   pushd ${PROJECT_PARENT_DIR}
   zip -q -r ${PROJECT_NAME}.zip ${PROJECT_NAME}
   popd
-  tensorflow/lite/micro/tools/ci_build/test_mbed_library.sh ${PROJECT_PATH}
+  readable_run tensorflow/lite/micro/tools/ci_build/test_mbed_library.sh ${PROJECT_PATH}
 done
-
-# Needed to solve CI build bug triggered by files added to source tree.
-make -f tensorflow/lite/micro/tools/make/Makefile clean_downloads

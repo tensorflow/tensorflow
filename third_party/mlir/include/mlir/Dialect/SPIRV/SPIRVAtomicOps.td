@@ -35,7 +35,7 @@ def SPV_AtomicCompareExchangeWeakOp : SPV_Op<"AtomicCompareExchangeWeak", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     scope ::= `"CrossDevice"` | `"Device"` | `"Workgroup"` | ...
 
     memory-semantics ::= `"None"` | `"Acquire"` | "Release"` | ...

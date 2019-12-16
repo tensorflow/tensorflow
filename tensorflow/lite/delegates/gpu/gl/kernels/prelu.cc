@@ -102,7 +102,8 @@ class PReLUFull : public NodeShader {
 
     auto shape = output->tensor.shape;
 
-    ObjectSize obj_size = uint3(shape.h, shape.w, shape.c);
+    ObjectSize obj_size =
+        uint3(shape.w, shape.h, IntegralDivideRoundUp(shape.c, 4));
 
     *generated_code =
         attr.clip

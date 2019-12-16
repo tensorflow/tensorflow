@@ -46,10 +46,10 @@ bool GPUDialect::isKernel(Operation *op) {
 
 GPUDialect::GPUDialect(MLIRContext *context)
     : Dialect(getDialectName(), context) {
-  addOperations<LaunchFuncOp,
+  addOperations<
 #define GET_OP_LIST
 #include "mlir/Dialect/GPU/GPUOps.cpp.inc"
-                >();
+      >();
 }
 
 LogicalResult GPUDialect::verifyOperationAttribute(Operation *op,
@@ -289,8 +289,7 @@ void printLaunchOp(OpAsmPrinter &p, LaunchOp op) {
 
   // Print the launch configuration.
   p << LaunchOp::getOperationName() << ' ' << op.getBlocksKeyword();
-  printSizeAssignment(p, op.getGridSize(),
-                      operands.drop_back(operands.size() - 3),
+  printSizeAssignment(p, op.getGridSize(), operands.take_front(3),
                       op.getBlockIds());
   p << ' ' << op.getThreadsKeyword();
   printSizeAssignment(p, op.getBlockSize(), operands.slice(3, 3),
@@ -303,25 +302,17 @@ void printLaunchOp(OpAsmPrinter &p, LaunchOp op) {
   // Print the data argument remapping.
   if (!op.body().empty() && !operands.empty()) {
     p << ' ' << op.getArgsKeyword() << '(';
-    for (unsigned i = 0, e = operands.size(); i < e; ++i) {
-      if (i != 0)
-        p << ", ";
-      p << *op.body().front().getArgument(LaunchOp::kNumConfigRegionAttributes +
-                                          i)
+    Block *entryBlock = &op.body().front();
+    interleaveComma(llvm::seq<int>(0, operands.size()), p, [&](int i) {
+      p << *entryBlock->getArgument(LaunchOp::kNumConfigRegionAttributes + i)
         << " = " << *operands[i];
-    }
+    });
     p << ") ";
   }
 
   // Print the types of data arguments.
-  if (!operands.empty()) {
-    p << ": ";
-    for (unsigned i = 0, e = operands.size(); i < e; ++i) {
-      if (i != 0)
-        p << ", ";
-      p << operands[i]->getType();
-    }
-  }
+  if (!operands.empty())
+    p << ": " << operands.getTypes();
 
   p.printRegion(op.body(), /*printEntryBlockArgs=*/false);
   p.printOptionalAttrDict(op.getAttrs());
@@ -545,26 +536,26 @@ KernelDim3 LaunchFuncOp::getBlockSizeOperandValues() {
   return KernelDim3{getOperand(3), getOperand(4), getOperand(5)};
 }
 
-LogicalResult LaunchFuncOp::verify() {
-  auto module = getParentOfType<ModuleOp>();
+LogicalResult verify(LaunchFuncOp op) {
+  auto module = op.getParentOfType<ModuleOp>();
   if (!module)
-    return emitOpError("expected to belong to a module");
+    return op.emitOpError("expected to belong to a module");
 
   if (!module.getAttrOfType<UnitAttr>(GPUDialect::getContainerModuleAttrName()))
-    return emitOpError("expected the closest surrounding module to have the '" +
-                       GPUDialect::getContainerModuleAttrName() +
-                       "' attribute");
+    return op.emitOpError(
+        "expected the closest surrounding module to have the '" +
+        GPUDialect::getContainerModuleAttrName() + "' attribute");
 
-  auto kernelAttr = getAttrOfType<StringAttr>(getKernelAttrName());
+  auto kernelAttr = op.getAttrOfType<StringAttr>(op.getKernelAttrName());
   if (!kernelAttr)
-    return emitOpError("string attribute '" + getKernelAttrName() +
-                       "' must be specified");
+    return op.emitOpError("string attribute '" + op.getKernelAttrName() +
+                          "' must be specified");
 
   auto kernelModuleAttr =
-      getAttrOfType<SymbolRefAttr>(getKernelModuleAttrName());
+      op.getAttrOfType<SymbolRefAttr>(op.getKernelModuleAttrName());
   if (!kernelModuleAttr)
-    return emitOpError("symbol reference attribute '" +
-                       getKernelModuleAttrName() + "' must be specified");
+    return op.emitOpError("symbol reference attribute '" +
+                          op.getKernelModuleAttrName() + "' must be specified");
 
   return success();
 }
@@ -701,7 +692,7 @@ static void printAttributions(OpAsmPrinter &p, StringRef keyword,
     return;
 
   p << ' ' << keyword << '(';
-  interleaveComma(values, p.getStream(),
+  interleaveComma(values, p,
                   [&p](BlockArgument *v) { p << *v << " : " << v->getType(); });
   p << ')';
 }

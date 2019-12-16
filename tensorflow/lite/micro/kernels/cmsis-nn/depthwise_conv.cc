@@ -153,6 +153,8 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   // TODO(b/130439627): Use calculated value for clamping.
   op_params.quantized_activation_min = std::numeric_limits<int8_t>::min();
   op_params.quantized_activation_max = std::numeric_limits<int8_t>::max();
+
+#if defined(ARM_MATH_DSP) && defined(ARM_MATH_LOOPUNROLL)
   RuntimeShape filter_shape = GetTensorShape(filter);
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
@@ -165,7 +167,6 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   const int output_width = output_shape.Dims(2);
   RuntimeShape bias_shape = GetTensorShape(bias);
 
-#if defined(ARM_MATH_DSP) && defined(ARM_MATH_LOOPUNROLL)
   if (op_params.depth_multiplier == 1) {
     int16_t* buf = nullptr;
     const int32_t buf_size = arm_depthwise_conv_s8_opt_get_buffer_size(
@@ -216,6 +217,7 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
       GetTensorData<int8>(filter), GetTensorShape(bias),
       GetTensorData<int32>(bias), GetTensorShape(output),
       GetTensorData<int8>(output));
+
 #endif
   return kTfLiteOk;
 }
@@ -276,6 +278,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         op_params.output_multiplier);
   } else
 #endif
+
   {
     tflite::reference_ops::DepthwiseConv(
         op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
@@ -304,7 +307,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   OpData data;
 
-  if (input->type != kTfLiteFloat32) {
+  // All per-channel quantized tensors need valid zero point and scale arrays.
+  if (input->type == kTfLiteInt8) {
     TF_LITE_ENSURE_EQ(context, filter->quantization.type,
                       kTfLiteAffineQuantization);
 
@@ -313,6 +317,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             filter->quantization.params);
     TF_LITE_ENSURE(context, affine_quantization);
     TF_LITE_ENSURE(context, affine_quantization->scale);
+    TF_LITE_ENSURE(context, affine_quantization->zero_point);
+    // Depthwise conv is quantized along dimension 3:
+    // https://www.tensorflow.org/lite/performance/quantization_spec
+    TF_LITE_ENSURE_EQ(context, filter->dims->data[3],
+                      affine_quantization->scale->size);
+    TF_LITE_ENSURE_EQ(context, filter->dims->data[3],
+                      affine_quantization->zero_point->size);
   }
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(context, node, params, width, height,

@@ -530,9 +530,9 @@ class ResourceApplyAdam : public XlaOpKernel {
     // alpha <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
     // m_t <- beta1 * m_{t-1} + (1 - beta1) * g_t
     // v_t <- beta2 * v_{t-1} + (1 - beta2) * g_t * g_t
-    // if use_nesterov:
-    //   variable <- variable - alpha * m_t / (sqrt(v_t) + epsilon)
     // if not use_nesterov:
+    //   variable <- variable - alpha * m_t / (sqrt(v_t) + epsilon)
+    // if use_nesterov:
     //   variable <- variable - alpha * (m_t * beta1 + (1 - beta1) * g_t) /
     //   (sqrt(v_t) + epsilon)
 

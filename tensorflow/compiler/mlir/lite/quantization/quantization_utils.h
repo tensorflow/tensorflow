@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
@@ -144,12 +145,16 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
 //
 // Full integer quantization disallows "hybrid" operands or results.
 // Weight quantization allows "hybrid" operands and results.
-template <typename ConcretTy, typename Q, typename DQ>
+template <typename ConcretTy, typename Q, typename DQ, typename VERIFIER>
 struct QuantizationPattern : public RewritePattern {
-  using BaseType = QuantizationPattern<ConcretTy, Q, DQ>;
+  using BaseType = QuantizationPattern<ConcretTy, Q, DQ, VERIFIER>;
 
-  explicit QuantizationPattern(MLIRContext* context)
-      : RewritePattern(DQ::getOperationName(), 1, context) {}
+  explicit QuantizationPattern(MLIRContext* context, bool enable_verify,
+                               float error_tolerance, bool single_layer_verify)
+      : RewritePattern(DQ::getOperationName(), 1, context),
+        enable_verify(enable_verify),
+        error_tolerance(error_tolerance),
+        single_layer_verify(single_layer_verify) {}
 
   PatternMatchResult matchAndRewrite(Operation* op,
                                      PatternRewriter& rewriter) const override {
@@ -230,7 +235,7 @@ struct QuantizationPattern : public RewritePattern {
         }
       }
 
-      rewriter.setInsertionPoint(quantized_op);
+      rewriter.setInsertionPointAfter(quantized_op);
       OperationState new_state(quantized_op->getLoc(),
                                quantized_op->getName().getStringRef(), inputs,
                                output_types, quantized_op->getAttrs());
@@ -239,9 +244,64 @@ struct QuantizationPattern : public RewritePattern {
         output.getFirst()->replaceAllUsesWith(
             new_op->getResult(output.getSecond()));
       }
+
+      // To verify the numericals, the original floating-point ops are
+      // preserved in the graph. The result of these floating-point ops are sent
+      // to a numeric verifier op as the reference.
+      if (enable_verify) {
+        // For constant operands, the floating-point constant is duplicated in
+        // case it is quantized.
+        for (int i = 0, e = new_op->getNumOperands(); i != e; ++i) {
+          auto def = new_op->getOperand(i)->getDefiningOp();
+          if (auto q = llvm::dyn_cast_or_null<Q>(def)) {
+            DenseFPElementsAttr attr;
+            if (!matchPattern(q.input(), m_Constant(&attr))) {
+              continue;
+            }
+            auto cst = rewriter.create<ConstantOp>(new_op->getLoc(), attr);
+            quantized_op->setOperand(i, cst.getResult());
+          }
+        }
+
+        for (int i = 0, e = new_op->getNumResults(); i != e; ++i) {
+          if (!quantized_op->getResult(i)
+                   ->getType()
+                   .cast<ShapedType>()
+                   .getElementType()
+                   .isa<FloatType>()) {
+            continue;
+          }
+          rewriter.setInsertionPointAfter(new_op);
+          FloatAttr tolerance = rewriter.getF32FloatAttr(error_tolerance);
+          // Verify the quantized value by sending the result to the verifier.
+          rewriter.create<VERIFIER>(quantized_op->getLoc(),
+                                    new_op->getResult(i),
+                                    quantized_op->getResult(i), tolerance);
+
+          if (single_layer_verify) continue;
+
+          // Find the Dequantize/Dequantize users of the new op results, and
+          // replace the usage. Then all the floating-point ops are connected.
+          // N.B. the return op will use this floating-point result.
+          for (auto user : new_op->getResult(i)->getUsers()) {
+            // Skip the Requantize op, and we know it has a single user.
+            if (llvm::isa<Q>(user)) {
+              user = *user->getResult(0)->getUsers().begin();
+            }
+            if (auto dequantize = llvm::dyn_cast<DQ>(user)) {
+              dequantize.getResult()->replaceAllUsesWith(
+                  quantized_op->getResult(i));
+            }
+          }
+        }
+      }
     }
     return matchSuccess();
   }
+
+  bool enable_verify;
+  float error_tolerance;
+  bool single_layer_verify;
 };
 
 // Converts quantize ops with unsigned quantized types to these with signed

@@ -32,6 +32,7 @@ DEFINE_SYM_KIND_RANGE(FIR) // Flang Fortran IR Dialect
 DEFINE_SYM_KIND_RANGE(OPENMP) // OpenMP IR Dialect
 DEFINE_SYM_KIND_RANGE(TOY) // Toy language (tutorial) Dialect
 DEFINE_SYM_KIND_RANGE(SPIRV) // SPIR-V dialect
+DEFINE_SYM_KIND_RANGE(XLA_HLO) // XLA HLO dialect
 
 // The following ranges are reserved for experimenting with MLIR dialects in a
 // private context without having to register them here.

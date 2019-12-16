@@ -18,7 +18,7 @@ test_suite(
 py_test(
     name = "mnist",
     srcs = ["mnist.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     tags = [
         "manual",
         "no_oss",

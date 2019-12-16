@@ -1001,6 +1001,11 @@ class HloInstruction {
   // Returns the users of this instruction.
   const std::vector<HloInstruction*>& users() const { return users_; }
 
+  // Returns the index of the user in the users() vector.
+  //
+  // Precondition: `user` is a user of the instruction.
+  int64 UserId(HloInstruction* user);
+
   // Returns true if this instruction is a user of 'instruction'.
   bool IsUserOf(const HloInstruction* instruction) const {
     return ContainsKey(instruction->user_map_, this);

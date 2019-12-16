@@ -91,9 +91,11 @@ typedef struct {
 // in bytes.
 int TfLiteIntArrayGetSizeInBytes(int size);
 
+#ifndef TF_LITE_STATIC_MEMORY
 // Create a array of a given `size` (uninitialized entries).
 // This returns a pointer, that you must free using TfLiteIntArrayFree().
 TfLiteIntArray* TfLiteIntArrayCreate(int size);
+#endif
 
 // Check if two intarrays are equal. Returns 1 if they are equal, 0 otherwise.
 int TfLiteIntArrayEqual(const TfLiteIntArray* a, const TfLiteIntArray* b);
@@ -102,12 +104,14 @@ int TfLiteIntArrayEqual(const TfLiteIntArray* a, const TfLiteIntArray* b);
 int TfLiteIntArrayEqualsArray(const TfLiteIntArray* a, int b_size,
                               const int b_data[]);
 
+#ifndef TF_LITE_STATIC_MEMORY
 // Create a copy of an array passed as `src`.
 // You are expected to free memory with TfLiteIntArrayFree
 TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src);
 
 // Free memory of array `a`.
 void TfLiteIntArrayFree(TfLiteIntArray* a);
+#endif  // TF_LITE_STATIC_MEMORY
 
 // Fixed size list of floats. Used for per-channel quantization.
 typedef struct {
@@ -126,12 +130,14 @@ typedef struct {
 // in bytes.
 int TfLiteFloatArrayGetSizeInBytes(int size);
 
+#ifndef TF_LITE_STATIC_MEMORY
 // Create a array of a given `size` (uninitialized entries).
 // This returns a pointer, that you must free using TfLiteFloatArrayFree().
 TfLiteFloatArray* TfLiteFloatArrayCreate(int size);
 
 // Free memory of array `a`.
 void TfLiteFloatArrayFree(TfLiteFloatArray* a);
+#endif  // TF_LITE_STATIC_MEMORY
 
 // Since we must not depend on any libraries, define a minimal subset of
 // error macros while avoiding names that have pre-conceived meanings like
@@ -387,6 +393,7 @@ typedef struct {
   TfLiteSparsity* sparsity;
 } TfLiteTensor;
 
+#ifndef TF_LITE_STATIC_MEMORY
 // Free data memory of tensor `t`.
 void TfLiteTensorDataFree(TfLiteTensor* t);
 
@@ -409,6 +416,7 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
 // Resize the allocated data of a (dynamic) tensor. Tensors with allocation
 // types other than kTfLiteDynamic will be ignored.
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
+#endif  // TF_LITE_STATIC_MEMORY
 
 // A structure representing an instance of a node.
 // This structure only exhibits the inputs, outputs and user defined data, not

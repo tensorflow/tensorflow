@@ -86,17 +86,36 @@ namespace {
 // This transformation pass prunes a TF graph eliminating dead-nodes.
 struct GraphPruning : public FunctionPass<GraphPruning> {
   void runOnFunction() override {
-    getFunction().walk([](tf_executor::GraphOp graph) { PruneGraph(graph); });
+    FuncOp func = getFunction();
+    if (func.getName() == "main" && skip_main_func) return;
+    func.walk([](tf_executor::GraphOp graph) { PruneGraph(graph); });
   }
+
+  struct Options : public PassOptions<Options> {
+    Option<bool> skip_main_func{
+        *this, "skip-main-func",
+        llvm::cl::desc("skip graph pruning for main function"),
+        llvm::cl::init(false)};
+  };
+
+  explicit GraphPruning(bool skip_main_func)
+      : FunctionPass<GraphPruning>(), skip_main_func(skip_main_func) {}
+
+  explicit GraphPruning(const Options& option)
+      : GraphPruning(option.skip_main_func) {}
+
+ private:
+  bool skip_main_func;
 };
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorGraphPruningPass() {
-  return std::make_unique<GraphPruning>();
+std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorGraphPruningPass(
+    bool skip_main_func) {
+  return std::make_unique<GraphPruning>(skip_main_func);
 }
 
-static PassRegistration<GraphPruning> pass(
+static PassRegistration<GraphPruning, GraphPruning::Options> pass(
     "tf-executor-graph-pruning",
     "Prune unreachable nodes in a TensorFlow Graph.");
 

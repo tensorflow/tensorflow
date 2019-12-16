@@ -90,7 +90,14 @@ class OpKernel {
   // stripped-down `NodeDef` that does not contain the full set of attrs (such
   // as tensor values) if the descendant stores them in a different form.
   explicit OpKernel(OpKernelConstruction* context,
-                    std::unique_ptr<const NodeDef> node_def);
+                    std::unique_ptr<const NodeDef> node_def,
+                    bool is_deferred = false);
+
+  // Specialized constructor that allows a kernel implementation to mark itself
+  // as a "deferred" op. If true, the executor will provide access to the
+  // `OpKernelContext::inc_num_deferred_ops_function()` and
+  // `OpKernelContext::dec_num_deferred_ops_function()` methods at run-time.
+  explicit OpKernel(OpKernelConstruction* context, bool is_deferred);
 
   virtual ~OpKernel();
 
@@ -210,6 +217,9 @@ class OpKernel {
 
   static int DeviceNumaNode(const DeviceBase* device);
 
+  // Returns `true` if and only if this kernel uses deferred execution.
+  bool is_deferred() const { return is_deferred_; }
+
  private:
   const std::unique_ptr<const NodeDef> def_;
   const DataTypeVector input_types_;
@@ -219,6 +229,7 @@ class OpKernel {
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
   const int graph_def_version_;
+  const bool is_deferred_;
   bool expensive_;
   std::atomic_uint_fast64_t cost_estimate_;
 
@@ -1270,11 +1281,13 @@ class OpKernelContext {
   // functions. It then must call these two functions in pairs, before and after
   // device execution, respectively.
   TF_MUST_USE_RESULT std::function<void()> inc_num_deferred_ops_function() {
+    DCHECK(params_->op_kernel->is_deferred());
     return params_->inc_num_deferred_ops_function
                ? params_->inc_num_deferred_ops_function
                : []() {};
   }
   TF_MUST_USE_RESULT std::function<void()> dec_num_deferred_ops_function() {
+    DCHECK(params_->op_kernel->is_deferred());
     return params_->dec_num_deferred_ops_function
                ? params_->dec_num_deferred_ops_function
                : []() {};

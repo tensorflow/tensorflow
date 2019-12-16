@@ -15,5 +15,6 @@ filegroup(
     data = [
         "//tensorflow/compiler/mlir:tf-mlir-translate",
         "@llvm//:FileCheck",
+        "@llvm//:not",
     ],
 )

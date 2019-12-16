@@ -43,6 +43,15 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %add.5 = f32[4] add(f32[4] %add.3, f32[] %add.4)
 }
 
+// CHECK-LABEL:  func @test_after_all
+// CHECK-SAME:    ([[VAL_0:%.*]]: !xla_hlo.token, [[VAL_1:%.*]]: !xla_hlo.token) -> !xla_hlo.token
+%test_after_all (token0: token[], token1: token[] ) -> token[] {
+  token0 = token[] parameter(0)
+  token1 = token[] parameter(1)
+  // CHECK-NEXT:  "xla_hlo.after_all"([[VAL_0]], [[VAL_1]]) {name = "{{.*}}"} : (!xla_hlo.token, !xla_hlo.token) -> !xla_hlo.token
+  ROOT after-all = token[] after-all(token0, token1)
+}
+
 // CHECK-LABEL:  func @test_and
 %test_and (Arg_0.1: pred[4], Arg_1.2: pred[4]) -> pred[4] {
   %Arg_0.1 = pred[4] parameter(0)

@@ -28,10 +28,8 @@ namespace tensorflow {
 namespace profiler {
 
 // Special op types.
-constexpr absl::string_view kUnknownOp = "";  // op types are non-empty strings
-constexpr absl::string_view kDatasetOp = "Dataset";
-constexpr absl::string_view kIterator = "Iterator";
-constexpr absl::string_view kSeparator = "::";
+ABSL_CONST_INIT extern const absl::string_view kUnknownOp;
+ABSL_CONST_INIT extern const absl::string_view kDatasetOp;
 
 // Breaks a TensorFlow op fullname into name and type.
 struct TfOp {
@@ -54,6 +52,7 @@ inline bool IsUnknownOp(absl::string_view tf_op_type) {
 inline bool IsDatasetOp(absl::string_view tf_op_type) {
   return tf_op_type == kDatasetOp;
 }
+
 }  // namespace profiler
 }  // namespace tensorflow
 
