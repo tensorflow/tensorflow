@@ -70,6 +70,9 @@ Status TRTOptimizationPass::Init(
   if (params.count("trt_logger")) {
     trt_logger_name_ = params.at("trt_logger").s();
   }
+  if (params.count("use_implicit_batch")) {
+    use_implicit_batch = params.at("use_implicit_batch").b();
+  }
   return Status::OK();
 }
 
@@ -261,6 +264,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   cp.is_dyn_op = is_dynamic_op_;
   cp.max_cached_engines = max_cached_batches_;
   cp.use_calibration = use_calibration_;
+  cp.use_implicit_batch = use_implicit_batch;
   auto status = ConvertAfterShapes(cp);
   VLOG(1) << "Returning from " << name_;
   return status;
