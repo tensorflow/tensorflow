@@ -15,6 +15,7 @@ tensorflow/lite/micro/examples/mnist_digits/constants.h
 
 MNIST_DIGITS_SRCS := \
 tensorflow/lite/micro/examples/mnist_digits/main.cc \
+tensorflow/lite/micro/examples/mnist_digits/main_functions.cc \
 tensorflow/lite/micro/examples/mnist_digits/mnist_model_data.cc \
 tensorflow/lite/micro/examples/mnist_digits/output_handler.cc \
 tensorflow/lite/micro/examples/mnist_digits/constants.cc
@@ -22,7 +23,8 @@ tensorflow/lite/micro/examples/mnist_digits/constants.cc
 MNIST_DIGITS_HDRS := \
 tensorflow/lite/micro/examples/mnist_digits/mnist_model_data.h \
 tensorflow/lite/micro/examples/mnist_digits/output_handler.h \
-tensorflow/lite/micro/examples/mnist_digits/constants.h
+tensorflow/lite/micro/examples/mnist_digits/constants.h \
+tensorflow/lite/micro/examples/mnist_digits/main_functions.h
 
 #Find any platform-specific rules for this example.
 include $(wildcard tensorflow/lite/micro/examples/mnist_digits/*/Makefile.inc)

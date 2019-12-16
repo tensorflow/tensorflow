@@ -6,7 +6,7 @@ package(default_visibility = ["//visibility:public"])
 licenses(["notice"])  # Apache 2.0
 
 load(
-    "//tensorflow/lite/experimental/micro/testing:micro_test.bzl",
+    "//tensorflow/lite/micro/testing:micro_test.bzl",
     "tflite_micro_cc_test",
 )
 
@@ -27,11 +27,11 @@ tflite_micro_cc_test(
     ],
     deps = [
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/experimental/micro:micro_framework",
-        "//tensorflow/lite/experimental/micro/examples/mnist_digits:mnist_model_data",
-        "//tensorflow/lite/experimental/micro/kernels:all_ops_resolver",
-        "//tensorflow/lite/experimental/micro/kernels:micro_ops",
-        "//tensorflow/lite/experimental/micro/testing:micro_test",
+        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro/examples/mnist_digits:mnist_model_data",
+        "//tensorflow/lite/micro/kernels:all_ops_resolver",
+        "//tensorflow/lite/micro/kernels:micro_ops",
+        "//tensorflow/lite/micro/testing:micro_test",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -45,8 +45,8 @@ cc_library(
         "output_handler.h",
     ],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_framework",
     ],
 )
 
@@ -64,6 +64,8 @@ cc_binary(
     name = "mnist_digits",
     srcs = [
         "main.cc",
+        "main_functions.cc",
+        "main_functions.h",
     ],
     copts = [
         "-Werror",
@@ -74,9 +76,9 @@ cc_binary(
         ":constants",
         ":output_handler",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/experimental/micro:micro_framework",
-        "//tensorflow/lite/experimental/micro/examples/mnist_digits:mnist_model_data",
-        "//tensorflow/lite/experimental/micro/kernels:all_ops_resolver",
+        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro/examples/mnist_digits:mnist_model_data",
+        "//tensorflow/lite/micro/kernels:all_ops_resolver",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
