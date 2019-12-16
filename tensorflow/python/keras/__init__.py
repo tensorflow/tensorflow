@@ -34,9 +34,9 @@ from tensorflow.python.keras.models import Sequential
 from tensorflow.python.util.tf_export import keras_export
 
 if tf2.enabled():
-    __version__ = '2.3.0-tf'
+  __version__ = '2.3.0-tf'
 else:
-    __version__ = '2.2.4-tf'
+  __version__ = '2.2.4-tf'
 
 keras_export('keras.__version__').export_constant(__name__, '__version__')
 
