@@ -109,16 +109,36 @@ void GetRectangularness(int rows, int cols, int kernel_rows, int kernel_cols,
                         int* cols_rectangularness_log2) {
   *rows_rectangularness_log2 = 0;
   *cols_rectangularness_log2 = 0;
+
+  // In GEMV-ish cases, that is when kernel blocks are as narrow as the kernel
+  // itself, we risk having too small kernel blocks for good kernel
+  // amortization. We avoid that by limiting recangularness so that kernel
+  // blocks are not too tiny at least in that dimension. Specifically, we try to
+  // have at least (2^min_kernel_inner_loop_runs_log2) kernels fitting in each
+  // kernel block along the large dimension.
+  const int min_kernel_inner_loop_runs_log2 = 3;
   if (rows > cols) {
+    int cols_of_kernel_inner_loop_runs_log2 =
+        ceil_log2(cols) - pot_log2(kernel_cols);
+    int min_rows_of_kernel_inner_loop_runs_log2 =
+        std::max(0, min_kernel_inner_loop_runs_log2 -
+                        cols_of_kernel_inner_loop_runs_log2);
     *rows_rectangularness_log2 =
         std::min(floor_log2_quotient(rows, cols),
-                 floor_log2(rows) - pot_log2(kernel_rows));
+                 std::max(0, floor_log2(rows) - pot_log2(kernel_rows) -
+                                 min_rows_of_kernel_inner_loop_runs_log2));
     // Sanity check that we did not over-estimate rows_rectangularness_log2.
     RUY_DCHECK_GE(rows >> *rows_rectangularness_log2, cols);
   } else if (cols > rows) {
+    int rows_of_kernel_inner_loop_runs_log2 =
+        ceil_log2(rows) - pot_log2(kernel_rows);
+    int min_cols_of_kernel_inner_loop_runs_log2 =
+        std::max(0, min_kernel_inner_loop_runs_log2 -
+                        rows_of_kernel_inner_loop_runs_log2);
     *cols_rectangularness_log2 =
         std::min(floor_log2_quotient(cols, rows),
-                 floor_log2(cols) - pot_log2(kernel_cols));
+                 std::max(0, floor_log2(cols) - pot_log2(kernel_cols) -
+                                 min_cols_of_kernel_inner_loop_runs_log2));
     // Sanity check that we did not over-estimate cols_rectangularness_log2.
     RUY_DCHECK_GE(cols >> *cols_rectangularness_log2, rows);
   }
