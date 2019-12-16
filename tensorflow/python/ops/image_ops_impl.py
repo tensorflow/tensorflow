@@ -797,7 +797,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
   ```python
     
     >>> x = tf.random.uniform((28, 28, 1))
-    tf.image.pad_to_bounding_box(x,28,28,100,100)
+    >>> tf.image.pad_to_bounding_box(x, 28, 28, 100, 100)
     
   """
   with ops.name_scope(None, 'pad_to_bounding_box', [image]):
