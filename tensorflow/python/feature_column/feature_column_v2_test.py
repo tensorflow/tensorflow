@@ -3886,6 +3886,10 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         'python/feature_column/testdata/wire_vocabulary.txt')
     self._wire_vocabulary_size = 3
 
+    # Contains unicode characters.
+    self._unicode_vocabulary_file_name = test.test_src_dir_path(
+        'python/feature_column/testdata/unicode_vocabulary')
+
   @test_util.run_deprecated_v1
   def test_defaults(self):
     column = fc.categorical_column_with_vocabulary_file(
@@ -3896,6 +3900,17 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.string)
     }, column.parse_example_spec)
+    self.assertTrue(column._is_v2_column)
+
+  @test_util.run_deprecated_v1
+  def test_defaults_unicode(self):
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa', vocabulary_file=self._unicode_vocabulary_file_name)
+    self.assertEqual('aaa', column.name)
+    self.assertEqual('aaa', column.key)
+    self.assertEqual(165, column.num_buckets)
+    self.assertEqual({'aaa': parsing_ops.VarLenFeature(dtypes.string)},
+                     column.parse_example_spec)
     self.assertTrue(column._is_v2_column)
 
   def test_key_should_be_string(self):
