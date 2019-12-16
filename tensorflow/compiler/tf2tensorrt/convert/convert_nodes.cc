@@ -286,7 +286,7 @@ Status ValidateTensorProperties(const string& producer_node_type,
   }
   *trt_dims = TensorShapeToTrtDims(shape,
                                    /*ignore_first_dim=*/use_implicit_batch);
-  // Get batch size for tensor if it will not be included the the shape.
+  // Get batch size for tensor if it will not be included the shape.
   if (use_implicit_batch) {
     *batch_size = shape.dim_size(0);
   }

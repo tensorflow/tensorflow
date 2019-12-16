@@ -213,7 +213,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                            run_params,
                            conversion_params,
                            disable_non_trt_optimizers=False):
-    trt_convert.get_tensorrt_rewriter_config(
+    return trt_convert.get_tensorrt_rewriter_config(
         conversion_params=conversion_params,
         is_v2=run_params.is_v2,
         disable_non_trt_optimizers=disable_non_trt_optimizers)

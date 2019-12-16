@@ -694,6 +694,8 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
   // single element containing the only engine.
   if (static_engine_) {
     if (cache.size()) {
+      // TODO(laigd): need a better shape compatibility check for the case where
+      // implicit batch is disabled.
       if (!use_implicit_batch_ ||
           AreShapesCompatible(input_shapes, cache.begin()->first)) {
         return cache.begin()->second.get();

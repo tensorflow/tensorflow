@@ -341,7 +341,7 @@ class TRT_TensorOrWeights {
   // size represented in the shapes or the batch sizes are different. See
   // b/118387490 for more details.
   //
-  // if use_implicit_batch is false, batch_size_ is unused and
+  // If use_implicit_batch is false, batch_size_ is unused and
   // tensor_->getDimensions() will contain the entire shape (A,B,C).
   int batch_size_ = -1;
 
