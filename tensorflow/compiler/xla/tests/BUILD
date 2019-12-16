@@ -601,7 +601,6 @@ xla_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
-    tags = ["no_rocm"],
 )
 
 xla_test(
