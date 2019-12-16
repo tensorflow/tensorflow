@@ -29,6 +29,20 @@ to
 [announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
 See all the [mailing lists](https://www.tensorflow.org/community/forums).
 
+## Feature Prioritization Survey
+
+The TensorFlow team is working on building/improving features, and understands
+that it is very important to prioritize these efforts based on what TF users
+need.
+
+The goal of this short, < 5 minute
+[survey](https://google.qualtrics.com/jfe/form/SV_d5nqhCEbkDkQ7ad), is to help
+the TensorFlow team better understand what features to prioritize based on your
+feedback. Participation is of course optional.
+
+Take the survey
+[HERE](https://google.qualtrics.com/jfe/form/SV_d5nqhCEbkDkQ7ad).
+
 ## Install
 
 See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
@@ -75,6 +89,7 @@ $ python
 
 For more examples, see the
 [TensorFlow tutorials](https://www.tensorflow.org/tutorials/).
+
 
 ## Contribution guidelines
 
@@ -151,16 +166,3 @@ Learn more about the
 
 [Apache License 2.0](LICENSE)
 
-## Feature Prioritization Survey
-
-The TensorFlow team is working on building/improving features, and understands
-that it is very important to prioritize these efforts based on what TF users
-need.
-
-The goal of this short, < 5min
-[survey](https://google.qualtrics.com/jfe/form/SV_d5nqhCEbkDkQ7ad), is to help
-the TensorFlow team better understand what features to prioritize based on your
-feedback. Participation is of course optional.
-
-Take the survey
-[HERE](https://google.qualtrics.com/jfe/form/SV_d5nqhCEbkDkQ7ad).
