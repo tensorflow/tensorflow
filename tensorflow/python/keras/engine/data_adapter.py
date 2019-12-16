@@ -266,7 +266,7 @@ class TensorLikeDataAdapter(DataAdapter):
       msg = "Data cardinality is ambiguous:\n"
       for label, data in zip(["x", "y", "sample_weight"], inputs):
         msg += "  {} sizes: {}\n".format(
-            label, ", ".join([str(i.shape[0]) for i in nest.flatten(data)]))
+            label, ", ".join(str(i.shape[0]) for i in nest.flatten(data)))
       msg += "Please provide data which shares the same first dimension."
       raise ValueError(msg)
     num_samples = num_samples.pop()

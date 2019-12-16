@@ -311,10 +311,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       # If the captured tensor is an eager tensor, we cannot trace its inputs.
       if isinstance(tensor, ops._EagerTensorBase):  # pylint: disable=protected-access
         return False
-      return any([is_tensor_or_parent_ref(x) for x in tensor.op.inputs])
+      return any(is_tensor_or_parent_ref(x) for x in tensor.op.inputs)
 
     for fn in self._functions():
-      if any([is_tensor_or_parent_ref(t) for t in fn.function.captured_inputs]):
+      if any(is_tensor_or_parent_ref(t) for t in fn.function.captured_inputs):
         return True
 
     return any(

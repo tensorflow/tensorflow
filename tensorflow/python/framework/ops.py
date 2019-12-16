@@ -3283,7 +3283,7 @@ class Graph(object):
 
     node_def = _NodeDef(op_type, name, attrs)
 
-    input_ops = set([t.op for t in inputs])
+    input_ops = set(t.op for t in inputs)
     control_inputs = self._control_dependencies_for_inputs(input_ops)
     # _create_op_helper mutates the new Operation. `_mutation_lock` ensures a
     # Session.run call cannot occur between creating and mutating the op.
@@ -4442,7 +4442,7 @@ class Graph(object):
         # Don't add a control input if we already have a data dependency on i.
         # NOTE(mrry): We do not currently track transitive data dependencies,
         #   so we may add redundant control inputs.
-        ret.extend([c for c in controller.control_inputs if c not in input_ops])
+        ret.extend(c for c in controller.control_inputs if c not in input_ops)
     return ret
 
   def _record_op_seen_by_control_dependencies(self, op):

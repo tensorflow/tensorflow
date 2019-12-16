@@ -321,8 +321,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def report_unsupported_operations(self):
     if self._unsupported_ops:
-      op_str = "\n".join(["  %s (%s)" % (op.type, op.name)
-                          for op in self._unsupported_ops[:_MAX_WARNING_LINES]])
+      op_str = "\n".join("  %s (%s)" % (op.type, op.name)
+                         for op in self._unsupported_ops[:_MAX_WARNING_LINES])
       logging.warning("%d unsupported operations found: \n%s",
                       len(self._unsupported_ops), op_str)
       if len(self._unsupported_ops) > _MAX_WARNING_LINES:
@@ -1200,7 +1200,7 @@ def split_compile_and_replicate(computation,
 
   if host_compute_core:
     attr_value = attr_value_pb2.AttrValue()
-    attr_value.list.s.extend([compat.as_bytes(x) for x in host_compute_core])
+    attr_value.list.s.extend(compat.as_bytes(x) for x in host_compute_core)
     metadata._set_attr("host_compute_core", attr_value)  # pylint: disable=protected-access
 
   with ops.control_dependencies([metadata]):

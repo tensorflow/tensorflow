@@ -554,7 +554,7 @@ class ExponentialMovingAverage(object):
     for v in moving_avg_variables:
       name_map[self.average_name(v)] = v
     # Make sure we restore variables without moving averages as well.
-    moving_avg_variable_names = set([v.name for v in moving_avg_variables])
+    moving_avg_variable_names = set(v.name for v in moving_avg_variables)
     for v in list(set(variables.global_variables())):
       if v.name not in moving_avg_variable_names and v.op.name not in name_map:
         name_map[v.op.name] = v

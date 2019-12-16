@@ -1319,7 +1319,7 @@ class Model(network.Network, version_utils.VersionSelector):
     """
     if not self._is_compiled:
       return
-    if sample_weights and any([s is not None for s in sample_weights]):
+    if sample_weights and any(s is not None for s in sample_weights):
       for endpoint in self._training_endpoints:
         endpoint.sample_weight_mode = (
             endpoint.sample_weight_mode or 'samplewise')
@@ -1330,8 +1330,8 @@ class Model(network.Network, version_utils.VersionSelector):
   def _recompile_weights_loss_and_weighted_metrics(self):
     if not self._is_compiled:
       return False
-    recompile = any([e.sample_weights_mismatch()
-                     for e in self._training_endpoints])
+    recompile = any(
+        e.sample_weights_mismatch() for e in self._training_endpoints)
 
     if recompile:
       self._compile_weights_loss_and_weighted_metrics()

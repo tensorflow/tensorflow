@@ -586,7 +586,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
             trt_op_names.append(node.name)
     # Remove the function name prefix.
     def _Canonicalize(names):
-      return set([self._ToString(name.split("/")[-1]) for name in names])
+      return set(self._ToString(name.split("/")[-1]) for name in names)
 
     all_op_names = _Canonicalize(all_op_names)
     trt_op_names = _Canonicalize(trt_op_names)

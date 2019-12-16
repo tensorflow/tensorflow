@@ -52,7 +52,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10)
     graph = graph_pb2.GraphDef().FromString(
         self.evaluate(dataset._as_serialized_graph()))
-    self.assertTrue(any([node.op == "RangeDataset" for node in graph.node]))
+    self.assertTrue(any(node.op == "RangeDataset" for node in graph.node))
 
   def testAsSerializedGraphStateful(self):
     dataset = dataset_ops.Dataset.range(10).map(

@@ -1324,9 +1324,9 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
     @property
     def spec(self):
       """Computes the spec string used for saving."""
-      full_shape_str = " ".join(["%d" % d for d in self.full_shape]) + " "
+      full_shape_str = " ".join("%d" % d for d in self.full_shape) + " "
       sl_spec = ":".join(
-          ["%d,%d" % (o, s) for o, s in zip(self.var_offset, self.var_shape)])
+          "%d,%d" % (o, s) for o, s in zip(self.var_offset, self.var_shape))
       return full_shape_str + sl_spec
 
     def to_proto(self, export_scope=None):

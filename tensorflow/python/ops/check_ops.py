@@ -351,7 +351,7 @@ def _binary_assert(sym, opname, op_func, static_func, x, y, data, summarize,
       raise errors.InvalidArgumentError(
           node_def=None,
           op=None,
-          message=('\n'.join([_pretty_print(d, summarize) for d in data])))
+          message=('\n'.join(_pretty_print(d, summarize) for d in data)))
 
     else:  # not context.executing_eagerly()
       if data is None:

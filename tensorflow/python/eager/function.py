@@ -2251,10 +2251,9 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
   """Convert inputs to pass into a function with an explicit signature."""
 
   def format_error_message(inputs, input_signature):
-    return ("  inputs: (\n" + "    " +
-            ",\n    ".join([str(i) for i in inputs]) + ")\n" +
-            "  input_signature: (\n" + "    " +
-            ",\n    ".join([str(i) for i in input_signature]) + ")")
+    return ("  inputs: (\n" + "    " + ",\n    ".join(str(i) for i in inputs) +
+            ")\n" + "  input_signature: (\n" + "    " +
+            ",\n    ".join(str(i) for i in input_signature) + ")")
 
   try:
     # TODO(b/124370185): Use all elements as inputs to throw an error if there

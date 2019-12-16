@@ -804,7 +804,7 @@ class _EagerTensorArray(object):
             None, None,
             "Tried to write to index %d but array is not resizeable and size "
             "is: %d" % (index, size))
-      self._tensor_array.extend([None for _ in range(index - size + 1)])
+      self._tensor_array.extend(None for _ in range(index - size + 1))
 
     if not isinstance(value, ops.EagerTensor):
       # TODO(b/129870929): Fix after all callers provide proper init dtype.

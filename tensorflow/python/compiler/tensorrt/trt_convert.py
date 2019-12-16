@@ -253,8 +253,8 @@ def _check_trt_version_compatibility():
   if loaded_version < linked_version:
     tf_logging.error(
         "Loaded TensorRT %s but linked TensorFlow against TensorRT %s. " %
-        (".".join([str(x) for x in loaded_version]),
-         ".".join([str(x) for x in linked_version])) +
+        (".".join(str(x) for x in loaded_version), ".".join(
+            str(x) for x in linked_version)) +
         "TensorRT does not support forward compatibility. " +
         "It is also required to use the same major version of TensorRT " +
         "during compilation and runtime.")
@@ -262,16 +262,16 @@ def _check_trt_version_compatibility():
   if loaded_version[0] > linked_version[0]:
     tf_logging.error(
         "Loaded TensorRT %s but linked TensorFlow against TensorRT %s. " %
-        (".".join([str(x) for x in loaded_version]),
-         ".".join([str(x) for x in linked_version])) +
+        (".".join(str(x) for x in loaded_version), ".".join(
+            str(x) for x in linked_version)) +
         "It is required to use the same major version " +
         "of TensorRT during compilation and runtime.")
     raise RuntimeError("Incompatible TensorRT major version")
   if loaded_version != linked_version:
     tf_logging.info(
         "Loaded TensorRT %s and linked TensorFlow against TensorRT %s. " %
-        (".".join([str(x) for x in loaded_version]),
-         ".".join([str(x) for x in linked_version])) +
+        (".".join(str(x) for x in loaded_version), ".".join(
+            str(x) for x in linked_version)) +
         "This is supported because TensorRT " +
         " minor/patch upgrades are backward compatible")
 
