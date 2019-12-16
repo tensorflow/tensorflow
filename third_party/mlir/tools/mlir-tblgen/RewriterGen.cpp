@@ -939,8 +939,7 @@ void PatternEmitter::createAggregateLocalVarsForOpArgs(
       "SmallVector<NamedAttribute, 4> tblgen_attrs; (void)tblgen_attrs;\n");
 
   for (int argIndex = 0, e = resultOp.getNumArgs(); argIndex < e; ++argIndex) {
-    if (const auto *attr =
-            resultOp.getArg(argIndex).dyn_cast<NamedAttribute *>()) {
+    if (resultOp.getArg(argIndex).is<NamedAttribute *>()) {
       const char *addAttrCmd = "if ({1}) {{"
                                "  tblgen_attrs.emplace_back(rewriter."
                                "getIdentifier(\"{0}\"), {1}); }\n";
