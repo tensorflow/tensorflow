@@ -1089,3 +1089,28 @@ identity = Identity
 orthogonal = Orthogonal
 glorot_normal = GlorotNormal
 glorot_uniform = GlorotUniform
+
+"""
+this is html decode function to rectify : "&gt;&gt" instead of ">>>":
+def html_decode(s):
+    """
+    """
+    Returns the ASCII decoded version of the given HTML string. This does
+    NOT remove normal HTML tags like <p>.
+    """
+    """
+    htmlCodes = (
+            ("'", '&#39;'),
+            ('"', '&quot;'),
+            ('>', '&gt;'),
+            ('<', '&lt;'),
+            ('&', '&amp;')
+        )
+    for code in htmlCodes:
+        s = s.replace(code[1], code[0])
+    return s
+
+unescaped = html_decode(my_string)
+
+"""
+    
