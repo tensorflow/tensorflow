@@ -601,7 +601,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        string hash_dir;
+        tstring hash_dir;
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kHashDir), &hash_dir));
         if (hash_dir != hash_dir_) {
           LOG(ERROR) << "Dataset has changed while restoring from the "
@@ -676,8 +676,12 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           run_id_ = metadata_.run_id();
           run_dir_ = io::JoinPath(hash_dir_, run_id_);
           // Get all the files in the run_dir.
+          std::vector<std::string> filenames_str;
           TF_RETURN_IF_ERROR(ctx->env()->GetMatchingPaths(
-              absl::StrCat(run_dir_, "/*"), &filenames_));
+              absl::StrCat(run_dir_, "/*"), &filenames_str));
+          filenames_.resize(filenames_str.size());
+          std::copy(filenames_str.begin(), filenames_str.end(),
+                    filenames_.begin());
           if (filenames_.empty()) {
             return errors::InvalidArgument("Could not find any files in dir: ",
                                            run_dir_);
@@ -814,7 +818,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         Status RestoreInternal(IteratorContext* ctx,
                                IteratorStateReader* reader) override {
           mutex_lock l(mu_);
-          string hash_dir, run_id, run_dir;
+          tstring hash_dir, run_id, run_dir;
           TF_RETURN_IF_ERROR(
               reader->ReadScalar(full_name(kHashDir), &hash_dir));
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kHashDir), &run_id));
@@ -1040,9 +1044,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
         const string hash_dir_;
         const experimental::SnapshotMetadataRecord metadata_;
-        string run_id_ GUARDED_BY(mu_);
-        string run_dir_ GUARDED_BY(mu_);
-        std::vector<std::string> filenames_;
+        tstring run_id_ GUARDED_BY(mu_);
+        tstring run_dir_ GUARDED_BY(mu_);
+        std::vector<tstring> filenames_;
 
         uint64 elements_produced_ GUARDED_BY(mu_) = 0;
         int64 time_spent_micros_ GUARDED_BY(mu_) = 0;
@@ -1058,7 +1062,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         bool background_threads_finished_ GUARDED_BY(mu_) = false;
         int64 num_elements_read_ GUARDED_BY(mu_) = 0;
         // curr_filenames_ tracks which file is being read by each thread.
-        std::vector<std::string> curr_filenames_ GUARDED_BY(mu_);
+        std::vector<tstring> curr_filenames_ GUARDED_BY(mu_);
       };
 
       class SnapshotWriterIterator : public DatasetIterator<Dataset> {
@@ -1110,7 +1114,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                 experimental::SnapshotMetadataRecord metadata;
                 metadata.set_creation_timestamp(EnvTime::NowMicros());
                 metadata.set_graph_hash(dataset()->graph_hash_);
-                metadata.set_run_id(run_id_);
+                metadata.set_run_id(run_id_.data(), run_id_.size());
                 metadata.set_finalized(false);
                 TF_RETURN_IF_ERROR(WriteMetadataFile(hash_dir_, metadata));
               }
@@ -1245,7 +1249,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           mutex_lock l(mu_);
           buffer_.clear();
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-          string hash_dir;
+          tstring hash_dir;
           TF_RETURN_IF_ERROR(
               reader->ReadScalar(full_name(kHashDir), &hash_dir));
           // If the hash dir has changed then we restart writing.
@@ -1541,8 +1545,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         std::unique_ptr<IteratorBase> input_impl_;
 
         const string hash_dir_;
-        string run_id_ GUARDED_BY(mu_);
-        string run_dir_ GUARDED_BY(mu_);
+        tstring run_id_ GUARDED_BY(mu_);
+        tstring run_dir_ GUARDED_BY(mu_);
         bool is_restored_ GUARDED_BY(mu_) = false;
 
         uint64 elements_produced_ GUARDED_BY(mu_) = 0;
