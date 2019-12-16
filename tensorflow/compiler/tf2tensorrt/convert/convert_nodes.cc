@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/py_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -1133,11 +1132,8 @@ static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
   mutex_lock lock(plugin_mutex);
   if (plugin_initialized) return;
 
-  LOG(INFO) << "Linked TensorRT version: " << NV_TENSORRT_MAJOR << "."
-            << NV_TENSORRT_MINOR << "." << NV_TENSORRT_PATCH;
-  const int loaded_version = getInferLibVersion();
-  LOG(INFO) << "Loaded TensorRT version: " << loaded_version / 1000 << "."
-            << (loaded_version / 100) % 10 << "." << loaded_version % 100;
+  LOG(INFO) << "Linked TensorRT version: " << GetLinkedTensorRTVersion();
+  LOG(INFO) << "Loaded TensorRT version: " << GetLoadedTensorRTVersion();
 
   plugin_initialized = initLibNvInferPlugins(trt_logger, "");
   if (!plugin_initialized) {
@@ -1377,17 +1373,10 @@ Status Converter::BuildCudaEngine(
   string precision_mode_str;
   TF_RETURN_IF_ERROR(TrtPrecisionModeToName(
       precision_mode_, &precision_mode_str));
-  int trt_major_version;
-  int trt_minor_version;
-  int trt_patch_version;
-  GetLoadedTensorRTVersion(
-      &trt_major_version, &trt_minor_version, &trt_patch_version);
-  string trt_version = std::to_string(trt_major_version) + "." +
-                       std::to_string(trt_minor_version) + "." +
-                       std::to_string(trt_patch_version);
+  string trt_version_str = GetLoadedTensorRTVersion();
   string trt_network_name =
       "TF" + string(TF_VERSION_STRING) + "-" +
-      "TRT" + trt_version + "-" +
+      "TRT" + trt_version_str + "-" +
       "Precision-" + precision_mode_str + "-" +
       "Calibration-" + std::to_string(use_calibration_) + "-" +
       "Max-Batch-Size-" + std::to_string(max_batch_size) + "-" +
