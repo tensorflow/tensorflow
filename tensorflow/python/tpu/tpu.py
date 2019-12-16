@@ -1727,20 +1727,22 @@ def under_tpu_inference_context():
 class _TPUInferenceContext(control_flow_ops.XLAControlFlowContext):
   """A `ControlFlowContext` for nodes inside a TPU inference computation.
 
-  The primary role of `TPUReplicateContext` is to sanity check operators inside
-  a tpu.rewrite_for_inference() computation.
+  The primary role of `_TPUInferenceContext` is to indicate the mode of
+  operation and possibly sanity check operators inside a
+  tpu.rewrite_for_inference() computation.
   """
 
-  def __init__(self, name):
+  def __init__(self, name, check_ops=True):
     super(_TPUInferenceContext, self).__init__()
     self._name = name
+    self._check_ops = check_ops
 
   def AddOp(self, op):
     self._AddOpInternal(op)
 
   def _AddOpInternal(self, op):
     # pylint: disable=protected-access
-    if op.type in _BLACKLISTED_INFERENCE_OPS:
+    if self._check_ops and op.type in _BLACKLISTED_INFERENCE_OPS:
       raise NotImplementedError(
           "Operation of type %s (%s) is not supported on the TPU for inference."
           " Execution will fail if this op is used in the graph. Make sure your"
