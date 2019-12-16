@@ -790,9 +790,12 @@ static ParseResult parseUndefOp(OpAsmParser &parser, OperationState &result) {
 //===----------------------------------------------------------------------===//
 
 GlobalOp AddressOfOp::getGlobal() {
-  auto module = getParentOfType<ModuleOp>();
+  Operation *module = getParentOp();
+  while (module && !satisfiesLLVMModule(module))
+    module = module->getParentOp();
   assert(module && "unexpected operation outside of a module");
-  return module.lookupSymbol<LLVM::GlobalOp>(global_name());
+  return dyn_cast_or_null<LLVM::GlobalOp>(
+      mlir::SymbolTable::lookupSymbolIn(module, global_name()));
 }
 
 static void printAddressOfOp(OpAsmPrinter &p, AddressOfOp op) {
@@ -1030,7 +1033,9 @@ static LogicalResult verify(GlobalOp op) {
   if (!llvm::PointerType::isValidElementType(op.getType().getUnderlyingType()))
     return op.emitOpError(
         "expects type to be a valid element type for an LLVM pointer");
-  if (op.getParentOp() && !isa<ModuleOp>(op.getParentOp()))
+  if (op.getParentOp() &&
+      !(op.getParentOp()->hasTrait<OpTrait::SymbolTable>() &&
+        op.getParentOp()->hasTrait<OpTrait::IsIsolatedFromAbove>()))
     return op.emitOpError("must appear at the module level");
 
   if (auto strAttr = op.getValueOrNull().dyn_cast_or_null<StringAttr>()) {
@@ -1674,4 +1679,9 @@ Value *mlir::LLVM::createGlobalString(Location loc, OpBuilder &builder,
   return builder.create<LLVM::GEPOp>(
       loc, LLVM::LLVMType::getInt8PtrTy(llvmDialect), globalPtr,
       ArrayRef<Value *>({cst0, cst0}));
+}
+
+bool mlir::LLVM::satisfiesLLVMModule(Operation *op) {
+  return op->hasTrait<OpTrait::SymbolTable>() &&
+         op->hasTrait<OpTrait::IsIsolatedFromAbove>();
 }
