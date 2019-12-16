@@ -51,6 +51,9 @@ Windows)*:
 $ pip install tensorflow-gpu
 ```
 
+To update TensorFlow to the latest version, add `--upgrade` flag to the above
+commands.
+
 *Nightly binaries are available for testing using the
 [tf-nightly](https://pypi.python.org/pypi/tf-nightly) and
 [tf-nightly-gpu](https://pypi.python.org/pypi/tf-nightly-gpu) packages on PyPi.*
