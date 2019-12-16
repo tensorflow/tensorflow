@@ -1427,7 +1427,7 @@ xla_test(
     name = "reduce_test",
     srcs = ["reduce_test.cc"],
     shard_count = 31,
-    tags = ["optonly", "no_rocm"],
+    tags = ["optonly"],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:array2d",
