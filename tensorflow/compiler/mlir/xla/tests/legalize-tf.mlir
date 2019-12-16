@@ -94,6 +94,20 @@ func @shift_left(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   return %0 : tensor<4xi32>
 }
 
+// CHECK-LABEL: func @div_dynamic
+func @div_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi32> {
+  // CHECK: "xla_hlo.div"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  %0 = "tf.Div"(%arg0, %arg1) : (tensor<?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
+  return %0: tensor<?x?xi32>
+}
+
+// CHECK-LABEL: func @div_unranked
+func @div_unranked(%arg0: tensor<*xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi32> {
+  // CHECK: tf.Div
+  %0 = "tf.Div"(%arg0, %arg1) : (tensor<*xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
+  return %0: tensor<?x?xi32>
+}
+
 // CHECK-LABEL: func @maximum
 func @maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK:  xla_hlo.max %arg0, %arg1 : tensor<4xf32>
@@ -199,6 +213,13 @@ func @and_dynamic(%arg0: tensor<?xi1>, %arg1: tensor<1xi1>) -> tensor<?xi1> {
   // CHECK-NEXT: "xla_hlo.and"
   %0 = "tf.LogicalAnd"(%arg0, %arg1) : (tensor<?xi1>, tensor<1xi1>) -> tensor<?xi1>
   return %0: tensor<?xi1>
+}
+
+// CHECK-LABEL: func @and_unranked
+func @and_unranked(%arg0: tensor<*xi1>, %arg1: tensor<*xi1>) -> tensor<*xi1> {
+  // CHECK: tf.LogicalAnd
+  %0 = "tf.LogicalAnd"(%arg0, %arg1) : (tensor<*xi1>, tensor<*xi1>) -> tensor<*xi1>
+  return %0: tensor<*xi1>
 }
 
 // CHECK-LABEL: func @or
@@ -345,6 +366,20 @@ func @floordiv_f16_broadcast(%arg0: tensor<2x3xf16>, %arg1: tensor<3xf16>) -> te
   return %0: tensor<2x3xf16>
 }
 
+// CHECK-LABEL: func @floordiv_dynamic
+func @floordiv_dynamic(%arg0: tensor<?x?xi32>, %arg1: tensor<?xi32>) -> tensor<?x?xi32> {
+  // CHECK: tf.FloorDiv
+  %0 = "tf.FloorDiv"(%arg0, %arg1) : (tensor<?x?xi32>, tensor<?xi32>) -> tensor<?x?xi32>
+  return %0: tensor<?x?xi32>
+}
+
+// CHECK-LABEL: func @floordiv_unranked
+func @floordiv_unranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi32> {
+  // CHECK: tf.FloorDiv
+  %0 = "tf.FloorDiv"(%arg0, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+  return %0: tensor<*xi32>
+}
+
 // CHECK-LABEL: func @floormod_broadcast_numerator
 func @floormod_broadcast_numerator(%arg0: tensor<3xi32>, %arg1: tensor<2x3xi32>) -> tensor<2x3xi32> {
   // CHECK-DAG: [[REM:%.+]] = "xla_hlo.remainder"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>}
@@ -377,6 +412,20 @@ func @floormod_broadcast_denominator(%arg0: tensor<2x3xi32>, %arg1: tensor<3xi32
   // CHECK-NEXT: return [[SELECT]]
   %0 = "tf.FloorMod"(%arg0, %arg1) : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
   return %0: tensor<2x3xi32>
+}
+
+// CHECK-LABEL: func @floormod_dynamic
+func @floormod_dynamic(%arg0: tensor<?x?xi32>, %arg1: tensor<?xi32>) -> tensor<?x?xi32> {
+  // CHECK: tf.FloorMod
+  %0 = "tf.FloorMod"(%arg0, %arg1) : (tensor<?x?xi32>, tensor<?xi32>) -> tensor<?x?xi32>
+  return %0: tensor<?x?xi32>
+}
+
+// CHECK-LABEL: func @floormod_unranked
+func @floormod_unranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi32> {
+  // CHECK: tf.FloorMod
+  %0 = "tf.FloorMod"(%arg0, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+  return %0: tensor<*xi32>
 }
 
 // CHECK-LABEL: func @broadcast_to
@@ -450,6 +499,13 @@ func @equal_incompatible_shape_both_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<
   return %0: tensor<*xi1>
 }
 
+// CHECK-LABEL: func @equal_unranked
+func @equal_unranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi1> {
+  // CHECK: "tf.Equal"
+  %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi1>
+  return %0: tensor<*xi1>
+}
+
 // CHECK-LABEL: func @notequal
 func @notequal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
   // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg0) {comparison_direction = "NE"}
@@ -515,6 +571,20 @@ func @broadcast_greater(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<
   // CHECK-NEXT: "xla_hlo.compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = "GT"}
   %0 = "tf.Greater"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   return %0: tensor<1x2xi1>
+}
+
+// CHECK-LABEL: func @greater_dynamic
+func @greater_dynamic(%arg0: tensor<?xi32>) -> tensor<?xi1> {
+  // CHECK:  "xla_hlo.compare"(%arg0, %arg0) {comparison_direction = "GT"}
+  %0 = "tf.Greater"(%arg0, %arg0) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi1>
+  return %0: tensor<?xi1>
+}
+
+// CHECK-LABEL: func @greater_uranked
+func @greater_uranked(%arg0: tensor<*xi32>) -> tensor<*xi1> {
+  // CHECK:  "tf.Greater"
+  %0 = "tf.Greater"(%arg0, %arg0) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi1>
+  return %0: tensor<*xi1>
 }
 
 // CHECK-LABEL: func @greater_equal
