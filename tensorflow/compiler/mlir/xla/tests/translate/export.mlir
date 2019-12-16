@@ -1,6 +1,19 @@
 // RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s
 
 // CHECK:  HloModule
+func @main(%arg0: !xla_hlo.token, %arg1: !xla_hlo.token) -> !xla_hlo.token {
+  %0 = "xla_hlo.after_all"(%arg0, %arg1) : (!xla_hlo.token, !xla_hlo.token) -> !xla_hlo.token
+  return %0 : !xla_hlo.token
+}
+
+// CHECK:  ENTRY
+// CHECK:  %[[ARG0:.*]] = token[] parameter(0)
+// CHECK:  %[[ARG1:.*]] = token[] parameter(1)
+// CHECK:  ROOT %[[RESULT:.*]] = token[] after-all(token[] %[[ARG0]], token[] %[[ARG1]])
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
   %0 = "xla_hlo.all_reduce"(%arg0) ({
   // Perform max reduction inside the region
@@ -248,6 +261,9 @@ func @main() -> tensor<2x2x1x1xf32> {
 
   // CHECK:  s32[2,2] constant({ { 3, 2 }, { 1, 4 } })
   %cst_5 = constant dense<[[3, 2], [1, 4]]> : tensor<2x2xi32>
+
+  // CHECK: bf16[4] constant({1, 2, 3, 4})
+  %cst_6 = constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
 
   return %cst_0 : tensor<2x2x1x1xf32>
 }

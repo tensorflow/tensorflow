@@ -375,7 +375,8 @@ struct TestLegalizePatternDriver
     ConversionTarget target(getContext());
     target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
     target.addLegalOp<LegalOpA, LegalOpB, TestCastOp, TestValidOp>();
-    target.addIllegalOp<ILLegalOpF, TestRegionBuilderOp>();
+    target
+        .addIllegalOp<ILLegalOpF, TestRegionBuilderOp, TestOpWithRegionFold>();
     target.addDynamicallyLegalOp<TestReturnOp>([](TestReturnOp op) {
       // Don't allow F32 operands.
       return llvm::none_of(op.getOperandTypes(),

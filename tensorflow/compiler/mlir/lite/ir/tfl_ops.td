@@ -3126,6 +3126,27 @@ the output tensor can vary depending on how many true values there are in
   );
 }
 
+def TFL_NumericVerifyOp : Op<TFL_Dialect, "NumericVerify", [
+    SameOperandsShape]> {
+
+  let summary = "Verifies the numericals of the two operands";
+
+  let description = [{
+    The NumericVerify op is a debugging op to verify the numericals of the two
+    activations. It is a custom op in TFLite.
+  }];
+
+  let arguments = (ins
+    TensorOf<[QI8, QUI8, QI16, QUI16]>:$input,
+    TensorOf<[F32]>:$ref,
+
+    // Attributes
+    DefaultValuedAttr<F32Attr, "0.1">:$tolerance
+  );
+
+  let results = (outs);
+}
+
 def SVDFResultConstraint: PredOpTrait<
   "the input and result tensor elemental types must be same",
   TCresVTEtIsSameAsOp<0, 0>>;

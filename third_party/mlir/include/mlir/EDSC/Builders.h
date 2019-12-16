@@ -529,6 +529,18 @@ ValueHandle operator>(ValueHandle lhs, ValueHandle rhs);
 ValueHandle operator>=(ValueHandle lhs, ValueHandle rhs);
 
 } // namespace op
+
+/// Entry point to build multiple ValueHandle from a `Container` of Value* or
+/// Type.
+template <typename Container>
+inline SmallVector<ValueHandle, 8> makeValueHandles(Container values) {
+  SmallVector<ValueHandle, 8> res;
+  res.reserve(values.size());
+  for (auto v : values)
+    res.push_back(ValueHandle(v));
+  return res;
+}
+
 } // namespace edsc
 } // namespace mlir
 

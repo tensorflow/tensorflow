@@ -95,6 +95,7 @@ cc_test(
         "tflite_not_portable_ios",
     ],
     deps = [
+        ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/testing:util",

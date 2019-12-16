@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Keras image preprocessing layers."""
-
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -53,7 +53,7 @@ class Resizing(Layer):
   Resize the batched image input to target height and width. The input should
   be a 4-D tensor in the format of NHWC.
 
-  Attributes:
+  Arguments:
     height: Integer, the height of the output shape.
     width: Integer, the width of the output shape.
     interpolation: String, the interpolation method. Defaults to `bilinear`.
@@ -111,7 +111,7 @@ class CenterCrop(Layer):
   If the input height/width is even and the target height/width is odd (or
   inversely), the input image is left-padded by 1 pixel.
 
-  Attributes:
+  Arguments:
     height: Integer, the height of the output shape.
     width: Integer, the width of the output shape.
   """
@@ -187,7 +187,7 @@ class RandomCrop(Layer):
     4D tensor with shape:
     `(samples, target_height, target_width, channels)`.
 
-  Attributes:
+  Arguments:
     height: Integer, the height of the output shape.
     width: Integer, the width of the output shape.
     seed: Integer. Used to create a random seed.
@@ -273,6 +273,43 @@ class RandomCrop(Layer):
         'seed': self.seed,
     }
     base_config = super(RandomCrop, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
+class Rescaling(Layer):
+  """Multiply inputs by `scale`.
+
+  For instance, to rescale an input in the `[0, 255]` range
+  to be in the `[0, 1]` range, you would pass `scale=1./255`.
+
+  The rescaling is applied both during training and inference.
+
+  Input shape:
+    Arbitrary.
+
+  Output shape:
+    Same as input.
+
+  Arguments:
+    scale: Float, the scale to apply to the inputs.
+  """
+
+  def __init__(self, scale, **kwargs):
+    self.scale = scale
+    super(Rescaling, self).__init__(**kwargs)
+
+  def call(self, inputs):
+    dtype = self._compute_dtype
+    return math_ops.cast(inputs, dtype) * math_ops.cast(self.scale, dtype)
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
+  def get_config(self):
+    config = {
+        'scale': self.scale,
+    }
+    base_config = super(Rescaling, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 

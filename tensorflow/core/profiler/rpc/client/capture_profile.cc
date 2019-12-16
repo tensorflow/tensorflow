@@ -201,7 +201,10 @@ Status StartTracing(const tensorflow::string& service_addr,
   constexpr char kProfilePluginDirectory[] = "plugins/profile/";
   tensorflow::string repository_root =
       io::JoinPath(logdir, kProfilePluginDirectory);
-  std::vector<tensorflow::string> hostnames = absl::StrSplit(workers_list, ',');
+  std::vector<tensorflow::string> hostnames;
+  if (!workers_list.empty()) {
+    hostnames = absl::StrSplit(workers_list, ',');
+  }
 
   TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
 

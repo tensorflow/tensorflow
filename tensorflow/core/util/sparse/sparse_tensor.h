@@ -385,7 +385,7 @@ class SparseTensor {
 // an in-place algorithm.  It requires O(N log N) time and O(N)
 // temporary space.
 template <typename T>
-void SparseTensor::Reorder(const VarDimArray& order) {
+inline void SparseTensor::Reorder(const VarDimArray& order) {
   DCHECK_EQ(DataTypeToEnum<T>::v(), dtype())
       << "Reorder requested with the wrong datatype";
   DCHECK_EQ(order.size(), dims_) << "Order length must be SparseTensor rank";
@@ -444,7 +444,8 @@ void SparseTensor::Reorder(const VarDimArray& order) {
 }
 
 template <typename T>
-bool SparseTensor::ValidateAndInitializeToDense(Tensor* out, bool initialize) {
+inline bool SparseTensor::ValidateAndInitializeToDense(Tensor* out,
+                                                       bool initialize) {
   DCHECK_EQ(DataTypeToEnum<T>::v(), dtype())
       << "ToDense requested with the wrong datatype";
 
@@ -472,7 +473,7 @@ bool SparseTensor::ValidateAndInitializeToDense(Tensor* out, bool initialize) {
 }
 
 template <typename T>
-bool SparseTensor::ToDense(Tensor* out, bool initialize) {
+inline bool SparseTensor::ToDense(Tensor* out, bool initialize) {
   if (!ValidateAndInitializeToDense<T>(out, initialize)) return false;
 
   auto out_t = out->flat<T>();
@@ -505,7 +506,7 @@ bool SparseTensor::ToDense(Tensor* out, bool initialize) {
 }
 
 template <typename T>
-SparseTensor SparseTensor::Concat(
+inline SparseTensor SparseTensor::Concat(
     const gtl::ArraySlice<SparseTensor>& tensors) {
   DCHECK_GE(tensors.size(), size_t{1}) << "Cannot concat 0 SparseTensors";
   const int dims = tensors[0].dims_;
@@ -577,9 +578,9 @@ SparseTensor SparseTensor::Concat(
 }
 
 template <typename T>
-Status SparseTensor::Split(const SparseTensor& input_tensor,
-                           const int split_dim, const int num_split,
-                           std::vector<SparseTensor>* result) {
+inline Status SparseTensor::Split(const SparseTensor& input_tensor,
+                                  const int split_dim, const int num_split,
+                                  std::vector<SparseTensor>* result) {
   std::vector<Tensor> output_indices;
   std::vector<Tensor> output_values;
   std::vector<TensorShape> output_shapes;
@@ -660,9 +661,9 @@ Status SparseTensor::Split(const SparseTensor& input_tensor,
 }
 
 template <typename T>
-SparseTensor SparseTensor::Slice(const SparseTensor& input_tensor,
-                                 const gtl::ArraySlice<int64>& start,
-                                 const gtl::ArraySlice<int64>& size) {
+inline SparseTensor SparseTensor::Slice(const SparseTensor& input_tensor,
+                                        const gtl::ArraySlice<int64>& start,
+                                        const gtl::ArraySlice<int64>& size) {
   TensorShape output_shape(input_tensor.shape());
 
   const int dims = input_tensor.dims();

@@ -356,7 +356,7 @@ llvm::Optional<TiledLinalgOp> mlir::linalg::tileLinalgOp(
   // 3. Create the tiled loops.
   LinalgOp res = op;
   SmallVector<IndexHandle, 4> ivs(loopRanges.size());
-  auto pivs = makeIndexHandlePointers(ivs);
+  auto pivs = makeHandlePointers(MutableArrayRef<IndexHandle>(ivs));
   LoopNestRangeBuilder(pivs, loopRanges)([&] {
     auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();

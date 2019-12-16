@@ -23,6 +23,15 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
+namespace {
+
+constexpr absl::string_view kIterator = "Iterator";
+constexpr absl::string_view kSeparator = "::";
+
+}  // namespace
+
+const absl::string_view kUnknownOp = "";  // op types are non-empty strings
+const absl::string_view kDatasetOp = "Dataset";
 
 TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
   // TF Op names have the format "name:type" where:

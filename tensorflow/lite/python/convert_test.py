@@ -76,8 +76,17 @@ class ConvertTest(test_util.TensorFlowTestCase):
           sess.graph_def, [in_tensor], [out_tensor],
           inference_type=lite_constants.QUANTIZED_UINT8)
     self.assertEqual(
-        "std_dev and mean must be defined when inference_input_type is "
-        "QUANTIZED_UINT8.", str(error.exception))
+        "std_dev and mean must be defined when inference_type is "
+        "QUANTIZED_UINT8 or INT8.", str(error.exception))
+
+    with self.assertRaises(ValueError) as error:
+      convert.toco_convert(
+          sess.graph_def, [in_tensor], [out_tensor],
+          inference_type=lite_constants.QUANTIZED_UINT8,
+          inference_input_type=lite_constants.FLOAT)
+    self.assertEqual(
+        "std_dev and mean must be defined when inference_type is "
+        "QUANTIZED_UINT8 or INT8.", str(error.exception))
 
   def testGraphDefBasic(self):
     with ops.Graph().as_default():
@@ -176,8 +185,8 @@ class ConvertTest(test_util.TensorFlowTestCase):
           enable_mlir_converter=False,
           inference_type=lite_constants.QUANTIZED_UINT8)
     self.assertEqual(
-        "std_dev and mean must be defined when inference_input_type is "
-        "QUANTIZED_UINT8.", str(error.exception))
+        "std_dev and mean must be defined when inference_type is "
+        "QUANTIZED_UINT8 or INT8.", str(error.exception))
 
 
 class ConvertTestOpHint(test_util.TensorFlowTestCase):

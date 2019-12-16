@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 
 package(
@@ -41,6 +42,7 @@ NEON_FLAGS_IF_APPLICABLE = select({
 cc_library(
     name = "compatibility",
     hdrs = ["compatibility.h"],
+    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/kernels:op_macros",
@@ -60,6 +62,7 @@ cc_library(
 cc_library(
     name = "types",
     hdrs = ["types.h"],
+    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         ":compatibility",
@@ -546,6 +549,7 @@ cc_library(
         "tensor.h",
         "tensor_ctypes.h",
     ],
+    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         ":types",

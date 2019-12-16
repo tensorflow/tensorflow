@@ -2274,6 +2274,7 @@ cc_library(
     name = "Linalg",
     srcs = [
         "lib/Dialect/Linalg/Analysis/DependenceAnalysis.cpp",
+        "lib/Dialect/Linalg/EDSC/Builders.cpp",
         "lib/Dialect/Linalg/IR/LinalgOps.cpp",
         "lib/Dialect/Linalg/IR/LinalgTypes.cpp",
         "lib/Dialect/Linalg/Transforms/Fusion.cpp",
@@ -2285,6 +2286,7 @@ cc_library(
     ],
     hdrs = [
         "include/mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h",
+        "include/mlir/Dialect/Linalg/EDSC/Builders.h",
         "include/mlir/Dialect/Linalg/IR/LinalgOps.h",
         "include/mlir/Dialect/Linalg/IR/LinalgTraits.h",
         "include/mlir/Dialect/Linalg/IR/LinalgTypes.h",

@@ -659,12 +659,8 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       self.assertAllDifferent(values)
 
   @test_util.run_v2_only
-  def testMirroredStratParaSync(self):
-    """Tests RNG/MirrorStrategy interaction #2.
-
-    If an RNG is created (either seeded or unseeded) inside strategy.scope(),
-    each replica gets an mirror of this RNG. If they access their RNGs in the
-    same manner, their random-number streams are the same.
+  def testMirroredStratParaSyncDisallowed(self):
+    """Tests that generator creation in MirroredStrategy is disallowed.
     """
     creators = [
         lambda: random.Generator.from_seed(1234),
@@ -675,47 +671,19 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     strat = MirroredStrategy(devices=["cpu:0", "cpu:1"])
     for creator in creators:
       with strat.scope():
-        gen = creator()
-        def f():
-          t1 = gen.uniform_full_int(shape=shape, dtype=dtype)  # pylint: disable=cell-var-from-loop
-          t2 = gen.uniform_full_int(shape=shape, dtype=dtype)  # pylint: disable=cell-var-from-loop
-          t = array_ops.stack([t1, t2])
-          return t
-        results = strat.extended.call_for_each_replica(fn=f)
-        values = results.values
-        self.assertAllEqual(2, len(values))
-        self.assertAllEqual(values[0], values[1])
-
-  @test_util.run_v2_only
-  def testMirroredStratParaSyncWithinFun(self):
-    """Tests RNG/MirrorStrategy interaction #2b.
-
-    This is a slight variation of case #2 above. If the RNG is created within
-    `f`, its behavior is the same as when it is created out of `f` but within
-    the strategy scope.
-    """
-    creators = [
-        lambda: random.Generator.from_seed(1234),
-        random.Generator.from_non_deterministic_state,
-    ]
-    shape = [3, 4]
-    dtype = dtypes.int32
-    strat = MirroredStrategy(devices=["cpu:0", "cpu:1"])
-    for creator in creators:
+        with self.assertRaisesWithPredicateMatch(
+            ValueError, "disallowed"):
+          creator()  # pylint: disable=cell-var-from-loop
       def f():
         gen = creator()  # pylint: disable=cell-var-from-loop
-        t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
-        t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
-        t = array_ops.stack([t1, t2])
-        return t
-      results = strat.extended.call_for_each_replica(fn=f)
-      values = results.values
-      self.assertAllEqual(2, len(values))
-      self.assertAllEqual(values[0], values[1])
+        return gen.uniform_full_int(shape=shape, dtype=dtype)
+      with self.assertRaisesWithPredicateMatch(
+          ValueError, "disallowed"):
+        strat.extended.call_for_each_replica(fn=f)
 
   @test_util.run_v2_only
   def testMirroredStratParaAsync(self):
-    """Tests RNG/MirrorStrategy interaction #3.
+    """Tests RNG/MirrorStrategy interaction #2.
 
     The user can create n independent RNGs outside strategy.scope(), where n
     is the number of replicas, and give one to each replica. The replicas can
@@ -741,30 +709,6 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       values = results.values
       self.assertAllEqual(2, len(values))
       self.assertAllDifferent(values)
-
-  @test_util.run_v2_only
-  @test_util.run_cuda_only
-  def testMirroredVarAsFunctionArg(self):
-    """Tests that RNG with MirroredVariable can be used as tf.function's arg.
-    """
-    shape = [3, 4]
-    dtype = dtypes.int32
-    strat = MirroredStrategy(devices=["/cpu:0", test_util.gpu_device_name()])
-    with strat.scope():
-      gen = random.Generator.from_seed(1234)
-      @def_function.function
-      def f(gen):
-        t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
-        t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
-        t = array_ops.stack([t1, t2])
-        return t
-      def g():
-        return f(gen)
-      for _ in range(2):
-        results = strat.extended.call_for_each_replica(fn=g)
-        values = results.values
-        self.assertAllEqual(2, len(values))
-        self.assertAllEqual(values[0], values[1])
 
 
 if __name__ == "__main__":

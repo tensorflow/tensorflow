@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
 #include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -209,7 +210,17 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
                                    bool use_tuple_args, bool return_tuple) {
   mlir::PassManager tf2xla(module_op.getContext());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-  tf2xla.addNestedPass<mlir::FuncOp>(mlir::xla_hlo::createLegalizeTFPass());
+  tf2xla.addPass(mlir::xla_hlo::createLegalizeTFControlFlowPass());
+  // We need to run LegalizeTFPass 2 times because first
+  // LegalizeTFPass(allow_partial_conversion=true) can expose more graph pruning
+  // and canonicalization opportunities that are necessary for the second
+  // LegalizeTFPass(allow_partial_conversion=false) invocation.
+  tf2xla.addNestedPass<mlir::FuncOp>(mlir::xla_hlo::createLegalizeTFPass(true));
+  tf2xla.addPass(mlir::tf_executor::CreateTFExecutorGraphPruningPass(
+      /*skip_main_func=*/true));
+  tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  tf2xla.addNestedPass<mlir::FuncOp>(
+      mlir::xla_hlo::createLegalizeTFPass(false));
 
   {
     // Make sure we catch any error reported by MLIR and forward it to the TF

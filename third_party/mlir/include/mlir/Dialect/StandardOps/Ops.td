@@ -659,6 +659,7 @@ def DeallocOp : Std_Op<"dealloc"> {
   let arguments = (ins AnyMemRef:$memref);
 
   let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def DimOp : Std_Op<"dim", [NoSideEffect]> {
@@ -691,7 +692,6 @@ def DimOp : Std_Op<"dim", [NoSideEffect]> {
   }];
 
   let hasFolder = 1;
-  let hasCanonicalizer = 1;
 }
 
 def DivFOp : FloatArithmeticOp<"divf"> {
@@ -834,7 +834,7 @@ def LoadOp : Std_Op<"load"> {
     operand_range getIndices() { return {operand_begin() + 1, operand_end()}; }
   }];
 
-  let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def LogOp : FloatUnaryOp<"log"> {
@@ -1086,7 +1086,16 @@ def SplatOp : Std_Op<"splat", [NoSideEffect]> {
       %1 = splat %0 : vector<8xi32>
       %2 = splat %0 : tensor<4x8xi32>
 
-    // TODO: handle broadcast to dynamically shaped tensors.
+    TODO: Extend this operation to broadcast to dynamically shaped tensors in
+    the same way dynamically shaped memrefs are handled.
+
+    // Broadcasts %s to a 2-d dynamically shaped tensor, with %m, %n binding
+    // to the sizes of the two dynamic dimensions.
+
+      %m = "foo"() : () -> (index)
+      %n = "bar"() : () -> (index)
+      %t = splat %s [%m, %n] : tensor<?x?xi32>
+
   }];
 
   let arguments = (ins AnyTypeOf<[AnyInteger, AnyFloat],
@@ -1137,7 +1146,7 @@ def StoreOp : Std_Op<"store"> {
       }
   }];
 
-  let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def SubFOp : FloatArithmeticOp<"subf"> {

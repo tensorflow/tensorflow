@@ -379,6 +379,7 @@ cc_library(
     srcs = ["type_to_shape.cc"],
     hdrs = ["type_to_shape.h"],
     deps = [
+        ":hlo",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/xla:shape_util",
@@ -426,6 +427,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/stream_executor/lib",
         "@llvm//:support",

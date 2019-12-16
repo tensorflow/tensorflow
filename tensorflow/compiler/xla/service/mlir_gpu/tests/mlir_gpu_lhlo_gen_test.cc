@@ -20,6 +20,23 @@ namespace mlir_gpu {
 
 class LhloGenTest : public MlirIrGenTestBase {};
 
+TEST_F(LhloGenTest, Const) {
+  CompileAndVerifyIr(R"(
+HloModule Const
+
+ENTRY %Const () -> s32[100] {
+  %const.0 = s32[] constant(10)
+  ROOT %broadcast.0 = s32[100]{0} broadcast(s32[] %const.0), dimensions={}
+})",
+                     R"(
+;CHECK: func @constant(%[[ARG0:.*]]: memref<i32>)
+;CHECK:   "xla_lhlo.constant"(%[[ARG0]]) {value = dense<10> : tensor<i32>}
+;CHECK: func @broadcast(%[[ARG1:.*]]: memref<i32>, %[[ARG2:.*]]: memref<100xi32>)
+;CHECK:   "xla_lhlo.broadcast_in_dim"(%[[ARG1]], %[[ARG2]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+)",
+                     LoweringStage::LHLO);
+}
+
 TEST_F(LhloGenTest, BrokenAdd) {
   CompileAndVerifyErrors(
       R"(

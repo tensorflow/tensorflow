@@ -89,14 +89,14 @@ py_binary(
 tf_py_test(
     name = "toco_from_protos_test",
     srcs = ["toco_from_protos_test.py"],
-    additional_deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/lite/toco:model_flags_proto_py",
-        "//tensorflow/lite/toco:toco_flags_proto_py",
-    ],
     python_version = "PY3",
     tags = [
         "no_oss",
         "no_pip",
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/toco:model_flags_proto_py",
+        "//tensorflow/lite/toco:toco_flags_proto_py",
     ],
 )

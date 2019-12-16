@@ -294,6 +294,58 @@ def Vector_ExtractOp :
   }];
 }
 
+def Vector_ExtractSlicesOp :
+  Vector_Op<"extract_slices", [NoSideEffect]>,
+    Arguments<(ins AnyVector:$vector, I64ArrayAttr:$sizes,
+                   I64ArrayAttr:$strides)>,
+    Results<(outs TupleOf<[AnyVector]>)> {
+  let summary = "vector extract slices operation";
+  let description = [{
+    Takes an N-d vector and returns a tuple of vector slices of 'vector',
+    based on 'sizes' and 'strides' parameters.
+
+    The arguments 'sizes' and 'strides' represent a specification for
+    generating the unrolling of 'vector' shape, which has all slices of shape
+    'sizes' except for slices at dimension boundaries when 'vector' dimension
+    sizes are not a multiple of 'sizes'.
+
+    Each slice is returned at the tuple element index corresponding to the
+    linear index of the slice w.r.t the unrolling scheme represented by 'sizes'.
+    Currently, only unit strides are supported.
+
+    Examples:
+    ```
+      %0 = vector.transfer_read ...: vector<4x2xf32>
+
+      %1 = vector.extract_slices %0, [2, 2], [1, 1]
+        : vector<4x2xf32> into tuple<vector<2x2xf32>, vector<2x2xf32>>
+
+      // Example with partial slices at dimension boundaries.
+      %2 = vector.transfer_read ...: vector<4x3xf32>
+
+      %3 = vector.extract_slices %2, [2, 2], [1, 1]
+        : vector<4x3xf32> into tuple<vector<2x2xf32>, vector<2x1xf32>,
+                                     vector<2x2xf32>, vector<2x2xf32>>
+    ```
+  }];
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, TupleType tupleType, " #
+    "Value *vector, ArrayRef<int64_t> sizes, " #
+    "ArrayRef<int64_t> strides">];
+  let extraClassDeclaration = [{
+    VectorType getSourceVectorType() {
+      return vector()->getType().cast<VectorType>();
+    }
+    TupleType getResultTupleType() {
+      return getResult()->getType().cast<TupleType>();
+    }
+    void getSizes(SmallVectorImpl<int64_t> &results);
+    void getStrides(SmallVectorImpl<int64_t> &results);
+    static StringRef getSizesAttrName() { return "sizes"; }
+    static StringRef getStridesAttrName() { return "strides"; }
+  }];
+}
+
 def Vector_InsertOp :
   Vector_Op<"insert", [NoSideEffect,
      PredOpTrait<"source operand and result have same element type",
@@ -755,6 +807,73 @@ def Vector_CreateMaskOp :
   }];
 
   let hasCanonicalizer = 1;
+}
+
+def Vector_TupleOp :
+  Vector_Op<"tuple", [NoSideEffect]>,
+    Arguments<(ins Variadic<AnyVector>:$vectors)>,
+    Results<(outs TupleOf<[AnyVector]>)> {
+  let summary = "make tuple of vectors operation";
+  let description = [{
+    Returns a tuple of its operands 'vectors'.
+
+    Note that this operation is used during the vector op unrolling
+    transformation and should be removed before lowering to lower-level
+    dialects.
+    
+
+    Examples:
+    ```
+      %0 = vector.transfer_read ... : vector<2x2xf32>
+      %1 = vector.transfer_read ... : vector<2x1xf32>
+      %2 = vector.transfer_read ... : vector<2x2xf32>
+      %3 = vector.transfer_read ... : vector<2x1xf32>
+
+      %4 = vector.tuple %0, %1, %2, %3
+        : vector<2x2xf32>, vector<2x1xf32>, vector<2x2xf32>, vector<2x1xf32>
+
+    ```
+  }];
+
+  let extraClassDeclaration = [{
+    TupleType getResultTupleType() {
+      return getResult()->getType().cast<TupleType>();
+    }
+  }];
+}
+
+def Vector_TupleGetOp :
+  Vector_Op<"tuple_get", [NoSideEffect]>,
+    Arguments<(ins TupleOf<[AnyVector]>:$vectors, APIntAttr:$index)>,
+    Results<(outs AnyVector)> {
+  let summary = "vector tuple get operation";
+  let description = [{
+    Returns the tuple element of 'vectors' at 'index'.
+
+    Note that this operation is used during the vector op unrolling
+    transformation and should be removed before lowering to lower-level
+    dialects.
+
+    Examples:
+    ```
+      %4 = vector.tuple %0, %1, %2, %3
+        : vector<2x2xf32>, vector<2x1xf32>, vector<2x2xf32>, vector<2x1xf32>>
+
+      %5 = vector.tuple_get %4, 1
+        : tuple<vector<2x2xf32>, vector<2x1xf32>,
+                vector<2x2xf32>, vector<2x1xf32>>
+    ```
+  }];
+
+  let extraClassDeclaration = [{
+    VectorType getResultVectorType() {
+      return getResult()->getType().cast<VectorType>();
+    }
+    unsigned getIndex() {
+      return getAttrOfType<IntegerAttr>("index").getValue().getZExtValue();
+    }
+    static StringRef getIndexAttrName() { return "index"; }
+  }];
 }
 
 #endif // VECTOR_OPS

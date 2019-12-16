@@ -1045,7 +1045,7 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
     void (*deallocator)(void* data, size_t len, void* arg),
     void* deallocator_arg, TF_Status* status) {
   tensorflow::Device* device;
-  status->status = ctx->context->FindDeviceByName(device_name, &device);
+  status->status = ctx->context->FindDeviceFromName(device_name, &device);
   if (!status->status.ok()) {
     deallocator(data, len, deallocator_arg);
     return nullptr;

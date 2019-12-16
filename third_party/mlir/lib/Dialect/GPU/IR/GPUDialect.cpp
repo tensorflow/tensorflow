@@ -289,8 +289,7 @@ void printLaunchOp(OpAsmPrinter &p, LaunchOp op) {
 
   // Print the launch configuration.
   p << LaunchOp::getOperationName() << ' ' << op.getBlocksKeyword();
-  printSizeAssignment(p, op.getGridSize(),
-                      operands.drop_back(operands.size() - 3),
+  printSizeAssignment(p, op.getGridSize(), operands.take_front(3),
                       op.getBlockIds());
   p << ' ' << op.getThreadsKeyword();
   printSizeAssignment(p, op.getBlockSize(), operands.slice(3, 3),
@@ -303,25 +302,17 @@ void printLaunchOp(OpAsmPrinter &p, LaunchOp op) {
   // Print the data argument remapping.
   if (!op.body().empty() && !operands.empty()) {
     p << ' ' << op.getArgsKeyword() << '(';
-    for (unsigned i = 0, e = operands.size(); i < e; ++i) {
-      if (i != 0)
-        p << ", ";
-      p << *op.body().front().getArgument(LaunchOp::kNumConfigRegionAttributes +
-                                          i)
+    Block *entryBlock = &op.body().front();
+    interleaveComma(llvm::seq<int>(0, operands.size()), p, [&](int i) {
+      p << *entryBlock->getArgument(LaunchOp::kNumConfigRegionAttributes + i)
         << " = " << *operands[i];
-    }
+    });
     p << ") ";
   }
 
   // Print the types of data arguments.
-  if (!operands.empty()) {
-    p << ": ";
-    for (unsigned i = 0, e = operands.size(); i < e; ++i) {
-      if (i != 0)
-        p << ", ";
-      p << operands[i]->getType();
-    }
-  }
+  if (!operands.empty())
+    p << ": " << operands.getTypes();
 
   p.printRegion(op.body(), /*printEntryBlockArgs=*/false);
   p.printOptionalAttrDict(op.getAttrs());
@@ -701,7 +692,7 @@ static void printAttributions(OpAsmPrinter &p, StringRef keyword,
     return;
 
   p << ' ' << keyword << '(';
-  interleaveComma(values, p.getStream(),
+  interleaveComma(values, p,
                   [&p](BlockArgument *v) { p << *v << " : " << v->getType(); });
   p << ')';
 }

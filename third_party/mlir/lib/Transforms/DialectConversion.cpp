@@ -25,7 +25,6 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 using namespace mlir::detail;
@@ -938,6 +937,10 @@ public:
   ConversionTarget &getTarget() { return target; }
 
 private:
+  /// Attempt to legalize the given operation by folding it.
+  LogicalResult legalizeWithFold(Operation *op,
+                                 ConversionPatternRewriter &rewriter);
+
   /// Attempt to legalize the given operation by applying the provided pattern.
   /// Returns success if the operation was legalized, failure otherwise.
   LogicalResult legalizePattern(Operation *op, RewritePattern *pattern,
@@ -1003,6 +1006,14 @@ OperationLegalizer::legalize(Operation *op,
     return success();
   }
 
+  // If the operation isn't legal, try to fold it in-place.
+  // TODO(riverriddle) Should we always try to do this, even if the op is
+  // already legal?
+  if (succeeded(legalizeWithFold(op, rewriter))) {
+    LLVM_DEBUG(llvm::dbgs() << "-- Success : Operation was folded\n");
+    return success();
+  }
+
   // Otherwise, we need to apply a legalization pattern to this operation.
   auto it = legalizerPatterns.find(op->getName());
   if (it == legalizerPatterns.end()) {
@@ -1017,6 +1028,36 @@ OperationLegalizer::legalize(Operation *op,
 
   LLVM_DEBUG(llvm::dbgs() << "-- FAIL : no matched legalization pattern.\n");
   return failure();
+}
+
+LogicalResult
+OperationLegalizer::legalizeWithFold(Operation *op,
+                                     ConversionPatternRewriter &rewriter) {
+  auto &rewriterImpl = rewriter.getImpl();
+  RewriterState curState = rewriterImpl.getCurrentState();
+
+  // Try to fold the operation.
+  SmallVector<Value *, 2> replacementValues;
+  rewriter.setInsertionPoint(op);
+  if (failed(rewriter.tryFold(op, replacementValues)))
+    return failure();
+
+  // Insert a replacement for 'op' with the folded replacement values.
+  rewriter.replaceOp(op, replacementValues);
+
+  // Recursively legalize any new constant operations.
+  for (unsigned i = curState.numCreatedOperations,
+                e = rewriterImpl.createdOps.size();
+       i != e; ++i) {
+    Operation *cstOp = rewriterImpl.createdOps[i];
+    if (failed(legalize(cstOp, rewriter))) {
+      LLVM_DEBUG(llvm::dbgs() << "-- FAIL: Generated folding constant '"
+                              << cstOp->getName() << "' was illegal.\n");
+      rewriterImpl.resetState(curState);
+      return failure();
+    }
+  }
+  return success();
 }
 
 LogicalResult

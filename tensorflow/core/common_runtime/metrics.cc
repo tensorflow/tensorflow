@@ -61,6 +61,10 @@ auto* tf_data_bytes_read_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/bytes_read",
     "The number of bytes read by tf.data Dataset sources.", "name");
 
+auto* tf_data_bytes_fetched_counter = monitoring::Counter<0>::New(
+    "/tensorflow/data/bytes_fetched",
+    "The number of bytes fetched from tf.data Dataset iterator.");
+
 auto* tf_data_elements_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/elements", "tf.data elements", "name");
 
@@ -120,6 +124,10 @@ void RecordTFDataAutotune(const string& name) {
 
 void RecordTFDataBytesRead(const string& name, int64 num_bytes) {
   tf_data_bytes_read_counter->GetCell(name)->IncrementBy(num_bytes);
+}
+
+void RecordTFDataBytesFetched(int64 num_bytes) {
+  tf_data_bytes_fetched_counter->GetCell()->IncrementBy(num_bytes);
 }
 
 void RecordTFDataElements(const string& name, int64 num_elements) {

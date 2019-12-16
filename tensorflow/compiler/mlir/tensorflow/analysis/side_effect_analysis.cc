@@ -30,11 +30,14 @@ limitations under the License.
 #include "mlir/IR/Block.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
@@ -75,6 +78,37 @@ int64_t GetOrCreateIdForVarHandle(TF::VarHandleOp handle, int64_t* next_id,
   return emplace_res.first->second;
 }
 
+// If the return value for `func_op` at `return_index` is a pass-through of an
+// argument of this function, returns the argument index; otherwise, returns -1.
+int64_t FindPassthroughArgumentForReturnValue(int64_t return_index,
+                                              FuncOp func_op) {
+  auto value =
+      func_op.getBody().front().getTerminator()->getOperand(return_index);
+  assert(mlir::getElementTypeOrSelf(value->getType()).isa<TF::ResourceType>());
+  int64_t arg_index = -1;
+  auto try_parse_arg_index = [&arg_index](Value* v) {
+    auto resource_arg = llvm::dyn_cast<BlockArgument>(v);
+    if (resource_arg) arg_index = resource_arg->getArgNumber();
+    return arg_index;
+  };
+  while (try_parse_arg_index(value) == -1) {
+    auto op = value->getDefiningOp();
+    assert(op);
+    int64_t res_num = llvm::dyn_cast<OpResult>(value)->getResultNumber();
+    if (auto graph = llvm::dyn_cast<tf_executor::GraphOp>(op)) {
+      value = graph.GetFetch().getOperand(res_num);
+    } else if (auto island = llvm::dyn_cast<tf_executor::IslandOp>(op)) {
+      value = island.GetYield().getOperand(res_num);
+    } else if (llvm::isa<TF::IdentityNOp>(op) ||
+               llvm::isa<TF::IdentityOp>(op)) {
+      value = op->getOperand(res_num);
+    } else {
+      return -1;
+    }
+  }
+  return arg_index;
+}
+
 }  // namespace
 
 ResourceAliasAnalysis::ResourceAliasAnalysis(Operation* op) {
@@ -108,7 +142,8 @@ void ResourceAliasAnalysis::AnalyzeFunction(FuncOp func_op) {
     result_ids.insert(operand_it->getSecond().begin(),
                       operand_it->getSecond().end());
   };
-  // TODO(yuanzx): Consider control-flow ops.
+  auto module = func_op.getParentOfType<ModuleOp>();
+
   func_op.walk([&](Operation* op) {
     if (auto var_handle = llvm::dyn_cast<TF::VarHandleOp>(op)) {
       resource_value_to_ids_[var_handle.resource()].insert(
@@ -129,6 +164,49 @@ void ResourceAliasAnalysis::AnalyzeFunction(FuncOp func_op) {
         if (mlir::getElementTypeOrSelf(arg->getType())
                 .isa<TF::ResourceType>()) {
           resource_value_to_ids_[arg].insert(next_unique_id++);
+        }
+      }
+    } else if (auto while_op = llvm::dyn_cast<TF::WhileOp>(op)) {
+      auto body = llvm::cast<FuncOp>(module.lookupSymbol(while_op.body()));
+      // If a result is a passthrough of the body input, use the corresponding
+      // operand's resource IDs.
+      for (auto result : llvm::enumerate(while_op.getResults())) {
+        if (!mlir::getElementTypeOrSelf(result.value()->getType())
+                 .isa<TF::ResourceType>()) {
+          continue;
+        }
+        int64_t passthrough_operand =
+            FindPassthroughArgumentForReturnValue(result.index(), body);
+        if (passthrough_operand >= 0) {
+          forward_input_to_output(while_op.getOperand(passthrough_operand),
+                                  result.value());
+        } else {
+          resource_value_to_ids_[result.value()].insert(kUnknownResourceId);
+        }
+      }
+    } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(op)) {
+      auto then_branch =
+          llvm::cast<FuncOp>(module.lookupSymbol(if_op.then_branch()));
+      auto else_branch =
+          llvm::cast<FuncOp>(module.lookupSymbol(if_op.else_branch()));
+      // If a result is a passthrough of both branches' inputs, merge the
+      // resource IDs of corresponding operands for the two inputs.
+      for (auto result : llvm::enumerate(if_op.getResults())) {
+        if (!mlir::getElementTypeOrSelf(result.value()->getType())
+                 .isa<TF::ResourceType>()) {
+          continue;
+        }
+        int64_t passthrough_then_arg =
+            FindPassthroughArgumentForReturnValue(result.index(), then_branch);
+        int64_t passthrough_else_arg =
+            FindPassthroughArgumentForReturnValue(result.index(), else_branch);
+        if (passthrough_then_arg >= 0 && passthrough_else_arg >= 0) {
+          forward_input_to_output(if_op.getOperand(passthrough_then_arg + 1),
+                                  result.value());
+          forward_input_to_output(if_op.getOperand(passthrough_else_arg + 1),
+                                  result.value());
+        } else {
+          resource_value_to_ids_[result.value()].insert(kUnknownResourceId);
         }
       }
     } else {

@@ -98,17 +98,17 @@ tf_py_test(
     srcs = [
         "fully_connected_feed.py",
     ],
-    additional_deps = [
-        ":input_data",
-        ":mnist",
-        "//tensorflow:tensorflow_py",
-    ],
     args = [
         "--fake_data",
         "--max_steps=10",
     ],
     main = "fully_connected_feed.py",
     tags = ["no_pip"],
+    deps = [
+        ":input_data",
+        ":mnist",
+        "//tensorflow:tensorflow_py",
+    ],
 )
 
 tf_py_test(
@@ -116,10 +116,6 @@ tf_py_test(
     size = "small",
     srcs = [
         "mnist_with_summaries.py",
-    ],
-    additional_deps = [
-        ":input_data",
-        "//tensorflow:tensorflow_py",
     ],
     args = [
         "--fake_data",
@@ -131,5 +127,9 @@ tf_py_test(
         "no_pip",
         "noasan",  # http://b/146080738
         "notsan",  # http://b/29184009
+    ],
+    deps = [
+        ":input_data",
+        "//tensorflow:tensorflow_py",
     ],
 )

@@ -140,7 +140,7 @@ def NVVM_MmaOp :
   }];
   let parser = [{ return parseNVVMMmaOp(parser, result); }];
   let printer = [{ printNVVMMmaOp(p, *this); }];
-  let verifier = [{ return mlir::NVVM::verify(*this); }];
+  let verifier = [{ return ::verify(*this); }];
 }
 
 #endif // NVVMIR_OPS
