@@ -2598,7 +2598,7 @@ def reduce_logsumexp_v1(input_tensor,
     raw_max = reduce_max_with_dims(
         input_tensor, axis=axis, keepdims=True, dims=reduce_dim)
     my_max = array_ops.stop_gradient(
-        gen_math_ops.select_v2(
+        gen_math_ops.select(
             gen_math_ops.is_finite(raw_max), raw_max,
             gen_array_ops.zeros_like(raw_max)))
     result = gen_math_ops.log(
