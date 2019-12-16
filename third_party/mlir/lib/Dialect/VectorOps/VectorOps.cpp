@@ -347,6 +347,42 @@ SmallVector<AffineMap, 4> ContractionOp::getIndexingMaps() {
 }
 
 //===----------------------------------------------------------------------===//
+// ExtractElementOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter &p, vector::ExtractElementOp op) {
+  p << op.getOperationName() << " " << *op.vector() << "[" << *op.position()
+    << " : " << op.position()->getType() << "]";
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.vector()->getType();
+}
+
+static ParseResult parseExtractElementOp(OpAsmParser &parser,
+                                         OperationState &result) {
+  OpAsmParser::OperandType vector, position;
+  Type positionType;
+  VectorType vectorType;
+  if (parser.parseOperand(vector) || parser.parseLSquare() ||
+      parser.parseOperand(position) || parser.parseColonType(positionType) ||
+      parser.parseRSquare() ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(vectorType))
+    return failure();
+  Type resultType = vectorType.getElementType();
+  return failure(
+      parser.resolveOperand(vector, vectorType, result.operands) ||
+      parser.resolveOperand(position, positionType, result.operands) ||
+      parser.addTypeToList(resultType, result.types));
+}
+
+static LogicalResult verify(vector::ExtractElementOp op) {
+  VectorType vectorType = op.getVectorType();
+  if (vectorType.getRank() != 1)
+    return op.emitOpError("expected 1-D vector");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ExtractOp
 //===----------------------------------------------------------------------===//
 
@@ -681,6 +717,44 @@ static ParseResult parseShuffleOp(OpAsmParser &parser, OperationState &result) {
     shape.push_back(v1Type.getDimSize(r));
   VectorType resType = VectorType::get(shape, v1Type.getElementType());
   parser.addTypeToList(resType, result.types);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// InsertElementOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter &p, InsertElementOp op) {
+  p << op.getOperationName() << " " << *op.source() << ", " << *op.dest() << "["
+    << *op.position() << " : " << op.position()->getType() << "]";
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.dest()->getType();
+}
+
+static ParseResult parseInsertElementOp(OpAsmParser &parser,
+                                        OperationState &result) {
+  OpAsmParser::OperandType source, dest, position;
+  Type positionType;
+  VectorType destType;
+  if (parser.parseOperand(source) || parser.parseComma() ||
+      parser.parseOperand(dest) || parser.parseLSquare() ||
+      parser.parseOperand(position) || parser.parseColonType(positionType) ||
+      parser.parseRSquare() ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(destType))
+    return failure();
+  Type sourceType = destType.getElementType();
+  return failure(
+      parser.resolveOperand(source, sourceType, result.operands) ||
+      parser.resolveOperand(dest, destType, result.operands) ||
+      parser.resolveOperand(position, positionType, result.operands) ||
+      parser.addTypeToList(destType, result.types));
+}
+
+static LogicalResult verify(InsertElementOp op) {
+  auto dstVectorType = op.getDestVectorType();
+  if (dstVectorType.getRank() != 1)
+    return op.emitOpError("expected 1-D vector");
   return success();
 }
 

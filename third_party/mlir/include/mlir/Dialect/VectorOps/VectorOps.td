@@ -267,6 +267,33 @@ def Vector_ShuffleOp :
   }];
 }
 
+def Vector_ExtractElementOp :
+  Vector_Op<"extractelement", [NoSideEffect,
+     PredOpTrait<"operand and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 0>>]>,
+    Arguments<(ins AnyVector:$vector, Index:$position)>,
+    Results<(outs AnyType)> {
+  let summary = "extractelement operation";
+  let description = [{
+    Takes an 1-D vector and a dynamic index position and extracts the
+    scalar at that position. Note that this instruction resembles
+    vector.extract, but is restricted to 1-D vectors and relaxed
+    to dynamic indices. It is meant to be closer to LLVM's version:
+    https://llvm.org/docs/LangRef.html#extractelement-instruction
+
+    Example:
+    ```
+      %c = constant 15 : i32
+      %1 = vector.extractelement %0[%c : i32]: vector<16xf32>
+    ```
+  }];
+  let extraClassDeclaration = [{
+    VectorType getVectorType() {
+      return vector()->getType().cast<VectorType>();
+    }
+  }];
+}
+
 def Vector_ExtractOp :
   Vector_Op<"extract", [NoSideEffect,
      PredOpTrait<"operand and result have same element type",
@@ -343,6 +370,38 @@ def Vector_ExtractSlicesOp :
     void getStrides(SmallVectorImpl<int64_t> &results);
     static StringRef getSizesAttrName() { return "sizes"; }
     static StringRef getStridesAttrName() { return "strides"; }
+  }];
+}
+
+def Vector_InsertElementOp :
+  Vector_Op<"insertelement", [NoSideEffect,
+     PredOpTrait<"source operand and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 0>>,
+     PredOpTrait<"dest operand and result have same type",
+                 TCresIsSameAsOpBase<0, 1>>]>,
+     Arguments<(ins AnyType:$source, AnyVector:$dest, Index:$position)>,
+     Results<(outs AnyVector)> {
+  let summary = "insertelement operation";
+  let description = [{
+    Takes a scalar source, an 1-D destination vector and a dynamic index
+    position and inserts the source into the destination at the proper
+    position.  Note that this instruction resembles vector.insert, but
+    is restricted to 1-D vectors and relaxed to dynamic indices. It is
+    meant to be closer to LLVM's version:
+    https://llvm.org/docs/LangRef.html#insertelement-instruction
+
+    Example:
+    ```
+      %c = constant 15 : i32
+      %f = constant 0.0f : f32
+      %1 = vector.insertelement %f, %0[%c : i32]: vector<16xf32>
+    ```
+  }];
+  let extraClassDeclaration = [{
+    Type getSourceType() { return source()->getType(); }
+    VectorType getDestVectorType() {
+      return dest()->getType().cast<VectorType>();
+    }
   }];
 }
 
