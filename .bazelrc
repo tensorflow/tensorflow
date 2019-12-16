@@ -258,9 +258,8 @@ build:windows --host_cxxopt=/std:c++14
 # On windows, we still link everything into a single DLL.
 build:windows --config=monolithic
 
-# On linux and macos, we dynamically link small amount of kernels
+# On linux, we dynamically link small amount of kernels
 build:linux --config=dynamic_kernels
-build:macos --config=dynamic_kernels
 
 # Make sure to include as little of windows.h as possible
 build:windows --copt=-DWIN32_LEAN_AND_MEAN

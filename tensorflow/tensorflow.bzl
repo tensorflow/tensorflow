@@ -2065,9 +2065,9 @@ def py_test(deps = [], data = [], kernels = [], **kwargs):
             clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
         }),
         data = data + select({
-            "//conditions:default": [],
+            "//conditions:default": kernels,
             clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
-        }) + tf_binary_dynamic_kernel_dsos(),
+        }),
         exec_compatible_with = tf_exec_compatible_with(kwargs),
         **kwargs
     )
