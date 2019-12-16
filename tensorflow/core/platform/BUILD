@@ -959,14 +959,15 @@ exports_files(
 
 exports_files(
     [
-        "stacktrace.h",
-        "cpu_info.h",
-        "types.h",
-        "macros.h",
         "abi.h",
-        "logging.h",
-        "platform.h",
         "byte_order.h",
+        "cpu_info.cc",
+        "cpu_info.h",
+        "logging.h",
+        "macros.h",
+        "platform.h",
+        "stacktrace.h",
+        "types.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
