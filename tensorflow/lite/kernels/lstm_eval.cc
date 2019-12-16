@@ -1531,7 +1531,7 @@ TfLiteStatus EvalHybrid(
   return kTfLiteOk;
 }
 
-TfLiteStatus EvalQuantized(
+TfLiteStatus EvalInteger(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,
     const TfLiteTensor* input_to_forget_weights,
     const TfLiteTensor* input_to_cell_weights,
