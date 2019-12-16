@@ -20,6 +20,11 @@ include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
+def SignedIntTensor : TensorOf<[I1, I8, I16, I32, I64]>;
+
+// IEEE compliant floating point tensors.
+def IEEEFloatTensor : TensorOf<[F16, F32, F64]>;
+
 //===----------------------------------------------------------------------===//
 // BatchNorm op patterns.
 //===----------------------------------------------------------------------===//
@@ -93,6 +98,7 @@ class DirectBinaryPat<Op FromOp, Op ToOp>
 foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
                          [TF_AddV2Op, HLO_AddOp],
                          [TF_DivOp, HLO_DivOp],
+                         [TF_LeftShiftOp, HLO_ShiftLeftOp],
                          [TF_MaximumOp, HLO_MaxOp],
                          [TF_MinimumOp, HLO_MinOp],
                          [TF_MulOp, HLO_MulOp],
@@ -101,12 +107,15 @@ foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
                          [TF_SubOp, HLO_SubOp]] in
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
+def LowerRightShiftSigned :
+  Pat<(TF_RightShiftOp AnyRankedTensor:$l, AnyRankedTensor:$r),
+      (HLO_ShiftRightArithmeticOp $l, $r, (BinBroadcastDimensions $l, $r)),
+      [(SignedIntTensor $r)]>;
+
+// TODO(hinsu): Lower unsigned types to HLO_ShiftRightLogical once the HLO op
+// supports unsigned integers.
+
 def : Pat<(TF_ComplexOp $r, $i), (HLO_ComplexOp $r, $i)>;
-
-def IntegerTensor : TensorOf<[I1, I8, I16, I32, I64]>;
-
-// IEEE compliant floating point tensors.
-def IEEEFloatTensor : TensorOf<[F16, F32, F64]>;
 
 // Performs a substitution of FloorDiv, pseudo code below:
 //
@@ -131,7 +140,7 @@ def : Pat<(TF_FloorDivOp IEEEFloatTensor:$l, IEEEFloatTensor:$r),
 // without returning the broadcast of 'r' to broadcast('l', 'r').
 //
 // NOTE: This should be optimized for unsigned integers.
-def : Pat<(TF_FloorDivOp IntegerTensor:$l, IntegerTensor:$r),
+def : Pat<(TF_FloorDivOp SignedIntTensor:$l, SignedIntTensor:$r),
         (HLO_SelectOp
          (HLO_CompareOp
           (HLO_CompareOp $l, (HLO_ConstOp (ConstantSplat<"0"> $l)),
@@ -186,7 +195,7 @@ def : Pat<(TF_BroadcastToOp:$result AnyRankedTensor:$input, $shape),
 //===----------------------------------------------------------------------===//
 
 class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
-  : Pat<(FromOp IntegerTensor:$l, IntegerTensor:$r),
+  : Pat<(FromOp SignedIntTensor:$l, SignedIntTensor:$r),
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
 
 foreach fromToBinPair = [[TF_LogicalAndOp, HLO_AndOp],
@@ -412,6 +421,7 @@ foreach Mapping = [
                    [TF_ImagOp, HLO_ImagOp],
                    [TF_IsFiniteOp, HLO_IsFiniteOp],
                    [TF_LogOp, HLO_LogOp],
+                   [TF_LogicalNotOp, HLO_NotOp],
                    [TF_NegOp, HLO_NegOp],
                    [TF_RealOp, HLO_RealOp],
                    [TF_RsqrtOp, HLO_RsqrtOp],
