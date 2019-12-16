@@ -250,7 +250,6 @@ cuda_py_test(
     srcs = ["backprop_test.py"],
     python_version = "PY3",
     tags = [
-        "no_rocm",
         "no_windows",  #TODO(b/139745667)
     ],
     deps = [
@@ -267,13 +266,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
-<<<<<<< HEAD
-    ],
-    tags = [
-        "no_windows",  #TODO(b/139745667)
-=======
         "//third_party/py/numpy",
->>>>>>> upstream/master
     ],
 )
 

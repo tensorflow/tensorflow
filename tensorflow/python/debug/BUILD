@@ -715,7 +715,6 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
-        "no_rocm",
         "no_windows",  # TODO(b/142475891): Enable this test on Windows.
         "no_windows_gpu",  # TODO(b/130551176)
     ],
@@ -735,18 +734,6 @@ cuda_py_test(
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
-<<<<<<< HEAD
-    python_version = "PY3",
-    shard_count = 4,
-    tags = [
-        "guitar",
-        "multi_and_single_gpu",
-        "no_windows",  # TODO(b/142475891): Enable this test on Windows.
-        "no_windows_gpu",  # TODO(b/130551176)
-    ],
-    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
-=======
->>>>>>> upstream/master
 )
 
 cuda_py_test(

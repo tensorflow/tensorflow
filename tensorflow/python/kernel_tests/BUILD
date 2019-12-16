@@ -121,7 +121,6 @@ cuda_py_test(
     size = "small",
     srcs = ["list_ops_test.py"],
     grpc_enabled = True,
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -136,10 +135,6 @@ cuda_py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
-<<<<<<< HEAD
-    grpc_enabled = True,
-=======
->>>>>>> upstream/master
 )
 
 cuda_py_test(
@@ -2736,7 +2731,6 @@ cuda_py_test(
     srcs = ["tensor_array_ops_test.py"],
     flaky = 1,  # create_local_cluster sometimes times out.
     shard_count = 10,
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -2763,11 +2757,6 @@ cuda_py_test(
         "//tensorflow/python/eager:def_function",
         "//third_party/py/numpy",
     ],
-<<<<<<< HEAD
-    flaky = 1,  # create_local_cluster sometimes times out.
-    shard_count = 10,
-=======
->>>>>>> upstream/master
 )
 
 cuda_py_test(
@@ -3472,22 +3461,14 @@ cuda_py_test(
     size = "medium",
     srcs = ["qr_op_test.py"],
     shard_count = 20,
-    tags = [
-        "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
-<<<<<<< HEAD
-    ],
-    shard_count = 20,
-=======
         "//third_party/py/numpy",
     ],
->>>>>>> upstream/master
 )
 
 cuda_py_test(
@@ -3858,15 +3839,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["tridiagonal_matmul_op_test.py"],
     shard_count = 10,
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
         "//third_party/py/numpy",
     ],
-<<<<<<< HEAD
-    shard_count = 10,
-=======
->>>>>>> upstream/master
 )

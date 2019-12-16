@@ -103,16 +103,11 @@ tf_py_test(
         "--max_steps=10",
     ],
     main = "fully_connected_feed.py",
-<<<<<<< HEAD
-    tags = [
-        "no_pip",
-=======
     tags = ["no_pip"],
     deps = [
         ":input_data",
         ":mnist",
         "//tensorflow:tensorflow_py",
->>>>>>> upstream/master
     ],
 )
 

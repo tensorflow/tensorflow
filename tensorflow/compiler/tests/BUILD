@@ -240,12 +240,8 @@ tf_xla_py_test(
     name = "cholesky_op_test",
     size = "medium",
     srcs = ["cholesky_op_test.py"],
-<<<<<<< HEAD
-    tags = ["optonly", "no_rocm"],
-=======
     python_version = "PY3",
-    tags = ["optonly"],
->>>>>>> upstream/master
+    tags = ["optonly", "no_rocm"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -301,12 +297,8 @@ tf_xla_py_test(
         "cpu",
         "cpu_ondemand",
     ],
-<<<<<<< HEAD
-    tags = ["optonly", "no_rocm"],
-=======
     python_version = "PY3",
-    tags = ["optonly"],
->>>>>>> upstream/master
+    tags = ["optonly", "no_rocm"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -355,15 +347,11 @@ tf_xla_py_test(
     size = "small",
     timeout = "moderate",
     srcs = ["matrix_triangular_solve_op_test.py"],
-<<<<<<< HEAD
+    python_version = "PY3",
     tags = [
         "no_rocm",
         "optonly",
     ],
-=======
-    python_version = "PY3",
-    tags = ["optonly"],
->>>>>>> upstream/master
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -392,15 +380,11 @@ tf_xla_py_test(
     name = "concat_ops_test",
     size = "medium",
     srcs = ["concat_ops_test.py"],
-<<<<<<< HEAD
+    python_version = "PY3",
     tags = [
         "many_xla_args",
         "no_rocm",
     ],
-=======
-    python_version = "PY3",
-    tags = ["many_xla_args"],
->>>>>>> upstream/master
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1087,15 +1071,11 @@ tf_xla_py_test(
     srcs = ["tensor_array_ops_test.py"],
     # TensorArray ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
-<<<<<<< HEAD
+    python_version = "PY3",
     tags = [
         "no_rocm",
         "config-cuda-only",
     ],
-=======
-    python_version = "PY3",
-    tags = ["config-cuda-only"],
->>>>>>> upstream/master
     use_xla_device = False,
     deps = [
         ":xla_test",
@@ -1321,6 +1301,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["jit_test.py"],
     shard_count = 5,
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":test_utils",
@@ -1335,18 +1316,13 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python/compiler/xla:compiler_py",
     ],
-<<<<<<< HEAD
-    shard_count = 5,
-    tags = ["no_rocm"],
-    xla_enable_strict_auto_jit = False,
-=======
->>>>>>> upstream/master
 )
 
 cuda_py_test(
     name = "dense_layer_test",
     size = "medium",
     srcs = ["dense_layer_test.py"],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":test_utils",
@@ -1357,11 +1333,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/compiler/xla:compiler_py",
     ],
-<<<<<<< HEAD
-    tags = ["no_rocm"],
-    xla_enable_strict_auto_jit = False,
-=======
->>>>>>> upstream/master
 )
 
 cc_library(
@@ -1436,6 +1407,7 @@ py_library(
 cuda_py_test(
     name = "lstm_test",
     srcs = ["lstm_test.py"],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":lstm",
@@ -1449,11 +1421,6 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],
-<<<<<<< HEAD
-    tags = ["no_rocm"],
-    xla_enable_strict_auto_jit = False,
-=======
->>>>>>> upstream/master
 )
 
 # An example of ahead-of-time compilation using tfcompile.  The

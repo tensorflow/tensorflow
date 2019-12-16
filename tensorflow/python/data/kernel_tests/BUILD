@@ -83,9 +83,6 @@ tf_py_test(
     name = "dataset_test",
     size = "small",
     srcs = ["dataset_test.py"],
-    tags = [
-        "no_rocm",
-    ],
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
@@ -94,14 +91,11 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_tensor",
-<<<<<<< HEAD
-=======
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
->>>>>>> upstream/master
     ],
 )
 

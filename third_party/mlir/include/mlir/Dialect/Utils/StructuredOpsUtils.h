@@ -41,8 +41,6 @@ static constexpr StringLiteral getIndexingMapsAttrName() {
 /// op's iterators.
 static constexpr StringLiteral getIteratorTypesAttrName() {
   return StringLiteral("iterator_types");
-<<<<<<< HEAD
-=======
 }
 
 /// Attribute name for the IntegerAttr which encodes the number of input buffer
@@ -69,7 +67,6 @@ static constexpr StringLiteral getFunAttrName() { return StringLiteral("fun"); }
 /// function that implements the structured op.
 static constexpr StringLiteral getLibraryCallAttrName() {
   return StringLiteral("library_call");
->>>>>>> upstream/master
 }
 
 /// Use to encode that a particular iterator type has parallel semantics.

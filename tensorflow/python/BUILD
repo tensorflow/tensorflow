@@ -3649,17 +3649,11 @@ cuda_py_test(
     size = "small",
     srcs = ["training/experimental/mixed_precision_test.py"],
     python_version = "PY3",
-<<<<<<< HEAD
-=======
-    tags = [
-        "no_rocm",
-    ],
     deps = [
         ":mixed_precision",
         "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
->>>>>>> upstream/master
 )
 
 py_library(
@@ -3969,11 +3963,6 @@ cuda_py_test(
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/kernel_tests/random:util",
     ],
-<<<<<<< HEAD
-    python_version = "PY3",
-    xla_enable_strict_auto_jit = False,
-=======
->>>>>>> upstream/master
 )
 
 py_library(
@@ -4770,7 +4759,6 @@ cuda_py_test(
     srcs = ["ops/nn_fused_batchnorm_test.py"],
     python_version = "PY3",
     shard_count = 16,
-    tags = ["no_rocm"],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -4780,11 +4768,6 @@ cuda_py_test(
         ":nn_grad",
         "//third_party/py/numpy",
     ],
-<<<<<<< HEAD
-    python_version = "PY3",
-    shard_count = 16,
-=======
->>>>>>> upstream/master
 )
 
 cuda_py_test(

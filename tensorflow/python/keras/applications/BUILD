@@ -41,13 +41,9 @@ tf_py_test(
     name = "applications_test",
     size = "medium",
     srcs = ["applications_test.py"],
-<<<<<<< HEAD
-    tags = ["no_rocm"],
-    additional_deps = [
-=======
     shard_count = 32,
+    tags = ["no_rocm"],
     deps = [
->>>>>>> upstream/master
         ":applications",
         "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",

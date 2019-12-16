@@ -102,7 +102,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["adamax_test.py"],
     shard_count = 4,
-    tags = ["no_rocm"],
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -115,10 +114,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
     ],
-<<<<<<< HEAD
-    shard_count = 4,
-=======
->>>>>>> upstream/master
 )
 
 cuda_py_test(
@@ -222,19 +217,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/keras",
-<<<<<<< HEAD
-    ],
-    shard_count = 8,
-    tags = [
-        "manual",
-        "no_oss",
-        "no_cuda",
-        "no_rocm",
-        "no_windows",
-        "notap",
-=======
         "@absl_py//absl/testing:parameterized",
->>>>>>> upstream/master
     ],
 )
 

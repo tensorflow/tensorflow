@@ -1053,7 +1053,6 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
-        "no_rocm",
         "no_windows_gpu",  # TODO(b/130551176)
     ],
     deps = [
@@ -1077,15 +1076,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
-<<<<<<< HEAD
-    shard_count = 5,
-    tags = [
-        "guitar",
-        "multi_and_single_gpu",
-        "no_windows_gpu",  # TODO(b/130551176)
-    ],
-=======
->>>>>>> upstream/master
 )
 
 cuda_py_test(

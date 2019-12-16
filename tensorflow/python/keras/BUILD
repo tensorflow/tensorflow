@@ -549,7 +549,10 @@ tf_py_test(
     srcs = ["integration_test.py"],
     python_version = "PY3",
     shard_count = 16,
-    tags = ["notsan"],
+    tags = [
+        "no_rocm",
+        "notsan"
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -557,14 +560,6 @@ tf_py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
-<<<<<<< HEAD
-    shard_count = 16,
-    tags = [
-        "no_rocm",
-        "notsan"
-    ],
-=======
->>>>>>> upstream/master
 )
 
 tf_py_test(
@@ -773,10 +768,6 @@ tf_py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
-<<<<<<< HEAD
-    shard_count = 4,
-=======
->>>>>>> upstream/master
 )
 
 cuda_py_test(
@@ -968,19 +959,13 @@ cuda_py_test(
     srcs = ["layers/normalization_test.py"],
     python_version = "PY3",
     shard_count = 4,
-<<<<<<< HEAD
-=======
-    tags = [
-        "no_rocm",
-        "notsan",
-    ],
+    tags = ["notsan"],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
->>>>>>> upstream/master
 )
 
 tf_py_test(
@@ -1073,14 +1058,6 @@ tf_py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
-<<<<<<< HEAD
-    tags = [
-        "no_cuda",
-        "no_rocm",
-    ],
-    shard_count = 10,
-=======
->>>>>>> upstream/master
 )
 
 cuda_py_test(
@@ -1588,7 +1565,6 @@ tf_py_test(
     srcs = ["engine/training_arrays_test.py"],
     python_version = "PY3",
     tags = [
-        "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
     deps = [
@@ -1599,14 +1575,6 @@ tf_py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
-<<<<<<< HEAD
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python:client_testlib",
-    ],
-    tags = [
-        "nomac",  # TODO(mihaimaruseac): b/127695564
-=======
->>>>>>> upstream/master
     ],
 )
 
