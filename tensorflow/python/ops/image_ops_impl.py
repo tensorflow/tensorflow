@@ -642,6 +642,7 @@ def transpose(image, name=None):
     ValueError: if the shape of `image` not supported.
 
   Usage Example: 
+  ```python
     import tensorflow as tf 
     x = tf.random.normal(shape=(256, 256, 3)) 
     tf.image.transpose(x)  
