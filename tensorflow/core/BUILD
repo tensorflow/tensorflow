@@ -79,7 +79,6 @@ load(
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
-    "tf_cuda_only_cc_test",
     "tf_features_nomodules_if_android",
     "tf_features_nomodules_if_emscripten",
     "tf_gen_op_libs",
@@ -492,7 +491,7 @@ cc_library(
         "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_lib_headers",
         "//tensorflow/core/lib/random:legacy_lib_random_headers",
         "//tensorflow/core/lib/strings:legacy_lib_string_headers",
-        "//tensorflow/core/util:gpu_cuda_alias.h",
+        "//tensorflow/core/util:lib_hdrs",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -556,7 +555,7 @@ cc_library(
         "//tensorflow/core/lib/core:legacy_lib_core_status_test_util_header",
         "//tensorflow/core/platform:test.h",
         "//tensorflow/core/platform:test_benchmark.h",
-        "//tensorflow/core/util:reporter.h",
+        "//tensorflow/core/util:test_hdrs",
     ],
     copts = tf_copts(),
     linkopts = select({
@@ -644,38 +643,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:variant_op_registry.h",
         "//tensorflow/core/framework:variant_tensor_data.h",
         "//tensorflow/core/util/sparse:framework_group",
-        "//tensorflow/core/util:activation_mode.h",
-        "//tensorflow/core/util:batch_util.h",
-        "//tensorflow/core/util:bcast.h",
-        "//tensorflow/core/util:debug_events_writer.h",
-        "//tensorflow/core/util:device_name_utils.h",
-        "//tensorflow/core/util:dump_graph.h",
-        "//tensorflow/core/util:einsum_op_util.h",
-        "//tensorflow/core/util:events_writer.h",
-        "//tensorflow/core/util:example_proto_fast_parsing.h",
-        "//tensorflow/core/util:example_proto_helper.h",
-        "//tensorflow/core/util:gpu_kernel_helper.h",
-        "//tensorflow/core/util:guarded_philox_random.h",
-        "//tensorflow/core/util:matmul_autotune.h",
-        "//tensorflow/core/util:matmul_bcast.h",
-        "//tensorflow/core/util:mirror_pad_mode.h",
-        "//tensorflow/core/util:padding.h",
-        "//tensorflow/core/util:port.h",
-        "//tensorflow/core/util:ptr_util.h",
-        "//tensorflow/core/util:reffed_status_callback.h",
-        "//tensorflow/core/util:saved_tensor_slice_util.h",
-        "//tensorflow/core/util:stat_summarizer.h",
-        "//tensorflow/core/util:stat_summarizer_options.h",
-        "//tensorflow/core/util:stream_executor_util.h",
-        "//tensorflow/core/util:strided_slice_op.h",
-        "//tensorflow/core/util:tensor_format.h",
-        "//tensorflow/core/util:tensor_ops_util.h",
-        "//tensorflow/core/util:tensor_slice_reader.h",
-        "//tensorflow/core/util:tensor_slice_reader_cache.h",
-        "//tensorflow/core/util:tensor_slice_writer.h",
-        "//tensorflow/core/util:use_cudnn.h",
-        "//tensorflow/core/util:util.h",
-        "//tensorflow/core/util:work_sharder.h",
+        "//tensorflow/core/util:framework_srcs",
         "public/version.h",
     ] + select({
         "//tensorflow:windows": [],
@@ -683,7 +651,7 @@ tf_cuda_library(
             "//tensorflow/core/util:memmapped_file_system_hdrs",
         ],
     }) + if_mkl([
-        "//tensorflow/core/util:mkl_util.h",
+        "//tensorflow/core/util:mkl_util_hdrs",
     ]),
     visibility = ["//visibility:public"],
     deps = [
@@ -706,24 +674,19 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
+alias(
     name = "overflow",
-    hdrs = ["//tensorflow/core/util:overflow.h"],
-    deps = [
-        ":framework_lite",
-        ":lib",
-    ],
+    actual = "//tensorflow/core/util:overflow",
 )
 
-cc_library(
+alias(
     name = "exec_on_stall",
-    hdrs = ["//tensorflow/core/util:exec_on_stall.h"],
-    deps = [":framework_lite"],
+    actual = "//tensorflow/core/util:exec_on_stall",
 )
 
-cc_library(
+alias(
     name = "ptr_util",
-    hdrs = ["//tensorflow/core/util:ptr_util.h"],
+    actual = "//tensorflow/core/util:ptr_util",
 )
 
 # TODO(gonnet): Remove this alias once all users have been moved to the actual target.
@@ -1748,8 +1711,7 @@ filegroup(
         "//tensorflow/core/framework:android_test_hdrs",
         "//tensorflow/core/framework:android_test_srcs",
         "//tensorflow/core/platform:test.h",
-        "//tensorflow/core/util:reporter.cc",
-        "//tensorflow/core/util:reporter.h",
+        "//tensorflow/core/util:android_test_srcs",
     ],
     visibility = ["//visibility:public"],
 )
@@ -1761,8 +1723,7 @@ filegroup(
         "//tensorflow/core/framework:android_test_hdrs",
         "//tensorflow/core/framework:android_test_srcs_no_core",
         "//tensorflow/core/platform:test.h",
-        "//tensorflow/core/util:reporter.cc",
-        "//tensorflow/core/util:reporter.h",
+        "//tensorflow/core/util:android_test_srcs",
     ],
     visibility = ["//visibility:public"],
 )
@@ -1774,6 +1735,7 @@ cc_library(
     srcs = if_android([":android_test_srcs"]),
     hdrs = [
         "//tensorflow/core/framework:android_test_hdrs",
+        "//tensorflow/core/util:android_test_hdrs",
     ],
     copts = tf_copts(android_optimization_level_override = None),
     tags = [
@@ -2012,7 +1974,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = [
     "//tensorflow/core/platform:tracing.h",
     "//tensorflow/core/platform:unbounded_work_queue.h",
     "//tensorflow/core/platform:legacy_platform_lib_hdrs",
-    "//tensorflow/core/util:env_var.h",
+    "//tensorflow/core/util:lib_internal_public_hdrs",
 ]
 
 cc_library(
@@ -2402,11 +2364,9 @@ alias(
     actual = "//tensorflow/core/lib/core:error_codes_proto_cc",
 )
 
-cc_library(
+alias(
     name = "version_lib",
-    srcs = ["//tensorflow/core/util:version_info.cc"],
-    hdrs = ["public/version.h"],
-    copts = tf_copts(),
+    actual = "//tensorflow/core/util:version_info",
 )
 
 FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
@@ -2621,13 +2581,10 @@ cc_library(
     ],
 )
 
-tf_cuda_library(
+alias(
     name = "cuda_device_functions",
-    hdrs = [
-        "//tensorflow/core/util:gpu_device_functions.h",
-    ],
+    actual = "//tensorflow/core/util:gpu_device_functions",
     visibility = ["//visibility:public"],
-    deps = [":framework_lite"],
 )
 
 # TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
@@ -3006,7 +2963,7 @@ tf_cuda_library(
     srcs = ["common_runtime/direct_session.cc"],
     hdrs = [
         "common_runtime/direct_session.h",
-        "//tensorflow/core/util:env_var.h",
+        "//tensorflow/core/util:lib_internal_public_hdrs",
     ],
     copts = tf_copts(),
     deps = [
@@ -3514,30 +3471,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "util_overflow_test",
-    size = "small",
-    srcs = ["//tensorflow/core/util:overflow_test.cc"],
-    deps = [
-        ":framework_lite",
-        ":overflow",
-        ":test",
-        ":test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "exec_on_stall_test",
-    size = "small",
-    srcs = ["//tensorflow/core/util:exec_on_stall_test.cc"],
-    deps = [
-        ":exec_on_stall",
-        ":framework_lite",
-        ":test",
-        ":test_main",
-    ],
-)
-
-tf_cc_test(
     name = "lib_jpeg_jpeg_mem_unittest",
     srcs = ["lib/jpeg/jpeg_mem_unittest.cc"],
     data = glob(["lib/jpeg/testdata/*.jpg"]),
@@ -3628,6 +3561,7 @@ test_suite(
     tests = [
         ":core_higher_level_tests",
         "//tensorflow/core/framework:higher_level_tests",
+        "//tensorflow/core/util:higher_level_tests",
     ],
 )
 
@@ -3660,29 +3594,6 @@ tf_cc_tests(
         "graph/subgraph_test.cc",
         "graph/tensor_id_test.cc",
         "graph/validate_test.cc",
-        "//tensorflow/core/util:bcast_test.cc",
-        "//tensorflow/core/util:command_line_flags_test.cc",
-        "//tensorflow/core/util:debug_events_writer_test.cc",
-        "//tensorflow/core/util:device_name_utils_test.cc",
-        "//tensorflow/core/util:dump_graph_test.cc",
-        "//tensorflow/core/util:equal_graph_def_test.cc",
-        "//tensorflow/core/util:events_writer_test.cc",
-        "//tensorflow/core/util:example_proto_fast_parsing_test.cc",
-        "//tensorflow/core/util:example_proto_helper_test.cc",
-        "//tensorflow/core/util:matmul_bcast_test.cc",
-        "//tensorflow/core/util:memmapped_file_system_test.cc",
-        "//tensorflow/core/util:presized_cuckoo_map_test.cc",
-        "//tensorflow/core/util:reffed_status_callback_test.cc",
-        "//tensorflow/core/util:reporter_test.cc",
-        "//tensorflow/core/util:saved_tensor_slice_util_test.cc",
-        "//tensorflow/core/util:semver_test.cc",
-        "//tensorflow/core/util:stat_summarizer_test.cc",
-        "//tensorflow/core/util:tensor_format_test.cc",
-        "//tensorflow/core/util:tensor_slice_reader_test.cc",
-        "//tensorflow/core/util:tensor_slice_set_test.cc",
-        "//tensorflow/core/util:tensor_slice_util_test.cc",
-        "//tensorflow/core/util:tensor_slice_writer_test.cc",
-        "//tensorflow/core/util:work_sharder_test.cc",
         "//tensorflow/core/util/sparse:higher_level_tests_group",
     ],
     create_named_test_suite = True,
@@ -3910,7 +3821,7 @@ tf_cc_test_mkl(
     srcs = [
         "graph/mkl_layout_pass_test.cc",
         "graph/mkl_tfconversion_pass_test.cc",
-        "//tensorflow/core/util:mkl_util_test.cc",
+        "//tensorflow/core/util:mkl_util_test_srcs",
     ],
     linkstatic = 1,
     deps = [
@@ -4061,18 +3972,6 @@ tf_cc_test_gpu(
         ":test_main",
         "//tensorflow/core/platform:rocm_rocdl_path",
     ],
-)
-
-tf_cuda_only_cc_test(
-    name = "util_gpu_kernel_helper_test",
-    srcs = [
-        "//tensorflow/core/util:gpu_kernel_helper_test.cu.cc",
-    ],
-    deps = [
-        ":test",
-        ":test_main",
-        "//third_party/eigen3",
-    ] + mkl_deps(),
 )
 
 tf_cc_test_gpu(
