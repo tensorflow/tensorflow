@@ -794,6 +794,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
       negative.
       
   Usage example:
+  ```python
     
     x=tf.random.uniform((28,28,1))
     tf.image.pad_to_bounding_box(x,28,28,100,100)
