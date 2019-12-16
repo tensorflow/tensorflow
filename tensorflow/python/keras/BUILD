@@ -1532,6 +1532,9 @@ tf_py_test(
     name = "compile_utils_test",
     size = "medium",
     srcs = ["engine/compile_utils_test.py"],
+    tags = [
+        "nomac",  # TODO(b/146226927)
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
