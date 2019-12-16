@@ -4386,6 +4386,7 @@ bool HloParserImpl::ParseSingleInstruction(HloModule* module) {
   for (auto& comp : computations_) {
     module->AddEmbeddedComputation(std::move(comp));
   }
+  TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   return true;
 }
 
