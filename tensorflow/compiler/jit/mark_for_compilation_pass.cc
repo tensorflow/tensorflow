@@ -1187,7 +1187,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     }
 
     if (whitelist.size() > 0 && !whitelist.contains(node->def().op())) {
-      VLOG(1) << "Rejecting " << node->name()
+      VLOG(1) << "Rejecting TF operation " << node->def().op()
               << " as it is not listed in --tf_xla_ops_to_cluster.";
       continue;
     }
