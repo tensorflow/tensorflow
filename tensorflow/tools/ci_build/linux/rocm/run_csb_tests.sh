@@ -38,7 +38,29 @@ yes "" | $PYTHON_BIN_PATH configure.py
 bazel test \
       --config=rocm \
       -k \
-      --test_tag_filters=gpu,-no_gpu,-no_rocm,-benchmark-test,-no_oss,-oss_serial,-rocm_multi_gpu,-v1only \
+      --test_tag_filters=gpu,-no_gpu,-no_rocm,-v1only \
+      --jobs=${N_JOBS} \
+      --local_test_jobs=1 \
+      --test_timeout 600,900,2400,7200 \
+      --test_output=errors \
+      --test_sharding_strategy=disabled \
+      -- \
+      //tensorflow/python/kernel_tests:conv_ops_test_gpu \
+&& bazel test \
+      --config=rocm \
+      -k \
+      --test_tag_filters=gpu,-no_gpu,-no_rocm,-v1only \
+      --jobs=${N_JOBS} \
+      --local_test_jobs=1 \
+      --test_timeout 600,900,2400,7200 \
+      --test_output=errors \
+      --test_sharding_strategy=disabled \
+      -- \
+      //tensorflow/core/nccl:nccl_manager_test \
+&& bazel test \
+      --config=rocm \
+      -k \
+      --test_tag_filters=gpu,-no_gpu,-no_rocm,-v1only,-benchmark-test,-no_oss,-oss_serial,-rocm_multi_gpu \
       --jobs=${N_JOBS} \
       --local_test_jobs=${TF_GPU_COUNT} \
       --test_timeout 600,900,2400,7200 \
@@ -50,15 +72,5 @@ bazel test \
       -//tensorflow/compiler/... \
       -//tensorflow/lite/... \
       -//tensorflow/python/compiler/tensorrt/... \
-&& bazel test \
-      --config=rocm \
-      -k \
-      --test_tag_filters=-no_gpu,-no_rocm,-v1only \
-      --jobs=${N_JOBS} \
-      --local_test_jobs=1 \
-      --test_timeout 600,900,2400,7200 \
-      --test_output=errors \
-      --test_sharding_strategy=disabled \
-      -- \
-      //tensorflow/core/nccl:nccl_manager_test
+      -//tensorflow/python/kernel_tests:conv_ops_test_gpu
 
