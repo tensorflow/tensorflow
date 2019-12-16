@@ -1770,9 +1770,10 @@ absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
            {"ComplexAbs", "Angle", "Conj", "Abs", "Acos", "Acosh", "Asin",
             "Atan", "Atanh", "Ceil", "Cos", "Cosh", "Sin", "Exp", "Expm1",
             "Floor", "IsFinite", "IsInf", "IsNan", "Inv", "Reciprocal", "Log",
-            "Log1p", "Invert", "LogicalNot", "Neg", "Rint", "Round", "Rsqrt",
-            "Sigmoid", "Sign", "Sinh", "Softplus", "Softsign", "Sqrt", "Square",
-            "Tan", "Tanh", "Real", "Imag", "Erf", "Erfc", "Lgamma", "Digamma",
+            "Log1p", "Invert", "LogicalNot", "Ndtri", "Neg", "Rint", "Round",
+            "Rsqrt", "Sigmoid", "Sign", "Sinh", "Softplus", "Softsign", "Sqrt",
+            "Square", "Tan", "Tanh", "Real", "Imag", "Erf", "Erfc", "Erfinv",
+            "Lgamma", "Digamma",
             // Binary
             "Add", "AddV2", "Sub", "Mul", "Div", "Atan2", "Complex", "DivNoNan",
             "MulNoNan", "FloorDiv", "Xlogy", "Xdivy", "FloorMod", "BitwiseAnd",
