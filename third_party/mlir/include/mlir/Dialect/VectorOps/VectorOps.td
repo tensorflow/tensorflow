@@ -352,7 +352,7 @@ def Vector_ExtractSlicesOp :
 
       %3 = vector.extract_slices %2, [2, 2], [1, 1]
         : vector<4x3xf32> into tuple<vector<2x2xf32>, vector<2x1xf32>,
-                                     vector<2x2xf32>, vector<2x2xf32>>
+                                     vector<2x2xf32>, vector<2x1xf32>>
     ```
   }];
   let builders = [OpBuilder<
@@ -436,6 +436,58 @@ def Vector_InsertOp :
     VectorType getDestVectorType() {
       return dest()->getType().cast<VectorType>();
     }
+  }];
+}
+
+def Vector_InsertSlicesOp :
+  Vector_Op<"insert_slices", [NoSideEffect]>,
+    Arguments<(ins TupleOf<[AnyVector]>:$vectors, I64ArrayAttr:$sizes,
+                   I64ArrayAttr:$strides)>,
+    Results<(outs AnyVector)> {
+  let summary = "vector insert slices operation";
+  let description = [{
+    Takes a tuple of vector slices and inserts them into the vector result
+    according to the 'sizes' and 'strides' parameters.
+
+    The arguments 'sizes' and 'strides' represent a specification for
+    generating the unrolling of 'vector' shape, which has all slices of shape
+    'sizes' except for slices at dimension boundaries when 'vector' dimension
+    sizes are not a multiple of 'sizes'.
+
+    Each slice in 'vectors' is at the tuple element index corresponding to the
+    linear index of the slice w.r.t the unrolling scheme represented by 'sizes'.
+    Currently, only unit strides are supported.
+
+    Examples:
+    ```
+      %0 = vector.extract_slices %0, [2, 2], [1, 1]
+        : vector<4x2xf32> into tuple<vector<2x2xf32>, vector<2x2xf32>>
+
+      %1 = vector.insert_slices %0, [2, 2], [1, 1]
+        : tuple<vector<2x2xf32>, vector<2x2xf32>> into vector<4x2xf32>
+
+      // Example with partial slices at dimension boundaries.
+      %3 = vector.extract_slices %2, [2, 2], [1, 1]
+        : vector<4x3xf32> into tuple<vector<2x2xf32>, vector<2x1xf32>,
+                                     vector<2x2xf32>, vector<2x1xf32>>
+
+      %4 = vector.insert_slices %3, [2, 2], [1, 1]
+        : tuple<vector<2x2xf32>, vector<2x1xf32>,
+                vector<2x2xf32>, vector<2x1xf32>> into vector<4x3xf32>
+    ```
+  }];
+
+  let extraClassDeclaration = [{
+    TupleType getSourceTupleType() {
+      return vectors()->getType().cast<TupleType>();
+    }
+    VectorType getResultVectorType() {
+      return getResult()->getType().cast<VectorType>();
+    }
+    void getSizes(SmallVectorImpl<int64_t> &results);
+    void getStrides(SmallVectorImpl<int64_t> &results);
+    static StringRef getSizesAttrName() { return "sizes"; }
+    static StringRef getStridesAttrName() { return "strides"; }
   }];
 }
 

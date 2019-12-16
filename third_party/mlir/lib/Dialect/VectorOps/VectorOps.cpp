@@ -826,6 +826,60 @@ static LogicalResult verify(InsertOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// InsertSlicesOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseInsertSlicesOp(OpAsmParser &parser,
+                                       OperationState &result) {
+  OpAsmParser::OperandType operandInfo;
+  ArrayAttr sizesAttr;
+  StringRef sizesAttrName = InsertSlicesOp::getSizesAttrName();
+  ArrayAttr stridesAttr;
+  StringRef stridesAttrName = InsertSlicesOp::getStridesAttrName();
+  TupleType tupleType;
+  VectorType resultVectorType;
+  return failure(
+      parser.parseOperand(operandInfo) || parser.parseComma() ||
+      parser.parseAttribute(sizesAttr, sizesAttrName, result.attributes) ||
+      parser.parseComma() ||
+      parser.parseAttribute(stridesAttr, stridesAttrName, result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(tupleType) ||
+      parser.parseKeywordType("into", resultVectorType) ||
+      parser.resolveOperand(operandInfo, tupleType, result.operands) ||
+      parser.addTypeToList(resultVectorType, result.types));
+}
+
+static void print(OpAsmPrinter &p, InsertSlicesOp op) {
+  p << op.getOperationName() << ' ' << *op.vectors() << ", ";
+  p << op.sizes() << ", " << op.strides();
+  p.printOptionalAttrDict(
+      op.getAttrs(),
+      /*elidedAttrs=*/{InsertSlicesOp::getSizesAttrName(),
+                       InsertSlicesOp::getStridesAttrName()});
+  p << " : " << op.vectors()->getType();
+  p << " into " << op.getResultVectorType();
+}
+
+static LogicalResult verify(InsertSlicesOp op) {
+  SmallVector<int64_t, 4> sizes;
+  op.getSizes(sizes);
+  SmallVector<int64_t, 4> strides;
+  op.getStrides(strides);
+  return isValidExtractOrInsertSlicesType(
+      op.getOperation(), op.getResultVectorType(), op.getSourceTupleType(),
+      sizes, strides);
+}
+
+void InsertSlicesOp::getSizes(SmallVectorImpl<int64_t> &results) {
+  populateFromInt64AttrArray(sizes(), results);
+}
+
+void InsertSlicesOp::getStrides(SmallVectorImpl<int64_t> &results) {
+  populateFromInt64AttrArray(strides(), results);
+}
+
+//===----------------------------------------------------------------------===//
 // InsertStridedSliceOp
 //===----------------------------------------------------------------------===//
 
