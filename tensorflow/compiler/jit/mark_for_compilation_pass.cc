@@ -1413,7 +1413,7 @@ Status MarkForCompilationPassImpl::Run() {
 void MarkForCompilationPassImpl::DumpPostClusteringGraphs() {
   DumpGraphToFile("mark_for_compilation", *graph_, flib_def_);
 
-  // We also dump out an annoated version of the TF graph where the nodes
+  // We also dump out an annotated version of the TF graph where the nodes
   // names are prefixed with the cluster names.  This can help visualizing the
   // clustering decisions on TensorBoard.
   Graph new_graph(graph_->op_registry());

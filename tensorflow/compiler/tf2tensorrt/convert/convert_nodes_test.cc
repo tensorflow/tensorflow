@@ -523,7 +523,7 @@ TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
         "Scalar input tensor is not supported since the first dimension "
         "is treated as batch dimension by TRT");
   }
-  // Convert non-Const. We test the case where the non-batch dimemsion is
+  // Convert non-Const. We test the case where the non-batch dimension is
   // unknown as well, to make sure the validator allows that.
   for (const int32 non_batch_dim : {-1, 2}) {
     const int32 batch_size = 12;
@@ -978,7 +978,7 @@ TEST_F(ConverterTest, GetWeightRange) {
 
 TEST_F(ConverterTest, ProvideQuantizationRange) {
   FakeITensor fake_tensor;
-  // Assymetric range
+  // Asymmetric range
   converter_->ProvideQuantizationRange(&fake_tensor, 0.0f, 6.0f);
   EXPECT_EQ(6.0f, quantization_ranges()[&fake_tensor]);
   converter_->ProvideQuantizationRange(&fake_tensor, 1.0f, 6.0f);

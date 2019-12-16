@@ -1159,7 +1159,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       /*instruction=*/*convolution, /*operands=*/{lhs, rhs},
       /*supported_types=*/{F16, F32, F64, C64, C128}));
 
-  // TODO(tonywy): Add PotentiallyImplementedAsMKLCovolution to support
+  // TODO(tonywy): Add PotentiallyImplementedAsMKLConvolution to support
   // different data layouts.
   if (PotentiallyImplementedAsEigenConvolution(*convolution,
                                                target_machine_features_)) {

@@ -2574,7 +2574,7 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
     return Status::OK();
   } else if (pad_dims.size() == 1) {
     // Only one dim is modified but we have to have 2, mark a second dim which
-    // will have padding of 0. The dim we add is chosen to avoid an unecessary
+    // will have padding of 0. The dim we add is chosen to avoid an unnecessary
     // transpose.
     if (pad_dims[0] != 2) {
       pad_dims.push_back(2);

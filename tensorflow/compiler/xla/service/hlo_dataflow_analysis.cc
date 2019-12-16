@@ -1092,7 +1092,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     // TODO(b/80315712): This code is in a bit of a weird intermediate state
     // at the moment. The in-place DUS check really needs to be common to all
     // backends, so it runs first. Then we run the backend-specific check if
-    // provided, or go through the target-indepdendent check if not.
+    // provided, or go through the target-independent check if not.
     // Unfortunately, the notionally "target-independent" path actually contains
     // some target-specific code, so we can't run all of it *in addition* to the
     // target-specific function, like the interface documentation says.

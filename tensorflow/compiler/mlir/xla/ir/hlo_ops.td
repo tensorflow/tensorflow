@@ -783,7 +783,7 @@ def HLO_UnaryEinsumOp: HLO_Op<"unary_einsum", [NoSideEffect]> {
 
   let hasCanonicalizer = 1;
 
-  // UnarayEinsumOp is unconditionally canonicalized to the binary EinsumOp so
+  // UnaryEinsumOp is unconditionally canonicalized to the binary EinsumOp so
   // the HLO converter shouldn't be invoked.
   let hasCustomHLOConverter = 1;
 }

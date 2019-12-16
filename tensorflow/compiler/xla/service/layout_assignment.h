@@ -456,7 +456,7 @@ class LayoutAssignment : public HloModulePass {
   // when the instruction is a tuple, and in such case the index represents
   // the location from where the copy instruction was created from.
   // If the index is empty, the whole sharding will be propagated, even in case
-  // the intruction has a tuple sharding.
+  // the instruction has a tuple sharding.
   static void SetupCopiedInstruction(const HloInstruction& instruction,
                                      HloInstruction* copy,
                                      const ShapeIndex& index);
@@ -508,7 +508,7 @@ class LayoutAssignment : public HloModulePass {
   // instructions can be set to match the computation.
   std::map<HloComputation*, ComputationLayout> computation_layouts_;
 
-  // Map from branch computations to the result layout they shuould apply.
+  // Map from branch computations to the result layout they should apply.
   std::map<HloComputation*, ComputationLayout> conditional_mismatch_;
 
   // Every copy added to the module by the layout assignment pass is registered

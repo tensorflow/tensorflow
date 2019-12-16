@@ -141,9 +141,9 @@ Status ConvertSegmentToGraphDef(
 // Converts given subgraph to a TRT engine saved in 'engine'. Returns ok iff
 // 'builder' successfully build the engine. If the result is not ok, 'engine'
 // will be set to nullptr
-// Once returned, 'builder' is not needed any more and can be safely detroyed.
+// Once returned, 'builder' is not needed any more and can be safely destroyed.
 //
-// - convert_successfully: indicates whether the converson to TensorRT network
+// - convert_successfully: indicates whether the conversion to TensorRT network
 //   is successful. This is different than successfully building the engine:
 //   building can still fail afterwards.
 Status ConvertGraphDefToEngine(

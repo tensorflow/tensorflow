@@ -478,7 +478,7 @@ static DenseIntElementsAttr TFSliceSizes2HLOSliceSizes(
 // `element_types`, create two block arguments, one for lhs and one for rhs, and
 // generates xla_hlo.compare op to compare them with the given `direction`.
 //
-// Note that this right now only does comparsion on the first pair of block
+// Note that this right now only does comparision on the first pair of block
 // arguments.
 static void BuildSortComparisonBody(llvm::ArrayRef<Type> element_types,
                                     StringRef direction, Region *body,
@@ -2262,7 +2262,7 @@ class ConvertTopKV2Op : public OpRewritePattern<TF::TopKV2Op> {
 // Converts tf.Unpack to a series of XLA HLO slice ops.
 //
 // Each slice takes one element along the dimension to unpack and takes the full
-// range for all other dimenions. Each slice is then reshaped to drop the
+// range for all other dimensions. Each slice is then reshaped to drop the
 // dimension to unpack (which is always of size 1).
 // TODO(antiagainst): consider changing this into a TF internal lowering pass.
 class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {

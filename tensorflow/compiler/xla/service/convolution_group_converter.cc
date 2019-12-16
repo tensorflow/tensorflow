@@ -393,7 +393,7 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
       const int64 depthwise_multiplier =
           filter->shape().dimensions(kernel_output_feature_dim) / group_count;
       // Split the kernel output feature dimension into group count and
-      // depthwise mutlipler.
+      // depthwise mutilipler.
       for (int64 i = 0; i < filter->shape().rank(); ++i) {
         if (i == kernel_output_feature_dim) {
           new_filter_dimension.push_back(group_count);
@@ -439,7 +439,7 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
       new_dim->set_window_dilation(1);
       new_dim->set_base_dilation(1);
 
-      // Split the output feature dimension into and output featrue of group
+      // Split the output feature dimension into and output feature of group
       // count and depthwise multipler as an output spatial dimension.
       std::vector<int64> new_output_dimension;
       new_output_dimension.reserve(convolution->shape().rank() + 1);

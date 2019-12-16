@@ -1857,7 +1857,7 @@ TEST_P(HloDataflowAnalysisTest, NestedConditionals) {
   // inner_conditional((PRED, F32[], F32[]) %param_cond):
   //   %pred_cond = GetTupleElement(%param_cond, 0)
   //   %true_operand_cond = GetTupleElement(%param_cond, 1)
-  //   %false_opearnd_cond = GetTupleElement(%param_cond, 2)
+  //   %false_operand_cond = GetTupleElement(%param_cond, 2)
   //   return Conditional(%pred_cond, %true_operand_cond, computation1,
   //                      %false_operand_cond, computation2)
   //

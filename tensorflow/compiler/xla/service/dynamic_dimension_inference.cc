@@ -315,7 +315,7 @@ Status DynamicDimensionInferenceVisitor::HandleDot(HloInstruction* hlo) {
         // A. batch dims
         // B. contracting dims
         // C. non-batch non-contracting dims.
-        // The output dimemsions of a dot has three parts with the following
+        // The output dimensions of a dot has three parts with the following
         // order:
         // [(type A), (lhs type C), (rhs type C)]
         //
@@ -334,7 +334,7 @@ Status DynamicDimensionInferenceVisitor::HandleDot(HloInstruction* hlo) {
         bool lhs = operand_index == 0;
 
         // The first loop keep tracks of batch dimension. RHS and LHS could have
-        // diffrent batch dimension numbers.
+        // different batch dimension numbers.
         if (lhs) {
           for (int64 i : dimension_numbers.lhs_batch_dimensions()) {
             result_dim_mapping[i] = current_result_dims++;
@@ -1056,13 +1056,13 @@ Status DynamicDimensionInferenceVisitor::HandleGather(HloInstruction* hlo) {
         if (operand_index != 1) {
           if (hlo->gather_slice_sizes()[input_dynamic_dimension] == 1) {
             // Gathering a size 1 dimension out of a dynamic dimension removes
-            // the dynamisity.
+            // the dynamicity.
             return Status::OK();
           }
           if (hlo->gather_slice_sizes()[input_dynamic_dimension] ==
               operand->shape().dimensions(input_dynamic_dimension)) {
             // Gathering a full-sized dimension out of a dynamic dimension
-            // propagates the dynamisity to output.
+            // propagates the dynamicity to output.
             int64 output_dimension = input_dynamic_dimension;
             for (int64 collapsed_dim : gather_dims.collapsed_slice_dims()) {
               if (collapsed_dim < input_dynamic_dimension) {

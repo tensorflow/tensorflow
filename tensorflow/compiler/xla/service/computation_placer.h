@@ -71,7 +71,7 @@ class ComputationPlacer {
 
   // Returns the device id assigned to the given replica and computation
   // instance for [replica_count x computation_count] setup. The returned device
-  // id must match the assignement from PlaceReplicatedComputation().
+  // id must match the assignment from PlaceReplicatedComputation().
   virtual StatusOr<int> DeviceId(int replica, int computation,
                                  int replica_count, int computation_count);
 

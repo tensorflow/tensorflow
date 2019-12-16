@@ -114,7 +114,7 @@ def square_cases(align=None):
                    [6, 7, 8, 9, 1],
                    [2, 3, 4, 5, 6]]])
   tests = dict()
-  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagnals)
+  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagonals)
   tests[-1, -1] = (np.array([[6, 4, 1, 7],
                              [5, 2, 8, 5]]),
                    np.array([[[0, 0, 0, 0, 0],
@@ -192,7 +192,7 @@ def tall_cases(align=None):
                    [7, 8, 9],
                    [9, 8, 7]]])
   tests = dict()
-  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagnals)
+  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagonals)
   tests[0, 0] = (np.array([[1, 5, 9],
                            [3, 2, 6]]),
                  np.array([[[1, 0, 0],
@@ -276,7 +276,7 @@ def fat_cases(align=None):
                    [8, 9, 1, 2],
                    [3, 4, 5, 6]]])
   tests = dict()
-  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagnals)
+  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagonals)
   tests[0, 0] = (np.array([[1, 6, 2],
                            [4, 9, 5]]),
                  np.array([[[1, 0, 0, 0],

@@ -2319,8 +2319,8 @@ class StructuredValueLinearizer {
   // Returns the list of index paths to each leaf of the StructuredValue,
   // in a linearized order matching `tf.nest.flatten`.
   //
-  // If an error ocurred during the linearization process, an error message with
-  // `error_context` prepended will be included in the returned status.
+  // If an error occurred during the linearization process, an error message
+  // with `error_context` prepended will be included in the returned status.
   StatusOr<llvm::ArrayRef<mlir::ArrayAttr>> GetLeafIndexPaths(
       llvm::StringRef error_context) const;
 

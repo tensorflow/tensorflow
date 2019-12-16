@@ -519,7 +519,7 @@ class MemorySpaceAssignment {
 
 // This struct contains mandatory memory assignments at a given time. E.g., an
 // input's required memory assignment time would correspond to the definition
-// time of the parameter instruction, and an output's time would correspnd to
+// time of the parameter instruction, and an output's time would correspond to
 // the time of last use.
 struct RequiredMemoryAssignment {
   MemorySpaceAssignment::MemorySpace memory_space;
