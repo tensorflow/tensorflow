@@ -629,7 +629,7 @@ class Flatten(Layer):
       output_shape = tensor_shape.TensorShape([1])
     else:
       output_shape = [input_shape[0]]
-    if all(input_shape[1:]):
+    if np.all(input_shape[1:]):
       output_shape += [np.prod(input_shape[1:], dtype=int)]
     else:
       output_shape += [None]
