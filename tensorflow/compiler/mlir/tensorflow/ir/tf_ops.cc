@@ -24,6 +24,8 @@ limitations under the License.
 #include <type_traits>
 
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
@@ -724,6 +726,101 @@ static LogicalResult Verify(Conv2DBackpropInputOp op) {
 void DivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
   results.insert<DivWithSqrtDivisor>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// DynamicStitchOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(DynamicStitchOp op) {
+  if (op.N() < 1) return op.emitOpError("requires attribute N with value >= 1");
+
+  if (RankedTensorType out_ty = op.getType().dyn_cast<RankedTensorType>()) {
+    if (out_ty.getRank() == 0) {
+      return op.emitOpError("requires non scalar output");
+    }
+  }
+
+  llvm::SmallDenseSet<int64_t, 8> index_values;
+  bool all_indices_const = true;
+  int32_t max_index = -1;
+  llvm::Optional<SmallVector<int64_t, 4>> inferred_item_shape;
+  for (auto it : llvm::zip(op.indices(), op.data())) {
+    Value *index = std::get<0>(it);
+
+    DenseIntElementsAttr index_attr;
+    if (matchPattern(index, m_Constant(&index_attr))) {
+      for (int32_t index : index_attr.getValues<int32_t>()) {
+        if (index < 0)
+          return op.emitOpError()
+                 << "requires non-negative index values; found " << index;
+        max_index = std::max(index, max_index);
+        index_values.insert(index);
+      }
+    } else {
+      all_indices_const = false;
+    }
+
+    Value *data = std::get<1>(it);
+    RankedTensorType index_ty = index->getType().dyn_cast<RankedTensorType>();
+    RankedTensorType data_ty = data->getType().dyn_cast<RankedTensorType>();
+    if (!index_ty || !data_ty) continue;
+
+    int64_t index_rank = index_ty.getRank();
+    ArrayRef<int64_t> data_shape = data_ty.getShape();
+    ArrayRef<int64_t> index_shape = index_ty.getShape();
+    if (failed(mlir::verifyCompatibleShape(index_shape,
+                                           data_shape.take_front(index_rank))))
+      return op.emitOpError() << "requires shape of data with type " << data_ty
+                              << " to have prefix matching with shape of the "
+                                 "corresponding index type "
+                              << index_ty;
+
+    ArrayRef<int64_t> item_shape = data_shape.drop_front(index_rank);
+    if (!inferred_item_shape) {
+      inferred_item_shape = llvm::to_vector<4>(item_shape);
+      continue;
+    }
+
+    if (failed(mlir::verifyCompatibleShape(item_shape, *inferred_item_shape)))
+      return op.emitOpError() << "has inconsistent shaped data and index "
+                                 "pairs; inferred item shapes ["
+                              << llvm::makeArrayRef(*inferred_item_shape)
+                              << "] and [" << item_shape << "] don't match";
+    for (int i = 0, e = item_shape.size(); i < e; ++i) {
+      int64_t &inferred_dim = (*inferred_item_shape)[i];
+      int64_t dim = item_shape[i];
+      if (ShapedType::isDynamic(inferred_dim)) inferred_dim = dim;
+    }
+  }
+
+  // If all indices are constants, then verify that they cover all indices in
+  // the range [0, max_index] and the output type is legal.
+  if (all_indices_const) {
+    for (int32_t i = 0; i <= max_index; i++) {
+      if (!index_values.count(i))
+        return op.emitOpError() << "missing index " << i;
+    }
+
+    if (inferred_item_shape) {
+      SmallVector<int64_t, 4> expected_shape;
+      expected_shape.push_back(max_index + 1);
+      expected_shape.append(inferred_item_shape->begin(),
+                            inferred_item_shape->end());
+
+      auto out_ty = op.getType().cast<TensorType>();
+      auto expected_out_ty =
+          RankedTensorType::get(expected_shape, out_ty.getElementType());
+
+      if (!AreCastCompatible(out_ty, expected_out_ty)) {
+        return op.emitOpError() << "has invalid output type; should be "
+                                   "compatible with inferred type "
+                                << expected_out_ty;
+      }
+    }
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

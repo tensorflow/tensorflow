@@ -923,6 +923,7 @@ cc_library(
         ":lower_tf_inc_gen",
         ":tensorflow",
         "//tensorflow/core:framework",
+        "@llvm//:support",
         "@local_config_mlir//:IR",
     ],
     alwayslink = 1,

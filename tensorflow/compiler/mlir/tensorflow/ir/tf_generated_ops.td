@@ -1350,6 +1350,10 @@ as illustrated on the following example:
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_EinsumOp : TF_Op<"Einsum", [NoSideEffect]> {
