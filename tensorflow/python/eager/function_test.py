@@ -338,10 +338,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     cf = f.get_concrete_function()
     c = cc[0]
 
-    self.assertEqual(cf.variables, (a, b, c))
-    self.assertEqual(cf.trainable_variables, (b, c))
-    self.assertEqual(cf.graph.variables, (a, b, c))
-    self.assertEqual(cf.graph.trainable_variables, (b, c))
+    captured_variables = {v.experimental_ref() for v in (a, b, c)}
+    trainable_variables = {v.experimental_ref() for v in (b, c)}
+    self.assertEqual({v.experimental_ref() for v in cf.variables},
+                     captured_variables)
+    self.assertEqual({v.experimental_ref() for v in cf.trainable_variables},
+                     trainable_variables)
+    self.assertEqual(cf.variables, cf.graph.variables)
+    self.assertEqual(cf.trainable_variables, cf.graph.trainable_variables)
 
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]

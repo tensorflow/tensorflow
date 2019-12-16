@@ -74,55 +74,59 @@ class SparseTensor {
                     "Shape rank must be SparseTensor rank.");
     }
 
-    *result = SparseTensor(ix, vals, shape, order);
+    *result = SparseTensor(std::move(ix), std::move(vals), shape, order);
     return Status();
   }
 
   static Status Create(Tensor ix, Tensor vals, const TensorShape& shape,
                        SparseTensor* result) {
-    return Create(ix, vals, TensorShapeToVector(shape),
+    return Create(std::move(ix), std::move(vals), TensorShapeToVector(shape),
                   UndefinedOrder(TensorShapeToVector(shape)), result);
   }
 
   static Status Create(Tensor ix, Tensor vals, const VarDimArray shape,
                        SparseTensor* result) {
-    return Create(ix, vals, shape, UndefinedOrder(shape), result);
+    return Create(std::move(ix), std::move(vals), shape, UndefinedOrder(shape),
+                  result);
   }
 
   static Status Create(Tensor ix, Tensor vals, const TensorShape& shape,
                        const VarDimArray order, SparseTensor* result) {
-    return Create(ix, vals, TensorShapeToVector(shape), order, result);
+    return Create(std::move(ix), std::move(vals), TensorShapeToVector(shape),
+                  order, result);
   }
 
   SparseTensor() : dims_(0) {}
 
   ABSL_DEPRECATED("Use Create() functions instead of constructors directly.")
   SparseTensor(Tensor ix, Tensor vals, const TensorShape& shape)
-      : SparseTensor(ix, vals, TensorShapeToVector(shape),
+      : SparseTensor(std::move(ix), std::move(vals), TensorShapeToVector(shape),
                      UndefinedOrder(TensorShapeToVector(shape))) {}
 
   ABSL_DEPRECATED("Use Create() functions instead of constructors directly.")
   SparseTensor(Tensor ix, Tensor vals, const VarDimArray shape)
-      : SparseTensor(ix, vals, shape, UndefinedOrder(shape)) {}
+      : SparseTensor(std::move(ix), std::move(vals), shape,
+                     UndefinedOrder(shape)) {}
 
   ABSL_DEPRECATED("use Create() functions instead of constructors directly.")
   SparseTensor(Tensor ix, Tensor vals, const TensorShape& shape,
                const VarDimArray order)
-      : SparseTensor(ix, vals, TensorShapeToVector(shape), order) {}
+      : SparseTensor(std::move(ix), std::move(vals), TensorShapeToVector(shape),
+                     order) {}
 
   ABSL_DEPRECATED("Use Create() functions instead of constructors directly.")
   SparseTensor(Tensor ix, Tensor vals, const VarDimArray shape,
                const VarDimArray order)
-      : ix_(ix),
-        vals_(vals),
+      : ix_(std::move(ix)),
+        vals_(std::move(vals)),
         shape_(shape.begin(), shape.end()),
         order_(order.begin(), order.end()),
-        dims_(UnsafeGetDimsFromIx(ix)) {
-    DCHECK_EQ(ix.dtype(), DT_INT64)
-        << "indices must be type int64 but got: " << ix.dtype();
-    DCHECK(TensorShapeUtils::IsVector(vals.shape()))
-        << "vals must be a vec, but got: " << vals.shape().DebugString();
-    DCHECK_EQ(ix.shape().dim_size(0), vals.shape().dim_size(0))
+        dims_(UnsafeGetDimsFromIx(ix_)) {
+    DCHECK_EQ(ix_.dtype(), DT_INT64)
+        << "indices must be type int64 but got: " << ix_.dtype();
+    DCHECK(TensorShapeUtils::IsVector(vals_.shape()))
+        << "vals must be a vec, but got: " << vals_.shape().DebugString();
+    DCHECK_EQ(ix_.shape().dim_size(0), vals_.shape().dim_size(0))
         << "indices and values rows (indexing dimension) must match.";
     DCHECK_EQ(order.size(), dims_) << "Order length must be SparseTensor rank.";
     DCHECK_EQ(shape.size(), dims_) << "Shape rank must be SparseTensor rank.";
@@ -381,7 +385,7 @@ class SparseTensor {
 // an in-place algorithm.  It requires O(N log N) time and O(N)
 // temporary space.
 template <typename T>
-void SparseTensor::Reorder(const VarDimArray& order) {
+inline void SparseTensor::Reorder(const VarDimArray& order) {
   DCHECK_EQ(DataTypeToEnum<T>::v(), dtype())
       << "Reorder requested with the wrong datatype";
   DCHECK_EQ(order.size(), dims_) << "Order length must be SparseTensor rank";
@@ -440,7 +444,8 @@ void SparseTensor::Reorder(const VarDimArray& order) {
 }
 
 template <typename T>
-bool SparseTensor::ValidateAndInitializeToDense(Tensor* out, bool initialize) {
+inline bool SparseTensor::ValidateAndInitializeToDense(Tensor* out,
+                                                       bool initialize) {
   DCHECK_EQ(DataTypeToEnum<T>::v(), dtype())
       << "ToDense requested with the wrong datatype";
 
@@ -468,7 +473,7 @@ bool SparseTensor::ValidateAndInitializeToDense(Tensor* out, bool initialize) {
 }
 
 template <typename T>
-bool SparseTensor::ToDense(Tensor* out, bool initialize) {
+inline bool SparseTensor::ToDense(Tensor* out, bool initialize) {
   if (!ValidateAndInitializeToDense<T>(out, initialize)) return false;
 
   auto out_t = out->flat<T>();
@@ -501,7 +506,7 @@ bool SparseTensor::ToDense(Tensor* out, bool initialize) {
 }
 
 template <typename T>
-SparseTensor SparseTensor::Concat(
+inline SparseTensor SparseTensor::Concat(
     const gtl::ArraySlice<SparseTensor>& tensors) {
   DCHECK_GE(tensors.size(), size_t{1}) << "Cannot concat 0 SparseTensors";
   const int dims = tensors[0].dims_;
@@ -573,9 +578,9 @@ SparseTensor SparseTensor::Concat(
 }
 
 template <typename T>
-Status SparseTensor::Split(const SparseTensor& input_tensor,
-                           const int split_dim, const int num_split,
-                           std::vector<SparseTensor>* result) {
+inline Status SparseTensor::Split(const SparseTensor& input_tensor,
+                                  const int split_dim, const int num_split,
+                                  std::vector<SparseTensor>* result) {
   std::vector<Tensor> output_indices;
   std::vector<Tensor> output_values;
   std::vector<TensorShape> output_shapes;
@@ -656,9 +661,9 @@ Status SparseTensor::Split(const SparseTensor& input_tensor,
 }
 
 template <typename T>
-SparseTensor SparseTensor::Slice(const SparseTensor& input_tensor,
-                                 const gtl::ArraySlice<int64>& start,
-                                 const gtl::ArraySlice<int64>& size) {
+inline SparseTensor SparseTensor::Slice(const SparseTensor& input_tensor,
+                                        const gtl::ArraySlice<int64>& start,
+                                        const gtl::ArraySlice<int64>& size) {
   TensorShape output_shape(input_tensor.shape());
 
   const int dims = input_tensor.dims();

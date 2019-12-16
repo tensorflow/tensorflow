@@ -178,15 +178,32 @@ Status DynamicDimensionInferenceVisitor::HandleBroadcast(HloInstruction* hlo) {
 }
 
 Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
+  if (hlo->custom_call_target() == "PadToStatic") {
+    for (int64 i = 0; i < hlo->operand(0)->shape().rank(); ++i) {
+      if (hlo->operand(0)->shape().is_dynamic_dimension(i)) {
+        HloInstruction* dynamic_size =
+            hlo->parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
+                ShapeUtil::MakeScalarShape(S32), hlo, i + 1));
+        // PadToStatic converts a dynamic dimension to static dimension. It then
+        // returns the padded data output and the dynamic sizes of input
+        // dimensions.
+        ShapeIndex data_output = {0};
+        parent_->SetDynamicSize(hlo, data_output, i, dynamic_size,
+                                {.stride = 1, .multiple_of = 1});
+      }
+    }
+    return Status::OK();
+  }
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size,
                DimensionConstraint constraint) {
-        if (hlo->custom_call_target() != "Unpad" ||
+        if (hlo->custom_call_target() != "SliceToDynamic" ||
             absl::StartsWith(hlo->custom_call_target(), "Resize")) {
           return Unimplemented(
               "CustomCall is not supported to have a dynamic dimension");
         }
+
         parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size, constraint);
         return Status::OK();
       });

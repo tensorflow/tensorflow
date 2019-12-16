@@ -6,6 +6,7 @@ tensorflow/compat_template.__init__.py
 tensorflow/compat_template_v1.__init__.py
 tensorflow/compiler/mlir/glob_lit_test.bzl
 tensorflow/core/public/version.h
+tensorflow/lite/micro/build_def.bzl
 tensorflow/python/autograph/core/config.py
 tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver.py
 tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver_test.py

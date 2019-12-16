@@ -136,10 +136,10 @@ pkg_tar(
 genrule(
     name = "clicenses_generate",
     srcs = [
-        "//third_party/icu/data:LICENSE",
-        "//third_party/hadoop:LICENSE.txt",
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
+        "//third_party/hadoop:LICENSE.txt",
+        "//third_party/icu/data:LICENSE",
         "@boringssl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@curl//:COPYING",
@@ -207,10 +207,10 @@ genrule(
 genrule(
     name = "jnilicenses_generate",
     srcs = [
-        "//third_party/icu/data:LICENSE",
-        "//third_party/hadoop:LICENSE.txt",
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
+        "//third_party/hadoop:LICENSE.txt",
+        "//third_party/icu/data:LICENSE",
         "@boringssl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@curl//:COPYING",

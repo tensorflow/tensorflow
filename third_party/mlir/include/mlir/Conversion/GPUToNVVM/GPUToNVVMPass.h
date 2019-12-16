@@ -26,6 +26,10 @@ class OwningRewritePatternList;
 class ModuleOp;
 template <typename OpT> class OpPassBase;
 
+/// Collect a set of patterns to convert from the GPU dialect to NVVM.
+void populateGpuToNVVMConversionPatterns(LLVMTypeConverter &converter,
+                                         OwningRewritePatternList &patterns);
+
 /// Creates a pass that lowers GPU dialect operations to NVVM counterparts.
 std::unique_ptr<OpPassBase<ModuleOp>> createLowerGpuOpsToNVVMOpsPass();
 

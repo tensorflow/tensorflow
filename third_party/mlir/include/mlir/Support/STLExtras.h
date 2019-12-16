@@ -204,6 +204,9 @@ template <typename DerivedT, typename BaseT, typename T,
           typename PointerT = T *, typename ReferenceT = T &>
 class indexed_accessor_range_base {
 public:
+  using RangeBaseT =
+      indexed_accessor_range_base<DerivedT, BaseT, T, PointerT, ReferenceT>;
+
   /// An iterator element of this range.
   class iterator : public indexed_accessor_iterator<iterator, BaseT, T,
                                                     PointerT, ReferenceT> {
@@ -223,11 +226,17 @@ public:
                                        ReferenceT>;
   };
 
+  indexed_accessor_range_base(iterator begin, iterator end)
+      : base(DerivedT::offset_base(begin.getBase(), begin.getIndex())),
+        count(end.getIndex() - begin.getIndex()) {}
+  indexed_accessor_range_base(const iterator_range<iterator> &range)
+      : indexed_accessor_range_base(range.begin(), range.end()) {}
+
   iterator begin() const { return iterator(base, 0); }
   iterator end() const { return iterator(base, count); }
   ReferenceT operator[](unsigned index) const {
     assert(index < size() && "invalid index for value range");
-    return *std::next(begin(), index);
+    return DerivedT::dereference_iterator(base, index);
   }
 
   /// Return the size of this range.
@@ -237,20 +246,33 @@ public:
   bool empty() const { return size() == 0; }
 
   /// Drop the first N elements, and keep M elements.
-  DerivedT slice(unsigned n, unsigned m) const {
+  DerivedT slice(size_t n, size_t m) const {
     assert(n + m <= size() && "invalid size specifiers");
     return DerivedT(DerivedT::offset_base(base, n), m);
   }
 
   /// Drop the first n elements.
-  DerivedT drop_front(unsigned n = 1) const {
+  DerivedT drop_front(size_t n = 1) const {
     assert(size() >= n && "Dropping more elements than exist");
     return slice(n, size() - n);
   }
   /// Drop the last n elements.
-  DerivedT drop_back(unsigned n = 1) const {
+  DerivedT drop_back(size_t n = 1) const {
     assert(size() >= n && "Dropping more elements than exist");
     return DerivedT(base, size() - n);
+  }
+
+  /// Take the first n elements.
+  DerivedT take_front(size_t n = 1) const {
+    return n < size() ? drop_back(size() - n)
+                      : static_cast<const DerivedT &>(*this);
+  }
+
+  /// Allow conversion to SmallVector if necessary.
+  /// TODO(riverriddle) Remove this when SmallVector accepts different range
+  /// types in its constructor.
+  template <typename SVT, unsigned N> operator SmallVector<SVT, N>() const {
+    return {begin(), end()};
   }
 
 protected:

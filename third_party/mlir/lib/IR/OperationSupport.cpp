@@ -144,3 +144,50 @@ void detail::OperandStorage::grow(ResizableStorage &resizeUtil,
     operand.~OpOperand();
   resizeUtil.setDynamicStorage(newStorage);
 }
+
+//===----------------------------------------------------------------------===//
+// Operation Value-Iterators
+//===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+// OperandRange
+
+OperandRange::OperandRange(Operation *op)
+    : OperandRange(op->getOpOperands().data(), op->getNumOperands()) {}
+
+//===----------------------------------------------------------------------===//
+// ResultRange
+
+ResultRange::ResultRange(Operation *op)
+    : ResultRange(op->getOpResults().data(), op->getNumResults()) {}
+
+//===----------------------------------------------------------------------===//
+// ValueRange
+
+ValueRange::ValueRange(ArrayRef<Value *> values)
+    : ValueRange(values.data(), values.size()) {}
+ValueRange::ValueRange(OperandRange values)
+    : ValueRange(values.begin().getBase(), values.size()) {}
+ValueRange::ValueRange(ResultRange values)
+    : ValueRange(values.begin().getBase(), values.size()) {}
+
+/// See `detail::indexed_accessor_range_base` for details.
+ValueRange::OwnerT ValueRange::offset_base(const OwnerT &owner,
+                                           ptrdiff_t index) {
+  if (OpOperand *operand = owner.dyn_cast<OpOperand *>())
+    return operand + index;
+  if (OpResult *result = owner.dyn_cast<OpResult *>())
+    return result + index;
+  return owner.get<Value *const *>() + index;
+}
+/// See `detail::indexed_accessor_range_base` for details.
+Value *ValueRange::dereference_iterator(const OwnerT &owner, ptrdiff_t index) {
+  // Operands access the held value via 'get'.
+  if (OpOperand *operand = owner.dyn_cast<OpOperand *>())
+    return operand[index].get();
+  // An OpResult is a value, so we can return it directly.
+  if (OpResult *result = owner.dyn_cast<OpResult *>())
+    return &result[index];
+  // Otherwise, this is a raw value array so just index directly.
+  return owner.get<Value *const *>()[index];
+}

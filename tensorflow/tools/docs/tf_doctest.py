@@ -27,6 +27,7 @@ from absl.testing import absltest
 import numpy as np
 
 import tensorflow.compat.v2 as tf
+
 from tensorflow.tools.docs import tf_doctest_lib
 
 # We put doctest after absltest so that it picks up the unittest monkeypatch.
@@ -79,8 +80,7 @@ def filter_on_submodules(all_modules, submodule):
   """
 
   filtered_modules = [
-      mod for mod in all_modules
-      if PACKAGE + submodule in mod.__name__
+      mod for mod in all_modules if PACKAGE + submodule in mod.__name__
   ]
   return filtered_modules
 

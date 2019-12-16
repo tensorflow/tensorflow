@@ -67,12 +67,6 @@ namespace spirv {
 Value *getBuiltinVariableValue(Operation *op, spirv::BuiltIn builtin,
                                OpBuilder &builder);
 
-/// Legalizes a function as an entry function.
-FuncOp lowerAsEntryFunction(FuncOp funcOp, SPIRVTypeConverter &typeConverter,
-                            ConversionPatternRewriter &rewriter,
-                            ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo,
-                            spirv::EntryPointABIAttr entryPointInfo);
-
 /// Attribute name for specifying argument ABI information.
 StringRef getInterfaceVarABIAttrName();
 
@@ -88,6 +82,18 @@ StringRef getEntryPointABIAttrName();
 /// Get the EntryPointABIAttr given its fields.
 EntryPointABIAttr getEntryPointABIAttr(ArrayRef<int32_t> localSize,
                                        MLIRContext *context);
+
+/// Legalizes a function as an entry function.
+FuncOp lowerAsEntryFunction(FuncOp funcOp, SPIRVTypeConverter &typeConverter,
+                            ConversionPatternRewriter &rewriter,
+                            spirv::EntryPointABIAttr entryPointInfo,
+                            ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo);
+
+/// Sets the InterfaceVarABIAttr and EntryPointABIAttr for a function and its
+/// arguments
+LogicalResult setABIAttrs(FuncOp funcOp,
+                          spirv::EntryPointABIAttr entryPointInfo,
+                          ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo);
 
 } // namespace spirv
 } // namespace mlir

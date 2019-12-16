@@ -25,6 +25,8 @@ const char* kConvModelWithMinus128Plus127Weights =
 const char* kConvModelWith0Plus10Weights =
     "single_conv_weights_min_0_max_plus_10.bin";
 
+const char* kConvModelWithNoBias = "single_conv_no_bias.bin";
+
 const char* kSingleSoftmaxModelMinMinus5MaxPlus5 =
     "single_softmax_min_minus_5_max_plus_5.bin";
 

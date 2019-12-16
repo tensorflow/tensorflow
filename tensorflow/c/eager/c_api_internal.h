@@ -58,7 +58,7 @@ struct TFE_ContextOptions {
       TFE_DEVICE_PLACEMENT_SILENT};
   TFE_ContextMirroringPolicy mirroring_policy{TFE_MIRRORING_NONE};
   // If true, lazily copy the remote inputs of a function to the target devices.
-  bool lazy_remote_inputs_copy = false;
+  bool lazy_remote_inputs_copy = true;
 };
 
 struct TFE_Context {

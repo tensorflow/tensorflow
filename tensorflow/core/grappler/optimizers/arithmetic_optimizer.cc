@@ -1631,6 +1631,17 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
         // TODO(rmlarsen): Allow outgoing control edges.
         return false;
       }
+      // Do not hoist Relu if it can be fused with its predecessors. This is
+      // important because remapping runs after arithmetic.
+      if (IsRelu(*op) || IsRelu6(*op)) {
+        NodeDef* operand = nullptr;
+        if (!GetInputNode(op->input(0), &operand).ok()) {
+          return false;
+        }
+        if (IsFusedBatchNorm(*operand) || IsBiasAdd(*operand)) {
+          return false;
+        }
+      }
     }
     return true;
   }

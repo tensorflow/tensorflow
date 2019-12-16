@@ -1,4 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 
@@ -359,6 +360,7 @@ cc_library(
     hdrs = [
         "op_macros.h",
     ],
+    build_for_embedded = True,
     copts = tflite_copts(),
 )
 
@@ -461,6 +463,7 @@ cc_library(
         "mul.cc",
         "neg.cc",
         "non_max_suppression.cc",
+        "numeric_verify.cc",
         "one_hot.cc",
         "pack.cc",
         "pad.cc",
@@ -504,11 +507,13 @@ cc_library(
         "zeros_like.cc",
     ],
     hdrs = [
+        "dequantize.h",
     ],
     copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
     visibility = ["//visibility:private"],
     deps = [
         ":cpu_backend_context",
+        ":cpu_backend_threadpool",
         ":eigen_support",
         ":kernel_util",
         ":lstm_eval",
@@ -517,7 +522,6 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:audio_utils",
         "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -871,6 +875,23 @@ cc_test(
     name = "dequantize_test",
     size = "small",
     srcs = ["dequantize_test.cc"],
+    tags = ["tflite_nnapi"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels/internal:types",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "numeric_verify_test",
+    size = "small",
+    srcs = ["numeric_verify_test.cc"],
     tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",

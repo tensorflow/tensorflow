@@ -180,15 +180,14 @@ class HashTable : public InitializableLookupTable {
 
   size_t size() const override {
     // return the size of the table only if it's initialized, otherwise 0.
-    if (!is_initialized_) {
+    if (!is_initialized()) {
       return 0;
     }
-    std::atomic_thread_fence(std::memory_order_acquire);
     return table_ ? table_->size() : 0;
   }
 
   Status ExportValues(OpKernelContext* context) override {
-    if (!is_initialized_) {
+    if (!is_initialized()) {
       return errors::Aborted("HashTable is not initialized.");
     }
 
@@ -217,7 +216,7 @@ class HashTable : public InitializableLookupTable {
 
  protected:
   Status DoPrepare(size_t unused) override {
-    if (is_initialized_) {
+    if (is_initialized()) {
       return errors::Aborted("HashTable already initialized.");
     }
     if (!table_) {
@@ -266,6 +265,9 @@ class HashTable : public InitializableLookupTable {
   }
 
   int64 MemoryUsed() const override {
+    if (!is_initialized()) {
+      return 0;
+    }
     if (table_) {
       const int64 num_elements = table_->size();
       return num_elements * (sizeof(K) + sizeof(V));

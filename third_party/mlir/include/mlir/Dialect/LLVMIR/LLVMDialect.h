@@ -198,6 +198,10 @@ Value *createGlobalString(Location loc, OpBuilder &builder, StringRef name,
                           StringRef value, LLVM::Linkage linkage,
                           LLVM::LLVMDialect *llvmDialect);
 
+/// LLVM requires some operations to be inside of a Module operation. This
+/// function confirms that the Operation has the desired properties.
+bool satisfiesLLVMModule(Operation *op);
+
 } // end namespace LLVM
 } // end namespace mlir
 

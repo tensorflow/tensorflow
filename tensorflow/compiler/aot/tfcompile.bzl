@@ -39,7 +39,7 @@ def tf_library(
         enable_xla_hlo_profiling = False,
         mlir_components = None,
         deps = None,
-        tags = None):
+        tags = []):
     """Runs tfcompile to compile a TensorFlow graph into executable code.
 
     Given an invocation of tf_library(name="foo", ...), generates the following

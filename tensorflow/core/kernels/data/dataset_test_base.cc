@@ -593,11 +593,11 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
   int cur_iteration = 0;
   std::vector<Tensor> out_tensors;
   for (int breakpoint : breakpoints) {
-    VariantTensorData data;
-    VariantTensorDataWriter writer(&data);
+    VariantTensorDataWriter writer;
     TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
-    TF_RETURN_IF_ERROR(writer.Flush());
-    VariantTensorDataReader reader(&data);
+    std::vector<const VariantTensorData*> data;
+    writer.GetData(&data);
+    VariantTensorDataReader reader(data);
     TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader, iterator_prefix,
                                  *dataset_, &iterator));
 

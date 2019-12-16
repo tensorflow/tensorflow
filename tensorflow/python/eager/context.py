@@ -405,7 +405,7 @@ class Context(object):
     if execution_mode is None:
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
-    self._lazy_remote_inputs_copy = False
+    self._lazy_remote_inputs_copy = None
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -506,9 +506,9 @@ class Context(object):
               opts, self._mirroring_policy)
         if self._default_is_async == ASYNC:
           pywrap_tensorflow.TFE_ContextOptionsSetAsync(opts, True)
-        if self._lazy_remote_inputs_copy:
+        if self._lazy_remote_inputs_copy is not None:
           pywrap_tensorflow.TFE_ContextOptionsSetLazyRemoteInputsCopy(
-              opts, True)
+              opts, self._lazy_remote_inputs_copy)
         context_handle = pywrap_tensorflow.TFE_NewContext(opts)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)

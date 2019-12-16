@@ -14,17 +14,13 @@ load(
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
     "tf_fingerprint_deps",
-    "tf_protobuf_compiler_deps",
-    "tf_protobuf_deps",
-)
-load(
-    "//tensorflow/core/platform/default:build_refactor.bzl",
-    "tf_instantiate_platform_libraries",
     "tf_legacy_srcs_no_runtime_google",
     "tf_logging_deps",
-    "tf_mobile_aware_deps",
     "tf_monitoring_deps",
-    "tf_platform_helper_deps",
+    "tf_platform_deps",
+    "tf_protobuf_compiler_deps",
+    "tf_protobuf_deps",
+    "tf_windows_aware_platform_deps",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -43,39 +39,6 @@ package(
     ],
     licenses = ["notice"],  # Apache 2.0
 )
-
-# Note(bmzhao): These are temporary BUILD rule helpers for
-# platform-specific library dependencies. These temporarily
-# exist to allow us incrementally add granular targets
-# to tf/core/platform/BUILD. We will remove these helpers,
-# after we finish refactoring tf/core/platform/BUILD.
-tf_instantiate_platform_libraries(names = [
-    "context",
-    "cord",
-    "cuda_libdevice_path",
-    "dynamic_annotations",
-    "env",
-    "env_time",
-    "human_readable_json",
-    "logging",
-    "load_library",
-    "monitoring",
-    "mutex",
-    "net",
-    "notification",
-    "platform_port",
-    "rocm_rocdl_path",
-    "stacktrace",
-    "stacktrace_handler",
-    "strong_hash",
-    "subprocess",
-    "test",
-    "test_benchmark",
-    "tracing",
-    "types",
-    "unbounded_work_queue",
-    "wide_char",
-])
 
 cc_library(
     name = "abi",
@@ -123,8 +86,7 @@ cc_library(
 cc_library(
     name = "context",
     textual_hdrs = ["context.h"],
-    # See call to tf_instantiate_platform_libraries() above.
-    deps = tf_mobile_aware_deps("context_impl"),
+    deps = tf_platform_deps("context"),
 )
 
 cc_library(
@@ -132,7 +94,7 @@ cc_library(
     hdrs = ["cord.h"],
     deps = [
         ":platform",
-    ] + tf_mobile_aware_deps("cord_impl"),
+    ] + tf_platform_deps("cord"),
 )
 
 cc_library(
@@ -158,7 +120,7 @@ cc_library(
 cc_library(
     name = "cuda_libdevice_path",
     textual_hdrs = ["cuda_libdevice_path.h"],
-    deps = tf_mobile_aware_deps("cuda_libdevice_path_impl"),
+    deps = tf_platform_deps("cuda_libdevice_path"),
 )
 
 cc_library(
@@ -179,7 +141,7 @@ cc_library(
     hdrs = ["dynamic_annotations.h"],
     deps = [
         ":platform",
-    ] + tf_mobile_aware_deps("dynamic_annotations_impl"),
+    ] + tf_platform_deps("dynamic_annotations"),
 )
 
 cc_library(
@@ -190,13 +152,13 @@ cc_library(
         "file_system_helper.h",
         "threadpool.h",
     ],
-    deps = tf_platform_helper_deps("env_impl"),
+    deps = tf_windows_aware_platform_deps("env"),
 )
 
 cc_library(
     name = "env_time",
     textual_hdrs = ["env_time.h"],
-    deps = tf_platform_helper_deps("env_time_impl"),
+    deps = tf_windows_aware_platform_deps("env_time"),
 )
 
 cc_library(
@@ -262,7 +224,7 @@ cc_library(
 cc_library(
     name = "human_readable_json",
     textual_hdrs = ["human_readable_json.h"],
-    deps = tf_mobile_aware_deps("human_readable_json_impl"),
+    deps = tf_platform_deps("human_readable_json"),
 )
 
 cc_library(
@@ -276,7 +238,7 @@ cc_library(
 cc_library(
     name = "load_library",
     textual_hdrs = ["load_library.h"],
-    deps = tf_platform_helper_deps("load_library_impl"),
+    deps = tf_windows_aware_platform_deps("load_library"),
 )
 
 cc_library(
@@ -313,13 +275,13 @@ cc_library(
 cc_library(
     name = "mutex",
     textual_hdrs = ["mutex.h"],
-    deps = tf_mobile_aware_deps("mutex_impl"),
+    deps = tf_platform_deps("mutex"),
 )
 
 cc_library(
     name = "net",
     textual_hdrs = ["net.h"],
-    deps = tf_platform_helper_deps("net_impl"),
+    deps = tf_windows_aware_platform_deps("net"),
 )
 
 cc_library(
@@ -327,7 +289,7 @@ cc_library(
     hdrs = ["notification.h"],
     deps = [
         ":platform",
-    ] + tf_mobile_aware_deps("notification_impl"),
+    ] + tf_platform_deps("notification"),
 )
 
 cc_library(
@@ -384,7 +346,7 @@ cc_library(
         "numa.h",
         "snappy.h",
     ],
-    deps = tf_platform_helper_deps("platform_port_impl"),
+    deps = tf_windows_aware_platform_deps("platform_port"),
 )
 
 cc_library(
@@ -482,7 +444,7 @@ cc_library(
 cc_library(
     name = "rocm_rocdl_path",
     textual_hdrs = ["rocm_rocdl_path.h"],
-    deps = tf_mobile_aware_deps("rocm_rocdl_path_impl"),
+    deps = tf_platform_deps("rocm_rocdl_path"),
 )
 
 cc_library(
@@ -520,7 +482,7 @@ cc_library(
     hdrs = ["stacktrace.h"],
     deps = [
         ":platform",
-    ] + tf_platform_helper_deps("stacktrace_impl"),
+    ] + tf_windows_aware_platform_deps("stacktrace"),
 )
 
 filegroup(
@@ -537,7 +499,7 @@ filegroup(
 cc_library(
     name = "stacktrace_handler",
     textual_hdrs = ["stacktrace_handler.h"],
-    deps = tf_platform_helper_deps("stacktrace_handler_impl"),
+    deps = tf_windows_aware_platform_deps("stacktrace_handler"),
 )
 
 cc_library(
@@ -610,7 +572,7 @@ cc_library(
     deps = [
         ":platform",
         ":types",
-    ] + tf_mobile_aware_deps("strong_hash_impl"),
+    ] + tf_platform_deps("strong_hash"),
 )
 
 cc_library(
@@ -618,7 +580,7 @@ cc_library(
     textual_hdrs = [
         "subprocess.h",
     ],
-    deps = tf_platform_helper_deps("subprocess_impl"),
+    deps = tf_windows_aware_platform_deps("subprocess"),
 )
 
 cc_library(
@@ -640,7 +602,7 @@ cc_library(
     name = "test",
     testonly = True,
     textual_hdrs = ["test.h"],
-    deps = tf_mobile_aware_deps("test_impl"),
+    deps = tf_platform_deps("test"),
 )
 
 cc_library(
@@ -649,8 +611,7 @@ cc_library(
     hdrs = ["test_benchmark.h"],
     deps = [
         ":platform",
-        ":test_benchmark_impl",
-    ],
+    ] + tf_platform_deps("test_benchmark"),
 )
 
 cc_library(
@@ -679,7 +640,7 @@ cc_library(
 cc_library(
     name = "tracing",
     textual_hdrs = ["tracing.h"],
-    deps = tf_mobile_aware_deps("tracing_impl"),
+    deps = tf_platform_deps("tracing"),
 )
 
 cc_library(
@@ -693,7 +654,7 @@ cc_library(
     deps = [
         ":platform",
         ":tstring",
-    ] + tf_mobile_aware_deps("types_impl"),
+    ] + tf_platform_deps("types"),
 )
 
 cc_library(
@@ -701,7 +662,7 @@ cc_library(
     hdrs = ["unbounded_work_queue.h"],
     deps = [
         ":platform",
-    ] + tf_mobile_aware_deps("unbounded_work_queue_impl"),
+    ] + tf_platform_deps("unbounded_work_queue"),
 )
 
 # This is a hacky, do-nothing, binary that makes it easy to verify ability to

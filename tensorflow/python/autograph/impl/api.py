@@ -312,23 +312,24 @@ def do_not_convert(func=None):
   return autograph_artifact(wrapper)
 
 
-def _attach_metadata(e, f, converted):
+def _attach_metadata(e, f):
   """Augments an error with the metadata necessary for rewrite."""
   if hasattr(e, 'ag_pass_through'):
     return
 
   metadata = getattr(e, 'ag_error_metadata', None)
-  source_map = f.ag_source_map if converted else {}
+  source_map = f.ag_source_map
 
   if metadata is None:
-    logging.log(
-        1, 'Caught error in %s (converted=%s)', f, converted, exc_info=True)
+    logging.log(1, 'Caught error in user callable %s', f, exc_info=True)
     message = '{}: {}'.format(e.__class__.__name__, e)
   else:
     message = None
 
   cause_tb = traceback.extract_tb(sys.exc_info()[2])[1:]
-  e.ag_error_metadata = _ErrorMetadata(cause_tb, metadata, message, source_map)
+
+  e.ag_error_metadata = _ErrorMetadata(
+      cause_tb, metadata, message, source_map, __file__)
 
 
 def _call_unconverted(f, args, kwargs, options, update_cache=True):
@@ -339,14 +340,10 @@ def _call_unconverted(f, args, kwargs, options, update_cache=True):
   if inspect_utils.istfmethodtarget(f):
     return f.__self__.call(args, kwargs)
 
-  try:
-    if kwargs is not None:
-      return f(*args, **kwargs)
-    else:
-      return f(*args)
-  except Exception as e:  # pylint:disable=broad-except
-    _attach_metadata(e, f, False)
-    raise
+  if kwargs is not None:
+    return f(*args, **kwargs)
+  else:
+    return f(*args)
 
 
 def _is_known_loaded_type(f, module_name, entity_name):
@@ -415,7 +412,7 @@ def converted_call(f,
     options = caller_fn_scope.callopts
 
   if conversion.is_in_whitelist_cache(f, options):
-    logging.log(2, 'Whitelisted %s: from cache')
+    logging.log(2, 'Whitelisted %s: from cache', f)
     return _call_unconverted(f, args, kwargs, options, False)
 
   if ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
@@ -584,7 +581,7 @@ def converted_call(f,
       else:
         result = converted_f(*effective_args)
     except Exception as e:
-      _attach_metadata(e, converted_f, True)
+      _attach_metadata(e, converted_f)
       raise
 
   return result

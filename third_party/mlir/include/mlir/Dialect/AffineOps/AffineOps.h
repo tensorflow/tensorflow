@@ -47,6 +47,11 @@ class AffineOpsDialect : public Dialect {
 public:
   AffineOpsDialect(MLIRContext *context);
   static StringRef getDialectNamespace() { return "affine"; }
+
+  /// Materialize a single constant operation from a given attribute value with
+  /// the desired resultant type.
+  Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
+                                 Location loc) override;
 };
 
 /// The "affine.apply" operation applies an affine map to a list of operands,
@@ -290,8 +295,8 @@ public:
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
   void print(OpAsmPrinter &p);
   LogicalResult verify();
-  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                          MLIRContext *context);
+  LogicalResult fold(ArrayRef<Attribute> cstOperands,
+                     SmallVectorImpl<OpFoldResult> &results);
 
   /// Returns true if this DMA operation is strided, returns false otherwise.
   bool isStrided() {
@@ -375,8 +380,8 @@ public:
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
   void print(OpAsmPrinter &p);
   LogicalResult verify();
-  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                          MLIRContext *context);
+  LogicalResult fold(ArrayRef<Attribute> cstOperands,
+                     SmallVectorImpl<OpFoldResult> &results);
 };
 
 /// The "affine.load" op reads an element from a memref, where the index
@@ -445,6 +450,7 @@ public:
   LogicalResult verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
+  OpFoldResult fold(ArrayRef<Attribute> operands);
 };
 
 /// The "affine.store" op writes an element to a memref, where the index
@@ -515,6 +521,8 @@ public:
   LogicalResult verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
+  LogicalResult fold(ArrayRef<Attribute> cstOperands,
+                     SmallVectorImpl<OpFoldResult> &results);
 };
 
 /// Returns true if the given Value can be used as a dimension id.

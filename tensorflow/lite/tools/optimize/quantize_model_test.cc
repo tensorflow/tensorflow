@@ -316,6 +316,24 @@ TEST_F(QuantizeConvModelTest, Uint8InputAndOutput) {
   }
 }
 
+class QuantizeConvNoBiasModelTest : public QuantizeModelTest {
+ protected:
+  QuantizeConvNoBiasModelTest() {
+    input_model_ = ReadModel(internal::kConvModelWithNoBias);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizeConvNoBiasModelTest, QuantizationSucceeds) {
+  auto status = QuantizeModel(&builder_, &model_, TensorType_INT8,
+                              TensorType_INT8, &error_reporter_);
+  EXPECT_EQ(status, kTfLiteOk);
+  const uint8_t* buffer = builder_.GetBufferPointer();
+  const Model* output_model = GetModel(buffer);
+  ASSERT_TRUE(output_model);
+}
+
 class QuantizeConcatModelTest : public QuantizeModelTest {
  protected:
   QuantizeConcatModelTest() {

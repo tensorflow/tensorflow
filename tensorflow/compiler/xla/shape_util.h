@@ -388,6 +388,9 @@ class ShapeUtil {
   static Shape MakeShape(PrimitiveType element_type,
                          absl::Span<const int64> dimensions);
 
+  // Make a scalar shape with given primitive type.
+  static Shape MakeScalarShape(PrimitiveType element_type);
+
   // Constructs a new shape with the given element type and sequence of
   // potentially dynamic dimensions. The argument 'dynamic_dimensions' indicates
   // with a true value that the respective dimension is dynamic. If the
@@ -397,9 +400,6 @@ class ShapeUtil {
   static Shape MakeShape(PrimitiveType element_type,
                          absl::Span<const int64> dimensions,
                          const std::vector<bool>& dynamic_dimensions);
-
-  // Make a scalar shape with given primitive type.
-  static Shape MakeScalarShape(PrimitiveType element_type);
 
   // Constructs a new shape with the given element type and sequence of
   // dimensions. Method checks if the element type is valid and the shape's
@@ -430,7 +430,6 @@ class ShapeUtil {
   static Shape MakeShapeWithSparseLayout(PrimitiveType element_type,
                                          absl::Span<const int64> dimensions,
                                          int64 max_sparse_elements);
-
   // Returns the same shape except with all dimensions set to be static.
   static Shape MakeShapeWithStaticDimensions(const Shape& shape);
 

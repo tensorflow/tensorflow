@@ -205,6 +205,18 @@ promoteSubViews(OpBuilder &b, Location loc, ArrayRef<Value *> subViews,
 /// tiling to just use the values when cloning `linalgOp`.
 llvm::SmallVector<Value *, 4> getAssumedNonViewOperands(LinalgOp linalgOp);
 
+/// Apply the permutation defined by `permutation` to `inVec`.
+/// Element `i` in `inVec` is mapped to location `j = permutation[i]`.
+/// E.g.: for an input vector `inVec = ['a', 'b', 'c']` and a permutation vector
+/// `permutation = [2, 0, 1]`, this function leaves `inVec = ['c', 'a', 'b']`.
+template <typename T, unsigned N>
+void applyPermutationToVector(SmallVector<T, N> &inVec,
+                              ArrayRef<unsigned> permutation) {
+  SmallVector<T, N> auxVec(inVec.size());
+  for (unsigned i = 0; i < permutation.size(); ++i)
+    auxVec[i] = inVec[permutation[i]];
+  inVec = auxVec;
+}
 } // namespace linalg
 } // namespace mlir
 

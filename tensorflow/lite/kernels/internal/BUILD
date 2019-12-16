@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 
 package(
@@ -41,6 +42,7 @@ NEON_FLAGS_IF_APPLICABLE = select({
 cc_library(
     name = "compatibility",
     hdrs = ["compatibility.h"],
+    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/kernels:op_macros",
@@ -51,14 +53,16 @@ cc_library(
     name = "scoped_profiling_label_wrapper",
     hdrs = ["scoped_profiling_label_wrapper.h"],
     copts = tflite_copts(),
-    # TODO(b/145820877): Add in a select statement once we can figure out a way
-    # to make it play nicely with copybara.
-    deps = ["@gemmlowp//:profiler"],
+    deps = select({
+        "//tensorflow/lite:gemmlowp_profiling": ["@gemmlowp//:profiler"],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
     name = "types",
     hdrs = ["types.h"],
+    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         ":compatibility",
@@ -439,6 +443,7 @@ cc_library(
         "reference/mul.h",
         "reference/neg.h",
         "reference/non_max_suppression.h",
+        "reference/pad.h",
         "reference/pooling.h",
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
@@ -499,6 +504,7 @@ cc_library(
         "reference/maximum_minimum.h",
         "reference/mul.h",
         "reference/neg.h",
+        "reference/pad.h",
         "reference/pooling.h",
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
@@ -543,6 +549,7 @@ cc_library(
         "tensor.h",
         "tensor_ctypes.h",
     ],
+    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         ":types",

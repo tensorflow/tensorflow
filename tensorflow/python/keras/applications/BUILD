@@ -34,7 +34,6 @@ py_library(
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:layers_base",
-        "@keras_applications_archive//:keras_applications",
     ],
 )
 
@@ -42,10 +41,22 @@ tf_py_test(
     name = "applications_test",
     size = "medium",
     srcs = ["applications_test.py"],
-    additional_deps = [
+    shard_count = 32,
+    deps = [
         ":applications",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
-    shard_count = 11,
+)
+
+tf_py_test(
+    name = "imagenet_utils_test",
+    size = "medium",
+    srcs = ["imagenet_utils_test.py"],
+    shard_count = 2,
+    deps = [
+        ":applications",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )

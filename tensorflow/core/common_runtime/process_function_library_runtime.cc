@@ -410,6 +410,18 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
                   << " src_device: " << *src_device
                   << " colo group: " << colocation_group;
         }
+        // If colocation_group is not set and output producing node is assigned
+        // to a remote device, colocate the retval node with its input node.
+        // TODO(yujingzhang): Remove this when we support outputting tensors on
+        // remote devices.
+        const bool remote_src_device =
+            !src_device->empty() && GetFLR(*src_device) == nullptr;
+        if (colocation_group.empty() && remote_src_device) {
+          colocation_group =
+              absl::StrCat(kColocationGroupPrefix, it->src()->name());
+          VLOG(3) << "Considering src: " << src_node->name()
+                  << " colo group: " << colocation_group;
+        }
 
         // If resource is produced by a function call node, we can't trust
         // source node device assignment, because multi-device functions can

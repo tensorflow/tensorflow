@@ -465,9 +465,7 @@ void DispatchMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
   TrMulParams params;
   CreateTrMulParams<TrMulCompiledPaths>(transposed_lhs, rhs, spec, context, dst,
                                         the_path, &params);
-#ifdef RUY_ENABLE_PREPACKED_CACHE
   HandlePrepackedCaching(&params, context);
-#endif
   TrMul(&params, context);
 }
 

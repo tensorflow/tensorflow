@@ -577,6 +577,19 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [NoSideEffect,
   ];
 }
 
+def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [NoSideEffect]> {
+  let summary = "External const op.";
+
+  let description = [{
+    External const op holds a `buffer_index` which points to a constant
+    in the flatbuffer.
+  }];
+
+  let arguments = (ins I32Attr:$buffer_index);
+
+  let results = (outs AnyTensor:$output);
+}
+
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0>;
 
 def TFL_CosOp: TFL_Op<"cos", [
@@ -3111,6 +3124,27 @@ the output tensor can vary depending on how many true values there are in
   let results = (outs
     I64Tensor:$index
   );
+}
+
+def TFL_NumericVerifyOp : Op<TFL_Dialect, "NumericVerify", [
+    SameOperandsShape]> {
+
+  let summary = "Verifies the numericals of the two operands";
+
+  let description = [{
+    The NumericVerify op is a debugging op to verify the numericals of the two
+    activations. It is a custom op in TFLite.
+  }];
+
+  let arguments = (ins
+    TensorOf<[QI8, QUI8, QI16, QUI16]>:$input,
+    TensorOf<[F32]>:$ref,
+
+    // Attributes
+    DefaultValuedAttr<F32Attr, "0.1">:$tolerance
+  );
+
+  let results = (outs);
 }
 
 def SVDFResultConstraint: PredOpTrait<

@@ -2888,7 +2888,7 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   int64 tile_size_y = reduction_tiling[1];
   int64 block_size_z = reduction_tiling[0];
   bool dilated_x =
-      !reduction_dimensions.is_row_reduction &&
+      reduction_dimensions.is_row_reduction ||
       !IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,
                                             reduction_dimensions.dimensions[2]);
 

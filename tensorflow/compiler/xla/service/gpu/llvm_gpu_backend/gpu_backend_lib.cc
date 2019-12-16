@@ -546,7 +546,7 @@ static std::vector<string> GetROCDLPaths(int amdgpu_version,
       {"hc.amdgcn.bc", "opencl.amdgcn.bc", "ocml.amdgcn.bc", "ockl.amdgcn.bc",
        "oclc_finite_only_off.amdgcn.bc", "oclc_daz_opt_off.amdgcn.bc",
        "oclc_correctly_rounded_sqrt_on.amdgcn.bc",
-       "oclc_unsafe_math_off.amdgcn.bc"});
+       "oclc_unsafe_math_off.amdgcn.bc", "oclc_wavefrontsize64_on.amdgcn.bc"});
 
   // Construct full path to ROCDL bitcode libraries.
   std::vector<string> result;

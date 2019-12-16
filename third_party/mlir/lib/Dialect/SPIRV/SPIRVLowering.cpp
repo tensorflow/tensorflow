@@ -252,8 +252,8 @@ Value *mlir::spirv::getBuiltinVariableValue(Operation *op,
 FuncOp mlir::spirv::lowerAsEntryFunction(
     FuncOp funcOp, SPIRVTypeConverter &typeConverter,
     ConversionPatternRewriter &rewriter,
-    ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo,
-    spirv::EntryPointABIAttr entryPointInfo) {
+    spirv::EntryPointABIAttr entryPointInfo,
+    ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo) {
   auto fnType = funcOp.getType();
   if (fnType.getNumResults()) {
     funcOp.emitError("SPIR-V lowering only supports entry functions"
@@ -282,11 +282,18 @@ FuncOp mlir::spirv::lowerAsEntryFunction(
   rewriter.applySignatureConversion(&newFuncOp.getBody(), signatureConverter);
   rewriter.eraseOp(funcOp);
 
+  spirv::setABIAttrs(newFuncOp, entryPointInfo, argABIInfo);
+  return newFuncOp;
+}
+
+LogicalResult
+mlir::spirv::setABIAttrs(FuncOp funcOp, spirv::EntryPointABIAttr entryPointInfo,
+                         ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo) {
   // Set the attributes for argument and the function.
   StringRef argABIAttrName = spirv::getInterfaceVarABIAttrName();
-  for (auto argIndex : llvm::seq<unsigned>(0, newFuncOp.getNumArguments())) {
-    newFuncOp.setArgAttr(argIndex, argABIAttrName, argABIInfo[argIndex]);
+  for (auto argIndex : llvm::seq<unsigned>(0, funcOp.getNumArguments())) {
+    funcOp.setArgAttr(argIndex, argABIAttrName, argABIInfo[argIndex]);
   }
-  newFuncOp.setAttr(spirv::getEntryPointABIAttrName(), entryPointInfo);
-  return newFuncOp;
+  funcOp.setAttr(spirv::getEntryPointABIAttrName(), entryPointInfo);
+  return success();
 }
