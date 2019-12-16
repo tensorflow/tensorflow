@@ -43,6 +43,7 @@ using namespace mlir::linalg;
 using namespace mlir::linalg::intrinsics;
 
 using llvm::dbgs;
+using llvm::SetVector;
 
 // Marker used as attribute name in generated Linalg rewriting transformations.
 const StringLiteral mlir::linalg::LinalgTransforms::kLinalgTransformMarker =
@@ -229,4 +230,18 @@ mlir::linalg::permuteGenericLinalgOp(PatternRewriter &rewriter, Operation *op,
               rewriter.getStringAttr(linalgMarker));
   linOp.clone(rewriter, linOp.getLoc(), op->getOperands());
   return success();
+}
+
+LogicalResult mlir::linalg::linalgOpPromoteSubviews(PatternRewriter &rewriter,
+                                                    Operation *op) {
+  LinalgOp linOp = dyn_cast<LinalgOp>(op);
+  SetVector<Value *> subViews;
+  for (auto it : linOp.getInputsAndOutputs())
+    if (auto sv = dyn_cast_or_null<SubViewOp>(it->getDefiningOp()))
+      subViews.insert(sv);
+  if (!subViews.empty()) {
+    auto resOp = promoteSubViewOperands(rewriter, linOp, subViews);
+    return success(resOp);
+  }
+  return failure();
 }

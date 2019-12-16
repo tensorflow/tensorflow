@@ -23,6 +23,8 @@
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/EDSC/Helpers.h"
 
+#include "llvm/ADT/SetVector.h"
+
 namespace mlir {
 class AffineExpr;
 class AffineMap;
@@ -217,6 +219,17 @@ void applyPermutationToVector(SmallVector<T, N> &inVec,
     auxVec[i] = inVec[permutation[i]];
   inVec = auxVec;
 }
+
+/// Prepares the SubView promotion later performed by `promoteSubViews`
+/// (where most of the transformation happens). It arranges the new
+/// operands for `LinalgOp op` and deallocates the new buffer(s)
+/// It is the entry point for declarative transformation
+/// Returns the cloned `LinalgOp` with the new operands
+LinalgOp promoteSubViewOperands(OpBuilder &b, LinalgOp op,
+                                llvm::SetVector<Value *> subViews,
+                                bool dynamicBuffers = false,
+                                OperationFolder *folder = nullptr);
+
 } // namespace linalg
 } // namespace mlir
 

@@ -95,6 +95,10 @@ LogicalResult vectorizeGenericOp(PatternRewriter &rewriter, Operation *op);
 LogicalResult permuteGenericLinalgOp(PatternRewriter &rewriter, Operation *op,
                                      ArrayRef<unsigned> permutation,
                                      StringRef linalgMarker);
+
+/// Promote std.subviews feeding linalg operations
+LogicalResult linalgOpPromoteSubviews(PatternRewriter &rewriter, Operation *op);
+
 } // namespace linalg
 } // namespace mlir
 
