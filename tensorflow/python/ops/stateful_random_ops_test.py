@@ -197,6 +197,17 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       check_results(expected_normal1, f(constructor))
       check_results(expected_normal2, f(constructor))
 
+  @parameterized.parameters([
+      ("philox", random.RNG_ALG_PHILOX, random.Algorithm.PHILOX),
+      ("threefry", random.RNG_ALG_THREEFRY, random.Algorithm.THREEFRY)])
+  @test_util.run_v2_only
+  def testAlg(self, name, int_id, enum_id):
+    g_by_name = random.Generator.from_seed(1234, name)
+    g_by_int = random.Generator.from_seed(1234, int_id)
+    g_by_enum = random.Generator.from_seed(1234, enum_id)
+    self.assertEqual(g_by_name.algorithm, g_by_int.algorithm)
+    self.assertEqual(g_by_name.algorithm, g_by_enum.algorithm)
+
   @test_util.run_v2_only
   def testGeneratorCreationWithVar(self):
     """Tests creating generator with a variable.
