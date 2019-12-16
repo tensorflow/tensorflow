@@ -1,2 +1,0 @@
-numpy==1.16.2
-tensorflow==2.0.0-beta1
