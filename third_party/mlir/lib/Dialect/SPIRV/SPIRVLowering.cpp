@@ -246,7 +246,7 @@ Value *mlir::spirv::getBuiltinVariableValue(Operation *op,
 }
 
 //===----------------------------------------------------------------------===//
-// Entry Function signature Conversion
+// Set ABI attributes for lowering entry functions.
 //===----------------------------------------------------------------------===//
 
 LogicalResult

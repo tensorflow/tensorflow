@@ -35,13 +35,13 @@ file_name=$1
 inst_category=$2
 
 case $inst_category in
-  Op | ArithmeticOp | LogicalOp | CastOp | ControlFlowOp | StructureOp)
+  Op | ArithmeticOp | LogicalOp | CastOp | ControlFlowOp | StructureOp | AtomicUpdateOp | AtomicUpdateWithValueOp)
   ;;
   *)
     echo "Usage : " $0 "<filename> <inst_category> (<opname>)*"
     echo "<filename> is the file name of MLIR SPIR-V op definitions spec"
     echo "<inst_category> must be one of " \
-      "(Op|ArithmeticOp|LogicalOp|CastOp|ControlFlowOp|StructureOp)"
+      "(Op|ArithmeticOp|LogicalOp|CastOp|ControlFlowOp|StructureOp|AtomicUpdateOp)"
     exit 1;
   ;;
 esac

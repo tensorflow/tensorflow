@@ -234,8 +234,9 @@ lowerAsEntryFunction(gpu::GPUFuncOp funcOp, SPIRVTypeConverter &typeConverter,
         "lowering as entry functions requires ABI info for all arguments");
     return nullptr;
   }
-  // For entry functions need to make the signature void(void). Compute the
-  // replacement value for all arguments and replace all uses.
+  // Update the signature to valid SPIR-V types and add the ABI
+  // attributes. These will be "materialized" by using the
+  // LowerABIAttributesPass.
   TypeConverter::SignatureConversion signatureConverter(fnType.getNumInputs());
   {
     for (auto argType : enumerate(funcOp.getType().getInputs())) {
