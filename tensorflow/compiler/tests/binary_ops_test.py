@@ -33,6 +33,7 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test as test_lib
 
 
 class BinaryOpsTest(xla_test.XLATestCase):
@@ -1048,7 +1049,12 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
       # Regression test for b/31472796.
       if dtype != np.float16 and hasattr(np, "matmul"):
-        x = np.arange(0, 3 * 5 * 2 * 7, dtype=dtype).reshape((3, 5, 2, 7))
+        # ROCM doesn't support bfloat16 GEMM yet. Fix the data type be tested
+        # as float32.
+        if test_lib.is_built_with_rocm():
+          x = np.arange(0, 3 * 5 * 2 * 7, dtype=np.float32).reshape((3, 5, 2, 7))
+        else:
+          x = np.arange(0, 3 * 5 * 2 * 7, dtype=dtype).reshape((3, 5, 2, 7))
         self._testBinary(
             lambda x, y: math_ops.matmul(x, y, adjoint_b=True),
             x,

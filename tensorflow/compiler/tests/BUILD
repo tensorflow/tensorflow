@@ -160,7 +160,6 @@ tf_xla_py_test(
     srcs = ["binary_ops_test.py"],
     shard_count = 5,
     tags = [
-        "no_rocm",  # passes locally, but consistently fails on CI
         "optonly",  # Times out frequently in fastbuild mode.
     ],
     deps = [
