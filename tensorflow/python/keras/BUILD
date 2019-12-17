@@ -1061,7 +1061,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 12,
-    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -1075,7 +1074,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 12,
-    tags = ["no_rocm"],
 )
 
 tf_py_test(

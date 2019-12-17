@@ -35,6 +35,7 @@ from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.platform import build_info
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -583,16 +584,18 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
   # Note that the bias was initialized as shape (2, 3 * units), flat it into
   # (6 * units)
   bias = array_ops.split(K.flatten(bias), 6)
-  # Note that the gate order for CuDNN is different from the canonical format.
-  # canonical format is [z, r, h], whereas CuDNN is [r, z, h]. The swap need to
-  # be done for kernel, recurrent_kernel, input_bias, recurrent_bias.
-  # z is update gate weights.
-  # r is reset gate weights.
-  # h is output gate weights.
-  weights[0], weights[1] = weights[1], weights[0]
-  weights[3], weights[4] = weights[4], weights[3]
-  bias[0], bias[1] = bias[1], bias[0]
-  bias[3], bias[4] = bias[4], bias[3]
+
+  if build_info.is_cuda_build:
+    # Note that the gate order for CuDNN is different from the canonical format.
+    # canonical format is [z, r, h], whereas CuDNN is [r, z, h]. The swap need to
+    # be done for kernel, recurrent_kernel, input_bias, recurrent_bias.
+    # z is update gate weights.
+    # r is reset gate weights.
+    # h is output gate weights.
+    weights[0], weights[1] = weights[1], weights[0]
+    weights[3], weights[4] = weights[4], weights[3]
+    bias[0], bias[1] = bias[1], bias[0]
+    bias[3], bias[4] = bias[4], bias[3]
 
   params = _canonical_to_params(
       weights=weights,
@@ -1332,6 +1335,36 @@ def cudnn_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
   # CuDNN has an extra set of bias for inputs, we disable them (setting to 0),
   # so that mathematically it is same as the canonical LSTM implementation.
   full_bias = array_ops.concat((array_ops.zeros_like(bias), bias), 0)
+
+  if build_info.is_rocm_build:
+    units = int(int(kernel.get_shape()[1]) / 4)
+    # ROCm MIOpen's weight sequence for LSTM is different from both canonical
+    # and Cudnn format
+    # MIOpen: [i, f, o, c] Cudnn/Canonical: [i, f, c, o]
+    # i is input gate weights.
+    # f is forget gate weights.
+    # o is output gate weights.
+    # c is cell gate weights.
+    weights=[
+        kernel[:, :units],
+        kernel[:, units:units * 2],
+        kernel[:, units * 3:],
+        kernel[:, units * 2:units * 3],
+        recurrent_kernel[:, :units],
+        recurrent_kernel[:, units:units * 2],
+        recurrent_kernel[:, units * 3:],
+        recurrent_kernel[:, units * 2:units * 3],
+    ]
+    full_bias=[
+        full_bias[:units],
+        full_bias[units:units * 2],
+        full_bias[units * 3:units * 4],
+        full_bias[units * 2:units * 3],
+        full_bias[units * 4:units * 5],
+        full_bias[units * 5:units * 6],
+        full_bias[units * 7:],
+        full_bias[units * 6:units * 7],
+    ]
 
   params = _canonical_to_params(
       weights=weights,
