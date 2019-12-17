@@ -16898,7 +16898,7 @@ func CompareAndBitpack(scope *Scope, input tf.Output, threshold tf.Output) (outp
 //      Considering the batch matrix multiplication equation again
 //      (`bij,bjk->bik`), the contracted axis label is `j`.
 //
-//  (e) Expand Diagonal: If the output subcripts contain repeated (explicit) axis
+//  (e) Expand Diagonal: If the output subscripts contain repeated (explicit) axis
 //      labels, the opposite operation of (a) is applied. For example, in the
 //      equation `i->iii`, and input shape `[3]`, the output of shape `[3, 3, 3]`
 //      are all zeros, except for the (generalized) diagonal which is populated
@@ -16906,7 +16906,7 @@ func CompareAndBitpack(scope *Scope, input tf.Output, threshold tf.Output) (outp
 //      Note: This operation is not supported by `np.einsum` or `tf.einsum`; it is
 //      provided to enable computing the symbolic gradient of `tf.einsum`.
 //
-// The output subcripts must contain only labels appearing in at least one of the
+// The output subscripts must contain only labels appearing in at least one of the
 // input subscripts. Furthermore, all dimensions mapping to the same axis label
 // must be equal.
 //
@@ -16918,7 +16918,7 @@ func CompareAndBitpack(scope *Scope, input tf.Output, threshold tf.Output) (outp
 //
 // The broadcasted dimensions are placed in the corresponding location of the
 // ellipsis in the output subscript. If the broadcasted dimensions are non-empty
-// and the output subcripts do not contain ellipsis, then an InvalidArgument error
+// and the output subscripts do not contain ellipsis, then an InvalidArgument error
 // is raised.
 //
 // @compatibility(numpy)
