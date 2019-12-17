@@ -6,11 +6,11 @@
 
 To get started run the following command from *this* directory:
 
-    make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET="xcore" test -j3
+     make -f tensorflow/lite/micro/tools/make/Makefile TARGET="xcore" test -j3
 
 *Note: the -j argument can be > 3, but should be at least 3 so you can get all but one test done quickly (the other test will just take forever, sorry)*
 
-For a primer on how to do the porting, please check out the README here: https://github.com/xmos/tensorflow/tree/master/tensorflow/lite/experimental/micro
+For a primer on how to do the porting, please check out the README here: https://github.com/xmos/tensorflow/tree/master/tensorflow/lite/micro
 
 Another, more approachable explainer on porting: https://www.oreilly.com/library/view/tinyml/9781492052036/ch04.html
 
