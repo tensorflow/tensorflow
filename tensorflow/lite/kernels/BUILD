@@ -430,6 +430,7 @@ cc_library(
         "comparisons.cc",
         "concatenation.cc",
         "conv.cc",
+        "densify.cc",
         "depth_to_space.cc",
         "depthwise_conv.cc",
         "dequantize.cc",
@@ -850,6 +851,23 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "densify_test",
+    size = "small",
+    srcs = ["densify_test.cc"],
+    tags = ["tflite_nnapi"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels/internal:types",
+        "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
