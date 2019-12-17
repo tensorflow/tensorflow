@@ -190,13 +190,6 @@ class RnnDescriptor {
   virtual ParamsRegions ParamsBiasRegions() const { return ParamsRegions(); }
 };
 
-// Describes a CTC loss operation.
-class CtcLossDescriptor {
- public:
-  CtcLossDescriptor() {}
-  ~CtcLossDescriptor() {}
-};
-
 // Specifies the sequence in a RNN model.
 //
 // The user is responsible for releasing this descriptor when it is no longer
