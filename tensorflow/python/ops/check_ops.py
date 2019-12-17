@@ -1926,16 +1926,12 @@ def is_non_decreasing(x, name=None):
 
   See also:  `is_strictly_increasing`
 
-  ```python
   >>> x1 = tf.constant([1.0, 1.0, 3.0])
-  >>> tf.print(tf.math.is_non_decreasing(x1))
-  1
-
+  >>> tf.math.is_non_decreasing(x1)
+  <tf.Tensor: shape=(), dtype=bool, numpy=True>
   >>> x2 = tf.constant([3.0, 1.0, 2.0])
-  >>> tf.print(tf.math.is_non_decreasing(x1))
-  0
-
-  ```
+  >>> tf.math.is_non_decreasing(x2)
+  <tf.Tensor: shape=(), dtype=bool, numpy=False>
 
   Args:
     x: Numeric `Tensor`.
@@ -1971,16 +1967,12 @@ def is_strictly_increasing(x, name=None):
 
   See also:  `is_non_decreasing`
 
-  ```python
   >>> x1 = tf.constant([1.0, 2.0, 3.0])
   >>> tf.print(tf.math.is_strictly_increasing(x1))
-  1
-
+  <tf.Tensor: shape=(), dtype=bool, numpy=True>
   >>> x2 = tf.constant([3.0, 1.0, 2.0])
-  >>> tf.print(tf.math.is_strictly_increasing(x1))
-  0
-
-  ```
+  >>> tf.print(tf.math.is_strictly_increasing(x2))
+  <tf.Tensor: shape=(), dtype=bool, numpy=False>
 
   Args:
     x: Numeric `Tensor`.
