@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import os
 import platform
 import tempfile
@@ -184,7 +183,7 @@ class TrtConversionParams(object):
                maximum_cached_engines=None,
                use_calibration=None,
                max_batch_size=None,
-              allow_build_at_runtime=None):
+               allow_build_at_runtime=None):
     """Set value of class data members only if they are passed as arguments.
 
     We need this function for backward compatibility with NamedTuple
@@ -193,7 +192,7 @@ class TrtConversionParams(object):
       DEFAULT_TRT_CONVERSION_PARAMS._replace(...)
     """
     for k, v in vars().items():
-      if v and (k is not "self"):
+      if v and (k != "self"):
         setattr(self, k, v)
     return self
 
