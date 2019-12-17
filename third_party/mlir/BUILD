@@ -525,6 +525,7 @@ cc_library(
         "lib/Support/ToolUtilities.cpp",
     ],
     hdrs = [
+        "include/mlir/ADT/TypeSwitch.h",
         "include/mlir/Support/DebugStringHelper.h",
         "include/mlir/Support/FileUtilities.h",
         "include/mlir/Support/Functional.h",
