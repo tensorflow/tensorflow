@@ -583,9 +583,42 @@ struct SplitTransferReadOp : public OpRewritePattern<vector::TransferReadOp> {
   }
 };
 
+// Patter rewrite which forward tuple elements to their users.
+// User(TupleGetOp(ExtractSlicesOp(InsertSlicesOp(TupleOp(Producer)))))
+//   -> User(Producer)
+struct TupleGetFolderOp : public OpRewritePattern<vector::TupleGetOp> {
+  using OpRewritePattern<vector::TupleGetOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(vector::TupleGetOp tupleGetOp,
+                                     PatternRewriter &rewriter) const override {
+    // Return if 'tupleGetOp.vectors' arg was not defined by ExtractSlicesOp.
+    auto extractSlicesOp = dyn_cast_or_null<vector::ExtractSlicesOp>(
+        tupleGetOp.vectors()->getDefiningOp());
+    if (!extractSlicesOp)
+      return matchFailure();
+
+    // Return if 'extractSlicesOp.vector' arg was not defined by InsertSlicesOp.
+    auto insertSlicesOp = dyn_cast_or_null<vector::InsertSlicesOp>(
+        extractSlicesOp.vector()->getDefiningOp());
+    if (!insertSlicesOp)
+      return matchFailure();
+
+    // Return if 'insertSlicesOp.vectors' arg was not defined by TupleOp.
+    auto tupleOp = dyn_cast_or_null<vector::TupleOp>(
+        insertSlicesOp.vectors()->getDefiningOp());
+    if (!tupleOp)
+      return matchFailure();
+
+    // Forward Value at tupleOp.getOperand(tupleGetOp.getIndex());
+    Value *tupleValue = tupleOp.getOperand(tupleGetOp.getIndex());
+    rewriter.replaceOp(tupleGetOp, tupleValue);
+    return matchSuccess();
+  }
+};
+
 // TODO(andydavis) Add pattern to rewrite ExtractSlices(ConstantMaskOp).
 // TODO(andydavis) Add this as DRR pattern.
 void mlir::vector::populateVectorToVectorTransformationPatterns(
     OwningRewritePatternList &patterns, MLIRContext *context) {
-  patterns.insert<SplitTransferReadOp>(context);
+  patterns.insert<SplitTransferReadOp, TupleGetFolderOp>(context);
 }
