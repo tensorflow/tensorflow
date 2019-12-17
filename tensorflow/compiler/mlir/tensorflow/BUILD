@@ -697,18 +697,15 @@ cc_library(
 
 cc_library(
     name = "translate_lib",
-    srcs = [
-        "translate/tf_mlir_translate.cc",
-    ],
-    hdrs = [
-        "translate/tf_mlir_translate.h",
-    ],
+    srcs = ["translate/tf_mlir_translate.cc"],
+    hdrs = ["translate/tf_mlir_translate.h"],
     deps = [
         ":convert_graphdef",
         ":error_util",
         ":import_utils",
         ":mangling_util",
         ":mlir_roundtrip_flags",
+        "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:ops",
