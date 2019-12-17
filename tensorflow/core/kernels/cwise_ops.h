@@ -552,19 +552,29 @@ struct scalar_round_half_to_even_op {
     EIGEN_STATIC_ASSERT((!NumTraits<Scalar>::IsComplex),
                         NUMERIC_TYPE_MUST_BE_REAL)
 
-    Scalar round_val = Eigen::numext::floor(x);
-    const Scalar fraction = x - round_val;
-    if (fraction > Scalar(.5)) {
-      round_val += Scalar(1.0);
-    } else if (fraction == Scalar(.5)) {
-      const Scalar nearest_even_int =
-          round_val - Scalar(2) * Eigen::numext::floor(Scalar(.5) * x);
-      bool is_odd = (nearest_even_int == Scalar(1));
-      if (is_odd) {
-        round_val += Scalar(1);
-      }
+    const Scalar round_val = Eigen::numext::floor(x + Scalar(0.5));
+    const Scalar fraction = round_val - x;
+    if (TF_PREDICT_FALSE(fraction == Scalar(.5))) {
+      return Scalar(2) * Eigen::numext::floor(Scalar(.5) * x + Scalar(0.5));
+    } else {
+      return round_val;
     }
-    return round_val;
+  }
+
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    Packet half = pset1<Packet>(Scalar(0.5));
+    Packet round_val = pfloor(padd(x, half));
+    Packet fraction = psub(round_val, x);
+    Packet half_mask = pcmp_eq(fraction, half);
+    bool any_halves = predux_any(half_mask);
+    if (TF_PREDICT_FALSE(any_halves)) {
+      Packet two = pset1<Packet>(Scalar(2));
+      Packet nearest_even = pmul(two, pfloor(pmadd(half, x, half)));
+      return pselect(half_mask, nearest_even, round_val);
+    } else {
+      return round_val;
+    }
   }
 };
 
@@ -588,7 +598,9 @@ struct functor_traits<scalar_round_half_to_even_op<Scalar>> {
 #if TENSORFLOW_USE_ROCM
     PacketAccess = false,
 #else
-    PacketAccess = Eigen::NumTraits<Scalar>::IsInteger
+    PacketAccess = packet_traits<Scalar>::HasFloor &&
+                   packet_traits<Scalar>::HasAdd &&
+                   packet_traits<Scalar>::HasMul,
 #endif
   };
 };
