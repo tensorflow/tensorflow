@@ -2591,26 +2591,7 @@ def reduce_logsumexp_v1(input_tensor,
                                                 reduction_indices)
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
-  keepdims = False if keepdims is None else keepdims
-  input_tensor = ops.convert_to_tensor(input_tensor)
-  with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
-    reduce_dim = _ReductionDims(input_tensor, axis)
-    raw_max = reduce_max_with_dims(
-        input_tensor, axis=axis, keepdims=True, dims=reduce_dim)
-    my_max = array_ops.stop_gradient(
-        gen_math_ops.select(
-            gen_math_ops.is_finite(raw_max), raw_max,
-            gen_array_ops.zeros_like(raw_max)))
-    result = gen_math_ops.log(
-        reduce_sum_with_dims(
-            gen_math_ops.exp(gen_math_ops.sub(input_tensor, my_max)),
-            axis=axis,
-            keepdims=keepdims,
-            dims=reduce_dim))
-    if not keepdims:
-      my_max = array_ops.reshape(my_max, gen_array_ops.shape(result))
-    result = gen_math_ops.add(result, my_max)
-    return _may_reduce_to_scalar(keepdims, axis, result)
+  return reduce_logsumexp(input_tensor, axis, keepdims, name)
 
 
 @tf_export("math.reduce_logsumexp", "reduce_logsumexp", v1=[])
