@@ -1033,9 +1033,7 @@ static LogicalResult verify(GlobalOp op) {
   if (!llvm::PointerType::isValidElementType(op.getType().getUnderlyingType()))
     return op.emitOpError(
         "expects type to be a valid element type for an LLVM pointer");
-  if (op.getParentOp() &&
-      !(op.getParentOp()->hasTrait<OpTrait::SymbolTable>() &&
-        op.getParentOp()->hasTrait<OpTrait::IsIsolatedFromAbove>()))
+  if (op.getParentOp() && !satisfiesLLVMModule(op.getParentOp()))
     return op.emitOpError("must appear at the module level");
 
   if (auto strAttr = op.getValueOrNull().dyn_cast_or_null<StringAttr>()) {
