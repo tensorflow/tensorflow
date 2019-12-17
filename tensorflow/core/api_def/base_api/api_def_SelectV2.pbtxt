@@ -1,3 +1,69 @@
 op {
-  graph_op_name: "SelectV2"
+  graph_op_name: "Select"
+  endpoint {
+    name: "Where3"
+  }
+  in_arg {
+    name: "t"
+    rename_to: "x"
+    description: <<END
+= A `Tensor` which may have the same shape as `condition`.
+If `condition` is rank 1, `t` may have higher rank,
+but its first dimension must match the size of `condition`.
+END
+  }
+  in_arg {
+    name: "e"
+    rename_to: "y"
+    description: <<END
+= A `Tensor` with the same type and shape as `t`.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+= A `Tensor` with the same type and shape as `t` and `e`.
+END
+  }
+  summary: "Selects elements from `t` or `e`, depending on `condition`."
+  description: <<END
+The `t`, and `e` tensors must all have the same shape, and the
+output will also have that shape.
+
+The `condition` tensor must be a scalar if `t` and `e` are scalars.
+If `t` and `e` are vectors or higher rank, then `condition` must be either a
+scalar, a vector with size matching the first dimension of `t`, or must have
+the same shape as `t`.
+
+The `condition` tensor acts as a mask that chooses, based on the value at each
+element, whether the corresponding element / row in the output should be
+taken from `t` (if true) or `e` (if false).
+
+If `condition` is a vector and `t` and `e` are higher rank matrices, then
+it chooses which row (outer dimension) to copy from `t` and `e`.
+If `condition` has the same shape as `t` and `e`, then it chooses which
+element to copy from `t` and `e`.
+
+For example:
+
+```python
+# 'condition' tensor is [[True,  False]
+#                        [False, True]]
+# 't' is [[1, 2],
+#         [3, 4]]
+# 'e' is [[5, 6],
+#         [7, 8]]
+select(condition, t, e)  # => [[1, 6], [7, 4]]
+
+
+# 'condition' tensor is [True, False]
+# 't' is [[1, 2],
+#         [3, 4]]
+# 'e' is [[5, 6],
+#         [7, 8]]
+select(condition, t, e) ==> [[1, 2],
+                             [7, 8]]
+
+```
+END
 }
