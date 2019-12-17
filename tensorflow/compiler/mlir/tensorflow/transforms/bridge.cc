@@ -40,6 +40,7 @@ void CreateTPUBridge(OpPassManager &pm) {
 
   pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
+  pm.addPass(CreateTPUDynamicPaddingMapperPass());
   pm.addPass(CreateTPURewritePass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());

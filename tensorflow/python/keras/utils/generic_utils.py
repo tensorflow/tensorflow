@@ -453,7 +453,8 @@ class Progbar(object):
     self._dynamic_display = ((hasattr(sys.stdout, 'isatty') and
                               sys.stdout.isatty()) or
                              'ipykernel' in sys.modules or
-                             'posix' in sys.modules)
+                             'posix' in sys.modules or
+                             'PYCHARM_HOSTED' in os.environ)
     self._total_width = 0
     self._seen_so_far = 0
     # We use a dict + list to avoid garbage collection
@@ -680,7 +681,7 @@ def to_list(x):
 def object_list_uid(object_list):
   """Creates a single string from object ids."""
   object_list = nest.flatten(object_list)
-  return ', '.join([str(abs(id(x))) for x in object_list])
+  return ', '.join(str(abs(id(x))) for x in object_list)
 
 
 def to_snake_case(name):

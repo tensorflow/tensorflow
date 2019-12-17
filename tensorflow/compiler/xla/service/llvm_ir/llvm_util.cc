@@ -612,7 +612,7 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   // set.
   function->addFnAttr("denormal-fp-math", "preserve-sign");
 
-  // Add the optize attribute to the function if optimizing for size. This
+  // Add the optimize attribute to the function if optimizing for size. This
   // controls internal behavior of some optimization passes (e.g. loop
   // unrolling).
   if (cpu::options::OptimizeForSizeRequested(module_config)) {

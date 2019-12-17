@@ -694,10 +694,9 @@ static LogicalResult Verify(PadOp op) {
         input_shape[i] + padding_low_val + padding_high_val +
         std::max<int64_t>(input_shape[i] - 1, 0LL) * padding_interior_val;
     if (expected_output != output_shape[i]) {
-      return op.emitOpError(
-          llvm::formatv("expected output shape ({0}) and "
-                        "output shape ({1}) should match",
-                        expected_output, output_shape[i]));
+      return op.emitOpError(llvm::formatv(
+          "expected output shape's dimension #{0} to be {1} but found {2}", i,
+          expected_output, output_shape[i]));
     }
   }
 
@@ -1056,9 +1055,27 @@ XlaHloDialect::XlaHloDialect(MLIRContext* context)
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.cc.inc"
       >();
   addInterfaces<HLOInlinerInterface>();
-
+  addTypes<TokenType>();
   // Support unknown operations because not all XLA operations are registered.
   // allowUnknownOperations();
+}
+
+Type XlaHloDialect::parseType(DialectAsmParser& parser) const {
+  StringRef data_type;
+  if (parser.parseKeyword(&data_type)) return Type();
+
+  if (data_type == "token") return TokenType::get(getContext());
+  parser.emitError(parser.getNameLoc())
+      << "unknown xla_hlo type: " << data_type;
+  return nullptr;
+}
+
+void XlaHloDialect::printType(Type type, DialectAsmPrinter& os) const {
+  if (type.isa<TokenType>()) {
+    os << "token";
+    return;
+  }
+  os << "<unknown xla_hlo type>";
 }
 
 }  // namespace xla_hlo

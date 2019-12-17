@@ -37,6 +37,11 @@ class VectorOpsDialect : public Dialect {
 public:
   VectorOpsDialect(MLIRContext *context);
   static StringRef getDialectNamespace() { return "vector"; }
+
+  /// Materialize a single constant operation from a given attribute value with
+  /// the desired resultant type.
+  Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
+                                 Location loc) override;
 };
 
 /// Collect a set of vector-to-vector canonicalization patterns.

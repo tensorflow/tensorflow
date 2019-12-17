@@ -170,8 +170,9 @@ tf_py_test(
 
 tf_py_test(
     name = "snapshot_dataset_serialization_test",
-    size = "small",
+    size = "medium",
     srcs = ["snapshot_dataset_serialization_test.py"],
+    shard_count = 3,
     tags = [
         "no_oss",
         "no_pip",

@@ -49,7 +49,7 @@ struct CanonicalDebugOptions {
     // function we treat this struct's members as write-only, and read only from
     // `opts`.
 
-    // Did the user specifiy an explicit format for dumping?
+    // Did the user specify an explicit format for dumping?
     bool output_format_other_than_url_specified =
         opts.xla_dump_hlo_as_text() || opts.xla_dump_hlo_as_proto() ||
         opts.xla_dump_hlo_as_dot() || opts.xla_dump_hlo_as_html() ||

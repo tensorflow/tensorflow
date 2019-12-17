@@ -52,6 +52,12 @@ SmallVector<Type, 10> getFlattenedTypes(TupleType t);
 /// dialect and typeData.
 bool isOpaqueTypeWithName(Type type, StringRef dialect, StringRef typeData);
 
+/// Returns success if the given two shapes are compatible. That is, they have
+/// the same size and each pair of the elements are equal or one of them is
+/// dynamic.
+LogicalResult verifyCompatibleShape(ArrayRef<int64_t> shape1,
+                                    ArrayRef<int64_t> shape2);
+
 /// Returns success if the given two types have compatible shape. That is,
 /// they are both scalars (not shaped), or they are both shaped types and at
 /// least one is unranked or they have compatible dimensions. Dimensions are

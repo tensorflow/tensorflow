@@ -30,7 +30,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 BASE_WEIGHTS_PATH = (
-    'https://storage.googleapis.com/tensorflow/keras-applications/resnet')
+    'https://storage.googleapis.com/tensorflow/keras-applications/resnet/')
 WEIGHTS_HASHES = {
     'resnet50': ('2cb95161c43110f7111970584f804107',
                  '4d473c1dd8becc155b73f8504c6f6626'),
@@ -410,7 +410,7 @@ def block3(x,
   output_shape = x_shape + (groups,
                             c) if backend.backend() == 'theano' else None
   x = layers.Lambda(
-      lambda x: sum([x[:, :, :, :, i] for i in range(c)]),
+      lambda x: sum(x[:, :, :, :, i] for i in range(c)),
       output_shape=output_shape,
       name=name + '_2_reduce')(
           x)

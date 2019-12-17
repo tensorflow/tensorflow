@@ -134,17 +134,17 @@ cuda_py_tests(
         "test/vgg_block_nchw_test.py",
         "test/vgg_block_test.py",
     ],
-    additional_deps = [
-        ":tf_trt_integration_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
     python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_rocm",
         "no_windows",
         "nomac",
+    ],
+    deps = [
+        ":tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -154,17 +154,17 @@ cuda_py_tests(
         "test/biasadd_matmul_test.py",
         "test/concatenation_test.py",
     ],
-    additional_deps = [
-        ":tf_trt_integration_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
     python_version = "PY3",
     tags = [
         "no_rocm",
         "no_windows",
         "nomac",
         "notap",  # b/140261407
+    ],
+    deps = [
+        ":tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 

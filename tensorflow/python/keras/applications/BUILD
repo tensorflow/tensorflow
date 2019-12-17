@@ -53,10 +53,10 @@ tf_py_test(
     name = "imagenet_utils_test",
     size = "medium",
     srcs = ["imagenet_utils_test.py"],
-    additional_deps = [
-        ":applications",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python:client_testlib",
-    ],
     shard_count = 2,
+    deps = [
+        ":applications",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )

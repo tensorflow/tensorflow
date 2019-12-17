@@ -259,8 +259,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       host_device = device_util.get_host_for_device(tpu_device)
       input_worker_devices.setdefault(host_device, [])
       input_worker_devices[host_device].append(tpu_device)
-    self._input_workers = input_lib.InputWorkers(
-        self._device_map, tuple(input_worker_devices.items()))
+    self._input_worker_devices = tuple(input_worker_devices.items())
+    self._input_workers_obj = None
 
     # TODO(sourabhbajaj): Remove this once performance of running one step
     # at a time is comparable to multiple steps.
@@ -273,6 +273,39 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     self.experimental_enable_get_next_as_optional = True
     self.experimental_enable_dynamic_batch_size = True
+    self._prefetch_on_host = False
+
+  # TODO(bfontain): Remove once a proper dataset API exists for prefetching
+  # a dataset to multiple devices exists.
+  # If value is true, this forces prefetch of data to the host's memeory rather
+  # than the individual TPU device's memory. This is needed when using for TPU
+  # Embeddings as a) sparse tensors cannot be prefetched to the TPU device
+  # memory and b) TPU Embedding enqueue operation are CPU ops and this avoids
+  # a copy back to the host for dense tensors
+  def _set_prefetch_on_host(self, value):
+    if self._prefetch_on_host == value:
+      return
+    if self._input_workers_obj is not None:
+      raise RuntimeError("Unable to change prefetch on host behavior as "
+                         "InputWorkers are already created.")
+    self._prefetch_on_host = value
+    if value:
+      # To prefetch on the host, we must set all the input worker devices to the
+      # corresponding host devices.
+      self._input_worker_devices = tuple([
+          tuple([host,
+                 [device_util.get_host_for_device(d) for d in devices]])
+          for host, devices in self._input_worker_devices])
+      # Force creation of the workers.
+      workers = self._input_workers
+      del workers
+
+  @property
+  def _input_workers(self):
+    if self._input_workers_obj is None:
+      self._input_workers_obj = input_lib.InputWorkers(
+          self._device_map, self._input_worker_devices)
+    return self._input_workers_obj
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate(colocate_with_variable, self)

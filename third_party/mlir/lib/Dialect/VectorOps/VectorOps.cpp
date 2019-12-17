@@ -31,6 +31,8 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/MathExtras.h"
+#include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/StringSet.h"
 
 using namespace mlir;
@@ -40,12 +42,20 @@ using namespace mlir::vector;
 // VectorOpsDialect
 //===----------------------------------------------------------------------===//
 
-mlir::vector::VectorOpsDialect::VectorOpsDialect(MLIRContext *context)
+VectorOpsDialect::VectorOpsDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
 #include "mlir/Dialect/VectorOps/VectorOps.cpp.inc"
       >();
+}
+
+/// Materialize a single constant operation from a given attribute value with
+/// the desired resultant type.
+Operation *VectorOpsDialect::materializeConstant(OpBuilder &builder,
+                                                 Attribute value, Type type,
+                                                 Location loc) {
+  return builder.create<ConstantOp>(loc, type, value);
 }
 
 //===----------------------------------------------------------------------===//
@@ -337,6 +347,42 @@ SmallVector<AffineMap, 4> ContractionOp::getIndexingMaps() {
 }
 
 //===----------------------------------------------------------------------===//
+// ExtractElementOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter &p, vector::ExtractElementOp op) {
+  p << op.getOperationName() << " " << *op.vector() << "[" << *op.position()
+    << " : " << op.position()->getType() << "]";
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.vector()->getType();
+}
+
+static ParseResult parseExtractElementOp(OpAsmParser &parser,
+                                         OperationState &result) {
+  OpAsmParser::OperandType vector, position;
+  Type positionType;
+  VectorType vectorType;
+  if (parser.parseOperand(vector) || parser.parseLSquare() ||
+      parser.parseOperand(position) || parser.parseColonType(positionType) ||
+      parser.parseRSquare() ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(vectorType))
+    return failure();
+  Type resultType = vectorType.getElementType();
+  return failure(
+      parser.resolveOperand(vector, vectorType, result.operands) ||
+      parser.resolveOperand(position, positionType, result.operands) ||
+      parser.addTypeToList(resultType, result.types));
+}
+
+static LogicalResult verify(vector::ExtractElementOp op) {
+  VectorType vectorType = op.getVectorType();
+  if (vectorType.getRank() != 1)
+    return op.emitOpError("expected 1-D vector");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ExtractOp
 //===----------------------------------------------------------------------===//
 
@@ -409,6 +455,138 @@ static LogicalResult verify(vector::ExtractOp op) {
                 "vector dimension";
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ExtractSlicesOp
+//===----------------------------------------------------------------------===//
+
+void ExtractSlicesOp::build(Builder *builder, OperationState &result,
+                            TupleType tupleType, Value *vector,
+                            ArrayRef<int64_t> sizes,
+                            ArrayRef<int64_t> strides) {
+  result.addOperands(vector);
+  auto sizesAttr = builder->getI64ArrayAttr(sizes);
+  auto stridesAttr = builder->getI64ArrayAttr(strides);
+  result.addTypes(tupleType);
+  result.addAttribute(getSizesAttrName(), sizesAttr);
+  result.addAttribute(getStridesAttrName(), stridesAttr);
+}
+
+static ParseResult parseExtractSlicesOp(OpAsmParser &parser,
+                                        OperationState &result) {
+  OpAsmParser::OperandType operandInfo;
+  ArrayAttr sizesAttr;
+  StringRef sizesAttrName = ExtractSlicesOp::getSizesAttrName();
+  ArrayAttr stridesAttr;
+  StringRef stridesAttrName = ExtractSlicesOp::getStridesAttrName();
+  VectorType vectorType;
+  TupleType resultTupleType;
+  return failure(
+      parser.parseOperand(operandInfo) || parser.parseComma() ||
+      parser.parseAttribute(sizesAttr, sizesAttrName, result.attributes) ||
+      parser.parseComma() ||
+      parser.parseAttribute(stridesAttr, stridesAttrName, result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(vectorType) ||
+      parser.parseKeywordType("into", resultTupleType) ||
+      parser.resolveOperand(operandInfo, vectorType, result.operands) ||
+      parser.addTypeToList(resultTupleType, result.types));
+}
+
+static void print(OpAsmPrinter &p, ExtractSlicesOp op) {
+  p << op.getOperationName() << ' ' << *op.vector() << ", ";
+  p << op.sizes() << ", " << op.strides();
+  p.printOptionalAttrDict(
+      op.getAttrs(),
+      /*elidedAttrs=*/{ExtractSlicesOp::getSizesAttrName(),
+                       ExtractSlicesOp::getStridesAttrName()});
+  p << " : " << op.vector()->getType();
+  p << " into " << op.getResultTupleType();
+}
+
+static LogicalResult
+isValidExtractOrInsertSlicesType(Operation *op, VectorType vectorType,
+                                 TupleType tupleType, ArrayRef<int64_t> sizes,
+                                 ArrayRef<int64_t> strides) {
+  // Check for non-unit strides.
+  // TODO(b/144845578) Support non-1 strides.
+  if (llvm::any_of(strides, [](int64_t s) { return s != 1; }))
+    return op->emitError("requires unit strides");
+  // Check that 'vectorType' rank matches rank of tuple element vectors.
+  unsigned rank = vectorType.getRank();
+  auto is_vector_type_of_rank = [&](Type t) {
+    return t.isa<VectorType>() && t.cast<VectorType>().getRank() == rank;
+  };
+  if (!llvm::all_of(tupleType.getTypes(), is_vector_type_of_rank))
+    return op->emitError("requires vector tuple elements of rank ") << rank;
+  // Check that 'sizes' and 'strides' are of size == 'rank'.
+  if (sizes.size() != rank || strides.size() != rank)
+    return op->emitError("requires sizes and strides of rank ") << rank;
+
+  // Compute the number of slices in each dimension.
+  // TODO(andydavis) Move this into a slice generation helper function.
+  auto shape = vectorType.getShape();
+  SmallVector<int64_t, 4> dimSliceCounts(rank);
+  for (unsigned i = 0; i < rank; ++i)
+    dimSliceCounts[i] = ceilDiv(shape[i], sizes[i]);
+  // Compute the strides between slices in each dimension.
+  SmallVector<int64_t, 4> sliceStrides(rank);
+  sliceStrides[rank - 1] = 1;
+  for (int i = rank - 2; i >= 0; --i)
+    sliceStrides[i] = sliceStrides[i + 1] * dimSliceCounts[i + 1];
+
+  // Generate each slice shape based on 'sizes', 'strides' and 'vectorType',
+  // and varify that the same matches the corresponding tuple element 'i'.
+  for (int64_t i = 0, e = tupleType.size(); i < e; ++i) {
+    // De-linearize w.r.t. 'sliceStrides'.
+    SmallVector<int64_t, 4> vectorOffsets(rank);
+    int64_t linearIndex = i;
+    for (unsigned j = 0; j < rank; ++j) {
+      vectorOffsets.push_back(linearIndex / sliceStrides[i]);
+      linearIndex %= sliceStrides[i];
+    }
+    // Convert from unrolled vector-space offsets to element-space offsets.
+    auto offsets = mlir::functional::zipMap(
+        [](int64_t v1, int64_t v2) { return v1 * v2; }, vectorOffsets, sizes);
+    // Initialize 'sliceSizes' to target 'sizes'
+    SmallVector<int64_t, 4> sliceSizes(sizes.begin(), sizes.end());
+    for (unsigned j = 0; j < rank; ++j) {
+      // Based on 'offsets' and 'shape' clip some dim sizes for partial tiles.
+      sliceSizes[j] = std::min(sliceSizes[j], shape[j] - offsets[j]);
+    }
+    // Create slice VectorType type.
+    auto sliceVectorType =
+        VectorType::get(sliceSizes, vectorType.getElementType());
+    // Verify that 'sliceVectorType' matches tupleType.getTypes(i)
+    if (sliceVectorType != tupleType.getType(i))
+      return op->emitError("invalid tuple element type ") << sliceVectorType;
+  }
+  return success();
+}
+
+static LogicalResult verify(ExtractSlicesOp op) {
+  SmallVector<int64_t, 4> sizes;
+  op.getSizes(sizes);
+  SmallVector<int64_t, 4> strides;
+  op.getStrides(strides);
+  return isValidExtractOrInsertSlicesType(
+      op.getOperation(), op.getSourceVectorType(), op.getResultTupleType(),
+      sizes, strides);
+}
+
+static void populateFromInt64AttrArray(ArrayAttr arrayAttr,
+                                       SmallVectorImpl<int64_t> &results) {
+  for (auto attr : arrayAttr)
+    results.push_back(attr.cast<IntegerAttr>().getInt());
+}
+
+void ExtractSlicesOp::getSizes(SmallVectorImpl<int64_t> &results) {
+  populateFromInt64AttrArray(sizes(), results);
+}
+
+void ExtractSlicesOp::getStrides(SmallVectorImpl<int64_t> &results) {
+  populateFromInt64AttrArray(strides(), results);
 }
 
 //===----------------------------------------------------------------------===//
@@ -543,6 +721,44 @@ static ParseResult parseShuffleOp(OpAsmParser &parser, OperationState &result) {
 }
 
 //===----------------------------------------------------------------------===//
+// InsertElementOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter &p, InsertElementOp op) {
+  p << op.getOperationName() << " " << *op.source() << ", " << *op.dest() << "["
+    << *op.position() << " : " << op.position()->getType() << "]";
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.dest()->getType();
+}
+
+static ParseResult parseInsertElementOp(OpAsmParser &parser,
+                                        OperationState &result) {
+  OpAsmParser::OperandType source, dest, position;
+  Type positionType;
+  VectorType destType;
+  if (parser.parseOperand(source) || parser.parseComma() ||
+      parser.parseOperand(dest) || parser.parseLSquare() ||
+      parser.parseOperand(position) || parser.parseColonType(positionType) ||
+      parser.parseRSquare() ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(destType))
+    return failure();
+  Type sourceType = destType.getElementType();
+  return failure(
+      parser.resolveOperand(source, sourceType, result.operands) ||
+      parser.resolveOperand(dest, destType, result.operands) ||
+      parser.resolveOperand(position, positionType, result.operands) ||
+      parser.addTypeToList(destType, result.types));
+}
+
+static LogicalResult verify(InsertElementOp op) {
+  auto dstVectorType = op.getDestVectorType();
+  if (dstVectorType.getRank() != 1)
+    return op.emitOpError("expected 1-D vector");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // InsertOp
 //===----------------------------------------------------------------------===//
 
@@ -607,6 +823,60 @@ static LogicalResult verify(InsertOp op) {
                 "dest vector dimension";
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// InsertSlicesOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseInsertSlicesOp(OpAsmParser &parser,
+                                       OperationState &result) {
+  OpAsmParser::OperandType operandInfo;
+  ArrayAttr sizesAttr;
+  StringRef sizesAttrName = InsertSlicesOp::getSizesAttrName();
+  ArrayAttr stridesAttr;
+  StringRef stridesAttrName = InsertSlicesOp::getStridesAttrName();
+  TupleType tupleType;
+  VectorType resultVectorType;
+  return failure(
+      parser.parseOperand(operandInfo) || parser.parseComma() ||
+      parser.parseAttribute(sizesAttr, sizesAttrName, result.attributes) ||
+      parser.parseComma() ||
+      parser.parseAttribute(stridesAttr, stridesAttrName, result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(tupleType) ||
+      parser.parseKeywordType("into", resultVectorType) ||
+      parser.resolveOperand(operandInfo, tupleType, result.operands) ||
+      parser.addTypeToList(resultVectorType, result.types));
+}
+
+static void print(OpAsmPrinter &p, InsertSlicesOp op) {
+  p << op.getOperationName() << ' ' << *op.vectors() << ", ";
+  p << op.sizes() << ", " << op.strides();
+  p.printOptionalAttrDict(
+      op.getAttrs(),
+      /*elidedAttrs=*/{InsertSlicesOp::getSizesAttrName(),
+                       InsertSlicesOp::getStridesAttrName()});
+  p << " : " << op.vectors()->getType();
+  p << " into " << op.getResultVectorType();
+}
+
+static LogicalResult verify(InsertSlicesOp op) {
+  SmallVector<int64_t, 4> sizes;
+  op.getSizes(sizes);
+  SmallVector<int64_t, 4> strides;
+  op.getStrides(strides);
+  return isValidExtractOrInsertSlicesType(
+      op.getOperation(), op.getResultVectorType(), op.getSourceTupleType(),
+      sizes, strides);
+}
+
+void InsertSlicesOp::getSizes(SmallVectorImpl<int64_t> &results) {
+  populateFromInt64AttrArray(sizes(), results);
+}
+
+void InsertSlicesOp::getStrides(SmallVectorImpl<int64_t> &results) {
+  populateFromInt64AttrArray(strides(), results);
 }
 
 //===----------------------------------------------------------------------===//
@@ -726,12 +996,6 @@ LogicalResult isSumOfIntegerArrayAttrConfinedToShape(
     ++index;
   }
   return success();
-}
-
-static void populateFromInt64AttrArray(ArrayAttr arrayAttr,
-                                       SmallVectorImpl<int64_t> &results) {
-  for (auto attr : arrayAttr)
-    results.push_back(attr.cast<IntegerAttr>().getInt());
 }
 
 static ArrayAttr makeI64ArrayAttr(ArrayRef<int64_t> values,
@@ -1176,6 +1440,73 @@ static LogicalResult verify(TypeCastOp op) {
   auto resultType = inferVectorTypeCastResultType(op.getMemRefType());
   if (op.getResultMemRefType() != resultType)
     return op.emitOpError("expects result type to be: ") << resultType;
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TupleOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseTupleOp(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::OperandType, 4> operandInfos;
+  SmallVector<Type, 4> types;
+  auto loc = parser.getCurrentLocation();
+  auto *ctx = parser.getBuilder().getContext();
+  return failure(
+      parser.parseOperandList(operandInfos) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonTypeList(types) ||
+      parser.resolveOperands(operandInfos, types, loc, result.operands) ||
+      parser.addTypeToList(TupleType::get(types, ctx), result.types));
+}
+
+static void print(OpAsmPrinter &p, TupleOp op) {
+  p << op.getOperationName() << ' ';
+  p.printOperands(op.getOperands());
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : ";
+  interleaveComma(op.getOperation()->getOperandTypes(), p);
+}
+
+static LogicalResult verify(TupleOp op) { return success(); }
+
+//===----------------------------------------------------------------------===//
+// TupleGetOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseTupleGetOp(OpAsmParser &parser,
+                                   OperationState &result) {
+  OpAsmParser::OperandType operandInfo;
+  IntegerAttr indexAttr;
+  StringRef indexAttrName = TupleGetOp::getIndexAttrName();
+  Type indexType = parser.getBuilder().getIndexType();
+  TupleType tupleType;
+  VectorType resultVectorType;
+  if (parser.parseOperand(operandInfo) || parser.parseComma() ||
+      parser.parseAttribute(indexAttr, indexType, indexAttrName,
+                            result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(tupleType) ||
+      parser.resolveOperand(operandInfo, tupleType, result.operands))
+    return failure();
+  if (indexAttr.getInt() < 0 ||
+      indexAttr.getInt() >= static_cast<int64_t>(tupleType.size()))
+    return failure();
+  parser.addTypeToList(tupleType.getType(indexAttr.getInt()), result.types);
+  return success();
+}
+
+static void print(OpAsmPrinter &p, TupleGetOp op) {
+  p << op.getOperationName() << ' ' << *op.getOperand() << ", " << op.index();
+  p.printOptionalAttrDict(op.getAttrs(),
+                          /*elidedAttrs=*/{TupleGetOp::getIndexAttrName()});
+  p << " : " << op.getOperand()->getType();
+}
+
+static LogicalResult verify(TupleGetOp op) {
+  auto tupleType = op.getOperand()->getType().cast<TupleType>();
+  if (op.getIndex() < 0 || op.getIndex() >= tupleType.size())
+    return op.emitOpError("tuple get index out of range");
   return success();
 }
 

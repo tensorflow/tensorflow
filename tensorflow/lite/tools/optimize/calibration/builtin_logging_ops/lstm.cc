@@ -36,10 +36,10 @@ namespace builtin {
 namespace {
 
 inline void LstmStepWithAuxInput(
-    const float* input_ptr_batch, const float* input_to_input_weights_ptr,
+    const float* input_ptr, const float* input_to_input_weights_ptr,
     const float* input_to_forget_weights_ptr,
     const float* input_to_cell_weights_ptr,
-    const float* input_to_output_weights_ptr, const float* aux_input_ptr_batch,
+    const float* input_to_output_weights_ptr, const float* aux_input_ptr,
     const float* aux_input_to_input_weights_ptr,
     const float* aux_input_to_forget_weights_ptr,
     const float* aux_input_to_cell_weights_ptr,
@@ -62,7 +62,7 @@ inline void LstmStepWithAuxInput(
     int n_aux_input, int n_output, int output_batch_leading_dim,
     float* output_state_ptr, float* cell_state_ptr, float* input_gate_scratch,
     float* forget_gate_scratch, float* cell_scratch, float* output_gate_scratch,
-    float* output_ptr_batch, Logger* logger,
+    float* output_ptr, Logger* logger,
     std::vector<int> intemediate_tensor_indexes) {
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to the get the condition.
@@ -96,38 +96,38 @@ inline void LstmStepWithAuxInput(
   // For each batch and cell: compute input_weight * input.
   if (!use_cifg) {
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-        input_to_input_weights_ptr, n_cell, n_input, input_ptr_batch, n_batch,
+        input_to_input_weights_ptr, n_cell, n_input, input_ptr, n_batch,
         input_gate_scratch, /*result_stride=*/1);
   }
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_to_forget_weights_ptr, n_cell, n_input, input_ptr_batch, n_batch,
+      input_to_forget_weights_ptr, n_cell, n_input, input_ptr, n_batch,
       forget_gate_scratch, /*result_stride=*/1);
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_to_cell_weights_ptr, n_cell, n_input, input_ptr_batch, n_batch,
+      input_to_cell_weights_ptr, n_cell, n_input, input_ptr, n_batch,
       cell_scratch, /*result_stride=*/1);
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_to_output_weights_ptr, n_cell, n_input, input_ptr_batch, n_batch,
+      input_to_output_weights_ptr, n_cell, n_input, input_ptr, n_batch,
       output_gate_scratch, /*result_stride=*/1);
 
   // If auxiliary input is available then compute aux_input_weight * aux_input
-  if (aux_input_ptr_batch != nullptr) {
+  if (aux_input_ptr != nullptr) {
     if (!use_cifg) {
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-          aux_input_to_input_weights_ptr, n_cell, n_aux_input,
-          aux_input_ptr_batch, n_batch, input_gate_scratch,
+          aux_input_to_input_weights_ptr, n_cell, n_aux_input, aux_input_ptr,
+          n_batch, input_gate_scratch,
           /*result_stride=*/1);
     }
 
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-        aux_input_to_forget_weights_ptr, n_cell, n_aux_input,
-        aux_input_ptr_batch, n_batch, forget_gate_scratch, /*result_stride=*/1);
+        aux_input_to_forget_weights_ptr, n_cell, n_aux_input, aux_input_ptr,
+        n_batch, forget_gate_scratch, /*result_stride=*/1);
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-        aux_input_to_cell_weights_ptr, n_cell, n_aux_input, aux_input_ptr_batch,
+        aux_input_to_cell_weights_ptr, n_cell, n_aux_input, aux_input_ptr,
         n_batch, cell_scratch, /*result_stride=*/1);
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-        aux_input_to_output_weights_ptr, n_cell, n_aux_input,
-        aux_input_ptr_batch, n_batch, output_gate_scratch, /*result_stride=*/1);
+        aux_input_to_output_weights_ptr, n_cell, n_aux_input, aux_input_ptr,
+        n_batch, output_gate_scratch, /*result_stride=*/1);
   }
 
   // For each batch and cell: compute recurrent_weight * output_state.
@@ -257,34 +257,33 @@ inline void LstmStepWithAuxInput(
     if (use_projection_bias) {
       for (int k = 0; k < n_batch; k++) {
         std::copy_n(projection_bias_ptr, n_output,
-                    output_ptr_batch + k * output_batch_leading_dim);
+                    output_ptr + k * output_batch_leading_dim);
       }
     } else {
       for (int k = 0; k < n_batch; k++) {
-        std::fill_n(output_ptr_batch + k * output_batch_leading_dim, n_output,
-                    0.0f);
+        std::fill_n(output_ptr + k * output_batch_leading_dim, n_output, 0.0f);
       }
     }
     for (int k = 0; k < n_batch; k++) {
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           projection_weights_ptr, n_output, n_cell,
           output_gate_scratch + k * n_cell,
-          /*n_batch=*/1, output_ptr_batch + k * output_batch_leading_dim,
+          /*n_batch=*/1, output_ptr + k * output_batch_leading_dim,
           /*result_stride=*/1);
       if (params->proj_clip > 0.0) {
-        tensor_utils::ClipVector(
-            output_ptr_batch + k * output_batch_leading_dim, n_output,
-            params->proj_clip, output_ptr_batch + k * output_batch_leading_dim);
+        tensor_utils::ClipVector(output_ptr + k * output_batch_leading_dim,
+                                 n_output, params->proj_clip,
+                                 output_ptr + k * output_batch_leading_dim);
       }
     }
   } else {
     for (int k = 0; k < n_batch; k++) {
       std::copy_n(output_gate_scratch + k * n_output, n_output,
-                  output_ptr_batch + k * output_batch_leading_dim);
+                  output_ptr + k * output_batch_leading_dim);
     }
   }
   for (int k = 0; k < n_batch; k++) {
-    std::copy_n(output_ptr_batch + k * output_batch_leading_dim, n_output,
+    std::copy_n(output_ptr + k * output_batch_leading_dim, n_output,
                 output_state_ptr + k * n_output);
   }
 }
@@ -338,8 +337,6 @@ TfLiteStatus EvalFloat(
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights == nullptr);
-  const bool use_peephole = (cell_to_output_weights != nullptr);
-  const bool is_layer_norm_lstm = (forget_layer_norm_coefficients != nullptr);
 
   // Index the scratch buffers pointers to the global scratch buffer.
   float* scratch_buffer_ptr = GetTensorData<float>(scratch_buffer);
@@ -358,59 +355,6 @@ TfLiteStatus EvalFloat(
     output_gate_scratch = scratch_buffer_ptr + 3 * n_cell * n_batch;
   }
 
-  // Check optional tensors, the respective pointers can be null.
-  const float* input_to_input_weights_ptr =
-      (use_cifg) ? nullptr : GetTensorData<float>(input_to_input_weights);
-  const float* recurrent_to_input_weights_ptr =
-      (use_cifg) ? nullptr : GetTensorData<float>(recurrent_to_input_weights);
-  const float* input_gate_bias_ptr =
-      (use_cifg) ? nullptr : GetTensorData<float>(input_gate_bias);
-  const float* cell_to_input_weights_ptr =
-      (use_peephole && !use_cifg) ? GetTensorData<float>(cell_to_input_weights)
-                                  : nullptr;
-  const float* cell_to_forget_weights_ptr =
-      (use_peephole) ? GetTensorData<float>(cell_to_forget_weights) : nullptr;
-  const float* cell_to_output_weights_ptr =
-      (use_peephole) ? GetTensorData<float>(cell_to_output_weights) : nullptr;
-  const float* input_layer_norm_coefficients_ptr =
-      (is_layer_norm_lstm && !use_cifg)
-          ? GetTensorData<float>(input_layer_norm_coefficients)
-          : nullptr;
-  const float* forget_layer_norm_coefficients_ptr =
-      is_layer_norm_lstm ? GetTensorData<float>(forget_layer_norm_coefficients)
-                         : nullptr;
-  const float* cell_layer_norm_coefficients_ptr =
-      is_layer_norm_lstm ? GetTensorData<float>(cell_layer_norm_coefficients)
-                         : nullptr;
-  const float* output_layer_norm_coefficients_ptr =
-      is_layer_norm_lstm ? GetTensorData<float>(output_layer_norm_coefficients)
-                         : nullptr;
-  const float* projection_weights_ptr =
-      (projection_weights == nullptr)
-          ? nullptr
-          : GetTensorData<float>(projection_weights);
-  const float* projection_bias_ptr =
-      (projection_bias == nullptr) ? nullptr
-                                   : GetTensorData<float>(projection_bias);
-
-  const float* aux_input_ptr = nullptr;
-  const float* aux_input_to_input_weights_ptr = nullptr;
-  const float* aux_input_to_forget_weights_ptr = nullptr;
-  const float* aux_input_to_cell_weights_ptr = nullptr;
-  const float* aux_input_to_output_weights_ptr = nullptr;
-  if (aux_input_size > 0) {
-    if (!use_cifg) {
-      aux_input_to_input_weights_ptr =
-          GetTensorData<float>(aux_input_to_input_weights);
-    }
-    aux_input_to_forget_weights_ptr =
-        GetTensorData<float>(aux_input_to_forget_weights);
-    aux_input_to_cell_weights_ptr =
-        GetTensorData<float>(aux_input_to_cell_weights);
-    aux_input_to_output_weights_ptr =
-        GetTensorData<float>(aux_input_to_output_weights);
-  }
-
   const int output_batch_leading_dim =
       output->dims->data[output->dims->size - 1];
   if (time_major) {
@@ -421,8 +365,8 @@ TfLiteStatus EvalFloat(
       // If this is the forward_sequence, step forward, otherwise step
       // backwards.
       const int t_rel = forward_sequence ? t : max_time - t - 1;
-      const float* input_ptr_batch =
-          GetTensorData<float>(input) + t_rel * input_step;
+      const float* input_ptr = GetTensorData<float>(input) + t_rel * input_step;
+      const float* aux_input_ptr = nullptr;
       if (aux_input) {
         aux_input_ptr = GetTensorData<float>(aux_input) + t_rel * input_step;
       }
@@ -430,25 +374,32 @@ TfLiteStatus EvalFloat(
           GetTensorData<float>(output) + t_rel * output_step + output_offset;
 
       LstmStepWithAuxInput(
-          input_ptr_batch, input_to_input_weights_ptr,
+          input_ptr, GetTensorData<float>(input_to_input_weights),
           GetTensorData<float>(input_to_forget_weights),
           GetTensorData<float>(input_to_cell_weights),
           GetTensorData<float>(input_to_output_weights), aux_input_ptr,
-          aux_input_to_input_weights_ptr, aux_input_to_forget_weights_ptr,
-          aux_input_to_cell_weights_ptr, aux_input_to_output_weights_ptr,
-          recurrent_to_input_weights_ptr,
+          GetTensorData<float>(aux_input_to_input_weights),
+          GetTensorData<float>(aux_input_to_forget_weights),
+          GetTensorData<float>(aux_input_to_cell_weights),
+          GetTensorData<float>(aux_input_to_output_weights),
+          GetTensorData<float>(recurrent_to_input_weights),
           GetTensorData<float>(recurrent_to_forget_weights),
           GetTensorData<float>(recurrent_to_cell_weights),
           GetTensorData<float>(recurrent_to_output_weights),
-          cell_to_input_weights_ptr, cell_to_forget_weights_ptr,
-          cell_to_output_weights_ptr, input_layer_norm_coefficients_ptr,
-          forget_layer_norm_coefficients_ptr, cell_layer_norm_coefficients_ptr,
-          output_layer_norm_coefficients_ptr, input_gate_bias_ptr,
+          GetTensorData<float>(cell_to_input_weights),
+          GetTensorData<float>(cell_to_forget_weights),
+          GetTensorData<float>(cell_to_output_weights),
+          GetTensorData<float>(input_layer_norm_coefficients),
+          GetTensorData<float>(forget_layer_norm_coefficients),
+          GetTensorData<float>(cell_layer_norm_coefficients),
+          GetTensorData<float>(output_layer_norm_coefficients),
+          GetTensorData<float>(input_gate_bias),
           GetTensorData<float>(forget_gate_bias),
           GetTensorData<float>(cell_bias),
-          GetTensorData<float>(output_gate_bias), projection_weights_ptr,
-          projection_bias_ptr, params, n_batch, n_cell, n_input, aux_input_size,
-          n_output, output_batch_leading_dim,
+          GetTensorData<float>(output_gate_bias),
+          GetTensorData<float>(projection_weights),
+          GetTensorData<float>(projection_bias), params, n_batch, n_cell,
+          n_input, aux_input_size, n_output, output_batch_leading_dim,
           GetTensorData<float>(activation_state),
           GetTensorData<float>(cell_state), input_gate_scratch,
           forget_gate_scratch, cell_scratch, output_gate_scratch,
@@ -465,6 +416,7 @@ TfLiteStatus EvalFloat(
         const int time_offset = b * max_time + t_rel;
         const float* input_ptr =
             GetTensorData<float>(input) + time_offset * input_step;
+        const float* aux_input_ptr = nullptr;
         if (aux_input) {
           aux_input_ptr =
               GetTensorData<float>(aux_input) + time_offset * input_step;
@@ -484,26 +436,32 @@ TfLiteStatus EvalFloat(
         float* output_gate_scratch_ptr = output_gate_scratch + b * n_cell;
 
         LstmStepWithAuxInput(
-            input_ptr, input_to_input_weights_ptr,
+            input_ptr, GetTensorData<float>(input_to_input_weights),
             GetTensorData<float>(input_to_forget_weights),
             GetTensorData<float>(input_to_cell_weights),
             GetTensorData<float>(input_to_output_weights), aux_input_ptr,
-            aux_input_to_input_weights_ptr, aux_input_to_forget_weights_ptr,
-            aux_input_to_cell_weights_ptr, aux_input_to_output_weights_ptr,
-            recurrent_to_input_weights_ptr,
+            GetTensorData<float>(aux_input_to_input_weights),
+            GetTensorData<float>(aux_input_to_forget_weights),
+            GetTensorData<float>(aux_input_to_cell_weights),
+            GetTensorData<float>(aux_input_to_output_weights),
+            GetTensorData<float>(recurrent_to_input_weights),
             GetTensorData<float>(recurrent_to_forget_weights),
             GetTensorData<float>(recurrent_to_cell_weights),
             GetTensorData<float>(recurrent_to_output_weights),
-            cell_to_input_weights_ptr, cell_to_forget_weights_ptr,
-            cell_to_output_weights_ptr, input_layer_norm_coefficients_ptr,
-            forget_layer_norm_coefficients_ptr,
-            cell_layer_norm_coefficients_ptr,
-            output_layer_norm_coefficients_ptr, input_gate_bias_ptr,
+            GetTensorData<float>(cell_to_input_weights),
+            GetTensorData<float>(cell_to_forget_weights),
+            GetTensorData<float>(cell_to_output_weights),
+            GetTensorData<float>(input_layer_norm_coefficients),
+            GetTensorData<float>(forget_layer_norm_coefficients),
+            GetTensorData<float>(cell_layer_norm_coefficients),
+            GetTensorData<float>(output_layer_norm_coefficients),
+            GetTensorData<float>(input_gate_bias),
             GetTensorData<float>(forget_gate_bias),
             GetTensorData<float>(cell_bias),
-            GetTensorData<float>(output_gate_bias), projection_weights_ptr,
-            projection_bias_ptr, params, /*n_batch=*/1, n_cell, n_input,
-            aux_input_size, n_output, output_batch_leading_dim,
+            GetTensorData<float>(output_gate_bias),
+            GetTensorData<float>(projection_weights),
+            GetTensorData<float>(projection_bias), params, /*n_batch=*/1,
+            n_cell, n_input, aux_input_size, n_output, output_batch_leading_dim,
             activation_state_ptr, cell_state_ptr, input_gate_scratch_ptr,
             forget_gate_scratch_ptr, cell_scratch_ptr, output_gate_scratch_ptr,
             output_ptr, logger, intemediate_tensor_indexes);
@@ -579,8 +537,6 @@ constexpr int kOutputTensor = 0;
 TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node,
                        Logger* logger) {
   const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
-  OpData* op_data = static_cast<OpData*>(node->user_data);
-  const bool is_layer_norm_lstm = op_data->is_layer_norm_lstm;
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
 
@@ -610,23 +566,13 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node,
       GetOptionalInputTensor(context, node, kCellToOutputWeightsTensor);
 
   const TfLiteTensor* input_layer_norm_coefficients =
-      is_layer_norm_lstm ? GetOptionalInputTensor(
-                               context, node, kInputLayerNormCoefficientsTensor)
-                         : nullptr;
+      GetOptionalInputTensor(context, node, kInputLayerNormCoefficientsTensor);
   const TfLiteTensor* forget_layer_norm_coefficients =
-      is_layer_norm_lstm
-          ? GetOptionalInputTensor(context, node,
-                                   kForgetLayerNormCoefficientsTensor)
-          : nullptr;
+      GetOptionalInputTensor(context, node, kForgetLayerNormCoefficientsTensor);
   const TfLiteTensor* cell_layer_norm_coefficients =
-      is_layer_norm_lstm ? GetOptionalInputTensor(
-                               context, node, kCellLayerNormCoefficientsTensor)
-                         : nullptr;
+      GetOptionalInputTensor(context, node, kCellLayerNormCoefficientsTensor);
   const TfLiteTensor* output_layer_norm_coefficients =
-      is_layer_norm_lstm
-          ? GetOptionalInputTensor(context, node,
-                                   kOutputLayerNormCoefficientsTensor)
-          : nullptr;
+      GetOptionalInputTensor(context, node, kOutputLayerNormCoefficientsTensor);
 
   const TfLiteTensor* input_gate_bias =
       GetOptionalInputTensor(context, node, kInputGateBiasTensor);

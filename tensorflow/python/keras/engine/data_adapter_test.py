@@ -719,6 +719,16 @@ class GeneratorDataAdapterTest(DataAdapterTestBase):
       self.adapter_cls(
           self.generator_input, sample_weights=self.generator_input)
 
+  def test_not_shuffled(self):
+    def generator():
+      for i in range(10):
+        yield np.ones((1, 1)) * i
+
+    adapter = self.adapter_cls(generator(), shuffle=True)
+    with context.eager_mode():
+      for i, data in enumerate(adapter.get_dataset()):
+        self.assertEqual(i, data[0].numpy().flatten())
+
 
 class KerasSequenceAdapterTest(DataAdapterTestBase):
 

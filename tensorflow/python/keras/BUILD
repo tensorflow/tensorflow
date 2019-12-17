@@ -1532,11 +1532,14 @@ tf_py_test(
     name = "compile_utils_test",
     size = "medium",
     srcs = ["engine/compile_utils_test.py"],
-    additional_deps = [
+    tags = [
+        "nomac",  # TODO(b/146226927)
+    ],
+    deps = [
         ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

@@ -107,6 +107,18 @@ Examples:
 memref<*xf32> -> !llvm.type<"{i64, i8*}">
 ```
 
+**In function signatures,** `memref` is passed as a _pointer_ to the structured
+defined above to comply with the calling convention.
+
+Example:
+
+```mlir
+// A function type with memref as argument
+(memref<?xf32>) -> ()
+// is transformed into the LLVM function with pointer-to-structure argument.
+!llvm.type<"void({ float*, float*, i64, [1 x i64], [1 x i64]}*) ">
+```
+
 ### Function Types
 
 Function types get converted to LLVM function types. The arguments are converted
@@ -231,6 +243,67 @@ func @bar() {
   "use_i32"(%3) : (!llvm.type<"i32">) -> ()
   "use_i64"(%4) : (!llvm.type<"i64">) -> ()
 }
+```
+
+### Calling Convention for `memref`
+
+For function _arguments_ of `memref` type, ranked or unranked, the type of the
+argument is a _pointer_ to the memref descriptor type defined above. The caller
+of such function is required to store the descriptor in memory and guarantee
+that the storage remains live until the callee returns. The caller can than pass
+the pointer to that memory as function argument. The callee loads from the
+pointers it was passed as arguments in the entry block of the function, making
+the descriptor passed in as argument available for use similarly to
+ocally-defined descriptors.
+
+This convention is implemented in the conversion of `std.func` and `std.call` to
+the LLVM dialect. Conversions from other dialects should take it into account.
+The motivation for this convention is to simplify the ABI for interfacing with
+other LLVM modules, in particular those generated from C sources, while avoiding
+platform-specific aspects until MLIR has a proper ABI modeling.
+
+Example:
+
+```mlir
+
+func @foo(memref<?xf32>) -> () {
+  %c0 = constant 0 : index
+  load %arg0[%c0] : memref<?xf32>
+  return
+}
+
+func @bar(%arg0: index) {
+  %0 = alloc(%arg0) : memref<?xf32>
+  call @foo(%0) : (memref<?xf32>)-> ()
+  return
+}
+
+// Gets converted to the following IR.
+// Accepts a pointer to the memref descriptor.
+llvm.func @foo(!llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }*">) {
+  // Loads the descriptor so that it can be used similarly to locally
+  // created descriptors.
+  %0 = llvm.load %arg0 : !llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }*">
+}
+
+llvm.func @bar(%arg0: !llvm.i64) {
+  // ... Allocation ...
+  // Definition of the descriptor.
+  %7 = llvm.mlir.undef : !llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }">
+  // ... Filling in the descriptor ...
+  %14 = // The final value of the allocated descriptor.
+  // Allocate the memory for the descriptor and store it.
+  %15 = llvm.mlir.constant(1 : index) : !llvm.i64
+  %16 = llvm.alloca %15 x !llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }">
+      : (!llvm.i64) -> !llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }*">
+  llvm.store %14, %16 : !llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }*">
+  // Pass the pointer to the function.
+  llvm.call @foo(%16) : (!llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }*">) -> ()
+  llvm.return
+}
+
+
+
 ```
 
 ## Repeated Successor Removal

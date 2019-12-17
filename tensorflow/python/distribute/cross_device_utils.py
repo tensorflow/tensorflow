@@ -722,7 +722,7 @@ def is_indexed_slices(value):
   if isinstance(value, ops.IndexedSlices):
     return True
   assert isinstance(value, value_lib.DistributedValues)
-  return all([isinstance(v, ops.IndexedSlices) for v in value.values])
+  return all(isinstance(v, ops.IndexedSlices) for v in value.values)
 
 
 def split_by_sparsity(values):

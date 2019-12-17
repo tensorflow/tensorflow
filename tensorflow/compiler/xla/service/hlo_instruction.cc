@@ -1637,7 +1637,7 @@ HloInstruction::~HloInstruction() {
     operands_[operand_num] = nullptr;
   }
 
-  // Update users. Set `nullptr` to the correpsonding operand slot for users.
+  // Update users. Set `nullptr` to the corresponding operand slot for users.
   for (auto& user : this->users()) {
     for (int i = 0; i < user->operand_count(); ++i) {
       if (user->operands_[i] == this) {
@@ -2699,7 +2699,7 @@ bool HloInstruction::IsFusible() const {
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
       return true;
-    // Side effecting instrutions cannot be fused.
+    // Side effecting instructions cannot be fused.
     default:
       return !HasSideEffect();
   }

@@ -775,7 +775,7 @@ void BM_DynamicSlice(int num_iters) {
         stream.get(), start_index_literal, shaped_buffers[i]));
   }
 
-  // Add DynamicSlice op to the computatation.
+  // Add DynamicSlice op to the computation.
   DynamicSlice(input, start_indices, {1, 1, 1, 1});
   auto computation = builder.Build().ConsumeValueOrDie();
 

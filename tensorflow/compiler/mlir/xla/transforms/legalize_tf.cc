@@ -478,7 +478,7 @@ static DenseIntElementsAttr TFSliceSizes2HLOSliceSizes(
 // `element_types`, create two block arguments, one for lhs and one for rhs, and
 // generates xla_hlo.compare op to compare them with the given `direction`.
 //
-// Note that this right now only does comparsion on the first pair of block
+// Note that this right now only does comparision on the first pair of block
 // arguments.
 static void BuildSortComparisonBody(llvm::ArrayRef<Type> element_types,
                                     StringRef direction, Region *body,
@@ -1195,41 +1195,27 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     auto result_ty = op.getType().dyn_cast<RankedTensorType>();
     if (!result_ty || !result_ty.hasStaticShape()) return matchFailure();
 
-    // TODO(hinsu): Support non-zero mask values. Currently only
-    // 'shrink_axis_mask' is supported.
-    for (StringRef mask :
-         {"begin_mask", "end_mask", "ellipsis_mask", "new_axis_mask"}) {
-      auto attr = op.getAttrOfType<IntegerAttr>(mask);
-      if (attr && attr.getValue() != 0) return matchFailure();
-    }
-
-    // TODO(hinsu): Support lowering for ops with dynamic begin and end values
-    // when it is possible to derive indices based on mask attributes.
-    DenseIntElementsAttr begin_indices, end_indices, strides;
-    if (!matchPattern(op.begin(), m_Constant(&begin_indices)) ||
-        !matchPattern(op.end(), m_Constant(&end_indices)) ||
-        !matchPattern(op.strides(), m_Constant(&strides)))
+    SmallVector<int64_t, 4> begin_indices, end_indices, strides;
+    if (!op.GetSlicedBoundRanges(input_shape, &begin_indices, &end_indices,
+                                 &strides))
       return matchFailure();
 
     SmallVector<int64_t, 4> hlo_begin_indices, hlo_end_indices, hlo_strides,
         dims_to_reverse;
     int64_t input_rank = input_ty.getRank();
-    for (auto *vec : {&hlo_begin_indices, &hlo_end_indices, &hlo_strides}) {
-      vec->reserve(input_rank);
-    }
+    hlo_begin_indices.reserve(input_rank);
+    hlo_end_indices.reserve(input_rank);
+    hlo_strides.reserve(input_rank);
 
-    int64_t indices_elements = begin_indices.getNumElements();
+    int64_t indices_elements = begin_indices.size();
     if (input_rank < indices_elements) return matchFailure();
 
     // Convert from TensorFlow negative or out of range indices and strides
     // values to legal HLO Slice attributes.
     for (int i = 0, e = indices_elements; i != e; i++) {
-      int64_t begin = begin_indices.getValue<IntegerAttr>(i).getInt();
-      int64_t end = end_indices.getValue<IntegerAttr>(i).getInt();
-      int64_t stride = strides.getValue<IntegerAttr>(i).getInt();
-
-      if (begin < 0) begin = input_shape[i] + begin;
-      if (end < 0) end = input_shape[i] + end;
+      int64_t begin = begin_indices[i];
+      int64_t end = end_indices[i];
+      int64_t stride = strides[i];
 
       if (stride < 0) {
         // Negative stride means that the output values are computed starting
@@ -1265,6 +1251,89 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     // Reshape slice result so that the shape is updated depending on
     // 'new_axis_mask' or 'shrink_axis_mask' attributes.
     rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), sliced);
+    return matchSuccess();
+  }
+};
+
+// Converts tf.StridedSliceGrad to HLO reshape, reverse and padding ops.
+//
+// tf.StridedSlice is taking slice of the input tensor. tf.StridedSliceGrad does
+// the reverse: it propagates the graident for the sliced tensor to the original
+// input tensor by doing padding with zeros. The main logic is calculating the
+// indices and strides for padding.
+class ConvertStridedSliceGradOp
+    : public OpRewritePattern<TF::StridedSliceGradOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::StridedSliceGradOp op,
+                                     PatternRewriter &rewriter) const override {
+    // We need constant input shape to perform padding calculations later.
+    DenseIntElementsAttr input_shape_attr;
+    if (!matchPattern(op.shape(), m_Constant(&input_shape_attr)))
+      return matchFailure();
+
+    // We also need constant begin/end indices and strides to perform padding
+    // calculations.
+    // Bounded shape after performing strided slice
+    SmallVector<int64_t, 4> shape;
+    // Bounded begin, end, and strides for strided slice
+    SmallVector<int64_t, 4> begin_indices, end_indices, strides;
+    if (!op.GetSlicedShapeAndBoundRanges(&shape, &begin_indices, &end_indices,
+                                         &strides))
+      return matchFailure();
+
+    Value *grad = op.dy();
+    Type element_type = grad->getType().cast<ShapedType>().getElementType();
+
+    // Perform reshape to undo any new/shrink axies done by strided slice.
+    grad = rewriter.create<xla_hlo::ReshapeOp>(
+        op.getLoc(), RankedTensorType::get(shape, element_type), grad);
+
+    SmallVector<int64_t, 4> padding_low, padding_high, padding_interm;
+    SmallVector<int64_t, 4> dims_to_reverse;
+    padding_low.reserve(shape.size());
+    padding_high.reserve(shape.size());
+    padding_interm.reserve(shape.size());
+
+    // Prepare padding parameters for each dimension.
+    for (int i = 0, e = shape.size(); i < e; ++i) {
+      int64_t input_dim = (*(input_shape_attr.begin() + i)).getSExtValue();
+      if (strides[i] > 0) {
+        padding_low.push_back(begin_indices[i]);
+        padding_interm.push_back(strides[i] - 1);
+
+        // Pad the upper dimension up to the expected input shape. It's not
+        // sufficient simply to use end_indices[i] to compute the padding in
+        // cases where the stride does not divide evenly into the interval
+        // between begin_indices[i] and end_indices[i].
+        int64_t size =
+            padding_low[i] + shape[i] + (shape[i] - 1) * padding_interm[i];
+        padding_high.push_back(input_dim - size);
+      } else {
+        dims_to_reverse.push_back(i);
+        padding_high.push_back(input_dim - begin_indices[i] - 1);
+        padding_interm.push_back(-strides[i] - 1);
+
+        // Pad the lower dimension up to the expected input shape.
+        int64_t size =
+            padding_high[i] + shape[i] + (shape[i] - 1) * padding_interm[i];
+        padding_low.push_back(input_dim - size);
+      }
+    }
+
+    if (!dims_to_reverse.empty()) {
+      grad = rewriter.create<xla_hlo::ReverseOp>(
+          op.getLoc(), grad->getType(), grad,
+          GetI64ElementsAttr(dims_to_reverse, &rewriter));
+    }
+
+    auto zero = GetScalarConstOfType(element_type, op.getLoc(), 0, &rewriter);
+    rewriter.replaceOpWithNewOp<xla_hlo::PadOp>(
+        op, op.getType(), grad, zero,
+        GetI64ElementsAttr(padding_low, &rewriter),
+        GetI64ElementsAttr(padding_high, &rewriter),
+        GetI64ElementsAttr(padding_interm, &rewriter));
     return matchSuccess();
   }
 };
@@ -2179,7 +2248,7 @@ class ConvertTopKV2Op : public OpRewritePattern<TF::TopKV2Op> {
 // Converts tf.Unpack to a series of XLA HLO slice ops.
 //
 // Each slice takes one element along the dimension to unpack and takes the full
-// range for all other dimenions. Each slice is then reshaped to drop the
+// range for all other dimensions. Each slice is then reshaped to drop the
 // dimension to unpack (which is always of size 1).
 // TODO(antiagainst): consider changing this into a TF internal lowering pass.
 class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
@@ -2372,12 +2441,13 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertMaxPoolOp, ConvertRangeOp, ConvertSigmoidOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
-      ConvertStridedSliceOp, ConvertTopKV2Op, ConvertUnpackOp, ConvertMeanOp,
-      ConvertSumOp, ConvertMaxOp, ConvertAllOp, ConvertAnyOp, ConvertTileOp,
-      ConvertMaxPoolGradOp, ConvertOneHotOp, ConvertConv2DBackpropInputOp,
-      ConvertConv2DBackpropFilterOp, ConvertUnsortedSegmentMaxOp,
-      ConvertUnsortedSegmentMinOp, ConvertUnsortedSegmentProdOp,
-      ConvertUnsortedSegmentSumOp>(op->getContext());
+      ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertTopKV2Op,
+      ConvertUnpackOp, ConvertMeanOp, ConvertSumOp, ConvertMaxOp, ConvertAllOp,
+      ConvertAnyOp, ConvertTileOp, ConvertMaxPoolGradOp, ConvertOneHotOp,
+      ConvertConv2DBackpropInputOp, ConvertConv2DBackpropFilterOp,
+      ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
+      ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp>(
+      op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();

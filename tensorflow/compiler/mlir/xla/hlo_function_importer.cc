@@ -436,6 +436,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       // part of the HLO instruction. They are only a convenience in the XLA
       // builder API.
       NoAttributeCase(kAdd, AddOp);
+      NoAttributeCase(kAfterAll, AfterAllOp);
       NoAttributeCase(kAnd, AndOp);
       NoAttributeCase(kAtan2, Atan2Op);
       NoAttributeCase(kBitcastConvert, BitcastConvertOp);
@@ -561,6 +562,9 @@ StatusOr<mlir::RankedTensorType> HloFunctionImporter::ConvertTensorType(
 }
 
 StatusOr<mlir::Type> HloFunctionImporter::ConvertType(const Shape& shape) {
+  if (shape.IsToken()) {
+    return mlir::xla_hlo::TokenType::get(builder_->getContext());
+  }
   if (shape.IsTuple()) {
     mlir::Type mlir_type;
     llvm::SmallVector<mlir::Type, 4> contents;

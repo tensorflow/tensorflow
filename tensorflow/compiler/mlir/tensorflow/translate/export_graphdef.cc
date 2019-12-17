@@ -197,7 +197,7 @@ class Exporter {
 
   // Each NextIteration node in the original graph is converted to a pair of
   // source and sink operations in the MLIR, and we use the following two maps
-  // to pair and convet them back to a single NextIteration node. We choose to
+  // to pair and convert them back to a single NextIteration node. We choose to
   // the "name" attribute, which is from the unique node name, to find out the
   // pairs: When scanning the operations in the block, the source operations
   // are inserted to the name_to_inst_ first, and the other "sink" operation

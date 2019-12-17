@@ -738,7 +738,7 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
     int64 resource_arg_unique_id =
         resource_id_it != fdef.resource_arg_unique_id().end()
             ? resource_id_it->second
-            : -1;
+            : -1LL;
     s = helper.BuildInputArgIndex(arg_def, attr_values, arg_attrs,
                                   ints_on_device, resource_arg_unique_id);
 

@@ -354,4 +354,4 @@ with the model and sample inputs.
 ## Train your own model
 
 To train your own model, or create a new model for a new set of gestures,
-follow the instructions in [magic_wand/train/README.md](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/magic_wand/train/README.md).
+follow the instructions in [magic_wand/train/README.md](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/magic_wand/train/README.md).

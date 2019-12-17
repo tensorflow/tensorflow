@@ -45,6 +45,10 @@ py_binary(
     deps = ["//tensorflow:tensorflow_py"],
 )
 
+# Add dynamic kernel dso files here.
+DYNAMIC_LOADED_KERNELS = [
+]
+
 COMMON_PIP_DEPS = [
     ":licenses",
     "MANIFEST.in",
@@ -223,6 +227,10 @@ sh_binary(
                "//conditions:default": [
                    ":simple_console",
                ],
+           }) +
+           select({
+               "//tensorflow:dynamic_loaded_kernels": DYNAMIC_LOADED_KERNELS,
+               "//conditions:default": [],
            }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
 )
 

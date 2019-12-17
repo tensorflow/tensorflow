@@ -489,8 +489,6 @@ struct GPUFuncOpLowering : LLVMOpLowering {
     }
 
     // Rewrite the original GPU function to an LLVM function.
-    // TODO(zinenko): there is a hack in the std->llvm lowering that promotes
-    // structs to pointers that probably needs to be replicated here.
     auto funcType = lowering.convertType(gpuFuncOp.getType())
                         .cast<LLVM::LLVMType>()
                         .getPointerElementTy();
@@ -576,12 +574,47 @@ struct GPUFuncOpLowering : LLVMOpLowering {
       }
     }
 
+    // Move the region to the new function, update the entry block signature.
     rewriter.inlineRegionBefore(gpuFuncOp.getBody(), llvmFuncOp.getBody(),
                                 llvmFuncOp.end());
     rewriter.applySignatureConversion(&llvmFuncOp.getBody(),
                                       signatureConversion);
 
+    {
+      // For memref-typed arguments, insert the relevant loads in the beginning
+      // of the block to comply with the LLVM dialect calling convention. This
+      // needs to be done after signature conversion to get the right types.
+      OpBuilder::InsertionGuard guard(rewriter);
+      Block &block = llvmFuncOp.front();
+      rewriter.setInsertionPointToStart(&block);
+
+      for (auto en : llvm::enumerate(gpuFuncOp.getType().getInputs())) {
+        if (!en.value().isa<MemRefType>() &&
+            !en.value().isa<UnrankedMemRefType>())
+          continue;
+
+        BlockArgument *arg = block.getArgument(en.index());
+        Value *loaded = rewriter.create<LLVM::LoadOp>(loc, arg);
+        rewriter.replaceUsesOfBlockArgument(arg, loaded);
+      }
+    }
+
     rewriter.eraseOp(gpuFuncOp);
+    return matchSuccess();
+  }
+};
+
+struct GPUReturnOpLowering : public LLVMOpLowering {
+  GPUReturnOpLowering(LLVMTypeConverter &typeConverter)
+      : LLVMOpLowering(gpu::ReturnOp::getOperationName(),
+                       typeConverter.getDialect()->getContext(),
+                       typeConverter) {}
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(op, operands,
+                                                ArrayRef<Block *>());
     return matchSuccess();
   }
 };
@@ -632,7 +665,8 @@ void mlir::populateGpuToNVVMConversionPatterns(
                                           NVVM::BlockIdYOp, NVVM::BlockIdZOp>,
               GPUIndexIntrinsicOpLowering<gpu::GridDimOp, NVVM::GridDimXOp,
                                           NVVM::GridDimYOp, NVVM::GridDimZOp>,
-              GPUAllReduceOpLowering, GPUFuncOpLowering>(converter);
+              GPUAllReduceOpLowering, GPUFuncOpLowering, GPUReturnOpLowering>(
+          converter);
   patterns.insert<OpToFuncCallLowering<ExpOp>>(converter, "__nv_expf",
                                                "__nv_exp");
 }

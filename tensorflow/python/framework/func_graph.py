@@ -94,13 +94,13 @@ def convert_structure_to_signature(structure, arg_names=None):
         # of the function argument.
         name = user_specified_name
       else:
-        name = "/".join([str(p) for p in path])
+        name = "/".join(str(p) for p in path)
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
     if isinstance(arg, composite_tensor.CompositeTensor):
       # TODO(b/133606651) Do we need to inject arg_name?
       return arg._type_spec  # pylint: disable=protected-access
     if isinstance(arg, resource_variable_ops.BaseResourceVariable):
-      name = "/".join([str(p) for p in path])
+      name = "/".join(str(p) for p in path)
       return resource_variable_ops.VariableSpec(arg.shape, arg.dtype, name)
     if isinstance(arg, (
         int,

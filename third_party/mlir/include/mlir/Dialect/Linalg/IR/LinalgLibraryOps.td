@@ -247,13 +247,13 @@ def CopyOp : LinalgLibrary_Op<"copy", [NInputs<1>, NOutputs<1>]> {
 }
 
 def FillOp : LinalgLibrary_Op<"fill", [NInputs<0>, NOutputs<1>]> {
-  let arguments = (ins AnyStridedMemRef:$input,
+  let arguments = (ins AnyStridedMemRef:$output,
                    AnyTypeOf<[AnyFloat, AnyInteger, AnyVector]>:$value);
   let extraClassDeclaration = libraryCallName # [{
     ArrayAttr indexing_maps();
 
     ArrayAttr iterator_types() {
-      unsigned nPar = input()->getType().cast<ShapedType>().getRank();
+      unsigned nPar = output()->getType().cast<ShapedType>().getRank();
       MLIRContext *ctx = getContext();
       SmallVector<Attribute, 8> iters(
         nPar, StringAttr::get(getParallelIteratorTypeName(), ctx));

@@ -311,7 +311,7 @@ llvm::GlobalVariable::LinkageTypes convertLinkageType(LLVM::Linkage linkage) {
 // Create named global variables that correspond to llvm.mlir.global
 // definitions.
 void ModuleTranslation::convertGlobals() {
-  for (auto op : mlirModule.getOps<LLVM::GlobalOp>()) {
+  for (auto op : getModuleBody(mlirModule).getOps<LLVM::GlobalOp>()) {
     llvm::Type *type = op.getType().getUnderlyingType();
     llvm::Constant *cst = llvm::UndefValue::get(type);
     if (op.getValueOrNull()) {
@@ -470,10 +470,10 @@ LogicalResult ModuleTranslation::convertOneFunction(LLVMFuncOp func) {
   return success();
 }
 
-LogicalResult ModuleTranslation::checkSupportedModuleOps(ModuleOp m) {
-  for (Operation &o : m.getBody()->getOperations())
+LogicalResult ModuleTranslation::checkSupportedModuleOps(Operation *m) {
+  for (Operation &o : getModuleBody(m).getOperations())
     if (!isa<LLVM::LLVMFuncOp>(&o) && !isa<LLVM::GlobalOp>(&o) &&
-        !isa<ModuleTerminatorOp>(&o))
+        !o.isKnownTerminator())
       return o.emitOpError("unsupported module-level operation");
   return success();
 }
@@ -481,7 +481,7 @@ LogicalResult ModuleTranslation::checkSupportedModuleOps(ModuleOp m) {
 LogicalResult ModuleTranslation::convertFunctions() {
   // Declare all functions first because there may be function calls that form a
   // call graph with cycles.
-  for (auto function : mlirModule.getOps<LLVMFuncOp>()) {
+  for (auto function : getModuleBody(mlirModule).getOps<LLVMFuncOp>()) {
     llvm::FunctionCallee llvmFuncCst = llvmModule->getOrInsertFunction(
         function.getName(),
         llvm::cast<llvm::FunctionType>(function.getType().getUnderlyingType()));
@@ -491,7 +491,7 @@ LogicalResult ModuleTranslation::convertFunctions() {
   }
 
   // Convert functions.
-  for (auto function : mlirModule.getOps<LLVMFuncOp>()) {
+  for (auto function : getModuleBody(mlirModule).getOps<LLVMFuncOp>()) {
     // Ignore external functions.
     if (function.isExternal())
       continue;
@@ -503,8 +503,9 @@ LogicalResult ModuleTranslation::convertFunctions() {
   return success();
 }
 
-std::unique_ptr<llvm::Module> ModuleTranslation::prepareLLVMModule(ModuleOp m) {
-  auto *dialect = m.getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
+std::unique_ptr<llvm::Module>
+ModuleTranslation::prepareLLVMModule(Operation *m) {
+  auto *dialect = m->getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
   assert(dialect && "LLVM dialect must be registered");
 
   auto llvmModule = llvm::CloneModule(dialect->getLLVMModule());

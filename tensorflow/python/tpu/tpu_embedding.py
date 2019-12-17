@@ -967,10 +967,9 @@ class TPUEmbedding(object):
                                i, feature))
 
         if enqueue_data.sample_indices is None and combiner:
-          raise ValueError('`enqueue_datas_list[{}]` has a feature that has '
-                           'neither `EnqueueData` or `combiner`.'
-                           '`feature`: {}, combiner: {}.'.format(
-                               i, feature, combiner))
+          logging.warn('No sample indices set for features %f table %f but '
+                       'combiner is set to %s.', feature,
+                       self._feature_to_config_dict[feature].table_id, combiner)
 
         if (enqueue_data.sample_indices is not None and
             enqueue_data.sample_indices.device !=

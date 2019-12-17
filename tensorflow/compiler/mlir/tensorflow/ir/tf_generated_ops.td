@@ -1350,6 +1350,10 @@ as illustrated on the following example:
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_EinsumOp : TF_Op<"Einsum", [NoSideEffect]> {
@@ -1400,7 +1404,7 @@ Operations are applied to the input(s) according to the following rules:
      Considering the batch matrix multiplication equation again
      (`bij,bjk->bik`), the contracted axis label is `j`.
 
- (e) Expand Diagonal: If the output subcripts contain repeated (explicit) axis
+ (e) Expand Diagonal: If the output subscripts contain repeated (explicit) axis
      labels, the opposite operation of (a) is applied. For example, in the
      equation `i->iii`, and input shape `[3]`, the output of shape `[3, 3, 3]`
      are all zeros, except for the (generalized) diagonal which is populated
@@ -1408,7 +1412,7 @@ Operations are applied to the input(s) according to the following rules:
      Note: This operation is not supported by `np.einsum` or `tf.einsum`; it is
      provided to enable computing the symbolic gradient of `tf.einsum`.
 
-The output subcripts must contain only labels appearing in at least one of the
+The output subscripts must contain only labels appearing in at least one of the
 input subscripts. Furthermore, all dimensions mapping to the same axis label
 must be equal.
 
@@ -1420,7 +1424,7 @@ according to standard NumPy broadcasting
 
 The broadcasted dimensions are placed in the corresponding location of the
 ellipsis in the output subscript. If the broadcasted dimensions are non-empty
-and the output subcripts do not contain ellipsis, then an InvalidArgument error
+and the output subscripts do not contain ellipsis, then an InvalidArgument error
 is raised.
 
 @compatibility(numpy)
@@ -2453,6 +2457,55 @@ def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, SameOperandsAndResultType
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasFolder = 1;
+}
+
+def TF_LeftShiftOp : TF_Op<"LeftShift", [Broadcastable, NoSideEffect]>,
+                     WithBroadcastableBinOpBuilder {
+  let summary = "Elementwise computes the bitwise left-shift of `x` and `y`.";
+
+  let description = [{
+If `y` is negative, or greater than or equal to the width of `x` in bits the
+result is implementation defined.
+
+Example:
+
+```python
+import tensorflow as tf
+from tensorflow.python.ops import bitwise_ops
+import numpy as np
+dtype_list = [tf.int8, tf.int16, tf.int32, tf.int64]
+
+for dtype in dtype_list:
+  lhs = tf.constant([-1, -5, -3, -14], dtype=dtype)
+  rhs = tf.constant([5, 0, 7, 11], dtype=dtype)
+
+  left_shift_result = bitwise_ops.left_shift(lhs, rhs)
+
+  print(left_shift_result)
+
+# This will print:
+# tf.Tensor([ -32   -5 -128    0], shape=(4,), dtype=int8)
+# tf.Tensor([   -32     -5   -384 -28672], shape=(4,), dtype=int16)
+# tf.Tensor([   -32     -5   -384 -28672], shape=(4,), dtype=int32)
+# tf.Tensor([   -32     -5   -384 -28672], shape=(4,), dtype=int64)
+
+lhs = np.array([-2, 64, 101, 32], dtype=np.int8)
+rhs = np.array([-1, -5, -3, -14], dtype=np.int8)
+bitwise_ops.left_shift(lhs, rhs)
+# <tf.Tensor: shape=(4,), dtype=int8, numpy=array([ -2,  64, 101,  32], dtype=int8)>
+```
+  }];
+
+  let arguments = (ins
+    TF_IntTensor:$x,
+    TF_IntTensor:$y
+  );
+
+  let results = (outs
+    TF_IntTensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_LessOp : TF_Op<"Less", [Broadcastable, NoSideEffect]>,
@@ -4666,6 +4719,58 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_RightShiftOp : TF_Op<"RightShift", [Broadcastable, NoSideEffect]>,
+                      WithBroadcastableBinOpBuilder {
+  let summary = "Elementwise computes the bitwise right-shift of `x` and `y`.";
+
+  let description = [{
+Performs a logical shift for unsigned integer types, and an arithmetic shift
+for signed integer types.
+
+If `y` is negative, or greater than or equal to than the width of `x` in bits
+the result is implementation defined.
+
+Example:
+
+```python
+import tensorflow as tf
+from tensorflow.python.ops import bitwise_ops
+import numpy as np
+dtype_list = [tf.int8, tf.int16, tf.int32, tf.int64]
+
+for dtype in dtype_list:
+  lhs = tf.constant([-1, -5, -3, -14], dtype=dtype)
+  rhs = tf.constant([5, 0, 7, 11], dtype=dtype)
+
+  right_shift_result = bitwise_ops.right_shift(lhs, rhs)
+
+  print(right_shift_result)
+
+# This will print:
+# tf.Tensor([-1 -5 -1 -1], shape=(4,), dtype=int8)
+# tf.Tensor([-1 -5 -1 -1], shape=(4,), dtype=int16)
+# tf.Tensor([-1 -5 -1 -1], shape=(4,), dtype=int32)
+# tf.Tensor([-1 -5 -1 -1], shape=(4,), dtype=int64)
+
+lhs = np.array([-2, 64, 101, 32], dtype=np.int8)
+rhs = np.array([-1, -5, -3, -14], dtype=np.int8)
+bitwise_ops.right_shift(lhs, rhs)
+# <tf.Tensor: shape=(4,), dtype=int8, numpy=array([ -2,  64, 101,  32], dtype=int8)>
+```
+  }];
+
+  let arguments = (ins
+    TF_IntTensor:$x,
+    TF_IntTensor:$y
+  );
+
+  let results = (outs
+    TF_IntTensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_RoundOp : TF_Op<"Round", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = [{
 Rounds the values of a tensor to the nearest integer, element-wise.
@@ -5207,6 +5312,34 @@ x = [[[[1, 2, 3, 4],
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_SparseSoftmaxCrossEntropyWithLogitsOp : TF_Op<"SparseSoftmaxCrossEntropyWithLogits", [NoSideEffect]> {
+  let summary = [{
+Computes softmax cross entropy cost and gradients to backpropagate.
+  }];
+
+  let description = [{
+Unlike `SoftmaxCrossEntropyWithLogits`, this operation does not accept
+a matrix of label probabilities, but rather a single label per row
+of features.  This label is considered to have probability 1.0 for the
+given row.
+
+Inputs are the logits, not probabilities.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$features,
+    TF_I32OrI64Tensor:$labels
+  );
+
+  let results = (outs
+    TF_FpTensor:$loss,
+    TF_FpTensor:$backprop
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tlabels = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_SparseToDenseOp : TF_Op<"SparseToDense", [NoSideEffect]> {
   let summary = "Converts a sparse representation into a dense tensor.";
 
@@ -5540,8 +5673,67 @@ receive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<1>;
 
-  let verifier = [{
-    return Verify(*this);
+  let verifier = [{ return VerifyStridedSliceBase(*this); }];
+
+  let extraClassDeclaration = [{
+    // If sliced shape is able to be deduced, returns true, updates
+    // `begin_indices`, `end_indices`, and `strides` with their canonical
+    // values, respectively.
+    bool GetSlicedBoundRanges(
+      ::llvm::ArrayRef<int64_t> shape,
+      ::llvm::SmallVectorImpl<int64_t> *begin_indices,
+      ::llvm::SmallVectorImpl<int64_t> *end_indices,
+      ::llvm::SmallVectorImpl<int64_t> *strides);
+  }];
+}
+
+def TF_StridedSliceGradOp : TF_Op<"StridedSliceGrad", [NoSideEffect]> {
+  let summary = "Returns the gradient of `StridedSlice`.";
+
+  let description = [{
+Since `StridedSlice` cuts out pieces of its `input` which is size
+`shape`, its gradient will have the same shape (which is passed here
+as `shape`). The gradient will be zero in any element that the slice
+does not select.
+
+Arguments are the same as StridedSliceGrad with the exception that
+`dy` is the input gradient to be propagated and `shape` is the
+shape of `StridedSlice`'s `input`.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TF_I32OrI64Tensor:$begin,
+    TF_I32OrI64Tensor:$end,
+    TF_I32OrI64Tensor:$strides,
+    TF_Tensor:$dy,
+
+    DefaultValuedAttr<I64Attr, "0">:$begin_mask,
+    DefaultValuedAttr<I64Attr, "0">:$end_mask,
+    DefaultValuedAttr<I64Attr, "0">:$ellipsis_mask,
+    DefaultValuedAttr<I64Attr, "0">:$new_axis_mask,
+    DefaultValuedAttr<I64Attr, "0">:$shrink_axis_mask
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<4>;
+  TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    // If sliced shape is able to be deduced, returns true, updates `shape`
+    // with the final shape after performing StridedSlice, and updates
+    // `begin_indices`, `end_indices`, and `strides` with their canonical
+    // values, respectively.
+    bool GetSlicedShapeAndBoundRanges(
+      ::llvm::SmallVectorImpl<int64_t> *shape,
+      ::llvm::SmallVectorImpl<int64_t> *begin_indices,
+      ::llvm::SmallVectorImpl<int64_t> *end_indices,
+      ::llvm::SmallVectorImpl<int64_t> *strides);
   }];
 }
 
@@ -6071,7 +6263,7 @@ def TF_UniqueOp : TF_Op<"Unique", [NoSideEffect]> {
   let description = [{
 This operation returns a tensor `y` containing all of the unique elements of `x`
 sorted in the same order that they occur in `x`; `x` does not need to be sorted.
-This operation also returns a tensor `idx` the same size as `x` that contains 
+This operation also returns a tensor `idx` the same size as `x` that contains
 the index of each value of `x` in the unique output `y`. In other words:
 
 `y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`

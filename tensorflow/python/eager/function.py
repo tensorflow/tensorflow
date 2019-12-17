@@ -2251,10 +2251,9 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
   """Convert inputs to pass into a function with an explicit signature."""
 
   def format_error_message(inputs, input_signature):
-    return ("  inputs: (\n" + "    " +
-            ",\n    ".join([str(i) for i in inputs]) + ")\n" +
-            "  input_signature: (\n" + "    " +
-            ",\n    ".join([str(i) for i in input_signature]) + ")")
+    return ("  inputs: (\n" + "    " + ",\n    ".join(str(i) for i in inputs) +
+            ")\n" + "  input_signature: (\n" + "    " +
+            ",\n    ".join(str(i) for i in input_signature) + ")")
 
   try:
     # TODO(b/124370185): Use all elements as inputs to throw an error if there
@@ -3275,7 +3274,8 @@ def class_method_to_instance_method(original_function, instance):
       tf_decorator.make_decorator(bound_method, bound_method_wrapper),
       name=original_function._name,
       autograph=original_function._autograph,
-      input_signature=original_function.input_signature)
+      input_signature=original_function.input_signature,
+      experimental_relax_shapes=original_function._experimental_relax_shapes)
   # pylint: enable=protected-access
 
   # And we wrap the function with tf_decorator so inspection works correctly

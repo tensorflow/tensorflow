@@ -61,7 +61,7 @@ std::vector<Tensor> tensor_doubles{
     test::AsTensor<double>({400.0}), test::AsTensor<double>({800.0})};
 
 const string str = "test string";  // NOLINT
-std::vector<Tensor> tensor_strs{test::AsTensor<string>({str})};
+std::vector<Tensor> tensor_strs{test::AsTensor<tstring>({str})};
 
 const DatasetTestParam test_cases[] = {
     {_int32, tensor_int32s, 4 /*bytes*/ * 9 /*elements*/},

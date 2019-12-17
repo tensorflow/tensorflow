@@ -16,13 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TF_OP_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TF_OP_UTILS_H_
 
-#include <utility>
-
-#include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
 
 namespace tensorflow {
 namespace profiler {

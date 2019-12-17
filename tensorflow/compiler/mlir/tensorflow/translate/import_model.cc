@@ -1992,7 +1992,7 @@ GraphDefImporter::GetArgsRetsAndTypesFromFunctionGraph(
     tensorflow::int64 resource_arg_unique_id;
     if (TryGetNodeAttr(arg_node.node->attrs(), "_resource_arg_unique_id",
                        &resource_arg_unique_id)) {
-      resource_arg_unique_ids->emplace_back(arg_node.index,
+      resource_arg_unique_ids->emplace_back(arg_node_and_idx.index(),
                                             resource_arg_unique_id);
     }
   }
@@ -2319,8 +2319,8 @@ class StructuredValueLinearizer {
   // Returns the list of index paths to each leaf of the StructuredValue,
   // in a linearized order matching `tf.nest.flatten`.
   //
-  // If an error ocurred during the linearization process, an error message with
-  // `error_context` prepended will be included in the returned status.
+  // If an error occurred during the linearization process, an error message
+  // with `error_context` prepended will be included in the returned status.
   StatusOr<llvm::ArrayRef<mlir::ArrayAttr>> GetLeafIndexPaths(
       llvm::StringRef error_context) const;
 

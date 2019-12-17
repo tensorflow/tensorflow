@@ -56,9 +56,13 @@ public:
   /// Return if this block is the entry block in the parent region.
   bool isEntryBlock();
 
-  /// Insert this block (which must not already be in a function) right before
+  /// Insert this block (which must not already be in a region) right before
   /// the specified block.
   void insertBefore(Block *block);
+
+  /// Unlink this block from its current region and insert it right before the
+  /// specific block.
+  void moveBefore(Block *block);
 
   /// Unlink this Block from its parent region and delete it.
   void erase();

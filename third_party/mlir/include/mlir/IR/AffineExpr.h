@@ -286,6 +286,23 @@ bool getFlattenedAffineExprs(
 bool getFlattenedAffineExprs(
     IntegerSet set, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs);
 
+namespace detail {
+template <int N> void bindDims(MLIRContext *ctx) {}
+
+template <int N, typename AffineExprTy, typename... AffineExprTy2>
+void bindDims(MLIRContext *ctx, AffineExprTy &e, AffineExprTy2 &... exprs) {
+  e = getAffineDimExpr(N, ctx);
+  bindDims<N + 1, AffineExprTy2 &...>(ctx, exprs...);
+}
+} // namespace detail
+
+/// Bind a list of AffineExpr references to DimExpr at positions:
+///   [0 .. sizeof...(exprs)]
+template <typename... AffineExprTy>
+void bindDims(MLIRContext *ctx, AffineExprTy &... exprs) {
+  detail::bindDims<0>(ctx, exprs...);
+}
+
 } // namespace mlir
 
 namespace llvm {

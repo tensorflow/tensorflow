@@ -167,3 +167,16 @@ func @control_fetch(%arg0 : i32) {
   }
   return
 }
+
+// Check that @main function is pruned.
+// CHECK-LABEL: func @main
+func @main() {
+  tf_executor.graph {
+    // CHECK-NOT: tf_executor.island
+    %0 = tf_executor.island {
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}

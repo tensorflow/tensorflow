@@ -120,9 +120,9 @@ def GPU_GPUFuncOp : GPU_Op<"func", [FunctionLike, IsolatedFromAbove, Symbol]> {
 
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, StringRef name, "
-              "FunctionType type, ArrayRef<Type> workgroupAttributions, "
-              "ArrayRef<Type> privateAttributions, "
-              "ArrayRef<NamedAttribute> attrs">
+              "FunctionType type, ArrayRef<Type> workgroupAttributions = {}, "
+              "ArrayRef<Type> privateAttributions = {}, "
+              "ArrayRef<NamedAttribute> attrs = {}">
   ];
 
   let extraClassDeclaration = [{
@@ -137,6 +137,17 @@ def GPU_GPUFuncOp : GPU_Op<"func", [FunctionLike, IsolatedFromAbove, Symbol]> {
     FunctionType getType() {
       return getTypeAttr().getValue().cast<FunctionType>();
     }
+
+    /// Change the type of this function in place. This is an extremely
+    /// dangerous operation and it is up to the caller to ensure that this is
+    /// legal for this function, and to restore invariants:
+    ///  - the entry block args must be updated to match the function params.
+    ///  - the argument/result attributes may need an update: if the new type
+    ///  has less parameters we drop the extra attributes, if there are more
+    ///  parameters they won't have any attributes.
+    // TODO(b/146349912): consider removing this function thanks to rewrite
+    // patterns.
+    void setType(FunctionType newType);
 
     /// Returns the number of buffers located in the workgroup memory.
     unsigned getNumWorkgroupAttributions() {
@@ -270,11 +281,11 @@ def GPU_LaunchFuncOp : GPU_Op<"launch_func">,
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilder<"Builder *builder, OperationState &result, FuncOp kernelFunc, "
+    OpBuilder<"Builder *builder, OperationState &result, GPUFuncOp kernelFunc, "
               "Value *gridSizeX, Value *gridSizeY, Value *gridSizeZ, "
               "Value *blockSizeX, Value *blockSizeY, Value *blockSizeZ, "
               "ValueRange kernelOperands">,
-    OpBuilder<"Builder *builder, OperationState &result, FuncOp kernelFunc, "
+    OpBuilder<"Builder *builder, OperationState &result, GPUFuncOp kernelFunc, "
               "KernelDim3 gridSize, KernelDim3 blockSize, "
               "ValueRange kernelOperands">
   ];
