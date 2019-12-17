@@ -374,5 +374,90 @@ class RandomFlipTest(keras_parameterized.TestCase):
     self.assertEqual(layer_1.name, layer.name)
 
 
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class RandomContrastTest(keras_parameterized.TestCase):
+
+  def _run_test(self,
+                lower,
+                upper,
+                expected_output=None,
+                mock_random=None):
+    np.random.seed(1337)
+    num_samples = 2
+    orig_height = 5
+    orig_width = 8
+    channels = 3
+    if mock_random is None:
+      mock_random = 0.2
+    inp = np.random.random((num_samples, orig_height, orig_width, channels))
+    if expected_output is None:
+      # reduce mean on height.
+      inp_mean = np.mean(inp, axis=1, keepdims=True)
+      # reduce mean on width.
+      inp_mean = np.mean(inp_mean, axis=2, keepdims=True)
+      expected_output = (inp - inp_mean) * mock_random + inp_mean
+    with test.mock.patch.object(
+        random_ops, 'random_uniform', return_value=mock_random):
+      with tf_test_util.use_gpu():
+        layer = image_preprocessing.RandomContrast((lower, upper))
+        actual_output = layer(inp, training=True)
+        self.assertAllClose(expected_output, actual_output)
+
+  @parameterized.named_parameters(
+      ('random_contrast_2_by_5', 0.2, 0.5),
+      ('random_contrast_2_by_13', 0.2, 1.3),
+      ('random_contrast_5_by_2', 0.5, 0.2))
+  def test_random_contrast(self, lower, upper):
+    with CustomObjectScope(
+        {'RandomContrast': image_preprocessing.RandomContrast}):
+      self._run_test(lower, upper)
+
+  @parameterized.named_parameters(
+      ('random_contrast_amplitude_2', 0.2),
+      ('random_contrast_amplitude_5', 0.5))
+  def test_random_contrast_amplitude(self, amplitude):
+    with CustomObjectScope(
+        {'RandomContrast': image_preprocessing.RandomContrast}):
+      input_images = np.random.random((2, 5, 8, 3))
+      with tf_test_util.use_gpu():
+        layer = image_preprocessing.RandomContrast(amplitude)
+        layer(input_images)
+
+  def test_random_contrast_inference(self):
+    with CustomObjectScope(
+        {'RandomContrast': image_preprocessing.RandomContrast}):
+      input_images = np.random.random((2, 5, 8, 3)).astype(np.float32)
+      expected_output = input_images
+      with tf_test_util.use_gpu():
+        layer = image_preprocessing.RandomContrast((0.1, 0.2))
+        actual_output = layer(input_images, training=False)
+        self.assertAllClose(expected_output, actual_output)
+
+  def test_random_contrast_int_dtype(self):
+    with CustomObjectScope(
+        {'RandomContrast': image_preprocessing.RandomContrast}):
+      input_images = np.random.randint(low=0, high=255, size=(2, 5, 8, 3))
+      with tf_test_util.use_gpu():
+        layer = image_preprocessing.RandomContrast((0.1, 0.2))
+        layer(input_images)
+
+  def test_random_contrast_invalid_bounds(self):
+    with self.assertRaises(ValueError):
+      image_preprocessing.RandomContrast((-0.1, .5))
+
+    with self.assertRaises(ValueError):
+      image_preprocessing.RandomContrast((1.1, .5))
+
+    with self.assertRaises(ValueError):
+      image_preprocessing.RandomContrast((0.1, -0.2))
+
+  @tf_test_util.run_v2_only
+  def test_config_with_custom_name(self):
+    layer = image_preprocessing.RandomContrast((.5, .6), name='image_preproc')
+    config = layer.get_config()
+    layer_1 = image_preprocessing.RandomContrast.from_config(config)
+    self.assertEqual(layer_1.name, layer.name)
+
+
 if __name__ == '__main__':
   test.main()
