@@ -503,8 +503,8 @@ def broadcast_dynamic_shape(shape_x, shape_y):
   >>> shape_x = (1, 2, 3)
   >>> shape_y = (5, 1, 3)
   >>> tf.broadcast_dynamic_shape(shape_x, shape_y)
-  <tf.Tensor: id=..., shape=(3,), dtype=int32, numpy=array([5, 2, 3],
-  dtype=int32)>
+  <tf.Tensor: id=..., shape=(3,), dtype=int32, numpy=array([5, 2, 3], \
+dtype=int32)>
 
   Args:
     shape_x: A rank 1 integer `Tensor`, representing the shape of x.
@@ -1733,8 +1733,8 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
   >>> tensor = [[1, 2], [3, 4], [5, 6]] # 2-D example
   >>> mask = np.array([True, False, True])
   >>> tf.boolean_mask(tensor, mask)
-  <tf.Tensor: id=..., shape=(2, 2), dtype=int32, numpy=array([[1, 2], [5, 6]],
-  dtype=int32)>
+  <tf.Tensor: id=..., shape=(2, 2), dtype=int32, numpy=array([[1, 2], [5, 6]], \
+dtype=int32)>
 
   Args:
     tensor:  N-D Tensor.
