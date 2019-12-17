@@ -479,7 +479,6 @@ xla_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
-    tags = ["no_rocm"],   # crashes sometimes on CI
 )
 
 xla_test(
@@ -601,7 +600,6 @@ xla_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
-    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -647,7 +645,6 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
-    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -1562,7 +1559,6 @@ xla_test(
 
 xla_test(
     name = "token_hlo_test",
-    tags = ["no_rocm"],
     srcs = ["token_hlo_test.cc"],
     deps = [
         ":test_macros_header",
