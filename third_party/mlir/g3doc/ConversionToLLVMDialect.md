@@ -21,10 +21,10 @@ described in this document. We use the terminology defined by the
 Scalar types are converted to their LLVM counterparts if they exist. The
 following conversions are currently implemented.
 
--   `i*` converts to `!llvm.type<"i*">`
--   `f16` converts to `!llvm.type<"half">`
--   `f32` converts to `!llvm.type<"float">`
--   `f64` converts to `!llvm.type<"double">`
+-   `i*` converts to `!llvm.i*`
+-   `f16` converts to `!llvm.half`
+-   `f32` converts to `!llvm.float`
+-   `f64` converts to `!llvm.double`
 
 Note: `bf16` type is not supported by LLVM IR and cannot be converted.
 
@@ -34,7 +34,7 @@ Index type is converted to a wrapped LLVM IR integer with bitwidth equal to the
 bitwidth of the pointer size as specified by the
 [data layout](https://llvm.org/docs/LangRef.html#data-layout) of the LLVM module
 [contained](Dialects/LLVM.md#context-and-module-association) in the LLVM Dialect
-object. For example, on x86-64 CPUs it converts to `!llvm.type<"i64">`.
+object. For example, on x86-64 CPUs it converts to `!llvm.i64`.
 
 ### Vector Types
 
@@ -45,8 +45,8 @@ size with element type converted using these conversion rules. In the
 n-dimensional case, MLIR vectors are converted to (n-1)-dimensional array types
 of one-dimensional vectors.
 
-For example, `vector<4 x f32>` converts to `!llvm.type<"<4 x float>">` and
-`vector<4 x 8 x 16 f32>` converts to `!llvm<"[4 x [8 x <16 x float>]]">`.
+For example, `vector<4 x f32>` converts to `!llvm<"<4 x float>">` and `vector<4
+x 8 x 16 x f32>` converts to `!llvm<"[4 x [8 x <16 x float>]]">`.
 
 ### Memref Types
 
@@ -80,14 +80,14 @@ resulting in a struct containing two pointers + offset.
 Examples:
 
 ```mlir
-memref<f32> -> !llvm.type<"{ float*, float*, i64 }">
-memref<1 x f32> -> !llvm.type<"{ float*, float*, i64, [1 x i64], [1 x i64] }">
-memref<? x f32> -> !llvm.type<"{ float*, float*, i64, [1 x i64], [1 x i64] }">
-memref<10x42x42x43x123 x f32> -> !llvm.type<"{ float*, float*, i64, [5 x i64], [5 x i64] }">
-memref<10x?x42x?x123 x f32> -> !llvm.type<"{ float*, float*, i64, [5 x i64], [5 x i64]  }">
+memref<f32> -> !llvm<"{ float*, float*, i64 }">
+memref<1 x f32> -> !llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }">
+memref<? x f32> -> !llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }">
+memref<10x42x42x43x123 x f32> -> !llvm<"{ float*, float*, i64, [5 x i64], [5 x i64] }">
+memref<10x?x42x?x123 x f32> -> !llvm<"{ float*, float*, i64, [5 x i64], [5 x i64]  }">
 
 // Memref types can have vectors as element types
-memref<1x? x vector<4xf32>> -> !llvm.type<"{ <4 x float>*, <4 x float>*, i64, [1 x i64], [1 x i64] }">
+memref<1x? x vector<4xf32>> -> !llvm<"{ <4 x float>*, <4 x float>*, i64, [1 x i64], [1 x i64] }">
 ```
 
 If the rank of the memref is unknown at compile time, the Memref is converted to
@@ -105,7 +105,7 @@ Examples:
 
 ```mlir
 // unranked descriptor
-memref<*xf32> -> !llvm.type<"{i64, i8*}">
+memref<*xf32> -> !llvm<"{i64, i8*}">
 ```
 
 **In function signatures,** `memref` is passed as a _pointer_ to the structured
@@ -117,7 +117,7 @@ Example:
 // A function type with memref as argument
 (memref<?xf32>) -> ()
 // is transformed into the LLVM function with pointer-to-structure argument.
-!llvm.type<"void({ float*, float*, i64, [1 x i64], [1 x i64]}*) ">
+!llvm<"void({ float*, float*, i64, [1 x i64], [1 x i64]}*) ">
 ```
 
 ### Function Types
@@ -142,27 +142,27 @@ Examples:
 // zero-ary function type with no results.
 () -> ()
 // is converted to a zero-ary function with `void` result
-!llvm.type<"void ()">
+!llvm<"void ()">
 
 // unary function with one result
 (i32) -> (i64)
 // has its argument and result type converted, before creating the LLVM IR function type
-!llvm.type<"i64 (i32)">
+!llvm<"i64 (i32)">
 
 // binary function with one result
 (i32, f32) -> (i64)
 // has its arguments handled separately
-!llvm.type<"i64 (i32, float)">
+!llvm<"i64 (i32, float)">
 
 // binary function with two results
 (i32, f32) -> (i64, f64)
 // has its result aggregated into a structure type
-!llvm.type<"{i64, double} (i32, f32)">
+!llvm<"{i64, double} (i32, f32)">
 
 // function-typed arguments or results in higher-order functions
 (() -> ()) -> (() -> ())
 // are converted into pointers to functions
-!llvm.type<"void ()* (void ()*)">
+!llvm<"void ()* (void ()*)">
 ```
 
 ## Calling Convention
@@ -189,12 +189,12 @@ func @bar(!llvm.i32) -> !llvm.i64
 // function with two results
 func @qux(i32, f32) -> (i64, f64)
 // has its result aggregated into a structure type
-func @qux(!llvm.i32, !llvm.float) -> !llvm.type<"{i64, double}">
+func @qux(!llvm.i32, !llvm.float) -> !llvm<"{i64, double}">
 
 // function-typed arguments or results in higher-order functions
 func @quux(() -> ()) -> (() -> ())
 // are converted into pointers to functions
-func @quux(!llvm.type<"void ()*">) -> !llvm.type<"void ()*">
+func @quux(!llvm<"void ()*">) -> !llvm<"void ()*">
 // the call flow is handled by the LLVM dialect `call` operation supporting both
 // direct and indirect calls
 ```
@@ -222,27 +222,27 @@ func @bar() {
 
 // is transformed into
 
-func @foo(%arg0: !llvm.type<"i32">, %arg1: !llvm.type<"i64">) -> !llvm.type<"{i32, i64}"> {
+func @foo(%arg0: !llvm.i32, %arg1: !llvm.i64) -> !llvm<"{i32, i64}"> {
   // insert the vales into a structure
-  %0 = llvm.mlir.undef :  !llvm.type<"{i32, i64}">
-  %1 = llvm.insertvalue %arg0, %0[0] : !llvm.type<"{i32, i64}">
-  %2 = llvm.insertvalue %arg1, %1[1] : !llvm.type<"{i32, i64}">
+  %0 = llvm.mlir.undef :  !llvm<"{i32, i64}">
+  %1 = llvm.insertvalue %arg0, %0[0] : !llvm<"{i32, i64}">
+  %2 = llvm.insertvalue %arg1, %1[1] : !llvm<"{i32, i64}">
 
   // return the structure value
-  llvm.return %2 : !llvm.type<"{i32, i64}">
+  llvm.return %2 : !llvm<"{i32, i64}">
 }
 func @bar() {
-  %0 = llvm.mlir.constant(42 : i32) : !llvm.type<"i32">
-  %1 = llvm.mlir.constant(17) : !llvm.type<"i64">
+  %0 = llvm.mlir.constant(42 : i32) : !llvm.i32
+  %1 = llvm.mlir.constant(17) : !llvm.i64
 
   // call and extract the values from the structure
-  %2 = llvm.call @bar(%0, %1) : (%arg0: !llvm.type<"i32">, %arg1: !llvm.type<"i64">) -> !llvm.type<"{i32, i64}">
-  %3 = llvm.extractvalue %2[0] : !llvm.type<"{i32, i64}">
-  %4 = llvm.extractvalue %2[1] : !llvm.type<"{i32, i64}">
+  %2 = llvm.call @bar(%0, %1) : (%arg0: !llvm.i32, %arg1: !llvm.i32) -> !llvm<"{i32, i64}">
+  %3 = llvm.extractvalue %2[0] : !llvm<"{i32, i64}">
+  %4 = llvm.extractvalue %2[1] : !llvm<"{i32, i64}">
 
   // use as before
-  "use_i32"(%3) : (!llvm.type<"i32">) -> ()
-  "use_i64"(%4) : (!llvm.type<"i64">) -> ()
+  "use_i32"(%3) : (!llvm.i32) -> ()
+  "use_i64"(%4) : (!llvm.i64) -> ()
 }
 ```
 
@@ -342,11 +342,11 @@ leads to a new basic block being inserted,
 before the conversion to the LLVM IR dialect:
 
 ```mlir
-  llvm.cond_br  %0, ^bb1(%1 : !llvm.type<"i32">), ^dummy
-^bb1(%3 : !llvm.type<"i32">):
-  "use"(%3) : (!llvm.type<"i32">) -> ()
+  llvm.cond_br  %0, ^bb1(%1 : !llvm.i32), ^dummy
+^bb1(%3 : !llvm<"i32">):
+  "use"(%3) : (!llvm.i32) -> ()
 ^dummy:
-  llvm.br ^bb1(%2 : !llvm.type<"i32">)
+  llvm.br ^bb1(%2 : !llvm.i32)
 ```
 
 ## Memref Model
