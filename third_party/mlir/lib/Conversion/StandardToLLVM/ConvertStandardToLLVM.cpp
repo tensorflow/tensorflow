@@ -2020,7 +2020,7 @@ void mlir::LLVM::ensureDistinctSuccessors(ModuleOp m) {
 }
 
 /// Collect a set of patterns to convert from the Standard dialect to LLVM.
-void mlir::populateStdToLLVMConversionPatterns(
+void mlir::populateStdToLLVMNonMemoryConversionPatterns(
     LLVMTypeConverter &converter, OwningRewritePatternList &patterns) {
   // FIXME: this should be tablegen'ed
   // clang-format off
@@ -2035,7 +2035,6 @@ void mlir::populateStdToLLVMConversionPatterns(
       CmpIOpLowering,
       CondBranchOpLowering,
       ConstLLVMOpLowering,
-      DimOpLowering,
       DivFOpLowering,
       DivISOpLowering,
       DivIUOpLowering,
@@ -2045,10 +2044,7 @@ void mlir::populateStdToLLVMConversionPatterns(
       Log2OpLowering,
       FPExtLowering,
       FPTruncLowering,
-      FuncOpConversion,
       IndexCastOpLowering,
-      LoadOpLowering,
-      MemRefCastOpLowering,
       MulFOpLowering,
       MulIOpLowering,
       OrOpLowering,
@@ -2061,20 +2057,37 @@ void mlir::populateStdToLLVMConversionPatterns(
       SignExtendIOpLowering,
       SplatOpLowering,
       SplatNdOpLowering,
-      StoreOpLowering,
       SubFOpLowering,
       SubIOpLowering,
-      SubViewOpLowering,
       TanhOpLowering,
       TruncateIOpLowering,
-      ViewOpLowering,
       XOrOpLowering,
       ZeroExtendIOpLowering>(*converter.getDialect(), converter);
-   patterns.insert<
-       AllocOpLowering,
-       DeallocOpLowering>(
-           *converter.getDialect(), converter, clUseAlloca.getValue());
   // clang-format on
+}
+
+void mlir::populateStdToLLVMMemoryConversionPatters(
+    LLVMTypeConverter &converter, OwningRewritePatternList &patterns) {
+  // clang-format off
+  patterns.insert<
+      DimOpLowering,
+      FuncOpConversion,
+      LoadOpLowering,
+      MemRefCastOpLowering,
+      StoreOpLowering,
+      SubViewOpLowering,
+      ViewOpLowering>(*converter.getDialect(), converter);
+  patterns.insert<
+      AllocOpLowering,
+      DeallocOpLowering>(
+        *converter.getDialect(), converter, clUseAlloca.getValue());
+  // clang-format on
+}
+
+void mlir::populateStdToLLVMConversionPatterns(
+    LLVMTypeConverter &converter, OwningRewritePatternList &patterns) {
+  populateStdToLLVMNonMemoryConversionPatterns(converter, patterns);
+  populateStdToLLVMMemoryConversionPatters(converter, patterns);
 }
 
 // Convert types using the stored LLVM IR module.

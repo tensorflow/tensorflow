@@ -302,10 +302,10 @@ llvm.func @bar(%arg0: !llvm.i64) {
   llvm.call @foo(%16) : (!llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }*">) -> ()
   llvm.return
 }
-
-
-
 ```
+
+*This convention may or may not apply if the conversion of MemRef types is
+overridden by the user.*
 
 ## Repeated Successor Removal
 
@@ -349,7 +349,7 @@ before the conversion to the LLVM IR dialect:
   llvm.br ^bb1(%2 : !llvm.i32)
 ```
 
-## Memref Model
+## Default Memref Model
 
 ### Memref Descriptor
 
