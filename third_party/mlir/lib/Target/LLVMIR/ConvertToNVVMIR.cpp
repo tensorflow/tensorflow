@@ -30,6 +30,7 @@
 #include "mlir/Translation.h"
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/ToolOutputFile.h"
 
