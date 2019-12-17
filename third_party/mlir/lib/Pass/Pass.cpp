@@ -279,7 +279,7 @@ MLIRContext *OpPassManager::getContext() const {
 /// Return the operation name that this pass manager operates on.
 const OperationName &OpPassManager::getOpName() const { return impl->name; }
 
-/// Prints out the passes of the pass mangager as the textual representation
+/// Prints out the passes of the pass manager as the textual representation
 /// of pipelines.
 void OpPassManager::printAsTextualPipeline(raw_ostream &os) {
   // Filter out passes that are not part of the public pipeline.

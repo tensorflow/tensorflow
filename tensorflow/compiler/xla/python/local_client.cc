@@ -551,7 +551,7 @@ PyLocalBuffer::DestructureTuple() {
   absl::MutexLock lock(&mu_);
   if (!on_host_shape_.IsTuple()) {
     return InvalidArgument(
-        "Attemped to destructure a PyLocalBuffer that did not have a tuple "
+        "Attempted to destructure a PyLocalBuffer that did not have a tuple "
         "shape; shape: %s",
         ShapeUtil::HumanString(on_host_shape_));
   }

@@ -302,9 +302,9 @@ public:
     return OpTy();
   }
 
-  /// This is implemented to create the specified operations and serves as a
+  /// This is implemented to insert the specified operation and serves as a
   /// notification hook for rewriters that want to know about new operations.
-  virtual Operation *createOperation(const OperationState &state) = 0;
+  virtual Operation *insert(Operation *op) = 0;
 
   /// Move the blocks that belong to "region" before the given position in
   /// another region "parent". The two regions must be different. The caller

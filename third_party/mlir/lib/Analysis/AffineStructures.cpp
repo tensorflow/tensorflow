@@ -659,9 +659,8 @@ LogicalResult FlatAffineConstraints::composeMap(const AffineValueMap *vMap) {
 
   // Add localCst information.
   if (localCst.getNumLocalIds() > 0) {
-    SmallVector<Value *, 8> values(vMap->getOperands().begin(),
-                                   vMap->getOperands().end());
-    localCst.setIdValues(0, localCst.getNumDimAndSymbolIds(), values);
+    localCst.setIdValues(0, /*end=*/localCst.getNumDimAndSymbolIds(),
+                         /*values=*/vMap->getOperands());
     // Align localCst and this.
     mergeAndAlignIds(/*offset=*/0, &localCst, this);
     // Finally, append localCst to this constraint set.

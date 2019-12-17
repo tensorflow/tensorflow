@@ -40,6 +40,11 @@ cc_library(
 cc_library(
     name = "counter",
     hdrs = ["counter.h"],
+    visibility = [
+        "//tensorflow/c/eager:__pkg__",
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/platform:__subpackages__",
+    ],
     deps = [
         ":collection_registry",
         ":metric_def",
@@ -56,6 +61,11 @@ cc_library(
 cc_library(
     name = "gauge",
     hdrs = ["gauge.h"],
+    visibility = [
+        "//tensorflow/c/eager:__pkg__",
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/platform:__subpackages__",
+    ],
     deps = [
         ":collection_registry",
         ":metric_def",
@@ -115,6 +125,11 @@ cc_library(
     name = "sampler",
     srcs = ["sampler.cc"],
     hdrs = ["sampler.h"],
+    visibility = [
+        "//tensorflow/c/eager:__pkg__",
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/platform:__subpackages__",
+    ],
     deps = [
         ":collection_registry",
         ":metric_def",

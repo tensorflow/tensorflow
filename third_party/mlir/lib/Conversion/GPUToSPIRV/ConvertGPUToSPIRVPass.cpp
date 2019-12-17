@@ -67,34 +67,19 @@ void GPUToSPIRVPass::runOnModule() {
   auto context = &getContext();
   auto module = getModule();
 
-  SmallVector<Operation *, 4> spirvModules;
-  module.walk([&module, &spirvModules](FuncOp funcOp) {
-    if (!gpu::GPUDialect::isKernel(funcOp)) {
-      return;
+  SmallVector<Operation *, 1> kernelModules;
+  OpBuilder builder(context);
+  module.walk([&builder, &kernelModules](ModuleOp moduleOp) {
+    if (moduleOp.getAttrOfType<UnitAttr>(
+            gpu::GPUDialect::getKernelModuleAttrName())) {
+      // For each kernel module (should be only 1 for now, but that is not a
+      // requirement here), clone the module for conversion because the
+      // gpu.launch function still needs the kernel module.
+      builder.setInsertionPoint(moduleOp.getOperation());
+      kernelModules.push_back(builder.clone(*moduleOp.getOperation()));
     }
-    OpBuilder builder(funcOp.getOperation());
-    // Create a new spirv::ModuleOp for this function, and clone the
-    // function into it.
-    // TODO : Generalize this to account for different extensions,
-    // capabilities, extended_instruction_sets, other addressing models
-    // and memory models.
-    auto spvModule = builder.create<spirv::ModuleOp>(
-        funcOp.getLoc(),
-        builder.getI32IntegerAttr(
-            static_cast<int32_t>(spirv::AddressingModel::Logical)),
-        builder.getI32IntegerAttr(
-            static_cast<int32_t>(spirv::MemoryModel::GLSL450)),
-        builder.getStrArrayAttr(
-            spirv::stringifyCapability(spirv::Capability::Shader)),
-        builder.getStrArrayAttr(spirv::stringifyExtension(
-            spirv::Extension::SPV_KHR_storage_buffer_storage_class)));
-    // Hardwire the capability to be Shader.
-    OpBuilder moduleBuilder(spvModule.getOperation()->getRegion(0));
-    moduleBuilder.clone(*funcOp.getOperation());
-    spirvModules.push_back(spvModule);
   });
 
-  /// Dialect conversion to lower the functions with the spirv::ModuleOps.
   SPIRVTypeConverter typeConverter;
   OwningRewritePatternList patterns;
   populateGPUToSPIRVPatterns(context, typeConverter, patterns, workGroupSize);
@@ -105,7 +90,7 @@ void GPUToSPIRVPass::runOnModule() {
   target.addDynamicallyLegalOp<FuncOp>(
       [&](FuncOp op) { return typeConverter.isSignatureLegal(op.getType()); });
 
-  if (failed(applyFullConversion(spirvModules, target, patterns,
+  if (failed(applyFullConversion(kernelModules, target, patterns,
                                  &typeConverter))) {
     return signalPassFailure();
   }

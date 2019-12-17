@@ -250,7 +250,7 @@ int ComputeMaxUnrollFactor(const HloInstruction* hlo) {
 // Otherwise, the return type is i64.
 llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo, int64 launch_size,
                                   llvm::IRBuilder<>* b) {
-  // Find the unnested hlo instructon for which the kernel is generated for.
+  // Find the unnested hlo instruction for which the kernel is generated for.
   const HloInstruction* unnested_hlo = hlo;
   const HloComputation* computation = hlo->parent();
   if (computation->IsFusionComputation()) {
@@ -2888,7 +2888,7 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   int64 tile_size_y = reduction_tiling[1];
   int64 block_size_z = reduction_tiling[0];
   bool dilated_x =
-      !reduction_dimensions.is_row_reduction &&
+      reduction_dimensions.is_row_reduction ||
       !IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,
                                             reduction_dimensions.dimensions[2]);
 

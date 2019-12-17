@@ -4374,8 +4374,8 @@ def sqrt(x, name=None):  # pylint: disable=redefined-builtin
   >>> z = tf.constant([[-1.0], [16.0]], dtype=tf.complex128)
   >>> tf.sqrt(z)
   <tf.Tensor: shape=(2, 1), dtype=complex128, numpy=
-    array([[...+1.j],
-           [4...+0.j]])>
+    array([[0.0+1.j],
+           [4.0+0.j]])>
 
   Note: In order to support complex complex, please provide an input tensor
   of `complex64` or `complex128`.

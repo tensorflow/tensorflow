@@ -79,7 +79,7 @@ EagerContext::EagerContext(
     : default_device_placement_policy_(default_device_placement_policy),
       default_mirroring_policy_(default_mirroring_policy),
       local_device_manager_(device_mgr, device_mgr_owned),
-      devices_(device_mgr->ListDevices()),
+      host_cpu_device_(device_mgr->ListDevices()[0]),
       rendezvous_(rendezvous),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       custom_kernel_creator_(custom_kernel_creator),
@@ -102,7 +102,7 @@ EagerContext::EagerContext(
   // currently a no-op.
   eager_context_created->GetCell()->Set(true);
   monitoring::StartExporter();
-  InitDeviceMapAndAsync();
+  InitPrioritizedDeviceTypeList();
   runner_ = [this](std::function<void()> closure) {
     this->thread_pool_->Schedule(std::move(closure));
   };
@@ -140,23 +140,16 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
   }
 }
 
-void EagerContext::InitDeviceMapAndAsync() {
-  for (auto* device : devices_) {
-    devices_map_[device->name()] = device;
-  }
-
-  if (remote_device_mgr() != nullptr) {
-    for (auto* device : remote_device_mgr()->ListDevices()) {
-      if (devices_map_.find(device->name()) == devices_map_.end()) {
-        devices_map_[device->name()] = device;
-        devices_.push_back(device);
-      }
-    }
-  }
-
+void EagerContext::InitPrioritizedDeviceTypeList() {
   DeviceSet ds;
-  for (Device* d : devices_) {
+  for (Device* d : local_device_mgr()->ListDevices()) {
     ds.AddDevice(d);
+  }
+  auto remote_device_manager = remote_device_mgr();
+  if (remote_device_manager != nullptr) {
+    for (Device* d : remote_device_manager->ListDevices()) {
+      ds.AddDevice(d);
+    }
   }
   prioritized_device_type_list_ = ds.PrioritizedDeviceTypeList();
 }
@@ -391,17 +384,6 @@ std::vector<const FunctionDef*> EagerContext::ListRegisteredFunctions() {
   return result;
 }
 
-// TODO(gjn): Delete in favour of FindDeviceFromName
-Status EagerContext::FindDeviceByName(const string& name,
-                                      Device** result) const {
-  auto it = devices_map_.find(name);
-  if (it == devices_map_.end()) {
-    return errors::InvalidArgument(name, " unknown device.");
-  }
-  *result = it->second;
-  return Status::OK();
-}
-
 void EagerContext::ClearRunMetadata() { run_metadata_.Clear(); }
 
 void EagerContext::StartStep() {
@@ -634,7 +616,7 @@ Status EagerContext::CPUDeviceOnTask(const Device* device,
   TF_RETURN_IF_ERROR(DeviceNameUtils::DeviceNameToCpuDeviceName(
       device->name(), &cpu_device_name));
 
-  return FindDeviceByName(cpu_device_name, cpu_device);
+  return FindDeviceFromName(cpu_device_name.c_str(), cpu_device);
 }
 
 namespace {
@@ -718,11 +700,9 @@ Status EagerContext::StoreCollectiveOpsServer(
   collective_executor_mgr_.Reset(rpc_collective_executor_mgr);
 
   local_device_manager_.Reset(device_mgr);
+  host_cpu_device_ = local_device_manager_.Get()->ListDevices()[0];
 
-  devices_ = local_device_manager_.Get()->ListDevices();
-  devices_map_.clear();
-
-  InitDeviceMapAndAsync();
+  InitPrioritizedDeviceTypeList();
   ClearCaches();
   default_executor_.ClearError();
   {
@@ -860,9 +840,7 @@ Status EagerContext::SetMasterContextState(
       ReadBoolFromEnvVar("TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC", true);
 
   local_device_manager_.Reset(local_device_mgr);
-
-  devices_ = local_device_manager_.Get()->ListDevices();
-  devices_map_.clear();
+  host_cpu_device_ = local_device_manager_.Get()->ListDevices()[0];
 
   if (rendezvous_ != nullptr) rendezvous_->Unref();
   rendezvous_ = r;
@@ -893,7 +871,7 @@ Status EagerContext::SetMasterContextState(
   DCHECK(remote_device_manager_.Owned());
   ResetClusterFLR(cluster_flr);
 
-  InitDeviceMapAndAsync();
+  InitPrioritizedDeviceTypeList();
 
   ClearCaches();
   default_executor_.ClearError();
@@ -1009,7 +987,7 @@ Status EagerContext::InitializeRemoteWorker(
   ResetPFLR(local_device_manager_.Get(), env_, config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, config->graph_options().optimizer_options(),
             thread_pool_.get(), cluster_flr_.Get(), custom_kernel_creator_);
-  InitDeviceMapAndAsync();
+  InitPrioritizedDeviceTypeList();
 
   ClearCaches();
   default_executor_.ClearError();
@@ -1048,9 +1026,7 @@ Status EagerContext::UpdateRemoteWorker(
   ResetClusterFLR(cluster_flr);
 
   remote_device_manager_.Reset(remote_device_mgr);
-  devices_ = worker_session_device_mgr->ListDevices();
-  devices_map_.clear();
-  InitDeviceMapAndAsync();
+  InitPrioritizedDeviceTypeList();
 
   ClearCaches();
   default_executor_.ClearError();

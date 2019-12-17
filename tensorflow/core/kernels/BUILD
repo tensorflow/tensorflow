@@ -21,7 +21,7 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load(
-    "//tensorflow/core/platform:default/cuda_build_defs.bzl",
+    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
@@ -65,7 +65,7 @@ package_group(
     name = "friends",
     packages = [
         "//learning/brain/contrib/...",
-        "//learning/brain/research/sparse_matrix/...",
+        "//learning/brain/research/...",
         "//learning/faster_training/...",
         "//tensorflow/...",
         "//tensorflow_text/...",
@@ -1097,8 +1097,8 @@ tf_cc_test(
     name = "fingerprint_op_test",
     size = "small",
     srcs = ["fingerprint_op_test.cc"],
-    kernels = [":fingerprint_op"],
     deps = [
+        ":fingerprint_op",
         ":ops_testutil",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2614,6 +2614,7 @@ LOOKUP_DEPS = [
     ":bounds_check",
     ":initializable_lookup_table",
     ":lookup_util",
+    "@com_google_absl//absl/container:flat_hash_map",
     "//tensorflow/core:core_cpu",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",

@@ -33,7 +33,7 @@ using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
 
 // Dispatches 'num_partitions - 1' calls to 'function_ptr' in parallel.
 // Calls 'function_ptr' for first partition inline.
-// Uses blocking counter to synchonize threads after parallel calls complete.
+// Uses blocking counter to synchronize threads after parallel calls complete.
 //
 // The 'partitions' array has a total number of elements equal to
 // 'num_partitions * num_partitioned_dims * 2' (the '2' is necessary to specify

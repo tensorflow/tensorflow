@@ -23,7 +23,6 @@ import re
 import socket
 import threading
 import uuid
-import weakref
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -88,7 +87,7 @@ class _DumpingCallback(object):
     self._stack_frame_to_id = dict()
     # Mapping op context to unique ID.
     self._context_to_id = dict()
-    self._function_weakref_to_graph_id = dict()
+    self._function_to_graph_id = dict()
     # pylint:disable=protected-access
     self._function_prefixes = (
         compat.as_bytes(function_lib._FORWARD_PREFIX),
@@ -112,10 +111,15 @@ class _DumpingCallback(object):
     Args:
       function: The just-created Function.
     """
-    function_weakref = weakref.ref(function)
     graph_id = self._get_context_id(function.graph)
     with self._context_lock:
-      self._function_weakref_to_graph_id[function_weakref] = graph_id
+      # NOTE(cais): We currently store the function (_EagerDefinedFunction)
+      # as keys of this dict, because weakrefs to them sometimes become
+      # unreferenceable by the time the op callback is called. This approach
+      # may cause memory leaks due to the holding of the functions. If that's
+      # the case, calling `tf.debugging.disable_dump_debug_info()` should
+      # cause GC of this object and this dict.
+      self._function_to_graph_id[function] = graph_id
 
   @property
   def dump_root(self):
@@ -467,9 +471,12 @@ class _DumpingCallback(object):
         return self._instrument_symbolic_tensors(
             outputs, op_type, op_name, context_id, output_tensor_ids)
     else:
-      if compat.as_bytes(op_type) == b"DebugNumericSummaryV2":
+      op_type_bytes = compat.as_bytes(op_type)
+      if op_type_bytes == b"DebugNumericSummaryV2":
         # TODO(b/140334369): Remove this special casing logic once op_callback.
         # automatically prevents infinite recursion in eager mode.
+        return None
+      if op_type_bytes in op_callbacks_common.OP_CALLBACK_SKIP_OPS:
         return None
       context_id = self._func_graph_id_from_func_name(op_type)
       input_ids = [t._id for t in inputs]  # pylint:disable=protected-access
@@ -502,9 +509,9 @@ class _DumpingCallback(object):
       if op_type in self._op_type_to_context_id:
         return self._op_type_to_context_id[op_type]
       with self._context_lock:
-        for function_weakref in self._function_weakref_to_graph_id:
-          if function_weakref().name == op_type:
-            graph_id = self._function_weakref_to_graph_id[function_weakref]
+        for function in self._function_to_graph_id:
+          if function.name == op_type:
+            graph_id = self._function_to_graph_id[function]
             self._op_type_to_context_id[op_type] = graph_id
             return graph_id
       return None

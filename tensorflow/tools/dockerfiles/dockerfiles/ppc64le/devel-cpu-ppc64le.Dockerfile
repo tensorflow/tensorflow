@@ -85,7 +85,6 @@ RUN apt-get update && apt-get install -y \
 RUN ${PIP} --no-cache-dir install \
     Pillow \
     h5py \
-    keras_applications \
     keras_preprocessing \
     matplotlib \
     mock \

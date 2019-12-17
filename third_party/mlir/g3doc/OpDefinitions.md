@@ -187,7 +187,6 @@ led by `ins`:
 let arguments = (ins
   <type-constraint>:$<operand-name>,
   ...
-
   <attr-constraint>:$<attr-name>,
   ...
 );
@@ -199,16 +198,17 @@ hierarchy. Similarly, `<attr-constraint>` is a TableGen `def` from the
 information.
 
 There is no requirements on the relative order of operands and attributes; they
-can mix freely. But it is recommended to put all operands ahead of attributes,
-and use an empty line to separate them to make it more visually distinguishable
-if possible. The relative order of operands themselves matters.
+can mix freely. The relative order of operands themselves matters. From each
+named argument a named getter will be generated that returns the argument with
+the return type (in the case of attributes the return type will be
+constructed from the storage type, while for operands it will be `Value`). Each
+attribute's raw value (e.g., as stored) can also be accessed via generated
+`<name>Attr` getters for use in transformation passes where the more user
+friendly return type is less suitable.
 
 All the arguments should be named to 1) provide documentation, 2) drive
 auto-generation of getter methods, 3) provide a handle to reference for other
 places like constraints.
-
-> * Place attributes after operands if possible
-> * Give operands and attribute proper names
 
 #### Variadic operands
 
@@ -290,7 +290,7 @@ class. See [Constraints](#constraints) for more information.
 ### Operation interfaces
 
 [Operation interfaces](Interfaces.md#operation-interfaces) are a mechanism by
-which to opaquely call methods and access information on an *Op instance,
+which to opaquely call methods and access information on an *Op instance*,
 without knowing the exact operation type. Operation interfaces defined in C++
 can be accessed in the ODS framework via the `OpInterfaceTrait` class. Aside
 from using pre-existing interfaces in the C++ API, the ODS framework also
@@ -414,7 +414,7 @@ The following builders are generated:
 // All result-types/operands/attributes have one aggregate parameter.
 static void build(Builder *tblgen_builder, OperationState &tblgen_state,
                   ArrayRef<Type> resultTypes,
-                  ArrayRef<Value> operands,
+                  ValueRange operands,
                   ArrayRef<NamedAttribute> attributes);
 
 // Each result-type/operand/attribute has a separate parameter. The parameters
@@ -433,7 +433,19 @@ static void build(Builder *tblgen_builder, OperationState &tblgen_state,
                   Value *i32_operand, Value *f32_operand, ...,
                   APInt i32_attr, StringRef f32_attr, ...);
 
-// (And potentially others depending on the specific op.)
+// Each operand/attribute has a separate parameter but result type is aggregate.
+static void build(Builder *tblgen_builder, OperationState &tblgen_state,
+                  ArrayRef<Type> resultTypes,
+                  Value *i32_operand, Value *f32_operand, ...,
+                  IntegerAttr i32_attr, FloatAttr f32_attr, ...);
+
+// All operands/attributes have aggregate parameters.
+// Generated if InferTypeOpInterface interface is specified.
+static void build(Builder *tblgen_builder, OperationState &tblgen_state,
+                  ValueRange operands,
+                  ArrayRef<NamedAttribute> attributes);
+
+// (And manually specified builders depending on the specific op.)
 ```
 
 The first form provides basic uniformity so that we can create ops using the

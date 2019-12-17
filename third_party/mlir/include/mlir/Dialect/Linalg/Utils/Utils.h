@@ -23,6 +23,8 @@
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/EDSC/Helpers.h"
 
+#include "llvm/ADT/SetVector.h"
+
 namespace mlir {
 class AffineExpr;
 class AffineMap;
@@ -204,6 +206,29 @@ promoteSubViews(OpBuilder &b, Location loc, ArrayRef<Value *> subViews,
 /// Asserts that these operands are value types to allow transformations like
 /// tiling to just use the values when cloning `linalgOp`.
 llvm::SmallVector<Value *, 4> getAssumedNonViewOperands(LinalgOp linalgOp);
+
+/// Apply the permutation defined by `permutation` to `inVec`.
+/// Element `i` in `inVec` is mapped to location `j = permutation[i]`.
+/// E.g.: for an input vector `inVec = ['a', 'b', 'c']` and a permutation vector
+/// `permutation = [2, 0, 1]`, this function leaves `inVec = ['c', 'a', 'b']`.
+template <typename T, unsigned N>
+void applyPermutationToVector(SmallVector<T, N> &inVec,
+                              ArrayRef<unsigned> permutation) {
+  SmallVector<T, N> auxVec(inVec.size());
+  for (unsigned i = 0; i < permutation.size(); ++i)
+    auxVec[i] = inVec[permutation[i]];
+  inVec = auxVec;
+}
+
+/// Prepares the SubView promotion later performed by `promoteSubViews`
+/// (where most of the transformation happens). It arranges the new
+/// operands for `LinalgOp op` and deallocates the new buffer(s)
+/// It is the entry point for declarative transformation
+/// Returns the cloned `LinalgOp` with the new operands
+LinalgOp promoteSubViewOperands(OpBuilder &b, LinalgOp op,
+                                llvm::SetVector<Value *> subViews,
+                                bool dynamicBuffers = false,
+                                OperationFolder *folder = nullptr);
 
 } // namespace linalg
 } // namespace mlir

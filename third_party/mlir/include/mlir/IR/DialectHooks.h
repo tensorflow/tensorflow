@@ -50,7 +50,7 @@ public:
 /// based on information coming from DialectHooksRegistration.
 void registerDialectHooksSetter(const DialectHooksSetter &function);
 
-/// DialectHooksRegistration provides a global initialiser that registers
+/// DialectHooksRegistration provides a global initializer that registers
 /// a dialect hooks setter routine.
 /// Usage:
 ///

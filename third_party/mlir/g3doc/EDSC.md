@@ -97,7 +97,7 @@ def AddOp : Op<"x.add">,
 Depending on the function signature on which this emitter is called, the
 generated IR resembles the following, for a 4-D memref of `vector<4xi8>`:
 
-``` {.mlir}
+```
 // CHECK-LABEL: func @t1(%lhs: memref<3x4x5x6xvector<4xi8>>, %rhs: memref<3x4x5x6xvector<4xi8>>, %result: memref<3x4x5x6xvector<4xi8>>) -> () {
 //       CHECK: affine.for {{.*}} = 0 to 3 {
 //       CHECK:   affine.for {{.*}} = 0 to 4 {
@@ -111,7 +111,7 @@ generated IR resembles the following, for a 4-D memref of `vector<4xi8>`:
 
 or the following, for a 0-D `memref<f32>`:
 
-``` {.mlir}
+```
 // CHECK-LABEL: func @t3(%lhs: memref<f32>, %rhs: memref<f32>, %result: memref<f32>) -> () {
 //       CHECK: {{.*}} = load %arg1[] : memref<f32>
 //       CHECK: {{.*}} = load %arg0[] : memref<f32>

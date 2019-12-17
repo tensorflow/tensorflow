@@ -1354,7 +1354,7 @@ TEST_F(ShapeInferenceTest, DotWithTwoContractingDimsPasses) {
 }
 
 // BatchMatMul with different batch dimension sizes fails.
-TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimSizesFails) {
+TEST_F(ShapeInferenceTest, DotWithMismatchedBatchDimSizesFails) {
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {2, 11, 3});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 3, 14});
 
@@ -1373,7 +1373,7 @@ TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimSizesFails) {
 }
 
 // BatchMatMul with different batch dimension numbers passes
-TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimNumbersPasses) {
+TEST_F(ShapeInferenceTest, DotWithMismatchedBatchDimNumbersPasses) {
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {2, 11, 3});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 2, 14});
 

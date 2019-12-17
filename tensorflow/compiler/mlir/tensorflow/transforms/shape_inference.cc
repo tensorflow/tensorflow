@@ -17,17 +17,21 @@ limitations under the License.
 
 #include <cstdint>
 #include <initializer_list>
+#include <iterator>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Block.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/SymbolTable.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
@@ -64,7 +68,8 @@ Optional<llvm::SmallVector<mlir::Type, 4>> InferShapeForFunctionReturnType(
   // Manually fold tf.Cast that precedes the return instruction and only differs
   // in shape refinement level.
   for (OpOperand& arg_op : return_op.getOperation()->getOpOperands()) {
-    if (auto cast_op = dyn_cast<CastOp>(arg_op.get()->getDefiningOp())) {
+    Operation* arg_defining_op = arg_op.get()->getDefiningOp();
+    if (auto cast_op = dyn_cast_or_null<CastOp>(arg_defining_op)) {
       // Shape inference should not change the element type.
       if (cast_op.SrcT() != cast_op.DstT()) continue;
       // We only refine the result shape if the result a dynamic shape, the
@@ -155,7 +160,7 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
   std::vector<const tensorflow::Tensor*> input_tensors(op->getNumOperands());
   std::vector<tensorflow::PartialTensorShape> input_shapes(
       op->getNumOperands());
-  std::vector<tensorflow::Tensor> tensors;
+  std::vector<tensorflow::Tensor> tensors(op->getNumOperands());
   for (auto it : llvm::enumerate(op->getOperands())) {
     Value* operand = it.value();
     size_t index = it.index();
@@ -163,8 +168,7 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
     // If the operand is constant, then convert it to Tensor.
     ElementsAttr attr;
     if (matchPattern(operand, m_Constant(&attr))) {
-      tensors.emplace_back();
-      tensorflow::Tensor* input_tensor = &tensors.back();
+      tensorflow::Tensor* input_tensor = &tensors[index];
       auto status = tensorflow::ConvertToTensor(attr, input_tensor);
       if (status.ok()) {
         input_tensors[index] = input_tensor;
@@ -252,6 +256,92 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
   return changed;
 }
 
+// Updates input types and refine shapes inside body of functions that are
+// attached to ControlFlow ops (If/While). These functions include Then/Else
+// branches of IfOp and Cond/Body functions of WhileOp. These functions share
+// following common properties:
+//   1) They are never reused, ie. having a single use in module.
+//   2) Their input types match those of their parent ops (excluding inputs like
+//      predicate).
+// Returns a boolean indicating whether any change has been applied.
+LogicalResult RefineShapeForControlFlowFunc(FuncOp func,
+                                            llvm::ArrayRef<Type> input_types,
+                                            int64_t graph_version,
+                                            int64_t max_iteration) {
+  ModuleOp module = func.getParentOfType<ModuleOp>();
+  auto func_uses = func.getSymbolUses(module);
+  int num_uses = std::distance(func_uses->begin(), func_uses->end());
+  if (num_uses != 1) {
+    func.emitError(llvm::formatv(
+        "expected control flow function {0} to have exactly 1 use, found {1}.",
+        func.getName(), num_uses));
+    return failure();
+  }
+
+  FunctionType func_type = func.getType();
+  if (input_types == func_type.getInputs()) return success();
+
+  func.setType(FunctionType::get(input_types, func_type.getResults(),
+                                 func.getContext()));
+
+  for (auto arg_and_idx : llvm::enumerate(func.getArguments())) {
+    arg_and_idx.value()->setType(input_types[arg_and_idx.index()]);
+  }
+
+  auto res =
+      InferShapeUntilFixPoint(&func.getBody(), graph_version, max_iteration);
+  if (failed(res)) return res;
+
+  auto new_return_types = InferShapeForFunctionReturnType(func);
+  if (new_return_types.hasValue()) {
+    func.setType(FunctionType::get(input_types, new_return_types.getValue(),
+                                   func.getContext()));
+  }
+
+  return success();
+}
+
+template <typename OpTy>
+LogicalResult PropagateShapeToIfWhileOpFunctions(
+    OpTy op, llvm::ArrayRef<StringRef> func_names, int64_t graph_version,
+    int64_t max_iteration) {
+  llvm::SmallVector<Type, 4> input_types;
+  input_types.reserve(std::distance(op.input().begin(), op.input().end()));
+  for (Value* v : op.input()) {
+    input_types.push_back(v->getType());
+  }
+
+  ModuleOp module = op.template getParentOfType<ModuleOp>();
+
+  bool success = true;
+  for (auto func_name : func_names) {
+    FuncOp func = module.lookupSymbol<FuncOp>(func_name);
+    if (failed(RefineShapeForControlFlowFunc(func, input_types, graph_version,
+                                             max_iteration))) {
+      success = false;
+    }
+  }
+  return mlir::success(success);
+}
+
+LogicalResult PropagateShapeIntoAttachedFunctions(Operation* op,
+                                                  int64_t graph_version,
+                                                  int64_t max_iteration) {
+  if (auto if_op = dyn_cast<TF::IfOp>(op)) {
+    return PropagateShapeToIfWhileOpFunctions<TF::IfOp>(
+        if_op, {if_op.then_branch(), if_op.else_branch()}, graph_version,
+        max_iteration);
+  } else if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
+    return PropagateShapeToIfWhileOpFunctions<TF::WhileOp>(
+        while_op, {while_op.cond(), while_op.body()}, graph_version,
+        max_iteration);
+  }
+
+  // TODO(ycao): Implement support for Call op, including function reuse.
+
+  return success();
+}
+
 LogicalResult InferShapeUntilFixPoint(Region* region, int64_t graph_version,
                                       int64_t max_iteration) {
   MLIRContext* ctx = region->getContext();
@@ -273,10 +363,20 @@ LogicalResult InferShapeUntilFixPoint(Region* region, int64_t graph_version,
       if (op->getDialect() != tf_dialect) return;
 
       // Before attempting inference, just try to fold the operation.
-      if (failed(folder.tryToFold(op)))
-        changed |= InferShapeForSingleOperation(op, tf_dialect, graph_version);
+      if (succeeded(folder.tryToFold(op))) return;
+
+      // Best-effort shape inference in attached functions. Do not return
+      // failure even if it doesn't get to fixed point.
+      if (failed(PropagateShapeIntoAttachedFunctions(op, graph_version,
+                                                     max_iteration))) {
+        op->emitWarning() << "unable to refine shape of attached function "
+                             "arguments and bodies";
+      }
+
+      changed |= InferShapeForSingleOperation(op, tf_dialect, graph_version);
     });
   }
+
   if (changed) {
     return region->getParentOp()->emitWarning()
            << "Shape inference did not reach stable state after "

@@ -79,7 +79,8 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateSwitchFoldPass();
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorIslandCoarseningPass();
 
 // Create a pass to prune tf_executor.graph from dead nodes.
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorGraphPruningPass();
+std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorGraphPruningPass(
+    bool skip_main_func = false);
 
 // Prunes unreachable operations of a tf_executor.graph operation.
 void PruneGraph(GraphOp graph);
@@ -128,6 +129,10 @@ namespace TFTPU {
 // Creates a pass that forms clusters from operations of the same
 // `_tpu_replicate` attribute.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTPUClusterFormationPass();
+
+// Creates a pass that remaps and assigns padding map from a
+// `tf_device.launch_func` `padding_map` attribute to its encapsulated function.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUDynamicPaddingMapperPass();
 
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
 // ops.

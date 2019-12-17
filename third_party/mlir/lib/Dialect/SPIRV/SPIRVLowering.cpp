@@ -178,8 +178,9 @@ Type SPIRVTypeConverter::convertType(Type type) { return convertStdType(type); }
 static spirv::GlobalVariableOp getBuiltinVariable(spirv::ModuleOp &moduleOp,
                                                   spirv::BuiltIn builtin) {
   for (auto varOp : moduleOp.getBlock().getOps<spirv::GlobalVariableOp>()) {
-    if (auto builtinAttr = varOp.getAttrOfType<StringAttr>(convertToSnakeCase(
-            stringifyDecoration(spirv::Decoration::BuiltIn)))) {
+    if (auto builtinAttr = varOp.getAttrOfType<StringAttr>(
+            spirv::SPIRVDialect::getAttributeName(
+                spirv::Decoration::BuiltIn))) {
       auto varBuiltIn = spirv::symbolizeBuiltIn(builtinAttr.getValue());
       if (varBuiltIn && varBuiltIn.getValue() == builtin) {
         return varOp;
@@ -214,11 +215,8 @@ getOrInsertBuiltinVariable(spirv::ModuleOp &moduleOp, Location loc,
     auto ptrType = spirv::PointerType::get(
         VectorType::get({3}, builder.getIntegerType(32)),
         spirv::StorageClass::Input);
-    newVarOp = builder.create<spirv::GlobalVariableOp>(
-        loc, TypeAttr::get(ptrType), builder.getStringAttr(name), nullptr);
-    newVarOp.setAttr(
-        convertToSnakeCase(stringifyDecoration(spirv::Decoration::BuiltIn)),
-        builder.getStringAttr(stringifyBuiltIn(builtin)));
+    newVarOp =
+        builder.create<spirv::GlobalVariableOp>(loc, ptrType, name, builtin);
     break;
   }
   default:
@@ -239,60 +237,26 @@ Value *mlir::spirv::getBuiltinVariableValue(Operation *op,
     op->emitError("expected operation to be within a SPIR-V module");
     return nullptr;
   }
-  auto varOp =
+  spirv::GlobalVariableOp varOp =
       getOrInsertBuiltinVariable(moduleOp, op->getLoc(), builtin, builder);
-  auto ptr = builder
-                 .create<spirv::AddressOfOp>(op->getLoc(), varOp.type(),
-                                             builder.getSymbolRefAttr(varOp))
-                 .pointer();
-  return builder.create<spirv::LoadOp>(
-      op->getLoc(),
-      ptr->getType().template cast<spirv::PointerType>().getPointeeType(), ptr,
-      /*memory_access =*/nullptr, /*alignment =*/nullptr);
+  Value *ptr = builder.create<spirv::AddressOfOp>(op->getLoc(), varOp);
+  return builder.create<spirv::LoadOp>(op->getLoc(), ptr,
+                                       /*memory_access =*/nullptr,
+                                       /*alignment =*/nullptr);
 }
 
 //===----------------------------------------------------------------------===//
-// Entry Function signature Conversion
+// Set ABI attributes for lowering entry functions.
 //===----------------------------------------------------------------------===//
 
-FuncOp mlir::spirv::lowerAsEntryFunction(
-    FuncOp funcOp, SPIRVTypeConverter &typeConverter,
-    ConversionPatternRewriter &rewriter,
-    ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo,
-    spirv::EntryPointABIAttr entryPointInfo) {
-  auto fnType = funcOp.getType();
-  if (fnType.getNumResults()) {
-    funcOp.emitError("SPIR-V lowering only supports entry functions"
-                     "with no return values right now");
-    return nullptr;
-  }
-  if (fnType.getNumInputs() != argABIInfo.size()) {
-    funcOp.emitError(
-        "lowering as entry functions requires ABI info for all arguments");
-    return nullptr;
-  }
-  // For entry functions need to make the signature void(void). Compute the
-  // replacement value for all arguments and replace all uses.
-  TypeConverter::SignatureConversion signatureConverter(fnType.getNumInputs());
-  {
-    for (auto argType : enumerate(funcOp.getType().getInputs())) {
-      auto convertedType = typeConverter.convertType(argType.value());
-      signatureConverter.addInputs(argType.index(), convertedType);
-    }
-  }
-  auto newFuncOp = rewriter.cloneWithoutRegions(funcOp);
-  rewriter.inlineRegionBefore(funcOp.getBody(), newFuncOp.getBody(),
-                              newFuncOp.end());
-  newFuncOp.setType(rewriter.getFunctionType(
-      signatureConverter.getConvertedTypes(), llvm::None));
-  rewriter.applySignatureConversion(&newFuncOp.getBody(), signatureConverter);
-  rewriter.replaceOp(funcOp.getOperation(), llvm::None);
-
+LogicalResult
+mlir::spirv::setABIAttrs(FuncOp funcOp, spirv::EntryPointABIAttr entryPointInfo,
+                         ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo) {
   // Set the attributes for argument and the function.
   StringRef argABIAttrName = spirv::getInterfaceVarABIAttrName();
-  for (auto argIndex : llvm::seq<unsigned>(0, newFuncOp.getNumArguments())) {
-    newFuncOp.setArgAttr(argIndex, argABIAttrName, argABIInfo[argIndex]);
+  for (auto argIndex : llvm::seq<unsigned>(0, funcOp.getNumArguments())) {
+    funcOp.setArgAttr(argIndex, argABIAttrName, argABIInfo[argIndex]);
   }
-  newFuncOp.setAttr(spirv::getEntryPointABIAttrName(), entryPointInfo);
-  return newFuncOp;
+  funcOp.setAttr(spirv::getEntryPointABIAttrName(), entryPointInfo);
+  return success();
 }

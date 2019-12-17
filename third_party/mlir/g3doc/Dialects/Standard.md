@@ -21,7 +21,7 @@ list of successors, i.e. other blocks to which the control flow will proceed.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= `br` successor
 successor ::= bb-id branch-use-list?
 branch-use-list ::= `(` ssa-use-list `:` type-list-no-parens `)`
@@ -37,7 +37,7 @@ The MLIR branch operation is not allowed to target the entry block for a region.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= `cond_br` ssa-use `,` successor `,` successor
 ```
 
@@ -53,7 +53,7 @@ allowed to be the same.
 The following example illustrates a function with a conditional branch operation
 that targets the same block:
 
-```mlir {.mlir}
+```mlir
 func @select(i32, i32, i1) -> i32 {
 ^bb0(%a : i32, %b :i32, %flag : i1) :
     // Both targets are the same, operands differ
@@ -68,7 +68,7 @@ func @select(i32, i32, i1) -> i32 {
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= `return` (ssa-use-list `:` type-list-no-parens)?
 ```
 
@@ -83,8 +83,8 @@ single function to return.
 
 Syntax:
 
-``` {.ebnf}
-operation ::= 
+```
+operation ::=
     (ssa-id `=`)? `call` symbol-ref-id `(` ssa-use-list? `)` `:` function-type
 ```
 
@@ -94,7 +94,7 @@ encoded as a function attribute named "callee".
 
 Example:
 
-```mlir {.mlir}
+```mlir
 // Calling the function my_add.
 %31 = call @my_add(%0, %1) : (tensor<16xf32>, tensor<16xf32>) -> tensor<16xf32>
 ```
@@ -103,7 +103,7 @@ Example:
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= `call_indirect` ssa-use `(` ssa-use-list? `)` `:` function-type
 ```
 
@@ -117,7 +117,7 @@ Function values can be created with the
 
 Example:
 
-```mlir {.mlir}
+```mlir
 %31 = call_indirect %15(%0, %1)
         : (tensor<16xf32>, tensor<16xf32>) -> tensor<16xf32>
 ```
@@ -126,7 +126,7 @@ Example:
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `dim` ssa-id `,` integer-literal `:` type
 ```
 
@@ -139,7 +139,7 @@ The `dim` operation is represented with a single integer attribute named
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Always returns 4, can be constant folded:
 %x = dim %A, 0 : tensor<4 x ? x f32>
 
@@ -157,7 +157,7 @@ Examples:
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `alloc` dim-and-symbol-use-list `:` memref-type
 ```
 
@@ -172,7 +172,7 @@ destroyed by the `dealloc` operation.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 // Allocating memref for a fully static shape.
 %A = alloc() : memref<1024x64xf32, #layout_map0, memspace0>
 
@@ -186,7 +186,7 @@ Example:
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::=
     ssa-id `=` `alloc_static` `(` integer-literal `)` :  memref-type
 ```
@@ -198,7 +198,7 @@ require dynamic symbols in their layout function (use the
 
 Example:
 
-```mlir {.mlir}
+```mlir
 %A = alloc_static(0x1232a00) : memref<1024 x 64 x f32, #layout_map0, memspace0>
 ```
 
@@ -209,7 +209,7 @@ has been performed.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= `dealloc` ssa-use `:` memref-type
 ```
 
@@ -219,7 +219,7 @@ allocation. It is paired with an [`alloc`](#alloc-operation) or
 
 Example:
 
-```mlir {.mlir}
+```mlir
 dealloc %A : memref<128 x f32, #layout, memspace0>
 ```
 
@@ -227,7 +227,7 @@ dealloc %A : memref<128 x f32, #layout, memspace0>
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= `dma_start` ssa-use`[`ssa-use-list`]` `,`
                ssa-use`[`ssa-use-list`]` `,` ssa-use `,`
                ssa-use`[`ssa-use-list`]` (`,` ssa-use `,` ssa-use)?
@@ -257,7 +257,7 @@ specified as shown below.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 %size = constant 32 : index
 %tag = alloc() : memref<1 x i32, (d0) -> (d0), 4>
 %idx = constant 0 : index
@@ -283,7 +283,7 @@ load/store indices.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 dma_wait %tag[%idx], %size : memref<1 x i32, (d0) -> (d0), 4>
 ```
 
@@ -304,7 +304,7 @@ then 3 indices are required for the extract. The indices should all be of
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 %3 = extract_element %v[%1, %2] : vector<4x4xi32>
 %4 = extract_element %t[%1, %2] : tensor<4x4xi32>
 %5 = extract_element %ut[%1, %2] : tensor<*xi32>
@@ -314,7 +314,7 @@ Examples:
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `load` ssa-use `[` ssa-use-list `]` `:` memref-type
 ```
 
@@ -333,7 +333,7 @@ values or the recursively result of such an `affine.apply` operation.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 %1 = affine.apply (d0, d1) -> (3*d0) (%i, %j)
 %2 = affine.apply (d0, d1) -> (d1+1) (%i, %j)
 %12 = load %A[%1, %2] : memref<8x?xi32, #layout, memspace0>
@@ -356,7 +356,7 @@ in these contexts.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `splat` ssa-use `:` ( vector-type | tensor-type )
 ```
 
@@ -366,23 +366,27 @@ it has to be statically shaped.
 
 Example:
 
-```mlir {.mlir}
+```mlir
   %s = load %A[%i] : memref<128xf32>
   %v = splat %s : vector<4xf32>
   %t = splat %s : tensor<8x16xi32>
 ```
 
 TODO: This operation is easy to extend to broadcast to dynamically shaped
-tensors in the same way dynamically shaped memrefs are handled. `mlir {.mlir} //
-Broadcasts %s to a 2-d dynamically shaped tensor, with %m, %n binding // to the
-sizes of the two dynamic dimensions. %m = "foo"() : () -> (index) %n = "bar"() :
-() -> (index) %t = splat %s [%m, %n] : tensor<?x?xi32>`
+tensors in the same way dynamically shaped memrefs are handled.
+```mlir {.mlir}
+// Broadcasts %s to a 2-d dynamically shaped tensor, with %m, %n binding
+// to the sizes of the two dynamic dimensions.
+%m = "foo"() : () -> (index)
+%n = "bar"() : () -> (index)
+%t = splat %s [%m, %n] : tensor<?x?xi32>
+```
 
 ### 'store' operation
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= `store` ssa-use `,` ssa-use `[` ssa-use-list `]` `:` memref-type
 ```
 
@@ -400,7 +404,7 @@ of such an `affine.apply` operation.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 store %100, %A[%1, 1023] : memref<4x?xf32, #layout, memspace0>
 ```
 
@@ -417,7 +421,7 @@ in these contexts.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `tensor_load` ssa-use-and-type
 ```
 
@@ -427,7 +431,7 @@ operand.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 // Produces a value of tensor<4x?xf32> type.
 %12 = tensor_load %10 : memref<4x?xf32, #layout, memspace0>
 ```
@@ -436,7 +440,7 @@ Example:
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= `tensor_store` ssa-use `,` ssa-use `:` memref-type
 ```
 
@@ -446,7 +450,7 @@ element types of these must match, and are specified by the memref type.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 %9 = dim %8, 1 : tensor<4x?xf32>
 %10 = alloc(%9) : memref<4x?xf32, #layout, memspace0>
 tensor_store %8, %10 : memref<4x?xf32, #layout, memspace0>
@@ -458,13 +462,13 @@ tensor_store %8, %10 : memref<4x?xf32, #layout, memspace0>
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `absf` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar absolute value.
 %a = absf %b : f64
 
@@ -484,13 +488,13 @@ attributes.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `ceilf` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar ceiling value.
 %a = ceilf %b : f64
 
@@ -510,13 +514,13 @@ has no standard attributes.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `cos` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar cosine value.
 %a = cos %b : f64
 
@@ -536,13 +540,13 @@ attributes.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `exp` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar natural exponential.
 %a = exp %b : f64
 
@@ -561,13 +565,13 @@ tensor of floats. It has no standard attributes.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `negf` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar negation value.
 %a = negf %b : f64
 
@@ -587,13 +591,13 @@ has no standard attributes.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `tanh` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar hyperbolic tangent value.
 %a = tanh %b : f64
 
@@ -618,13 +622,13 @@ section.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `addi` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar addition.
 %a = addi %b, %c : i64
 
@@ -644,13 +648,13 @@ attributes.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `addf` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar addition.
 %a = addf %b, %c : f64
 
@@ -676,13 +680,13 @@ Bitwise integer and.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `and` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar integer bitwise and.
 %a = and %b, %c : i64
 
@@ -702,13 +706,13 @@ attributes.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `cmpi` string-literal `,` ssa-id `,` ssa-id `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Custom form of scalar "signed less than" comparison.
 %x = cmpi "slt", %lhs, %rhs : i32
 
@@ -772,7 +776,7 @@ positives
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `constant` attribute-value `:` type
 ```
 
@@ -786,7 +790,7 @@ The type specifies the result type of the operation.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Integer constant
 %1 = constant 42 : i32
 
@@ -809,13 +813,13 @@ function simplifies this
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `copysign` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar copysign value.
 %a = copysign %b %c : f64
 
@@ -841,13 +845,13 @@ value divided by -1) is TBD; do NOT assume any specific behavior.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `divis` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar signed integer division.
 %a = divis %b, %c : i64
 
@@ -874,13 +878,13 @@ behavior.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `diviu` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar unsigned integer division.
 %a = diviu %b, %c : i64
 
@@ -900,13 +904,13 @@ standard attributes.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `memref_cast` ssa-use `:` type `to` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Discard static dimension information.
 %3 = memref_cast %2 : memref<4x?xf32> to memref<?x?xf32>
 
@@ -932,13 +936,13 @@ if converting to a mismatching static rank.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `mulf` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar multiplication.
 %a = mulf %b, %c : f64
 
@@ -964,13 +968,13 @@ Bitwise integer or.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `or` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar integer bitwise or.
 %a = or %b, %c : i64
 
@@ -996,13 +1000,13 @@ behavior.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `remis` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar signed integer division remainder.
 %a = remis %b, %c : i64
 
@@ -1028,13 +1032,13 @@ behavior.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `remiu` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar unsigned integer division remainder.
 %a = remiu %b, %c : i64
 
@@ -1054,13 +1058,13 @@ standard attributes.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `select` ssa-use `,` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Custom form of scalar selection.
 %x = select %cond, %true, %false : i32
 
@@ -1088,13 +1092,13 @@ implement `min` and `max` with signed or unsigned comparison semantics.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `tensor_cast` ssa-use `:` type `to` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Convert from unknown rank to rank 2 with unknown dimension sizes.
 %2 = "std.tensor_cast"(%1) : (tensor<*xf32>) -> tensor<?x?xf32>
 %2 = tensor_cast %1 : tensor<*xf32> to tensor<?x?xf32>
@@ -1119,13 +1123,13 @@ Bitwise integer xor.
 
 Syntax:
 
-``` {.ebnf}
+```
 operation ::= ssa-id `=` `xor` ssa-use, ssa-use `:` type
 ```
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // Scalar integer bitwise xor.
 %a = xor %b, %c : i64
 

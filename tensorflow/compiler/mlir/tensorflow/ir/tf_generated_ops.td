@@ -1269,6 +1269,93 @@ def TF_DivNoNanOp : TF_Op<"DivNoNan", [Broadcastable, NoSideEffect]>,
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_DynamicStitchOp : TF_Op<"DynamicStitch", [NoSideEffect, SameVariadicOperandSize]> {
+  let summary = [{
+Interleave the values from the `data` tensors into a single tensor.
+  }];
+
+  let description = [{
+Builds a merged tensor such that
+
+```python
+    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]
+```
+
+For example, if each `indices[m]` is scalar or vector, we have
+
+```python
+    # Scalar indices:
+    merged[indices[m], ...] = data[m][...]
+
+    # Vector indices:
+    merged[indices[m][i], ...] = data[m][i, ...]
+```
+
+Each `data[i].shape` must start with the corresponding `indices[i].shape`,
+and the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we
+must have `data[i].shape = indices[i].shape + constant`.  In terms of this
+`constant`, the output shape is
+
+    merged.shape = [max(indices)] + constant
+
+Values are merged in order, so if an index appears in both `indices[m][i]` and
+`indices[n][j]` for `(m,i) < (n,j)` the slice `data[n][j]` will appear in the
+merged result. If you do not need this guarantee, ParallelDynamicStitch might
+perform better on some devices.
+
+For example:
+
+```python
+    indices[0] = 6
+    indices[1] = [4, 1]
+    indices[2] = [[5, 2], [0, 3]]
+    data[0] = [61, 62]
+    data[1] = [[41, 42], [11, 12]]
+    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]
+    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],
+              [51, 52], [61, 62]]
+```
+
+This method can be used to merge partitions created by `dynamic_partition`
+as illustrated on the following example:
+
+```python
+    # Apply function (increments x_i) on elements for which a certain condition
+    # apply (x_i != -1 in this example).
+    x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])
+    condition_mask=tf.not_equal(x,tf.constant(-1.))
+    partitioned_data = tf.dynamic_partition(
+        x, tf.cast(condition_mask, tf.int32) , 2)
+    partitioned_data[1] = partitioned_data[1] + 1.0
+    condition_indices = tf.dynamic_partition(
+        tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)
+    x = tf.dynamic_stitch(condition_indices, partitioned_data)
+    # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain
+    # unchanged.
+```
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/DynamicStitch.png" alt>
+</div>
+  }];
+
+  let arguments = (ins
+    Variadic<I32Tensor>:$indices,
+    Variadic<TF_Tensor>:$data
+  );
+
+  let results = (outs
+    TF_Tensor:$merged
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
 def TF_EinsumOp : TF_Op<"Einsum", [NoSideEffect]> {
   let summary = [{
 Tensor contraction according to Einstein summation convention.
@@ -1317,7 +1404,7 @@ Operations are applied to the input(s) according to the following rules:
      Considering the batch matrix multiplication equation again
      (`bij,bjk->bik`), the contracted axis label is `j`.
 
- (e) Expand Diagonal: If the output subcripts contain repeated (explicit) axis
+ (e) Expand Diagonal: If the output subscripts contain repeated (explicit) axis
      labels, the opposite operation of (a) is applied. For example, in the
      equation `i->iii`, and input shape `[3]`, the output of shape `[3, 3, 3]`
      are all zeros, except for the (generalized) diagonal which is populated
@@ -1325,7 +1412,7 @@ Operations are applied to the input(s) according to the following rules:
      Note: This operation is not supported by `np.einsum` or `tf.einsum`; it is
      provided to enable computing the symbolic gradient of `tf.einsum`.
 
-The output subcripts must contain only labels appearing in at least one of the
+The output subscripts must contain only labels appearing in at least one of the
 input subscripts. Furthermore, all dimensions mapping to the same axis label
 must be equal.
 
@@ -1337,7 +1424,7 @@ according to standard NumPy broadcasting
 
 The broadcasted dimensions are placed in the corresponding location of the
 ellipsis in the output subscript. If the broadcasted dimensions are non-empty
-and the output subcripts do not contain ellipsis, then an InvalidArgument error
+and the output subscripts do not contain ellipsis, then an InvalidArgument error
 is raised.
 
 @compatibility(numpy)
@@ -2054,6 +2141,10 @@ See also `tf.batch_gather` and `tf.gather_nd`.
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr Tparams = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Taxis = TF_DerivedOperandTypeAttr<2>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_GreaterOp : TF_Op<"Greater", [Broadcastable, NoSideEffect]>,
@@ -2366,6 +2457,55 @@ def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, SameOperandsAndResultType
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasFolder = 1;
+}
+
+def TF_LeftShiftOp : TF_Op<"LeftShift", [Broadcastable, NoSideEffect]>,
+                     WithBroadcastableBinOpBuilder {
+  let summary = "Elementwise computes the bitwise left-shift of `x` and `y`.";
+
+  let description = [{
+If `y` is negative, or greater than or equal to the width of `x` in bits the
+result is implementation defined.
+
+Example:
+
+```python
+import tensorflow as tf
+from tensorflow.python.ops import bitwise_ops
+import numpy as np
+dtype_list = [tf.int8, tf.int16, tf.int32, tf.int64]
+
+for dtype in dtype_list:
+  lhs = tf.constant([-1, -5, -3, -14], dtype=dtype)
+  rhs = tf.constant([5, 0, 7, 11], dtype=dtype)
+
+  left_shift_result = bitwise_ops.left_shift(lhs, rhs)
+
+  print(left_shift_result)
+
+# This will print:
+# tf.Tensor([ -32   -5 -128    0], shape=(4,), dtype=int8)
+# tf.Tensor([   -32     -5   -384 -28672], shape=(4,), dtype=int16)
+# tf.Tensor([   -32     -5   -384 -28672], shape=(4,), dtype=int32)
+# tf.Tensor([   -32     -5   -384 -28672], shape=(4,), dtype=int64)
+
+lhs = np.array([-2, 64, 101, 32], dtype=np.int8)
+rhs = np.array([-1, -5, -3, -14], dtype=np.int8)
+bitwise_ops.left_shift(lhs, rhs)
+# <tf.Tensor: shape=(4,), dtype=int8, numpy=array([ -2,  64, 101,  32], dtype=int8)>
+```
+  }];
+
+  let arguments = (ins
+    TF_IntTensor:$x,
+    TF_IntTensor:$y
+  );
+
+  let results = (outs
+    TF_IntTensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_LessOp : TF_Op<"Less", [Broadcastable, NoSideEffect]>,
@@ -4366,10 +4506,10 @@ def TF_ResourceApplyAdamOp : TF_Op<"ResourceApplyAdam", []> {
   let summary = "Update '*var' according to the Adam algorithm.";
 
   let description = [{
-$$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$
-$$m_t := beta_1 * m_{t-1} + (1 - beta_1) * g$$
-$$v_t := beta_2 * v_{t-1} + (1 - beta_2) * g * g$$
-$$variable := variable - lr_t * m_t / (\sqrt{v_t} + \epsilon)$$
+$$\text{lr}_t := \mathrm{learning_rate} * \sqrt{1 - \beta_2^t} / (1 - \beta_1^t)$$
+$$m_t := \beta_1 * m_{t-1} + (1 - \beta_1) * g$$
+$$v_t := \beta_2 * v_{t-1} + (1 - \beta_2) * g * g$$
+$$\text{variable} := \text{variable} - \text{lr}_t * m_t / (\sqrt{v_t} + \epsilon)$$
   }];
 
   let arguments = (ins
@@ -4413,9 +4553,7 @@ def TF_ResourceApplyGradientDescentOp : TF_Op<"ResourceApplyGradientDescent", []
 }
 
 def TF_ResourceApplyKerasMomentumOp : TF_Op<"ResourceApplyKerasMomentum", []> {
-  let summary = [{
-Update '*var' according to the momentum scheme.
-  }];
+  let summary = "Update '*var' according to the momentum scheme.";
 
   let description = [{
 Set use_nesterov = True if you want to use Nesterov momentum.
@@ -4579,6 +4717,58 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_RightShiftOp : TF_Op<"RightShift", [Broadcastable, NoSideEffect]>,
+                      WithBroadcastableBinOpBuilder {
+  let summary = "Elementwise computes the bitwise right-shift of `x` and `y`.";
+
+  let description = [{
+Performs a logical shift for unsigned integer types, and an arithmetic shift
+for signed integer types.
+
+If `y` is negative, or greater than or equal to than the width of `x` in bits
+the result is implementation defined.
+
+Example:
+
+```python
+import tensorflow as tf
+from tensorflow.python.ops import bitwise_ops
+import numpy as np
+dtype_list = [tf.int8, tf.int16, tf.int32, tf.int64]
+
+for dtype in dtype_list:
+  lhs = tf.constant([-1, -5, -3, -14], dtype=dtype)
+  rhs = tf.constant([5, 0, 7, 11], dtype=dtype)
+
+  right_shift_result = bitwise_ops.right_shift(lhs, rhs)
+
+  print(right_shift_result)
+
+# This will print:
+# tf.Tensor([-1 -5 -1 -1], shape=(4,), dtype=int8)
+# tf.Tensor([-1 -5 -1 -1], shape=(4,), dtype=int16)
+# tf.Tensor([-1 -5 -1 -1], shape=(4,), dtype=int32)
+# tf.Tensor([-1 -5 -1 -1], shape=(4,), dtype=int64)
+
+lhs = np.array([-2, 64, 101, 32], dtype=np.int8)
+rhs = np.array([-1, -5, -3, -14], dtype=np.int8)
+bitwise_ops.right_shift(lhs, rhs)
+# <tf.Tensor: shape=(4,), dtype=int8, numpy=array([ -2,  64, 101,  32], dtype=int8)>
+```
+  }];
+
+  let arguments = (ins
+    TF_IntTensor:$x,
+    TF_IntTensor:$y
+  );
+
+  let results = (outs
+    TF_IntTensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_RoundOp : TF_Op<"Round", [NoSideEffect, SameOperandsAndResultType]> {
@@ -5122,6 +5312,34 @@ x = [[[[1, 2, 3, 4],
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_SparseSoftmaxCrossEntropyWithLogitsOp : TF_Op<"SparseSoftmaxCrossEntropyWithLogits", [NoSideEffect]> {
+  let summary = [{
+Computes softmax cross entropy cost and gradients to backpropagate.
+  }];
+
+  let description = [{
+Unlike `SoftmaxCrossEntropyWithLogits`, this operation does not accept
+a matrix of label probabilities, but rather a single label per row
+of features.  This label is considered to have probability 1.0 for the
+given row.
+
+Inputs are the logits, not probabilities.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$features,
+    TF_I32OrI64Tensor:$labels
+  );
+
+  let results = (outs
+    TF_FpTensor:$loss,
+    TF_FpTensor:$backprop
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tlabels = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_SparseToDenseOp : TF_Op<"SparseToDense", [NoSideEffect]> {
   let summary = "Converts a sparse representation into a dense tensor.";
 
@@ -5455,8 +5673,67 @@ receive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<1>;
 
-  let verifier = [{
-    return Verify(*this);
+  let verifier = [{ return VerifyStridedSliceBase(*this); }];
+
+  let extraClassDeclaration = [{
+    // If sliced shape is able to be deduced, returns true, updates
+    // `begin_indices`, `end_indices`, and `strides` with their canonical
+    // values, respectively.
+    bool GetSlicedBoundRanges(
+      ::llvm::ArrayRef<int64_t> shape,
+      ::llvm::SmallVectorImpl<int64_t> *begin_indices,
+      ::llvm::SmallVectorImpl<int64_t> *end_indices,
+      ::llvm::SmallVectorImpl<int64_t> *strides);
+  }];
+}
+
+def TF_StridedSliceGradOp : TF_Op<"StridedSliceGrad", [NoSideEffect]> {
+  let summary = "Returns the gradient of `StridedSlice`.";
+
+  let description = [{
+Since `StridedSlice` cuts out pieces of its `input` which is size
+`shape`, its gradient will have the same shape (which is passed here
+as `shape`). The gradient will be zero in any element that the slice
+does not select.
+
+Arguments are the same as StridedSliceGrad with the exception that
+`dy` is the input gradient to be propagated and `shape` is the
+shape of `StridedSlice`'s `input`.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TF_I32OrI64Tensor:$begin,
+    TF_I32OrI64Tensor:$end,
+    TF_I32OrI64Tensor:$strides,
+    TF_Tensor:$dy,
+
+    DefaultValuedAttr<I64Attr, "0">:$begin_mask,
+    DefaultValuedAttr<I64Attr, "0">:$end_mask,
+    DefaultValuedAttr<I64Attr, "0">:$ellipsis_mask,
+    DefaultValuedAttr<I64Attr, "0">:$new_axis_mask,
+    DefaultValuedAttr<I64Attr, "0">:$shrink_axis_mask
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<4>;
+  TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    // If sliced shape is able to be deduced, returns true, updates `shape`
+    // with the final shape after performing StridedSlice, and updates
+    // `begin_indices`, `end_indices`, and `strides` with their canonical
+    // values, respectively.
+    bool GetSlicedShapeAndBoundRanges(
+      ::llvm::SmallVectorImpl<int64_t> *shape,
+      ::llvm::SmallVectorImpl<int64_t> *begin_indices,
+      ::llvm::SmallVectorImpl<int64_t> *end_indices,
+      ::llvm::SmallVectorImpl<int64_t> *strides);
   }];
 }
 
@@ -5986,7 +6263,7 @@ def TF_UniqueOp : TF_Op<"Unique", [NoSideEffect]> {
   let description = [{
 This operation returns a tensor `y` containing all of the unique elements of `x`
 sorted in the same order that they occur in `x`; `x` does not need to be sorted.
-This operation also returns a tensor `idx` the same size as `x` that contains 
+This operation also returns a tensor `idx` the same size as `x` that contains
 the index of each value of `x` in the unique output `y`. In other words:
 
 `y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`
@@ -6055,6 +6332,205 @@ This is the opposite of `pack`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let verifier = [{ return Verify(*this); }];
+}
+
+def TF_UnsortedSegmentMaxOp : TF_Op<"UnsortedSegmentMax", [NoSideEffect]> {
+  let summary = "Computes the maximum along segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+This operator is similar to the unsorted segment sum operator found
+[(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+Instead of computing the sum over segments, it computes the maximum such that:
+
+\\(output_i = \max_{j...} data[j...]\\) where max is over tuples `j...` such
+that `segment_ids[j...] == i`.
+
+If the maximum is empty for a given segment ID `i`, it outputs the smallest
+possible value for the specific numeric type,
+`output[i] = numeric_limits<T>::lowest()`.
+
+If the given segment ID `i` is negative, then the corresponding value is
+dropped, and will not be included in the result.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentMax.png" alt>
+</div>
+
+For example:
+
+``` python
+c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+tf.unsorted_segment_max(c, tf.constant([0, 1, 0]), num_segments=2)
+# ==> [[ 4,  3, 3, 4],
+#       [5,  6, 7, 8]]
+```
+  }];
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$data,
+    TF_I32OrI64Tensor:$segment_ids,
+    TF_I32OrI64Tensor:$num_segments
+  );
+
+  let results = (outs
+    TF_IntOrFpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tnumsegments = TF_DerivedOperandTypeAttr<2>;
+
+  let verifier = [{ return VerifyUnsortedSegmentReduction(*this); }];
+}
+
+def TF_UnsortedSegmentMinOp : TF_Op<"UnsortedSegmentMin", [NoSideEffect]> {
+  let summary = "Computes the minimum along segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+This operator is similar to the unsorted segment sum operator found
+[(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+Instead of computing the sum over segments, it computes the minimum such that:
+
+\\(output_i = \min_{j...} data_[j...]\\) where min is over tuples `j...` such
+that `segment_ids[j...] == i`.
+
+If the minimum is empty for a given segment ID `i`, it outputs the largest
+possible value for the specific numeric type,
+`output[i] = numeric_limits<T>::max()`.
+
+For example:
+
+``` python
+c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+tf.unsorted_segment_min(c, tf.constant([0, 1, 0]), num_segments=2)
+# ==> [[ 1,  2, 2, 1],
+#       [5,  6, 7, 8]]
+```
+
+If the given segment ID `i` is negative, then the corresponding value is
+dropped, and will not be included in the result.
+  }];
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$data,
+    TF_I32OrI64Tensor:$segment_ids,
+    TF_I32OrI64Tensor:$num_segments
+  );
+
+  let results = (outs
+    TF_IntOrFpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tnumsegments = TF_DerivedOperandTypeAttr<2>;
+
+  let verifier = [{ return VerifyUnsortedSegmentReduction(*this); }];
+}
+
+def TF_UnsortedSegmentProdOp : TF_Op<"UnsortedSegmentProd", [NoSideEffect]> {
+  let summary = "Computes the product along segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+This operator is similar to the unsorted segment sum operator found
+[(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+Instead of computing the sum over segments, it computes the product of all
+entries belonging to a segment such that:
+
+\\(output_i = \prod_{j...} data[j...]\\) where the product is over tuples
+`j...` such that `segment_ids[j...] == i`.
+
+For example:
+
+``` python
+c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+tf.unsorted_segment_prod(c, tf.constant([0, 1, 0]), num_segments=2)
+# ==> [[ 4,  6, 6, 4],
+#       [5,  6, 7, 8]]
+```
+
+If there is no entry for a given segment ID `i`, it outputs 1.
+
+If the given segment ID `i` is negative, then the corresponding value is
+dropped, and will not be included in the result.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$data,
+    TF_I32OrI64Tensor:$segment_ids,
+    TF_I32OrI64Tensor:$num_segments
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tnumsegments = TF_DerivedOperandTypeAttr<2>;
+
+  let verifier = [{ return VerifyUnsortedSegmentReduction(*this); }];
+}
+
+def TF_UnsortedSegmentSumOp : TF_Op<"UnsortedSegmentSum", [NoSideEffect]> {
+  let summary = "Computes the sum along segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Computes a tensor such that
+\\(output[i] = \sum_{j...} data[j...]\\) where the sum is over tuples `j...` such
+that `segment_ids[j...] == i`.  Unlike `SegmentSum`, `segment_ids`
+need not be sorted and need not cover all values in the full
+range of valid values.
+
+If the sum is empty for a given segment ID `i`, `output[i] = 0`.
+If the given segment ID `i` is negative, the value is dropped and will not be
+added to the sum of the segment.
+
+`num_segments` should equal the number of distinct segment IDs.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentSum.png" alt>
+</div>
+
+``` python
+c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+tf.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
+# ==> [[ 5,  5, 5, 5],
+#       [5,  6, 7, 8]]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$data,
+    TF_I32OrI64Tensor:$segment_ids,
+    TF_I32OrI64Tensor:$num_segments
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tnumsegments = TF_DerivedOperandTypeAttr<2>;
+
+  let verifier = [{ return VerifyUnsortedSegmentReduction(*this); }];
 }
 
 def TF_VariableShapeOp : TF_Op<"VariableShape", []> {

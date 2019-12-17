@@ -76,7 +76,7 @@ def SPV_AccessChainOp : SPV_Op<"AccessChain", [NoSideEffect]> {
     - must be an OpConstant when indexing into a structure.
 
     ### Custom assembly form
-    ``` {.ebnf}
+    ```
     access-chain-op ::= ssa-id `=` `spv.AccessChain` ssa-use
                         `[` ssa-use (',' ssa-use)* `]`
                         `:` pointer-type
@@ -144,7 +144,7 @@ def SPV_ControlBarrierOp : SPV_Op<"ControlBarrier", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     scope ::= `"CrossDevice"` | `"Device"` | `"Workgroup"` | ...
 
     memory-semantics ::= `"None"` | `"Acquire"` | "Release"` | ...
@@ -190,7 +190,7 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     execution-mode ::= "Invocations" | "SpacingEqual" |
                        <and other SPIR-V execution modes...>
 
@@ -243,7 +243,7 @@ def SPV_LoadOp : SPV_Op<"Load", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     memory-access ::= `"None"` | `"Volatile"` | `"Aligned", ` integer-literal
                     | `"NonTemporal"`
 
@@ -298,7 +298,7 @@ def SPV_MemoryBarrierOp : SPV_Op<"MemoryBarrier", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     scope ::= `"CrossDevice"` | `"Device"` | `"Workgroup"` | ...
 
     memory-semantics ::= `"None"` | `"Acquire"` | `"Release"` | ...
@@ -343,7 +343,7 @@ def SPV_StoreOp : SPV_Op<"Store", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     store-op ::= `spv.Store ` storage-class ssa-use `, ` ssa-use `, `
                   (`[` memory-access `]`)? `:` spirv-element-type
     ```
@@ -391,8 +391,8 @@ def SPV_UndefOp : SPV_Op<"undef", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
-    undef-op ::= `spv.undef` `:` sprirv-type
+    ```
+    undef-op ::= `spv.undef` `:` spirv-type
     ```
 
     For example:
@@ -439,7 +439,7 @@ def SPV_VariableOp : SPV_Op<"Variable", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     variable-op ::= ssa-id `=` `spv.Variable` (`init(` ssa-use `)`)?
                     (`bind(` integer-literal, integer-literal `)`)?
                     (`built_in(` string-literal `)`)?

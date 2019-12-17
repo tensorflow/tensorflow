@@ -50,7 +50,7 @@ def InferTypeOpInterface : OpInterface<"InferTypeOpInterface"> {
       /*args=*/(ins "llvm::Optional<Location>":$location,
                     "ValueRange":$operands,
                     "ArrayRef<NamedAttribute>":$attributes,
-                    "ArrayRef<Region>":$regions,
+                    "RegionRange":$regions,
                     "SmallVectorImpl<Type>&":$inferedReturnTypes)
     >,
     StaticInterfaceMethod<

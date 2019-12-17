@@ -127,6 +127,9 @@ def Vector_ContractionOp :
       %5 = vector.contract #contraction_trait %0, %1, %2, %lhs_mask, %rhs_mask
          : vector<7x8x16x15xf32>, vector<8x16x7x5xf32> into vector<8x15x8x5xf32>
   }];
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *lhs, Value *rhs, "
+    "Value *acc, ArrayAttr indexingMaps, ArrayAttr iteratorTypes">];
   let extraClassDeclaration = [{
     VectorType getLhsType() {
       return lhs()->getType().cast<VectorType>();
@@ -148,14 +151,9 @@ def Vector_ContractionOp :
     VectorType getResultType() {
       return getResult()->getType().cast<VectorType>();
     }
-    SmallVector<StringRef, 2> getTraitAttrNames();
+    ArrayRef<StringRef> getTraitAttrNames();
     SmallVector<AffineMap, 4> getIndexingMaps();
-    static StringRef getReductionIteratorTypeName() {
-      return "reduction";
-    }
-    static StringRef getParallelIteratorTypeName() {
-      return "parallel";
-    }
+    static unsigned getAccOperandIndex() { return 2; }
 
     // Returns the bounds of each dimension in the iteration space spanned
     // by the iterator types of this operation.
@@ -197,7 +195,7 @@ def Vector_BroadcastOp :
                <duplication>         <potential stretch>
        ```
     The source operand is duplicated over all the missing leading dimensions
-    and streched over the trailing dimensions where the source has a non-equal
+    and stretched over the trailing dimensions where the source has a non-equal
     dimension of 1. These rules imply that any scalar broadcast (k=0) to any
     shaped vector with the same element type is always legal.
 
@@ -210,6 +208,86 @@ def Vector_BroadcastOp :
   }];
   let extraClassDeclaration = [{
     Type getSourceType() { return source()->getType(); }
+    VectorType getVectorType() {
+      return vector()->getType().cast<VectorType>();
+    }
+  }];
+}
+
+def Vector_ShuffleOp :
+  Vector_Op<"shuffle", [NoSideEffect,
+     PredOpTrait<"first operand v1 and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 0>>,
+     PredOpTrait<"second operand v2 and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 1>>]>,
+     Arguments<(ins AnyVector:$v1, AnyVector:$v2, I32ArrayAttr:$mask)>,
+     Results<(outs AnyVector:$vector)> {
+  let summary = "shuffle operation";
+  let description = [{
+    The shuffle operation constructs a permutation (or duplication) of elements
+    from two input vectors, returning a vector with the same element type as
+    the input and a length that is the same as the shuffle mask. The two input
+    vectors must have the same element type, rank, and trailing dimension sizes
+    and shuffles their values in the leading dimension (which may differ in size)
+    according to the given mask. The legality rules are:
+    * the two operands must have the same element type as the result
+    * the two operands and the result must have the same rank and trailing
+      dimension sizes, viz. given two k-D operands
+              v1 : <s_1 x s_2 x .. x s_k x type> and
+              v2 : <t_1 x t_2 x .. x t_k x type>
+      we have s_i = t_i for all 1 < i <= k
+    * the mask length equals the leading dimension size of the result
+    * numbering the input vector indices left to right accross the operands, all
+      mask values must be within range, viz. given two k-D operands v1 and v2
+      above, all mask values are in the range [0,s_1+t_1)
+
+    Examples:
+    ```
+    %0 = vector.shuffle %a, %b[0:i32, 3:i32]
+               : vector<2xf32>, vector<2xf32>       ; yields vector<2xf32>
+    %1 = vector.shuffle %c, %b[0:i32, 1:i32, 2:i32]
+               : vector<2x16xf32>, vector<1x16xf32> ; yields vector<3x16xf32>
+    %2 = vector.shuffle %a, %b[3:i32, 2:i32, 1:i32 : 0:i32]
+               : vector<2xf32>, vector<2xf32>       ; yields vector<4xf32>
+
+    ```
+  }];
+  let builders = [OpBuilder<"Builder *builder, OperationState &result, Value *v1, Value *v2, ArrayRef<int32_t>">];
+  let extraClassDeclaration = [{
+    static StringRef getMaskAttrName() { return "mask"; }
+    VectorType getV1VectorType() {
+      return v1()->getType().cast<VectorType>();
+    }
+    VectorType getV2VectorType() {
+      return v2()->getType().cast<VectorType>();
+    }
+    VectorType getVectorType() {
+      return vector()->getType().cast<VectorType>();
+    }
+  }];
+}
+
+def Vector_ExtractElementOp :
+  Vector_Op<"extractelement", [NoSideEffect,
+     PredOpTrait<"operand and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 0>>]>,
+    Arguments<(ins AnyVector:$vector, Index:$position)>,
+    Results<(outs AnyType)> {
+  let summary = "extractelement operation";
+  let description = [{
+    Takes an 1-D vector and a dynamic index position and extracts the
+    scalar at that position. Note that this instruction resembles
+    vector.extract, but is restricted to 1-D vectors and relaxed
+    to dynamic indices. It is meant to be closer to LLVM's version:
+    https://llvm.org/docs/LangRef.html#extractelement-instruction
+
+    Example:
+    ```
+      %c = constant 15 : i32
+      %1 = vector.extractelement %0[%c : i32]: vector<16xf32>
+    ```
+  }];
+  let extraClassDeclaration = [{
     VectorType getVectorType() {
       return vector()->getType().cast<VectorType>();
     }
@@ -239,6 +317,90 @@ def Vector_ExtractOp :
     static StringRef getPositionAttrName() { return "position"; }
     VectorType getVectorType() {
       return vector()->getType().cast<VectorType>();
+    }
+  }];
+}
+
+def Vector_ExtractSlicesOp :
+  Vector_Op<"extract_slices", [NoSideEffect]>,
+    Arguments<(ins AnyVector:$vector, I64ArrayAttr:$sizes,
+                   I64ArrayAttr:$strides)>,
+    Results<(outs TupleOf<[AnyVector]>)> {
+  let summary = "vector extract slices operation";
+  let description = [{
+    Takes an N-d vector and returns a tuple of vector slices of 'vector',
+    based on 'sizes' and 'strides' parameters.
+
+    The arguments 'sizes' and 'strides' represent a specification for
+    generating the unrolling of 'vector' shape, which has all slices of shape
+    'sizes' except for slices at dimension boundaries when 'vector' dimension
+    sizes are not a multiple of 'sizes'.
+
+    Each slice is returned at the tuple element index corresponding to the
+    linear index of the slice w.r.t the unrolling scheme represented by 'sizes'.
+    Currently, only unit strides are supported.
+
+    Examples:
+    ```
+      %0 = vector.transfer_read ...: vector<4x2xf32>
+
+      %1 = vector.extract_slices %0, [2, 2], [1, 1]
+        : vector<4x2xf32> into tuple<vector<2x2xf32>, vector<2x2xf32>>
+
+      // Example with partial slices at dimension boundaries.
+      %2 = vector.transfer_read ...: vector<4x3xf32>
+
+      %3 = vector.extract_slices %2, [2, 2], [1, 1]
+        : vector<4x3xf32> into tuple<vector<2x2xf32>, vector<2x1xf32>,
+                                     vector<2x2xf32>, vector<2x1xf32>>
+    ```
+  }];
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, TupleType tupleType, " #
+    "Value *vector, ArrayRef<int64_t> sizes, " #
+    "ArrayRef<int64_t> strides">];
+  let extraClassDeclaration = [{
+    VectorType getSourceVectorType() {
+      return vector()->getType().cast<VectorType>();
+    }
+    TupleType getResultTupleType() {
+      return getResult()->getType().cast<TupleType>();
+    }
+    void getSizes(SmallVectorImpl<int64_t> &results);
+    void getStrides(SmallVectorImpl<int64_t> &results);
+    static StringRef getSizesAttrName() { return "sizes"; }
+    static StringRef getStridesAttrName() { return "strides"; }
+  }];
+}
+
+def Vector_InsertElementOp :
+  Vector_Op<"insertelement", [NoSideEffect,
+     PredOpTrait<"source operand and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 0>>,
+     PredOpTrait<"dest operand and result have same type",
+                 TCresIsSameAsOpBase<0, 1>>]>,
+     Arguments<(ins AnyType:$source, AnyVector:$dest, Index:$position)>,
+     Results<(outs AnyVector)> {
+  let summary = "insertelement operation";
+  let description = [{
+    Takes a scalar source, an 1-D destination vector and a dynamic index
+    position and inserts the source into the destination at the proper
+    position.  Note that this instruction resembles vector.insert, but
+    is restricted to 1-D vectors and relaxed to dynamic indices. It is
+    meant to be closer to LLVM's version:
+    https://llvm.org/docs/LangRef.html#insertelement-instruction
+
+    Example:
+    ```
+      %c = constant 15 : i32
+      %f = constant 0.0f : f32
+      %1 = vector.insertelement %f, %0[%c : i32]: vector<16xf32>
+    ```
+  }];
+  let extraClassDeclaration = [{
+    Type getSourceType() { return source()->getType(); }
+    VectorType getDestVectorType() {
+      return dest()->getType().cast<VectorType>();
     }
   }];
 }
@@ -274,6 +436,58 @@ def Vector_InsertOp :
     VectorType getDestVectorType() {
       return dest()->getType().cast<VectorType>();
     }
+  }];
+}
+
+def Vector_InsertSlicesOp :
+  Vector_Op<"insert_slices", [NoSideEffect]>,
+    Arguments<(ins TupleOf<[AnyVector]>:$vectors, I64ArrayAttr:$sizes,
+                   I64ArrayAttr:$strides)>,
+    Results<(outs AnyVector)> {
+  let summary = "vector insert slices operation";
+  let description = [{
+    Takes a tuple of vector slices and inserts them into the vector result
+    according to the 'sizes' and 'strides' parameters.
+
+    The arguments 'sizes' and 'strides' represent a specification for
+    generating the unrolling of 'vector' shape, which has all slices of shape
+    'sizes' except for slices at dimension boundaries when 'vector' dimension
+    sizes are not a multiple of 'sizes'.
+
+    Each slice in 'vectors' is at the tuple element index corresponding to the
+    linear index of the slice w.r.t the unrolling scheme represented by 'sizes'.
+    Currently, only unit strides are supported.
+
+    Examples:
+    ```
+      %0 = vector.extract_slices %0, [2, 2], [1, 1]
+        : vector<4x2xf32> into tuple<vector<2x2xf32>, vector<2x2xf32>>
+
+      %1 = vector.insert_slices %0, [2, 2], [1, 1]
+        : tuple<vector<2x2xf32>, vector<2x2xf32>> into vector<4x2xf32>
+
+      // Example with partial slices at dimension boundaries.
+      %3 = vector.extract_slices %2, [2, 2], [1, 1]
+        : vector<4x3xf32> into tuple<vector<2x2xf32>, vector<2x1xf32>,
+                                     vector<2x2xf32>, vector<2x1xf32>>
+
+      %4 = vector.insert_slices %3, [2, 2], [1, 1]
+        : tuple<vector<2x2xf32>, vector<2x1xf32>,
+                vector<2x2xf32>, vector<2x1xf32>> into vector<4x3xf32>
+    ```
+  }];
+
+  let extraClassDeclaration = [{
+    TupleType getSourceTupleType() {
+      return vectors()->getType().cast<TupleType>();
+    }
+    VectorType getResultVectorType() {
+      return getResult()->getType().cast<VectorType>();
+    }
+    void getSizes(SmallVectorImpl<int64_t> &results);
+    void getStrides(SmallVectorImpl<int64_t> &results);
+    static StringRef getSizesAttrName() { return "sizes"; }
+    static StringRef getStridesAttrName() { return "strides"; }
   }];
 }
 
@@ -400,6 +614,7 @@ def Vector_StridedSliceOp :
     static StringRef getSizesAttrName() { return "sizes"; }
     static StringRef getStridesAttrName() { return "strides"; }
     VectorType getVectorType(){ return vector()->getType().cast<VectorType>(); }
+    void getOffsets(SmallVectorImpl<int64_t> &results);
   }];
   let hasCanonicalizer = 1;
 }
@@ -433,7 +648,7 @@ def Vector_TransferReadOp :
     More precisely, let's dive deeper into the permutation_map for the following
     MLIR:
 
-    ```mlir {.mlir}
+    ```mlir
     vector.transfer_read %A[%expr1, %expr2, %expr3, %expr4]
       { permutation_map : (d0,d1,d2,d3) -> (d2,0,d0) } :
       memref<?x?x?x?xf32>, vector<3x4x5xf32>
@@ -493,7 +708,7 @@ def Vector_TransferReadOp :
     implemented using a warp-shuffle if loop `j` were mapped to `threadIdx.x`.
 
     Syntax
-    ``` {.ebnf}
+    ```
     operation ::= ssa-id `=` `vector.transfer_read` ssa-use-list
       `{` attribute-entry `} :` memref-type `,` vector-type
     ```
@@ -564,14 +779,14 @@ def Vector_TransferWriteOp :
 
     Syntax:
 
-    ``` {.ebnf}
+    ```
     operation ::= `vector.transfer_write` ssa-use-list `{` attribute-entry `} :
       ` vector-type ', ' memref-type '
     ```
 
     Examples:
 
-    ```mlir {.mlir}
+    ```mlir
     // write vector<16x32x64xf32> into the slice
     //   `%A[%i0, %i1:%i1+32, %i2:%i2+64, %i3:%i3+16]`:
     for %i0 = 0 to %0 {
@@ -610,7 +825,7 @@ def Vector_TypeCastOp :
 
     Syntax:
 
-    ``` {.ebnf}
+    ```
     operation ::= `vector.type_cast` ssa-use : memref-type to memref-type
     ```
 
@@ -649,7 +864,7 @@ def Vector_ConstantMaskOp :
     are set to '0' or '1', based on whether the element indices are contained
     within a hyper-rectangular region specified by the 'mask_dim_sizes'
     array attribute argument. Each element of the 'mask_dim_sizes' array,
-    specifices an exclusive upper bound [0, mask-dim-size-element-value)
+    specifies an exclusive upper bound [0, mask-dim-size-element-value)
     for a unique dimension in the vector result. The conjunction of the ranges
     define a hyper-rectangular region within which elements values are set to 1
     (otherwise element values are set to 0).
@@ -703,6 +918,73 @@ def Vector_CreateMaskOp :
   }];
 
   let hasCanonicalizer = 1;
+}
+
+def Vector_TupleOp :
+  Vector_Op<"tuple", [NoSideEffect]>,
+    Arguments<(ins Variadic<AnyVector>:$vectors)>,
+    Results<(outs TupleOf<[AnyVector]>)> {
+  let summary = "make tuple of vectors operation";
+  let description = [{
+    Returns a tuple of its operands 'vectors'.
+
+    Note that this operation is used during the vector op unrolling
+    transformation and should be removed before lowering to lower-level
+    dialects.
+    
+
+    Examples:
+    ```
+      %0 = vector.transfer_read ... : vector<2x2xf32>
+      %1 = vector.transfer_read ... : vector<2x1xf32>
+      %2 = vector.transfer_read ... : vector<2x2xf32>
+      %3 = vector.transfer_read ... : vector<2x1xf32>
+
+      %4 = vector.tuple %0, %1, %2, %3
+        : vector<2x2xf32>, vector<2x1xf32>, vector<2x2xf32>, vector<2x1xf32>
+
+    ```
+  }];
+
+  let extraClassDeclaration = [{
+    TupleType getResultTupleType() {
+      return getResult()->getType().cast<TupleType>();
+    }
+  }];
+}
+
+def Vector_TupleGetOp :
+  Vector_Op<"tuple_get", [NoSideEffect]>,
+    Arguments<(ins TupleOf<[AnyVector]>:$vectors, APIntAttr:$index)>,
+    Results<(outs AnyVector)> {
+  let summary = "vector tuple get operation";
+  let description = [{
+    Returns the tuple element of 'vectors' at 'index'.
+
+    Note that this operation is used during the vector op unrolling
+    transformation and should be removed before lowering to lower-level
+    dialects.
+
+    Examples:
+    ```
+      %4 = vector.tuple %0, %1, %2, %3
+        : vector<2x2xf32>, vector<2x1xf32>, vector<2x2xf32>, vector<2x1xf32>>
+
+      %5 = vector.tuple_get %4, 1
+        : tuple<vector<2x2xf32>, vector<2x1xf32>,
+                vector<2x2xf32>, vector<2x1xf32>>
+    ```
+  }];
+
+  let extraClassDeclaration = [{
+    VectorType getResultVectorType() {
+      return getResult()->getType().cast<VectorType>();
+    }
+    unsigned getIndex() {
+      return getAttrOfType<IntegerAttr>("index").getValue().getZExtValue();
+    }
+    static StringRef getIndexAttrName() { return "index"; }
+  }];
 }
 
 #endif // VECTOR_OPS

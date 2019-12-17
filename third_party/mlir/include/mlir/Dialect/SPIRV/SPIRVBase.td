@@ -1075,6 +1075,7 @@ def SPV_OC_OpStore                     : I32EnumAttrCase<"OpStore", 62>;
 def SPV_OC_OpAccessChain               : I32EnumAttrCase<"OpAccessChain", 65>;
 def SPV_OC_OpDecorate                  : I32EnumAttrCase<"OpDecorate", 71>;
 def SPV_OC_OpMemberDecorate            : I32EnumAttrCase<"OpMemberDecorate", 72>;
+def SPV_OC_OpCompositeConstruct        : I32EnumAttrCase<"OpCompositeConstruct", 80>;
 def SPV_OC_OpCompositeExtract          : I32EnumAttrCase<"OpCompositeExtract", 81>;
 def SPV_OC_OpCompositeInsert           : I32EnumAttrCase<"OpCompositeInsert", 82>;
 def SPV_OC_OpConvertFToU               : I32EnumAttrCase<"OpConvertFToU", 109>;
@@ -1143,6 +1144,17 @@ def SPV_OC_OpBitCount                  : I32EnumAttrCase<"OpBitCount", 205>;
 def SPV_OC_OpControlBarrier            : I32EnumAttrCase<"OpControlBarrier", 224>;
 def SPV_OC_OpMemoryBarrier             : I32EnumAttrCase<"OpMemoryBarrier", 225>;
 def SPV_OC_OpAtomicCompareExchangeWeak : I32EnumAttrCase<"OpAtomicCompareExchangeWeak", 231>;
+def SPV_OC_OpAtomicIIncrement          : I32EnumAttrCase<"OpAtomicIIncrement", 232>;
+def SPV_OC_OpAtomicIDecrement          : I32EnumAttrCase<"OpAtomicIDecrement", 233>;
+def SPV_OC_OpAtomicIAdd                : I32EnumAttrCase<"OpAtomicIAdd", 234>;
+def SPV_OC_OpAtomicISub                : I32EnumAttrCase<"OpAtomicISub", 235>;
+def SPV_OC_OpAtomicSMin                : I32EnumAttrCase<"OpAtomicSMin", 236>;
+def SPV_OC_OpAtomicUMin                : I32EnumAttrCase<"OpAtomicUMin", 237>;
+def SPV_OC_OpAtomicSMax                : I32EnumAttrCase<"OpAtomicSMax", 238>;
+def SPV_OC_OpAtomicUMax                : I32EnumAttrCase<"OpAtomicUMax", 239>;
+def SPV_OC_OpAtomicAnd                 : I32EnumAttrCase<"OpAtomicAnd", 240>;
+def SPV_OC_OpAtomicOr                  : I32EnumAttrCase<"OpAtomicOr", 241>;
+def SPV_OC_OpAtomicXor                 : I32EnumAttrCase<"OpAtomicXor", 242>;
 def SPV_OC_OpPhi                       : I32EnumAttrCase<"OpPhi", 245>;
 def SPV_OC_OpLoopMerge                 : I32EnumAttrCase<"OpLoopMerge", 246>;
 def SPV_OC_OpSelectionMerge            : I32EnumAttrCase<"OpSelectionMerge", 247>;
@@ -1171,20 +1183,21 @@ def SPV_OpcodeAttr :
       SPV_OC_OpSpecConstantComposite, SPV_OC_OpFunction, SPV_OC_OpFunctionParameter,
       SPV_OC_OpFunctionEnd, SPV_OC_OpFunctionCall, SPV_OC_OpVariable, SPV_OC_OpLoad,
       SPV_OC_OpStore, SPV_OC_OpAccessChain, SPV_OC_OpDecorate,
-      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpCompositeInsert,
-      SPV_OC_OpConvertFToU, SPV_OC_OpConvertFToS, SPV_OC_OpConvertSToF,
-      SPV_OC_OpConvertUToF, SPV_OC_OpUConvert, SPV_OC_OpSConvert, SPV_OC_OpFConvert,
-      SPV_OC_OpBitcast, SPV_OC_OpFNegate, SPV_OC_OpIAdd, SPV_OC_OpFAdd,
-      SPV_OC_OpISub, SPV_OC_OpFSub, SPV_OC_OpIMul, SPV_OC_OpFMul, SPV_OC_OpUDiv,
-      SPV_OC_OpSDiv, SPV_OC_OpFDiv, SPV_OC_OpUMod, SPV_OC_OpSRem, SPV_OC_OpSMod,
-      SPV_OC_OpFRem, SPV_OC_OpFMod, SPV_OC_OpLogicalEqual, SPV_OC_OpLogicalNotEqual,
-      SPV_OC_OpLogicalOr, SPV_OC_OpLogicalAnd, SPV_OC_OpLogicalNot, SPV_OC_OpSelect,
-      SPV_OC_OpIEqual, SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan,
-      SPV_OC_OpSGreaterThan, SPV_OC_OpUGreaterThanEqual, SPV_OC_OpSGreaterThanEqual,
-      SPV_OC_OpULessThan, SPV_OC_OpSLessThan, SPV_OC_OpULessThanEqual,
-      SPV_OC_OpSLessThanEqual, SPV_OC_OpFOrdEqual, SPV_OC_OpFUnordEqual,
-      SPV_OC_OpFOrdNotEqual, SPV_OC_OpFUnordNotEqual, SPV_OC_OpFOrdLessThan,
-      SPV_OC_OpFUnordLessThan, SPV_OC_OpFOrdGreaterThan, SPV_OC_OpFUnordGreaterThan,
+      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeConstruct,
+      SPV_OC_OpCompositeExtract, SPV_OC_OpCompositeInsert, SPV_OC_OpConvertFToU,
+      SPV_OC_OpConvertFToS, SPV_OC_OpConvertSToF, SPV_OC_OpConvertUToF,
+      SPV_OC_OpUConvert, SPV_OC_OpSConvert, SPV_OC_OpFConvert, SPV_OC_OpBitcast,
+      SPV_OC_OpFNegate, SPV_OC_OpIAdd, SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub,
+      SPV_OC_OpIMul, SPV_OC_OpFMul, SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv,
+      SPV_OC_OpUMod, SPV_OC_OpSRem, SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod,
+      SPV_OC_OpLogicalEqual, SPV_OC_OpLogicalNotEqual, SPV_OC_OpLogicalOr,
+      SPV_OC_OpLogicalAnd, SPV_OC_OpLogicalNot, SPV_OC_OpSelect, SPV_OC_OpIEqual,
+      SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan, SPV_OC_OpSGreaterThan,
+      SPV_OC_OpUGreaterThanEqual, SPV_OC_OpSGreaterThanEqual, SPV_OC_OpULessThan,
+      SPV_OC_OpSLessThan, SPV_OC_OpULessThanEqual, SPV_OC_OpSLessThanEqual,
+      SPV_OC_OpFOrdEqual, SPV_OC_OpFUnordEqual, SPV_OC_OpFOrdNotEqual,
+      SPV_OC_OpFUnordNotEqual, SPV_OC_OpFOrdLessThan, SPV_OC_OpFUnordLessThan,
+      SPV_OC_OpFOrdGreaterThan, SPV_OC_OpFUnordGreaterThan,
       SPV_OC_OpFOrdLessThanEqual, SPV_OC_OpFUnordLessThanEqual,
       SPV_OC_OpFOrdGreaterThanEqual, SPV_OC_OpFUnordGreaterThanEqual,
       SPV_OC_OpShiftRightLogical, SPV_OC_OpShiftRightArithmetic,
@@ -1192,11 +1205,14 @@ def SPV_OpcodeAttr :
       SPV_OC_OpBitwiseAnd, SPV_OC_OpNot, SPV_OC_OpBitFieldInsert,
       SPV_OC_OpBitFieldSExtract, SPV_OC_OpBitFieldUExtract, SPV_OC_OpBitReverse,
       SPV_OC_OpBitCount, SPV_OC_OpControlBarrier, SPV_OC_OpMemoryBarrier,
-      SPV_OC_OpAtomicCompareExchangeWeak, SPV_OC_OpPhi, SPV_OC_OpLoopMerge,
-      SPV_OC_OpSelectionMerge, SPV_OC_OpLabel, SPV_OC_OpBranch,
-      SPV_OC_OpBranchConditional, SPV_OC_OpReturn, SPV_OC_OpReturnValue,
-      SPV_OC_OpUnreachable, SPV_OC_OpModuleProcessed, SPV_OC_OpGroupNonUniformBallot,
-      SPV_OC_OpSubgroupBallotKHR
+      SPV_OC_OpAtomicCompareExchangeWeak, SPV_OC_OpAtomicIIncrement,
+      SPV_OC_OpAtomicIDecrement, SPV_OC_OpAtomicIAdd, SPV_OC_OpAtomicISub,
+      SPV_OC_OpAtomicSMin, SPV_OC_OpAtomicUMin, SPV_OC_OpAtomicSMax,
+      SPV_OC_OpAtomicUMax, SPV_OC_OpAtomicAnd, SPV_OC_OpAtomicOr, SPV_OC_OpAtomicXor,
+      SPV_OC_OpPhi, SPV_OC_OpLoopMerge, SPV_OC_OpSelectionMerge, SPV_OC_OpLabel,
+      SPV_OC_OpBranch, SPV_OC_OpBranchConditional, SPV_OC_OpReturn,
+      SPV_OC_OpReturnValue, SPV_OC_OpUnreachable, SPV_OC_OpModuleProcessed,
+      SPV_OC_OpGroupNonUniformBallot, SPV_OC_OpSubgroupBallotKHR
       ]> {
     let cppNamespace = "::mlir::spirv";
 }

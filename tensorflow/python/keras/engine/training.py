@@ -242,6 +242,12 @@ class Model(network.Network, version_utils.VersionSelector):
             You can also pass a list (len = len(outputs)) of lists of metrics
             such as `metrics=[['accuracy'], ['accuracy', 'mse']]` or
             `metrics=['accuracy', ['accuracy', 'mse']]`.
+            When you pass the strings 'accuracy' or 'acc', we convert this to
+            one of `tf.keras.metrics.BinaryAccuracy`,
+            `tf.keras.metrics.CategoricalAccuracy`,
+            `tf.keras.metrics.SparseCategoricalAccuracy` based on the loss
+            function used and the model output shape. We do a similar conversion
+            for the strings 'crossentropy' and 'ce' as well.
         loss_weights: Optional list or dictionary specifying scalar
             coefficients (Python floats) to weight the loss contributions
             of different model outputs.
@@ -542,14 +548,14 @@ class Model(network.Network, version_utils.VersionSelector):
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
               - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
               - dataset
-              
+
             For the first two cases, `batch_size` must be provided.
             For the last case, `validation_steps` could be provided.
         shuffle: Boolean (whether to shuffle the training data
-            before each epoch) or str (for 'batch').
-            'batch' is a special option for dealing with the
-            limitations of HDF5 data; it shuffles in batch-sized chunks.
-            Has no effect when `steps_per_epoch` is not `None`.
+            before each epoch) or str (for 'batch'). This argument is ignored
+            when `x` is a generator. 'batch' is a special option for dealing
+            with the limitations of HDF5 data; it shuffles in batch-sized
+            chunks. Has no effect when `steps_per_epoch` is not `None`.
         class_weight: Optional dictionary mapping class indices (integers)
             to a weight (float) value, used for weighting the loss function
             (during training only).
@@ -1313,7 +1319,7 @@ class Model(network.Network, version_utils.VersionSelector):
     """
     if not self._is_compiled:
       return
-    if sample_weights and any([s is not None for s in sample_weights]):
+    if sample_weights and any(s is not None for s in sample_weights):
       for endpoint in self._training_endpoints:
         endpoint.sample_weight_mode = (
             endpoint.sample_weight_mode or 'samplewise')
@@ -1324,8 +1330,8 @@ class Model(network.Network, version_utils.VersionSelector):
   def _recompile_weights_loss_and_weighted_metrics(self):
     if not self._is_compiled:
       return False
-    recompile = any([e.sample_weights_mismatch()
-                     for e in self._training_endpoints])
+    recompile = any(
+        e.sample_weights_mismatch() for e in self._training_endpoints)
 
     if recompile:
       self._compile_weights_loss_and_weighted_metrics()

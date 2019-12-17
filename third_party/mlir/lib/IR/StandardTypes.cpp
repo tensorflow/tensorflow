@@ -197,6 +197,10 @@ bool ShapedType::hasStaticShape() const {
   return hasRank() && llvm::none_of(getShape(), isDynamic);
 }
 
+bool ShapedType::hasStaticShape(ArrayRef<int64_t> shape) const {
+  return hasStaticShape() && getShape() == shape;
+}
+
 //===----------------------------------------------------------------------===//
 // VectorType
 //===----------------------------------------------------------------------===//

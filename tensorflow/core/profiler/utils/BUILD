@@ -118,6 +118,18 @@ cc_library(
 )
 
 cc_library(
+    name = "xplane_schema",
+    srcs = ["xplane_schema.cc"],
+    hdrs = ["xplane_schema.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "xplane_visitor",
     hdrs = ["xplane_visitor.h"],
     visibility = [":friends"],
@@ -128,5 +140,34 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "metadata_matcher",
+    srcs = ["metadata_matcher.cc"],
+    hdrs = ["metadata_matcher.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "metadata_matcher_test",
+    size = "small",
+    srcs = ["metadata_matcher_test.cc"],
+    deps = [
+        ":metadata_matcher",
+        ":xplane_schema",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )

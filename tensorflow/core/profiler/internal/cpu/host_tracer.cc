@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -140,8 +141,9 @@ Status HostTracer::CollectData(XSpace* space) {
     return errors::Internal("TraceMeRecorder not stopped");
   }
   MakeCompleteEvents(&events_);
-  ConvertCompleteEventsToXPlane(start_timestamp_ns_, events_,
-                                space->add_planes());
+  XPlane* plane = space->add_planes();
+  plane->set_name(string(kHostThreads));
+  ConvertCompleteEventsToXPlane(start_timestamp_ns_, events_, plane);
   events_.clear();
   return Status::OK();
 }

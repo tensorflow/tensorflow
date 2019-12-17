@@ -64,7 +64,7 @@ createLegalizeTFControlFlowPass() {
 
 namespace {
 
-void Detuple(Value* tuple, llvm::iterator_range<ResultIterator> replace,
+void Detuple(Value* tuple, Operation::result_range replace,
              OpBuilder* builder) {
   // De-tuple the results of the xla hlo conditional result.
   for (auto result_it : llvm::enumerate(replace)) {

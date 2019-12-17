@@ -58,14 +58,18 @@ static bool isZero(Value *v) {
          cast<ConstantIndexOp>(v->getDefiningOp()).getValue() == 0;
 }
 
+using LoopIndexToRangeIndexMap = DenseMap<int, int>;
+
 // Creates a number of ranges equal to the number of non-zero in `tileSizes`.
 // One for each loop of the LinalgOp that is tiled. The `tileSizes` argument has
 // one entry per surrounding loop. It uses zero as the convention that a
 // particular loop is not tiled. This convention simplifies implementations by
 // avoiding affine map manipulations.
 // The returned ranges correspond to the loop ranges, in the proper order, that
-// are tiled and for which new loops will be created.
-static SmallVector<SubViewOp::Range, 4>
+// are tiled and for which new loops will be created. Also the function returns
+// a map from loop indices of the LinalgOp to the corresponding non-empty range
+// indices of newly created loops.
+static std::tuple<SmallVector<SubViewOp::Range, 4>, LoopIndexToRangeIndexMap>
 makeTiledLoopRanges(OpBuilder &b, Location loc, AffineMap map,
                     ArrayRef<Value *> allViewSizes,
                     ArrayRef<Value *> allTileSizes, OperationFolder *folder) {
@@ -75,11 +79,15 @@ makeTiledLoopRanges(OpBuilder &b, Location loc, AffineMap map,
   SmallVector<Value *, 4> tileSizes(allTileSizes.begin(), allTileSizes.end());
 
   // Traverse the tile sizes, which are in loop order, erase zeros everywhere.
-  for (int idx = tileSizes.size() - 1; idx >= 0; --idx) {
-    if (isZero(tileSizes[idx])) {
-      viewSizes.erase(viewSizes.begin() + idx);
-      tileSizes.erase(tileSizes.begin() + idx);
+  LoopIndexToRangeIndexMap loopIndexToRangeIndex;
+  for (int idx = 0, e = tileSizes.size(), zerosCount = 0; idx < e; ++idx) {
+    if (isZero(tileSizes[idx - zerosCount])) {
+      viewSizes.erase(viewSizes.begin() + idx - zerosCount);
+      tileSizes.erase(tileSizes.begin() + idx - zerosCount);
+      ++zerosCount;
+      continue;
     }
+    loopIndexToRangeIndex[idx] = idx - zerosCount;
   }
 
   // Create a new range with the applied tile sizes.
@@ -88,10 +96,11 @@ makeTiledLoopRanges(OpBuilder &b, Location loc, AffineMap map,
     res.push_back(SubViewOp::Range{constant_index(folder, 0), viewSizes[idx],
                                    tileSizes[idx]});
   }
-  return res;
+  return std::make_tuple(res, loopIndexToRangeIndex);
 }
 
 namespace {
+
 // Helper visitor to determine whether an AffineExpr is tiled.
 // This is achieved by traversing every AffineDimExpr with position `pos` and
 // checking whether the corresponding `tileSizes[pos]` is non-zero.
@@ -117,7 +126,98 @@ struct TileCheck : public AffineExprVisitor<TileCheck> {
   bool isTiled;
   ArrayRef<Value *> tileSizes;
 };
+
 } // namespace
+
+// IndexedGenericOp explicitly uses induction variables in the loop body. The
+// values of the indices that are used in the loop body for any given access of
+// input/output memref before `subview` op was applied should be invariant with
+// respect to tiling.
+//
+// Therefore, if the operation is tiled, we have to transform the indices
+// accordingly, i.e. offset them by the values of the corresponding induction
+// variables that are captured implicitly in the body of the op.
+//
+// Example. `linalg.indexed_generic` before tiling:
+//
+// #id_2d = (i, j) -> (i, j)
+// #pointwise_2d_trait = {
+//   indexing_maps = [#id_2d, #id_2d],
+//   iterator_types = ["parallel", "parallel"],
+//   n_views = [1, 1]
+// }
+// linalg.indexed_generic #pointwise_2d_trait %operand, %result {
+//   ^bb0(%i: index, %j: index, %operand_in: f32, %result_in: f32):
+//     <some operations that use %i, %j>
+// }: memref<50x100xf32>, memref<50x100xf32>
+//
+// After tiling pass with tiles sizes 10 and 25:
+//
+// #strided = (i, j)[s0, s1, s2] -> (i * s1 + s0 + j * s2)
+//
+// %c1 = constant 1 : index
+// %c0 = constant 0 : index
+// %c25 = constant 25 : index
+// %c10 = constant 10 : index
+// operand_dim_0 = dim %operand, 0 : memref<50x100xf32>
+// operand_dim_1 = dim %operand, 1 : memref<50x100xf32>
+// loop.for %k = %c0 to operand_dim_0 step %c10 {
+//   loop.for %l = %c0 to operand_dim_1 step %c25 {
+//     %4 = std.subview %operand[%k, %l][%c10, %c25][%c1, %c1]
+//       : memref<50x100xf32> to memref<?x?xf32, #strided>
+//     %5 = std.subview %result[%k, %l][%c10, %c25][%c1, %c1]
+//       : memref<50x100xf32> to memref<?x?xf32, #strided>
+//     linalg.indexed_generic pointwise_2d_trait %4, %5 {
+//     ^bb0(%i: index, %j: index, %operand_in: f32, %result_in: f32):
+//       // Indices `k` and `l` are implicitly captured in the body.
+//       %transformed_i = addi %i, %k : index // index `i` is offset by %k
+//       %transformed_j = addi %j, %l : index // index `j` is offset by %l
+//       // Every use of %i, %j is replaced with %transformed_i, %transformed_j
+//       <some operations that use %transformed_i, %transformed_j>
+//     }: memref<?x?xf32, #strided>, memref<?x?xf32, #strided>
+//   }
+// }
+//
+// TODO(pifon, ntv): Investigate whether mixing implicit and explicit indices
+// does not lead to losing information.
+void transformIndexedGenericOpIndices(
+    OpBuilder &b, LinalgOp op, ArrayRef<ValueHandle *> pivs,
+    const LoopIndexToRangeIndexMap &loopIndexToRangeIndex) {
+  auto indexedGenericOp = dyn_cast<IndexedGenericOp>(op.getOperation());
+  if (!indexedGenericOp)
+    return;
+
+  // `linalg.indexed_generic` comes in two flavours. One has a region with a
+  // single block that defines the loop body. The other has a `fun` attribute
+  // that refers to an existing function symbol. The `fun` function call will be
+  // inserted in the loop body in that case.
+  //
+  // TODO(pifon): Add support for `linalg.indexed_generic` with `fun` attribute.
+  auto &region = indexedGenericOp.region();
+  if (region.empty()) {
+    indexedGenericOp.emitError("op expected a region");
+    return;
+  }
+  auto &block = region.getBlocks().front();
+
+  OpBuilder::InsertionGuard g(b);
+  b.setInsertionPointToStart(&block);
+  for (unsigned i = 0; i < indexedGenericOp.getNumLoops(); ++i) {
+    auto rangeIndex = loopIndexToRangeIndex.find(i);
+    if (rangeIndex == loopIndexToRangeIndex.end())
+      continue;
+    Value *oldIndex = block.getArgument(i);
+    // Offset the index argument `i` by the value of the corresponding induction
+    // variable and replace all uses of the previous value.
+    Value *newIndex = b.create<AddIOp>(indexedGenericOp.getLoc(), oldIndex,
+                                       pivs[rangeIndex->second]->getValue());
+    for (auto &use : oldIndex->getUses()) {
+      if (use.getOwner() == newIndex->getDefiningOp())
+        continue;
+      use.set(newIndex);
+    }
+  }
+}
 
 static bool isTiled(AffineExpr expr, ArrayRef<Value *> tileSizes) {
   if (!expr)
@@ -215,14 +315,6 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
   return res;
 }
 
-void applyPermutationToLoopRanges(SmallVector<SubViewOp::Range, 4> &loopRanges,
-                                  ArrayRef<unsigned> permutation) {
-  SmallVector<SubViewOp::Range, 4> auxVec(loopRanges.size());
-  for (unsigned i = 0; i < permutation.size(); ++i)
-    auxVec[i] = loopRanges[permutation[i]];
-  loopRanges = auxVec;
-}
-
 llvm::Optional<TiledLinalgOp> mlir::linalg::tileLinalgOp(
     OpBuilder &b, LinalgOp op, ArrayRef<Value *> tileSizes,
     ArrayRef<unsigned> permutation, OperationFolder *folder) {
@@ -252,16 +344,19 @@ llvm::Optional<TiledLinalgOp> mlir::linalg::tileLinalgOp(
   auto viewSizesToLoopsMap =
       inversePermutation(concatAffineMaps(loopToOperandRangesMaps(op)));
   assert(viewSizesToLoopsMap && "expected invertible map");
-  auto loopRanges =
+
+  SmallVector<SubViewOp::Range, 4> loopRanges;
+  LoopIndexToRangeIndexMap loopIndexToRangeIndex;
+  std::tie(loopRanges, loopIndexToRangeIndex) =
       makeTiledLoopRanges(b, scope.getLocation(), viewSizesToLoopsMap,
                           viewSizes, tileSizes, folder);
   if (!permutation.empty())
-    applyPermutationToLoopRanges(loopRanges, permutation);
+    applyPermutationToVector(loopRanges, permutation);
 
   // 3. Create the tiled loops.
   LinalgOp res = op;
   SmallVector<IndexHandle, 4> ivs(loopRanges.size());
-  auto pivs = makeIndexHandlePointers(ivs);
+  auto pivs = makeHandlePointers(MutableArrayRef<IndexHandle>(ivs));
   LoopNestRangeBuilder(pivs, loopRanges)([&] {
     auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
@@ -282,7 +377,10 @@ llvm::Optional<TiledLinalgOp> mlir::linalg::tileLinalgOp(
     res = op.clone(b, loc, views);
   });
 
-  // 4. Gather the newly created loops and return them with the new op.
+  // 4. Transforms index arguments of `linalg.generic` w.r.t. to the tiling.
+  transformIndexedGenericOpIndices(b, res, pivs, loopIndexToRangeIndex);
+
+  // 5. Gather the newly created loops and return them with the new op.
   SmallVector<ForOp, 8> loops;
   loops.reserve(ivs.size());
   for (auto iv : ivs)

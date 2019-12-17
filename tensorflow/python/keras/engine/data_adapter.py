@@ -266,7 +266,7 @@ class TensorLikeDataAdapter(DataAdapter):
       msg = "Data cardinality is ambiguous:\n"
       for label, data in zip(["x", "y", "sample_weight"], inputs):
         msg += "  {} sizes: {}\n".format(
-            label, ", ".join([str(i.shape[0]) for i in nest.flatten(data)]))
+            label, ", ".join(str(i.shape[0]) for i in nest.flatten(data)))
       msg += "Please provide data which shares the same first dimension."
       raise ValueError(msg)
     num_samples = num_samples.pop()
@@ -734,6 +734,10 @@ class GeneratorDataAdapter(DataAdapter):
   def __init__(self, x, y=None, sample_weights=None, standardize_function=None,
                workers=1, use_multiprocessing=False, max_queue_size=10,
                **kwargs):
+    # Generators should never shuffle as exhausting the generator in order to
+    # shuffle the batches is inefficient.
+    kwargs.pop("shuffle", None)
+
     if not is_none_or_empty(y):
       raise ValueError("`y` argument is not supported when using "
                        "python generator as input.")
@@ -765,9 +769,6 @@ class GeneratorDataAdapter(DataAdapter):
 
     if standardize_function is not None:
       dataset = standardize_function(dataset)
-
-    if kwargs.get("shuffle", False) and self.get_size() is not None:
-      dataset = dataset.shuffle(self.get_size())
 
     if workers == 1 and not use_multiprocessing:
       dataset = dataset.prefetch(1)

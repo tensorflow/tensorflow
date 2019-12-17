@@ -22,60 +22,10 @@
 #ifndef MLIR_IR_BLOCK_H
 #define MLIR_IR_BLOCK_H
 
-#include "mlir/IR/Value.h"
+#include "mlir/IR/BlockSupport.h"
 #include "mlir/IR/Visitors.h"
-#include "llvm/ADT/PointerUnion.h"
-#include "llvm/ADT/ilist.h"
-#include "llvm/ADT/ilist_node.h"
-
-//===----------------------------------------------------------------------===//
-// ilist_traits for Operation
-//===----------------------------------------------------------------------===//
-
-namespace llvm {
-namespace ilist_detail {
-// Explicitly define the node access for the operation list so that we can
-// break the dependence on the Operation class in this header. This allows for
-// operations to have trailing Regions without a circular include
-// dependence.
-template <>
-struct SpecificNodeAccess<
-    typename compute_node_options<::mlir::Operation>::type> : NodeAccess {
-protected:
-  using OptionsT = typename compute_node_options<mlir::Operation>::type;
-  using pointer = typename OptionsT::pointer;
-  using const_pointer = typename OptionsT::const_pointer;
-  using node_type = ilist_node_impl<OptionsT>;
-
-  static node_type *getNodePtr(pointer N);
-  static const node_type *getNodePtr(const_pointer N);
-
-  static pointer getValuePtr(node_type *N);
-  static const_pointer getValuePtr(const node_type *N);
-};
-} // end namespace ilist_detail
-
-template <> struct ilist_traits<::mlir::Operation> {
-  using Operation = ::mlir::Operation;
-  using op_iterator = simple_ilist<Operation>::iterator;
-
-  static void deleteNode(Operation *op);
-  void addNodeToList(Operation *op);
-  void removeNodeFromList(Operation *op);
-  void transferNodesFromList(ilist_traits<Operation> &otherList,
-                             op_iterator first, op_iterator last);
-
-private:
-  mlir::Block *getContainingBlock();
-};
-} // end namespace llvm
 
 namespace mlir {
-using BlockOperand = IROperandImpl<Block>;
-
-class PredecessorIterator;
-class SuccessorIterator;
-
 /// `Block` represents an ordered list of `Operation`s.
 class Block : public IRObjectWithUseList,
               public llvm::ilist_node_with_parent<Block, Region> {
@@ -106,9 +56,13 @@ public:
   /// Return if this block is the entry block in the parent region.
   bool isEntryBlock();
 
-  /// Insert this block (which must not already be in a function) right before
+  /// Insert this block (which must not already be in a region) right before
   /// the specified block.
   void insertBefore(Block *block);
+
+  /// Unlink this block from its current region and insert it right before the
+  /// specific block.
+  void moveBefore(Block *block);
 
   /// Unlink this Block from its parent region and delete it.
   void erase();
@@ -272,9 +226,13 @@ public:
 
   // Predecessor iteration.
   using pred_iterator = PredecessorIterator;
-  pred_iterator pred_begin();
-  pred_iterator pred_end();
-  llvm::iterator_range<pred_iterator> getPredecessors();
+  pred_iterator pred_begin() {
+    return pred_iterator((BlockOperand *)getFirstUse());
+  }
+  pred_iterator pred_end() { return pred_iterator(nullptr); }
+  llvm::iterator_range<pred_iterator> getPredecessors() {
+    return {pred_begin(), pred_end()};
+  }
 
   /// Return true if this block has no predecessors.
   bool hasNoPredecessors();
@@ -292,10 +250,10 @@ public:
   Block *getSuccessor(unsigned i);
 
   // Successor iteration.
-  using succ_iterator = SuccessorIterator;
-  succ_iterator succ_begin();
-  succ_iterator succ_end();
-  llvm::iterator_range<succ_iterator> getSuccessors();
+  using succ_iterator = SuccessorRange::iterator;
+  succ_iterator succ_begin() { return getSuccessors().begin(); }
+  succ_iterator succ_end() { return getSuccessors().end(); }
+  SuccessorRange getSuccessors() { return SuccessorRange(this); }
 
   //===--------------------------------------------------------------------===//
   // Operation Walkers
@@ -381,105 +339,6 @@ private:
 
   friend struct llvm::ilist_traits<Block>;
 };
-
-} // end namespace mlir
-
-//===----------------------------------------------------------------------===//
-// ilist_traits for Block
-//===----------------------------------------------------------------------===//
-
-namespace llvm {
-
-template <>
-struct ilist_traits<::mlir::Block> : public ilist_alloc_traits<::mlir::Block> {
-  using Block = ::mlir::Block;
-  using block_iterator = simple_ilist<::mlir::Block>::iterator;
-
-  void addNodeToList(Block *block);
-  void removeNodeFromList(Block *block);
-  void transferNodesFromList(ilist_traits<Block> &otherList,
-                             block_iterator first, block_iterator last);
-
-private:
-  mlir::Region *getParentRegion();
-};
-} // end namespace llvm
-
-namespace mlir {
-//===----------------------------------------------------------------------===//
-// Predecessors
-//===----------------------------------------------------------------------===//
-
-/// Implement a predecessor iterator for blocks. This works by walking the use
-/// lists of the blocks. The entries on this list are the BlockOperands that
-/// are embedded into terminator operations. From the operand, we can get the
-/// terminator that contains it, and its parent block is the predecessor.
-class PredecessorIterator final
-    : public llvm::mapped_iterator<ValueUseIterator<BlockOperand>,
-                                   Block *(*)(BlockOperand &)> {
-  static Block *unwrap(BlockOperand &value);
-
-public:
-  using reference = Block *;
-
-  /// Initializes the operand type iterator to the specified operand iterator.
-  PredecessorIterator(ValueUseIterator<BlockOperand> it)
-      : llvm::mapped_iterator<ValueUseIterator<BlockOperand>,
-                              Block *(*)(BlockOperand &)>(it, &unwrap) {}
-  explicit PredecessorIterator(BlockOperand *operand)
-      : PredecessorIterator(ValueUseIterator<BlockOperand>(operand)) {}
-
-  /// Get the successor number in the predecessor terminator.
-  unsigned getSuccessorIndex() const;
-};
-
-inline auto Block::pred_begin() -> pred_iterator {
-  return pred_iterator((BlockOperand *)getFirstUse());
-}
-
-inline auto Block::pred_end() -> pred_iterator {
-  return pred_iterator(nullptr);
-}
-
-inline auto Block::getPredecessors() -> llvm::iterator_range<pred_iterator> {
-  return {pred_begin(), pred_end()};
-}
-
-//===----------------------------------------------------------------------===//
-// Successors
-//===----------------------------------------------------------------------===//
-
-/// This template implements the successor iterators for Block.
-class SuccessorIterator final
-    : public indexed_accessor_iterator<SuccessorIterator, Block *, Block *,
-                                       Block *, Block *> {
-public:
-  /// Initializes the result iterator to the specified index.
-  SuccessorIterator(Block *object, unsigned index)
-      : indexed_accessor_iterator<SuccessorIterator, Block *, Block *, Block *,
-                                  Block *>(object, index) {}
-
-  SuccessorIterator(const SuccessorIterator &other)
-      : SuccessorIterator(other.object, other.index) {}
-
-  Block *operator*() const { return this->object->getSuccessor(this->index); }
-
-  /// Get the successor number in the terminator.
-  unsigned getSuccessorIndex() const { return this->index; }
-};
-
-inline auto Block::succ_begin() -> succ_iterator {
-  return succ_iterator(this, 0);
-}
-
-inline auto Block::succ_end() -> succ_iterator {
-  return succ_iterator(this, getNumSuccessors());
-}
-
-inline auto Block::getSuccessors() -> llvm::iterator_range<succ_iterator> {
-  return {succ_begin(), succ_end()};
-}
-
 } // end namespace mlir
 
 #endif // MLIR_IR_BLOCK_H

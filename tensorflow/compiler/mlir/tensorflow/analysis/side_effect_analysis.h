@@ -105,7 +105,7 @@ class SideEffectAnalysis {
   void ConsumeChildAnalyses(
       llvm::SmallVector<SideEffectAnalysis, 4>&& children);
 
-  // Updates control_predecessors_ for `op` that is being visted, on the given
+  // Updates control_predecessors_ for `op` that is being visited, on the given
   // `resource_id`.
   void AddPredecessorsForAccess(int64_t resource_id, Operation* op,
                                 bool read_only);
@@ -124,17 +124,22 @@ class SideEffectAnalysis {
       sorted_control_successors_;
 
   // Internal per-resource data structure when we build the dependencies.
-  struct PerResourceAcessInfo {
+  struct PerResourceAccessInfo {
     // Last op that writes the resource before the current op being analyzed.
     Operation* last_write = nullptr;
     // Read ops since last_write before the current op being analyzed.
     llvm::SmallVector<Operation*, 8> reads_since_last_write;
     // Whether previous accesses of this resource already tracked last unknown
-    // read/write.
+    // read for the current access being analyzed.
     bool tracked_last_unknown_read = false;
-    bool tracked_last_unknown_write = false;
+    // Whether previous accesses of this resource already tracked last unknown
+    // write for a the current read being analyzed.
+    bool tracked_last_unknown_write_for_read = false;
+    // Whether previous accesses of this resource already tracked last unknown
+    // write for a the current write being analyzed.
+    bool tracked_last_unknown_write_for_write = false;
   };
-  llvm::SmallDenseMap<int64_t, PerResourceAcessInfo, 8>
+  llvm::SmallDenseMap<int64_t, PerResourceAccessInfo, 8>
       per_resource_access_info_;
 };
 

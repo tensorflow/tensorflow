@@ -21,12 +21,11 @@ limitations under the License.
 
 #include "absl/container/fixed_array.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/internal/annotation_stack.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_tracer.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_wrapper.h"
@@ -165,8 +164,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
           ns->set_node_name(activity_name);
           switch (event.type) {
             case CuptiTracerEventType::Kernel: {
-              const std::string details = strings::Printf(
-                  "regs:%llu shm:%llu grid:%llu,%llu,%llu block:%llu,%llu,%llu",
+              const std::string details = absl::StrFormat(
+                  "regs:%u shm:%u grid:%u,%u,%u block:%u,%u,%u",
                   event.kernel_info.registers_per_thread,
                   event.kernel_info.static_shared_memory_usage,
                   event.kernel_info.grid_x, event.kernel_info.grid_y,

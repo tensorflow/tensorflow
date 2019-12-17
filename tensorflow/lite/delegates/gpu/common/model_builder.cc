@@ -1211,6 +1211,7 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
       auto& reshape = node;
       conv = graph->NewNode();  // reset conv pointer!
       Value<TensorRef<BHWC>>* reshaped_value = graph->NewValue();
+      reshaped_value->tensor.type = DataType::FLOAT32;
       reshaped_value->tensor.shape = BHWC(1, 1, 1, weights.shape.w);
       RETURN_IF_ERROR(graph->SetProducer(reshape->id, reshaped_value->id));
       reshape->operation.type = ToString(OperationType::RESHAPE);
@@ -2350,7 +2351,6 @@ class UnsupportedOperationParser : public TFLiteOperationParser {
 std::unique_ptr<TFLiteOperationParser> NewOperationParser(
     const TfLiteRegistration* registration) {
   const auto builtin_code = registration->builtin_code;
-  const absl::string_view custom_name = registration->custom_name;
   switch (builtin_code) {
     case kTfLiteBuiltinAbs:
       return absl::make_unique<ElementwiseOperationParser>(OperationType::ABS);
@@ -2428,6 +2428,7 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return absl::make_unique<TransposeConvOperationParser>();
 
     case kTfLiteBuiltinCustom:
+      const absl::string_view custom_name = registration->custom_name;
       if (custom_name == "Convolution2DTransposeBias") {
         return absl::make_unique<Convolution2DTransposeBiasParser>();
       }

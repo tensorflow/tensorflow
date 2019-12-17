@@ -79,7 +79,7 @@ resulting in a struct containing two pointers + offset.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 memref<f32> -> !llvm.type<"{ float*, float*, i64 }">
 memref<1 x f32> -> !llvm.type<"{ float*, float*, i64, [1 x i64], [1 x i64] }">
 memref<? x f32> -> !llvm.type<"{ float*, float*, i64, [1 x i64], [1 x i64] }">
@@ -102,9 +102,21 @@ descriptor pointer.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // unranked descriptor
 memref<*xf32> -> !llvm.type<"{i64, i8*}">
+```
+
+**In function signatures,** `memref` is passed as a _pointer_ to the structured
+defined above to comply with the calling convention.
+
+Example:
+
+```mlir
+// A function type with memref as argument
+(memref<?xf32>) -> ()
+// is transformed into the LLVM function with pointer-to-structure argument.
+!llvm.type<"void({ float*, float*, i64, [1 x i64], [1 x i64]}*) ">
 ```
 
 ### Function Types
@@ -125,7 +137,7 @@ converted using these rules.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // zero-ary function type with no results.
 () -> ()
 // is converted to a zero-ary function with `void` result
@@ -162,7 +174,7 @@ definition operation uses MLIR syntax.
 
 Examples:
 
-```mlir {.mlir}
+```mlir
 // zero-ary function type with no results.
 func @foo() -> ()
 // gets LLVM type void().
@@ -195,7 +207,7 @@ defines and uses of the values being returned.
 
 Example:
 
-```mlir {.mlir}
+```mlir
 func @foo(%arg0: i32, %arg1: i64) -> (i32, i64) {
   return %arg0, %arg1 : i32, i64
 }
@@ -233,6 +245,67 @@ func @bar() {
 }
 ```
 
+### Calling Convention for `memref`
+
+For function _arguments_ of `memref` type, ranked or unranked, the type of the
+argument is a _pointer_ to the memref descriptor type defined above. The caller
+of such function is required to store the descriptor in memory and guarantee
+that the storage remains live until the callee returns. The caller can than pass
+the pointer to that memory as function argument. The callee loads from the
+pointers it was passed as arguments in the entry block of the function, making
+the descriptor passed in as argument available for use similarly to
+ocally-defined descriptors.
+
+This convention is implemented in the conversion of `std.func` and `std.call` to
+the LLVM dialect. Conversions from other dialects should take it into account.
+The motivation for this convention is to simplify the ABI for interfacing with
+other LLVM modules, in particular those generated from C sources, while avoiding
+platform-specific aspects until MLIR has a proper ABI modeling.
+
+Example:
+
+```mlir
+
+func @foo(memref<?xf32>) -> () {
+  %c0 = constant 0 : index
+  load %arg0[%c0] : memref<?xf32>
+  return
+}
+
+func @bar(%arg0: index) {
+  %0 = alloc(%arg0) : memref<?xf32>
+  call @foo(%0) : (memref<?xf32>)-> ()
+  return
+}
+
+// Gets converted to the following IR.
+// Accepts a pointer to the memref descriptor.
+llvm.func @foo(!llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }*">) {
+  // Loads the descriptor so that it can be used similarly to locally
+  // created descriptors.
+  %0 = llvm.load %arg0 : !llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }*">
+}
+
+llvm.func @bar(%arg0: !llvm.i64) {
+  // ... Allocation ...
+  // Definition of the descriptor.
+  %7 = llvm.mlir.undef : !llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }">
+  // ... Filling in the descriptor ...
+  %14 = // The final value of the allocated descriptor.
+  // Allocate the memory for the descriptor and store it.
+  %15 = llvm.mlir.constant(1 : index) : !llvm.i64
+  %16 = llvm.alloca %15 x !llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }">
+      : (!llvm.i64) -> !llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }*">
+  llvm.store %14, %16 : !llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }*">
+  // Pass the pointer to the function.
+  llvm.call @foo(%16) : (!llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }*">) -> ()
+  llvm.return
+}
+
+
+
+```
+
 ## Repeated Successor Removal
 
 Since the goal of the LLVM IR dialect is to reflect LLVM IR in MLIR, the dialect
@@ -249,7 +322,7 @@ are used instead of them in the original terminator operation.
 
 Example:
 
-```mlir {.mlir}
+```mlir
   cond_br %0, ^bb1(%1 : i32), ^bb1(%2 : i32)
 ^bb1(%3 : i32)
   "use"(%3) : (i32) -> ()
@@ -257,7 +330,7 @@ Example:
 
 leads to a new basic block being inserted,
 
-```mlir {.mlir}
+```mlir
   cond_br %0, ^bb1(%1 : i32), ^dummy
 ^bb1(%3 : i32):
   "use"(%3) : (i32) -> ()
@@ -267,7 +340,7 @@ leads to a new basic block being inserted,
 
 before the conversion to the LLVM IR dialect:
 
-```mlir {.mlir}
+```mlir
   llvm.cond_br  %0, ^bb1(%1 : !llvm.type<"i32">), ^dummy
 ^bb1(%3 : !llvm.type<"i32">):
   "use"(%3) : (!llvm.type<"i32">) -> ()
@@ -307,7 +380,7 @@ Examples:
 
 An access to a zero-dimensional memref is converted into a plain load:
 
-```mlir {.mlir}
+```mlir
 // before
 %0 = load %m[] : memref<f32>
 
@@ -317,13 +390,13 @@ An access to a zero-dimensional memref is converted into a plain load:
 
 An access to a memref with indices:
 
-```mlir {.mlir}
+```mlir
 %0 = load %m[1,2,3,4] : memref<10x?x13x?xf32>
 ```
 
 is transformed into the equivalent of the following code:
 
-```mlir {.mlir}
+```mlir
 // obtain the buffer pointer
 %b = llvm.extractvalue %m[0] : !llvm.type<"{float*, i64, i64}">
 

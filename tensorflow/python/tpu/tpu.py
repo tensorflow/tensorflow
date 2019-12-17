@@ -321,8 +321,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def report_unsupported_operations(self):
     if self._unsupported_ops:
-      op_str = "\n".join(["  %s (%s)" % (op.type, op.name)
-                          for op in self._unsupported_ops[:_MAX_WARNING_LINES]])
+      op_str = "\n".join("  %s (%s)" % (op.type, op.name)
+                         for op in self._unsupported_ops[:_MAX_WARNING_LINES])
       logging.warning("%d unsupported operations found: \n%s",
                       len(self._unsupported_ops), op_str)
       if len(self._unsupported_ops) > _MAX_WARNING_LINES:
@@ -334,7 +334,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       self._gradient_colocation_stack.append(op)
       if not self._outside_compilation_cluster:
         try:
-          outside_attr = op.get_attr(_OUTSIDE_COMPILATION_ATTR)
+          outside_attr = op.get_attr(_OUTSIDE_COMPILATION_ATTR).decode("ascii")
           if self._in_gradient_colocation:
             raise NotImplementedError(
                 "Cannot nest gradient colocation operations outside compilation"
@@ -1200,7 +1200,7 @@ def split_compile_and_replicate(computation,
 
   if host_compute_core:
     attr_value = attr_value_pb2.AttrValue()
-    attr_value.list.s.extend([compat.as_bytes(x) for x in host_compute_core])
+    attr_value.list.s.extend(compat.as_bytes(x) for x in host_compute_core)
     metadata._set_attr("host_compute_core", attr_value)  # pylint: disable=protected-access
 
   with ops.control_dependencies([metadata]):
@@ -1727,20 +1727,22 @@ def under_tpu_inference_context():
 class _TPUInferenceContext(control_flow_ops.XLAControlFlowContext):
   """A `ControlFlowContext` for nodes inside a TPU inference computation.
 
-  The primary role of `TPUReplicateContext` is to sanity check operators inside
-  a tpu.rewrite_for_inference() computation.
+  The primary role of `_TPUInferenceContext` is to indicate the mode of
+  operation and possibly sanity check operators inside a
+  tpu.rewrite_for_inference() computation.
   """
 
-  def __init__(self, name):
+  def __init__(self, name, check_ops=True):
     super(_TPUInferenceContext, self).__init__()
     self._name = name
+    self._check_ops = check_ops
 
   def AddOp(self, op):
     self._AddOpInternal(op)
 
   def _AddOpInternal(self, op):
     # pylint: disable=protected-access
-    if op.type in _BLACKLISTED_INFERENCE_OPS:
+    if self._check_ops and op.type in _BLACKLISTED_INFERENCE_OPS:
       raise NotImplementedError(
           "Operation of type %s (%s) is not supported on the TPU for inference."
           " Execution will fail if this op is used in the graph. Make sure your"

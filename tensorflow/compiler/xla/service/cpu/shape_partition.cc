@@ -146,7 +146,7 @@ std::vector<std::pair<int64, int64>> ShapePartitionIterator::GetPartition(
       partition[i].second = dimension_partition_sizes_[i];
     }
     CHECK_GT(partition[i].second, 0);
-    // Update index to remove conribution from current dimension.
+    // Update index to remove contribution from current dimension.
     index -= partition_index * dimension_partition_strides_[i];
   }
   return partition;

@@ -33,7 +33,6 @@ import six
 from tensorflow.compiler.tf2tensorrt.wrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import graph_io
@@ -104,34 +103,6 @@ class GraphState(object):
   ORIGINAL = 0
   CALIBRATE = 1
   INFERENCE = 2
-
-
-def OptimizerDisabledRewriterConfig():
-  """Returns a RewriterConfig with all default Grappler optimizers disabled."""
-  rewriter_config = rewriter_config_pb2.RewriterConfig()
-
-  # Turn off all default Grappler optimizers.
-  off = rewriter_config_pb2.RewriterConfig.OFF
-  rewriter_config.layout_optimizer = off
-  rewriter_config.constant_folding = off
-  rewriter_config.shape_optimization = off
-  rewriter_config.remapping = off
-  rewriter_config.arithmetic_optimization = off
-  rewriter_config.dependency_optimization = off
-  rewriter_config.loop_optimization = off
-  rewriter_config.function_optimization = off
-  rewriter_config.debug_stripper = off
-  rewriter_config.disable_model_pruning = True
-  rewriter_config.scoped_allocator_optimization = off
-  rewriter_config.memory_optimization = (
-      rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
-  rewriter_config.pin_to_host_optimization = off
-  rewriter_config.auto_parallel.enable = False
-
-  # Run only once for each enabled optimizer.
-  rewriter_config.meta_optimizer_iterations = (
-      rewriter_config_pb2.RewriterConfig.ONE)
-  return rewriter_config
 
 
 class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
@@ -237,6 +208,15 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         use_calibration=run_params.use_calibration,
         max_batch_size=min(batch_list))
     return conversion_params
+
+  def GetTrtRewriterConfig(self,
+                           run_params,
+                           conversion_params,
+                           disable_non_trt_optimizers=False):
+    return trt_convert.get_tensorrt_rewriter_config(
+        conversion_params=conversion_params,
+        is_v2=run_params.is_v2,
+        disable_non_trt_optimizers=disable_non_trt_optimizers)
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
@@ -606,7 +586,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
             trt_op_names.append(node.name)
     # Remove the function name prefix.
     def _Canonicalize(names):
-      return set([self._ToString(name.split("/")[-1]) for name in names])
+      return set(self._ToString(name.split("/")[-1]) for name in names)
 
     all_op_names = _Canonicalize(all_op_names)
     trt_op_names = _Canonicalize(trt_op_names)

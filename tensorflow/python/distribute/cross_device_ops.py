@@ -1231,7 +1231,7 @@ def choose_the_best(devices, session_config=None):
   Returns:
     A subclass of `CrossDeviceOps`.
   """
-  requested_devices = set([device_util.canonicalize(d) for d in devices])
+  requested_devices = set(device_util.canonicalize(d) for d in devices)
   if ops.executing_eagerly_outside_functions():
     logical_gpus = context.context().list_logical_devices(device_type="GPU")
     physical_gpus = context.context().list_physical_devices(device_type="GPU")

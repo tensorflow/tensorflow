@@ -177,12 +177,13 @@ def AffineForOp : Affine_Op<"for",
     /// Sets the upper bound to the given constant value.
     void setConstantUpperBound(int64_t value);
 
-    /// Returns true if both the lower and upper bound have the same operand 
+    /// Returns true if both the lower and upper bound have the same operand
     /// lists (same operands in the same order).
     bool matchingBoundOperandList();
   }];
 
   let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def AffineIfOp : Affine_Op<"if", [ImplicitAffineTerminator]> {
@@ -239,7 +240,7 @@ def AffineIfOp : Affine_Op<"if", [ImplicitAffineTerminator]> {
     }
   }];
 
-  let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def AffineMinOp : Affine_Op<"min"> {

@@ -34,6 +34,9 @@ extern const char* kConvModelWithMinus128Plus127Weights;
 // Activations have min = 0, max = 10.
 extern const char* kConvModelWith0Plus10Weights;
 
+// Test model where no bias is in the conv.
+extern const char* kConvModelWithNoBias;
+
 // A floating point model with a single softmax. The input tensor has min
 // and max in range [-5, 5], not necessarily -5 or +5.
 extern const char* kSingleSoftmaxModelMinMinus5MaxPlus5;
@@ -83,6 +86,12 @@ extern const char* kModelPack;
 // peephole, without cifg.
 extern const char* kLstmCalibrated;
 extern const char* kLstmQuantized;
+
+// Test model with a minimum op.
+extern const char* kModelWithMinimumOp;
+
+// Test model with a maximum op.
+extern const char* kModelWithMaximumOp;
 
 // Test model with LSTM op that has peephole, without layer norm, without
 // projection, without cifg.

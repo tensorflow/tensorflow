@@ -130,8 +130,8 @@ public:
     IndexedValueType O(fillOp.getOutput(0));
     // Emit the proper scalar assignment, whether we are dealing with a 0-D or
     // an n-D loop nest; with or without permutations.
-    nPar > 0 ? O(ivs) = ValueHandle(fillOp.getValue())
-             : O() = ValueHandle(fillOp.getValue());
+    nPar > 0 ? O(ivs) = ValueHandle(fillOp.value())
+             : O() = ValueHandle(fillOp.value());
   }
 };
 
@@ -430,7 +430,8 @@ LogicalResult LinalgOpToLoopsImpl<LoopTy, IndexedValueTy, ConcreteOpTy>::doit(
   auto nRed = linalgOp.getNumReductionLoops();
   auto nWin = linalgOp.getNumWindowLoops();
   SmallVector<IndexHandle, 4> allIvs(nPar + nRed + nWin);
-  SmallVector<ValueHandle *, 4> allPIvs = makeIndexHandlePointers(allIvs);
+  SmallVector<ValueHandle *, 4> allPIvs =
+      makeHandlePointers(MutableArrayRef<IndexHandle>(allIvs));
   auto loopRanges = emitLoopRanges(scope.getBuilder(), scope.getLocation(),
                                    invertedMap, getViewSizes(linalgOp));
   assert(loopRanges.size() == allIvs.size());

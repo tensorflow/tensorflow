@@ -90,6 +90,16 @@ Status ComputeTopologicalOrder(
   }
 
   if (back != graph_view.num_nodes()) {
+    if (VLOG_IS_ON(1)) {
+      VLOG(1) << "The graph couldn't be sorted in topological order. Stalled "
+                 "at node = "
+              << graph.node(back).DebugString();
+      for (int i = 0; i < graph_view.num_nodes(); ++i) {
+        if (num_ready_inputs[i] != graph_view.GetFanin(i).size()) {
+          VLOG(1) << "Node not ready: " << graph.node(i).DebugString();
+        }
+      }
+    }
     return errors::InvalidArgument(
         "The graph couldn't be sorted in topological order.");
   }

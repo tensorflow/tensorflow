@@ -23,6 +23,17 @@
 #define GPU_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
+
+// Type constraint accepting standard integers, indices and wrapped LLVM integer
+// types.
+def IntLikeOrLLVMInt : TypeConstraint<
+  Or<[AnyInteger.predicate, Index.predicate, LLVMInt.predicate]>,
+  "integer, index or LLVM dialect equivalent">;
+
+//===----------------------------------------------------------------------===//
+// GPU Dialect operations.
+//===----------------------------------------------------------------------===//
 
 def GPU_Dialect : Dialect {
   let name = "gpu";
@@ -68,7 +79,7 @@ def GPU_GPUFuncOp : GPU_Op<"func", [FunctionLike, IsolatedFromAbove, Symbol]> {
 
     Syntax:
 
-    ``` {.ebnf}
+    ```
     op ::= `gpu.func` symbol-ref-id `(` argument-list `)` (`->`
     function-result-list)?
            memory-attribution `kernel`? function-attributes? region
@@ -109,9 +120,9 @@ def GPU_GPUFuncOp : GPU_Op<"func", [FunctionLike, IsolatedFromAbove, Symbol]> {
 
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, StringRef name, "
-              "FunctionType type, ArrayRef<Type> workgroupAttributions, "
-              "ArrayRef<Type> privateAttributions, "
-              "ArrayRef<NamedAttribute> attrs">
+              "FunctionType type, ArrayRef<Type> workgroupAttributions = {}, "
+              "ArrayRef<Type> privateAttributions = {}, "
+              "ArrayRef<NamedAttribute> attrs = {}">
   ];
 
   let extraClassDeclaration = [{
@@ -126,6 +137,17 @@ def GPU_GPUFuncOp : GPU_Op<"func", [FunctionLike, IsolatedFromAbove, Symbol]> {
     FunctionType getType() {
       return getTypeAttr().getValue().cast<FunctionType>();
     }
+
+    /// Change the type of this function in place. This is an extremely
+    /// dangerous operation and it is up to the caller to ensure that this is
+    /// legal for this function, and to restore invariants:
+    ///  - the entry block args must be updated to match the function params.
+    ///  - the argument/result attributes may need an update: if the new type
+    ///  has less parameters we drop the extra attributes, if there are more
+    ///  parameters they won't have any attributes.
+    // TODO(b/146349912): consider removing this function thanks to rewrite
+    // patterns.
+    void setType(FunctionType newType);
 
     /// Returns the number of buffers located in the workgroup memory.
     unsigned getNumWorkgroupAttributions() {
@@ -154,7 +176,7 @@ def GPU_GPUFuncOp : GPU_Op<"func", [FunctionLike, IsolatedFromAbove, Symbol]> {
     /// Returns the name of the attribute containing the number of buffers
     /// located in the workgroup memory.
     static StringRef getNumWorkgroupAttributionsAttrName() {
-      return "workgroup_attibutions";
+      return "workgroup_attributions";
     }
 
     // FunctionLike trait needs access to the functions below.
@@ -179,6 +201,133 @@ def GPU_GPUFuncOp : GPU_Op<"func", [FunctionLike, IsolatedFromAbove, Symbol]> {
   // let verifier = [{ return ::verifFuncOpy(*this); }];
   let printer = [{ printGPUFuncOp(p, *this); }];
   let parser = [{ return parseGPUFuncOp(parser, result); }];
+}
+
+def GPU_LaunchFuncOp : GPU_Op<"launch_func">,
+    Arguments<(ins IntLikeOrLLVMInt:$gridSizeX, IntLikeOrLLVMInt:$gridSizeY,
+               IntLikeOrLLVMInt:$gridSizeZ, IntLikeOrLLVMInt:$blockSizeX,
+               IntLikeOrLLVMInt:$blockSizeY, IntLikeOrLLVMInt:$blockSizeZ,
+               Variadic<AnyType>:$operands)>,
+    Results<(outs)> {
+  let summary = "Launches a function as a GPU kerneel";
+
+  let description = [{
+    Launch a kernel function on the specified grid of thread blocks.
+    `gpu.launch` operations are lowered to `gpu.launch_func` operations by
+    outlining the kernel body into a function in a dedicated module, which
+    reflects the separate compilation process. The kernel function is required
+    to have the `gpu.kernel` attribute. The module containing the kernel
+    function is required to have the `gpu.kernel_module` attribute and must be
+    named. And finally, the module containing the kernel module (which thus
+    cannot be the top-level module) is required to have the
+    `gpu.container_module` attribute. The `gpu.launch_func` operation has a
+    string attribute named `kernel` to specify the name of the kernel function
+    to launch and an attribute named `kernel_module` to specify the name of the
+    module containing that kernel function.
+
+    The operation takes at least six operands, with the first three operands
+    being grid sizes along x,y,z dimensions and the following three being block
+    sizes along x,y,z dimensions. When a lower-dimensional kernel is required,
+    unused sizes must be explicitly set to `1`. The remaining operands are
+    passed as arguments to the kernel function.
+
+    A custom syntax for this operation is currently not available.
+
+    Example:
+
+    ```mlir
+    module attributes {gpu.container_module} {
+
+      // This module creates a separate compilation unit for the GPU compiler.
+      module @kernels attributes {gpu.kernel_module} {
+        func @kernel_1(%arg0 : f32, %arg1 : !llvm<"float*">)
+            attributes { nvvm.kernel = true } {
+
+          // Operations that produce block/thread IDs and dimensions are
+          // injected when outlining the `gpu.launch` body to a function called
+          // by `gpu.launch_func`.
+          %tIdX = "gpu.thread_id"() {dimension = "x"} : () -> (index)
+          %tIdY = "gpu.thread_id"() {dimension = "y"} : () -> (index)
+          %tIdZ = "gpu.thread_id"() {dimension = "z"} : () -> (index)
+
+          %bDimX = "gpu.block_dim"() {dimension = "x"} : () -> (index)
+          %bDimY = "gpu.block_dim"() {dimension = "y"} : () -> (index)
+          %bDimZ = "gpu.block_dim"() {dimension = "z"} : () -> (index)
+
+          %bIdX = "gpu.block_id"() {dimension = "x"} : () -> (index)
+          %bIdY = "gpu.block_id"() {dimension = "y"} : () -> (index)
+          %bIdZ = "gpu.block_id"() {dimension = "z"} : () -> (index)
+
+          %gDimX = "gpu.grid_dim"() {dimension = "x"} : () -> (index)
+          %gDimY = "gpu.grid_dim"() {dimension = "y"} : () -> (index)
+          %gDimZ = "gpu.grid_dim"() {dimension = "z"} : () -> (index)
+
+          "some_op"(%bx, %tx) : (index, index) -> ()
+          %42 = load %arg1[%bx] : memref<?xf32, 1>
+        }
+      }
+
+      "gpu.launch_func"(%cst, %cst, %cst,  // Grid sizes.
+                        %cst, %cst, %cst,  // Block sizes.
+                        %arg0, %arg1)      // Arguments passed to the kernel.
+            { kernel_module = @kernels,    // Module containing the kernel.
+              kernel = "kernel_1" }        // Kernel function.
+            : (index, index, index, index, index, index, f32, !llvm<"float*">)
+              -> ()
+    }
+    ```
+  }];
+
+  let skipDefaultBuilders = 1;
+
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &result, GPUFuncOp kernelFunc, "
+              "Value *gridSizeX, Value *gridSizeY, Value *gridSizeZ, "
+              "Value *blockSizeX, Value *blockSizeY, Value *blockSizeZ, "
+              "ValueRange kernelOperands">,
+    OpBuilder<"Builder *builder, OperationState &result, GPUFuncOp kernelFunc, "
+              "KernelDim3 gridSize, KernelDim3 blockSize, "
+              "ValueRange kernelOperands">
+  ];
+
+  let extraClassDeclaration = [{
+    /// The kernel function specified by the operation's `kernel` attribute.
+    StringRef kernel();
+
+    /// The number of operands passed to the kernel function.
+    unsigned getNumKernelOperands();
+
+    /// The name of the kernel module specified by the operation's
+    /// `kernel_module` attribute.
+    StringRef getKernelModuleName();
+
+    /// The i-th operand passed to the kernel function.
+    Value *getKernelOperand(unsigned i);
+
+    /// Get the SSA values passed as operands to specify the grid size.
+    KernelDim3 getGridSizeOperandValues();
+
+    /// Get the SSA values passed as operands to specify the block size.
+    KernelDim3 getBlockSizeOperandValues();
+
+    /// The number of launch configuration operands, placed at the leading
+    /// positions of the operand list.
+    static constexpr unsigned kNumConfigOperands = 6;
+
+    // This needs to quietly verify if attributes with names defined below are
+    // present since it is run before the verifier of this op.
+    friend LogicalResult GPUDialect::verifyOperationAttribute(Operation *,
+                                                              NamedAttribute);
+
+    /// The name of the symbolRef attribute specifying the kernel to launch.
+    static StringRef getKernelAttrName() { return "kernel"; }
+
+    /// The name of the symbolRef attribute specifying the name of the module
+    /// containing the kernel to launch.
+    static StringRef getKernelModuleAttrName() { return "kernel_module"; }
+  }];
+
+  let verifier = [{ return ::verify(*this); }];
 }
 
 def GPU_LaunchOp : GPU_Op<"launch", [IsolatedFromAbove]>,
@@ -213,7 +362,7 @@ def GPU_LaunchOp : GPU_Op<"launch", [IsolatedFromAbove]>,
 
     Syntax:
 
-    ``` {.ebnf}
+    ```
     operation ::= `gpu.launch` `block` `(` ssa-id-list `)` `in` ssa-reassignment
                              `threads` `(` ssa-id-list `)` `in` ssa-reassignment
                                (`args` ssa-reassignment `:` type-list)?
@@ -223,7 +372,7 @@ def GPU_LaunchOp : GPU_Op<"launch", [IsolatedFromAbove]>,
 
     Example:
 
-    ```mlir {.mlir}
+    ```mlir
     gpu.launch blocks(%bx, %by, %bz) in (%sz_bx = %0, %sz_by = %1, %sz_bz = %2)
                threads(%tx, %ty, %tz) in (%sz_tx = %3, %sz_ty = %4, %sz_tz = %5)
                args(%arg0 = %6, %arg1 = 7) : f32, memref<?xf32, 1> {

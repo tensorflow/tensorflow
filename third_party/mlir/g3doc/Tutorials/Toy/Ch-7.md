@@ -254,7 +254,7 @@ form available under certain circumstances. The responsibility of our `Toy`
 parser and printer is to provide the `type-data` bits. We will define our
 `StructType` as having the following form:
 
-``` {.ebnf}
+```
   struct-type ::= `struct` `<` type (`,` type)* `>`
 ```
 

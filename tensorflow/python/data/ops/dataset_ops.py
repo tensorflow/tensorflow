@@ -115,7 +115,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   Iteration happens in a streaming fashion, so the full dataset does not need to
   fit into memory.
 
-  # Source Datasets
+  Source Datasets:
 
   The simplest way to create a dataset is to create it from a python `list`:
 
@@ -142,7 +142,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   See `tf.data.FixedLengthRecordDataset` and `tf.data.Dataset.from_generator`
   for more ways to create datasets.
 
-  # Transformations
+  Transformations:
 
   Once you have a dataset, you can apply transformations to prepare the data for
   your model:
@@ -152,7 +152,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   >>> list(dataset.as_numpy_iterator())
   [2, 4, 6]
 
-  # Common Terms
+  Common Terms:
 
   **Element**: A single output from calling `next()` on a dataset iterator.
     Elements may be nested structures containing multiple components. For
@@ -160,7 +160,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     tuple. The components are `1`, `3`, and `"apple"`.
   **Component**: The leaf in the nested structure of an element.
 
-  # Supported types
+  Supported types:
 
   Elements can be nested structures of tuples, named tuples, and dictionaries.
   Element components can be of any type representable by `tf.TypeSpec`,
@@ -174,6 +174,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   >>> Point = collections.namedtuple("Point", ["x", "y"]) # doctest: +SKIP
   >>> e = Point(1, 2) # Named tuple # doctest: +SKIP
   >>> f = tf.data.Dataset.range(10) # Dataset element
+
   """
 
   def __init__(self, variant_tensor):
@@ -311,10 +312,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       # If the captured tensor is an eager tensor, we cannot trace its inputs.
       if isinstance(tensor, ops._EagerTensorBase):  # pylint: disable=protected-access
         return False
-      return any([is_tensor_or_parent_ref(x) for x in tensor.op.inputs])
+      return any(is_tensor_or_parent_ref(x) for x in tensor.op.inputs)
 
     for fn in self._functions():
-      if any([is_tensor_or_parent_ref(t) for t in fn.function.captured_inputs]):
+      if any(is_tensor_or_parent_ref(t) for t in fn.function.captured_inputs):
         return True
 
     return any(

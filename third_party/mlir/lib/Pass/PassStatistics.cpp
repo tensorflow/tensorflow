@@ -178,7 +178,7 @@ Pass::Statistic::Statistic(Pass *owner, const char *name,
   // Always set the 'initialized' bit to true so that this statistic isn't
   // placed in the static registry.
   // TODO: This is sort of hack as `llvm::Statistic`s can't be setup to avoid
-  // automatic registartion with the global registry. We should either add
+  // automatic registration with the global registry. We should either add
   // support for this in LLVM, or just write our own statistics classes.
   Initialized = true;
 #endif

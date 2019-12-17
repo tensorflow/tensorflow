@@ -73,19 +73,31 @@ LogicalResult tileLinalgOpAndSetMarker(PatternRewriter &rewriter, Operation *op,
                                        StringRef linalgMarker,
                                        ArrayRef<unsigned> permutation);
 
-// Tiles `op` by `sizes`, fuses the producers of `operandIndicesToFuse` and sets
-// the attribute `kLinalgTransformMarker` to `linalgMarker`.
+/// Tiles `op` by `sizes`, fuses the producers of `operandIndicesToFuse` and
+/// sets the attribute `kLinalgTransformMarker` to `linalgMarker`.
 LogicalResult tileAndFuseLinalgOpAndSetMarker(
     PatternRewriter &rewriter, Operation *op, ArrayRef<int64_t> sizes,
     ArrayRef<int64_t> operandIndicesToFuse, StringRef linalgMarker);
 
-// Emits a loop nest of `loop.for` with the proper body for `op`.
+/// Emits a loop nest of `loop.for` with the proper body for `op`.
 template <typename ConcreteOp>
 LogicalResult linalgOpToLoops(PatternRewriter &rewriter, Operation *op);
 
-// Emits a loop nest of `affine.for` with the proper body for `op`.
+/// Emits a loop nest of `affine.for` with the proper body for `op`.
 template <typename ConcreteOp>
 LogicalResult linalgOpToAffineLoops(PatternRewriter &rewriter, Operation *op);
+
+/// Rewrite a linalg.generic into a suitable vector.contraction op.
+LogicalResult vectorizeGenericOp(PatternRewriter &rewriter, Operation *op);
+
+/// Emits a `generic` or `indexed_generic` operation with the `indexing_maps`
+/// and `iterator_types` permutated according to `permutation`.
+LogicalResult permuteGenericLinalgOp(PatternRewriter &rewriter, Operation *op,
+                                     ArrayRef<unsigned> permutation,
+                                     StringRef linalgMarker);
+
+/// Promote std.subviews feeding linalg operations
+LogicalResult linalgOpPromoteSubviews(PatternRewriter &rewriter, Operation *op);
 
 } // namespace linalg
 } // namespace mlir

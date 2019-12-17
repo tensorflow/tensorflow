@@ -73,13 +73,25 @@ class DirectivesTest(converter_testing.TestCase):
     self.assertEqual(d['back_prop'].id, 'a')
     self.assertNotIn('swap_memory', d)
 
-  def test_loop_target_with_no_loop(self):
+  def test_loop_target_no_loop(self):
 
     def test_fn():
       directives.set_loop_options()
 
     node, ctx = self.prepare(test_fn, {'directives': directives})
     with self.assertRaisesRegexp(ValueError, 'must be used inside a statement'):
+      node = directives_converter.transform(node, ctx)
+
+  def test_loop_target_not_first(self):
+
+    def test_fn():
+      a = 1
+      while True:
+        a = 2
+        directives.set_loop_options(parallel_iterations=10, back_prop=a)
+
+    node, ctx = self.prepare(test_fn, {'directives': directives})
+    with self.assertRaisesRegexp(ValueError, 'must be the first statement'):
       node = directives_converter.transform(node, ctx)
 
   def test_invalid_default(self):

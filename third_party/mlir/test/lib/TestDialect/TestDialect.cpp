@@ -291,7 +291,7 @@ LogicalResult TestOpWithVariadicResultsAndFolder::fold(
 
 LogicalResult mlir::OpWithInferTypeInterfaceOp::inferReturnTypes(
     llvm::Optional<Location> location, ValueRange operands,
-    ArrayRef<NamedAttribute> attributes, ArrayRef<Region> regions,
+    ArrayRef<NamedAttribute> attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferedReturnTypes) {
   if (operands[0]->getType() != operands[1]->getType()) {
     return emitOptionalError(location, "operand type mismatch ",

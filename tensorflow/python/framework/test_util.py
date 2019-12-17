@@ -2409,7 +2409,7 @@ class TensorFlowTestCase(googletest.TestCase):
                                path=None,
                                msg=None):
     path = path or []
-    path_str = (("[" + "][".join([str(p) for p in path]) + "]") if path else "")
+    path_str = (("[" + "][".join(str(p) for p in path) + "]") if path else "")
     msg = msg if msg else ""
 
     # Check if a and/or b are namedtuples.

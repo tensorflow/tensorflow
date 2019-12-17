@@ -470,6 +470,34 @@ class TextVectorizationPreprocessingTest(
     with self.assertRaisesRegex(ValueError, ".*is not a supported splitting.*"):
       _ = layer(input_data)
 
+  def test_standardize_with_no_identical_argument(self):
+    input_array = np.array([["hello world"]])
+    expected_output = np.array([[1, 1]])
+
+    standardize = "".join(["lower", "_and_strip_punctuation"])
+    layer = get_layer_class()(standardize=standardize)
+
+    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
+    output_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=output_data)
+    output = model.predict(input_array)
+
+    self.assertAllEqual(expected_output, output)
+
+  def test_splitting_with_no_identical_argument(self):
+    input_array = np.array([["hello world"]])
+    expected_output = np.array([[1, 1]])
+
+    split = "".join(["white", "space"])
+    layer = get_layer_class()(split=split)
+
+    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
+    output_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=output_data)
+    output = model.predict(input_array)
+
+    self.assertAllEqual(expected_output, output)
+
 
 @keras_parameterized.run_all_keras_modes
 class TextVectorizationOutputTest(

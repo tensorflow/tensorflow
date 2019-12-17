@@ -463,7 +463,8 @@ class ValidatorTest : public ::testing::Test {
     TF_EXPECT_OK(graph_properties.InferStatically(true));
 
     TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
-                               /*use_calibration=*/false);
+                               /*use_calibration=*/false,
+                               /*use_implicit_batch=*/true);
     return validator.ConvertToTensorOrWeights(node->def(), output_port,
                                               tensor_or_weights);
   }
@@ -477,7 +478,8 @@ TEST_F(ValidatorTest, QuantizeOpsAreRegistered) {
   grappler::GrapplerItem item;
   grappler::GraphProperties graph_properties(item);
   TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
-                             /*use_calibration=*/false);
+                             /*use_calibration=*/false,
+                             /*use_implicit_batch=*/true);
   for (const string& quantize_op : *GetQuantizeOps(&validator)) {
     QCHECK(op_validators(&validator).count(quantize_op));
   }
@@ -521,7 +523,7 @@ TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
         "Scalar input tensor is not supported since the first dimension "
         "is treated as batch dimension by TRT");
   }
-  // Convert non-Const. We test the case where the non-batch dimemsion is
+  // Convert non-Const. We test the case where the non-batch dimension is
   // unknown as well, to make sure the validator allows that.
   for (const int32 non_batch_dim : {-1, 2}) {
     const int32 batch_size = 12;
@@ -547,7 +549,8 @@ TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
   grappler::GraphProperties graph_properties(item);
   TF_EXPECT_OK(graph_properties.InferStatically(true));
   TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
-                             /*use_calibration=*/false);
+                             /*use_calibration=*/false,
+                             /*use_implicit_batch=*/true);
 
   bool start_conversion = false;
   bool should_fail = false;
@@ -626,7 +629,8 @@ TEST(TrtNodeValidator, IsTensorRTCandidate) {
   for (const TrtPrecisionMode precision_mode :
        {TrtPrecisionMode::FP32, TrtPrecisionMode::INT8}) {
     TrtNodeValidator validator(graph_properties, precision_mode,
-                               /*use_calibration=*/false);
+                               /*use_calibration=*/false,
+                               /*use_implicit_batch=*/true);
     TF_EXPECT_OK(validator.IsTensorRTCandidate(matmul.operation.node()));
     ExpectStatus(
         validator.IsTensorRTCandidate(incompatible_matmul.operation.node()),
@@ -656,7 +660,8 @@ class ConverterTest : public ::testing::Test {
   void Reset() {
     converter_ =
         std::move(Converter::Create(TrtPrecisionMode::FP32,
-                                    /*use_calibration=*/false, &logger_)
+                                    /*use_calibration=*/false, &logger_,
+                                    /*use_implicit_batch=*/true)
                       .ValueOrDie());
     weight_store_ = &converter_->weight_store_;
   }
@@ -973,7 +978,7 @@ TEST_F(ConverterTest, GetWeightRange) {
 
 TEST_F(ConverterTest, ProvideQuantizationRange) {
   FakeITensor fake_tensor;
-  // Assymetric range
+  // Asymmetric range
   converter_->ProvideQuantizationRange(&fake_tensor, 0.0f, 6.0f);
   EXPECT_EQ(6.0f, quantization_ranges()[&fake_tensor]);
   converter_->ProvideQuantizationRange(&fake_tensor, 1.0f, 6.0f);
@@ -993,7 +998,8 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
   FakeITensor not_infer;
   Logger logger;
   auto int8_converter = Converter::Create(TrtPrecisionMode::INT8,
-                                          /*use_calibration=*/true, &logger)
+                                          /*use_calibration=*/true, &logger,
+                                          /*use_implicit_batch=*/true)
                             .ValueOrDie();
   int8_converter->ProvideQuantizationRange(&input, -5.0f, 5.0f);
   int8_converter->ProvideQuantizationRange(&not_infer, -100.0f, 100.0f);
@@ -1067,7 +1073,8 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
     // operand_1 broadcast operand_2
     ExpectStatus(
         GetTrtBroadcastShape(operand_1, operand_2, /*check_feasibility=*/true,
-                             &operand_1_new_dims, &operand_2_new_dims),
+                             /*use_implicit_batch=*/true, &operand_1_new_dims,
+                             &operand_2_new_dims),
         expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
@@ -1076,7 +1083,8 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
     // operand_2 broadcast operand_1
     ExpectStatus(
         GetTrtBroadcastShape(operand_2, operand_1, /*check_feasibility=*/true,
-                             &operand_2_new_dims, &operand_1_new_dims),
+                             /*use_implicit_batch=*/true, &operand_2_new_dims,
+                             &operand_1_new_dims),
         expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
@@ -1176,7 +1184,8 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
         gdef, TrtPrecisionMode::FP32, /*max_batch_size=*/1,
         /*max_workspace_size_bytes=*/64 << 20, input_shapes, &logger_,
         /*allocator=*/nullptr, /*calibrator=*/nullptr, &engine_,
-        /*use_calibration=*/false, /*convert_successfully=*/nullptr);
+        /*use_calibration=*/false, /*use_implicit_batch=*/true,
+        /*convert_successfully=*/nullptr);
   }
 
  protected:
@@ -1251,7 +1260,8 @@ class OpConverterTest : public ::testing::Test {
     // Re-create them in proper order.
     converter_ =
         std::move(Converter::Create(precision_mode_to_test_,
-                                    /*use_calibration=*/false, &logger_)
+                                    /*use_calibration=*/false, &logger_,
+                                    /*use_implicit_batch=*/true)
                       .ValueOrDie());
 
     // Reset other related artifacts.
@@ -1403,7 +1413,8 @@ class OpConverterTest : public ::testing::Test {
     TF_EXPECT_OK(graph_properties.InferStatically(true));
 
     TrtNodeValidator validator(graph_properties, precision_mode_to_test_,
-                               /*use_calibration=*/false);
+                               /*use_calibration=*/false,
+                               /*use_implicit_batch=*/true);
     ExpectStatus(validator.IsTensorRTCandidate(node), expected_code,
                  expected_msg_substr);
   }

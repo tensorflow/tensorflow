@@ -136,8 +136,7 @@ Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
                              ArrayRef<Value *> operands,
                              NamedAttributeList attributes,
-                             ArrayRef<Block *> successors,
-                             ArrayRef<std::unique_ptr<Region>> regions,
+                             ArrayRef<Block *> successors, RegionRange regions,
                              bool resizableOperandList) {
   unsigned numRegions = regions.size();
   Operation *op = create(location, name, resultTypes, operands, attributes,
@@ -598,9 +597,8 @@ void Operation::setSuccessor(Block *block, unsigned index) {
 }
 
 auto Operation::getNonSuccessorOperands() -> operand_range {
-  return {operand_iterator(this, 0),
-          operand_iterator(this, hasSuccessors() ? getSuccessorOperandIndex(0)
-                                                 : getNumOperands())};
+  return getOperands().take_front(hasSuccessors() ? getSuccessorOperandIndex(0)
+                                                  : getNumOperands());
 }
 
 /// Get the index of the first operand of the successor at the provided
@@ -636,9 +634,7 @@ Operation::decomposeSuccessorOperandIndex(unsigned operandIndex) {
 
 auto Operation::getSuccessorOperands(unsigned index) -> operand_range {
   unsigned succOperandIndex = getSuccessorOperandIndex(index);
-  return {operand_iterator(this, succOperandIndex),
-          operand_iterator(this,
-                           succOperandIndex + getNumSuccessorOperands(index))};
+  return getOperands().slice(succOperandIndex, getNumSuccessorOperands(index));
 }
 
 /// Attempt to fold this operation using the Op's registered foldHook.
@@ -744,67 +740,6 @@ Operation *Operation::clone(BlockAndValueMapping &mapper) {
 Operation *Operation::clone() {
   BlockAndValueMapping mapper;
   return clone(mapper);
-}
-
-//===----------------------------------------------------------------------===//
-// ValueRange
-//===----------------------------------------------------------------------===//
-
-ValueRange::ValueRange(ArrayRef<Value *> values)
-    : owner(values.data()), count(values.size()) {}
-ValueRange::ValueRange(llvm::iterator_range<OperandIterator> values)
-    : count(llvm::size(values)) {
-  if (count != 0) {
-    auto begin = values.begin();
-    owner = &begin.getObject()->getOpOperand(begin.getIndex());
-  }
-}
-ValueRange::ValueRange(llvm::iterator_range<ResultIterator> values)
-    : count(llvm::size(values)) {
-  if (count != 0) {
-    auto begin = values.begin();
-    owner = &begin.getObject()->getOpResult(begin.getIndex());
-  }
-}
-
-/// Drop the first N elements, and keep M elements.
-ValueRange ValueRange::slice(unsigned n, unsigned m) const {
-  assert(n + m <= size() && "Invalid specifier");
-  OwnerT newOwner;
-  if (OpOperand *operand = owner.dyn_cast<OpOperand *>())
-    newOwner = operand + n;
-  else if (OpResult *result = owner.dyn_cast<OpResult *>())
-    newOwner = result + n;
-  else
-    newOwner = owner.get<Value *const *>() + n;
-  return ValueRange(newOwner, m);
-}
-
-/// Drop the first n elements.
-ValueRange ValueRange::drop_front(unsigned n) const {
-  assert(size() >= n && "Dropping more elements than exist");
-  return slice(n, size() - n);
-}
-
-/// Drop the last n elements.
-ValueRange ValueRange::drop_back(unsigned n) const {
-  assert(size() >= n && "Dropping more elements than exist");
-  return ValueRange(owner, size() - n);
-}
-
-ValueRange::Iterator::Iterator(OwnerT owner, unsigned curIndex)
-    : indexed_accessor_iterator<Iterator, OwnerT, Value *, Value *, Value *>(
-          owner, curIndex) {}
-
-Value *ValueRange::Iterator::operator*() const {
-  // Operands access the held value via 'get'.
-  if (OpOperand *operand = object.dyn_cast<OpOperand *>())
-    return operand[index].get();
-  // An OpResult is a value, so we can return it directly.
-  if (OpResult *result = object.dyn_cast<OpResult *>())
-    return &result[index];
-  // Otherwise, this is a raw value array so just index directly.
-  return object.get<Value *const *>()[index];
 }
 
 //===----------------------------------------------------------------------===//
@@ -999,7 +934,7 @@ OpTrait::impl::verifySameOperandsAndResultElementType(Operation *op) {
   auto elementType = getElementTypeOrSelf(op->getResult(0));
 
   // Verify result element type matches first result's element type.
-  for (auto result : drop_begin(op->getResults(), 1)) {
+  for (auto result : llvm::drop_begin(op->getResults(), 1)) {
     if (getElementTypeOrSelf(result) != elementType)
       return op->emitOpError(
           "requires the same element type for all operands and results");
@@ -1230,7 +1165,7 @@ Value *impl::foldCastOp(Operation *op) {
 }
 
 //===----------------------------------------------------------------------===//
-// CastOp implementation
+// Misc. utils
 //===----------------------------------------------------------------------===//
 
 /// Insert an operation, generated by `buildTerminatorOp`, at the end of the
@@ -1249,6 +1184,10 @@ void impl::ensureRegionTerminator(
 
   block.push_back(buildTerminatorOp());
 }
+
+//===----------------------------------------------------------------------===//
+// UseIterator
+//===----------------------------------------------------------------------===//
 
 UseIterator::UseIterator(Operation *op, bool end)
     : op(op), res(end ? op->result_end() : op->result_begin()) {

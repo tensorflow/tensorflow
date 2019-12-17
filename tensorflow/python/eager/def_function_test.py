@@ -681,7 +681,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(autograph, cloned._autograph)
     self.assertEqual(implements, cloned._implements)
     self.assertEqual(autograph_options, cloned._experimental_autograph_options)
-    self.assertEqual(relax_shapes, cloned.experimental_relax_shapes)
+    self.assertEqual(relax_shapes, cloned._experimental_relax_shapes)
     self.assertEqual(compile_, cloned._experimental_compile)
 
     # This test does not run with XLA JIT support linked in so we can only check

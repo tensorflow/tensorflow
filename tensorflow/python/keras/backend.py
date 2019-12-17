@@ -1035,7 +1035,7 @@ def placeholder(shape=None,
     dtype = floatx()
   if not shape:
     if ndim:
-      shape = tuple([None for _ in range(ndim)])
+      shape = (None,) * ndim
   with get_graph().as_default():
     if sparse:
       x = array_ops.sparse_placeholder(dtype, shape=shape, name=name)
@@ -1768,7 +1768,7 @@ def batch_dot(x, y, axes=None):
     else:
       axes = [x_ndim - 1, y_ndim - 2]
 
-  if py_any([isinstance(a, (list, tuple)) for a in axes]):
+  if py_any(isinstance(a, (list, tuple)) for a in axes):
     raise ValueError('Multiple target dimensions are not supported. ' +
                      'Expected: None, int, (int, int), ' +
                      'Provided: ' + str(axes))
@@ -1905,7 +1905,7 @@ def transpose(x):
   <tf.Tensor 'Placeholder_...' shape=(2, 3) dtype=float32>
   >>> input_transposed = tf.keras.backend.transpose(input)
   >>> input_transposed
-  <tf.Tensor 'transpose_...' shape=(3, 2) dtype=float32>
+  <tf.Tensor 'Transpose_...' shape=(3, 2) dtype=float32>
 
 
   """
@@ -4486,7 +4486,7 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   tf.Tensor([0.10536055 0.8046684  0.06187541], shape=(3,), dtype=float32)
   >>> loss = tf.keras.backend.categorical_crossentropy(a, a)
   >>> print(loss)
-  tf.Tensor([1.1920929e-07 1.1920929e-07 1.19...e-07], shape=(3,),
+  tf.Tensor([1.1920929e-07 1.1920929e-07 1.1920930e-07], shape=(3,),
   dtype=float32)
 
   """
@@ -4580,7 +4580,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
     target = flatten(target)
     output = array_ops.reshape(output, [-1, output_shape[-1]])
 
-  if py_any([_is_symbolic_tensor(v) for v in [target, output]]):
+  if py_any(_is_symbolic_tensor(v) for v in [target, output]):
     with get_graph().as_default():
       res = nn.sparse_softmax_cross_entropy_with_logits_v2(
           labels=target, logits=output)
@@ -5424,9 +5424,9 @@ def local_conv(inputs,
     if data_format == 'channels_first':
       slices.append(slice(None))
 
-    slices.extend([slice(position[d] * strides[d],
-                         position[d] * strides[d] + kernel_size[d])
-                   for d in spatial_dimensions])
+    slices.extend(
+        slice(position[d] * strides[d], position[d] * strides[d] +
+              kernel_size[d]) for d in spatial_dimensions)
 
     if data_format == 'channels_last':
       slices.append(slice(None))
