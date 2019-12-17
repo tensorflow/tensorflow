@@ -1637,23 +1637,45 @@ func @strided_slice_range_clamping(%input: tensor<4x8xf32>) -> tensor<0x3xf32> {
   return %output : tensor<0x3xf32>
 }
 
-// CHECK-LABEL: strided_slice_shrink_axis
-func @strided_slice_shrink_axis(%input: tensor<4x8xf32>) -> tensor<f32> {
-  %begin = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
-  %end = "tf.Const"() {value = dense<[2, 4]> : tensor<2xi32>} : () -> (tensor<2xi32>)
-  %strides = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+// CHECK-LABEL: strided_slice_begin_end_mask
+// CHECK-SAME: %[[INPUT:[a-z0-9]+]]: tensor<4x128x1024xf32>
+func @strided_slice_begin_end_mask(%input: tensor<4x128x1024xf32>) {
 
-  // CHECK: %[[SLICED:.*]] = "xla_hlo.slice"
-  // CHECK-DAG-SAME: start_indices = dense<[1, 3]>
-  // CHECK-DAG-SAME: limit_indices = dense<[2, 4]>
-  // CHECK-DAG-SAME: strides = dense<[1, 3]>
-  // CHECK-SAME: -> tensor<1x1xf32>
+  // For StridedSlice
+  // Dim #:        0,   1,    2
+  // Input shape: [4, 128, 1024]
+  // Begin:        1,   4,   -3
+  // End:          8,  65,   42
+  // Stride:       1,   4,   -1
+  // Begin mask:   1,   0,    0  (= 1)
+  // End mask:     0,   0,    1  (= 4)
 
-  // CHECK: "xla_hlo.reshape"(%[[SLICED]]) : (tensor<1x1xf32>) -> tensor<f32>
+  // So result shape:
+  // Dim #0: begin mask (1) -> begin = 0; end 8 canonicalized to 4: so 4
+  // Dim #1: 4 to 65 stride 4: so 16
+  // Dim #2: begin -3 + 1024 = 1021; end mask (1) -> end = -1: so 1022
+  // result shape: [4, 16, 1022]
 
-  %output = "tf.StridedSlice"(%input, %begin, %end, %strides) {shrink_axis_mask = 3
-      : i64} : (tensor<4x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<f32>
-  return %output : tensor<f32>
+  // As output shape of StridedSlice differs, a reshape will follow.
+
+  %begin = "tf.Const"() {value = dense<[1, 4, -3]> : tensor<3xi32>} : () -> (tensor<3xi32>)
+  %end = "tf.Const"() {value = dense<[8, 65, 42]> : tensor<3xi32>} : () -> (tensor<3xi32>)
+  %strides = "tf.Const"() {value = dense<[1, 4, -1]> : tensor<3xi32>} : () -> (tensor<3xi32>)
+
+  // CHECK: %[[REVERSE:.*]] = "xla_hlo.reverse"(%[[INPUT]])
+
+  // CHECK: %[[SLICE:.*]] = "xla_hlo.slice"(%[[REVERSE]])
+  // CHECK-DAG-SAME: limit_indices = dense<[4, 65, 1024]>
+  // CHECK-DAG-SAME: start_indices = dense<[0, 4, 2]>
+  // CHECK-DAG-SAME: strides = dense<[1, 4, 1]>
+  // CHECK-SAME: -> tensor<4x16x1022xf32>
+
+  %0 = "tf.StridedSlice"(%input, %begin, %end, %strides) {begin_mask = 1, end_mask = 4} : (tensor<4x128x1024xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<f32>
+
+  // CHECK: "xla_hlo.reshape"(%[[SLICE]])
+  // CHECK-SAME: -> tensor<f32>
+
+  return
 }
 
 //===----------------------------------------------------------------------===//
@@ -2380,7 +2402,7 @@ func @gather_v2_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xi32>) -> tensor<*
 func @strided_slice_grad(%grad: tensor<4x16x1022xf32>) -> tensor<4x128x1024xf32> {
 
   // For StridedSlice
-  // Dim #:        0,   1,   2
+  // Dim #:        0,   1,    2
   // Input shape: [4, 128, 1024]
   // Begin:        1,   4,   -3
   // End:          8,  65,   42
@@ -2389,7 +2411,7 @@ func @strided_slice_grad(%grad: tensor<4x16x1022xf32>) -> tensor<4x128x1024xf32>
   // End mask:     0,   0,    1  (= 4)
 
   // So result shape:
-  // Dim #0: begin mask (1) -> begin = 0; end 8 cannonicalized to 4: so 4
+  // Dim #0: begin mask (1) -> begin = 0; end 8 canonicalized to 4: so 4
   // Dim #1: 4 to 65 stride 4: so 16
   // Dim #2: begin -3 + 1024 = 1021; end mask (1) -> end = -1: so 1022
   // result shape: [4, 16, 1022]

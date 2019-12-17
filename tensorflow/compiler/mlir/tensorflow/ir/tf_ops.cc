@@ -2009,6 +2009,45 @@ static void CalculateSlicedShapeAndBoundRanges(
   }
 }
 
+bool StridedSliceOp::GetSlicedBoundRanges(
+    ArrayRef<int64_t> shape, SmallVectorImpl<int64_t> *begin_indices,
+    SmallVectorImpl<int64_t> *end_indices, SmallVectorImpl<int64_t> *strides) {
+  if (this->ellipsis_mask().getZExtValue() ||
+      this->new_axis_mask().getZExtValue() ||
+      this->shrink_axis_mask().getZExtValue())
+    return false;  // TODO(antiagainst): support these masks
+
+  // TODO(hinsu): Support lowering for ops with dynamic begin and end values
+  // when it is possible to derive indices based on mask attributes.
+  DenseIntElementsAttr begin_indices_attr, end_indices_attr, strides_attr;
+  if (!matchPattern(this->begin(), m_Constant(&begin_indices_attr)) ||
+      !matchPattern(this->end(), m_Constant(&end_indices_attr)) ||
+      !matchPattern(this->strides(), m_Constant(&strides_attr)))
+    return false;
+
+  auto input_shape = llvm::to_vector<4>(shape);
+  int rank = input_shape.size();
+
+  begin_indices->clear();
+  begin_indices->reserve(rank);
+  end_indices->clear();
+  end_indices->reserve(rank);
+  strides->clear();
+  strides->reserve(rank);
+
+  for (const APInt &index : begin_indices_attr)
+    begin_indices->push_back(index.getSExtValue());
+  for (const APInt &index : end_indices_attr)
+    end_indices->push_back(index.getSExtValue());
+  for (const APInt &stride : strides_attr)
+    strides->push_back(stride.getSExtValue());
+
+  CalculateSlicedShapeAndBoundRanges(
+      input_shape, this->begin_mask().getZExtValue(),
+      this->end_mask().getZExtValue(), *begin_indices, *end_indices, *strides);
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // StridedSliceGradOp
 //===----------------------------------------------------------------------===//
