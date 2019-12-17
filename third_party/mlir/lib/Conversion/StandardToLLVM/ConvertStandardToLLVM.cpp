@@ -253,17 +253,6 @@ Type LLVMTypeConverter::convertStandardType(Type type) {
   return {};
 }
 
-// Convert the element type of the memref `t` to to an LLVM type using
-// `lowering`, get a pointer LLVM type pointing to the converted `t`, wrap it
-// into the MLIR LLVM dialect type and return.
-static Type getMemRefElementPtrType(MemRefType t, LLVMTypeConverter &lowering) {
-  auto elementType = t.getElementType();
-  auto converted = lowering.convertType(elementType);
-  if (!converted)
-    return {};
-  return converted.cast<LLVM::LLVMType>().getPointerTo(t.getMemorySpace());
-}
-
 LLVMOpLowering::LLVMOpLowering(StringRef rootOpName, MLIRContext *context,
                                LLVMTypeConverter &lowering_,
                                PatternBenefit benefit)
@@ -1429,7 +1418,7 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
                     ArrayRef<Value *> indices,
                     ConversionPatternRewriter &rewriter,
                     llvm::Module &module) const {
-    auto ptrType = getMemRefElementPtrType(type, this->lowering);
+    LLVM::LLVMType ptrType = MemRefDescriptor(memRefDesc).getElementType();
     int64_t offset;
     SmallVector<int64_t, 4> strides;
     auto successStrides = getStridesAndOffset(type, strides, offset);
