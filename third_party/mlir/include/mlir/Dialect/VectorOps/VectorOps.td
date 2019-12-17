@@ -980,8 +980,8 @@ def Vector_TupleGetOp :
     VectorType getResultVectorType() {
       return getResult()->getType().cast<VectorType>();
     }
-    unsigned getIndex() {
-      return getAttrOfType<IntegerAttr>("index").getValue().getZExtValue();
+    int64_t getIndex() {
+      return getAttrOfType<IntegerAttr>("index").getValue().getSExtValue();
     }
     static StringRef getIndexAttrName() { return "index"; }
   }];
