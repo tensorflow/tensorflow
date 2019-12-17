@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
+#include "mlir/ADT/TypeSwitch.h"
 #include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -232,25 +233,19 @@ Type LLVMTypeConverter::convertVectorType(VectorType type) {
 }
 
 // Dispatch based on the actual type.  Return null type on error.
-Type LLVMTypeConverter::convertStandardType(Type type) {
-  if (auto funcType = type.dyn_cast<FunctionType>())
-    return convertFunctionType(funcType);
-  if (auto intType = type.dyn_cast<IntegerType>())
-    return convertIntegerType(intType);
-  if (auto floatType = type.dyn_cast<FloatType>())
-    return convertFloatType(floatType);
-  if (auto indexType = type.dyn_cast<IndexType>())
-    return convertIndexType(indexType);
-  if (auto memRefType = type.dyn_cast<MemRefType>())
-    return convertMemRefType(memRefType);
-  if (auto memRefType = type.dyn_cast<UnrankedMemRefType>())
-    return convertUnrankedMemRefType(memRefType);
-  if (auto vectorType = type.dyn_cast<VectorType>())
-    return convertVectorType(vectorType);
-  if (auto llvmType = type.dyn_cast<LLVM::LLVMType>())
-    return llvmType;
-
-  return {};
+Type LLVMTypeConverter::convertStandardType(Type t) {
+  return TypeSwitch<Type, Type>(t)
+      .Case([&](FloatType type) { return convertFloatType(type); })
+      .Case([&](FunctionType type) { return convertFunctionType(type); })
+      .Case([&](IndexType type) { return convertIndexType(type); })
+      .Case([&](IntegerType type) { return convertIntegerType(type); })
+      .Case([&](MemRefType type) { return convertMemRefType(type); })
+      .Case([&](UnrankedMemRefType type) {
+        return convertUnrankedMemRefType(type);
+      })
+      .Case([&](VectorType type) { return convertVectorType(type); })
+      .Case([](LLVM::LLVMType type) { return type; })
+      .Default([](Type) { return Type(); });
 }
 
 LLVMOpLowering::LLVMOpLowering(StringRef rootOpName, MLIRContext *context,

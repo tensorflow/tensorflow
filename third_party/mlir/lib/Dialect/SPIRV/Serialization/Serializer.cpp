@@ -21,6 +21,7 @@
 
 #include "mlir/Dialect/SPIRV/Serialization.h"
 
+#include "mlir/ADT/TypeSwitch.h"
 #include "mlir/Dialect/SPIRV/SPIRVBinaryUtils.h"
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
@@ -1634,54 +1635,33 @@ Serializer::processReferenceOfOp(spirv::ReferenceOfOp referenceOfOp) {
   return success();
 }
 
-LogicalResult Serializer::processOperation(Operation *op) {
-  LLVM_DEBUG(llvm::dbgs() << "[op] '" << op->getName() << "'\n");
+LogicalResult Serializer::processOperation(Operation *opInst) {
+  LLVM_DEBUG(llvm::dbgs() << "[op] '" << opInst->getName() << "'\n");
 
   // First dispatch the ops that do not directly mirror an instruction from
   // the SPIR-V spec.
-  if (auto addressOfOp = dyn_cast<spirv::AddressOfOp>(op)) {
-    return processAddressOfOp(addressOfOp);
-  }
-  if (auto branchOp = dyn_cast<spirv::BranchOp>(op)) {
-    return processBranchOp(branchOp);
-  }
-  if (auto condBranchOp = dyn_cast<spirv::BranchConditionalOp>(op)) {
-    return processBranchConditionalOp(condBranchOp);
-  }
-  if (auto constOp = dyn_cast<spirv::ConstantOp>(op)) {
-    return processConstantOp(constOp);
-  }
-  if (auto fnOp = dyn_cast<FuncOp>(op)) {
-    return processFuncOp(fnOp);
-  }
-  if (auto varOp = dyn_cast<spirv::VariableOp>(op)) {
-    return processVariableOp(varOp);
-  }
-  if (auto varOp = dyn_cast<spirv::GlobalVariableOp>(op)) {
-    return processGlobalVariableOp(varOp);
-  }
-  if (auto selectionOp = dyn_cast<spirv::SelectionOp>(op)) {
-    return processSelectionOp(selectionOp);
-  }
-  if (auto loopOp = dyn_cast<spirv::LoopOp>(op)) {
-    return processLoopOp(loopOp);
-  }
-  if (isa<spirv::ModuleEndOp>(op)) {
-    return success();
-  }
-  if (auto refOpOp = dyn_cast<spirv::ReferenceOfOp>(op)) {
-    return processReferenceOfOp(refOpOp);
-  }
-  if (auto specConstOp = dyn_cast<spirv::SpecConstantOp>(op)) {
-    return processSpecConstantOp(specConstOp);
-  }
-  if (auto undefOp = dyn_cast<spirv::UndefOp>(op)) {
-    return processUndefOp(undefOp);
-  }
+  return TypeSwitch<Operation *, LogicalResult>(opInst)
+      .Case([&](spirv::AddressOfOp op) { return processAddressOfOp(op); })
+      .Case([&](spirv::BranchOp op) { return processBranchOp(op); })
+      .Case([&](spirv::BranchConditionalOp op) {
+        return processBranchConditionalOp(op);
+      })
+      .Case([&](spirv::ConstantOp op) { return processConstantOp(op); })
+      .Case([&](FuncOp op) { return processFuncOp(op); })
+      .Case([&](spirv::GlobalVariableOp op) {
+        return processGlobalVariableOp(op);
+      })
+      .Case([&](spirv::LoopOp op) { return processLoopOp(op); })
+      .Case([&](spirv::ModuleEndOp) { return success(); })
+      .Case([&](spirv::ReferenceOfOp op) { return processReferenceOfOp(op); })
+      .Case([&](spirv::SelectionOp op) { return processSelectionOp(op); })
+      .Case([&](spirv::SpecConstantOp op) { return processSpecConstantOp(op); })
+      .Case([&](spirv::UndefOp op) { return processUndefOp(op); })
+      .Case([&](spirv::VariableOp op) { return processVariableOp(op); })
 
-  // Then handle all the ops that directly mirror SPIR-V instructions with
-  // auto-generated methods.
-  return dispatchToAutogenSerialization(op);
+      // Then handle all the ops that directly mirror SPIR-V instructions with
+      // auto-generated methods.
+      .Default([&](auto *op) { return dispatchToAutogenSerialization(op); });
 }
 
 namespace {
