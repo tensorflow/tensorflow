@@ -2729,21 +2729,6 @@ SubViewOp::getStaticStrides(SmallVectorImpl<int64_t> &staticStrides) {
   return success();
 }
 
-static bool hasConstantOffsetSizesAndStrides(MemRefType memrefType) {
-  if (memrefType.getNumDynamicDims() > 0)
-    return false;
-  // Get offset and strides.
-  int64_t offset;
-  llvm::SmallVector<int64_t, 4> strides;
-  if (failed(getStridesAndOffset(memrefType, strides, offset)))
-    return false;
-  // Return 'false' if any of offset or strides is dynamic.
-  if (offset == MemRefType::getDynamicStrideOrOffset() ||
-      llvm::is_contained(strides, MemRefType::getDynamicStrideOrOffset()))
-    return false;
-  return true;
-}
-
 namespace {
 
 /// Pattern to rewrite a subview op with constant size arguments.

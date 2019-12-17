@@ -1505,7 +1505,7 @@ static void print(OpAsmPrinter &p, TupleGetOp op) {
 
 static LogicalResult verify(TupleGetOp op) {
   auto tupleType = op.getOperand()->getType().cast<TupleType>();
-  if (op.getIndex() < 0 || op.getIndex() >= tupleType.size())
+  if (op.getIndex() >= tupleType.size())
     return op.emitOpError("tuple get index out of range");
   return success();
 }
