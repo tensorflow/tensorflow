@@ -252,6 +252,17 @@ class PoolingTest(test.TestCase):
         expected=expected_output,
         use_gpu=use_gpu)
 
+  def _testAvgPoolEmpty(self, use_gpu):
+    expected_output = [7.0, 8.0, 9.0]
+    self._VerifyValues(
+        nn_ops.avg_pool,
+        input_sizes=[1, 3, 3, 0],
+        ksize=[1, 2, 2, 1],
+        strides=[1, 2, 2, 1],
+        padding="VALID",
+        expected=expected_output,
+        use_gpu=use_gpu)
+
   def _testAvgPoolSamePadding(self, use_gpu):
     expected_output = [8.5, 9.5, 10.5, 14.5, 15.5, 16.5]
     self._VerifyValues(
