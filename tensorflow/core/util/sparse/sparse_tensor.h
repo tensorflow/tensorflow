@@ -202,8 +202,6 @@ class SparseTensor {
     return vec;
   }
 
-  // Helper for IndicesValid()
-  inline Status IndexValid(const TTypes<int64>::ConstMatrix& ix_t, int n) const;
   // Helper for ToDense<T>()
   template <typename T>
   bool ValidateAndInitializeToDense(Tensor* out, bool initialize);

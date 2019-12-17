@@ -123,52 +123,45 @@ Status SparseTensor::IndicesValid() const {
   }
 
   for (std::size_t n = 0; n < num_entries(); ++n) {
-    TF_RETURN_IF_ERROR(IndexValid(ix_t, n));
+    bool valid = true;
+    bool different = false;
+    bool increasing = true;
+    if (n == 0) {
+      for (int di = 0; di < dims_; ++di) {
+        if (ix_t(n, di) < 0 || ix_t(n, di) >= shape_[di]) valid = false;
+      }
+      different = true;
+    } else {
+      for (int di = 0; di < dims_; ++di) {
+        if (ix_t(n, di) < 0 || ix_t(n, di) >= shape_[di]) valid = false;
+        int64 diff = ix_t(n, order_[di]) - ix_t(n - 1, order_[di]);
+        if (diff > 0) different = true;
+        if (!different && diff < 0) increasing = false;
+      }
+    }
+    if (TF_PREDICT_FALSE(!valid || !increasing || !different)) {
+      string index = strings::StrCat("indices[", n, "] = [");
+      for (int di = 0; di < dims_; ++di) {
+        strings::StrAppend(&index, ix_t(n, di), di < dims_ - 1 ? "," : "]");
+      }
+      if (!valid) {
+        return errors::InvalidArgument(index,
+                                       " is out of bounds: need 0 <= index < [",
+                                       str_util::Join(shape_, ","), "]");
+      }
+      if (!increasing) {
+        return errors::InvalidArgument(
+            index,
+            " is out of order. Many sparse ops require sorted indices.\n"
+            "    Use `tf.sparse.reorder` to create a correctly ordered copy."
+            "\n\n");
+      }
+      if (!different) {
+        return errors::InvalidArgument(index, " is repeated");
+      }
+    }
   }
 
-  return Status::OK();
-}
-
-  // Helper for IndicesValid()
-Status SparseTensor::IndexValid(const TTypes<int64>::ConstMatrix& ix_t,
-                                int n) const {
-  bool valid = true;
-  bool different = false;
-  bool increasing = true;
-  if (n == 0) {
-    for (int di = 0; di < dims_; ++di) {
-      if (ix_t(n, di) < 0 || ix_t(n, di) >= shape_[di]) valid = false;
-    }
-    different = true;
-  } else {
-    for (int di = 0; di < dims_; ++di) {
-      if (ix_t(n, di) < 0 || ix_t(n, di) >= shape_[di]) valid = false;
-      int64 diff = ix_t(n, order_[di]) - ix_t(n - 1, order_[di]);
-      if (diff > 0) different = true;
-      if (!different && diff < 0) increasing = false;
-    }
-  }
-  if (TF_PREDICT_FALSE(!valid || !increasing || !different)) {
-    string index = strings::StrCat("indices[", n, "] = [");
-    for (int di = 0; di < dims_; ++di) {
-      strings::StrAppend(&index, ix_t(n, di), di < dims_ - 1 ? "," : "]");
-    }
-    if (!valid) {
-      return errors::InvalidArgument(index,
-                                     " is out of bounds: need 0 <= index < [",
-                                     str_util::Join(shape_, ","), "]");
-    }
-    if (!increasing) {
-      return errors::InvalidArgument(
-          index,
-          " is out of order. Many sparse ops require sorted indices.\n"
-          "    Use `tf.sparse.reorder` to create a correctly ordered copy."
-          "\n\n");
-    }
-    if (!different) {
-      return errors::InvalidArgument(index, " is repeated");
-    }
-  }
   return Status::OK();
 }
 
