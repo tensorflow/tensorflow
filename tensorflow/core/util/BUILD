@@ -385,7 +385,7 @@ cc_library(
 cc_library(
     name = "version_info",
     srcs = ["version_info.cc"],
-    hdrs = ["//tensorflow/core:public/version.h"],
+    hdrs = ["//tensorflow/core/public:version.h"],
     copts = tf_copts(),
 )
 

@@ -644,7 +644,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:variant_tensor_data.h",
         "//tensorflow/core/util/sparse:framework_group",
         "//tensorflow/core/util:framework_srcs",
-        "public/version.h",
+        "//tensorflow/core/public:version.h",
     ] + select({
         "//tensorflow:windows": [],
         "//conditions:default": [
@@ -705,7 +705,7 @@ alias(
 
 cc_library(
     name = "session_options",
-    hdrs = ["public/session_options.h"],
+    hdrs = ["//tensorflow/core/public:session_options.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":lib",
@@ -1132,8 +1132,8 @@ tf_cuda_library(
         "graph/node_builder.h",
         "graph/validate.h",
         "graph/while_context.h",
-        "public/session.h",
-        "public/session_options.h",
+        "//tensorflow/core/public:session.h",
+        "//tensorflow/core/public:session_options.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -1436,6 +1436,7 @@ filegroup(
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/profiler:mobile_srcs",
+        "//tensorflow/core/public:mobile_srcs_no_runtime",
         "//tensorflow/core/util/ctc:android_srcs",
         "//tensorflow/core/util/sparse:mobile_srcs_no_runtime_group",
         "//tensorflow/core/util:mobile_srcs_no_runtime",
@@ -1444,7 +1445,6 @@ filegroup(
             "client/**/*.cc",
             "lib/**/*.h",
             "lib/**/*.cc",
-            "public/**/*.h",
         ],
         exclude = [
             "**/*test.*",
@@ -2670,7 +2670,7 @@ CORE_CPU_BASE_HDRS = GRAPH_HDRS + [
 
 tf_cuda_library(
     name = "core_cpu_base",
-    hdrs = CORE_CPU_BASE_HDRS + ["public/session.h"],
+    hdrs = CORE_CPU_BASE_HDRS + ["//tensorflow/core/public:session.h"],
     copts = tf_copts(),
     deps = [":core_cpu_base_no_ops"] + if_static([
         ":function_ops_op_lib",
@@ -2692,10 +2692,10 @@ tf_cuda_library(
         "common_runtime/graph_optimizer.h",
         "graph/graph_constructor.cc",  # Depends on common_runtime.
         "graph/graph_def_builder_util.cc",  # Depends on common_runtime.
-        "public/session_options.h",
-        "public/version.h",
+        "//tensorflow/core/public:session_options.h",
+        "//tensorflow/core/public:version.h",
     ] + CORE_CPU_BASE_HDRS,
-    hdrs = CORE_CPU_BASE_HDRS + ["public/session.h"],
+    hdrs = CORE_CPU_BASE_HDRS + ["//tensorflow/core/public:session.h"],
     copts = tf_copts(),
     deps = [
         ":graph",
@@ -2837,9 +2837,9 @@ tf_cuda_library(
         "graph/mkl_layout_pass.cc",
         "graph/mkl_tfconversion_pass.cc",
         "graph/quantize_training.cc",
-        "public/session.h",
-        "public/session_options.h",
-        "public/version.h",
+        "//tensorflow/core/public:session.h",
+        "//tensorflow/core/public:session_options.h",
+        "//tensorflow/core/public:version.h",
     ],
     hdrs = CORE_CPU_LIB_HEADERS,
     copts = tf_copts() + tf_openmp_copts(),
