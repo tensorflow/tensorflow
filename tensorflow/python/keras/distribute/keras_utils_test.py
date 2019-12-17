@@ -197,9 +197,8 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
     with self.cached_session():
       a = constant_op.constant([1, 2], shape=(1, 2))
       b = constant_op.constant([[1, 2], [1, 2]], shape=(2, 2))
-      device_map = values.ReplicaDeviceMap(('/device:CPU:0', '/device:GPU:0'))
-      x = values.DistributedValues(device_map, (a, b))
-      y = values.DistributedValues(device_map, (a, a))
+      x = values.DistributedValues((a, b))
+      y = values.DistributedValues((a, a))
       # Removed device and input tensor shape details from the error message
       # since the order of the device and the corresponding input tensor shape
       # is not deterministic over different runs.
@@ -222,9 +221,8 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
     with self.cached_session():
       a = constant_op.constant([1, 2], shape=(1, 2), dtype=dtypes.int32)
       b = constant_op.constant([1, 2], shape=(1, 2), dtype=dtypes.float64)
-      device_map = values.ReplicaDeviceMap(('/device:CPU:0', '/device:GPU:0'))
-      x = values.DistributedValues(device_map, (a, b))
-      y = values.DistributedValues(device_map, (a, a))
+      x = values.DistributedValues((a, b))
+      y = values.DistributedValues((a, a))
       # Removed device and input tensor dtype details from the error message
       # since the order of the device and the corresponding input tensor dtype
       # is not deterministic over different runs.
