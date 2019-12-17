@@ -20,7 +20,7 @@ mkdir mm_test
 cd mm_test
 virtualenv . -ppython3.5
 source bin/activate
-pip install -q tensorflow==2.1.0rc1 scipy==1.1.0
+pip install -q tf-nightly==2.1.0.dev20191217 scipy==1.1.0
 python -c 'import tensorflow'
 
 #source tensorflow/tools/ci_build/release/common.sh
