@@ -4,6 +4,25 @@ package(
 )
 
 cc_library(
+    name = "host_threads_xplane_to_tf_metrics_db",
+    srcs = ["host_threads_xplane_to_tf_metrics_db.cc"],
+    hdrs = ["host_threads_xplane_to_tf_metrics_db.h"],
+    deps = [
+        ":op_stack",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:event_span",
+        "//tensorflow/core/profiler/utils:op_utils",
+        "//tensorflow/core/profiler/utils:tf_op_utils",
+        "//tensorflow/core/profiler/utils:timespan",
+        "//tensorflow/core/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
     name = "run_metadata_to_trace_events",
     srcs = ["run_metadata_to_trace_events.cc"],
     hdrs = ["run_metadata_to_trace_events.h"],
