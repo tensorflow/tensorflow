@@ -1,5 +1,5 @@
 op {
-  graph_op_name: "Select"
+  graph_op_name: "SelectV2"
   endpoint {
     name: "Where3"
   }
