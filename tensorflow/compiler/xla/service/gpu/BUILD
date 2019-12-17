@@ -1289,6 +1289,7 @@ cc_library(
         "amdgpu_compiler.h"
     ],
     deps = [
+        ":gemm_rewriter",
         ":gpu_compiler",
         ":gpu_conv_algorithm_picker",
         ":gpu_conv_padding_legalization",

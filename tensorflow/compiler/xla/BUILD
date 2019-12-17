@@ -963,7 +963,6 @@ tf_cc_test(
     ],
     tags = [
         "no_cuda", # new test missing includes/etc, do not upstream this tag
-        "no_rocm",
     ],
 )
 
