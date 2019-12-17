@@ -111,70 +111,94 @@ class TrtPrecisionMode(object):
 # so it can produce reasonable performance results with the default.
 DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
 
-# TrtConversionParams encapsulates the parameters that are used for TF-TRT
-# conversion.
-TrtConversionParams = collections.namedtuple(
-    "TrtConversionParams",
-    [
 
-        # A template RewriterConfig proto used to create a TRT-enabled
-        # RewriterConfig. If None, it will use a default one.
-        "rewriter_config_template",
+class TrtConversionParams(object):
+  """ A class to encapsulate parameters that are used for TF-TRT conversion."""
 
-        # The maximum GPU temporary memory which the TRT engine can use at
-        # execution time. This corresponds to the 'workspaceSize' parameter of
-        # nvinfer1::IBuilder::setMaxWorkspaceSize().
-        "max_workspace_size_bytes",
+  def __init__(self,
+               rewriter_config_template=None,
+               max_workspace_size_bytes=DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES,
+               precision_mode=TrtPrecisionMode.FP32,
+               minimum_segment_size=3,
+               is_dynamic_op=True,
+               maximum_cached_engines=1,
+               use_calibration=True,
+               max_batch_size=1,
+               allow_build_at_runtime=True):
+    """Initialize TrtConversionParams.
 
-        # One of TrtPrecisionMode.supported_precision_modes().
-        "precision_mode",
+    Args:
+      rewriter_config_template: a template RewriterConfig proto used to create a
+        TRT-enabled RewriterConfig. If None, it will use a default one.
+      max_workspace_size_bytes: the maximum GPU temporary memory which the TRT
+        engine can use at execution time. This corresponds to the
+        'workspaceSize' parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
+      precision_mode: one of TrtPrecisionMode.supported_precision_modes().
+      minimum_segment_size: the minimum number of nodes required for a subgraph
+        to be replaced by TRTEngineOp.
+      is_dynamic_op: whether to generate dynamic TRT ops which will build the
+        TRT network and engine at run time. i.e. Since TensorRT version < 6.0
+        does not support dynamic dimensions other than the batch dimension,
+        when the TensorFlow graph has a non-batch dimension of dynamic size,
+        we would need to enable this option. This option should be set to True
+        in TF 2.0.
+      maximum_cached_engines: max number of cached TRT engines for dynamic TRT
+        ops. Created TRT engines for a dynamic dimension are cached. This is
+        the maximum number of engines that can be cached. If the number of
+        cached engines is already at max but none of them supports the input
+        shapes, the TRTEngineOp will fall back to run the original TF subgraph
+        that corresponds to the TRTEngineOp.
+      use_calibration: this argument is ignored if precision_mode is not INT8.
+        If set to True, a calibration graph will be created to calibrate the
+        missing ranges. The calibration graph must be converted to an inference
+        graph by running calibration with calibrate(). If set to False,
+        quantization nodes will be expected for every tensor in the graph
+        (exlcuding those which will be fused). If a range is missing, an error
+        will occur. Please note that accuracy may be negatively affected if
+        there is a mismatch between which tensors TRT quantizes and which
+        tensors were trained with fake quantization.
+      max_batch_size: max size for the input batch. This parameter is only
+        effective when is_dynamic_op=False which is not supported in TF 2.0.
+      allow_build_at_runtime: whether to build TensorRT engines during runtime.
+        If no TensorRT engine can be found in cache that can handle the given
+        inputs during runtime, then a new TensorRT engine is built at runtime
+        if allow_build_at_runtime=True, and otherwise native TF is used. This
+        argument is only effective if is_dynamic_op=True.
+    """
+    self.rewriter_config_template = rewriter_config_template
+    self.max_workspace_size_bytes = max_workspace_size_bytes
+    self.precision_mode = precision_mode
+    self.minimum_segment_size = minimum_segment_size
+    self.is_dynamic_op = is_dynamic_op
+    self.maximum_cached_engines = maximum_cached_engines
+    self.use_calibration = use_calibration
+    self.max_batch_size = max_batch_size
+    self.allow_build_at_runtime = allow_build_at_runtime
 
-        # The minimum number of nodes required for a subgraph to be replaced by
-        # TRTEngineOp.
-        "minimum_segment_size",
+  def _replace(self,
+               rewriter_config_template=None,
+               max_workspace_size_bytes=None,
+               precision_mode=None,
+               minimum_segment_size=None,
+               is_dynamic_op=None,
+               maximum_cached_engines=None,
+               use_calibration=None,
+               max_batch_size=None,
+              allow_build_at_runtime=None):
+    """Set value of class data members only if they are passed as arguments.
 
-        # Whether to generate dynamic TRT ops which will build the TRT network
-        # and engine at run time.
-        # i.e. Since TensorRT version < 6.0 does not support dynamic dimensions
-        # other than the batch dimension, when the TensorFlow graph has a
-        # non-batch dimension of dynamic size, we would need to enable this
-        # option. This option should be set to True in TF 2.0.
-        "is_dynamic_op",
+    We need this function for backward compatibility with NamedTuple
+    TrtConversionParams which forced users to use the following syntax to
+    set parameters:
+      DEFAULT_TRT_CONVERSION_PARAMS._replace(...)
+    """
+    for k, v in vars().items():
+      if v and (k is not "self"):
+        setattr(self, k, v)
+    return self
 
-        # Max number of cached TRT engines for dynamic TRT ops.
-        # Created TRT engines for a dynamic dimension are cached.
-        # This is the maximum number of engines that can be cached.
-        # If the number of cached engines is already at max but none of them
-        # supports the input shapes, the TRTEngineOp will fall back to run the
-        # original TF subgraph that corresponds to the TRTEngineOp.
-        "maximum_cached_engines",
 
-        # This argument is ignored if precision_mode is not INT8. If set to
-        # True, a calibration graph will be created to calibrate the missing
-        # ranges. The calibration graph must be converted to an inference graph
-        # by running calibration with calibrate(). If set to False, quantization
-        # nodes will be expected for every tensor in the graph (exlcuding those
-        # which will be fused). If a range is missing, an error will occur.
-        # Please note that accuracy may be negatively affected if there is a
-        # mismatch between which tensors TRT quantizes and which tensors were
-        # trained with fake quantization.
-        "use_calibration",
-
-        # Max size for the input batch.
-        # This parameter is only effective when is_dynamic_op=False which
-        # is not supported in TF 2.0.
-        "max_batch_size",
-    ])
-
-DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams(
-    rewriter_config_template=None,
-    max_workspace_size_bytes=DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES,
-    precision_mode=TrtPrecisionMode.FP32,
-    minimum_segment_size=3,
-    is_dynamic_op=True,
-    maximum_cached_engines=1,
-    use_calibration=True,
-    max_batch_size=1)
+DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams()
 
 _TRT_ENGINE_OP_NAME = "TRTEngineOp"
 
