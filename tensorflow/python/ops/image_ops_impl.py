@@ -1866,15 +1866,14 @@ def rgb_to_grayscale(images, name=None):
   Outputs a tensor of the same `DType` and rank as `images`.  The size of the
   last dimension of the output is 1, containing the Grayscale value of the
   pixels.
+  
+  ```python
+  >>> original = tf.constant([[[1.0, 2.0, 3.0]]])
+  >>> converted = tf.image.rgb_to_grayscale(original)
+  >>> print(converted.numpy())
+  [[[1.81...]]]
 
-  Usage Example:
-    ```
-    >>> import tensorflow as tf
-    >>> x = tf.constant([[[2.0, 5.0, 3.0]]])
-    >>> y = tf.image.rgb_to_grayscale(x)
-    >>> print(y.numpy())
-    [[[3.8...]]]
-    ```
+  ```
 
   Args:
     images: The RGB tensor to convert. The last dimension must have size 3 and
