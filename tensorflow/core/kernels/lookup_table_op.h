@@ -41,9 +41,15 @@ class LookupTableOp : public OpKernel {
   // ctx is not owned by this class.
   explicit LookupTableOp(OpKernelConstruction* ctx)
       : OpKernel(ctx), table_handle_set_(false) {
-    OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_STRING,
-                                                 tensorflow::TensorShape({2}),
-                                                 &table_handle_, nullptr));
+    if (ctx->output_type(0) == DT_RESOURCE) {
+      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_RESOURCE,
+                                                   tensorflow::TensorShape({}),
+                                                   &table_handle_, nullptr));
+    } else {
+      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_STRING,
+                                                   tensorflow::TensorShape({2}),
+                                                   &table_handle_, nullptr));
+    }
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("use_node_name_sharing", &use_node_name_sharing_));
   }
@@ -85,11 +91,13 @@ class LookupTableOp : public OpKernel {
                             DataTypeToEnum<value_dtype>::v(), cinfo_.name()));
 
     if (ctx->expected_output_dtype(0) == DT_RESOURCE) {
-      Tensor* handle;
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &handle));
-      handle->scalar<ResourceHandle>()() =
-          MakeResourceHandle<lookup::LookupInterface>(ctx, cinfo_.container(),
-                                                      cinfo_.name());
+      if (!table_handle_set_) {
+        auto h =
+            table_handle_.AccessTensor(ctx)->template scalar<ResourceHandle>();
+        h() = MakeResourceHandle<lookup::LookupInterface>(
+            ctx, cinfo_.container(), cinfo_.name());
+      }
+      ctx->set_output(0, *table_handle_.AccessTensor(ctx));
     } else {
       if (!table_handle_set_) {
         auto h = table_handle_.AccessTensor(ctx)->template flat<tstring>();
