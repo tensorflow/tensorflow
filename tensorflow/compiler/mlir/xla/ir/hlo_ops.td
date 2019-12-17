@@ -56,7 +56,7 @@ def HLO_Tensor : TensorOf<[AnyFloat, AnyInteger, AnyComplex]>;
 
 def HLO_ComplexTensor : TensorOf<[AnyComplex]>;
 
-def HLO_Tuple : NestedTupleOf<[HLO_Tensor]>;
+def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
@@ -323,6 +323,30 @@ class HLO_BinaryLogicalElementwiseOp<string mnemonic> :
 def HLO_AndOp: HLO_BinaryLogicalElementwiseOp<"and">, BASE_HLO_AndOp;
 def HLO_OrOp: HLO_BinaryLogicalElementwiseOp<"or">, BASE_HLO_OrOp;
 def HLO_XorOp : HLO_BinaryLogicalElementwiseOp<"xor">, BASE_HLO_XorOp;
+
+//===----------------------------------------------------------------------===//
+// XLA communication op definitions.
+//===----------------------------------------------------------------------===//
+
+// InfeedOp corresponds to 'InfeedWithToken' xla client API and not 'Infeed'.
+// InfeedWithToken allows ordering of infeed HLO instructions using tokens.
+def HLO_InfeedOp : HLO_Op<"infeed", []> {
+
+  string summary = "Infeed operator";
+
+  string description = [{
+    Reads a single data item from the implicit Infeed streaming interface of
+    the device, interpreting the data as the given shape, and returns a XlaOp
+    of the data. Multiple Infeed operations are allowed in a computation, but
+    there must be a total order among the Infeed operations.
+
+    See https://www.tensorflow.org/xla/operation_semantics#infeed.
+  }];
+
+  let arguments = (ins HLO_Token:$token);
+  let results = (outs HLO_Tuple);
+  let hasCustomHLOConverter = 1;
+}
 
 //===----------------------------------------------------------------------===//
 // XLA control flow op definitions.

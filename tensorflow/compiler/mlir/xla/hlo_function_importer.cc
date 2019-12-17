@@ -448,6 +448,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kExp, ExpOp);
       NoAttributeCase(kExpm1, Expm1Op);
       NoAttributeCase(kFloor, FloorOp);
+      NoAttributeCase(kInfeed, InfeedOp);
       NoAttributeCase(kImag, ImagOp);
       NoAttributeCase(kLog, LogOp);
       NoAttributeCase(kLog1p, Log1pOp);
