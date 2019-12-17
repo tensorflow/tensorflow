@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
+#include "tensorflow/core/lib/strings/strcat.h"
+
 namespace tensorflow {
 namespace sparse {
 
@@ -27,9 +29,8 @@ int UnsafeGetDimsFromIx(const Tensor& ix) {
 
 Status GetDimsFromIx(const Tensor& ix, int* result) {
   if (!TensorShapeUtils::IsMatrix(ix.shape())) {
-    return Status(error::INVALID_ARGUMENT,
-                  strings::StrCat("indices must be a matrix, but got: ",
-                                  ix.shape().DebugString()));
+    return errors::InvalidArgument("indices must be a matrix, but got: ",
+                                   ix.shape().DebugString());
   }
   *result = UnsafeGetDimsFromIx(ix);
   return Status::OK();
@@ -42,31 +43,26 @@ Status GetDimsFromIx(const Tensor& ix, int* result) {
                                          const VarDimArray order,
                                          SparseTensor* result) {
   if (ix.dtype() != DT_INT64) {
-    return Status(
-        error::INVALID_ARGUMENT,
-        strings::StrCat("indices must be type int64 but got: ", ix.dtype()));
+    return errors::InvalidArgument("indices must be type int64 but got: ",
+                                   ix.dtype());
   }
   if (!TensorShapeUtils::IsVector(vals.shape())) {
-    return Status(error::INVALID_ARGUMENT,
-                  strings::StrCat("vals must be a vec, but got: ",
-                                  vals.shape().DebugString()));
+    return errors::InvalidArgument("vals must be a vec, but got: ",
+                                   vals.shape().DebugString());
   }
   if (ix.shape().dim_size(0) != vals.shape().dim_size(0)) {
-    return Status(error::INVALID_ARGUMENT,
-                  strings::StrCat("indices and values rows (indexing "
-                                  "dimension) must match. (indices = ",
-                                  ix.shape().dim_size(0), ", values = ",
-                                  vals.shape().dim_size(0), ")"));
+    return errors::InvalidArgument(
+        "indices and values rows (indexing "
+        "dimension) must match. (indices = ",
+        ix.shape().dim_size(0), ", values = ", vals.shape().dim_size(0), ")");
   }
   int dims = 0;
   TF_RETURN_IF_ERROR(GetDimsFromIx(ix, &dims));
   if (order.size() != dims) {
-    return Status(error::INVALID_ARGUMENT,
-                  "Order length must be SparseTensor rank.");
+    return errors::InvalidArgument("Order length must be SparseTensor rank.");
   }
   if (shape.size() != dims) {
-    return Status(error::INVALID_ARGUMENT,
-                  "Shape rank must be SparseTensor rank.");
+    return errors::InvalidArgument("Shape rank must be SparseTensor rank.");
   }
 
   *result = SparseTensor(std::move(ix), std::move(vals), shape, order);

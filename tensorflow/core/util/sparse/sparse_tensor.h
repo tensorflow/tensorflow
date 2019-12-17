@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/sparse/dim_comparator.h"
@@ -474,14 +473,12 @@ inline Status SparseTensor::Split(const SparseTensor& input_tensor,
   const int split_size = split_dim_size / num_split;
 
   if (!(num_split > 0 && num_split <= split_dim_size)) {
-    return Status(error::INVALID_ARGUMENT,
-                  strings::StrCat("num_split must be in the interval (0, ",
-                                  split_dim_size, "]"));
+    return errors::InvalidArgument("num_split must be in the interval (0, ",
+                                   split_dim_size, "]");
   }
   if (!(split_dim >= 0 && split_dim < num_dim)) {
-    return Status(
-        error::INVALID_ARGUMENT,
-        strings::StrCat("num_dim must be in the interval [0, ", num_dim, ")"));
+    return errors::InvalidArgument("num_dim must be in the interval [0, ",
+                                   num_dim, ")");
   }
 
   const int residual = split_dim_size % num_split;
