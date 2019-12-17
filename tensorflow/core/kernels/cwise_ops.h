@@ -546,7 +546,7 @@ struct functor_traits<google_floor_mod<Scalar>> {
 #endif
 
 template <typename Scalar, bool IsInteger = Eigen::NumTraits<Scalar>::IsInteger>
-struct scalar_round_op_google {
+struct scalar_round_half_to_even_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
     EIGEN_STATIC_ASSERT((!NumTraits<Scalar>::IsComplex),
@@ -569,7 +569,7 @@ struct scalar_round_op_google {
 };
 
 template <typename Scalar>
-struct scalar_round_op_google<Scalar, true> {
+struct scalar_round_half_to_even_op<Scalar, true> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
     return x;
@@ -581,7 +581,7 @@ struct scalar_round_op_google<Scalar, true> {
 };
 
 template <typename Scalar>
-struct functor_traits<scalar_round_op_google<Scalar>> {
+struct functor_traits<scalar_round_half_to_even_op<Scalar>> {
   enum {
     Cost = Eigen::NumTraits<Scalar>::IsInteger ? 0
                                                : 4 * NumTraits<Scalar>::AddCost,
@@ -960,12 +960,12 @@ template <typename T>
 struct floor : base<T, Eigen::internal::scalar_floor_op<T>> {};
 
 template <typename T>
-struct round : base<T, Eigen::internal::scalar_round_op_google<T>> {};
+struct round : base<T, Eigen::internal::scalar_round_half_to_even_op<T>> {};
 
 template <typename T>
 struct ceil : base<T, Eigen::internal::scalar_ceil_op<T>> {};
 
-/** this should go in Eigen
+/** TODO(tokarip): This should go in Eigen
  * \brief Template functor to compute the round to int value of a scalar
  */
 template <typename Scalar>
