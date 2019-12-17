@@ -6,7 +6,7 @@ MNIST_DIGITS_TEST_HDRS := \
 tensorflow/lite/micro/examples/mnist_digits/mnist_model_data.h
 
 OUTPUT_HANDLER_TEST_SRCS := \
-tensorflow/lite/micro/examples/mnist_digits/output_handler_test.cc \
+tensorflow/lite/micro/examples/mnist_digits/mnist_output_handler_test.cc \
 tensorflow/lite/micro/examples/mnist_digits/output_handler.cc
 
 OUTPUT_HANDLER_TEST_HDRS := \
@@ -34,7 +34,7 @@ $(eval $(call microlite_test,mnist_digits_test,\
 $(MNIST_DIGITS_TEST_SRCS),$(MNIST_DIGITS_TEST_HDRS)))
 
 # Tests producing an output.
-$(eval $(call microlite_test,output_handler_test,\
+$(eval $(call microlite_test,mnist_output_handler_test,\
 $(OUTPUT_HANDLER_TEST_SRCS),$(OUTPUT_HANDLER_TEST_HDRS)))
 
 # Builds a standalone binary.

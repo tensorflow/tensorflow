@@ -64,7 +64,6 @@ extern bool did_test_fail;
 extern tflite::ErrorReporter* reporter;
 }  // namespace micro_test
 
-
 #define TF_LITE_MICRO_TESTS_BEGIN              \
   namespace micro_test {                       \
   int tests_passed;                            \
