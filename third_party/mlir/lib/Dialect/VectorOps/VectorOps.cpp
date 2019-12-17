@@ -543,8 +543,8 @@ isValidExtractOrInsertSlicesType(Operation *op, VectorType vectorType,
     SmallVector<int64_t, 4> vectorOffsets(rank);
     int64_t linearIndex = i;
     for (unsigned j = 0; j < rank; ++j) {
-      vectorOffsets.push_back(linearIndex / sliceStrides[i]);
-      linearIndex %= sliceStrides[i];
+      vectorOffsets[j] = linearIndex / sliceStrides[j];
+      linearIndex %= sliceStrides[j];
     }
     // Convert from unrolled vector-space offsets to element-space offsets.
     auto offsets = mlir::functional::zipMap(
