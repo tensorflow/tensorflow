@@ -11,7 +11,6 @@ package_group(
     includes = ["@local_config_mlir//:subpackages"],
     packages = [
         "//tensorflow/compiler/...",
-        "//tensorflow/core/tfrt_delegate/...",
         "//tensorflow/python/...",
     ],
 )
