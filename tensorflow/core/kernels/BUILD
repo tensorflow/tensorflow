@@ -65,7 +65,7 @@ package_group(
     name = "friends",
     packages = [
         "//learning/brain/contrib/...",
-        "//learning/brain/research/sparse_matrix/...",
+        "//learning/brain/research/...",
         "//learning/faster_training/...",
         "//tensorflow/...",
         "//tensorflow_text/...",
