@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_LOOKUP_TABLE_OP_H_
 #define TENSORFLOW_CORE_KERNELS_LOOKUP_TABLE_OP_H_
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -154,7 +153,7 @@ inline const ResourceHandle& SubtleMustCopyIfIntegral(
   return value;
 }
 
-// Lookup table that wraps an flat_hash_map, where the key and value data type
+// Lookup table that wraps an unordered_map, where the key and value data type
 // is specified.
 //
 // This table is recommended for any variations to key values.
@@ -165,7 +164,13 @@ inline const ResourceHandle& SubtleMustCopyIfIntegral(
 // Sample use case:
 //
 // HashTable<int64, int64> table;  // int64 -> int64.
-// table.Initialize(...);
+// table.Prepare(10); // Prepare the underlying data structure, the number of
+//                    // elements is required by interface, but not used.
+// // Populate the table, elements could be added in one or multiple calls.
+// table.Insert(key_tensor, value_tensor); // Populate the table.
+// ...
+// table.set_is_initialized();
+//
 // table.Find(in_t, &out_t, default_t)
 //
 template <class K, class V>
@@ -173,14 +178,20 @@ class HashTable : public InitializableLookupTable {
  public:
   HashTable(OpKernelContext* ctx, OpKernel* kernel) {}
 
-  size_t size() const override { return table_.size(); }
+  size_t size() const override {
+    // return the size of the table only if it's initialized, otherwise 0.
+    if (!is_initialized()) {
+      return 0;
+    }
+    return table_ ? table_->size() : 0;
+  }
 
   Status ExportValues(OpKernelContext* context) override {
     if (!is_initialized()) {
       return errors::Aborted("HashTable is not initialized.");
     }
 
-    const int64 size = table_.size();
+    const int64 size = table_->size();
 
     Tensor* keys;
     Tensor* values;
@@ -192,7 +203,7 @@ class HashTable : public InitializableLookupTable {
     auto keys_data = keys->flat<K>();
     auto values_data = values->flat<V>();
     int64 i = 0;
-    for (auto it = table_.begin(); it != table_.end(); ++it, ++i) {
+    for (auto it = table_->begin(); it != table_->end(); ++it, ++i) {
       keys_data(i) = it->first;
       values_data(i) = it->second;
     }
@@ -204,29 +215,37 @@ class HashTable : public InitializableLookupTable {
   DataType value_dtype() const override { return DataTypeToEnum<V>::v(); }
 
  protected:
-  Status DoPrepare(size_t size) override {
+  Status DoPrepare(size_t unused) override {
     if (is_initialized()) {
       return errors::Aborted("HashTable already initialized.");
     }
-    table_.reserve(size);
+    if (!table_) {
+      table_ = std::unique_ptr<std::unordered_map<K, V>>(
+          new std::unordered_map<K, V>());
+    }
     return Status::OK();
   };
 
-  Status DoLazyPrepare(std::function<int64(void)> size_fn) override {
-    return DoPrepare(size_fn());
+  Status DoLazyPrepare(std::function<int64(void)> unused) override {
+    constexpr size_t kUnusedSize = 0;
+    return DoPrepare(kUnusedSize);
   }
 
   Status DoInsert(const Tensor& keys, const Tensor& values) override {
+    if (!table_) {
+      return errors::FailedPrecondition("HashTable is not prepared.");
+    }
+
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
     for (int64 i = 0; i < key_values.size(); ++i) {
-      auto&& key = SubtleMustCopyIfIntegral(key_values(i));
-      auto&& value = SubtleMustCopyIfIntegral(value_values(i));
-      auto result = table_.emplace(key, value);
-      if (!result.second && result.first->second != value) {
+      const K key = SubtleMustCopyIfIntegral(key_values(i));
+      const V value = SubtleMustCopyIfIntegral(value_values(i));
+      const V& previous_value = gtl::LookupOrInsert(table_.get(), key, value);
+      if (previous_value != value) {
         return errors::FailedPrecondition(
             "HashTable has different value for same key. Key ", key, " has ",
-            result.first->second, " and trying to add value ", value);
+            previous_value, " and trying to add value ", value);
       }
     }
     return Status::OK();
@@ -240,18 +259,25 @@ class HashTable : public InitializableLookupTable {
 
     for (int64 i = 0; i < key_values.size(); ++i) {
       value_values(i) = gtl::FindWithDefault(
-          table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
+          *table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
     }
     return Status::OK();
   }
 
   int64 MemoryUsed() const override {
-    const int64 num_elements = table_.size();
-    return num_elements * (sizeof(K) + sizeof(V));
+    if (!is_initialized()) {
+      return 0;
+    }
+    if (table_) {
+      const int64 num_elements = table_->size();
+      return num_elements * (sizeof(K) + sizeof(V));
+    } else {
+      return 0;
+    }
   }
 
  private:
-  absl::flat_hash_map<K, V> table_;
+  std::unique_ptr<std::unordered_map<K, V>> table_;
 };
 
 }  // namespace lookup
