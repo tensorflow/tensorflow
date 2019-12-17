@@ -56,6 +56,17 @@ struct SPIRVInlinerInterface : public DialectInlinerInterface {
 
   /// Returns true if the given region 'src' can be inlined into the region
   /// 'dest' that is attached to an operation registered to the current dialect.
+  bool isLegalToInline(Region *dest, Region *src,
+                       BlockAndValueMapping &) const final {
+    // Return true here when inlining into spv.selection and spv.loop
+    // operations.
+    auto op = dest->getParentOp();
+    return isa<spirv::SelectionOp>(op) || isa<spirv::LoopOp>(op);
+  }
+
+  /// Returns true if the given operation 'op', that is registered to this
+  /// dialect, can be inlined into the region 'dest' that is attached to an
+  /// operation registered to the current dialect.
   bool isLegalToInline(Operation *op, Region *dest,
                        BlockAndValueMapping &) const final {
     // TODO(antiagainst): Enable inlining structured control flows with return.
