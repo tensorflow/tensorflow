@@ -190,6 +190,8 @@ bool HasNodeAttr(const NodeDef& node_def, StringPiece attr_name);
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    string* value);  // type: "string"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   tstring* value);  // type: "tstring"
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    int64* value);  // type: "int"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    int32* value);  // type: "int"
@@ -209,6 +211,8 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    Tensor* value);  // type: "tensor"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<string>* value);  // type "list(string)"
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   std::vector<tstring>* value);  // type "list(tstring)"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<int64>* value);  // type "list(int)"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
@@ -273,6 +277,8 @@ bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                     std::vector<string>* value);  // type: "list(string)"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<tstring>* value);  // type: "list(tstring)"
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                     std::vector<int32>* value);  // type: "list(int)"
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
