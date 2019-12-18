@@ -2229,8 +2229,25 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     layer->setDilation(dilation);
     conv_layer = layer;
   }
-  nvinfer1::ITensor* output_tensor = conv_layer->getOutput(0);
-
+  nvinfer1::ITensor* conv_output_tensor = conv_layer->getOutput(0);
+  nvinfer1::ITensor* output_tensor;
+  // Add an extra padding for Deconv because TRT doesn't accept the
+  // argument output_shape and thus the TRT output shape could be wrong
+  // in case of strides>1.
+  if (is_conv2d_backprop_input) {
+    auto tf_output_shape = backprop_output_size.GetTrtDims();
+    nvinfer1::Dims trt_output_shape = conv_output_tensor->getDimensions();
+    const int heightDiff = tf_output_shape.d[h_index - 1] - trt_output_shape.d[1];
+    const int widthDiff = tf_output_shape.d[w_index - 1] - trt_output_shape.d[2];
+    nvinfer1::DimsHW pre_padding(0, 0);
+    nvinfer1::DimsHW post_padding(heightDiff, widthDiff);
+    nvinfer1::IPaddingLayer* padding_layer = params->converter->network()->addPadding(
+        *conv_output_tensor, pre_padding, post_padding);
+    output_tensor = padding_layer->getOutput(0);
+  }
+  else {
+    output_tensor = conv_output_tensor;
+  }
   // Restore transpose.
   if (need_transpose) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
