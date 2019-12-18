@@ -25,7 +25,6 @@ namespace ruy {
 namespace {
 
 TEST(PrepackedCacheTest, TestCacheEjection) {
-  ruy::Context* context = new ruy::Context();
   // Create the cache.
   PrepackedCache prepacked_cache(32);
   // Allocate the prepacked matrix.
@@ -54,11 +53,9 @@ TEST(PrepackedCacheTest, TestCacheEjection) {
   // The cache size was exceeded by inserting mat2. Ensure that mat1 was
   // ejected.
   EXPECT_EQ(prepacked_cache.FindAndUpdate(cache_key1), prepacked_cache.cend());
-  delete context;
 }
 
 TEST(PrepackedCacheTest, TestCacheBasic) {
-  ruy::Context* context = new ruy::Context();
   // Create the cache.
   PrepackedCache prepacked_cache(48);
   // Allocate the prepacked matrix.
@@ -83,11 +80,9 @@ TEST(PrepackedCacheTest, TestCacheBasic) {
   // The cache size was not exceeded by inserting mat2. Ensure that mat1 was not
   // ejected.
   EXPECT_NE(prepacked_cache.FindAndUpdate(cache_key1), prepacked_cache.cend());
-  delete context;
 }
 
 TEST(PrepackedCacheTest, TestCacheEjection2) {
-  ruy::Context* context = new ruy::Context();
   // Create the cache.
   PrepackedCache prepacked_cache(73);
   // Allocate the prepacked matrix 1.
@@ -137,7 +132,39 @@ TEST(PrepackedCacheTest, TestCacheEjection2) {
   EXPECT_NE(prepacked_cache.FindAndUpdate(cache_key3), prepacked_cache.cend());
   EXPECT_NE(prepacked_cache.FindAndUpdate(cache_key1), prepacked_cache.cend());
   EXPECT_NE(prepacked_cache.FindAndUpdate(cache_key4), prepacked_cache.cend());
-  delete context;
+}
+
+TEST(PrepackedCacheTest, TestCacheOnCacheable) {
+  // Create context and set the cache policy
+  ruy::Context context;
+  context.cache_policy = ruy::kCacheLHSOnGemV;
+  PrepackedCache* cache = context.GetPrepackedCache();
+  EXPECT_EQ(cache->TotalSize(), 0);
+
+  const float lhs_data[] = {1, 2, 3, 4};
+  const float rhs_data[] = {1, 2};
+  float dst_data[4];
+
+  ruy::Matrix<float> lhs;
+  ruy::MakeSimpleLayout(2, 2, ruy::Order::kRowMajor, &lhs.layout);
+  lhs.data = lhs_data;
+  ruy::Matrix<float> rhs;
+  ruy::MakeSimpleLayout(2, 1, ruy::Order::kColMajor, &rhs.layout);
+  rhs.data = rhs_data;
+  ruy::Matrix<float> dst;
+  ruy::MakeSimpleLayout(2, 1, ruy::Order::kColMajor, &dst.layout);
+  dst.data = dst_data;
+
+  ruy::BasicSpec<float, float> spec;
+  // Perform the multiplication and confirm no caching occured.
+  ruy::Mul<ruy::kAllPaths>(lhs, rhs, spec, &context, &dst);
+  EXPECT_EQ(cache->TotalSize(), 0);
+
+  // Set cacheable for the LHS, repeat the multiplication, and see
+  // that caching did occur.
+  lhs.cacheable = true;
+  ruy::Mul<ruy::kAllPaths>(lhs, rhs, spec, &context, &dst);
+  EXPECT_NE(cache->TotalSize(), 0);
 }
 
 }  // namespace
