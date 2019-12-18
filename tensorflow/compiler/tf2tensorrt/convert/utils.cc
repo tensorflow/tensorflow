@@ -114,8 +114,7 @@ string DebugString(const nvinfer1::ITensor& tensor) {
   return StrCat("nvinfer1::ITensor(@", reinterpret_cast<uintptr_t>(&tensor),
                 ", name=", tensor.getName(),
                 ", dtype=", DebugString(tensor.getType()),
-                ", dims=",
-                tensorflow::tensorrt::DebugString(tensor.getDimensions()), ")");
+                ", dims=", DebugString(tensor.getDimensions()), ")");
 }
 
 #endif
