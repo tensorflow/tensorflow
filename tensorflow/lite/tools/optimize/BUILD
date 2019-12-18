@@ -250,7 +250,6 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/unpack.bin",
     ],
     tags = [
-        "noasan",  # b/146459888
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],
