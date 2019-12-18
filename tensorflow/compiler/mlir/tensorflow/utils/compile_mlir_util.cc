@@ -216,8 +216,7 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
   // and canonicalization opportunities that are necessary for the second
   // LegalizeTFPass(allow_partial_conversion=false) invocation.
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::xla_hlo::createLegalizeTFPass(true));
-  tf2xla.addPass(mlir::tf_executor::CreateTFExecutorGraphPruningPass(
-      /*skip_main_func=*/true));
+  tf2xla.addPass(mlir::tf_executor::CreateTFExecutorGraphPruningPass());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   tf2xla.addNestedPass<mlir::FuncOp>(
       mlir::xla_hlo::createLegalizeTFPass(false));
