@@ -40,6 +40,7 @@ cc_library(
     srcs = ["op_metrics_db_combiner.cc"],
     hdrs = ["op_metrics_db_combiner.h"],
     deps = [
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/utils:op_metrics_db_utils",
     ],
