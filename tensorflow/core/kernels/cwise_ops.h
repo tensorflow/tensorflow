@@ -741,13 +741,17 @@ template <typename T>
 struct scalar_erfinv_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_erfinv_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x) const {
-    T y = numext::ndtri((x + static_cast<T>(1.)) / static_cast<T>(2.));
-    return y / static_cast<T>(numext::sqrt(2.));
+    constexpr T half = T(0.5);
+    T y = numext::ndtri(half * x + half);
+    constexpr T half_sqrt = T(M_SQRT1_2);
+    return y * half_sqrt;
   }
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
-    Packet y = pndtri<Packet>(pmadd(pset1<Packet>(0.5), x, pset1<Packet>(0.5)));
-    return pdiv(y, psqrt(pset1<Packet>(2.)));
+    Packet half = pset1<Packet>(T(0.5));
+    Packet y = pndtri<Packet>(pmadd(half, x, half));
+    Packet half_sqrt = pset1<Packet>(T(M_SQRT1_2));
+    return pmul(y, half_sqrt);
   }
 };
 
