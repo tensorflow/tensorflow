@@ -74,6 +74,18 @@ mlir_attr_t makeBoolAttr(mlir_context_t context, bool value) {
   return mlir_attr_t{attr.getAsOpaquePointer()};
 }
 
+mlir_attr_t makeFloatAttr(mlir_context_t context, float value) {
+  auto *ctx = reinterpret_cast<mlir::MLIRContext *>(context);
+  auto attr = FloatAttr::get(FloatType::getF32(ctx), APFloat(value));
+  return mlir_attr_t{attr.getAsOpaquePointer()};
+}
+
+mlir_attr_t makeStringAttr(mlir_context_t context, const char *value) {
+  auto *ctx = reinterpret_cast<mlir::MLIRContext *>(context);
+  auto attr = StringAttr::get(value, ctx);
+  return mlir_attr_t{attr.getAsOpaquePointer()};
+}
+
 unsigned getFunctionArity(mlir_func_t function) {
   auto f = mlir::FuncOp::getFromOpaquePointer(function);
   return f.getNumArguments();
