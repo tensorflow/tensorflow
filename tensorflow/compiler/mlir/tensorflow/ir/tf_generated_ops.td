@@ -821,6 +821,38 @@ def TF_ConcatOp : TF_Op<"Concat", [NoSideEffect]> {
   }];
 }
 
+def TF_ConcatOffsetOp : TF_Op<"ConcatOffset", [NoSideEffect]> {
+  let summary = "Computes offsets of concat inputs within its output.";
+
+  let description = [{
+For example:
+
+```
+# 'x' is [2, 2, 7]
+# 'y' is [2, 3, 7]
+# 'z' is [2, 5, 7]
+concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
+```
+
+This is typically used by gradient computations for a concat operation.
+  }];
+
+  let arguments = (ins
+    I32Tensor:$concat_dim,
+    Variadic<I32Tensor>:$shape
+  );
+
+  let results = (outs
+    Variadic<I32Tensor>:$offset
+  );
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<1>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
 def TF_ConcatV2Op : TF_Op<"ConcatV2", [NoSideEffect]> {
   let summary = "Concatenates tensors along one dimension.";
 

@@ -2100,3 +2100,51 @@ func @testDynamicStitch(%arg0: tensor<?x3xf32>, %arg1: tensor<2x?xf32>) -> (tens
   %0 = "tf.DynamicStitch"(%indices0, %indices1, %arg0, %arg1) : (tensor<i32>, tensor<i32>, tensor<?x3xf32>, tensor<2x?xf32>) -> tensor<2x3x2xf32>
   return %0 : tensor<2x3x2xf32>
 }
+
+// -----
+
+func @testConcatOffest(%concat_dim: tensor<i32>, %shape0: tensor<3xi32>) {
+  // expected-error @+1 {{'tf.ConcatOffset' op requires N to be at least 2, got 1}}
+  %0 = "tf.ConcatOffset"(%concat_dim, %shape0) : (tensor<i32>, tensor<3xi32>) -> tensor<3xi32>
+  return
+}
+
+// -----
+
+func @testConcatOffest(%concat_dim: tensor<i32>, %shape0: tensor<3xi32>, %shape1: tensor<3xi32>) {
+  // expected-error @+1 {{'tf.ConcatOffset' op requires sizes of shapes and offsets to be the same, got sizes 2 and 3}}
+  %0:3 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>)
+  return
+}
+
+// -----
+
+func @testConcatOffest(%concat_dim: tensor<1xi32>, %shape0: tensor<3xi32>, %shape1: tensor<3xi32>) {
+  // expected-error @+1 {{'tf.ConcatOffset' op requires concat_dim to be a scalar, got tensor of rank 1}}
+  %0:2 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1) : (tensor<1xi32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>)
+  return
+}
+
+// -----
+
+func @testConcatOffest(%concat_dim: tensor<i32>, %shape0: tensor<3xi32>, %shape1: tensor<3xi32>) {
+  // expected-error @+1 {{'tf.ConcatOffset' op requires operand and result 1 to have compatible shapes}}
+  %0:2 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<8xi32>)
+  return
+}
+
+// -----
+
+func @testConcatOffest(%concat_dim: tensor<i32>, %shape0: tensor<3xi32>, %shape1: tensor<3x3xi32>) {
+  // expected-error @+1 {{'tf.ConcatOffset' op requires shape tensor operand 1 to be of rank 1, got tensor of rank 2}}
+  %0:2 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1) : (tensor<i32>, tensor<3xi32>, tensor<3x3xi32>) -> (tensor<3xi32>, tensor<3x3xi32>)
+  return
+}
+
+// -----
+
+func @testConcatOffest(%concat_dim: tensor<i32>, %shape0: tensor<3xi32>, %shape1: tensor<8xi32>) {
+  // expected-error @+1 {{'tf.ConcatOffset' op requires shape tensor (rank 1) operand 1 to be of length 3, got tensor (rank 1) of length 8}}
+  %0:2 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1) : (tensor<i32>, tensor<3xi32>, tensor<8xi32>) -> (tensor<3xi32>, tensor<8xi32>)
+  return
+}

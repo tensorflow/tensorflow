@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 #include <numeric>
 #include <string>
+#include <tuple>
 #include <type_traits>
 
 #include "llvm/ADT/APInt.h"
@@ -535,6 +536,59 @@ static LogicalResult Verify(OpT op) {
 
   return VerifyTypesCompatibility(values,
                                   /*mask_one_dim=*/true, op.getOperation());
+}
+
+//===----------------------------------------------------------------------===//
+// ConcatOffsetOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(ConcatOffsetOp op) {
+  if (op.N() < 2)
+    return op.emitOpError() << "requires N to be at least 2, got " << op.N();
+
+  if (op.shape().size() != op.offset().size())
+    return op.emitOpError()
+           << "requires sizes of shapes and offsets to be the same, got sizes "
+           << op.shape().size() << " and " << op.offset().size();
+
+  auto ranked_dim = op.concat_dim()->getType().dyn_cast<RankedTensorType>();
+  if (ranked_dim && ranked_dim.getRank() != 0)
+    return op.emitOpError()
+           << "requires concat_dim to be a scalar, got tensor of rank "
+           << ranked_dim.getRank();
+
+  int64_t num_dims = -1;
+  for (auto shape_offset_idx :
+       llvm::enumerate(llvm::zip(op.shape(), op.offset()))) {
+    Value *shape = std::get<0>(shape_offset_idx.value());
+    Value *offset = std::get<1>(shape_offset_idx.value());
+    const size_t idx = shape_offset_idx.index();
+
+    if (failed(verifyCompatibleShape(shape->getType(), offset->getType())))
+      return op.emitOpError() << "requires operand and result " << idx
+                              << " to have compatible shapes";
+
+    auto ranked_shape = shape->getType().dyn_cast<RankedTensorType>();
+    if (!ranked_shape) continue;
+
+    if (ranked_shape.getRank() != 1)
+      return op.emitOpError() << "requires shape tensor operand " << idx
+                              << " to be of rank 1, got tensor of rank "
+                              << ranked_shape.getRank();
+
+    if (!ranked_shape.hasStaticShape()) continue;
+
+    int64_t ranked_shape_dim = ranked_shape.getDimSize(0);
+    if (num_dims == -1)
+      num_dims = ranked_shape_dim;
+    else if (ranked_shape_dim != num_dims)
+      return op.emitOpError()
+             << "requires shape tensor (rank 1) operand " << idx
+             << " to be of length " << num_dims
+             << ", got tensor (rank 1) of length " << ranked_shape_dim;
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
