@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
+#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
@@ -586,6 +587,65 @@ static LogicalResult Verify(ConcatOffsetOp op) {
              << "requires shape tensor (rank 1) operand " << idx
              << " to be of length " << num_dims
              << ", got tensor (rank 1) of length " << ranked_shape_dim;
+  }
+
+  return success();
+}
+
+LogicalResult ConcatOffsetOp::fold(ArrayRef<Attribute> operands,
+                                   SmallVectorImpl<OpFoldResult> &results) {
+  // ConcatOffset must have its first operand be concat_dim and at least two
+  // shape tensors in variadic shapes operand.
+  if (operands.size() < 3) return failure();
+
+  // Check concat_dim is a scalar.
+  auto concat_dim_attr = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!concat_dim_attr || concat_dim_attr.getType().getRank() != 0)
+    return failure();
+
+  llvm::SmallVector<DenseIntElementsAttr, 4> shapes;
+  shapes.reserve(operands.size() - 1);
+  for (Attribute shape : llvm::drop_begin(operands, 1))
+    if (auto shape_attr = shape.dyn_cast_or_null<DenseIntElementsAttr>())
+      shapes.push_back(shape_attr);
+    else
+      return failure();
+
+  // Check all shapes are vectors of the same length.
+  if (shapes.front().getType().getRank() != 1) return success();
+  const int64_t num_dims = shapes.front().getNumElements();
+  for (DenseIntElementsAttr shape : llvm::drop_begin(shapes, 1))
+    if (shape.getType().getRank() != 1 || shape.getNumElements() != num_dims)
+      return failure();
+
+  // Check concat_dim is within [-num_dims, num_dims).
+  int32_t concat_dim = (*concat_dim_attr.getValues<int32_t>().begin());
+  if (concat_dim < 0) concat_dim += num_dims;
+  if (concat_dim >= num_dims || concat_dim < 0) return failure();
+
+  // Check all elements besides at concat_dim match across all shape tensors.
+  SmallVector<int32_t, 4> shape0;
+  shape0.reserve(num_dims);
+  for (int32_t dim : shapes.front().getValues<int32_t>()) shape0.push_back(dim);
+
+  for (DenseIntElementsAttr shape : llvm::drop_begin(shapes, 1)) {
+    for (auto dims_and_idx : llvm::enumerate(llvm::zip(shape0, shape))) {
+      if (dims_and_idx.index() == concat_dim) continue;
+
+      if (std::get<0>(dims_and_idx.value()) !=
+          std::get<1>(dims_and_idx.value()).getSExtValue())
+        return failure();
+    }
+  }
+
+  // Compute an exclusive cumulative sum of elements at concat_dim.
+  results.reserve(shapes.size());
+  SmallVector<int32_t, 4> cumulative_sum(num_dims, 0);
+  RankedTensorType offset_type =
+      RankedTensorType::get({num_dims}, IntegerType::get(32, getContext()));
+  for (DenseIntElementsAttr shape : shapes) {
+    results.push_back(DenseIntElementsAttr::get(offset_type, cumulative_sum));
+    cumulative_sum[concat_dim] += shape.getValue<int32_t>(concat_dim);
   }
 
   return success();

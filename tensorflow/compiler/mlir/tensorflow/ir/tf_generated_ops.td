@@ -851,6 +851,8 @@ This is typically used by gradient computations for a concat operation.
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasFolder = 1;
 }
 
 def TF_ConcatV2Op : TF_Op<"ConcatV2", [NoSideEffect]> {
