@@ -18,6 +18,7 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 def F32ElementsAttr : ElementsAttrBase<
   CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
@@ -307,3 +308,7 @@ multiclass FusedBinaryActivationFuncOpPat<dag BinaryOp> {
 foreach BinaryOps = [TFL_AddOp, TFL_DivOp,
                      TFL_MulOp, TFL_SubOp] in
   defm : FusedBinaryActivationFuncOpPat<BinaryOps>;
+
+// The constant folding in this pass might produce constant in the tf dialect.
+// This rule is to legalize these constant to the tfl dialect.
+def : Pat<(TF_ConstOp ElementsAttr:$value), (TFL_ConstOp $value)>;
