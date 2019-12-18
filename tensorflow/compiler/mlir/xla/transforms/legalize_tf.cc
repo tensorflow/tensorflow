@@ -2444,7 +2444,6 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
   patterns.insert<
       ConvertArgMaxOp, ConvertBF16FloorDivOp, ConvertConv2D, ConvertEinsumOp,
       ConvertMaxPoolOp, ConvertRangeOp, ConvertSigmoidOp, ConvertSizeOp,
-      ConvertMaxPoolOp, ConvertRangeOp, ConvertSigmoidOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertTopKV2Op,
