@@ -1661,7 +1661,8 @@ LogicalResult Serializer::processOperation(Operation *opInst) {
 
       // Then handle all the ops that directly mirror SPIR-V instructions with
       // auto-generated methods.
-      .Default([&](auto *op) { return dispatchToAutogenSerialization(op); });
+      .Default(
+          [&](Operation *op) { return dispatchToAutogenSerialization(op); });
 }
 
 namespace {
