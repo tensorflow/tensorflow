@@ -65,8 +65,10 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
       ValueError: At most one of `saver` or `scaffold` should be set.
     """
     save_path = os.path.join(checkpoint_dir, checkpoint_basename)
-    logging.info("Create AsyncCheckpointSaverHook saving to path\n%s\n"
-                 "with %d listener(s).", save_path, len(listeners))
+    logging.info("Create AsyncCheckpointSaverHook saving to path\n%s",
+                 save_path)
+    if listeners:
+      logging.info(" with %d listener(s).", len(listeners))
     if saver is not None and scaffold is not None:
       raise ValueError("You cannot provide both saver and scaffold.")
     self._saver = saver
