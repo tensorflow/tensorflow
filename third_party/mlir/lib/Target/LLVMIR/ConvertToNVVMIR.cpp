@@ -36,7 +36,6 @@
 
 using namespace mlir;
 
-namespace {
 static llvm::Value *createIntrinsicCall(llvm::IRBuilder<> &builder,
                                         llvm::Intrinsic::ID intrinsic,
                                         ArrayRef<llvm::Value *> args = {}) {
@@ -56,6 +55,7 @@ static llvm::Intrinsic::ID getShflBflyIntrinsicId(llvm::Type *resultType,
                                  : llvm::Intrinsic::nvvm_shfl_sync_bfly_i32;
 }
 
+namespace {
 class ModuleTranslation : public LLVM::ModuleTranslation {
 
 public:

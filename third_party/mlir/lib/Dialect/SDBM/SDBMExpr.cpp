@@ -671,10 +671,7 @@ SDBMDirectExpr SDBMNegExpr::getVar() const {
   return static_cast<ImplType *>(impl)->expr;
 }
 
-namespace mlir {
-namespace ops_assertions {
-
-SDBMExpr operator+(SDBMExpr lhs, SDBMExpr rhs) {
+SDBMExpr mlir::ops_assertions::operator+(SDBMExpr lhs, SDBMExpr rhs) {
   if (auto folded = foldSumDiff(lhs, rhs))
     return folded;
   assert(!(lhs.isa<SDBMNegExpr>() && rhs.isa<SDBMNegExpr>()) &&
@@ -707,7 +704,7 @@ SDBMExpr operator+(SDBMExpr lhs, SDBMExpr rhs) {
   return addConstant(lhs.cast<SDBMVaryingExpr>(), rhsConstant.getValue());
 }
 
-SDBMExpr operator-(SDBMExpr lhs, SDBMExpr rhs) {
+SDBMExpr mlir::ops_assertions::operator-(SDBMExpr lhs, SDBMExpr rhs) {
   // Fold x - x == 0.
   if (lhs == rhs)
     return SDBMConstantExpr::get(lhs.getDialect(), 0);
@@ -734,7 +731,7 @@ SDBMExpr operator-(SDBMExpr lhs, SDBMExpr rhs) {
   return buildDiffExpr(lhs.cast<SDBMDirectExpr>(), (-rhs).cast<SDBMNegExpr>());
 }
 
-SDBMExpr stripe(SDBMExpr expr, SDBMExpr factor) {
+SDBMExpr mlir::ops_assertions::stripe(SDBMExpr expr, SDBMExpr factor) {
   auto constantFactor = factor.cast<SDBMConstantExpr>();
   assert(constantFactor.getValue() > 0 && "non-positive stripe");
 
@@ -744,6 +741,3 @@ SDBMExpr stripe(SDBMExpr expr, SDBMExpr factor) {
 
   return SDBMStripeExpr::get(expr.cast<SDBMDirectExpr>(), constantFactor);
 }
-
-} // namespace ops_assertions
-} // namespace mlir

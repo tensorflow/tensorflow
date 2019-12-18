@@ -117,14 +117,16 @@ struct VectorTransferRewriter : public RewritePattern {
                                      PatternRewriter &rewriter) const override;
 };
 
+} // namespace
+
 /// Analyzes the `transfer` to find an access dimension along the fastest remote
 /// MemRef dimension. If such a dimension with coalescing properties is found,
 /// `pivs` and `vectorView` are swapped so that the invocation of
 /// LoopNestBuilder captures it in the innermost loop.
 template <typename TransferOpTy>
-void coalesceCopy(TransferOpTy transfer,
-                  SmallVectorImpl<edsc::ValueHandle *> *pivs,
-                  edsc::VectorView *vectorView) {
+static void coalesceCopy(TransferOpTy transfer,
+                         SmallVectorImpl<edsc::ValueHandle *> *pivs,
+                         edsc::VectorView *vectorView) {
   // rank of the remote memory access, coalescing behavior occurs on the
   // innermost memory dimension.
   auto remoteRank = transfer.getMemRefType().getRank();
@@ -155,9 +157,9 @@ void coalesceCopy(TransferOpTy transfer,
 /// Emits remote memory accesses that are clipped to the boundaries of the
 /// MemRef.
 template <typename TransferOpTy>
-SmallVector<edsc::ValueHandle, 8> clip(TransferOpTy transfer,
-                                       edsc::MemRefView &view,
-                                       ArrayRef<edsc::IndexHandle> ivs) {
+static SmallVector<edsc::ValueHandle, 8> clip(TransferOpTy transfer,
+                                              edsc::MemRefView &view,
+                                              ArrayRef<edsc::IndexHandle> ivs) {
   using namespace mlir::edsc;
   using namespace edsc::op;
   using edsc::intrinsics::select;
@@ -357,7 +359,6 @@ PatternMatchResult VectorTransferRewriter<TransferWriteOp>::matchAndRewrite(
   rewriter.eraseOp(op);
   return matchSuccess();
 }
-} // namespace
 
 void mlir::populateVectorToAffineLoopsConversionPatterns(
     MLIRContext *context, OwningRewritePatternList &patterns) {

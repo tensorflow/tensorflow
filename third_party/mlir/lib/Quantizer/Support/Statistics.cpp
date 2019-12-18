@@ -95,15 +95,10 @@ bool AttributeTensorStatistics::get(TensorAxisStatistics &stats) const {
   return false;
 }
 
-namespace mlir {
-namespace quantizer {
-
-raw_ostream &operator<<(raw_ostream &os, const TensorAxisStatistics &stats) {
+raw_ostream &mlir::quantizer::operator<<(raw_ostream &os,
+                                         const TensorAxisStatistics &stats) {
   os << "STATS[sampleSize=" << stats.sampleSize << ", min=" << stats.minValue
      << ", maxValue=" << stats.maxValue << ", mean=" << stats.mean
      << ", variance=" << stats.variance << "]";
   return os;
 }
-
-} // end namespace quantizer
-} // end namespace mlir

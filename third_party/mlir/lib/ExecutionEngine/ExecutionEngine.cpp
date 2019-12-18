@@ -63,13 +63,11 @@ using llvm::orc::RTDyldObjectLinkingLayer;
 using llvm::orc::ThreadSafeModule;
 using llvm::orc::TMOwningSimpleCompiler;
 
-// Wrap a string into an llvm::StringError.
-static inline Error make_string_error(const Twine &message) {
+/// Wrap a string into an llvm::StringError.
+static Error make_string_error(const Twine &message) {
   return llvm::make_error<StringError>(message.str(),
                                        llvm::inconvertibleErrorCode());
 }
-
-namespace mlir {
 
 void SimpleObjectCache::notifyObjectCompiled(const Module *M,
                                              MemoryBufferRef ObjBuffer) {
@@ -316,4 +314,3 @@ Error ExecutionEngine::invoke(StringRef name, MutableArrayRef<void *> args) {
 
   return Error::success();
 }
-} // end namespace mlir

@@ -18,6 +18,7 @@
 // This file implements the conversion patterns from GPU ops to SPIR-V dialect.
 //
 //===----------------------------------------------------------------------===//
+#include "mlir/Conversion/GPUToSPIRV/ConvertGPUToSPIRV.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
@@ -350,11 +351,10 @@ PatternMatchResult GPUReturnOpConversion::matchAndRewrite(
 // GPU To SPIRV Patterns.
 //===----------------------------------------------------------------------===//
 
-namespace mlir {
-void populateGPUToSPIRVPatterns(MLIRContext *context,
-                                SPIRVTypeConverter &typeConverter,
-                                OwningRewritePatternList &patterns,
-                                ArrayRef<int64_t> workGroupSize) {
+void mlir::populateGPUToSPIRVPatterns(MLIRContext *context,
+                                      SPIRVTypeConverter &typeConverter,
+                                      OwningRewritePatternList &patterns,
+                                      ArrayRef<int64_t> workGroupSize) {
   patterns.insert<KernelFnConversion>(context, typeConverter, workGroupSize);
   patterns.insert<
       GPUReturnOpConversion, ForOpConversion, KernelModuleConversion,
@@ -366,4 +366,3 @@ void populateGPUToSPIRVPatterns(MLIRContext *context,
                              spirv::BuiltIn::LocalInvocationId>>(context,
                                                                  typeConverter);
 }
-} // namespace mlir

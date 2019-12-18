@@ -39,7 +39,6 @@
 
 using namespace mlir;
 
-namespace {
 // Create a call to llvm intrinsic
 static llvm::Value *createIntrinsicCall(llvm::IRBuilder<> &builder,
                                         llvm::Intrinsic::ID intrinsic,
@@ -67,6 +66,7 @@ static llvm::Value *createDeviceFunctionCall(llvm::IRBuilder<> &builder,
   return builder.CreateCall(fn, ArrayRef<llvm::Value *>(fn_op0));
 }
 
+namespace {
 class ModuleTranslation : public LLVM::ModuleTranslation {
 
 public:
