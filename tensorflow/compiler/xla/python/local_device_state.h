@@ -55,9 +55,10 @@ class LocalDeviceState {
   se::Stream* host_to_device_stream() const {
     return host_to_device_stream_.get();
   }
-  se::Stream* device_to_host_stream() const {
-    return device_to_host_stream_.get();
-  }
+
+  // Returns a device to host stream. Allocates streams in a round-robin fashion
+  // amongst the available streams.
+  se::Stream* GetDeviceToHostStream();
 
   // Returns a device to device stream. Allocates streams in a round-robin
   // fashion amongst the available streams.
@@ -110,13 +111,15 @@ class LocalDeviceState {
   se::StreamExecutor* executor_;
   std::unique_ptr<se::Stream> compute_stream_;
   std::unique_ptr<se::Stream> host_to_device_stream_;
-  std::unique_ptr<se::Stream> device_to_host_stream_;
+  std::vector<std::unique_ptr<se::Stream>> device_to_host_streams_;
   std::vector<std::unique_ptr<se::Stream>> device_to_device_streams_;
 
-  // Number of device-to-device streams to create in the multistream case.
+  // Number of device-to-host and device-to-device streams.
+  static constexpr int kNumDeviceToHostStreams = 4;
   static constexpr int kNumDeviceToDeviceStreams = 4;
 
   absl::Mutex mu_;
+  int next_device_to_host_stream_ GUARDED_BY(mu_) = 0;
   int next_device_to_device_stream_ GUARDED_BY(mu_) = 0;
 
   // Callback stream is used for running short host-side callbacks after device

@@ -505,7 +505,7 @@ Status PyLocalBuffer::CopyToHostAsync() {
     }
     host_value = host_value_ = std::make_shared<HostValue>();
   }
-  se::Stream* stream = device_->local_device_state()->device_to_host_stream();
+  se::Stream* stream = device_->local_device_state()->GetDeviceToHostStream();
   WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
   host_value->value = std::make_shared<Literal>(on_host_shape_);
   TF_ASSIGN_OR_RETURN(ShapedBuffer shaped_buffer, AsShapedBuffer());
@@ -661,7 +661,7 @@ Status PyLocalBuffer::BlockHostUntilReady() {
   // be an issue, we could either use a separate stream for this purpose, or
   // poll for the buffer definition events.
   se::Stream* stream = client_->device_state(device_buffer->device_ordinal())
-                           .device_to_host_stream();
+                           .GetDeviceToHostStream();
   WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
   return stream->BlockHostUntilDone();
 }

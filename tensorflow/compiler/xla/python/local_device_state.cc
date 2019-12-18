@@ -33,12 +33,16 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
       executor_(executor) {
   compute_stream_ = absl::make_unique<se::Stream>(executor);
   host_to_device_stream_ = absl::make_unique<se::Stream>(executor);
-  device_to_host_stream_ = absl::make_unique<se::Stream>(executor);
   callback_stream_ = absl::make_unique<se::Stream>(executor);
   compute_stream_->Init();
   host_to_device_stream_->Init();
-  device_to_host_stream_->Init();
   callback_stream_->Init();
+  device_to_host_streams_.reserve(kNumDeviceToHostStreams);
+  for (int i = 0; i < kNumDeviceToHostStreams; ++i) {
+    auto stream = absl::make_unique<se::Stream>(executor);
+    stream->Init();
+    device_to_host_streams_.push_back(std::move(stream));
+  }
   device_to_device_streams_.reserve(kNumDeviceToDeviceStreams);
   for (int i = 0; i < kNumDeviceToDeviceStreams; ++i) {
     auto stream = absl::make_unique<se::Stream>(executor);
@@ -89,6 +93,14 @@ void LocalDeviceState::ThenExecuteOnCallbackThread(
   stream->ThenDoHostCallback([this, callback]() mutable {
     callback_thread_->Schedule(std::move(callback));
   });
+}
+
+se::Stream* LocalDeviceState::GetDeviceToHostStream() {
+  absl::MutexLock lock(&mu_);
+  int i = next_device_to_host_stream_;
+  next_device_to_host_stream_ =
+      (next_device_to_host_stream_ + 1) % device_to_host_streams_.size();
+  return device_to_host_streams_.at(i).get();
 }
 
 se::Stream* LocalDeviceState::GetDeviceToDeviceStream() {
