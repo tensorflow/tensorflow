@@ -167,7 +167,6 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 5,
     tags = [
-        "no_rocm",  # passes locally, but consistently fails on CI
         "optonly",  # Times out frequently in fastbuild mode.
     ],
     deps = [
@@ -349,7 +348,6 @@ tf_xla_py_test(
     srcs = ["matrix_triangular_solve_op_test.py"],
     python_version = "PY3",
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = [
@@ -1073,7 +1071,6 @@ tf_xla_py_test(
     disabled_backends = ["cpu_ondemand"],
     python_version = "PY3",
     tags = [
-        "no_rocm",
         "config-cuda-only",
     ],
     use_xla_device = False,
@@ -1502,7 +1499,6 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_xla_py_test(

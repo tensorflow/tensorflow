@@ -49,4 +49,36 @@ bazel test \
       --test_sharding_strategy=disabled \
       --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
       -- \
-      //tensorflow/compiler/...
+      //tensorflow/compiler/... \
+      -//tensorflow/compiler/tests:dense_layer_test \
+      -//tensorflow/compiler/tests:dense_layer_test_gpu \
+      -//tensorflow/compiler/tests:jit_test \
+      -//tensorflow/compiler/tests:jit_test_gpu \
+      -//tensorflow/compiler/tests:matrix_triangular_solve_op_test \
+      -//tensorflow/compiler/tests:tensor_array_ops_test \
+      -//tensorflow/compiler/tests:xla_ops_test \
+      -//tensorflow/compiler/xla/client/lib:svd_test \
+      -//tensorflow/compiler/tests:lstm_test \
+&& bazel test \
+      --config=rocm \
+      --config=xla \
+      -k \
+      --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-rocm_multi_gpu,-v1only \
+      --jobs=${N_JOBS} \
+      --local_test_jobs=${TF_GPU_COUNT} \
+      --test_timeout 600,900,2400,7200 \
+      --build_tests_only \
+      --test_output=errors \
+      --test_sharding_strategy=disabled \
+      --test_env=TF2_BEHAVIOR=0 \
+      --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
+      -- \
+      //tensorflow/compiler/tests:dense_layer_test \
+      //tensorflow/compiler/tests:dense_layer_test_gpu \
+      //tensorflow/compiler/tests:jit_test \
+      //tensorflow/compiler/tests:jit_test_gpu \
+      //tensorflow/compiler/tests:matrix_triangular_solve_op_test \
+      //tensorflow/compiler/tests:tensor_array_ops_test \
+      //tensorflow/compiler/tests:xla_ops_test \
+      //tensorflow/compiler/xla/client/lib:svd_test \
+      //tensorflow/compiler/tests:lstm_test
