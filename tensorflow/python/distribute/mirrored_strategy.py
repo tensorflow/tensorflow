@@ -24,7 +24,7 @@ import functools
 import threading
 import weakref
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
@@ -944,7 +944,7 @@ class _MirroredReplicaThread(threading.Thread):
     self.record_thread_local_summary_state()
     self.record_thread_local_eager_context_state()
     self.context_device_policy = (
-        pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
+        pywrap_tfe.TFE_ContextGetDevicePlacementPolicy(
             ctx._context_handle))  # pylint: disable=protected-access
     self.graph = ops.get_default_graph()
     with ops.init_scope():

@@ -171,6 +171,7 @@ py_library(
         ":platform",
         ":proto_ops",
         ":pywrap_tensorflow",
+        ":pywrap_tfe",
         ":rnn_ops_gen",
         ":saver_test_utils",
         ":script_ops",
@@ -251,6 +252,7 @@ py_library(
     deps = [
         ":_pywrap_util_port",
         ":lib",
+        ":pywrap_tfe",
         ":util",
         "//tensorflow/core:protos_all_py",
         "@absl_py//absl:app",
@@ -477,13 +479,13 @@ cc_library(
 cc_library(
     name = "pybind11_status",
     hdrs = [
+        "lib/core/py_exception_registry.h",
         "lib/core/pybind11_status.h",
         "//tensorflow/c:headers",
     ],
     features = ["-parse_headers"],
     visibility = tf_external_workspace_visible(visibility),
     deps = [
-        ":py_exception_registry",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -1110,6 +1112,7 @@ py_library(
         ":lib",
         ":platform",
         ":pywrap_tensorflow",
+        ":pywrap_tfe",
         ":random_seed",
         ":sparse_tensor",
         ":tensor_spec",
@@ -5492,7 +5495,6 @@ tf_py_wrap_cc(
         "lib/io/py_record_reader.i",
         "lib/io/py_record_writer.i",
         "platform/base.i",
-        "pywrap_tfe.i",
         "//tensorflow/compiler/mlir/python:mlir.i",
     ],
     # add win_def_file for pywrap_tensorflow
@@ -5573,7 +5575,12 @@ WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS = [
     ":safe_ptr",  # checkpoint_reader
     ":python_op_gen",  # python_op_gen
     ":bfloat16_lib",  # bfloat16
+    "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
     "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
+    "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
+    "//tensorflow/core/common_runtime/eager:context",  # tfe
+    "//tensorflow/core/profiler/lib:profiler_session",  # tfe
+    "//tensorflow/c:tf_status_helper",  # tfe
 ]
 
 # Filter the DEF file to reduce the number of symbols to 64K or less.
@@ -7553,6 +7560,67 @@ py_library(
         ":encode_proto_ops_gen",
         ":framework_ops",
     ],
+)
+
+py_library(
+    name = "pywrap_tfe",
+    srcs = ["pywrap_tfe.py"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":_pywrap_tfe",
+        ":pywrap_tensorflow",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_tfe",
+    srcs = ["tfe_wrapper.cc"],
+    hdrs = [
+        "lib/core/safe_ptr.h",
+        "util/util.h",
+        ":py_exception_registry_hdr",
+        "//tensorflow/c:headers",
+        "//tensorflow/c:pywrap_eager_hdrs",
+        "//tensorflow/c/eager:headers",
+        "//tensorflow/c/eager:pywrap_eager_hdrs",
+        "//tensorflow/core/common_runtime/eager:pywrap_eager_hdrs",
+        "//tensorflow/core/distributed_runtime:pywrap_eager_hdrs",
+        "//tensorflow/core/distributed_runtime/eager:pywrap_eager_hdrs",
+        "//tensorflow/core/framework:pywrap_eager_hdrs",
+        "//tensorflow/core/profiler/internal:pywrap_eager_hdrs",
+        "//tensorflow/core/profiler/lib:pywrap_eager_hdrs",
+        "//tensorflow/python/eager:pywrap_eager_hdrs",
+    ],
+    module_name = "_pywrap_tfe",
+    deps = [
+        ":pybind11_lib",
+        ":pybind11_status",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@pybind11",
+        "//third_party/python_runtime:headers",
+        "//tensorflow/core:core_cpu_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:platform",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+    ] + if_static(
+        extra_deps = [
+            "//tensorflow/core:eager_service_proto_cc",
+            "//tensorflow/core:master_proto_cc",
+            "//tensorflow/core:worker_proto_cc",
+        ],
+        otherwise = [
+            "//tensorflow/core:eager_service_proto_cc_headers_only",
+            "//tensorflow/core:master_proto_cc_headers_only",
+            "//tensorflow/core:worker_proto_cc_headers_only",
+        ],
+    ),
 )
 
 tf_python_pybind_extension(

@@ -21,7 +21,7 @@ import functools
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -1014,19 +1014,19 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
 
   def testGetAttrType(self):
     typ = backprop.op_attr_type('Add', 'T')
-    self.assertEqual(typ, pywrap_tensorflow.TF_ATTR_TYPE)
+    self.assertEqual(typ, int(pywrap_tfe.TF_ATTR_TYPE))
 
   def testGetAttrList(self):
     typ = backprop.op_attr_type('MaxPool', 'ksize')
-    self.assertEqual(typ, [pywrap_tensorflow.TF_ATTR_INT])
+    self.assertEqual(typ, [int(pywrap_tfe.TF_ATTR_INT)])
 
   def testMakeAttrType(self):
     self.assertEqual(dtypes.float32,
-                     backprop.make_attr(pywrap_tensorflow.TF_ATTR_TYPE, 1))
+                     backprop.make_attr(int(pywrap_tfe.TF_ATTR_TYPE), 1))
 
   def testMakeAttrTypeList(self):
     self.assertEqual([dtypes.float32],
-                     backprop.make_attr([pywrap_tensorflow.TF_ATTR_TYPE], [1]))
+                     backprop.make_attr([int(pywrap_tfe.TF_ATTR_TYPE)], [1]))
 
   def testMulType(self):
 
@@ -1040,7 +1040,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
   def testMakeAttrShape(self):
     for s in ([], None, [1, 2, 3], [None, None], [1, None, 3]):
       expected = tensor_shape.TensorShape(s).as_proto()
-      actual = backprop.make_attr(pywrap_tensorflow.TF_ATTR_SHAPE, s)
+      actual = backprop.make_attr(int(pywrap_tfe.TF_ATTR_SHAPE), s)
       self.assertEqual(
           expected,
           actual,
@@ -1051,7 +1051,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     shape_list = [[], None, [1, 2, 3], [None, None], [1, None, 3]]
     self.assertEqual(
         [tensor_shape.TensorShape(s).as_proto() for s in shape_list],
-        backprop.make_attr([pywrap_tensorflow.TF_ATTR_SHAPE], shape_list))
+        backprop.make_attr([int(pywrap_tfe.TF_ATTR_SHAPE)], shape_list))
 
   def testArgsGradientFunction(self):
 
