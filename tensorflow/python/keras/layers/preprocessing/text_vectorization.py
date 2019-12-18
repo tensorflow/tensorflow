@@ -419,7 +419,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     super(TextVectorization, self).adapt(preprocessed_inputs, reset_state)
 
   def get_vocabulary(self):
-    if self.vocab_size == 0:
+    if self._vocab_size == 0:
       return []
 
     keys, values = self._get_table_data()
