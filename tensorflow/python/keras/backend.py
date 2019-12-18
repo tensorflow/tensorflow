@@ -65,6 +65,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -834,7 +835,8 @@ def is_keras_tensor(x):
   """
   if not isinstance(x, (ops.Tensor,
                         variables_module.Variable,
-                        sparse_tensor.SparseTensor)):
+                        sparse_tensor.SparseTensor,
+                        ragged_tensor.RaggedTensor)):
     raise ValueError('Unexpectedly found an instance of type `' + str(type(x)) +
                      '`. Expected a symbolic tensor instance.')
   return hasattr(x, '_keras_history')
