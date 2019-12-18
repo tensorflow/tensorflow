@@ -385,6 +385,7 @@ tf_py_test(
     name = "decode_jpeg_op_test",
     srcs = ["decode_jpeg_op_test.py"],
     data = ["//tensorflow/core:image_testdata"],
+    python_version = "PY2",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -1757,6 +1758,7 @@ cuda_py_test(
     name = "control_flow_ops_py_test",
     size = "small",
     srcs = ["control_flow_ops_py_test.py"],
+    python_version = "PY2",
     shard_count = 16,
     tags = [
         "notsan",  # TODO(b/132205147): Re-enable this.
