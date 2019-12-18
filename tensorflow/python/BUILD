@@ -853,18 +853,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "py_record_writer_lib",
-    srcs = ["lib/io/py_record_writer.cc"],
-    hdrs = ["lib/io/py_record_writer.h"],
-    deps = [
-        "//tensorflow/c:c_api",
-        "//tensorflow/c:tf_status_helper",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
 tf_cc_shared_object(
     name = "framework/test_file_system.so",
     srcs = ["framework/test_file_system.cc"],
@@ -5492,7 +5480,6 @@ tf_py_wrap_cc(
         "grappler/tf_optimizer.i",
         "lib/core/strings.i",
         "lib/io/py_record_reader.i",
-        "lib/io/py_record_writer.i",
         "platform/base.i",
         "//tensorflow/compiler/mlir/python:mlir.i",
     ],
@@ -5512,7 +5499,6 @@ tf_py_wrap_cc(
         ":py_exception_registry",
         ":py_func_lib",
         ":py_record_reader_lib",
-        ":py_record_writer_lib",
         ":python_op_gen",
         ":tf_session_helper",
         "//third_party/python_runtime:headers",
@@ -5702,10 +5688,26 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":_pywrap_file_io",
+        ":_pywrap_record_io",
         ":errors",
         ":pywrap_tensorflow",
         ":util",
         "@six_archive//:six",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_record_io",
+    srcs = ["lib/io/record_io_wrapper.cc"],
+    module_name = "_pywrap_record_io",
+    deps = [
+        ":pybind11_absl",
+        ":pybind11_status",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/memory",
+        "@pybind11",
     ],
 )
 
