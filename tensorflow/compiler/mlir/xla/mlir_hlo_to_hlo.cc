@@ -570,6 +570,14 @@ LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::OutfeedWithToken(
+      value_map[op.operand()], value_map[op.token()],
+      xla::TypeToShape(op.operand()->getType()), op.outfeed_config());
+  return success();
+}
+
 LogicalResult ExportXlaOp(PadOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::PaddingConfig padding_config;
