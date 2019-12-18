@@ -331,7 +331,6 @@ tf_xla_py_test(
     timeout = "moderate",
     srcs = ["matrix_triangular_solve_op_test.py"],
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = [
@@ -993,7 +992,6 @@ tf_xla_py_test(
     # TensorArray ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
     tags = [
-        "no_rocm",
         "config-cuda-only",
     ],
     use_xla_device = False,
@@ -1222,7 +1220,6 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 5,
-    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
 )
 
@@ -1239,7 +1236,6 @@ cuda_py_test(
         "//tensorflow/python:layers",
         "//tensorflow/python:variables",
     ],
-    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
 )
 
@@ -1406,7 +1402,6 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_xla_py_test(

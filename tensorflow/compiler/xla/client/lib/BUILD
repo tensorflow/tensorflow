@@ -485,7 +485,6 @@ xla_test(
     shard_count = 10,
     tags = [
         "optonly",
-        "no_rocm",
     ],
     deps = [
         ":arithmetic",
