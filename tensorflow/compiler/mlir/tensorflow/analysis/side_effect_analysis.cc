@@ -310,7 +310,25 @@ bool OpIsKnownToHaveNoSideEffect(Operation* op) {
   if (auto while_op = llvm::dyn_cast<TF::WhileOp>(op)) {
     return while_op.is_stateless();
   }
-  return false;
+
+  // Try to get the statefulness flag from the registry.
+  //
+  // TODO(yuanzx): Remove this after all ops are defined in the dialect.
+  if (op->getName().getDialect() !=
+      TF::TensorFlowDialect::getDialectNamespace()) {
+    return false;
+  }
+  StringRef op_name = op->getName().getStringRef();
+  // Drop the `tf.` prefix to query TF registry.
+  auto node_name =
+      op_name.drop_front(TensorFlowDialect::getDialectNamespace().size() + 1);
+  const tensorflow::OpRegistrationData* op_reg_data;
+  if (!tensorflow::OpRegistry::Global()
+           ->LookUp(node_name.data(), &op_reg_data)
+           .ok()) {
+    return false;
+  }
+  return !op_reg_data->op_def.is_stateful();
 }
 
 }  // namespace
