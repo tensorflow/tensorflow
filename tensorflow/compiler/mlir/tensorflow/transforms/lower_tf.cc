@@ -69,6 +69,14 @@ static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
   return DenseElementsAttr::get(scalar_ty, attr);
 }
 
+// Returns float DenseElementsAttr with scalar shape with the specified value.
+static DenseElementsAttr GetScalarOfFloatType(Type ty, double raw_value) {
+  auto float_ty = ty.cast<FloatType>();
+  FloatAttr attr = FloatAttr::get(float_ty, raw_value);
+  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
+  return DenseElementsAttr::get(scalar_ty, attr);
+}
+
 // Returns reduction indices to use while lowering tf.BiasAddGrad op to tf.Sum
 // op.
 DenseIntElementsAttr GetBiasAddGradReductionIndices(int64_t rank,

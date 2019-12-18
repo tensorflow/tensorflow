@@ -929,6 +929,37 @@ void EqualOp::build(Builder *builder, OperationState &result, Value *x,
 }
 
 //===----------------------------------------------------------------------===//
+// ExpandDimsOp
+//===----------------------------------------------------------------------===//
+
+Type InferExpandDimsOpType(Value *input, Value *dim) {
+  Type element_ty = input->getType().cast<TensorType>().getElementType();
+  auto unranked_ty = UnrankedTensorType::get(element_ty);
+
+  auto input_ty = input->getType().dyn_cast<RankedTensorType>();
+  if (!input_ty) return unranked_ty;
+
+  DenseIntElementsAttr dim_attr;
+  if (!matchPattern(dim, m_Constant(&dim_attr)) ||
+      dim_attr.getNumElements() != 1)
+    return unranked_ty;
+  int64_t dim_val = (*dim_attr.begin()).getSExtValue();
+  int64_t input_rank = input_ty.getRank();
+
+  if (dim_val < -input_rank - 1 || dim_val > input_rank + 1) return unranked_ty;
+  if (dim_val < 0) dim_val += input_rank + 1;
+
+  SmallVector<int64_t, 4> shape = llvm::to_vector<4>(input_ty.getShape());
+  shape.insert(shape.begin() + dim_val, 1);
+  return RankedTensorType::get(shape, element_ty);
+}
+
+void ExpandDimsOp::build(Builder *builder, OperationState &result, Value *input,
+                         Value *dim) {
+  return build(builder, result, InferExpandDimsOpType(input, dim), input, dim);
+}
+
+//===----------------------------------------------------------------------===//
 // FakeQuantWithMinMaxArgsOp
 //===----------------------------------------------------------------------===//
 static LogicalResult Verify(FakeQuantWithMinMaxArgsOp op) {
@@ -1298,9 +1329,8 @@ static LogicalResult Verify(OneHotOp op) {
 
   DenseIntElementsAttr depth_attr;
   if (matchPattern(op.depth(), m_Constant(&depth_attr))) {
-    if (depth_attr.getType().getRank() != 0) {
+    if (depth_attr.getType().getRank() != 0)
       return op.emitOpError() << "requires depth to be a scalar";
-    }
     int64_t depth = depth_attr.getValue<APInt>({}).getSExtValue();
     if (depth < 0) {
       return op.emitOpError() << "depth must be non-negative, got: " << depth;
@@ -1308,6 +1338,37 @@ static LogicalResult Verify(OneHotOp op) {
   }
 
   return success();
+}
+
+static TensorType InferOneHotOpType(Value *indices, Value *depth,
+                                    Value *on_value, Value *off_value,
+                                    IntegerAttr axis) {
+  int64_t axis_val = axis.getInt();
+  Type element_ty = on_value->getType().cast<TensorType>().getElementType();
+  auto unranked_ty = UnrankedTensorType::get(element_ty);
+  if (axis_val < -1) return unranked_ty;
+
+  auto indices_ty = indices->getType().dyn_cast<RankedTensorType>();
+  if (!indices_ty) return unranked_ty;
+
+  auto shape = llvm::to_vector<2>(indices_ty.getShape());
+  if (axis_val == -1) axis_val = shape.size();
+
+  int64_t depth_val = ShapedType::kDynamicSize;
+  DenseIntElementsAttr depth_attr;
+  if (matchPattern(depth, m_Constant(&depth_attr)) &&
+      depth_attr.getNumElements() == 1)
+    depth_val = (*depth_attr.begin()).getSExtValue();
+  shape.insert(shape.begin() + axis_val, depth_val);
+  return RankedTensorType::get(shape, element_ty);
+}
+
+void OneHotOp::build(Builder *builder, OperationState &result, Value *indices,
+                     Value *depth, Value *on_value, Value *off_value,
+                     IntegerAttr axis) {
+  build(builder, result,
+        InferOneHotOpType(indices, depth, on_value, off_value, axis), indices,
+        depth, on_value, off_value, axis);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1546,6 +1607,37 @@ void ReshapeOp::build(Builder *builder, OperationState &result, Value *tensor,
 }
 
 //===----------------------------------------------------------------------===//
+// SelectV2Op
+//===----------------------------------------------------------------------===//
+
+static Type InferSelectV2OpType(Value *condition, Value *e, Value *t) {
+  Type element_ty = e->getType().cast<TensorType>().getElementType();
+  auto unranked_ty = UnrankedTensorType::get(element_ty);
+
+  Type broadcasted_ty =
+      OpTrait::util::getBroadcastedType(e->getType(), t->getType());
+  if (!broadcasted_ty) return unranked_ty;
+
+  auto cond_ranked_ty = condition->getType().dyn_cast<RankedTensorType>();
+  auto broadcasted_ranked_ty = broadcasted_ty.dyn_cast<RankedTensorType>();
+  if (!cond_ranked_ty || !broadcasted_ranked_ty) return unranked_ty;
+
+  // Explicitly get broadcasted output type as element types of condition may
+  // not be same as the broadcated type's element type.
+  SmallVector<int64_t, 4> result_shape;
+  if (!OpTrait::util::getBroadcastedShape(cond_ranked_ty.getShape(),
+                                          broadcasted_ranked_ty.getShape(),
+                                          result_shape))
+    return unranked_ty;
+  return RankedTensorType::get(result_shape, element_ty);
+}
+
+void SelectV2Op::build(Builder *builder, OperationState &result,
+                       Value *condition, Value *e, Value *t) {
+  build(builder, result, InferSelectV2OpType(condition, e, t), condition, e, t);
+}
+
+//===----------------------------------------------------------------------===//
 // ShapeOp
 //===----------------------------------------------------------------------===//
 
@@ -1776,6 +1868,31 @@ static LogicalResult Verify(SoftmaxCrossEntropyWithLogitsOp op) {
     return op.emitOpError(
         "requires features and labels to be broadcast compatible to rank two");
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SparseSoftmaxCrossEntropyWithLogitsOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SparseSoftmaxCrossEntropyWithLogitsOp op) {
+  if (!IsOfRankOrUnranked(op.features(), 2)) {
+    return op.emitOpError("requires features operand of rank two");
+  }
+  if (!IsOfRankOrUnranked(op.labels(), 1)) {
+    return op.emitOpError("requires labels operand of rank one");
+  }
+  auto features_ty = op.features()->getType().dyn_cast<RankedTensorType>();
+  auto labels_ty = op.labels()->getType().dyn_cast<RankedTensorType>();
+  if (features_ty && labels_ty) {
+    int64_t features_batches = features_ty.getDimSize(0);
+    int64_t labels_batches = labels_ty.getDimSize(0);
+    if (!ShapedType::isDynamic(features_batches) &&
+        !ShapedType::isDynamic(labels_batches) &&
+        features_batches != labels_batches)
+      return op.emitOpError(
+          "requires features and labels with matching first dimension");
+  }
   return success();
 }
 

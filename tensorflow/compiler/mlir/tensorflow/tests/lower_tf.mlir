@@ -182,7 +182,6 @@ func @rsqrt_grad_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<
   return %0 : tensor<*xf32>
 }
 
-
 // CHECK-LABEL: SoftmaxCrossEntropyWithLogits
 // CHECK-SAME: %[[FEATURES:.*]]: tensor<2x3xf32>, %[[LABELS:.*]]: tensor<2x3xf32>
 func @SoftmaxCrossEntropyWithLogits(%features: tensor<2x3xf32>, %labels: tensor<2x3xf32>) -> (tensor<2xf32>, tensor<2x3xf32>) {
@@ -220,6 +219,66 @@ func @scalar_SoftmaxCrossEntropyWithLogits(%features: tensor<f32>, %labels: tens
   // CHECK: tf.SoftmaxCrossEntropyWithLogits
   %0:2 = "tf.SoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<f32>, tensor<?x?xf32>) -> (tensor<?xf32>, tensor<?x?xf32>)
   return %0#0, %0#1 : tensor<?xf32>, tensor<?x?xf32>
+}
+
+// CHECK-LABEL: SparseSoftmaxCrossEntropyWithLogits
+// CHECK-SAME: %[[FEATURES:.*]]: tensor<2x3xf32>, %[[SPARSE_LABELS:.*]]: tensor<2xi32>
+func @SparseSoftmaxCrossEntropyWithLogits(%features: tensor<2x3xf32>, %labels: tensor<2xi32>) -> (tensor<2xf32>, tensor<2x3xf32>) {
+  // Convert SPARSE_LABELS to dense LABELS.
+  // CHECK-DAG: %[[DEPTH:.*]] = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-DAG: %[[ONE:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[ZERO:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[LABELS:.*]] = "tf.OneHot"(%[[SPARSE_LABELS]], %[[DEPTH]], %[[ONE]], %[[ZERO]]) {axis = 1 : i64} : (tensor<2xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<2x3xf32>
+
+  // Adjust labels to have Nan for out of range labels.
+  // CHECK-DAG: %[[ZERO_I32:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-DAG: %[[IS_NEGATIVE:.*]] = "tf.LessEqual"(%[[ZERO_I32]], %arg1) : (tensor<i32>, tensor<2xi32>) -> tensor<2xi1>
+  // CHECK-DAG: %[[IS_LESS:.*]] = "tf.Less"(%arg1, %[[DEPTH]]) : (tensor<2xi32>, tensor<i32>) -> tensor<2xi1>
+  // CHECK-DAG: %[[IS_WITHIN_RANGE:.*]] = "tf.LogicalAnd"(%[[IS_NEGATIVE]], %[[IS_LESS]]) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
+  // CHECK-DAG: %[[NAN:.*]] = "tf.Const"() {value = dense<0x7FC00000> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[ZERO_OR_NAN:.*]] = "tf.SelectV2"(%[[IS_WITHIN_RANGE]], %[[ZERO]], %[[NAN]]) : (tensor<2xi1>, tensor<f32>, tensor<f32>) -> tensor<2xf32>
+  // CHECK-DAG: %[[NEG_ONE:.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi64>} : () -> tensor<1xi64>
+  // CHECK-DAG: %[[RESHAPE:.*]] = "tf.ExpandDims"(%[[ZERO_OR_NAN]], %[[NEG_ONE]]) : (tensor<2xf32>, tensor<1xi64>) -> tensor<2x1xf32>
+  // CHECK-DAG: %[[ADJUSTED_LABELS:.*]] = "tf.AddV2"(%[[LABELS]], %[[RESHAPE]]) : (tensor<2x3xf32>, tensor<2x1xf32>) -> tensor<2x3xf32>
+
+  // SoftmaxCrossEntropyWithLogits expansion
+  // CHECK-DAG: = "tf.Neg"({{.*}}) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  // CHECK-DAG: = "tf.LogSoftmax"({{.*}}) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  // CHECK-DAG: = "tf.Mul"({{.*}}) : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+  // CHECK-DAG: = "tf.Sum"({{.*}}) {keep_dims = false} : (tensor<2x3xf32>, tensor<1xi64>) -> tensor<2xf32>
+  // CHECK-DAG: = "tf.Softmax"({{.*}}) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  // CHECK-DAG: = "tf.Sub"({{.*}}) : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+
+  %0:2 = "tf.SparseSoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<2x3xf32>, tensor<2xi32>) -> (tensor<2xf32>, tensor<2x3xf32>)
+  return %0#0, %0#1 : tensor<2xf32>, tensor<2x3xf32>
+}
+
+// CHECK-LABEL: SparseSoftmaxCrossEntropyWithLogits_with_bf16_i64
+func @SparseSoftmaxCrossEntropyWithLogits_with_bf16_i64(%features: tensor<2x3xbf16>, %labels: tensor<2xi64>) -> (tensor<2xbf16>, tensor<2x3xbf16>) {
+  // CHECK-NOT: tf.SparseSoftmaxCrossEntropyWithLogits
+  %0:2 = "tf.SparseSoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<2x3xbf16>, tensor<2xi64>) -> (tensor<2xbf16>, tensor<2x3xbf16>)
+  return %0#0, %0#1 : tensor<2xbf16>, tensor<2x3xbf16>
+}
+
+// CHECK-LABEL: SparseSoftmaxCrossEntropyWithLogits_with_unranked_labels
+func @SparseSoftmaxCrossEntropyWithLogits_with_unranked_labels(%features: tensor<2x3xf32>, %labels: tensor<?xi64>) -> (tensor<2xf32>, tensor<2x3xf32>) {
+  // CHECK-NOT: tf.SparseSoftmaxCrossEntropyWithLogits
+  %0:2 = "tf.SparseSoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<2x3xf32>, tensor<?xi64>) -> (tensor<2xf32>, tensor<2x3xf32>)
+  return %0#0, %0#1 : tensor<2xf32>, tensor<2x3xf32>
+}
+
+// CHECK-LABEL: SparseSoftmaxCrossEntropyWithLogits_with_dynamic_labels
+func @SparseSoftmaxCrossEntropyWithLogits_with_dynamic_labels(%features: tensor<2x3xf32>, %labels: tensor<*xi64>) -> (tensor<2xf32>, tensor<2x3xf32>) {
+  // CHECK-NOT: tf.SparseSoftmaxCrossEntropyWithLogits
+  %0:2 = "tf.SparseSoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<2x3xf32>, tensor<*xi64>) -> (tensor<2xf32>, tensor<2x3xf32>)
+  return %0#0, %0#1 : tensor<2xf32>, tensor<2x3xf32>
+}
+
+// CHECK-LABEL: SparseSoftmaxCrossEntropyWithLogits_with_dynamic
+func @SparseSoftmaxCrossEntropyWithLogits_with_dynamic(%features: tensor<*xbf16>, %labels: tensor<*xi64>) -> (tensor<2xbf16>, tensor<*xbf16>) {
+  // CHECK: tf.SparseSoftmaxCrossEntropyWithLogits
+  %0:2 = "tf.SparseSoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<*xbf16>, tensor<*xi64>) -> (tensor<2xbf16>, tensor<*xbf16>)
+  return %0#0, %0#1 : tensor<2xbf16>, tensor<*xbf16>
 }
 
 // CHECK-LABEL: func @tanhgrad_float

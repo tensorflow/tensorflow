@@ -1643,6 +1643,11 @@ size 1.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tdim = TF_DerivedOperandTypeAttr<1>;
+
+  let builders = [
+    OpBuilder<"Builder* builder, OperationState& result, Value* condition, "
+              "Value* dim">
+  ];
 }
 
 def TF_FakeQuantWithMinMaxArgsOp : TF_Op<"FakeQuantWithMinMaxArgs", [NoSideEffect, SameOperandsAndResultType]> {
@@ -3780,6 +3785,12 @@ output =
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
   TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 
+  let builders = [
+    OpBuilder<"Builder* builder, OperationState& result, Value* indices, "
+              "Value* depth, Value* on_value, Value* off_value, "
+              "IntegerAttr axis">
+  ];
+
   let verifier = [{
     return Verify(*this);
   }];
@@ -4936,6 +4947,10 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect]> {
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+
+  let builders = [
+    OpBuilder<"Builder* builder, OperationState& result, Value* condition, Value* e, Value* t">
+  ];
 }
 
 def TF_ShapeOp : TF_Op<"Shape", [NoSideEffect]> {
@@ -5370,6 +5385,8 @@ Inputs are the logits, not probabilities.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tlabels = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_SparseToDenseOp : TF_Op<"SparseToDense", [NoSideEffect]> {
