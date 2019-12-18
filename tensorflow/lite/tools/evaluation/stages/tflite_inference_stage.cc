@@ -113,7 +113,7 @@ TfLiteStatus TfliteInferenceStage::Init() {
   for (int i = 0; i < delegates_.size(); ++i) {
     if (interpreter_->ModifyGraphWithDelegate(delegates_[i].get()) !=
         kTfLiteOk) {
-      LOG(FATAL) << "Failed to apply delegate %d" << i;
+      LOG(FATAL) << "Failed to apply delegate " << i;
     }
   }
   interpreter_->AllocateTensors();
