@@ -987,4 +987,36 @@ def Vector_TupleGetOp :
   }];
 }
 
+def Vector_PrintOp :
+  Vector_Op<"print", []>, Arguments<(ins AnyType:$source)> {
+  let summary = "print operation (for testing and debugging)";
+  let description = [{
+    Prints the source vector (or scalar) to stdout in human readable
+    format (for testing and debugging). No return value.
+
+    Examples:
+    ```
+      %0 = constant 0.0 : f32
+      %1 = vector.broadcast %0 : f32 to vector<4xf32>
+      vector.print %1 : vector<4xf32>
+
+      when lowered to LLVM, the vector print is unrolled into
+      elementary printing method calls that at runtime will yield
+
+      ( 0.0, 0.0, 0.0, 0.0 )
+
+      on stdout when linked with a small runtime support library,
+      which only needs to provide a few printing methods (single
+      value for all data types, opening/closing bracket, comma,
+      newline).
+    ```
+  }];
+  let verifier = ?;
+  let extraClassDeclaration = [{
+    Type getPrintType() {
+      return source()->getType();
+    }
+  }];
+}
+
 #endif // VECTOR_OPS

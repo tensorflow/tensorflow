@@ -1587,6 +1587,23 @@ static LogicalResult verify(CreateMaskOp op) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// PrintOp
+//===----------------------------------------------------------------------===//
+
+ParseResult parsePrintOp(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::OperandType source;
+  Type sourceType;
+  return failure(parser.parseOperand(source) ||
+                 parser.parseColonType(sourceType) ||
+                 parser.resolveOperand(source, sourceType, result.operands));
+}
+
+static void print(OpAsmPrinter &p, PrintOp op) {
+  p << op.getOperationName() << ' ' << *op.source() << " : "
+    << op.getPrintType();
+}
+
 namespace {
 
 // Pattern to rewrite a CreateMaskOp with a ConstantMaskOp.
