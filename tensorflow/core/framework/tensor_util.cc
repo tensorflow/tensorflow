@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -30,24 +31,28 @@ namespace tensor {
 
 Tensor DeepCopy(const Tensor& other) {
   Tensor tmp = Tensor(other.dtype(), other.shape());
-  if (DataTypeCanUseMemcpy(other.dtype())) {
-    if (other.NumElements() > 0) {
-      StringPiece other_data = other.tensor_data();
+  DeepCopy(other, &tmp);
+  return tmp;
+}
+
+void DeepCopy(const Tensor& input, Tensor* output) {
+  if (DataTypeCanUseMemcpy(input.dtype())) {
+    if (input.NumElements() > 0) {
+      StringPiece input_data = input.tensor_data();
 
       // We use StringPiece as a convenient map over the tensor buffer,
       // but we cast the type to get to the underlying buffer to do the
       // copy.
-      StringPiece tmp_data = tmp.tensor_data();
-      memcpy(const_cast<char*>(tmp_data.data()), other_data.data(),
-             other_data.size());
+      StringPiece output_data = output->tensor_data();
+      memcpy(const_cast<char*>(output_data.data()), input_data.data(),
+             input_data.size());
     }
-  } else if (other.dtype() == DT_STRING) {
-    tmp.unaligned_flat<string>() = other.unaligned_flat<string>();
+  } else if (input.dtype() == DT_STRING) {
+    output->unaligned_flat<tstring>() = input.unaligned_flat<tstring>();
   } else {
-    CHECK_EQ(DT_VARIANT, other.dtype());
-    tmp.unaligned_flat<Variant>() = other.unaligned_flat<Variant>();
+    CHECK_EQ(DT_VARIANT, input.dtype());
+    output->unaligned_flat<Variant>() = input.unaligned_flat<Variant>();
   }
-  return tmp;
 }
 
 Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
@@ -93,12 +98,12 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
     if (dtype != DT_STRING) {
       return errors::Internal("Unexpected data type");
     }
-    string* to_strings =
-        reinterpret_cast<string*>(const_cast<char*>(to_data.data()));
+    tstring* to_strings =
+        reinterpret_cast<tstring*>(const_cast<char*>(to_data.data()));
 
     int64 offset = 0;
     for (const Tensor& tensor : tensors) {
-      auto from_strings = tensor.flat<string>();
+      auto from_strings = tensor.flat<tstring>();
       CHECK_LE(offset + tensor.NumElements(), result->NumElements());
       for (int i = 0; i < tensor.NumElements(); ++i) {
         to_strings[offset + i] = from_strings(i);
@@ -150,7 +155,7 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
     if (tensor.dtype() != DT_STRING) {
       return errors::Internal("Unexpected data type");
     }
-    auto from_strings = tensor.flat<string>();
+    auto from_strings = tensor.flat<tstring>();
 
     int64 offset = 0;
     for (int64 size : sizes) {
@@ -158,7 +163,7 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
       shape.set_dim(0, size);
       result->emplace_back(tensor.dtype(), shape);
       Tensor& split = (*result)[result->size() - 1];
-      string* to_strings = reinterpret_cast<string*>(
+      tstring* to_strings = reinterpret_cast<tstring*>(
           const_cast<char*>(split.tensor_data().data()));
 
       CHECK_LE(offset + split.NumElements(), tensor.NumElements());
@@ -208,7 +213,7 @@ bool CompressTensorContent(float min_compression_ratio,
   }
   // Round up to the next whole number of element of type T.
   const int64 new_num_values = last_offset / sizeof(T) + 1;
-  if (new_num_values * sizeof(FieldType) >
+  if (new_num_values * (is_complex<T>::value ? 2 : 1) * sizeof(FieldType) >
       static_cast<int64>(num_bytes / min_compression_ratio)) {
     return false;
   }
@@ -227,12 +232,14 @@ bool CompressTensorContent(float min_compression_ratio,
                               new_num_values * sizeof(T),
                               reinterpret_cast<char*>(tmp.data()));
     tensor->clear_tensor_content();
-    TypeHelper::AddValues(tmp.data(), tmp.data() + tmp.size(), tensor);
+    const T* begin = tmp.begin();
+    const T* end = tmp.end();
+    TypeHelper::AddValues(begin, end, tensor);
   } else {
     // Copy and cast, one byte at a time.
     for (int64 i = 0; i < new_num_values; ++i) {
       char c = tensor->tensor_content()[i];
-      TypeHelper::AddValue(static_cast<FieldType>(c), tensor);
+      TypeHelper::AddValue(static_cast<T>(c), tensor);
     }
     tensor->clear_tensor_content();
   }
@@ -251,6 +258,12 @@ template <>
 inline bool PackedValuesNotEqual(double a, double b) {
   return reinterpret_cast<int64_t&>(a) != reinterpret_cast<int64_t&>(b);
 }
+template <typename RealType>
+inline bool PackedValuesNotEqual(const std::complex<RealType>& a,
+                                 const std::complex<RealType>& b) {
+  return PackedValuesNotEqual(a.real(), b.real()) ||
+         PackedValuesNotEqual(a.imag(), b.imag());
+}
 
 template <typename T>
 bool CompressRepeatedField(float min_compression_ratio,
@@ -258,6 +271,9 @@ bool CompressRepeatedField(float min_compression_ratio,
   using TypeHelper = internal::TensorProtoHelper<T>;
   using FieldType = typename internal::TensorProtoHelper<T>::FieldType;
   const int64 num_tensor_values = shape.num_elements();
+  // Notice that for complex types the tensor is stored as an array of up to
+  // 2 * num_tensor_values real values (real and imaginary parts), possibly
+  // truncated.
   const int64 num_proto_values = TypeHelper::NumValues(*tensor);
   if (num_proto_values != num_tensor_values) {
     // Already compressed or invalid.
@@ -325,6 +341,8 @@ bool CompressTensorProtoInPlace(int64 min_num_elements,
   switch (tensor->dtype()) {
     HANDLE_COMPRESS_CASE(DT_FLOAT);
     HANDLE_COMPRESS_CASE(DT_DOUBLE);
+    HANDLE_COMPRESS_CASE(DT_COMPLEX64);
+    HANDLE_COMPRESS_CASE(DT_COMPLEX128);
     HANDLE_COMPRESS_CASE(DT_UINT8);
     HANDLE_COMPRESS_CASE(DT_INT8);
     HANDLE_COMPRESS_CASE(DT_UINT16);
@@ -339,9 +357,8 @@ bool CompressTensorProtoInPlace(int64 min_num_elements,
     HANDLE_COMPRESS_CASE(DT_QUINT16);
     HANDLE_COMPRESS_CASE(DT_QINT16);
     HANDLE_COMPRESS_CASE(DT_QINT32);
-    // TODO(rmlarsen): Add support for complex and half float types.
-    //    HANDLE_COMPRESS_CASE(DT_HALF);
-    //    HANDLE_COMPRESS_CASE(DT_BFLOAT16);
+    HANDLE_COMPRESS_CASE(DT_HALF);
+    HANDLE_COMPRESS_CASE(DT_BFLOAT16);
     default:
       return false;
   }

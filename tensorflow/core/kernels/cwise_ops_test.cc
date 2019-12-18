@@ -53,38 +53,47 @@ int ColsFromArg(int arg) { return (arg % kRows); }
   BENCHMARK(BM_##DEVICE##_##FUNC##_##TYPE)->Range(4 << 10, 1 << 20);
 
 BM_UNARY(cpu, Floor, float, DT_FLOAT);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_UNARY(gpu, Floor, float, DT_FLOAT);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
 BM_UNARY(sycl, Floor, float, DT_FLOAT);
 #endif  // TENSORFLOW_USE_SYCL
 
 BM_UNARY(cpu, Floor, double, DT_DOUBLE);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_UNARY(gpu, Floor, double, DT_DOUBLE);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
 BM_UNARY(sycl, Floor, double, DT_DOUBLE);
 #endif  // TENSORFLOW_USE_SYCL
 
 BM_UNARY(cpu, Conj, std::complex<float>, DT_COMPLEX64);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_UNARY(gpu, Conj, std::complex<float>, DT_COMPLEX64);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_UNARY(cpu, Conj, std::complex<double>, DT_COMPLEX128);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_UNARY(gpu, Conj, std::complex<double>, DT_COMPLEX128);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 BM_UNARY(cpu, Rint, double, DT_DOUBLE);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_UNARY(gpu, Rint, double, DT_DOUBLE);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_UNARY(cpu, Rint, float, DT_FLOAT);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_UNARY(gpu, Rint, float, DT_FLOAT);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+BM_UNARY(cpu, Round, double, DT_DOUBLE);
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+BM_UNARY(gpu, Round, double, DT_DOUBLE);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+BM_UNARY(cpu, Round, float, DT_FLOAT);
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+BM_UNARY(gpu, Round, float, DT_FLOAT);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // data func scalar.
 Graph* BinaryScalar(int num, const string& func) {
@@ -107,23 +116,32 @@ Graph* BinaryScalar(int num, const string& func) {
     test::Benchmark(#DEVICE, BinaryScalar(num, #FUNC)).Run(iters); \
   }                                                                \
   BENCHMARK(BM_##DEVICE##_##FUNC##_scalar)                         \
-      ->Arg(4096) /* must >= 4096 */                               \
-      ->Arg(32768)                                                 \
-      ->Arg(131072)                                                \
-      ->Arg(1048576);
+      ->Arg(1 << 12) /* must >= 4096 */                            \
+      ->Arg(1 << 13)                                               \
+      ->Arg(1 << 14)                                               \
+      ->Arg((1 << 15) - (1 << 13))                                 \
+      ->Arg(1 << 15)                                               \
+      ->Arg((1 << 15) + (1 << 14))                                 \
+      ->Arg(1 << 16)                                               \
+      ->Arg((1 << 17) - (1 << 15))                                 \
+      ->Arg(1 << 17)                                               \
+      ->Arg((1 << 17) + (1 << 16))                                 \
+      ->Arg(1 << 18)                                               \
+      ->Arg(1 << 19)                                               \
+      ->Arg(1 << 20);
 
 BM_BINARY_SCALAR(cpu, Less);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_BINARY_SCALAR(gpu, Less);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
 BM_BINARY_SCALAR(sycl, Less);
 #endif  // TENSORFLOW_USE_SYCL
 
 BM_BINARY_SCALAR(cpu, Add);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_BINARY_SCALAR(gpu, Add);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
 BM_BINARY_SCALAR(sycl, Add);
 #endif  // TENSORFLOW_USE_SYCL
@@ -137,6 +155,67 @@ BM_BINARY_SCALAR(sycl, DivNoNan);
 #endif  // TENSORFLOW_USE_SYCL
 
 #undef BM_BINARY_SCALAR
+
+// Three implementations of x^3.
+Graph* CubeWithPow3(int num) {
+  Graph* g = new Graph(OpRegistry::Global());
+  Tensor lhs(DT_FLOAT, TensorShape({64, 64, num / (64 * 64)}));
+  lhs.flat<float>().setRandom();
+  Tensor rhs(DT_FLOAT, TensorShape({}));
+  rhs.flat<float>().setConstant(3);
+  test::graph::Binary(g, "Pow", test::graph::Constant(g, lhs),
+                      test::graph::Constant(g, rhs));
+  return g;
+}
+
+Graph* CubeWithTwoMuls(int num) {
+  Graph* g = new Graph(OpRegistry::Global());
+  Tensor lhs(DT_FLOAT, TensorShape({64, 64, num / (64 * 64)}));
+  lhs.flat<float>().setRandom();
+  auto* x = test::graph::Constant(g, lhs);
+  auto* inner = test::graph::Binary(g, "Mul", x, x);
+  test::graph::Binary(g, "Mul", x, inner);
+  return g;
+}
+
+Graph* CubeWithMulSquare(int num) {
+  Graph* g = new Graph(OpRegistry::Global());
+  Tensor lhs(DT_FLOAT, TensorShape({64, 64, num / (64 * 64)}));
+  lhs.flat<float>().setRandom();
+  auto* x = test::graph::Constant(g, lhs);
+  auto* inner = test::graph::Unary(g, "Square", x);
+  test::graph::Binary(g, "Mul", test::graph::Constant(g, lhs), inner);
+  return g;
+}
+
+#define BM_CUBE(DEVICE, Impl)                          \
+  void BM_##DEVICE##_Cube_##Impl(int iters, int num) { \
+    const int64 tot = static_cast<int64>(iters) * num; \
+    testing::UseRealTime();                            \
+    testing::ItemsProcessed(tot);                      \
+    testing::BytesProcessed(tot * sizeof(float));      \
+    test::Benchmark(#DEVICE, Impl(num)).Run(iters);    \
+  }                                                    \
+  BENCHMARK(BM_##DEVICE##_Cube_##Impl)                 \
+      ->Arg(1 << 12) /* must >= 4096 */                \
+      ->Arg(1 << 16)                                   \
+      ->Arg(1 << 20);
+
+BM_CUBE(cpu, CubeWithPow3);
+BM_CUBE(cpu, CubeWithTwoMuls);
+BM_CUBE(cpu, CubeWithMulSquare);
+#if GOOGLE_CUDA
+BM_CUBE(gpu, CubeWithPow3);
+BM_CUBE(gpu, CubeWithTwoMuls);
+BM_CUBE(gpu, CubeWithMulSquare);
+#endif  // GOOGLE_CUDA
+#ifdef TENSORFLOW_USE_SYCL
+BM_CUBE(sycl, CubeWithPow3);
+BM_CUBE(sycl, CubeWithTwoMuls);
+BM_CUBE(sycl, CubeWithMulSquare);
+#endif  // TENSORFLOW_USE_SYCL
+
+#undef BM_CUBE
 
 template <class T>
 Graph* BiasAdd(int rows, int cols, DataType type) {
@@ -173,13 +252,13 @@ Graph* BiasAdd(int rows, int cols, DataType type) {
 
 using Eigen::half;
 BM_BIAS_ADD_ALL(cpu, float, DT_FLOAT);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_BIAS_ADD_ALL(gpu, float, DT_FLOAT);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_BIAS_ADD_ALL(cpu, half, DT_HALF);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_BIAS_ADD_ALL(gpu, half, DT_HALF);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef BM_BIAS_ADD_ALL
 #undef BM_BIAS_ADD
 
@@ -227,18 +306,18 @@ Graph* BiasAddGrad(int rows, int cols, int channels, DataType type,
   BM_BIAS_ADD_GRAD(DEVICE, FORMAT, C_TYPE, TF_TYPE, 4096, 4096, 1);
 
 using Eigen::half;
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_BIAS_ADD_GRAD_ALL(gpu, NCHW, float, DT_FLOAT);
 BM_BIAS_ADD_GRAD_ALL(gpu, NCHW, half, DT_HALF);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_BIAS_ADD_GRAD_ALL(cpu, NHWC, float, DT_FLOAT);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_BIAS_ADD_GRAD_ALL(gpu, NHWC, float, DT_FLOAT);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_BIAS_ADD_GRAD_ALL(cpu, NHWC, half, DT_HALF);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_BIAS_ADD_GRAD_ALL(gpu, NHWC, half, DT_HALF);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef BM_BIAS_ADD_GRAD_ALL
 #undef BM_BIAS_ADD_GRAD
 
@@ -285,9 +364,9 @@ Graph* BcastAdd(int rows, int cols, int dim) {
   BM_BCAST_ADD_ROW(DEVICE, 2048, 512); \
   BM_BCAST_ADD_ROW(DEVICE, 4096, 512);
 BM_BCAST_ADD_ROW_ALL(cpu);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_BCAST_ADD_ROW_ALL(gpu);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
 BM_BCAST_ADD_ROW_ALL(sycl);
 #endif  // TENSORFLOW_USE_SYCL
@@ -312,9 +391,9 @@ BM_BCAST_ADD_ROW_ALL(sycl);
   BM_BCAST_ADD_COL(DEVICE, 2048, 512); \
   BM_BCAST_ADD_COL(DEVICE, 4096, 512);
 BM_BCAST_ADD_COL_ALL(cpu);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_BCAST_ADD_COL_ALL(gpu);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
 BM_BCAST_ADD_COL_ALL(sycl);
 #endif  // TENSORFLOW_USE_SYCL
@@ -340,9 +419,9 @@ BM_BCAST_ADD_COL_ALL(sycl);
   BM_BCAST_ADD_CROSS_RC(DEVICE, 2048, 512); \
   BM_BCAST_ADD_CROSS_RC(DEVICE, 4096, 512);
 BM_BCAST_ADD_CROSS_RC_ALL(cpu);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_BCAST_ADD_CROSS_RC_ALL(gpu);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
 BM_BCAST_ADD_CROSS_RC_ALL(sycl);
 #endif  // TENSORFLOW_USE_SYCL
@@ -368,9 +447,9 @@ BM_BCAST_ADD_CROSS_RC_ALL(sycl);
   BM_BCAST_ADD_CROSS_CR(DEVICE, 2048, 512); \
   BM_BCAST_ADD_CROSS_CR(DEVICE, 4096, 512);
 BM_BCAST_ADD_CROSS_CR_ALL(cpu);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_BCAST_ADD_CROSS_CR_ALL(gpu);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
 BM_BCAST_ADD_CROSS_CR_ALL(sycl);
 #endif  // TENSORFLOW_USE_SYCL

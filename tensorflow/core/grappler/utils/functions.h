@@ -33,123 +33,28 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-// WARNING(ezhulenev): Currently we do not support functions with inputs or
-// outputs instantiated into multiple tensors. This can happen if the
-// input/output type is 'T*N' or 'list(type)'. This is enforced by multiple
-// checks across this file and also function_optimizer.cc. InputArgExpansion and
-// OutputArgExpansion already support lists of tensors, but that's pretty much
-// it, all other code is written with assumption that expansions are always of
-// size 1. MakeGrapplerFunctionItem will gracefully fail with Status error.
-//
-// This is a low priority feature, because in practice we don't see a lot (any
-// at all?) functions with such arguments. Tensorflow-Eager always produces
-// functions with plain input/output arguments.
-
-// TODO(ezhulenev): Support inputs and outputs of type 'T*N'.
-// TODO(ezhulenev): Support inputs and outputs of type 'list(type)'.
-
-// Depending on the function instantiation attributes, input argument to the
-// function might be a single tensor, list of tensors of the same type, or a
-// list of tensors of different types.
-//
-// InputArgExpansion keeps track of the placeholders that were added to the
-// function body in place of function inputs and a resolved input data type.
-struct InputArgExpansion {
-  string input_name;
+// Function input argument instantiated into an '_Arg' node in the function body
+// graph, with an 'index' attribute corresponding to the input position.
+struct InputArgInstantiation {
+  InputArgInstantiation(string node_name, DataType data_type)
+      : node_name(std::move(node_name)), data_type(data_type) {}
+  string node_name;
   DataType data_type;
-  bool is_ref;
-  absl::InlinedVector<string, 1> placeholders;
 };
 
-// Depending on the function instantiation attributes, output argument is mapped
-// to one or more outputs of one of the function body nodes.
-//
-// OutputArgExpansion keeps track of the Identity nodes that were added to the
-// function body to forward output tensors. Adding these output nodes allows
-// nested function inlining and specialization (see function optimizer).
-struct OutputArgExpansion {
-  string output_name;
+// Function output instantiated into a '_Retval' node in the function body
+// graph, with an 'index' attribute corresponding to the output position.
+struct OutputArgInstantiation {
+  OutputArgInstantiation(string node_name, DataType data_type)
+      : node_name(std::move(node_name)), data_type(data_type) {}
+  string node_name;
   DataType data_type;
-  bool is_ref;
-  absl::InlinedVector<string, 1> output_nodes;
 };
 
 // A mapping from control output name to node name in function body graph.
 struct ControlOutput {
   string output_name;
   string node_name;
-};
-
-// FunctionDef uses different connectivity encoding for the function body nodes,
-// then a GraphDef (see function.proto for details). Input name in FunctionDef
-// can potentially represent a sequence of tensors (instead just one tensor in
-// GraphDef), we need to expand it when converting from FunctionDef to GraphDef,
-// and fold it back when doing backward conversion.
-class GrapplerFunctionConnectivity {
- public:
-  void RegisterInputArgExpansion(InputArgExpansion input_arg_expansion);
-  void RegisterFunctionBodyOutputs(const string& node_name,
-                                   tensorflow::NameRangeMap&& outputs);
-
-  // Expands input encoded in FunctionDef format (name[:output][:position]) into
-  // multiple inputs in GraphDef format (name[:position]).
-  Status ExpandFunctionDefInput(const string& func_def_input,
-                                std::vector<string>* graph_def_inputs) const;
-
-  // Updates Node inputs from FunctionDef to GraphDef format.
-  Status ExpandNodeInputs(NodeDef* function_body_node) const;
-
-  // When expanding inputs in function def format, single input might be
-  // expanded into multiple tensors. When converting back to the function def
-  // format from graph def format, it's always a 1-to-1 relationship.
-  // FunctionDef built from GrapplerFunctionItem is always specialized to its
-  // instantiation attributes and length of input args (and node def outputs) is
-  // known.
-
-  // Converts input name from GraphDef format (name[:position]) to the
-  // FunctionDef input format (name[:output][:position]) using registered input
-  // arg expansion and function body outputs.
-  Status AsFunctionDefInput(const string& graph_def_input,
-                            string* func_def_input) const;
-
-  // Updates Node inputs from GraphDef to FunctionDef format.
-  Status AsFunctionDefNode(NodeDef* function_body_node) const;
-
- private:
-  // Mapping from input name to input arg expansion.
-  absl::flat_hash_map<string, InputArgExpansion> input_arg_expansions_;
-  // Mapping from function body node name to output names range map.
-  absl::flat_hash_map<string, tensorflow::NameRangeMap> function_body_outputs_;
-
-  // For each placeholder added to the function instantiation graph, we keep a
-  // mapping back to the function input argument name and index.
-  struct InputArgPlaceholder {
-    string input_name;  // Name of the function input argument.
-    int input_index;    // Index of a tensor in the function input argument
-                        // expansion, it can be greater than `0` if input
-                        // argument is a list of tensors (aka list(type)).
-  };
-  // Mapping from input arg placeholder to the function input tensor.
-  absl::flat_hash_map<string, InputArgPlaceholder> input_arg_placeholders_;
-};
-
-// Get Function type attributes using attributes of a node that instantiated
-// a function.
-class GrapplerFunctionItemInstantiation {
- public:
-  explicit GrapplerFunctionItemInstantiation(AttrSlice func_instantiation_attr)
-      : func_instantiation_attr_(func_instantiation_attr) {}
-
-  // Get DataType from attributes by name. Return error if attribute is missing,
-  // or it doesn't define a valid data type.
-  Status GetTypeAttr(const string& type_attr_name, DataType* data_type) const;
-
-  // Get argument data type. If data type is not explicitly defined, uses
-  // provided attribute name to look it up in function attributes.
-  Status GetArgType(const OpDef::ArgDef& arg, DataType* data_type) const;
-
- private:
-  const AttrSlice func_instantiation_attr_;  // do not own
 };
 
 // A special case of GrapplerItem, constructed from a TensorFlow Function.
@@ -159,12 +64,12 @@ class GrapplerFunctionItem : public GrapplerItem {
 
   const string& description() const;
 
-  const std::vector<InputArgExpansion>& inputs() const;
-  const InputArgExpansion& input(int i) const;
+  const std::vector<InputArgInstantiation>& inputs() const;
+  const InputArgInstantiation& input(int i) const;
   const std::size_t input_size() const;
 
-  const std::vector<OutputArgExpansion>& outputs() const;
-  const OutputArgExpansion& output(int i) const;
+  const std::vector<OutputArgInstantiation>& outputs() const;
+  const OutputArgInstantiation& output(int i) const;
   const std::size_t output_size() const;
 
   const std::vector<ControlOutput>& control_outputs() const;
@@ -190,8 +95,8 @@ class GrapplerFunctionItem : public GrapplerItem {
 
   GrapplerFunctionItem(string func_name, string description,
                        AttrSlice func_attr,
-                       std::vector<InputArgExpansion> input_arg_expansions,
-                       std::vector<OutputArgExpansion> output_arg_expansions,
+                       std::vector<InputArgInstantiation> input_args,
+                       std::vector<OutputArgInstantiation> output_args,
                        std::vector<ControlOutput> control_outputs,
                        int graph_def_version, bool is_stateful,
                        GraphDef&& function_body);
@@ -200,8 +105,8 @@ class GrapplerFunctionItem : public GrapplerItem {
   AttrSlice func_attr_;  // Attributes specific to function definition that
                          // produced this item (FuncDef.attr field).
 
-  std::vector<InputArgExpansion> input_arg_expansions_;
-  std::vector<OutputArgExpansion> output_arg_expansions_;
+  std::vector<InputArgInstantiation> input_args_;
+  std::vector<OutputArgInstantiation> output_args_;
   std::vector<ControlOutput> control_outputs_;
 
   bool is_stateful_ = false;
@@ -232,22 +137,13 @@ Status InstantiationBodyParameters(
     const FunctionDef& func, const AttrSlice& func_instantiation_attr,
     absl::flat_hash_map<string, AttrValue>* body_parameters);
 
-// Register GrapplerFunctionItem input arg expansion and function body outputs
-// in the GrapplerFunctionConnectivity. Use function library definition to
-// lookup function body nodes output names and ranges.
-Status RegisterGrapplerFunctionConnectivity(
-    const GrapplerFunctionItem& item, const FunctionLibraryDefinition& flib,
-    GrapplerFunctionConnectivity* connectivity);
-
 // Replace one of the function inputs with a constant.
 Status ReplaceInputWithConst(const NodeDef& input_const, int input_index,
                              GrapplerFunctionItem* item);
 
-// Removes outputs from instantiated grappler function item. Function node
-// outputs use GraphDef output index encoding, and multiple outputs might belong
-// to the same output argument expansion (in case of tensor list outputs). For
-// all active function outputs that changed its output index, this function adds
-// an output mapping (std::pair<old index, new index>).
+// Removes outputs from instantiated grappler function item. For all active
+// function outputs that changed its output index, this function adds an output
+// mapping (std::pair<old index, new index>).
 Status RemoveFunctionOutputs(const absl::flat_hash_set<int>& remove_outputs,
                              GrapplerFunctionItem* item,
                              std::vector<std::pair<int, int>>* output_mapping);

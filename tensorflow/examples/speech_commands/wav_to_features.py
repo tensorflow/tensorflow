@@ -56,13 +56,13 @@ def wav_to_features(sample_rate, clip_duration_ms, window_size_ms,
     window_stride_ms: How far to move in time between spectogram timeslices.
     feature_bin_count: How many bins to use for the feature fingerprint.
     quantize: Whether to train the model for eight-bit deployment.
-    preprocess: Spectrogram processing mode. Can be "mfcc" or "average".
+    preprocess: Spectrogram processing mode; "mfcc", "average" or "micro".
     input_wav: Path to the audio WAV file to read.
     output_c_file: Where to save the generated C source file.
   """
 
   # Start a new TensorFlow session.
-  sess = tf.InteractiveSession()
+  sess = tf.compat.v1.InteractiveSession()
 
   model_settings = models.prepare_model_settings(
       0, sample_rate, clip_duration_ms, window_size_ms, window_stride_ms,
@@ -86,14 +86,15 @@ def wav_to_features(sample_rate, clip_duration_ms, window_size_ms,
     f.write(' * --window_stride_ms=%d \\\n' % window_stride_ms)
     f.write(' * --feature_bin_count=%d \\\n' % feature_bin_count)
     if quantize:
-      f.write(' * --quantize \\\n')
+      f.write(' * --quantize=1 \\\n')
     f.write(' * --preprocess="%s" \\\n' % preprocess)
     f.write(' * --input_wav="%s" \\\n' % input_wav)
     f.write(' * --output_c_file="%s" \\\n' % output_c_file)
     f.write(' */\n\n')
-    f.write('const int g_%s_width = %d;\n' % (variable_base, features.shape[2]))
-    f.write(
-        'const int g_%s_height = %d;\n' % (variable_base, features.shape[1]))
+    f.write('const int g_%s_width = %d;\n' %
+            (variable_base, model_settings['fingerprint_width']))
+    f.write('const int g_%s_height = %d;\n' %
+            (variable_base, model_settings['spectrogram_length']))
     if quantize:
       features_min, features_max = input_data.get_features_range(model_settings)
       f.write('const unsigned char g_%s_data[] = {' % variable_base)
@@ -108,7 +109,7 @@ def wav_to_features(sample_rate, clip_duration_ms, window_size_ms,
           quantized_value = 255
         if i == 0:
           f.write('\n  ')
-        f.write('%d, ' % quantized_value)
+        f.write('%d, ' % (quantized_value))
         i = (i + 1) % 10
     else:
       f.write('const float g_%s_data[] = {\n' % variable_base)
@@ -123,12 +124,12 @@ def wav_to_features(sample_rate, clip_duration_ms, window_size_ms,
 
 def main(_):
   # We want to see all the logging messages.
-  tf.logging.set_verbosity(tf.logging.INFO)
+  tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
   wav_to_features(FLAGS.sample_rate, FLAGS.clip_duration_ms,
                   FLAGS.window_size_ms, FLAGS.window_stride_ms,
                   FLAGS.feature_bin_count, FLAGS.quantize, FLAGS.preprocess,
                   FLAGS.input_wav, FLAGS.output_c_file)
-  tf.logging.info('Wrote to "%s"' % (FLAGS.output_c_file))
+  tf.compat.v1.logging.info('Wrote to "%s"' % (FLAGS.output_c_file))
 
 
 if __name__ == '__main__':
@@ -168,7 +169,7 @@ if __name__ == '__main__':
       '--preprocess',
       type=str,
       default='mfcc',
-      help='Spectrogram processing mode. Can be "mfcc" or "average"')
+      help='Spectrogram processing mode. Can be "mfcc", "average", or "micro"')
   parser.add_argument(
       '--input_wav',
       type=str,
@@ -181,4 +182,4 @@ if __name__ == '__main__':
       help='Where to save the generated C source file containing the features')
 
   FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

@@ -112,6 +112,14 @@ static StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
     int64 operand_rank) {
   HloComputation* computation = index_vector->parent();
   const Shape& index_shape = index_vector->shape();
+
+  if (operand_rank == 0) {
+    // This is Gather from a scalar. So, the index vector in operand space must
+    // be a zero-sized vector.
+    return computation->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateFromDimensions(index_shape.element_type(), {0})));
+  }
+
   HloInstruction* zero =
       computation->AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateFromDimensions(index_shape.element_type(), {1})));

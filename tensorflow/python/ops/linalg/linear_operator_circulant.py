@@ -43,10 +43,6 @@ __all__ = [
 _FFT_OP = {1: fft_ops.fft, 2: fft_ops.fft2d, 3: fft_ops.fft3d}
 _IFFT_OP = {1: fft_ops.ifft, 2: fft_ops.ifft2d, 3: fft_ops.ifft3d}
 
-# This is the only dtype allowed with fft ops.
-# TODO(langmore) Add other types once available.
-_DTYPE_COMPLEX = dtypes.complex64
-
 
 # TODO(langmore) Add transformations that create common spectrums, e.g.
 #   starting with the convolution kernel
@@ -62,7 +58,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
   def __init__(self,
                spectrum,
                block_depth,
-               input_output_dtype=_DTYPE_COMPLEX,
+               input_output_dtype=dtypes.complex64,
                is_non_singular=None,
                is_self_adjoint=None,
                is_positive_definite=None,
@@ -71,12 +67,12 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     r"""Initialize an `_BaseLinearOperatorCirculant`.
 
     Args:
-      spectrum:  Shape `[B1,...,Bb, N]` `Tensor`.  Allowed dtypes are
-        `float32`, `complex64`.  Type can be different than `input_output_dtype`
+      spectrum:  Shape `[B1,...,Bb, N]` `Tensor`.  Allowed dtypes: `float16`,
+        `float32`, `float64`, `complex64`, `complex128`.  Type can be different
+        than `input_output_dtype`
       block_depth:  Python integer, either 1, 2, or 3.  Will be 1 for circulant,
         2 for block circulant, and 3 for nested block circulant.
-      input_output_dtype: `dtype` for input/output.  Must be either
-        `float32` or `complex64`.
+      input_output_dtype: `dtype` for input/output.
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.  If `spectrum` is real, this will always be true.
@@ -118,35 +114,24 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
             "A [[nested] block] circulant operator is always square.")
       is_square = True
 
-      # If spectrum.shape = [s0, s1, s2], and block_depth = 2,
-      # block_shape = [s1, s2]
-      s_shape = array_ops.shape(self.spectrum)
-      self._block_shape_tensor = s_shape[-self.block_depth:]
-
-      # Add common variants of spectrum to the graph.
-      self._spectrum_complex = _to_complex(self.spectrum)
-      self._abs_spectrum = math_ops.abs(self.spectrum)
-      self._conj_spectrum = math_ops.conj(self._spectrum_complex)
-
       super(_BaseLinearOperatorCirculant, self).__init__(
           dtype=dtypes.as_dtype(input_output_dtype),
-          graph_parents=[self.spectrum],
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+      # TODO(b/143910018) Remove graph_parents in V3.
+      self._set_graph_parents([self.spectrum])
 
   def _check_spectrum_and_return_tensor(self, spectrum):
     """Static check of spectrum.  Then return `Tensor` version."""
-    spectrum = ops.convert_to_tensor(spectrum, name="spectrum")
+    spectrum = linear_operator_util.convert_nonref_to_tensor(spectrum,
+                                                             name="spectrum")
 
-    allowed_dtypes = [dtypes.float32, dtypes.complex64]
-    if spectrum.dtype not in allowed_dtypes:
-      raise TypeError("Argument spectrum must have dtype in %s.  Found: %s" %
-                      (allowed_dtypes, spectrum.dtype))
-    if spectrum.get_shape().ndims is not None:
-      if spectrum.get_shape().ndims < self.block_depth:
+    if spectrum.shape.ndims is not None:
+      if spectrum.shape.ndims < self.block_depth:
         raise ValueError(
             "Argument spectrum must have at least %d dimensions.  Found: %s" %
             (self.block_depth, spectrum))
@@ -187,11 +172,22 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
   def block_shape_tensor(self):
     """Shape of the block dimensions of `self.spectrum`."""
-    return self._block_shape_tensor
+    # If spectrum.shape = [s0, s1, s2], and block_depth = 2,
+    # block_shape = [s1, s2]
+    return self._block_shape_tensor()
+
+  def _block_shape_tensor(self, spectrum_shape=None):
+    if self.block_shape.is_fully_defined():
+      return linear_operator_util.shape_tensor(
+          self.block_shape.as_list(), name="block_shape")
+    spectrum_shape = (
+        array_ops.shape(self.spectrum)
+        if spectrum_shape is None else spectrum_shape)
+    return spectrum_shape[-self.block_depth:]
 
   @property
   def block_shape(self):
-    return self.spectrum.get_shape()[-self.block_depth:]
+    return self.spectrum.shape[-self.block_depth:]
 
   @property
   def spectrum(self):
@@ -215,11 +211,11 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
     # Blockify: Blockfy trailing dimensions.
     #   [m3, m0, m1, m2] --> [m3, m0, m1, b0, b1]
-    if (vec.get_shape().is_fully_defined() and
+    if (vec.shape.is_fully_defined() and
         self.block_shape.is_fully_defined()):
       # vec_leading_shape = [m3, m0, m1],
       # the parts of vec that will not be blockified.
-      vec_leading_shape = vec.get_shape()[:-1]
+      vec_leading_shape = vec.shape[:-1]
       final_shape = vec_leading_shape.concatenate(self.block_shape)
     else:
       vec_leading_shape = array_ops.shape(vec)[:-1]
@@ -240,9 +236,9 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
     # Un-blockify: Flatten block dimensions.  Reshape
     #   [v0, v1, v2, v3] --> [v0, v1, v2*v3].
-    if vec.get_shape().is_fully_defined():
+    if vec.shape.is_fully_defined():
       # vec_shape = [v0, v1, v2, v3]
-      vec_shape = vec.get_shape().as_list()
+      vec_shape = vec.shape.as_list()
       # vec_leading_shape = [v0, v1]
       vec_leading_shape = vec_shape[:-self.block_depth]
       # vec_block_shape = [v2, v3]
@@ -302,11 +298,11 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
       `Tensor` with `dtype` `self.dtype`.
     """
     with self._name_scope(name):
-      h = self._ifft(self._spectrum_complex)
+      h = self._ifft(_to_complex(self.spectrum))
       return math_ops.cast(h, self.dtype)
 
   def _shape(self):
-    s_shape = self._spectrum.get_shape()
+    s_shape = self._spectrum.shape
     # Suppose spectrum.shape = [a, b, c, d]
     # block_depth = 2
     # Then:
@@ -324,9 +320,10 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     n_x_n = tensor_shape.TensorShape([n, n])
     return batch_shape.concatenate(n_x_n)
 
-  def _shape_tensor(self):
+  def _shape_tensor(self, spectrum=None):
+    spectrum = self.spectrum if spectrum is None else spectrum
     # See self.shape for explanation of steps
-    s_shape = array_ops.shape(self._spectrum)
+    s_shape = array_ops.shape(spectrum)
     batch_shape = s_shape[:-self.block_depth]
     trailing_dims = s_shape[-self.block_depth:]
     n = math_ops.reduce_prod(trailing_dims)
@@ -381,20 +378,26 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
   def _broadcast_batch_dims(self, x, spectrum):
     """Broadcast batch dims of batch matrix `x` and spectrum."""
+    spectrum = ops.convert_to_tensor(spectrum, name="spectrum")
     # spectrum.shape = batch_shape + block_shape
     # First make spectrum a batch matrix with
     #   spectrum.shape = batch_shape + [prod(block_shape), 1]
+    batch_shape = self._batch_shape_tensor(
+        shape=self._shape_tensor(spectrum=spectrum))
     spec_mat = array_ops.reshape(
-        spectrum, array_ops.concat(
-            (self.batch_shape_tensor(), [-1, 1]), axis=0))
+        spectrum, array_ops.concat((batch_shape, [-1, 1]), axis=0))
     # Second, broadcast, possibly requiring an addition of array of zeros.
     x, spec_mat = linear_operator_util.broadcast_matrix_batch_dims((x,
                                                                     spec_mat))
     # Third, put the block shape back into spectrum.
-    batch_shape = array_ops.shape(x)[:-2]
+    x_batch_shape = array_ops.shape(x)[:-2]
+    spectrum_shape = array_ops.shape(spectrum)
     spectrum = array_ops.reshape(
         spec_mat,
-        array_ops.concat((batch_shape, self.block_shape_tensor()), axis=0))
+        array_ops.concat(
+            (x_batch_shape,
+             self._block_shape_tensor(spectrum_shape=spectrum_shape)),
+            axis=0))
 
     return x, spectrum
 
@@ -406,7 +409,11 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     #           = F^{H} diag(spectrum) F x,
     # so that
     # matmul(x, adjoint=True) = F^{H} diag(conj(spectrum)) F x.
-    spectrum = self._conj_spectrum if adjoint else self._spectrum_complex
+    spectrum = _to_complex(self.spectrum)
+    if adjoint:
+      spectrum = math_ops.conj(spectrum)
+
+    x = math_ops.cast(x, spectrum.dtype)
 
     x, spectrum = self._broadcast_batch_dims(x, spectrum)
 
@@ -424,12 +431,15 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
   def _log_abs_determinant(self):
     axis = [-(i + 1) for i in range(self.block_depth)]
-    lad = math_ops.reduce_sum(math_ops.log(self._abs_spectrum), axis=axis)
+    lad = math_ops.reduce_sum(
+        math_ops.log(math_ops.abs(self.spectrum)), axis=axis)
     return math_ops.cast(lad, self.dtype)
 
   def _solve(self, rhs, adjoint=False, adjoint_arg=False):
     rhs = linalg.adjoint(rhs) if adjoint_arg else rhs
-    spectrum = self._conj_spectrum if adjoint else self._spectrum_complex
+    spectrum = _to_complex(self.spectrum)
+    if adjoint:
+      spectrum = math_ops.conj(spectrum)
 
     rhs, spectrum = self._broadcast_batch_dims(rhs, spectrum)
 
@@ -477,8 +487,8 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
     # Get shape of diag along with the axis over which to reduce the spectrum.
     # We will reduce the spectrum over all block indices.
-    if self.spectrum.get_shape().is_fully_defined():
-      spec_rank = self.spectrum.get_shape().ndims
+    if self.spectrum.shape.is_fully_defined():
+      spec_rank = self.spectrum.shape.ndims
       axis = np.arange(spec_rank - self.block_depth, spec_rank, dtype=np.int32)
     else:
       spec_rank = array_ops.rank(self.spectrum)
@@ -495,7 +505,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
     # Imaginary part, "im_d".
     if self.is_self_adjoint:
-      im_d_value = 0.
+      im_d_value = array_ops.zeros_like(re_d_value)
     else:
       im_d_value = math_ops.reduce_sum(math_ops.imag(self.spectrum), axis=axis)
 
@@ -526,8 +536,6 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
 
   This means that the result of matrix multiplication `v = Au` has `Lth` column
   given circular convolution between `h` with the `Lth` column of `u`.
-
-  See http://ee.stanford.edu/~gray/toeplitz.pdf
 
   #### Description in terms of the frequency spectrum
 
@@ -602,7 +610,7 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
   ```python
   # convolution_kernel is real ==> spectrum is Hermitian.
   convolution_kernel = [1., 2., 1.]]
-  spectrum = tf.fft(tf.cast(convolution_kernel, tf.complex64))
+  spectrum = tf.signal.fft(tf.cast(convolution_kernel, tf.complex64))
 
   # spectrum is Hermitian ==> operator is real.
   # spectrum is shape [3] ==> operator is shape [3, 3]
@@ -654,7 +662,7 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
        [0, 1, 4, 1],
        [1, 0, 1, 4]]
 
-  # convolution_kernel = tf.ifft(spectrum)
+  # convolution_kernel = tf.signal.ifft(spectrum)
   operator.convolution_kernel()
   ==> [4, 1, 0, 1]
   ```
@@ -684,11 +692,16 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
   * If `is_X == False`, callers should expect the operator to not have `X`.
   * If `is_X == None` (the default), callers should have no expectation either
     way.
+
+  References:
+    Toeplitz and Circulant Matrices - A Review:
+      [Gray, 2006](https://www.nowpublishers.com/article/Details/CIT-006)
+      ([pdf](https://ee.stanford.edu/~gray/toeplitz.pdf))
   """
 
   def __init__(self,
                spectrum,
-               input_output_dtype=_DTYPE_COMPLEX,
+               input_output_dtype=dtypes.complex64,
                is_non_singular=None,
                is_self_adjoint=None,
                is_positive_definite=None,
@@ -715,10 +728,10 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
     a real type is fine.
 
     Args:
-      spectrum:  Shape `[B1,...,Bb, N]` `Tensor`.  Allowed dtypes are
-        `float32`, `complex64`.  Type can be different than `input_output_dtype`
-      input_output_dtype: `dtype` for input/output.  Must be either
-        `float32` or `complex64`.
+      spectrum:  Shape `[B1,...,Bb, N]` `Tensor`.  Allowed dtypes: `float16`,
+        `float32`, `float64`, `complex64`, `complex128`.  Type can be different
+        than `input_output_dtype`
+      input_output_dtype: `dtype` for input/output.
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.  If `spectrum` is real, this will always be true.
@@ -740,6 +753,9 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
         is_positive_definite=is_positive_definite,
         is_square=is_square,
         name=name)
+
+  def _eigvals(self):
+    return ops.convert_to_tensor(self.spectrum)
 
 
 @tf_export("linalg.LinearOperatorCirculant2D")
@@ -830,7 +846,7 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
   ```python
   # convolution_kernel is real ==> spectrum is Hermitian.
   convolution_kernel = [[1., 2., 1.], [5., -1., 1.]]
-  spectrum = tf.fft2d(tf.cast(convolution_kernel, tf.complex64))
+  spectrum = tf.signal.fft2d(tf.cast(convolution_kernel, tf.complex64))
 
   # spectrum is shape [2, 3] ==> operator is shape [6, 6]
   # spectrum is Hermitian ==> operator is real.
@@ -865,7 +881,7 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
 
   def __init__(self,
                spectrum,
-               input_output_dtype=_DTYPE_COMPLEX,
+               input_output_dtype=dtypes.complex64,
                is_non_singular=None,
                is_self_adjoint=None,
                is_positive_definite=None,
@@ -892,10 +908,10 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
     a real type is fine.
 
     Args:
-      spectrum:  Shape `[B1,...,Bb, N]` `Tensor`.  Allowed dtypes are
-        `float32`, `complex64`.  Type can be different than `input_output_dtype`
-      input_output_dtype: `dtype` for input/output.  Must be either
-        `float32` or `complex64`.
+      spectrum:  Shape `[B1,...,Bb, N]` `Tensor`.  Allowed dtypes: `float16`,
+        `float32`, `float64`, `complex64`, `complex128`.  Type can be different
+        than `input_output_dtype`
+      input_output_dtype: `dtype` for input/output.
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.  If `spectrum` is real, this will always be true.
@@ -1015,7 +1031,7 @@ class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
 
   def __init__(self,
                spectrum,
-               input_output_dtype=_DTYPE_COMPLEX,
+               input_output_dtype=dtypes.complex64,
                is_non_singular=None,
                is_self_adjoint=None,
                is_positive_definite=None,
@@ -1043,10 +1059,10 @@ class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
     a real type is fine.
 
     Args:
-      spectrum:  Shape `[B1,...,Bb, N]` `Tensor`.  Allowed dtypes are
-        `float32`, `complex64`.  Type can be different than `input_output_dtype`
-      input_output_dtype: `dtype` for input/output.  Must be either
-        `float32` or `complex64`.
+      spectrum:  Shape `[B1,...,Bb, N]` `Tensor`.  Allowed dtypes: `float16`,
+        `float32`, `float64`, `complex64`, `complex128`.  Type can be different
+        than `input_output_dtype`
+      input_output_dtype: `dtype` for input/output.
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.  If `spectrum` is real, this will always be true.
@@ -1070,4 +1086,10 @@ class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
 
 
 def _to_complex(x):
-  return math_ops.cast(x, _DTYPE_COMPLEX)
+  if x.dtype.is_complex:
+    return x
+  dtype = dtypes.complex64
+
+  if x.dtype == dtypes.float64:
+    dtype = dtypes.complex128
+  return math_ops.cast(x, dtype)

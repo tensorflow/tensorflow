@@ -17,13 +17,15 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #define EIGEN_USE_GPU
 #endif
 
 #include "tensorflow/core/kernels/constant_op.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -71,6 +73,7 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
     : OpKernel(ctx, StripTensorDataFromNodeDef(ctx)),
       tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
+  MEMDEBUG_CACHE_OP(ctx->def().name().c_str());
   OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
   OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
                           *proto, AllocatorAttributes(), &tensor_));
@@ -92,7 +95,8 @@ ConstantOp::~ConstantOp() {}
 
 REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #define REGISTER_KERNEL(D, TYPE)                                      \
   REGISTER_KERNEL_BUILDER(                                            \
       Name("Const").Device(DEVICE_##D).TypeConstraint<TYPE>("dtype"), \
@@ -194,6 +198,7 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
 // the conversion from uint8 to quint8.
 REGISTER_KERNEL(CPU, quint8);
 REGISTER_KERNEL(CPU, quint16);
+REGISTER_KERNEL(CPU, uint32);
 #undef REGISTER_CPU_KERNEL
 
 #ifdef TENSORFLOW_USE_SYCL
@@ -216,7 +221,8 @@ REGISTER_KERNEL_BUILDER(Name("Fill")
 #undef REGISTER_KERNEL_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 REGISTER_KERNEL(GPU, Eigen::half);
 REGISTER_KERNEL(GPU, bfloat16);
 REGISTER_KERNEL(GPU, float);
@@ -300,7 +306,8 @@ REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                         ZerosLikeOp<CPUDevice, int32>);
 #endif  // TENSORFLOW_USE_SYCL
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 REGISTER_KERNEL(bool, GPU);
 REGISTER_KERNEL(Eigen::half, GPU);
 REGISTER_KERNEL(bfloat16, GPU);
@@ -315,7 +322,7 @@ REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .TypeConstraint<int32>("T")
                             .HostMemory("y"),
                         ZerosLikeOp<CPUDevice, int32>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER_KERNEL
 
@@ -353,7 +360,8 @@ REGISTER_KERNEL_BUILDER(Name("OnesLike")
                         OnesLikeOp<CPUDevice, int32>);
 #endif  // TENSORFLOW_USE_SYCL
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 REGISTER_KERNEL(bool, GPU);
 REGISTER_KERNEL(Eigen::half, GPU);
 REGISTER_KERNEL(bfloat16, GPU);
@@ -367,7 +375,7 @@ REGISTER_KERNEL_BUILDER(Name("OnesLike")
                             .TypeConstraint<int32>("T")
                             .HostMemory("y"),
                         OnesLikeOp<CPUDevice, int32>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER_KERNEL
 
@@ -393,17 +401,12 @@ void PlaceholderOp::Compute(OpKernelContext* ctx) {
 REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_CPU), PlaceholderOp);
 REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_CPU),
                         PlaceholderOp);
-// The following GPU kernel registration is used to address the situation that
-// a placeholder is added in a GPU device context and soft placement is false.
-// Since a placeholder should never be executed, adding these GPU kernels has
-// no effect on graph execution.
-REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_GPU), PlaceholderOp);
-REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_GPU),
+// The following GPU/Default kernel registration is used to address the
+// situation that a placeholder is added in a GPU device context and soft
+// placement is false. Since a placeholder should never be executed, adding
+// these GPU kernels has no effect on graph execution.
+REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_DEFAULT),
                         PlaceholderOp);
-
-#if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_SYCL), PlaceholderOp);
-REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_SYCL),
+REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_DEFAULT),
                         PlaceholderOp);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

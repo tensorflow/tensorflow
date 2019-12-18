@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -75,9 +76,8 @@ class LoopInvariantNodeMotionOptimizer {
   std::unique_ptr<NodeMap> node_map_;
   std::map<NodeDef*, int> invariant_nodes_;
   std::set<int> empty_set_;
-  // TODO(rmlarsen): Use vector instead of map, since frames ids are dense.
-  std::map<int, std::set<int>> frame_children_;
-  std::map<int, int> frame_parent_;
+  std::vector<std::set<int>> frame_children_;
+  std::vector<int> frame_parent_;
   std::map<int, const NodeDef*> loop_cond_;
   std::map<int, std::vector<NodeDef*>> invariant_enters_;
   int new_enter_id_;
@@ -157,9 +157,8 @@ Status LoopInvariantNodeMotionOptimizer::HandleConst(NodeDef* node,
     }
   }
   // add a control input from the parent frame
-  auto parent_it = frame_parent_.find(frame_id);
-  if (parent_it != frame_parent_.end()) {
-    int parent_id = parent_it->second;
+  if (frame_parent_[frame_id] != -1) {
+    int parent_id = frame_parent_[frame_id];
     auto loop_cond_it = loop_cond_.find(parent_id);
     if (loop_cond_it == loop_cond_.end()) {
       return errors::InvalidArgument("Frame ", frame_id,
@@ -385,6 +384,8 @@ Status LoopInvariantNodeMotionOptimizer::Optimize() {
   // TODO(ezhulenev): Use GraphView when migrated from NodeMap.
   TF_RETURN_IF_ERROR(frame_view.InferFromGraph(*optimized_graph_));
 
+  frame_parent_.resize(frame_view.num_frames(), -1);
+  frame_children_.resize(frame_view.num_frames());
   std::deque<int> worklist;
   for (const NodeDef& node : optimized_graph_->node()) {
     const std::vector<int>& frame_ids = frame_view.Frames(node);
@@ -400,7 +401,7 @@ Status LoopInvariantNodeMotionOptimizer::Optimize() {
       frame_parent_[frame_ids.back()] = frame_ids[frame_ids.size() - 2];
     }
     if (!frame_ids.empty()) {
-      frame_children_.insert(std::make_pair(frame_ids.back(), empty_set_));
+      frame_children_[frame_ids.back()] = empty_set_;
       if (node.op() == "LoopCond") {
         if (loop_cond_.count(frame_ids.back())) {
           return errors::InvalidArgument(
@@ -417,9 +418,9 @@ Status LoopInvariantNodeMotionOptimizer::Optimize() {
     }
   }
 
-  for (auto it = frame_children_.begin(); it != frame_children_.end(); ++it) {
-    if (it->second.empty()) {
-      worklist.push_back(it->first);
+  for (size_t i = 0; i < frame_children_.size(); i++) {
+    if (frame_children_[i].empty()) {
+      worklist.push_back(i);
     }
   }
 
@@ -427,9 +428,8 @@ Status LoopInvariantNodeMotionOptimizer::Optimize() {
     int frame_id = worklist.front();
     new_enter_id_ = 0;
     worklist.pop_front();
-    auto parent_it = frame_parent_.find(frame_id);
-    if (parent_it != frame_parent_.end()) {
-      int parent_id = parent_it->second;
+    if (frame_parent_[frame_id] != -1) {
+      int parent_id = frame_parent_[frame_id];
       frame_children_[parent_id].erase(frame_id);
       if (frame_children_[parent_id].empty()) {
         worklist.push_back(parent_id);
@@ -459,7 +459,7 @@ std::vector<int> GetStackPushNodesToConvert(
 
   const std::unordered_set<string> op_types_to_traverse(
       {"Stack", "StackV2", "Enter", "RefEnter", "Switch", "RefSwitch",
-       "Identity", "RefIdentity"});
+       "_SwitchN", "Identity", "RefIdentity"});
   const auto is_op_to_traverse = [&](const NodeDef* node) -> bool {
     return op_types_to_traverse.find(node->op()) != op_types_to_traverse.end();
   };
@@ -557,6 +557,9 @@ Status EvaluateBoolOpForConstantOperands(const NodeDef& op_node,
                                          DeviceBase* cpu_device,
                                          ResourceMgr* resource_mgr,
                                          bool* value) {
+  VLOG(4) << "Evaluate bool op: op_node=" << op_node.name()
+          << " input0=" << constant_operand_0.name()
+          << " input1=" << constant_operand_1.name();
   TensorVector inputs;
 
   const TensorProto& raw_val_0 = constant_operand_0.attr().at("value").tensor();
@@ -603,10 +606,14 @@ Status CheckForDeadFanout(const MutableGraphView& view,
 
   // CASE 1: Control is a constant.
   if (IsReallyConstant(*switch_predicate, feed_nodes)) {
+    VLOG(3) << "Found switch node with constant predicate:"
+            << " switch_node=" << switch_node.name()
+            << " switch_predicate=" << switch_predicate->name();
     Tensor selector;
     CHECK(selector.FromProto(switch_predicate->attr().at("value").tensor()));
     *has_dead_fanout = true;
     *dead_fanout = selector.scalar<bool>()() ? 0 : 1;
+    return Status::OK();
   }
 
   GraphView::InputPort switch_input_port(&switch_node, 0);
@@ -616,28 +623,29 @@ Status CheckForDeadFanout(const MutableGraphView& view,
   // We check if its a while loop such that the condition is a simple binary
   // operator which returns false for the initialization value.
   // TODO(srjoglekar): Improve to work with arbitrary predicate subgraphs.
-  if (!IsMerge(*switch_input)) {
+  if (!IsMerge(*switch_input) || !IsLoopCond(*switch_predicate)) {
     return Status::OK();
   }
 
-  // Find the boolean Op from predicate node.
-  NodeDef* switch_ctrl_node = nullptr;
-  for (int i = 0; i < switch_predicate->input().size(); ++i) {
-    NodeDef* node = node_map.GetNode(switch_predicate->input(i));
-    if (IsSimpleBinaryOperator(*node)) {
-      switch_ctrl_node = node;
-    }
-  }
-  if (switch_ctrl_node == nullptr) {
+  VLOG(4) << "Try to find a zero iteration while loop:"
+          << " switch_node=" << switch_node.name();
+
+  // Find the boolean predicate from a LoopCond node (e.g. Greater).
+  NodeDef* switch_ctrl_node = view.GetRegularFanin({switch_predicate, 0}).node;
+  if (!switch_ctrl_node || !IsSimpleBinaryOperator(*switch_ctrl_node)) {
     return Status::OK();
   }
+
   // Find the Merge node & the Constant Operand to the condition node, if
   // available.
   NodeDef* merge_node = nullptr;
   NodeDef* constant_ctrl_input = nullptr;
   int constant_index = 0;
   for (int i = 0; i < switch_ctrl_node->input().size(); ++i) {
-    NodeDef* node = node_map.GetNode(switch_ctrl_node->input(i));
+    const string& input = switch_ctrl_node->input(i);
+    if (IsControlInput(input)) continue;
+
+    NodeDef* node = view.GetNode(switch_ctrl_node->input(i));
     if (IsMerge(*node)) {
       merge_node = node;
     }
@@ -649,6 +657,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
   if (merge_node == nullptr || constant_ctrl_input == nullptr) {
     return Status::OK();
   }
+
   // Find the initialization constant (via Enter, if one exists).
   NodeDef* enter_node = nullptr;
   NodeDef* constant_init_node = nullptr;
@@ -674,6 +683,15 @@ Status CheckForDeadFanout(const MutableGraphView& view,
     return Status::OK();
   }
 
+  VLOG(4) << "Check if loop will be 0 iterations:"
+          << "\n|  switch_node        : " << switch_node.name()
+          << "\n|  switch_ctrl_node   : " << switch_ctrl_node->name()
+          << "\n|  merge_node         : " << merge_node->name()
+          << "\n|  constant_ctrl_input: " << constant_ctrl_input->name()
+          << "\n|  enter_node         : "
+          << (enter_node ? enter_node->name() : "<n/a>")
+          << "\n|  constant_init_node : " << constant_init_node->name();
+
   // Check if there will be 0 iterations. This will only happen if the condition
   // evaluates to false with respect to the initialization value.
   NodeDef* operand_0 =
@@ -684,9 +702,14 @@ Status CheckForDeadFanout(const MutableGraphView& view,
   TF_RETURN_IF_ERROR(EvaluateBoolOpForConstantOperands(
       *switch_ctrl_node, *operand_0, *operand_1, cpu_device, resource_mgr,
       &constant_switch_value));
+
   if (constant_switch_value == false) {
+    VLOG(3) << "Remove 0 iteration while loop:"
+            << " switch_node=" << switch_node.name();
     *has_dead_fanout = true;
     *dead_fanout = 1;
+  } else {
+    VLOG(4) << "Was not able to prove that loop has 0 iterations.";
   }
   return Status::OK();
 }
@@ -708,6 +731,11 @@ LoopOptimizer::LoopOptimizer(RewriterConfig::Toggle opt_level,
 
 Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* optimized_graph) {
+  if (!options_.enable_loop_invariant_node_motion &&
+      !options_.enable_stack_push_removal &&
+      !options_.enable_dead_branch_removal) {
+    return errors::Aborted("Nothing to do.");
+  }
   *optimized_graph = item.graph;
   // Set up helper data structures.
   if (options_.enable_loop_invariant_node_motion) {
@@ -718,8 +746,6 @@ Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     TF_RETURN_IF_ERROR(RemoveStackOps(item.NodesToPreserve(), optimized_graph));
   }
   if (options_.enable_dead_branch_removal) {
-    // TODO(srjoglekar): Figure out if we can optimize NodeMap creations across
-    // optimizer passes.
     NodeMap node_map(optimized_graph);
     absl::flat_hash_set<string> feed_nodes;
     for (const auto& feed : item.feed) {
@@ -745,6 +771,9 @@ Status LoopOptimizer::RemoveDeadBranches(
   MutableGraphView view(optimized_graph);
   for (const NodeDef& node : optimized_graph->node()) {
     if (!IsSwitch(node)) {
+      continue;
+    }
+    if (node.op() == "_SwitchN") {  // _SwitchN not used in loop control flow.
       continue;
     }
     if (nodes_to_preserve.find(node.name()) != nodes_to_preserve.end()) {
@@ -790,10 +819,10 @@ Status LoopOptimizer::RemoveDeadBranches(
       }
 
       if (IsMerge(*dead.node)) {
-        const int fanout = dead.node->attr().at("N").i();
-        if (fanout > 2) {
-          // This never happens in practice, so we'll just skip these to
-          // simplify the code for now.
+        const int num_data_inputs = dead.node->attr().at("N").i();
+        if (num_data_inputs > 2) {
+          // This can happen with _SwitchN/Merge (Case lowering). We skip these
+          // to simplify the code for now.
           found_node_to_preserve = true;
           break;
         }
@@ -809,18 +838,21 @@ Status LoopOptimizer::RemoveDeadBranches(
         }
 
         bool fully_dead = false;
-        if (dead.port_id < 0) {
-          // If the control dependency never gets triggered the merge will also
-          // never get triggered.
-          fully_dead = true;
-        } else {
+        // Merge node can become real dead only if all data inputs are dead.
+        // Merge always waits for all control edges, but they do not
+        // change the node deadness.
+        if (dead.port_id >= 0) {
           local_dead_merge_inputs[dead.node].insert(dead.port_id);
-          if (local_dead_merge_inputs[dead.node].size() ==
-              dead.node->attr().at("N").i()) {
+          if (local_dead_merge_inputs[dead.node].size() == num_data_inputs) {
             fully_dead = true;
           }
+        } else {
+          // Keep track of all Merge nodes, even if they do not have dead data
+          // inputs. We'll need to cleanup dead control edges for them later.
+          local_dead_merge_inputs.insert({dead.node, {}});
         }
         if (fully_dead) {
+          local_dead_merge_inputs.erase(dead.node);
           local_dead_nodes.insert(dead.node);
           for (const MutableGraphView::InputPort& port :
                view.GetFanouts(*dead.node, true)) {
@@ -852,27 +884,68 @@ Status LoopOptimizer::RemoveDeadBranches(
     if (dead_nodes.count(&optimized_graph->node(i)))
       nodes_idx_to_delete.push_back(i);
   }
-  EraseNodesFromGraph(std::move(nodes_idx_to_delete), optimized_graph);
 
+  // Names of the nodes that were removed from the graph.
+  absl::flat_hash_set<absl::string_view> dead_node_names;
+  dead_node_names.reserve(dead_nodes.size());
+  for (const NodeDef* dead_node : dead_nodes) {
+    dead_node_names.insert(dead_node->name());
+  }
+
+  // Check that the merge nodes are valid.
   for (const auto& itr : dead_merge_inputs) {
-    NodeDef* dead_node = itr.first;
-    if (dead_nodes.find(dead_node) != dead_nodes.end()) {
-      // The node has been pruned since all its inputs are dead.
+    NodeDef* merge_node = itr.first;
+    if (dead_nodes.find(merge_node) != dead_nodes.end()) {
+      // The node will be pruned since all its inputs are dead.
       continue;
     }
+    // Remove dead data input.
     const std::set<int>& dead_inputs = itr.second;
-    for (int index : dead_inputs) {
-      dead_node->mutable_input()->DeleteSubrange(index, 1);
+    const int num_data_inputs = merge_node->attr().at("N").i();
+    if (merge_node->input_size() != num_data_inputs) {
+      LOG(WARNING)
+          << "Skipping loop optimization for Merge node with control input: "
+          << merge_node->name();
+      return Status::OK();
+    } else if (dead_inputs.size() != 1 || num_data_inputs != 2) {
+      LOG(WARNING) << "Skipping loop optimization for Merge node ("
+                   << merge_node->name()
+                   << ") with unexpected dead_inputs.size() ("
+                   << dead_inputs.size() << " or  num_data_inputs"
+                   << num_data_inputs;
+      return Status::OK();
     }
-    dead_node->set_op("Identity");
-    dead_node->mutable_attr()->erase("N");
   }
+
+  // Remove dead inputs from Merge nodes that will not be not
+  // pruned from the graph.
+  for (const auto& itr : dead_merge_inputs) {
+    NodeDef* merge_node = itr.first;
+    if (dead_nodes.find(merge_node) != dead_nodes.end()) {
+      // The node will be pruned since all its inputs are dead.
+      continue;
+    }
+    VLOG(3) << "Merge node before cleanup: " << merge_node->DebugString();
+    // Remove dead data input.
+    const std::set<int>& dead_inputs = itr.second;
+    int index = *dead_inputs.begin();
+    auto* inputs = merge_node->mutable_input();
+    inputs->SwapElements(1, index);
+    inputs->SwapElements(1, merge_node->input_size() - 1);
+    inputs->RemoveLast();
+    merge_node->set_op("Identity");
+    merge_node->mutable_attr()->erase("N");
+
+    VLOG(3) << "Merge node after cleanup: " << merge_node->DebugString();
+  }
+
+  EraseNodesFromGraph(std::move(nodes_idx_to_delete), optimized_graph);
+
   return Status::OK();
 }
 
-void LoopOptimizer::Feedback(Cluster* /*cluster*/, const GrapplerItem& /*item*/,
-                             const GraphDef& /*optimized_graph*/,
-                             double /*result*/) {
+void LoopOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
+                             const GraphDef& optimize_output, double result) {
   // Nothing to do for LoopOptimizer.
 }
 

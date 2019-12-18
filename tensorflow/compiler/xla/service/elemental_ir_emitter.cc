@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -49,7 +50,6 @@ limitations under the License.
 namespace xla {
 
 using absl::StrCat;
-using llvm_ir::AsStringRef;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
@@ -63,28 +63,44 @@ int64 GlobalRandomValue() {
   return rng();
 }
 
-llvm::Value* EmitReducePrecisionFloat(llvm::Value* x, int64 exponent_bits,
-                                      int64 mantissa_bits,
-                                      llvm::IRBuilder<>* b) {
+StatusOr<llvm::Value*> EmitReducePrecisionIR(PrimitiveType src_ty,
+                                             llvm::Value* x,
+                                             int64 dest_exponent_bits,
+                                             int64 dest_mantissa_bits,
+                                             llvm::IRBuilder<>* b) {
+  using llvm::APInt;
+
+  if (!primitive_util::IsFloatingPointType(src_ty)) {
+    return Unimplemented(
+        "ReducePrecision cannot accept non-floating-point type %s.",
+        PrimitiveType_Name(src_ty));
+  }
+
   // Integer and float types for casting and constant generation.
   llvm::Type* float_type = x->getType();
-  llvm::IntegerType* int_type = b->getInt32Ty();
+  int64 nbits = float_type->getPrimitiveSizeInBits();
+  llvm::IntegerType* int_type = b->getIntNTy(nbits);
+
+  // SignificandWidth includes the implicit extra bit.
+  int src_mantissa_bits = primitive_util::SignificandWidth(src_ty) - 1;
+  int src_exponent_bits = nbits - 1 - src_mantissa_bits;
 
   // Cast the input value to an integer for bitwise manipulation.
   llvm::Value* x_as_int = b->CreateBitCast(x, int_type);
 
-  if (mantissa_bits < 23) {
+  if (dest_mantissa_bits < src_mantissa_bits) {
     // Last remaining mantissa bit.
-    const uint32_t last_mantissa_bit_mask = 1u << (23 - mantissa_bits);
+    APInt last_mantissa_bit_mask(nbits, 1);
+    last_mantissa_bit_mask <<= src_mantissa_bits - dest_mantissa_bits;
 
     // Compute rounding bias for round-to-nearest with ties to even.  This is
     // equal to a base value of 0111... plus one bit if the last remaining
     // mantissa bit is 1.
-    const uint32_t base_rounding_bias = (last_mantissa_bit_mask >> 1) - 1;
+    APInt base_rounding_bias = last_mantissa_bit_mask.lshr(1) - 1;
     llvm::Value* x_last_mantissa_bit = b->CreateLShr(
         b->CreateAnd(x_as_int,
                      llvm::ConstantInt::get(int_type, last_mantissa_bit_mask)),
-        (23 - mantissa_bits));
+        (src_mantissa_bits - dest_mantissa_bits));
     llvm::Value* x_rounding_bias =
         b->CreateAdd(x_last_mantissa_bit,
                      llvm::ConstantInt::get(int_type, base_rounding_bias));
@@ -93,16 +109,19 @@ llvm::Value* EmitReducePrecisionFloat(llvm::Value* x, int64 exponent_bits,
     // where adding the rounding bias overflows into the exponent bits is
     // correct; the non-masked mantissa bits will all be zero, and the
     // exponent will be incremented by one.
-    const uint32_t truncation_mask = ~(last_mantissa_bit_mask - 1);
+    APInt truncation_mask = ~(last_mantissa_bit_mask - 1);
     x_as_int = b->CreateAdd(x_as_int, x_rounding_bias);
     x_as_int = b->CreateAnd(x_as_int,
                             llvm::ConstantInt::get(int_type, truncation_mask));
   }
 
-  if (exponent_bits < 8) {
-    // Masks for f32 values.
-    const uint32_t f32_sign_bit_mask = 1u << 31;
-    const uint32_t f32_exp_bits_mask = 0xffu << 23;
+  if (dest_exponent_bits < src_exponent_bits) {
+    APInt sign_bit_mask(nbits, 1);
+    sign_bit_mask <<= nbits - 1;
+
+    APInt exp_bits_mask(nbits, 1);
+    exp_bits_mask = ((exp_bits_mask << src_exponent_bits) - 1)
+                    << src_mantissa_bits;
 
     // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the most-
     // significant bit -- is equal to 1.0f for all exponent sizes.  Adding
@@ -116,28 +135,31 @@ llvm::Value* EmitReducePrecisionFloat(llvm::Value* x, int64 exponent_bits,
     // (2^7-1) - 2^(n-1)-1.
     //
     // Note that we have already checked that exponents_bits >= 1.
-    const uint32_t f32_exponent_bias = (1 << 7) - 1;
-    const uint32_t reduced_exponent_bias = (1 << (exponent_bits - 1)) - 1;
-    const uint32_t reduced_max_exponent =
-        f32_exponent_bias + reduced_exponent_bias;
-    const uint32_t reduced_min_exponent =
-        f32_exponent_bias - reduced_exponent_bias;
+    APInt exponent_bias(nbits, 1);
+    exponent_bias = (exponent_bias << (src_exponent_bits - 1)) - 1;
+
+    APInt reduced_exponent_bias(nbits, 1);
+    reduced_exponent_bias =
+        (reduced_exponent_bias << (dest_exponent_bits - 1)) - 1;
+
+    APInt reduced_max_exponent = exponent_bias + reduced_exponent_bias;
+    APInt reduced_min_exponent = exponent_bias - reduced_exponent_bias;
 
     // Do we overflow or underflow?
-    llvm::Value* x_exponent = b->CreateAnd(
-        x_as_int, llvm::ConstantInt::get(int_type, f32_exp_bits_mask));
+    llvm::Value* x_exponent =
+        b->CreateAnd(x_as_int, llvm::ConstantInt::get(int_type, exp_bits_mask));
     llvm::Value* x_overflows = b->CreateICmpUGT(
-        x_exponent,
-        llvm::ConstantInt::get(int_type, reduced_max_exponent << 23));
+        x_exponent, llvm::ConstantInt::get(
+                        int_type, reduced_max_exponent << src_mantissa_bits));
     llvm::Value* x_underflows = b->CreateICmpULE(
-        x_exponent,
-        llvm::ConstantInt::get(int_type, reduced_min_exponent << 23));
+        x_exponent, llvm::ConstantInt::get(
+                        int_type, reduced_min_exponent << src_mantissa_bits));
 
     // Compute appropriately-signed values of zero and infinity.
-    llvm::Value* x_signed_zero = b->CreateAnd(
-        x_as_int, llvm::ConstantInt::get(int_type, f32_sign_bit_mask));
+    llvm::Value* x_signed_zero =
+        b->CreateAnd(x_as_int, llvm::ConstantInt::get(int_type, sign_bit_mask));
     llvm::Value* x_signed_inf = b->CreateOr(
-        x_signed_zero, llvm::ConstantInt::get(int_type, f32_exp_bits_mask));
+        x_signed_zero, llvm::ConstantInt::get(int_type, exp_bits_mask));
 
     // Force to zero or infinity if overflow or underflow.  (Note that this
     // truncates all denormal values to zero, rather than rounding them.)
@@ -161,7 +183,7 @@ llvm::Value* EmitReducePrecisionFloat(llvm::Value* x, int64 exponent_bits,
   if (!b->getFastMathFlags().noNaNs()) {
     llvm::Value* x_is_nan = b->CreateFCmpUNO(x, x);
 
-    if (mantissa_bits > 0) {
+    if (dest_mantissa_bits > 0) {
       result = b->CreateSelect(x_is_nan, x, result);
     } else {
       result = b->CreateSelect(
@@ -171,11 +193,14 @@ llvm::Value* EmitReducePrecisionFloat(llvm::Value* x, int64 exponent_bits,
   return result;
 }
 
-llvm::Value* EmitF32ToBF16(llvm::Value* f32_value, llvm::IRBuilder<>* b) {
-  auto reduced_precision = EmitReducePrecisionFloat(
-      f32_value,
-      /*exponent_bits=*/primitive_util::kBFloat16ExponentBits,
-      /*mantissa_bits=*/primitive_util::kBFloat16MantissaBits, b);
+StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value,
+                                     llvm::IRBuilder<>* b) {
+  TF_ASSIGN_OR_RETURN(
+      auto reduced_precision,
+      EmitReducePrecisionIR(
+          /*src_ty=*/F32, f32_value,
+          /*dest_exponent_bits=*/primitive_util::kBFloat16ExponentBits,
+          /*dest_mantissa_bits=*/primitive_util::kBFloat16MantissaBits, b));
   auto as_int32 = b->CreateBitCast(reduced_precision, b->getInt32Ty());
   auto shifted = b->CreateLShr(as_int32, 16);
   auto truncated = b->CreateTrunc(shifted, b->getInt16Ty());
@@ -208,10 +233,8 @@ llvm::Value* EmitIntegralToFloating(llvm::Value* integer_value,
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitUnaryOp(
     const HloInstruction* op, llvm::Value* operand_value) {
-  if (op->opcode() == HloOpcode::kCopy) {
-    return operand_value;
-  } else if (ShapeUtil::ElementIsIntegral(op->operand(0)->shape()) ||
-             op->operand(0)->shape().element_type() == PRED) {
+  if (ShapeUtil::ElementIsIntegral(op->operand(0)->shape()) ||
+      op->operand(0)->shape().element_type() == PRED) {
     return EmitIntegerUnaryOp(op, operand_value);
   } else if (ShapeUtil::ElementIsComplex(op->operand(0)->shape())) {
     return EmitComplexUnaryOp(op, operand_value);
@@ -329,6 +352,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
       }
       return Unimplemented("unary op Not is not defined for type '%d'", type);
     }
+    case HloOpcode::kPopulationCount: {
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::ctpop,
+                                          {operand_value},
+                                          {operand_value->getType()}, b_);
+    }
     default:
       return Unimplemented("unary integer op '%s'",
                            HloOpcodeString(op->opcode()));
@@ -345,6 +373,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       if (from_type == to_type) {
         return operand_value;
       }
+      if (from_type == BF16) {
+        TF_RET_CHECK(to_type != BF16);
+        operand_value = EmitBF16ToF32(operand_value, b_);
+        from_type = F32;
+        if (from_type == to_type) {
+          return operand_value;
+        }
+      }
       if (primitive_util::IsComplexType(to_type)) {
         PrimitiveType to_component_type =
             primitive_util::ComplexComponentType(to_type);
@@ -357,15 +393,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
                    llvm_ir::PrimitiveTypeToIrType(to_component_type, module_)),
             nullptr);
       }
-      if (from_type == BF16) {
-        TF_RET_CHECK(to_type != BF16);
-        operand_value = EmitBF16ToF32(operand_value, b_);
-        from_type = F32;
-        if (from_type == to_type) {
-          return operand_value;
+      if (to_type == BF16) {
+        // Cast to F32 first. Other floating point formats are not supported by
+        // EmitReducePrecisionIR.
+        if (from_type != F32) {
+          operand_value = b_->CreateFPCast(
+              operand_value, llvm_ir::PrimitiveTypeToIrType(F32, module_));
         }
-      }
-      if (from_type == F32 && to_type == BF16) {
         return EmitF32ToBF16(operand_value, b_);
       }
       if (to_type == PRED) {
@@ -487,15 +521,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
           : input_type;
   switch (op->opcode()) {
     case HloOpcode::kLog: {
-      // log(a+bi) = .5*log(a^2+b^2) + i*atan2(b, a)
+      // log(a+bi) = log(abs(a+bi)) + i*atan2(b,a)
       auto a = EmitExtractReal(operand_value);
       auto b = EmitExtractImag(operand_value);
-      llvm::Type* llvm_ty = a->getType();
-      auto sum_sq = FAdd(FMul(a, a), FMul(b, b));
-      TF_ASSIGN_OR_RETURN(auto log_sum_sq, EmitLog(component_type, sum_sq));
-      TF_ASSIGN_OR_RETURN(auto angle, EmitAtan2(component_type, b, a));
-      auto one_half = llvm::ConstantFP::get(llvm_ty, 0.5);
-      return EmitComposeComplex(op, FMul(one_half, log_sum_sq), angle);
+      TF_ASSIGN_OR_RETURN(llvm::Value * angle, EmitAtan2(component_type, b, a));
+      TF_ASSIGN_OR_RETURN(llvm::Value * abs,
+                          EmitComplexAbs(component_type, operand_value));
+      TF_ASSIGN_OR_RETURN(llvm::Value * log_abs, EmitLog(component_type, abs));
+      return EmitComposeComplex(op, log_abs, angle);
     }
     case HloOpcode::kLog1p: {
       // log1p(a+bi) = .5*log((a+1)^2+b^2) + i*atan2(b, a + 1)
@@ -611,46 +644,135 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
              =(cos(b)^2(e^(2a)-e^(-2a)) + sin(b)^2(e^(2a)-e^(-2a)) +
                i*(cos(b)sin(b)(e^a+e^-a)^2 - cos(b)sin(b)(e^a-e^-a)^2)) /
               ((cos(b)(e^a+e^-a))^2 + (sin(b)(e^a-e^-a))^2)
+             =(e^(2a)-e^(-2a) +
+               i*[cos(b)sin(b)(e^(2a)+2+e^(-2a))-cos(b)sin(b)(e^(2a)-2+e^(2a)))]
+               / (cos(b)^2*(e^(2a)+2+e^(-2a)) + sin(b)^2*(e^(2a)-2+e^(2a))
+             =(e^(2a)-e^(-2a) +
+               i*cos(b)sin(b)*[e^(2a)+2+e^(-2a)-e^(2a)+2-e^(-2a)]) /
+               ([cos(b)^2 + sin(b)^2][e^(2a)+e^(-2a)])+2*[cos(b)^2 - sin(b)^2])
+             =(e^(2a)-e^(-2a) + i*cos(b)sin(b)*4) /
+              (e^(2a)+e^(-2a)+2*[cos(b)^2 - sin(b)^2])
+             =(e^(2a)-e^(-2a) + i*[sin(2b)/2]*4) /
+              (e^(2a)+e^(-2a)+2*[cos(2b)])
+             =(e^(2a)-e^(-2a) + i*2*sin(2b)) / (e^(2a) + e^(-2a) + 2*cos(2b))
       */
-      auto a = EmitExtractReal(operand_value);
-      auto b = EmitExtractImag(operand_value);
-      TF_ASSIGN_OR_RETURN(auto exp_a, EmitExp(component_type, a));
-      TF_ASSIGN_OR_RETURN(auto cos_b, EmitCos(component_type, b));
-      TF_ASSIGN_OR_RETURN(auto sin_b, EmitSin(component_type, b));
-      auto exp_neg_a = FDiv(llvm::ConstantFP::get(exp_a->getType(), 1), exp_a);
-      auto exp_2a_minus_exp_neg_2a =
-          FSub(FMul(exp_a, exp_a), FMul(exp_neg_a, exp_neg_a));
-      auto cos_b_sq = FMul(cos_b, cos_b);
-      auto sin_b_sq = FMul(sin_b, sin_b);
-      auto real_num = FAdd(FMul(cos_b_sq, exp_2a_minus_exp_neg_2a),
-                           FMul(sin_b_sq, exp_2a_minus_exp_neg_2a));
-      auto cos_b_sin_b = FMul(cos_b, sin_b);
-      auto exp_a_plus_exp_neg_a = FAdd(exp_a, exp_neg_a);
-      auto exp_a_plus_exp_neg_a_sq =
-          FMul(exp_a_plus_exp_neg_a, exp_a_plus_exp_neg_a);
-      auto exp_a_minus_exp_neg_a = FSub(exp_a, exp_neg_a);
-      auto exp_a_minus_exp_neg_a_sq =
-          FMul(exp_a_minus_exp_neg_a, exp_a_minus_exp_neg_a);
-      auto imag_num = FMul(
-          cos_b_sin_b, FSub(exp_a_plus_exp_neg_a_sq, exp_a_minus_exp_neg_a_sq));
-      auto denom = FAdd(FMul(cos_b_sq, exp_a_plus_exp_neg_a_sq),
-                        FMul(sin_b_sq, exp_a_minus_exp_neg_a_sq));
-      return EmitComposeComplex(op, FDiv(real_num, denom),
-                                FDiv(imag_num, denom));
+      llvm::Value* a = EmitExtractReal(operand_value);
+      llvm::Value* b = EmitExtractImag(operand_value);
+
+      llvm::Type* type = a->getType();
+
+      llvm::Value* neg_one = llvm::ConstantFP::get(type, -1.F);
+      llvm::Value* two_a = FAdd(a, a);
+      llvm::Value* neg_2a = FMul(neg_one, two_a);
+
+      // When we are calculating the real numerator, e^(2a)-e^(-2a), for small
+      // values of `a`, we will get a ULP of 2^-23 using the exp function. Using
+      // expm1 to calculate e^(2a)-e^(-2a) = [e^(2a)-1] - [e^(-2a)-1] allows our
+      // ULP to be arbitrarily small. For larger values of `a`, calculating the
+      // numerator as Exp(2a)-Exp(-2a) vs Expm1(2a)-Expm1(-2a) return virtually
+      // identical results.
+      TF_ASSIGN_OR_RETURN(llvm::Value * exp_2a_m1,
+                          EmitExpm1(component_type, two_a));
+      TF_ASSIGN_OR_RETURN(llvm::Value * exp_neg_2a_m1,
+                          EmitExpm1(component_type, neg_2a));
+      llvm::Value* real_numerator = FSub(exp_2a_m1, exp_neg_2a_m1);
+
+      // We can use the identity cos(2b)+1 = cos(b)^2-sin(b)^2+cos(b)^2+sin(b)^2
+      // = 2cos(b)^2. This gives us the ability to be more precise when the
+      // denominator is close to zero.
+      TF_ASSIGN_OR_RETURN(llvm::Value * cos_b, EmitCos(component_type, b));
+      llvm::Value* four = llvm::ConstantFP::get(type, 4.F);
+      llvm::Value* cos_b_sq = FMul(cos_b, cos_b);
+      llvm::Value* two_cos_2b_p2 = FMul(cos_b_sq, four);
+
+      // Similarly we can compute sin(2b) with the formula sin(2b) =
+      // 2*sin(b)*cos(b).
+      TF_ASSIGN_OR_RETURN(llvm::Value * sin_b, EmitSin(component_type, b));
+      llvm::Value* imag_numerator = FMul(four, FMul(cos_b, sin_b));
+
+      // Expm1(x) is about x for small values of x, but exp_sum_m2 is about x^2
+      // for small value of x. As a result, due to floating point precision
+      // issues, x^2 is a better approximation than Expm1(x) + Expm1(x) for
+      // small values of x.
+      llvm::Value* a_sqr = FMul(a, a);
+      llvm::Value* use_approx_cutoff = llvm::ConstantFP::get(type, 1e-8);
+      llvm::Value* use_approx = FCmpOLT(a_sqr, use_approx_cutoff);
+
+      llvm::Value* exp_sum_m2 =
+          Select(use_approx, a_sqr, FAdd(exp_2a_m1, exp_neg_2a_m1));
+      llvm::Value* denom = FAdd(exp_sum_m2, two_cos_2b_p2);
+
+      // As `a` grows toward +inf and -inf, the real numerator will grow towards
+      // +inf and -inf respectively, while the denominator will always grow
+      // towards +inf. The result is real_numerator/denom = NaN, when it should
+      // equal +1 and -1 respectively. Therefore, if our denominator is +inf,
+      // we just hardcode the limits for the real numbers.
+      llvm::Value* inf = llvm::ConstantFP::getInfinity(type);
+      llvm::Value* is_inf = FCmpOEQ(exp_sum_m2, inf);
+      llvm::Value* real_limit = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign, {neg_one, a}, {type}, b_);
+
+      llvm::Value* real =
+          Select(is_inf, real_limit, FDiv(real_numerator, denom));
+      llvm::Value* imag = FDiv(imag_numerator, denom);
+
+      // The complex tanh functions have a few corner cases:
+      // 1. (+0, +0) => (+0, +0)        - Handled normally
+      // 2. (x, +Inf) => (NaN, NaN)     - See below
+      // 3. (x, NaN) => (NaN, NaN)      - See below
+      // 4. (+inf, y) => (1, +0)        - Handled normally
+      // 5. (+Inf, +Inf) => (1, +/-0)   - See below
+      // 6. (+Inf, NaN) => (1, +/-0)    - See below
+      // 7. (NaN, +0) => (NaN, +0)      - See below
+      // 8. (NaN, y) => (NaN, NaN)      - Handled normally
+      // 9. (NaN, NaN) => (NaN, NaN)    - Handled normally
+      //
+      // For the cases that aren't handled normally:
+      // 2/3) Part of the calculation we do is that if exp(a) + exp(-a) = +inf,
+      //      then we return (+/-1, +/-0). However, this is only true if we
+      //      assume that a is infinity or b is finite. In the event that both a
+      //      is finite and b is either +/-Inf or NaN, then our normal
+      //      calculation would end up returing (+/-1, NaN), as opposed to (NaN,
+      //      NaN).
+      // 5/6) We always calculate the imagninary value as sin(2b)/denominator.
+      //      When the denominator is infinity, this assures us that the zero is
+      //      the correct sign. However if our imaginary input results in
+      //      sin(2b) = NaN, we calculate our imaginary result as NaN.
+      // 7)   In the event that a is NaN, the denominator will be NaN.
+      //      Therefore, the normal calculation gives (NaN, NaN) while we need
+      //      (NaN, +0).
+      if (!(b_->getFastMathFlags().noNaNs() &&
+            b_->getFastMathFlags().noInfs())) {
+        llvm::Value* abs_a = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs,
+                                                          {a}, {type}, b_);
+        llvm::Value* zero = llvm::ConstantFP::get(type, 0.F);
+        llvm::Value* nan = llvm::ConstantFP::getNaN(type);
+
+        llvm::Value* a_is_inf = FCmpOEQ(abs_a, inf);
+        llvm::Value* b_is_zero = FCmpOEQ(b, zero);
+
+        // imag_numerator = 2sin(2b), so sin(2b) is NaN if and only if
+        // imag_numerator is NaN.
+        llvm::Value* sin_2b_is_nan =
+            b_->CreateFCmpUNO(imag_numerator, imag_numerator);
+
+        llvm::Value* real_is_nan =
+            b_->CreateAnd(sin_2b_is_nan, b_->CreateNot(a_is_inf));
+        llvm::Value* imag_is_zero =
+            b_->CreateOr(b_is_zero, b_->CreateAnd(a_is_inf, sin_2b_is_nan));
+
+        real = Select(real_is_nan, nan, real);
+        imag = Select(imag_is_zero, zero, imag);
+      }
+
+      return EmitComposeComplex(op, real, imag);
     }
     case HloOpcode::kAbs: {
-      auto sum_sq = FAdd(
-          FMul(EmitExtractReal(operand_value), EmitExtractReal(operand_value)),
-          FMul(EmitExtractImag(operand_value), EmitExtractImag(operand_value)));
-      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sqrt, {sum_sq},
-                                          {sum_sq->getType()}, b_);
+      return EmitComplexAbs(component_type, operand_value);
     }
     case HloOpcode::kSign: {  // Sign(c) = c / |c|
-      auto sum_sq = FAdd(
-          FMul(EmitExtractReal(operand_value), EmitExtractReal(operand_value)),
-          FMul(EmitExtractImag(operand_value), EmitExtractImag(operand_value)));
-      auto cplx_abs = llvm_ir::EmitCallToIntrinsic(
-          llvm::Intrinsic::sqrt, {sum_sq}, {sum_sq->getType()}, b_);
+      TF_ASSIGN_OR_RETURN(auto cplx_abs,
+                          EmitComplexAbs(component_type, operand_value));
       auto type = cplx_abs->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
       auto oeq = FCmpOEQ(cplx_abs, zero);
@@ -660,18 +782,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
                              FDiv(EmitExtractImag(operand_value), cplx_abs)));
     }
     case HloOpcode::kSqrt: {
-      auto a = EmitExtractReal(operand_value);
-      auto b = EmitExtractImag(operand_value);
-      auto c = llvm::ConstantFP::get(a->getType(), 0.5);
-      auto d = llvm::ConstantFP::get(b->getType(), 0.0);
-      return EmitComplexPower(op, a, b, c, d);
+      return EmitComplexSqrt(op, component_type, operand_value);
     }
     case HloOpcode::kRsqrt: {
-      auto a = EmitExtractReal(operand_value);
-      auto b = EmitExtractImag(operand_value);
-      auto c = llvm::ConstantFP::get(a->getType(), -0.5);
-      auto d = llvm::ConstantFP::get(b->getType(), 0.0);
-      return EmitComplexPower(op, a, b, c, d);
+      return EmitComplexRsqrt(op, component_type, operand_value);
     }
     case HloOpcode::kNegate:
       return EmitComposeComplex(op, FNeg(EmitExtractReal(operand_value)),
@@ -723,25 +837,28 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
     // We use ordered comparisons for everything except kNe, where we use an
     // unordered comparison.  This makes x != y equivalent to !(x == y), and
     // matches C++'s semantics.
-    case HloOpcode::kEq:
-      return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, lhs_value,
-                                     rhs_value, b_);
-    case HloOpcode::kNe:
-      return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE, lhs_value,
-                                     rhs_value, b_);
-    case HloOpcode::kLt:
-      return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLT, lhs_value,
-                                     rhs_value, b_);
-    case HloOpcode::kGt:
-      return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGT, lhs_value,
-                                     rhs_value, b_);
-    case HloOpcode::kLe:
-      return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLE, lhs_value,
-                                     rhs_value, b_);
-    case HloOpcode::kGe:
-      return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGE, lhs_value,
-                                     rhs_value, b_);
-
+    case HloOpcode::kCompare: {
+      switch (op->comparison_direction()) {
+        case ComparisonDirection::kEq:
+          return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, lhs_value,
+                                         rhs_value, b_);
+        case ComparisonDirection::kNe:
+          return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE, lhs_value,
+                                         rhs_value, b_);
+        case ComparisonDirection::kLt:
+          return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLT, lhs_value,
+                                         rhs_value, b_);
+        case ComparisonDirection::kGt:
+          return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGT, lhs_value,
+                                         rhs_value, b_);
+        case ComparisonDirection::kLe:
+          return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLE, lhs_value,
+                                         rhs_value, b_);
+        case ComparisonDirection::kGe:
+          return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGE, lhs_value,
+                                         rhs_value, b_);
+      }
+    }
     case HloOpcode::kMaximum:
       return EmitFloatMax(lhs_value, rhs_value);
     case HloOpcode::kMinimum:
@@ -754,6 +871,214 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
       return Unimplemented("binary floating point op '%s'",
                            HloOpcodeString(op->opcode()));
   }
+}
+
+// Using sqrt(a^2 + b^2) can cause overflow errors. Therefore we can use
+// sqrt(a^2 + b^2) = sqrt(a^2 * (1 + b^2/a^2))
+//                 = |a| * sqrt(1 + (b/a)^2)
+// With the assumption that |a| >= |b|.
+//
+// This method returns the min, max, and sqrt term for this calculation. This is
+// done to prevent potential overflow errors that can occur from multiplying the
+// max with the sqrt term. (i.e. when calculating the sqrt of the absolute
+// value, we can take the sqrt of the max and the sqrt term before multiplying
+// them together.) If return_sqrt is false, it returns 1 + (b/a)^2 instead of
+// sqrt(1 + (b/a)^2).
+StatusOr<std::tuple<llvm::Value*, llvm::Value*, llvm::Value*>>
+ElementalIrEmitter::EmitComplexAbsHelper(PrimitiveType prim_type,
+                                         llvm::Value* operand_value,
+                                         bool return_sqrt) {
+  llvm::Value* real = EmitExtractReal(operand_value);
+  llvm::Value* imag = EmitExtractImag(operand_value);
+  llvm::Value* abs_real = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::fabs, {real}, {real->getType()}, b_);
+  llvm::Value* abs_imag = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::fabs, {imag}, {imag->getType()}, b_);
+  llvm::Value* max = EmitFloatMax(abs_real, abs_imag);
+  llvm::Value* min = EmitFloatMin(abs_real, abs_imag);
+
+  llvm::Value* div = FDiv(min, max);
+  llvm::Value* div_sq = FMul(div, div);
+  llvm::Value* one = llvm::ConstantFP::get(max->getType(), 1);
+  llvm::Value* one_p_div_sq = FAdd(one, div_sq);
+  TF_ASSIGN_OR_RETURN(llvm::Value * sqrt, EmitSqrt(prim_type, one_p_div_sq));
+  return std::make_tuple(min, max, return_sqrt ? sqrt : one_p_div_sq);
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexAbs(
+    PrimitiveType prim_type, llvm::Value* operand_value) {
+  llvm::Value* min;
+  llvm::Value* max;
+  llvm::Value* sqrt;
+  TF_ASSIGN_OR_RETURN(
+      std::tie(min, max, sqrt),
+      EmitComplexAbsHelper(prim_type, operand_value, /*return_sqrt=*/true));
+  llvm::Value* result = FMul(max, sqrt);
+  // When (min, max) are (0, 0), (inf, inf), or (NaN, ...), `result` is NaN.
+  // In such cases, we return `min` instead of `result`.
+  return Select(FCmpUNO(result, result), min, result);
+}
+
+// Calculates ComplexAbs in the same way, except using:
+// sqrt(|a| * sqrt(1 + (b/a)^2)) = sqrt(|a|) * pow(1 + (b/a)^2, .25)
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitSqrtComplexAbs(
+    PrimitiveType prim_type, llvm::Value* operand_value) {
+  llvm::Value* min;
+  llvm::Value* max;
+  llvm::Value* one_p_div_sq;
+  TF_ASSIGN_OR_RETURN(
+      std::tie(min, max, one_p_div_sq),
+      EmitComplexAbsHelper(prim_type, operand_value, /*return_sqrt=*/false));
+  TF_ASSIGN_OR_RETURN(llvm::Value * sqrt_max, EmitSqrt(prim_type, max));
+  TF_ASSIGN_OR_RETURN(llvm::Value * pow,
+                      EmitPow(prim_type, one_p_div_sq,
+                              llvm::ConstantFP::get(max->getType(), .25)));
+  llvm::Value* result = FMul(sqrt_max, pow);
+  // When (min, max) are (0, 0), (inf, inf), or (NaN, ...), `result` is NaN.
+  // In such cases, we return `min` instead of `result`.
+  return Select(FCmpUNO(result, result), min, result);
+}
+
+// Calculates ComplexAbs in the same way, except using:
+// rsqrt(|a| * sqrt(1 + (b/a)^2)) = rsqrt(|a|) * rsqrt(sqrt(1 + (b/a)^2))
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitRsqrtComplexAbs(
+    PrimitiveType prim_type, llvm::Value* operand_value) {
+  llvm::Value* min;
+  llvm::Value* max;
+  llvm::Value* sqrt;
+  TF_ASSIGN_OR_RETURN(
+      std::tie(min, max, sqrt),
+      EmitComplexAbsHelper(prim_type, operand_value, /*return_sqrt=*/true));
+  TF_ASSIGN_OR_RETURN(llvm::Value * rsqrt_max, EmitRsqrt(prim_type, max));
+  TF_ASSIGN_OR_RETURN(llvm::Value * rsqrt_sqrt, EmitRsqrt(prim_type, sqrt));
+  llvm::Value* result = FMul(rsqrt_max, rsqrt_sqrt);
+  TF_ASSIGN_OR_RETURN(llvm::Value * rsqrt_min, EmitRsqrt(prim_type, min));
+  // When (min, max) are (0, 0), (inf, inf), or (NaN, ...), `result` is NaN.
+  // In such cases, we return rsqrt(min) instead of `result`.
+  return Select(FCmpUNO(result, result), rsqrt_min, result);
+}
+
+// Using our EmitComplexPower formula, but setting c=0.5 and d=0, we get:
+//   e^[ln(r)*c - t*d] * [cos(ln(r)*d + t*c) + i*sin(ln(r)*d + t*c)]
+// = e^[ln(r)*0.5] * [cos(t*0.5) + i*sin(t*0.5)]
+// = r^0.5 * [cos(t/2) + i*sin(t/2)]
+// = sqrt(r) * [cos(t/2) + i*sin(t/2)]
+// where r = |a+bi| and t = atan2(b,a)
+// TODO(bixia): See doc for implementation without atan2.
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexSqrt(
+    const HloInstruction* op, PrimitiveType prim_type,
+    llvm::Value* operand_value) {
+  llvm::Type* type = static_cast<llvm::StructType*>(operand_value->getType())
+                         ->getElementType(0);
+
+  TF_ASSIGN_OR_RETURN(llvm::Value * r,
+                      EmitSqrtComplexAbs(prim_type, operand_value));
+
+  llvm::Value* a = EmitExtractReal(operand_value);
+  llvm::Value* b = EmitExtractImag(operand_value);
+  TF_ASSIGN_OR_RETURN(llvm::Value * t, EmitAtan2(prim_type, b, a));
+
+  llvm::Value* c = llvm::ConstantFP::get(type, 0.5);
+  llvm::Value* angle = FMul(t, c);
+  TF_ASSIGN_OR_RETURN(llvm::Value * cos, EmitCos(prim_type, angle));
+  TF_ASSIGN_OR_RETURN(llvm::Value * sin, EmitSin(prim_type, angle));
+
+  llvm::Value* real_part;
+  llvm::Value* imag_part;
+
+  llvm::Value* zero = llvm::ConstantFP::get(type, 0);
+
+  if (!(b_->getFastMathFlags().noNaNs() && b_->getFastMathFlags().noInfs())) {
+    llvm::Value* inf = llvm::ConstantFP::getInfinity(type);
+    llvm::Value* neg_inf = llvm::ConstantFP::getInfinity(type, true);
+    llvm::Value* nan = llvm::ConstantFP::getNaN(type);
+    llvm::Value* abs_b = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs,
+                                                      {b}, {b->getType()}, b_);
+
+    real_part = Select(Or(FCmpOEQ(abs_b, inf), FCmpOEQ(a, inf)), inf,
+                       Select(And(FCmpOEQ(a, neg_inf), FCmpONE(abs_b, inf)),
+                              zero, FMul(r, cos)));
+
+    llvm::Value* b_signed_inf = llvm_ir::EmitCallToIntrinsic(
+        llvm::Intrinsic::copysign, {inf, b}, {b->getType()}, b_);
+    imag_part =
+        Select(Or(FCmpOEQ(abs_b, inf), FCmpOEQ(a, neg_inf)), b_signed_inf,
+               Select(FCmpUNO(r, r), nan,
+                      Select(FCmpOEQ(sin, zero), sin, FMul(r, sin))));
+  } else {
+    real_part = FMul(r, cos);
+    imag_part = Select(FCmpOEQ(sin, zero), sin, FMul(r, sin));
+  }
+
+  return Select(FCmpOEQ(r, zero), EmitComposeComplex(op, zero, zero),
+                EmitComposeComplex(op, real_part, imag_part));
+}
+
+// Similar to Sqrt, we can use our EmitComplexPower formula, but set
+// c=-0.5 and d=0. We get:
+//   e^[ln(r)*c - t*d] * [cos(ln(r)*d + t*c) + i*sin(ln(r)*d + t*c)]
+// = e^[ln(r)*-0.5] * [cos(t*-0.5) + i*sin(t*-0.5)]
+// = r^(-0.5) * [cos(-t/2) + i*sin(-t/2)]
+// = rsqrt(r) * [cos(-t/2) + i*sin(-t/2)]
+// where r = |a+bi| and t = atan2(b,a).
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexRsqrt(
+    const HloInstruction* op, PrimitiveType prim_type,
+    llvm::Value* operand_value) {
+  llvm::Type* type = static_cast<llvm::StructType*>(operand_value->getType())
+                         ->getElementType(0);
+
+  TF_ASSIGN_OR_RETURN(llvm::Value * r,
+                      EmitRsqrtComplexAbs(prim_type, operand_value));
+
+  llvm::Value* a = EmitExtractReal(operand_value);
+  llvm::Value* b = EmitExtractImag(operand_value);
+  TF_ASSIGN_OR_RETURN(llvm::Value * t, EmitAtan2(prim_type, b, a));
+
+  llvm::Value* c = llvm::ConstantFP::get(type, -0.5);
+  llvm::Value* angle = FMul(t, c);
+  TF_ASSIGN_OR_RETURN(llvm::Value * cos, EmitCos(prim_type, angle));
+  TF_ASSIGN_OR_RETURN(llvm::Value * sin, EmitSin(prim_type, angle));
+
+  llvm::Value* real_part = FMul(r, cos);
+  llvm::Value* imag_part = FMul(r, sin);
+
+  if (!(b_->getFastMathFlags().noNaNs() && b_->getFastMathFlags().noInfs())) {
+    llvm::Value* zero = llvm::ConstantFP::get(type, 0);
+    llvm::Value* neg_one = llvm::ConstantFP::get(type, -1);
+    llvm::Value* inf = llvm::ConstantFP::getInfinity(type);
+    llvm::Value* nan = llvm::ConstantFP::getNaN(type);
+    // llvm::Value* neg_inf = llvm::ConstantFP::getInfinity(type, true);
+    llvm::Value* a_signed_zero = llvm_ir::EmitCallToIntrinsic(
+        llvm::Intrinsic::copysign, {zero, a}, {a->getType()}, b_);
+    llvm::Value* b_signed_zero = llvm_ir::EmitCallToIntrinsic(
+        llvm::Intrinsic::copysign, {zero, b}, {b->getType()}, b_);
+    llvm::Value* neg_b_signed_zero = FMul(b_signed_zero, neg_one);
+
+    llvm::Value* abs_a = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs,
+                                                      {a}, {a->getType()}, b_);
+    llvm::Value* abs_b = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs,
+                                                      {b}, {b->getType()}, b_);
+
+    llvm::Value* is_zero_zero = And(FCmpOEQ(b, zero), FCmpOEQ(a, zero));
+    real_part = Select(
+        is_zero_zero, inf,
+        Select(Or(And(FCmpOEQ(abs_b, inf), FCmpUNO(a, a)), FCmpOEQ(abs_a, inf)),
+               a_signed_zero, FMul(r, cos)));
+    imag_part = Select(
+        is_zero_zero, nan,
+        Select(Or(And(FCmpOEQ(abs_b, inf), FCmpUNO(a, a)), FCmpOEQ(abs_a, inf)),
+               neg_b_signed_zero, FMul(r, sin)));
+  } else {
+    llvm::Value* zero = llvm::ConstantFP::get(type, 0);
+    llvm::Value* inf = llvm::ConstantFP::getInfinity(type);
+    llvm::Value* nan = llvm::ConstantFP::getNaN(type);
+
+    llvm::Value* is_zero_zero = And(FCmpOEQ(b, zero), FCmpOEQ(a, zero));
+    real_part = Select(is_zero_zero, inf, FMul(r, cos));
+    imag_part = Select(is_zero_zero, nan, FMul(r, sin));
+  }
+
+  return EmitComposeComplex(op, real_part, imag_part);
 }
 
 // (a+bi)^(c+di) =
@@ -784,7 +1109,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexPower(
   auto q = FAdd(FMul(c, arg_lhs), FMul(half_d, ln_aa_p_bb));
   TF_ASSIGN_OR_RETURN(auto cos_q, EmitCos(component_type, q));
   TF_ASSIGN_OR_RETURN(auto sin_q, EmitSin(component_type, q));
-  // 0^c is 0 if d is 0 and c > 0. 0^0 is defined to be 1.0, see
+  // d^c is 0 if d is 0 and c > 0. 0^0 is defined to be 1.0, see
   // Branch Cuts for Complex Elementary Functions or Much Ado About
   // Nothing's Sign Bit, W. Kahan, Section 10.
   return Select(
@@ -812,29 +1137,119 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
           FAdd(FMul(EmitExtractReal(lhs_value), EmitExtractImag(rhs_value)),
                FMul(EmitExtractImag(lhs_value), EmitExtractReal(rhs_value))));
     case HloOpcode::kDivide: {
-      // (a+bi) / (c+di) = ((a+bi)(c-di)) / ((c+di)(c-di))
-      // = ((ac + bd) + (bc - ad)i) / (c^2 + d^2)
-      auto rhs_sum_sq =
-          FAdd(FMul(EmitExtractReal(rhs_value), EmitExtractReal(rhs_value)),
-               FMul(EmitExtractImag(rhs_value), EmitExtractImag(rhs_value)));
-      auto type = rhs_sum_sq->getType();
+      // Division of complex numbers is implemented here, taking into account
+      // over/underflow, NaN and Inf values.
+      auto a_r = EmitExtractReal(lhs_value);
+      auto a_i = EmitExtractImag(lhs_value);
+      auto b_r = EmitExtractReal(rhs_value);
+      auto b_i = EmitExtractImag(rhs_value);
+      auto type = a_r->getType();
+
+      // Smith's algorithm to divide complex numbers. It is just a bit smarter
+      // way to compute the following formula:
+      //  (a_r + a_i * i) / (b_r + b_i * i)
+      //    = (a_r + a_i * i) (b_r - b_i * i) / ((b_r + b_i * i)(b_r - b_i * i))
+      //    = ((a_r * b_r + a_i * b_i) + (a_i * b_r - a_r * b_i) * i) / ||b||^2
+      //
+      // Depending on whether |b_r| < |b_i| we compute either
+      //   b_r_b_i_ratio = b_r / b_i
+      //   b_r_b_i_denom = b_i + b_r * b_r_b_i_ratio
+      //   c_r = (a_r * b_r_b_i_ratio + a_i ) / b_r_b_i_denom
+      //   c_i = (a_i * b_r_b_i_ratio - a_r ) / b_r_b_i_denom
+      //
+      // or
+      //
+      //   b_i_b_r_ratio = b_i / b_r
+      //   b_i_b_r_denom = b_r + b_i * b_i_b_r_denom
+      //   c_r = (a_r + a_i * b_i_b_r_ratio ) / b_i_b_r_denom
+      //   c_i = (a_i - a_r * b_i_b_r_ratio ) / b_i_b_r_denom
+      //
+      // See https://dl.acm.org/citation.cfm?id=368661 for more details.
+      auto b_r_b_i_ratio = FDiv(b_r, b_i);
+      auto b_r_b_i_denom = FAdd(b_i, FMul(b_r_b_i_ratio, b_r));
+      auto b_i_b_r_ratio = FDiv(b_i, b_r);
+      auto b_i_b_r_denom = FAdd(b_r, FMul(b_i_b_r_ratio, b_i));
+
+      auto b_r_lt_b_i = FCmpOLT(llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {b_r}, {type}, b_),
+                                llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {b_i}, {type}, b_));
+      auto c_r = Select(
+          b_r_lt_b_i, FDiv(FAdd(FMul(b_r_b_i_ratio, a_r), a_i), b_r_b_i_denom),
+          FDiv(FAdd(FMul(b_i_b_r_ratio, a_i), a_r), b_i_b_r_denom));
+      auto c_i = Select(
+          b_r_lt_b_i, FDiv(FSub(FMul(b_r_b_i_ratio, a_i), a_r), b_r_b_i_denom),
+          FDiv(FSub(a_i, FMul(b_i_b_r_ratio, a_r)), b_i_b_r_denom));
+      auto result = EmitComposeComplex(op, c_r, c_i);
+
+      // Consider corner cases, if the result is (NaN, NaN).
       auto zero = llvm::ConstantFP::get(type, 0.0);
-      auto oeq = FCmpOEQ(rhs_sum_sq, zero);
-      auto real_inf_or_nan = FDiv(EmitExtractReal(lhs_value), zero);
-      auto imag_inf_or_nan = FDiv(EmitExtractImag(lhs_value), zero);
-      return Select(
-          oeq, EmitComposeComplex(op, real_inf_or_nan, imag_inf_or_nan),
+      auto one = llvm::ConstantFP::get(type, 1.0);
+      auto inf = llvm::ConstantFP::getInfinity(type);
+
+      // Case 1. Zero denominator.
+      auto zero_denominator =
+          And(And(FCmpOEQ(b_r, zero), FCmpOEQ(b_i, zero)),
+              Or(Neg(FCmpONE(a_r, zero)), Neg(FCmpONE(a_i, zero))));
+      auto inf_with_sign_of_c = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign, {inf, a_r}, {type}, b_);
+      auto zero_denominator_result = EmitComposeComplex(
+          op, FMul(inf_with_sign_of_c, a_r), FMul(inf_with_sign_of_c, a_i));
+
+      // Case 2. Infinite numerator, finite denominator.
+      auto b_r_finite = FCmpONE(llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {b_r}, {type}, b_),
+                                inf);
+      auto b_i_finite = FCmpONE(llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {b_i}, {type}, b_),
+                                inf);
+      auto inf_num_finite_denom = And(Or(FCmpOEQ(a_r, inf), FCmpOEQ(a_i, inf)),
+                                      And(b_r_finite, b_i_finite));
+
+      auto a_r_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign,
+          {Select(FCmpOEQ(a_r, inf), one, zero), a_r}, {type}, b_);
+      auto a_i_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign,
+          {Select(FCmpOEQ(a_i, inf), one, zero), a_i}, {type}, b_);
+      auto inf_num_finite_denom_result =
           EmitComposeComplex(op,
-                             FDiv(FAdd(FMul(EmitExtractReal(lhs_value),
-                                            EmitExtractReal(rhs_value)),
-                                       FMul(EmitExtractImag(lhs_value),
-                                            EmitExtractImag(rhs_value))),
-                                  rhs_sum_sq),
-                             FDiv(FSub(FMul(EmitExtractImag(lhs_value),
-                                            EmitExtractReal(rhs_value)),
-                                       FMul(EmitExtractReal(lhs_value),
-                                            EmitExtractImag(rhs_value))),
-                                  rhs_sum_sq)));
+                             FMul(inf, FAdd(FMul(a_r_inf_with_sign, b_r),
+                                            FMul(a_i_inf_with_sign, b_i))),
+                             FMul(inf, FSub(FMul(a_i_inf_with_sign, b_r),
+                                            FMul(a_r_inf_with_sign, b_i))));
+
+      // Case 3. Finite numerator, infinite denominator.
+      auto a_r_finite = FCmpONE(llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {a_r}, {type}, b_),
+                                inf);
+      auto a_i_finite = FCmpONE(llvm_ir::EmitCallToIntrinsic(
+                                    llvm::Intrinsic::fabs, {a_i}, {type}, b_),
+                                inf);
+      auto finite_num_inf_denom = And(Or(FCmpOEQ(b_r, inf), FCmpOEQ(b_i, inf)),
+                                      And(a_r_finite, a_i_finite));
+
+      auto b_r_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign,
+          {Select(FCmpOEQ(b_r, inf), one, zero), b_r}, {type}, b_);
+      auto b_i_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign,
+          {Select(FCmpOEQ(b_i, inf), one, zero), b_i}, {type}, b_);
+      auto finite_num_inf_denom_result =
+          EmitComposeComplex(op,
+                             FMul(zero, FAdd(FMul(a_r, b_r_inf_with_sign),
+                                             FMul(a_i, b_i_inf_with_sign))),
+                             FMul(zero, FSub(FMul(a_i, b_r_inf_with_sign),
+                                             FMul(a_r, b_i_inf_with_sign))));
+
+      auto c_nan = And(FCmpUNO(c_r, zero), FCmpUNO(c_i, zero));
+      return Select(
+          c_nan,
+          Select(zero_denominator, zero_denominator_result,
+                 Select(inf_num_finite_denom, inf_num_finite_denom_result,
+                        Select(finite_num_inf_denom,
+                               finite_num_inf_denom_result, result))),
+          result);
     }
     // LLVM comparisons can be "unordered" (U) or "ordered" (O) -- ordered
     // comparisons always return false when one of the operands is NaN, whereas
@@ -843,21 +1258,28 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
     // We use ordered comparisons for everything except kNe, where we use an
     // unordered comparison.  This makes x != y equivalent to !(x == y), and
     // matches C++'s semantics.
-    case HloOpcode::kEq:
-      return And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ,
-                                         EmitExtractReal(lhs_value),
-                                         EmitExtractReal(rhs_value), b_),
-                 llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ,
-                                         EmitExtractImag(lhs_value),
-                                         EmitExtractImag(rhs_value), b_));
-    case HloOpcode::kNe:
-      return Or(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE,
-                                        EmitExtractReal(lhs_value),
-                                        EmitExtractReal(rhs_value), b_),
-                llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE,
-                                        EmitExtractImag(lhs_value),
-                                        EmitExtractImag(rhs_value), b_));
-
+    case HloOpcode::kCompare: {
+      switch (op->comparison_direction()) {
+        case ComparisonDirection::kEq:
+          return And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ,
+                                             EmitExtractReal(lhs_value),
+                                             EmitExtractReal(rhs_value), b_),
+                     llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ,
+                                             EmitExtractImag(lhs_value),
+                                             EmitExtractImag(rhs_value), b_));
+        case ComparisonDirection::kNe:
+          return Or(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE,
+                                            EmitExtractReal(lhs_value),
+                                            EmitExtractReal(rhs_value), b_),
+                    llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE,
+                                            EmitExtractImag(lhs_value),
+                                            EmitExtractImag(rhs_value), b_));
+        default:
+          return Unimplemented(
+              "complex comparison '%s'",
+              ComparisonDirectionToString(op->comparison_direction()));
+      }
+    }
     case HloOpcode::kPower: {
       auto a = EmitExtractReal(lhs_value);
       auto b = EmitExtractImag(lhs_value);
@@ -879,176 +1301,6 @@ llvm::Value* ElementalIrEmitter::EmitFloatMax(llvm::Value* lhs_value,
 llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) {
   return llvm_ir::EmitFloatMin(lhs_value, rhs_value, b_);
-}
-
-// TODO(b/123355973): We have an implementation of erfinv in math.cc.  We
-// shouldn't have two implementations, especially since this one isn't testable
-// (it's only observable via a normally-distributed RNG).
-StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
-                                                      llvm::Value* x) {
-  if (prim_type != F16 && prim_type != F32 && prim_type != F64) {
-    return Unimplemented(
-        "Inverse erf is only implemented for element "
-        "types F16, F32 and F64.");
-  }
-
-  // Upcast half to float.
-  if (prim_type == F16) {
-    x = b_->CreateFPExt(x, b_->getFloatTy());
-  }
-
-  auto get_float = [&](const double f) {
-    return llvm::ConstantFP::get(x->getType(), f);
-  };
-  auto multiply_add = [&](absl::Span<const double> coefficients,
-                          llvm::Value* w) {
-    llvm::Value* p = get_float(coefficients.front());
-    coefficients.remove_prefix(1);
-    for (float coefficient : coefficients) {
-      p = FAdd(FMul(p, w), get_float(coefficient));
-    }
-    return p;
-  };
-
-  // Approximation for inverse error function from
-  //   Giles, M., "Approximating the erfinv function".
-  // The approximation has the form (float version):
-  //   w = -log((1-x)*(1+x))
-  //   if ( w < 5 ) {
-  //     w = w - 2.5
-  //     p = sum_{i=1}^n lq[i]*w^i
-  //   } else {
-  //     w = sqrt(w) - 3
-  //     p = sum_{i=1}^n gq[i]*w^i
-  //   }
-  //   return p*x
-  llvm::Function* logf_fn = llvm::Intrinsic::getDeclaration(
-      module_, llvm::Intrinsic::log, {x->getType()});
-
-  llvm::Value* w = FNeg(Call(
-      logf_fn, {FMul(FSub(get_float(1.0f), x), FAdd(get_float(1.0f), x))}));
-
-  llvm::Value* p_addr =
-      llvm_ir::EmitAllocaAtFunctionEntry(x->getType(), "p.addr", b_);
-
-  if (prim_type == F16 || prim_type == F32) {
-    llvm_ir::LlvmIfData if_data = llvm_ir::EmitIfThenElse(
-        FCmpOLT(w, get_float(5.0f)), "w_less_than_five", b_);
-    // Handle true BB.
-    SetToFirstInsertPoint(if_data.true_block, b_);
-    {
-      llvm::Value* lw = FSub(w, get_float(2.5f));
-      absl::Span<const double> lq{
-          2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
-          -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
-          -0.00417768164f,  0.246640727f,    1.50140941f};
-      llvm::Value* p = multiply_add(lq, lw);
-      Store(p, p_addr);
-    }
-
-    // Handle false BB.
-    SetToFirstInsertPoint(if_data.false_block, b_);
-    {
-      llvm::Function* sqrtf_fn = llvm::Intrinsic::getDeclaration(
-          module_, llvm::Intrinsic::sqrt, {b_->getFloatTy()});
-
-      llvm::Value* gw = FSub(Call(sqrtf_fn, w), get_float(3.0f));
-      absl::Span<const double> gq{
-          -0.000200214257f, 0.000100950558f, 0.00134934322f,
-          -0.00367342844f,  0.00573950773f,  -0.0076224613f,
-          0.00943887047f,   1.00167406f,     2.83297682f};
-      llvm::Value* p = multiply_add(gq, gw);
-      Store(p, p_addr);
-    }
-
-    SetToFirstInsertPoint(if_data.after_block, b_);
-  } else {
-    DCHECK(prim_type == F64);
-
-    llvm_ir::LlvmIfData if_data = llvm_ir::EmitIfThenElse(
-        FCmpOLT(w, get_float(6.25)), "w_less_than_6.25", b_);
-
-    SetToFirstInsertPoint(if_data.true_block, b_);
-    {
-      llvm::Value* lw = FSub(w, get_float(3.125));
-      absl::Span<const double> c{
-          -3.6444120640178196996e-21, -1.685059138182016589e-19,
-          1.2858480715256400167e-18,  1.115787767802518096e-17,
-          -1.333171662854620906e-16,  2.0972767875968561637e-17,
-          6.6376381343583238325e-15,  -4.0545662729752068639e-14,
-          -8.1519341976054721522e-14, 2.6335093153082322977e-12,
-          -1.2975133253453532498e-11, -5.4154120542946279317e-11,
-          1.051212273321532285e-09,   -4.1126339803469836976e-09,
-          -2.9070369957882005086e-08, 4.2347877827932403518e-07,
-          -1.3654692000834678645e-06, -1.3882523362786468719e-05,
-          0.0001867342080340571352,   -0.00074070253416626697512,
-          -0.0060336708714301490533,  0.24015818242558961693,
-          1.6536545626831027356};
-      llvm::Value* p = multiply_add(c, lw);
-      Store(p, p_addr);
-    }
-
-    SetToFirstInsertPoint(if_data.false_block, b_);
-    llvm_ir::LlvmIfData if_data_second = llvm_ir::EmitIfThenElse(
-        FCmpOLT(w, get_float(16.0)), "w_less_than_16", b_);
-    SetToFirstInsertPoint(if_data_second.true_block, b_);
-    {
-      llvm::Function* sqrtf_fn = llvm::Intrinsic::getDeclaration(
-          module_, llvm::Intrinsic::sqrt, {b_->getDoubleTy()});
-
-      llvm::Value* gw = FSub(Call(sqrtf_fn, w), get_float(3.25));
-      absl::Span<const double> t1{
-          2.2137376921775787049e-09,  9.0756561938885390979e-08,
-          -2.7517406297064545428e-07, 1.8239629214389227755e-08,
-          1.5027403968909827627e-06,  -4.013867526981545969e-06,
-          2.9234449089955446044e-06,  1.2475304481671778723e-05,
-          -4.7318229009055733981e-05, 6.8284851459573175448e-05,
-          2.4031110387097893999e-05,  -0.0003550375203628474796,
-          0.00095328937973738049703,  -0.0016882755560235047313,
-          0.0024914420961078508066,   -0.0037512085075692412107,
-          0.005370914553590063617,    1.0052589676941592334,
-          3.0838856104922207635};
-      llvm::Value* p = multiply_add(t1, gw);
-      Store(p, p_addr);
-    }
-
-    SetToFirstInsertPoint(if_data_second.false_block, b_);
-    {
-      llvm::Function* sqrtf_fn = llvm::Intrinsic::getDeclaration(
-          module_, llvm::Intrinsic::sqrt, {b_->getDoubleTy()});
-
-      llvm::Value* gw = FSub(Call(sqrtf_fn, w), get_float(5.0));
-      absl::Span<const double> t2{
-          -2.7109920616438573243e-11, -2.5556418169965252055e-10,
-          1.5076572693500548083e-09,  -3.7894654401267369937e-09,
-          7.6157012080783393804e-09,  -1.4960026627149240478e-08,
-          2.9147953450901080826e-08,  -6.7711997758452339498e-08,
-          2.2900482228026654717e-07,  -9.9298272942317002539e-07,
-          4.5260625972231537039e-06,  -1.9681778105531670567e-05,
-          7.5995277030017761139e-05,  -0.00021503011930044477347,
-          -0.00013871931833623122026, 1.0103004648645343977,
-          4.8499064014085844221};
-      llvm::Value* p = multiply_add(t2, gw);
-      Store(p, p_addr);
-    }
-
-    SetToFirstInsertPoint(if_data.after_block, b_);
-  }
-  llvm::Value* p = Load(p_addr);
-  x = FMul(p, x);
-  // Trunc back to half if needed.
-  if (prim_type == F16) {
-    x = b_->CreateFPTrunc(x, b_->getHalfTy());
-  }
-  return x;
-}
-
-StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfcInv(PrimitiveType prim_type,
-                                                       llvm::Value* value) {
-  // Compute erfcinv(value) by calculating erfinv(1.0 - value).
-  auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, module_);
-  auto one = llvm::ConstantFP::get(type, 1.0);
-  return EmitErfInv(prim_type, FSub(one, value));
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog(PrimitiveType prim_type,
@@ -1076,7 +1328,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog1p(PrimitiveType prim_type,
   return Select(x_is_small, for_small_x, for_large_x);
 }
 
-StatusOr<llvm::Value*> ElementalIrEmitter::EmitSqrt(PrimitiveType prim_type,
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitSqrt(PrimitiveType,
                                                     llvm::Value* value) {
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sqrt, {value},
                                       {value->getType()}, b_);
@@ -1118,10 +1370,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
   auto for_large_x = FSub(exp_x, one);
   // The Taylor series for exp(x) is 1 + x + x^2/2 + x^3/6 + ….
   // We want exp(x)-1 which is x + x^2/2 + x^3/6 + ….
-  auto x_squared = FAdd(x, x);
+  // We use the second degree approximation of exp(x)-1 = x + x^2/2.
+  auto x_squared = FMul(x, x);
   auto x_squared_over_two = FMul(x_squared, half);
   auto for_small_x = FAdd(x, x_squared_over_two);
-  const auto kExponentIsSmallThreshold = 1e-5;
+  // At this point, the relative errors due to floating point precision loss of
+  // calculating exp(x) - 1 and the polynomial exp(x)-1 = x + x^2/2 are about
+  // equal, with a value of approximately 2^-16.
+  const auto kExponentIsSmallThreshold = 0.009;
   auto abs_x =
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value}, {type}, b_);
   auto x_is_small =
@@ -1149,11 +1405,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(
     const HloInstruction* hlo, llvm::Value* x) {
-  if (hlo->operand(0)->shape().element_type() != F32) {
-    return Unimplemented("reduce-precision only implemented for F32");
-  }
-  return EmitReducePrecisionFloat(x, /*exponent_bits=*/hlo->exponent_bits(),
-                                  /*mantissa_bits=*/hlo->mantissa_bits(), b_);
+  return EmitReducePrecisionIR(
+      /*src_ty=*/hlo->operand(0)->shape().element_type(), x,
+      /*dest_exponent_bits=*/hlo->exponent_bits(),
+      /*dest_mantissa_bits=*/hlo->mantissa_bits(), b_);
 }
 
 static llvm::Value* SaturateShiftIfNecessary(llvm::IRBuilder<>* b,
@@ -1276,28 +1531,32 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
       return EmitIntegerDivide(lhs_value, rhs_value, is_signed);
     case HloOpcode::kRemainder:
       return EmitIntegerRemainder(lhs_value, rhs_value, is_signed);
-    case HloOpcode::kEq:
-      return llvm_ir::EmitComparison(llvm::CmpInst::ICMP_EQ, lhs_value,
-                                     rhs_value, b_);
-    case HloOpcode::kNe:
-      return llvm_ir::EmitComparison(llvm::CmpInst::ICMP_NE, lhs_value,
-                                     rhs_value, b_);
-    case HloOpcode::kLt:
-      return llvm_ir::EmitComparison(
-          is_signed ? llvm::CmpInst::ICMP_SLT : llvm::CmpInst::ICMP_ULT,
-          lhs_value, rhs_value, b_);
-    case HloOpcode::kGt:
-      return llvm_ir::EmitComparison(
-          is_signed ? llvm::CmpInst::ICMP_SGT : llvm::CmpInst::ICMP_UGT,
-          lhs_value, rhs_value, b_);
-    case HloOpcode::kLe:
-      return llvm_ir::EmitComparison(
-          is_signed ? llvm::CmpInst::ICMP_SLE : llvm::CmpInst::ICMP_ULE,
-          lhs_value, rhs_value, b_);
-    case HloOpcode::kGe:
-      return llvm_ir::EmitComparison(
-          is_signed ? llvm::CmpInst::ICMP_SGE : llvm::CmpInst::ICMP_UGE,
-          lhs_value, rhs_value, b_);
+    case HloOpcode::kCompare: {
+      switch (op->comparison_direction()) {
+        case ComparisonDirection::kEq:
+          return llvm_ir::EmitComparison(llvm::CmpInst::ICMP_EQ, lhs_value,
+                                         rhs_value, b_);
+        case ComparisonDirection::kNe:
+          return llvm_ir::EmitComparison(llvm::CmpInst::ICMP_NE, lhs_value,
+                                         rhs_value, b_);
+        case ComparisonDirection::kLt:
+          return llvm_ir::EmitComparison(
+              is_signed ? llvm::CmpInst::ICMP_SLT : llvm::CmpInst::ICMP_ULT,
+              lhs_value, rhs_value, b_);
+        case ComparisonDirection::kGt:
+          return llvm_ir::EmitComparison(
+              is_signed ? llvm::CmpInst::ICMP_SGT : llvm::CmpInst::ICMP_UGT,
+              lhs_value, rhs_value, b_);
+        case ComparisonDirection::kLe:
+          return llvm_ir::EmitComparison(
+              is_signed ? llvm::CmpInst::ICMP_SLE : llvm::CmpInst::ICMP_ULE,
+              lhs_value, rhs_value, b_);
+        case ComparisonDirection::kGe:
+          return llvm_ir::EmitComparison(
+              is_signed ? llvm::CmpInst::ICMP_SGE : llvm::CmpInst::ICMP_UGE,
+              lhs_value, rhs_value, b_);
+      }
+    }
     case HloOpcode::kMinimum:
       return EmitIntegralMin(lhs_value, rhs_value, is_signed);
     case HloOpcode::kMaximum:
@@ -1350,359 +1609,16 @@ llvm::Value* ElementalIrEmitter::EmitIntegralMin(llvm::Value* lhs_value,
                 lhs_value, rhs_value);
 }
 
-llvm_ir::IrArray::Index ElementalIrEmitter::ElementwiseSourceIndex(
-    const llvm_ir::IrArray::Index& target_index, const HloInstruction& hlo,
-    int64 operand_no) {
-  CHECK(hlo.IsElementwise())
-      << "HLO " << hlo.ToString() << " is not elementwise.";
-
-  const Shape& operand_shape = hlo.operand(operand_no)->shape();
-  // If the operand is scalar, the source index is always {}.
-  if (ShapeUtil::IsScalar(operand_shape)) {
-    return llvm_ir::IrArray::Index(target_index.GetType());
-  }
-
-  // If no implicit broadcast is needed for this operand, returns the target
-  // index as the source index.
-  //
-  // `IrArray::Index` may contain a physical linear which we can propagate to
-  // our operand only if our layouts match.  "only if" is a bit strong since
-  // e.g. we can still forward the linear index if the operand shape is
-  // [5,1,1,5]{3,2,1,0} and the HLO shape is[5,1,1,5]{3,1,2,0}, but those cases
-  // are probably not worth handling here for now.
-  if (ShapeUtil::CompatibleIgnoringElementType(operand_shape, hlo.shape()) &&
-      LayoutUtil::Equal(operand_shape.layout(), hlo.shape().layout())) {
-    return target_index;
-  }
-
-  // If implicit broadcast is needed, the source dimensions that are broadcast
-  // have index 0.
-  CHECK_EQ(operand_shape.rank(), hlo.shape().rank());
-  llvm_ir::IrArray::Index source_index(target_index.GetType());
-  for (int64 i = 0; i < hlo.shape().rank(); ++i) {
-    if (hlo.shape().dimensions(i) == operand_shape.dimensions(i)) {
-      source_index.push_back(target_index[i]);
-    } else {
-      CHECK_EQ(1, operand_shape.dimensions(i));
-      source_index.push_back(target_index.GetConstantWithIndexType(0));
-    }
-  }
-  return source_index;
-}
-
-StatusOr<llvm::Value*> ElementalIrEmitter::ConvertValueForDistribution(
-    const HloInstruction* hlo,
-    const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
-    const llvm_ir::IrArray::Index& index, llvm::Value* raw_value) {
-  TF_ASSIGN_OR_RETURN(llvm::Value * a_or_mean,
-                      operand_to_generator.at(hlo->operand(0))(index));
-  TF_ASSIGN_OR_RETURN(llvm::Value * b_or_sigma,
-                      operand_to_generator.at(hlo->operand(1))(index));
-  PrimitiveType elem_prim_ty = hlo->shape().element_type();
-  llvm::Type* elem_ir_ty =
-      llvm_ir::PrimitiveTypeToIrType(elem_prim_ty, module_);
-  llvm::Type* raw_value_ty = raw_value->getType();
-
-  // If we're generating a floating-point value, convert the raw integer R (i.e.
-  // `raw_value`) to a float in the range [0, 1).
-  //
-  // The basic approach is to choose a significand and exponent such that the
-  // significand is uniformly distributed and the exponent is distributed, well,
-  // exponentially (it's more likely to be close to 0 than far from 0).
-  //
-  // An easy way to do this is to say that the significand is the first S bits
-  // of R, and the exponent is determined by the number of trailing zeroes in R,
-  // exp = 2^-(cttz(R) + 1).  (+1 because the largest exponent should be -1;
-  // this way the largest value we can return is 1.999... * 2^-1 = 1-ε.)
-  //
-  // This results in a small bias.  Namely, if R has enough trailing zeroes, the
-  // significand and exponent will "overlap".  As a concrete example, consider
-  //
-  //         20 X's                 12 zeroes
-  //   R = 0bXXXXXXXXXXXXXXXXXXXX000000000000
-  //
-  // Here the exponent is 2^-13 because R has 12 trailing zeroes.  The
-  // significand is made up of the first 23 most-significant bits of R, which we
-  // observe contain 3 zeroes.  This is biased because any random value with
-  // exponent 2^-12 will have a significand which ends in `000`.
-  //
-  // For f32s, this problem occurs only when there are more than 32-23 = 9
-  // trailing zeros, which happens with probability 0.5^10 = ~0.1%. Moreover the
-  // probability of a large bias (i.e. many trailing 0s in the significand) is
-  // exponentially low.  So we deem this acceptable.
-  llvm::Value* elem_value = raw_value;
-  if (elem_ir_ty->isFloatingPointTy()) {
-    const auto& dest_flt_semantics = elem_ir_ty->getFltSemantics();
-    const int bits = raw_value_ty->getPrimitiveSizeInBits();
-    CHECK_GE(bits, llvm::APFloat::semanticsSizeInBits(dest_flt_semantics));
-
-    // Subtract 1 because semanticsPrecision includes the "hidden bit", i.e. the
-    // implicit "1." at the beginning of the significand.
-    const int significand_bits =
-        llvm::APFloat::semanticsPrecision(dest_flt_semantics) - 1;
-
-    llvm::Value* cttz = llvm_ir::EmitCallToIntrinsic(
-        llvm::Intrinsic::cttz, {raw_value, /*is_zero_undef=*/b_->getFalse()},
-        {raw_value->getType()}, b_);
-    llvm::Value* significand = LShr(raw_value, bits - significand_bits);
-
-    // Exponent bias is -127 for f32, meaning that if the exponent is E and the
-    // significand is S, then the value of the number is 2^(E - 127) * (1.S).
-    //
-    // We want cttz == 0 to correspond to 2^-1, so our exponent is computed as
-    // E = 126 - cttz.
-    //
-    // For f64, this is all the same, except the bias is -1023.
-    //
-    // In IEEE floating point, the absolute value of the exponent bias equals
-    // the value of the largest possible exponent.
-    const int bias = -llvm::APFloat::semanticsMaxExponent(dest_flt_semantics);
-    llvm::Value* exponent =
-        Sub(llvm::ConstantInt::get(cttz->getType(), -bias - 1), cttz);
-
-    // Now just slot everything into place!  The `Trunc` is here because
-    // raw_value may be larger than our float destination.
-    elem_value =
-        BitCast(Trunc(Or(Shl(exponent, significand_bits), significand),
-                      b_->getIntNTy(elem_ir_ty->getPrimitiveSizeInBits())),
-                elem_ir_ty);
-  }
-
-  // Convert the value for the requested distribution.
-  switch (hlo->random_distribution()) {
-    case RNG_UNIFORM: {
-      if (elem_ir_ty->isFloatingPointTy()) {
-        return FAdd(FMul(FSub(b_or_sigma, a_or_mean), elem_value), a_or_mean);
-      } else {
-        // To generate a uniform random value in [a, b) from a raw random sample
-        // in range [0, 2^N), we let range = b - a and return
-        // (a + raw_value % range). If range is not a power of 2, raw values
-        // larger than (2^N - 2^N % range) are biased toward results in
-        // [a, a + (limit % range)). An unbiased algorithm would need to drop
-        // raw values and re-sample, but we don't do this because re-sampling in
-        // an efficient way is complex, and it's not clear that users need it.
-        // In particular, if one thread in a GPU warp needs to re-sample, we pay
-        // the same cost as if the whole warp were to re-sample.  So an
-        // efficient re-sampling implementation on GPU would need to do
-        // nontrivial work to share entropy between threads in the warp.
-        auto range = Sub(b_or_sigma, a_or_mean);
-        return Add(a_or_mean, URem(elem_value, range));
-      }
-    }
-    case RNG_NORMAL: {
-      TF_ASSIGN_OR_RETURN(
-          llvm::Value * r,
-          EmitErfcInv(elem_prim_ty, FMul(llvm::ConstantFP::get(elem_ir_ty, 2.0),
-                                         elem_value)));
-      return FAdd(FMul(r, b_or_sigma), a_or_mean);
-    }
-    default:
-      return InvalidArgument(
-          "unhandled distribution %s",
-          RandomDistribution_Name(hlo->random_distribution()));
-  }
-}
-
-namespace {
-
-// Checks that the primitive type is supported by the elemental IR emitter for
-// Philox RNG and returns the number of elements in each 128 bit sample of the
-// Philox RNG algorithm.
-int32 GetNumberOfElementsPerPhiloxRngSample(PrimitiveType elem_prim_ty) {
-  // Calculate the number of elements, that is the number of random numbers, in
-  // a 128 bit sample.
-  switch (elem_prim_ty) {
-    case U32:
-    case S32:
-    case F32:
-    // The algorithm uses 32 bits to generate values for F16.
-    case F16:
-      return 4;
-    case U64:
-    case S64:
-    case F64:
-      return 2;
-    default:
-      // BF16 is converted to F16 by the hlo pass HloElementTypeConverter.
-      // Other data types are not supported by XLA random operation.
-      LOG(FATAL) << "Unrecognized primitive type for RNG " << elem_prim_ty;
-  }
-  return 0;
-}
-
-// Calculates the four uint32 values for the 128-bit Philox sample.
-std::array<llvm::Value*, 4> CalculateSampleValues(
-    llvm::Value* sample_idx, llvm::Value* hlo_random_value,
-    llvm::Value* global_random_number, llvm::Value* rng_state,
-    llvm::IRBuilder<>* b) {
-  llvm::Type* index_ty = sample_idx->getType();
-
-  std::array<llvm::Value*, 4> counter_values;
-
-  // Use the sample index to initialize counter[0] and counter[1].
-  unsigned index_ty_size_in_bits = index_ty->getPrimitiveSizeInBits();
-  CHECK(index_ty_size_in_bits == 32 || index_ty_size_in_bits == 64);
-  if (index_ty_size_in_bits == 32) {
-    counter_values[0] = sample_idx;
-    counter_values[1] = b->getInt32(0);
-  } else {
-    std::tie(counter_values[0], counter_values[1]) =
-        llvm_ir::SplitInt64ToInt32s(b, sample_idx);
-  }
-
-  // Xor the global state variable with the global random number seed and use
-  // the result to initialize counter[2] and counter[3].
-  std::tie(counter_values[2], counter_values[3]) = llvm_ir::SplitInt64ToInt32s(
-      b, b->CreateXor(rng_state, global_random_number));
-
-  // The algorithm uses a 64 bit key, which is also interpreted as two uint32
-  // values.
-  llvm::Value* key_values[2];
-
-  // Use a module random number to initialize the key.
-  std::tie(key_values[0], key_values[1]) =
-      llvm_ir::SplitInt64ToInt32s(b, hlo_random_value);
-
-  // Prepare the constants used in the Philox RNG Algorithm.
-  llvm::Value* philoxW32A = b->getInt32(0x9E3779B9);
-  llvm::Value* philoxW32B = b->getInt32(0xBB67AE85);
-  llvm::Value* philoxM4xW32A = b->getInt32(0xD2511F53);
-  llvm::Value* philoxM4xW32B = b->getInt32(0xCD9E8D57);
-
-  // Compute the 128 bit value for the current sample by repeating the
-  // single round computation and key raising computation for ten times.
-  for (int round = 0; round < 10; ++round) {
-    // A single round of computation of the counter values is as follows:
-    //  MultiplyHighLow(kPhiloxM4x32A, counter[0], &lo0, &hi0);
-    //  MultiplyHighLow(kPhiloxM4x32B, counter[2], &lo1, &hi1);
-    //  counter[0] = hi1 ^ counter[1] ^ key[0];
-    //  counter[1] = lo1;
-    //  counter[2] = hi0 ^ counter[3] ^ key[1];
-    //  counter[3] = lo0;
-    llvm::Value* lo0;
-    llvm::Value* hi0;
-    std::tie(lo0, hi0) =
-        llvm_ir::UMulLowHigh32(b, philoxM4xW32A, counter_values[0]);
-    llvm::Value* lo1;
-    llvm::Value* hi1;
-    std::tie(lo1, hi1) =
-        llvm_ir::UMulLowHigh32(b, philoxM4xW32B, counter_values[2]);
-    counter_values[0] =
-        b->CreateXor(hi1, b->CreateXor(counter_values[1], key_values[0]));
-    counter_values[1] = lo1;
-    counter_values[2] =
-        b->CreateXor(hi0, b->CreateXor(counter_values[3], key_values[1]));
-    counter_values[3] = lo0;
-    key_values[0] = b->CreateAdd(key_values[0], philoxW32A);
-    key_values[1] = b->CreateAdd(key_values[1], philoxW32B);
-  }
-
-  return counter_values;
-}
-
-}  // namespace
-
-// Implements the Philox algorithm to generate random numbers in parallel.
-// Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.
-//   http://www.thesalmons.org/john/random123/papers/random123sc11.pdf
-//
-// The paper presents a few variants of the Philox algorithm, we picked the
-// 4x32_10 version of the algorithm for the following reasons:
-//   . 4x32 uses 32-bit multiplication which is fast on GPUs.
-//   . The authors recommend the 10-round variant, and TensorFlow also uses it.
-//
-// Precondition: the RNG instruction is not fused.
-llvm_ir::ElementGenerator ElementalIrEmitter::MakePhiloxRngElementGenerator(
-    const HloInstruction* hlo,
-    const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator) {
-  VLOG(3) << "Using philox RNG algorithm";
-  CHECK(!hlo->IsFused());
-  // A random number generated by the per module random number generator.
-  // This ensures that each RNG HLO generates a different random sequence.
-  llvm::Value* hlo_random_value = b_->getInt64(hlo->GetModule()->RandomNew64());
-  // A value specified by the configuration or generated by a global random
-  // number generator.
-  llvm::Value* global_random_number =
-      b_->getInt64(hlo_module_config_.seed() != 0 ? hlo_module_config_.seed()
-                                                  : GlobalRandomValue());
-
-  int elems_per_sample =
-      GetNumberOfElementsPerPhiloxRngSample(hlo->shape().element_type());
-
-  // Allocate stack storage for the 128 bit sample as four int32.
-  llvm::Type* int32_ty = b_->getInt32Ty();
-  llvm::Value* sample_address = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-      int32_ty, /*element_count=*/b_->getInt32(4), "sample", b_);
-
-  // Load the global state variable for the Philox RNG algorithm.
-  llvm::GlobalVariable* rng_state_ptr =
-      llvm_ir::GetOrCreateVariableForPhiloxRngState(module_, b_);
-  llvm::Value* rng_state = Load(rng_state_ptr, "rng_state_value");
-
-  // Build and return the elemental IR generator to generate a random value for
-  // the element corresponding to the current thread.
-  //
-  // This elemental IR generator computes one sample with multiple random
-  // numbers but only returns one random number. As a result, neighboring
-  // threads may calculate the same sample unnecessarily. However, if the
-  // kernel containing the RNG hlo is unrolled, LLVM is able to optimize away
-  // the duplicated computation of the same sample. In particular, if the unroll
-  // factor is a multiplier of elems_per_sample, LLVM is able to completely
-  // remove such duplicated computation. If the unroll factor is a non-trivial
-  // factor of elems_per_sample, LLVM can only partially remove such duplicated
-  // computation.
-  return [=](const llvm_ir::IrArray::Index& index) -> StatusOr<llvm::Value*> {
-    llvm::Type* index_ty = index.GetType();
-    // Calculate the linear element index.
-    llvm::Value* elem_idx = index.linear();
-    if (elem_idx == nullptr) {
-      elem_idx = index.Linearize(AsInt64Slice(hlo->shape().dimensions()), b_);
-    }
-
-    // Calculate the index for the 128 bit sample and the offset of the current
-    // element within the sample.
-    llvm::Value* elems_per_sample_value =
-        llvm::ConstantInt::get(index_ty, elems_per_sample);
-    llvm::Value* sample_idx = UDiv(elem_idx, elems_per_sample_value);
-    llvm::Value* elem_offset = URem(elem_idx, elems_per_sample_value);
-
-    std::array<llvm::Value*, 4> counter_values = CalculateSampleValues(
-        sample_idx, hlo_random_value, global_random_number, rng_state, b_);
-
-    // Store the four counter_values into the sample_address alloca so we can
-    // load the elem_offset'th one below.
-    for (int idx = 0; idx < 4; ++idx) {
-      Store(counter_values[idx],
-            InBoundsGEP(sample_address, b_->getInt32(idx)));
-    }
-
-    llvm::Type* int64_ty = b_->getInt64Ty();
-    CHECK(elems_per_sample == 2 || elems_per_sample == 4);
-    llvm::Type* raw_value_ty = elems_per_sample == 2 ? int64_ty : int32_ty;
-    // Retrieve the raw value for the current element from the current sample.
-    llvm::Value* raw_elem_value = Load(
-        InBoundsGEP(PointerCast(sample_address, raw_value_ty->getPointerTo()),
-                    elem_offset),
-        "raw_elem_value");
-
-    return ConvertValueForDistribution(hlo, operand_to_generator, index,
-                                       raw_elem_value);
-  };
-}
-
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalSelect(
     const HloInstruction* hlo,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
     const llvm_ir::IrArray::Index& index) {
   TF_ASSIGN_OR_RETURN(llvm::Value * pred_value,
-                      operand_to_generator.at(hlo->operand(0))(
-                          ElementwiseSourceIndex(index, *hlo, 0)));
+                      operand_to_generator.at(hlo->operand(0))(index));
   TF_ASSIGN_OR_RETURN(llvm::Value * on_true_value,
-                      operand_to_generator.at(hlo->operand(1))(
-                          ElementwiseSourceIndex(index, *hlo, 1)));
+                      operand_to_generator.at(hlo->operand(1))(index));
   TF_ASSIGN_OR_RETURN(llvm::Value * on_false_value,
-                      operand_to_generator.at(hlo->operand(2))(
-                          ElementwiseSourceIndex(index, *hlo, 2)));
+                      operand_to_generator.at(hlo->operand(2))(index));
   return Select(Trunc(pred_value, b_->getInt1Ty()), on_true_value,
                 on_false_value);
 }
@@ -1712,14 +1628,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalClamp(
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
     const llvm_ir::IrArray::Index& index) {
   TF_ASSIGN_OR_RETURN(llvm::Value * min_value,
-                      operand_to_generator.at(hlo->operand(0))(
-                          ElementwiseSourceIndex(index, *hlo, 0)));
+                      operand_to_generator.at(hlo->operand(0))(index));
   TF_ASSIGN_OR_RETURN(llvm::Value * arg_value,
-                      operand_to_generator.at(hlo->operand(1))(
-                          ElementwiseSourceIndex(index, *hlo, 1)));
+                      operand_to_generator.at(hlo->operand(1))(index));
   TF_ASSIGN_OR_RETURN(llvm::Value * max_value,
-                      operand_to_generator.at(hlo->operand(2))(
-                          ElementwiseSourceIndex(index, *hlo, 2)));
+                      operand_to_generator.at(hlo->operand(2))(index));
   PrimitiveType prim_type = hlo->shape().element_type();
   if (primitive_util::IsFloatingPointType(prim_type)) {
     return EmitFloatMin(max_value, EmitFloatMax(min_value, arg_value));
@@ -1752,8 +1665,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     exit_block = llvm_ir::CreateBasicBlock(
         /*insert_before=*/nullptr, IrName(hlo, "merge"), b_);
   } else {
-    exit_block = init_block->splitBasicBlock(b_->GetInsertPoint(),
-                                             AsStringRef(IrName(hlo, "merge")));
+    exit_block =
+        init_block->splitBasicBlock(b_->GetInsertPoint(), IrName(hlo, "merge"));
     init_block->getTerminator()->eraseFromParent();
   }
 
@@ -1799,37 +1712,40 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     llvm_ir::SetToFirstInsertPoint(emit_operand_blocks[operand_id], b_);
     source_index_phis[operand_id] =
         PHI(source_index.GetType(), operand_usage_count[operand_id]);
-    auto operand_index = source_index;
-    operand_index[concat_dim] = source_index_phis[operand_id];
+    std::vector<llvm::Value*> operand_multi_index = source_index.multidim();
+    operand_multi_index[concat_dim] =
+        NSWSub(operand_multi_index[concat_dim], source_index_phis[operand_id]);
 
     // Create the terminator of the block before calling operand generators,
     // because they require non-degenerate basic blocks.
     b_->SetInsertPoint(llvm::BranchInst::Create(
         exit_block, /*InsertAtEnd=*/emit_operand_blocks[operand_id]));
+    llvm_ir::IrArray::Index operand_index(operand_multi_index, operand->shape(),
+                                          source_index.GetType());
     TF_ASSIGN_OR_RETURN(llvm::Value * value,
                         operand_to_generator.at(operand)(operand_index));
     output->addIncoming(value, b_->GetInsertBlock());
     b_->SetInsertPoint(init_block, saved_insert_point);
   }
 
+  int64 concat_dim_size = 0;
   for (int64 operand_idx = 0; operand_idx < hlo->operand_count();
        ++operand_idx) {
     const HloInstruction* operand = hlo->operand(operand_idx);
     auto false_block = llvm_ir::CreateBasicBlock(
         exit_block, StrCat("concat_index_not_from_operand", operand_idx), b_);
-    auto concat_dim_size =
-        llvm::ConstantInt::get(source_index[concat_dim]->getType(),
-                               operand->shape().dimensions(concat_dim));
     int64 operand_id = to_unique_operand_id[operand];
-    source_index_phis[operand_id]->addIncoming(source_index[concat_dim],
-                                               b_->GetInsertBlock());
-    CondBr(ICmpULT(source_index[concat_dim], concat_dim_size),
+    source_index_phis[operand_id]->addIncoming(
+        source_index.GetConstantWithIndexType(concat_dim_size),
+        b_->GetInsertBlock());
+    concat_dim_size += operand->shape().dimensions(concat_dim);
+    CondBr(ICmpULT(source_index[concat_dim],
+                   source_index.GetConstantWithIndexType(concat_dim_size)),
            emit_operand_blocks[operand_id], false_block);
 
     // Subtract the size of the concat dimension of the current operand
     // from the source index.
     b_->SetInsertPoint(false_block);
-    source_index[concat_dim] = Sub(source_index[concat_dim], concat_dim_size);
   }
 
   Unreachable();
@@ -1846,7 +1762,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
   const int64 rank = input_hlo->shape().rank();
   // Use the same index type for all tensor accesses in the same kernel.
   llvm::Type* index_type = index.GetType();
-  llvm_ir::IrArray::Index slice_start_index(index_type, rank);
+  std::vector<llvm::Value*> slice_start_multi_index(rank);
   for (int64 i = 0; i < rank; ++i) {
     auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
@@ -1869,17 +1785,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
         EmitIntegralMax(index_typed_const(0), start_index_value, is_signed),
         is_signed);
 
-    start_index_value->setName(
-        AsStringRef(IrName(hlo, StrCat("start_idx", i))));
-    slice_start_index[i] = start_index_value;
+    start_index_value->setName(IrName(hlo, StrCat("start_idx", i)));
+    slice_start_multi_index[i] = start_index_value;
   }
 
-  llvm_ir::IrArray::Index input_index(index_type, rank);
+  std::vector<llvm::Value*> input_multi_index(rank);
   for (int64 i = 0; i < rank; ++i) {
     // Emit IR which computes:
     //   input_index = start_index + offset_index
-    input_index[i] = Add(slice_start_index[i], index[i]);
+    input_multi_index[i] = Add(slice_start_multi_index[i], index[i]);
   }
+  llvm_ir::IrArray::Index input_index(input_multi_index, input_hlo->shape(),
+                                      index_type);
   return operand_to_generator.at(input_hlo)(input_index);
 }
 
@@ -1901,7 +1818,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   llvm::Type* index_type = index.GetType();
   // This is the index into `operand` that holds the element we want to
   // generate.
-  IrArray::Index operand_index(index_type);
+  std::vector<llvm::Value*> operand_multi_index;
 
   // First copy in the window indices to operand_index. Also collect a mapping
   // from operand dimension to output window dimension. Elided window dimensions
@@ -1910,26 +1827,29 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   for (int64 i = 0, e = operand_shape.dimensions_size(), operand_index_dim = 0;
        i < e; i++) {
     if (absl::c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
-      operand_index.push_back(index.GetConstantWithIndexType(0));
+      operand_multi_index.push_back(index.GetConstantWithIndexType(0));
     } else {
       int64 output_window_dim = dim_numbers.offset_dims(operand_index_dim++);
       operand_to_output_dim[i] = output_window_dim;
-      operand_index.push_back(index[output_window_dim]);
+      operand_multi_index.push_back(index[output_window_dim]);
     }
   }
 
   // This is the index of the index vector in the start_indices tensor.
-  IrArray::Index gather_index_index(index_type);
+  std::vector<llvm::Value*> gather_index_index_components;
   {
-    std::vector<llvm::Value*> gather_index_index_components;
     for (int64 i = 0, e = output_shape.dimensions_size(); i < e; i++) {
       if (!absl::c_binary_search(dim_numbers.offset_dims(), i)) {
-        gather_index_index.push_back(index[i]);
+        gather_index_index_components.push_back(index[i]);
       }
     }
 
-    if (gather_index_index.size() != indices_shape.dimensions_size()) {
-      gather_index_index.InsertAt(dim_numbers.index_vector_dim(), nullptr);
+    if (gather_index_index_components.size() !=
+        indices_shape.dimensions_size()) {
+      gather_index_index_components.insert(
+          gather_index_index_components.begin() +
+              dim_numbers.index_vector_dim(),
+          nullptr);
     }
   }
 
@@ -1957,11 +1877,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
                         gather_dim_component_extended, is_signed),
         is_signed);
 
-    operand_index[operand_dim] =
-        Add(operand_index[operand_dim], gather_dim_component_extended_inbound);
+    operand_multi_index[operand_dim] =
+        Add(operand_multi_index[operand_dim],
+            gather_dim_component_extended_inbound);
   };
 
   if (indices_shape.dimensions_size() == dim_numbers.index_vector_dim()) {
+    IrArray::Index gather_index_index(gather_index_index_components,
+                                      indices_shape, index_type);
     TF_ASSIGN_OR_RETURN(llvm::Value * gather_dim_component,
                         indices_generator(gather_index_index));
     add_to_operand_index(gather_dim_component, 0);
@@ -1969,13 +1892,16 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
     int64 index_vector_size =
         indices_shape.dimensions(dim_numbers.index_vector_dim());
     for (int64 i = 0; i < index_vector_size; i++) {
-      gather_index_index[dim_numbers.index_vector_dim()] =
+      gather_index_index_components[dim_numbers.index_vector_dim()] =
           index.GetConstantWithIndexType(i);
+      IrArray::Index gather_index_index(gather_index_index_components,
+                                        indices_shape, index_type);
       TF_ASSIGN_OR_RETURN(llvm::Value * gather_dim_component,
                           indices_generator(gather_index_index));
       add_to_operand_index(gather_dim_component, i);
     }
   }
+  IrArray::Index operand_index(operand_multi_index, operand_shape, index_type);
   return operand_generator(operand_index);
 }
 
@@ -1988,8 +1914,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   const HloInstruction* start_hlo = hlo->operand(2);
   // Calculate slice start/end indices.
   const int64 rank = input_hlo->shape().rank();
-  llvm_ir::IrArray::Index slice_start_index(index.GetType(), rank);
-  llvm_ir::IrArray::Index slice_limit_index(index.GetType(), rank);
+  std::vector<llvm::Value*> slice_start_multi_index(rank);
+  std::vector<llvm::Value*> slice_limit_multi_index(rank);
   // Slice intersection gathers (ANDs) conditions on all ranks for which
   // 'input' is set to 'update'
   llvm::Value* slice_intersection = b_->getTrue();
@@ -2020,16 +1946,16 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
         EmitIntegralMax(index_typed_const(0), start_index_value, is_signed),
         is_signed);
 
-    start_index_value->setName(
-        AsStringRef(IrName(hlo, StrCat("start_idx", i))));
-    slice_start_index[i] = start_index_value;
-    slice_limit_index[i] = Add(slice_start_index[i], update_dim_size);
+    start_index_value->setName(IrName(hlo, StrCat("start_idx", i)));
+    slice_start_multi_index[i] = start_index_value;
+    slice_limit_multi_index[i] =
+        Add(slice_start_multi_index[i], update_dim_size);
 
     slice_intersection =
-        And(slice_intersection, ICmpSGE(index[i], slice_start_index[i]),
+        And(slice_intersection, ICmpSGE(index[i], slice_start_multi_index[i]),
             "slice_intersection");
     slice_intersection =
-        And(slice_intersection, ICmpSLT(index[i], slice_limit_index[i]),
+        And(slice_intersection, ICmpSLT(index[i], slice_limit_multi_index[i]),
             "slice_intersection");
   }
 
@@ -2045,10 +1971,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   // Handle true BB (return data from 'update')
   SetToFirstInsertPoint(if_data.true_block, b_);
   // Compute update index for intersection case.
-  llvm_ir::IrArray::Index update_index(index.GetType(), rank);
+  std::vector<llvm::Value*> update_multi_index(rank);
   for (int64 i = 0; i < rank; ++i) {
-    update_index[i] = Sub(index[i], slice_start_index[i]);
+    update_multi_index[i] = Sub(index[i], slice_start_multi_index[i]);
   }
+  llvm_ir::IrArray::Index update_index(update_multi_index, update_hlo->shape(),
+                                       index.GetType());
   TF_ASSIGN_OR_RETURN(llvm::Value * true_value,
                       operand_to_generator.at(update_hlo)(update_index));
   Store(true_value, ret_value_addr);
@@ -2067,27 +1995,28 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalPad(
     const HloInstruction* hlo,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
     const llvm_ir::IrArray::Index& padded_index) {
-  auto index = padded_index;
+  std::vector<llvm::Value*> multi_index = padded_index.multidim();
   llvm::Value* in_bounds = b_->getTrue();
-  for (size_t i = 0; i < index.size(); ++i) {
+  for (size_t i = 0; i < multi_index.size(); ++i) {
     auto index_typed_const = [=](int64 n) {
-      return llvm::ConstantInt::get(index[i]->getType(), n);
+      return padded_index.GetConstantWithIndexType(n);
     };
     const auto& pad_dim = hlo->padding_config().dimensions(i);
-    index[i] = Sub(index[i], index_typed_const(pad_dim.edge_padding_low()));
-    in_bounds =
-        And(in_bounds, ICmpSGE(index[i], index_typed_const(0)), "in_bounds");
-    in_bounds = And(
-        in_bounds,
-        ICmpEQ(
-            index_typed_const(0),
-            URem(index[i], index_typed_const(pad_dim.interior_padding() + 1))),
-        "in_bounds");
-    index[i] =
-        SDiv(index[i], index_typed_const(pad_dim.interior_padding() + 1));
+    multi_index[i] =
+        Sub(multi_index[i], index_typed_const(pad_dim.edge_padding_low()));
+    in_bounds = And(in_bounds, ICmpSGE(multi_index[i], index_typed_const(0)),
+                    "in_bounds");
     in_bounds =
         And(in_bounds,
-            ICmpSLT(index[i],
+            ICmpEQ(index_typed_const(0),
+                   URem(multi_index[i],
+                        index_typed_const(pad_dim.interior_padding() + 1))),
+            "in_bounds");
+    multi_index[i] =
+        SDiv(multi_index[i], index_typed_const(pad_dim.interior_padding() + 1));
+    in_bounds =
+        And(in_bounds,
+            ICmpSLT(multi_index[i],
                     index_typed_const(hlo->operand(0)->shape().dimensions(i))),
             "in_bounds");
   }
@@ -2103,6 +2032,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalPad(
   llvm_ir::LlvmIfData if_data =
       llvm_ir::EmitIfThenElse(in_bounds, "in_bounds", b_);
   SetToFirstInsertPoint(if_data.true_block, b_);
+  llvm_ir::IrArray::Index index(multi_index, hlo->operand(0)->shape(),
+                                padded_index.GetType());
   TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
                       operand_to_generator.at(hlo->operand(0))(index));
   Store(operand_value, ret_value_addr);
@@ -2137,7 +2068,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   int64 lhs_dims = hlo->operand(0)->shape().dimensions_size();
   int64 rhs_dims = hlo->operand(1)->shape().dimensions_size();
 
-  llvm::Type* index_type = dot_result_index[0]->getType();
+  llvm::Type* index_type = dot_result_index.GetType();
   auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_type, c);
   };
@@ -2162,17 +2093,27 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   // Given an output index [a,b,c,d,e] in the result, we compute:
   //   sum(lhs[a,b,c,t]*rhs[d,t,e] for t in [0, T))
 
-  IrArray::Index lhs_index(index_type), rhs_index(index_type);
-
+  std::vector<llvm::Value*> lhs_multi_index, rhs_multi_index;
   for (int64 i = 0; i < lhs_dims - 1; i++) {
-    lhs_index.push_back(dot_result_index[i]);
+    lhs_multi_index.push_back(dot_result_index[i]);
   }
-  lhs_index.InsertAt(lhs_contracting_dim, inner_loop->GetIndVarValue());
+  lhs_multi_index.insert(lhs_multi_index.begin() + lhs_contracting_dim,
+                         inner_loop->GetIndVarValue());
+  IrArray::Index lhs_index(lhs_multi_index, hlo->operand(0)->shape(),
+                           index_type);
 
-  for (int64 i = 0; i < rhs_dims - 1; i++) {
-    rhs_index.push_back(dot_result_index[lhs_dims - 1 + i]);
+  int64 num_batch_dims = dim_numbers.rhs_batch_dimensions_size();
+  for (int64 i = 0; i < num_batch_dims; i++) {
+    rhs_multi_index.push_back(
+        dot_result_index[dim_numbers.rhs_batch_dimensions(i)]);
   }
-  rhs_index.InsertAt(rhs_contracting_dim, inner_loop->GetIndVarValue());
+  for (int64 i = 0; i < rhs_dims - 1 - num_batch_dims; i++) {
+    rhs_multi_index.push_back(dot_result_index[lhs_dims - 1 + i]);
+  }
+  rhs_multi_index.insert(rhs_multi_index.begin() + rhs_contracting_dim,
+                         inner_loop->GetIndVarValue());
+  IrArray::Index rhs_index(rhs_multi_index, hlo->operand(1)->shape(),
+                           index_type);
 
   llvm::Value* current_accumulator = Load(accumulator_alloca);
   TF_ASSIGN_OR_RETURN(llvm::Value * lhs_value, lhs_generator(lhs_index));
@@ -2212,7 +2153,6 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kClz:
     case HloOpcode::kConvert:
     case HloOpcode::kBitcastConvert:
-    case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -2223,6 +2163,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kLog1p:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
@@ -2232,24 +2173,18 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
-                            operand_to_generator.at(hlo->operand(0))(
-                                ElementwiseSourceIndex(index, *hlo, 0)));
+                            operand_to_generator.at(hlo->operand(0))(index));
         return EmitUnaryOp(hlo, operand_value);
       };
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
+    case HloOpcode::kCompare:
     case HloOpcode::kComplex:
     case HloOpcode::kDivide:
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
-    case HloOpcode::kNe:
     case HloOpcode::kOr:
     case HloOpcode::kXor:
     case HloOpcode::kPower:
@@ -2263,11 +2198,9 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         const HloInstruction* lhs = hlo->operand(0);
         const HloInstruction* rhs = hlo->operand(1);
         TF_ASSIGN_OR_RETURN(llvm::Value * lhs_value,
-                            operand_to_generator.at(lhs)(
-                                ElementwiseSourceIndex(index, *hlo, 0)));
+                            operand_to_generator.at(lhs)(index));
         TF_ASSIGN_OR_RETURN(llvm::Value * rhs_value,
-                            operand_to_generator.at(rhs)(
-                                ElementwiseSourceIndex(index, *hlo, 1)));
+                            operand_to_generator.at(rhs)(index));
         return EmitBinaryOp(hlo, lhs_value, rhs_value);
       };
     case HloOpcode::kSelect:
@@ -2284,8 +2217,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
-                            operand_to_generator.at(hlo->operand(0))(
-                                ElementwiseSourceIndex(index, *hlo, 0)));
+                            operand_to_generator.at(hlo->operand(0))(index));
         return EmitReducePrecision(hlo, operand_value);
       };
     case HloOpcode::kConcatenate:
@@ -2298,13 +2230,14 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& target_index) -> StatusOr<llvm::Value*> {
         const HloInstruction* operand = hlo->operand(0);
-        auto source_index = target_index;
+        std::vector<llvm::Value*> source_multi_index = target_index.multidim();
         for (int64 dim : hlo->dimensions()) {
-          source_index[dim] =
-              Sub(llvm::ConstantInt::get(target_index[dim]->getType(),
-                                         hlo->shape().dimensions(dim) - 1),
-                  target_index[dim]);
+          source_multi_index[dim] = Sub(target_index.GetConstantWithIndexType(
+                                            hlo->shape().dimensions(dim) - 1),
+                                        target_index[dim]);
         }
+        llvm_ir::IrArray::Index source_index(
+            source_multi_index, operand->shape(), target_index.GetType());
         return operand_to_generator.at(operand)(source_index);
       };
     case HloOpcode::kBroadcast:
@@ -2343,8 +2276,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                 : iota->shape();
         PrimitiveType component_element_type = component_shape.element_type();
         llvm::Value* iota_result;
-        if (primitive_util::IsIntegralType(component_element_type) ||
-            component_element_type == PRED) {
+        if (primitive_util::IsIntegralType(component_element_type)) {
           iota_result = b_->CreateIntCast(
               elem_index_linear,
               llvm_ir::PrimitiveTypeToIrType(component_element_type, module_),
@@ -2363,7 +2295,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
           llvm::Value* float_val =
               b_->CreateUIToFP(elem_index_linear, float_ir_type);
           if (component_element_type == BF16) {
-            iota_result = EmitF32ToBF16(float_val, b_);
+            TF_ASSIGN_OR_RETURN(iota_result, EmitF32ToBF16(float_val, b_));
           } else {
             iota_result = float_val;
           }
@@ -2378,7 +2310,8 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         IrArray::Index sliced_index = index.SourceIndexOfSlice(
-            /*shape=*/hlo->shape(), /*starts=*/hlo->slice_starts(),
+            /*operand_shape=*/hlo->operand(0)->shape(),
+            /*starts=*/hlo->slice_starts(),
             /*strides=*/hlo->slice_strides(), /*builder=*/b_);
         return operand_to_generator.at(hlo->operand(0))(sliced_index);
       };
@@ -2415,6 +2348,17 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return operand_to_generator.at(operand)(
             index.SourceIndexOfReshape(hlo->shape(), operand->shape(), b_));
       };
+    case HloOpcode::kCopy:
+      return [hlo, &operand_to_generator](
+                 const IrArray::Index& target_index) -> StatusOr<llvm::Value*> {
+        IrArray::Index source_index(target_index.multidim(),
+                                    hlo->operand(0)->shape(),
+                                    target_index.GetType());
+        TF_ASSIGN_OR_RETURN(
+            llvm::Value * operand_value,
+            operand_to_generator.at(hlo->operand(0))(source_index));
+        return operand_value;
+      };
     case HloOpcode::kTranspose:
       return [this, hlo,
               &operand_to_generator](const IrArray::Index& target_index) {
@@ -2422,8 +2366,6 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
             target_index.SourceIndexOfTranspose(
                 hlo->shape(), hlo->operand(0)->shape(), hlo->dimensions(), b_));
       };
-    case HloOpcode::kRng:
-      return MakePhiloxRngElementGenerator(hlo, operand_to_generator);
     case HloOpcode::kPad:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& padded_index) -> StatusOr<llvm::Value*> {

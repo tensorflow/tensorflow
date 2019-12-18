@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include <stdio.h>
-#include <iostream>
 
-#include "tensorflow/core/kernels/avgpooling_op.h"
+#include <iostream>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/kernels/avgpooling_op.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -40,15 +40,13 @@ DEFINE_GPU_KERNELS(double)
 #undef DEFINE_GPU_KERNELS
 
 template <typename dtype>
-__global__ void AvePoolBackwardNHWC(const int nthreads,
-                                    const dtype* const top_diff, const int num,
-                                    const int height, const int width,
-                                    const int channels, const int pooled_height,
-                                    const int pooled_width, const int kernel_h,
-                                    const int kernel_w, const int stride_h,
-                                    const int stride_w, const int pad_t,
-                                    const int pad_l, dtype* const bottom_diff) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+__global__ void AvePoolBackwardNHWC(
+    const int nthreads, const dtype* const __restrict__ top_diff, const int num,
+    const int height, const int width, const int channels,
+    const int pooled_height, const int pooled_width, const int kernel_h,
+    const int kernel_w, const int stride_h, const int stride_w, const int pad_t,
+    const int pad_l, dtype* const __restrict__ bottom_diff) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
     // find out the local index
     // find out the local offset
     const int c = index % channels;
@@ -90,12 +88,12 @@ bool RunAvePoolBackwardNHWC(const T* const top_diff, const int num,
                             const int pad_l, T* const bottom_diff,
                             const GPUDevice& d) {
   int x_size = num * height * width * channels;
-  CudaLaunchConfig config = GetCudaLaunchConfig(x_size, d);
-  CudaLaunchKernel(AvePoolBackwardNHWC<T>, config.block_count,
-                   config.thread_per_block, 0, d.stream(),
-                   config.virtual_thread_count, top_diff, num, height, width,
-                   channels, pooled_height, pooled_width, kernel_h, kernel_w,
-                   stride_h, stride_w, pad_t, pad_t, bottom_diff);
+  GpuLaunchConfig config = GetGpuLaunchConfig(x_size, d);
+  TF_CHECK_OK(GpuLaunchKernel(
+      AvePoolBackwardNHWC<T>, config.block_count, config.thread_per_block, 0,
+      d.stream(), config.virtual_thread_count, top_diff, num, height, width,
+      channels, pooled_height, pooled_width, kernel_h, kernel_w, stride_h,
+      stride_w, pad_t, pad_t, bottom_diff));
 
   return d.ok();
 }
@@ -121,4 +119,4 @@ template bool RunAvePoolBackwardNHWC(
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

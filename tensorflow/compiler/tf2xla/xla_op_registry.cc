@@ -61,6 +61,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
 /* static */ bool XlaOpRegistry::IsCompatible(const OpRegistration& x,
                                               const OpRegistration& y) {
   if (x.name != y.name) return true;
+  if (x.label != y.label) return true;
   // The registrations refer to the same Op: ensures they are compatible and
   // are restricted to different device whitelists.
   if (x.compilation_only != y.compilation_only) {
@@ -76,6 +77,11 @@ XlaOpRegistry::~XlaOpRegistry() = default;
   if (x.allow_variant_types != y.allow_variant_types) {
     LOG(WARNING) << "Registrations of " << x.name
                  << " have incompatible allow_variant_types settings.";
+    return false;
+  }
+  if (x.allow_string_type != y.allow_string_type) {
+    LOG(WARNING) << "Registrations of " << x.name
+                 << " have incompatible allow_string_type settings.";
     return false;
   }
   if (!x.has_device_whitelist && !y.has_device_whitelist) {
@@ -137,6 +143,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
   static void* registration_init = [&registry]() {
     MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
     bool cpu_global_jit = flags->tf_xla_cpu_global_jit;
+    VLOG(2) << "tf_xla_cpu_global_jit = " << cpu_global_jit;
 
     mutex_lock lock(registry.mutex_);
     if (LaunchOpHasKernelForDevice(DeviceType(DEVICE_CPU)).ok()) {
@@ -147,7 +154,6 @@ XlaOpRegistry::~XlaOpRegistry() = default;
           cpu_global_jit
               ? XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally
               : XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested;
-      registration.compile_resource_ops = false;
     }
     if (LaunchOpHasKernelForDevice(DeviceType(DEVICE_GPU)).ok()) {
       DeviceRegistration& registration =
@@ -155,7 +161,6 @@ XlaOpRegistry::~XlaOpRegistry() = default;
       registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
       registration.autoclustering_policy =
           XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally;
-      registration.compile_resource_ops = false;
     }
     return nullptr;
   }();
@@ -252,6 +257,7 @@ void XlaOpRegistry::RegisterCompilationKernels() {
         std::unique_ptr<KernelDef> kdef(new KernelDef);
         kdef->set_op(op_registration->name);
         kdef->set_device_type(backend.first);
+        kdef->set_label(op_registration->label);
 
         // Constrain each type attribute to the intersection of:
         // a) the types supported by the backend, and
@@ -296,6 +302,9 @@ void XlaOpRegistry::RegisterCompilationKernels() {
           }
           if (op_registration->allow_variant_types) {
             allowed_values->add_type(DT_VARIANT);
+          }
+          if (op_registration->allow_string_type) {
+            allowed_values->add_type(DT_STRING);
           }
           // Don't build KernelDefs that have unsatisfiable type constraints.
           if (allowed_values->type().empty()) {
@@ -498,6 +507,11 @@ XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::AllowVariantTypes() {
   return *this;
 }
 
+XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::AllowStringType() {
+  registration_->allow_string_type = true;
+  return *this;
+}
+
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::TypeConstraint(
     absl::string_view attr_name, DataType allowed) {
   std::set<DataType>& types =
@@ -527,6 +541,11 @@ XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::IsMetadataOp() {
   return *this;
 }
 
+XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::Label(std::string label) {
+  registration_->label = label;
+  return *this;
+}
+
 std::unique_ptr<XlaOpRegistry::OpRegistration> XlaOpRegistrationBuilder::Build(
     XlaOpRegistry::Factory factory) {
   registration_->factory = factory;
@@ -553,6 +572,8 @@ XlaBackendRegistrar::XlaBackendRegistrar(
     XlaOpRegistry::BackendOpFilter op_filter) {
   XlaOpRegistry& registry = XlaOpRegistry::Instance();
   registry.RegisterBackend(string(name), types, op_filter);
+
+  AddSymbolicExecutionDevice(name);
 }
 
 }  // namespace tensorflow

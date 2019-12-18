@@ -148,8 +148,6 @@ class HloLexer {
   // or it's out of the range of the current buffer.
   absl::string_view StringPieceFromPointers(const char* begin,
                                             const char* end) const;
-  tensorflow::RegexpStringPiece RegexpStringPieceFromPointers(
-      const char* begin, const char* end) const;
 
   // Returns true if the given ptr is dereferenceable within the range of the
   // current buffer.

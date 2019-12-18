@@ -99,22 +99,21 @@ int ASharedMemory_create(const char* name, size_t size) {
   nnapi.name = reinterpret_cast<name##_fn>(  \
       LoadFunction(handle, #name, /*optional*/ true));
 
+#define LOAD_FUNCTION_RENAME(handle, name, symbol) \
+  nnapi.name = reinterpret_cast<name##_fn>(        \
+      LoadFunction(handle, symbol, /*optional*/ false));
+
 const NnApi LoadNnApi() {
   NnApi nnapi = {};
   nnapi.android_sdk_version = 0;
 
 #ifdef __ANDROID__
-  void* libandroid = nullptr;
   nnapi.android_sdk_version = GetAndroidSdkVersion();
   if (nnapi.android_sdk_version < 27) {
     NNAPI_LOG("nnapi error: requires android sdk version to be at least %d",
               27);
     nnapi.nnapi_exists = false;
     return nnapi;
-  }
-  libandroid = dlopen("libandroid.so", RTLD_LAZY | RTLD_LOCAL);
-  if (libandroid == nullptr) {
-    NNAPI_LOG("nnapi error: unable to open library %s", "libandroid.so");
   }
 #endif  // __ANDROID__
 
@@ -128,6 +127,7 @@ const NnApi LoadNnApi() {
 
   nnapi.nnapi_exists = libneuralnetworks != nullptr;
 
+  // API 27 (NN 1.0) methods.
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksMemory_createFromFd);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksMemory_free);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksModel_create);
@@ -143,8 +143,6 @@ const NnApi LoadNnApi() {
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksModel_addOperation);
   LOAD_FUNCTION(libneuralnetworks,
                 ANeuralNetworksModel_identifyInputsAndOutputs);
-  LOAD_FUNCTION(libneuralnetworks,
-                ANeuralNetworksModel_relaxComputationFloat32toFloat16);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksCompilation_create);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksCompilation_free);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksCompilation_setPreference);
@@ -159,17 +157,48 @@ const NnApi LoadNnApi() {
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksExecution_startCompute);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksEvent_wait);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksEvent_free);
+
+  // ASharedMemory_create has different implementations in Android depending on
+  // the partition. Generally it can be loaded from libandroid.so but in vendor
+  // partition (e.g. if a HAL wants to use NNAPI) it is only accessible through
+  // libcutils.
 #ifdef __ANDROID__
-  LOAD_FUNCTION(libandroid, ASharedMemory_create);
+  void* libandroid = nullptr;
+  libandroid = dlopen("libandroid.so", RTLD_LAZY | RTLD_LOCAL);
+  if (libandroid != nullptr) {
+    LOAD_FUNCTION(libandroid, ASharedMemory_create);
+  } else {
+    void* cutils_handle = dlopen("libcutils.so", RTLD_LAZY | RTLD_LOCAL);
+    if (cutils_handle != nullptr) {
+      LOAD_FUNCTION_RENAME(cutils_handle, ASharedMemory_create,
+                           "ashmem_create_region");
+    } else {
+      NNAPI_LOG("nnapi error: unable to open neither libraries %s and %s",
+                "libandroid.so", "libcutils.so");
+    }
+  }
 #else
-  nnapi.ASharedMemory_create = ASharedMemory_create;
+  // Mock ASharedMemory_create only if libneuralnetworks.so was successfully
+  // loaded. This ensures identical behaviour on platforms which use this
+  // implementation, but don't have libneuralnetworks.so library, and
+  // platforms which use nnapi_implementation_disabled.cc stub.
+  if (libneuralnetworks != nullptr) {
+    nnapi.ASharedMemory_create = ASharedMemory_create;
+  }
 #endif  // __ANDROID__
+
+  // API 28 (NN 1.1) methods.
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksModel_relaxComputationFloat32toFloat16);
+
+  // API 29 (NN 1.2) methods.
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworks_getDeviceCount);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworks_getDevice);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksDevice_getName);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksDevice_getVersion);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksDevice_getFeatureLevel);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksDevice_getType);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksModel_getSupportedOperationsForDevices);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,

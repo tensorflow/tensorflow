@@ -113,7 +113,7 @@ class AdamOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testSparse(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -202,7 +202,7 @@ class AdamOptimizerTest(test.TestCase):
 
   def doTestBasic(self, use_callable_params=False):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.session(graph=ops.Graph()):
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -262,7 +262,7 @@ class AdamOptimizerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes(reset_test=True)
   def testBasicWithAmsgrad(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.session(graph=ops.Graph()):
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, v0, v0hat, m1, v1, v1hat = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -356,7 +356,7 @@ class AdamOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testBasicWithLearningRateDecay(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.session(graph=ops.Graph()):
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -403,7 +403,7 @@ class AdamOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testBasicWithLearningRateInverseTimeDecay(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.session(graph=ops.Graph()):
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -452,7 +452,7 @@ class AdamOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -491,7 +491,7 @@ class AdamOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -539,7 +539,8 @@ class AdamOptimizerTest(test.TestCase):
       opt = adam.Adam(1.)
       opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
       # There should be iteration, and two unique slot variables for v1 and v2.
-      self.assertEqual(5, len(set(opt.variables())))
+      self.assertEqual(5,
+                       len(set(v.experimental_ref() for v in opt.variables())))
       self.assertEqual(
           self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 
@@ -565,15 +566,6 @@ class AdamOptimizerTest(test.TestCase):
     self.assertAllClose(self.evaluate(opt.lr), (1.0))
     self.assertAllClose(self.evaluate(opt_2.lr), (1.0))
     self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
-
-  def testConstructAdamWithEpsilonValues(self):
-    opt = adam.Adam(epsilon=None)
-    config = opt.get_config()
-    self.assertEqual(config["epsilon"], 1e-7)
-
-    opt = adam.Adam(epsilon=1e-8)
-    config = opt.get_config()
-    self.assertEqual(config["epsilon"], 1e-8)
 
 
 if __name__ == "__main__":

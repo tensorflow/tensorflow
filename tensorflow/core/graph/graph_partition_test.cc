@@ -121,7 +121,7 @@ void CheckLoopConstruction(const GraphDef& graph_def) {
       if (ndef.op() == "_Recv") {
         bool has_control = false;
         for (const string& input_name : ndef.input()) {
-          if (str_util::StartsWith(input_name, "^")) {
+          if (absl::StartsWith(input_name, "^")) {
             has_control = true;
             break;
           }
@@ -129,7 +129,7 @@ void CheckLoopConstruction(const GraphDef& graph_def) {
         EXPECT_TRUE(has_control);
       }
       // Must have a control loop
-      if (str_util::StartsWith(ndef.name(), "_cloop")) {
+      if (absl::StartsWith(ndef.name(), "_cloop")) {
         if (ndef.op() == "Enter") {
           has_control_enter = true;
         }

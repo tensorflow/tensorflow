@@ -15,19 +15,18 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include <cfloat>
 #include <vector>
 
-#include "tensorflow/core/kernels/dilation_ops.h"
-
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/dilation_ops.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -36,14 +35,13 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 template <typename T>
-__global__ void DilationKernel(const int32 nthreads, const T* input_ptr,
-                               const T* filter_ptr, int batch, int input_rows,
-                               int input_cols, int depth, int filter_rows,
-                               int filter_cols, int output_rows,
-                               int output_cols, int stride_rows,
-                               int stride_cols, int rate_rows, int rate_cols,
-                               int pad_top, int pad_left, T* output_ptr) {
-  CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
+__global__ void DilationKernel(
+    const int32 nthreads, const T* __restrict__ input_ptr,
+    const T* __restrict__ filter_ptr, int batch, int input_rows, int input_cols,
+    int depth, int filter_rows, int filter_cols, int output_rows,
+    int output_cols, int stride_rows, int stride_cols, int rate_rows,
+    int rate_cols, int pad_top, int pad_left, T* __restrict__ output_ptr) {
+  GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = d + depth * (w_out + output_cols * (h_out + output_rows * b))
     const int d = out_idx % depth;
     const int out_idx2 = out_idx / depth;
@@ -77,12 +75,13 @@ __global__ void DilationKernel(const int32 nthreads, const T* input_ptr,
 
 template <typename T>
 __global__ void DilationBackpropInputKernel(
-    const int32 nthreads, const T* input_ptr, const T* filter_ptr,
-    const T* out_backprop_ptr, int batch, int input_rows, int input_cols,
-    int depth, int filter_rows, int filter_cols, int output_rows,
-    int output_cols, int stride_rows, int stride_cols, int rate_rows,
-    int rate_cols, int pad_top, int pad_left, T* in_backprop_ptr) {
-  CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
+    const int32 nthreads, const T* __restrict__ input_ptr,
+    const T* __restrict__ filter_ptr, const T* __restrict__ out_backprop_ptr,
+    int batch, int input_rows, int input_cols, int depth, int filter_rows,
+    int filter_cols, int output_rows, int output_cols, int stride_rows,
+    int stride_cols, int rate_rows, int rate_cols, int pad_top, int pad_left,
+    T* __restrict__ in_backprop_ptr) {
+  GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = d + depth * (w_out + output_cols * (h_out + output_rows * b))
     const int d = out_idx % depth;
     const int out_idx2 = out_idx / depth;
@@ -117,7 +116,7 @@ __global__ void DilationBackpropInputKernel(
         }
       }
     }
-    CudaAtomicAdd(
+    GpuAtomicAdd(
         in_backprop_ptr + d +
             depth * (w_in_max + input_cols * (h_in_max + input_rows * b)),
         out_backprop_ptr[out_idx]);
@@ -126,12 +125,13 @@ __global__ void DilationBackpropInputKernel(
 
 template <typename T>
 __global__ void DilationBackpropFilterKernel(
-    const int32 nthreads, const T* input_ptr, const T* filter_ptr,
-    const T* out_backprop_ptr, int batch, int input_rows, int input_cols,
-    int depth, int filter_rows, int filter_cols, int output_rows,
-    int output_cols, int stride_rows, int stride_cols, int rate_rows,
-    int rate_cols, int pad_top, int pad_left, T* filter_backprop_ptr) {
-  CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
+    const int32 nthreads, const T* __restrict__ input_ptr,
+    const T* __restrict__ filter_ptr, const T* __restrict__ out_backprop_ptr,
+    int batch, int input_rows, int input_cols, int depth, int filter_rows,
+    int filter_cols, int output_rows, int output_cols, int stride_rows,
+    int stride_cols, int rate_rows, int rate_cols, int pad_top, int pad_left,
+    T* __restrict__ filter_backprop_ptr) {
+  GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = d + depth * (w_out + output_cols * (h_out + output_rows * b))
     const int d = out_idx % depth;
     const int out_idx2 = out_idx / depth;
@@ -166,7 +166,7 @@ __global__ void DilationBackpropFilterKernel(
         }
       }
     }
-    CudaAtomicAdd(
+    GpuAtomicAdd(
         filter_backprop_ptr + d + depth * (w_max + filter_cols * h_max),
         out_backprop_ptr[out_idx]);
   }
@@ -194,14 +194,14 @@ struct Dilation<GPUDevice, T> {
     const int output_cols = output.dimension(2);
 
     const int total_count = batch * output_rows * output_cols * depth;
-    CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+    GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
 
-    DilationKernel<<<config.block_count, config.thread_per_block, 0,
-                     d.stream()>>>(
-        config.virtual_thread_count, input.data(), filter.data(), batch,
-        input_rows, input_cols, depth, filter_rows, filter_cols, output_rows,
-        output_cols, stride_rows, stride_cols, rate_rows, rate_cols, pad_top,
-        pad_left, output.data());
+    TF_CHECK_OK(GpuLaunchKernel(
+        DilationKernel<T>, config.block_count, config.thread_per_block, 0,
+        d.stream(), config.virtual_thread_count, input.data(), filter.data(),
+        batch, input_rows, input_cols, depth, filter_rows, filter_cols,
+        output_rows, output_cols, stride_rows, stride_cols, rate_rows,
+        rate_cols, pad_top, pad_left, output.data()));
   }
 };
 
@@ -225,23 +225,25 @@ struct DilationBackpropInput<GPUDevice, T> {
     const int output_cols = out_backprop.dimension(2);
 
     int total_count;
-    CudaLaunchConfig config;
+    GpuLaunchConfig config;
 
     // Initialize in_backprop with all zeros.
     total_count = batch * input_rows * input_cols * depth;
-    config = GetCudaLaunchConfig(total_count, d);
-    CudaLaunchKernel(SetZero<T>, config.block_count, config.thread_per_block, 0,
-                     d.stream(), total_count, in_backprop.data());
+    config = GetGpuLaunchConfig(total_count, d);
+    TF_CHECK_OK(GpuLaunchKernel(SetZero<T>, config.block_count,
+                                config.thread_per_block, 0, d.stream(),
+                                total_count, in_backprop.data()));
 
     // Accumulate.
     total_count = batch * output_rows * output_cols * depth;
-    config = GetCudaLaunchConfig(total_count, d);
-    DilationBackpropInputKernel<<<config.block_count, config.thread_per_block,
-                                  0, d.stream()>>>(
-        config.virtual_thread_count, input.data(), filter.data(),
-        out_backprop.data(), batch, input_rows, input_cols, depth, filter_rows,
-        filter_cols, output_rows, output_cols, stride_rows, stride_cols,
-        rate_rows, rate_cols, pad_top, pad_left, in_backprop.data());
+    config = GetGpuLaunchConfig(total_count, d);
+    TF_CHECK_OK(GpuLaunchKernel(
+        DilationBackpropInputKernel<T>, config.block_count,
+        config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
+        input.data(), filter.data(), out_backprop.data(), batch, input_rows,
+        input_cols, depth, filter_rows, filter_cols, output_rows, output_cols,
+        stride_rows, stride_cols, rate_rows, rate_cols, pad_top, pad_left,
+        in_backprop.data()));
   }
 };
 
@@ -265,23 +267,25 @@ struct DilationBackpropFilter<GPUDevice, T> {
     const int output_cols = out_backprop.dimension(2);
 
     int total_count;
-    CudaLaunchConfig config;
+    GpuLaunchConfig config;
 
     // Initialize filter_backprop with all zeros.
     total_count = filter_rows * filter_cols * depth;
-    config = GetCudaLaunchConfig(total_count, d);
-    CudaLaunchKernel(SetZero<T>, config.block_count, config.thread_per_block, 0,
-                     d.stream(), total_count, filter_backprop.data());
+    config = GetGpuLaunchConfig(total_count, d);
+    TF_CHECK_OK(GpuLaunchKernel(SetZero<T>, config.block_count,
+                                config.thread_per_block, 0, d.stream(),
+                                total_count, filter_backprop.data()));
 
     // Accumulate.
     total_count = batch * output_rows * output_cols * depth;
-    config = GetCudaLaunchConfig(total_count, d);
-    DilationBackpropFilterKernel<<<config.block_count, config.thread_per_block,
-                                   0, d.stream()>>>(
-        config.virtual_thread_count, input.data(), filter.data(),
-        out_backprop.data(), batch, input_rows, input_cols, depth, filter_rows,
-        filter_cols, output_rows, output_cols, stride_rows, stride_cols,
-        rate_rows, rate_cols, pad_top, pad_left, filter_backprop.data());
+    config = GetGpuLaunchConfig(total_count, d);
+    TF_CHECK_OK(GpuLaunchKernel(
+        DilationBackpropFilterKernel<T>, config.block_count,
+        config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
+        input.data(), filter.data(), out_backprop.data(), batch, input_rows,
+        input_cols, depth, filter_rows, filter_cols, output_rows, output_cols,
+        stride_rows, stride_cols, rate_rows, rate_cols, pad_top, pad_left,
+        filter_backprop.data()));
   }
 };
 
@@ -298,4 +302,4 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -80,10 +80,12 @@ NodeMap::NodeMap(GraphDef* graph) {
     auto rslt = nodes_.emplace(node_name, node);
     // Check that the graph doesn't contain multiple nodes with the same name.
     if (!rslt.second) {
+      // The first node found with a given name becomes the canonical.
       LOG(WARNING) << "Duplicated node in the graph: " << node_name;
     }
+    NodeDef* canonical = rslt.second ? node : rslt.first->second;
     for (const auto& input : node->input()) {
-      outputs_[NodeName(input)].insert(nodes_[node_name]);
+      outputs_[NodeName(input)].insert(canonical);
     }
   }
 }
@@ -97,6 +99,7 @@ NodeDef* NodeMap::GetNode(const string& name) const {
   const string node_name = NodeName(name);
   auto it = nodes_.find(node_name);
   if (it == nodes_.end()) {
+    VLOG(1) << "Node could not be found: " << name;
     return nullptr;
   }
   return it->second;
@@ -160,6 +163,10 @@ void NodeMap::UpdateOutput(const string& node_name,
 string TensorIdToString(const TensorId& tensor_id) {
   return tensor_id.index() == 0 ? string(tensor_id.node())
                                 : tensor_id.ToString();
+}
+
+string SafeTensorIdToString(const SafeTensorId& tensor_id) {
+  return tensor_id.index() == 0 ? tensor_id.node() : tensor_id.ToString();
 }
 
 bool IsSameInput(const string& name1, const string& name2) {
@@ -254,21 +261,86 @@ int NumOutputs(const NodeDef& node, GraphDef* graph) {
 }
 
 bool HasControlInputs(const NodeDef& node) {
-  int num_inputs = node.input_size();
+  const int num_inputs = node.input_size();
   if (num_inputs > 0 && IsControlInput(node.input(num_inputs - 1))) {
     return true;
   }
   return false;
 }
 
+bool HasRegularInputs(const NodeDef& node) {
+  const int num_inputs = node.input_size();
+  if (num_inputs > 0 && !IsControlInput(node.input(0))) {
+    return true;
+  }
+  return false;
+}
+
 int NumNonControlInputs(const NodeDef& node) {
-  int num_inputs = node.input_size();
-  for (const string& input : node.input()) {
+  int num_inputs = 0;
+  for (; num_inputs < node.input_size(); ++num_inputs) {
+    const string& input = node.input(num_inputs);
     if (IsControlInput(input)) {
-      --num_inputs;
+      return num_inputs;
     }
   }
   return num_inputs;
+}
+
+int NumControlInputs(const NodeDef& node) {
+  int num_inputs = 0;
+  for (; num_inputs < node.input_size(); ++num_inputs) {
+    const string& input = node.input(node.input_size() - num_inputs - 1);
+    if (!IsControlInput(input)) {
+      return num_inputs;
+    }
+  }
+  return num_inputs;
+}
+
+bool HasRegularOutputs(const NodeDef& node, const NodeMap& node_map) {
+  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
+    for (const string& node_as_input : output->input()) {
+      if (IsControlInput(node_as_input)) break;
+
+      TensorId tensor = ParseTensorName(node_as_input);
+      if (tensor.node() == node.name()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool HasControlOutputs(const NodeDef& node, const NodeMap& node_map) {
+  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
+    for (int idx = output->input_size() - 1; idx >= 0; --idx) {
+      const string& node_as_input = output->input(idx);
+      if (!IsControlInput(node_as_input)) break;
+
+      TensorId tensor = ParseTensorName(node_as_input);
+      if (tensor.node() == node.name()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+int NumControlOutputs(const NodeDef& node, const NodeMap& node_map) {
+  int num_outputs = 0;
+  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
+    for (int idx = output->input_size() - 1; idx >= 0; --idx) {
+      const string& node_as_input = output->input(idx);
+      if (!IsControlInput(node_as_input)) break;
+
+      TensorId tensor = ParseTensorName(node_as_input);
+      if (tensor.node() == node.name()) {
+        ++num_outputs;
+      }
+    }
+  }
+  return num_outputs;
 }
 
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
@@ -489,13 +561,26 @@ Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys) {
   return Status::OK();
 }
 
-Status IsKernelRegisteredForNode(const NodeDef& node) {
+Status IsKernelRegisteredForNode(
+    absl::string_view node_name, bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
+    absl::string_view node_op, absl::string_view node_device,
+    AttrSlice node_attrs) {
   DeviceNameUtils::ParsedName parsed_name;
-  if (!DeviceNameUtils::ParseFullName(node.device(), &parsed_name)) {
+  if (!DeviceNameUtils::ParseFullName(node_device, &parsed_name)) {
     return errors::InvalidArgument("Could not parse device name: ",
-                                   node.device());
+                                   node_device);
   }
-  return FindKernelDef(DeviceType(parsed_name.type), node, nullptr, nullptr);
+  return FindKernelDef(DeviceType(parsed_name.type), node_name,
+                       has_experimental_debug_info, experimental_debug_info,
+                       node_op, node_device, node_attrs, nullptr, nullptr);
+}
+
+Status IsKernelRegisteredForNode(const NodeDef& node) {
+  return IsKernelRegisteredForNode(node.name(),
+                                   node.has_experimental_debug_info(),
+                                   node.experimental_debug_info(), node.op(),
+                                   node.device(), AttrSlice(&node.attr()));
 }
 
 }  // end namespace grappler

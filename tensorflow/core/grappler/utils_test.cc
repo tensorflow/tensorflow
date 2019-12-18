@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 
 #include <unistd.h>
+
 #include <limits>
 #include <memory>
 
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/graph/benchmark_testlib.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -322,15 +324,15 @@ TEST_F(UtilsTest, DedupControlInputs) {
 TEST_F(UtilsTest, NumNonControlOutputs) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  //  *) Round node has control dependency edge from Add, which
-  //     is not on this scheme (ASCII graphics limitation).
-  //
   //   *Round    [Sqrt, Shape]
   //      |           |
   //      |   ctrl    |
   //     Mul ------> Add
   //     / \         / \
   //    x   y       a   b
+  //
+  //  *) Round node has control dependency edge from Add, which
+  //     is not on this scheme (ASCII graphics limitation).
   auto x = ops::Variable(s.WithOpName("x"), {1, 2}, DT_FLOAT);
   auto y = ops::Variable(s.WithOpName("y"), {1, 2}, DT_FLOAT);
   auto a = ops::Variable(s.WithOpName("a"), {1, 2}, DT_FLOAT);
@@ -350,14 +352,36 @@ TEST_F(UtilsTest, NumNonControlOutputs) {
   NodeMap node_map(&graph);
 
   const NodeDef* add_node = node_map.GetNode("add");
+  const NodeDef* mul_node = node_map.GetNode("mul");
   ASSERT_NE(add_node, nullptr);
 
   // [a, b] are only non-control inputs
   EXPECT_EQ(NumNonControlInputs(*add_node), 2);
+  EXPECT_EQ(NumControlInputs(*add_node), 1);
   // [sqrt, shape] are non control outputs
   EXPECT_EQ(NumNonControlOutputs(*add_node, node_map), 2);
   // sqrt is the only data output
   EXPECT_EQ(NumNonControlDataOutputs(*add_node, node_map), 1);
+  EXPECT_EQ(NumControlInputs(*mul_node), 0);
+
+  EXPECT_TRUE(HasControlInputs(*add_node));
+  EXPECT_TRUE(HasRegularInputs(*add_node));
+  EXPECT_TRUE(HasControlOutputs(*add_node, node_map));
+  EXPECT_TRUE(HasRegularOutputs(*add_node, node_map));
+
+  const NodeDef* x_node = node_map.GetNode("x");
+  ASSERT_NE(x_node, nullptr);
+  EXPECT_FALSE(HasControlInputs(*x_node));
+  EXPECT_FALSE(HasRegularInputs(*x_node));
+  EXPECT_FALSE(HasControlOutputs(*x_node, node_map));
+  EXPECT_TRUE(HasRegularOutputs(*x_node, node_map));
+
+  const NodeDef* round_node = node_map.GetNode("round");
+  ASSERT_NE(round_node, nullptr);
+  EXPECT_TRUE(HasControlInputs(*round_node));
+  EXPECT_TRUE(HasRegularInputs(*round_node));
+  EXPECT_FALSE(HasControlOutputs(*round_node, node_map));
+  EXPECT_FALSE(HasRegularOutputs(*round_node, node_map));
 }
 
 TEST(CheckAttrExists, All) {
@@ -393,11 +417,16 @@ TEST_F(UtilsTest, DeleteNodes) {
 TEST(IsKernelRegisteredForNode, All) {
   NodeDef node;
   node.set_name("foo");
-  node.set_op("NoOp");
+  node.set_op("MatMul");
   node.set_device("/cpu:0");
+  AttrValue v;
+  v.set_type(DataType::DT_FLOAT);
+  (*node.mutable_attr())["T"] = v;
   TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+#ifdef GOOGLE_CUDA
   node.set_device("/gpu:0");
   TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+#endif  // GOOGLE_CUDA
 
   // Bad device name.
   node.set_device("");
@@ -427,6 +456,16 @@ BM_NodePositionIfSameNode("foo/bar/baz", "foo/bar/baz", Match_0);
 BM_NodePositionIfSameNode("^foo/bar/baz", "foo/bar/baz", Match_Ctrl);
 BM_NodePositionIfSameNode("blah", "foo/bar/baz", NoMatch_0);
 BM_NodePositionIfSameNode("foo/bar/baz/gnu", "foo/bar/baz", NoMatch_end);
+
+static void BM_NodeNameAsStringPiece(int iters, int size) {
+  string input(size + 3, 'x');
+  input[size] = ':';
+  for (int i = 0; i < iters; ++i) {
+    StringPiece node_name = NodeNameAsStringPiece(input);
+    CHECK_GT(node_name.size(), 0);
+  }
+}
+BENCHMARK(BM_NodeNameAsStringPiece)->Range(1, 1024);
 
 #define BM_ParseNodeNameAsStringPiece(I, NAME)                               \
   static void BM_ParseNodeNameAsStringPiece_##NAME(int iters) {              \
@@ -472,6 +511,13 @@ TEST_F(UtilsTest, TensorIdToString) {
   EXPECT_EQ(TensorIdToString({"foo", 0}), "foo");
   EXPECT_EQ(TensorIdToString({"foo", 1}), "foo:1");
   EXPECT_EQ(TensorIdToString({"foo", 2}), "foo:2");
+}
+
+TEST_F(UtilsTest, SafeTensorIdToString) {
+  EXPECT_EQ(SafeTensorIdToString({"foo", -1}), "^foo");
+  EXPECT_EQ(SafeTensorIdToString({"foo", 0}), "foo");
+  EXPECT_EQ(SafeTensorIdToString({"foo", 1}), "foo:1");
+  EXPECT_EQ(SafeTensorIdToString({"foo", 2}), "foo:2");
 }
 
 template <typename T>
@@ -567,6 +613,17 @@ TEST(SetTensorValueTest, Quantized) {
   TestSetTensorValue<qint32>(DT_QINT32, kMaxInt, /*success=*/true,
                              /*error_msg=*/"");
 }
+
+static void BM_NodeMapConstruct(int iters, int size) {
+  testing::StopTiming();
+  GraphDef graph = test::CreateRandomGraph(size);
+  testing::StartTiming();
+  for (int i = 0; i < iters; i++) {
+    NodeMap node_map(&graph);
+  }
+  testing::StopTiming();
+}
+BENCHMARK(BM_NodeMapConstruct)->Range(1, 1 << 20);
 
 }  // namespace
 }  // namespace grappler

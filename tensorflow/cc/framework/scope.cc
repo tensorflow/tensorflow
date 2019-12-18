@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope_internal.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
@@ -153,6 +152,8 @@ Scope::Impl::Impl(const Scope& other, Tags::Device, const string& device)
       exit_on_error_(other.impl()->exit_on_error_),
       kernel_label_(other.impl()->kernel_label_),
       device_(device),
+      assigned_device_(other.impl()->assigned_device_),
+      xla_cluster_(other.impl()->xla_cluster_),
       colocation_constraints_(other.impl()->colocation_constraints_),
       disable_shape_inference_(other.impl()->disable_shape_inference_) {}
 
@@ -271,10 +272,10 @@ std::unordered_set<string> Scope::Impl::GetColocationConstraints(
   std::unordered_set<string> current_constraints(colocation_constraints_);
   const AttrSlice attrs = colocate_with_op.node()->attrs();
   std::vector<string> node_constraints;
-  if (GetNodeAttr(attrs, kColocationAttrName, &node_constraints).ok()) {
+  if (TryGetNodeAttr(attrs, kColocationAttrName, &node_constraints)) {
     for (const string& entry : node_constraints) {
       StringPiece s(entry);
-      if (str_util::ConsumePrefix(&s, kColocationGroupPrefix)) {
+      if (absl::ConsumePrefix(&s, kColocationGroupPrefix)) {
         current_constraints.emplace(s);
       }
     }
@@ -298,7 +299,7 @@ const std::vector<Operation>& Scope::control_deps() const {
   return impl()->control_deps_;
 }
 
-void Scope::UpdateStatus(const Status s) const {
+void Scope::UpdateStatus(const Status& s) const {
   impl()->status_->Update(s);
   if (impl()->exit_on_error_ && !ok()) {
     LOG(FATAL) << *impl()->status_;
@@ -313,12 +314,11 @@ Status Scope::ToGraphDef(GraphDef* gdef) const {
   return Status::OK();
 }
 
-Status Scope::ToGraph(Graph* g) const {
+Status Scope::ToGraph(Graph* g, GraphConstructorOptions opts) const {
   if (ok()) {
     GraphDef graph_def;
     graph()->ToGraphDef(&graph_def);
-    GraphConstructorOptions opts;
-    UpdateStatus(ConvertGraphDefToGraph(opts, graph_def, g));
+    UpdateStatus(ConvertGraphDefToGraph(opts, std::move(graph_def), g));
   }
   return *impl()->status_;
 }
@@ -529,6 +529,25 @@ class InternalScope {
 
 Scope NewInternalScope(Graph* graph, Status* status, ShapeRefiner* refiner) {
   return InternalScope::NewScope(graph, status, refiner);
+}
+
+Status CreateOutputWithScope(string op_name,
+                             absl::Span<const ::tensorflow::Input> inputs,
+                             const Scope& scope, Output* output) {
+  TF_RETURN_IF_ERROR(scope.status());
+  const auto unique_name = scope.GetUniqueNameForOp(op_name);
+  auto builder = ::tensorflow::NodeBuilder(unique_name, op_name);
+  for (auto input : inputs) {
+    TF_RETURN_IF_ERROR(scope.status());
+    builder = builder.Input(input.node());
+  }
+  ::tensorflow::Node* ret;
+  scope.UpdateBuilder(&builder);
+  TF_RETURN_IF_ERROR(scope.status());
+  scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
+  TF_RETURN_IF_ERROR(scope.status());
+  *output = Output(ret, 0);
+  return Status::OK();
 }
 
 }  // namespace tensorflow

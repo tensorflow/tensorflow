@@ -18,3 +18,6 @@ def if_gpu_is_configured(x):
     if cuda_is_configured() or rocm_is_configured():
         return x
     return []
+
+def if_cuda_or_rocm(x):
+    return if_gpu_is_configured(x)

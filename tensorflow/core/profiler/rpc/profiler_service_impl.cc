@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
+
 #include "grpcpp/support/status.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
-#include "tensorflow/core/platform/grpc_services.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -25,10 +25,6 @@ namespace {
 
 class ProfilerServiceImpl : public grpc::ProfilerService::Service {
  public:
-  explicit ProfilerServiceImpl(const ProfilerContext& profiler_context)
-      : profiler_context_(profiler_context) {}
-  ~ProfilerServiceImpl() override {}
-
   ::grpc::Status Monitor(::grpc::ServerContext* ctx, const MonitorRequest* req,
                          MonitorResponse* response) override {
     return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "unimplemented.");
@@ -37,16 +33,13 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
   ::grpc::Status Profile(::grpc::ServerContext* ctx, const ProfileRequest* req,
                          ProfileResponse* response) override {
     LOG(INFO) << "Received a profile request.";
-    std::unique_ptr<ProfilerSession> profiler =
-        ProfilerSession::Create(&profiler_context_);
+    std::unique_ptr<ProfilerSession> profiler = ProfilerSession::Create();
     if (!profiler->Status().ok()) {
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,
                             profiler->Status().error_message());
     }
 
-    Env* env = profiler_context_.eager_context != nullptr
-                   ? profiler_context_.eager_context->TFEnv()
-                   : Env::Default();
+    Env* env = Env::Default();
     for (size_t i = 0; i < req->duration_ms(); ++i) {
       env->SleepForMicroseconds(1000);
       if (ctx->IsCancelled()) {
@@ -61,15 +54,11 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
 
     return ::grpc::Status::OK;
   }
-
- private:
-  ProfilerContext profiler_context_;
 };
 }  // namespace
 
-std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService(
-    const ProfilerContext& profiler_context) {
-  return MakeUnique<ProfilerServiceImpl>(profiler_context);
+std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService() {
+  return MakeUnique<ProfilerServiceImpl>();
 }
 
 }  // namespace tensorflow

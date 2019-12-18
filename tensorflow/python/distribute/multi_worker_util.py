@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import cluster_pb2
+from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.training import server_lib
 
 
@@ -49,11 +50,17 @@ def normalize_cluster_spec(cluster_spec):
 def _validate_cluster_spec(cluster_spec, task_type, task_id):
   """Validates `cluster_spec`.
 
-  It checks
-  1) whether there is such a task type as `task_type` in the
-  `cluster_spec`.
-  2) whether there is at most one "chief" job.
-  3) whether the `task_id` is smaller than the number of `task_type`.
+  It checks:
+  0) None of `cluster_spec`, `task_type`, and `task_id` is `None`.
+  1) task type is one of "chief", "worker" or "evaluator".
+  2) whether there is such a task type as `task_type` in the `cluster_spec`. The
+     only exception is `evaluator`. In other words, it is still a valid
+     configuration when `task_type` is `evaluator` but it doesn't appear in
+     `cluster_spec`. This is to be compatible with `TF_CONFIG` in Estimator.
+  3) whether there is at most one "chief" job.
+  4) whether there is at most one "evaluator" job.
+  5) whether the `task_id` is smaller than the number of tasks for that
+     particular `task_type`.
 
   Args:
     cluster_spec: a dict, `ClusterDef` or `ClusterSpec` object to be validated.
@@ -62,18 +69,40 @@ def _validate_cluster_spec(cluster_spec, task_type, task_id):
   Throws:
     ValueError: if `cluster_spec` fails any check.
   """
+  if cluster_spec is None or task_type is None or task_id is None:
+    raise ValueError(
+        "None of `cluster_spec`, `task_type`, and `task_id` should be `None`.")
+
   cluster_spec = normalize_cluster_spec(cluster_spec).as_dict()
-  if task_type and task_type not in cluster_spec:
+  if task_type not in ("chief", "worker", "evaluator", "ps"):
+    raise ValueError(
+        "Unrecognized task_type: %r, valid task types are: \"chief\", "
+        "\"worker\", \"evaluator\" and \"ps\"." % task_type)
+
+  if task_type and task_type not in cluster_spec and task_type != "evaluator":
     raise ValueError("`task_type` %r not found in cluster_spec." % task_type)
+
   if len(cluster_spec.get("chief", [])) > 1:
     raise ValueError("There must be at most one 'chief' job.")
-  if task_id >= len(cluster_spec[task_type]):
+
+  if len(cluster_spec.get("evaluator", [])) > 1:
+    raise ValueError("There must be at most one 'evaluator' job.")
+
+  # The `evaluator` job is allowed to be missing in `cluster_spec`.
+  if task_type in cluster_spec and task_id >= len(cluster_spec[task_type]):
     raise ValueError(
         "The `task_id` %d exceeds the maximum id of %s." % (task_id, task_type))
 
 
-def is_chief(cluster_spec, task_type, task_id):
+def is_chief(cluster_spec=None, task_type=None, task_id=None):
   """Returns whether the given task is chief in the cluster.
+
+  Since there is at most one evaluator and the evaluator itself should be
+  independent of the training cluster, the evaluator job is also a chief job on
+  its own.
+
+  If this is currently running under a `_WorkerContext` of distribute
+  coordinator, the arguments can be omitted as the result is already available.
 
   Args:
     cluster_spec: a dict, `ClusterDef` or `ClusterSpec` object specifying the
@@ -88,10 +117,14 @@ def is_chief(cluster_spec, task_type, task_id):
     ValueError: if `task_type` is not in the `cluster_spec` or `task_id` exceeds
       the maximum id of the `task_type`.
   """
+  if has_worker_context():
+    # If a worker context exists, use the value provided by it.
+    return dc_context.get_current_worker_context().is_chief
+
   _validate_cluster_spec(cluster_spec, task_type, task_id)
   cluster_spec = normalize_cluster_spec(cluster_spec).as_dict()
 
-  if task_type == "chief":
+  if task_type == "chief" or task_type == "evaluator":
     return True
 
   # If chief not in the cluster_spec, use the first worker as chief. This is
@@ -99,6 +132,40 @@ def is_chief(cluster_spec, task_type, task_id):
   if ("chief" not in cluster_spec and task_type == "worker" and task_id == 0):
     return True
   return False
+
+
+def collective_leader(cluster_spec, task_type, task_id):
+  """Return the job name for the leader of for collective ops.
+
+  Args:
+    cluster_spec: a dict, `ClusterDef` or `ClusterSpec` object specifying the
+      cluster configurations.
+    task_type: the task type in the cluster.
+    task_id: the task id in the cluster.
+
+  Returns:
+    a string indicating the leader job name or empty string if no need to set
+    leader job.
+  """
+  cluster_spec = normalize_cluster_spec(cluster_spec)
+
+  # No need to set collective leader for local.
+  if not cluster_spec.as_dict():
+    return ""
+
+  _validate_cluster_spec(cluster_spec, task_type, task_id)
+
+  # Only one evaluator, so no need to set collective leader.
+  if task_type == "evaluator":
+    return ""
+
+  # Use chief if chief is in the cluster.
+  if "chief" in cluster_spec.jobs:
+    return "/job:chief/replica:0/task:0"
+
+  # Use worker 0 if no chief job.
+  assert "worker" in cluster_spec.jobs
+  return "/job:worker/replica:0/task:0"
 
 
 def worker_count(cluster_spec, task_type):
@@ -158,3 +225,42 @@ def id_in_cluster(cluster_spec, task_type, task_id):
 
   # We currently don't assign ids to other tasks.
   raise ValueError("There is no id for task_type %r" % task_type)
+
+
+def should_save_checkpoint():
+  """Returns whether the current worker should save checkpoints.
+
+  In multi-worker training, if saving checkpoint is requested by user, or needed
+  for fault-tolerance, the cluster should save checkpoint but not necessarily
+  every worker in the cluster should.
+
+  TODO(rchao): Consider generalizing this util to be `should_save_file` as there
+  can be other files to save such as summary.
+
+  Returns:
+      Whether this particular worker in the cluster should save checkpoints.
+  """
+  return dc_context.get_current_worker_context().should_checkpoint
+
+
+def should_load_checkpoint():
+  """Returns whether the current worker should load checkpoints.
+
+  In multi-worker training, if loading checkpoint is requested by user, or
+  needed for fault-tolerance, the cluster should load checkpoint but not
+  necessarily every worker in the cluster should.
+
+  Returns:
+      Whether this particular worker in the cluster should load checkpoints.
+  """
+  return dc_context.get_current_worker_context().experimental_should_init
+
+
+def wait_for_other_workers():
+  """Waits for other workers to reach the same call to this method."""
+  return dc_context.get_current_worker_context().wait_for_other_workers()
+
+
+def has_worker_context():
+  """Returns whether a worker context has been entered."""
+  return dc_context.get_current_worker_context() is not None

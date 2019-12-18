@@ -100,7 +100,7 @@ bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, TensorResponse* dst) {
   return s.ok();
 }
 
-// GrpcMaybeParseProto into a string simply copies bytes into the string.
+// GrpcMaybeParseProto simply copies bytes into the string.
 bool GrpcMaybeParseProto(grpc::ByteBuffer* src, string* dst) {
   dst->clear();
   dst->reserve(src->Length());
@@ -113,5 +113,21 @@ bool GrpcMaybeParseProto(grpc::ByteBuffer* src, string* dst) {
   }
   return true;
 }
+
+#ifdef USE_TSTRING
+// GrpcMaybeParseProto simply copies bytes into the tstring.
+bool GrpcMaybeParseProto(grpc::ByteBuffer* src, tstring* dst) {
+  dst->clear();
+  dst->reserve(src->Length());
+  std::vector<::grpc::Slice> slices;
+  if (!src->Dump(&slices).ok()) {
+    return false;
+  }
+  for (const ::grpc::Slice& s : slices) {
+    dst->append(reinterpret_cast<const char*>(s.begin()), s.size());
+  }
+  return true;
+}
+#endif  // USE_TSTRING
 
 }  // namespace tensorflow

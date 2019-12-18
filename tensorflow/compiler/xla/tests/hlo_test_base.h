@@ -32,39 +32,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
-
-// An HLO module derived class which verifies itself on destruction. This class
-// is intended to be used in unit tests. Any verification errors are raised via
-// ADD_FAILURE.
-class VerifiedHloModule : public HloModule {
- public:
-  VerifiedHloModule(const string& name, const HloModuleConfig& config,
-                    bool verifier_layout_sensitive,
-                    bool allow_mixed_precision_in_hlo_verifier,
-                    std::function<int64(const Shape&)> shape_size_function)
-      : HloModule(name, config),
-        verifier_(
-            verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier,
-            /*instruction_can_change_layout_func=*/{}, shape_size_function) {}
-
-  ~VerifiedHloModule() override { VerifyOrAddFailure("in destructor"); }
-
-  // Verifies the module using HloVerifier and returns the status.
-  Status Verify();
-
-  // Verifies the module and flags any error with ADD_FAILURE. 'message' is
-  // included in the failure message.
-  void VerifyOrAddFailure(const string& message);
-
- private:
-  HloVerifier verifier_;
-};
 
 // A base class for tests which build and/or run HLO code. The class includes
 // support for running an HLO module on two platforms and compare the results.
@@ -114,8 +88,9 @@ class HloTestBase : public ::testing::Test {
 
   // Parses the given string and returns module as a VerifiedHloModule.
   StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
-      absl::string_view hlo_text,
-      const HloModuleConfig& config = HloModuleConfig());
+      absl::string_view hlo_text);
+  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text, const HloModuleConfig& config);
 
   // Runs the hlo_pass with the provided module and returns the result. This
   // function also verifies that the module remains unchanged when hlo_pass
@@ -174,9 +149,19 @@ class HloTestBase : public ::testing::Test {
                              absl::Span<Literal* const> arguments);
 
   // Executes the given module on multiple replicas.
+  //
+  // use_threads indicates whether this replicated computation will be executed
+  // with a thread-per-replica, vs using an implicitly async call such as
+  // Executable::ExecuteOnStreams.
   StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-      int64 num_replicas);
+      int64 num_replicas, bool use_threads, bool run_hlo_passes = false);
+
+  // Same as above, but uses specified device assignment.
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
+      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
+      int64 num_replicas, DeviceAssignment* device_assignment,
+      bool run_hlo_passes, bool use_threads);
 
   // Executes the given hlo module on two backends and compares results.
   //

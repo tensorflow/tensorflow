@@ -18,12 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
@@ -33,9 +36,43 @@ from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class MathTest(PForTestCase):
+class MathTest(PForTestCase, parameterized.TestCase):
 
-  def test_unary_cwise_ops(self):
+  def _test_unary_cwise_ops(self, ops, is_complex):
+    for op in ops:
+      with backprop.GradientTape(persistent=True) as g:
+        x = random_ops.random_uniform([3, 5])
+        g.watch(x)
+        if is_complex:
+          y = random_ops.random_uniform([3, 5])
+          g.watch(y)
+          x = math_ops.complex(x, y)
+
+      # pylint: disable=cell-var-from-loop
+      output_dtypes = []
+
+      def loop_fn(i):
+        with g:
+          x1 = array_ops.gather(x, i)
+          y1 = op(x1)
+          outputs = [op(x), y1]
+          if y1.dtype == dtypes.float32:
+            loss = math_ops.reduce_sum(y1 * y1)
+          else:
+            loss = None
+        if loss is not None:
+          grad = g.gradient(loss, x1)
+          if grad is not None:
+            outputs.append(grad)
+        del output_dtypes[:]
+        output_dtypes.extend(t.dtype for t in outputs)
+        return outputs
+
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 3)
+
+  def test_unary_cwise_complex_ops(self):
     complex_ops = [
         math_ops.angle,
         math_ops.imag,
@@ -43,6 +80,9 @@ class MathTest(PForTestCase):
         math_ops.real,
         math_ops.conj,
     ]
+    self._test_unary_cwise_ops(complex_ops, True)
+
+  def test_unary_cwise_real_ops_1(self):
     real_ops = [
         lambda x: math_ops.acosh(1 + math_ops.square(x)),
         math_ops.abs,
@@ -58,6 +98,7 @@ class MathTest(PForTestCase):
         math_ops.digamma,
         math_ops.erf,
         math_ops.erfc,
+        math_ops.erfinv,
         math_ops.exp,
         math_ops.expm1,
         math_ops.inv,
@@ -66,6 +107,12 @@ class MathTest(PForTestCase):
         math_ops.lgamma,
         math_ops.log,
         math_ops.log1p,
+        math_ops.ndtri,
+    ]
+    self._test_unary_cwise_ops(real_ops, False)
+
+  def test_unary_cwise_real_ops_2(self):
+    real_ops = [
         math_ops.neg,
         math_ops.negative,
         math_ops.reciprocal,
@@ -80,7 +127,6 @@ class MathTest(PForTestCase):
         math_ops.square,
         math_ops.tan,
         math_ops.tanh,
-        math_ops.tanh,
         nn.elu,
         nn.relu,
         nn.relu6,
@@ -88,37 +134,7 @@ class MathTest(PForTestCase):
         nn.softplus,
         nn.softsign,
     ]
-    for op in complex_ops + real_ops:
-      with backprop.GradientTape(persistent=True) as g:
-        x = random_ops.random_uniform([3, 5])
-        g.watch(x)
-        if op in complex_ops:
-          y = random_ops.random_uniform([3, 5])
-          g.watch(y)
-          x = math_ops.complex(x, y)
-
-      # pylint: disable=cell-var-from-loop
-      output_dtypes = []
-      def loop_fn(i):
-        with g:
-          x1 = array_ops.gather(x, i)
-          y1 = op(x1)
-          outputs = [op(x), y1]
-          if y1.dtype == dtypes.float32:
-            loss = math_ops.reduce_sum(y1 * y1)
-          else:
-            loss = None
-        if loss is not None:
-          grad = g.gradient(loss, x1)
-          if grad is not None:
-            outputs.append(grad)
-        del output_dtypes[:]
-        output_dtypes.extend([t.dtype for t in outputs])
-        return outputs
-
-      # pylint: enable=cell-var-from-loop
-
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=output_dtypes)
+    self._test_unary_cwise_ops(real_ops, False)
 
   def test_unary_cwise_no_grad(self):
     for op in [math_ops.ceil,
@@ -134,7 +150,7 @@ class MathTest(PForTestCase):
 
       # pylint: enable=cell-var-from-loop
 
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=x.dtype)
+      self._test_loop_fn(loop_fn, 3)
 
   def test_binary_cwise_ops(self):
     logical_ops = [
@@ -199,11 +215,11 @@ class MathTest(PForTestCase):
         y1 = array_ops.gather(y, i)
         outputs = [op(x, y), op(x1, y), op(x, y1), op(x1, y1), op(x1, x1)]
         del output_dtypes[:]
-        output_dtypes.extend([t.dtype for t in outputs])
+        output_dtypes.extend(t.dtype for t in outputs)
         return outputs
       # pylint: enable=cell-var-from-loop
 
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=output_dtypes)
+      self._test_loop_fn(loop_fn, 3)
 
   def test_approximate_equal(self):
     x = random_ops.random_uniform([3, 5])
@@ -214,7 +230,7 @@ class MathTest(PForTestCase):
       y1 = array_ops.gather(y, i)
       return math_ops.approximate_equal(x1, y1)
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.bool])
+    self._test_loop_fn(loop_fn, 3)
 
   def test_addn(self):
     x = random_ops.random_uniform([2, 3, 5])
@@ -226,6 +242,18 @@ class MathTest(PForTestCase):
       return math_ops.add_n([x1, y, z])
 
     self._test_loop_fn(loop_fn, 2)
+
+  def test_cross(self):
+    x = random_ops.random_uniform([4, 2, 3])
+    y = random_ops.random_uniform([4, 2, 3])
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      y_i = array_ops.gather(y, i)
+      x_0 = array_ops.gather(x, 0)
+      return math_ops.cross(x_i, y_i), math_ops.cross(x_0, y_i)
+
+    self._test_loop_fn(loop_fn, 4)
 
   def test_matmul(self):
     for tr_a in (True, False):
@@ -277,12 +305,48 @@ class MathTest(PForTestCase):
 
             self._test_loop_fn(loop_fn, 2)
 
+  def test_batch_matmul_broadcast(self):
+    for broadcast_a in (True, False):
+      for broadcast_b in (True, False):
+        for stack_a in (True, False):
+          for stack_b in (True, False):
+            shape_a = (2, 3, 5) if broadcast_a else (4, 2, 3, 5)
+            shape_b = (2, 5, 7) if broadcast_b else (4, 2, 5, 7)
+            shape_a = (2,) + shape_a if stack_a else shape_a
+            shape_b = (2,) + shape_b if stack_b else shape_b
+            x = random_ops.random_uniform(shape_a)
+            y = random_ops.random_uniform(shape_b)
+
+            # pylint: disable=cell-var-from-loop
+            def loop_fn(i):
+              a = array_ops.gather(x, i) if stack_a else x
+              b = array_ops.gather(y, i) if stack_b else y
+              return math_ops.matmul(a, b)
+
+            # pylint: enable=cell-var-from-loop
+            self._test_loop_fn(loop_fn, 2)
+
   def test_reduction(self):
     x = random_ops.random_uniform([2, 3, 4, 5])
     for op in [
         math_ops.reduce_sum, math_ops.reduce_prod, math_ops.reduce_max,
         math_ops.reduce_min, math_ops.reduce_mean,
     ]:
+      for axis in ([1], None, [0, 2]):
+        for keepdims in (True, False):
+
+          # pylint: disable=cell-var-from-loop
+          def loop_fn(i):
+            a = array_ops.gather(x, i)
+            return op(a, axis=axis, keepdims=keepdims)
+
+          # pylint: enable=cell-var-from-loop
+
+          self._test_loop_fn(loop_fn, 2)
+
+  def test_boolean_reduction(self):
+    x = random_ops.random_uniform([2, 3, 4, 5]) > 0.5
+    for op in [math_ops.reduce_any, math_ops.reduce_all]:
       for axis in ([1], None, [0, 2]):
         for keepdims in (True, False):
 
@@ -367,21 +431,82 @@ class MathTest(PForTestCase):
           if stacked_bias:
             out_dtypes = out_dtypes + [dtypes.int32]
           self._test_loop_fn(
-              loop_fn, 2, loop_fn_dtypes=out_dtypes)
+              loop_fn, 2)
 
   def test_unsorted_segment_sum(self):
     t = random_ops.random_uniform([3, 3, 2])
-    segment_ids = constant_op.constant([[0, 0, 2], [0, 1, 2], [2, 2, 2]])
-    num_segments = 3
+    for segment_ids_dtype in (dtypes.int32, dtypes.int64):
+      for num_segments_dtype in (dtypes.int32, dtypes.int64):
+        segment_ids = constant_op.constant([[0, 0, 2], [0, 1, 2], [2, 2, 2]],
+                                           dtype=segment_ids_dtype)
+        num_segments = constant_op.constant(3, dtype=num_segments_dtype)
+
+        # pylint: disable=cell-var-from-loop
+        def loop_fn(i):
+          data = array_ops.gather(t, i)
+          data_0 = array_ops.gather(t, 0)
+          seg_ids = array_ops.gather(segment_ids, i)
+          seg_ids_0 = array_ops.gather(segment_ids, 0)
+          return (math_ops.unsorted_segment_sum(data, seg_ids, num_segments),
+                  math_ops.unsorted_segment_sum(data_0, seg_ids, num_segments),
+                  math_ops.unsorted_segment_sum(data, seg_ids_0, num_segments))
+        # pylint: enable=cell-var-from-loop
+
+        self._test_loop_fn(loop_fn, 3)
+
+  @parameterized.parameters((math_ops.sparse_segment_sum_v2, True),
+                            (math_ops.sparse_segment_mean_v2, True),
+                            (math_ops.sparse_segment_sqrt_n_v2, True),
+                            (math_ops.sparse_segment_sum_v2, False),
+                            (math_ops.sparse_segment_mean_v2, False),
+                            (math_ops.sparse_segment_sqrt_n_v2, False))
+  def test_sparse_segment(self, op_func, with_num_segments):
+    data = random_ops.random_uniform([3, 4, 2])
+    indices = constant_op.constant([[1, 2, 3], [0, 1, 2], [0, 2, 3]])
+    seg_ids = constant_op.constant([[0, 0, 2], [1, 1, 1], [0, 1, 1]])
+    if with_num_segments:
+      num_segments = 3
+    else:
+      num_segments = None
 
     def loop_fn(i):
-      data = array_ops.gather(t, i)
-      data_0 = array_ops.gather(t, 0)
-      seg_ids = array_ops.gather(segment_ids, i)
-      return (math_ops.unsorted_segment_sum(data, seg_ids, num_segments),
-              math_ops.unsorted_segment_sum(data_0, seg_ids, num_segments))
+      data_i = array_ops.gather(data, i)
+      data_0 = array_ops.gather(data, 0)
+      indices_i = array_ops.gather(indices, i)
+      indices_0 = array_ops.gather(indices, 0)
+      seg_ids_i = array_ops.gather(seg_ids, i)
+      seg_ids_0 = array_ops.gather(seg_ids, 0)
+      outputs = [
+          op_func(data_0, indices_i, seg_ids_0, num_segments=num_segments),
+          op_func(data_i, indices_i, seg_ids_0, num_segments=num_segments),
+          op_func(data_0, indices_0, seg_ids_0, num_segments=num_segments),
+          op_func(data_i, indices_0, seg_ids_0, num_segments=num_segments)
+      ]
+      if with_num_segments:
+        # For this case, we support loop variant segment_ids as well.
+        outputs += [
+            op_func(data_0, indices_i, seg_ids_i, num_segments=num_segments),
+            op_func(data_i, indices_i, seg_ids_i, num_segments=num_segments),
+            op_func(data_0, indices_0, seg_ids_i, num_segments=num_segments),
+            op_func(data_i, indices_0, seg_ids_i, num_segments=num_segments)
+        ]
+      return outputs
 
-    self._test_loop_fn(loop_fn, 3, [dtypes.float32] * 2)
+    self._test_loop_fn(loop_fn, 3)
+
+  @parameterized.parameters(math_ops.sparse_segment_mean_grad,
+                            math_ops.sparse_segment_sqrt_n_grad)
+  def test_sparse_segment_grad(self, op_func):
+    grad = random_ops.random_uniform([3, 3, 2])
+    indices = constant_op.constant([1, 2, 3])
+    seg_ids = constant_op.constant([0, 0, 2])
+    dim0 = 4
+
+    def loop_fn(i):
+      grad_i = array_ops.gather(grad, i)
+      return op_func(grad_i, indices, seg_ids, dim0)
+
+    self._test_loop_fn(loop_fn, 3)
 
   def test_cast(self):
     x = constant_op.constant([[1], [2]])
@@ -392,7 +517,7 @@ class MathTest(PForTestCase):
               math_ops.cast(array_ops.gather(y, i), dtypes.int32))
 
     self._test_loop_fn(
-        loop_fn, 2, loop_fn_dtypes=[dtypes.float32, dtypes.int32])
+        loop_fn, 2)
 
   def test_tanh_axpy(self):
     a = constant_op.constant(3.)
@@ -406,7 +531,6 @@ class MathTest(PForTestCase):
     self._test_loop_fn(loop_fn, n)
 
   def test_select(self):
-    cond = constant_op.constant([True, False])
     a = random_ops.random_uniform([2, 3, 5])
     b = random_ops.random_uniform([2, 3, 5])
     for cond_shape in [2], [2, 3], [2, 3, 5]:
@@ -423,6 +547,124 @@ class MathTest(PForTestCase):
 
       self._test_loop_fn(loop_fn, 2)
 
+  def test_selectv2_cond_needs_broadcast(self):
+    a = random_ops.random_uniform([2, 3, 5])
+    b = random_ops.random_uniform([2, 3, 5])
+    # wherev2 assumes all shapes are broadcastable with each other.
+    # This means that we can only specify conditions that are
+    # broadcastable with [3, 5].
+    for cond_shape in [2], [2, 1], [2, 5], [2, 3, 1], [2, 3, 5]:
+      cond = random_ops.random_uniform(cond_shape) > 0.5
+
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        a_i = array_ops.gather(a, i)
+        b_i = array_ops.gather(b, i)
+        cond_i = array_ops.gather(cond, i)
+        return array_ops.where_v2(cond_i, a_i, b_i)
+
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 2)
+
+  def test_selectv2_args_need_broadcast(self):
+    a = random_ops.random_uniform([2, 5])
+    b = random_ops.random_uniform([2, 3, 5])
+    # wherev2 assumes all shapes are broadcastable with each other.
+    # This means that we can only specify conditions that are
+    # broadcastable with [3, 5].
+    for cond_shape in [2], [2, 1], [2, 5], [2, 3, 1], [2, 3, 5]:
+      cond = random_ops.random_uniform(cond_shape) > 0.5
+
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        a_i = array_ops.gather(a, i)
+        b_i = array_ops.gather(b, i)
+        cond_i = array_ops.gather(cond, i)
+        return array_ops.where_v2(cond_i, a_i, b_i)
+
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 2)
+
+  def test_selectv2_cond_fixed(self):
+    cond = random_ops.random_uniform([3, 5]) > 0.5
+    b = random_ops.random_uniform([2, 3, 5])
+    # wherev2 assumes all shapes are broadcastable with each other.
+    # This means that we can only specify conditions that are
+    # broadcastable with [3, 5].
+    for a_shape in [2], [2, 1], [2, 5], [2, 3, 1], [2, 3, 5]:
+      a = random_ops.random_uniform(a_shape)
+
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        a_i = array_ops.gather(a, i)
+        b_i = array_ops.gather(b, i)
+        return array_ops.where_v2(cond, a_i, b_i)
+
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 2)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class LinalgTest(PForTestCase):
+
+  def test_cholesky(self):
+    z = random_ops.random_normal([2, 3, 3])
+    x = (math_ops.matmul(z, array_ops.matrix_transpose(z))  # Ensure pos. def.
+         + linalg_ops.eye(3))  # Ensure well-conditioned.
+
+    def loop_fn(i):
+      return linalg_ops.cholesky(array_ops.gather(x, i))
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_log_matrix_determinant(self):
+    for x_shape in ([3, 4, 2, 2], [3, 2, 2]):
+      x = random_ops.random_normal(x_shape)
+
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        return linalg_ops.log_matrix_determinant(array_ops.gather(x, i))
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 3)
+
+  def test_matrix_triangular_solve(self):
+    for lower in (True, False):
+      for adjoint in (True, False):
+        for stack_a in (True, False):
+          for stack_b in (True, False):
+            shape_a = (2, 4, 3, 3) if stack_a else (4, 3, 3)
+            shape_b = (2, 4, 3, 5) if stack_b else (4, 3, 5)
+            x = array_ops.matrix_band_part(
+                random_ops.random_uniform(shape_a)
+                + linalg_ops.eye(3),  # Ensure well-conditioned.
+                *((-1, 0) if lower else (0, -1)))  # Ensure triangular.
+            y = random_ops.random_uniform(shape_b)
+
+            # pylint: disable=cell-var-from-loop
+            def loop_fn(i):
+              a = array_ops.gather(x, i) if stack_a else x
+              b = array_ops.gather(y, i) if stack_b else y
+              return linalg_ops.matrix_triangular_solve(a, b,
+                                                        lower=lower,
+                                                        adjoint=adjoint)
+
+            # pylint: enable=cell-var-from-loop
+
+            self._test_loop_fn(loop_fn, 2)
+
+  def test_self_adjoint_eig(self):
+    z = random_ops.random_normal([2, 3, 3])
+    x = z + array_ops.matrix_transpose(z)  # Ensure self-adjoint.
+
+    def loop_fn(i):
+      return (linalg_ops.self_adjoint_eig(array_ops.gather(x, i)),
+              linalg_ops.self_adjoint_eigvals(array_ops.gather(x, i)))
+
+    self._test_loop_fn(loop_fn, 2)
 
 if __name__ == "__main__":
   test.main()

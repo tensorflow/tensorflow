@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -64,9 +64,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, input1->type, input2->type);
 
   const TfLiteType type = input1->type;
-  if (type != kTfLiteInt32) {
-    context->ReportError(context, "Currently floor_div only supports int32.");
-    return kTfLiteError;
+  switch (type) {
+    case kTfLiteFloat32:
+    case kTfLiteInt32:
+      break;
+    default:
+      context->ReportError(context, "Type '%s' is not supported by floor_div.",
+                           TfLiteTypeGetName(type));
+      return kTfLiteError;
   }
   output->type = type;
 
@@ -123,8 +128,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return EvalImpl<int32_t>(context, data->requires_broadcast, input1,
                                input2, output);
     }
+    case kTfLiteFloat32: {
+      return EvalImpl<float>(context, data->requires_broadcast, input1, input2,
+                             output);
+    }
     default: {
-      context->ReportError(context, "Currently floor_div only supports int32.");
+      context->ReportError(context, "Type '%s' is not supported by floor_div.",
+                           TfLiteTypeGetName(input1->type));
       return kTfLiteError;
     }
   }

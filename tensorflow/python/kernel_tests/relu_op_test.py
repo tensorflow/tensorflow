@@ -80,6 +80,8 @@ class ReluTest(test.TestCase):
   def testReluInt8x4GoodShape(self):
     if not test.is_gpu_available(cuda_only=True):
       self.skipTest("No GPU available")
+    if test.is_built_with_rocm():
+      self.skipTest("ROCm does not support int8x4 type")
     inputs = np.array([[-50, 7, 23, 0], [-1, -5, 6, 11]])
     np_relu = self._npRelu(inputs)
     tf_relu = nn_ops.relu(constant_op.constant(inputs, dtypes.qint8))
@@ -90,6 +92,8 @@ class ReluTest(test.TestCase):
   def testReluInt8x4BadShape(self):
     if not test.is_gpu_available(cuda_only=True):
       self.skipTest("No GPU available")
+    if test.is_built_with_rocm():
+      self.skipTest("ROCm does not support int8x4 type")
     inputs = constant_op.constant(
         np.array([[-50, 7, 23], [0, 1, -5], [6, -2, 11]]), dtypes.qint8)
     with self.assertRaisesRegexp(
@@ -104,6 +108,9 @@ class ReluTest(test.TestCase):
         errors.InvalidArgumentError,
         "Tensor size must be a multiple of 4 for Relu<qint8>. Got 17"):
       self.evaluate(nn_ops.relu(inputs))
+
+  def testNoElement(self):
+    self._testRelu(np.array([[], []], dtype=np.float32))
 
   # The gradient test for ReLU is a bit tricky as the derivative is not well
   # defined at around zero and we want to avoid that in terms of input values.
@@ -215,6 +222,19 @@ class ReluTest(test.TestCase):
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(optimizer.minimize(loss))
     self.assertAllClose(x.read_value(), 50.0)
+
+  def testGradientNoElement(self):
+    with self.cached_session():
+
+      def f(x):
+        with backprop.GradientTape() as tape:
+          tape.watch(x)
+          y = nn_ops.relu(x)
+        return tape.gradient(y, x)
+
+      x = np.asarray([[], []], dtype=np.float32)
+      z = list(gradient_checker_v2.compute_gradient(f, [x]))[0][0]
+      self.assertAllEqual(z, np.reshape(x, (0, 0)))
 
 
 class Relu6Test(test.TestCase):
@@ -390,6 +410,20 @@ class LeakyReluTest(test.TestCase):
     self.evaluate(optimizer.minimize(loss))
     self.assertAllClose(x.read_value(), -99.9)
 
+  def testUnexpectedAlphaValue(self):
+    self.assertAllClose(
+        np.array([[-9.0, 0.7, -5.0, 0.3, -0.1], [0.1, -3.0, 0.5, -27.0, 0.9]]),
+        nn_ops.leaky_relu(
+            np.array([[-0.9, 0.7, -0.5, 0.3, -0.01],
+                      [0.1, -0.3, 0.5, -2.7, 0.9]]),
+            alpha=10))
+    self.assertAllClose(
+        np.array([[9.0, 0.7, 5.0, 0.3, 0.1], [0.1, 3.0, 0.5, 27.0, 0.9]]),
+        nn_ops.leaky_relu(
+            np.array([[-0.9, 0.7, -0.5, 0.3, -0.01],
+                      [0.1, -0.3, 0.5, -2.7, 0.9]]),
+            alpha=-10))
+
 
 class EluTest(test.TestCase):
 
@@ -407,7 +441,7 @@ class EluTest(test.TestCase):
   def _testElu(self, np_features):
     np_elu = self._npElu(np_features)
     tf_elu = nn_ops.elu(np_features)
-    self.assertAllClose(np_elu, tf_elu)
+    self.assertAllCloseAccordingToType(np_elu, tf_elu)
     self.assertShapeEqual(np_elu, tf_elu)
 
   def testNumbersCPU(self):
@@ -515,14 +549,14 @@ class SeluTest(test.TestCase):
   def _testSelu(self, np_features):
     np_selu = self._npSelu(np_features)
     tf_selu = nn_ops.selu(np_features)
-    self.assertAllClose(np_selu, tf_selu)
+    self.assertAllCloseAccordingToType(np_selu, tf_selu)
     self.assertShapeEqual(np_selu, tf_selu)
 
   def testNumbers(self):
     for t in [np.float16, np.float32, np.float64]:
       self._testSelu(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
-      # Force executed on CPU in case GPU kernels are avaiable.
+      # Force executed on CPU in case GPU kernels are available.
       with ops.device("/device:CPU:0"):
         self._testSelu(
             np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))

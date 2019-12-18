@@ -60,7 +60,7 @@ const char kRewrite[] = " ";
 Tensor GetTestTensor(int batch) {
   const int sz = TF_ARRAYSIZE(lines);
   Tensor t(DT_STRING, {batch});
-  auto s = t.flat<string>();
+  auto s = t.flat<tstring>();
   for (int i = 0; i < batch; ++i) {
     s(i) = lines[i % sz];
   }
@@ -71,9 +71,9 @@ Graph* SetupRegexReplaceGraph(const Tensor& input, const string& input_pattern,
                               const string& input_rewrite) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor pattern(DT_STRING, TensorShape({}));
-  pattern.flat<string>().setConstant(input_pattern);
+  pattern.flat<tstring>().setConstant(input_pattern);
   Tensor rewrite(DT_STRING, TensorShape({}));
-  rewrite.flat<string>().setConstant(input_rewrite);
+  rewrite.flat<tstring>().setConstant(input_rewrite);
 
   TF_CHECK_OK(NodeBuilder("regex_replace_op", "RegexReplace")
                   .Input(test::graph::Constant(g, input))

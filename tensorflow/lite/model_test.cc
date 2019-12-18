@@ -116,7 +116,7 @@ TEST(BasicFlatBufferModel, TestModelWithoutNullRegistrations) {
   ASSERT_EQ(interpreter, nullptr);
 }
 
-// Make sure model is read to interpreter propelrly
+// Make sure model is read to interpreter properly
 TEST(BasicFlatBufferModel, TestModelInInterpreter) {
   auto model = FlatBufferModel::BuildFromFile(
       "tensorflow/lite/testdata/test_model.bin");
@@ -313,6 +313,94 @@ TEST(BasicFlatBufferModel, TestBuildFromModel) {
       InterpreterBuilder(*model, TrivialResolver(&dummy_reg))(&interpreter),
       kTfLiteOk);
   ASSERT_NE(interpreter, nullptr);
+}
+
+// Test reading the minimum runtime string from metadata in a Model flatbuffer.
+TEST(BasicFlatBufferModel, TestReadRuntimeVersionFromModel) {
+  // First read a model that doesn't have the runtime string.
+  auto model1 = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/test_model.bin");
+  ASSERT_TRUE(model1);
+  ASSERT_EQ(model1->GetMinimumRuntime(), "");
+
+  // Read a model that has minimum runtime string populated.
+  auto model2 = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/test_min_runtime.bin");
+  ASSERT_TRUE(model2);
+  // Check that we have read the runtime string correctly.
+  ASSERT_EQ(model2->GetMinimumRuntime(), "1.10.0");
+}
+
+// The test model has the following tensor encoded in the TACO format:
+// [[1, 0, 2, 3],
+//  [0, 4, 0, 0],
+//  [0, 0, 5, 0],
+//  [0, 0, 0, 6]].
+// TACO supports multiple encodings like CSR, CSC, etc. We chose to use the one
+// similar to the blocked-CSR format with 2x2 row-major dense blocks.
+TEST(BasicFlatBufferModel, TestParseModelWithSparseTensor) {
+  // The model only has 1 sparse constant tensor.
+  auto model = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/sparse_tensor.bin");
+  ASSERT_TRUE(model);
+
+  std::unique_ptr<Interpreter> interpreter(new Interpreter);
+  ASSERT_EQ(InterpreterBuilder(*model, TrivialResolver())(&interpreter),
+            kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_EQ(interpreter->tensors_size(), 1);
+  TfLiteTensor* t1 = interpreter->tensor(0);
+  ASSERT_EQ(t1->allocation_type, kTfLiteMmapRo);
+
+  TfLiteIntArray* traversal_order = TfLiteIntArrayCreate(4);
+  traversal_order->data[0] = 0;
+  traversal_order->data[1] = 1;
+  traversal_order->data[2] = 2;
+  traversal_order->data[3] = 3;
+  ASSERT_TRUE(
+      TfLiteIntArrayEqual(t1->sparsity->traversal_order, traversal_order));
+  TfLiteIntArrayFree(traversal_order);
+
+  TfLiteIntArray* block_map = TfLiteIntArrayCreate(2);
+  block_map->data[0] = 0;
+  block_map->data[1] = 1;
+  ASSERT_TRUE(TfLiteIntArrayEqual(t1->sparsity->block_map, block_map));
+  TfLiteIntArrayFree(block_map);
+
+  ASSERT_EQ(t1->sparsity->dim_metadata_size, 4);
+
+  ASSERT_EQ(t1->sparsity->dim_metadata[0].format, kTfLiteDimDense);
+  ASSERT_EQ(t1->sparsity->dim_metadata[0].dense_size, 2);
+  ASSERT_EQ(t1->sparsity->dim_metadata[0].array_segments, nullptr);
+  ASSERT_EQ(t1->sparsity->dim_metadata[0].array_indices, nullptr);
+
+  ASSERT_EQ(t1->sparsity->dim_metadata[1].format, kTfLiteDimSparseCSR);
+  ASSERT_EQ(t1->sparsity->dim_metadata[1].dense_size, 0);
+  TfLiteIntArray* array_segments = TfLiteIntArrayCreate(3);
+  array_segments->data[0] = 0;
+  array_segments->data[1] = 2;
+  array_segments->data[2] = 3;
+  ASSERT_TRUE(TfLiteIntArrayEqual(t1->sparsity->dim_metadata[1].array_segments,
+                                  array_segments));
+  TfLiteIntArrayFree(array_segments);
+
+  TfLiteIntArray* array_indices = TfLiteIntArrayCreate(3);
+  array_indices->data[0] = 0;
+  array_indices->data[1] = 1;
+  array_indices->data[2] = 1;
+  ASSERT_TRUE(TfLiteIntArrayEqual(t1->sparsity->dim_metadata[1].array_indices,
+                                  array_indices));
+  TfLiteIntArrayFree(array_indices);
+
+  ASSERT_EQ(t1->sparsity->dim_metadata[2].format, kTfLiteDimDense);
+  ASSERT_EQ(t1->sparsity->dim_metadata[2].dense_size, 2);
+  ASSERT_EQ(t1->sparsity->dim_metadata[2].array_segments, nullptr);
+  ASSERT_EQ(t1->sparsity->dim_metadata[2].array_indices, nullptr);
+
+  ASSERT_EQ(t1->sparsity->dim_metadata[3].format, kTfLiteDimDense);
+  ASSERT_EQ(t1->sparsity->dim_metadata[3].dense_size, 2);
+  ASSERT_EQ(t1->sparsity->dim_metadata[3].array_segments, nullptr);
+  ASSERT_EQ(t1->sparsity->dim_metadata[3].array_indices, nullptr);
 }
 
 // TODO(aselle): Add tests for serialization of builtin op data types.

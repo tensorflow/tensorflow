@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/union_find.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_cond.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/functionalize_while.h"
@@ -43,18 +42,19 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
-Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
-                                Graph* graph,
+// Transformation that converts TensorFlow's graph control flow constructs into
+// functional equivalents.
+Status FunctionalizeControlFlow(Graph* graph,
                                 FunctionLibraryDefinition* library) {
   VLOG(2) << "FunctionalizeControlFlow (initial): "
-          << dump_graph::DumpGraphToFile("functionalize_initial", *graph,
-                                         library);
+          << DumpGraphToFile("functionalize_initial", *graph, library);
 
   // Functionalize and remove while loops from graph.
-  TF_RETURN_IF_ERROR(FunctionalizeWhileLoop(lookup_library, graph, library));
+  TF_RETURN_IF_ERROR(FunctionalizeWhileLoop(graph, library));
 
   // FunctionalizeControlFlow is invoked for every function, so the loops's
   // bodies and conditionals that were extracted into functions will be handled
@@ -62,33 +62,18 @@ Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
   TF_RETURN_IF_ERROR(FunctionalizeCond(graph, library));
 
   VLOG(2) << "FunctionalizeControlFlow (final): "
-          << dump_graph::DumpGraphToFile("functionalize_final", *graph,
-                                         library);
+          << DumpGraphToFile("functionalize_final", *graph, library);
 
   return Status::OK();
 }
 
-// Transformation that converts TensorFlow's graph control flow constructs into
-// functional equivalents.
-Status FunctionalizeControlFlow(Graph* graph,
-                                FunctionLibraryDefinition* library) {
-  return FunctionalizeControlFlow(/*lookup_library=*/nullptr, graph, library);
-}
-
 Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
-                                           FunctionLibraryDefinition* library) {
-  return FunctionalizeControlFlowForGraphDef(/*lookup_library=*/nullptr,
-                                             graph_def, library);
-}
-
-Status FunctionalizeControlFlowForGraphDef(
-    const FunctionLibraryDefinition* lookup_library, GraphDef* graph_def,
     FunctionLibraryDefinition* library) {
   FunctionDefLibrary function_lib = graph_def->library();
   Graph graph(OpRegistry::Global());
 
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph({}, *graph_def, &graph));
-  TF_RETURN_IF_ERROR(FunctionalizeControlFlow(lookup_library, &graph, library));
+  TF_RETURN_IF_ERROR(FunctionalizeControlFlow(&graph, library));
   graph.ToGraphDef(graph_def);
   std::swap(*graph_def->mutable_library(), function_lib);
   return Status::OK();
@@ -200,13 +185,13 @@ Status FunctionalizeControlFlowForFunction(
 
     // Functionalize the function body.
     if (VLOG_IS_ON(4)) {
-      dump_graph::DumpGraphToFile(
+      DumpGraphToFile(
           absl::StrCat("functionalize_control_flow_before_fdef_", func_name),
           *g, fld);
     }
     TF_RETURN_IF_ERROR(FunctionalizeControlFlow(g, fld));
     if (VLOG_IS_ON(4)) {
-      dump_graph::DumpGraphToFile(
+      DumpGraphToFile(
           absl::StrCat("functionalize_control_flow_after_fdef_", func_name), *g,
           fld);
     }
@@ -230,17 +215,19 @@ Status FunctionalizeControlFlowForFunction(
   return ret_status;
 }
 
-Status FunctionalizeControlFlowPass::Run(
+Status FunctionalizeControlFlowForXlaPass::Run(
     const GraphOptimizationPassOptions& options) {
   Graph* graph = options.graph->get();
   if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile("functionalize_control_flow_before", *graph,
-                                options.flib_def);
+    DumpGraphToFile("functionalize_control_flow_before", *graph,
+                    options.flib_def);
   }
+  const auto* config = &options.session_options->config;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
       new ProcessFunctionLibraryRuntime(
-          /*device_mgr=*/nullptr, options.session_options->env,
-          TF_GRAPH_DEF_VERSION, options.flib_def, OptimizerOptions()));
+          /*device_mgr=*/nullptr, options.session_options->env, config,
+          TF_GRAPH_DEF_VERSION, options.flib_def,
+          config->graph_options().optimizer_options()));
   FunctionLibraryRuntime* flr =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
 
@@ -249,12 +236,13 @@ Status FunctionalizeControlFlowPass::Run(
   // multiple times, and we want to avoid functionalize it again.
   static std::map<string, string>* kNodeTypeToFunctionAttrMapping =
       new std::map<string, string>{
-          // TPUReplicate ops are generated by EncapsulateTPUComputationsPass.
-          {"TPUReplicate", "computation"},
+          // _TPUReplicate ops are generated by EncapsulateTPUComputationsPass.
+          {"_TPUReplicate", "computation"},
           // XlaLaunch ops are generated by EncapsulateXlaComputationsPass.
           {"XlaLaunch", "function"},
       };
   std::map<string, absl::optional<string>> canonicalized_name_to_new_name;
+  bool fld_modified = false;
   for (Node* n : graph->nodes()) {
     auto it = kNodeTypeToFunctionAttrMapping->find(n->type_string());
     if (it == kNodeTypeToFunctionAttrMapping->end()) {
@@ -275,14 +263,30 @@ Status FunctionalizeControlFlowPass::Run(
       n->ClearAttr(func_attr);
       func.set_name(new_func_name);
       n->AddAttr(func_attr, func);
+      fld_modified = true;
     }
   }
 
+  // TODO(ylc, endlessroad): Change this to "if (fld_modified")"
+  if (false) {
+    if (VLOG_IS_ON(4)) {
+      DumpGraphToFile("functionalize_control_flow_before_prune", *graph,
+                      options.flib_def);
+    }
+    TF_RETURN_IF_ERROR(
+        PruneUnreachableFunctionsFromGraph(*graph, options.flib_def));
+  }
+
   if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile("functionalize_control_flow_after", *graph,
-                                options.flib_def);
+    DumpGraphToFile("functionalize_control_flow_after", *graph,
+                    options.flib_def);
   }
   return Status::OK();
+}
+
+Status FunctionalizeControlFlowPass::Run(
+    const GraphOptimizationPassOptions& options) {
+  return FunctionalizeControlFlow(options.graph->get(), options.flib_def);
 }
 
 }  // namespace tensorflow

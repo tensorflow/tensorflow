@@ -57,10 +57,9 @@ TEST(LatencyAllEdgesTest, AddLatenciesAfterTensorMapPrefetch) {
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  EXPECT_TRUE(graph_utils::ContainsNodeWithOp("ExperimentalLatencyStatsDataset",
-                                              output));
-  std::vector<int> latency_node_indices = graph_utils::FindAllGraphNodesWithOp(
-      "ExperimentalLatencyStatsDataset", output);
+  EXPECT_TRUE(graph_utils::ContainsNodeWithOp("LatencyStatsDataset", output));
+  std::vector<int> latency_node_indices =
+      graph_utils::FindAllGraphNodesWithOp("LatencyStatsDataset", output);
   EXPECT_EQ(latency_node_indices.size(), 3);
   std::vector<NodeDef> dataset_nodes = {std::move(from_tensor_node),
                                         std::move(map_node),

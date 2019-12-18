@@ -27,7 +27,8 @@ CostAnalyzer::CostAnalyzer(const GrapplerItem& item, Cluster* cluster,
                            const string& suffix)
     : item_(&item),
       measure_estimator_(cluster, 10, 0),
-      analytical_estimator_(cluster, false),
+      analytical_estimator_(cluster, /*use_static_shapes=*/false,
+                            /*use_aggressive_shape_inference=*/true),
       suffix_(suffix) {}
 
 Status CostAnalyzer::GenerateReport(std::ostream& os, bool per_node_report,
@@ -124,7 +125,6 @@ void CostAnalyzer::PreprocessCosts() {
     }
   }
 }
-
 
 void CostAnalyzer::SortOpsByTime(std::map<string, OpPerfSummary> ops) {
   for (const auto& op : ops) {

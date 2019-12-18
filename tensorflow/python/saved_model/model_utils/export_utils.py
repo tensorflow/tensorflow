@@ -79,7 +79,7 @@ def build_all_signature_defs(receiver_tensors,
       additional serving signatures, which may be used to feed inputs at
       different points within the input receiver subgraph.  A typical usage is
       to allow feeding raw feature `Tensor`s *downstream* of the
-      tf.parse_example() op.  Defaults to None.
+      tf.io.parse_example() op.  Defaults to None.
     serving_only: boolean; if true, resulting signature defs will only include
       valid serving signatures. If false, all requested signatures will be
       returned.
@@ -242,7 +242,8 @@ def get_temp_export_dir(timestamped_export_dir):
   """
   (dirname, basename) = os.path.split(timestamped_export_dir)
   temp_export_dir = os.path.join(
-      compat.as_bytes(dirname), compat.as_bytes('temp-{}'.format(basename)))
+      compat.as_bytes(dirname),
+      compat.as_bytes('temp-{}'.format(six.ensure_text(basename))))
   return temp_export_dir
 
 

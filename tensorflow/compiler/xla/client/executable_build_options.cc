@@ -22,12 +22,12 @@ limitations under the License.
 namespace xla {
 
 ExecutableBuildOptions& ExecutableBuildOptions::set_device_allocator(
-    DeviceMemoryAllocator* allocator) {
+    se::DeviceMemoryAllocator* allocator) {
   device_allocator_ = allocator;
   return *this;
 }
 
-DeviceMemoryAllocator* ExecutableBuildOptions::device_allocator() const {
+se::DeviceMemoryAllocator* ExecutableBuildOptions::device_allocator() const {
   return device_allocator_;
 }
 
@@ -71,9 +71,8 @@ string ExecutableBuildOptions::ToString() const {
   }
   return absl::StrFormat(
       "ExecutableBuildOptions{device_ordinal=%d, result_layout=%s, "
-      "generate_hlo_graph=%s, num_replicas=%d}",
-      device_ordinal_, result_layout, debug_options().xla_generate_hlo_graph(),
-      num_replicas_);
+      "num_replicas=%d}",
+      device_ordinal_, result_layout, num_replicas_);
 }
 
 }  // namespace xla

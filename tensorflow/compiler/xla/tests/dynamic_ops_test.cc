@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/reference_util.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 namespace {
@@ -736,7 +736,7 @@ void BM_DynamicSlice(int num_iters) {
 
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
   auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
-  StreamExecutorMemoryAllocator allocator(platform, executors);
+  se::StreamExecutorMemoryAllocator allocator(platform, executors);
   LocalClient* client =
       ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie();
   auto* transfer_manager =
@@ -775,7 +775,7 @@ void BM_DynamicSlice(int num_iters) {
         stream.get(), start_index_literal, shaped_buffers[i]));
   }
 
-  // Add DynamicSlice op to the computatation.
+  // Add DynamicSlice op to the computation.
   DynamicSlice(input, start_indices, {1, 1, 1, 1});
   auto computation = builder.Build().ConsumeValueOrDie();
 

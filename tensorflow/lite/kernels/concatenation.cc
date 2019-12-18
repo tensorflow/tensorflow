@@ -20,7 +20,7 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -54,12 +54,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(ahentz): These are limitations of our implementation that could be
   // removed with a bit of effort.
-  TF_LITE_ENSURE(context, t0->dims->size <= 4);
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
   TF_LITE_ENSURE(context,
                  input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
-                     input_type == kTfLiteInt16 || input_type == kTfLiteInt32 ||
-                     input_type == kTfLiteInt64);
+                     input_type == kTfLiteInt8 || input_type == kTfLiteInt16 ||
+                     input_type == kTfLiteInt32 || input_type == kTfLiteInt64);
 
   // Output dimensions will match input dimensions, except 'axis', which
   // will be the sum of inputs
@@ -85,6 +84,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
   TF_LITE_ENSURE_EQ(context, output->type, input_type);
 
+  if (input_type == kTfLiteInt8) {
+    // Make sure there is no re-scaling needed for Int8 quantized kernel. This
+    // is a restriction we introduced to Int8 kernels.
+    VectorOfTensors<int8_t> all_inputs(*context, *node->inputs);
+    for (int i = 0; i < node->inputs->size; ++i) {
+      TfLiteTensor* t = &context->tensors[node->inputs->data[i]];
+      TF_LITE_ENSURE_EQ(context, t->params.scale, output->params.scale);
+      TF_LITE_ENSURE_EQ(context, t->params.zero_point,
+                        output->params.zero_point);
+    }
+  }
+
   return context->ResizeTensor(context, output, output_size);
 }
 
@@ -100,65 +111,64 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 // allocate and populate these during Prepare().
 // TODO(ycling): Activation function parameter is ignored. For now we dont have
 // a model with a Concatenation with fused activation function.
-#define TF_LITE_CONCATENATION(type, scalar)                                \
-  {                                                                        \
-    VectorOfTensors<scalar> all_inputs(*context, *node->inputs);           \
-    tflite::ConcatenationParams op_params;                                 \
-    op_params.axis = axis;                                                 \
-    op_params.inputs_count = node->inputs->size;                           \
-    type::Concatenation(op_params, all_inputs.shapes(), all_inputs.data(), \
-                        GetTensorShape(output),                            \
-                        GetTensorData<scalar>(output));                    \
-  }
-
-#define TF_LITE_CONCATENATION_QUANTIZED(type)                                 \
+#define TF_LITE_CONCATENATION(scalar)                                         \
   {                                                                           \
-    VectorOfQuantizedTensors all_inputs(*context, *node->inputs);             \
+    VectorOfTensors<scalar> all_inputs(*context, *node->inputs);              \
     tflite::ConcatenationParams op_params;                                    \
     op_params.axis = axis;                                                    \
-    op_params.input_zeropoint = all_inputs.zero_point();                      \
-    op_params.input_scale = all_inputs.scale();                               \
     op_params.inputs_count = node->inputs->size;                              \
-    op_params.output_zeropoint = output->params.zero_point;                   \
-    op_params.output_scale = output->params.scale;                            \
-    type::ConcatenationWithScaling(op_params, all_inputs.shapes(),            \
+    if (kernel_type == kReference) {                                          \
+      reference_ops::Concatenation(op_params, all_inputs.shapes(),            \
                                    all_inputs.data(), GetTensorShape(output), \
-                                   GetTensorData<uint8>(output));             \
+                                   GetTensorData<scalar>(output));            \
+    } else {                                                                  \
+      optimized_ops::Concatenation(op_params, all_inputs.shapes(),            \
+                                   all_inputs.data(), GetTensorShape(output), \
+                                   GetTensorData<scalar>(output));            \
+    }                                                                         \
+  }
+
+#define TF_LITE_CONCATENATION_QUANTIZED()                         \
+  {                                                               \
+    VectorOfQuantizedTensors all_inputs(*context, *node->inputs); \
+    tflite::ConcatenationParams op_params;                        \
+    op_params.axis = axis;                                        \
+    op_params.input_zeropoint = all_inputs.zero_point();          \
+    op_params.input_scale = all_inputs.scale();                   \
+    op_params.inputs_count = node->inputs->size;                  \
+    op_params.output_zeropoint = output->params.zero_point;       \
+    op_params.output_scale = output->params.scale;                \
+    if (kernel_type == kReference) {                              \
+      reference_ops::ConcatenationWithScaling(                    \
+          op_params, all_inputs.shapes(), all_inputs.data(),      \
+          GetTensorShape(output), GetTensorData<uint8>(output));  \
+    } else {                                                      \
+      optimized_ops::ConcatenationWithScaling(                    \
+          op_params, all_inputs.shapes(), all_inputs.data(),      \
+          GetTensorShape(output), GetTensorData<uint8>(output));  \
+    }                                                             \
   }
 
   switch (output->type) {  // Already know in/outtypes are same.
     case kTfLiteFloat32:
-      if (kernel_type == kReference) {
-        TF_LITE_CONCATENATION(reference_ops, float);
-      } else {
-        TF_LITE_CONCATENATION(optimized_ops, float);
-      }
+      TF_LITE_CONCATENATION(float);
       break;
     case kTfLiteInt32:
-      if (kernel_type == kReference) {
-        TF_LITE_CONCATENATION(reference_ops, int32);
-      } else {
-        TF_LITE_CONCATENATION(optimized_ops, int32);
-      }
+      TF_LITE_CONCATENATION(int32);
       break;
     case kTfLiteUInt8:
-      if (kernel_type == kReference) {
-        TF_LITE_CONCATENATION_QUANTIZED(reference_ops);
-      } else {
-        TF_LITE_CONCATENATION_QUANTIZED(optimized_ops);
-      }
+      TF_LITE_CONCATENATION_QUANTIZED();
+      break;
+    case kTfLiteInt8:
+      TF_LITE_CONCATENATION(int8_t);
       break;
     case kTfLiteInt64:
-      if (kernel_type == kReference) {
-        TF_LITE_CONCATENATION(reference_ops, int64_t);
-      } else {
-        TF_LITE_CONCATENATION(optimized_ops, int64_t);
-      }
+      TF_LITE_CONCATENATION(int64_t);
       break;
 
     default:
-      context->ReportError(context,
-                           "Only float32 and uint8 are currently supported.");
+      context->ReportError(context, "Type '%s' is not supported currently.",
+                           TfLiteTypeGetName(output->type));
       return kTfLiteError;
   }
 

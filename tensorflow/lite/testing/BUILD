@@ -1,26 +1,35 @@
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow/lite:build_def.bzl",
     "gen_zip_test",
+    "gen_zipped_test_file",
     "generated_test_models_all",
+    "merged_test_models",
 )
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite/testing:tflite_model_test.bzl", "tflite_model_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
     "//tensorflow:tensorflow.bzl",
+    "py_test",  # @unused
     "tf_cc_binary",
     "tf_cc_test",
-    "py_test",
 )
+
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files([
+    "generated_examples_zip_test.cc",
+    "tflite_diff_example_test.cc",
+])
 
 [gen_zip_test(
     name = "zip_test_%s" % test_name,
-    size = "large",
+    size = "medium",
     srcs = ["generated_examples_zip_test.cc"],
     args = args + select({
         "//tensorflow:android": [],
@@ -38,6 +47,8 @@ load(
     shard_count = 20,
     tags = tags + [
         "gen_zip_test",
+        "no_gpu",  # Executing with TF GPU configurations is redundant.
+        "no_oss",
         "tflite_not_portable_intentional",
     ],
     test_name = test_name,
@@ -61,7 +72,7 @@ load(
             "//tensorflow/core:android_tensorflow_test_lib",
         ],
     }),
-) for conversion_mode, test_name, tags, args in generated_test_models_all()]
+) for conversion_mode, test_name, tags, args in generated_test_models_all() + merged_test_models()]
 
 test_suite(
     name = "generated_zip_tests",
@@ -70,18 +81,62 @@ test_suite(
     ],
 )
 
-py_binary(
-    name = "generate_examples",
-    srcs = ["generate_examples.py"],
+py_library(
+    name = "toco_convert",
+    srcs = ["toco_convert.py"],
     data = [
         "//tensorflow/lite/toco",
     ],
+    deps = [
+        ":zip_test_utils",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "op_tests",
+    srcs = glob(["op_tests/*.py"]),
+    srcs_version = "PY2AND3",
+    deps = [
+        ":zip_test_utils",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "generate_examples_lib",
+    srcs = ["generate_examples_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":op_tests",
+        ":zip_test_utils",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "zip_test_utils",
+    srcs = ["zip_test_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":generate_examples_report",
         ":string_util_wrapper",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:graph_util",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_binary(
+    name = "generate_examples",
+    srcs = ["generate_examples.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":generate_examples_lib",
+        ":toco_convert",
+        "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -164,21 +219,28 @@ cc_library(
         ":join",
         ":split",
         ":test_runner",
+        "@com_google_absl//absl/strings",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:custom_ops",
         "//tensorflow/lite/kernels:reference_ops",
-        "@com_google_absl//absl/strings",
-    ],
+        "//tensorflow/lite/tools/evaluation:utils",
+    ] + select({
+        "//tensorflow:ios": [],
+        "//conditions:default": ["//tensorflow/lite/delegates/flex:delegate"],
+    }),
 )
 
 tf_cc_test(
     name = "tflite_driver_test",
     size = "small",
     srcs = ["tflite_driver_test.cc"],
-    data = ["//tensorflow/lite:testdata/multi_add.bin"],
+    data = [
+        "//tensorflow/lite:testdata/add_quantized_int8.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
     tags = [
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
@@ -219,6 +281,7 @@ cc_library(
     name = "util",
     hdrs = ["util.h"],
     deps = [
+        "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api",
@@ -252,13 +315,22 @@ cc_library(
         ":join",
         ":split",
         ":test_runner",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:tensorflow",
-        "//tensorflow/lite:string_util",
         "@com_google_absl//absl/strings",
-    ],
+        "//tensorflow/lite:string_util",
+    ] + select({
+        "//conditions:default": [
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:tensorflow",
+        ],
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:ios_tensorflow_lib",
+        ],
+    }),
 )
 
 tf_cc_test(
@@ -285,9 +357,19 @@ cc_library(
         ":join",
         ":split",
         ":tf_driver",
-        "//tensorflow/core:framework",
+        ":tflite_driver",
         "//tensorflow/lite:string",
-    ],
+    ] + select({
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+        ],
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:ios_tensorflow_lib",
+        ],
+    }),
 )
 
 tf_cc_test(
@@ -312,6 +394,7 @@ cc_library(
         "init_tensorflow.h",
     ],
     visibility = [
+        "//tensorflow/lite/delegates/flex:__subpackages__",
         "//tensorflow/lite/java/src/main/native:__subpackages__",
         "//tensorflow/lite/testing:__subpackages__",
         "//tensorflow/lite/tools/benchmark:__subpackages__",
@@ -322,6 +405,9 @@ cc_library(
         ],
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:ios_tensorflow_lib",
         ],
     }),
 )
@@ -345,6 +431,8 @@ cc_library(
     deps = [
         ":split",
         ":tflite_diff_util",
+        ":tflite_driver",
+        "@com_google_absl//absl/strings",
     ] + select({
         "//conditions:default": [
             "//tensorflow/core:framework_internal",
@@ -352,6 +440,9 @@ cc_library(
         ],
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:ios_tensorflow_lib",
         ],
     }),
 )
@@ -394,6 +485,20 @@ tf_cc_binary(
     ],
 )
 
+tflite_model_test(
+    name = "tflite_model_example_test",
+    input_layer = "a,b,c,d",
+    input_layer_shape = "1,8,8,3:1,8,8,3:1,8,8,3:1,8,8,3",
+    input_layer_type = "float,float,float,float",
+    output_layer = "x,y",
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_oss",  # needs test data
+        "tflite_not_portable",  # TODO(b/134772701): Enable after making this a proper GTest.
+    ],
+    tensorflow_model_file = "//tensorflow/lite:testdata/multi_add.pb",
+)
+
 cc_library(
     name = "string_util_lib",
     srcs = ["string_util.cc"],
@@ -420,3 +525,49 @@ tf_py_wrap_cc(
 )
 
 tflite_portable_test_suite()
+
+edgetpu_ops = [
+    "add",
+    "avg_pool",
+    "concat",
+    "conv",  # high error
+    "conv_relu",
+    "conv_relu1",
+    "conv_relu6",
+    "depthwiseconv",  # high error
+    "fully_connected",
+    "l2norm",  # high error
+    "maximum",
+    "max_pool",
+    "mean",
+    "minimum",
+    "mul",
+    "pad",  # high error
+    "relu",
+    "relu1",
+    "relu6",
+    "reshape",
+    "resize_bilinear",
+    "resize_nearest_neighbor",
+    "sigmoid",
+    "slice",
+    "softmax",
+    "space_to_depth",
+    "split",
+    "squeeze",
+    "strided_slice",
+    "sub",
+    "sum",  # high error
+    "tanh",
+    "transpose",
+    "transpose_conv",
+]
+
+[gen_zipped_test_file(
+    name = "zip_%s_edgetpu" % op_name,
+    file = "%s_edgetpu.zip" % op_name,
+    flags = " --make_edgetpu_tests",
+    toco = "//tensorflow/lite/toco:toco",  # Unused
+) for op_name in edgetpu_ops]
+
+edgetpu_targets = [":zip_%s_edgetpu" % op_name for op_name in edgetpu_ops]

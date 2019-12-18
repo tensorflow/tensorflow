@@ -17,11 +17,15 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
+
+// TfLiteReshapeParams can't have dynamic data so we fix the maximum possible
+// number of dimensions.
+#define TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT 8
 
 // TODO(aselle): Consider using "if this then that" for testing.
 
@@ -46,9 +50,12 @@ typedef enum {
   kTfLiteMirrorPaddingSymmetric,
 } TfLiteMirrorPaddingMode;
 
+// TODO(b/130259536): We should move this out of builtin_op_data.
 typedef struct {
   int width;
   int height;
+  int width_offset;
+  int height_offset;
 } TfLitePaddingValues;
 
 typedef struct {
@@ -60,20 +67,24 @@ typedef struct {
 typedef enum {
   kTfLiteActNone = 0,
   kTfLiteActRelu,
-  kTfLiteActRelu1,
-  kTfLiteActRelu6,
+  kTfLiteActRelu1,  // min(max(-1, x), 1)
+  kTfLiteActRelu6,  // min(max(0, x), 6)
   kTfLiteActTanh,
   kTfLiteActSignBit,
   kTfLiteActSigmoid,
 } TfLiteFusedActivation;
 
 typedef struct {
+  // Parameters for CONV_2D version 1.
   TfLitePadding padding;
   int stride_width;
   int stride_height;
+  TfLiteFusedActivation activation;
+
+  // Parameters for CONV_2D version 2.
+  // Note: Version 2 supports dilation values not equal to 1.
   int dilation_width_factor;
   int dilation_height_factor;
-  TfLiteFusedActivation activation;
 } TfLiteConvParams;
 
 typedef struct {
@@ -93,6 +104,16 @@ typedef struct {
   TfLitePadding padding;
   int stride_width;
   int stride_height;
+  // `depth_multiplier` is redundant. It's used by CPU kernels in
+  // TensorFlow 2.0 or below, but ignored in versions above.
+  //
+  // The information can be deduced from the shape of input and the shape of
+  // weights. Since the TFLiteConverter toolchain doesn't support partially
+  // specificed shapes, relying on `depth_multiplier` stops us from supporting
+  // graphs with dynamic shape tensors.
+  //
+  // Note: Some of the delegates (e.g. NNAPI, GPU) are still relying on this
+  // field.
   int depth_multiplier;
   TfLiteFusedActivation activation;
   // Parameters for DepthwiseConv version 2 or above.
@@ -131,6 +152,12 @@ typedef struct {
 
   // Parameters for FullyConnected version 2 or above.
   TfLiteFullyConnectedWeightsFormat weights_format;
+
+  // Parameters for FullyConnected version 5 or above.
+  // If set to true, then the number of dimensions in the input and the output
+  // tensors are the same. Furthermore, all but the last dimension of the input
+  // and output shapes will be equal.
+  bool keep_num_dims;
 } TfLiteFullyConnectedParams;
 
 typedef enum {
@@ -247,7 +274,7 @@ typedef struct {
 typedef struct {
   // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
   // For now we will fix the maximum possible number of dimensions.
-  int shape[8];
+  int shape[TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT];
   int num_dimensions;
 } TfLiteReshapeParams;
 
@@ -260,6 +287,10 @@ typedef struct {
 typedef struct {
   int block_size;
 } TfLiteSpaceToDepthParams;
+
+typedef struct {
+  int block_size;
+} TfLiteDepthToSpaceParams;
 
 typedef struct {
   TfLiteType in_data_type;
@@ -334,6 +365,7 @@ typedef struct {
 } TfLiteShapeParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLiteRankParams;
 
 typedef struct {
@@ -367,6 +399,29 @@ typedef struct {
 typedef struct {
   TfLiteType index_out_type;
 } TfLiteUniqueParams;
+
+typedef struct {
+  int seq_dim;
+  int batch_dim;
+} TfLiteReverseSequenceParams;
+
+typedef struct {
+  EmptyStructPlaceholder placeholder;
+} TfLiteMatrixDiagParams;
+
+typedef struct {
+  EmptyStructPlaceholder placeholder;
+} TfLiteMatrixSetDiagParams;
+
+typedef struct {
+  int then_subgraph_index;
+  int else_subgraph_index;
+} TfLiteIfParams;
+
+typedef struct {
+  int cond_subgraph_index;
+  int body_subgraph_index;
+} TfLiteWhileParams;
 
 #ifdef __cplusplus
 }  // extern "C"

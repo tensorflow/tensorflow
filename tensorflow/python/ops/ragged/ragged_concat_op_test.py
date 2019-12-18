@@ -28,12 +28,11 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedConcatOpTest(ragged_test_util.RaggedTensorTestCase,
+class RaggedConcatOpTest(test_util.TensorFlowTestCase,
                          parameterized.TestCase):
 
   def _rt_inputs_to_tensors(self, rt_inputs, ragged_ranks=None):
@@ -240,7 +239,7 @@ class RaggedConcatOpTest(ragged_test_util.RaggedTensorTestCase,
       self.assertEqual(concatenated.ragged_rank, expected_ragged_rank)
     if expected_shape is not None:
       self.assertEqual(concatenated.shape.as_list(), expected_shape)
-    self.assertRaggedEqual(concatenated, expected)
+    self.assertAllEqual(concatenated, expected)
 
   @parameterized.parameters(
       dict(
@@ -318,7 +317,7 @@ class RaggedConcatOpTest(ragged_test_util.RaggedTensorTestCase,
     """
     rt_inputs = ragged_factory_ops.constant([[1, 2], [3, 4]])
     concatenated = ragged_concat_ops.concat(rt_inputs, 0)
-    self.assertRaggedEqual(concatenated, [[1, 2], [3, 4]])
+    self.assertAllEqual(concatenated, [[1, 2], [3, 4]])
 
 
 if __name__ == '__main__':

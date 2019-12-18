@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -130,9 +130,47 @@ class LiteralBase {
   // value into text.
   string GetSparseElementAsString(int64 sparse_element_number,
                                   const ShapeIndex& shape_index = {}) const;
+
+  // Return whether the value at the specified index is equal to the provided
+  // generic `value` (T must be an arithmetic type).
+  //
+  // Precondition: must be an array.
+  template <typename T>
+  typename std::enable_if<(std::is_arithmetic<T>::value ||
+                           std::is_same<T, Eigen::half>::value ||
+                           std::is_same<T, bfloat16>::value),
+                          bool>::type
+  IsEqualAt(absl::Span<const int64> multi_index, T value) const {
+    if (auto as_s64 = GetIntegralAsS64(multi_index)) {
+      return *as_s64 == value;
+    }
+    complex128 as_complex128 = *GetAsComplex128(multi_index);
+    return as_complex128.imag() == 0 && as_complex128.real() == value;
+  }
+
+  bool IsEqualAt(absl::Span<const int64> multi_index, complex128 value) const {
+    if (auto as_s64 = GetIntegralAsS64(multi_index)) {
+      return *as_s64 == value.real() && value.imag() == 0;
+    }
+    auto as_complex128 = GetAsComplex128(multi_index);
+    return *as_complex128 == value;
+  }
+
   // As Get(), but determines the correct type and converts the value into
   // int64.  This literal must be an array.
-  StatusOr<int64> GetIntegralAsS64(absl::Span<const int64> multi_index) const;
+  absl::optional<int64> GetIntegralAsS64(
+      absl::Span<const int64> multi_index) const;
+
+  // As Get(), but determines the correct type, and converts the value into
+  // double. This literal must be an array.
+  absl::optional<double> GetAsDouble(absl::Span<const int64> multi_index) const;
+
+  // As Get(), but determines the correct type, and converts the value into
+  // complex128. All floating point types can be converted into complex128.
+  //
+  // This literal must be an array.
+  absl::optional<complex128> GetAsComplex128(
+      absl::Span<const int64> multi_index) const;
 
   // Returns the multi-index of the element in a sparse literal at the given
   // sparse element number.  The sparse element number is the position with in
@@ -637,6 +675,10 @@ class MutableLiteralBase : public LiteralBase {
   // This literal must be an array.
   Status SetIntegralAsS64(absl::Span<const int64> multi_index, int64 value);
 
+  // As Set(), but truncates `value` to the literal element type before storing.
+  // This literal must be an array.
+  Status SetFromDouble(absl::Span<const int64> multi_index, double value);
+
   // Populate this literal with the given values. Examples:
   //
   //   // Populate with floats.
@@ -690,7 +732,8 @@ class MutableLiteralBase : public LiteralBase {
   static Literal MoveIntoTuple(absl::Span<Literal> elements);
 
   // Serialize from a proto.
-  static StatusOr<Literal> CreateFromProto(const LiteralProto& proto);
+  static StatusOr<Literal> CreateFromProto(const LiteralProto& proto,
+                                           bool prohibit_empty_literal = true);
 
  protected:
   // Returns the piece at the given ShapeIndex.
@@ -767,7 +810,7 @@ class Literal : public MutableLiteralBase {
   Literal(const Shape& shape, bool allocate_arrays);
   Literal& operator=(Literal&& other);
 
-  // Similar to CopyFrom, but with move semantincs. The subshape of this literal
+  // Similar to CopyFrom, but with move semantics. The subshape of this literal
   // rooted at 'dest_shape_index' must be *equal* to the shape 'src_literal'
   // (layouts and shapes must match), but need not be arrays. The memory
   // allocated in this literal for the subshape at dest_shape_index is
@@ -804,7 +847,6 @@ class MutableBorrowingLiteral : public MutableLiteralBase {
   MutableBorrowingLiteral& operator=(const MutableBorrowingLiteral& literal);
 
   // Implicit conversion constructors.
-  MutableBorrowingLiteral(const MutableLiteralBase& literal);
   MutableBorrowingLiteral(MutableLiteralBase* literal);
   MutableBorrowingLiteral(MutableBorrowingLiteral literal,
                           const ShapeIndex& view_root);
@@ -841,7 +883,7 @@ class BorrowingLiteral : public LiteralBase {
   BorrowingLiteral() : LiteralBase() {}
 
   // 'src_buf_ptr' is not owned by this class and must outlive the
-  // lifetime of this class. It points to an appropirately sized buffer with
+  // lifetime of this class. It points to an appropriately sized buffer with
   // data interpretered as indicated by 'shape'.
   // This constructor is only used for array shapes.
   BorrowingLiteral(const char* src_buf_ptr, const Shape& shape);

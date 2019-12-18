@@ -31,6 +31,7 @@ typedef enum {
   kTfLiteBuiltinConcatenation = 2,
   kTfLiteBuiltinConv2d = 3,
   kTfLiteBuiltinDepthwiseConv2d = 4,
+  kTfLiteBuiltinDepthToSpace = 5,
   kTfLiteBuiltinDequantize = 6,
   kTfLiteBuiltinEmbeddingLookup = 7,
   kTfLiteBuiltinFloor = 8,
@@ -137,6 +138,19 @@ typedef enum {
   kTfLiteBuiltinWhere = 109,
   kTfLiteBuiltinRank = 110,
   kTfLiteBuiltinElu = 111,
+  kTfLiteBuiltinReverseSequence = 112,
+  kTfLiteBuiltinMatrixDiag = 113,
+  kTfLiteBuiltinQuantize = 114,
+  kTfLiteBuiltinMatrixSetDiag = 115,
+  kTfLiteBuiltinRound = 116,
+  kTfLiteBuiltinHardSwish = 117,
+  kTfLiteBuiltinIf = 118,
+  kTfLiteBuiltinWhile = 119,
+  kTfLiteBuiltinNonMaxSuppressionV4 = 120,
+  kTfLiteBuiltinNonMaxSuppressionV5 = 121,
+  kTfLiteBuiltinScatterNd = 122,
+  kTfLiteBuiltinSelectV2 = 123,
+  kTfLiteBuiltinDensify = 124,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

@@ -32,6 +32,11 @@ template <typename T>
 class SimpleOperator : public BaseOperator {
  public:
   using BaseOperator::BaseOperator;
+
+  SimpleOperator(::tflite::BuiltinOperator op, OperatorType type)
+      : BaseOperator(::tflite::EnumNameBuiltinOperator(op), type),
+        builtin_op_(op) {}
+
   Options Serialize(const Operator& op,
                     flatbuffers::FlatBufferBuilder* builder) const override {
     return Options();
@@ -43,8 +48,14 @@ class SimpleOperator : public BaseOperator {
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
-    return 1;
+    return ::tflite::GetBuiltinOperatorVersion(
+        GetVersioningOpSig(builtin_op_, op_signature));
   }
+
+  ::tflite::BuiltinOperator builtin_op() const { return builtin_op_; }
+
+ private:
+  const ::tflite::BuiltinOperator builtin_op_;
 };
 
 }  // namespace tflite

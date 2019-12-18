@@ -1,7 +1,7 @@
 path: "tensorflow.IndexedSlices"
 tf_class {
-  is_instance: "<class \'tensorflow.python.framework.ops.IndexedSlices\'>"
-  is_instance: "<class \'tensorflow.python.framework.ops._TensorLike\'>"
+  is_instance: "<class \'tensorflow.python.framework.indexed_slices.IndexedSlices\'>"
+  is_instance: "<class \'tensorflow.python.framework.tensor_like._TensorLike\'>"
   is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -33,11 +33,19 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "values"
     mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'values\', \'indices\', \'dense_shape\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "consumers"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
 }

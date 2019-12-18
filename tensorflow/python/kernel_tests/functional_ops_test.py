@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import def_function as eager_def_function
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
@@ -475,6 +476,7 @@ class FunctionalOpsTest(test.TestCase):
       mul = self.evaluate(remote_op)
       self.assertEqual(mul, [6])
 
+  @test_util.run_deprecated_v1
   def testRemoteFunctionCPUGPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -499,6 +501,7 @@ class FunctionalOpsTest(test.TestCase):
       mul = self.evaluate(remote_op)
       self.assertEqual(mul, 9.0)
 
+  @test_util.run_deprecated_v1
   def testRemoteFunctionGPUCPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -523,6 +526,7 @@ class FunctionalOpsTest(test.TestCase):
       mul = self.evaluate(remote_op)
       self.assertEqual(mul, 9.0)
 
+  @test_util.run_deprecated_v1
   def testRemoteFunctionGPUCPUStrings(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -751,7 +755,7 @@ class FunctionalOpsTest(test.TestCase):
 
           def TestCondCapture(n, *args):
             del args
-            return math_ops.to_float(n) + v < 10
+            return math_ops.cast(n, dtypes.float32) + v < 10
 
           with self.assertRaises(ValueError):
             _ = functional_ops.While(
@@ -767,7 +771,7 @@ class FunctionalOpsTest(test.TestCase):
 
         @function.Defun(dtypes.int32, dtypes.float32)
         def Body(n, x):
-          return x + math_ops.to_float(n)
+          return x + math_ops.cast(n, dtypes.float32)
 
         xs = [
             # 1 + 2  + ... + 20
@@ -796,7 +800,7 @@ class FunctionalOpsTest(test.TestCase):
 
       @function.Defun(dtypes.int32, dtypes.float32, func_name="TestBody")
       def TestBody(n, x):
-        return x + math_ops.to_float(n)
+        return x + math_ops.cast(n, dtypes.float32)
 
       _ = functional_ops.For(
           1, 21, 1, [0.], TestBody, rewrite_with_while=True)[0]
@@ -814,15 +818,15 @@ class FunctionalOpsTest(test.TestCase):
 
     @function.Defun(dtypes.int32)
     def TestNullary(n):
-      v + math_ops.to_float(n)  # pylint: disable=expression-not-assigned
+      v + math_ops.cast(n, dtypes.float32)  # pylint: disable=expression-not-assigned
 
     @function.Defun(dtypes.int32, dtypes.float32)
     def TestUnary(n, x):
-      return x + math_ops.to_float(n) + v
+      return x + math_ops.cast(n, dtypes.float32) + v
 
     @function.Defun(dtypes.int32, dtypes.float32, dtypes.float32)
     def TestBinary(n, x, x2):
-      return x + math_ops.to_float(n) + v, x2 + v
+      return x + math_ops.cast(n, dtypes.float32) + v, x2 + v
 
     for rewrite_with_while in (True, False):
       use_gpu = not rewrite_with_while
@@ -888,6 +892,8 @@ class FunctionalOpsTest(test.TestCase):
     self._testForMLP(False)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla(
+      "Test uses strided slice without compile time constant values")
   def testForMLPWhile(self):
     self._testForMLP(True)
 
@@ -896,7 +902,7 @@ class FunctionalOpsTest(test.TestCase):
 
     @function.Defun(dtypes.int32, dtypes.float32)
     def Foo(i, v):
-      return math_ops.to_float(i) + v
+      return math_ops.cast(i, dtypes.float32) + v
 
     @function.Defun(dtypes.int32, dtypes.float32)
     def ReturnsTooManyArgs(unused_i, v):
@@ -941,6 +947,35 @@ class FunctionalOpsTest(test.TestCase):
 class PartitionedCallTest(test.TestCase):
 
   @test_util.run_deprecated_v1
+  def testRemoteDeviceInPartitionedCallOp(self):
+    workers, _ = test_util.create_local_cluster(2, 0)
+
+    worker0_device = "/job:worker/replica:0/task:0/cpu:0"
+    worker1_device = "/job:worker/replica:0/task:1/cpu:0"
+
+    @eager_def_function.function
+    def f(a, b):
+      return a + b
+
+    with session.Session(workers[0].target) as sess:
+      with ops.device(worker0_device):
+        a = variable_scope.get_variable(
+            "a", initializer=constant_op.constant(1.), use_resource=True)
+      with ops.device(worker1_device):
+        b = variable_scope.get_variable(
+            "b", initializer=constant_op.constant(1.), use_resource=True)
+
+      sess.run(variables.global_variables_initializer())
+
+    config = config_pb2.ConfigProto()
+    config.experimental.share_cluster_devices_in_session = True
+
+    with session.Session(workers[0].target, config=config) as sess:
+      res = sess.run(f(a, b))
+
+    self.assertEqual(res, 2)
+
+  @test_util.run_deprecated_v1
   def testBasicSingleDevice(self):
 
     @function.Defun(*[dtypes.float32] * 2)
@@ -981,6 +1016,7 @@ class PartitionedCallTest(test.TestCase):
                 constant_op.constant(2.)], f=Body)
       self.assertEqual(output.eval(), 12.)
 
+  @test_util.run_deprecated_v1
   def testBasicMultiDeviceGPU(self):
     if not test_util.is_gpu_available():
       return
@@ -1061,6 +1097,7 @@ class PartitionedCallTest(test.TestCase):
     value = self.evaluate(v.read_value())
     self.assertEqual(value, 2.0)
 
+  @test_util.run_deprecated_v1
   def testFunctionWithResourcesOnDifferentDevices(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPUs available.")
@@ -1142,6 +1179,84 @@ class FunctionalOpsCaseTest(test.TestCase):
     self.assertAllEqual(np.float32(4), self.evaluate(f(-1, one)))  # <0 default
     self.assertAllEqual(np.float32(4), self.evaluate(f(6, one)))  # >=N default
 
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla("Don't lower for XLA")
+  def testSkipEagerCaseLoweringPreservesNameForFetch(self):
+    for use_gpu in (True, False):
+      def Run(branch, x, fetch_by_name, use_gpu=use_gpu):
+        with ops.Graph().as_default() as g:
+          @function.Defun(dtypes.float32)
+          def two(x):
+            return -1, x * 2
+
+          @function.Defun(dtypes.float32)
+          def three(x):
+            return 0, x * 3
+
+          @function.Defun(dtypes.float32)
+          def four(x):
+            return 1, x * 4
+
+          outputs = gen_functional_ops.case(branch, input=[x],
+                                            Tout=[dtypes.int32, dtypes.float32],
+                                            branches=[two, three, four],
+                                            name="my_case")
+
+          # `outputs` is the list of output tensors of the Case op. We
+          # arbitrarily choose the 0th tensor to get the Case op and set the
+          # lowering attribute on it.
+          outputs[0].op._set_attr("_lower_using_switch_merge",
+                                  attr_value_pb2.AttrValue(b=True))
+          outputs = array_ops.identity_n(outputs)
+        with self.session(graph=g, use_gpu=use_gpu) as sess:
+          return sess.run("my_case:1" if fetch_by_name else outputs[1])
+
+      self.assertAllEqual(2 * 1., Run(0, 1., False))
+      self.assertAllEqual(2 * 1., Run(0, 1., True))
+      self.assertAllEqual(3 * 7., Run(1, 7., False))
+      self.assertAllEqual(3 * 7., Run(1, 7., True))
+      self.assertAllEqual(4 * -3., Run(2, -3., False))
+      self.assertAllEqual(4 * -3., Run(2, -3., True))
+      self.assertAllEqual(4 * -4., Run(7, -4., False))  # >= N default
+      self.assertAllEqual(4 * -4., Run(7, -4., True))  # >= N default
+      self.assertAllEqual(4 * -5., Run(-1, -5., False))  # <0 default
+      self.assertAllEqual(4 * -5., Run(-1, -5., True))  # <0 default
+
+  @test_util.disable_xla("Don't lower for XLA")
+  def testCaseLowering(self):
+    for use_gpu in (True, False):
+      @eager_function.defun
+      def Run(branch, x):
+        @function.Defun(dtypes.float32)
+        def two(x):
+          return -1, x * 2
+
+        @function.Defun(dtypes.float32)
+        def three(x):
+          return 0, x * 3
+
+        @function.Defun(dtypes.float32)
+        def four(x):
+          return 1, x * 4
+
+        outputs = gen_functional_ops.case(branch, input=[x],
+                                          Tout=[dtypes.int32, dtypes.float32],
+                                          branches=[two, three, four])
+
+        # `outputs` is the list of output tensors of the Case op. We
+        # arbitrarily choose the 0th tensor to get the Case op and set the
+        # lowering attribute on it.
+        outputs[0].op._set_attr("_lower_using_switch_merge",
+                                attr_value_pb2.AttrValue(b=True))
+        outputs = array_ops.identity_n(outputs)
+        return outputs[1]
+
+      with ops.device(test.gpu_device_name() if use_gpu else "CPU:0"):
+        self.assertAllEqual(2 * 1., self.evaluate(Run(0, 1.)))
+        self.assertAllEqual(3 * 7., self.evaluate(Run(1, 7.)))
+        self.assertAllEqual(4 * -3., self.evaluate(Run(2, -3.)))
+        self.assertAllEqual(4 * -4., self.evaluate(Run(7, -4.)))  # >=N default
+        self.assertAllEqual(4 * -5., self.evaluate(Run(-1, -5.)))  # <0 default
 
 if __name__ == "__main__":
   test.main()

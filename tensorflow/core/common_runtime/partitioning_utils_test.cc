@@ -47,7 +47,7 @@ class PartitioningUtilsTest : public ::testing::Test {
                                           &devices));
     device0_ = devices[0].get();
     device1_ = devices[1].get();
-    device_mgr_.reset(new DeviceMgr(std::move(devices)));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
 
     for (auto d : device_mgr_->ListDevices()) {
       device_set_.AddDevice(d);
@@ -68,8 +68,7 @@ class PartitioningUtilsTest : public ::testing::Test {
     TF_ASSERT_OK(s.ToGraph(graph));
 
     if (assign_device) {
-      Placer placer(graph, &device_set_, nullptr, /* No session options */
-                    device0_);
+      Placer placer(graph, "", &device_set_, device0_);
       TF_ASSERT_OK(placer.Run());
     }
   }
@@ -85,8 +84,7 @@ class PartitioningUtilsTest : public ::testing::Test {
     auto dx_retval = ops::_Retval(s2.WithOpName("retval1"), id_y, 0);
     auto dy_retval = ops::_Retval(s1.WithOpName("retval2"), id_x, 1);
     TF_ASSERT_OK(s.ToGraph(graph));
-    Placer placer(graph, &device_set_, nullptr, /* No session options */
-                  device0_);
+    Placer placer(graph, "", &device_set_, device0_);
     TF_ASSERT_OK(placer.Run());
   }
 
@@ -100,8 +98,7 @@ class PartitioningUtilsTest : public ::testing::Test {
     auto id_x = ops::Identity(s1.WithOpName("id_x"), x);
     auto dx_retval = ops::_Retval(s1.WithOpName("retval1"), id_x, ret_index);
     TF_ASSERT_OK(s.ToGraph(subgraph));
-    Placer placer(subgraph, &device_set_, nullptr, /* No session options */
-                  device0_);
+    Placer placer(subgraph, "", &device_set_, device0_);
     TF_ASSERT_OK(placer.Run());
   }
 
@@ -186,9 +183,11 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets) {
   std::vector<AllocatorAttributes> arg_alloc_attrs;
   std::vector<AllocatorAttributes> ret_alloc_attrs;
 
-  Status status =
-      UpdateArgAndRetvalMetadata(graph.get(), &arg_indices, &ret_indices,
-                                 &arg_alloc_attrs, &ret_alloc_attrs);
+  string device_type = "CPU";
+
+  Status status = UpdateArgAndRetvalMetadata(
+      graph.get(), device_type, &arg_indices, &ret_indices, &arg_alloc_attrs,
+      &ret_alloc_attrs);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   CheckIndices({3}, arg_indices);

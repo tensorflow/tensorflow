@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/distributed_runtime/cancellable_call.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
@@ -25,6 +26,7 @@ namespace {
 class CompleteGroupCall : public CancellableCall {
  public:
   CompleteGroupCall(const CollGroupParams& group, const string& device_name,
+                    const CollectiveType& collective_type,
                     CancellationManager* cancel_mgr,
                     const string& remote_worker, WorkerCacheInterface* wc)
       : CancellableCall(cancel_mgr, remote_worker, wc) {
@@ -32,6 +34,7 @@ class CompleteGroupCall : public CancellableCall {
     req_.set_group_size(group.group_size);
     req_.set_device_type(group.device_type.type_string());
     req_.add_device_name(device_name);
+    req_.set_collective_type(collective_type);
   }
   ~CompleteGroupCall() override {}
 
@@ -89,7 +92,9 @@ CollectiveParamResolverDistributed::CollectiveParamResolverDistributed(
                         : config.experimental().collective_group_leader()) {
   VLOG(1) << "CompleteParamResolverDistributed ctor task={" << task_name
           << "} config.collective_group_leader={"
-          << config.experimental().collective_group_leader() << "}";
+          << config.experimental().collective_group_leader() << "}"
+          << " config.collective_nccl={"
+          << config.experimental().collective_nccl() << "}";
 }
 
 void CollectiveParamResolverDistributed::CompleteParamsAsync(
@@ -119,9 +124,10 @@ void CollectiveParamResolverDistributed::CompleteGroupAsync(
   for (const string& dn : request->device_name()) {
     cp.instance.device_names.push_back(dn);
   }
+  cp.instance.type = CollectiveType(request->collective_type());
   CompleteGroupDistributed(
       cp.instance.device_names[0], &cp, cancel_mgr,
-      [this, response, done](const Status& s, const GroupRec* gr) {
+      [response, done](const Status& s, const GroupRec* gr) {
         if (s.ok()) {
           mutex_lock l(gr->mu);
           response->set_group_key(gr->group.group_key);
@@ -134,6 +140,8 @@ void CollectiveParamResolverDistributed::CompleteGroupAsync(
           for (const string& tn : gr->task_list) {
             response->add_task_name(tn);
           }
+          response->set_communicator_key(
+              gr->group.runtime_details.communicator_key);
         } else {
           LOG(ERROR) << "Bad status from CompleteGroupDistributed: " << s;
         }
@@ -159,7 +167,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
   string* device = new string(request->device());
   VLOG(1) << "New cp " << cp << " for device " << *device << " : "
           << cp->ToString();
-  StatusCallback done_and_cleanup = [this, cp, device, done](const Status& s) {
+  StatusCallback done_and_cleanup = [cp, device, done](const Status& s) {
     done(s);
     delete cp;
     delete device;
@@ -180,17 +188,13 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
                   // retrieve it.
                   FindInstanceRec(
                       gr, cp,
-                      [this, gr, cp, response, done_and_cleanup](
-                          const Status& fi_status, InstanceRec* ir) {
+                      [cp, response, done_and_cleanup](const Status& fi_status,
+                                                       InstanceRec* ir) {
                         if (fi_status.ok()) {
                           mutex_lock l(ir->out_mu);
                           ir->WaitForOutMu(l);
                           response->set_instance_key(cp->instance.instance_key);
                           response->set_source_rank(ir->source_rank);
-                          if (!cp->instance.communicator_key.empty()) {
-                            response->set_communicator_key(
-                                cp->instance.communicator_key);
-                          }
                           done_and_cleanup(fi_status);
                         } else {
                           done_and_cleanup(fi_status);
@@ -238,13 +242,29 @@ Status CollectiveParamResolverDistributed::UpdateGroupCache(
     gr->task_set.insert(tn);
   }
   CHECK_EQ(gr->task_set.size(), gr->group.num_tasks);
+  gr->group.runtime_details.communicator_key = resp.communicator_key();
+  VLOG(2) << "Group communicator_key="
+          << absl::CEscape(gr->group.runtime_details.communicator_key);
   {
     // Group membership should never change. Once a record is in group_table_
     // it never gets removed.
     mutex_lock l(group_mu_);
     auto it = group_table_.find(gr->group.group_key);
     if (it == group_table_.end()) {
+      VLOG(2) << "UpdateGroupCache: communicator_key="
+              << absl::CEscape(gr->group.runtime_details.communicator_key);
       group_table_[gr->group.group_key] = std::move(gr);
+    } else {
+      auto& previous_gr = group_table_[gr->group.group_key];
+      if (previous_gr->group.runtime_details.communicator_key !=
+          gr->group.runtime_details.communicator_key) {
+        return errors::Internal(
+            "UpdateGroupCache: CompleteGroupResponse for group ",
+            gr->group.group_key, " gives communicator_key=",
+            absl::CEscape(gr->group.runtime_details.communicator_key),
+            " but cache already holds communicator_key=",
+            absl::CEscape(previous_gr->group.runtime_details.communicator_key));
+      }
     }
   }
   return Status::OK();
@@ -260,8 +280,9 @@ void CollectiveParamResolverDistributed::CompleteGroupDistributed(
     return CompleteGroupLocal(device, cp, done);
   } else if (!GroupIsCached(cp->group.group_key)) {
     // Need to update Group cache from the leader.
-    CompleteGroupCall* call = new CompleteGroupCall(
-        cp->group, device, cancel_mgr, group_leader_, worker_cache_);
+    CompleteGroupCall* call =
+        new CompleteGroupCall(cp->group, device, cp->instance.type, cancel_mgr,
+                              group_leader_, worker_cache_);
     call->Start([this, device, cp, call, done](const Status& s) {
       if (s.ok()) {
         Status status = UpdateGroupCache(call->resp_);
@@ -293,10 +314,8 @@ void CollectiveParamResolverDistributed::UpdateInstanceCache(
   using InstanceRecPointer = InstanceRec*;
   InstanceRecPointer* irp = new InstanceRecPointer(nullptr);
   int32 source_rank = resp.source_rank();
-  string communicator_key = resp.communicator_key();
 
-  auto continue_with_ir = [cp, irp, source_rank, communicator_key,
-                           done](const Status& s) {
+  auto continue_with_ir = [cp, irp, source_rank, done](const Status& s) {
     if (!s.ok()) {
       done(s);
       delete irp;
@@ -317,19 +336,6 @@ void CollectiveParamResolverDistributed::UpdateInstanceCache(
           break;
         }
         ir->source_rank = source_rank;
-      }
-      if (ir->communicator_key != communicator_key) {
-        if (!ir->communicator_key.empty()) {
-          ir->status = errors::Internal(
-              "UpdateInstanceCache: CompleteInstanceResponse for instance ",
-              cp->instance.instance_key,
-              " gives communicator_key with size =", communicator_key.size(),
-              " but cache already holds communicator_key with size=",
-              ir->communicator_key.size());
-          status = ir->status;
-          break;
-        }
-        ir->communicator_key = communicator_key;
       }
       if (ir->known_count < cp->group.group_size) {
         ir->known_count = cp->group.group_size;
@@ -352,11 +358,11 @@ void CollectiveParamResolverDistributed::UpdateInstanceCache(
     delete irp;
   };
 
-  FindInstanceRec(
-      gr, cp, [this, irp, continue_with_ir](const Status s, InstanceRec* irec) {
-        *irp = irec;
-        continue_with_ir(s);
-      });
+  FindInstanceRec(gr, cp,
+                  [irp, continue_with_ir](const Status s, InstanceRec* irec) {
+                    *irp = irec;
+                    continue_with_ir(s);
+                  });
 }
 
 void CollectiveParamResolverDistributed::CompleteInstanceDistributed(

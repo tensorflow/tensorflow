@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Benchmarks for `tf.data.experimental.unbatch()`."""
+"""Benchmarks for `tf.data.Dataset.unbatch()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,7 +22,6 @@ import time
 import numpy as np
 
 from tensorflow.python.client import session
-from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -31,16 +30,16 @@ from tensorflow.python.platform import test
 
 
 class UnbatchBenchmark(test.Benchmark):
-  """Benchmarks for `tf.data.experimental.unbatch()`."""
+  """Benchmarks for `tf.data.Dataset.unbatch()`."""
 
-  def benchmarkNativeUnbatch(self):
+  def benchmark_native_unbatch(self):
     batch_sizes = [1, 2, 5, 10, 20, 50]
     elems_per_trial = 10000
     with ops.Graph().as_default():
       dataset = dataset_ops.Dataset.from_tensors("element").repeat(None)
       batch_size_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
       dataset = dataset.batch(batch_size_placeholder)
-      dataset = dataset.apply(batching.unbatch())
+      dataset = dataset.unbatch()
       dataset = dataset.skip(elems_per_trial)
       options = dataset_ops.Options()
       options.experimental_optimization.apply_default_optimizations = False
@@ -70,7 +69,7 @@ class UnbatchBenchmark(test.Benchmark):
   # Include a benchmark of the previous `unbatch()` implementation that uses
   # a composition of more primitive ops. Eventually we'd hope to generate code
   # that is as good in both cases.
-  def benchmarkOldUnbatchImplementation(self):
+  def benchmark_old_unbatch_implementation(self):
     batch_sizes = [1, 2, 5, 10, 20, 50]
     elems_per_trial = 10000
     with ops.Graph().as_default():

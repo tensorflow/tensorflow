@@ -62,8 +62,8 @@ and [research paper](https://arxiv.org/pdf/1708.00630).
 ## How to use this Model?
 
 We have provided a pre-built demo APK that you can download, install and test on
-your phone ([demo APK
-here](http://download.tensorflow.org/deps/tflite/SmartReplyDemo.apk)).
+your phone
+([demo APK here](https://storage.googleapis.com/download.tensorflow.org/deps/tflite/SmartReplyDemo.apk)).
 
 The On-Device Smart Reply demo App works in the following way:
 

@@ -26,11 +26,11 @@ from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -40,21 +40,16 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @parameterized.named_parameters(
-      ("Default", None, None, False),
-      ("SequentialCalls", 1, None, False),
-      ("ParallelCalls", 2, None, False),
-      ("ParallelBatches", None, 10, False),
-      ("DefaultNUMA", None, None, True),
-      ("SequentialCallsNUMA", 1, None, True),
-      ("ParallelCallsNUMA", 2, None, True),
-      ("ParallelBatchesNUMA", None, 10, True),
-  )
-  def testMapAndBatch(self, num_parallel_calls, num_parallel_batches,
-                      numa_aware):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              num_parallel_calls=[None, 1, 2], num_parallel_batches=None) +
+          combinations.combine(
+              num_parallel_calls=None, num_parallel_batches=10)))
+  def testMapAndBatch(self, num_parallel_calls, num_parallel_batches):
     """Test a dataset that maps a TF function across its input elements."""
     # The pipeline is TensorSliceDataset ->
     # RepeatDataset(count) -> MapAndBatchDataset(square_3, batch_size).
@@ -65,7 +60,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     def _map_fn(x, y, z):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
-    def dataset_fn(batch_size, count, numa_aware=numa_aware):
+    def dataset_fn(batch_size, count):
       dataset = dataset_ops.Dataset.from_tensor_slices(components).repeat(
           count).apply(
               batching.map_and_batch(
@@ -73,10 +68,6 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
                   batch_size=batch_size,
                   num_parallel_calls=num_parallel_calls,
                   num_parallel_batches=num_parallel_batches))
-      if numa_aware:
-        options = dataset_ops.Options()
-        options.experimental_numa_aware = True
-        dataset = dataset.with_options(options)
       return dataset
 
     # Batch of a finite input, where the batch_size divides the
@@ -125,24 +116,16 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       self.assertDatasetProduces(dataset_fn(0, 14), expected_output=[])
 
-  @parameterized.named_parameters(
-      ("Even", False, False),
-      ("Uneven", True, False),
-      ("EvenNUMA", False, True),
-      ("UnevenNUMA", True, True),
-  )
-  def testMapAndBatchPartialBatch(self, drop_remainder, numa_aware):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(drop_remainder=[True, False])))
+  def testMapAndBatchPartialBatch(self, drop_remainder):
     dataset = (
         dataset_ops.Dataset.range(10).apply(
             batching.map_and_batch(
                 lambda x: array_ops.reshape(x * x, [1]),
                 batch_size=4,
                 drop_remainder=drop_remainder)))
-
-    if numa_aware:
-      options = dataset_ops.Options()
-      options.experimental_numa_aware = True
-      dataset = dataset.with_options(options)
 
     if drop_remainder:
       self.assertEqual(
@@ -155,36 +138,22 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       expected_output.append([[64], [81]])
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
-  @parameterized.named_parameters(
-      ("Normal", False),
-      ("NUMA", True),
-  )
-  def testMapAndBatchYieldsPartialBatch(self, numa_aware):
+  @combinations.generate(test_base.default_test_combinations())
+  def testMapAndBatchYieldsPartialBatch(self):
     dataset = (
         dataset_ops.Dataset.range(10).apply(
             batching.map_and_batch(lambda x: array_ops.reshape(x * x, [1]), 4)))
 
-    if numa_aware:
-      options = dataset_ops.Options()
-      options.experimental_numa_aware = True
-      dataset = dataset.with_options(options)
     self.assertEqual(
         [None, 1], dataset_ops.get_legacy_output_shapes(dataset).as_list())
     expected_output = [[[0], [1], [4], [9]], [[16], [25], [36], [49]],
                        [[64], [81]]]
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
-  @parameterized.named_parameters(
-      ("Normal", False),
-      ("NUMA", True),
-  )
-  def testMapAndBatchParallelGetNext(self, numa_aware):
+  @combinations.generate(test_base.default_test_combinations())
+  def testMapAndBatchParallelGetNext(self):
     dataset = dataset_ops.Dataset.range(50000).apply(
         batching.map_and_batch(lambda x: x, batch_size=100))
-    if numa_aware:
-      options = dataset_ops.Options()
-      options.experimental_numa_aware = True
-      dataset = dataset.with_options(options)
 
     if context.executing_eagerly():
       iterator = iter(dataset)
@@ -207,19 +176,11 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate([element() for element in elements])
 
-  @parameterized.named_parameters(
-      ("Normal", False),
-      ("NUMA", True),
-  )
-  def testMapAndBatchParallelGetNextDropRemainder(self, numa_aware):
+  @combinations.generate(test_base.default_test_combinations())
+  def testMapAndBatchParallelGetNextDropRemainder(self):
     dataset = dataset_ops.Dataset.range(49999).apply(
         batching.map_and_batch(
             lambda x: x, batch_size=100, drop_remainder=True))
-
-    if numa_aware:
-      options = dataset_ops.Options()
-      options.experimental_numa_aware = True
-      dataset = dataset.with_options(options)
 
     if context.executing_eagerly():
       iterator = iter(dataset)
@@ -242,11 +203,8 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate([element() for element in elements])
 
-  @parameterized.named_parameters(
-      ("Normal", False),
-      ("NUMA", True),
-  )
-  def testMapAndBatchSparse(self, numa_aware):
+  @combinations.generate(test_base.default_test_combinations())
+  def testMapAndBatchSparse(self):
 
     def _sparse(i):
       return sparse_tensor.SparseTensorValue(
@@ -254,10 +212,6 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.range(10).apply(
         batching.map_and_batch(_sparse, 5))
-    if numa_aware:
-      options = dataset_ops.Options()
-      options.experimental_numa_aware = True
-      dataset = dataset.with_options(options)
 
     self.assertDatasetProduces(
         dataset,
@@ -268,11 +222,8 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
                 dense_shape=[5, 1]) for i in range(2)
         ])
 
-  @parameterized.named_parameters(
-      ("Normal", False),
-      ("NUMA", True),
-  )
-  def testMapAndBatchFails(self, numa_aware):
+  @combinations.generate(test_base.default_test_combinations())
+  def testMapAndBatchFails(self):
     """Test a dataset that maps a TF function across its input elements."""
 
     with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
@@ -280,18 +231,11 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
           array_ops.check_numerics(
               constant_op.constant(1.0) / constant_op.constant(0.0), "oops"))
       dataset = dataset.apply(batching.map_and_batch(lambda x: x, 14))
-      if numa_aware:
-        options = dataset_ops.Options()
-        options.experimental_numa_aware = True
-        dataset = dataset.with_options(options)
-      get_next = self.getNext(dataset)
+      get_next = self.getNext(dataset, requires_initialization=True)
       self.evaluate(get_next())
 
-  @parameterized.named_parameters(
-      ("Normal", False),
-      ("NUMA", True),
-  )
-  def testMapAndBatchShapeMismatch(self, numa_aware):
+  @combinations.generate(test_base.default_test_combinations())
+  def testMapAndBatchShapeMismatch(self):
     """Test a dataset that maps a TF function across its input elements."""
 
     def generator():
@@ -304,20 +248,13 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         generator, output_types=dtypes.int32)
     batch_size = 4
     dataset = dataset.apply(batching.map_and_batch(lambda x: x, batch_size))
-    if numa_aware:
-      options = dataset_ops.Options()
-      options.experimental_numa_aware = True
-      dataset = dataset.with_options(options)
     self.assertDatasetProduces(
         dataset,
         expected_error=(errors.InvalidArgumentError,
                         "number of elements does not match"))
 
-  @parameterized.named_parameters(
-      ("Normal", False),
-      ("NUMA", True),
-  )
-  def testMapAndBatchImplicitDispose(self, numa_aware):
+  @combinations.generate(test_base.default_test_combinations())
+  def testMapAndBatchImplicitDispose(self):
     # Tests whether a map and batch dataset will be cleaned up correctly when
     # the pipeline does not run it until exhaustion.
     # The pipeline is TensorSliceDataset -> RepeatDataset(1000) ->
@@ -332,29 +269,15 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices(components).repeat(
         1000).apply(batching.map_and_batch(_map_fn, batch_size=100))
     dataset = dataset.prefetch(5)
-    if numa_aware:
-      options = dataset_ops.Options()
-      options.experimental_numa_aware = True
-      dataset = dataset.with_options(options)
     get_next = self.getNext(dataset)
     for _ in range(3):
       self.evaluate(get_next())
 
-  @parameterized.named_parameters(
-      ("1", 0, False),
-      ("2", 5, False),
-      ("3", 10, False),
-      ("4", 90, False),
-      ("5", 95, False),
-      ("6", 99, False),
-      ("1NUMA", 0, True),
-      ("2NUMA", 5, True),
-      ("3NUMA", 10, True),
-      ("4NUMA", 90, True),
-      ("5NUMA", 95, True),
-      ("6NUMA", 99, True),
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(threshold=[0, 5, 10, 90, 95, 99]))
   )
-  def testMapAndBatchMapError(self, threshold, numa_aware):
+  def testMapAndBatchMapError(self, threshold):
 
     def raising_py_fn(i):
       if i >= threshold:
@@ -366,52 +289,30 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         batching.map_and_batch(
             lambda x: script_ops.py_func(raising_py_fn, [x], dtypes.int64),
             batch_size=10))
-    if numa_aware:
-      options = dataset_ops.Options()
-      options.experimental_numa_aware = True
-      dataset = dataset.with_options(options)
 
     get_next = self.getNext(dataset)
     for i in range(threshold // 10):
       self.assertAllEqual([i * 10 + j for j in range(10)],
                           self.evaluate(get_next()))
-    if numa_aware:
-      if threshold % 10 != 0:
-        self.assertAllEqual(
-            [threshold // 10 * 10 + j for j in range(threshold % 10)],
-            self.evaluate(get_next()))
-    else:
-      for i in range(threshold // 10, 10):
-        with self.assertRaises(errors.InvalidArgumentError):
-          self.evaluate(get_next())
+    for i in range(threshold // 10, 10):
+      with self.assertRaises(errors.InvalidArgumentError):
+        self.evaluate(get_next())
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  @parameterized.named_parameters(
-      ("1", False, dtypes.bool, False),
-      ("2", -42, dtypes.int8, False),
-      ("3", -42, dtypes.int16, False),
-      ("4", -42, dtypes.int32, False),
-      ("5", -42, dtypes.int64, False),
-      ("6", 42, dtypes.uint8, False),
-      ("7", 42, dtypes.uint16, False),
-      ("8", 42.0, dtypes.float16, False),
-      ("9", 42.0, dtypes.float32, False),
-      ("10", 42.0, dtypes.float64, False),
-      ("11", b"hello", dtypes.string, False),
-      ("1NUMA", False, dtypes.bool, True),
-      ("2NUMA", -42, dtypes.int8, True),
-      ("3NUMA", -42, dtypes.int16, True),
-      ("4NUMA", -42, dtypes.int32, True),
-      ("5NUMA", -42, dtypes.int64, True),
-      ("6NUMA", 42, dtypes.uint8, True),
-      ("7NUMA", 42, dtypes.uint16, True),
-      ("8NUMA", 42.0, dtypes.float16, True),
-      ("9NUMA", 42.0, dtypes.float32, True),
-      ("10NUMA", 42.0, dtypes.float64, True),
-      ("11NUMA", b"hello", dtypes.string, True),
-  )
-  def testMapAndBatchTypes(self, element, dtype, numa_aware):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(element=False, dtype=dtypes.bool) +
+          combinations.combine(
+              element=-42,
+              dtype=[dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64]) +
+          combinations.combine(element=42, dtype=[dtypes.uint8, dtypes.uint16])
+          + combinations.combine(
+              element=42.0,
+              dtype=[dtypes.float16, dtypes.float32, dtypes.float64]) +
+          combinations.combine(element=b"hello", dtype=[dtypes.string])))
+  def testMapAndBatchTypes(self, element, dtype):
 
     def gen():
       yield element
@@ -419,35 +320,52 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_generator(gen, dtype).repeat(100).apply(
         batching.map_and_batch(lambda x: x, batch_size=10))
 
-    if numa_aware:
-      options = dataset_ops.Options()
-      options.experimental_numa_aware = True
-      dataset = dataset.with_options(options)
-
     get_next = self.getNext(dataset)
     for _ in range(10):
       self.assertAllEqual([element for _ in range(10)],
                           self.evaluate(get_next()))
 
-  @parameterized.named_parameters(
-      ("Identity", None, lambda x: x, None),
-      ("Replicate", None, lambda x: (x, x), None),
-      ("Swap", (None, None), lambda x, y: (y, x), None),
-      ("Project", (None, None), lambda x, y: x, None),
-  )
-  def testShortCircuit(self, structure, map_fn, num_parallel_calls):
-    dataset = self.structuredDataset(structure).repeat().apply(
+  @combinations.generate(test_base.default_test_combinations())
+  def testShortCircuitIdentity(self):
+    map_fn = lambda x: x
+    dataset = self.structuredDataset(None).repeat().apply(
         batching.map_and_batch(map_fn, batch_size=10))
     get_next = self.getNext(dataset)
-
-    if isinstance(structure, tuple):
-      expected = map_fn(
-          *self.evaluate(self.structuredElement(structure, shape=[10])))
-    else:
-      expected = map_fn(
-          self.evaluate(self.structuredElement(structure, shape=[10])))
+    expected = map_fn(self.evaluate(self.structuredElement(None, shape=[10])))
     self.assertAllEqual(expected, self.evaluate(get_next()))
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testShortCircuitReplicate(self):
+    map_fn = lambda x: (x, x)
+    dataset = self.structuredDataset(None).repeat().apply(
+        batching.map_and_batch(map_fn, batch_size=10))
+    get_next = self.getNext(dataset)
+    expected = map_fn(self.evaluate(self.structuredElement(None, shape=[10])))
+    self.assertAllEqual(expected, self.evaluate(get_next()))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testShortCircuitSwap(self):
+    map_fn = lambda x, y: (y, x)
+    dataset = self.structuredDataset(
+        (None,
+         None)).repeat().apply(batching.map_and_batch(map_fn, batch_size=10))
+    get_next = self.getNext(dataset)
+    expected = map_fn(
+        *self.evaluate(self.structuredElement((None, None), shape=[10])))
+    self.assertAllEqual(expected, self.evaluate(get_next()))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testShortCircuitProject(self):
+    map_fn = lambda x, y: x
+    dataset = self.structuredDataset(
+        (None,
+         None)).repeat().apply(batching.map_and_batch(map_fn, batch_size=10))
+    get_next = self.getNext(dataset)
+    expected = map_fn(
+        *self.evaluate(self.structuredElement((None, None), shape=[10])))
+    self.assertAllEqual(expected, self.evaluate(get_next()))
+
+  @combinations.generate(test_base.default_test_combinations())
   def testShortCircuitCapturedInput(self):
     captured_t = variables.Variable(42)
     dataset = self.structuredDataset(None).repeat().apply(
@@ -456,11 +374,8 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = self.getNext(dataset, requires_initialization=True)
     self.assertAllEqual([42] * 10, self.evaluate(get_next()))
 
-  @parameterized.named_parameters(
-      ("Normal", False),
-      ("NUMA", True),
-  )
-  def testMapAndBatchControlFlow(self, numa_aware):
+  @combinations.generate(test_base.default_test_combinations())
+  def testMapAndBatchControlFlow(self):
 
     def map_fn(x):
       previous_control_flow_v2_value = control_flow_util.ENABLE_CONTROL_FLOW_V2
@@ -471,10 +386,6 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.range(100).apply(
         batching.map_and_batch(map_fn, batch_size=10))
-    if numa_aware:
-      options = dataset_ops.Options()
-      options.experimental_numa_aware = True
-      dataset = dataset.with_options(options)
     get_next = self.getNext(dataset)
     for i in range(10):
       if i < 5:

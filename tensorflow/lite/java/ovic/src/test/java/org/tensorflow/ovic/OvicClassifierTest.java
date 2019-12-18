@@ -82,13 +82,13 @@ public final class OvicClassifierTest {
   @Test
   public void ovicClassifier_quantizedModelCreateSuccess() throws Exception {
     classifier = new OvicClassifier(labelsInputStream, quantizedModel);
-    assertThat(classifier != null).isTrue();
+    assertThat(classifier).isNotNull();
   }
 
   @Test
   public void ovicClassifier_floatModelCreateSuccess() throws Exception {
     classifier = new OvicClassifier(labelsInputStream, floatModel);
-    assertThat(classifier != null).isTrue();
+    assertThat(classifier).isNotNull();
   }
 
   @Test
@@ -116,14 +116,15 @@ public final class OvicClassifierTest {
   public void ovicClassifier_latencyNotNull() throws Exception {
     classifier = new OvicClassifier(labelsInputStream, floatModel);
     testResult = classifier.classifyByteBuffer(testImage);
-    assertThat(testResult.latency != null).isTrue();
+    assertThat(testResult.latency).isNotNull();
   }
 
   @Test
   public void ovicClassifier_mismatchedInputResolutionFails() throws Exception {
     classifier = new OvicClassifier(labelsInputStream, lowResModel);
     int[] inputDims = classifier.getInputDims();
-    assertThat((inputDims[1] == 128) && (inputDims[2] == 128)).isTrue();
+    assertThat(inputDims[1]).isEqualTo(128);
+    assertThat(inputDims[2]).isEqualTo(128);
     try {
       testResult = classifier.classifyByteBuffer(testImage);
       fail();
@@ -148,7 +149,7 @@ public final class OvicClassifierTest {
   }
 
   private static void assertCorrectTopK(OvicClassificationResult testResult) {
-    assertThat(testResult.topKClasses.size() > 0).isTrue();
+    assertThat(testResult.topKClasses.size()).isGreaterThan(0);
     Boolean topKAccurate = false;
     // Assert that the correct class is in the top K.
     for (int i = 0; i < testResult.topKIndices.size(); i++) {

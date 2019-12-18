@@ -1,0 +1,7 @@
+#!/usr/bin/make -f
+
+export PYBUILD_NAME=tflite_runtime
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+override_dh_shlibdeps:

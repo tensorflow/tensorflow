@@ -120,7 +120,7 @@ class HloSharding {
 
   // Retrieves a histogram of the devices used by the sharding. The returned
   // map has the device number as key, and the occurrence count as value.
-  // If a sharding does not have a device, it will not be incuded in the
+  // If a sharding does not have a device, it will not be included in the
   // histogram. The count argument, if not nullptr, will receive the total
   // number of elements this sharding is made of (one for array, N leaves for
   // tuples).
@@ -207,6 +207,7 @@ class HloSharding {
   // Returns the flattened list of all the leaf shardings in a tuple shape, by
   // pre-order walk (ShapeTree iterator order).
   // REQUIRES: IsTuple().
+  std::vector<HloSharding>& tuple_elements() { return tuple_elements_; }
   const std::vector<HloSharding>& tuple_elements() const {
     return tuple_elements_;
   }

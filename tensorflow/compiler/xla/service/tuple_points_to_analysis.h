@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_TUPLE_POINTS_TO_ANALYSIS_H_
 
 #include <stddef.h>
+
 #include <iosfwd>
 #include <memory>
 #include <set>
@@ -249,6 +250,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleDomain(HloInstruction* domain) override;
   Status HandleCopy(HloInstruction* copy) override;
+  Status HandleCopyDone(HloInstruction* copy_done) override;
   Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandleSend(HloInstruction* send) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
@@ -263,15 +265,6 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   bool DoesNotUseOperandBuffer(const HloInstruction* operand,
                                const ShapeIndex& index,
                                const HloInstruction* user) const;
-
-  // Returns true if 'user' (at 'user_index') can share a buffer with its
-  // operand 'operand' (at 'operand_index'). Returns false otherwise.
-  //
-  // REQUIRES: 'operand' is an operand of 'user'.
-  bool CanShareOperandBufferWithUser(HloInstruction* operand,
-                                     const ShapeIndex& operand_index,
-                                     HloInstruction* user,
-                                     const ShapeIndex& user_index) const;
 
  private:
   explicit TuplePointsToAnalysis(
@@ -309,7 +302,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // Information kept per instruction
   struct PerInstruction {
     std::unique_ptr<PointsToSet> points_to_set;
-    // Empircally, ~92% of instructions have 1
+    // Empirically, ~92% of instructions have 1
     // instruction_defined_buffer, and 99% have 0 or 1
     BufferDefinitionVector instruction_defined_buffers;
   };

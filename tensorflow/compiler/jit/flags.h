@@ -23,14 +23,30 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Flags associated with the XLA bridge's mark_for_compilation_pass module.
-struct MarkForCompilationPassFlags {
+struct XlaAutoJitFlag {
   // Control compilation of operators into XLA computations on CPU and GPU
   // devices.  0 = use ConfigProto setting; -1 = off; 1 = on for things very
   // likely to be improved; 2 = on for everything.
   //
+  // If all non-CPU ops in the graph being optimized are placed on a single GPU
+  // and there is at least one node placed on that GPU then
+  // `optimization_level_single_gpu` applies.  Otherwise
+  // `optimization_level_general` applies.
+  //
   // Experimental.
-  int32 tf_xla_auto_jit;
+  int32 optimization_level_single_gpu;
+  int32 optimization_level_general;
+};
+
+// Sets the xla_auto_jit_flag based on the given flag sting. Supported syntax
+// is:
+// <number>: sets general and single_gpu setting to the provided number.
+// single-gpu(<number>): sets the single_gpu setting to the provided number.
+bool SetXlaAutoJitFlagFromFlagString(const string& value);
+
+// Flags associated with the XLA bridge's mark_for_compilation_pass module.
+struct MarkForCompilationPassFlags {
+  XlaAutoJitFlag xla_auto_jit_flag;
 
   // Minimum number of operators in an XLA compilation. Ignored for operators
   // placed on an XLA device or operators explicitly marked for compilation.
@@ -38,6 +54,9 @@ struct MarkForCompilationPassFlags {
 
   // Maximum number of operators in an XLA compilation.
   int32 tf_xla_max_cluster_size;
+
+  // If non-empty, limit XLA clustering to the following TF operations.
+  string tf_xla_ops_to_cluster;
 
   // Dump graphs during XLA compilation.
   bool tf_xla_clustering_debug;
@@ -49,15 +68,16 @@ struct MarkForCompilationPassFlags {
   // eligible for clustering.
   int64 tf_xla_clustering_fuel;
 
-  // tf_xla_fusion_only is effective only when global_jit_level is set to ON*
-  // and overrides its behavior. If true, enable fusion of element-wise
-  // operations only using XLA.
-  bool tf_xla_fusion_only;
-
   // If tf_xla_disable_deadness_safety_checks_for_debugging is set to true then
   // we do not do deadness related safety checks.  This is unsound in general,
   // but can be used as a debugging aid.
   bool tf_xla_disable_deadness_safety_checks_for_debugging;
+
+  // If tf_xla_disable_resource_variable_safety_checks_for_debugging is set to
+  // true then we do not do safety checks to preserve TensorFlow's resource
+  // variable concurrency semantics.  This is unsound in general, but can be
+  // used as a debugging aid.
+  bool tf_xla_disable_resource_variable_safety_checks_for_debugging;
 };
 
 // Flags associated with the XLA bridge's xla_device module.
@@ -81,12 +101,33 @@ struct BuildXlaOpsPassFlags {
   // Enables lazy compilation for TF/XLA (only when auto-clustering) if true.
   // Defaults to true.
   bool tf_xla_enable_lazy_compilation;
+
+  // If true then insert Print nodes to print out values produced by XLA
+  // clusters.  Useful for debugging.
+  bool tf_xla_print_cluster_outputs;
+
+  // If true, insert CheckNumerics nodes for every floating point typed input to
+  // an XLA cluster.
+  bool tf_xla_check_cluster_input_numerics;
+
+  // If true, insert CheckNumerics nodes for every floating point typed output
+  // from an XLA cluster.
+  bool tf_xla_check_cluster_output_numerics;
+
+  // Disables all constant folding. The primary use for this is for testing to
+  // guarantee that tests are run on XLA and not on TF's CPU implementation.
+  bool tf_xla_disable_constant_folding;
 };
 
-// Flags for the XLA bridge's dump_graph module.
-struct DumpGraphFlags {
-  // Path prefix to which graphs dumped during debugging should be written.
-  string tf_dump_graph_prefix;
+// Flags for the IntroduceFloatingPointJitter pass.
+struct IntroduceFloatingPointJitterPassFlags {
+  // The amount of jitter to introduce.  This amount is added to each element in
+  // the tensors named in `tensor_names.
+  float jitter_amount;
+
+  // The Tensors to add the jitter to.  The tensors are named in the TensorId
+  // format of <node name>:<output idx>.
+  std::vector<string> tensor_names;
 };
 
 // Return a pointer to the DumpGraphFlags struct;
@@ -97,10 +138,12 @@ struct DumpGraphFlags {
 // parses TF_XLA_FLAGS for all of them.  Those functions which return a pointer
 // always return the same pointer.
 MarkForCompilationPassFlags* GetMarkForCompilationPassFlags();
-const BuildXlaOpsPassFlags& GetBuildXlaOpsPassFlags();
+BuildXlaOpsPassFlags* GetBuildXlaOpsPassFlags();
 XlaDeviceFlags* GetXlaDeviceFlags();
 const XlaOpsCommonFlags& GetXlaOpsCommonFlags();
-DumpGraphFlags* GetDumpGraphFlags();
+
+const IntroduceFloatingPointJitterPassFlags&
+GetIntroduceFloatingPointJitterPassFlags();
 
 // Appends the flag definitions associated with
 // MarkForCompilationPassFlags/DumpGraphFlags to `flag_list`.
@@ -108,8 +151,6 @@ DumpGraphFlags* GetDumpGraphFlags();
 // Has the side-effect of parsing TF_XLA_FLAGS if that hasn't happened yet.
 void AppendMarkForCompilationPassFlags(
     std::vector<tensorflow::Flag>* flag_list);
-void AppendDumpGraphFlags(std::vector<tensorflow::Flag>* flag_list);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_FLAGS_H_

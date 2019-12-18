@@ -1,13 +1,13 @@
 load("@build_bazel_rules_android//android:rules.bzl", "android_binary")
-
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow/lite:build_def.bzl",
     "tflite_copts",
     "tflite_jni_binary",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 filegroup(
@@ -20,7 +20,6 @@ filegroup(
 android_binary(
     name = "SmartReplyDemo",
     srcs = glob(["java/**/*.java"]),
-    aapt_version = "aapt",
     assets = [":assets"],
     assets_dir = "",
     custom_package = "com.example.android.smartreply",

@@ -22,10 +22,10 @@
 #include <sstream>
 #include <string>
 
-#include "tensorflow/contrib/lite/kernels/register.h"
-#include "tensorflow/contrib/lite/model.h"
-#include "tensorflow/contrib/lite/op_resolver.h"
-#include "tensorflow/contrib/lite/string_util.h"
+#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/op_resolver.h"
+#include "tensorflow/lite/string_util.h"
 
 #include "ios_image_load.h"
 
@@ -106,12 +106,8 @@ NSString* RunInferenceOnImage() {
   model->error_reporter();
   NSLog(@"Resolved reporter.");
 
-#ifdef TFLITE_CUSTOM_OPS_HEADER
-  tflite::MutableOpResolver resolver;
-  RegisterSelectedOps(&resolver);
-#else
   tflite::ops::builtin::BuiltinOpResolver resolver;
-#endif
+  RegisterSelectedOps(&resolver);
 
   std::unique_ptr<tflite::Interpreter> interpreter;
   tflite::InterpreterBuilder(*model, resolver)(&interpreter);

@@ -49,7 +49,7 @@ namespace toco {
   op->axis = {axis_data[0]};
 
   // Drop the axis array as we no longer need it.
-  DeleteArrayIfUsedOnce(op->inputs[2], model);
+  DeleteArrayIfUnusedOutsideOfOp(op->inputs[2], op, model);
   op->inputs.resize(2);
 
   *modified = true;

@@ -16,7 +16,7 @@ limitations under the License.
 #include <map>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -110,7 +110,7 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
     default:
       context->ReportError(
           context,
-          "Unique index output array can only be Int32 or In64, requested: ",
+          "Unique index output array can only be Int32 or In64, requested: %s",
           TfLiteTypeGetName(params->index_out_type));
   }
   return kTfLiteError;

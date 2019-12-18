@@ -14,16 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/boosted_trees/resources.h"
+
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
+#include "tensorflow/core/kernels/boosted_trees/tree_helper.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
-
-namespace {
-constexpr float kLayerByLayerTreeWeight = 1.0;
-}  // namespace
 
 // Constructor.
 BoostedTreesEnsembleResource::BoostedTreesEnsembleResource()
@@ -56,7 +54,7 @@ int32 BoostedTreesEnsembleResource::num_trees() const {
 
 int32 BoostedTreesEnsembleResource::next_node(
     const int32 tree_id, const int32 node_id, const int32 index_in_batch,
-    const std::vector<TTypes<int32>::ConstVec>& bucketized_features) const {
+    const std::vector<TTypes<int32>::ConstMatrix>& bucketized_features) const {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   DCHECK_LT(node_id, tree_ensemble_->trees(tree_id).nodes_size());
   const auto& node = tree_ensemble_->trees(tree_id).nodes(node_id);
@@ -64,15 +62,17 @@ int32 BoostedTreesEnsembleResource::next_node(
   switch (node.node_case()) {
     case boosted_trees::Node::kBucketizedSplit: {
       const auto& split = node.bucketized_split();
-      return (bucketized_features[split.feature_id()](index_in_batch) <=
-              split.threshold())
+      const auto bucketized_feature = bucketized_features[split.feature_id()];
+      return bucketized_feature(index_in_batch, split.dimension_id()) <=
+                     split.threshold()
                  ? split.left_id()
                  : split.right_id();
     }
     case boosted_trees::Node::kCategoricalSplit: {
       const auto& split = node.categorical_split();
-      return (bucketized_features[split.feature_id()](index_in_batch) ==
-              split.value())
+      const auto bucketized_feature = bucketized_features[split.feature_id()];
+      return bucketized_feature(index_in_batch, split.dimension_id()) ==
+                     split.value()
                  ? split.left_id()
                  : split.right_id();
     }
@@ -88,7 +88,6 @@ std::vector<float> BoostedTreesEnsembleResource::node_value(
   DCHECK_LT(node_id, tree_ensemble_->trees(tree_id).nodes_size());
   const auto& node = tree_ensemble_->trees(tree_id).nodes(node_id);
   if (node.node_case() == boosted_trees::Node::kLeaf) {
-    // TODO(crawles): only use vector leaf even if # logits=1.
     if (node.leaf().has_vector()) {
       std::vector<float> leaf_values;
       const auto& leaf_value_vector = node.leaf().vector();
@@ -111,8 +110,10 @@ std::vector<float> BoostedTreesEnsembleResource::node_value(
         node_values.push_back(leaf_value_vector.value(i));
       }
       return node_values;
-    } else {
+    } else if (node.metadata().has_original_leaf()) {
       return {node.metadata().original_leaf().scalar()};
+    } else {
+      return {};
     }
   }
 }
@@ -252,15 +253,24 @@ void BoostedTreesEnsembleResource::UpdateGrowingMetadata() const {
 }
 
 // Add a tree to the ensemble and returns a new tree_id.
-int32 BoostedTreesEnsembleResource::AddNewTree(const float weight) {
-  return AddNewTreeWithLogits(weight, 0.0);
+int32 BoostedTreesEnsembleResource::AddNewTree(const float weight,
+                                               const int32 logits_dimension) {
+  const std::vector<float> empty_leaf(logits_dimension);
+  return AddNewTreeWithLogits(weight, empty_leaf, logits_dimension);
 }
 
-int32 BoostedTreesEnsembleResource::AddNewTreeWithLogits(const float weight,
-                                                         const float logits) {
+int32 BoostedTreesEnsembleResource::AddNewTreeWithLogits(
+    const float weight, const std::vector<float>& logits,
+    const int32 logits_dimension) {
   const int32 new_tree_id = tree_ensemble_->trees_size();
   auto* node = tree_ensemble_->add_trees()->add_nodes();
-  node->mutable_leaf()->set_scalar(logits);
+  if (logits_dimension == 1) {
+    node->mutable_leaf()->set_scalar(logits[0]);
+  } else {
+    for (int32 i = 0; i < logits_dimension; ++i) {
+      node->mutable_leaf()->mutable_vector()->add_value(logits[i]);
+    }
+  }
   tree_ensemble_->add_tree_weights(weight);
   tree_ensemble_->add_tree_metadata();
 
@@ -268,31 +278,92 @@ int32 BoostedTreesEnsembleResource::AddNewTreeWithLogits(const float weight,
 }
 
 void BoostedTreesEnsembleResource::AddBucketizedSplitNode(
-    const int32 tree_id, const int32 node_id, const int32 feature_id,
-    const int32 threshold, const float gain, const float left_contrib,
-    const float right_contrib, int32* left_node_id, int32* right_node_id) {
+    const int32 tree_id,
+    const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
+    const int32 logits_dimension, int32* left_node_id, int32* right_node_id) {
+  const auto candidate = split_entry.second;
+  auto* node = AddLeafNodes(tree_id, split_entry, logits_dimension,
+                            left_node_id, right_node_id);
+  auto* new_split = node->mutable_bucketized_split();
+  new_split->set_feature_id(candidate.feature_idx);
+  new_split->set_threshold(candidate.threshold);
+  new_split->set_dimension_id(candidate.dimension_id);
+  new_split->set_left_id(*left_node_id);
+  new_split->set_right_id(*right_node_id);
+
+  boosted_trees::SplitTypeWithDefault split_type_with_default;
+  bool parsed = boosted_trees::SplitTypeWithDefault_Parse(
+      candidate.split_type, &split_type_with_default);
+  DCHECK(parsed);
+  if (split_type_with_default == boosted_trees::INEQUALITY_DEFAULT_RIGHT) {
+    new_split->set_default_direction(boosted_trees::DEFAULT_RIGHT);
+  } else {
+    new_split->set_default_direction(boosted_trees::DEFAULT_LEFT);
+  }
+}
+
+void BoostedTreesEnsembleResource::AddCategoricalSplitNode(
+    const int32 tree_id,
+    const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
+    const int32 logits_dimension, int32* left_node_id, int32* right_node_id) {
+  const auto candidate = split_entry.second;
+  auto* node = AddLeafNodes(tree_id, split_entry, logits_dimension,
+                            left_node_id, right_node_id);
+  auto* new_split = node->mutable_categorical_split();
+  new_split->set_feature_id(candidate.feature_idx);
+  new_split->set_value(candidate.threshold);
+  new_split->set_dimension_id(candidate.dimension_id);
+  new_split->set_left_id(*left_node_id);
+  new_split->set_right_id(*right_node_id);
+}
+
+boosted_trees::Node* BoostedTreesEnsembleResource::AddLeafNodes(
+    const int32 tree_id,
+    const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
+    const int32 logits_dimension, int32* left_node_id, int32* right_node_id) {
   auto* tree = tree_ensemble_->mutable_trees(tree_id);
+  const auto node_id = split_entry.first;
+  const auto candidate = split_entry.second;
   auto* node = tree->mutable_nodes(node_id);
   DCHECK_EQ(node->node_case(), boosted_trees::Node::kLeaf);
-  float prev_node_value = node->leaf().scalar();
   *left_node_id = tree->nodes_size();
   *right_node_id = *left_node_id + 1;
   auto* left_node = tree->add_nodes();
   auto* right_node = tree->add_nodes();
-  if (node_id != 0 || (node->has_leaf() && node->leaf().scalar() != 0)) {
+  const bool has_leaf_value =
+      node->has_leaf() &&
+      ((logits_dimension == 1 && (node->leaf().scalar() != 0)) ||
+       node->leaf().has_vector());
+  if (node_id != 0 || has_leaf_value) {
     // Save previous leaf value if it is not the first leaf in the tree.
     node->mutable_metadata()->mutable_original_leaf()->Swap(
         node->mutable_leaf());
   }
-  node->mutable_metadata()->set_gain(gain);
-  auto* new_split = node->mutable_bucketized_split();
-  new_split->set_feature_id(feature_id);
-  new_split->set_threshold(threshold);
-  new_split->set_left_id(*left_node_id);
-  new_split->set_right_id(*right_node_id);
+  node->mutable_metadata()->set_gain(candidate.gain);
   // TODO(npononareva): this is LAYER-BY-LAYER boosting; add WHOLE-TREE.
-  left_node->mutable_leaf()->set_scalar(prev_node_value + left_contrib);
-  right_node->mutable_leaf()->set_scalar(prev_node_value + right_contrib);
+  if (logits_dimension == 1) {
+    const float prev_logit_value = node->metadata().original_leaf().scalar();
+    left_node->mutable_leaf()->set_scalar(prev_logit_value +
+                                          candidate.left_node_contribs[0]);
+    right_node->mutable_leaf()->set_scalar(prev_logit_value +
+                                           candidate.right_node_contribs[0]);
+  } else {
+    if (has_leaf_value) {
+      DCHECK_EQ(logits_dimension,
+                node->metadata().original_leaf().vector().value_size());
+    }
+    float prev_logit_value = 0.0;
+    for (int32 i = 0; i < logits_dimension; ++i) {
+      if (has_leaf_value) {
+        prev_logit_value = node->metadata().original_leaf().vector().value(i);
+      }
+      left_node->mutable_leaf()->mutable_vector()->add_value(
+          prev_logit_value + candidate.left_node_contribs[i]);
+      right_node->mutable_leaf()->mutable_vector()->add_value(
+          prev_logit_value + candidate.right_node_contribs[i]);
+    }
+  }
+  return node;
 }
 
 void BoostedTreesEnsembleResource::Reset() {
@@ -306,7 +377,8 @@ void BoostedTreesEnsembleResource::Reset() {
       protobuf::Arena::CreateMessage<boosted_trees::TreeEnsemble>(&arena_);
 }
 
-void BoostedTreesEnsembleResource::PostPruneTree(const int32 current_tree) {
+void BoostedTreesEnsembleResource::PostPruneTree(const int32 current_tree,
+                                                 const int32 logits_dimension) {
   // No-op if tree is empty.
   auto* tree = tree_ensemble_->mutable_trees(current_tree);
   int32 num_nodes = tree->nodes_size();
@@ -317,10 +389,11 @@ void BoostedTreesEnsembleResource::PostPruneTree(const int32 current_tree) {
   std::vector<int32> nodes_to_delete;
   // If a node was pruned, we need to save the change of the prediction from
   // this node to its parent, as well as the parent id.
-  std::vector<std::pair<int32, float>> nodes_changes;
+  std::vector<std::pair<int32, std::vector<float>>> nodes_changes;
   nodes_changes.reserve(num_nodes);
   for (int32 i = 0; i < num_nodes; ++i) {
-    nodes_changes.emplace_back(i, 0.0);
+    std::vector<float> prune_logit_changes;
+    nodes_changes.emplace_back(i, prune_logit_changes);
   }
   // Prune the tree recursively starting from the root. Each node that has
   // negative gain and only leaf children will be pruned recursively up from
@@ -358,18 +431,23 @@ void BoostedTreesEnsembleResource::PostPruneTree(const int32 current_tree) {
       // Update meta info that will allow us to use cached predictions from
       // those nodes.
       int32 new_id;
-      float logit_change;
-      CalculateParentAndLogitUpdate(i, nodes_changes, &new_id, &logit_change);
+      std::vector<float> logit_changes;
+      logit_changes.reserve(logits_dimension);
+      CalculateParentAndLogitUpdate(i, nodes_changes, &new_id, &logit_changes);
       auto* meta = post_prune_meta->Add();
       meta->set_new_node_id(old_to_new_ids[new_id]);
-      meta->set_logit_change(logit_change);
+      for (int32 j = 0; j < logits_dimension; ++j) {
+        meta->add_logit_change(logit_changes[j]);
+      }
     } else {
       old_to_new_ids[i] = new_index++;
       auto* meta = post_prune_meta->Add();
       // Update meta info that will allow us to use cached predictions from
       // those nodes.
       meta->set_new_node_id(old_to_new_ids[i]);
-      meta->set_logit_change(0.0);
+      for (int32 i = 0; i < logits_dimension; ++i) {
+        meta->add_logit_change(0.0);
+      }
     }
   }
   index_for_deleted = 0;
@@ -402,7 +480,7 @@ void BoostedTreesEnsembleResource::PostPruneTree(const int32 current_tree) {
 
 void BoostedTreesEnsembleResource::GetPostPruneCorrection(
     const int32 tree_id, const int32 initial_node_id, int32* current_node_id,
-    float* logit_update) const {
+    std::vector<float>* logit_updates) const {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   if (IsTreeFinalized(tree_id) && IsTreePostPruned(tree_id)) {
     DCHECK_LT(
@@ -412,7 +490,10 @@ void BoostedTreesEnsembleResource::GetPostPruneCorrection(
         tree_ensemble_->tree_metadata(tree_id).post_pruned_nodes_meta(
             initial_node_id);
     *current_node_id = meta.new_node_id();
-    *logit_update += meta.logit_change();
+    DCHECK_EQ(meta.logit_change().size(), logit_updates->size());
+    for (int32 i = 0; i < meta.logit_change().size(); ++i) {
+      logit_updates->at(i) = meta.logit_change(i);
+    }
   }
 }
 
@@ -429,16 +510,20 @@ bool BoostedTreesEnsembleResource::IsTerminalSplitNode(
 // calculates the total update from that pruned node prediction.
 void BoostedTreesEnsembleResource::CalculateParentAndLogitUpdate(
     const int32 start_node_id,
-    const std::vector<std::pair<int32, float>>& nodes_change, int32* parent_id,
-    float* change) const {
-  *change = 0.0;
+    const std::vector<std::pair<int32, std::vector<float>>>& nodes_changes,
+    int32* parent_id, std::vector<float>* changes) const {
+  const int logits_dimension = nodes_changes[start_node_id].second.size();
+  for (int i = 0; i < logits_dimension; ++i) {
+    changes->emplace_back(0.0);
+  }
   int32 node_id = start_node_id;
-  int32 parent = nodes_change[node_id].first;
-
+  int32 parent = nodes_changes[node_id].first;
   while (parent != node_id) {
-    (*change) += nodes_change[node_id].second;
+    for (int i = 0; i < logits_dimension; ++i) {
+      changes->at(i) += nodes_changes[node_id].second[i];
+    }
     node_id = parent;
-    parent = nodes_change[node_id].first;
+    parent = nodes_changes[node_id].first;
   }
   *parent_id = parent;
 }
@@ -446,7 +531,7 @@ void BoostedTreesEnsembleResource::CalculateParentAndLogitUpdate(
 void BoostedTreesEnsembleResource::RecursivelyDoPostPrunePreparation(
     const int32 tree_id, const int32 node_id,
     std::vector<int32>* nodes_to_delete,
-    std::vector<std::pair<int32, float>>* nodes_meta) {
+    std::vector<std::pair<int32, std::vector<float>>>* nodes_meta) {
   auto* node = tree_ensemble_->mutable_trees(tree_id)->mutable_nodes(node_id);
   DCHECK_NE(node->node_case(), boosted_trees::Node::NODE_NOT_SET);
   // Base case when we reach a leaf.
@@ -475,19 +560,22 @@ void BoostedTreesEnsembleResource::RecursivelyDoPostPrunePreparation(
 
     // Change node back into leaf.
     *node->mutable_leaf() = node_metadata.original_leaf();
-    const auto& parent_values = node_value(tree_id, node_id);
-    DCHECK_EQ(parent_values.size(), 1);
-    const float parent_value = parent_values[0];
 
     // Save the old values of weights of children.
-    (*nodes_meta)[left_id].first = node_id;
-    (*nodes_meta)[left_id].second =
-        parent_value - node_value(tree_id, left_id)[0];
-
-    (*nodes_meta)[right_id].first = node_id;
-    (*nodes_meta)[right_id].second =
-        parent_value - node_value(tree_id, right_id)[0];
-
+    nodes_meta->at(left_id).first = node_id;
+    nodes_meta->at(right_id).first = node_id;
+    const auto& left_child_values = node_value(tree_id, left_id);
+    const auto& right_child_values = node_value(tree_id, right_id);
+    std::vector<float> parent_values(left_child_values.size(), 0.0);
+    if (node_metadata.has_original_leaf()) {
+      parent_values = node_value(tree_id, node_id);
+    }
+    for (int32 i = 0; i < parent_values.size(); ++i) {
+      nodes_meta->at(left_id).second.emplace_back(parent_values[i] -
+                                                  left_child_values[i]);
+      nodes_meta->at(right_id).second.emplace_back(parent_values[i] -
+                                                   right_child_values[i]);
+    }
     // Clear gain for leaf node.
     node->clear_metadata();
   }

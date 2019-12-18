@@ -18,43 +18,57 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
+absl::string_view ThunkKindToString(Thunk::Kind kind) {
   switch (kind) {
+    case Thunk::kCholesky:
+      return "kCholesky";
+    case Thunk::kCollectivePermute:
+      return "kCollectivePermute";
     case Thunk::kConditional:
-      return os << "kConditional";
+      return "kConditional";
     case Thunk::kConvolution:
-      return os << "kConvolution";
+      return "kConvolution";
     case Thunk::kCopy:
-      return os << "kCopy";
+      return "kCopy";
     case Thunk::kCudnnBatchNormBackward:
-      return os << "kCudnnBatchNormBackward";
+      return "kCudnnBatchNormBackward";
     case Thunk::kCudnnBatchNormForwardInference:
-      return os << "kCudnnBatchNormForwardInference";
+      return "kCudnnBatchNormForwardInference";
     case Thunk::kCudnnBatchNormForwardTraining:
-      return os << "kCudnnBatchNormForwardTraining";
+      return "kCudnnBatchNormForwardTraining";
+    case Thunk::kCustomCall:
+      return "kCustomCall";
+    case Thunk::kNcclAllReduce:
+      return "kNcclAllReduce";
     case Thunk::kFft:
-      return os << "kFft";
+      return "kFft";
     case Thunk::kGemm:
-      return os << "kGemm";
+      return "kGemm";
     case Thunk::kInfeed:
-      return os << "kInfeed";
+      return "kInfeed";
     case Thunk::kKernel:
-      return os << "kKernel";
+      return "kKernel";
     case Thunk::kMemset32BitValue:
-      return os << "kMemset32BitValue";
+      return "kMemset32BitValue";
     case Thunk::kMemzero:
-      return os << "kMemzero";
+      return "kMemzero";
     case Thunk::kOutfeed:
-      return os << "kOutfeed";
+      return "kOutfeed";
+    case Thunk::kReplicaId:
+      return "kReplicaId";
     case Thunk::kSequential:
-      return os << "kSequential";
+      return "kSequential";
     case Thunk::kTriangularSolve:
-      return os << "kTriangularSolve";
+      return "kTriangularSolve";
     case Thunk::kTuple:
-      return os << "kTuple";
+      return "kTuple";
     case Thunk::kWhile:
-      return os << "kWhile";
+      return "kWhile";
   }
+}
+
+std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
+  return os << ThunkKindToString(kind);
 }
 
 }  // namespace gpu

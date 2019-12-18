@@ -39,7 +39,7 @@ TEST_F(SortSimplifierTest, RemoveUnusedSortOperandArrayResult) {
      p.0.rhs = f32[] parameter(1)
      p.1.lhs = s32[] parameter(2)
      p.1.rhs = s32[] parameter(3)
-     ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+     ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
    }
 
    ENTRY sort_computation {
@@ -73,7 +73,7 @@ TEST_F(SortSimplifierTest, RemoveUnusedSortOperandTuple) {
      p.1.rhs = s32[] parameter(3)
      p.2.lhs = u32[] parameter(4)
      p.2.rhs = u32[] parameter(5)
-     ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+     ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
    }
 
    ENTRY sort_computation {
@@ -109,7 +109,7 @@ TEST_F(SortSimplifierTest, DontRemoveUnusedSortKey) {
      p.0.rhs = f32[] parameter(1)
      p.1.lhs = s32[] parameter(2)
      p.1.rhs = s32[] parameter(3)
-     ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+     ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
    }
 
    ENTRY sort_computation {
@@ -134,7 +134,7 @@ TEST_F(SortSimplifierTest, RemoveUnusedFirstOperand) {
      p.0.rhs = f32[] parameter(1)
      p.1.lhs = s32[] parameter(2)
      p.1.rhs = s32[] parameter(3)
-     ROOT lt = pred[] less-than(p.1.lhs, p.1.rhs)
+     ROOT lt = pred[] compare(p.1.lhs, p.1.rhs), direction=LT
    }
 
    ENTRY sort_computation {

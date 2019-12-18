@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +22,7 @@ from __future__ import division
 from __future__ import print_function
 import itertools
 
-import tensorflow.lite.python.op_hint as op_hint
+from tensorflow.lite.python.op_hint import OpHint
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import initializers
 from tensorflow.python.layers import base as base_layer
@@ -36,7 +37,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("lite.experimental.nn.TfLiteRNNCell")
+@tf_export(v1=["lite.experimental.nn.TfLiteRNNCell"])
 class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
   """The most basic RNN cell.
 
@@ -76,7 +77,7 @@ class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
     # Inputs must be Rank-2.
     self.input_spec = base_layer.InputSpec(ndim=2)
 
-    self._tflite_wrapper = op_hint.OpHint("UnidirectionalSequenceRnn")
+    self._tflite_wrapper = OpHint("UnidirectionalSequenceRnn")
     self._num_units = num_units
     if activation:
       self._activation = activations.get(activation)
@@ -107,7 +108,7 @@ class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
     input_depth = inputs_shape[-1]
 
     def add_variable_wrapped(name, shape, initializer, index):
-      var = self.add_variable(name, shape=shape, initializer=initializer)
+      var = self.add_weight(name, shape=shape, initializer=initializer)
       return self._tflite_wrapper.add_input(
           var, name=name, index_override=index)
 
@@ -153,10 +154,11 @@ class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
         "reuse": self._reuse,
     }
     base_config = super(TfLiteRNNCell, self).get_config()
-    return dict(itertools.chain(base_config.items(), config.items()))
+    return dict(
+        itertools.chain(list(base_config.items()), list(config.items())))
 
 
-@tf_export("lite.experimental.nn.TFLiteLSTMCell")
+@tf_export(v1=["lite.experimental.nn.TFLiteLSTMCell"])
 class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
@@ -254,7 +256,7 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
     # TODO(raziel): layers stuff -- chop if un-layerizing Op.
     self.input_spec = base_layer.InputSpec(ndim=2)
 
-    self._tflite_wrapper = op_hint.OpHint("UnidirectionalSequenceLstm")
+    self._tflite_wrapper = OpHint("UnidirectionalSequenceLstm")
 
     self._num_units = num_units
     self._use_peepholes = use_peepholes
@@ -291,10 +293,15 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
     Raises:
       ValueError: if the inputs_shape is invalid.
     """
-    if len(inputs_shape) != 2 or inputs_shape[1].value is None:
+    if len(inputs_shape) != 2:
+      raise ValueError(
+          "inputs_shape must be 2-dimensional, saw shape: %s" % inputs_shape)
+    input_depth = (
+        inputs_shape[1]
+        if isinstance(inputs_shape[1], int) else inputs_shape[1].value)
+    if input_depth is None:
       raise ValueError("Invalid inputs_shape, saw shape: %s" % inputs_shape)
 
-    input_depth = inputs_shape[1].value
     maybe_partitioner = (
         partitioned_variables.fixed_size_partitioner(self._num_unit_shards)
         if self._num_unit_shards is not None else None)
@@ -303,7 +310,7 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
     bias_shape = [self._num_units]
 
     def add_variable_wrapped(name, shape, initializer, index, partitioner):
-      var = self.add_variable(
+      var = self.add_weight(
           name, shape=shape, initializer=initializer, partitioner=partitioner)
       return self._tflite_wrapper.add_input(
           var, name=name, index_override=index)
@@ -313,6 +320,8 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
       bias_initializer = init_ops.zeros_initializer
     else:
       bias_initializer = init_ops.zeros_initializer(dtype=self.dtype)
+
+    forget_bias_initializer = init_ops.constant_initializer(self._forget_bias)
 
     self.input_to_input_w = add_variable_wrapped(
         "input_to_input_w", input_weight_shape, weight_initializer, 1,
@@ -341,8 +350,9 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
 
     self.input_bias = add_variable_wrapped(
         "input_bias", bias_shape, bias_initializer, 12, maybe_partitioner)
-    self.forget_bias = add_variable_wrapped(
-        "forget_bias", bias_shape, bias_initializer, 13, maybe_partitioner)
+    self.forget_bias = add_variable_wrapped("forget_bias", bias_shape,
+                                            forget_bias_initializer, 13,
+                                            maybe_partitioner)
     self.cell_bias = add_variable_wrapped(
         "cell_bias", bias_shape, bias_initializer, 14, maybe_partitioner)
     self.output_bias = add_variable_wrapped(
@@ -428,9 +438,9 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
         aggregate="first",
         index_override=18)
 
-    input_size = inputs.get_shape().with_rank(2)[1]
+    input_size = inputs.shape.with_rank(2).dims[1]
     if input_size.value is None:
-      raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
+      raise ValueError("Could not infer input size from inputs.shape[-1]")
 
     inputs_and_m_prev = array_ops.concat([inputs, m_prev], axis=1)
 
@@ -468,12 +478,10 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
     # Diagonal connections
     if self._use_peepholes:
       c = (
-          sigmoid(f + self._forget_bias + self._w_f_diag * c_prev) * c_prev +
+          sigmoid(f + self._w_f_diag * c_prev) * c_prev +
           sigmoid(i + self._w_i_diag * c_prev) * self._activation(j))
     else:
-      c = (
-          sigmoid(f + self._forget_bias) * c_prev +
-          sigmoid(i) * self._activation(j))
+      c = (sigmoid(f) * c_prev + sigmoid(i) * self._activation(j))
 
     if self._cell_clip is not None:
       # pylint: disable=invalid-unary-operand-type

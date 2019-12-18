@@ -132,7 +132,7 @@ TEST_F(HloShardingTest, NestedTuple) {
 
   HloSharding tiled_sharding = HloSharding::Tile(Array<int64>({{0, 1}}));
   OpSharding proto;
-  proto.set_type(OpSharding::Type::OpSharding_Type_TUPLE);
+  proto.set_type(OpSharding::TUPLE);
   *proto.add_tuple_shardings() = HloSharding::Replicate().ToProto();
   *proto.add_tuple_shardings() = HloSharding::AssignDevice(0).ToProto();
   *proto.add_tuple_shardings() = tiled_sharding.ToProto();

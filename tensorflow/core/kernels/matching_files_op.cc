@@ -40,7 +40,7 @@ class MatchingFilesOp : public OpKernel {
         errors::InvalidArgument(
             "Input patterns tensor must be scalar or vector, but had shape: ",
             patterns_t->shape().DebugString()));
-    const auto patterns = patterns_t->flat<string>();
+    const auto patterns = patterns_t->flat<tstring>();
     int num_patterns = patterns.size();
     int num_files = 0;
     std::vector<std::vector<string>> all_fnames(num_patterns);
@@ -53,7 +53,7 @@ class MatchingFilesOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->allocate_output("filenames", TensorShape({num_files}),
                                           &output_t));
-    auto output = output_t->vec<string>();
+    auto output = output_t->vec<tstring>();
     int index = 0;
     for (int i = 0; i < num_patterns; ++i) {
       for (int j = 0; j < all_fnames[i].size(); j++) {

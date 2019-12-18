@@ -5,11 +5,39 @@ solution for Swift developers. It enables low-latency inference of on-device
 machine learning models with a small binary size and fast performance supporting
 hardware acceleration.
 
-## Getting Started
+## Build TensorFlow with iOS support
 
-### Bazel
+To build the Swift TensorFlow Lite library on Apple platforms,
+[install from source](https://www.tensorflow.org/install/source#setup_for_linux_and_macos)
+or [clone the GitHub repo](https://github.com/tensorflow/tensorflow).
+Then, configure TensorFlow by navigating to the root directory and executing the
+`configure.py` script:
 
-In your `BUILD` file, add the `TensorFlowLite` dependency:
+```shell
+python configure.py
+```
+
+Follow the prompts and when asked to build TensorFlow with iOS support, enter `y`.
+
+### CocoaPods developers
+
+Add the TensorFlow Lite pod to your `Podfile`:
+
+```ruby
+pod 'TensorFlowLiteSwift'
+```
+
+Then, run `pod install`.
+
+In your Swift files, import the module:
+
+```swift
+import TensorFlowLite
+```
+
+### Bazel developers
+
+In your `BUILD` file, add the `TensorFlowLite` dependency to your target:
 
 ```python
 swift_library(
@@ -25,37 +53,28 @@ In your Swift files, import the module:
 import TensorFlowLite
 ```
 
-If you would like to build the Swift TensorFlow Lite library using Bazel on Apple
-platforms, clone or download the [TensorFlow GitHub repo](https://github.com/tensorflow/tensorflow),
-then navigate to the root `tensorflow` directory and execute the `configure.py` script:
-
-```shell
-python configure.py
-```
-
-Follow the prompts and when asked to configure the Bazel rules for Apple
-platforms, enter `y`.
-
 Build the `TensorFlowLite` Swift library target:
 
 ```shell
 bazel build tensorflow/lite/experimental/swift:TensorFlowLite
 ```
 
-Build the `TensorFlowLiteTests` target:
+Build the `Tests` target:
 
 ```shell
-bazel test tensorflow/lite/experimental/swift:TensorFlowLiteTests --swiftcopt=-enable-testing
+bazel test tensorflow/lite/experimental/swift:Tests --swiftcopt=-enable-testing
 ```
 
-Note that `--swiftcopt=-enable-testing` is required for optimized builds (`-c opt`).
+Note: `--swiftcopt=-enable-testing` is required for optimized builds (`-c opt`).
 
-### Tulsi
+#### Generate the Xcode project using Tulsi
 
-Open the `TensorFlowLite.tulsiproj` using the [TulsiApp](https://github.com/bazelbuild/tulsi) or by
-running the [`generate_xcodeproj.sh`](https://github.com/bazelbuild/tulsi/blob/master/src/tools/generate_xcodeproj.sh)
-script:
+Open the `//tensorflow/lite/experimental/swift/TensorFlowLite.tulsiproj` using
+the [TulsiApp](https://github.com/bazelbuild/tulsi)
+or by running the
+[`generate_xcodeproj.sh`](https://github.com/bazelbuild/tulsi/blob/master/src/tools/generate_xcodeproj.sh)
+script from the root `tensorflow` directory:
 
 ```shell
-generate_xcodeproj.sh --genconfig tensorflow/lite/swift/TensorFlowLite.tulsiproj:TensorFlowLite --outputfolder ~/path/to/generated/TensorFlowLite.xcodeproj
+generate_xcodeproj.sh --genconfig tensorflow/lite/experimental/swift/TensorFlowLite.tulsiproj:TensorFlowLite --outputfolder ~/path/to/generated/TensorFlowLite.xcodeproj
 ```

@@ -17,15 +17,18 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TRT_LRU_CACHE_H_
 
 #include <list>
+#include <thread>
 #include <unordered_map>
 
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_int8_calibrator.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
+#include "third_party/tensorrt/NvInfer.h"
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
@@ -100,17 +103,14 @@ class LRUCache {
   }
 
   // Creates n free positions in cache
-  Status DiscardOld(size_t n = 0) {
-    if (n > capacity_) {
-      return errors::Internal("Insufficient capacity in cache (capacity = ",
-                              capacity_, ", requested ", n, ")");
-    }
+  void DiscardOld(size_t n = 0) {
+    DCHECK(capacity_ >= n) << "Insufficient capacity in cache (capacity = "
+                           << capacity_ << ", requested " << n << ")";
     while (objects_.size() > (capacity_ - n)) {
       key_type discard_key = keys_.back();
       keys_.pop_back();
       objects_.erase(discard_key);
     }
-    return Status::OK();
   }
 };
 
@@ -139,38 +139,45 @@ struct EngineContext {
       GUARDED_BY(mu);
 };
 
+// Contains the context required to build the calibration data.
+class CalibrationContext {
+ public:
+  string TerminateCalibration();
+
+  // Lookup table for temporary staging areas of input tensors for calibration.
+  std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
+
+  // Temporary staging areas for calibration inputs.
+  std::vector<PersistentTensor> device_tensors_;
+
+  std::unique_ptr<TRTInt8Calibrator> calibrator_;
+  TrtUniquePtrType<nvinfer1::IBuilder> builder_;
+  TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
+  // TODO(sami): Use threadpool threads!
+  std::unique_ptr<std::thread> thr_;
+
+ private:
+  mutex mu_;
+  bool terminated_ GUARDED_BY(mu_) = false;
+  std::string calibration_table_ GUARDED_BY(mu_);
+};
+
+ABSL_CONST_INIT extern const absl::string_view kTfTrtContainerName;
+
 class TRTEngineCacheResource : public ResourceBase {
  public:
-  TRTEngineCacheResource(OpKernelContext* ctx, size_t capacity)
-      : cache_(capacity) {
-    auto device = ctx->device();
-    auto alloc = device->GetAllocator(AllocatorAttributes());
-    if (!alloc) {
-      LOG(ERROR) << "Can't find device allocator for gpu device "
-                 << device->name();
-      allocator_ = nullptr;
-    } else {
-      allocator_.reset(new TRTDeviceAllocator(alloc));
-    }
-  }
+  // According to the TensorRT API, the logger is considered a singleton by the
+  // TensorRT library, and multiple instances of IRuntime and/or IBuilder must
+  // all use the same logger. So here we make it a singleton.
+  //
+  // TODO(laigd): use this logger in all places where conversion happens.
+  static Logger& GetLogger();
 
-  string DebugString() const override {
-    std::stringstream oss;
-    using std::dec;
-    using std::endl;
-    using std::hex;
-    oss << "TRTEngineCacheResource: ";
-    oss << "TRTBaseAllocator = " << hex << allocator_.get() << dec << ", ";
-    oss << "LRUCache = " << hex << &cache_ << dec << endl;
-    oss << "Containing " << cache_.size() << " entries: " << endl;
-    for (const auto& item : cache_) {
-      oss << TensorShapeUtils::ShapeListString(item.first) << ": " << hex
-          << "ICudaEngine: " << item.second.get()->cuda_engine.get() << ", "
-          << "IExecutionContext: " << item.second.get()->execution_context.get()
-          << dec << endl;
-    }
-    return oss.str();
-  }
+  TRTEngineCacheResource(OpKernelContext* ctx, size_t capacity);
+
+  ~TRTEngineCacheResource() override;
+
+  string DebugString() const override;
 
   // Keep device allocator for TRT.
   std::unique_ptr<TRTBaseAllocator> allocator_;
@@ -179,6 +186,10 @@ class TRTEngineCacheResource : public ResourceBase {
   LRUCache<std::vector<TensorShape>, std::unique_ptr<EngineContext>,
            VectorTensorShapeHasher>
       cache_;
+
+  // TODO(hinsu): Use different calibration context for the available shapes and
+  // attach it to each item of the cache.
+  std::unique_ptr<CalibrationContext> calib_ctx_;
 };
 
 #endif  // GOOGLE_TENSORRT

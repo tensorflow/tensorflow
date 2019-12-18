@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.util import structure
 from tensorflow.python.eager import function
 from tensorflow.python.framework import device as framework_device
 from tensorflow.python.framework import dtypes
@@ -70,8 +71,8 @@ def copy_to_device(target_device, source_device="/cpu:0"):
 
   def _apply_fn(dataset):
     options = dataset_ops.Options()
-    options.experimental_autotune = False
     options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.autotune = False
     return _CopyToDeviceDataset(
         dataset, target_device=target_device,
         source_device=source_device).with_options(options)
@@ -112,7 +113,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
       """
       ds_variant = gen_dataset_ops.unwrap_dataset_variant(wrap_ds_variant)
       resource = gen_dataset_ops.anonymous_iterator(
-          **dataset_ops.flat_structure(self._input_dataset))
+          **self._input_dataset._flat_structure)  # pylint: disable=protected-access
       with ops.control_dependencies(
           [gen_dataset_ops.make_iterator(ds_variant, resource)]):
         return gen_dataset_ops.iterator_to_string_handle(resource)
@@ -145,7 +146,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
             dataset_ops.get_legacy_output_types(self),
             dataset_ops.get_legacy_output_shapes(self),
             dataset_ops.get_legacy_output_classes(self))
-      return self._element_structure._to_tensor_list(iterator.get_next())  # pylint: disable=protected-access
+      return structure.to_tensor_list(self.element_spec, iterator.get_next())
 
     next_func_concrete = _next_func._get_concrete_function_internal()  # pylint: disable=protected-access
 
@@ -155,9 +156,8 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
     def _remote_next_func(string_handle):
       return functional_ops.remote_call(
           target=self._source_device,
-          args=[string_handle] +
-          next_func_concrete.captured_inputs,
-          Tout=self._input_dataset._element_structure._flat_types,  # pylint: disable=protected-access
+          args=[string_handle] + next_func_concrete.captured_inputs,
+          Tout=self._input_dataset._flat_types,  # pylint: disable=protected-access
           f=next_func_concrete)
 
     self._next_func = _remote_next_func._get_concrete_function_internal()  # pylint: disable=protected-access
@@ -174,7 +174,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
       """
       iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
           string_handle,
-          **dataset_ops.flat_structure(self._input_dataset))
+          **self._input_dataset._flat_structure)  # pylint: disable=protected-access
       with ops.control_dependencies([
           resource_variable_ops.destroy_resource_op(
               iterator_resource, ignore_lookup_error=True)]):
@@ -208,7 +208,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
           init_func=self._init_func,
           next_func=self._next_func,
           finalize_func=self._finalize_func,
-          **dataset_ops.flat_structure(self._input_dataset))
+          **self._input_dataset._flat_structure)  # pylint: disable=protected-access
     super(_CopyToDeviceDataset, self).__init__(input_dataset, variant_tensor)
 
   # The one_shot_iterator implementation needs a 0 arg _make_dataset function
@@ -243,14 +243,14 @@ class _MapOnGpuDataset(dataset_ops.UnaryDataset):
         self._map_func.function.captured_inputs,
         f=self._map_func.function,
         use_inter_op_parallelism=self._use_inter_op_parallelism,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_MapOnGpuDataset, self).__init__(input_dataset, variant_tensor)
 
   def _functions(self):
     return [self._map_func]
 
   @property
-  def _element_structure(self):
+  def element_spec(self):
     return self._map_func.output_structure
 
   def _transformation_name(self):

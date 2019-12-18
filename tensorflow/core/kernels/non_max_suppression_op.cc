@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/non_max_suppression_op.h"
 
+#include <cmath>
 #include <functional>
 #include <queue>
 #include <vector>
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -104,8 +104,7 @@ static inline void ParseAndCheckCombinedNMSBoxSizes(OpKernelContext* context,
 }
 // Return intersection-over-union overlap between boxes i and j
 template <typename T>
-static inline bool IOUGreaterThanThreshold(
-    typename TTypes<T, 2>::ConstTensor boxes, int i, int j, T iou_threshold) {
+static inline T IOU(typename TTypes<T, 2>::ConstTensor boxes, int i, int j) {
   const T ymin_i = std::min<T>(boxes(i, 0), boxes(i, 2));
   const T xmin_i = std::min<T>(boxes(i, 1), boxes(i, 3));
   const T ymax_i = std::max<T>(boxes(i, 0), boxes(i, 2));
@@ -116,7 +115,9 @@ static inline bool IOUGreaterThanThreshold(
   const T xmax_j = std::max<T>(boxes(j, 1), boxes(j, 3));
   const T area_i = (ymax_i - ymin_i) * (xmax_i - xmin_i);
   const T area_j = (ymax_j - ymin_j) * (xmax_j - xmin_j);
-  if (area_i <= static_cast<T>(0) || area_j <= static_cast<T>(0)) return 0;
+  if (area_i <= static_cast<T>(0) || area_j <= static_cast<T>(0)) {
+    return static_cast<T>(0.0);
+  }
   const T intersection_ymin = std::max<T>(ymin_i, ymin_j);
   const T intersection_xmin = std::max<T>(xmin_i, xmin_j);
   const T intersection_ymax = std::min<T>(ymax_i, ymax_j);
@@ -124,84 +125,133 @@ static inline bool IOUGreaterThanThreshold(
   const T intersection_area =
       std::max<T>(intersection_ymax - intersection_ymin, static_cast<T>(0.0)) *
       std::max<T>(intersection_xmax - intersection_xmin, static_cast<T>(0.0));
-  const T iou = intersection_area / (area_i + area_j - intersection_area);
-  return iou > iou_threshold;
-}
-
-static inline bool OverlapsGreaterThanThreshold(
-    typename TTypes<float, 2>::ConstTensor overlaps, int i, int j,
-    float overlap_threshold) {
-  return overlaps(i, j) > overlap_threshold;
+  return intersection_area / (area_i + area_j - intersection_area);
 }
 
 template <typename T>
-static inline std::function<bool(int, int)> CreateIOUSuppressCheckFn(
-    const Tensor& boxes, float threshold) {
+static inline T Overlap(typename TTypes<T, 2>::ConstTensor overlaps, int i,
+                        int j) {
+  return overlaps(i, j);
+}
+
+template <typename T>
+static inline std::function<T(int, int)> CreateIOUSimilarityFn(
+    const Tensor& boxes) {
   typename TTypes<T, 2>::ConstTensor boxes_data = boxes.tensor<T, 2>();
-  return std::bind(&IOUGreaterThanThreshold<T>, boxes_data,
-                   std::placeholders::_1, std::placeholders::_2,
-                   static_cast<T>(threshold));
-}
-
-static inline std::function<bool(int, int)> CreateOverlapsSuppressCheckFn(
-    const Tensor& overlaps, float threshold) {
-  typename TTypes<float, 2>::ConstTensor overlaps_data =
-      overlaps.tensor<float, 2>();
-  return std::bind(&OverlapsGreaterThanThreshold, overlaps_data,
-                   std::placeholders::_1, std::placeholders::_2, threshold);
+  return std::bind(&IOU<T>, boxes_data, std::placeholders::_1,
+                   std::placeholders::_2);
 }
 
 template <typename T>
-void DoNonMaxSuppressionOp(
-    OpKernelContext* context, const Tensor& scores, int num_boxes,
-    const Tensor& max_output_size, const float score_threshold,
-    const std::function<bool(int, int)>& suppress_check_fn,
-    bool pad_to_max_output_size = false, int* ptr_num_valid_outputs = nullptr) {
+static inline std::function<T(int, int)> CreateOverlapSimilarityFn(
+    const Tensor& overlaps) {
+  typename TTypes<T, 2>::ConstTensor overlaps_data =
+      overlaps.tensor<float, 2>();
+  return std::bind(&Overlap<T>, overlaps_data, std::placeholders::_1,
+                   std::placeholders::_2);
+}
+
+template <typename T>
+void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
+                           int num_boxes, const Tensor& max_output_size,
+                           const T similarity_threshold,
+                           const T score_threshold, const T soft_nms_sigma,
+                           const std::function<T(int, int)>& similarity_fn,
+                           bool return_scores_tensor = false,
+                           bool pad_to_max_output_size = false,
+                           int* ptr_num_valid_outputs = nullptr) {
   const int output_size = max_output_size.scalar<int>()();
 
   std::vector<T> scores_data(num_boxes);
   std::copy_n(scores.flat<T>().data(), num_boxes, scores_data.begin());
 
-  // Data structure for selection candidate in NMS.
+  // Data structure for a selection candidate in NMS.
   struct Candidate {
     int box_index;
     T score;
+    int suppress_begin_index;
   };
 
   auto cmp = [](const Candidate bs_i, const Candidate bs_j) {
-    return bs_i.score < bs_j.score;
+    return ((bs_i.score == bs_j.score) && (bs_i.box_index > bs_j.box_index)) ||
+           bs_i.score < bs_j.score;
   };
   std::priority_queue<Candidate, std::deque<Candidate>, decltype(cmp)>
       candidate_priority_queue(cmp);
   for (int i = 0; i < scores_data.size(); ++i) {
-    if (static_cast<float>(scores_data[i]) > score_threshold) {
-      candidate_priority_queue.emplace(Candidate({i, scores_data[i]}));
+    if (scores_data[i] > score_threshold) {
+      candidate_priority_queue.emplace(Candidate({i, scores_data[i], 0}));
     }
   }
 
+  T scale = static_cast<T>(0.0);
+  if (soft_nms_sigma > static_cast<T>(0.0)) {
+    scale = static_cast<T>(-0.5) / soft_nms_sigma;
+  }
+
+  auto suppress_weight = [similarity_threshold, scale](const T sim) {
+    const T weight =
+        static_cast<T>(std::exp(static_cast<float>(scale * sim * sim)));
+    return sim <= similarity_threshold ? weight : static_cast<T>(0.0);
+  };
+
   std::vector<int> selected;
   std::vector<T> selected_scores;
+  T similarity, original_score;
   Candidate next_candidate;
 
   while (selected.size() < output_size && !candidate_priority_queue.empty()) {
     next_candidate = candidate_priority_queue.top();
+    original_score = next_candidate.score;
     candidate_priority_queue.pop();
 
-    // Overlapping boxes are likely to have similar scores,
-    // therefore we iterate through the previously selected boxes backwards
-    // in order to see if `next_candidate` should be suppressed.
-    bool should_select = true;
+    // Overlapping boxes are likely to have similar scores, therefore we
+    // iterate through the previously selected boxes backwards in order to
+    // see if `next_candidate` should be suppressed. We also enforce a property
+    // that a candidate can be suppressed by another candidate no more than
+    // once via `suppress_begin_index` which tracks which previously selected
+    // boxes have already been compared against next_candidate prior to a given
+    // iteration.  These previous selected boxes are then skipped over in the
+    // following loop.
+    bool should_hard_suppress = false;
+    for (int j = static_cast<int>(selected.size()) - 1;
+         j >= next_candidate.suppress_begin_index; --j) {
+      similarity = similarity_fn(next_candidate.box_index, selected[j]);
 
-    for (int j = static_cast<int>(selected.size()) - 1; j >= 0; --j) {
-      if (suppress_check_fn(next_candidate.box_index, selected[j])) {
-        should_select = false;
+      next_candidate.score *= suppress_weight(similarity);
+
+      // First decide whether to perform hard suppression
+      if (similarity >= static_cast<T>(similarity_threshold)) {
+        should_hard_suppress = true;
         break;
       }
-    }
 
-    if (should_select) {
-      selected.push_back(next_candidate.box_index);
-      selected_scores.push_back(next_candidate.score);
+      // If next_candidate survives hard suppression, apply soft suppression
+      if (next_candidate.score <= score_threshold) break;
+    }
+    // If `next_candidate.score` has not dropped below `score_threshold`
+    // by this point, then we know that we went through all of the previous
+    // selections and can safely update `suppress_begin_index` to
+    // `selected.size()`. If on the other hand `next_candidate.score`
+    // *has* dropped below the score threshold, then since `suppress_weight`
+    // always returns values in [0, 1], further suppression by items that were
+    // not covered in the above for loop would not have caused the algorithm
+    // to select this item. We thus do the same update to
+    // `suppress_begin_index`, but really, this element will not be added back
+    // into the priority queue in the following.
+    next_candidate.suppress_begin_index = selected.size();
+
+    if (!should_hard_suppress) {
+      if (next_candidate.score == original_score) {
+        // Suppression has not occurred, so select next_candidate
+        selected.push_back(next_candidate.box_index);
+        selected_scores.push_back(next_candidate.score);
+      }
+      if (next_candidate.score > score_threshold) {
+        // Soft suppression has occurred and current score is still greater than
+        // score_threshold; add next_candidate back onto priority queue.
+        candidate_priority_queue.push(next_candidate);
+      }
     }
   }
 
@@ -221,19 +271,26 @@ void DoNonMaxSuppressionOp(
                  context->allocate_output(0, output_shape, &output_indices));
   TTypes<int, 1>::Tensor output_indices_data = output_indices->tensor<int, 1>();
   std::copy_n(selected.begin(), selected.size(), output_indices_data.data());
+
+  if (return_scores_tensor) {
+    Tensor* output_scores = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(1, output_shape, &output_scores));
+    typename TTypes<T, 1>::Tensor output_scores_data =
+        output_scores->tensor<T, 1>();
+    std::copy_n(selected_scores.begin(), selected_scores.size(),
+                output_scores_data.data());
+  }
 }
 
 void BatchedNonMaxSuppressionOp(
     OpKernelContext* context, const Tensor& inp_boxes, const Tensor& inp_scores,
     int num_boxes, const int max_size_per_class, const int total_size_per_batch,
     const float score_threshold, const float iou_threshold,
-    bool pad_per_class = false) {
+    bool pad_per_class = false, bool clip_boxes = true) {
   int q = inp_boxes.dim_size(2);
   int num_classes = inp_scores.dim_size(2);
   const int num_batches = inp_boxes.dim_size(0);
-
-  // Default clip window of [0, 0, 1, 1] if none specified
-  std::vector<float> clip_window{0, 0, 1, 1};
 
   // [num_batches, per_batch_size * 4]
   std::vector<std::vector<float>> nmsed_boxes(num_batches);
@@ -319,6 +376,7 @@ void BatchedNonMaxSuppressionOp(
       typename TTypes<float, 2>::ConstTensor boxes_data =
           const_boxes.tensor<float, 2>();
       int candidate_idx = 0;
+      float iou;
       while (selected.size() < size_per_class &&
              candidate_idx < candidate_vector.size()) {
         next_candidate = candidate_vector[candidate_idx++];
@@ -328,8 +386,8 @@ void BatchedNonMaxSuppressionOp(
         // in order to see if `next_candidate` should be suppressed.
         bool should_select = true;
         for (int j = selected.size() - 1; j >= 0; --j) {
-          if (IOUGreaterThanThreshold(boxes_data, next_candidate.box_index,
-                                      selected[j], iou_threshold)) {
+          iou = IOU<float>(boxes_data, next_candidate.box_index, selected[j]);
+          if (iou > iou_threshold) {
             should_select = false;
             break;
           }
@@ -375,18 +433,23 @@ void BatchedNonMaxSuppressionOp(
     while (curr_total_size > 0 && result_idx < result_candidate_vec.size()) {
       ResultCandidate next_candidate = result_candidate_vec[result_idx++];
       // Add to final output vectors
-      nmsed_boxes[batch].push_back(
-          std::max(std::min(next_candidate.box_coord[0], clip_window[2]),
-                   clip_window[0]));
-      nmsed_boxes[batch].push_back(
-          std::max(std::min(next_candidate.box_coord[1], clip_window[3]),
-                   clip_window[1]));
-      nmsed_boxes[batch].push_back(
-          std::max(std::min(next_candidate.box_coord[2], clip_window[2]),
-                   clip_window[0]));
-      nmsed_boxes[batch].push_back(
-          std::max(std::min(next_candidate.box_coord[3], clip_window[3]),
-                   clip_window[1]));
+      if (clip_boxes) {
+        const float box_min = 0.0;
+        const float box_max = 1.0;
+        nmsed_boxes[batch].push_back(
+            std::max(std::min(next_candidate.box_coord[0], box_max), box_min));
+        nmsed_boxes[batch].push_back(
+            std::max(std::min(next_candidate.box_coord[1], box_max), box_min));
+        nmsed_boxes[batch].push_back(
+            std::max(std::min(next_candidate.box_coord[2], box_max), box_min));
+        nmsed_boxes[batch].push_back(
+            std::max(std::min(next_candidate.box_coord[3], box_max), box_min));
+      } else {
+        nmsed_boxes[batch].push_back(next_candidate.box_coord[0]);
+        nmsed_boxes[batch].push_back(next_candidate.box_coord[1]);
+        nmsed_boxes[batch].push_back(next_candidate.box_coord[2]);
+        nmsed_boxes[batch].push_back(next_candidate.box_coord[3]);
+      }
       nmsed_scores[batch].push_back(next_candidate.score);
       nmsed_classes[batch].push_back(next_candidate.class_idx);
       curr_total_size--;
@@ -463,12 +526,13 @@ class NonMaxSuppressionOp : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    auto suppress_check_fn =
-        CreateIOUSuppressCheckFn<float>(boxes, iou_threshold_);
+    auto similarity_fn = CreateIOUSimilarityFn<float>(boxes);
 
     const float score_threshold_val = std::numeric_limits<float>::lowest();
+    const float dummy_soft_nms_sigma = static_cast<float>(0.0);
     DoNonMaxSuppressionOp<float>(context, scores, num_boxes, max_output_size,
-                                 score_threshold_val, suppress_check_fn);
+                                 iou_threshold_, score_threshold_val,
+                                 dummy_soft_nms_sigma, similarity_fn);
   }
 
  private:
@@ -497,9 +561,11 @@ class NonMaxSuppressionV2Op : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
                 errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
                                         iou_threshold.shape().DebugString()));
-    const float iou_threshold_val = iou_threshold.scalar<float>()();
+    const T iou_threshold_val = iou_threshold.scalar<T>()();
 
-    OP_REQUIRES(context, iou_threshold_val >= 0 && iou_threshold_val <= 1,
+    OP_REQUIRES(context,
+                iou_threshold_val >= static_cast<T>(0.0) &&
+                    iou_threshold_val <= static_cast<T>(1.0),
                 errors::InvalidArgument("iou_threshold must be in [0, 1]"));
     int num_boxes = 0;
     ParseAndCheckBoxSizes(context, boxes, &num_boxes);
@@ -507,12 +573,13 @@ class NonMaxSuppressionV2Op : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    auto suppress_check_fn =
-        CreateIOUSuppressCheckFn<T>(boxes, iou_threshold_val);
+    auto similarity_fn = CreateIOUSimilarityFn<T>(boxes);
 
-    const float score_threshold_val = std::numeric_limits<float>::lowest();
+    const T score_threshold_val = std::numeric_limits<T>::lowest();
+    const T dummy_soft_nms_sigma = static_cast<T>(0.0);
     DoNonMaxSuppressionOp<T>(context, scores, num_boxes, max_output_size,
-                             score_threshold_val, suppress_check_fn);
+                             iou_threshold_val, score_threshold_val,
+                             dummy_soft_nms_sigma, similarity_fn);
   }
 };
 
@@ -538,8 +605,10 @@ class NonMaxSuppressionV3Op : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
                 errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
                                         iou_threshold.shape().DebugString()));
-    const float iou_threshold_val = iou_threshold.scalar<float>()();
-    OP_REQUIRES(context, iou_threshold_val >= 0 && iou_threshold_val <= 1,
+    const T iou_threshold_val = iou_threshold.scalar<T>()();
+    OP_REQUIRES(context,
+                iou_threshold_val >= static_cast<T>(0.0) &&
+                    iou_threshold_val <= static_cast<T>(1.0),
                 errors::InvalidArgument("iou_threshold must be in [0, 1]"));
     // score_threshold: scalar
     const Tensor& score_threshold = context->input(4);
@@ -547,7 +616,7 @@ class NonMaxSuppressionV3Op : public OpKernel {
         context, TensorShapeUtils::IsScalar(score_threshold.shape()),
         errors::InvalidArgument("score_threshold must be 0-D, got shape ",
                                 score_threshold.shape().DebugString()));
-    const float score_threshold_val = score_threshold.scalar<float>()();
+    const T score_threshold_val = score_threshold.scalar<T>()();
 
     int num_boxes = 0;
     ParseAndCheckBoxSizes(context, boxes, &num_boxes);
@@ -556,11 +625,12 @@ class NonMaxSuppressionV3Op : public OpKernel {
       return;
     }
 
-    auto suppress_check_fn =
-        CreateIOUSuppressCheckFn<T>(boxes, iou_threshold_val);
+    auto similarity_fn = CreateIOUSimilarityFn<T>(boxes);
 
+    const T dummy_soft_nms_sigma = static_cast<T>(0.0);
     DoNonMaxSuppressionOp<T>(context, scores, num_boxes, max_output_size,
-                             score_threshold_val, suppress_check_fn);
+                             iou_threshold_val, score_threshold_val,
+                             dummy_soft_nms_sigma, similarity_fn);
   }
 };
 
@@ -589,8 +659,10 @@ class NonMaxSuppressionV4Op : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
                 errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
                                         iou_threshold.shape().DebugString()));
-    const float iou_threshold_val = iou_threshold.scalar<float>()();
-    OP_REQUIRES(context, iou_threshold_val >= 0 && iou_threshold_val <= 1,
+    const T iou_threshold_val = iou_threshold.scalar<T>()();
+    OP_REQUIRES(context,
+                iou_threshold_val >= static_cast<T>(0.0) &&
+                    iou_threshold_val <= static_cast<T>(1.0),
                 errors::InvalidArgument("iou_threshold must be in [0, 1]"));
     // score_threshold: scalar
     const Tensor& score_threshold = context->input(4);
@@ -598,7 +670,7 @@ class NonMaxSuppressionV4Op : public OpKernel {
         context, TensorShapeUtils::IsScalar(score_threshold.shape()),
         errors::InvalidArgument("score_threshold must be 0-D, got shape ",
                                 score_threshold.shape().DebugString()));
-    const float score_threshold_val = score_threshold.scalar<float>()();
+    const T score_threshold_val = score_threshold.scalar<T>()();
 
     int num_boxes = 0;
     ParseAndCheckBoxSizes(context, boxes, &num_boxes);
@@ -607,18 +679,97 @@ class NonMaxSuppressionV4Op : public OpKernel {
       return;
     }
 
-    auto suppress_check_fn =
-        CreateIOUSuppressCheckFn<T>(boxes, iou_threshold_val);
+    auto similarity_fn = CreateIOUSimilarityFn<T>(boxes);
     int num_valid_outputs;
 
-    DoNonMaxSuppressionOp<T>(context, scores, num_boxes, max_output_size,
-                             score_threshold_val, suppress_check_fn,
-                             pad_to_max_output_size_, &num_valid_outputs);
+    bool return_scores_tensor_ = false;
+    const T dummy_soft_nms_sigma = static_cast<T>(0.0);
+    DoNonMaxSuppressionOp<T>(
+        context, scores, num_boxes, max_output_size, iou_threshold_val,
+        score_threshold_val, dummy_soft_nms_sigma, similarity_fn,
+        return_scores_tensor_, pad_to_max_output_size_, &num_valid_outputs);
 
     // Allocate scalar output tensor for number of indices computed.
     Tensor* num_outputs_t = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(
                                 1, tensorflow::TensorShape{}, &num_outputs_t));
+    num_outputs_t->scalar<int32>().setConstant(num_valid_outputs);
+  }
+
+ private:
+  bool pad_to_max_output_size_;
+};
+
+template <typename Device, typename T>
+class NonMaxSuppressionV5Op : public OpKernel {
+ public:
+  explicit NonMaxSuppressionV5Op(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("pad_to_max_output_size",
+                                             &pad_to_max_output_size_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    // boxes: [num_boxes, 4]
+    const Tensor& boxes = context->input(0);
+    // scores: [num_boxes]
+    const Tensor& scores = context->input(1);
+    // max_output_size: scalar
+    const Tensor& max_output_size = context->input(2);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
+        errors::InvalidArgument("max_output_size must be 0-D, got shape ",
+                                max_output_size.shape().DebugString()));
+    // iou_threshold: scalar
+    const Tensor& iou_threshold = context->input(3);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
+                errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
+                                        iou_threshold.shape().DebugString()));
+    const T iou_threshold_val = iou_threshold.scalar<T>()();
+    OP_REQUIRES(context,
+                iou_threshold_val >= static_cast<T>(0.0) &&
+                    iou_threshold_val <= static_cast<T>(1.0),
+                errors::InvalidArgument("iou_threshold must be in [0, 1]"));
+    // score_threshold: scalar
+    const Tensor& score_threshold = context->input(4);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(score_threshold.shape()),
+        errors::InvalidArgument("score_threshold must be 0-D, got shape ",
+                                score_threshold.shape().DebugString()));
+    const T score_threshold_val = score_threshold.scalar<T>()();
+
+    // soft_nms_sigma: scalar
+    const Tensor& soft_nms_sigma = context->input(5);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(soft_nms_sigma.shape()),
+        errors::InvalidArgument("soft_nms_sigma must be 0-D, got shape ",
+                                soft_nms_sigma.shape().DebugString()));
+    const T soft_nms_sigma_val = soft_nms_sigma.scalar<T>()();
+    OP_REQUIRES(context, soft_nms_sigma_val >= static_cast<T>(0.0),
+                errors::InvalidArgument("soft_nms_sigma_val must be >= 0"));
+
+    int num_boxes = 0;
+    ParseAndCheckBoxSizes(context, boxes, &num_boxes);
+    CheckScoreSizes(context, num_boxes, scores);
+    if (!context->status().ok()) {
+      return;
+    }
+
+    auto similarity_fn = CreateIOUSimilarityFn<T>(boxes);
+    int num_valid_outputs;
+
+    // For NonMaxSuppressionV5Op, we always return a second output holding
+    // corresponding scores, so `return_scores_tensor` should never be false.
+    const bool return_scores_tensor_ = true;
+    DoNonMaxSuppressionOp<T>(
+        context, scores, num_boxes, max_output_size, iou_threshold_val,
+        score_threshold_val, soft_nms_sigma_val, similarity_fn,
+        return_scores_tensor_, pad_to_max_output_size_, &num_valid_outputs);
+
+    // Allocate scalar output tensor for number of indices computed.
+    Tensor* num_outputs_t = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                2, tensorflow::TensorShape{}, &num_outputs_t));
     num_outputs_t->scalar<int32>().setConstant(num_valid_outputs);
   }
 
@@ -665,11 +816,12 @@ class NonMaxSuppressionWithOverlapsOp : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    auto suppress_check_fn =
-        CreateOverlapsSuppressCheckFn(overlaps, overlap_threshold_val);
+    auto similarity_fn = CreateOverlapSimilarityFn<float>(overlaps);
 
+    const float dummy_soft_nms_sigma = static_cast<float>(0.0);
     DoNonMaxSuppressionOp<float>(context, scores, num_boxes, max_output_size,
-                                 score_threshold_val, suppress_check_fn);
+                                 overlap_threshold_val, score_threshold_val,
+                                 dummy_soft_nms_sigma, similarity_fn);
   }
 };
 
@@ -679,6 +831,7 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
   explicit CombinedNonMaxSuppressionOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("pad_per_class", &pad_per_class_));
+    OP_REQUIRES_OK(context, context->GetAttr("clip_boxes", &clip_boxes_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -734,11 +887,12 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
     BatchedNonMaxSuppressionOp(context, boxes, scores, num_boxes,
                                max_size_per_class, max_total_size_per_batch,
                                score_threshold_val, iou_threshold_val,
-                               pad_per_class_);
+                               pad_per_class_, clip_boxes_);
   }
 
  private:
   bool pad_per_class_;
+  bool clip_boxes_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("NonMaxSuppression").Device(DEVICE_CPU),
@@ -767,6 +921,14 @@ REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV4")
                             .TypeConstraint<Eigen::half>("T")
                             .Device(DEVICE_CPU),
                         NonMaxSuppressionV4Op<CPUDevice, Eigen::half>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("NonMaxSuppressionV5").TypeConstraint<float>("T").Device(DEVICE_CPU),
+    NonMaxSuppressionV5Op<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV5")
+                            .TypeConstraint<Eigen::half>("T")
+                            .Device(DEVICE_CPU),
+                        NonMaxSuppressionV5Op<CPUDevice, Eigen::half>);
 
 REGISTER_KERNEL_BUILDER(
     Name("NonMaxSuppressionWithOverlaps").Device(DEVICE_CPU),

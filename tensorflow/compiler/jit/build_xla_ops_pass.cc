@@ -14,23 +14,29 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/build_xla_ops_pass.h"
+
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope_internal.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/control_flow_ops.h"
+#include "tensorflow/cc/ops/functional_ops.h"
+#include "tensorflow/cc/ops/logging_ops.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_jit_ops.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/graph_def_util.h"
+#include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -39,9 +45,23 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 namespace {
+struct DebuggingOpts {
+  // If true, insert Print nodes to print every output from an XLA cluster.
+  bool print_outputs;
+
+  // If true, insert CheckNumerics nodes for every floating point typed input to
+  // an XLA cluster.
+  bool check_input_numerics;
+
+  // If true, insert CheckNumerics nodes for every floating point typed output
+  // from an XLA cluster.
+  bool check_output_numerics;
+};
+
 void MoveOutgoingEdges(Graph* g, Node* old_node, Node* new_node) {
   std::vector<const Edge*> out_edges(old_node->out_edges().begin(),
                                      old_node->out_edges().end());
@@ -56,8 +76,30 @@ void MoveOutgoingEdges(Graph* g, Node* old_node, Node* new_node) {
 
 // Returns a data value that is dead iff `control` is dead.
 Output ControlToData(const Scope& scope, Node* control) {
+  // The choice of data type here is important.
+  //
+  // We implement a "control merge", which is a control edge that is alive if
+  // either of two nodes (denoted as A and B below) are alive, in the following
+  // manner:
+  //
+  //   A --ctrl--> Const0 --data--> Merge --data--> Identity
+  //                                 ^                 |
+  //                                 |                ctrl
+  //   B --ctrl--> Const1 --data-----+                 |
+  //                                                   v
+  //                                                  ***
+  //
+  // where *** denotes the merged control output.
+  //
+  // We want everything starting from Const{0/1} to Identity to either wholly
+  // live on the host or wholly live on device so we need to pick a data type
+  // that is either consistently assigned to the device (e.g. float) or
+  // consistently assigned to the host (e.g. int32).  We should *not* pick a
+  // data type that partly placed on the host and partly on the device
+  // (e.g. bool constants are placed on the device but bool Identity is placed
+  // on the host).
   Output data = ops::Const(scope.WithOpName("ctrl_as_data"),
-                           Tensor(DT_BOOL, TensorShape({0})));
+                           Tensor(DT_INT32, TensorShape({0})));
   scope.graph()->AddControlEdge(control, data.node());
   return Output(data.node());
 }
@@ -71,7 +113,9 @@ Operation DataToControl(const Scope& scope, Output data) {
 
 // Replaces each outgoing edge from `old_node` with a merge node that merges in
 // the corresponding output from `new_node`.
-void MergeOutgoingDataEdges(const Scope& s, Node* old_node, Node* new_node) {
+void MergeOutgoingDataEdges(const Scope& s, Node* old_node, Node* new_node,
+                            absl::string_view cluster_name,
+                            const DebuggingOpts& debugging_opts) {
   if (!s.status().ok()) {
     return;
   }
@@ -86,9 +130,36 @@ void MergeOutgoingDataEdges(const Scope& s, Node* old_node, Node* new_node) {
     int oidx = e->src_output();
     Output merged_output = merged_outputs[oidx];
     if (merged_output.node() == nullptr) {
-      ops::Merge merge_op(s.WithOpName(absl::StrCat("merge_oidx_", oidx)),
-                          {Output(old_node, oidx), Output(new_node, oidx)});
-      merged_output = merged_outputs[oidx] = merge_op.output;
+      Output new_output(new_node, oidx);
+      if (debugging_opts.print_outputs) {
+        string cpu_device = "/job:localhost/replica:0/task:0/device:CPU:0";
+        ops::Print print_op(s.WithOpName("print_", oidx)
+                                .WithDevice(cpu_device)
+                                .WithAssignedDevice(cpu_device),
+                            new_output, {new_output},
+                            ops::Print::Attrs{}
+                                .Message(absl::StrCat("output ", oidx, " from ",
+                                                      old_node->name(), " is "))
+                                .FirstN(1000)
+                                .Summarize(-1));
+        new_output = print_op;
+      }
+
+      if (debugging_opts.check_output_numerics &&
+          DataTypeIsFloating(new_output.type())) {
+        ops::CheckNumerics check_numerics_op(
+            s.WithOpName("check_output_", oidx)
+                .WithDevice(new_node->requested_device())
+                .WithAssignedDevice(new_node->assigned_device_name()),
+            new_output,
+            absl::StrCat("CheckNumerics failed for output ", oidx, "(",
+                         new_output.name(), ") from cluster ", cluster_name));
+        new_output = check_numerics_op;
+      }
+
+      ops::_XlaMerge xla_merge_op(s.WithOpName("merge_oidx_", oidx),
+                                  Output(old_node, oidx), new_output);
+      merged_output = merged_outputs[oidx] = xla_merge_op.output;
     }
 
     Node* dst = e->dst();
@@ -211,38 +282,211 @@ void RemoveAllIncomingControlEdges(Graph* g, Node* n) {
   }
 }
 
-// Returns true (into `result`) if `node` must be compiled.
-Status NodeRequiresCompilation(Node* n, bool* result) {
-  DeviceType device_type("");
-  TF_RETURN_IF_ERROR(
-      DeviceToDeviceType(n->assigned_device_name(), &device_type));
-  const XlaOpRegistry::DeviceRegistration* registration = nullptr;
-  if (!XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
-    return errors::Internal("Could not find compilation device ",
-                            device_type.type());
-  }
+// Returns true (into `result`) if a node placed on `device` must be compiled.
+Status DeviceRequiresCompilation(const jit::DeviceInfoCache& device_info_cache,
+                                 jit::DeviceId device, bool* result) {
+  const XlaOpRegistry::DeviceRegistration* registration =
+      device_info_cache.GetCompilationDevice(device);
   *result = registration->autoclustering_policy ==
             XlaOpRegistry::AutoclusteringPolicy::kAlways;
   return Status::OK();
 }
 
+// Replaces `n` with a `PartitionedCall` op that calls the same function.
+xla::StatusOr<Node*> ReplaceFunctionCallWithPartitionedCall(
+    const GraphOptimizationPassOptions& options,
+    const FunctionLibraryDefinition& flib_def, Node* n, Graph* g,
+    const NameAttrList& func, const Scope& root) {
+  string config_string = options.session_options->config.SerializeAsString();
+
+  int input_count = absl::c_count_if(
+      n->in_edges(), [](const Edge* e) { return !e->IsControlEdge(); });
+
+  std::vector<Output> args(input_count);
+  for (const Edge* e : n->in_edges()) {
+    if (!e->IsControlEdge()) {
+      args[e->dst_input()] = Output(e->src(), e->src_output());
+    }
+  }
+
+  ops::PartitionedCall call(
+      root.WithOpName("partitioned_call"), args, n->output_types(), func,
+      ops::PartitionedCall::Attrs{}.ConfigProto(config_string));
+
+  for (const Edge* e : n->in_edges()) {
+    if (e->IsControlEdge()) {
+      g->AddControlEdge(e->src(), call.operation.node());
+    }
+  }
+
+  std::vector<const Edge*> edges_to_delete;
+
+  for (const Edge* e : n->out_edges()) {
+    edges_to_delete.push_back(e);
+    if (e->IsControlEdge()) {
+      g->AddControlEdge(call.operation.node(), e->dst());
+    } else {
+      g->AddEdge(call.operation.node(), e->src_output(), e->dst(),
+                 e->dst_input());
+    }
+  }
+
+  for (const Edge* e : edges_to_delete) {
+    g->RemoveEdge(e);
+  }
+
+  g->RemoveNode(n);
+  return call.operation.node();
+}
+
+xla::StatusOr<jit::DeviceId> InferDeviceForCluster(
+    jit::DeviceInfoCache* device_info_cache, Node* n,
+    const string& function_name, const FunctionLibraryDefinition& flib_def) {
+  const FunctionDef* func_def = flib_def.Find(function_name);
+  TF_RET_CHECK(func_def) << "Could not find " << function_name;
+
+  jit::DeviceSet device_set;
+
+  for (const NodeDef& ndef : func_def->node_def()) {
+    VLOG(3) << ndef.DebugString();
+    if (!ndef.device().empty()) {
+      TF_ASSIGN_OR_RETURN(jit::DeviceId device_id,
+                          device_info_cache->GetIdFor(ndef.device()));
+      device_set.Insert(device_id);
+    }
+  }
+
+  if (!n->assigned_device_name().empty()) {
+    // TODO(sanjoy): We need this because EncapsulateSubgraphsPass drops device
+    // assignment when constant folding.  We should fix EncapsulateSubgraphsPass
+    // instead.
+    TF_ASSIGN_OR_RETURN(jit::DeviceId device_id,
+                        device_info_cache->GetIdFor(n->assigned_device_name()));
+    device_set.Insert(device_id);
+  }
+
+  TF_ASSIGN_OR_RETURN(jit::DeviceId result,
+                      PickDeviceForXla(*device_info_cache, device_set,
+                                       /*allow_mixing_unknown_and_cpu=*/true));
+  VLOG(2) << "For " << function_name << " PickDeviceForXla("
+          << device_info_cache->DebugString(device_set) << ") -> "
+          << device_info_cache->GetNameFor(result);
+  return result;
+}
+
+std::vector<Output> GetXlaRunArgs(const Scope& s,
+                                  const XlaClusterInfo& cluster_info,
+                                  const DebuggingOpts& debugging_opts) {
+  std::vector<Output> xla_run_args;
+  xla_run_args.reserve(cluster_info.non_constant_inputs.size() +
+                       cluster_info.resource_inputs.size());
+  int input_idx = 0;
+  for (const Output& o : cluster_info.non_constant_inputs) {
+    if (debugging_opts.check_input_numerics && DataTypeIsFloating(o.type())) {
+      ops::CheckNumerics check_numerics_op(
+          s.WithOpName("check_input_", input_idx), o,
+          absl::StrCat("CheckNumerics failed for input ", input_idx, "(",
+                       o.name(), ") into ", cluster_info.function.name()));
+      xla_run_args.push_back(check_numerics_op);
+    } else {
+      xla_run_args.push_back(o);
+    }
+    input_idx++;
+  }
+  absl::c_copy(cluster_info.resource_inputs, std::back_inserter(xla_run_args));
+  return xla_run_args;
+}
+
+xla::StatusOr<MemoryTypeVector> GetOutputMemoryTypes(const Scope& root,
+                                                     Node* n) {
+  MemoryTypeVector input_mtypes, output_mtypes;
+  DeviceType device_type("");
+  TF_RETURN_IF_ERROR(
+      DeviceNameToDeviceType(n->assigned_device_name(), &device_type));
+  TF_RETURN_IF_ERROR(MemoryTypesForNode(root.graph()->op_registry(),
+                                        device_type, n->def(), &input_mtypes,
+                                        &output_mtypes));
+  return output_mtypes;
+}
+
+// Predicate INT32 typed inputs to `n` on the deadness of
+// `predicate_as_control`.
+//
+// This is a performance optimization.  Since INT32 arguments to a
+// PartitionedCall are placed on the host, a producer that produces them on the
+// device will incur a D2H copy, even if the PartitionedCall is not executed
+// (i.e. even if we choose to execute the XLA compiled computation via _XlaRun).
+// To prevent this, we add control dependencies to make the int32 input edges
+// into the PartitionedCall dead.  With this change the D2H copy only happens if
+// the PartitionedCall is actually executed.
+Status PredicateInt32Inputs(const Scope& root, Node* n,
+                            Operation predicate_as_control) {
+  std::vector<Output> int32_inputs;
+  std::vector<int> int32_inputs_input_idxs;
+  for (const Edge* e : n->in_edges()) {
+    if (e->IsControlEdge()) {
+      continue;
+    }
+
+    if (e->src()->output_type(e->src_output()) == DT_INT32) {
+      TF_ASSIGN_OR_RETURN(MemoryTypeVector source_output_mem_types,
+                          GetOutputMemoryTypes(root, e->src()));
+      if (source_output_mem_types[e->src_output()] == DEVICE_MEMORY) {
+        int32_inputs.push_back(Output(e->src(), e->src_output()));
+        int32_inputs_input_idxs.push_back(e->dst_input());
+      }
+    }
+  }
+
+  if (int32_inputs.empty()) {
+    return Status::OK();
+  }
+
+  // Create a single IdentityN that is dead if and only if
+  // `predicate_as_control` is dead.
+  //
+  // IdentityN is also special in that, unlike `Identity`, it does not place
+  // int32 inputs in host memory.  Placing int32 inputs in host memory would
+  // defeat the purpose of adding this indirection.
+  ops::IdentityN identity_n(root.WithOpName("int32_id_n"), int32_inputs);
+  root.graph()->AddControlEdge(predicate_as_control.node(),
+                               identity_n.operation.node());
+
+  for (int i = 0; i < int32_inputs.size(); i++) {
+    TF_RETURN_IF_ERROR(root.graph()->UpdateEdge(identity_n[i].node(), i, n,
+                                                int32_inputs_input_idxs[i]));
+  }
+
+  return Status::OK();
+}
+
 Status ReplaceNodeWithXlaCompileAndXlaRun(
+    jit::DeviceInfoCache* device_info_cache,
+    const GraphOptimizationPassOptions& options,
     const FunctionLibraryDefinition& flib_def, bool lazy_compilation_enabled,
-    Graph* g, Node* n) {
+    const DebuggingOpts& debugging_opts, Graph* g, Node* n) {
+  XlaClusterInfo cluster_info;
+  TF_RETURN_IF_ERROR(GetXlaClusterInfo(n, &cluster_info));
+
+  TF_ASSIGN_OR_RETURN(
+      jit::DeviceId device,
+      InferDeviceForCluster(device_info_cache, n, cluster_info.function.name(),
+                            flib_def));
+
   bool requires_compilation;
-  TF_RETURN_IF_ERROR(NodeRequiresCompilation(n, &requires_compilation));
+  TF_RETURN_IF_ERROR(DeviceRequiresCompilation(*device_info_cache, device,
+                                               &requires_compilation));
   if (!lazy_compilation_enabled) {
     requires_compilation = true;
   }
+
+  string device_name_str = string(device_info_cache->GetNameFor(device));
 
   Status status;
   Scope root = NewInternalScope(g, &status, /*refiner=*/nullptr)
                    .NewSubScope(n->name())
                    .WithDevice(n->requested_device())
-                   .WithAssignedDevice(n->assigned_device_name());
-
-  XlaClusterInfo cluster_info;
-  TF_RETURN_IF_ERROR(GetXlaClusterInfo(n, &cluster_info));
+                   .WithAssignedDevice(device_name_str);
 
   ops::_XlaCompile xla_compile(root.WithOpName("xla_compile"),
                                /*constants=*/cluster_info.constant_inputs,
@@ -250,15 +494,20 @@ Status ReplaceNodeWithXlaCompileAndXlaRun(
                                /*resources=*/cluster_info.resource_inputs,
                                /*must_compile=*/requires_compilation,
                                cluster_info.function);
+
+  bool has_ref_attr;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(n->attrs(), kXlaHasReferenceVarsAttr, &has_ref_attr));
+  xla_compile.operation.node()->AddAttr(kXlaHasReferenceVarsAttr, has_ref_attr);
   TF_RETURN_IF_ERROR(
       CopyIncomingControlEdges(g, /*from=*/n, /*to=*/xla_compile.key.node()));
+
+  std::vector<Output> xla_run_args =
+      GetXlaRunArgs(root, cluster_info, debugging_opts);
 
   if (requires_compilation) {
     // "Strict" compilation:  every _XlaCompile invocation must compile the
     // cluster.
-    std::vector<Output> xla_run_args = cluster_info.non_constant_inputs;
-    absl::c_copy(cluster_info.resource_inputs,
-                 std::back_inserter(xla_run_args));
     ops::_XlaRun xla_run(root.WithOpName("xla_run"), xla_run_args,
                          xla_compile.key, n->output_types());
 
@@ -283,9 +532,6 @@ Status ReplaceNodeWithXlaCompileAndXlaRun(
     Output predicated_compilation_key = s.output_true;
     Output inverse_predicated_compilation_key = s.output_false;
 
-    std::vector<Output> xla_run_args = cluster_info.non_constant_inputs;
-    absl::c_copy(cluster_info.resource_inputs,
-                 std::back_inserter(xla_run_args));
     ops::_XlaRun xla_run(root.WithOpName("xla_run"), xla_run_args,
                          predicated_compilation_key, n->output_types());
 
@@ -293,7 +539,8 @@ Status ReplaceNodeWithXlaCompileAndXlaRun(
                               /*new_node=*/xla_run.operation.node());
 
     MergeOutgoingDataEdges(root, /*old_node=*/n,
-                           /*new_node=*/xla_run.operation.node());
+                           /*new_node=*/xla_run.operation.node(),
+                           cluster_info.function.name(), debugging_opts);
 
     TF_RETURN_IF_ERROR(root.status());
 
@@ -301,9 +548,17 @@ Status ReplaceNodeWithXlaCompileAndXlaRun(
     // original node we set out to rewrite.  We just wire in the correct control
     // deps and we're done.
     RemoveAllIncomingControlEdges(g, n);
-    g->AddControlEdge(
-        DataToControl(root, inverse_predicated_compilation_key).node(), n);
+    Operation inverse_predicate_as_control =
+        DataToControl(root, inverse_predicated_compilation_key);
+    g->AddControlEdge(inverse_predicate_as_control.node(), n);
     n->ClearAttr(kXlaCompiledKernelAttr);
+
+    TF_ASSIGN_OR_RETURN(Node* const pco, ReplaceFunctionCallWithPartitionedCall(
+                                             options, flib_def, n, g,
+                                             cluster_info.function, root));
+
+    TF_RETURN_IF_ERROR(
+        PredicateInt32Inputs(root, pco, inverse_predicate_as_control));
   }
 
   return Status::OK();
@@ -330,15 +585,30 @@ Status BuildXlaOpsPass::Run(const GraphOptimizationPassOptions& options) {
   bool lazy_compilation_enabled =
       enable_lazy_compilation_
           ? *enable_lazy_compilation_
-          : GetBuildXlaOpsPassFlags().tf_xla_enable_lazy_compilation;
+          : GetBuildXlaOpsPassFlags()->tf_xla_enable_lazy_compilation;
+
+  jit::DeviceInfoCache device_info_cache;
+  const BuildXlaOpsPassFlags& flags = *GetBuildXlaOpsPassFlags();
+
+  DebuggingOpts debugging_opts;
+  debugging_opts.print_outputs = flags.tf_xla_print_cluster_outputs;
+  debugging_opts.check_input_numerics =
+      flags.tf_xla_check_cluster_input_numerics;
+  debugging_opts.check_output_numerics =
+      flags.tf_xla_check_cluster_output_numerics;
+
+  VLOG(1) << "print_outputs = " << debugging_opts.print_outputs;
+  VLOG(1) << "check_input_numerics = " << debugging_opts.check_input_numerics;
+  VLOG(1) << "check_output_numerics = " << debugging_opts.check_output_numerics;
 
   for (Node* n : xla_compiled_kernels) {
     TF_RETURN_IF_ERROR(ReplaceNodeWithXlaCompileAndXlaRun(
-        *options.flib_def, lazy_compilation_enabled, graph, n));
+        &device_info_cache, options, *options.flib_def,
+        lazy_compilation_enabled, debugging_opts, graph, n));
   }
 
   if (VLOG_IS_ON(1)) {
-    dump_graph::DumpGraphToFile("build_xla_ops", *graph, options.flib_def);
+    DumpGraphToFile("build_xla_ops", *graph, options.flib_def);
   }
 
   return Status::OK();

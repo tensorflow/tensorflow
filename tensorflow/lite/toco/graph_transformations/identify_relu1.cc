@@ -17,44 +17,15 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
+#include "tensorflow/lite/toco/graph_transformations/identify_util.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
-namespace {
-
-std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
-    Model* model, const Operator* op) {
-  auto it = model->operators.begin();
-  for (; it != model->operators.end(); ++it) {
-    if (it->get() == op) {
-      break;
-    }
-  }
-  return it;
-}
-
-bool CheckArrayIsScalarFloat(Model* model, const std::string& name, float val) {
-  const auto& op_array = model->GetArray(name);
-  if (!op_array.buffer || op_array.buffer->type != ArrayDataType::kFloat ||
-      RequiredBufferSizeForShape(op_array.shape()) != 1) {
-    return false;
-  }
-  const auto& op_data = op_array.GetBuffer<ArrayDataType::kFloat>().data;
-  return op_data[0] == val;
-}
-
-// Returns index of scalar input when there is exactly one scalar, -1 otherwise
-int GetSingleScalarInputIndexOfBinaryOp(Model* model, const Operator* op,
-                                        float val) {
-  bool input0_is_scalar = CheckArrayIsScalarFloat(model, op->inputs[0], val);
-  bool input1_is_scalar = CheckArrayIsScalarFloat(model, op->inputs[1], val);
-  return input0_is_scalar == input1_is_scalar ? -1 : input0_is_scalar ? 0 : 1;
-}
-}  // namespace
+using util::GetSingleScalarInputIndexOfBinaryOp;
 
 ::tensorflow::Status IdentifyRelu1::Run(Model* model, std::size_t op_index,
                                         bool* modified) {
@@ -99,19 +70,13 @@ int GetSingleScalarInputIndexOfBinaryOp(Model* model, const Operator* op,
 
   // Create and emplace Relu1 node.
   auto* relu1_op = new Relu1Operator;
+  AddMessageF("Creating %s replacing equivalent subgraph", LogName(*relu1_op));
   relu1_op->inputs = {op_0->inputs[!op_0_scalar_input_index]};
   relu1_op->outputs = op_1->outputs;
   model->operators.emplace(op_it, relu1_op);
 
-  AddMessageF("Creating %s replacing equivalent subgraph", LogName(*relu1_op));
-
-  // Erase op scalar inputs & operators. Note that we preserve the non-scalar
-  // input to the first op as that's been redirected to the relu1_op.
-  DeleteArrayIfUsedOnce(op_0->inputs[op_0_scalar_input_index], model);
-  DeleteArrayIfUsedOnce(op_1->inputs[0], model);
-  DeleteArrayIfUsedOnce(op_1->inputs[1], model);
-  model->operators.erase(FindOperator(model, op_0));
-  model->operators.erase(FindOperator(model, op_1));
+  DeleteOpAndArrays(model, op_0);
+  DeleteOpAndArrays(model, op_1);
 
   *modified = true;
   return ::tensorflow::Status::OK();

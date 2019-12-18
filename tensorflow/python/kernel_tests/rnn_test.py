@@ -25,7 +25,6 @@ import timeit
 import numpy as np
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
-from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
 from tensorflow.python.client import session
@@ -37,6 +36,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import network as keras_network
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.layers import base as base_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -360,12 +360,6 @@ class RNNTest(test.TestCase):
     self._assert_cell_builds(rnn_cell_impl.GRUCell, f64, 5, 7, 3)
     self._assert_cell_builds(rnn_cell_impl.LSTMCell, f32, 5, 7, 3)
     self._assert_cell_builds(rnn_cell_impl.LSTMCell, f64, 5, 7, 3)
-    self._assert_cell_builds(contrib_rnn.IndRNNCell, f32, 5, 7, 3)
-    self._assert_cell_builds(contrib_rnn.IndRNNCell, f64, 5, 7, 3)
-    self._assert_cell_builds(contrib_rnn.IndyGRUCell, f32, 5, 7, 3)
-    self._assert_cell_builds(contrib_rnn.IndyGRUCell, f64, 5, 7, 3)
-    self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f32, 5, 7, 3)
-    self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f64, 5, 7, 3)
 
   @test_util.run_deprecated_v1
   def testRNNWithKerasSimpleRNNCell(self):
@@ -379,7 +373,7 @@ class RNNTest(test.TestCase):
           test_samples=0,
           input_shape=(timestep, input_shape),
           num_classes=output_shape)
-      y_train = keras.utils.to_categorical(y_train)
+      y_train = np_utils.to_categorical(y_train)
       cell = keras.layers.SimpleRNNCell(output_shape)
 
       inputs = array_ops.placeholder(
@@ -413,7 +407,7 @@ class RNNTest(test.TestCase):
           test_samples=0,
           input_shape=(timestep, input_shape),
           num_classes=output_shape)
-      y_train = keras.utils.to_categorical(y_train)
+      y_train = np_utils.to_categorical(y_train)
       cell = keras.layers.GRUCell(output_shape)
 
       inputs = array_ops.placeholder(
@@ -447,7 +441,7 @@ class RNNTest(test.TestCase):
           test_samples=0,
           input_shape=(timestep, input_shape),
           num_classes=output_shape)
-      y_train = keras.utils.to_categorical(y_train)
+      y_train = np_utils.to_categorical(y_train)
       cell = keras.layers.LSTMCell(output_shape)
 
       inputs = array_ops.placeholder(
@@ -485,7 +479,7 @@ class RNNTest(test.TestCase):
           test_samples=0,
           input_shape=(timestep, input_shape),
           num_classes=output_shape)
-      y_train = keras.utils.to_categorical(y_train)
+      y_train = np_utils.to_categorical(y_train)
       cell = keras.layers.StackedRNNCells(
           [keras.layers.LSTMCell(2 * output_shape),
            keras.layers.LSTMCell(output_shape)])
@@ -530,7 +524,7 @@ class RNNTest(test.TestCase):
           input_shape=(timestep, input_shape),
           num_classes=output_shape)
       x_train = np.transpose(x_train, (1, 0, 2))
-      y_train = keras.utils.to_categorical(y_train)
+      y_train = np_utils.to_categorical(y_train)
       cell = keras.layers.SimpleRNNCell(output_shape)
 
       inputs = [array_ops.placeholder(
@@ -655,13 +649,14 @@ class RNNTest(test.TestCase):
       save.restore(sess, save_path)
       self.assertAllEqual([10.] * 4, self.evaluate(lstm_cell._bias))
 
+  # TODO(scottzhu): Look into updating for V2 Intializers.
+  @test_util.run_deprecated_v1
   def testRNNCellSerialization(self):
     for cell in [
         rnn_cell_impl.LSTMCell(32, use_peepholes=True, cell_clip=True),
         rnn_cell_impl.BasicLSTMCell(32, dtype=dtypes.float32),
         rnn_cell_impl.BasicRNNCell(32, activation="relu", dtype=dtypes.float32),
-        rnn_cell_impl.GRUCell(
-            32, kernel_initializer="ones", dtype=dtypes.float32)
+        rnn_cell_impl.GRUCell(32, dtype=dtypes.float32)
     ]:
       with self.cached_session():
         x = keras.Input((None, 5))
@@ -724,12 +719,12 @@ class RNNTest(test.TestCase):
 def _static_vs_dynamic_rnn_benchmark_static(inputs_list_t, sequence_length):
   (_, input_size) = inputs_list_t[0].get_shape().as_list()
   initializer = init_ops.random_uniform_initializer(-0.01, 0.01, seed=127)
-  cell = contrib_rnn.LSTMCell(
+  cell = rnn_cell_impl.LSTMCell(
       num_units=input_size,
       use_peepholes=True,
       initializer=initializer,
       state_is_tuple=False)
-  outputs, final_state = contrib_rnn.static_rnn(
+  outputs, final_state = rnn.static_rnn(
       cell,
       inputs_list_t,
       sequence_length=sequence_length,
@@ -746,7 +741,7 @@ def _static_vs_dynamic_rnn_benchmark_static(inputs_list_t, sequence_length):
 def _static_vs_dynamic_rnn_benchmark_dynamic(inputs_t, sequence_length):
   (unused_0, unused_1, input_size) = inputs_t.get_shape().as_list()
   initializer = init_ops.random_uniform_initializer(-0.01, 0.01, seed=127)
-  cell = contrib_rnn.LSTMCell(
+  cell = rnn_cell_impl.LSTMCell(
       num_units=input_size,
       use_peepholes=True,
       initializer=initializer,
@@ -857,12 +852,12 @@ def static_vs_dynamic_rnn_benchmark(batch_size, max_time, num_units, use_gpu):
 def _half_seq_len_vs_unroll_half_rnn_benchmark(inputs_list_t, sequence_length):
   (_, input_size) = inputs_list_t[0].get_shape().as_list()
   initializer = init_ops.random_uniform_initializer(-0.01, 0.01, seed=127)
-  cell = contrib_rnn.LSTMCell(
+  cell = rnn_cell_impl.LSTMCell(
       num_units=input_size,
       use_peepholes=True,
       initializer=initializer,
       state_is_tuple=False)
-  outputs, final_state = contrib_rnn.static_rnn(
+  outputs, final_state = rnn.static_rnn(
       cell,
       inputs_list_t,
       sequence_length=sequence_length,
@@ -923,12 +918,12 @@ def _concat_state_vs_tuple_state_rnn_benchmark(inputs_list_t, sequence_length,
                                                state_is_tuple):
   (_, input_size) = inputs_list_t[0].get_shape().as_list()
   initializer = init_ops.random_uniform_initializer(-0.01, 0.01, seed=127)
-  cell = contrib_rnn.LSTMCell(
+  cell = rnn_cell_impl.LSTMCell(
       num_units=input_size,
       use_peepholes=True,
       initializer=initializer,
       state_is_tuple=state_is_tuple)
-  outputs, final_state = contrib_rnn.static_rnn(
+  outputs, final_state = rnn.static_rnn(
       cell,
       inputs_list_t,
       sequence_length=sequence_length,
@@ -990,7 +985,7 @@ def concat_state_vs_tuple_state_rnn_benchmark(batch_size, max_time, num_units,
 def _dynamic_rnn_swap_memory_benchmark(inputs_t, sequence_length, swap_memory):
   (unused_0, unused_1, input_size) = inputs_t.get_shape().as_list()
   initializer = init_ops.random_uniform_initializer(-0.01, 0.01, seed=127)
-  cell = contrib_rnn.LSTMCell(
+  cell = rnn_cell_impl.LSTMCell(
       num_units=input_size,
       use_peepholes=True,
       initializer=initializer,

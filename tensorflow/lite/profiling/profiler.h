@@ -15,168 +15,22 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_PROFILING_PROFILER_H_
 #define TENSORFLOW_LITE_PROFILING_PROFILER_H_
 
-#include <vector>
+#include "tensorflow/lite/profiling/buffered_profiler.h"
+#include "tensorflow/lite/profiling/noop_profiler.h"
 
-#include "tensorflow/lite/profiling/profile_buffer.h"
+namespace tflite {
+namespace profiling {
 
+// TODO(b/131688504): Remove this and use runtime flags for profiler selection.
 #ifdef TFLITE_PROFILING_ENABLED
-
-namespace tflite {
-namespace profiling {
-class ScopedProfile;
-class ScopedOperatorProfile;
-
-// Controls whether profiling is enabled or disabled and collects profiles.
-// TFLite is used on platforms that don't have posix threads, so the profiler is
-// kept as simple as possible. It is designed to be used only on a single
-// thread.
-//
-// Profiles are collected using Scoped*Profile objects that begin and end a
-// profile event.
-// An example usage is shown in the example below:
-//
-// Say Worker class has a DoWork method and we are interested in profiling
-// the overall execution time for DoWork and time spent in Task1 and Task2
-// functions.
-//
-// class Worker {
-//  public:
-//   void DoWork() {
-//    ScopedProfile(&controller, "DoWork");
-//    Task1();
-//    Task2();
-//    .....
-//   }
-//
-//   void Task1() {
-//    ScopedProfile(&controller, "Task1");
-//    ....
-//   }
-//
-//   void Task2() {
-//    ScopedProfile(&controller, "Task2");
-//   }
-//
-//    Profiler profiler;
-// }
-//
-// We instrument the functions that need to be profiled.
-//
-// Profile can be collected by enable profiling and then getting profile
-// events.
-//
-//  void ProfileWorker() {
-//    Worker worker;
-//    worker.profiler.EnableProfiling();
-//    worker.DoWork();
-//    worker.profiler.DisableProfiling();
-//    // Profiling is complete, extract profiles.
-//    auto profile_events = worker.profiler.GetProfiles();
-//  }
-//
-//
-class Profiler {
- public:
-  Profiler() : buffer_(1024, false) {}
-
-  void StartProfiling() { buffer_.SetEnabled(true); }
-  void StopProfiling() { buffer_.SetEnabled(false); }
-  void Reset() { buffer_.Reset(); }
-  std::vector<const ProfileEvent*> GetProfileEvents() {
-    std::vector<const ProfileEvent*> profile_events;
-    profile_events.reserve(buffer_.Size());
-    for (size_t i = 0; i < buffer_.Size(); i++) {
-      profile_events.push_back(buffer_.At(i));
-    }
-    return profile_events;
-  }
-
- private:
-  friend class ScopedProfile;
-  friend class ScopedOperatorProfile;
-  ProfileBuffer* GetProfileBuffer() { return &buffer_; }
-  ProfileBuffer buffer_;
-};
-
-class ScopedProfile {
- public:
-  // Adds a profile event to profile that begins with the construction
-  // of object and ends when the object goes out of scope.
-  // The lifetime of tag should be at least the lifetime of profiler.
-
-  ScopedProfile(Profiler* profiler, const char* tag)
-      : buffer_(nullptr), event_handle_(0) {
-    if (profiler) {
-      buffer_ = profiler->GetProfileBuffer();
-      event_handle_ =
-          buffer_->BeginEvent(tag, ProfileEvent::EventType::DEFAULT, 0);
-    }
-  }
-  ~ScopedProfile() {
-    if (buffer_) {
-      buffer_->EndEvent(event_handle_);
-    }
-  }
-
- private:
-  ProfileBuffer* buffer_;
-  int32_t event_handle_;
-};
-
-class ScopedOperatorProfile {
- public:
-  // Adds a profile event to profile that begins with the construction
-  // of object and ends when the object goes out of scope.
-  // The lifetime of tag should be at least the lifetime of profiler.
-  ScopedOperatorProfile(Profiler* profiler, const char* tag, int node_index)
-      : buffer_(nullptr), event_handle_(0) {
-    if (profiler) {
-      buffer_ = profiler->GetProfileBuffer();
-      event_handle_ = buffer_->BeginEvent(
-          tag, ProfileEvent::EventType::OPERATOR_INVOKE_EVENT, node_index);
-    }
-  }
-
-  ~ScopedOperatorProfile() {
-    if (buffer_) {
-      buffer_->EndEvent(event_handle_);
-    }
-  }
-
- private:
-  ProfileBuffer* buffer_;
-  int32_t event_handle_;
-};
-
-}  // namespace profiling
-}  // namespace tflite
-
-#define VARNAME_UNIQ(name, ctr) name##ctr
-
-#define SCOPED_TAGGED_OPERATOR_PROFILE(profiler, tag, node_index) \
-  tflite::profiling::ScopedOperatorProfile VARNAME_UNIQ(          \
-      _profile_, __COUNTER__)((profiler), (tag), (node_index))
-#define SCOPED_OPERATOR_PROFILE(profiler, node_index) \
-  SCOPED_TAGGED_OPERATOR_PROFILE((profiler), "OpInvoke", (node_index))
+using Profiler = BufferedProfiler;
 #else
+using Profiler = NoopProfiler;
+#endif  // TFLITE_PROFILING_ENABLED
 
-namespace tflite {
-namespace profiling {
-// A noop version of profiler when profiling is disabled.
-class Profiler {
- public:
-  Profiler() {}
-  void StartProfiling() {}
-  void StopProfiling() {}
-  void Reset() {}
-  std::vector<const ProfileEvent*> GetProfileEvents() { return {}; }
-};
 }  // namespace profiling
 }  // namespace tflite
 
-#define SCOPED_TAGGED_OPERATOR_PROFILE(profiler, tag, node_index)
-#define SCOPED_OPERATOR_PROFILE(profiler, node_index)
-
-#endif  // TFLITE_PROFILING_ENABLED
+#define SCOPED_TAGGED_OPERATOR_PROFILE TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE
 
 #endif  // TENSORFLOW_LITE_PROFILING_PROFILER_H_

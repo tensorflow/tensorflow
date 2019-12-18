@@ -17,15 +17,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import readers as core_readers
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
 class FixedLengthRecordDatasetSerializationTest(
     reader_dataset_ops_test_base.FixedLengthRecordDatasetTestBase,
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
   def _build_iterator_graph(self, num_epochs, compression_type=None):
     filenames = self._createFiles()
@@ -33,11 +38,11 @@ class FixedLengthRecordDatasetSerializationTest(
         filenames, self._record_bytes, self._header_bytes,
         self._footer_bytes).repeat(num_epochs)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFixedLengthRecordCore(self):
     num_epochs = 5
     num_outputs = num_epochs * self._num_files * self._num_records
     self.run_core_tests(lambda: self._build_iterator_graph(num_epochs),
-                        lambda: self._build_iterator_graph(num_epochs * 2),
                         num_outputs)
 
 

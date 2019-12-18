@@ -24,7 +24,9 @@ from tensorflow.python.ops import resources
 
 # Re-exporting ops used by other modules.
 # pylint: disable=unused-import
+from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_aggregate_stats
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_bucketize
+from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_calculate_best_feature_split as calculate_best_feature_split
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_calculate_best_gains_per_feature as calculate_best_gains_per_feature
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_center_bias as center_bias
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_create_quantile_stream_resource as create_quantile_stream_resource
@@ -37,8 +39,11 @@ from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_quantile_s
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_quantile_stream_resource_flush as quantile_flush
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_quantile_stream_resource_get_bucket_boundaries as get_bucket_boundaries
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_quantile_stream_resource_handle_op as quantile_resource_handle_op
+from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_sparse_aggregate_stats
+from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_sparse_calculate_best_feature_split as sparse_calculate_best_feature_split
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_training_predict as training_predict
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_update_ensemble as update_ensemble
+from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_update_ensemble_v2 as update_ensemble_v2
 from tensorflow.python.ops.gen_boosted_trees_ops import is_boosted_trees_quantile_stream_resource_initialized as is_quantile_resource_initialized
 # pylint: enable=unused-import
 
@@ -109,8 +114,8 @@ class QuantileAccumulator(tracking.TrackableResource):
 
     with ops.name_scope(name, 'QuantileAccumulator') as name:
       self._name = name
-      self._resource_handle = self.create_resource()
-      self._init_op = self.initialize()
+      self._resource_handle = self._create_resource()
+      self._init_op = self._initialize()
       is_initialized_op = self.is_initialized()
     resources.register_resource(self.resource_handle, self._init_op,
                                 is_initialized_op)
@@ -119,18 +124,18 @@ class QuantileAccumulator(tracking.TrackableResource):
         self.resource_handle.name)
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self._saveable)
 
-  def create_resource(self):
+  def _create_resource(self):
     return quantile_resource_handle_op(
         container='', shared_name=self._name, name=self._name)
 
-  def initialize(self):
+  def _initialize(self):
     return create_quantile_stream_resource(self.resource_handle, self._eps,
                                            self._num_streams)
 
   @property
   def initializer(self):
     if self._init_op is None:
-      self._init_op = self.initialize()
+      self._init_op = self._initialize()
     return self._init_op
 
   def is_initialized(self):
@@ -210,8 +215,8 @@ class TreeEnsemble(tracking.TrackableResource):
     self._is_local = is_local
     with ops.name_scope(name, 'TreeEnsemble') as name:
       self._name = name
-      self._resource_handle = self.create_resource()
-      self._init_op = self.initialize()
+      self._resource_handle = self._create_resource()
+      self._init_op = self._initialize()
       is_initialized_op = self.is_initialized()
       # Adds the variable to the savable list.
       if not is_local:
@@ -224,11 +229,11 @@ class TreeEnsemble(tracking.TrackableResource):
           is_initialized_op,
           is_shared=not is_local)
 
-  def create_resource(self):
+  def _create_resource(self):
     return gen_boosted_trees_ops.boosted_trees_ensemble_resource_handle_op(
         container='', shared_name=self._name, name=self._name)
 
-  def initialize(self):
+  def _initialize(self):
     return gen_boosted_trees_ops.boosted_trees_create_ensemble(
         self.resource_handle,
         self._stamp_token,
@@ -237,7 +242,7 @@ class TreeEnsemble(tracking.TrackableResource):
   @property
   def initializer(self):
     if self._init_op is None:
-      self._init_op = self.initialize()
+      self._init_op = self._initialize()
     return self._init_op
 
   def is_initialized(self):

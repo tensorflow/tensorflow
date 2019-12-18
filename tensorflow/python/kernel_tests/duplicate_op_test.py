@@ -32,9 +32,7 @@ class DuplicateOpTest(test.TestCase):
   def testBasic(self):
     library_filename = os.path.join(resource_loader.get_data_files_path(),
                                     'duplicate_op.so')
-    duplicate = load_library.load_op_library(library_filename)
-
-    self.assertEqual(len(duplicate.OP_LIST.op), 0)
+    load_library.load_op_library(library_filename)
 
     with self.cached_session():
       self.assertEqual(math_ops.add(1, 41).eval(), 42)

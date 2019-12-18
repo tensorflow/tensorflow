@@ -145,50 +145,44 @@ Status SingleMachine::Run(const GraphDef& graph_def,
                           const std::vector<std::pair<string, Tensor>>& feed,
                           const std::vector<string>& fetch,
                           RunMetadata* metadata) {
-  {
-    mutex_lock l(this->last_graph_mu_);
-    if (last_graph_ != &graph_def) {
-      TF_RETURN_IF_ERROR(ResetSession());
-      TF_RETURN_IF_ERROR(session_->Create(graph_def));
-      if (!init_ops_.empty()) {
-        init_metadata_ = RunMetadata();
-        int64 timeout_s = timeout_s_ + expected_init_time_s_;
-        TF_RETURN_IF_ERROR(
-            RunWithTimeout({}, init_ops_, &init_metadata_, timeout_s));
-        // The compute cost for init ops is likely to be pessimistic since init
-        // ops are run only once before warmup. Therefore we only keep their
-        // memory costs.
-        for (auto node : *init_metadata_.mutable_cost_graph()->mutable_node()) {
-          node.clear_compute_cost();
-        }
-        // Also clear the timeline to save memory
-        init_metadata_.clear_step_stats();
+  mutex_lock l(this->last_graph_mu_);
+  if (last_graph_ != &graph_def) {
+    TF_RETURN_IF_ERROR(ResetSession());
+    TF_RETURN_IF_ERROR(session_->Create(graph_def));
+    if (!init_ops_.empty()) {
+      init_metadata_ = RunMetadata();
+      int64 timeout_s = timeout_s_ + expected_init_time_s_;
+      TF_RETURN_IF_ERROR(
+          RunWithTimeout({}, init_ops_, &init_metadata_, timeout_s));
+      // The compute cost for init ops is likely to be pessimistic since init
+      // ops are run only once before warmup. Therefore we only keep their
+      // memory costs.
+      for (auto node : *init_metadata_.mutable_cost_graph()->mutable_node()) {
+        node.clear_compute_cost();
       }
-      // We can have at most one hardware trace. Use it for the main graph, and
-      // downgrade tracing of the queue runners to a software trace.
-      RunOptions queue_options = run_options_;
-      if (queue_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-        queue_options.set_trace_level(RunOptions::SOFTWARE_TRACE);
-      }
-      for (size_t i = 0; i < queue_runner_defs_.size(); ++i) {
-        std::unique_ptr<QueueRunner> queue_runner;
-        TF_RETURN_IF_ERROR(QueueRunner::New(queue_runner_defs_[i],
-                                            coordinator_.get(), &queue_runner));
+      // Also clear the timeline to save memory
+      init_metadata_.clear_step_stats();
+    }
+    // We can have at most one hardware trace. Use it for the main graph, and
+    // downgrade tracing of the queue runners to a software trace.
+    RunOptions queue_options = run_options_;
+    if (queue_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
+      queue_options.set_trace_level(RunOptions::SOFTWARE_TRACE);
+    }
+    for (size_t i = 0; i < queue_runner_defs_.size(); ++i) {
+      std::unique_ptr<QueueRunner> queue_runner;
+      TF_RETURN_IF_ERROR(QueueRunner::New(queue_runner_defs_[i],
+                                          coordinator_.get(), &queue_runner));
 
-        TF_RETURN_IF_ERROR(queue_runner->StartAndCollectCostGraph(
-            session_.get(), queue_options));
-        TF_RETURN_IF_ERROR(
-            coordinator_->RegisterRunner(std::move(queue_runner)));
-        TF_RETURN_IF_ERROR(coordinator_->GetStatus());
-      }
+      TF_RETURN_IF_ERROR(queue_runner->StartAndCollectCostGraph(session_.get(),
+                                                                queue_options));
+      TF_RETURN_IF_ERROR(coordinator_->RegisterRunner(std::move(queue_runner)));
+      TF_RETURN_IF_ERROR(coordinator_->GetStatus());
+    }
 
-      // Warmup TensorFlow if needed
-      for (int i = 0;
-           i < options_.config.graph_options().build_cost_model_after(); ++i) {
-        TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, nullptr));
-      }
-
-      last_graph_ = &graph_def;
+    // Warmup TensorFlow if needed
+    for (int i = 0; i < NumWarmupSteps(); ++i) {
+      TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, nullptr));
     }
   }
 
@@ -200,8 +194,11 @@ Status SingleMachine::Run(const GraphDef& graph_def,
     MergeCosts(metadata->mutable_cost_graph(), init_metadata_.cost_graph(),
                queue_costs);
   } else {
-    return RunWithTimeout(feed, fetch, nullptr);
+    TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, nullptr));
   }
+
+  last_graph_ = &graph_def;
+
   return Status::OK();
 }
 
@@ -455,7 +452,6 @@ Status SingleMachine::ClearAllocatorStats() const {
   std::vector<Device*> devices = device_mgr->ListDevices();
 
   for (Device* device : devices) {
-    AllocatorStats stats;
     auto* allocator = device->GetAllocator(AllocatorAttributes());
     if (!allocator->TracksAllocationSizes()) {
       return Status(error::INVALID_ARGUMENT,

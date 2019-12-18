@@ -40,6 +40,13 @@ namespace toco {
   const auto& multiplier_array = model->GetArray(bn_op->inputs[2]);
   const auto& offset_array = model->GetArray(bn_op->inputs[3]);
 
+  // This graph transformation needs to address constant buffers below, so
+  // we need to exit early if these buffers don't exist yet (i.e. if the params
+  // haven't yet been resolved as constants) and will process it once they have.
+  if (!mean_array.buffer || !multiplier_array.buffer || !offset_array.buffer) {
+    return ::tensorflow::Status::OK();
+  }
+
   CHECK(IsConstantParameterArray(*model, bn_op->inputs[1]) &&
         IsConstantParameterArray(*model, bn_op->inputs[2]) &&
         IsConstantParameterArray(*model, bn_op->inputs[3]))
@@ -51,13 +58,6 @@ namespace toco {
   CHECK(mean_array.data_type == ArrayDataType::kFloat);
   CHECK(multiplier_array.data_type == ArrayDataType::kFloat);
   CHECK(offset_array.data_type == ArrayDataType::kFloat);
-
-  // This graph transformations will need to address constant buffers below,
-  // so we need to exit early if these buffers don't exist (i.e. if the params
-  // haven't yet been resolved as constants).
-  if (!mean_array.buffer || !multiplier_array.buffer || !offset_array.buffer) {
-    return ::tensorflow::Status::OK();
-  }
 
   // Create the new Mul, Add operators
   auto* mul_op = new MulOperator;
@@ -136,14 +136,7 @@ namespace toco {
         offset_float_data[i] - mean_float_data[i] * multiplier_float_data[i];
   }
 
-  // Remove the old param arrays
-  DeleteArrayIfUsedOnce(bn_op->inputs[1], model);
-  DeleteArrayIfUsedOnce(bn_op->inputs[2], model);
-  DeleteArrayIfUsedOnce(bn_op->inputs[3], model);
-
-  // Remove the old operator
-  DCHECK_EQ(bn_it->get(), bn_op);
-  model->operators.erase(bn_it);
+  DeleteOpAndArrays(model, bn_op);
 
   *modified = true;
   return ::tensorflow::Status::OK();

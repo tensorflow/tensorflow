@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_GRAPHCYCLES_GRAPHCYCLES_H_
 #define TENSORFLOW_COMPILER_JIT_GRAPHCYCLES_GRAPHCYCLES_H_
 
+#include <vector>
+
 // GraphCycles detects the introduction of a cycle into a directed
 // graph that is being built up incrementally.
 //
@@ -38,8 +40,7 @@ limitations under the License.
 //   FindPath() is linear in the size of the graph.
 // The current implementation uses O(|V|+|E|) space.
 
-#include <unordered_set>
-
+#include "absl/types/span.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -117,8 +118,26 @@ class GraphCycles {
   // Expensive: should only be called from graphcycles_test.cc.
   bool CheckInvariants() const;
 
-  std::unordered_set<int32> Successors(int32 node);
-  std::unordered_set<int32> Predecessors(int32 node);
+  // Warning: Do not use these if iterating over the span and modifying the
+  // GraphCycles at the same time. Instead use SuccessorsCopy/PredecessorsCopy.
+  absl::Span<const int32> Successors(int32 node) const;
+  absl::Span<const int32> Predecessors(int32 node) const;
+
+  // Return a copy of the successors set. This is needed for code using the
+  // collection while modifying the GraphCycles.
+  std::vector<int32> SuccessorsCopy(int32 node) const;
+  // Return a copy of the predecessors set. This is needed for code using the
+  // collection while modifying the GraphCycles.
+  std::vector<int32> PredecessorsCopy(int32 node) const;
+
+  // Returns all nodes in post order.
+  //
+  // If there is a path from X to Y then X appears after Y in the
+  // returned vector.
+  std::vector<int32> AllNodesInPostOrder() const;
+
+  // Returns the graph in graphviz format.
+  string DebugString() const;
 
   // ----------------------------------------------------
   struct Rep;

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EXECUTOR_H_
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -81,9 +83,12 @@ class Executor {
   //
   // RunAsync() dispatches closures to "runner". Typically, "runner"
   // is backed up by a bounded threadpool.
+  typedef std::function<Status(const int64, const DeviceMgr*, Rendezvous** r)>
+      RendezvousFactory;
+
   struct Args {
     int64 step_id = 0;
-    Rendezvous* rendezvous = nullptr;
+    RendezvousInterface* rendezvous = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
     CallFrameInterface* call_frame = nullptr;
     CancellationManager* cancellation_manager = nullptr;
@@ -93,6 +98,7 @@ class Executor {
     TensorStore* tensor_store = nullptr;
     ScopedStepContainer* step_container = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
+    thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
 
     // If true, calls Sync() on the device.
     bool sync_on_finish = false;
@@ -105,7 +111,7 @@ class Executor {
   virtual void RunAsync(const Args& args, DoneCallback done) = 0;
 
   // Synchronous wrapper for RunAsync().
-  Status Run(const Args& args) {
+  virtual Status Run(const Args& args) {
     Status ret;
     Notification n;
     RunAsync(args, [&ret, &n](const Status& s) {
@@ -127,6 +133,8 @@ class Executor {
 struct LocalExecutorParams {
   Device* device;
 
+  const SessionMetadata* session_metadata = nullptr;
+
   // The library runtime support.
   FunctionLibraryRuntime* function_library = nullptr;
 
@@ -135,10 +143,11 @@ struct LocalExecutorParams {
   // when the executor is deleted.
   std::function<Status(const NodeDef&, OpKernel**)> create_kernel;
   std::function<void(OpKernel*)> delete_kernel;
+
+  Executor::RendezvousFactory rendezvous_factory;
 };
 ::tensorflow::Status NewLocalExecutor(const LocalExecutorParams& params,
-                                      std::unique_ptr<const Graph> graph,
-                                      Executor** executor);
+                                      const Graph& graph, Executor** executor);
 
 // A class to help run multiple executors in parallel and wait until
 // all of them are complete.
@@ -191,6 +200,11 @@ class ExecutorBarrier {
         error_rendez->Ref();
       }
 
+      if (!s.ok() && !StatusGroup::IsDerived(s) &&
+          !status_group_.HasLogMessages()) {
+        status_group_.AttachLogMessages();
+      }
+
       status_group_.Update(s);
 
       // If this is the last call to WhenDone, call the final callback
@@ -198,7 +212,7 @@ class ExecutorBarrier {
       if (--pending_ == 0) {
         CHECK(done_cb_ != nullptr);
         std::swap(done, done_cb_);
-        status = status_group_.as_status();
+        status = status_group_.as_summary_status();
       }
     }
 
@@ -210,6 +224,9 @@ class ExecutorBarrier {
 
     if (done != nullptr) {
       delete this;
+      if (!status.ok()) {
+        VLOG(1) << "ExecutorBarrier finished with bad status: " << status;
+      }
       done(status);
     }
   }

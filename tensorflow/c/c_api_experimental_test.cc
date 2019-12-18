@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/c/c_api_experimental.h"
+
+#include "absl/types/optional.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_test_util.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -26,100 +28,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-
-void TestFakeIteratorStack() {
-  TF_Status* s = TF_NewStatus();
-  TF_Graph* graph = TF_NewGraph();
-
-  TF_Operation* get_next = TF_MakeFakeIteratorGetNextWithDatasets(graph, s);
-  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-
-  CSession csession(graph, s);
-  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-
-  // Run the graph.
-  const float base_value = 42.0;
-  for (int i = 0; i < 3; ++i) {
-    csession.SetOutputs({get_next});
-    csession.Run(s);
-    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-    TF_Tensor* out = csession.output_tensor(0);
-    ASSERT_TRUE(out != nullptr);
-    ASSERT_EQ(TF_FLOAT, TF_TensorType(out));
-    ASSERT_EQ(0, TF_NumDims(out));  // scalar
-    ASSERT_EQ(sizeof(float), TF_TensorByteSize(out));
-    float* output_contents = static_cast<float*>(TF_TensorData(out));
-    ASSERT_EQ(base_value + i, *output_contents);
-  }
-
-  // This should error out since we've exhausted the iterator.
-  csession.Run(s);
-  ASSERT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s)) << TF_Message(s);
-
-  // Clean up
-  csession.CloseAndDelete(s);
-  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  TF_DeleteGraph(graph);
-  TF_DeleteStatus(s);
-}
-
-TEST(CAPI_EXPERIMENTAL, FakeIteratorGetNext) { TestFakeIteratorStack(); }
-
-TEST(CAPI_EXPERIMENTAL, ImagenetIteratorGetNext) {
-  TF_Status* s = TF_NewStatus();
-  TF_Graph* graph = TF_NewGraph();
-
-  const string file_path = tensorflow::io::JoinPath(
-      tensorflow::testing::TensorFlowSrcRoot(), "c/testdata/tf_record");
-  VLOG(1) << "data file path is " << file_path;
-  const int batch_size = 64;
-  TF_Operation* get_next = TF_MakeFileBasedIteratorGetNextWithDatasets(
-      graph, file_path.c_str(), batch_size, /*is_mnist*/ false, s);
-  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-
-  CSession csession(graph, s);
-  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-
-  // Run the graph.
-  // The two output tensors should look like:
-  // Tensor("IteratorGetNext:0", shape=(batch_size, 224, 224, 3), dtype=float32)
-  // Tensor("IteratorGetNext:1", shape=(batch_size, ), dtype=int32)
-  for (int i = 0; i < 3; ++i) {
-    LOG(INFO) << "Running iter " << i;
-    csession.SetOutputs({{get_next, 0}, {get_next, 1}});
-    csession.Run(s);
-    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-
-    {
-      TF_Tensor* image = csession.output_tensor(0);
-      ASSERT_TRUE(image != nullptr);
-      ASSERT_EQ(TF_FLOAT, TF_TensorType(image));
-      // Confirm shape is 224 X 224 X 3
-      ASSERT_EQ(4, TF_NumDims(image));
-      ASSERT_EQ(batch_size, TF_Dim(image, 0));
-      ASSERT_EQ(224, TF_Dim(image, 1));
-      ASSERT_EQ(224, TF_Dim(image, 2));
-      ASSERT_EQ(3, TF_Dim(image, 3));
-      ASSERT_EQ(sizeof(float) * batch_size * 224 * 224 * 3,
-                TF_TensorByteSize(image));
-    }
-
-    {
-      TF_Tensor* label = csession.output_tensor(1);
-      ASSERT_TRUE(label != nullptr);
-      ASSERT_EQ(TF_INT32, TF_TensorType(label));
-      ASSERT_EQ(1, TF_NumDims(label));
-      ASSERT_EQ(batch_size, TF_Dim(label, 0));
-      ASSERT_EQ(sizeof(int32) * batch_size, TF_TensorByteSize(label));
-    }
-  }
-
-  // Clean up
-  csession.CloseAndDelete(s);
-  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  TF_DeleteGraph(graph);
-  TF_DeleteStatus(s);
-}
 
 TEST(CAPI_EXPERIMENTAL, GetServerDefTest) {
   const string expected_text_proto(R"(cluster {
@@ -156,8 +64,8 @@ protocol: "grpc"
   TF_Buffer* null_result =
       TFE_GetServerDef(malformed_text_proto.c_str(), status);
   EXPECT_NE(TF_GetCode(status), TF_OK);
-  EXPECT_TRUE(tensorflow::str_util::StrContains(
-      TF_Message(status), "Invalid text proto for ServerDef"));
+  EXPECT_TRUE(absl::StrContains(TF_Message(status),
+                                "Invalid text proto for ServerDef"));
   EXPECT_EQ(null_result, nullptr);
 
   // Cleanup
@@ -297,177 +205,154 @@ TEST(CAPI_EXPERIMENTAL, TFE_ExecuteOpInNewThreadTest_Blocking) {
   TF_DeleteStatus(status);
 }
 
-TEST(CAPI_EXPERIMENTAL, SymbolicTensor) {
-  TF_Status* status = TF_NewStatus();
-  auto node = TF_Output{nullptr, 1};
-  auto* sym_handle = TFE_NewTensorHandleFromTFOutput(node, TF_FLOAT);
-  TFE_TensorHandlePrintDebugString(sym_handle);
-  CHECK_EQ(TFE_TensorHandleDataType(sym_handle), TF_FLOAT);
-  ASSERT_FALSE(TFE_TensorHandleIsConcrete(sym_handle));
-  auto same_node = TFE_GetTFOutputFromTensorHandle(sym_handle, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  ASSERT_EQ(same_node.oper, node.oper);
-  ASSERT_EQ(same_node.index, node.index);
-  TFE_DeleteTensorHandle(sym_handle);
-
-  TFE_TensorHandle* m = TestMatrixTensorHandle();
-  ASSERT_TRUE(TFE_TensorHandleIsConcrete(m));
-  (void)TFE_GetTFOutputFromTensorHandle(m, status);
-  CHECK_EQ(TF_INTERNAL, TF_GetCode(status)) << TF_Message(status);
-  TFE_DeleteTensorHandle(m);
-
-  TF_DeleteStatus(status);
-}
-
-class AddEagerOpToGraphTest : public ::testing::Test {
+class ShapeInferenceTest : public ::testing::Test {
  protected:
-  AddEagerOpToGraphTest()
-      : status_(TF_NewStatus()),
-        eager_ctx_(nullptr),
-        graph_(TF_NewGraph()),
-        trace_ctx_(TFE_NewTraceContext(graph_)) {
-    TFE_ContextOptions* opts = TFE_NewContextOptions();
+  ShapeInferenceTest()
+      : status_(TF_NewStatus()), tfe_context_options_(TFE_NewContextOptions()) {
+    tfe_context_ = TFE_NewContext(tfe_context_options_, status_);
     CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
-    eager_ctx_ = TFE_NewContext(opts, status_);
-    CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
-    TFE_DeleteContextOptions(opts);
   }
 
-  ~AddEagerOpToGraphTest() override {
-    TFE_DeleteTraceContext(trace_ctx_);
-    TF_DeleteGraph(graph_);
-    TFE_DeleteContext(eager_ctx_);
+  ~ShapeInferenceTest() override {
+    TFE_DeleteContextOptions(tfe_context_options_);
+    TFE_DeleteContext(tfe_context_);
     TF_DeleteStatus(status_);
   }
 
-  template <typename Callable>
-  void AddEagerOpToGraphAndCheck(TFE_Op* op, Callable checker) {
-    TFE_TensorHandle* retvals[5];
-    int num_retvals = 5;
-    // Symbolically execute this op, which adds a graph node to `trace_ctx_`.
-    TF_Operation* graph_op =
-        TFE_AddEagerOpToGraph(op, trace_ctx_, retvals, &num_retvals, status_);
-    CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
-    CHECK_NOTNULL(graph_op);
-    // Check the expectations.
-    checker(graph_op);
-    for (int i = 0; i < num_retvals; ++i) {
-      TFE_DeleteTensorHandle(retvals[i]);
+  // Checks the expected result of shape inference for the given `op`.
+  void CheckOutputShapes(
+      TFE_Op* op,
+      const std::vector<absl::optional<std::vector<int64_t>>>& input_shapes_vec,
+      const std::vector<TF_Tensor*>& input_tensors,
+      const absl::optional<std::vector<int64_t>>& expected_shape) {
+    // Create input_shapes.
+    TF_ShapeAndTypeList* input_shapes =
+        TF_NewShapeAndTypeList(input_shapes_vec.size());
+    for (size_t i = 0; i < input_shapes_vec.size(); ++i) {
+      const auto& input_shape = input_shapes_vec[i];
+      if (input_shape.has_value()) {
+        TF_ShapeAndTypeListSetShape(input_shapes, i, input_shape->data(),
+                                    input_shape->size());
+      } else {
+        TF_ShapeAndTypeListSetUnknownShape(input_shapes, i);
+      }
     }
+    TF_ShapeAndTypeList* output_shapes;
+    TFE_InferShapes(op, input_shapes,
+                    input_tensors.empty()
+                        ? nullptr
+                        : const_cast<TF_Tensor**>(input_tensors.data()),
+                    /*input_tensors_as_shapes*/ nullptr,
+                    /*input_resource_shapes_and_types*/ nullptr, &output_shapes,
+                    /*output_resource_shapes_and_types*/ nullptr, status_);
+    CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+    CHECK_EQ(output_shapes->num_items, 1);
+
+    int num_dims = output_shapes->items[0].num_dims;
+    int64_t* dims = output_shapes->items[0].dims;
+
+    if (!expected_shape.has_value()) {
+      EXPECT_EQ(num_dims, -1);
+      EXPECT_EQ(dims, nullptr);
+      return;
+    }
+
+    EXPECT_EQ(num_dims, expected_shape->size());
+    for (size_t i = 0; i < num_dims; ++i) {
+      EXPECT_EQ(dims[i], (*expected_shape)[i]);
+    }
+    TF_DeleteShapeAndTypeList(input_shapes);
+    TF_DeleteShapeAndTypeList(output_shapes);
   }
 
+  absl::optional<std::vector<int64_t>> make_shape(
+      std::vector<int64_t>&& dims) const {
+    return absl::make_optional(dims);
+  }
+
+  absl::optional<std::vector<int64_t>> unknown_shape() const {
+    return absl::nullopt;
+  }
+
+  static constexpr int64_t kUnknownDim =
+      shape_inference::InferenceContext::kUnknownDim;
   TF_Status* status_;
-  TFE_Context* eager_ctx_;
-  TF_Graph* graph_;
-  TFE_TraceContext* trace_ctx_;
+  TFE_ContextOptions* tfe_context_options_;
+  TFE_Context* tfe_context_;
 };
 
-TEST_F(AddEagerOpToGraphTest, DebugPrintAndSymbolicExecution) {
-  TFE_TensorHandle* m = TestMatrixTensorHandle();
-  TFE_Op* op = MatMulOp(eager_ctx_, m, m);
-
-  CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
-  TFE_OpPrintDebugString(op);
-
-  TFE_TensorHandle* retvals[5];
-  int num_retvals = 5;
-  // Symbolically execute this op, which adds a graph node to `trace_ctx`.
-  TFE_AddEagerOpToGraph(op, trace_ctx_, retvals, &num_retvals, status_);
+TEST_F(ShapeInferenceTest, InfersShapesFromInputShapes) {
+  TFE_Op* matmul_op;
+  matmul_op = TFE_NewOp(tfe_context_, "MatMul", status_);
   CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
 
-  int num_inputs = TFE_FinalizeInputTensorsFromTraceContext(trace_ctx_);
-  CHECK_EQ(num_inputs, 1);
-  auto input_sym_tensor = TFE_GetInputGraphNodeFromTraceContext(trace_ctx_,
-                                                                /*idx*/ 0);
+  // Infer shape when everything is known.
+  CheckOutputShapes(matmul_op,
+                    /*input_shapes*/ {make_shape({3, 2}), make_shape({2, 4})},
+                    /*input_tensors*/ {},
+                    /*expected_shape*/ make_shape({3, 4}));
 
-  LOG(INFO) << tensorflow::getTF_OutputDebugString(input_sym_tensor);
-  auto handle = TFE_ConsumeInputConcreteTensorFromTraceContext(trace_ctx_,
-                                                               /*idx*/ 0);
-  TFE_TensorHandlePrintDebugString(handle);
-  TFE_DeleteTensorHandle(handle);
+  // Infer shape when second operand has unknown shape.
+  CheckOutputShapes(matmul_op,
+                    /*input_shapes*/ {make_shape({3, 2}), unknown_shape()},
+                    /*input_tensors*/ {},
+                    /*expected_shape*/ make_shape({3, kUnknownDim}));
 
-  CHECK_EQ(num_retvals, 1);
-  CHECK_EQ(TFE_TensorHandleDataType(retvals[0]), TF_FLOAT);
+  // Infer shape when some dimensions are unknown.
+  CheckOutputShapes(
+      matmul_op,
+      /*input_shapes*/ {make_shape({kUnknownDim, 2}), make_shape({2, 4})},
+      /*input_tensors*/ {},
+      /*expected_shape*/ make_shape({kUnknownDim, 4}));
 
-  TFE_DeleteTensorHandle(retvals[0]);
-  TFE_DeleteTensorHandle(m);
-  TFE_DeleteOp(op);
+  // Infer shape when everything is unknown.
+  CheckOutputShapes(matmul_op,
+                    /*input_shapes*/ {unknown_shape(), unknown_shape()},
+                    /*input_tensors*/ {},
+                    /*expected_shape*/ make_shape({kUnknownDim, kUnknownDim}));
+
+  TFE_DeleteOp(matmul_op);
+  // TODO(bgogul): Add some death tests where status is not OK.
 }
 
-TEST_F(AddEagerOpToGraphTest, ValueAttributesArePreserved) {
-  // Create MinOp
-  TFE_TensorHandle* axis = TestAxisTensorHandle();
-  TFE_Op* op = MinOp(eager_ctx_, axis, axis);
+TEST_F(ShapeInferenceTest, InfersShapesFromInputTensors) {
+  // Prepare some tensors for shape.
+  TF_Tensor* tensor_1X6 = Int32Tensor({1, 6});
+  CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+  TF_Tensor* tensor_1X1X6 = Int32Tensor({1, 1, 6});
   CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
 
-  // Check the attributes set by the call to MinOp above.
-  AddEagerOpToGraphAndCheck(op, [this, &axis](TF_Operation* graph_op) {
-    unsigned char value;
-    TF_OperationGetAttrBool(graph_op, "keep_dims", &value, status_);
-    CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
-    CHECK_EQ(value, 1);
-    TF_DataType dtype;
-    TF_OperationGetAttrType(graph_op, "Tidx", &dtype, status_);
-    CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
-    CHECK_EQ(dtype, TF_INT32);
-    TF_OperationGetAttrType(graph_op, "T", &dtype, status_);
-    CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
-    CHECK_EQ(dtype, TFE_TensorHandleDataType(axis));
-  });
-  TFE_DeleteTensorHandle(axis);
-  TFE_DeleteOp(op);
-}
-
-TEST_F(AddEagerOpToGraphTest, ListAttributesArePreserved) {
-  // Create a "Squeeze" operator with list attributes.
-  TFE_TensorHandle* axis = TestAxisTensorHandle();
-  TFE_Op* squeeze = TFE_NewOp(eager_ctx_, "Squeeze", status_);
+  TFE_Op* reshape_op = TFE_NewOp(tfe_context_, "Reshape", status_);
   CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
-  TFE_OpAddInput(squeeze, axis, status_);
-  TFE_OpSetAttrType(squeeze, "T", TF_INT32);
-  std::vector<int64_t> boundaries = {1, 2, 3, 4};
-  TFE_OpSetAttrIntList(squeeze, "squeeze_dims", boundaries.data(),
-                       boundaries.size());
-  // Check attributes are preserved.
-  AddEagerOpToGraphAndCheck(
-      squeeze, [this, &boundaries](TF_Operation* squeeze_graph_op) {
-        TF_DataType dtype;
-        TF_OperationGetAttrType(squeeze_graph_op, "T", &dtype, status_);
-        CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
-        CHECK_EQ(dtype, TF_INT32);
-        std::unique_ptr<int64_t[]> list(new int64_t[boundaries.size()]);
-        TF_OperationGetAttrIntList(squeeze_graph_op, "squeeze_dims", list.get(),
-                                   boundaries.size(), status_);
-        CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
-        EXPECT_TRUE(std::equal(list.get(), list.get() + boundaries.size(),
-                               boundaries.begin()));
-      });
-  TFE_DeleteTensorHandle(axis);
-  TFE_DeleteOp(squeeze);
-}
+  TFE_OpSetAttrType(reshape_op, "T", TF_FLOAT);
+  TFE_OpSetAttrType(reshape_op, "Tshape", TF_INT32);
+  CheckOutputShapes(reshape_op,
+                    /* input_shapes*/ {unknown_shape(), unknown_shape()},
+                    /* input_tensors*/ {nullptr, tensor_1X6},
+                    /*expected_shape*/ make_shape({1, 6}));
+  TFE_DeleteOp(reshape_op);
+  reshape_op = nullptr;
 
-TEST_F(AddEagerOpToGraphTest, ListInputsAreAddedCorrectly) {
-  TFE_TensorHandle* scalar = TestScalarTensorHandle();
-  TFE_Op* identityn = TFE_NewOp(eager_ctx_, "IdentityN", status_);
+  TFE_Op* fill_op = TFE_NewOp(tfe_context_, "Fill", status_);
   CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
-  constexpr size_t kNumInputs = 3;
-  for (size_t i = 0; i < kNumInputs; ++i) {
-    TFE_OpAddInput(identityn, scalar, status_);
-  }
-  TF_DataType types[kNumInputs] = {TF_FLOAT, TF_FLOAT, TF_FLOAT};
-  TFE_OpSetAttrTypeList(identityn, "T", types, kNumInputs);
-  AddEagerOpToGraphAndCheck(
-      identityn, [this, kNumInputs](TF_Operation* graph_op) {
-        EXPECT_EQ(TF_OperationNumInputs(graph_op), kNumInputs);
-        EXPECT_EQ(TF_OperationInputListLength(graph_op, "input", status_),
-                  kNumInputs);
-        CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
-        EXPECT_EQ(TF_OperationOutputListLength(graph_op, "output", status_),
-                  kNumInputs);
-        CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
-      });
+  TFE_OpSetAttrType(fill_op, "T", TF_FLOAT);
+  TFE_OpSetAttrType(fill_op, "Tshape", TF_INT32);
+
+  float five = 5.0;
+  TFE_TensorHandle* scalar = TestScalarTensorHandle(five);
+  TF_Tensor* scalarTensor = TFE_TensorHandleResolve(scalar, status_);
+  CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+  CheckOutputShapes(fill_op,
+                    /* input_shapes*/ {unknown_shape(), unknown_shape()},
+                    /* input_tensors*/ {tensor_1X1X6, scalarTensor},
+                    /*expected_shape*/ make_shape({1, 1, 6}));
+  TFE_DeleteOp(fill_op);
+  fill_op = nullptr;
+
   TFE_DeleteTensorHandle(scalar);
-  TFE_DeleteOp(identityn);
+  TF_DeleteTensor(scalarTensor);
+  TF_DeleteTensor(tensor_1X1X6);
+  TF_DeleteTensor(tensor_1X6);
 }
 
 }  // namespace

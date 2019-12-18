@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/microfrontend/lib/fft.h"
-#include "tensorflow/lite/experimental/microfrontend/lib/fft_util.h"
 
-#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
+#include "tensorflow/lite/experimental/microfrontend/lib/fft_util.h"
+#include "tensorflow/lite/micro/testing/micro_test.h"
 
 namespace {
 
@@ -42,7 +42,7 @@ TF_LITE_MICRO_TEST(FftTest_CheckOutputValues) {
       {0, 25},   {9, -10},     {19, 0},    {9, 9},        {0, 0}};
   TF_LITE_MICRO_EXPECT_EQ(state.fft_size / 2 + 1,
                           sizeof(expected) / sizeof(expected[0]));
-  int i;
+  unsigned int i;
   for (i = 0; i <= state.fft_size / 2; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(state.output[i].real, expected[i].real);
     TF_LITE_MICRO_EXPECT_EQ(state.output[i].imag, expected[i].imag);

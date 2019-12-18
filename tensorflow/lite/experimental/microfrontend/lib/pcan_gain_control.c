@@ -24,17 +24,16 @@ int16_t WideDynamicFunction(const uint32_t x, const int16_t* lut) {
   const int16_t interval = MostSignificantBit32(x);
   lut += 4 * interval - 6;
 
-  const int16_t frac = ((interval < 11)
-                        ? (x << (11 - interval))
-                        : (x >> (interval - 11))
-                       ) & 0x3FF;
+  const int16_t frac =
+      ((interval < 11) ? (x << (11 - interval)) : (x >> (interval - 11))) &
+      0x3FF;
 
-  int32_t result = ((int32_t) lut[2] * frac) >> 5;
-  result += ((int32_t) lut[1]) << 5;
+  int32_t result = ((int32_t)lut[2] * frac) >> 5;
+  result += (int32_t)((uint32_t)lut[1] << 5);
   result *= frac;
   result = (result + (1 << 14)) >> 15;
   result += lut[0];
-  return (int16_t) result;
+  return (int16_t)result;
 }
 
 uint32_t PcanShrink(const uint32_t x) {
@@ -49,9 +48,9 @@ void PcanGainControlApply(struct PcanGainControlState* state,
                           uint32_t* signal) {
   int i;
   for (i = 0; i < state->num_channels; ++i) {
-    const uint32_t gain = WideDynamicFunction(state->noise_estimate[i],
-                                              state->gain_lut);
-    const uint32_t snr = ((uint64_t) signal[i] * gain) >> state->snr_shift;
+    const uint32_t gain =
+        WideDynamicFunction(state->noise_estimate[i], state->gain_lut);
+    const uint32_t snr = ((uint64_t)signal[i] * gain) >> state->snr_shift;
     signal[i] = PcanShrink(snr);
   }
 }

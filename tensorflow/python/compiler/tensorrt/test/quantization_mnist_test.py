@@ -18,12 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_linked_tensorrt_version
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python import data
 from tensorflow.python import keras
 from tensorflow.python.compiler.tensorrt import trt_convert
-from tensorflow.python.compiler.tensorrt.wrap_conversion import get_linked_tensorrt_version
-from tensorflow.python.compiler.tensorrt.wrap_conversion import is_tensorrt_enabled
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator.estimator import Estimator
 from tensorflow.python.estimator.model_fn import EstimatorSpec
 from tensorflow.python.estimator.model_fn import ModeKeys
@@ -55,6 +55,7 @@ OUTPUT_NODE_NAME = 'output'
 
 
 class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
+  """Testing usage of quantization ranges inserted in graph."""
 
   def _BuildGraph(self, x):
 
@@ -130,6 +131,10 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
       # Load weights
       mnist_saver = saver.Saver()
       checkpoint_file = latest_checkpoint(model_dir)
+      if checkpoint_file is None:
+        raise ValueError(
+            'latest_checkpoint returned None. check if' +
+            'model_dir={} is the right directory'.format(model_dir))
       mnist_saver.restore(sess, checkpoint_file)
       # Freeze
       graph_def = graph_util.convert_variables_to_constants(
@@ -148,8 +153,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
           # runtime to allocate GPU memory.
           max_workspace_size_bytes=1 << 28,
           minimum_segment_size=2,
-          use_calibration=False,
-      )
+          use_calibration=False)
       graph_def = converter.convert()
       logging.info('Number of nodes after TF-TRT conversion: %d',
                    len(graph_def.node))
@@ -187,28 +191,24 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
 
     def _EvalInputFn():
       mnist_x, mnist_y = test_data
-      dataset = data.Dataset.from_tensor_slices((mnist_x, mnist_y))
-      dataset = dataset.apply(
-          data.experimental.map_and_batch(
-              map_func=_PreprocessFn,
-              batch_size=batch_size,
-              num_parallel_calls=8))
+      dataset = dataset_ops.Dataset.from_tensor_slices((mnist_x, mnist_y))
+      dataset = dataset.map(
+          map_func=_PreprocessFn,
+          num_parallel_calls=8).batch(batch_size=batch_size)
       dataset = dataset.repeat(count=1)
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
       features, labels = iterator.get_next()
       return features, labels
 
     def _TrainInputFn():
       mnist_x, mnist_y = train_data
-      dataset = data.Dataset.from_tensor_slices((mnist_x, mnist_y))
+      dataset = dataset_ops.Dataset.from_tensor_slices((mnist_x, mnist_y))
       dataset = dataset.shuffle(2 * len(mnist_x))
-      dataset = dataset.apply(
-          data.experimental.map_and_batch(
-              map_func=_PreprocessFn,
-              batch_size=batch_size,
-              num_parallel_calls=8))
+      dataset = dataset.map(
+          map_func=_PreprocessFn,
+          num_parallel_calls=8).batch(batch_size=batch_size)
       dataset = dataset.repeat(count=num_epochs)
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
       features, labels = iterator.get_next()
       return features, labels
 
@@ -235,7 +235,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
       if mode == ModeKeys.EVAL:
         return EstimatorSpec(
             mode, loss=loss, eval_metric_ops={'accuracy': accuracy})
-      elif mode == ModeKeys.TRAIN:
+      if mode == ModeKeys.TRAIN:
         optimizer = AdamOptimizer(learning_rate=1e-2)
         train_op = optimizer.minimize(loss, global_step=get_global_step())
         return EstimatorSpec(mode, loss=loss, train_op=train_op)
@@ -265,7 +265,8 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
   def testEval(self):
     if not is_tensorrt_enabled():
       return
-    model_dir = test.test_src_dir_path('python/compiler/tensorrt/test/testdata')
+    model_dir = test.test_src_dir_path(
+        'python/compiler/tensorrt/test/testdata/mnist')
 
     accuracy_tf_native = self._Run(
         is_training=False,

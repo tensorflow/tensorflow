@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <atomic>
-
 #include "tensorflow/core/framework/resource_mgr.h"
+
+#include <atomic>
 
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -32,18 +32,14 @@ namespace tensorflow {
 // Used to generate unique names for anonymous variables
 static std::atomic<int64> current_id_;
 
-ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
-                                  const string& name,
-                                  const TypeIndex& type_index) {
+ResourceHandle MakeResourceHandle(
+    const string& container, const string& name, const DeviceBase& device,
+    const TypeIndex& type_index,
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes) {
   ResourceHandle result;
-  result.set_device(ctx->device()->attributes().name());
+  result.set_device(device.name());
   string actual_container;
-  if (!container.empty()) {
-    actual_container = container;
-  } else {
-    actual_container = ctx->resource_manager()->default_container();
-  }
-  result.set_container(actual_container);
+  result.set_container(container);
   if (name == ResourceHandle::ANONYMOUS_NAME) {
     result.set_name(strings::StrCat("_AnonymousVar", current_id_.fetch_add(1)));
   } else {
@@ -51,6 +47,7 @@ ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
   }
   result.set_hash_code(type_index.hash_code());
   result.set_maybe_type_name(type_index.name());
+  result.set_dtypes_and_shapes(dtypes_and_shapes);
   return result;
 }
 
@@ -61,7 +58,7 @@ Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,
   TF_RETURN_IF_ERROR(
       context->allocate_output(output_index, TensorShape({}), &handle));
   handle->scalar<ResourceHandle>()() =
-      MakeResourceHandle(context, container, name, type_index);
+      MakeResourceHandle(container, name, *context->device(), type_index);
   return Status::OK();
 }
 
@@ -97,6 +94,28 @@ const char* ResourceMgr::DebugTypeName(uint64 hash_code) const {
   }
 }
 
+ResourceMgr::ResourceAndName::ResourceAndName()
+    : resource(nullptr), name(nullptr) {}
+
+ResourceMgr::ResourceAndName::ResourceAndName(ResourceBase* resource,
+                                              string name)
+    : resource(resource), name(absl::make_unique<string>(std::move(name))) {}
+
+ResourceMgr::ResourceAndName::ResourceAndName(
+    ResourceAndName&& other) noexcept {
+  resource = std::move(other.resource);
+  name = std::move(other.name);
+}
+
+ResourceMgr::ResourceAndName::~ResourceAndName() {}
+
+ResourceMgr::ResourceAndName& ResourceMgr::ResourceAndName::operator=(
+    ResourceAndName&& other) noexcept {
+  resource = std::move(other.resource);
+  name = std::move(other.name);
+  return *this;
+}
+
 ResourceMgr::ResourceMgr() : default_container_("localhost") {}
 
 ResourceMgr::ResourceMgr(const string& default_container)
@@ -105,14 +124,17 @@ ResourceMgr::ResourceMgr(const string& default_container)
 ResourceMgr::~ResourceMgr() { Clear(); }
 
 void ResourceMgr::Clear() {
-  mutex_lock l(mu_);
-  for (const auto& p : containers_) {
-    for (const auto& q : *p.second) {
-      q.second->Unref();
-    }
+  // We do the deallocation outside of the lock to avoid a potential deadlock
+  // in case any of the destructors access the resource manager.
+  std::unordered_map<string, Container*> tmp_containers;
+  {
+    mutex_lock l(mu_);
+    tmp_containers = std::move(containers_);
+  }
+  for (const auto& p : tmp_containers) {
     delete p.second;
   }
-  containers_.clear();
+  tmp_containers.clear();
 }
 
 string ResourceMgr::DebugString() const {
@@ -129,9 +151,8 @@ string ResourceMgr::DebugString() const {
     for (const auto& q : *p.second) {
       const Key& key = q.first;
       const char* type = DebugTypeName(key.first);
-      const string& resource = key.second;
-      Line l{&container, port::Demangle(type), &resource,
-             q.second->DebugString()};
+      Line l{&container, port::Demangle(type), q.second.name.get(),
+             q.second.resource->DebugString()};
       lines.push_back(l);
     }
   }
@@ -143,7 +164,7 @@ string ResourceMgr::DebugString() const {
         line.type.c_str(), line.resource->c_str(), line.detail.c_str()));
   }
   std::sort(text.begin(), text.end());
-  return str_util::Join(text, "\n");
+  return absl::StrJoin(text, "\n");
 }
 
 Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
@@ -152,11 +173,18 @@ Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
   if (*b == nullptr) {
     *b = new Container;
   }
-  if ((*b)->insert({{type.hash_code(), name}, resource}).second) {
+
+  // NOTE: Separating out the construction of the map key and value so that the
+  // key can contain a StringPiece that borrows from the string in the value.
+  ResourceAndName resource_and_name(resource, name);
+  StringPiece borrowed_name(*resource_and_name.name);
+  Container::value_type key_and_value(Key(type.hash_code(), borrowed_name),
+                                      std::move(resource_and_name));
+
+  if ((*b)->insert(std::move(key_and_value)).second) {
     TF_RETURN_IF_ERROR(InsertDebugTypeName(type.hash_code(), type.name()));
     return Status::OK();
   }
-  resource->Unref();
   return errors::AlreadyExists("Resource ", container, "/", name, "/",
                                type.name());
 }
@@ -170,12 +198,12 @@ Status ResourceMgr::DoLookup(const string& container, TypeIndex type,
                             " does not exist. (Could not find resource: ",
                             container, "/", name, ")");
   }
-  auto r = gtl::FindPtrOrNull(*b, {type.hash_code(), name});
-  if (r == nullptr) {
+  auto iter = b->find({type.hash_code(), name});
+  if (iter == b->end()) {
     return errors::NotFound("Resource ", container, "/", name, "/", type.name(),
                             " does not exist.");
   }
-  *resource = const_cast<ResourceBase*>(r);
+  *resource = const_cast<ResourceBase*>(iter->second.resource.get());
   (*resource)->Ref();
   return Status::OK();
 }
@@ -183,7 +211,7 @@ Status ResourceMgr::DoLookup(const string& container, TypeIndex type,
 Status ResourceMgr::DoDelete(const string& container, uint64 type_hash_code,
                              const string& resource_name,
                              const string& type_name) {
-  ResourceBase* base = nullptr;
+  ResourceAndName resource_and_name;
   {
     mutex_lock l(mu_);
     Container* b = gtl::FindPtrOrNull(containers_, container);
@@ -195,11 +223,10 @@ Status ResourceMgr::DoDelete(const string& container, uint64 type_hash_code,
       return errors::NotFound("Resource ", container, "/", resource_name, "/",
                               type_name, " does not exist.");
     }
-    base = iter->second;
+    std::swap(resource_and_name, iter->second);
     b->erase(iter);
   }
-  CHECK(base != nullptr);
-  base->Unref();
+  DCHECK(resource_and_name.resource != nullptr);
   return Status::OK();
 }
 
@@ -233,9 +260,6 @@ Status ResourceMgr::Cleanup(const string& container) {
     containers_.erase(iter);
   }
   CHECK(b != nullptr);
-  for (const auto& p : *b) {
-    p.second->Unref();
-  }
   delete b;
   return Status::OK();
 }

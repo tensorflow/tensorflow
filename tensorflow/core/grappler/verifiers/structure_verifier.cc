@@ -42,7 +42,7 @@ Status StructureVerifier::Verify(const GraphDef& graph) {
 
   std::vector<const NodeDef*> topo_order;
   status_group.Update(ComputeTopologicalOrder(graph, &topo_order));
-  return status_group.as_status();
+  return status_group.as_concatenated_status();
 }
 
 }  // end namespace grappler

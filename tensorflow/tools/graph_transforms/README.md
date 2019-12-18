@@ -111,7 +111,7 @@ unsure, the
 tool can inspect the model and provide guesses about likely input and output nodes,
 as well as other information that's useful for debugging. Here's an example of
 how to use it on the [Inception V3
-graph](http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz):
+graph](https://storage.googleapis.com/download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz):
 
 ```bash
 bazel build tensorflow/tools/graph_transforms:summarize_graph
@@ -124,7 +124,7 @@ This section has small guides for some of the most frequently-used
 transformation pipelines, aimed at users who want to quickly accomplish one of
 these tasks. A lot of them will use the Inception V3 model for their examples,
 which can be downloaded from
-[http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz](http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz).
+[https://storage.googleapis.com/download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz](https://storage.googleapis.com/download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz).
 
 ### Optimizing for Deployment
 
@@ -152,10 +152,10 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 
 The batch norm folding is included twice because there are two different flavors
 of batch normalization used in TensorFlow. The older version was implemented
-with a single BatchNormWithGlobalNormalization op, but it was deprecated in
-favor of a more recent approach using individual ops to implement the same
-computation. The two transforms are in there so that both styles are recognized
-and optimized.
+with a single op like BatchNormWithGlobalNormalization or FusedBatchNorm, and
+BatchNormWithGlobalNormalization was deprecated in favor of a more recent
+approach using individual ops to implement the same computation. The two
+transforms are in there so that both styles are recognized and optimized.
 
 ### Fixing Missing Kernel Errors on Mobile
 
@@ -405,13 +405,14 @@ to continue on past transient errors, since this is just an optimization phase.
 Args: None \
 Prerequisites: None
 
-In the early days of TensorFlow, batch normalization was implemented using a
-single monolithic `BatchNormWithGlobalNormalization` op. In modern versions,
-adding batch normalization from Python will give you a series of smaller math
-ops instead, to achieve the same effect without special-purpose code. If you
-have a graph that uses the older-style, this transform will recognize and
-optimize those ops for inference, in the same way that the
-[fold_batch_norms](#fold_batch_norms) transform does for the new approach.
+In the early days of TensorFlow, batch normalization was implemented using
+single monolithic ops like `BatchNormWithGlobalNormalization` or
+`FusedBatchNorm`. In modern versions, adding batch normalization from Python
+will give you a series of smaller math ops instead, to achieve the same effect
+without special-purpose code. If you have a graph that uses the older-style,
+this transform will recognize and optimize those ops for inference, in the same
+way that the [fold_batch_norms](#fold_batch_norms) transform does for the new
+approach.
 
 ### freeze_requantization_ranges
 
@@ -805,7 +806,7 @@ Status RenameOp(const GraphDef& input_graph_def,
       !context.params.count("new_op_name") ||
       (context.params.at("new_op_name").size() != 1)) {
     return errors::InvalidArgument(
-        "remove_nodes expects exactly one 'old_op_name' and 'new_op_name' "
+        "rename_op expects exactly one 'old_op_name' and 'new_op_name' "
         "argument, e.g. rename_op(old_op_name=Mul, new_op_name=Multiply)");
   }
 

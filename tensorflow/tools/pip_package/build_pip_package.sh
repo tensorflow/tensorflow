@@ -41,6 +41,31 @@ function cp_external() {
   cp "${src_dir}/local_config_cuda/cuda/cuda/cuda_config.h" "${dest_dir}/local_config_cuda/cuda/cuda/"
 }
 
+function move_to_root_if_exists () {
+  arg_to_move="$1"
+  if [ -e "${arg_to_move}" ]; then
+    mv ${arg_to_move} ./
+  fi
+}
+
+function reorganize_includes() {
+  TMPDIR="${1%/}"
+  pushd "${TMPDIR}/tensorflow/include/"
+
+  move_to_root_if_exists external/com_google_absl/absl
+
+  move_to_root_if_exists external/eigen_archive/Eigen
+  move_to_root_if_exists external/eigen_archive/unsupported
+
+  move_to_root_if_exists external/jsoncpp_git/include
+  rm -rf external/jsoncpp_git
+
+  move_to_root_if_exists external/com_google_protobuf/src/google
+  rm -rf external/com_google_protobuf/python
+
+  popd
+}
+
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
 function is_windows() {
   if [[ "${PLATFORM}" =~ (cygwin|mingw32|mingw64|msys)_nt* ]]; then
@@ -56,7 +81,7 @@ function prepare_src() {
     exit 1
   fi
 
-  TMPDIR="$1"
+  TMPDIR="${1%/}"
   mkdir -p "$TMPDIR"
   EXTERNAL_INCLUDES="${TMPDIR}/tensorflow/include/external"
 
@@ -74,6 +99,9 @@ function prepare_src() {
     unzip -o -q ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_windows.zip -d ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
     echo "Unzip finished."
     # runfiles structure after unzip the python binary
+    cp \
+      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/LICENSE \
+      "${TMPDIR}"
     cp -R \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/tensorflow \
       "${TMPDIR}"
@@ -85,6 +113,9 @@ function prepare_src() {
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
     if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
       # Old-style runfiles structure (--legacy_external_runfiles).
+      cp \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
+        "${TMPDIR}"
       cp -R \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
@@ -102,6 +133,9 @@ function prepare_src() {
       fi
     else
       # New-style runfiles structure (--nolegacy_external_runfiles).
+      cp \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
+        "${TMPDIR}"
       cp -R \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
@@ -120,21 +154,46 @@ function prepare_src() {
     fi
   fi
 
-  # protobuf pip package doesn't ship with header files. Copy the headers
-  # over so user defined ops can be compiled.
-  mkdir -p ${TMPDIR}/google
   mkdir -p ${TMPDIR}/third_party
-  pushd ${RUNFILES%org_tensorflow} > /dev/null
-  for header in $(find protobuf_archive -name \*.h); do
-    mkdir -p "${TMPDIR}/google/$(dirname ${header})"
-    cp "$header" "${TMPDIR}/google/$(dirname ${header})/"
-  done
-  popd > /dev/null
   cp -R $RUNFILES/third_party/eigen3 ${TMPDIR}/third_party
 
+  reorganize_includes "${TMPDIR}"
+
   cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
-  cp tensorflow/tools/pip_package/README ${TMPDIR}
+  cp tensorflow/tools/pip_package/README ${TMPDIR}/README.md
   cp tensorflow/tools/pip_package/setup.py ${TMPDIR}
+
+  rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so
+  rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so.[0-9].*
+
+  # In order to break the circular dependency between tensorflow and
+  # tensorflow_estimator which forces us to do a multi-step release, we are
+  # creating a virtual python package called tensorflow and moving all the tf
+  # code into another python package called tensorflow_core:
+  #
+  #   * move code from tensorflow to tensorflow_core
+  #   * create the virtual pip package: create folder and __init__.py file with
+  #     needed code for transparent forwarding
+  #
+  # This is transparent to internal code or to code not using the pip packages.
+  mv "${TMPDIR}/tensorflow" "${TMPDIR}/tensorflow_core"
+  mkdir "${TMPDIR}/tensorflow"
+  mv "${TMPDIR}/tensorflow_core/virtual_root.__init__.py" "${TMPDIR}/tensorflow/__init__.py"
+
+  # In V1 API, we need to remove deprecation warnings from
+  # ${TMPDIR}/tensorflow_core/__init__.py as those exists in
+  # ${TMPDIR}/tensorflow/__init__.py which does an import* and if these don't
+  # get removed users get 6 deprecation warning just on
+  #
+  #   import tensorflow as tf
+  #
+  # which is not ok. We disable deprecation by using sed to toggle the flag
+  # TODO(mihaimaruseac): When we move the API to root, remove this hack
+  # Note: Can't do in place sed that works on all OS, so use a temp file instead
+  sed \
+    "s/deprecation=True/deprecation=False/g" \
+    "${TMPDIR}/tensorflow_core/__init__.py" > "${TMPDIR}/tensorflow_core/__init__.out"
+  mv "${TMPDIR}/tensorflow_core/__init__.out" "${TMPDIR}/tensorflow_core/__init__.py"
 }
 
 function build_wheel() {
@@ -154,6 +213,7 @@ function build_wheel() {
   fi
 
   pushd ${TMPDIR} > /dev/null
+
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
   "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${PKG_NAME_FLAG} >/dev/null
@@ -176,8 +236,10 @@ function usage() {
   echo ""
   echo "  Options:"
   echo "    --project_name <name> set project name to name"
+  echo "    --cpu                 build tensorflow_cpu"
   echo "    --gpu                 build tensorflow_gpu"
   echo "    --gpudirect           build tensorflow_gpudirect"
+  echo "    --rocm                build tensorflow_rocm"
   echo "    --nightly_flag        build tensorflow nightly"
   echo ""
   exit 1
@@ -186,7 +248,10 @@ function usage() {
 function main() {
   PKG_NAME_FLAG=""
   PROJECT_NAME=""
+  CPU_BUILD=0
   GPU_BUILD=0
+  GPUDIRECT_BUILD=0
+  ROCM_BUILD=0
   NIGHTLY_BUILD=0
   SRCDIR=""
   DSTDIR=""
@@ -199,8 +264,12 @@ function main() {
       NIGHTLY_BUILD=1
     elif [[ "$1" == "--gpu" ]]; then
       GPU_BUILD=1
+    elif [[ "$1" == "--cpu" ]]; then
+      CPU_BUILD=1
     elif [[ "$1" == "--gpudirect" ]]; then
-      PKG_NAME_FLAG="--project_name tensorflow_gpudirect"
+      GPUDIRECT_BUILD=1
+    elif [[ "$1" == "--rocm" ]]; then
+      ROCM_BUILD=1
     elif [[ "$1" == "--project_name" ]]; then
       shift
       if [[ -z "$1" ]]; then
@@ -224,6 +293,12 @@ function main() {
     fi
   done
 
+  if [[ $(( GPU_BUILD + CPU_BUILD + GPUDIRECT_BUILD + ROCM_BUILD )) -gt "1" ]]; then
+    echo "Only one of [--gpu, --cpu, --gpudirect, --rocm] may be provided."
+    usage
+    exit 1
+  fi
+
   if [[ -z "$DSTDIR" ]] && [[ -z "$SRCDIR" ]]; then
     echo "No destination dir provided"
     usage
@@ -246,10 +321,22 @@ function main() {
     PKG_NAME_FLAG="--project_name ${PROJECT_NAME}"
   elif [[ ${NIGHTLY_BUILD} == "1" && ${GPU_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly_gpu"
+  elif [[ ${NIGHTLY_BUILD} == "1" && ${GPUDIRECT_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tf_nightly_gpudirect"
+  elif [[ ${NIGHTLY_BUILD} == "1" && ${ROCM_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tf_nightly_rocm"
+  elif [[ ${NIGHTLY_BUILD} == "1" && ${CPU_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tf_nightly_cpu"
   elif [[ ${NIGHTLY_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly"
   elif [[ ${GPU_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tensorflow_gpu"
+  elif [[ ${GPUDIRECT_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tensorflow_gpudirect"
+  elif [[ ${ROCM_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tensorflow_rocm"
+  elif [[ ${CPU_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tensorflow_cpu"
   fi
 
   build_wheel "$SRCDIR" "$DSTDIR" "$PKG_NAME_FLAG"

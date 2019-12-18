@@ -53,6 +53,14 @@ class RandomGammaTest(test.TestCase):
 
     return func
 
+  def testNpDtypes(self):
+    self.evaluate(random_ops.random_gamma(
+        [5], alpha=np.ones([2, 1, 3]), beta=np.ones([3]), dtype=np.float32))
+
+  def testEmptySamplingNoError(self):
+    self.evaluate(random_ops.random_gamma(
+        [5], alpha=np.ones([2, 0, 3]), beta=np.ones([3]), dtype=dtypes.float32))
+
   @test_util.run_deprecated_v1
   def testMomentsFloat32(self):
     self._testMoments(dtypes.float32)

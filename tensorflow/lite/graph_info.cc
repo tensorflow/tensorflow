@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/graph_info.h"
+
 #include <algorithm>
-#include "tensorflow/lite/c/c_api_internal.h"
+
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 
@@ -143,7 +145,7 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
     // See if all dependencies of this node are already assigned to a
     // node sub set.
     for (int input_tensor_index : TfLiteIntArrayView(node.inputs)) {
-      if (input_tensor_index != kOptionalTensor &&
+      if (input_tensor_index != kTfLiteOptionalTensor &&
           tensor_epochs_[input_tensor_index] == kEpochNotReady) {
         return false;
       }
@@ -159,7 +161,7 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
     // automatically true.
     if (current_subset.type == node_type_[node_index]) {
       node_epochs_[node_index] = current_epoch;
-      current_subset.nodes.push_back(node_index);
+      current_subset.nodes.push_back(info_->node_index(node_index));
       // All outputs of this node now are assigned to this epoch as
       // well.
       for (int output_tensor_index : TfLiteIntArrayView(node.outputs)) {
@@ -168,7 +170,7 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
       // Look at our inputs one more time to update that tensor's
       // epochs' outputs
       for (int input_tensor_index : TfLiteIntArrayView(node.inputs)) {
-        if (input_tensor_index == kOptionalTensor) {
+        if (input_tensor_index == kTfLiteOptionalTensor) {
           continue;
         }
         int input_epoch = tensor_epochs_[input_tensor_index];

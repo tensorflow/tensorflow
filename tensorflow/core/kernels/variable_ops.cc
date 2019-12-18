@@ -100,8 +100,8 @@ class TemporaryVariableOp : public OpKernel {
     s = context->allocate_temp(dtype_, shape_, &tmp_var->val);
     if (!s.ok()) tmp_var->Unref();
     OP_REQUIRES_OK(context, s);
-    OP_REQUIRES_OK(context, rm->Create(context->step_container()->name(),
-                                       var_name_, tmp_var));
+    OP_REQUIRES_OK(context,
+                   context->step_container()->Create(rm, var_name_, tmp_var));
     context->set_output_ref(0, &tmp_var->mu, &tmp_var->val);
     if (context->track_allocations()) {
       context->record_persistent_memory_allocation(
@@ -145,8 +145,9 @@ class DestroyTemporaryVariableOp : public OpKernel {
     context->set_output(0, tmpvar);
     ResourceMgr* rm = context->resource_manager();
     OP_REQUIRES(context, rm, errors::Internal("No per-step resource manager."));
-    OP_REQUIRES_OK(context, rm->Delete<TemporaryVariableOp::TmpVar>(
-                                context->step_container()->name(), var_name_));
+    OP_REQUIRES_OK(
+        context, context->step_container()->Delete<TemporaryVariableOp::TmpVar>(
+                     rm, var_name_));
     if (context->track_allocations()) {
       context->record_persistent_memory_allocation(
           -static_cast<int64>(tmpvar.AllocatedBytes()));
@@ -209,7 +210,7 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNEL);
 #undef REGISTER_SYCL_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Only register 'Variable' on GPU for the subset of types also supported by
 // 'Assign' (see dense_update_ops.cc.)
 #define REGISTER_GPU_KERNELS(type)                                         \
@@ -236,6 +237,6 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNEL);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

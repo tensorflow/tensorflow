@@ -22,7 +22,7 @@ from absl import app
 from absl import flags
 import numpy as np
 
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 FLAGS = flags.FLAGS
 
@@ -37,7 +37,7 @@ def main(argv):
   root.rnn_cell = tf.keras.layers.LSTMCell(units=10, recurrent_initializer=None)
 
   # Wrap the rnn_cell.__call__ function and assign to next_state.
-  root.next_state = tf.function(root.rnn_cell.__call__, autograph=False)
+  root.next_state = tf.function(root.rnn_cell.__call__)
 
   # Wrap the rnn_cell.get_initial_function using a decorator and assign to an
   # attribute with the same name.

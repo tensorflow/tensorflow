@@ -27,11 +27,11 @@ namespace {
 
 TEST(DiffAnalyzerTest, ZeroDiff) {
   DiffAnalyzer diff_analyzer;
-  string filename = "third_party/tensorflow/lite/testdata/test_input.csv";
+  string filename = "tensorflow/lite/testdata/test_input.csv";
   ASSERT_EQ(diff_analyzer.ReadFiles(filename, filename), kTfLiteOk);
 
   string output_file =
-      tensorflow::io::JoinPath(FLAGS_test_tmpdir + "diff_report.csv");
+      tensorflow::io::JoinPath(::testing::TempDir(), "diff_report.csv");
   ASSERT_EQ(diff_analyzer.WriteReport(output_file), kTfLiteOk);
 
   std::string content;

@@ -104,7 +104,7 @@ class EagerTest(xla_test.XLATestCase):
       self.assertAllEqual(15, product)
 
     # Run some ops graphly
-    with context.graph_mode(), self.cached_session():
+    with context.graph_mode(), self.session():
       with self.test_scope():
         three = constant_op.constant(3)
         five = constant_op.constant(5)
@@ -340,6 +340,57 @@ class EagerFunctionTest(xla_test.XLATestCase):
 
       var = f()
       self.assertEqual(1.0, var.numpy())
+
+  def testResourceVariableNoInlineReadWrite(self):
+    with self.test_scope():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      w = resource_variable_ops.ResourceVariable(0.0)
+
+      @function.defun_with_attributes(attributes={'_noinline': True})
+      def g(x):
+        w.assign(w.read_value() + x)
+        return v.read_value() + x * w.read_value()
+
+      @function.defun_with_attributes(attributes={'_noinline': True})
+      def f():
+        return g(1.0) + g(2.0) + g(3.0) + g(4.0) + g(5.0)
+
+      # 1 + 1*1 + 1 + 2*3 + 1 + 3*6 + 1 + 4*10 + 1 + 5*15
+      self.assertEqual(145.0, f().numpy())
+      self.assertEqual(15.0, w.read_value().numpy())
+
+  def testResourceVariableNoInlineReadOnly(self):
+    with self.test_scope():
+      v = resource_variable_ops.ResourceVariable(10.0)
+
+      @function.defun_with_attributes(attributes={'_noinline': True})
+      def g():
+        return v.read_value()
+
+      @function.defun_with_attributes(attributes={'_noinline': True})
+      def f():
+        return g() + g() + g() + g() + g()
+
+      self.assertEqual(50.0, f().numpy())
+
+  def testResourceVariableNoInlineWriteOnly(self):
+    with self.test_scope():
+      v = resource_variable_ops.ResourceVariable(0.0)
+
+      @function.defun_with_attributes(attributes={'_noinline': True})
+      def g(x):
+        v.assign(x)
+
+      @function.defun_with_attributes(attributes={'_noinline': True})
+      def f():
+        g(1.0)
+        g(2.0)
+        g(3.0)
+        g(4.0)
+        g(5.0)
+
+      f()
+      self.assertEqual(5.0, v.read_value().numpy())
 
   def testUpdateVariable(self):
     with self.test_scope():
@@ -622,6 +673,49 @@ class EagerFunctionTest(xla_test.XLATestCase):
 
       r = f(elems)
       self.assertAllEqual([2., 4., 12., 48., 240., 1440.], self.evaluate(r))
+
+  def testFeedDeviceMemoryToOpExpectingHostMemory(self):
+    @function.defun
+    def f(dims, value):
+      return array_ops.fill(dims, value)
+
+    with self.test_scope():
+      x = constant_op.constant([4], dtype=dtypes.int64)
+
+    y = f(x, 3)
+    self.assertAllEqual([3, 3, 3, 3], y)
+
+  def testRequestNotToCompile(self):
+    with self.test_scope():
+      def f(x):
+        with ops.device('device:CPU:0'):
+          y = 2.0 * x
+        return x, y
+
+      wholly_compiled_f = def_function.function(f)
+      op_by_op_f = def_function.function(f, experimental_compile=False)
+
+      x = constant_op.constant([0.0, 2.0], name='data')
+
+      # When function is wholly compiled, all outputs will be on the
+      # device on which it is run.
+      r_x, r_y = wholly_compiled_f(x)
+      self.assertAllEqual([0.0, 2.0], r_x)
+      self.assertAllEqual([0.0, 4.0], r_y)
+      if context.executing_eagerly():
+        # backing_device is only available for eager tensors.
+        self.assertRegexpMatches(r_x.backing_device, self.device)
+        self.assertRegexpMatches(r_y.backing_device, self.device)
+
+      # When function is executed op-by-op, requested devices will be
+      # respected.
+      r_x, r_y = op_by_op_f(x)
+      self.assertAllEqual([0.0, 2.0], r_x)
+      self.assertAllEqual([0.0, 4.0], r_y)
+      if context.executing_eagerly():
+        # backing_device is only available for eager tensors.
+        self.assertRegexpMatches(r_x.backing_device, self.device)
+        self.assertRegexpMatches(r_y.backing_device, 'device:CPU:0')
 
 
 class ExcessivePaddingTest(xla_test.XLATestCase):

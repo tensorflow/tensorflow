@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for python_configure rule
+workspace(name = "local_config_python")

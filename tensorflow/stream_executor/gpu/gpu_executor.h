@@ -26,12 +26,12 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/gpu/gpu_kernel.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
@@ -61,17 +61,17 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   port::Status Init(int device_ordinal, DeviceOptions device_options) override;
 
-  bool GetKernel(const MultiKernelLoaderSpec& spec,
-                 KernelBase* kernel) override;
+  port::Status GetKernel(const MultiKernelLoaderSpec& spec,
+                         KernelBase* kernel) override;
   // (supported on CUDA only)
   void UnloadKernel(const KernelBase* kernel) override;
-  bool LoadModule(const MultiModuleLoaderSpec& spec,
-                  ModuleHandle* module_handle) override;
+  port::Status LoadModule(const MultiModuleLoaderSpec& spec,
+                          ModuleHandle* module_handle) override;
   bool UnloadModule(ModuleHandle module_handle) override;
 
-  bool Launch(Stream* stream, const ThreadDim& thread_dims,
-              const BlockDim& block_dims, const KernelBase& k,
-              const KernelArgsArrayBase& args) override;
+  port::Status Launch(Stream* stream, const ThreadDim& thread_dims,
+                      const BlockDim& block_dims, const KernelBase& k,
+                      const KernelArgsArrayBase& args) override;
 
   // (supported on CUDA only)
   int CalculateOccupancy(const DeviceDescription& device_description,
@@ -86,10 +86,10 @@ class GpuExecutor : public internal::StreamExecutorInterface {
                        uint64 shared_memory_per_block,
                        const ThreadDim& thread_dims, GpuFunctionHandle func);
 
-  void* Allocate(uint64 size) override;
+  DeviceMemoryBase Allocate(uint64 size, int64 memory_space) override;
 
-  void* AllocateSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
-                          uint64 size_bytes) override;
+  void* GetSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
+                     uint64 size_bytes) override;
 
   void Deallocate(DeviceMemoryBase* mem) override;
 
@@ -119,10 +119,11 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   bool SynchronizeAllActivity() override;
 
-  bool SynchronousMemZero(DeviceMemoryBase* location, uint64 size) override;
+  port::Status SynchronousMemZero(DeviceMemoryBase* location,
+                                  uint64 size) override;
 
-  bool SynchronousMemSet(DeviceMemoryBase* location, int value,
-                         uint64 size) override;
+  port::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
+                                 uint64 size) override;
 
   port::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
                                  const void* host_src, uint64 size) override;
@@ -135,12 +136,12 @@ class GpuExecutor : public internal::StreamExecutorInterface {
                                                const DeviceMemoryBase& gpu_src,
                                                uint64 size) override;
 
-  bool MemZero(Stream* stream, DeviceMemoryBase* location,
-               uint64 size) override;
-  bool Memset(Stream* stream, DeviceMemoryBase* location, uint8 pattern,
-              uint64 size) override;
-  bool Memset32(Stream* stream, DeviceMemoryBase* location, uint32 pattern,
-                uint64 size) override;
+  port::Status MemZero(Stream* stream, DeviceMemoryBase* location,
+                       uint64 size) override;
+  port::Status Memset(Stream* stream, DeviceMemoryBase* location, uint8 pattern,
+                      uint64 size) override;
+  port::Status Memset32(Stream* stream, DeviceMemoryBase* location,
+                        uint32 pattern, uint64 size) override;
 
   bool Memcpy(Stream* stream, void* host_dst, const DeviceMemoryBase& gpu_src,
               uint64 size) override;
@@ -198,12 +199,13 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   bool GetSymbol(const string& symbol_name, ModuleHandle module_handle,
                  void** mem, size_t* bytes) override;
 
-  DeviceDescription* PopulateDeviceDescription() const override;
+  port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+      const override {
+    return CreateDeviceDescription(device_ordinal_);
+  }
 
-  // Populates the block_dim_limit by querying the device driver API. If an
-  // error occurs at any point while asking the driver for block dim limits, it
-  // will be only partially populated as a result, and an error will be logged.
-  bool FillBlockDimLimit(BlockDim* block_dim_limit) const;
+  static port::StatusOr<std::unique_ptr<DeviceDescription>>
+  CreateDeviceDescription(int device_ordinal);
 
   bool SupportsBlas() const override;
 
@@ -261,8 +263,8 @@ class GpuExecutor : public internal::StreamExecutorInterface {
                                    void* data);
 
   // Collects metadata for the specified kernel.
-  bool GetKernelMetadata(GpuKernel* cuda_kernel,
-                         KernelMetadata* kernel_metadata);
+  port::Status GetKernelMetadata(GpuKernel* cuda_kernel,
+                                 KernelMetadata* kernel_metadata);
 
   // Prints to VLOG(2) information about the kernel's occupancy and how it might
   // be improved.
@@ -270,23 +272,23 @@ class GpuExecutor : public internal::StreamExecutorInterface {
                          const BlockDim& block_dims);
 
   // (supported on CUDA only)
-  bool LoadModuleFromCuBin(const char* cubin, GpuModuleHandle* module)
+  port::Status LoadModuleFromCuBin(const char* cubin, GpuModuleHandle* module)
       EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   // Loads the PTX text `ptx` as a CUDA module.  `ptx` must be null terminated.
   // (supported on CUDA only)
-  bool LoadModuleFromPtx(const char* ptx, GpuModuleHandle* module)
+  port::Status LoadModuleFromPtx(const char* ptx, GpuModuleHandle* module)
       EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   // (supported on ROCm only)
-  bool LoadModuleFromHsaco(const char* hsaco, GpuModuleHandle* module)
+  port::Status LoadModuleFromHsaco(const char* hsaco, GpuModuleHandle* module)
       EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   bool UnloadGpuBinary(const void* gpu_binary)
       EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   // Guards the on-disk-module mapping.
-  mutex disk_modules_mu_;
+  absl::Mutex disk_modules_mu_;
 
   // Mapping from filename to GPUModuleHandle, if it was already retrieved.
   // Multiple GPUFunctionHandle are usually obtained from a single
@@ -295,7 +297,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   std::map<string, GpuModuleHandle> disk_modules_ GUARDED_BY(disk_modules_mu_);
 
   // Guards the in-memory-module mapping.
-  mutex in_memory_modules_mu_;
+  absl::Mutex in_memory_modules_mu_;
 
   std::map<const char*, GpuModuleHandle> in_memory_modules_
       GUARDED_BY(in_memory_modules_mu_);
@@ -308,7 +310,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
       gpu_binary_to_module_ GUARDED_BY(in_memory_modules_mu_);
 
   // Guards the launched kernel set.
-  mutex launched_kernels_mu_;
+  absl::Mutex launched_kernels_mu_;
 
   // Keeps track of the set of launched kernels. Currently used to suppress the
   // occupancy check on subsequent launches.

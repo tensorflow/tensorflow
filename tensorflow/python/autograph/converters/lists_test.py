@@ -87,7 +87,7 @@ class ListTest(converter_testing.TestCase):
     }
     node = lists.transform(node, ctx)
 
-    with self.compiled(node, ns, dtypes.int32) as result:
+    with self.compiled(node, ns, (dtypes.int32,)) as result:
       with self.cached_session() as sess:
         ts, tl = result.test_fn()
         r = list_ops.tensor_list_stack(tl, dtypes.int32)
@@ -121,7 +121,7 @@ class ListTest(converter_testing.TestCase):
     }
     node = lists.transform(node, ctx)
 
-    with self.compiled(node, {}, array_ops.stack, dtypes.int32) as result:
+    with self.compiled(node, {}, (array_ops.stack, dtypes.int32)) as result:
       with self.cached_session() as sess:
         self.assertAllEqual(self.evaluate(result.test_fn()), [1, 2, 3])
 

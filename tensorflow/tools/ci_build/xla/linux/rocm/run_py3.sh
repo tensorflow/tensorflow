@@ -19,23 +19,27 @@ set -e
 set -x
 
 N_JOBS=$(grep -c ^processor /proc/cpuinfo)
+N_GPUS=$(lspci|grep 'controller'|grep 'AMD/ATI'|wc -l)
 
 echo ""
-echo "Bazel will use ${N_JOBS} concurrent job(s)."
+echo "Bazel will use ${N_JOBS} concurrent build job(s) and ${N_GPUS} concurrent test job(s)."
 echo ""
 
 # Run configure.
 export PYTHON_BIN_PATH=`which python3`
 
 export TF_NEED_ROCM=1
+export TF_GPU_COUNT=${N_GPUS}
 
 yes "" | $PYTHON_BIN_PATH configure.py
 echo "build --distinct_host_configuration=false" >> .tf_configure.bazelrc
 
 bazel clean
 # Run bazel test command. Double test timeouts to avoid flakes.
-bazel test --config=rocm --test_tag_filters=-no_gpu,-benchmark-test,-no_oss -k \
-    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 \
-    --build_tests_only --test_output=errors --local_test_jobs=1 \
+bazel test --config=rocm --test_tag_filters=-no_gpu,-benchmark-test,-no_oss,-no_rocm -k \
+    --jobs=${N_JOBS} --test_timeout 600,900,2400,7200 \
+    --build_tests_only --test_output=errors --local_test_jobs=${TF_GPU_COUNT} \
+    --test_sharding_strategy=disabled \
+    --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
     --config=xla -- \
     //tensorflow/compiler/...

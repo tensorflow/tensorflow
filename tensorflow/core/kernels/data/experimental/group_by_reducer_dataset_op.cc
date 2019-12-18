@@ -15,26 +15,33 @@ limitations under the License.
 #include <map>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit GroupByReducerDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("key_func", &key_func_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("init_func", &init_func_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("reduce_func", &reduce_func_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("finalize_func", &finalize_func_));
+    FunctionMetadata::Params params;
+    params.is_multi_device_function = true;
+    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "key_func", params,
+                                                 &key_func_metadata_));
+    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "init_func", params,
+                                                 &init_func_metadata_));
+    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "reduce_func", params,
+                                                 &reduce_func_metadata_));
+    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "finalize_func", params,
+                                                 &finalize_func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
@@ -42,20 +49,20 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     std::unique_ptr<CapturedFunction> captured_key_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(key_func_, ctx,
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, key_func_metadata_,
                                                  "key_func_other_arguments",
                                                  &captured_key_func));
     std::unique_ptr<CapturedFunction> captured_init_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(init_func_, ctx,
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, init_func_metadata_,
                                                  "init_func_other_arguments",
                                                  &captured_init_func));
     std::unique_ptr<CapturedFunction> captured_reduce_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(reduce_func_, ctx,
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, reduce_func_metadata_,
                                                  "reduce_func_other_arguments",
                                                  &captured_reduce_func));
     std::unique_ptr<CapturedFunction> captured_finalize_func;
     OP_REQUIRES_OK(ctx,
-                   CapturedFunction::Create(finalize_func_, ctx,
+                   CapturedFunction::Create(ctx, finalize_func_metadata_,
                                             "finalize_func_other_arguments",
                                             &captured_finalize_func));
 
@@ -105,49 +112,53 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       return "GroupByReducerDatasetOp::Dataset";
     }
 
+    Status CheckExternalState() const override {
+      TF_RETURN_IF_ERROR(captured_key_func_->CheckExternalState());
+      TF_RETURN_IF_ERROR(captured_init_func_->CheckExternalState());
+      TF_RETURN_IF_ERROR(captured_reduce_func_->CheckExternalState());
+      TF_RETURN_IF_ERROR(captured_finalize_func_->CheckExternalState());
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, key_func().name()));
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, init_func().name()));
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, reduce_func().name()));
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, finalize_func().name()));
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
       std::vector<Node*> key_func_other_arguments_node;
       DataTypeVector key_func_other_arguments_types;
-      TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
-          ctx, b, captured_key_func_, &key_func_other_arguments_node,
-          &key_func_other_arguments_types));
+      TF_RETURN_IF_ERROR(
+          captured_key_func_->AddToGraph(ctx, b, &key_func_other_arguments_node,
+                                         &key_func_other_arguments_types));
 
       std::vector<Node*> init_func_other_arguments_node;
       DataTypeVector init_func_other_arguments_types;
-      TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
-          ctx, b, captured_init_func_, &init_func_other_arguments_node,
+      TF_RETURN_IF_ERROR(captured_init_func_->AddToGraph(
+          ctx, b, &init_func_other_arguments_node,
           &init_func_other_arguments_types));
 
       std::vector<Node*> reduce_func_other_arguments_node;
       DataTypeVector reduce_func_other_arguments_types;
-      TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
-          ctx, b, captured_reduce_func_, &reduce_func_other_arguments_node,
+      TF_RETURN_IF_ERROR(captured_reduce_func_->AddToGraph(
+          ctx, b, &reduce_func_other_arguments_node,
           &reduce_func_other_arguments_types));
 
       std::vector<Node*> finalize_func_other_arguments_node;
       DataTypeVector finalize_func_other_arguments_types;
-      TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
-          ctx, b, captured_finalize_func_, &finalize_func_other_arguments_node,
+      TF_RETURN_IF_ERROR(captured_finalize_func_->AddToGraph(
+          ctx, b, &finalize_func_other_arguments_node,
           &finalize_func_other_arguments_types));
 
       AttrValue key_func;
-      b->BuildAttrValue(this->key_func(), &key_func);
+      b->BuildAttrValue(captured_key_func_->func(), &key_func);
       AttrValue init_func;
-      b->BuildAttrValue(this->init_func(), &init_func);
+      b->BuildAttrValue(captured_init_func_->func(), &init_func);
       AttrValue reduce_func;
-      b->BuildAttrValue(this->reduce_func(), &reduce_func);
+      b->BuildAttrValue(captured_reduce_func_->func(), &reduce_func);
       AttrValue finalize_func;
-      b->BuildAttrValue(this->finalize_func(), &finalize_func);
+      b->BuildAttrValue(captured_finalize_func_->func(), &finalize_func);
 
       AttrValue key_func_other_arguments_types_attr;
       b->BuildAttrValue(key_func_other_arguments_types,
@@ -391,42 +402,6 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_finalize_func_;
     };
 
-    const NameAttrList& key_func() const { return captured_key_func_->func(); }
-
-    const NameAttrList& init_func() const {
-      return captured_init_func_->func();
-    }
-
-    const NameAttrList& reduce_func() const {
-      return captured_reduce_func_->func();
-    }
-
-    const NameAttrList& finalize_func() const {
-      return captured_finalize_func_->func();
-    }
-
-    Status OtherArgumentsNodeAndType(
-        SerializationContext* ctx, DatasetGraphDefBuilder* b,
-        const std::unique_ptr<CapturedFunction>& captured_func,
-        std::vector<Node*>* other_arguments_node,
-        DataTypeVector* other_arguments_types) const {
-      other_arguments_node->reserve(captured_func->captured_inputs().size());
-      other_arguments_types->reserve(captured_func->captured_inputs().size());
-      for (const Tensor& t : captured_func->captured_inputs()) {
-        Node* node;
-        DatasetBase* input;
-        Status s = GetDatasetFromVariantTensor(t, &input);
-        if (s.ok()) {
-          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
-        } else {
-          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        }
-        other_arguments_node->emplace_back(node);
-        other_arguments_types->emplace_back(t.dtype());
-      }
-      return Status::OK();
-    }
-
     const DatasetBase* const input_;
     const std::unique_ptr<CapturedFunction> captured_key_func_;
     const std::unique_ptr<CapturedFunction> captured_init_func_;
@@ -436,18 +411,24 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
     const std::vector<PartialTensorShape> output_shapes_;
   };
 
+  std::shared_ptr<FunctionMetadata> key_func_metadata_ = nullptr;
+  std::shared_ptr<FunctionMetadata> init_func_metadata_ = nullptr;
+  std::shared_ptr<FunctionMetadata> reduce_func_metadata_ = nullptr;
+  std::shared_ptr<FunctionMetadata> finalize_func_metadata_ = nullptr;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  NameAttrList key_func_;
-  NameAttrList init_func_;
-  NameAttrList reduce_func_;
-  NameAttrList finalize_func_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("GroupByReducerDataset").Device(DEVICE_CPU),
+                        GroupByReducerDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalGroupByReducerDataset").Device(DEVICE_CPU),
     GroupByReducerDatasetOp);
 
+REGISTER_INPUT_COLOCATION_EXEMPTION("GroupByReducerDataset");
+REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalGroupByReducerDataset");
+
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

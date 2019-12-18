@@ -33,7 +33,7 @@ except ImportError:
 
 @tf_export('distribute.cluster_resolver.KubernetesClusterResolver')
 class KubernetesClusterResolver(ClusterResolver):
-  """Cluster Resolver for Kubernetes.
+  """ClusterResolver for Kubernetes.
 
   This is an implementation of cluster resolvers for Kubernetes. When given the
   the Kubernetes namespace and label selector for pods, we will retrieve the
@@ -48,7 +48,7 @@ class KubernetesClusterResolver(ClusterResolver):
                override_client=None):
     """Initializes a new KubernetesClusterResolver.
 
-    This initializes a new Kubernetes Cluster Resolver. The Cluster Resolver
+    This initializes a new Kubernetes ClusterResolver. The ClusterResolver
     will attempt to talk to the Kubernetes master to retrieve all the instances
     of pods matching a label selector.
 

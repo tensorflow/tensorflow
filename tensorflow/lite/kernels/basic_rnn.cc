@@ -12,30 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/activation_functor.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
 namespace builtin {
 namespace rnn {
-
-namespace {
-int8_t* GetInt8DataPtr(const TfLiteTensor* tensor, const bool is_uint8) {
-  if (is_uint8) {
-    return reinterpret_cast<int8_t*>(tensor->data.uint8);
-  } else {
-    return tensor->data.int8;
-  }
-}
-}  // namespace
 
 constexpr int kInputTensor = 0;
 constexpr int kWeightsTensor = 1;
@@ -95,9 +84,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     context->ResizeTensor(context, output, output_size_array));
 
-  bool is_hybrid =
-      input->type == kTfLiteFloat32 && (input_weights->type == kTfLiteUInt8 ||
-                                        input_weights->type == kTfLiteInt8);
+  const bool is_hybrid = IsHybridOp(input, input_weights);
 
   // Allocate temporary tensors to store quantized values of input and
   // hidden_state tensors.
@@ -155,14 +142,14 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input,
       output->dims->data[output->dims->size - 1];
 
   // Initialize the pointer to hidden state.
-  float* hidden_state_ptr_batch = hidden_state->data.f;
+  float* hidden_state_ptr_batch = GetTensorData<float>(hidden_state);
   // Initialize the pointer to input and output.
-  const float* input_ptr_batch = input->data.f;
-  float* output_ptr_batch = output->data.f;
+  const float* input_ptr_batch = GetTensorData<float>(input);
+  float* output_ptr_batch = GetTensorData<float>(output);
   // Initialize input_weights, recurrent_weights and bias.
-  const float* input_weights_ptr = input_weights->data.f;
-  const float* recurrent_weights_ptr = recurrent_weights->data.f;
-  const float* bias_ptr = bias->data.f;
+  const float* input_weights_ptr = GetTensorData<float>(input_weights);
+  const float* recurrent_weights_ptr = GetTensorData<float>(recurrent_weights);
+  const float* bias_ptr = GetTensorData<float>(bias);
 
   kernel_utils::RnnBatchStep(
       input_ptr_batch, input_weights_ptr, recurrent_weights_ptr, bias_ptr,
@@ -179,7 +166,6 @@ TfLiteStatus EvalHybrid(const TfLiteTensor* input,
                         TfLiteTensor* hidden_state_scratch,
                         TfLiteTensor* scaling_factors,
                         TfLiteTensor* hidden_state, TfLiteTensor* output) {
-  const bool is_uint8_hybrid = input_weights->type == kTfLiteUInt8;
   const int batch_size = input->dims->data[0];
   const int num_units = input_weights->dims->data[0];
   const int input_size = input->dims->data[1];
@@ -187,24 +173,23 @@ TfLiteStatus EvalHybrid(const TfLiteTensor* input,
       output->dims->data[output->dims->size - 1];
 
   // Initialize the pointer to hidden state.
-  float* hidden_state_ptr_batch = hidden_state->data.f;
+  float* hidden_state_ptr_batch = GetTensorData<float>(hidden_state);
   // Initialize the pointer to input and output.
-  const float* input_ptr_batch = input->data.f;
-  float* output_ptr_batch = output->data.f;
+  const float* input_ptr_batch = GetTensorData<float>(input);
+  float* output_ptr_batch = GetTensorData<float>(output);
   // Initialize input_weights, recurrent_weights and bias.
-  const int8_t* input_weights_ptr =
-      GetInt8DataPtr(input_weights, is_uint8_hybrid);
+  const int8_t* input_weights_ptr = GetTensorData<int8_t>(input_weights);
   const int8_t* recurrent_weights_ptr =
-      GetInt8DataPtr(recurrent_weights, is_uint8_hybrid);
-  const float* bias_ptr = bias->data.f;
+      GetTensorData<int8_t>(recurrent_weights);
+  const float* bias_ptr = GetTensorData<float>(bias);
   // Get the scale of the quantized weights.
   float input_weights_scale = input_weights->params.scale;
   float recurrent_weights_scale = recurrent_weights->params.scale;
   // Initialize temporary storage for quantized values.
-  int8_t* quantized_input_ptr = GetInt8DataPtr(input_scratch, is_uint8_hybrid);
+  int8_t* quantized_input_ptr = GetTensorData<int8_t>(input_scratch);
   int8_t* quantized_hidden_state_ptr =
-      GetInt8DataPtr(hidden_state_scratch, is_uint8_hybrid);
-  float* scaling_factors_ptr = scaling_factors->data.f;
+      GetTensorData<int8_t>(hidden_state_scratch);
+  float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
 
   kernel_utils::RnnBatchStep(
       input_ptr_batch, input_weights_ptr, input_weights_scale,

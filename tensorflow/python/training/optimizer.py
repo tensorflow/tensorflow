@@ -24,6 +24,7 @@ import abc
 
 import six
 
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
@@ -460,6 +461,12 @@ class Optimizer(
           tape.watch(var_list)
         loss_value = loss()
 
+        # Scale loss if using a "mean" loss reduction and multiple replicas.
+        # Have to be careful to call distribute_lib.get_loss_reduction()
+        # *after* loss() is evaluated, so we know what loss reduction it uses.
+        # TODO(josh11b): Test that we handle weight decay in a reasonable way.
+        loss_value = self._scale_loss(loss_value)
+
       if var_list is None:
         var_list = tape.watched_variables()
       # TODO(jhseu): Figure out why GradientTape's gradients don't require loss
@@ -473,6 +480,9 @@ class Optimizer(
       raise RuntimeError(
           "`loss` passed to Optimizer.compute_gradients should "
           "be a function when eager execution is enabled.")
+
+    # Scale loss if using a "mean" loss reduction and multiple replicas.
+    loss = self._scale_loss(loss)
 
     if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
                               Optimizer.GATE_GRAPH]:
@@ -507,6 +517,16 @@ class Optimizer(
         [v for g, v in grads_and_vars
          if g is not None and v.dtype != dtypes.resource])
     return grads_and_vars
+
+  @staticmethod
+  def _scale_loss(loss_value):
+    ops.get_default_graph()._is_loss_scaled_by_optimizer = False  # pylint: disable=protected-access
+    if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
+      num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
+      if num_replicas > 1:
+        loss_value *= (1. / num_replicas)
+        ops.get_default_graph()._is_loss_scaled_by_optimizer = True  # pylint: disable=protected-access
+    return loss_value
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to variables.
@@ -576,7 +596,7 @@ class Optimizer(
     with ops.init_scope():
       self._create_slots(var_list)
     update_ops = []
-    with ops.name_scope(name, self._name) as name:
+    with ops.name_scope(name, self._name, skip_on_eager=False) as name:
       self._prepare()
       for grad, var, processor in converted_grads_and_vars:
         if grad is None:
@@ -584,20 +604,23 @@ class Optimizer(
         # We colocate all ops created in _apply_dense or _apply_sparse
         # on the same device as the variable.
         # TODO(apassos): figure out how to get the variable name here.
-        if context.executing_eagerly() or isinstance(
-            var,
-            resource_variable_ops.ResourceVariable) and not var._in_graph_mode:  # pylint: disable=protected-access
+        if (context.executing_eagerly() or
+            resource_variable_ops.is_resource_variable(var)
+            and not var._in_graph_mode):  # pylint: disable=protected-access
           scope_name = ""
         else:
           scope_name = var.op.name
-        with ops.name_scope("update_" + scope_name), ops.colocate_with(var):
+        with ops.name_scope(
+            "update_" + scope_name,
+            skip_on_eager=False), ops.colocate_with(var):
           update_ops.append(processor.update_op(self, grad))
       if global_step is None:
         apply_updates = self._finish(update_ops, name)
       else:
         with ops.control_dependencies([self._finish(update_ops, "update")]):
           with ops.colocate_with(global_step):
-            if isinstance(global_step, resource_variable_ops.ResourceVariable):
+            if isinstance(
+                global_step, resource_variable_ops.BaseResourceVariable):
               # TODO(apassos): the implicit read in assign_add is slow; consider
               # making it less so.
               apply_updates = resource_variable_ops.assign_add_variable_op(
@@ -745,7 +768,7 @@ class Optimizer(
       # pylint: enable=protected-access
       mirrored_slot = named_slots.get(key, None)
       if mirrored_slot is None: return None
-      return mirrored_slot.get(device=var.device)
+      return mirrored_slot._get_closest()  # pylint: disable=protected-access
 
     return named_slots.get(_var_key(var), None)
 

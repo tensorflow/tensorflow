@@ -1,4 +1,3 @@
-# -*- Python -*-
 """Repository rule for CUDA autoconfiguration.
 
 `cuda_configure` depends on the following environment variables:
@@ -8,109 +7,23 @@
   * `TF_CUDA_CLANG`: Whether to use clang as a cuda compiler.
   * `CLANG_CUDA_COMPILER_PATH`: The clang compiler path that will be used for
     both host and device code compilation if TF_CUDA_CLANG is 1.
+  * `TF_SYSROOT`: The sysroot to use when compiling.
   * `TF_DOWNLOAD_CLANG`: Whether to download a recent release of clang
     compiler and use it to build tensorflow. When this option is set
     CLANG_CUDA_COMPILER_PATH is ignored.
-  * `CUDA_TOOLKIT_PATH`: The path to the CUDA toolkit. Default is
+  * `TF_CUDA_PATHS`: The base paths to look for CUDA and cuDNN. Default is
+    `/usr/local/cuda,usr/`.
+  * `CUDA_TOOLKIT_PATH` (deprecated): The path to the CUDA toolkit. Default is
     `/usr/local/cuda`.
   * `TF_CUDA_VERSION`: The version of the CUDA toolkit. If this is blank, then
     use the system default.
   * `TF_CUDNN_VERSION`: The version of the cuDNN library.
-  * `CUDNN_INSTALL_PATH`: The path to the cuDNN library. Default is
+  * `CUDNN_INSTALL_PATH` (deprecated): The path to the cuDNN library. Default is
     `/usr/local/cuda`.
   * `TF_CUDA_COMPUTE_CAPABILITIES`: The CUDA compute capabilities. Default is
     `3.5,5.2`.
   * `PYTHON_BIN_PATH`: The python binary path
 """
-
-_GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
-_CLANG_CUDA_COMPILER_PATH = "CLANG_CUDA_COMPILER_PATH"
-_CUDA_TOOLKIT_PATH = "CUDA_TOOLKIT_PATH"
-_TF_CUDA_VERSION = "TF_CUDA_VERSION"
-_TF_CUDNN_VERSION = "TF_CUDNN_VERSION"
-_CUDNN_INSTALL_PATH = "CUDNN_INSTALL_PATH"
-_TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
-_TF_CUDA_CONFIG_REPO = "TF_CUDA_CONFIG_REPO"
-_TF_DOWNLOAD_CLANG = "TF_DOWNLOAD_CLANG"
-_PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
-
-_DEFAULT_CUDA_VERSION = ""
-_DEFAULT_CUDNN_VERSION = ""
-_DEFAULT_CUDA_TOOLKIT_PATH = "/usr/local/cuda"
-_DEFAULT_CUDNN_INSTALL_PATH = "/usr/local/cuda"
-_DEFAULT_CUDA_COMPUTE_CAPABILITIES = ["3.5", "5.2"]
-
-# Lookup paths for CUDA / cuDNN libraries, relative to the install directories.
-#
-# Paths will be tried out in the order listed below. The first successful path
-# will be used. For example, when looking for the cudart libraries, the first
-# attempt will be lib64/cudart inside the CUDA toolkit.
-CUDA_LIB_PATHS = [
-    "lib64/",
-    "lib64/stubs/",
-    "lib/powerpc64le-linux-gnu/",
-    "lib/x86_64-linux-gnu/",
-    "lib/x64/",
-    "lib/",
-    "",
-]
-
-# Lookup paths for cupti.h, relative to the CUDA toolkit directory.
-#
-# On most systems, the cupti library is not installed in the same directory as
-# the other CUDA libraries but rather in a special extras/CUPTI directory.
-CUPTI_HEADER_PATHS = [
-    "extras/CUPTI/include/",
-    "include/cuda/CUPTI/",
-    "include/",
-]
-
-# Lookup paths for the cupti library, relative to the
-#
-# On most systems, the cupti library is not installed in the same directory as
-# the other CUDA libraries but rather in a special extras/CUPTI directory.
-CUPTI_LIB_PATHS = [
-    "extras/CUPTI/lib64/",
-    "lib/powerpc64le-linux-gnu/",
-    "lib/x86_64-linux-gnu/",
-    "lib64/",
-    "extras/CUPTI/libx64/",
-    "extras/CUPTI/lib/",
-    "lib/",
-]
-
-# Lookup paths for CUDA headers (cuda.h) relative to the CUDA toolkit directory.
-CUDA_INCLUDE_PATHS = [
-    "include/",
-    "include/cuda/",
-]
-
-# Lookup paths for cudnn.h relative to the CUDNN install directory.
-CUDNN_INCLUDE_PATHS = [
-    "",
-    "include/",
-    "include/cuda/",
-]
-
-# Lookup paths for NVVM libdevice relative to the CUDA directory toolkit.
-#
-# libdevice implements mathematical functions for GPU kernels, and is provided
-# in NVVM bitcode (a subset of LLVM bitcode).
-NVVM_LIBDEVICE_PATHS = [
-    "nvvm/libdevice/",
-    "share/cuda/",
-    "lib/nvidia-cuda-toolkit/libdevice/",
-]
-
-# Files used to detect the NVVM libdevice path.
-NVVM_LIBDEVICE_FILES = [
-    # CUDA 9.0 has a single file.
-    "libdevice.10.bc",
-
-    # CUDA 8.0 has separate files for compute versions 2.0, 3.0, 3.5 and 5.0.
-    # Probing for one of them is sufficient.
-    "libdevice.compute_20.10.bc",
-]
 
 load("//third_party/clang_toolchain:download_clang.bzl", "download_clang")
 load(
@@ -124,6 +37,73 @@ load(
     "find_vc_path",
     "setup_vc_env_vars",
 )
+
+_GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
+_GCC_HOST_COMPILER_PREFIX = "GCC_HOST_COMPILER_PREFIX"
+_CLANG_CUDA_COMPILER_PATH = "CLANG_CUDA_COMPILER_PATH"
+_TF_SYSROOT = "TF_SYSROOT"
+_CUDA_TOOLKIT_PATH = "CUDA_TOOLKIT_PATH"
+_TF_CUDA_VERSION = "TF_CUDA_VERSION"
+_TF_CUDNN_VERSION = "TF_CUDNN_VERSION"
+_CUDNN_INSTALL_PATH = "CUDNN_INSTALL_PATH"
+_TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
+_TF_CUDA_CONFIG_REPO = "TF_CUDA_CONFIG_REPO"
+_TF_DOWNLOAD_CLANG = "TF_DOWNLOAD_CLANG"
+_PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
+
+_DEFAULT_CUDA_COMPUTE_CAPABILITIES = ["3.5", "5.2"]
+
+def to_list_of_strings(elements):
+    """Convert the list of ["a", "b", "c"] into '"a", "b", "c"'.
+
+    This is to be used to put a list of strings into the bzl file templates
+    so it gets interpreted as list of strings in Starlark.
+
+    Args:
+      elements: list of string elements
+
+    Returns:
+      single string of elements wrapped in quotes separated by a comma."""
+    quoted_strings = ["\"" + element + "\"" for element in elements]
+    return ", ".join(quoted_strings)
+
+def verify_build_defines(params):
+    """Verify all variables that crosstool/BUILD.tpl expects are substituted.
+
+    Args:
+      params: dict of variables that will be passed to the BUILD.tpl template.
+    """
+    missing = []
+    for param in [
+        "cxx_builtin_include_directories",
+        "extra_no_canonical_prefixes_flags",
+        "host_compiler_path",
+        "host_compiler_prefix",
+        "host_compiler_warnings",
+        "linker_bin_path",
+        "compiler_deps",
+        "msvc_cl_path",
+        "msvc_env_include",
+        "msvc_env_lib",
+        "msvc_env_path",
+        "msvc_env_tmp",
+        "msvc_lib_path",
+        "msvc_link_path",
+        "msvc_ml_path",
+        "unfiltered_compile_flags",
+        "win_compiler_deps",
+    ]:
+        if ("%{" + param + "}") not in params:
+            missing.append(param)
+
+    if missing:
+        auto_configure_fail(
+            "BUILD.tpl template is missing these variables: " +
+            str(missing) +
+            ".\nWe only got: " +
+            str(params) +
+            ".",
+        )
 
 def _get_python_bin(repository_ctx):
     """Gets the python bin path."""
@@ -144,7 +124,7 @@ def _get_python_bin(repository_ctx):
     )
 
 def _get_nvcc_tmp_dir_for_windows(repository_ctx):
-    """Return the tmp directory for nvcc to generate intermediate source files."""
+    """Return the Windows tmp directory for nvcc to generate intermediate source files."""
     escaped_tmp_dir = escape_string(
         get_env_var(repository_ctx, "TMP", "C:\\Windows\\Temp").replace(
             "\\",
@@ -153,6 +133,13 @@ def _get_nvcc_tmp_dir_for_windows(repository_ctx):
     )
     return escaped_tmp_dir + "\\\\nvcc_inter_files_tmp_dir"
 
+def _get_nvcc_tmp_dir_for_unix(repository_ctx):
+    """Return the UNIX tmp directory for nvcc to generate intermediate source files."""
+    escaped_tmp_dir = escape_string(
+        get_env_var(repository_ctx, "TMPDIR", "/tmp"),
+    )
+    return escaped_tmp_dir + "/nvcc_inter_files_tmp_dir"
+
 def _get_msvc_compiler(repository_ctx):
     vc_path = find_vc_path(repository_ctx)
     return find_msvc_tool(repository_ctx, vc_path, "cl.exe").replace("\\", "/")
@@ -160,19 +147,18 @@ def _get_msvc_compiler(repository_ctx):
 def _get_win_cuda_defines(repository_ctx):
     """Return CROSSTOOL defines for Windows"""
 
-    # If we are not on Windows, return empty vaules for Windows specific fields.
+    # If we are not on Windows, return fake vaules for Windows specific fields.
     # This ensures the CROSSTOOL file parser is happy.
     if not _is_windows(repository_ctx):
         return {
-            "%{msvc_env_tmp}": "",
-            "%{msvc_env_path}": "",
-            "%{msvc_env_include}": "",
-            "%{msvc_env_lib}": "",
-            "%{msvc_cl_path}": "",
-            "%{msvc_ml_path}": "",
-            "%{msvc_link_path}": "",
-            "%{msvc_lib_path}": "",
-            "%{cxx_builtin_include_directory}": "",
+            "%{msvc_env_tmp}": "msvc_not_used",
+            "%{msvc_env_path}": "msvc_not_used",
+            "%{msvc_env_include}": "msvc_not_used",
+            "%{msvc_env_lib}": "msvc_not_used",
+            "%{msvc_cl_path}": "msvc_not_used",
+            "%{msvc_ml_path}": "msvc_not_used",
+            "%{msvc_link_path}": "msvc_not_used",
+            "%{msvc_lib_path}": "msvc_not_used",
         }
 
     vc_path = find_vc_path(repository_ctx)
@@ -209,16 +195,14 @@ def _get_win_cuda_defines(repository_ctx):
     )
 
     # nvcc will generate some temporary source files under %{nvcc_tmp_dir}
-    # The generated files are guranteed to have unique name, so they can share the same tmp directory
+    # The generated files are guaranteed to have unique name, so they can share
+    # the same tmp directory
     escaped_cxx_include_directories = [
-        "cxx_builtin_include_directory: \"%s\"" %
         _get_nvcc_tmp_dir_for_windows(repository_ctx),
     ]
     for path in escaped_include_paths.split(";"):
         if path:
-            escaped_cxx_include_directories.append(
-                "cxx_builtin_include_directory: \"%s\"" % path,
-            )
+            escaped_cxx_include_directories.append(path)
 
     return {
         "%{msvc_env_tmp}": escaped_tmp_dir,
@@ -229,7 +213,9 @@ def _get_win_cuda_defines(repository_ctx):
         "%{msvc_ml_path}": msvc_ml_path,
         "%{msvc_link_path}": msvc_link_path,
         "%{msvc_lib_path}": msvc_lib_path,
-        "%{cxx_builtin_include_directory}": "\n".join(escaped_cxx_include_directories),
+        "%{cxx_builtin_include_directories}": to_list_of_strings(
+            escaped_cxx_include_directories,
+        ),
     }
 
 # TODO(dzc): Once these functions have been factored out of Bazel's
@@ -291,13 +277,17 @@ def _normalize_include_path(repository_ctx, path):
         return path[len(crosstool_folder) + 1:]
     return path
 
-def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp):
+def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
     """Compute the list of default C or C++ include directories."""
     if lang_is_cpp:
         lang = "c++"
     else:
         lang = "c"
-    result = repository_ctx.execute([cc, "-E", "-x" + lang, "-", "-v"])
+    sysroot = []
+    if tf_sysroot:
+        sysroot += ["--sysroot", tf_sysroot]
+    result = repository_ctx.execute([cc, "-E", "-x" + lang, "-", "-v"] +
+                                    sysroot)
     index1 = result.stderr.find(_INC_DIR_MARKER_BEGIN)
     if index1 == -1:
         return []
@@ -318,20 +308,29 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp):
         for p in inc_dirs.split("\n")
     ]
 
-def get_cxx_inc_directories(repository_ctx, cc):
+def get_cxx_inc_directories(repository_ctx, cc, tf_sysroot):
     """Compute the list of default C and C++ include directories."""
 
     # For some reason `clang -xc` sometimes returns include paths that are
     # different from the ones from `clang -xc++`. (Symlink and a dir)
     # So we run the compiler with both `-xc` and `-xc++` and merge resulting lists
-    includes_cpp = _get_cxx_inc_directories_impl(repository_ctx, cc, True)
-    includes_c = _get_cxx_inc_directories_impl(repository_ctx, cc, False)
+    includes_cpp = _get_cxx_inc_directories_impl(
+        repository_ctx,
+        cc,
+        True,
+        tf_sysroot,
+    )
+    includes_c = _get_cxx_inc_directories_impl(
+        repository_ctx,
+        cc,
+        False,
+        tf_sysroot,
+    )
 
-    includes_cpp_set = depset(includes_cpp)
     return includes_cpp + [
         inc
         for inc in includes_c
-        if inc not in includes_cpp_set
+        if inc not in includes_cpp
     ]
 
 def auto_configure_fail(msg):
@@ -342,35 +341,15 @@ def auto_configure_fail(msg):
 
 # END cc_configure common functions (see TODO above).
 
-def _host_compiler_includes(repository_ctx, cc):
-    """Generates the cxx_builtin_include_directory entries for gcc inc dirs.
-
-      Args:
-        repository_ctx: The repository context.
-        cc: The path to the gcc host compiler.
-
-      Returns:
-        A string containing the cxx_builtin_include_directory for each of the gcc
-        host compiler include directories, which can be added to the CROSSTOOL
-        file.
-      """
-    inc_dirs = get_cxx_inc_directories(repository_ctx, cc)
-    inc_entries = []
-    for inc_dir in inc_dirs:
-        inc_entries.append("  cxx_builtin_include_directory: \"%s\"" % inc_dir)
-    return "\n".join(inc_entries)
-
 def _cuda_include_path(repository_ctx, cuda_config):
-    """Generates the cxx_builtin_include_directory entries for cuda inc dirs.
+    """Generates the Starlark string with cuda include directories.
 
       Args:
         repository_ctx: The repository context.
         cc: The path to the gcc host compiler.
 
       Returns:
-        A string containing the cxx_builtin_include_directory for each of the gcc
-        host compiler include directories, which can be added to the CROSSTOOL
-        file.
+        A list of the gcc host compiler include directories.
       """
     nvcc_path = repository_ctx.path("%s/bin/nvcc%s" % (
         cuda_config.cuda_toolkit_path,
@@ -394,43 +373,13 @@ def _cuda_include_path(repository_ctx, cuda_config):
             )
     inc_entries = []
     if target_dir != "":
-        inc_entries.append("  cxx_builtin_include_directory: \"%s\"" % target_dir)
-    default_include = cuda_config.cuda_toolkit_path + "/include"
-    inc_entries.append(
-        "  cxx_builtin_include_directory: \"%s\"" % default_include,
-    )
-    return "\n".join(inc_entries)
+        inc_entries.append(target_dir)
+    inc_entries.append(cuda_config.cuda_toolkit_path + "/include")
+    return inc_entries
 
 def enable_cuda(repository_ctx):
-    if "TF_NEED_CUDA" in repository_ctx.os.environ:
-        enable_cuda = repository_ctx.os.environ["TF_NEED_CUDA"].strip()
-        return enable_cuda == "1"
-    return False
-
-def cuda_toolkit_path(repository_ctx):
-    """Finds the cuda toolkit directory.
-
-      Args:
-        repository_ctx: The repository context.
-
-      Returns:
-        A speculative real path of the cuda toolkit install directory.
-      """
-    cuda_toolkit_path = _DEFAULT_CUDA_TOOLKIT_PATH
-    if _CUDA_TOOLKIT_PATH in repository_ctx.os.environ:
-        cuda_toolkit_path = repository_ctx.os.environ[_CUDA_TOOLKIT_PATH].strip()
-    if not repository_ctx.path(cuda_toolkit_path).exists:
-        auto_configure_fail("Cannot find cuda toolkit path.")
-    return str(repository_ctx.path(cuda_toolkit_path).realpath)
-
-def _cudnn_install_basedir(repository_ctx):
-    """Finds the cudnn install directory."""
-    cudnn_install_path = _DEFAULT_CUDNN_INSTALL_PATH
-    if _CUDNN_INSTALL_PATH in repository_ctx.os.environ:
-        cudnn_install_path = repository_ctx.os.environ[_CUDNN_INSTALL_PATH].strip()
-    if not repository_ctx.path(cudnn_install_path).exists:
-        auto_configure_fail("Cannot find cudnn install path.")
-    return cudnn_install_path
+    """Returns whether to build with CUDA support."""
+    return int(repository_ctx.os.environ.get("TF_NEED_CUDA", False))
 
 def matches_version(environ_version, detected_version):
     """Checks whether the user-specified version matches the detected version.
@@ -470,71 +419,7 @@ def matches_version(environ_version, detected_version):
 
 _NVCC_VERSION_PREFIX = "Cuda compilation tools, release "
 
-def _cuda_version(repository_ctx, cuda_toolkit_path, cpu_value):
-    """Detects the version of CUDA installed on the system.
-
-      Args:
-        repository_ctx: The repository context.
-        cuda_toolkit_path: The CUDA install directory.
-
-      Returns:
-        String containing the version of CUDA.
-      """
-
-    # Run nvcc --version and find the line containing the CUDA version.
-    nvcc_path = repository_ctx.path("%s/bin/nvcc%s" % (
-        cuda_toolkit_path,
-        ".exe" if cpu_value == "Windows" else "",
-    ))
-    if not nvcc_path.exists:
-        auto_configure_fail("Cannot find nvcc at %s" % str(nvcc_path))
-    result = repository_ctx.execute([str(nvcc_path), "--version"])
-    if result.stderr:
-        auto_configure_fail("Error running nvcc --version: %s" % result.stderr)
-    lines = result.stdout.splitlines()
-    version_line = lines[len(lines) - 1]
-    if version_line.find(_NVCC_VERSION_PREFIX) == -1:
-        auto_configure_fail(
-            "Could not parse CUDA version from nvcc --version. Got: %s" %
-            result.stdout,
-        )
-
-    # Parse the CUDA version from the line containing the CUDA version.
-    prefix_removed = version_line.replace(_NVCC_VERSION_PREFIX, "")
-    parts = prefix_removed.split(",")
-    if len(parts) != 2 or len(parts[0]) < 2:
-        auto_configure_fail(
-            "Could not parse CUDA version from nvcc --version. Got: %s" %
-            result.stdout,
-        )
-    full_version = parts[1].strip()
-    if full_version.startswith("V"):
-        full_version = full_version[1:]
-
-    # Check whether TF_CUDA_VERSION was set by the user and fail if it does not
-    # match the detected version.
-    environ_version = ""
-    if _TF_CUDA_VERSION in repository_ctx.os.environ:
-        environ_version = repository_ctx.os.environ[_TF_CUDA_VERSION].strip()
-    if environ_version and not matches_version(environ_version, full_version):
-        auto_configure_fail(
-            ("CUDA version detected from nvcc (%s) does not match " +
-             "TF_CUDA_VERSION (%s)") % (full_version, environ_version),
-        )
-
-    # We only use the version consisting of the major and minor version numbers.
-    version_parts = full_version.split(".")
-    if len(version_parts) < 2:
-        auto_configure_fail("CUDA version detected from nvcc (%s) is incomplete.")
-    if cpu_value == "Windows":
-        version = "64_%s%s" % (version_parts[0], version_parts[1])
-    else:
-        version = "%s.%s" % (version_parts[0], version_parts[1])
-    return version
-
 _DEFINE_CUDNN_MAJOR = "#define CUDNN_MAJOR"
-_DEFINE_CUDNN_MINOR = "#define CUDNN_MINOR"
-_DEFINE_CUDNN_PATCHLEVEL = "#define CUDNN_PATCHLEVEL"
 
 def find_cuda_define(repository_ctx, header_dir, header_file, define):
     """Returns the value of a #define in a header file.
@@ -604,60 +489,6 @@ def find_cuda_define(repository_ctx, header_dir, header_file, define):
         version = version[:version_end].strip()
     return version
 
-def _cudnn_version(repository_ctx, cudnn_install_basedir, cpu_value):
-    """Detects the version of cuDNN installed on the system.
-
-      Args:
-        repository_ctx: The repository context.
-        cpu_value: The name of the host operating system.
-        cudnn_install_basedir: The cuDNN install directory.
-
-      Returns:
-        A string containing the version of cuDNN.
-      """
-    cudnn_header_dir = _find_cudnn_header_dir(
-        repository_ctx,
-        cudnn_install_basedir,
-    )
-    major_version = find_cuda_define(
-        repository_ctx,
-        cudnn_header_dir,
-        "cudnn.h",
-        _DEFINE_CUDNN_MAJOR,
-    )
-    minor_version = find_cuda_define(
-        repository_ctx,
-        cudnn_header_dir,
-        "cudnn.h",
-        _DEFINE_CUDNN_MINOR,
-    )
-    patch_version = find_cuda_define(
-        repository_ctx,
-        cudnn_header_dir,
-        "cudnn.h",
-        _DEFINE_CUDNN_PATCHLEVEL,
-    )
-    full_version = "%s.%s.%s" % (major_version, minor_version, patch_version)
-
-    # Check whether TF_CUDNN_VERSION was set by the user and fail if it does not
-    # match the detected version.
-    environ_version = ""
-    if _TF_CUDNN_VERSION in repository_ctx.os.environ:
-        environ_version = repository_ctx.os.environ[_TF_CUDNN_VERSION].strip()
-    if environ_version and not matches_version(environ_version, full_version):
-        cudnn_h_path = repository_ctx.path(
-            "%s/include/cudnn.h" % cudnn_install_basedir,
-        )
-        auto_configure_fail(("cuDNN version detected from %s (%s) does not match " +
-                             "TF_CUDNN_VERSION (%s)") %
-                            (str(cudnn_h_path), full_version, environ_version))
-
-    # Only use the major version to match the SONAME of the library.
-    version = major_version
-    if cpu_value == "Windows":
-        version = "64_" + version
-    return version
-
 def compute_capabilities(repository_ctx):
     """Returns a list of strings representing cuda compute capabilities."""
     if _TF_CUDA_COMPUTE_CAPABILITIES not in repository_ctx.os.environ:
@@ -692,7 +523,7 @@ def get_cpu_value(repository_ctx):
 
 def _is_windows(repository_ctx):
     """Returns true if the host operating system is windows."""
-    return get_cpu_value(repository_ctx) == "Windows"
+    return repository_ctx.os.name.lower().find("windows") >= 0
 
 def lib_name(base_name, cpu_value, version = None, static = False):
     """Constructs the platform-specific name of a library.
@@ -735,7 +566,7 @@ def find_lib(repository_ctx, paths, check_soname = True):
     for path in [repository_ctx.path(path) for path in paths]:
         if not path.exists:
             continue
-        if check_soname and objdump != None:
+        if check_soname and objdump != None and not _is_windows(repository_ctx):
             output = repository_ctx.execute([objdump, "-p", str(path)]).stdout
             output = [line for line in output.splitlines() if "SONAME" in line]
             sonames = [line.strip().split(" ")[-1] for line in output]
@@ -770,57 +601,11 @@ def _find_cuda_lib(
         Returns the path to the library.
       """
     file_name = lib_name(lib, cpu_value, version, static)
-    return find_lib(repository_ctx, [
-        "%s/%s%s" % (basedir, path, file_name)
-        for path in CUDA_LIB_PATHS
-    ], check_soname = version and not static)
-
-def _find_cupti_header_dir(repository_ctx, cuda_config):
-    """Returns the path to the directory containing cupti.h
-
-      On most systems, the cupti library is not installed in the same directory as
-      the other CUDA libraries but rather in a special extras/CUPTI directory.
-
-      Args:
-        repository_ctx: The repository context.
-        cuda_config: The CUDA config as returned by _get_cuda_config
-
-      Returns:
-        The path of the directory containing the cupti header.
-      """
-    cuda_toolkit_path = cuda_config.cuda_toolkit_path
-    for relative_path in CUPTI_HEADER_PATHS:
-        if repository_ctx.path(
-            "%s/%scupti.h" % (cuda_toolkit_path, relative_path),
-        ).exists:
-            return ("%s/%s" % (cuda_toolkit_path, relative_path))[:-1]
-    auto_configure_fail("Cannot find cupti.h under %s" % ", ".join(
-        [cuda_toolkit_path + "/" + s for s in CUPTI_HEADER_PATHS],
-    ))
-
-def _find_cupti_lib(repository_ctx, cuda_config):
-    """Finds the cupti library on the system.
-
-      On most systems, the cupti library is not installed in the same directory as
-      the other CUDA libraries but rather in a special extras/CUPTI directory.
-
-      Args:
-        repository_ctx: The repository context.
-        cuda_config: The cuda configuration as returned by _get_cuda_config.
-
-      Returns:
-        Returns the path to the library.
-      """
-    file_name = lib_name(
-        "cupti",
-        cuda_config.cpu_value,
-        cuda_config.cuda_version,
+    return find_lib(
+        repository_ctx,
+        ["%s/%s" % (basedir, file_name)],
+        check_soname = version and not static,
     )
-    basedir = cuda_config.cuda_toolkit_path
-    return find_lib(repository_ctx, [
-        "%s/%s%s" % (basedir, path, file_name)
-        for path in CUPTI_LIB_PATHS
-    ])
 
 def _find_libs(repository_ctx, cuda_config):
     """Returns the CUDA and cuDNN libraries on the system.
@@ -833,26 +618,27 @@ def _find_libs(repository_ctx, cuda_config):
         Map of library names to structs of filename and path.
       """
     cpu_value = cuda_config.cpu_value
+    stub_dir = "" if _is_windows(repository_ctx) else "/stubs"
     return {
         "cuda": _find_cuda_lib(
             "cuda",
             repository_ctx,
             cpu_value,
-            cuda_config.cuda_toolkit_path,
+            cuda_config.config["cuda_library_dir"] + stub_dir,
             None,
         ),
         "cudart": _find_cuda_lib(
             "cudart",
             repository_ctx,
             cpu_value,
-            cuda_config.cuda_toolkit_path,
+            cuda_config.config["cuda_library_dir"],
             cuda_config.cuda_version,
         ),
         "cudart_static": _find_cuda_lib(
             "cudart_static",
             repository_ctx,
             cpu_value,
-            cuda_config.cuda_toolkit_path,
+            cuda_config.config["cuda_library_dir"],
             cuda_config.cuda_version,
             static = True,
         ),
@@ -860,104 +646,70 @@ def _find_libs(repository_ctx, cuda_config):
             "cublas",
             repository_ctx,
             cpu_value,
-            cuda_config.cuda_toolkit_path,
-            cuda_config.cuda_version,
+            cuda_config.config["cublas_library_dir"],
+            cuda_config.cuda_lib_version,
         ),
         "cusolver": _find_cuda_lib(
             "cusolver",
             repository_ctx,
             cpu_value,
-            cuda_config.cuda_toolkit_path,
-            cuda_config.cuda_version,
+            cuda_config.config["cuda_library_dir"],
+            cuda_config.cuda_lib_version,
         ),
         "curand": _find_cuda_lib(
             "curand",
             repository_ctx,
             cpu_value,
-            cuda_config.cuda_toolkit_path,
-            cuda_config.cuda_version,
+            cuda_config.config["cuda_library_dir"],
+            cuda_config.cuda_lib_version,
         ),
         "cufft": _find_cuda_lib(
             "cufft",
             repository_ctx,
             cpu_value,
-            cuda_config.cuda_toolkit_path,
-            cuda_config.cuda_version,
+            cuda_config.config["cuda_library_dir"],
+            cuda_config.cuda_lib_version,
         ),
         "cudnn": _find_cuda_lib(
             "cudnn",
             repository_ctx,
             cpu_value,
-            cuda_config.cudnn_install_basedir,
+            cuda_config.config["cudnn_library_dir"],
             cuda_config.cudnn_version,
         ),
-        "cupti": _find_cupti_lib(repository_ctx, cuda_config),
+        "cupti": _find_cuda_lib(
+            "cupti",
+            repository_ctx,
+            cpu_value,
+            cuda_config.config["cupti_library_dir"],
+            cuda_config.cuda_version,
+        ),
+        "cusparse": _find_cuda_lib(
+            "cusparse",
+            repository_ctx,
+            cpu_value,
+            cuda_config.config["cuda_library_dir"],
+            cuda_config.cuda_lib_version,
+        ),
     }
-
-def _find_cuda_include_path(repository_ctx, cuda_config):
-    """Returns the path to the directory containing cuda.h
-
-      Args:
-        repository_ctx: The repository context.
-        cuda_config: The CUDA config as returned by _get_cuda_config
-
-      Returns:
-        The path of the directory containing the CUDA headers.
-      """
-    cuda_toolkit_path = cuda_config.cuda_toolkit_path
-    for relative_path in CUDA_INCLUDE_PATHS:
-        if repository_ctx.path(
-            "%s/%scuda.h" % (cuda_toolkit_path, relative_path),
-        ).exists:
-            return ("%s/%s" % (cuda_toolkit_path, relative_path))[:-1]
-    auto_configure_fail("Cannot find cuda.h under %s" % cuda_toolkit_path)
-
-def _find_cudnn_header_dir(repository_ctx, cudnn_install_basedir):
-    """Returns the path to the directory containing cudnn.h
-
-      Args:
-        repository_ctx: The repository context.
-        cudnn_install_basedir: The cudnn install directory as returned by
-          _cudnn_install_basedir.
-
-      Returns:
-        The path of the directory containing the cudnn header.
-      """
-    for relative_path in CUDA_INCLUDE_PATHS:
-        if repository_ctx.path(
-            "%s/%scudnn.h" % (cudnn_install_basedir, relative_path),
-        ).exists:
-            return ("%s/%s" % (cudnn_install_basedir, relative_path))[:-1]
-    if repository_ctx.path("/usr/include/cudnn.h").exists:
-        return "/usr/include"
-    auto_configure_fail("Cannot find cudnn.h under %s" % cudnn_install_basedir)
-
-def _find_nvvm_libdevice_dir(repository_ctx, cuda_config):
-    """Returns the path to the directory containing libdevice in bitcode format.
-
-      Args:
-        repository_ctx: The repository context.
-        cuda_config: The CUDA config as returned by _get_cuda_config
-
-      Returns:
-        The path of the directory containing the CUDA headers.
-      """
-    cuda_toolkit_path = cuda_config.cuda_toolkit_path
-    for libdevice_file in NVVM_LIBDEVICE_FILES:
-        for relative_path in NVVM_LIBDEVICE_PATHS:
-            if repository_ctx.path("%s/%s%s" % (
-                cuda_toolkit_path,
-                relative_path,
-                libdevice_file,
-            )).exists:
-                return ("%s/%s" % (cuda_toolkit_path, relative_path))[:-1]
-    auto_configure_fail(
-        "Cannot find libdevice*.bc files under %s" % cuda_toolkit_path,
-    )
 
 def _cudart_static_linkopt(cpu_value):
     """Returns additional platform-specific linkopts for cudart."""
     return "" if cpu_value == "Darwin" else "\"-lrt\","
+
+# TODO(csigg): Only call once instead of from here, tensorrt_configure.bzl,
+# and nccl_configure.bzl.
+def find_cuda_config(repository_ctx, cuda_libraries):
+    """Returns CUDA config dictionary from running find_cuda_config.py"""
+    exec_result = repository_ctx.execute([
+        _get_python_bin(repository_ctx),
+        repository_ctx.path(Label("@org_tensorflow//third_party/gpus:find_cuda_config.py")),
+    ] + cuda_libraries)
+    if exec_result.return_code:
+        auto_configure_fail("Failed to run find_cuda_config.py: %s" % exec_result.stderr)
+
+    # Parse the dict from stdout.
+    return dict([tuple(x.split(": ")) for x in exec_result.stdout.splitlines()])
 
 def _get_cuda_config(repository_ctx):
     """Detects and returns information about the CUDA installation on the system.
@@ -974,22 +726,33 @@ def _get_cuda_config(repository_ctx):
           compute_capabilities: A list of the system's CUDA compute capabilities.
           cpu_value: The name of the host operating system.
       """
+    config = find_cuda_config(repository_ctx, ["cuda", "cudnn"])
     cpu_value = get_cpu_value(repository_ctx)
-    toolkit_path = cuda_toolkit_path(repository_ctx)
-    cuda_version = _cuda_version(repository_ctx, toolkit_path, cpu_value)
-    cudnn_install_basedir = _cudnn_install_basedir(repository_ctx)
-    cudnn_version = _cudnn_version(
-        repository_ctx,
-        cudnn_install_basedir,
-        cpu_value,
-    )
+    toolkit_path = config["cuda_toolkit_path"]
+
+    is_windows = _is_windows(repository_ctx)
+    cuda_version = config["cuda_version"].split(".")
+    cuda_major = cuda_version[0]
+    cuda_minor = cuda_version[1]
+
+    cuda_version = ("64_%s%s" if is_windows else "%s.%s") % (cuda_major, cuda_minor)
+    cudnn_version = ("64_%s" if is_windows else "%s") % config["cudnn_version"]
+
+    # cuda_lib_version is for libraries like cuBLAS, cuFFT, cuSOLVER, etc.
+    # It changed from 'x.y' to just 'x' in CUDA 10.1.
+    if (int(cuda_major), int(cuda_minor)) >= (10, 1):
+        cuda_lib_version = ("64_%s" if is_windows else "%s") % cuda_major
+    else:
+        cuda_lib_version = cuda_version
+
     return struct(
         cuda_toolkit_path = toolkit_path,
-        cudnn_install_basedir = cudnn_install_basedir,
         cuda_version = cuda_version,
         cudnn_version = cudnn_version,
+        cuda_lib_version = cuda_lib_version,
         compute_capabilities = compute_capabilities(repository_ctx),
         cpu_value = cpu_value,
+        config = config,
     )
 
 def _tpl(repository_ctx, tpl, substitutions = {}, out = None):
@@ -1063,8 +826,12 @@ def _create_dummy_repository(repository_ctx):
             "%{cufft_lib}": lib_name("cufft", cpu_value),
             "%{curand_lib}": lib_name("curand", cpu_value),
             "%{cupti_lib}": lib_name("cupti", cpu_value),
-            "%{copy_rules}": "",
-            "%{cuda_headers}": "",
+            "%{cusparse_lib}": lib_name("cusparse", cpu_value),
+            "%{copy_rules}": """
+filegroup(name="cuda-include")
+filegroup(name="cublas-include")
+filegroup(name="cudnn-include")
+""",
         },
     )
 
@@ -1085,6 +852,7 @@ def _create_dummy_repository(repository_ctx):
     repository_ctx.file("cuda/cuda/lib/%s" % lib_name("curand", cpu_value))
     repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cufft", cpu_value))
     repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cupti", cpu_value))
+    repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cusparse", cpu_value))
 
     # Set up cuda_config.h, which is used by
     # tensorflow/stream_executor/dso_loader.cc.
@@ -1092,13 +860,14 @@ def _create_dummy_repository(repository_ctx):
         repository_ctx,
         "cuda:cuda_config.h",
         {
-            "%{cuda_version}": _DEFAULT_CUDA_VERSION,
-            "%{cudnn_version}": _DEFAULT_CUDNN_VERSION,
+            "%{cuda_version}": "",
+            "%{cuda_lib_version}": "",
+            "%{cudnn_version}": "",
             "%{cuda_compute_capabilities}": ",".join([
                 "CudaVersion(\"%s\")" % c
                 for c in _DEFAULT_CUDA_COMPUTE_CAPABILITIES
             ]),
-            "%{cuda_toolkit_path}": _DEFAULT_CUDA_TOOLKIT_PATH,
+            "%{cuda_toolkit_path}": "",
         },
         "cuda/cuda/cuda_config.h",
     )
@@ -1153,7 +922,7 @@ def make_copy_files_rule(repository_ctx, name, srcs, outs):
 
     # Copy files.
     for src, out in zip(srcs, outs):
-        cmds.append('cp -f "%s" $(location %s)' % (src, out))
+        cmds.append('cp -f "%s" "$(location %s)"' % (src, out))
     outs = [('        "%s",' % out) for out in outs]
     return """genrule(
     name = "%s",
@@ -1161,7 +930,7 @@ def make_copy_files_rule(repository_ctx, name, srcs, outs):
 %s
     ],
     cmd = \"""%s \""",
-)""" % (name, "\n".join(outs), " && ".join(cmds))
+)""" % (name, "\n".join(outs), " && \\\n".join(cmds))
 
 def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir):
     """Returns a rule to recursively copy a directory."""
@@ -1217,29 +986,30 @@ def _flag_enabled(repository_ctx, flag_name):
 def _use_cuda_clang(repository_ctx):
     return _flag_enabled(repository_ctx, "TF_CUDA_CLANG")
 
+def _tf_sysroot(repository_ctx):
+    if _TF_SYSROOT in repository_ctx.os.environ:
+        return repository_ctx.os.environ[_TF_SYSROOT]
+    return ""
+
 def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
-    if _use_cuda_clang(repository_ctx):
-        capability_flags = [
-            "--cuda-gpu-arch=sm_" + cap.replace(".", "")
-            for cap in compute_capabilities
-        ]
-    else:
-        # Capabilities are handled in the "crosstool_wrapper_driver_is_not_gcc" for nvcc
-        # TODO(csigg): Make this consistent with cuda clang and pass to crosstool.
-        capability_flags = []
-    return str(capability_flags)
+    capability_flags = [
+        "--cuda-gpu-arch=sm_" + cap.replace(".", "")
+        for cap in compute_capabilities
+    ]
+
+    # Capabilities are handled in the "crosstool_wrapper_driver_is_not_gcc" for nvcc
+    # TODO(csigg): Make this consistent with cuda clang and pass unconditionally.
+    return "if_cuda_clang(%s)" % str(capability_flags)
 
 def _create_local_cuda_repository(repository_ctx):
     """Creates the repository containing files set up to build with CUDA."""
     cuda_config = _get_cuda_config(repository_ctx)
 
-    cuda_include_path = _find_cuda_include_path(repository_ctx, cuda_config)
-    cudnn_header_dir = _find_cudnn_header_dir(
-        repository_ctx,
-        cuda_config.cudnn_install_basedir,
-    )
-    cupti_header_dir = _find_cupti_header_dir(repository_ctx, cuda_config)
-    nvvm_libdevice_dir = _find_nvvm_libdevice_dir(repository_ctx, cuda_config)
+    cuda_include_path = cuda_config.config["cuda_include_dir"]
+    cublas_include_path = cuda_config.config["cublas_include_dir"]
+    cudnn_header_dir = cuda_config.config["cudnn_include_dir"]
+    cupti_header_dir = cuda_config.config["cupti_include_dir"]
+    nvvm_libdevice_dir = cuda_config.config["nvvm_library_dir"]
 
     # Create genrule to copy files from the installed CUDA toolkit into execroot.
     copy_rules = [
@@ -1263,6 +1033,21 @@ def _create_local_cuda_repository(repository_ctx):
         ),
     ]
 
+    copy_rules.append(make_copy_files_rule(
+        repository_ctx,
+        name = "cublas-include",
+        srcs = [
+            cublas_include_path + "/cublas.h",
+            cublas_include_path + "/cublas_v2.h",
+            cublas_include_path + "/cublas_api.h",
+        ],
+        outs = [
+            "cublas/include/cublas.h",
+            "cublas/include/cublas_v2.h",
+            "cublas/include/cublas_api.h",
+        ],
+    ))
+
     cuda_libs = _find_libs(repository_ctx, cuda_config)
     cuda_lib_srcs = []
     cuda_lib_outs = []
@@ -1276,24 +1061,30 @@ def _create_local_cuda_repository(repository_ctx):
         outs = cuda_lib_outs,
     ))
 
-    copy_rules.append(make_copy_dir_rule(
+    # copy files mentioned in third_party/nccl/build_defs.bzl.tpl
+    copy_rules.append(make_copy_files_rule(
         repository_ctx,
         name = "cuda-bin",
-        src_dir = cuda_config.cuda_toolkit_path + "/bin",
-        out_dir = "cuda/bin",
+        srcs = [
+            cuda_config.cuda_toolkit_path + "/bin/" + "crt/link.stub",
+            cuda_config.cuda_toolkit_path + "/bin/" + "nvlink",
+            cuda_config.cuda_toolkit_path + "/bin/" + "fatbinary",
+            cuda_config.cuda_toolkit_path + "/bin/" + "bin2c",
+        ],
+        outs = [
+            "cuda/bin/" + "crt/link.stub",
+            "cuda/bin/" + "nvlink",
+            "cuda/bin/" + "fatbinary",
+            "cuda/bin/" + "bin2c",
+        ],
     ))
 
-    # Copy cudnn.h if cuDNN was not installed to CUDA_TOOLKIT_PATH.
-    included_files = _read_dir(repository_ctx, cuda_include_path)
-    if not any([file.endswith("cudnn.h") for file in included_files]):
-        copy_rules.append(make_copy_files_rule(
-            repository_ctx,
-            name = "cudnn-include",
-            srcs = [cudnn_header_dir + "/cudnn.h"],
-            outs = ["cuda/include/cudnn.h"],
-        ))
-    else:
-        copy_rules.append("filegroup(name = 'cudnn-include')\n")
+    copy_rules.append(make_copy_files_rule(
+        repository_ctx,
+        name = "cudnn-include",
+        srcs = [cudnn_header_dir + "/cudnn.h"],
+        outs = ["cudnn/include/cudnn.h"],
+    ))
 
     # Set up BUILD file for cuda/
     _tpl(
@@ -1321,15 +1112,14 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cufft_lib}": cuda_libs["cufft"].basename,
             "%{curand_lib}": cuda_libs["curand"].basename,
             "%{cupti_lib}": cuda_libs["cupti"].basename,
+            "%{cusparse_lib}": cuda_libs["cusparse"].basename,
             "%{copy_rules}": "\n".join(copy_rules),
-            "%{cuda_headers}": (
-                '":cuda-include",\n' + '        ":cudnn-include",'
-            ),
         },
         "cuda/BUILD",
     )
 
     is_cuda_clang = _use_cuda_clang(repository_ctx)
+    tf_sysroot = _tf_sysroot(repository_ctx)
 
     should_download_clang = is_cuda_clang and _flag_enabled(
         repository_ctx,
@@ -1342,8 +1132,21 @@ def _create_local_cuda_repository(repository_ctx):
     cc = find_cc(repository_ctx)
     cc_fullpath = cc if not should_download_clang else "crosstool/" + cc
 
-    host_compiler_includes = _host_compiler_includes(repository_ctx, cc_fullpath)
+    host_compiler_includes = get_cxx_inc_directories(
+        repository_ctx,
+        cc_fullpath,
+        tf_sysroot,
+    )
     cuda_defines = {}
+    cuda_defines["%{builtin_sysroot}"] = tf_sysroot
+    cuda_defines["%{cuda_toolkit_path}"] = ""
+    if is_cuda_clang:
+        cuda_defines["%{cuda_toolkit_path}"] = cuda_config.config["cuda_toolkit_path"]
+
+    host_compiler_prefix = "/usr/bin"
+    if _GCC_HOST_COMPILER_PREFIX in repository_ctx.os.environ:
+        host_compiler_prefix = repository_ctx.os.environ[_GCC_HOST_COMPILER_PREFIX].strip()
+    cuda_defines["%{host_compiler_prefix}"] = host_compiler_prefix
 
     # Bazel sets '-B/usr/bin' flag to workaround build errors on RHEL (see
     # https://github.com/bazelbuild/bazel/issues/760).
@@ -1354,23 +1157,22 @@ def _create_local_cuda_repository(repository_ctx):
     #       flag from the CROSSTOOL completely (see
     #       https://github.com/bazelbuild/bazel/issues/5634)
     if should_download_clang:
-        cuda_defines["%{linker_bin_path_flag}"] = ""
+        cuda_defines["%{linker_bin_path}"] = ""
     else:
-        cuda_defines["%{linker_bin_path_flag}"] = 'flag: "-B/usr/bin"'
+        cuda_defines["%{linker_bin_path}"] = host_compiler_prefix
 
+    cuda_defines["%{extra_no_canonical_prefixes_flags}"] = ""
+    cuda_defines["%{unfiltered_compile_flags}"] = ""
     if is_cuda_clang:
         cuda_defines["%{host_compiler_path}"] = str(cc)
         cuda_defines["%{host_compiler_warnings}"] = """
         # Some parts of the codebase set -Werror and hit this warning, so
         # switch it off for now.
-        flag: "-Wno-invalid-partial-specialization"
+        "-Wno-invalid-partial-specialization"
     """
-        cuda_defines["%{host_compiler_includes}"] = host_compiler_includes
-        cuda_defines["%{extra_no_canonical_prefixes_flags}"] = ""
-        _tpl(repository_ctx, "crosstool:BUILD", {
-            "%{linker_files}": ":empty",
-            "%{win_linker_files}": ":empty",
-        })
+        cuda_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(host_compiler_includes)
+        cuda_defines["%{compiler_deps}"] = ":empty"
+        cuda_defines["%{win_compiler_deps}"] = ":empty"
         repository_ctx.file(
             "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
             "",
@@ -1383,13 +1185,11 @@ def _create_local_cuda_repository(repository_ctx):
         # nvcc has the system include paths built in and will automatically
         # search them; we cannot work around that, so we add the relevant cuda
         # system paths to the allowed compiler specific include paths.
-        cuda_defines["%{host_compiler_includes}"] = (
-            host_compiler_includes + "\n" + _cuda_include_path(
+        cuda_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(
+            host_compiler_includes + _cuda_include_path(
                 repository_ctx,
                 cuda_config,
-            ) +
-            "\n  cxx_builtin_include_directory: \"%s\"" % cupti_header_dir +
-            "\n  cxx_builtin_include_directory: \"%s\"" % cudnn_header_dir
+            ) + [cupti_header_dir, cudnn_header_dir],
         )
 
         # For gcc, do not canonicalize system header paths; some versions of gcc
@@ -1397,23 +1197,17 @@ def _create_local_cuda_repository(repository_ctx):
         # .d file - given that includes that are prefixed with "../" multiple
         # time quickly grow longer than the root of the tree, this can lead to
         # bazel's header check failing.
-        cuda_defines["%{extra_no_canonical_prefixes_flags}"] = (
-            "flag: \"-fno-canonical-system-headers\""
-        )
+        cuda_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-fno-canonical-system-headers\""
+
         nvcc_path = str(
-            repository_ctx.path("%s/bin/nvcc%s" % (
-                cuda_config.cuda_toolkit_path,
+            repository_ctx.path("%s/nvcc%s" % (
+                cuda_config.config["cuda_binary_dir"],
                 ".exe" if _is_windows(repository_ctx) else "",
             )),
         )
-        _tpl(
-            repository_ctx,
-            "crosstool:BUILD",
-            {
-                "%{linker_files}": ":crosstool_wrapper_driver_is_not_gcc",
-                "%{win_linker_files}": ":windows_msvc_wrapper_files",
-            },
-        )
+        cuda_defines["%{compiler_deps}"] = ":crosstool_wrapper_driver_is_not_gcc"
+        cuda_defines["%{win_compiler_deps}"] = ":windows_msvc_wrapper_files"
+
         wrapper_defines = {
             "%{cpu_compiler}": str(cc),
             "%{cuda_version}": cuda_config.cuda_version,
@@ -1435,12 +1229,16 @@ def _create_local_cuda_repository(repository_ctx):
             wrapper_defines,
         )
 
-    _tpl(
-        repository_ctx,
-        "crosstool:CROSSTOOL",
-        cuda_defines + _get_win_cuda_defines(repository_ctx),
-        out = "crosstool/CROSSTOOL",
-    )
+    cuda_defines.update(_get_win_cuda_defines(repository_ctx))
+
+    verify_build_defines(cuda_defines)
+
+    # Only expand template variables in the BUILD file
+    _tpl(repository_ctx, "crosstool:BUILD", cuda_defines)
+
+    # No templating of cc_toolchain_config - use attributes and templatize the
+    # BUILD file.
+    _file(repository_ctx, "crosstool:cc_toolchain_config.bzl")
 
     # Set up cuda_config.h, which is used by
     # tensorflow/stream_executor/dso_loader.cc.
@@ -1449,8 +1247,9 @@ def _create_local_cuda_repository(repository_ctx):
         "cuda:cuda_config.h",
         {
             "%{cuda_version}": cuda_config.cuda_version,
+            "%{cuda_lib_version}": cuda_config.cuda_lib_version,
             "%{cudnn_version}": cuda_config.cudnn_version,
-            "%{cuda_compute_capabilities}": ",".join([
+            "%{cuda_compute_capabilities}": ", ".join([
                 "CudaVersion(\"%s\")" % c
                 for c in cuda_config.compute_capabilities
             ]),
@@ -1493,6 +1292,10 @@ def _cuda_autoconf_impl(repository_ctx):
     if not enable_cuda(repository_ctx):
         _create_dummy_repository(repository_ctx)
     elif _TF_CUDA_CONFIG_REPO in repository_ctx.os.environ:
+        if (_TF_CUDA_VERSION not in repository_ctx.os.environ or
+            _TF_CUDNN_VERSION not in repository_ctx.os.environ):
+            auto_configure_fail("%s and %s must also be set if %s is specified" %
+                                (_TF_CUDA_VERSION, _TF_CUDNN_VERSION, _TF_CUDA_CONFIG_REPO))
         _create_remote_cuda_repository(
             repository_ctx,
             repository_ctx.os.environ[_TF_CUDA_CONFIG_REPO],
@@ -1504,6 +1307,7 @@ cuda_configure = repository_rule(
     implementation = _cuda_autoconf_impl,
     environ = [
         _GCC_HOST_COMPILER_PATH,
+        _GCC_HOST_COMPILER_PREFIX,
         _CLANG_CUDA_COMPILER_PATH,
         "TF_NEED_CUDA",
         "TF_CUDA_CLANG",
@@ -1516,6 +1320,9 @@ cuda_configure = repository_rule(
         _TF_CUDA_CONFIG_REPO,
         "NVVMIR_LIBRARY_DIR",
         _PYTHON_BIN_PATH,
+        "TMP",
+        "TMPDIR",
+        "TF_CUDA_PATHS",
     ],
 )
 

@@ -18,19 +18,28 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include "tensorflow/c/c_api.h"
-#include "tensorflow/java/src/main/native/utils_jni.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
+#include "tensorflow/java/src/main/native/utils_jni.h"
 
 namespace {
-TF_Graph* requireHandle(JNIEnv* env, jlong handle) {
-  static_assert(sizeof(jlong) >= sizeof(TF_Graph*),
+template <class T>
+T* requireHandleImpl(JNIEnv* env, jlong handle) {
+  static_assert(sizeof(jlong) >= sizeof(T*),
                 "Cannot package C object pointers as a Java long");
   if (handle == 0) {
     throwException(env, kIllegalStateException,
                    "close() has been called on the Graph");
     return nullptr;
   }
-  return reinterpret_cast<TF_Graph*>(handle);
+  return reinterpret_cast<T*>(handle);
+}
+
+TF_Graph* requireHandle(JNIEnv* env, jlong handle) {
+  return requireHandleImpl<TF_Graph>(env, handle);
+}
+
+TF_Operation* requireOperationHandle(JNIEnv* env, jlong handle) {
+  return requireHandleImpl<TF_Operation>(env, handle);
 }
 }  // namespace
 
@@ -56,10 +65,8 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Graph_operation(JNIEnv* env,
   return reinterpret_cast<jlong>(op);
 }
 
-JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_nextOperation(JNIEnv* env,
-                                                                     jclass clazz,
-                                                                     jlong handle,
-                                                                     jint position) {
+JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_nextOperation(
+    JNIEnv* env, jclass clazz, jlong handle, jint position) {
   TF_Graph* g = requireHandle(env, handle);
   if (g == nullptr) return nullptr;
 
@@ -188,4 +195,141 @@ JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_addGradients(
   env->ReleaseLongArrayElements(dy_handles_and_indices, dy_elems, 0);
 
   return dy_handles_and_indices;
+}
+
+// helper function for while loop -- constructs conditional or body subgraph
+jlongArray buildSubgraph(JNIEnv* env, jclass clazz, jobject subgraph_builder,
+                         TF_Graph* const subgraph,
+                         const TF_Output* const inputs,
+                         const TF_Output* const outputs, const int ninputs,
+                         const int noutputs) {
+  jmethodID build_subgraph_method_id = env->GetStaticMethodID(
+      clazz, "buildSubgraph",
+      "(Lorg/tensorflow/Graph$WhileSubgraphBuilder;J[J[I[J[I)[J");
+  if (build_subgraph_method_id == 0) return nullptr;
+
+  jlong subgraph_handle = reinterpret_cast<jlong>(subgraph);
+
+  jlongArray input_handles = env->NewLongArray(ninputs);
+  jintArray input_indices = env->NewIntArray(ninputs);
+  jlongArray output_handles = env->NewLongArray(noutputs);
+  jintArray output_indices = env->NewIntArray(noutputs);
+
+  jlong* input_handles_elems =
+      env->GetLongArrayElements(input_handles, nullptr);
+  jint* input_indices_elems = env->GetIntArrayElements(input_indices, nullptr);
+  jlong* output_handles_elems =
+      env->GetLongArrayElements(output_handles, nullptr);
+  jint* output_indices_elems =
+      env->GetIntArrayElements(output_indices, nullptr);
+
+  for (int i = 0; i < ninputs; ++i) {
+    input_handles_elems[i] = reinterpret_cast<jlong>((inputs[i]).oper);
+    input_indices_elems[i] = static_cast<jint>((inputs[i]).index);
+  }
+
+  for (int i = 0; i < noutputs; ++i) {
+    output_handles_elems[i] = reinterpret_cast<jlong>((outputs[i]).oper);
+    output_indices_elems[i] = static_cast<jint>((outputs[i]).index);
+  }
+
+  env->ReleaseLongArrayElements(input_handles, input_handles_elems, 0);
+  env->ReleaseIntArrayElements(input_indices, input_indices_elems, 0);
+  env->ReleaseLongArrayElements(output_handles, output_handles_elems, 0);
+  env->ReleaseIntArrayElements(output_indices, output_indices_elems, 0);
+
+  // call Java code to construct the subgraph
+  jlongArray output_handles_and_indices =
+      (jlongArray)env->CallStaticObjectMethod(
+          clazz, build_subgraph_method_id, subgraph_builder, subgraph_handle,
+          input_handles, input_indices, output_handles, output_indices);
+
+  if (env->ExceptionOccurred()) {
+    env->ExceptionDescribe();
+    return nullptr;
+  }
+
+  // returned array contains both op handles and output indices, in pair
+  return output_handles_and_indices;
+}
+
+JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_whileLoop(
+    JNIEnv* env, jclass clazz, jlong handle, jlongArray input_handles,
+    jintArray input_indices, jstring name, jobject cond_graph_builder,
+    jobject body_graph_builder) {
+  TF_Graph* g = requireHandle(env, handle);
+  TF_Status* status = TF_NewStatus();
+  if (g == nullptr) return nullptr;
+
+  int ninputs = env->GetArrayLength(input_handles);
+
+  std::unique_ptr<TF_Output[]> inputs(new TF_Output[ninputs]);
+  resolveOutputs(env, "inputs", input_handles, input_indices, inputs.get(),
+                 ninputs);
+  if (env->ExceptionCheck()) return nullptr;
+
+  // initialize while params
+  TF_WhileParams params = TF_NewWhile(g, inputs.get(), ninputs, status);
+  throwExceptionIfNotOK(env, status);
+
+  // build conditional subgraph
+  jlongArray cond_output_handles_and_indices =
+      buildSubgraph(env, clazz, cond_graph_builder, params.cond_graph,
+                    params.cond_inputs, &params.cond_output, params.ninputs, 1);
+
+  // build body subgraph
+  jlongArray body_output_handles_and_indices = buildSubgraph(
+      env, clazz, body_graph_builder, params.body_graph, params.body_inputs,
+      params.body_outputs, params.ninputs, params.ninputs);
+
+  if (cond_output_handles_and_indices == nullptr ||
+      body_output_handles_and_indices == nullptr)
+    return nullptr;
+
+  // set cond_output param to output of the conditional subgraph
+  jlong* cond_output_elems =
+      env->GetLongArrayElements(cond_output_handles_and_indices, nullptr);
+  TF_Operation* cond_output_op =
+      requireOperationHandle(env, cond_output_elems[0]);
+  params.cond_output = {cond_output_op,
+                        static_cast<jint>(cond_output_elems[1])};
+  env->ReleaseLongArrayElements(cond_output_handles_and_indices,
+                                cond_output_elems, 0);
+
+  // set body_outputs param to outputs of the body subgraph
+  jlong* body_output_elems =
+      env->GetLongArrayElements(body_output_handles_and_indices, nullptr);
+  for (int i = 0, j = ninputs; i < ninputs; ++i, ++j) {
+    TF_Operation* body_output_op =
+        requireOperationHandle(env, body_output_elems[i]);
+    params.body_outputs[i] = {body_output_op,
+                              static_cast<jint>(body_output_elems[j])};
+  }
+  env->ReleaseLongArrayElements(body_output_handles_and_indices,
+                                body_output_elems, 0);
+
+  // set loop name param
+  params.name = env->GetStringUTFChars(name, 0);
+
+  // build the while loop, storing loop outputs in `outputs`
+  std::unique_ptr<TF_Output[]> outputs(new TF_Output[ninputs]);
+  TF_FinishWhile(&params, status, outputs.get());
+
+  throwExceptionIfNotOK(env, status);
+  TF_DeleteStatus(status);
+
+  env->ReleaseStringUTFChars(name, params.name);
+
+  // returned array contains both op handles and output indices, in pair
+  jlongArray output_handles_and_indices = env->NewLongArray(ninputs * 2);
+  jlong* output_elems =
+      env->GetLongArrayElements(output_handles_and_indices, nullptr);
+  for (int i = 0, j = ninputs; i < ninputs; ++i, ++j) {
+    TF_Output output = outputs.get()[i];
+    output_elems[i] = reinterpret_cast<jlong>(output.oper);
+    output_elems[j] = static_cast<jlong>(output.index);
+  }
+  env->ReleaseLongArrayElements(output_handles_and_indices, output_elems, 0);
+
+  return output_handles_and_indices;
 }

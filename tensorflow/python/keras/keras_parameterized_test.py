@@ -210,20 +210,21 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
       def testBody(self):
         mode = "eager" if context.executing_eagerly() else "graph"
         should_run_eagerly = testing_utils.should_run_eagerly()
-        l.append((mode, should_run_eagerly))
+        should_run_tf_function = testing_utils.should_run_tf_function()
+        l.append((mode, should_run_eagerly, should_run_tf_function))
 
     e = ExampleTest()
     if not tf2.enabled():
-      e.testBody_v1_graph()
+      e.testBody_v1_session()
     e.testBody_v2_eager()
     e.testBody_v2_function()
 
     if not tf2.enabled():
       self.assertLen(l, 3)
       self.assertAllEqual(l, [
-          ("graph", False),
-          ("eager", True),
-          ("eager", False),
+          ("graph", False, False),
+          ("eager", True, True),
+          ("eager", False, True),
       ])
 
       ts = unittest.makeSuite(ExampleTest)
@@ -233,8 +234,8 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
     else:
       self.assertLen(l, 2)
       self.assertAllEqual(l, [
-          ("eager", True),
-          ("eager", False),
+          ("eager", True, True),
+          ("eager", False, True),
       ])
 
       ts = unittest.makeSuite(ExampleTest)
@@ -258,12 +259,14 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
         mode = "eager" if context.executing_eagerly() else "graph"
         with_brackets = "with_brackets" if with_brackets else "without_brackets"
         should_run_eagerly = testing_utils.should_run_eagerly()
-        l.append((with_brackets, mode, should_run_eagerly))
+        should_run_tf_function = testing_utils.should_run_tf_function()
+        l.append(
+            (with_brackets, mode, should_run_eagerly, should_run_tf_function))
 
     e = ExampleTest()
     if not tf2.enabled():
-      e.testBody_0_v1_graph()
-      e.testBody_1_v1_graph()
+      e.testBody_0_v1_session()
+      e.testBody_1_v1_session()
 
     e.testBody_0_v2_eager()
     e.testBody_0_v2_function()
@@ -271,16 +274,16 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
     e.testBody_1_v2_function()
 
     expected_combinations = {
-        ("with_brackets", "eager", True),
-        ("with_brackets", "eager", False),
-        ("without_brackets", "eager", True),
-        ("without_brackets", "eager", False),
+        ("with_brackets", "eager", True, True),
+        ("with_brackets", "eager", False, True),
+        ("without_brackets", "eager", True, True),
+        ("without_brackets", "eager", False, True),
     }
 
     if not tf2.enabled():
       expected_combinations = expected_combinations.union({
-          ("with_brackets", "graph", False),
-          ("without_brackets", "graph", False),
+          ("with_brackets", "graph", False, False),
+          ("without_brackets", "graph", False, False),
       })
 
     self.assertLen(l, len(expected_combinations))
@@ -304,21 +307,23 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
       def testBody(self):
         mode = "eager" if context.executing_eagerly() else "graph"
         should_run_eagerly = testing_utils.should_run_eagerly()
-        l.append((mode, should_run_eagerly))
+        should_run_tf_function = testing_utils.should_run_tf_function()
+        l.append((mode, should_run_eagerly, should_run_tf_function))
 
     e = ExampleTest()
-    if hasattr(e, "testBody_v1_graph"):
-      e.testBody_v1_graph()
+    if hasattr(e, "testBody_v1_session"):
+      e.testBody_v1_session()
     if hasattr(e, "testBody_v2_eager"):
       e.testBody_v2_eager()
     if hasattr(e, "testBody_v2_function"):
       e.testBody_v2_function()
 
     self.assertLen(l, 2)
-    self.assertEqual(set(l), {
-        ("eager", True),
-        ("eager", False),
-    })
+    self.assertEqual(
+        set(l), {
+            ("eager", True, True),
+            ("eager", False, True),
+        })
 
   def test_run_all_keras_modes_with_all_model_types(self):
     l = []
@@ -333,7 +338,9 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
       def testBody(self):
         mode = "eager" if context.executing_eagerly() else "graph"
         should_run_eagerly = testing_utils.should_run_eagerly()
-        l.append((mode, should_run_eagerly, testing_utils.get_model_type()))
+        should_run_tf_function = testing_utils.should_run_tf_function()
+        l.append((mode, should_run_eagerly, should_run_tf_function,
+                  testing_utils.get_model_type()))
 
     e = ExampleTest()
     e.testBody_v2_eager_functional()
@@ -344,24 +351,24 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
     e.testBody_v2_function_subclass()
 
     if not tf2.enabled():
-      e.testBody_v1_graph_functional()
-      e.testBody_v1_graph_sequential()
-      e.testBody_v1_graph_subclass()
+      e.testBody_v1_session_functional()
+      e.testBody_v1_session_sequential()
+      e.testBody_v1_session_subclass()
 
     expected_combinations = {
-        ("eager", True, "functional"),
-        ("eager", False, "functional"),
-        ("eager", True, "sequential"),
-        ("eager", False, "sequential"),
-        ("eager", True, "subclass"),
-        ("eager", False, "subclass"),
+        ("eager", True, True, "functional"),
+        ("eager", False, True, "functional"),
+        ("eager", True, True, "sequential"),
+        ("eager", False, True, "sequential"),
+        ("eager", True, True, "subclass"),
+        ("eager", False, True, "subclass"),
     }
 
     if not tf2.enabled():
       expected_combinations = expected_combinations.union({
-          ("graph", False, "functional"),
-          ("graph", False, "sequential"),
-          ("graph", False, "subclass"),
+          ("graph", False, False, "functional"),
+          ("graph", False, False, "sequential"),
+          ("graph", False, False, "subclass"),
       })
 
     self.assertLen(l, len(expected_combinations))
@@ -386,7 +393,9 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
       def testBody(self):
         mode = "eager" if context.executing_eagerly() else "graph"
         should_run_eagerly = testing_utils.should_run_eagerly()
-        l.append((mode, should_run_eagerly, testing_utils.get_model_type()))
+        should_run_tf_function = testing_utils.should_run_tf_function()
+        l.append((mode, should_run_eagerly, should_run_tf_function,
+                  testing_utils.get_model_type()))
 
     e = ExampleTest()
     e.testBody_functional_v2_eager()
@@ -397,24 +406,24 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
     e.testBody_subclass_v2_function()
 
     if not tf2.enabled():
-      e.testBody_functional_v1_graph()
-      e.testBody_sequential_v1_graph()
-      e.testBody_subclass_v1_graph()
+      e.testBody_functional_v1_session()
+      e.testBody_sequential_v1_session()
+      e.testBody_subclass_v1_session()
 
     expected_combinations = {
-        ("eager", True, "functional"),
-        ("eager", False, "functional"),
-        ("eager", True, "sequential"),
-        ("eager", False, "sequential"),
-        ("eager", True, "subclass"),
-        ("eager", False, "subclass"),
+        ("eager", True, True, "functional"),
+        ("eager", False, True, "functional"),
+        ("eager", True, True, "sequential"),
+        ("eager", False, True, "sequential"),
+        ("eager", True, True, "subclass"),
+        ("eager", False, True, "subclass"),
     }
 
     if not tf2.enabled():
       expected_combinations = expected_combinations.union({
-          ("graph", False, "functional"),
-          ("graph", False, "sequential"),
-          ("graph", False, "subclass"),
+          ("graph", False, False, "functional"),
+          ("graph", False, False, "sequential"),
+          ("graph", False, False, "subclass"),
       })
 
     self.assertLen(l, len(expected_combinations))
@@ -441,7 +450,9 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
       def testBody(self, arg):
         mode = "eager" if context.executing_eagerly() else "graph"
         should_run_eagerly = testing_utils.should_run_eagerly()
-        l.append((mode, should_run_eagerly, testing_utils.get_model_type()))
+        should_run_tf_function = testing_utils.should_run_tf_function()
+        l.append((mode, should_run_eagerly, should_run_tf_function,
+                  testing_utils.get_model_type()))
 
     e = ExampleTest()
     e.testBody_arg_v2_eager_functional()
@@ -452,24 +463,24 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
     e.testBody_arg_v2_function_subclass()
 
     if not tf2.enabled():
-      e.testBody_arg_v1_graph_functional()
-      e.testBody_arg_v1_graph_sequential()
-      e.testBody_arg_v1_graph_subclass()
+      e.testBody_arg_v1_session_functional()
+      e.testBody_arg_v1_session_sequential()
+      e.testBody_arg_v1_session_subclass()
 
     expected_combinations = {
-        ("eager", True, "functional"),
-        ("eager", False, "functional"),
-        ("eager", True, "sequential"),
-        ("eager", False, "sequential"),
-        ("eager", True, "subclass"),
-        ("eager", False, "subclass"),
+        ("eager", True, True, "functional"),
+        ("eager", False, True, "functional"),
+        ("eager", True, True, "sequential"),
+        ("eager", False, True, "sequential"),
+        ("eager", True, True, "subclass"),
+        ("eager", False, True, "subclass"),
     }
 
     if not tf2.enabled():
       expected_combinations = expected_combinations.union({
-          ("graph", False, "functional"),
-          ("graph", False, "sequential"),
-          ("graph", False, "subclass"),
+          ("graph", False, False, "functional"),
+          ("graph", False, False, "sequential"),
+          ("graph", False, False, "subclass"),
       })
 
     self.assertLen(l, len(expected_combinations))
@@ -496,7 +507,9 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
       def testBody(self, arg):
         mode = "eager" if context.executing_eagerly() else "graph"
         should_run_eagerly = testing_utils.should_run_eagerly()
-        l.append((mode, should_run_eagerly, testing_utils.get_model_type()))
+        should_run_tf_function = testing_utils.should_run_tf_function()
+        l.append((mode, should_run_eagerly, should_run_tf_function,
+                  testing_utils.get_model_type()))
 
     e = ExampleTest()
     e.testBody_arg_v2_eager_functional()
@@ -507,24 +520,24 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
     e.testBody_arg_v2_function_subclass()
 
     if not tf2.enabled():
-      e.testBody_arg_v1_graph_functional()
-      e.testBody_arg_v1_graph_sequential()
-      e.testBody_arg_v1_graph_subclass()
+      e.testBody_arg_v1_session_functional()
+      e.testBody_arg_v1_session_sequential()
+      e.testBody_arg_v1_session_subclass()
 
     expected_combinations = {
-        ("eager", True, "functional"),
-        ("eager", False, "functional"),
-        ("eager", True, "sequential"),
-        ("eager", False, "sequential"),
-        ("eager", True, "subclass"),
-        ("eager", False, "subclass"),
+        ("eager", True, True, "functional"),
+        ("eager", False, True, "functional"),
+        ("eager", True, True, "sequential"),
+        ("eager", False, True, "sequential"),
+        ("eager", True, True, "subclass"),
+        ("eager", False, True, "subclass"),
     }
 
     if not tf2.enabled():
       expected_combinations = expected_combinations.union({
-          ("graph", False, "functional"),
-          ("graph", False, "sequential"),
-          ("graph", False, "subclass"),
+          ("graph", False, False, "functional"),
+          ("graph", False, False, "sequential"),
+          ("graph", False, False, "subclass"),
       })
 
     self.assertLen(l, len(expected_combinations))

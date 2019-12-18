@@ -51,7 +51,7 @@ class ReverseOpsTest(xla_test.XLATestCase):
   def _AssertReverseEqual(self, revdims, shape):
     np.random.seed(120)
     pval = np.random.randint(0, 100, size=shape).astype(float)
-    with self.cached_session():
+    with self.session():
       with self.test_scope():
         p = array_ops.placeholder(dtypes.int32, shape=shape)
         axis = constant_op.constant(

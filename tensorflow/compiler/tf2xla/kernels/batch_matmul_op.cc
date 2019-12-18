@@ -30,11 +30,8 @@ class BatchMatMulOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    auto result =
-        xla::BatchDot(MaybeTransposeInMinorDims(
-                          MaybeConjugate(ctx->Input(0), adj_x_), adj_x_),
-                      MaybeTransposeInMinorDims(
-                          MaybeConjugate(ctx->Input(1), adj_y_), adj_y_));
+    auto result = xla::BatchDot(MaybeConjugate(ctx->Input(0), adj_x_), adj_x_,
+                                MaybeConjugate(ctx->Input(1), adj_y_), adj_y_);
     ctx->SetOutput(0, result);
   }
 
@@ -44,6 +41,7 @@ class BatchMatMulOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("BatchMatMul"), BatchMatMulOp);
+REGISTER_XLA_OP(Name("BatchMatMulV2"), BatchMatMulOp);
 
 }  // namespace
 }  // namespace tensorflow

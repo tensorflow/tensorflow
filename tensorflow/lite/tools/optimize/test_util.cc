@@ -25,6 +25,8 @@ const char* kConvModelWithMinus128Plus127Weights =
 const char* kConvModelWith0Plus10Weights =
     "single_conv_weights_min_0_max_plus_10.bin";
 
+const char* kConvModelWithNoBias = "single_conv_no_bias.bin";
+
 const char* kSingleSoftmaxModelMinMinus5MaxPlus5 =
     "single_softmax_min_minus_5_max_plus_5.bin";
 
@@ -32,6 +34,32 @@ const char* kSingleAvgPoolModelMinMinus5MaxPlus5 =
     "single_avg_pool_min_minus_5_max_plus_5.bin";
 
 const char* kModelWithSharedWeights = "weight_shared_between_convs.bin";
+const char* kMultiInputAddWithReshape = "multi_input_add_reshape.bin";
+const char* kQuantizedWithGather = "quantized_with_gather.bin";
+
+const char* kConstInputAddModel = "add_with_const_input.bin";
+
+const char* kFloatConcatMax5Max10Max10 = "concat.bin";
+
+const char* kModelWithCustomOp = "custom_op.bin";
+
+const char* kModelWithArgMaxOp = "argmax.bin";
+
+const char* kModelWithFCOp = "fc.bin";
+
+const char* kModelMixed = "mixed.bin";
+
+const char* kModelSplit = "split.bin";
+
+const char* kLstmCalibrated = "lstm_calibrated.bin";
+const char* kLstmQuantized = "lstm_quantized.bin";
+
+const char* kModelWithMinimumOp = "minimum.bin";
+const char* kModelWithMaximumOp = "maximum.bin";
+const char* kLstmCalibrated2 = "lstm_calibrated2.bin";
+const char* kLstmQuantized2 = "lstm_quantized2.bin";
+
+const char* kModelWithUnpack = "unpack.bin";
 
 int FailOnErrorReporter::Report(const char* format, va_list args) {
   char buf[1024];

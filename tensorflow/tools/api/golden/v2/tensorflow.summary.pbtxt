@@ -4,9 +4,13 @@ tf_module {
     name: "SummaryWriter"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "audio"
-    argspec: "args=[\'name\', \'data\', \'sample_rate\', \'step\', \'max_outputs\', \'encoding\', \'description\'], varargs=None, keywords=None, defaults=[\'3\', \'None\', \'None\'], "
+    argspec: "args=[\'name\', \'data\', \'sample_rate\', \'step\', \'max_outputs\', \'encoding\', \'description\'], varargs=None, keywords=None, defaults=[\'None\', \'3\', \'None\', \'None\'], "
   }
   member_method {
     name: "create_file_writer"
@@ -22,15 +26,11 @@ tf_module {
   }
   member_method {
     name: "histogram"
-    argspec: "args=[\'name\', \'data\', \'step\', \'buckets\', \'description\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'name\', \'data\', \'step\', \'buckets\', \'description\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "image"
-    argspec: "args=[\'name\', \'data\', \'step\', \'max_outputs\', \'description\'], varargs=None, keywords=None, defaults=[\'3\', \'None\'], "
-  }
-  member_method {
-    name: "import_event"
-    argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'name\', \'data\', \'step\', \'max_outputs\', \'description\'], varargs=None, keywords=None, defaults=[\'None\', \'3\', \'None\'], "
   }
   member_method {
     name: "record_if"
@@ -38,18 +38,26 @@ tf_module {
   }
   member_method {
     name: "scalar"
-    argspec: "args=[\'name\', \'data\', \'step\', \'description\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "summary_scope"
-    argspec: "args=[\'name\', \'default_name\', \'values\'], varargs=None, keywords=None, defaults=[\'summary\', \'None\'], "
+    argspec: "args=[\'name\', \'data\', \'step\', \'description\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "text"
-    argspec: "args=[\'name\', \'data\', \'step\', \'description\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'name\', \'data\', \'step\', \'description\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "trace_export"
+    argspec: "args=[\'name\', \'step\', \'profiler_outdir\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "trace_off"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "trace_on"
+    argspec: "args=[\'graph\', \'profiler\'], varargs=None, keywords=None, defaults=[\'True\', \'False\'], "
   }
   member_method {
     name: "write"
-    argspec: "args=[\'tag\', \'tensor\', \'step\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'tag\', \'tensor\', \'step\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
 }

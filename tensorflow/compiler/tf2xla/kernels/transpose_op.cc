@@ -18,7 +18,6 @@ limitations under the License.
 // handles all transposes, while Eigen needs a restricted DoTranspose
 // helper.
 
-#include "tensorflow/core/kernels/transpose_op.h"
 #include "tensorflow/compiler/tf2xla/lib/scatter.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"

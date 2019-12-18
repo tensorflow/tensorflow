@@ -18,7 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 import time
+from absl.testing import parameterized
 import six
 
 from tensorflow.core.protobuf import config_pb2
@@ -26,8 +28,10 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import combinations
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.framework import tensor_like
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
@@ -39,8 +43,7 @@ except ImportError:
   memory_profiler = None
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class MemoryCleanupTest(test_base.DatasetTestBase):
+class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def assertNotIncreasingMemory(self,
                                 f,
@@ -64,10 +67,9 @@ class MemoryCleanupTest(test_base.DatasetTestBase):
           "Maximum allowed increase: %f") % (initial, increase,
                                              increase_threshold_absolute_mb)
 
-  @test_util.run_v1_only("b/121264236")
+  # TODO(b/121264236): Support v2 behavior
+  @combinations.generate(combinations.combine(tf_api_version=1, mode="eager"))
   def testEagerMemoryUsageWithReset(self):
-    if not context.executing_eagerly():
-      self.skipTest("Only eager mode test")
     if memory_profiler is None:
       self.skipTest("memory_profiler required to run this test")
 
@@ -80,12 +82,12 @@ class MemoryCleanupTest(test_base.DatasetTestBase):
       multi_device_iterator._eager_reset()
 
     self.assertNotIncreasingMemory(
-        f, num_iters=100, increase_threshold_absolute_mb=50)
+        f, num_iters=100, increase_threshold_absolute_mb=350)
 
-  @test_util.run_v1_only("b/121264236")
+  # TODO(b/121264236): Support v2 behavior
+  @combinations.generate(
+      combinations.combine(tf_api_version=1, mode="eager"))
   def testEagerMemoryUsageWithRecreation(self):
-    if not context.executing_eagerly():
-      self.skipTest("Only eager mode test")
     if memory_profiler is None:
       self.skipTest("memory_profiler required to run this test")
 
@@ -100,6 +102,115 @@ class MemoryCleanupTest(test_base.DatasetTestBase):
     # TODO(b/123316347): Reduce threshold once bug is fixed.
     self.assertNotIncreasingMemory(
         f, num_iters=100, increase_threshold_absolute_mb=500)
+
+  def _testIteratorMemoryLeak(self, get_dataset):
+
+    def run():
+      get_next = self.getNext(get_dataset())
+      for _ in range(100):
+        self.evaluate(get_next())
+
+    for _ in range(10):
+      run()
+
+    gc.collect()
+    tensors = [
+        o for o in gc.get_objects() if isinstance(o, tensor_like._TensorLike)
+    ]
+    self.assertEmpty(tensors, "%d Tensors are still alive." % len(tensors))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testFilter(self):
+
+    def get_dataset():
+
+      def fn(_):
+        return True
+
+      return dataset_ops.Dataset.range(0, 100).filter(fn)
+
+    self._testIteratorMemoryLeak(get_dataset)
+
+  @combinations.generate(combinations.combine(tf_api_version=1, mode="eager"))
+  def testFilterLegacy(self):
+
+    def get_dataset():
+
+      def fn(_):
+        return True
+
+      return dataset_ops.Dataset.range(0, 100).filter_with_legacy_function(fn)
+
+    self._testIteratorMemoryLeak(get_dataset)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testFlatMap(self):
+
+    def get_dataset():
+
+      def fn(x):
+        return dataset_ops.Dataset.from_tensors(x * x)
+
+      return dataset_ops.Dataset.range(0, 100).flat_map(fn)
+
+    self._testIteratorMemoryLeak(get_dataset)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testFromGenerator(self):
+
+    def get_dataset():
+
+      def fn():
+        return six.moves.range(100)
+
+      return dataset_ops.Dataset.from_generator(fn, output_types=dtypes.float32)
+
+    self._testIteratorMemoryLeak(get_dataset)
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 10])))
+  def testMap(self, num_parallel_calls):
+
+    def get_dataset():
+
+      def fn(x):
+        return x * x
+
+      return dataset_ops.Dataset.range(0, 100).map(
+          fn, num_parallel_calls=num_parallel_calls)
+
+    self._testIteratorMemoryLeak(get_dataset)
+
+  @combinations.generate(
+      combinations.combine(
+          tf_api_version=1, mode="eager", num_parallel_calls=[None, 10]))
+  def testMapLegacy(self, num_parallel_calls):
+
+    def get_dataset():
+
+      def fn(x):
+        return x * x
+
+      return dataset_ops.Dataset.range(0, 100).map_with_legacy_function(
+          fn, num_parallel_calls=num_parallel_calls)
+
+    self._testIteratorMemoryLeak(get_dataset)
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 10])))
+  def testInterleave(self, num_parallel_calls):
+
+    def get_dataset():
+
+      def fn(x):
+        return dataset_ops.Dataset.from_tensors(x * x)
+
+      return dataset_ops.Dataset.range(0, 100).interleave(
+          fn, num_parallel_calls=num_parallel_calls, cycle_length=10)
+
+    self._testIteratorMemoryLeak(get_dataset)
 
 
 if __name__ == "__main__":

@@ -173,7 +173,7 @@ class GemvConfig {
 //   |         C            | D |
 //   +----------------------+---+
 //
-// where A is the largest submatrix of the LHS that can be evenly dividied into
+// where A is the largest submatrix of the LHS that can be evenly divided into
 // tiles.  For each tile in A, assuming tile_rows_ == tile_cols_ == 4, we have:
 //
 //   +---+---+---+---+       +--+--+--+--+
@@ -212,7 +212,7 @@ class GemvConfig {
 // Where R is the starting row for the tile.
 //
 // We have an inner epilogue loop to deal with the "C" submatrix and an outer
-// epilogue loop to deal with the B,D submarix.
+// epilogue loop to deal with the B,D submatrix.
 //
 // TODO(sanjoy): We should investigate if using gather loads and scatter stores
 // can be used here have the same inner loop for both column-major and row-major
@@ -410,7 +410,7 @@ void ColumnMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
 //   |         C            | D |
 //   +----------------------+---+
 //
-// where A is the largest submatrix of the LHS that can be evenly dividied into
+// where A is the largest submatrix of the LHS that can be evenly divided into
 // tiles.  For each tile in A, assuming tile_rows_ == tile_cols_ == 4, we have:
 //
 //   +---+---+---+---+
@@ -991,7 +991,7 @@ void EmitRowMajorGemv(PrimitiveType scalar_type, int64 tile_rows,
                       int64 tile_cols, int64 m, int64 k, llvm::Value* lhs,
                       llvm::Value* rhs, llvm::Value* addend,
                       llvm::Value* result, llvm::IRBuilder<>* b,
-                      bool enable_fast_math, bool optimize_for_size) {
+                      const HloModuleConfig& module_config) {
   RowMajorMatrixVectorProductEmitter::Config config(
       /*scalar_type=*/scalar_type,
       /*tile_rows=*/tile_rows, /*tile_cols=*/tile_cols,
@@ -1001,8 +1001,7 @@ void EmitRowMajorGemv(PrimitiveType scalar_type, int64 tile_rows,
       GetGemvBuffersWithCanonicalType(lhs, rhs, addend, result, b);
 
   KernelSupportLibrary::EmitAndCallOutlinedKernel(
-      /*enable_fast_math=*/enable_fast_math,
-      /*optimize_for_size=*/optimize_for_size, b, config.GetCacheKey(),
+      module_config, b, config.GetCacheKey(),
       canonical_inputs.lhs_canonicalized, canonical_inputs.rhs_canonicalized,
       canonical_inputs.addend_canonicalized,
       canonical_inputs.result_canonicalized,
@@ -1019,7 +1018,7 @@ void EmitColumnMajorGemv(PrimitiveType scalar_type, int64 tile_rows,
                          int64 tile_cols, int64 m, int64 k, llvm::Value* lhs,
                          llvm::Value* rhs, llvm::Value* addend,
                          llvm::Value* result, llvm::IRBuilder<>* b,
-                         bool enable_fast_math, bool optimize_for_size) {
+                         const HloModuleConfig& module_config) {
   ColumnMajorMatrixVectorProductEmitter::Config config(
       /*scalar_type=*/scalar_type,
       /*tile_rows=*/tile_rows, /*tile_cols=*/tile_cols,
@@ -1029,8 +1028,7 @@ void EmitColumnMajorGemv(PrimitiveType scalar_type, int64 tile_rows,
       GetGemvBuffersWithCanonicalType(lhs, rhs, addend, result, b);
 
   KernelSupportLibrary::EmitAndCallOutlinedKernel(
-      /*enable_fast_math=*/enable_fast_math,
-      /*optimize_for_size=*/optimize_for_size, b, config.GetCacheKey(),
+      module_config, b, config.GetCacheKey(),
       canonical_inputs.lhs_canonicalized, canonical_inputs.rhs_canonicalized,
       canonical_inputs.addend_canonicalized,
       canonical_inputs.result_canonicalized,
@@ -1048,7 +1046,7 @@ void EmitSmallGemm(PrimitiveType scalar_type, int64 m, int64 k, int64 n,
                    int64 min_vectorization_width, int64 tile_size_m,
                    int64 tile_size_k, llvm::Value* lhs, llvm::Value* rhs,
                    llvm::Value* result, llvm::IRBuilder<>* b,
-                   bool enable_fast_math, bool optimize_for_size) {
+                   const HloModuleConfig& module_config) {
   TiledSmallGemmEmitter::Config config(
       /*scalar_type=*/scalar_type,
       TiledSmallGemmEmitter::Dimensions{/*m=*/m, /*k=*/k, /*n=*/n},
@@ -1058,9 +1056,7 @@ void EmitSmallGemm(PrimitiveType scalar_type, int64 m, int64 k, int64 n,
       /*tile_size_m=*/tile_size_m, /*tile_size_k=*/tile_size_k);
 
   KernelSupportLibrary::EmitAndCallOutlinedKernel(
-      /*enable_fast_math=*/enable_fast_math,
-      /*optimize_for_size=*/optimize_for_size, b, config.GetCacheKey(), lhs,
-      rhs, result,
+      module_config, b, config.GetCacheKey(), lhs, rhs, result,
       [&](llvm::Value* lhs, llvm::Value* rhs, llvm::Value* result) {
         TiledSmallGemmEmitter small_gemm_emitter(config, /*lhs=*/lhs,
                                                  /*rhs=*/rhs,

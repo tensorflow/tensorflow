@@ -27,12 +27,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedMapInnerValuesOpTest(ragged_test_util.RaggedTensorTestCase):
+class RaggedMapInnerValuesOpTest(test_util.TensorFlowTestCase):
 
   def assertRaggedMapInnerValuesReturns(self,
                                         op,
@@ -41,7 +40,7 @@ class RaggedMapInnerValuesOpTest(ragged_test_util.RaggedTensorTestCase):
                                         kwargs=None):
     kwargs = kwargs or {}
     result = ragged_functional_ops.map_flat_values(op, *args, **kwargs)
-    self.assertRaggedEqual(result, expected)
+    self.assertAllEqual(result, expected)
 
   def testDocStringExamples(self):
     """Test the examples in apply_op_to_ragged_values.__doc__."""
@@ -49,9 +48,9 @@ class RaggedMapInnerValuesOpTest(ragged_test_util.RaggedTensorTestCase):
     v1 = ragged_functional_ops.map_flat_values(array_ops.ones_like, rt)
     v2 = ragged_functional_ops.map_flat_values(math_ops.multiply, rt, rt)
     v3 = ragged_functional_ops.map_flat_values(math_ops.add, rt, 5)
-    self.assertRaggedEqual(v1, [[1, 1, 1], [], [1, 1], [1]])
-    self.assertRaggedEqual(v2, [[1, 4, 9], [], [16, 25], [36]])
-    self.assertRaggedEqual(v3, [[6, 7, 8], [], [9, 10], [11]])
+    self.assertAllEqual(v1, [[1, 1, 1], [], [1, 1], [1]])
+    self.assertAllEqual(v2, [[1, 4, 9], [], [16, 25], [36]])
+    self.assertAllEqual(v3, [[6, 7, 8], [], [9, 10], [11]])
 
   def testOpWithSingleRaggedTensorArg(self):
     tensor = ragged_factory_ops.constant([[1, 2, 3], [], [4, 5]])
@@ -77,7 +76,7 @@ class RaggedMapInnerValuesOpTest(ragged_test_util.RaggedTensorTestCase):
     x = ragged_factory_ops.constant([['a', 'b', 'c'], [], ['d', 'e']])
     y = ragged_factory_ops.constant([['A', 'B', 'C'], [], ['D', 'E']])
     self.assertRaggedMapInnerValuesReturns(
-        op=array_ops.where,
+        op=array_ops.where_v2,
         args=(condition, x, y),
         expected=[[b'a', b'b', b'C'], [], [b'd', b'E']])
 
@@ -122,7 +121,7 @@ class RaggedMapInnerValuesOpTest(ragged_test_util.RaggedTensorTestCase):
     # ragged_rank=0
     x0 = [3, 1, 4, 1, 5, 9, 2, 6, 5]
     y0 = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-    self.assertRaggedEqual(
+    self.assertAllEqual(
         math_ops.multiply(x0, y0), [3, 2, 12, 4, 25, 54, 14, 48, 45])
 
     # ragged_rank=1

@@ -27,7 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
-from tensorflow.python.ops.ragged import ragged_conversion_ops
+from tensorflow.python.ops.ragged import ragged_config
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
 
@@ -82,7 +82,8 @@ class RaggedTensorDynamicShape(object):
   `[[[1, 2], [3]], [[4, 5]]]`    |      2 | `2, (2, 1), (2, 1, 2)` |
   """
 
-  def __init__(self, partitioned_dim_sizes, inner_dim_sizes):
+  def __init__(self, partitioned_dim_sizes, inner_dim_sizes,
+               dim_size_dtype=None):
     """Creates a RaggedTensorDynamicShape.
 
     Args:
@@ -96,16 +97,19 @@ class RaggedTensorDynamicShape(object):
         number of inner dimensions.  `inner_dim_sizes[n]` is the size of all
         slices across the `n`th inner dimension (which is the
         `(len(partitioned_dim_sizes)+n)`th dimension in the overall tensor.
+      dim_size_dtype: dtype for dimension sizes.  If not specified, then it
+        is chosen based on the dtypes of `partitioned_dim_sizes` and
+        `inner_dim_sizes`.
     """
     assert isinstance(partitioned_dim_sizes, (list, tuple))
+
     with ops.name_scope(None, 'RaggedTensorDynamicShape',
                         (partitioned_dim_sizes, inner_dim_sizes)):
       partitioned_dim_sizes = tuple(
-          ragged_util.convert_to_int_tensor(
-              size, dtype=dtypes.int64, name='partitioned_dimension_size')
-          for size in partitioned_dim_sizes)
-      inner_dim_sizes = ragged_util.convert_to_int_tensor(
-          inner_dim_sizes, dtype=dtypes.int64, name='inner_dim_sizes')
+          ops.convert_to_tensor(size, name='partitioned_dimension_size_%d' % i)
+          for (i, size) in enumerate(partitioned_dim_sizes))
+      inner_dim_sizes = ops.convert_to_tensor(
+          inner_dim_sizes, name='inner_dim_sizes')
 
       # Validate shapes.
       if partitioned_dim_sizes:
@@ -119,6 +123,22 @@ class RaggedTensorDynamicShape(object):
         if partitioned_dim_sizes[-1].shape.ndims == 0:
           raise ValueError('innermost partitioned dimension must be ragged')
       inner_dim_sizes.shape.assert_has_rank(1)
+
+      # Convert dimension size tensors to a single dtype.
+      if dim_size_dtype is None:
+        dim_size_dtypes = set(
+            p.dtype for p in partitioned_dim_sizes if p.shape.ndims == 1)
+        if not dim_size_dtypes:
+          dim_size_dtype = dtypes.int64
+        elif len(dim_size_dtypes) == 1:
+          dim_size_dtype = dim_size_dtypes.pop()
+        else:
+          if not ragged_config.auto_cast_partition_dtype():
+            raise ValueError('partitioned_dim_sizes must have matching dtypes')
+          dim_size_dtype = dtypes.int64
+      partitioned_dim_sizes = tuple(math_ops.cast(p, dim_size_dtype)
+                                    for p in partitioned_dim_sizes)
+      inner_dim_sizes = math_ops.cast(inner_dim_sizes, dim_size_dtype)
 
       self._partitioned_dim_sizes = partitioned_dim_sizes
       self._inner_dim_sizes = inner_dim_sizes
@@ -137,7 +157,7 @@ class RaggedTensorDynamicShape(object):
     ragged.
 
     Args:
-      dim_sizes: List of int64 scalars or vectors.
+      dim_sizes: List of int32 or int64 scalars or vectors.
 
     Returns:
       A RaggedTensorDynamicShape.
@@ -145,8 +165,8 @@ class RaggedTensorDynamicShape(object):
     with ops.name_scope(None, 'RaggedTensorDynamicShapeFromDimensionSizes',
                         [dim_sizes]):
       dim_sizes = tuple(
-          ragged_util.convert_to_int_tensor(
-              size, dtype=dtypes.int64, name='dim_sizes') for size in dim_sizes)
+          ops.convert_to_tensor(size, preferred_dtype=dtypes.int64,
+                                name='dim_sizes') for size in dim_sizes)
       # Split the dimensions into partitioned & inner dimensions.
       inner_split = 0
       for dim, dim_size in enumerate(dim_sizes):
@@ -158,7 +178,7 @@ class RaggedTensorDynamicShape(object):
                                       dim_sizes[inner_split:])
 
   @classmethod
-  def from_tensor(cls, rt_input):
+  def from_tensor(cls, rt_input, dim_size_dtype=None):
     """Constructs a ragged shape for a potentially ragged tensor."""
     with ops.name_scope(None, 'RaggedTensorDynamicShapeFromTensor', [rt_input]):
       rt_input = ragged_tensor.convert_to_tensor_or_ragged_tensor(rt_input)
@@ -169,7 +189,8 @@ class RaggedTensorDynamicShape(object):
             (rt_input.nrows(),) + rt_input.nested_row_lengths())
         return RaggedTensorDynamicShape(
             partitioned_dim_sizes,
-            array_ops.shape(rt_input.flat_values)[1:])
+            array_ops.shape(rt_input.flat_values)[1:],
+            dim_size_dtype=dim_size_dtype)
 
   def dimension_size(self, axis):
     """Returns the size of slices across the specified dimension."""
@@ -231,6 +252,11 @@ class RaggedTensorDynamicShape(object):
     """The number of inner dimensions, or `None` if not statically known."""
     return tensor_shape.dimension_value(self._inner_dim_sizes.shape[0])
 
+  @property
+  def dim_size_dtype(self):
+    """DType used by this shape for dimension sizes."""
+    return self._inner_dim_sizes.dtype
+
   def broadcast_to_rank(self, rank):
     """Adds leading size-1 dimensions to broadcast `self` to the given rank.
 
@@ -260,7 +286,8 @@ class RaggedTensorDynamicShape(object):
       return RaggedTensorDynamicShape(partitioned_dims, self._inner_dim_sizes)
     else:
       inner_dims = array_ops.concat(
-          [array_ops.ones([dims_to_add], dtypes.int64), self.inner_dim_sizes],
+          [array_ops.ones([dims_to_add], self.dim_size_dtype),
+           self.inner_dim_sizes],
           axis=0)
       return RaggedTensorDynamicShape([], inner_dims)
 
@@ -290,7 +317,7 @@ class RaggedTensorDynamicShape(object):
       A `RaggedTensorDynamicShape`.
     """
     lengths = ragged_util.convert_to_int_tensor(
-        lengths, name='lengths', dtype=dtypes.int64)
+        lengths, name='lengths', dtype=self.dim_size_dtype)
     # Check whether lengths is a scalar (for uniform dimensions) or
     # vector (for ragged dimensions).
     if lengths.shape.ndims is None:
@@ -347,7 +374,7 @@ class RaggedTensorDynamicShape(object):
   def num_slices_in_dimension(self, axis):
     """Returns the total number of slices across the indicated dimension."""
     if axis < 0:
-      return constant_op.constant(1, dtype=dtypes.int64)
+      return constant_op.constant(1, dtype=self.dim_size_dtype)
     elif self.is_ragged(axis):
       return math_ops.reduce_sum(self._partitioned_dim_sizes[axis])
     else:
@@ -365,7 +392,7 @@ class RaggedTensorDynamicShape(object):
       splits = array_ops.stack([0, self.num_slices_in_dimension(axis)])
     else:
       splits = math_ops.range(
-          array_ops.size(lengths, out_type=dtypes.int64) + 1)
+          array_ops.size(lengths, out_type=self.dim_size_dtype) + 1)
       repeats = lengths
 
     partitioned_sizes.append(lengths)
@@ -403,6 +430,15 @@ class RaggedTensorDynamicShape(object):
         ]) + (lengths,))
     inner_sizes = self._inner_dim_sizes[axis_in_inner_dims + 1:]
     return RaggedTensorDynamicShape(partitioned_sizes, inner_sizes)
+
+  def with_dim_size_dtype(self, dtype):
+    if dtype not in (dtypes.int32, dtypes.int64):
+      raise ValueError('dtype must be int32 or int64')
+    if self.dim_size_dtype == dtype:
+      return self
+    return RaggedTensorDynamicShape(
+        [math_ops.cast(p, dtype) for p in self._partitioned_dim_sizes],
+        math_ops.cast(self._inner_dim_sizes, dtype))
 
 
 def broadcast_dynamic_shape(shape_x, shape_y):
@@ -479,6 +515,17 @@ def _broadcast_to_uniform_shape(rt_input, shape, broadcast_inner_dimensions):
 
 def _broadcast_to_ragged_shape(rt_input, dst_shape, broadcast_inner_dimensions):
   """Broadcasts rt_input to the ragged shape `dst_shape`."""
+  # Check that rt_input and dst_shape have the same row_splits dtype.
+  if (isinstance(rt_input, ragged_tensor.RaggedTensor) and
+      rt_input.row_splits.dtype != dst_shape.dim_size_dtype):
+    if not ragged_config.auto_cast_partition_dtype():
+      raise ValueError('rt_input and dst_shape have different row_split '
+                       'dtypes; use RaggedTensor.with_row_splits_dtype() or '
+                       'RaggedTensorDynamicShape.with_dim_size_dtype() to '
+                       'convert to a compatible dtype.')
+    rt_input = rt_input.with_row_splits_dtype(dtypes.int64)
+    dst_shape = dst_shape.with_dim_size_dtype(dtypes.int64)
+
   # dst_shape's rank and ragged_rank must be greater than or equal to rt_input's
   if rt_input.shape.ndims is None or dst_shape.rank is None:
     raise ValueError('Unable to broadcast: unknown rank')
@@ -500,8 +547,10 @@ def _broadcast_to_ragged_shape(rt_input, dst_shape, broadcast_inner_dimensions):
       if ragged_tensor.is_ragged(rt_input):
         nrows = rt_input.nrows()
       else:
-        nrows = array_ops.shape(rt_input, out_type=dtypes.int64)[0]
-      rt_input = ragged_tensor.RaggedTensor.from_row_lengths(rt_input, [nrows])
+        nrows = array_ops.shape(rt_input,
+                                out_type=dst_shape.dim_size_dtype)[0]
+      rt_input = ragged_tensor.RaggedTensor.from_row_lengths(rt_input, [nrows],
+                                                             validate=False)
 
   # Add ragged dimensions to match dst_shape.
   if ragged_tensor.is_ragged(rt_input):
@@ -509,11 +558,13 @@ def _broadcast_to_ragged_shape(rt_input, dst_shape, broadcast_inner_dimensions):
         rt_input.flat_values.shape.ndims - 1 - dst_shape.num_inner_dimensions)
     if inner_rank_diff > 0:
       rt_input = rt_input.with_flat_values(
-          ragged_conversion_ops.from_tensor(
-              rt_input.flat_values, ragged_rank=inner_rank_diff))
+          ragged_tensor.RaggedTensor.from_tensor(
+              rt_input.flat_values, ragged_rank=inner_rank_diff,
+              row_splits_dtype=dst_shape.dim_size_dtype))
   else:
-    rt_input = ragged_conversion_ops.from_tensor(
-        rt_input, ragged_rank=dst_shape.num_partitioned_dimensions - 1)
+    rt_input = ragged_tensor.RaggedTensor.from_tensor(
+        rt_input, ragged_rank=dst_shape.num_partitioned_dimensions - 1,
+        row_splits_dtype=dst_shape.dim_size_dtype)
 
   # Do broadcasting for any dimensions that will remain uniform.  We can do
   # these all at once, since they're independent of one another.
@@ -541,21 +592,24 @@ def _broadcast_to_ragged_shape(rt_input, dst_shape, broadcast_inner_dimensions):
   for axis in range(dst_shape.num_partitioned_dimensions):
     if not src_shape.is_ragged(axis) and dst_shape.is_ragged(axis):
       dst_size = dst_shape.dimension_size(axis)
-      rt_input = _ragged_tile_axis(rt_input, axis, dst_size)
+      rt_input = _ragged_tile_axis(rt_input, axis, dst_size,
+                                   dst_shape.dim_size_dtype)
 
   return rt_input
 
 
-def _ragged_tile_axis(rt_input, axis, repeats):
+def _ragged_tile_axis(rt_input, axis, repeats, row_splits_dtype):
   """Tile a dimension of a RaggedTensor to match a ragged shape."""
   assert axis > 0  # Outermost dimension may not be ragged.
 
   if not ragged_tensor.is_ragged(rt_input):
-    rt_input = ragged_conversion_ops.from_tensor(rt_input, ragged_rank=1)
+    rt_input = ragged_tensor.RaggedTensor.from_tensor(
+        rt_input, ragged_rank=1, row_splits_dtype=row_splits_dtype)
 
   if axis > 1:
     return rt_input.with_values(
-        _ragged_tile_axis(rt_input.values, axis - 1, repeats))
+        _ragged_tile_axis(rt_input.values, axis - 1, repeats,
+                          row_splits_dtype))
   else:
     src_row_splits = rt_input.nested_row_splits
     src_row_lengths = rt_input.nested_row_lengths()
@@ -569,4 +623,4 @@ def _ragged_tile_axis(rt_input, axis, repeats):
     dst_values = ragged_util.repeat_ranges(rt_input.flat_values, splits,
                                            repeats)
     return ragged_tensor.RaggedTensor.from_nested_row_lengths(
-        dst_values, dst_row_lengths)
+        dst_values, dst_row_lengths, validate=False)

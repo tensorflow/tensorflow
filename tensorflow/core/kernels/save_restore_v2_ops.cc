@@ -101,9 +101,9 @@ class SaveV2 : public OpKernel {
 
     const int kFixedInputs = 3;  // Prefix, tensor names, shape_and_slices.
     const int num_tensors = static_cast<int>(tensor_names.NumElements());
-    const string& prefix_string = prefix.scalar<string>()();
-    const auto& tensor_names_flat = tensor_names.flat<string>();
-    const auto& shape_and_slices_flat = shape_and_slices.flat<string>();
+    const string& prefix_string = prefix.scalar<tstring>()();
+    const auto& tensor_names_flat = tensor_names.flat<tstring>();
+    const auto& shape_and_slices_flat = shape_and_slices.flat<tstring>();
 
     BundleWriter writer(Env::Default(), prefix_string);
     OP_REQUIRES_OK(context, writer.status());
@@ -157,7 +157,7 @@ class RestoreV2 : public OpKernel {
     ValidateInputs(false /* not save op */, context, prefix, tensor_names,
                    shape_and_slices);
 
-    const string& prefix_string = prefix.scalar<string>()();
+    const string& prefix_string = prefix.scalar<tstring>()();
 
     // Intention: we plan to use the RestoreV2 op as a backward-compatible
     // reader as we upgrade to the V2 format.  This allows transparent upgrade.
@@ -212,10 +212,10 @@ class MergeV2Checkpoints : public OpKernel {
                     "Input destination_prefix should be a scalar tensor, got ",
                     destination_prefix.shape().DebugString(), " instead."));
 
-    const gtl::ArraySlice<string> input_prefixes =
-        gtl::ArraySlice<string>(checkpoint_prefixes.flat<string>());
+    const gtl::ArraySlice<tstring> input_prefixes =
+        gtl::ArraySlice<tstring>(checkpoint_prefixes.flat<tstring>());
     Env* env = Env::Default();
-    const string& merged_prefix = destination_prefix.scalar<string>()();
+    const string& merged_prefix = destination_prefix.scalar<tstring>()();
     OP_REQUIRES_OK(
         context, tensorflow::MergeBundles(env, input_prefixes, merged_prefix));
 

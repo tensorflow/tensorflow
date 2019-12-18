@@ -250,8 +250,23 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
+  llvm::Value* FCmpOGT(Args&&... args) {
+    return mixin_builder()->CreateFCmpOGT(std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
+  llvm::Value* FCmpOGE(Args&&... args) {
+    return mixin_builder()->CreateFCmpOGE(std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
   llvm::Value* FCmpOLT(Args&&... args) {
     return mixin_builder()->CreateFCmpOLT(std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
+  llvm::Value* FCmpULT(Args&&... args) {
+    return mixin_builder()->CreateFCmpULT(std::forward<Args>(args)...);
   }
 
   template <class... Args>

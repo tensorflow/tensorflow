@@ -21,6 +21,7 @@ import static org.junit.Assert.fail;
 
 import java.util.HashMap;
 import java.util.Map;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -196,7 +197,7 @@ public class ScopeTest {
 
     static <T> Const<T> create(Scope s, Tensor<T> value) {
       return new Const<T>(
-          s.graph()
+          s.env()
               .opBuilder("Const", s.makeOpName("Const"))
               .setAttr("dtype", value.dataType())
               .setAttr("value", value)
@@ -207,7 +208,7 @@ public class ScopeTest {
     static <T> Const<T> create(Scope s, Object v, Class<T> type) {
       try (Tensor<T> value = Tensor.create(v, type)) {
         return new Const<T>(
-            s.graph()
+            s.env()
                 .opBuilder("Const", s.makeOpName("Const"))
                 .setAttr("dtype", value.dataType())
                 .setAttr("value", value)
@@ -230,7 +231,7 @@ public class ScopeTest {
 
     static <T> Mean<T> create(Scope s, Output<T> input, Output<T> reductionIndices) {
       return new Mean<T>(
-          s.graph()
+          s.env()
               .opBuilder("Mean", s.makeOpName("Mean"))
               .addInput(input)
               .addInput(reductionIndices)
@@ -252,7 +253,7 @@ public class ScopeTest {
 
     static <T> SquaredDifference<T> create(Scope s, Output<T> x, Output<T> y) {
       return new SquaredDifference<T>(
-          s.graph()
+          s.env()
               .opBuilder("SquaredDifference", s.makeOpName("SquaredDifference"))
               .addInput(x)
               .addInput(y)

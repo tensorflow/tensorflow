@@ -197,8 +197,8 @@ StatusOr<bool> TransposeFolding::Run(HloModule* module) {
   // opportunities before actually folding them.
   std::vector<std::pair<HloInstruction*, OperandIndices>> foldable_dots;
   std::vector<std::pair<HloInstruction*, OperandIndices>> foldable_convolutions;
-  auto visit_fn = [this, &foldable_dots,
-                   &foldable_convolutions](HloInstruction* instruction) {
+  FunctionVisitor visit_fn([this, &foldable_dots, &foldable_convolutions](
+                               HloInstruction* instruction) {
     {
       OperandIndices operand_indices =
           CanFoldOperandsIntoDot(*instruction, transposable_gemm_operands_);
@@ -215,10 +215,10 @@ StatusOr<bool> TransposeFolding::Run(HloModule* module) {
       }
     }
     return Status::OK();
-  };
+  });
 
   for (auto* comp : module->MakeNonfusionComputations()) {
-    TF_RETURN_IF_ERROR(comp->Accept(visit_fn));
+    TF_RETURN_IF_ERROR(comp->Accept(&visit_fn));
   }
 
   bool changed = false;

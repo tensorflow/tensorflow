@@ -77,7 +77,7 @@ class AllocationTracker {
   // Data structure encapsulating single memory allocation on the device.
   struct Allocation {
     // The pointer to this allocation.
-    OwningDeviceMemory device_memory;
+    se::OwningDeviceMemory device_memory;
 
     // This is the number of times this memory allocation is referred to by
     // registered data handles.

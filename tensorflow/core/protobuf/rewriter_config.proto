@@ -1,11 +1,13 @@
 syntax = "proto3";
 
 package tensorflow;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "RewriterConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-// add go_package externally with copybara
+
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 
 import "tensorflow/core/framework/attr_value.proto";
 import "tensorflow/core/protobuf/verifier_config.proto";
@@ -76,11 +78,16 @@ message RewriterConfig {
   // Try to allocate some independent Op outputs contiguously in order to
   // merge or eliminate downstream Ops (off by default).
   Toggle scoped_allocator_optimization = 15;
-  // Force small ops onto the CPU (default is ON).
+  // Force small ops onto the CPU (default is OFF).
   Toggle pin_to_host_optimization = 18;
   // Enable the swap of kernel implementations based on the device placement
   // (default is ON).
   Toggle implementation_selector = 22;
+  // Optimize data types (default is OFF).
+  // e.g., This will try to use float16 on GPU which is faster.
+  // Note that this can change the numerical stability of the graph and may
+  // require the use of loss scaling to maintain model convergence.
+  Toggle auto_mixed_precision = 23;
   // Disable the entire meta optimizer (off by default).
   bool disable_meta_optimizer = 19;
 

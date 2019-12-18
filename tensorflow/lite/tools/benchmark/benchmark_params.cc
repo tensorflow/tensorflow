@@ -53,5 +53,13 @@ void BenchmarkParams::AssertParamExists(const std::string& name) const {
   TFLITE_BENCHMARK_CHECK(HasParam(name)) << name << " was not found.";
 }
 
+void BenchmarkParams::Set(const BenchmarkParams& other) {
+  for (const auto& param : params_) {
+    const BenchmarkParam* other_param = other.GetParam(param.first);
+    if (other_param == nullptr) continue;
+    param.second->Set(*other_param);
+  }
+}
+
 }  // namespace benchmark
 }  // namespace tflite

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,10 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/toco/tflite/op_version.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
@@ -37,9 +39,11 @@ using ::tflite::BuiltinOperator_CUSTOM;
 using ::tflite::BuiltinOperator_MAX;
 using ::tflite::BuiltinOperator_MIN;
 using ::tflite::CreateBuffer;
+using ::tflite::CreateMetadata;
 using ::tflite::CreateModel;
 using ::tflite::CreateOperator;
 using ::tflite::CreateTensor;
+using ::tflite::Metadata;
 using ::tflite::Operator;
 using ::tflite::OperatorCode;
 using ::tflite::SubGraph;
@@ -206,7 +210,8 @@ void LoadOperatorsMap(
 
 Offset<Vector<Offset<Tensor>>> ExportTensors(
     const Model& model, const details::TensorsMap& tensors_map,
-    FlatBufferBuilder* builder, std::vector<const Array*>* buffers_to_write,
+    FlatBufferBuilder* builder,
+    std::vector<Offset<Vector<uint8_t>>>* buffers_to_write,
     const std::set<int32_t>& variable_tensor_indices) {
   // In the end we will need to produce a vector sorted by the indices of the
   // tensors in the tensors_map.
@@ -218,10 +223,11 @@ Offset<Vector<Offset<Tensor>>> ExportTensors(
 
     int buffer_index = buffers_to_write->size();
     auto type = DataType::Serialize(array.data_type);
-    buffers_to_write->push_back(&array);
+    buffers_to_write->push_back(DataBuffer::Serialize(array, builder));
 
     std::vector<int> shape;
     if (array.has_shape()) {
+      shape.reserve(array.shape().dims().size());
       for (const auto& d : array.shape().dims()) {
         shape.push_back(d);
       }
@@ -384,7 +390,7 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
       mutating_input_variables = tflite_op->GetMutatingInputVariables(*op);
 
       if (!mutating_input_variables.empty()) {
-        for (int i = 0; i < op->inputs.size(); ++i) {
+        for (size_t i = 0; i < op->inputs.size(); ++i) {
           if (!mutating_input_variables[i]) {
             continue;
           }
@@ -411,15 +417,13 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
 }
 
 Offset<Vector<Offset<Buffer>>> ExportBuffers(
-    const Model& model, const std::vector<const Array*>& buffers_to_write,
+    const Model& model,
+    const std::vector<Offset<Vector<uint8_t>>>& buffers_to_write,
     FlatBufferBuilder* builder) {
   std::vector<Offset<Buffer>> buffer_vector;
-  size_t index = 0;
-  for (const Array* array_ptr : buffers_to_write) {
-    const Array& array = *array_ptr;
-    Offset<Vector<uint8_t>> data_buffer = DataBuffer::Serialize(array, builder);
-    buffer_vector.push_back(CreateBuffer(*builder, data_buffer));
-    index++;
+  buffer_vector.reserve(buffers_to_write.size());
+  for (const auto buffer : buffers_to_write) {
+    buffer_vector.push_back(CreateBuffer(*builder, buffer));
   }
   return builder->CreateVector(buffer_vector);
 }
@@ -430,10 +434,53 @@ tensorflow::Status Export(const Model& model, string* output_file_contents,
   return Export(model, output_file_contents, params, ops_by_type);
 }
 
+void ParseControlFlowErrors(std::set<string>* custom_ops,
+                            std::vector<string>* error_msgs) {
+  std::set<string> unsupported_control_flow_ops;
+  // Check if unsupported ops contains control flow ops. It's impossible
+  // to implement these ops as custom ops at the moment.
+  for (const auto& op : *custom_ops) {
+    if (IsControlFlowOp(op)) {
+      unsupported_control_flow_ops.insert(op);
+    }
+  }
+  if (!unsupported_control_flow_ops.empty()) {
+    error_msgs->push_back(absl::StrCat(
+        "TensorFlow Lite currently doesn't support control flow ops: ",
+        absl::StrJoin(unsupported_control_flow_ops, ", "), ".",
+        " We are working on supporting control flow ops, please see github "
+        "issue at "
+        "https://github.com/tensorflow/tensorflow/issues/28485."));
+  }
+  // Remove control flow ops from `custom_ops` set so that they won't be
+  // reported again in later messages.
+  for (const auto& op : unsupported_control_flow_ops) {
+    custom_ops->erase(op);
+  }
+}
+
+// Exports a string buffer that contains the model's minimum required runtime
+// version.
+void ExportModelVersionBuffer(
+    const Model& model, std::vector<Offset<Vector<uint8_t>>>* buffers_to_write,
+    FlatBufferBuilder* builder) {
+  const std::string min_runtime = GetMinimumRuntimeVersionForModel(model);
+  buffers_to_write->push_back(builder->CreateVector(
+      reinterpret_cast<const uint8_t*>(min_runtime.data()),
+      min_runtime.size()));
+}
+
 tensorflow::Status Export(
     const Model& model, string* output_file_contents,
     const ExportParams& params,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
+  for (const string& input_array : model.GetInvalidInputArrays()) {
+    if (model.HasArray(input_array)) {
+      return tensorflow::errors::InvalidArgument(absl::StrCat(
+          "Placeholder ", input_array, " should be specied by input_arrays."));
+    }
+  }
+
   flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
 
   details::TensorsMap tensors_map;
@@ -443,9 +490,9 @@ tensorflow::Status Export(
   details::LoadOperatorsMap(model, &operators_map, ops_by_type,
                             params.enable_select_tf_ops);
 
-  std::vector<const Array*> buffers_to_write;
-  Array empty_array;
-  buffers_to_write.push_back(&empty_array);
+  std::vector<Offset<Vector<uint8_t>>> buffers_to_write;
+  // Insert an empty buffer to the beginning of the list.
+  buffers_to_write.push_back(0);
 
   auto op_codes =
       ExportOperatorCodes(model, ops_by_type, operators_map, &builder, params);
@@ -482,6 +529,18 @@ tensorflow::Status Export(
 
   if (!custom_ops.empty()) {
     if (!params.allow_custom_ops) {
+      auto please_report_bug_message = []() {
+        return "We are continually in the process of adding support to "
+               "TensorFlow Lite for more ops. It would be helpful if you could "
+               "inform us of how this conversion went by opening a github "
+               "issue at "
+               "https://github.com/tensorflow/tensorflow/issues/new?template="
+               "40-tflite-op-request.md\n and pasting the following:\n\n";
+      };
+
+      std::vector<string> error_msgs;
+      ParseControlFlowErrors(&custom_ops, &error_msgs);
+
       // Remove ExpandDims and ReorderAxes from unimplemented list unless they
       // compose the list. Both ops are removed during graph transformations.
       // However, if an op is unimplemented earlier in the model, the graph
@@ -498,61 +557,44 @@ tensorflow::Status Export(
         custom_ops_final = custom_ops;
       }
 
-      auto please_report_bug_message = []() {
-        return "We are continually in the process of adding support to "
-               "TensorFlow Lite for more ops. It would be helpful if you could "
-               "inform us of how this conversion went by opening a github "
-               "issue at "
-               "https://github.com/tensorflow/tensorflow/issues/new?template="
-               "40-tflite-op-request.md\n and pasting the following:\n\n";
-      };
-
-      if (params.enable_select_tf_ops) {
-        return tensorflow::errors::InvalidArgument(absl::StrCat(
-            please_report_bug_message(),
-            "Some of the operators in the model are not supported by "
-            "the standard TensorFlow Lite runtime and are not recognized by "
-            "TensorFlow. If you have a custom "
-            "implementation for them you can disable this error with "
-            "--allow_custom_ops, or by setting allow_custom_ops=True "
-            "when calling tf.lite.TFLiteConverter(). Here is a list "
-            "of builtin operators you are using: ",
-            absl::StrJoin(builtin_ops, ", "),
-            ". Here is a list "
-            "of operators for which you will need custom implementations: ",
-            absl::StrJoin(custom_ops_final, ", "), "."));
-      } else {
-        return tensorflow::errors::InvalidArgument(absl::StrCat(
-            please_report_bug_message(),
-            "Some of the operators in the model are not supported by "
-            "the standard TensorFlow Lite runtime. If those are native "
-            "TensorFlow operators, you might be able to use the extended "
-            "runtime by passing --enable_select_tf_ops, or by setting "
-            "target_ops=TFLITE_BUILTINS,SELECT_TF_OPS when calling "
-            "tf.lite.TFLiteConverter(). Otherwise, if you have a "
-            "custom implementation for them you can disable this error with "
-            "--allow_custom_ops, or by setting allow_custom_ops=True "
-            "when calling tf.lite.TFLiteConverter(). Here is a list "
-            "of builtin operators you are using: ",
-            absl::StrJoin(builtin_ops, ", "),
-            ". Here is a list "
-            "of operators for which you will need custom implementations: ",
-            absl::StrJoin(custom_ops_final, ", "), "."));
+      if (!custom_ops_final.empty()) {
+        if (params.enable_select_tf_ops) {
+          error_msgs.push_back(absl::StrCat(
+              "Some of the operators in the model are not supported by "
+              "the standard TensorFlow Lite runtime and are not recognized "
+              "by "
+              "TensorFlow. If you have a custom "
+              "implementation for them you can disable this error with "
+              "--allow_custom_ops, or by setting allow_custom_ops=True "
+              "when calling tf.lite.TFLiteConverter(). Here is a list "
+              "of builtin operators you are using: ",
+              absl::StrJoin(builtin_ops, ", "),
+              ". Here is a list "
+              "of operators for which you will need custom implementations: ",
+              absl::StrJoin(custom_ops_final, ", "), "."));
+        } else {
+          error_msgs.push_back(absl::StrCat(
+              "Some of the operators in the model are not supported by "
+              "the standard TensorFlow Lite runtime. If those are native "
+              "TensorFlow operators, you might be able to use the extended "
+              "runtime by passing --enable_select_tf_ops, or by setting "
+              "target_ops=TFLITE_BUILTINS,SELECT_TF_OPS when calling "
+              "tf.lite.TFLiteConverter(). Otherwise, if you have a "
+              "custom implementation for them you can disable this error "
+              "with "
+              "--allow_custom_ops, or by setting allow_custom_ops=True "
+              "when calling tf.lite.TFLiteConverter(). Here is a list "
+              "of builtin operators you are using: ",
+              absl::StrJoin(builtin_ops, ", "),
+              ". Here is a list "
+              "of operators for which you will need custom implementations: ",
+              absl::StrJoin(custom_ops_final, ", "), "."));
+        }
       }
-    }
-
-    std::set<string> unsupported_control_flow_ops;
-    // Check if unsupported ops contains control flow ops. It's impossible
-    // to implement these ops as custom ops at the moment.
-    for (const auto& op : custom_ops) {
-      if (IsControlFlowOp(op)) {
-        unsupported_control_flow_ops.insert(op);
+      if (!error_msgs.empty()) {
+        return tensorflow::errors::InvalidArgument(absl::StrCat(
+            please_report_bug_message(), absl::StrJoin(error_msgs, " ")));
       }
-    }
-    if (!unsupported_control_flow_ops.empty()) {
-      return tensorflow::errors::InvalidArgument(absl::StrCat(
-          "TensorFlow Lite currently doesn't support control flow ops: ",
-          absl::StrJoin(unsupported_control_flow_ops, ", "), "."));
     }
   }
 
@@ -577,14 +619,32 @@ tensorflow::Status Export(
                                  /* name */ 0);
   std::vector<flatbuffers::Offset<SubGraph>> subgraphs = {subgraph};
 
+  // TODO(wangtz): offline memory planning for activation Tensors.
+  if (!params.allow_dynamic_tensors) {
+    return tensorflow::errors::Unimplemented(
+        "Unsupported flag: allow_dynamic_tensors. Offline memory planning is "
+        "not implemented yet.");
+  }
+
+  // Write the minimum required runtime version into metadata.
+  auto metadata =
+      CreateMetadata(builder, builder.CreateString("min_runtime_version"),
+                     buffers_to_write.size());
+  ExportModelVersionBuffer(model, &buffers_to_write, &builder);
+  std::vector<flatbuffers::Offset<Metadata>> metadatas = {metadata};
+
   auto buffers = ExportBuffers(model, buffers_to_write, &builder);
   auto description = builder.CreateString("TOCO Converted.");
+
   auto new_model_location =
       CreateModel(builder, TFLITE_SCHEMA_VERSION, op_codes,
-                  builder.CreateVector(subgraphs), description, buffers);
+                  builder.CreateVector(subgraphs), description, buffers,
+                  /* metadata_buffer */ 0, builder.CreateVector(metadatas));
   ::tflite::FinishModelBuffer(builder, new_model_location);
 
-  if (params.quantize_weights) {
+  if (params.quantize_weights == QuantizedBufferType::NONE) {
+    WriteModelToString(builder, output_file_contents);
+  } else {
     // Call the quantize_weights tool.
     LOG(INFO) << "Quantizing TFLite model after conversion to flatbuffer. "
                  "dump_graphviz will only output the model before this "
@@ -593,14 +653,21 @@ tensorflow::Status Export(
     flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);
     const uint8_t* buffer = builder.GetBufferPointer();
     const ::tflite::Model* input_model = ::tflite::GetModel(buffer);
-    if (::tflite::optimize::QuantizeWeights(&q_builder, input_model) !=
-        kTfLiteOk) {
+    ::tflite::optimize::BufferType quantized_type;
+    if (params.quantize_weights == QuantizedBufferType::INT8) {
+      quantized_type = ::tflite::optimize::BufferType::QUANTIZED_INT8;
+    } else if (params.quantize_weights == QuantizedBufferType::FLOAT16) {
+      quantized_type = ::tflite::optimize::BufferType::QUANTIZED_FLOAT16;
+    } else {
+      return tensorflow::errors::InvalidArgument(
+          "Quantized type not recognized");
+    }
+    if (::tflite::optimize::QuantizeWeights(&q_builder, input_model,
+                                            quantized_type) != kTfLiteOk) {
       return tensorflow::errors::InvalidArgument(
           "Quantize weights transformation failed.");
     }
     WriteModelToString(q_builder, output_file_contents);
-  } else {
-    WriteModelToString(builder, output_file_contents);
   }
 
   return tensorflow::Status();

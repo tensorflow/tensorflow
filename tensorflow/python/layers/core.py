@@ -47,7 +47,7 @@ class Dense(keras_layers.Dense, base.Layer):
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: Initializer function for the weight matrix.
       If `None` (default), weights are initialized using the default
-      initializer used by `tf.get_variable`.
+      initializer used by `tf.compat.v1.get_variable`.
     bias_initializer: Initializer function for the bias.
     kernel_regularizer: Regularizer function for the weight matrix.
     bias_regularizer: Regularizer function for the bias.
@@ -111,8 +111,7 @@ class Dense(keras_layers.Dense, base.Layer):
 
 
 @deprecation.deprecated(
-    date=None,
-    instructions='Use keras.layers.dense instead.')
+    date=None, instructions='Use keras.layers.Dense instead.')
 @tf_export(v1=['layers.dense'])
 def dense(
     inputs, units,
@@ -145,7 +144,7 @@ def dense(
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: Initializer function for the weight matrix.
       If `None` (default), weights are initialized using the default
-      initializer used by `tf.get_variable`.
+      initializer used by `tf.compat.v1.get_variable`.
     bias_initializer: Initializer function for the bias.
     kernel_regularizer: Regularizer function for the weight matrix.
     bias_regularizer: Regularizer function for the bias.
@@ -207,7 +206,7 @@ class Dropout(keras_layers.Dropout, base.Layer):
       to be the same for all timesteps, you can use
       `noise_shape=[batch_size, 1, features]`.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`.
+      `tf.compat.v1.set_random_seed`.
       for behavior.
     name: The name of the layer (string).
   """
@@ -255,7 +254,7 @@ def dropout(inputs,
       to be the same for all timesteps, you can use
       `noise_shape=[batch_size, 1, features]`.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
     training: Either a Python boolean, or a TensorFlow boolean scalar tensor
       (e.g. a placeholder). Whether to return the output in training mode
@@ -286,11 +285,11 @@ class Flatten(keras_layers.Flatten, base.Layer):
   Examples:
 
   ```
-    x = tf.placeholder(shape=(None, 4, 4), dtype='float32')
+    x = tf.compat.v1.placeholder(shape=(None, 4, 4), dtype='float32')
     y = Flatten()(x)
     # now `y` has shape `(None, 16)`
 
-    x = tf.placeholder(shape=(None, 3, None), dtype='float32')
+    x = tf.compat.v1.placeholder(shape=(None, 3, None), dtype='float32')
     y = Flatten()(x)
     # now `y` has shape `(None, None)`
   ```
@@ -300,7 +299,7 @@ class Flatten(keras_layers.Flatten, base.Layer):
 
 @deprecation.deprecated(
     date=None,
-    instructions='Use keras.layers.flatten instead.')
+    instructions='Use keras.layers.Flatten instead.')
 @tf_export(v1=['layers.flatten'])
 def flatten(inputs, name=None, data_format='channels_last'):
   """Flattens an input tensor while preserving the batch axis (axis 0).
@@ -320,11 +319,11 @@ def flatten(inputs, name=None, data_format='channels_last'):
   Examples:
 
   ```
-    x = tf.placeholder(shape=(None, 4, 4), dtype='float32')
+    x = tf.compat.v1.placeholder(shape=(None, 4, 4), dtype='float32')
     y = flatten(x)
     # now `y` has shape `(None, 16)`
 
-    x = tf.placeholder(shape=(None, 3, None), dtype='float32')
+    x = tf.compat.v1.placeholder(shape=(None, 3, None), dtype='float32')
     y = flatten(x)
     # now `y` has shape `(None, None)`
   ```

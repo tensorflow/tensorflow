@@ -19,7 +19,7 @@ namespace tensorflow {
 REGISTER2(BinaryOp, CPU, "FloorMod", functor::safe_floor_mod, int32, int64);
 REGISTER2(BinaryOp, CPU, "FloorMod", functor::floor_fmod, float, double);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.

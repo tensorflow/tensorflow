@@ -80,6 +80,81 @@ table QuantizationParameters {
   quantized_dimension:int;
 }
 
+// Sparse tensors.
+// To encode a conceptual n-dimensional dense tensor with dims (d0, ..., dn-1),
+// potentially with a k-dimensional block (0 <= k <= n) with dims
+// (dn, ..., dn+k-1), the format needs to specify:
+//   1. In what order to traverse these dimensions. For example, to store a 2-D
+//      matrix in row major order, the traversal order would be (d0, d1),
+//      whereas to store it in column major order, the traversal order would be
+//      (d1, d0). If the 2-D matrix has a 2-D inner block, the traversal order
+//      could be (d0, d1, d2, d3).
+//   2. How each block dimension in (dn, ..., dn+k-1) maps to the original
+//      tensor dimension in (d0, ..., dn-1).
+//   3. In the traversal order defined above, the format (dense vs. sparse) and
+//      index metadata for each dimension. For a dense dimension, this is just
+//      the size of that dimension. For a sparse dimension, it's the same as
+//      the compressed index defined in the Compressed Sparse Row (CSR) format.
+//      (http://scipy-lectures.org/advanced/scipy_sparse/csr_matrix.html)
+
+// The storage type for a dimension. Currently we support:
+//   1. DENSE: each coordinate in this dimension is stored implicitly.
+//   2. SPARSE_CSR: only the coordinates with non-zero elements are stored. The
+//      compression technique is the same what CSR uses.
+// More types like a sparse dimension with a different compression technique
+// could be added to the list in the future.
+enum DimensionType : byte {
+  DENSE = 0,
+  SPARSE_CSR = 1,
+}
+
+table DimensionMetadata {
+  // Whether a dimension is dense or sparse.
+  format:DimensionType;
+  // Index metadata used for a dimension.
+  //   - If format is DimensionType.DENSE then we use the dense_size field to
+  //     store the size of that dimension. Each index in that dimension is
+  //     stored implicitly.
+  //   - If format is DimensionType.SPARSE_CSR then we use array_segments and
+  //     array_indices to encode that dimension. array_segments represents how
+  //     to segment the indices array, each segment corresponds to one element
+  //     in the previous dimension. array_indices represents the index of the
+  //     non-zero elements within this dimension (as those in the CSR matrix
+  //     format, where the first array is row pointers and the second array is
+  //     column indices).
+  dense_size:int;
+  array_segments:[int];
+  array_indices:[int];
+}
+
+// Parameters to encode a sparse TfLite tensor.
+table SparsityParameters {
+  // The traversal order of the dimensions defined in the `shape` field of the
+  // conceptual dense tensor. For a n-dimensional tensors with dims (d0, d1,
+  // ..., dn-1),
+  //   - if not block sparse, the traversal_order is just a permutation of (d0,
+  //     ..., dn-1). For example, a 2-D matrix stored in row-major order would
+  //     have traversal_order = (d0, d1).
+  //   - if block sparse with a k-dimensional block (0 <= k <= n), the
+  //     traversal_order has n + k elements. The first n elements are still a
+  //     permutation of (d0, ..., dn-1). The lask k elements are a permutation
+  //     of (dn, ..., dn+k-1), defining how to traverse a block internally. For
+  //     example, a 2-D matrix with 2-D blocks, both stored in row-major order
+  //     would have traversal_order = (d0, d1, d2, d3).
+  traversal_order:[int];
+  // For an n-dimensional tensor with a k-dimensional block (0 <= k <= n),
+  // stores how a block dimension in (dn, ..., dn+k-1) maps to the original
+  // tensor dimension in (d0, ..., dn).
+  // It's stored in the order of (dn, ..., dn+k-1).
+  // If not block-sparse, this field is NULL.
+  block_map:[int];
+  // In the traversal order defined above, the metadata needed for
+  // each dimension to locate the non-zero values in the original dense tensor.
+  // The size of the dim_metadata array = the size of the traversal_order array
+  // = n + k.
+  dim_metadata:[DimensionMetadata];
+}
+
 table Tensor {
   // The tensor shape. The meaning of each entry is operator-specific but
   // builtin ops use: [batch size, height, width, number of channels] (That's
@@ -99,19 +174,24 @@ table Tensor {
   quantization:QuantizationParameters;  // Optional.
 
   is_variable:bool = false;
+
+  // Parameters to encode a sparse tensor. See the example in
+  // tensorflow/lite/testdata/sparse_tensor.json.
+  sparsity:SparsityParameters;  // Optional.
 }
 
 // A list of builtin operators. Builtin operators are slightly faster than custom
 // ones, but not by much. Moreover, while custom operators accept an opaque
 // object containing configuration parameters, builtins have a predetermined
 // set of acceptable options.
+
 enum BuiltinOperator : byte {
   ADD = 0,
   AVERAGE_POOL_2D = 1,
   CONCATENATION = 2,
   CONV_2D = 3,
   DEPTHWISE_CONV_2D = 4,
-  // DEPTH_TO_SPACE = 5,
+  DEPTH_TO_SPACE = 5,
   DEQUANTIZE = 6,
   EMBEDDING_LOOKUP = 7,
   FLOOR = 8,
@@ -225,7 +305,21 @@ enum BuiltinOperator : byte {
   WHERE = 109,
   RANK = 110,
   ELU = 111,
+  REVERSE_SEQUENCE = 112,
+  MATRIX_DIAG = 113,
+  QUANTIZE = 114,
+  MATRIX_SET_DIAG = 115,
+  ROUND = 116,
+  HARD_SWISH = 117,
+  IF = 118,
+  WHILE = 119,
+  NON_MAX_SUPPRESSION_V4 = 120,
+  NON_MAX_SUPPRESSION_V5 = 121,
+  SCATTER_ND = 122,
+  SELECT_V2 = 123,
+  DENSIFY = 124
 }
+
 
 // Options for the builtin operators.
 union BuiltinOptions {
@@ -315,6 +409,19 @@ union BuiltinOptions {
   CosOptions,
   WhereOptions,
   RankOptions,
+  ReverseSequenceOptions,
+  MatrixDiagOptions,
+  QuantizeOptions,
+  MatrixSetDiagOptions,
+  HardSwishOptions,
+  IfOptions,
+  WhileOptions,
+  DepthToSpaceOptions,
+  NonMaxSuppressionV4Options,
+  NonMaxSuppressionV5Options,
+  ScatterNdOptions,
+  SelectV2Options,
+  DensifyOptions
 }
 
 enum Padding : byte { SAME, VALID }
@@ -351,6 +458,9 @@ table DepthwiseConv2DOptions {
   padding:Padding;
   stride_w:int;
   stride_h:int;
+  // `depth_multiplier` is redundant. It's used by CPU kernels in
+  // TensorFlow 2.0 or below, but ignored in versions above.
+  // See comments in lite/c/builtin_op_data.h for more details.
   depth_multiplier:int;
   fused_activation_function:ActivationFunctionType;
   // Parameters for DepthwiseConv version 2 or above.
@@ -409,6 +519,11 @@ table FullyConnectedOptions {
 
   // Parameters for FullyConnected version 2 or above.
   weights_format:FullyConnectedOptionsWeightsFormat = DEFAULT;
+
+  // Parameters for FullyConnected version 5 or above.
+  // If set to true, then the number of dimension is preserved. Furthermore,
+  // all but the last dimension of the input and output shapes will be equal.
+  keep_num_dims: bool;
 }
 
 table SoftmaxOptions {
@@ -524,6 +639,10 @@ table SkipGramOptions {
 }
 
 table SpaceToDepthOptions {
+  block_size: int;
+}
+
+table DepthToSpaceOptions {
   block_size: int;
 }
 
@@ -687,6 +806,9 @@ table AbsOptions {
 }
 
 
+table HardSwishOptions {
+}
+
 table LogicalAndOptions {
 }
 
@@ -750,6 +872,45 @@ table GatherNdOptions {
 table WhereOptions {
 }
 
+table ReverseSequenceOptions {
+  seq_dim:int;
+  batch_dim:int = 0;
+}
+
+table MatrixDiagOptions {
+}
+
+table QuantizeOptions {
+}
+
+table MatrixSetDiagOptions {
+}
+
+table IfOptions {
+  then_subgraph_index:int;
+  else_subgraph_index:int;
+}
+
+table WhileOptions {
+  cond_subgraph_index:int;
+  body_subgraph_index:int;
+}
+
+table NonMaxSuppressionV4Options {
+}
+
+table NonMaxSuppressionV5Options {
+}
+
+table ScatterNdOptions {
+}
+
+table SelectV2Options {
+}
+
+table DensifyOptions {
+}
+
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.
 table OperatorCode {
@@ -791,6 +952,15 @@ table Operator {
   // If the list is empty, no variable is mutated in this operator.
   // The list either has the same length as `inputs`, or is empty.
   mutating_variable_inputs:[bool];
+
+  // A list of indices to the subgraph's "tensors" that are internal to an Op.
+  // Internal tensors are those that do not flow in or out of the operation,
+  // but instead are part of internal computation. As such, the operation's
+  // implementation may manage its memory more efficiently. They are needed
+  // however (i.e. not just an implementation detail) since they are part of the
+  // computation, which may require relevant metadata such as quantization
+  // parameters.
+  intermediates:[int];
 }
 
 // The root type, defining a subgraph, which typically represents an entire
@@ -821,6 +991,13 @@ table Buffer {
   data:[ubyte] (force_align: 16);
 }
 
+table Metadata {
+  // A human readable string to uniquely identify a Metadata.
+  name:string;
+  // An index to the buffers table.
+  buffer:uint;
+}
+
 table Model {
   // Version of the schema.
   version:uint;
@@ -843,8 +1020,12 @@ table Model {
   // their buffer.
   buffers:[Buffer];
 
-  // Metadata about the model.  Indirects into the existings buffers list.
+  // Metadata about the model. Indirects into the existings buffers list.
+  // Deprecated, prefer to use metadata field.
   metadata_buffer:[int];
+
+  // Metadata about the model.
+  metadata:[Metadata];
 }
 
 root_type Model;

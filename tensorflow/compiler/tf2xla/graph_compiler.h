@@ -73,10 +73,6 @@ class GraphCompiler {
   // across multiple nodes visit.
   void PartiallySetupParams(OpKernelContext::Params* params);
 
-  // Tests if a node is a functional node. A functional node represents a
-  // defined computation and should be compiled using `compiler_`.
-  bool IsFunctional(Node* n);
-
   // Compiles a functional node and writes result to OpkernelContext. A
   // functional node represents a defined computation and should be compiled
   // using `compiler_`.

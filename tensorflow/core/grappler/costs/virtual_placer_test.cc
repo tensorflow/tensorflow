@@ -33,7 +33,7 @@ TEST(VirtualPlacerTest, LocalDevices) {
   gpu_device.set_type("GPU");
   devices["/job:localhost/replica:0/task:0/device:GPU:0"] = gpu_device;
   VirtualCluster cluster(devices);
-  VirtualPlacer placer(&cluster);
+  VirtualPlacer placer(devices);
 
   NodeDef node;
   node.set_op("Conv2D");
@@ -63,7 +63,7 @@ TEST(VirtualPlacerTest, ShortNames) {
   gpu_device.set_type("GPU");
   devices["/GPU:0"] = gpu_device;
   VirtualCluster cluster(devices);
-  VirtualPlacer placer(&cluster);
+  VirtualPlacer placer(devices);
 
   NodeDef node;
   node.set_op("Conv2D");
@@ -93,7 +93,7 @@ TEST(VirtualPlacerTest, PlacementOnNonDefaultDevice) {
   tpu_device.set_type("TPU");
   devices["/job:localhost/replica:0/task:0/device:TPU:0"] = tpu_device;
   VirtualCluster cluster(devices);
-  VirtualPlacer placer(&cluster);
+  VirtualPlacer placer(devices);
 
   NodeDef node;
   node.set_op("Conv2D");
@@ -123,7 +123,7 @@ TEST(VirtualPlacerTest, EmptyJobName) {
     devices[strings::StrCat("/job:", job_name,
                             "/replica:0/task:0/device:GPU:0")] = gpu_device;
     VirtualCluster cluster(devices);
-    VirtualPlacer placer(&cluster);
+    VirtualPlacer placer(devices);
 
     NodeDef node;
     node.set_op("Conv2D");
@@ -145,7 +145,7 @@ TEST(VirtualPlacerTest, EmptyJobName) {
   devices["/job:ps/replica:0/task:0/cpu:0"] = cpu_device;
   devices["/job:worker/replica:0/task:0/cpu:0"] = cpu_device;
   VirtualCluster cluster(devices);
-  VirtualPlacer placer(&cluster);
+  VirtualPlacer placer(devices);
 
   NodeDef node;
   node.set_op("Conv2D");
@@ -157,7 +157,7 @@ TEST(VirtualPlacerTest, EmptyJobName) {
 string GetDefaultDeviceName(
     const std::unordered_map<string, DeviceProperties>& devices) {
   VirtualCluster cluster(devices);
-  VirtualPlacer placer(&cluster);
+  VirtualPlacer placer(devices);
   NodeDef node;
   node.set_op("Conv2D");
   // Device is not set to the node, so get_canonical_device_name() will return
@@ -204,7 +204,7 @@ TEST(VirtualPlacerTest, MultiReplica) {
   }
 
   std::unique_ptr<VirtualCluster> cluster(new VirtualCluster(devices));
-  std::unique_ptr<VirtualPlacer> placer(new VirtualPlacer(cluster.get()));
+  std::unique_ptr<VirtualPlacer> placer(new VirtualPlacer(devices));
 
   auto get_device_name = [&placer](const string& device) -> string {
     NodeDef node;
@@ -235,7 +235,7 @@ TEST(VirtualPlacerTest, MultiReplica) {
         cpu_device;
   }
   cluster.reset(new VirtualCluster(devices));
-  placer.reset(new VirtualPlacer(cluster.get()));
+  placer.reset(new VirtualPlacer(cluster->GetDevices()));
   EXPECT_EQ("/job:worker/replica:0/task:0/cpu:0",
             get_device_name("/job:worker/replica:0/cpu:0"));
   EXPECT_EQ("/job:worker/replica:7/task:0/gpu:3",
@@ -255,7 +255,7 @@ TEST(VirtualPlacerTest, FallBackUnknown) {
   // cluster.
   std::unordered_map<string, DeviceProperties> devices;
   VirtualCluster cluster(devices);
-  VirtualPlacer placer(&cluster);
+  VirtualPlacer placer(devices);
 
   NodeDef node;
   node.set_op("Conv2D");
@@ -271,7 +271,7 @@ TEST(VirtualPlacerTest, FallBackCPU) {
   cpu_device.set_type("CPU");
   devices["/job:my_job/replica:0/task:0/cpu:0"] = cpu_device;
   VirtualCluster cluster(devices);
-  VirtualPlacer placer(&cluster);
+  VirtualPlacer placer(devices);
 
   NodeDef node;
   node.set_op("Conv2D");
@@ -291,7 +291,7 @@ TEST(VirtualPlacerTest, RemoteDevices) {
   gpu_device.set_type("GPU");
   devices["/job:my_job/replica:0/task:0/device:GPU:0"] = gpu_device;
   VirtualCluster cluster(devices);
-  VirtualPlacer placer(&cluster);
+  VirtualPlacer placer(devices);
 
   NodeDef node;
   node.set_op("Conv2D");

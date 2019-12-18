@@ -1,0 +1,38 @@
+op {
+  graph_op_name: "StatefulUniformFullInt"
+  visibility: HIDDEN
+  in_arg {
+    name: "resource"
+    description: <<END
+The handle of the resource variable that stores the state of the RNG.
+END
+  }
+  in_arg {
+    name: "algorithm"
+    description: <<END
+The RNG algorithm.
+END
+  }
+  in_arg {
+    name: "shape"
+    description: <<END
+The shape of the output tensor.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Random values with specified shape.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of the output.
+END
+  }
+  summary: "Outputs random integers from a uniform distribution."
+  description: <<END
+The generated values are uniform integers covering the whole range of `dtype`.
+END
+}

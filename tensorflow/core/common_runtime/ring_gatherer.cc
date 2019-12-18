@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/ring_gatherer.h"
 
 #include <stdlib.h>
+
 #include <atomic>
 #include <functional>
 #include <utility>
@@ -37,7 +38,9 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 Status RingGatherer::InitializeCollectiveParams(CollectiveParams* col_params) {
@@ -96,22 +99,25 @@ void RingGatherer::Run(StatusCallback done) {
   // Start by copying input to the rank-specific offset of output.
   // We are running in a blockable thread and the callback can't block so
   // just wait here on the copy.
-  Notification note;
-  Status status;
-  Tensor alias_chunk(ca_->ChunkAlias(col_params_->subdiv_rank[0]));
-  CollectiveRemoteAccessLocal::MemCpyAsync(
-      col_ctx_->op_ctx->input_device_context(0),
-      col_ctx_->op_ctx->op_device_context(), col_ctx_->device, col_ctx_->device,
-      col_ctx_->op_ctx->input_alloc_attr(0),
-      col_ctx_->op_ctx->output_alloc_attr(0), col_ctx_->input, &alias_chunk,
-      0 /*dev_to_dev_stream_index*/, [&note, &status](const Status& s) {
-        status.Update(s);
-        note.Notify();
-      });
-  note.WaitForNotification();
-  if (!status.ok()) {
-    done_(status);
-    return;
+  {
+    profiler::TraceMe activity("MemCpyAsync", profiler::TraceMeLevel::kInfo);
+    Notification note;
+    Status status;
+    Tensor alias_chunk(ca_->ChunkAlias(col_params_->subdiv_rank[0]));
+    CollectiveRemoteAccessLocal::MemCpyAsync(
+        col_ctx_->op_ctx->op_device_context(),
+        col_ctx_->op_ctx->op_device_context(), col_ctx_->device,
+        col_ctx_->device, col_ctx_->op_ctx->input_alloc_attr(0),
+        col_ctx_->op_ctx->output_alloc_attr(0), col_ctx_->input, &alias_chunk,
+        0 /*dev_to_dev_stream_index*/, [&note, &status](const Status& s) {
+          status.Update(s);
+          note.Notify();
+        });
+    note.WaitForNotification();
+    if (!status.ok()) {
+      done_(status);
+      return;
+    }
   }
   Finish(RunAsyncParts());
 }
@@ -139,6 +145,8 @@ bool RingGatherer::RunAsyncParts() {
     // complete before proceeding.  The previous InitRingField calls allocated
     // temp memory buffers that are not guaranteed to be valid (e.g. for RDMA
     // write) unless we do.
+    profiler::TraceMe activity("WaitForQueuedEvents",
+                               profiler::TraceMeLevel::kInfo);
     Notification note;
     Status s = gpu_info->default_context->ThenExecute(
         col_ctx_->device, gpu_info->stream, [&note]() { note.Notify(); });
@@ -158,97 +166,101 @@ bool RingGatherer::RunAsyncParts() {
   std::atomic<bool> aborted(false);
 
   // Loop until all RingFields have advanced to completion.
-  while (field_done_count < rfv_.size()) {
-    VLOG(4) << FieldState();
-    // Wait for a RingField to appear in the ready_queue.
-    RingField* rf = ready_queue.Dequeue();
-    // Advance the RingField to its next action and execute, repeating
-    // until either an async action has been started or the RingField
-    // is done.
-    bool dispatched = false;  // true if async action was initiated
-    do {
-      if (aborted) {
-        // Requeue this RingField to be counted off below.
-        ready_queue.Enqueue(rf);
-        break;
-      }
-      switch (rf->action) {
-        case RF_INIT:
-          if (rf->do_recv) {
-            rf->action = RF_RECV;
-            auto requeue = [this, rf, &ready_queue, &aborted](Status s) {
-              if (!s.ok()) {
-                aborted = true;
-                StartAbort(s);
-              }
-              ready_queue.Enqueue(rf);
-            };
-            DispatchRecv(rf, requeue);
-            dispatched = true;
-            ++recv_pending_count;
-          } else {
-            rf->action = RF_SEND_READY;
-          }
-          break;
-        case RF_RECV:
-          DCHECK_GT(recv_pending_count, 0);
-          --recv_pending_count;
-          rf->action = RF_SEND_READY;
-          break;
-        case RF_REDUCE:
-          // Never used for Gather, so just fall through.
-          TF_FALLTHROUGH_INTENDED;
-        case RF_FINALIZE:
-          // Never used for Gather, so just fall through.
-          TF_FALLTHROUGH_INTENDED;
-        case RF_SEND_READY:
-          if (rf->do_send) {
-            rf->action = RF_SEND;
-            auto send_complete = [this, rf, &ready_queue, &aborted](Status s) {
-              if (!s.ok()) {
-                aborted = true;
-                StartAbort(s);
-              }
-              ready_queue.Enqueue(rf);
-            };
-            DispatchSend(rf, send_complete);
-            dispatched = true;
-            ++send_pending_count;
-          } else {
-            rf->action = RF_DONE;
-          }
-          break;
-        case RF_SEND:
-          DCHECK_GT(send_pending_count, 0);
-          --send_pending_count;
-          rf->action = RF_DONE;
-          break;
-        case RF_DONE:
-          break;
-      }
-      if (rf->action == RF_DONE) {
-        // There's only one pass.
-        ++field_done_count;
-        break;  // from do while(!dispatched)
-      }
-    } while (!dispatched);
-    if (aborted) break;
-  }  // while (field_done_count < number of fields)
-
-  if (aborted) {
-    // All of the pending data actions should be aborted; field the
-    // callbacks and clear the queue before quitting.
-    while ((send_pending_count > 0) || (recv_pending_count > 0)) {
+  {
+    profiler::TraceMe activity("Loop", profiler::TraceMeLevel::kInfo);
+    while (field_done_count < rfv_.size()) {
+      VLOG(4) << FieldState();
+      // Wait for a RingField to appear in the ready_queue.
       RingField* rf = ready_queue.Dequeue();
-      switch (rf->action) {
-        case RF_RECV:
-          --recv_pending_count;
+      // Advance the RingField to its next action and execute, repeating
+      // until either an async action has been started or the RingField
+      // is done.
+      bool dispatched = false;  // true if async action was initiated
+      do {
+        if (aborted) {
+          // Requeue this RingField to be counted off below.
+          ready_queue.Enqueue(rf);
           break;
-        case RF_SEND:
-          --send_pending_count;
-          break;
-        default: {
-        }  // Ignore any other actions
+        }
+        switch (rf->action) {
+          case RF_INIT:
+            if (rf->do_recv) {
+              rf->action = RF_RECV;
+              auto requeue = [this, rf, &ready_queue, &aborted](Status s) {
+                if (!s.ok()) {
+                  aborted = true;
+                  StartAbort(s);
+                }
+                ready_queue.Enqueue(rf);
+              };
+              DispatchRecv(rf, requeue);
+              dispatched = true;
+              ++recv_pending_count;
+            } else {
+              rf->action = RF_SEND_READY;
+            }
+            break;
+          case RF_RECV:
+            DCHECK_GT(recv_pending_count, 0);
+            --recv_pending_count;
+            rf->action = RF_SEND_READY;
+            break;
+          case RF_REDUCE:
+            // Never used for Gather, so just fall through.
+            TF_FALLTHROUGH_INTENDED;
+          case RF_FINALIZE:
+            // Never used for Gather, so just fall through.
+            TF_FALLTHROUGH_INTENDED;
+          case RF_SEND_READY:
+            if (rf->do_send) {
+              rf->action = RF_SEND;
+              auto send_complete = [this, rf, &ready_queue,
+                                    &aborted](Status s) {
+                if (!s.ok()) {
+                  aborted = true;
+                  StartAbort(s);
+                }
+                ready_queue.Enqueue(rf);
+              };
+              DispatchSend(rf, send_complete);
+              dispatched = true;
+              ++send_pending_count;
+            } else {
+              rf->action = RF_DONE;
+            }
+            break;
+          case RF_SEND:
+            DCHECK_GT(send_pending_count, 0);
+            --send_pending_count;
+            rf->action = RF_DONE;
+            break;
+          case RF_DONE:
+            break;
+        }
+        if (rf->action == RF_DONE) {
+          // There's only one pass.
+          ++field_done_count;
+          break;  // from do while(!dispatched)
+        }
+      } while (!dispatched);
+      if (aborted) break;
+    }  // while (field_done_count < number of fields)
+
+    if (aborted) {
+      // All of the pending data actions should be aborted; field the
+      // callbacks and clear the queue before quitting.
+      while ((send_pending_count > 0) || (recv_pending_count > 0)) {
+        RingField* rf = ready_queue.Dequeue();
+        switch (rf->action) {
+          case RF_RECV:
+            --recv_pending_count;
+            break;
+          case RF_SEND:
+            --send_pending_count;
+            break;
+          default: {
+          }  // Ignore any other actions
+        }
       }
     }
   }

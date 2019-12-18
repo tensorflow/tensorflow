@@ -26,9 +26,21 @@ namespace tensorflow {
 
 namespace internal {
 
-// Device-specific naive implementation for tile.
-template <typename Device, typename T>
-void TileSimple(const Device& d, Tensor* out, const Tensor& in);
+// Device-specific naive implementation for Tile.
+
+template <typename T>
+void TileSimple(const Eigen::ThreadPoolDevice& d, Tensor* out,
+                const Tensor& in);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+template <typename T>
+void TileSimple(const Eigen::GpuDevice& d, Tensor* out, const Tensor& in);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+void TileSimple(const Eigen::SyclDevice& d, Tensor* out, const Tensor& in);
+#endif
 
 template <typename Device, typename T, typename Tmultiples, int NDIM>
 void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
@@ -99,7 +111,7 @@ struct Tile {
                                                            broadcast_array);
         break;
       default:
-        internal::TileSimple<Device, T>(d, out, in);
+        internal::TileSimple<T>(d, out, in);
         break;
     }
   }

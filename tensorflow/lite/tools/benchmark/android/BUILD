@@ -1,13 +1,15 @@
 # Description:
 #   BenchmarkModel Android harness for TensorFlow Lite benchmarks.
-package(default_visibility = ["//visibility:private"])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
 
 load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
 load("@build_bazel_rules_android//android:rules.bzl", "android_binary")
+
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 # See README.md for details about building and executing this benchmark.
 android_binary(

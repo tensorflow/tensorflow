@@ -20,8 +20,10 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -74,19 +76,55 @@ TEST_F(HloDceTest, InstructionsWithSideEffect) {
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  builder.AddInstruction(
+  auto send = builder.AddInstruction(
       HloInstruction::CreateSend(constant, token, /*channel_id=*/0));
+  builder.AddInstruction(HloInstruction::CreateSendDone(send));
   builder.AddInstruction(HloInstruction::CreateTuple({}));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_EQ(4, computation->instruction_count());
+  EXPECT_EQ(5, computation->instruction_count());
 
   HloDCE dce;
   EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
 
-  EXPECT_EQ(4, computation->instruction_count());
+  EXPECT_EQ(5, computation->instruction_count());
+}
+
+TEST_F(HloDceTest, CustomCallInstructionsWithSideEffect) {
+  // Verify that custom call instruction with side-effect is not removed.
+  auto builder = HloComputation::Builder(TestName());
+  auto instr = Cast<HloCustomCallInstruction>(builder.AddInstruction(
+      HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                       /*operands=*/{},
+                                       /*custom_call_target=*/"foo")));
+  instr->set_custom_call_has_side_effect(true);
+  builder.AddInstruction(HloInstruction::CreateTuple({}));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(HloDceTest, CustomCallInstructionsWithoutSideEffect) {
+  // Verify that custom call instruction without side-effect is removed.
+  auto builder = HloComputation::Builder(TestName());
+  builder.AddInstruction(
+      HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                       /*operands=*/{},
+                                       /*custom_call_target=*/"foo"));
+  builder.AddInstruction(HloInstruction::CreateTuple({}));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
+  EXPECT_TRUE(result);
 }
 
 TEST_F(HloDceTest, DeadParameters) {
@@ -213,7 +251,7 @@ TEST_F(HloDceTest, DeadInstructionWithCalledComputation) {
 // Tests that a while instruction with an infeed (effectul instruction) in its
 // body is not removed, even its user count is 0.
 TEST_F(HloDceTest, CalledComputationWithSideEffect) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   Shape shape = ShapeUtil::MakeShape(F32, {});
 
   // Condition computation of a while instruction.
@@ -223,8 +261,9 @@ TEST_F(HloDceTest, CalledComputationWithSideEffect) {
         HloInstruction::CreateParameter(0, shape, "cond_param"));
     auto constant = cond_builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-    cond_builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, param, constant));
+    cond_builder.AddInstruction(
+        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param,
+                                      constant, ComparisonDirection::kLt));
   }
   auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -236,8 +275,10 @@ TEST_F(HloDceTest, CalledComputationWithSideEffect) {
     auto token = body_builder.AddInstruction(HloInstruction::CreateToken());
     auto infeed = body_builder.AddInstruction(
         HloInstruction::CreateInfeed(shape, token, ""));
-    body_builder.AddInstruction(
-        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param, infeed));
+    auto infeed_data = body_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(shape, infeed, 0));
+    body_builder.AddInstruction(HloInstruction::CreateBinary(
+        shape, HloOpcode::kAdd, param, infeed_data));
   }
   auto body_computation = module->AddEmbeddedComputation(body_builder.Build());
 
@@ -268,7 +309,7 @@ TEST_F(HloDceTest, CalledComputationWithSideEffect) {
 
 // Tests that a nested call instruction with a side effect is not removed.
 TEST_F(HloDceTest, CalledComputationWithNestedSideEffect) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   Shape shape = ShapeUtil::MakeShape(F32, {});
 
   // Nested called computation with a side effect.
@@ -290,8 +331,8 @@ TEST_F(HloDceTest, CalledComputationWithNestedSideEffect) {
   {
     auto param = callee_builder.AddInstruction(
         HloInstruction::CreateParameter(0, shape, "param"));
-    callee_builder.AddInstruction(
-        HloInstruction::CreateCall(shape, {param}, nested_called_computation));
+    callee_builder.AddInstruction(HloInstruction::CreateCall(
+        ShapeUtil::MakeTokenShape(), {param}, nested_called_computation));
   }
   auto called_computation =
       module->AddEmbeddedComputation(callee_builder.Build());
@@ -300,22 +341,20 @@ TEST_F(HloDceTest, CalledComputationWithNestedSideEffect) {
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "param"));
-  auto live_call = builder.AddInstruction(
-      HloInstruction::CreateCall(shape, {param}, called_computation));
-  builder.AddInstruction(
-      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, param));
+  auto live_call = builder.AddInstruction(HloInstruction::CreateCall(
+      ShapeUtil::MakeTokenShape(), {param}, called_computation));
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_EQ(3, computation->instruction_count());
-  EXPECT_EQ(2, param->user_count());
+  EXPECT_EQ(2, computation->instruction_count());
+  EXPECT_EQ(1, param->user_count());
   EXPECT_EQ(0, live_call->user_count());
   EXPECT_TRUE(HasInstruction(*computation, live_call));
 
   HloDCE dce;
   EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
 
-  EXPECT_EQ(3, computation->instruction_count());
-  EXPECT_EQ(2, param->user_count());
+  EXPECT_EQ(2, computation->instruction_count());
+  EXPECT_EQ(1, param->user_count());
   EXPECT_EQ(0, live_call->user_count());
   EXPECT_TRUE(HasInstruction(*computation, live_call));
 }
@@ -362,7 +401,7 @@ TEST_F(HloDceTest, RemoveDeadSubcomputation) {
 }
 
 TEST_F(HloDceTest, KeepUsedSubcomputation) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
 
   HloComputation::Builder subcomp_builder("reduction_subcomp");
@@ -380,7 +419,7 @@ TEST_F(HloDceTest, KeepUsedSubcomputation) {
 
   // Create a dead reduce instruction.
   builder.AddInstruction(HloInstruction::CreateReduce(
-      ShapeUtil::MakeShape(F32, {1}),
+      ShapeUtil::MakeShape(F32, {}),
       builder.AddInstruction(HloInstruction::CreateParameter(
           /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {100}), "param0")),
       builder.AddInstruction(
@@ -390,7 +429,7 @@ TEST_F(HloDceTest, KeepUsedSubcomputation) {
   // Add another instruction as the root of the computation that also uses
   // reduce_subcomp.
   builder.AddInstruction(HloInstruction::CreateReduce(
-      ShapeUtil::MakeShape(F32, {1}),
+      ShapeUtil::MakeShape(F32, {}),
       builder.AddInstruction(HloInstruction::CreateParameter(
           /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {100}), "param1")),
       builder.AddInstruction(

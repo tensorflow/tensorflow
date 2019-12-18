@@ -173,7 +173,7 @@ class MatrixBandPartTest(xla_test.XLATestCase, parameterized.TestCase):
     ]:
       pass
     for dtype in self.float_types:
-      with self.cached_session():
+      with self.session():
         mat = np.ones(batch_shape + [rows, cols]).astype(dtype)
         batch_mat = np.tile(mat, batch_shape + [1, 1])
         for lower in -1, 0, 1, rows - 1:

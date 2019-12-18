@@ -63,27 +63,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import weakref
-
+import collections
 import enum
 
-from tensorflow.python.autograph.core import config
-from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import cfg
-from tensorflow.python.autograph.pyct import compiler
-from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.autograph.pyct.static_analysis import activity
-from tensorflow.python.autograph.pyct.static_analysis import live_values
 from tensorflow.python.autograph.pyct.static_analysis import liveness
 from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
-from tensorflow.python.autograph.pyct.static_analysis import type_info
-from tensorflow.python.eager import function
 from tensorflow.python.util.tf_export import tf_export
 
 # TODO(mdan): These contexts can be refactored into first class objects.
@@ -93,22 +85,22 @@ from tensorflow.python.util.tf_export import tf_export
 # TODO(mdan): Add a test specific to this converter.
 
 
-@tf_export('autograph.experimental.Verbosity')
-class Verbosity(enum.IntEnum):
-  """Represents conversion verbosity levels.
-
-  Attributes:
-    BRIEF: No logging, minimal error messages.
-    VERBOSE: Detailed logging of generated code, detailed error messages.
-  """
-
-  BRIEF = 0
-  VERBOSE = 1
-
-
 @tf_export('autograph.experimental.Feature')
 class Feature(enum.Enum):
-  """Represents conversion options that can be toggled on or off.
+  """This enumeration represents optional conversion options.
+
+  These conversion options are experimental. They are subject to change without
+  notice and offer no guarantees.
+
+  _Example Usage_
+
+  ```python
+  optionals= tf.autograph.experimental.Feature.EQUALITY_OPERATORS
+  @tf.function(experimental_autograph_options=optionals)
+  def f(i):
+    if i == 0:  # EQUALITY_OPERATORS allows the use of == here.
+      tf.print('i is zero')
+  ```
 
   Attributes:
     ALL: Enable all features.
@@ -116,11 +108,10 @@ class Feature(enum.Enum):
     ASSERT_STATEMENTS: Convert Tensor-dependent assert statements to tf.Assert.
     BUILTIN_FUNCTIONS: Convert builtin functions applied to Tensors to
       their TF counterparts.
-    ERROR_REWRITING: Rewrite errors that occur in the generated code to
-      indicate the source code to which the failing code corresponds.
+    EQUALITY_OPERATORS: Whether to convert the comparison operators, like
+      equality. This is soon to be deprecated as support is being added to the
+      Tensor class.
     LISTS: Convert list idioms, like initializers, slices, append, etc.
-    LOGICAL_EXPRESSIONS: Convert data-dependent logical expressions applied to
-      Tensors to their TF counterparts.
     NAME_SCOPES: Insert name scopes that name ops according to context, like the
       function they were defined in.
   """
@@ -130,9 +121,8 @@ class Feature(enum.Enum):
   AUTO_CONTROL_DEPS = 'AUTO_CONTROL_DEPS'
   ASSERT_STATEMENTS = 'ASSERT_STATEMENTS'
   BUILTIN_FUNCTIONS = 'BUILTIN_FUNCTIONS'
-  ERROR_REWRITING = 'ERROR_REWRITING'
+  EQUALITY_OPERATORS = 'EQUALITY_OPERATORS'
   LISTS = 'LISTS'
-  LOGICAL_EXPRESSIONS = 'LOGICAL_EXPRESSIONS'
   NAME_SCOPES = 'NAME_SCOPES'
 
   @classmethod
@@ -148,20 +138,18 @@ class Feature(enum.Enum):
     return tuple(set(cls.all()) - set(exclude) - {cls.ALL})
 
 
+STANDARD_OPTIONS = None  # Forward definition.
+
+
 class ConversionOptions(object):
   """Immutable container for global conversion flags.
 
   Attributes:
     recursive: bool, whether to recursively convert any user functions or
       classes that the converted function may use.
-    verbose: Verbosity, the level of verbosity to use.
-    strip_decorators: Tuple[Callable], contains decorators that should be in
-      excluded from the compiled output. By default, when converting a function
-      before the decorators are applied, the compiled output will include those
-      decorators.
-    force_conversion: bool, whether to force convertinng the target entity. When
-      force_conversion is turned off, the converter may decide to return the
-      function as-is.
+    user_requested: bool, whether the conversion was explicitly requested by
+      the user, as opposed to being performed as a result of other logic. This
+      value always auto-resets resets to False in child conversions.
     optional_features: Union[Feature, Set[Feature]], controls the use of
       optional features in the conversion process. See Feature for available
       options.
@@ -169,15 +157,11 @@ class ConversionOptions(object):
 
   def __init__(self,
                recursive=False,
-               verbose=Verbosity.VERBOSE,
-               strip_decorators=None,
-               force_conversion=False,
+               user_requested=False,
                internal_convert_user_code=True,
                optional_features=Feature.ALL):
     self.recursive = recursive
-    self.verbose = verbose
-    self._strip_decorators = strip_decorators or ()
-    self.force_conversion = force_conversion
+    self.user_requested = user_requested
     # TODO(mdan): Rename to conversion_recursion_depth?
     self.internal_convert_user_code = internal_convert_user_code
 
@@ -188,183 +172,85 @@ class ConversionOptions(object):
     optional_features = frozenset(optional_features)
     self.optional_features = optional_features
 
-  @property
-  def strip_decorators(self):
-    # A few decorators are included by default.
-    # TODO(mdan): Revert if function.defun becomes a public symbol.
-    return self._strip_decorators + (function.defun,)
+  def as_tuple(self):
+    return (self.recursive, self.user_requested,
+            self.internal_convert_user_code, self.optional_features)
 
-  def should_strip(self, decorator):
-    for blacklisted in self.strip_decorators:
-      if blacklisted is decorator:
-        return True
-      if isinstance(blacklisted, weakref.ref):
-        blacklisted_deref = blacklisted()
-        if (blacklisted_deref is not None and blacklisted_deref is decorator):
-          return True
-    return False
+  def __hash__(self):
+    return hash(self.as_tuple())
+
+  def __eq__(self, other):
+    assert isinstance(other, ConversionOptions)
+    return self.as_tuple() == other.as_tuple()
+
+  def __str__(self):
+    return 'ConversionOptions[{}]'
 
   def uses(self, feature):
     return (Feature.ALL in self.optional_features or
             feature in self.optional_features)
 
-  def to_ast(self, ctx, internal_convert_user_code=None):
+  def call_options(self):
+    """Returns the corresponding options to be used for recursive conversion."""
+    return ConversionOptions(
+        recursive=self.recursive,
+        user_requested=False,
+        internal_convert_user_code=self.recursive,
+        optional_features=self.optional_features)
+
+  def to_ast(self):
     """Returns a representation of this object as an AST node.
 
     The AST node encodes a constructor that would create an object with the
     same contents.
 
-    Args:
-      ctx: EntityContext, the entity with which this AST needs to be consistent.
-      internal_convert_user_code: Optional[bool], allows ovrriding the
-        corresponding value.
-
     Returns:
       ast.Node
     """
+    if self == STANDARD_OPTIONS:
+      return parser.parse_expression('ag__.STD')
+
     template = """
       ag__.ConversionOptions(
           recursive=recursive_val,
-          verbose=verbose_val,
-          strip_decorators=strip_decorators_val,
-          force_conversion=force_conversion_val,
+          user_requested=user_requested_val,
           optional_features=optional_features_val,
           internal_convert_user_code=internal_convert_user_code_val)
     """
-
-    def as_qualified_name(o):
-      name = inspect_utils.getqualifiedname(ctx.info.namespace, o, max_depth=1)
-      if not name:
-        if isinstance(o, weakref.ref):
-          # `o` might already be a weak reference, if this object was
-          # constructed from code generated by `to_ast` itself.
-          # If so, unpack it.
-          o = o()
-        # TODO(mdan): This needs to account for the symbols defined locally.
-        name = ctx.namer.new_symbol(o.__name__, ())
-        ctx.program.add_symbol(name, weakref.ref(o))
-      return name
-
-    def list_of_names(values):
-      return parser.parse_expression('({})'.format(', '.join(
-          tuple(as_qualified_name(v) for v in values))))
 
     def list_of_features(values):
       return parser.parse_expression('({})'.format(', '.join(
           'ag__.{}'.format(str(v)) for v in values)))
 
-    if internal_convert_user_code is None:
-      internal_convert_user_code = self.internal_convert_user_code
-
     expr_ast = templates.replace(
         template,
         recursive_val=parser.parse_expression(str(self.recursive)),
-        verbose_val=parser.parse_expression(str(int(self.verbose))),
-        strip_decorators_val=list_of_names(self._strip_decorators),
-        force_conversion_val=parser.parse_expression(
-            str(self.force_conversion)),
+        user_requested_val=parser.parse_expression(str(self.user_requested)),
         internal_convert_user_code_val=parser.parse_expression(
-            str(internal_convert_user_code)),
+            str(self.internal_convert_user_code)),
         optional_features_val=list_of_features(self.optional_features))
     return expr_ast[0].value
 
 
-class ProgramContext(object):
+STANDARD_OPTIONS = ConversionOptions(
+    recursive=True,
+    user_requested=False,
+    internal_convert_user_code=True,
+    optional_features=None)
+
+
+class ProgramContext(
+    collections.namedtuple('ProgramContext', ('options', 'autograph_module'))):
   """ProgramContext keeps track of converting function hierarchies.
 
   This object is mutable, and is updated during conversion. Not thread safe.
 
   Attributes:
     options: ConversionOptions
-    dependency_cache: Dict[Any, ast.AST], the original entities mapped to their
-      converted AST
-    additional_imports: Set[Any], additional entities which for any reason
-      cannot be attached after loading and need to be explicitly imported in the
-      generated code
-    name_map: Dict[str, str], map of original entity name to the name of their
-      converted counterparts
     autograph_module: Module, a reference to the autograph module. This needs to
       be specified by the caller to avoid circular dependencies.
-    uncompiled_modules: Set[Tuple[str, ...]], with each tuple representing the
-      fully qualified name of a package containing functions that will not be
-      compiled.
-    required_imports: str, containing an import statement on each line. These
-      are all the imports necessary for the compiled code to run, in addition to
-      the closures of each entity, which are attached dynamically.
-    partial_types: Tuple[Type], deprecated.
-    conversion_order: Tuple[Any], deprecated.
-    additional_symbols: Dict[str, Any], a map of new symbols that have been
-      created under this context, and need to be added to the namespace of the
-      generated code.
   """
-
-  def __init__(
-      self,
-      options,
-      partial_types,
-      autograph_module,
-      uncompiled_modules,
-  ):
-    self.options = options
-    self.partial_types = partial_types if partial_types else ()
-    self.autograph_module = autograph_module
-    self.uncompiled_modules = uncompiled_modules
-
-    self.conversion_order = []
-    self.dependency_cache = {}
-    self.additional_imports = set()
-    self.name_map = {}
-    self.additional_symbols = {}
-
-  @property
-  def required_imports(self):
-    """Returns a block containing all imports required by the converted code."""
-    # TODO(mdan): Check that these don't clobber one another.
-    return '\n'.join(config.COMPILED_IMPORT_STATEMENTS +
-                     tuple(self.additional_imports))
-
-  def new_namer(self, namespace):
-    return naming.Namer(namespace, self.options.recursive, self.name_map,
-                        self.partial_types)
-
-  def update_name_map(self, namer):
-    """Updates renamed_calls based on the recent activity from the namer.
-
-    Whenever we convert a new entity, any references to other entities are being
-    renamed to match their soon-to-be-converted counterparts. The namer keeps
-    track of these renames. When conversion is complete, we copy those renames
-    so that when those referenced entities are being converted, their new name
-    matches.
-
-    Args:
-      namer: naming.Namer
-
-    Raises:
-      ValueError: when an entity was renamed twice and to different names.
-    """
-    # TODO(mdan): Have call_trees do this directly.
-    # This is done so indirectly, via the namer, for historic reasons. But
-    # now we can have the converter that does the rename record the new name
-    # as well and skip this step altogether.
-    for o, name in namer.renamed_calls.items():
-      if o in self.name_map:
-        if self.name_map[o] != name:
-          raise ValueError(
-              'Calls to %s were converted using multiple names (%s). This is '
-              'possible when an entity with one of these names already '
-              'existed. To fix, avoid using any of these names.' %
-              (o, (name, self.name_map[o])))
-      else:
-        self.name_map[o] = name
-
-  def add_symbol(self, name, value):
-    if name in self.additional_symbols:
-      assert self.additional_symbols[name] is value
-    self.additional_symbols[name] = value
-
-  def add_to_cache(self, original_entity, converted_ast):
-    self.conversion_order.append(original_entity)
-    self.dependency_cache[original_entity] = converted_ast
+  pass
 
 
 class EntityContext(transformer.Context):
@@ -375,13 +261,15 @@ class EntityContext(transformer.Context):
   Attributes:
     namer: Namer
     info: transformer.EntityInfo
-    program: ProgramContext
+    program: ProgramContext,
+    targe_name: Text
   """
 
-  def __init__(self, namer, entity_info, program_ctx):
+  def __init__(self, namer, entity_info, program_ctx, target_name=None):
     super(EntityContext, self).__init__(entity_info)
     self.namer = namer
     self.program = program_ctx
+    self.target_name = target_name
 
 
 class Base(transformer.Base):
@@ -440,10 +328,10 @@ class Base(transformer.Base):
     for other_value in arg_values_found[1:]:
       if not ast_util.matches(first_value, other_value):
         qn = anno.getanno(node, anno.Basic.QN)
-        raise ValueError('%s has ambiguous annotations for %s(%s): %s, %s' %
-                         (qn, directive.__name__, arg,
-                          compiler.ast_to_source(other_value).strip(),
-                          compiler.ast_to_source(first_value).strip()))
+        raise ValueError(
+            '%s has ambiguous annotations for %s(%s): %s, %s' %
+            (qn, directive.__name__, arg, parser.unparse(other_value).strip(),
+             parser.unparse(first_value).strip()))
     return first_value
 
   def visit(self, node):
@@ -466,15 +354,6 @@ class AnnotatedDef(reaching_definitions.Definition):
     self.directives = {}
 
 
-class AgAnno(enum.Enum):
-  """Annotation labels specific to AutoGraph. See anno.py."""
-
-  DIRECTIVES = 'User directives associated with the annotated statement.'
-
-  def __repr__(self):
-    return self.name
-
-
 def standard_analysis(node, context, is_initial=False):
   """Performs a complete static analysis of the given code.
 
@@ -495,10 +374,6 @@ def standard_analysis(node, context, is_initial=False):
   node = activity.resolve(node, context, None)
   node = reaching_definitions.resolve(node, context, graphs, AnnotatedDef)
   node = liveness.resolve(node, context, graphs)
-  node = live_values.resolve(node, context, config.PYTHON_LITERALS)
-  node = type_info.resolve(node, context)
-  # This second call allows resolving first-order class attributes.
-  node = live_values.resolve(node, context, config.PYTHON_LITERALS)
   if is_initial:
     anno.dup(
         node,

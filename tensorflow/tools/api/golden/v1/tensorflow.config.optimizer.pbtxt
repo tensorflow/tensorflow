@@ -1,0 +1,19 @@
+path: "tensorflow.config.optimizer"
+tf_module {
+  member_method {
+    name: "get_experimental_options"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_jit"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_experimental_options"
+    argspec: "args=[\'options\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_jit"
+    argspec: "args=[\'enabled\'], varargs=None, keywords=None, defaults=None"
+  }
+}

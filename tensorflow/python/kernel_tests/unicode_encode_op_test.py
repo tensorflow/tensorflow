@@ -33,7 +33,7 @@ from tensorflow.python.platform import test
 
 class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
 
-  def assertRaggedEqual(self, rt, expected):
+  def assertAllEqual(self, rt, expected):
     with self.cached_session() as sess:
       value = sess.run(rt)
       if isinstance(value, np.ndarray):
@@ -63,7 +63,8 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
   def testStrictErrors(self, encoding):
-    test_value = np.array([72, 101, 2147483647, -1, 111], np.int32)
+    test_value = np.array([ord('H'), ord('e'), 0x7FFFFFFF, -1, ord('o')],
+                          np.int32)
     with self.cached_session() as session:
       with self.assertRaises(errors.InvalidArgumentError):
         session.run(
@@ -72,41 +73,57 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
   @test_util.run_v1_only("b/120545219")
   def testIgnoreErrors(self, encoding):
-    test_value = np.array([72, 101, 2147483647, -1, 111], np.int32)
+    test_value = np.array([ord('H'), ord('e'), 0x7FFFFFFF, -1, ord('o')],
+                          np.int32)
     expected_value = u"Heo".encode(encoding)
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding,
                                                          "ignore")
-    with self.cached_session() as session:
-      result = session.run(unicode_encode_op)
-      self.assertIsInstance(result, bytes)
-      self.assertAllEqual(result, expected_value)
+    self.assertAllEqual(unicode_encode_op, expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
   @test_util.run_v1_only("b/120545219")
   def testReplaceErrors(self, encoding):
-    test_value = np.array([72, 101, 2147483647, -1, 111], np.int32)
+    test_value = np.array([ord('H'), ord('e'), 0x7FFFFFFF, -1, ord('o')],
+                          np.int32)
     expected_value = u"He\U0000fffd\U0000fffdo".encode(encoding)
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding,
                                                          "replace")
-    self.assertRaggedEqual(unicode_encode_op, expected_value)
+    self.assertAllEqual(unicode_encode_op, expected_value)
 
     # Test custom replacement character
-    test_value = np.array([72, 101, 2147483647, -1, 111], np.int32)
+    test_value = np.array([ord('H'), ord('e'), 0x7FFFFFFF, -1, ord('o')],
+                          np.int32)
     expected_value = u"Heooo".encode(encoding)
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding,
-                                                         "replace", 111)
-    self.assertRaggedEqual(unicode_encode_op, expected_value)
+                                                         "replace", ord('o'))
+    self.assertAllEqual(unicode_encode_op, expected_value)
 
     # Verify "replace" is default
-    test_value = np.array([72, 101, 2147483647, -1, 111], np.int32)
+    test_value = np.array([ord('H'), ord('e'), 0x7FFFFFFF, -1, ord('o')],
+                          np.int32)
     expected_value = u"He\U0000fffd\U0000fffdo".encode(encoding)
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding)
-    self.assertRaggedEqual(unicode_encode_op, expected_value)
+    self.assertAllEqual(unicode_encode_op, expected_value)
+
+    # Verify non-default replacement with an unpaired surrogate.
+    test_value = np.array([0xD801], np.int32)
+    expected_value = u"A".encode(encoding)
+    unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding,
+                                                         "replace", 0x41)
+    self.assertAllEqual(unicode_encode_op, expected_value)
+
+    # Test with a noncharacter code point.
+    test_value = np.array([0x1FFFF], np.int32)
+    expected_value = u"A".encode(encoding)
+    unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding,
+                                                         "replace", 0x41)
+    self.assertAllEqual(unicode_encode_op, expected_value)
 
     # Replacement_char must be within range
-    test_value = np.array([72, 101, 2147483647, -1, 111], np.int32)
+    test_value = np.array([ord('H'), ord('e'), 0x7FFFFFFF, -1, ord('o')],
+                          np.int32)
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding,
-                                                         "replace", 1114112)
+                                                         "replace", 0x110000)
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(unicode_encode_op)
 
@@ -115,32 +132,33 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
   @test_util.run_v1_only("b/120545219")
   def testVector(self, encoding):
-    test_value = np.array([72, 101, 108, 108, 111], np.int32)
+    test_value = np.array([ord('H'), ord('e'), ord('l'), ord('l'), ord('o')],
+                          np.int32)
     expected_value = u"Hello".encode(encoding)
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding)
-    self.assertRaggedEqual(unicode_encode_op, expected_value)
+    self.assertAllEqual(unicode_encode_op, expected_value)
 
-    test_value = np.array([72, 101, 195, 195, 128516], np.int32)
+    test_value = np.array([ord('H'), ord('e'), 0xC3, 0xC3, 0x1F604], np.int32)
     expected_value = u"He\xc3\xc3\U0001f604".encode(encoding)
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding)
-    self.assertRaggedEqual(unicode_encode_op, expected_value)
+    self.assertAllEqual(unicode_encode_op, expected_value)
 
     # Single character string
-    test_value = np.array([72], np.int32)
+    test_value = np.array([ord('H')], np.int32)
     expected_value = u"H".encode(encoding)
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding)
-    self.assertRaggedEqual(unicode_encode_op, expected_value)
+    self.assertAllEqual(unicode_encode_op, expected_value)
 
-    test_value = np.array([128516], np.int32)
+    test_value = np.array([0x1F604], np.int32)
     expected_value = u"\U0001f604".encode(encoding)
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding)
-    self.assertRaggedEqual(unicode_encode_op, expected_value)
+    self.assertAllEqual(unicode_encode_op, expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
   @test_util.run_v1_only("b/120545219")
   def testMatrix(self, encoding):
     test_value = np.array(
-        [[72, 128516, 108, 108, 111], [87, 128516, 114, 108, 100]], np.int32)
+        [[72, 0x1F604, 108, 108, 111], [87, 0x1F604, 114, 108, 100]], np.int32)
     expected_value = [
         u"H\U0001f604llo".encode(encoding), u"W\U0001f604rld".encode(encoding)
     ]
@@ -158,7 +176,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
                       [u"fixed".encode(encoding), u"words".encode(encoding)],
                       [u"Hyper".encode(encoding), u"cube.".encode(encoding)]]
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding)
-    self.assertRaggedEqual(unicode_encode_op, expected_value)
+    self.assertAllEqual(unicode_encode_op, expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
   @test_util.run_v1_only("b/120545219")
@@ -174,7 +192,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
                       [[u"Hyper".encode(encoding)],
                        [u"cube.".encode(encoding)]]]
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding)
-    self.assertRaggedEqual(unicode_encode_op, expected_value)
+    self.assertAllEqual(unicode_encode_op, expected_value)
 
   # -- Ragged Tensor tests -- #
 
@@ -182,12 +200,13 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testRaggedMatrix(self, encoding):
     test_value = ragged_factory_ops.constant(
-        [[72, 195, 108, 108, 111], [87, 128516, 114, 108, 100, 46]], np.int32)
+        [[ord('H'), 0xC3, ord('l'), ord('l'), ord('o')],
+         [ord('W'), 0x1F604, ord('r'), ord('l'), ord('d'), ord('.')]], np.int32)
     expected_value = [
         u"H\xc3llo".encode(encoding), u"W\U0001f604rld.".encode(encoding)
     ]
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding)
-    self.assertRaggedEqual(unicode_encode_op, expected_value)
+    self.assertAllEqual(unicode_encode_op, expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
   @test_util.run_v1_only("b/120545219")
@@ -204,7 +223,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
                           u"cube.".encode(encoding)
                       ]]
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding)
-    self.assertRaggedEqual(unicode_encode_op, expected_value)
+    self.assertAllEqual(unicode_encode_op, expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
   @test_util.run_v1_only("b/120545219")
@@ -212,25 +231,25 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
     test_value = ragged_factory_ops.constant(
         [[[72, 101, 108, 108, 111], [87, 111, 114, 108, 100, 46]],
          [[68, 111, 110, 39, 116], [119, 195, 114, 114, 121, 44, 32, 98, 101]],
-         [[128516], []]], np.int32)
+         [[0x1F604], []]], np.int32)
     expected_value = [[u"Hello".encode(encoding), u"World.".encode(encoding)],
                       [
                           u"Don't".encode(encoding),
                           u"w\xc3rry, be".encode(encoding)
                       ], [u"\U0001f604".encode(encoding), u"".encode(encoding)]]
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding)
-    self.assertRaggedEqual(unicode_encode_op, expected_value)
+    self.assertAllEqual(unicode_encode_op, expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
   @test_util.run_v1_only("b/120545219")
   def test3DimMatrixWithRagged2ndAnd3rdDim(self, encoding):
     test_value = ragged_factory_ops.constant(
         [[[72, 101, 108, 108, 111], [87, 111, 114, 108, 100, 46]], [],
-         [[128516]]], np.int32)
+         [[0x1F604]]], np.int32)
     expected_value = [[u"Hello".encode(encoding), u"World.".encode(encoding)],
                       [], [u"\U0001f604".encode(encoding)]]
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding)
-    self.assertRaggedEqual(unicode_encode_op, expected_value)
+    self.assertAllEqual(unicode_encode_op, expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
   @test_util.run_v1_only("b/120545219")
@@ -241,7 +260,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
     expected_value = [[[u"Hello".encode(encoding), u"World".encode(encoding)]],
                       [[u"".encode(encoding)], [u"Hype".encode(encoding)]]]
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding)
-    self.assertRaggedEqual(unicode_encode_op, expected_value)
+    self.assertAllEqual(unicode_encode_op, expected_value)
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
   @test_util.run_v1_only("b/120545219")
@@ -264,7 +283,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
                         [u"Hyper".encode(encoding),
                          u"cube.".encode(encoding)]]]]
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding)
-    self.assertRaggedEqual(unicode_encode_op, expected_value)
+    self.assertAllEqual(unicode_encode_op, expected_value)
 
 
 if __name__ == "__main__":

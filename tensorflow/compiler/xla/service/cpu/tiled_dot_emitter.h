@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_TILED_DOT_EMITTER_H_
 
 #include "llvm/IR/IRBuilder.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -29,15 +30,15 @@ void EmitRowMajorGemv(PrimitiveType scalar_type, tensorflow::int64 tile_rows,
                       tensorflow::int64 tile_cols, tensorflow::int64 m,
                       tensorflow::int64 k, llvm::Value* lhs, llvm::Value* rhs,
                       llvm::Value* addend, llvm::Value* result,
-                      llvm::IRBuilder<>* b, bool enable_fast_math,
-                      bool optimize_for_size);
+                      llvm::IRBuilder<>* b,
+                      const HloModuleConfig& module_config);
 
 void EmitColumnMajorGemv(PrimitiveType scalar_type, tensorflow::int64 tile_rows,
                          tensorflow::int64 tile_cols, tensorflow::int64 m,
                          tensorflow::int64 k, llvm::Value* lhs,
                          llvm::Value* rhs, llvm::Value* addend,
                          llvm::Value* result, llvm::IRBuilder<>* b,
-                         bool enable_fast_math, bool optimize_for_size);
+                         const HloModuleConfig& module_config);
 
 void EmitSmallGemm(PrimitiveType scalar_type, tensorflow::int64 m,
                    tensorflow::int64 k, tensorflow::int64 n,
@@ -46,8 +47,7 @@ void EmitSmallGemm(PrimitiveType scalar_type, tensorflow::int64 m,
                    tensorflow::int64 min_vectorization_width,
                    tensorflow::int64 tile_size_m, tensorflow::int64 tile_size_k,
                    llvm::Value* lhs, llvm::Value* rhs, llvm::Value* result,
-                   llvm::IRBuilder<>* b, bool enable_fast_math,
-                   bool optimize_for_size);
+                   llvm::IRBuilder<>* b, const HloModuleConfig& module_config);
 
 }  // namespace cpu
 }  // namespace xla

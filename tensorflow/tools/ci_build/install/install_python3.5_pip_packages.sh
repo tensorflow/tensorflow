@@ -86,7 +86,6 @@ pip3.5 install --upgrade gast
 pip3.5 install --upgrade termcolor
 
 # Keras
-pip3.5 install keras_applications==1.0.6
 pip3.5 install keras_preprocessing==1.0.5
 pip3.5 install --upgrade h5py==2.8.0
 

@@ -1,7 +1,7 @@
-# TensorFlow Lite GPU Delegate Tutorial
+# TensorFlow Lite GPU delegate
 
 [TensorFlow Lite](https://www.tensorflow.org/lite) supports several hardware
-accelerators. This document describes how to preview the experimental GPU backend using the
+accelerators. This document describes how to use the GPU backend using the
 TensorFlow Lite delegate APIs on Android and iOS.
 
 GPUs are designed to have high throughput for massively parallelizable
@@ -20,12 +20,16 @@ power and generate less heat than when the same task is run on CPUs.
 
 ## Demo App Tutorials
 
-The easiest way to try out the experimental GPU delegate is to follow the below tutorials, which go through building our classification demo applications with GPU support. The GPU code is only binary for now; it will be open-sourced soon. Once you understand how to get our demos working, you can try this out on your own custom models.
+The easiest way to try out the GPU delegate is to follow the below tutorials,
+which go through building our classification demo applications with GPU support.
+The GPU code is only binary for now; it will be open-sourced soon. Once you
+understand how to get our demos working, you can try this out on your own custom
+models.
 
 ### Android (with Android Studio)
 
 For a step-by-step tutorial, watch the
-[Experimental GPU Delegate for Android](https://youtu.be/Xkhgre8r5G0) video.
+[GPU Delegate for Android](https://youtu.be/Xkhgre8r5G0) video.
 
 Note: This requires OpenGL ES 3.1 or higher.
 
@@ -35,16 +39,16 @@ Note: This requires OpenGL ES 3.1 or higher.
 git clone https://github.com/tensorflow/tensorflow
 ```
 
-#### Step 2. Edit `app/build.gradle` to use the experimental GPU AAR
+#### Step 2. Edit `app/build.gradle` to use the nightly GPU AAR
 
-Replace the existing `tensorflow-lite` package in the existing `dependencies`
-block.
+Add the `tensorflow-lite-gpu` package alongside the existing `tensorflow-lite`
+package in the existing `dependencies` block.
 
 ```
 dependencies {
     ...
-    // implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
-    implementation 'org.tensorflow:tensorflow-lite:0.0.0-gpu-experimental'
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:0.0.0-nightly'
 }
 ```
 
@@ -59,7 +63,7 @@ run on the GPU.
 ### iOS (with XCode)
 
 For a step-by-step tutorial, watch the
-[Experimental GPU Delegate for iOS](https://youtu.be/a5H4Zwjp49c) video.
+[GPU Delegate for iOS](https://youtu.be/a5H4Zwjp49c) video.
 
 Note: This requires XCode v10.1 or later.
 
@@ -85,16 +89,8 @@ target 'YourProjectName'
 
 #### Step 3. Enable the GPU Delegate
 
-You will need to change two `#define` flags in `CameraExampleViewController.h`
-to enable the GPU delegate. First, change `TFLITE_USE_CONTRIB_LITE` from 1 to 0
-since TensorFlow Lite has moved from TensorFlow contrib into core.
-
-```c
-#define TFLITE_USE_CONTRIB_LITE 0
-```
-
-Next, change `TFLITE_USE_GPU_DELEGATE` from 0 to 1, to enable the code that will
-use the GPU delegate.
+To enable the code that will use the GPU delegate, you will need to change
+`TFLITE_USE_GPU_DELEGATE` from 0 to 1 in `CameraExampleViewController.h`.
 
 ```c
 #define TFLITE_USE_GPU_DELEGATE 1
@@ -131,14 +127,13 @@ Settings` set `Build Active Architecture Only > Release` to Yes.
 
 ### Android
 
-Look at the demo to see how to add the
-delegate. In your application, add the AAR as above, import
-`org.tensorflow.lite.experimental.GpuDelegate` module, and use the`addDelegate`
-function to register the GPU delegate to the interpreter:
+Look at the demo to see how to add the delegate. In your application, add the
+AAR as above, import `org.tensorflow.lite.gpu.GpuDelegate` module, and use
+the`addDelegate` function to register the GPU delegate to the interpreter:
 
 ```java
 import org.tensorflow.lite.Interpreter;
-import org.tensorflow.lite.experimental.GpuDelegate;
+import org.tensorflow.lite.gpu.GpuDelegate;
 
 // Initialize interpreter with GPU delegate
 GpuDelegate delegate = new GpuDelegate();

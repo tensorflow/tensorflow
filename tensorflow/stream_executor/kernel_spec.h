@@ -47,13 +47,13 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_KERNEL_SPEC_H_
 
 #include <stddef.h>
+
 #include <map>
 #include <memory>
-#include "tensorflow/stream_executor/platform/port.h"
 
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
@@ -206,7 +206,7 @@ class CudaPtxInMemory : public KernelLoaderSpec {
   // Stores all decompressed ptx strings, with original ptx string as keys.
   // It is marked as mutable for lazy decompression.
   mutable std::map<const char *, string> decompressed_ptx_;
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
 
   // Defines the minimum compute capability possible. Used when PTX has no
   // compute capability specified (in the single-PTX constructor).

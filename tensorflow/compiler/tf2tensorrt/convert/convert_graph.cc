@@ -26,11 +26,9 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/logger_registry.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/segment/segment.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/test_utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
@@ -58,46 +56,13 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "cuda/include/cuda_runtime_api.h"
-#include "tensorrt/include/NvInfer.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/tensorrt/NvInfer.h"
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 using absl::StrAppend;
 using absl::StrCat;
-
-// Returns compiled TRT version information {Maj, Min, Patch}
-std::vector<int> GetLinkedTensorRTVersion() {
-  return {NV_TENSORRT_MAJOR, NV_TENSORRT_MINOR, NV_TENSORRT_PATCH};
-}
-
-// Returns loaded TRT library version {Maj, Min, Patch}
-std::vector<int> GetLoadedTensorRTVersion() {
-  int ver = getInferLibVersion();
-  int ver_major = ver / 1000;
-  ver = ver - ver_major * 1000;
-  int ver_minor = ver / 100;
-  int ver_patch = ver - ver_minor * 100;
-  return {ver_major, ver_minor, ver_patch};
-}
-
-TrtCandidateSelector::TrtCandidateSelector(
-    const grappler::GraphProperties& graph_properties,
-    TrtPrecisionMode precision_mode)
-    : graph_properties_(graph_properties), precision_mode_(precision_mode) {}
-
-Status TrtCandidateSelector::IsTensorRTCandidate(const Node* node) {
-  std::vector<const Edge*> input_edges;
-  TF_RETURN_IF_ERROR(node->input_edges(&input_edges));
-  std::vector<std::pair<const NodeDef*, int>> input_node_and_ports;
-  input_node_and_ports.reserve(input_edges.size());
-  for (const Edge* input_edge : input_edges) {
-    input_node_and_ports.emplace_back(&input_edge->src()->def(),
-                                      input_edge->src_output());
-  }
-  return validator_.ValidateNode(node->def(), input_node_and_ports,
-                                 precision_mode_, graph_properties_);
-}
 
 namespace {
 
@@ -114,98 +79,29 @@ Status BuildNodeMap(const Graph& graph,
 
 }  // namespace
 
-Status ConvertGraphDefToTensorRT(
-    const GraphDef& graph_def, const std::vector<string>& output_names,
-    size_t max_batch_size, size_t max_workspace_size_bytes,
-    GraphDef* new_graph_def, TrtPrecisionMode precision_mode,
-    int minimum_segment_size, bool is_dyn_op, int max_cached_engines,
-    std::vector<int> cached_engine_batches, bool use_calibration) {
-  // Create GrapplerItem.
-  grappler::GrapplerItem item;
-  item.fetch = output_names;
-  item.graph = graph_def;
-
-// TODO(aaroey): we should have used single machine cluster like the
-// following, but the problem is then wrap_conversion will depend on
-// direct_session and cause double linking problems. To fix this we need to
-// fix or get rid of the swig dependency. Here we use VirtualCluster
-// as a work around, and we need to create a session to initialize the
-// underlying device before calling this method.
-#if 0
-  // Create single machine cluster. Note that this will create a session and
-  // initialize the gpu devices.
-  const int num_cpu_cores =
-      grappler::GetNumAvailableLogicalCPUCores();
-  const int num_gpus = grappler::GetNumAvailableGPUs();
-  VLOG(2) << "cpu_cores: " << num_cpu_cores;
-  VLOG(2) << "gpus: " << num_gpus;
-  const int timeout_s = 60 * 10;
-  std::unique_ptr<grappler::Cluster> cluster(
-      new grappler::SingleMachine(
-          timeout_s, num_cpu_cores, num_gpus));
-  // These settings are the defaults in tensorflow/python/grappler/cluster.py.
-  cluster->DisableDetailedStats(true);
-  cluster->AllowSoftPlacement(true);
-  cluster->SetNumWarmupSteps(10);
-  TF_RETURN_IF_ERROR(cluster->Provision());
-#else
-  // Create virtual cluster. Grappler requires a virtual cluster with a proper
-  // GPU device in order to calculate flops>0 or fails with FATAL in dbg mode.
-  // We add numbers from a Pascal card here to have flops>0.
-  DeviceProperties device_properties;
-  device_properties.set_type("GPU");
-  device_properties.mutable_environment()->insert({"architecture", "6"});
-  device_properties.set_num_cores(3584);
-  device_properties.set_frequency(1531);
-  std::unique_ptr<grappler::Cluster> cluster(
-      new grappler::VirtualCluster({{"/GPU:0", device_properties}}));
-#endif
-
-  // Create RewriterConfig.
-  ConfigProto config_proto;
-  auto& rw_cfg =
-      *config_proto.mutable_graph_options()->mutable_rewrite_options();
-  // TODO(aaroey): use only const folding and layout for the time being since
-  // new optimizers break the graph for trt.
-  rw_cfg.add_optimizers("constfold");
-  rw_cfg.add_optimizers("layout");
-  auto optimizer = rw_cfg.add_custom_optimizers();
-  optimizer->set_name("TensorRTOptimizer");
-  auto& parameters = *(optimizer->mutable_parameter_map());
-  parameters["minimum_segment_size"].set_i(minimum_segment_size);
-  parameters["max_batch_size"].set_i(max_batch_size);
-  parameters["is_dynamic_op"].set_b(is_dyn_op);
-  parameters["max_workspace_size_bytes"].set_i(max_workspace_size_bytes);
-  TF_RETURN_IF_ERROR(TrtPrecisionModeToName(
-      precision_mode, parameters["precision_mode"].mutable_s()));
-  parameters["maximum_cached_engines"].set_i(max_cached_engines);
-  if (!cached_engine_batches.empty()) {
-    auto list = parameters["cached_engine_batches"].mutable_list();
-    for (const int batch : cached_engine_batches) {
-      list->add_i(batch);
-    }
-  }
-  parameters["use_calibration"].set_b(use_calibration);
-
-  // Run optimizer.
-  grappler::MetaOptimizer meta_opt(nullptr, config_proto);
-  TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster.get(), item, new_graph_def));
-
-  if (VLOG_IS_ON(5)) {
-    std::fstream f;
-    f.open("TRTConversionInput.pb",
-           std::fstream::out | std::fstream::binary | std::fstream::trunc);
-    f << new_graph_def->SerializeAsString();
-    f.close();
-  }
-  return Status::OK();
-}
-
 struct EdgePtrCompare {
   bool operator()(const Edge* lhs, const Edge* rhs) const {
     return lhs->id() < rhs->id();
   }
 };
+
+// TODO(laigd): instead of deciding the device here, the converter should accept
+// a device name as one of the conversion parameter so users can control on
+// which device they want to run the conversion.
+std::pair<TfGpuId, PlatformGpuId> GetFirstValidDeviceId() {
+  for (int tf_gpu_id_value = 0; tf_gpu_id_value < 100; ++tf_gpu_id_value) {
+    TfGpuId tf_gpu_id(tf_gpu_id_value);
+    PlatformGpuId platform_gpu_id;
+    Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
+    if (s.ok()) {
+      VLOG(1) << "Found TF GPU " << tf_gpu_id.value() << " at cuda device "
+              << platform_gpu_id.value();
+      return std::make_pair(tf_gpu_id, platform_gpu_id);
+    }
+  }
+  LOG(ERROR) << "Could not find any TF GPUs";
+  return std::make_pair(TfGpuId(-1), PlatformGpuId(-1));
+}
 
 // Function to get subsegment information structure.
 Status GetEngineInfo(const Graph* g,
@@ -229,28 +125,35 @@ Status GetEngineInfo(const Graph* g,
        ++it) {
     const Node* node = *it;
     if (segment_nodes.count(node) == 0) continue;
-    auto node_device = node->requested_device();
-    if (!node_device.empty()) {
-      // If device is CPU, treat as if no device was assigned. Don't add CPU to
-      // segment_device because that would cause a segfault in
-      // GetDeviceAndAllocator. This is because GetDeviceAndAllocator assumes
-      // any already set device is a GPU.
-      DeviceNameUtils::ParsedName parsed_name;
-      DeviceNameUtils::ParseFullName(node_device, &parsed_name);
-      if (parsed_name.type == "CPU") {
-        VLOG(1) << "Node " << node->name() << " was assigned to the CPU. "
-                << "Attempting to place on GPU.";
-      } else {
-        segment_devices.insert(node_device);
-      }
+
+    std::string device_name;
+    if (!node->requested_device().empty()) {
+      device_name = node->requested_device();
+    } else if (node->has_assigned_device_name()) {
+      // It appears that nodes will not have assigned devices at this point in
+      // execution.
+      device_name = node->assigned_device_name();
     } else {
-      if (node->has_assigned_device_name()) {
-        // It appears that nodes will not have assigned devices at this point in
-        // execution.
-        segment_devices.insert(node->assigned_device_name());
+      VLOG(2) << "Node " << node->name()
+              << " neither have requested device nor assigned device";
+    }
+
+    if (!device_name.empty()) {
+      // If device is set, it means device placement may have been done before,
+      // so we need to assign a device for the TRTEngineOp if the assigned
+      // device is a GPU device.
+      DeviceNameUtils::ParsedName parsed_name;
+      const bool parse_succeeded =
+          DeviceNameUtils::ParseFullName(device_name, &parsed_name);
+      if (!parse_succeeded) {
+        VLOG(1) << "Failed to parse "
+                << (node->requested_device().empty() ? "assigned" : "requested")
+                << " device " << device_name << " of node " << node->name();
+      } else if (parsed_name.type != "GPU") {
+        VLOG(1) << "Node " << node->name()
+                << " was assigned to a non-GPU device " << device_name;
       } else {
-        VLOG(2) << "Node " << node->name()
-                << " neither have requested device nor assigned device";
+        segment_devices.insert(device_name);
       }
     }
     subgraph_nodes.push_back(node);
@@ -258,7 +161,7 @@ Status GetEngineInfo(const Graph* g,
     const int node_id = node->id();
     const string& node_name = node->name();
 
-    // Create input connections. Sort edges first to make determnistic since
+    // Create input connections. Sort edges first to make deterministic since
     // in_edges is a set of pointers.
     std::vector<const Edge*> in_edges(node->in_edges().begin(),
                                       node->in_edges().end());
@@ -269,10 +172,12 @@ Status GetEngineInfo(const Graph* g,
         continue;
       }
       if (edge->IsControlEdge()) {
-        // Control input.
-        info->connections.emplace_back(input_node->name(), input_node->id(),
-                                       node_name, node_id,
-                                       /*input_edge=*/true);
+        if (input_node->type_string() != "Const") {
+          // Non-Const control input.
+          info->connections.emplace_back(input_node->name(), input_node->id(),
+                                         node_name, node_id,
+                                         /*input_edge=*/true);
+        }
       } else if (input_node->type_string() == "Const") {
         // Add constant data input nodes into the segment graphdef (thus also in
         // the engine). We don't care if it has other output edges going into
@@ -281,18 +186,12 @@ Status GetEngineInfo(const Graph* g,
         // If it doesn't have any edges, TF will prune it out.
         //
         // Note that the segmenter already ensure that the constant data input
-        // is valid and suppported by the engine.
+        // is valid and supported by the engine.
         if (!added_const_nodes.insert(input_node).second) {
           // Already added before.
           continue;
         }
         VLOG(1) << "Adding const node " << input_node->name();
-        // Since we already add (duplicate) the const input node to the segment
-        // graphdef, it's now not a data dependency any more, but to make the
-        // dependency correct we still add a control dependency.
-        info->connections.emplace_back(input_node->name(), input_node->id(),
-                                       node_name, node_id,
-                                       /*input_edge=*/true);
       } else {
         // Non-const data input.
         int port = Graph::kControlSlot - 1;
@@ -310,7 +209,7 @@ Status GetEngineInfo(const Graph* g,
             node_id, edge->dst_input(), /*input_edge=*/true, port);
       }
     }
-    // Create output connections. Sort edges first to make determnistic since
+    // Create output connections. Sort edges first to make deterministic since
     // out_edges is a set of pointers.
     std::vector<const Edge*> out_edges(node->out_edges().begin(),
                                        node->out_edges().end());
@@ -347,20 +246,34 @@ Status GetEngineInfo(const Graph* g,
   // Construct the const nodes first.
   subgraph_nodes.insert(subgraph_nodes.begin(), added_const_nodes.begin(),
                         added_const_nodes.end());
+  string scope_name;
   TF_RETURN_IF_ERROR(ConvertSegmentToGraphDef(
       g, graph_properties, subgraph_nodes, &info->connections,
-      &info->segment_graph_def, &info->engine_name));
-  // TODO(sami): This should not happen once segmenter is updated.
+      &info->segment_graph_def, &scope_name));
+  info->engine_name = StrCat(scope_name, info->engine_name);
+  VLOG(1) << "Converted TensorRT candidate segment '" << info->engine_name
+          << "' to a GraphDef";
   if (segment_devices.size() == 1) {
     info->device = *segment_devices.begin();
   } else if (segment_devices.size() > 1) {
-    LOG(WARNING) << "Detected multiple(" << segment_devices.size()
-                 << ") devices for the segment. Picking first one to continue "
-                 << "but this shouldn't have happened";
+    LOG(WARNING) << "Detected multiple (" << segment_devices.size()
+                 << ") devices for the segment. Picking first one to continue.";
     info->device = *segment_devices.begin();
   } else {
-    VLOG(1) << "No device is assigned to the segment. "
-            << "A device will be assigned during graph execution (inference).";
+    TfGpuId tf_gpu_id;
+    PlatformGpuId platform_gpu_id;
+    std::tie(tf_gpu_id, platform_gpu_id) = GetFirstValidDeviceId();
+    if (tf_gpu_id.value() >= 0) {
+      DeviceNameUtils::ParsedName parsed_name;
+      parsed_name.type = "GPU";
+      parsed_name.has_type = true;
+      parsed_name.id = tf_gpu_id.value();
+      parsed_name.has_id = true;
+      info->device = DeviceNameUtils::ParsedNameToString(parsed_name);
+    } else {
+      VLOG(1) << "No device is assigned to the segment. A device will be "
+                 "assigned during graph execution (inference).";
+    }
   }
   return Status::OK();
 }
@@ -394,7 +307,7 @@ void UpdateToEngineNode(const std::vector<EngineInfo>& infos,
       }
     }
   }
-  LOG(FATAL) << "Node " << (**node).name() << " not found in any engine.";
+  LOG(FATAL) << "Node " << node_name << " not found in any engine.";
 }
 
 // Function to insert a TRT engine node into the graph.
@@ -409,14 +322,12 @@ void UpdateToEngineNode(const std::vector<EngineInfo>& infos,
 //         one). Connect to the pre-existing engine node instead.
 // 3. In this way, we ensure the graph is topologically sort-able after each
 //    invocation of CreateTRTNode().
-Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
+Status CreateTRTNode(const ConversionParams& params,
+                     const std::vector<EngineInfo>& infos, int pos,
                      int max_batch_size, Graph* graph,
                      nvinfer1::IGpuAllocator* alloc,
                      std::vector<Node*>* engine_nodes) {
   const auto& info = infos.at(pos);
-  TRT_RETURN_IF_TEST_VALUE(StrCat(info.engine_name, ":CreateTRTNode"), "fail");
-  std::vector<TensorShapeProto> output_shape_protos;
-  std::vector<TensorShapeProto> input_shape_protos;
   std::vector<PartialTensorShape> input_shapes;
   std::vector<NodeDefBuilder::NodeOut> inputs;
   std::vector<Node*> input_nodes;
@@ -450,29 +361,21 @@ Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
     } else {
       // Data edges
       if (!conn.is_input_edge) {
-        // Set the shapes and data types of output edge.
-        TensorShapeProto out_shape;
-        // shape of the output node inside segment
-        conn.inside_shape.AsProto(&out_shape);
-        if (output_shape_protos.size() <= conn.port_number) {
-          output_shape_protos.resize(conn.port_number + 1);
+        // Set the data types of output edge.
+        if (out_types.size() <= conn.port_number) {
           out_types.resize(conn.port_number + 1);
         }
-        output_shape_protos.at(conn.port_number) = out_shape;
         out_types.at(conn.port_number) = conn.connection_type;
       } else {
         // Set the shapes and data types of input edge.
-        TensorShapeProto in_shape;
-        conn.outside_shape.AsProto(&in_shape);
-        if (input_shape_protos.size() <= conn.port_number) {
-          input_shape_protos.resize(conn.port_number + 1);
+        if (input_shapes.size() <= conn.port_number) {
           input_shapes.resize(conn.port_number + 1);
         }
-        input_shape_protos.at(conn.port_number) = in_shape;
         input_shapes.at(conn.port_number) = conn.outside_shape;
         // Shape must be fully defined (excluding batch dimension) for static
         // mode.
-        if (info.engine_type == EngineInfo::EngineType::TRTStatic) {
+        if (params.use_implicit_batch &&
+            info.engine_type == EngineInfo::EngineType::TRTStatic) {
           for (int i = 1; i < conn.outside_shape.dims(); i++) {
             if (conn.outside_shape.dim_size(i) <= 0) {
               return errors::Internal(
@@ -508,39 +411,27 @@ Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
   // these segments.
   if (inputs.empty()) {
     return errors::Internal(
-        "Segment has no inputs (possible "
-        "constfold failure)");
+        "Segment has no inputs (possible constfold failure)");
   }
 
   const bool calibrate_int8 =
       (info.precision_mode == TrtPrecisionMode::INT8 && info.use_calibration);
   // Build the engine and get its serialized representation.
   string segment_string;
-  if (info.engine_type == EngineInfo::EngineType::TRTStatic || calibrate_int8) {
-    // Create static engine for fp32/fp16 mode, and test validity of the engine
-    // for int8 calibration mode. We don't want engine to fail at the
-    // calibration time. So we are constructing a FP32 engine here to check its
-    // validity, and if it is a valid engine then we put the serialized graphdef
-    // to the op. Otherwise we skip node creation for this engine.
-    Logger trt_logger;
+  if (info.engine_type == EngineInfo::EngineType::TRTStatic) {
+    auto trt_logger = GetLoggerRegistry()->LookUp(params.trt_logger_name);
+    // Create static engine for fp32/fp16 mode.
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     // TODO(sami): What happens if 1st dim is not batch?
     TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
         info.segment_graph_def,
         calibrate_int8 ? TrtPrecisionMode::FP32 : info.precision_mode,
-        max_batch_size, info.max_workspace_size_bytes, input_shapes,
-        &trt_logger, alloc, /*calibrator=*/nullptr, &engine,
-        info.use_calibration,
-        /*convert_successfully=*/nullptr));
+        max_batch_size, info.max_workspace_size_bytes, input_shapes, trt_logger,
+        alloc, /*calibrator=*/nullptr, &engine, info.use_calibration,
+        params.use_implicit_batch, /*convert_successfully=*/nullptr));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string = string(static_cast<const char*>(engine_data->data()),
                             engine_data->size());
-    if (calibrate_int8) {
-      // See above comment about why not putting this inside the 'else' branch.
-      segment_string = info.segment_graph_def.SerializeAsString();
-    }
-  } else {
-    segment_string = info.segment_graph_def.SerializeAsString();
   }
 
   string prec_string;
@@ -559,24 +450,21 @@ Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
     node_builder.ControlInput(c);
   }
 
-  if (info.engine_type == EngineInfo::EngineType::TRTStatic &&
-      !info.cached_engine_batches.empty()) {
-    LOG(WARNING) << "Cached engine batches are ignored for static engines";
-  }
   NodeDef trt_node;
+  NameAttrList function;
+  function.set_name(StrCat(info.engine_name, "_native_segment"));
   Status status =
-      node_builder.Attr("input_shapes", input_shape_protos)
-          .Attr("output_shapes", output_shape_protos)
+      node_builder
           .Attr("static_engine",
                 info.engine_type == EngineInfo::EngineType::TRTStatic)
-          .Attr("segment_funcdef_name",
-                StrCat(info.engine_name, "_native_segment"))
+          .Attr("segment_func", function)
           .Attr("serialized_segment", segment_string)
           .Attr("calibration_data", "")
           .Attr("max_cached_engines_count", info.maximum_cached_engines)
           .Attr("workspace_size_bytes", info.max_workspace_size_bytes)
           .Attr("precision_mode", prec_string)
           .Attr("use_calibration", info.use_calibration)
+          .Attr("_use_implicit_batch", params.use_implicit_batch)
           .Attr("OutT", out_types)
           .Finalize(&trt_node);
   if (!status.ok()) {
@@ -622,119 +510,44 @@ Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
       UpdateToEngineNode(infos, pos, *engine_nodes, /*is_input_edge=*/false,
                          conn.outside_node_name, &output_node, &port);
     }
-    VLOG(1) << "Updating " << engine_node->name() << ":" << conn.port_number
-            << " to " << output_node->name() << ":" << port;
     if (conn.is_control_edge()) {
+      VLOG(1) << "Updating control edge from " << engine_node->name() << " to "
+              << output_node->name();
       QCHECK_EQ(Graph::kControlSlot, port);
       graph->AddControlEdge(engine_node, output_node);
     } else {
-      auto new_edge =
-          graph->AddEdge(engine_node, conn.port_number, output_node, port);
-      QCHECK(new_edge) << "Adding a new edge failed " << engine_node->name()
-                       << ":" << conn.port_number << " -> "
-                       << output_node->name() << ":" << conn.outside_port;
+      VLOG(1) << "Updating data edge from " << engine_node->name() << ":"
+              << conn.port_number << " to " << output_node->name() << ":"
+              << port;
+      // Use UpdateEdge() to avoid adding the same edge multiple times.
+      TF_CHECK_OK(
+          graph->UpdateEdge(engine_node, conn.port_number, output_node, port));
     }
   }
   return Status::OK();
 }
 
-// Function to construct a funcdef from the segment and add it to the graph.
-Status RegisterSegmentFunctionToFunctionLibrary(Graph* graph,
-                                                const GraphDef& segment,
-                                                const string& engine_name) {
-  Graph sgraph(graph->flib_def());
-  GraphConstructorOptions gcopts;
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(gcopts, segment, &sgraph));
-  std::map<string, Node*> io_nodes;
-  int num_inputs = 0;
-  for (auto n : sgraph.op_nodes()) {
-    if (str_util::StartsWith(n->name(), kInputPHName)) {
-      num_inputs++;
-      io_nodes.insert({n->name(), n});
-    } else if (str_util::StartsWith(n->name(), kOutputPHName)) {
-      io_nodes.insert({n->name(), n});
-    }
-  }
-
-  for (int i = 0; i < num_inputs; ++i) {
-    auto name = StrCat(kInputPHName, i);
-    auto node = io_nodes[name];
-    NodeDef nd;
-    NodeDefBuilder node_builder(StrCat(name, "_Arg"),
-                                FunctionLibraryDefinition::kArgOp);
-    VLOG(1) << "Adding " << StrCat(name, "_Arg");
-    TF_RETURN_IF_ERROR(node_builder.Attr("T", node->output_type(0))
-                           .Attr("index", i)
-                           .Finalize(&nd));
-    Status s;
-    auto node_arg = sgraph.AddNode(nd, &s);
-    if (!s.ok()) {
-      LOG(ERROR) << "Couldn't add _Arg node for " << name;
-    }
-    for (auto edge : node->out_edges()) {
-      sgraph.AddEdge(node_arg, 0, edge->dst(), edge->dst_input());
-      VLOG(1) << "Updating funcdef input " << node_arg->name() << ":" << 0
-              << " - > " << edge->dst()->name() << ":" << edge->dst_input();
-      if (!s.ok()) {
-        LOG(ERROR) << "Failed to update edge from " << node_arg->name()
-                   << " to " << edge->dst()->name() << ":" << edge->dst_input();
-      }
-    }
-    sgraph.RemoveNode(node);
-  }
-
-  for (int i = 0; i < io_nodes.size() - num_inputs; ++i) {
-    auto name = StrCat(kOutputPHName, i);
-    auto node = io_nodes[name];
-    NodeDef nd;
-    NodeDefBuilder node_builder(StrCat(name, "_Ret"),
-                                FunctionLibraryDefinition::kRetOp);
-    auto edge = *(node->in_edges().begin());
-    NodeDefBuilder::NodeOut nout(edge->src()->name(), edge->src_output(),
-                                 edge->src()->output_type(edge->src_output()));
-    VLOG(1) << " input " << nout.node << ":" << nout.index
-            << " dtype=" << DataTypeString(nout.data_type);
-    // nvcc complains that Input(<brace-enclosed initializer list>) is
-    // ambiguous, so do not use Input({nout}).
-    node_builder.Input(nout);
-    TF_RETURN_IF_ERROR(node_builder.Attr("T", node->output_type(0))
-                           .Attr("index", i)
-                           .Finalize(&nd));
-    if (VLOG_IS_ON(3)) {
-      VLOG(3) << nd.DebugString();
-    }
-    Status s;
-    auto node_ret = sgraph.AddNode(nd, &s);
-    if (!s.ok()) {
-      LOG(ERROR) << "Couldn't add _Ret node for " << name;
-    }
-    VLOG(1) << "Update edge from " << edge->src()->name() << ":"
-            << edge->src_output() << " - > " << node_ret->name() << ":" << 0;
-    sgraph.AddEdge(edge->src(), edge->src_output(), node_ret, 0);
-    s = sgraph.UpdateEdge(edge->src(), edge->src_output(), node_ret, 0);
-    if (!s.ok()) {
-      LOG(ERROR) << "Failed to update edge from " << edge->src()->name() << ":"
-                 << edge->src_output() << " - > " << node_ret->name() << ":"
-                 << 0;
-    }
-    sgraph.RemoveNode(node);
-  }
-  FunctionDefLibrary fdeflib;
-  auto native_segment = fdeflib.add_function();
+Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
+                                      Graph* graph, const string& engine_name) {
+  Graph segment_graph(graph->flib_def());
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(GraphConstructorOptions(),
+                                            segment_graph_def, &segment_graph));
+  FunctionDefLibrary library;
+  auto segment_func = library.add_function();
   TF_RETURN_IF_ERROR(GraphToFunctionDef(
-      sgraph, StrCat(engine_name, "_native_segment"), native_segment));
+      segment_graph, StrCat(engine_name, "_native_segment"), segment_func));
   // Set kIntsonDeviceAttr to true so that all TRTEngineOp outputs are always on
   // a GPU device as expected. Otherwise, some of the tensors of type DT_INT32
   // would be on host if the op generating the tensor has host memory tag set.
-  (*native_segment
-        ->mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr]
+  (*segment_func->mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr]
       .set_b(true);
   if (VLOG_IS_ON(7)) {
     VLOG(7) << engine_name << " Function_Def ";
-    VLOG(7) << native_segment->DebugString();
+    VLOG(7) << segment_func->DebugString();
   }
-  VLOG(1) << "Adding funcdef to graphlib";
-  TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(fdeflib));
+  VLOG(1) << "Adding funcdef " << segment_func->signature().name()
+          << " to graphlib";
+  TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(library));
   return Status::OK();
 }
 
@@ -745,24 +558,17 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
   if (params.cluster == nullptr || params.cluster->GetDeviceSet() == nullptr ||
       engine.device.empty()) {
     // If device is not set, use the first found GPU device for the conversion.
-    for (int tf_gpu_id_value = 0; tf_gpu_id_value < 100; ++tf_gpu_id_value) {
-      TfGpuId tf_gpu_id(tf_gpu_id_value);
-      PlatformGpuId platform_gpu_id;
-      Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
-      if (s.ok()) {
-        VLOG(1) << "Found TF GPU " << tf_gpu_id.value() << " at cuda device "
-                << platform_gpu_id.value();
-        cuda_device_id = platform_gpu_id.value();
-        GPUOptions gpu_options;
-        // If the TF to Cuda gpu id mapping exist, the device and corresponding
-        // allocator must have been initialized already, so the
-        // GetGPUAllocator() call won't create a new allocator.
-        dev_allocator = GPUProcessState::singleton()->GetGPUAllocator(
-            gpu_options, tf_gpu_id, 1);
-        break;
-      }
-      LOG(ERROR) << "TF GPU with id " << tf_gpu_id_value << " does not exist "
-                 << s;
+    TfGpuId tf_gpu_id;
+    PlatformGpuId platform_gpu_id;
+    std::tie(tf_gpu_id, platform_gpu_id) = GetFirstValidDeviceId();
+    cuda_device_id = platform_gpu_id.value();
+    if (cuda_device_id >= 0) {
+      GPUOptions gpu_options;
+      // If the TF to Cuda gpu id mapping exist, the device and corresponding
+      // allocator must have been initialized already, so the
+      // GetGPUAllocator() call won't create a new allocator.
+      dev_allocator = GPUProcessState::singleton()->GetGPUAllocator(
+          gpu_options, tf_gpu_id, 1);
     }
     return std::make_pair(cuda_device_id, dev_allocator);
   }
@@ -796,8 +602,14 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
 }
 
 // Entry function from optimization pass.
-// TODO(aaeory): parameter should use pointer type.
-Status ConvertAfterShapes(ConversionParams& params) {
+Status ConvertAfterShapes(const ConversionParams& params) {
+  // Sanity checks.
+  if (params.precision_mode != TrtPrecisionMode::INT8 &&
+      params.use_calibration) {
+    return errors::InvalidArgument(
+        "Calibration with FP32 or FP16 is not supported.");
+  }
+
   // Convert graphdef to graph.
   FunctionLibraryDefinition flib(OpRegistry::Global(),
                                  params.input_graph_def->library());
@@ -813,13 +625,13 @@ Status ConvertAfterShapes(ConversionParams& params) {
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
   segment::SegmentNodesVector initial_segments;
-  TrtCandidateSelector candidate_selector(*params.graph_properties,
-                                          params.precision_mode);
+  TrtNodeValidator validator(*params.graph_properties, params.precision_mode,
+                             params.use_calibration, params.use_implicit_batch);
   TF_RETURN_IF_ERROR(segment::SegmentGraph(
       &graph,
-      std::bind(&TrtCandidateSelector::IsTensorRTCandidate, &candidate_selector,
+      std::bind(&TrtNodeValidator::IsTensorRTCandidate, &validator,
                 std::placeholders::_1),
-      // Input validation is already done by TrtCandidateSelector, so we don't
+      // Input validation is already done by TrtNodeValidator, so we don't
       // need to check the input edges.
       [](const Edge* edge) { return true; }, OutputEdgeValidator(),
       segment_options, &initial_segments));
@@ -841,38 +653,34 @@ Status ConvertAfterShapes(ConversionParams& params) {
   for (size_t t = 0; t < initial_segments.size(); t++) {
     auto& curr_segment = initial_segments.at(t);
     EngineInfo curr_engine;
+    curr_engine.engine_name = StrCat("TRTEngineOp_", t);
     Status status =
-        GetEngineInfo(&graph, *params.graph_properties, curr_segment.first,
-                      node_map, reverse_topo_order, &curr_engine);
+        GetEngineInfo(&graph, *params.graph_properties, curr_segment, node_map,
+                      reverse_topo_order, &curr_engine);
     if (!status.ok()) {
       LOG(WARNING) << "Failed to get engine info for segment " << t << ": "
                    << status;
       continue;
     }
     curr_engine.precision_mode = params.precision_mode;
-    if (params.use_calibration &&
-        params.precision_mode != TrtPrecisionMode::INT8) {
-      return errors::InvalidArgument(
-          "Calibration with FP32 or FP16 is not supported.");
-    }
     curr_engine.engine_type = ((params.is_dyn_op || params.use_calibration)
                                    ? EngineInfo::EngineType::TRTDynamic
                                    : EngineInfo::EngineType::TRTStatic);
     curr_engine.use_calibration = params.use_calibration;
-    curr_engine.cached_engine_batches = params.cached_engine_batches;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
-    StrAppend(&curr_engine.engine_name, "TRTEngineOp_", t);
-    status = RegisterSegmentFunctionToFunctionLibrary(
-        &graph, curr_engine.segment_graph_def, curr_engine.engine_name);
+
+    status = RegisterGraphToFunctionLibrary(curr_engine.segment_graph_def,
+                                            &graph, curr_engine.engine_name);
+
     if (!status.ok()) {
-      LOG(WARNING) << "Failed to register segment graphdef as a function " << t
+      LOG(WARNING) << "Failed to register segment graphdef to the library " << t
                    << ": " << status;
       continue;
     }
 
     engine_bytes_size.push_back(curr_engine.segment_graph_def.ByteSizeLong());
     total_engine_bytes_size += engine_bytes_size.back();
-    total_num_nodes_in_segments += curr_segment.first.size();
+    total_num_nodes_in_segments += curr_segment.size();
     engine_segments.push_back(std::move(curr_engine));
     converted_segments.push_back(std::move(curr_segment));
 
@@ -902,8 +710,10 @@ Status ConvertAfterShapes(ConversionParams& params) {
     engine.max_workspace_size_bytes =
         params.max_workspace_size_bytes *
         (engine_bytes_size.at(i) / total_engine_bytes_size +
-         converted_segments.at(i).first.size() / total_num_nodes_in_segments) /
+         converted_segments.at(i).size() / total_num_nodes_in_segments) /
         2.0;
+    VLOG(1) << "Assigned " << engine.max_workspace_size_bytes << " bytes to "
+            << engine.engine_name;
     // The allocator is used to build the engine. The build and the built engine
     // will be destroyed after we get the serialized engine string, so it's fine
     // to use unique_ptr here.
@@ -918,21 +728,23 @@ Status ConvertAfterShapes(ConversionParams& params) {
       LOG(WARNING) << "Can't identify the cuda device. Running on device 0 ";
     }
     cudaSetDevice(cuda_device_id);
-    auto status = CreateTRTNode(engine_segments, i, params.max_batch_size,
-                                &graph, alloc.get(), &engine_nodes);
+    auto status =
+        CreateTRTNode(params, engine_segments, i, params.max_batch_size, &graph,
+                      alloc.get(), &engine_nodes);
 
-    string msg = StrCat("TensorRT node ", engine.engine_name,
-                        " added for segment ", i, " consisting of ",
-                        converted_segments.at(i).first.size(), " nodes");
+    string msg = StrCat("segment ", i, " consisting of ",
+                        converted_segments.at(i).size(), " nodes by ",
+                        engine.engine_name);
     if (status.ok()) {
-      LOG(INFO) << msg << " succeeded.";
+      LOG(INFO) << "Replaced " << msg << ".";
     } else {
       // Graph is not modified.
-      LOG(WARNING) << msg << " failed: " << status << ". Fallback to TF...";
+      LOG(WARNING) << "Cannot replace " << msg
+                   << " (keeping original segment).";
     }
     if (VLOG_IS_ON(1)) {
       msg = "Segment consists of nodes: ";
-      for (const Node* node : converted_segments.at(i).first) {
+      for (const Node* node : converted_segments.at(i)) {
         StrAppend(&msg, node->name(), ", ");
       }
       VLOG(1) << msg;
@@ -941,7 +753,7 @@ Status ConvertAfterShapes(ConversionParams& params) {
     // If status is ok, we successfully added the node to the graph and can
     // remove segment ops. Otherwise graph is not modified.
     if (status.ok()) {
-      for (const Node* node : converted_segments.at(i).first) {
+      for (const Node* node : converted_segments.at(i)) {
         graph.RemoveNode(const_cast<Node*>(node));
       }
     }

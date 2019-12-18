@@ -55,9 +55,10 @@ class L2NormOpModel : public SingleOpModel {
     return ExtractVector<T>(output_);
   }
 
+  template <typename T>
   std::vector<float> GetDequantizedOutput() {
-    return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
-                               GetScale(output_), GetZeroPoint(output_));
+    return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
+                         GetZeroPoint(output_));
   }
 
   int input() const { return input_; }
@@ -70,6 +71,14 @@ class L2NormOpModel : public SingleOpModel {
 TEST(L2NormOpTest, SimpleFloatTest) {
   L2NormOpModel m({1, 1, 1, 6}, TensorType_FLOAT32,
                   ActivationFunctionType_NONE);
+  m.SetInput({-1.1, 0.6, 0.7, 1.2, -0.7, 0.1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray({-0.55, 0.3, 0.35, 0.6, -0.35, 0.05}));
+}
+
+TEST(L2NormOpTest, SimpleFloatWithRankLessThanFourTest) {
+  L2NormOpModel m({1, 6}, TensorType_FLOAT32, ActivationFunctionType_NONE);
   m.SetInput({-1.1, 0.6, 0.7, 1.2, -0.7, 0.1});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<float>(),
@@ -100,7 +109,20 @@ TEST(L2NormOpTest, SimpleUint8Test) {
   m.Invoke();
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAreArray({58, 166, 173, 205, 83, 134}));
-  EXPECT_THAT(m.GetDequantizedOutput(),
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(
+                  ArrayFloatNear({-0.55, 0.3, 0.35, 0.6, -0.35, 0.05}, 0.1)));
+}
+
+TEST(L2NormOpTest, SimpleInt8Test) {
+  L2NormOpModel m({1, 1, 1, 6}, TensorType_INT8, ActivationFunctionType_NONE);
+
+  m.QuantizeAndPopulate<int8_t>(m.input(), {-1.1, 0.6, 0.7, 1.2, -0.7, 0.1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({-70, 38, 45, 77, -45, 6}));
+
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(
                   ArrayFloatNear({-0.55, 0.3, 0.35, 0.6, -0.35, 0.05}, 0.1)));
 }
@@ -121,7 +143,32 @@ TEST(L2NormOpTest, MultipleBatchUint8Test) {
                   58, 166, 173, 205, 83, 134,  // batch 2
                   58, 166, 173, 205, 83, 134,  // batch 3
               }));
-  EXPECT_THAT(m.GetDequantizedOutput(),
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 1
+                      -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 2
+                      -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 3
+                  },
+                  0.1)));
+}
+
+TEST(L2NormOpTest, MultipleBatchInt8Test) {
+  L2NormOpModel m({3, 1, 1, 6}, TensorType_INT8, ActivationFunctionType_NONE);
+
+  m.QuantizeAndPopulate<int8_t>(m.input(),
+                                {
+                                    -1.1, 0.6, 0.7, 1.2, -0.7, 0.1,  // batch 1
+                                    -1.1, 0.6, 0.7, 1.2, -0.7, 0.1,  // batch 2
+                                    -1.1, 0.6, 0.7, 1.2, -0.7, 0.1,  // batch 3
+                                });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({
+                                         -70, 38, 45, 77, -45, 6,  // batch 1
+                                         -70, 38, 45, 77, -45, 6,  // batch 2
+                                         -70, 38, 45, 77, -45, 6,  // batch 3
+                                     }));
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
                       -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 1
@@ -133,9 +180,3 @@ TEST(L2NormOpTest, MultipleBatchUint8Test) {
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

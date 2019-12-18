@@ -17,12 +17,10 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 import sys
 import warnings
-
+from absl.testing import parameterized
 import numpy as np
-
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -34,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.constant_op import constant
+from tensorflow.python.keras.engine import training
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
@@ -45,22 +44,24 @@ from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import functional_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import gradients_impl
-from tensorflow.python.ops import gradients_util
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import unconnected_gradients
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
 
 
-class GradientsTest(test_util.TensorFlowTestCase):
+class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testGradients(self):
     with ops.Graph().as_default():
@@ -226,9 +227,29 @@ class GradientsTest(test_util.TensorFlowTestCase):
       z = x * 2.0
       w = z * 3.0
       grads = gradients.gradients(z, [c])
-      self.assertTrue(isinstance(grads[0], ops.Tensor))
+      self.assertIsInstance(grads[0], ops.Tensor)
       grads = gradients.gradients(w, [c])
-      self.assertTrue(isinstance(grads[0], ops.Tensor))
+      self.assertIsInstance(grads[0], ops.Tensor)
+
+  def testNoGradientForStringOutputsWithOpNamespace(self):
+    with ops.Graph().as_default():
+
+      def _TestOpGrad(_, float_grad, string_grad):
+        """Gradient function for TestStringOutput."""
+        self.assertEqual(float_grad.dtype, dtypes.float32)
+        self.assertFalse(string_grad)
+        return float_grad
+
+      ops.RegisterGradient("Namespace>TestStringOutput")(_TestOpGrad)
+
+      c = constant(1.0)
+      x, _ = test_ops.namespace_test_string_output(c)
+      z = x * 2.0
+      w = z * 3.0
+      grads = gradients.gradients(z, [c])
+      self.assertIsInstance(grads[0], ops.Tensor)
+      grads = gradients.gradients(w, [c])
+      self.assertIsInstance(grads[0], ops.Tensor)
 
   def testSingletonIndexedSlices(self):
     with ops.Graph().as_default():
@@ -267,6 +288,20 @@ class GradientsTest(test_util.TensorFlowTestCase):
       init = constant_op.constant(100.0)
       var = variables.Variable(init)
       gradient = gradients.gradients(var.read_value(), var)
+      self.assertIsNotNone(gradient)
+
+  @parameterized.parameters(dtypes.float32, dtypes.float64)
+  def testVariableDefaultGrad(self, dtype):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0, dtype=dtype)
+      var = variables.Variable(init)
+      dummy_const = constant_op.constant(0.0)
+      gradient = gradients.gradients(
+          dummy_const,
+          var,
+          unconnected_gradients=unconnected_gradients.UnconnectedGradients.ZERO
+      )[0]
+      self.assertEqual(gradient.dtype, dtype)
       self.assertIsNotNone(gradient)
 
   def testVariableAsGraphElementGradient(self):
@@ -859,6 +894,150 @@ class ResourceCondTest(test_util.TensorFlowTestCase):
     self.assertTrue(None not in grads)
 
 
+class GetDependentVariablesTest(test_util.TensorFlowTestCase):
+
+  def testNoVariables(self):
+    with ops.Graph().as_default():
+      func = lambda x: array_ops.identity(x) + 5.0
+      input_t = constant_op.constant(2.0)
+      result_t = func(input_t)
+      dependent_vars = custom_gradient.get_dependent_variables(
+          [input_t], [result_t])
+
+      # There are no variables.
+      self.assertEqual(dependent_vars, [])
+
+  def testVariablesOutside(self):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0)
+      var = variables.Variable(init)
+
+      # The variable is closed over. It should be found.
+      func = lambda x: array_ops.identity(x) + 5.0 + var
+
+      input_t = constant_op.constant(2.0)
+      result_t = func(input_t)
+      dependent_vars = custom_gradient.get_dependent_variables(
+          [input_t], [result_t])
+      self.assertEqual(dependent_vars, [var])
+
+  def testVariableSamePrefix(self):
+    with ops.Graph().as_default():
+      var_name = "my_variable"
+      v_z = variable_scope.get_variable(var_name, shape=())
+      v_o = variable_scope.get_variable(var_name + "_ones", shape=())
+
+      # The variable is closed over. It should be found.
+      func = lambda x: array_ops.identity(x) + 5.0 + v_z + v_o
+
+      input_t = constant_op.constant(2.0)
+      result_t = func(input_t)
+      dependent_vars = custom_gradient.get_dependent_variables(
+          [input_t], [result_t])
+      self.assertEqual(set(dependent_vars), set([v_o, v_z]))
+
+  def testVariablesOutsideButDSeparated(self):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0)
+      var = variables.Variable(init)
+
+      # The variable is d-separated by the inputs. It should not be found.
+      input_t = array_ops.identity(var) * 5.0
+
+      func = lambda x: array_ops.identity(x) + 5.0
+      result_t = func(input_t)
+      dependent_vars = custom_gradient.get_dependent_variables(
+          [input_t], [result_t])
+      self.assertEqual(dependent_vars, [])
+
+  def testVariablesOutsideAndNonDifferentiable(self):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0, shape=(5,))
+      var = variables.Variable(init, shape=(5,))
+
+      def _Func(x):
+        # non-differentiable dependency on var.
+        # the variable should not be found.
+        y = array_ops.ones_like(var)
+        return array_ops.identity(x) + 5.0 + y
+
+      input_t = constant_op.constant(2.0)
+      result_t = _Func(input_t)
+      dependent_vars = custom_gradient.get_dependent_variables(
+          [input_t], [result_t])
+      self.assertEqual(dependent_vars, [])
+
+  def testVariablesOutsideAndNonTrainable(self):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0, shape=(5,))
+
+      # Both variables are used in the function but only the trainable one
+      # should be found.
+      var_trainable = variables.Variable(init, shape=(5,))
+      var_nontrainable = variables.Variable(init, shape=(5,), trainable=False)
+
+      def _Func(x):
+        del x
+        return var_trainable + var_nontrainable
+
+      input_t = constant_op.constant(2.0)
+      result_t = _Func(input_t)
+      dependent_vars = custom_gradient.get_dependent_variables(
+          [input_t], [result_t])
+      self.assertEqual(dependent_vars, [var_trainable])
+
+  def testNesting(self):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0, shape=(5,))
+      var = variables.Variable(init, shape=(5,))
+
+      def _Func(inputs):
+        x = inputs["x"]
+        result = array_ops.identity(x) + 5.0 + var
+        return {
+            "y": result
+        }
+
+      input_t = constant_op.constant(2.0)
+      func_inputs = {
+          "x": input_t
+      }
+      result_t = _Func(func_inputs)
+
+      # Ensure we can deal with dictionary input and output.
+      dependent_vars = custom_gradient.get_dependent_variables(
+          func_inputs, result_t)
+      self.assertEqual(dependent_vars, [var])
+
+  def testVariablesOutsideAndCustomGradient(self):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0, shape=(5,))
+      var = variables.Variable(init, shape=(5,))
+
+      @custom_gradient.custom_gradient
+      def _MyOnesLike(x):
+        """Dummy version of ones_like which defines a gradient."""
+
+        output = array_ops.ones_like(x)
+
+        def _Grad(dy):
+          return array_ops.identity(dy)
+
+        return output, _Grad
+
+      def _Func(x):
+        # non-differentiable operation with custom gradient.
+        # The variable should be found.
+        y = _MyOnesLike(var)
+        return array_ops.identity(x) + 5.0 + y
+
+      input_t = constant_op.constant(2.0)
+      result_t = _Func(input_t)
+      dependent_vars = custom_gradient.get_dependent_variables(
+          [input_t], [result_t])
+      self.assertEqual(dependent_vars, [var])
+
+
 class CustomGradientTest(test_util.TensorFlowTestCase):
 
   def testCustomGradientTrivial(self):
@@ -897,6 +1076,24 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       dy = gradients.gradients(y, [x1, x2])
       with session.Session() as sess:
         self.assertAllEqual([3., 5.], self.evaluate(dy))
+
+  def testCustomGradientClass(self):
+
+    class Model(object):
+
+      @custom_gradient.custom_gradient
+      def Multiply(self, x1, x2):
+        result = x1 * x2
+        grad = lambda dy: (dy * x1, dy * x2)
+        return result, grad
+
+    with ops.Graph().as_default():
+      x1 = constant(3.)
+      x2 = constant(5.)
+      m = Model()
+      y = m.Multiply(x1, x2)
+      dy = gradients.gradients(y, [x1, x2])
+      self.assertAllEqual([3., 5.], self.evaluate(dy))
 
   def testCustomGradientErrors(self):
 
@@ -940,6 +1137,42 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
         self.evaluate(variables.global_variables_initializer())
         dw = sess.run(math_ops.reduce_sum(grads[1]))
         self.assertEqual(12., dw)
+
+  def testCustomGradientWithVariablesNoFalsePositives(self):
+
+    @custom_gradient.custom_gradient
+    def F(x):
+      out = core_layers.dense(x, 3, use_bias=False)
+
+      def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
+        self.assertEqual(1, len(variables))
+        grads = gradients.gradients(out, [x, variables[0]], grad_ys=out_grad)
+        return grads[0], [array_ops.ones((3, 3))]
+
+      return out, Grad
+
+    with ops.Graph().as_default():
+      with variable_scope.variable_scope("f", use_resource=True) as vs:
+        a = array_ops.ones((2, 4))
+
+        # Variabes in these layers shouldn't be picked up by the decorator.
+        b = core_layers.dense(a, 3, use_bias=False)
+        c = core_layers.dense(b, 3, use_bias=False)
+        x = core_layers.dense(b, 3, use_bias=False) + c
+
+        # Only the variables used in F.
+        y = F(x)
+
+        all_vars = vs.global_variables()
+        assert len(all_vars) == 4
+      grads = gradients.gradients(y, [x] + all_vars)
+      _, var_grads = grads[0], grads[1:]
+      for g in grads:
+        self.assertIsNotNone(g)
+      with session.Session() as sess:
+        self.evaluate(variables.global_variables_initializer())
+        dw = sess.run(math_ops.reduce_sum(var_grads[-1]))
+        self.assertEqual(9., dw)
 
   def testCustomGradientWithVariablesEager(self):
     with context.eager_mode():
@@ -1033,53 +1266,41 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(g.eval(), [2.0])
       self.assertAllEqual(g.eval(feed_dict={conditional: False}), [3.0])
 
+  def testRecursiveCustomGradient(self):
+    @custom_gradient.custom_gradient
+    def F(x):
+      out = core_layers.dense(x, 3, use_bias=False)
 
-class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
+      def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
+        self.assertEqual(1, len(variables))
+        grads = gradients.gradients(out, [x, variables[0]], grad_ys=out_grad)
+        return grads[0], [array_ops.ones((4, 3))]
 
-  def _assert_indexed_slices_equal(self, left, right):
-    self.assertAllEqual(
-        self.evaluate(ops.convert_to_tensor(left)),
-        self.evaluate(ops.convert_to_tensor(right)))
+      return out, Grad
 
-  def testNoGradients(self):
-    self.assertIsNone(gradients_util._AggregateIndexedSlicesGradients([]))
+    @custom_gradient.custom_gradient
+    def DoubleF(x):
+      out = F(x)
 
-  def testOneGradient(self):
-    t = math_ops._as_indexed_slices(constant_op.constant(
-        [[1., 2.], [0, 0], [3., 4.]]))
-    result = gradients_util._AggregateIndexedSlicesGradients([t])
-    self._assert_indexed_slices_equal(t, result)
+      def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
+        self.assertEqual(1, len(variables))
+        grads = gradients.gradients(out, [x, variables[0]], grad_ys=out_grad)
+        return grads[0], [array_ops.ones((4, 3))]
 
-  def testMultipleGradients(self):
-    t0 = math_ops._as_indexed_slices(constant_op.constant(
-        [[1., 2.], [0, 0], [3., 4.]]))
-    t1 = math_ops._as_indexed_slices(constant_op.constant(
-        [[0., 0.], [5, 6], [7., 8.]]))
-    total = constant_op.constant(
-        [[1., 2.], [5, 6], [10., 12.]])
-    result = gradients_util._AggregateIndexedSlicesGradients([t0, t1])
-    self._assert_indexed_slices_equal(total, result)
-
-  def testMultipleGradientsWithNones(self):
-    t0 = math_ops._as_indexed_slices(constant_op.constant(
-        [[1., 2.], [0, 0], [3., 4.]]))
-    t1 = math_ops._as_indexed_slices(constant_op.constant(
-        [[0., 0.], [5, 6], [7., 8.]]))
-    t3 = None
-    total = constant_op.constant(
-        [[1., 2.], [5, 6], [10., 12.]])
-    result = gradients_util._AggregateIndexedSlicesGradients([t0, t1, t3])
-    self._assert_indexed_slices_equal(total, result)
-
-  def testMixedTensorAndIndexedSlices(self):
-    t0 = math_ops._as_indexed_slices(constant_op.constant(
-        [[1., 2.], [0, 0], [3., 4.]]))
-    t1 = constant_op.constant(
-        [[0., 0.], [5, 6], [7., 8.]])
-    total = constant_op.constant(
-        [[1., 2.], [5, 6], [10., 12.]])
-    result = gradients_util._AggregateIndexedSlicesGradients([t0, t1])
-    self._assert_indexed_slices_equal(total, result)
+      return out, Grad
+    with ops.Graph().as_default():
+      x = array_ops.ones((2, 4))
+      with variable_scope.variable_scope("f", use_resource=True) as vs:
+        y = DoubleF(x)
+        all_vars = vs.global_variables()
+        assert len(all_vars) == 1
+      grads = gradients.gradients(y, [x, all_vars[0]])
+      for g in grads:
+        self.assertIsNotNone(g)
+      with session.Session() as sess:
+        self.evaluate(variables.global_variables_initializer())
+        dw = sess.run(math_ops.reduce_sum(grads[1]))
+        self.assertEqual(12., dw)
 
 
 class TensorListGradientsTest(test_util.TensorFlowTestCase):
@@ -1100,6 +1321,171 @@ class TensorListGradientsTest(test_util.TensorFlowTestCase):
       grad = gradients.gradients(tl, a, grad_ys=grad_tl)[0]
       with self.cached_session() as sess:
         self.assertEquals(self.evaluate(grad), 5.)
+
+
+class TestKerasModelClass(training.Model):
+  """A simple tensorflow keras Model class definition."""
+
+  def __init__(self, width):
+    super(TestKerasModelClass, self).__init__()
+
+    self.weight = variable_scope.get_variable(
+        name="test_keras_var",
+        shape=width,
+        dtype=dtypes.float32,
+        trainable=True,
+        use_resource=True,
+    )
+
+  def call(self, inputs):
+    return self.weight * inputs
+
+
+class VariablesGradientTest(test_util.TensorFlowTestCase):
+
+  def _TestVariablesGradient(self, inputs, test_model, vars_to_grad):
+    """Returns gradients of `test_model` with respect to `vars_to_grad`."""
+
+    test_model_re = custom_gradient.recompute_grad(test_model)
+
+    with backprop.GradientTape(persistent=True) as tape:
+      tape.watch(vars_to_grad)
+      out_re = test_model_re(inputs)
+      out = test_model(inputs)
+
+    grads_re = tape.gradient(out_re, vars_to_grad)
+    grads = tape.gradient(out, vars_to_grad)
+
+    return grads_re, grads
+
+  def _TestFnVariablesGradient(self, inputs, test_fn, vars_to_grad):
+    """Returns gradients of `test_model` with respect to `vars_to_grad`."""
+
+    test_fn_re = custom_gradient.recompute_grad(test_fn)
+
+    with backprop.GradientTape(persistent=True) as tape:
+      tape.watch(vars_to_grad)
+      out_re = test_fn_re(inputs, vars_to_grad)
+      out = test_fn(inputs, vars_to_grad)
+
+    grads_re = tape.gradient(out_re, vars_to_grad)
+    grads = tape.gradient(out, vars_to_grad)
+
+    return grads_re, grads
+
+  @test_util.run_in_graph_and_eager_modes
+  def testKerasRecompute(self):
+    """Checks that recompute_grad works for a simple Keras Model."""
+
+    test_model = TestKerasModelClass(10)
+    test_input = constant(np.zeros((10, 10), dtype=np.float32))
+    self.evaluate(variables.global_variables_initializer())
+    test_model(test_input)  # Ensures keras model is initialized.
+    grads_re, grads = self._TestVariablesGradient(test_input, test_model,
+                                                  test_input)
+
+    grads_re = self.evaluate(grads_re)
+    grads = self.evaluate(grads)
+    for g, g_re in zip(grads, grads_re):
+      self.assertAllClose(g, g_re)
+
+    grads_re, grads = self._TestVariablesGradient(test_input, test_model,
+                                                  test_model.variables)
+
+    grads_re = self.evaluate(grads_re)
+    grads = self.evaluate(grads)
+    for g, g_re in zip(grads, grads_re):
+      self.assertAllClose(g, g_re)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFnRecompute(self):
+    """Checks that recompute_grad works grads of function args."""
+
+    def TestFn(inputs, input_vars):
+      return inputs * input_vars
+
+    with variable_scope.variable_scope("test", use_resource=True):
+      test_var = variable_scope.get_variable(
+          name="test_var",
+          shape=10,
+          trainable=True,
+      )
+
+      test_input = constant(np.zeros((10, 10), dtype=np.float32))
+
+      grads_re, grads = self._TestFnVariablesGradient(test_input, TestFn,
+                                                      test_input)
+
+      grads_re = self.evaluate(grads_re)
+      grads = self.evaluate(grads)
+      for g, g_re in zip(grads, grads_re):
+        self.assertAllClose(g, g_re)
+
+      grads_re, grads = self._TestFnVariablesGradient(test_input, TestFn,
+                                                      test_var)
+      grads_re = self.evaluate(grads_re)
+      grads = self.evaluate(grads)
+      for g, g_re in zip(grads, grads_re):
+        self.assertAllClose(g, g_re)
+
+
+class GradPassThroughTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_v1_only("b/120545219")
+  def test_gradients_v1(self):
+    x = variable_scope.get_variable(
+        name="x", shape=(), initializer=init_ops.constant_initializer(1.0),
+        use_resource=True)
+    z = variable_scope.get_variable(
+        name="z", shape=(), initializer=init_ops.constant_initializer(3.0),
+        use_resource=True)
+
+    # Verify that assign op is not differentiable
+    y = state_ops.assign(x, z**2)
+    grads = gradients.gradients(y, z)
+    self.assertIsNone(grads[0])
+
+    # Verify that when the (non differentiable) assign op is wrapped with
+    # grad_pass_through, gradients are correctly forwarded to the inputs.
+    # Form an input as quadratic function of variable z and check that the
+    # gradient of output wrt to z is correct.
+    y = custom_gradient.grad_pass_through(
+        lambda v: state_ops.assign(x, v))(z**2)
+    grads = gradients.gradients(y, z)
+    with self.cached_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      self.assertAllClose(grads[0].eval(), 6.0)
+
+    # Verify that variables involved in the wrapped op do not receive gradients.
+    y = custom_gradient.grad_pass_through(lambda v: x * v)(z)
+    grads = gradients.gradients(y, x)
+    self.assertIsNone(grads[0])
+
+  @test_util.run_v2_only
+  def test_gradients_v2(self):
+    x = variables.Variable(1.0, name="x")
+    z = variables.Variable(3.0, name="z")
+
+    # Verify that assign op is not differentiable
+    with backprop.GradientTape() as tape:
+      y = x.assign(z**2)
+    grads = tape.gradient(y, z)
+    self.assertIsNone(grads)
+
+    # Verify that when the (non differentiable) assign op is wrapped with
+    # grad_pass_through, gradients are correctly forwarded to the inputs.
+    # Form an input as quadratic function of variable z and check that the
+    # gradient of output wrt to z is correct.
+    with backprop.GradientTape() as tape:
+      y = custom_gradient.grad_pass_through(x.assign)(z**2)
+    grads = tape.gradient(y, z)
+    self.assertAllClose(grads, 6.0)
+
+    # Verify that variables involved in the wrapped op do not receive gradients.
+    with backprop.GradientTape() as tape:
+      y = custom_gradient.grad_pass_through(lambda v: x * v)(z)
+    grads = tape.gradient(y, x)
+    self.assertIsNone(grads)
 
 
 if __name__ == "__main__":

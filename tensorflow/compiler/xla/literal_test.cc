@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -118,16 +117,16 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto c64_lit = LiteralUtil::CreateR0<complex64>({3.14f, 2.78f});
   EXPECT_EQ("c64[] (3.14, 2.78)", c64_lit.ToString());
 
-  auto c128_lit = LiteralUtil::CreateR0<complex128>({3.14f, 2.78f});
+  auto c128_lit = LiteralUtil::CreateR0<complex128>({3.14, 2.78});
   EXPECT_EQ("c128[] (3.14, 2.78)", c128_lit.ToString());
 
   auto bf16_lit = LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(0.5f));
   EXPECT_EQ("bf16[] 0.5", bf16_lit.ToString());
 
-  // 3.14 will be rounded to 3.14062 in bfloat16 format.
+  // 3.14 will be rounded to 3.140625 in bfloat16 format.
   auto bf16_lit_truncated =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(3.14f));
-  ASSERT_EQ("bf16[] 3.14062", bf16_lit_truncated.ToString());
+  ASSERT_EQ("bf16[] 3.141", bf16_lit_truncated.ToString());
 
   auto bf16_lit_truncated2 =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(9.001f));
@@ -1135,7 +1134,7 @@ TEST_F(LiteralUtilTest, CopyFromDifferentShapes) {
 TEST_F(LiteralUtilTest, F16) {
   // Verify that the internal data views are consistent and that they
   // are in little endian format
-  // TODO - modify if we make the data format machine endianess dependent
+  // TODO - modify if we make the data format machine endianness dependent
   Literal m1 = Literal::CreateFromShape(ShapeUtil::MakeShape(F16, {2, 2}));
   const char* d1 = reinterpret_cast<const char*>(m1.data<half>().data());
   EXPECT_EQ(d1[0], 0);
@@ -1848,6 +1847,30 @@ TEST_F(LiteralUtilTest, InvalidProtoNoValues) {
               HasSubstr("Expected 3 elements in LiteralProto"));
 }
 
+TEST_F(LiteralUtilTest, ValidProtoNoValues) {
+  // Proto contains a shape, but no values.
+  LiteralProto proto;
+  *proto.mutable_shape() = ShapeUtil::MakeShape(F32, {3}).ToProto();
+  Status status =
+      Literal::CreateFromProto(proto, /*prohibit_empty_literal=*/false)
+          .status();
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(LiteralUtilTest, ValidProtoWithClearedValues) {
+  auto literal = LiteralUtil::CreateR1<bool>({true, false, true});
+  LiteralProto proto = literal.ToProto();
+  EXPECT_EQ(proto.preds_size(), 3);
+
+  // Clear values.
+  proto.clear_preds();
+  EXPECT_EQ(proto.preds_size(), 0);
+  Status status =
+      Literal::CreateFromProto(proto, /*prohibit_empty_literal=*/false)
+          .status();
+  EXPECT_TRUE(status.ok());
+}
+
 TEST_F(LiteralUtilTest, InvalidProtoNoShape) {
   // Proto contains values, but no shape.
   LiteralProto proto;
@@ -2020,6 +2043,47 @@ TEST_F(LiteralUtilTest, BroadcastScalarToMatrix) {
                         /*dimensions=*/{}));
   EXPECT_EQ(broadcasted_literal,
             LiteralUtil::CreateR2<int32>({{9, 9}, {9, 9}}));
+}
+
+TEST_F(LiteralUtilTest, GetAsComplex128) {
+  complex128 value = {1, 0};
+  Literal c1 = LiteralUtil::CreateR0<complex128>(value);
+  EXPECT_EQ(*c1.GetAsComplex128({}), value);
+  Literal c2 = LiteralUtil::CreateR0<double>(1);
+  EXPECT_EQ(*c2.GetAsComplex128({}), value);
+  complex64 float_value = {1, 0};
+  Literal c4 = LiteralUtil::CreateR0<complex64>(float_value);
+  EXPECT_EQ(*c4.GetAsComplex128({}), value);
+  complex128 other_value = {1, 2};
+  Literal c5 = LiteralUtil::CreateR0<complex128>(other_value);
+  EXPECT_EQ(*c5.GetAsComplex128({}), other_value);
+  Literal c6 = LiteralUtil::CreateR0<int64>(1);
+  EXPECT_FALSE(c6.GetAsComplex128({}).has_value());
+}
+
+TEST_F(LiteralUtilTest, IsEqualAt) {
+  double val_double = 10.0;
+  int val_integral = 10;
+  Literal c1 = LiteralUtil::CreateR0<int>(10);
+  EXPECT_TRUE(c1.IsEqualAt({}, val_double));
+  EXPECT_TRUE(c1.IsEqualAt({}, val_integral));
+  Literal c2 = LiteralUtil::CreateR0<double>(10);
+  EXPECT_TRUE(c2.IsEqualAt({}, val_double));
+  EXPECT_TRUE(c2.IsEqualAt({}, val_integral));
+  complex128 val_complex = {10, 0};
+  EXPECT_TRUE(c2.IsEqualAt({}, val_complex));
+  EXPECT_TRUE(c1.IsEqualAt({}, val_complex));
+  Literal c3 = LiteralUtil::CreateR0<complex128>(val_complex);
+  EXPECT_TRUE(c3.IsEqualAt({}, val_double));
+  EXPECT_TRUE(c3.IsEqualAt({}, val_integral));
+  EXPECT_TRUE(c3.IsEqualAt({}, val_complex));
+  double val_inf = 1. / 0;
+  EXPECT_FALSE(c3.IsEqualAt({}, val_inf));
+  complex128 val_true_complex = {10, 3};
+  complex64 val_smaller_complex = {10, 3};
+  Literal c4 = LiteralUtil::CreateR0<complex128>(val_true_complex);
+  EXPECT_TRUE(c4.IsEqualAt({}, val_true_complex));
+  EXPECT_TRUE(c4.IsEqualAt({}, val_smaller_complex));
 }
 
 }  // namespace

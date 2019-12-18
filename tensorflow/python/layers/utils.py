@@ -231,7 +231,7 @@ def constant_value(pred):
 def object_list_uid(object_list):
   """Creates a single string from object ids."""
   object_list = nest.flatten(object_list)
-  return ', '.join([str(abs(id(x))) for x in object_list])
+  return ', '.join(str(abs(id(x))) for x in object_list)
 
 
 def static_shape(x):

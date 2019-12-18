@@ -38,23 +38,32 @@ def canonicalize(d, default=None):
   Note: This uses "job:localhost" as the default if executing eagerly.
 
   Args:
-    d: a device string.
+    d: a device string or tf.config.LogicalDevice
     default: a string for default device if d doesn't have all components.
 
   Returns:
     a canonicalized device string.
   """
-  d = tf_device.DeviceSpec.from_string(d)
+  if isinstance(d, context.LogicalDevice):
+    d = tf_device.DeviceSpec.from_string(d.name)
+  else:
+    d = tf_device.DeviceSpec.from_string(d)
+
   assert d.device_type is None or d.device_type == d.device_type.upper(), (
       "Device type '%s' must be all-caps." % (d.device_type,))
   # Fill in missing device fields using defaults.
   result = tf_device.DeviceSpec(
       replica=0, task=0, device_type="CPU", device_index=0)
   if ops.executing_eagerly_outside_functions():
-    result.job = "localhost"
+    # The default job is localhost if eager execution is enabled
+    result = result.replace(job="localhost")
   if default:
-    result.merge_from(tf_device.DeviceSpec.from_string(default))
-  result.merge_from(d)
+    # Overrides any defaults with values from the default device if given.
+    result = result.make_merged_spec(
+        tf_device.DeviceSpec.from_string(default))
+
+  # Apply `d` last, so that it's values take precidence over the defaults.
+  result = result.make_merged_spec(d)
   return result.to_string()
 
 
@@ -83,15 +92,31 @@ class _FakeOperation(object):
   def _set_device(self, device):
     self.device = ops._device_string(device)  # pylint: disable=protected-access
 
+  def _set_device_from_string(self, device_str):
+    self.device = device_str
+
 
 def current():
   """Return a string (not canonicalized) for the current device."""
   # TODO(josh11b): Work out how this function interacts with ops.colocate_with.
-  ctx = context.context()
-  if ctx.executing_eagerly():
-    d = ctx.device_name
+  if ops.executing_eagerly_outside_functions():
+    d = context.context().device_name
   else:
     op = _FakeOperation()
     ops.get_default_graph()._apply_device_functions(op)  # pylint: disable=protected-access
     d = op.device
   return d
+
+
+def get_host_for_device(device):
+  """Returns the corresponding host device for the given device."""
+  spec = tf_device.DeviceSpec.from_string(device)
+  return tf_device.DeviceSpec(
+      job=spec.job, replica=spec.replica, task=spec.task,
+      device_type="CPU", device_index=0).to_string()
+
+
+def local_devices_from_num_gpus(num_gpus):
+  """Returns device strings for local GPUs or CPU."""
+  return (tuple("/device:GPU:%d" % i for i in range(num_gpus)) or
+          ("/device:CPU:0",))

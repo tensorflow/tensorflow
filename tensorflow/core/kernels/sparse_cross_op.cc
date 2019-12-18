@@ -78,16 +78,16 @@ template <>
 int64 SparseTensorColumn<int64>::Feature(int64 batch, int64 n) const {
   const int64 start = feature_start_indices_[batch];
   if (DT_STRING == values_.dtype())
-    return Fingerprint64(values_.vec<string>().data()[start + n]);
+    return Fingerprint64(values_.vec<tstring>().data()[start + n]);
   return values_.vec<int64>().data()[start + n];
 }
 
 // InternalType is string or StringPiece when using StringCrosser.
 template <>
-string SparseTensorColumn<string>::Feature(int64 batch, int64 n) const {
+tstring SparseTensorColumn<tstring>::Feature(int64 batch, int64 n) const {
   const int64 start = feature_start_indices_[batch];
   if (DT_STRING == values_.dtype())
-    return values_.vec<string>().data()[start + n];
+    return values_.vec<tstring>().data()[start + n];
   return std::to_string(values_.vec<int64>().data()[start + n]);
 }
 
@@ -95,7 +95,7 @@ template <>
 StringPiece SparseTensorColumn<StringPiece>::Feature(int64 batch,
                                                      int64 n) const {
   const int64 start = feature_start_indices_[batch];
-  return values_.vec<string>().data()[start + n];
+  return values_.vec<tstring>().data()[start + n];
 }
 
 // A column that is backed by a dense tensor.
@@ -118,21 +118,21 @@ class DenseTensorColumn : public ColumnInterface<InternalType> {
 template <>
 int64 DenseTensorColumn<int64>::Feature(int64 batch, int64 n) const {
   if (DT_STRING == tensor_.dtype())
-    return Fingerprint64(tensor_.matrix<string>()(batch, n));
+    return Fingerprint64(tensor_.matrix<tstring>()(batch, n));
   return tensor_.matrix<int64>()(batch, n);
 }
 
 // Internal type is string or StringPiece when using StringCrosser.
 template <>
-string DenseTensorColumn<string>::Feature(int64 batch, int64 n) const {
-  if (DT_STRING == tensor_.dtype()) return tensor_.matrix<string>()(batch, n);
+tstring DenseTensorColumn<tstring>::Feature(int64 batch, int64 n) const {
+  if (DT_STRING == tensor_.dtype()) return tensor_.matrix<tstring>()(batch, n);
   return std::to_string(tensor_.matrix<int64>()(batch, n));
 }
 
 template <>
 StringPiece DenseTensorColumn<StringPiece>::Feature(int64 batch,
                                                     int64 n) const {
-  return tensor_.matrix<string>()(batch, n);
+  return tensor_.matrix<tstring>()(batch, n);
 }
 
 // Updates Output tensors with sparse crosses.
@@ -182,7 +182,7 @@ class StringCrosser {
     }
     // TODO(zakaria): this will copy the string twice, might effect
     // performance.
-    return str_util::Join(cross_vec, k_feature_separator);
+    return absl::StrJoin(cross_vec, k_feature_separator);
   }
 
  private:
@@ -275,7 +275,7 @@ struct CrossTraits;
 template <typename InternalType>
 struct CrossTraits<false, InternalType> {
   typedef StringCrosser<InternalType> Crosser;
-  typedef OutputUpdater<string> Updater;
+  typedef OutputUpdater<tstring> Updater;
 };
 
 template <>
@@ -555,20 +555,20 @@ class SparseCrossOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<string>("out_type")
-                            .TypeConstraint<string>("internal_type"),
+                            .TypeConstraint<tstring>("out_type")
+                            .TypeConstraint<tstring>("internal_type"),
                         SparseCrossOp<false, StringPiece>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<string>("out_type")
+                            .TypeConstraint<tstring>("out_type")
                             .TypeConstraint<int64>("internal_type"),
-                        SparseCrossOp<false, string>);
+                        SparseCrossOp<false, tstring>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<int64>("out_type")
-                            .TypeConstraint<string>("internal_type"),
+                            .TypeConstraint<tstring>("internal_type"),
                         SparseCrossOp<true, int64>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseCross")

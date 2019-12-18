@@ -26,7 +26,7 @@ from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine.input_spec import InputSpec
-from tensorflow.python.keras.layers import recurrent
+from tensorflow.python.keras.layers import recurrent_v2
 from tensorflow.python.keras.layers.recurrent import RNN
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
@@ -77,8 +77,7 @@ class _CuDNNRNN(RNN):
     self.state_spec = [InputSpec(shape=(None, dim)) for dim in state_size]
     self.constants_spec = None
     self._states = None
-    self._num_constants = None
-    self._num_inputs = None
+    self._num_constants = 0
     self._vector_shape = constant_op.constant([-1])
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
@@ -114,7 +113,7 @@ class _CuDNNRNN(RNN):
       updates = []
       for i in range(len(states)):
         updates.append(state_ops.assign(self.states[i], states[i]))
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_state:
       return [output] + states
@@ -275,7 +274,7 @@ class CuDNNGRU(_CuDNNRNN):
     input_h = initial_state[0]
     input_h = array_ops.expand_dims(input_h, axis=0)
 
-    params = recurrent._canonical_to_params(    # pylint: disable=protected-access
+    params = recurrent_v2._canonical_to_params(    # pylint: disable=protected-access
         weights=[
             self.kernel[:, self.units:self.units * 2],
             self.kernel[:, :self.units],
@@ -294,13 +293,16 @@ class CuDNNGRU(_CuDNNRNN):
         ],
         shape=self._vector_shape)
 
-    outputs, h, _, _ = gen_cudnn_rnn_ops.cudnn_rnn(
-        inputs,
-        input_h=input_h,
-        input_c=0,
-        params=params,
-        is_training=True,
-        rnn_mode='gru')
+    args = {
+        'input': inputs,
+        'input_h': input_h,
+        'input_c': 0,
+        'params': params,
+        'is_training': True,
+        'rnn_mode': 'gru',
+    }
+
+    outputs, h, _, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv2(**args)
 
     if self.stateful or self.return_state:
       h = h[0]
@@ -470,7 +472,7 @@ class CuDNNLSTM(_CuDNNRNN):
     input_h = array_ops.expand_dims(input_h, axis=0)
     input_c = array_ops.expand_dims(input_c, axis=0)
 
-    params = recurrent._canonical_to_params(    # pylint: disable=protected-access
+    params = recurrent_v2._canonical_to_params(    # pylint: disable=protected-access
         weights=[
             self.kernel[:, :self.units],
             self.kernel[:, self.units:self.units * 2],
@@ -493,12 +495,15 @@ class CuDNNLSTM(_CuDNNRNN):
         ],
         shape=self._vector_shape)
 
-    outputs, h, c, _ = gen_cudnn_rnn_ops.cudnn_rnn(
-        inputs,
-        input_h=input_h,
-        input_c=input_c,
-        params=params,
-        is_training=True)
+    args = {
+        'input': inputs,
+        'input_h': input_h,
+        'input_c': input_c,
+        'params': params,
+        'is_training': True,
+    }
+
+    outputs, h, c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv2(**args)
 
     if self.stateful or self.return_state:
       h = h[0]

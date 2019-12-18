@@ -34,7 +34,6 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import saver_pb2
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -69,6 +68,7 @@ from tensorflow.python.summary import summary
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import saver as saver_module
 from tensorflow.python.training import saver_test_utils
@@ -1475,6 +1475,67 @@ class MaxToKeepTest(test.TestCase):
           gfile.Exists(checkpoint_management.meta_graph_filename(s1)))
 
 
+class RecoverLastCheckpointsTest(test.TestCase):
+
+  def _get_test_dir(self, dirname):
+    test_dir = os.path.join(self.get_temp_dir(), dirname)
+    gfile.MakeDirs(test_dir)
+    return test_dir
+
+  def assertCheckpointState(self, model_checkpoint_path,
+                            all_model_checkpoint_paths, save_dir):
+    checkpoint_state = checkpoint_management.get_checkpoint_state(save_dir)
+    self.assertEqual(checkpoint_state.model_checkpoint_path,
+                     model_checkpoint_path)
+    self.assertEqual(checkpoint_state.all_model_checkpoint_paths,
+                     all_model_checkpoint_paths)
+
+  def test_recover_last_checkpoints(self):
+    with context.eager_mode():
+      save_dir = self._get_test_dir("recover_last_checkpoints")
+
+      v = variable_scope.variable(10.0, name="v")
+      save = saver_module.Saver({"v": v}, max_to_keep=10)
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEqual([], save.last_checkpoints)
+
+      s1 = save.save(None, os.path.join(save_dir, "ckpt-1"))
+      s2 = save.save(None, os.path.join(save_dir, "ckpt-2"))
+      s3 = save.save(None, os.path.join(save_dir, "ckpt-3"))
+      self.assertEqual([s1, s2, s3], save.last_checkpoints)
+      self.assertTrue(checkpoint_management.checkpoint_exists(s1))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s2))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s3))
+      self.assertCheckpointState(
+          model_checkpoint_path=s3,
+          all_model_checkpoint_paths=[s1, s2, s3],
+          save_dir=save_dir)
+
+      # Create another saver and recover last checkpoints.
+      save2 = saver_module.Saver({"v": v}, max_to_keep=10)
+      self.assertEqual([], save2.last_checkpoints)
+      save2.recover_last_checkpoints([s1, s2, s3])
+      self.assertEqual([s1, s2, s3], save2.last_checkpoints)
+
+      # Remove a checkpoint and check that last checkpoints are
+      # restored correctly.
+      for fname in gfile.Glob("{}*".format(s1)):
+        gfile.Remove(fname)
+      self.assertFalse(checkpoint_management.checkpoint_exists(s1))
+
+      # Create another saver and recover last checkpoints. The removed
+      # checkpoint would be correctly omitted.
+      save3 = saver_module.Saver({"v": v}, max_to_keep=10)
+      self.assertEqual([], save3.last_checkpoints)
+      save3.recover_last_checkpoints([s1, s2, s3])
+      self.assertEqual([s2, s3], save3.last_checkpoints)
+      s4 = save3.save(None, os.path.join(save_dir, "ckpt-4"))
+      self.assertCheckpointState(
+          model_checkpoint_path=s4,
+          all_model_checkpoint_paths=[s2, s3, s4],
+          save_dir=save_dir)
+
+
 class KeepCheckpointEveryNHoursTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -2407,7 +2468,7 @@ class CheckpointReaderTest(test.TestCase):
       save.save(sess, save_path)
 
       # Creates a reader.
-      reader = pywrap_tensorflow.NewCheckpointReader(save_path)
+      reader = py_checkpoint_reader.NewCheckpointReader(save_path)
       # Verifies that the tensors exist.
       self.assertTrue(reader.has_tensor("v0"))
       self.assertTrue(reader.has_tensor("v1"))
@@ -2432,7 +2493,7 @@ class CheckpointReaderTest(test.TestCase):
   def testNonexistentPath(self):
     with self.assertRaisesRegexp(errors.NotFoundError,
                                  "Unsuccessful TensorSliceReader"):
-      pywrap_tensorflow.NewCheckpointReader("non-existent")
+      py_checkpoint_reader.NewCheckpointReader("non-existent")
 
 
 class CheckpointReaderForV2Test(CheckpointReaderTest):
@@ -2900,7 +2961,8 @@ class TrackableCompatibilityTests(test.TestCase):
         super(_CountingSaveable, self).__init__(
             dummy_op,
             [saver_module.BaseSaverBuilder.SaveSpec(
-                _tensor, "", name, dtype=dummy_op.dtype)],
+                _tensor, "", name, dtype=dummy_op.dtype,
+                device=dummy_op.device)],
             name)
 
       def restore(self, restored_tensors, restored_shapes):

@@ -24,6 +24,8 @@ import collections
 import six
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.util.tf_export import tf_export
@@ -37,11 +39,20 @@ def format_master_url(master, rpc_layer=None):
 
 
 def get_accelerator_devices(master, config_proto):
-  # TODO(frankchn): Add support for eager mode as well as graph mode.
-  with ops.Graph().as_default():
-    with session.Session(master, config=config_proto) as s:
-      devices = s.list_devices()
-  return devices
+  """Returns accelerator devices given a master and a configuration."""
+  if context.executing_eagerly():
+    logical_devices = config.list_logical_devices()
+    devices = []
+    for d in logical_devices:
+      if d.device_type == 'CPU' or d.device_type == 'XLA_CPU':  # Filter CPUs
+        continue
+      devices.append(session._DeviceAttributes(d.name, d.device_type, 0, 0))  # pylint: disable=protected-access
+    return devices
+  else:
+    with ops.Graph().as_default():
+      with session.Session(master, config=config_proto) as s:
+        devices = s.list_devices()
+    return devices
 
 
 @tf_export('distribute.cluster_resolver.ClusterResolver')
@@ -72,7 +83,7 @@ class ClusterResolver(object):
 
   @abc.abstractmethod
   def cluster_spec(self):
-    """Retrieve the current state of the cluster and returns a ClusterSpec.
+    """Retrieve the current state of the cluster and return a ClusterSpec.
 
     Returns:
       A ClusterSpec representing the state of the cluster at the moment this
@@ -133,6 +144,11 @@ class ClusterResolver(object):
     devices = get_accelerator_devices(master, config_proto)
     mapping = collections.defaultdict(int)
     for device in devices:
+      if task_type is not None and task_id is not None:
+        job_path = '/job:%s' % task_type
+        task_path = '/task:%s' % task_id
+        if job_path not in device.name or task_path not in device.name:
+          continue
       mapping[device.device_type] += 1
     return mapping
 
@@ -265,7 +281,7 @@ class UnionClusterResolver(ClusterResolver):
   when cluster_spec is called. The details of the merge function is
   documented in the cluster_spec function.
 
-  For additional Cluster Resolver properties such as task type, task index,
+  For additional ClusterResolver properties such as task type, task index,
   rpc layer, environment, etc..., we will return the value from the first
   ClusterResolver in the union.
   """

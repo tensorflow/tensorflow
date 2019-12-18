@@ -4,10 +4,6 @@ tf_module {
     name: "rnn_cell"
     mtype: "<type \'module\'>"
   }
-  member {
-    name: "swish"
-    mtype: "<class \'tensorflow.python.framework.function._OverloadedFunction\'>"
-  }
   member_method {
     name: "all_candidate_sampler"
     argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
@@ -63,6 +59,10 @@ tf_module {
   member_method {
     name: "compute_accidental_hits"
     argspec: "args=[\'true_classes\', \'sampled_candidates\', \'num_true\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "compute_average_loss"
+    argspec: "args=[\'per_example_loss\', \'sample_weight\', \'global_batch_size\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "conv1d"
@@ -274,7 +274,7 @@ tf_module {
   }
   member_method {
     name: "max_pool_with_argmax"
-    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'Targmax\', \'name\', \'output_dtype\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'Targmax\', \'name\', \'output_dtype\', \'include_batch_in_index\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\', \'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "moments"
@@ -331,6 +331,10 @@ tf_module {
   member_method {
     name: "sampled_softmax_loss"
     argspec: "args=[\'weights\', \'biases\', \'labels\', \'inputs\', \'num_sampled\', \'num_classes\', \'num_true\', \'sampled_values\', \'remove_accidental_hits\', \'partition_strategy\', \'name\', \'seed\'], varargs=None, keywords=None, defaults=[\'1\', \'None\', \'True\', \'mod\', \'sampled_softmax_loss\', \'None\'], "
+  }
+  member_method {
+    name: "scale_regularization_loss"
+    argspec: "args=[\'regularization_loss\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "selu"
@@ -397,6 +401,10 @@ tf_module {
     argspec: "args=[\'x\', \'axes\', \'shift\', \'keep_dims\', \'name\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "swish"
+    argspec: "args=[\'features\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "tanh"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -410,7 +418,7 @@ tf_module {
   }
   member_method {
     name: "weighted_cross_entropy_with_logits"
-    argspec: "args=[\'targets\', \'logits\', \'pos_weight\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'pos_weight\', \'name\', \'targets\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "weighted_moments"

@@ -18,11 +18,11 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 
@@ -57,11 +57,11 @@ class ExecutableBuildOptions {
   // want to run various algorithms on the device and pick the fastest one -- it
   // might allocate buffers for use by these algorithms using this allocator.
   //
-  // This does not need to be the same as the DeviceMemoryAllocator passed when
-  // running the executable.
+  // This does not need to be the same as the se::DeviceMemoryAllocator passed
+  // when running the executable.
   ExecutableBuildOptions& set_device_allocator(
-      DeviceMemoryAllocator* allocator);
-  DeviceMemoryAllocator* device_allocator() const;
+      se::DeviceMemoryAllocator* allocator);
+  se::DeviceMemoryAllocator* device_allocator() const;
 
   // Returns a string representation of the build options, suitable for
   // debugging.
@@ -72,13 +72,21 @@ class ExecutableBuildOptions {
   int num_replicas() const { return num_replicas_; }
   ExecutableBuildOptions& set_num_replicas(int num_replicas);
 
+  // Whether input and output buffers are aliased if the associated parameter is
+  // passed-through XLA modules without being changed.
+  bool alias_passthrough_params() const { return alias_passthrough_params_; }
+  void set_alias_passthrough_params(bool alias_passthrough_params) {
+    alias_passthrough_params_ = alias_passthrough_params;
+  }
+
  private:
   int device_ordinal_ = -1;
   Shape result_layout_;
   bool result_layout_set_ = false;
   absl::optional<DebugOptions> debug_options_;
-  DeviceMemoryAllocator* device_allocator_ = nullptr;
+  se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   int num_replicas_ = 1;
+  bool alias_passthrough_params_ = false;
 };
 
 }  // namespace xla

@@ -17,97 +17,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import readers
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class MakeTFRecordDatasetTest(
-    reader_dataset_ops_test_base.TFRecordDatasetTestBase):
-
-  def _interleave(self, iterators, cycle_length):
-    pending_iterators = iterators
-    open_iterators = []
-    num_open = 0
-    for i in range(cycle_length):
-      if pending_iterators:
-        open_iterators.append(pending_iterators.pop(0))
-        num_open += 1
-
-    while num_open:
-      for i in range(min(cycle_length, len(open_iterators))):
-        if open_iterators[i] is None:
-          continue
-        try:
-          yield next(open_iterators[i])
-        except StopIteration:
-          if pending_iterators:
-            open_iterators[i] = pending_iterators.pop(0)
-          else:
-            open_iterators[i] = None
-            num_open -= 1
-
-  def _next_expected_batch(self,
-                           file_indices,
-                           batch_size,
-                           num_epochs,
-                           cycle_length,
-                           drop_final_batch,
-                           use_parser_fn):
-
-    def _next_record(file_indices):
-      for j in file_indices:
-        for i in range(self._num_records):
-          yield j, i
-
-    def _next_record_interleaved(file_indices, cycle_length):
-      return self._interleave([_next_record([i]) for i in file_indices],
-                              cycle_length)
-
-    record_batch = []
-    batch_index = 0
-    for _ in range(num_epochs):
-      if cycle_length == 1:
-        next_records = _next_record(file_indices)
-      else:
-        next_records = _next_record_interleaved(file_indices, cycle_length)
-      for f, r in next_records:
-        record = self._record(f, r)
-        if use_parser_fn:
-          record = record[1:]
-        record_batch.append(record)
-        batch_index += 1
-        if len(record_batch) == batch_size:
-          yield record_batch
-          record_batch = []
-          batch_index = 0
-    if record_batch and not drop_final_batch:
-      yield record_batch
-
-  def _verify_records(self,
-                      outputs,
-                      batch_size,
-                      file_index,
-                      num_epochs,
-                      interleave_cycle_length,
-                      drop_final_batch,
-                      use_parser_fn):
-    if file_index is not None:
-      file_indices = [file_index]
-    else:
-      file_indices = range(self._num_files)
-
-    for expected_batch in self._next_expected_batch(
-        file_indices, batch_size, num_epochs, interleave_cycle_length,
-        drop_final_batch, use_parser_fn):
-      actual_batch = self.evaluate(outputs())
-      self.assertAllEqual(expected_batch, actual_batch)
+    reader_dataset_ops_test_base.TFRecordDatasetTestBase,
+    parameterized.TestCase):
 
   def _read_test(self, batch_size, num_epochs, file_index=None,
                  num_parallel_reads=1, drop_final_batch=False, parser_fn=False):
@@ -141,6 +66,7 @@ class MakeTFRecordDatasetTest(
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(outputs())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testRead(self):
     for batch_size in [1, 2]:
       for num_epochs in [1, 3]:
@@ -156,6 +82,7 @@ class MakeTFRecordDatasetTest(
         # Basic test: read from both files, with parallel reads.
         self._read_test(batch_size, num_epochs, num_parallel_reads=8)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDropFinalBatch(self):
     for batch_size in [1, 2, 10]:
       for num_epochs in [1, 3]:
@@ -169,6 +96,7 @@ class MakeTFRecordDatasetTest(
         self._read_test(batch_size, num_epochs, num_parallel_reads=8,
                         drop_final_batch=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testParserFn(self):
     for batch_size in [1, 2]:
       for num_epochs in [1, 3]:
@@ -180,15 +108,17 @@ class MakeTFRecordDatasetTest(
 
   def _shuffle_test(self, batch_size, num_epochs, num_parallel_reads=1,
                     seed=None):
-    dataset = readers.make_tf_record_dataset(
-        file_pattern=self.test_filenames,
-        num_epochs=num_epochs,
-        batch_size=batch_size,
-        num_parallel_reads=num_parallel_reads,
-        shuffle=True,
-        shuffle_seed=seed)
 
-    next_element = self.getNext(dataset)
+    def dataset_fn():
+      return readers.make_tf_record_dataset(
+          file_pattern=self.test_filenames,
+          num_epochs=num_epochs,
+          batch_size=batch_size,
+          num_parallel_reads=num_parallel_reads,
+          shuffle=True,
+          shuffle_seed=seed)
+
+    next_element = self.getNext(dataset_fn())
     first_batches = []
     try:
       while True:
@@ -196,7 +126,7 @@ class MakeTFRecordDatasetTest(
     except errors.OutOfRangeError:
       pass
 
-    next_element = self.getNext(dataset)
+    next_element = self.getNext(dataset_fn())
     second_batches = []
     try:
       while True:
@@ -221,6 +151,7 @@ class MakeTFRecordDatasetTest(
         actual.extend(b)
       self.assertAllEqual(sorted(expected), sorted(actual))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testShuffle(self):
     for batch_size in [1, 2]:
       for num_epochs in [1, 3]:
@@ -232,6 +163,7 @@ class MakeTFRecordDatasetTest(
           self._shuffle_test(batch_size, num_epochs, num_parallel_reads,
                              seed=21345)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testIndefiniteRepeatShapeInference(self):
     dataset = readers.make_tf_record_dataset(
         file_pattern=self.test_filenames, num_epochs=None, batch_size=32)

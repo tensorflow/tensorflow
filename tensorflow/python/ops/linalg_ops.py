@@ -89,8 +89,8 @@ def cholesky_solve(chol, rhs, name=None):
   # Solve 10 separate 2x2 linear systems:
   A = ... # shape 10 x 2 x 2
   RHS = ... # shape 10 x 2 x 1
-  chol = tf.cholesky(A)  # shape 10 x 2 x 2
-  X = tf.cholesky_solve(chol, RHS)  # shape 10 x 2 x 1
+  chol = tf.linalg.cholesky(A)  # shape 10 x 2 x 2
+  X = tf.linalg.cholesky_solve(chol, RHS)  # shape 10 x 2 x 1
   # tf.matmul(A, X) ~ RHS
   X[3, :, 0]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 0]
 
@@ -103,7 +103,7 @@ def cholesky_solve(chol, rhs, name=None):
 
   Args:
     chol:  A `Tensor`.  Must be `float32` or `float64`, shape is `[..., M, M]`.
-      Cholesky factorization of `A`, e.g. `chol = tf.cholesky(A)`.
+      Cholesky factorization of `A`, e.g. `chol = tf.linalg.cholesky(A)`.
       For that reason, only the lower triangular parts (including the diagonal)
       of the last two dimensions of `chol` are used.  The strictly upper part is
       assumed to be zero and not accessed.
@@ -306,6 +306,62 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
         matrix, rhs, l2_regularizer, fast=fast, name=name)
 
 
+@tf_export('eig', 'linalg.eig', v1=[])
+def eig(tensor, name=None):
+  """Computes the eigen decomposition of a batch of matrices.
+
+  The eigenvalues
+  and eigenvectors for a non-Hermitian matrix in general are complex. The
+  eigenvectors are not guaranteed to be linearly independent.
+
+  Computes the eigenvalues and right eigenvectors of the innermost
+  N-by-N matrices in `tensor` such that
+  `tensor[...,:,:] * v[..., :,i] = e[..., i] * v[...,:,i]`, for i=0...N-1.
+
+  Args:
+    tensor: `Tensor` of shape `[..., N, N]`. Only the lower triangular part of
+      each inner inner matrix is referenced.
+    name: string, optional name of the operation.
+
+  Returns:
+    e: Eigenvalues. Shape is `[..., N]`. Sorted in non-decreasing order.
+    v: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
+      matrices contain eigenvectors of the corresponding matrices in `tensor`
+  """
+  if tensor.dtype == dtypes.float32 or tensor.dtype == dtypes.complex64:
+    out_dtype = dtypes.complex64
+  elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
+    out_dtype = dtypes.complex128
+  e, v = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=True, name=name)
+  return e, v
+
+
+@tf_export('eigvals', 'linalg.eigvals', v1=[])
+def eigvals(tensor, name=None):
+  """Computes the eigenvalues of one or more matrices.
+
+  Note: If your program backpropagates through this function, you should replace
+  it with a call to tf.linalg.eig (possibly ignoring the second output) to
+  avoid computing the eigen decomposition twice. This is because the
+  eigenvectors are used to compute the gradient w.r.t. the eigenvalues. See
+  _SelfAdjointEigV2Grad in linalg_grad.py.
+
+  Args:
+    tensor: `Tensor` of shape `[..., N, N]`.
+    name: string, optional name of the operation.
+
+  Returns:
+    e: Eigenvalues. Shape is `[..., N]`. The vector `e[..., :]` contains the `N`
+      eigenvalues of `tensor[..., :, :]`.
+  """
+  if tensor.dtype == dtypes.float32 or tensor.dtype == dtypes.complex64:
+    out_dtype = dtypes.complex64
+  elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
+    out_dtype = dtypes.complex128
+  e, _ = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=False, name=name)
+  return e
+
+
 @tf_export('linalg.eigh', v1=['linalg.eigh', 'self_adjoint_eig'])
 @deprecation.deprecated_endpoints('self_adjoint_eig')
 def self_adjoint_eig(tensor, name=None):
@@ -335,7 +391,7 @@ def self_adjoint_eigvals(tensor, name=None):
   """Computes the eigenvalues of one or more self-adjoint matrices.
 
   Note: If your program backpropagates through this function, you should replace
-  it with a call to tf.linalg.eigvalsh (possibly ignoring the second output) to
+  it with a call to tf.linalg.eigh (possibly ignoring the second output) to
   avoid computing the eigen decomposition twice. This is because the
   eigenvectors are used to compute the gradient w.r.t. the eigenvalues. See
   _SelfAdjointEigV2Grad in linalg_grad.py.
@@ -437,13 +493,13 @@ def norm_v2(tensor,
 
   Args:
     tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
-    ord: Order of the norm. Supported values are 'fro', 'euclidean',
+    ord: Order of the norm. Supported values are `'fro'`, `'euclidean'`,
       `1`, `2`, `np.inf` and any positive real number yielding the corresponding
-      p-norm. Default is 'euclidean' which is equivalent to Frobenius norm if
+      p-norm. Default is `'euclidean'` which is equivalent to Frobenius norm if
       `tensor` is a matrix and equivalent to 2-norm for vectors.
       Some restrictions apply:
-        a) The Frobenius norm `fro` is not defined for vectors,
-        b) If axis is a 2-tuple (matrix norm), only 'euclidean', 'fro', `1`,
+        a) The Frobenius norm `'fro'` is not defined for vectors,
+        b) If axis is a 2-tuple (matrix norm), only `'euclidean'`, '`fro'`, `1`,
            `2`, `np.inf` are supported.
       See the description of `axis` on how to compute norms for a batch of
       vectors or matrices stored in a tensor.
@@ -605,7 +661,7 @@ def norm(tensor,
         perm_after = map_fn.map_fn(
             lambda i: math_ops.cast(
                 array_ops.squeeze(
-                    array_ops.where(math_ops.equal(perm_before, i))),
+                    array_ops.where_v2(math_ops.equal(perm_before, i))),
                 dtype=dtypes.int32), axes)
         permed = array_ops.transpose(tensor, perm=perm_before)
         matrix_2_norm = array_ops.expand_dims(

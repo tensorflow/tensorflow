@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
-using str_util::Join;
 using str_util::Split;
 using str_util::StringReplace;
 using strings::StrCat;
@@ -88,11 +87,11 @@ void CreateConstNode(const Tensor& tensor, const string& name,
 
 string GetMonolithicTensorKey(const string& tensor_slice_name) {
   std::vector<string> names = Split(tensor_slice_name, "/");
-  if (str_util::StartsWith(names[names.size() - 1], "part_")) {
+  if (absl::StartsWith(names[names.size() - 1], "part_")) {
     CHECK_GE(names.size(), 2);
     names.pop_back();
   }
-  return Join(names, "/");
+  return absl::StrJoin(names, "/");
 }
 
 Status ObtainTensorSlice(const GraphDef& input_graph_def,
@@ -102,8 +101,8 @@ Status ObtainTensorSlice(const GraphDef& input_graph_def,
   for (const auto& node : input_graph_def.node()) {
     std::vector<string> node_name_parts = Split(node.name(), "/");
     if (node_name_parts.size() == 2 &&
-        str_util::StartsWith(node_name_parts[0], "save") &&
-        str_util::StartsWith(node_name_parts[1], "Assign") &&
+        absl::StartsWith(node_name_parts[0], "save") &&
+        absl::StartsWith(node_name_parts[1], "Assign") &&
         node.input(0) == target_name) {
       restore_node_name = node.input(1);
       break;
@@ -127,7 +126,7 @@ Status ObtainTensorSlice(const GraphDef& input_graph_def,
     if (node.name() == tensor_names_node) {
       Tensor tensor_names_tensor;
       TF_RETURN_IF_ERROR(GetNodeAttr(node, "value", &tensor_names_tensor));
-      const auto& tensor_names_value = tensor_names_tensor.flat<string>();
+      const auto& tensor_names_value = tensor_names_tensor.flat<tstring>();
       for (int i = 0; i < tensor_names_value.size(); i++) {
         if (tensor_names_value(i) == GetMonolithicTensorKey(target_name)) {
           offset = i;
@@ -145,7 +144,7 @@ Status ObtainTensorSlice(const GraphDef& input_graph_def,
       Tensor shape_and_slices_tensor;
       TF_RETURN_IF_ERROR(GetNodeAttr(node, "value", &shape_and_slices_tensor));
       const auto& shape_and_slices_value =
-          shape_and_slices_tensor.flat<string>();
+          shape_and_slices_tensor.flat<tstring>();
       *shape_slice_string = shape_and_slices_value(offset);
       return Status::OK();
     }

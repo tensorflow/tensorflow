@@ -75,7 +75,7 @@ ENTRY TestComputation {
   broadcast = f32[42] broadcast(add), dimensions={}
   slice = f32[1] slice(broadcast), slice={[1:2]}
   copy = f32[] copy(arg)
-  eq = pred[] equal-to(arg, gte)
+  eq = pred[] compare(arg, gte), direction=EQ
   neg = f32[] negate(arg)
   ROOT convert = f64[] convert(f32[] arg)
 })";

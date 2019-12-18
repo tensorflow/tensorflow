@@ -74,7 +74,8 @@ namespace toco {
   // values, anymore. Delete them unless they are used by something
   // else.
   for (int i = 1; i <= 2; i++) {
-    DeleteArrayIfUsedOnce(fakequant_op->inputs[i], model);
+    DeleteArrayIfUnusedOutsideOfOp(fakequant_op->inputs[i], fakequant_op,
+                                   model);
   }
   fakequant_op->inputs.resize(1);
   *modified = true;

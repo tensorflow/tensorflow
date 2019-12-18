@@ -18,7 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.ragged import ragged_config
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.util.tf_export import tf_export
@@ -38,15 +41,13 @@ def map_flat_values(op, *args, **kwargs):
 
   Examples:
 
-  ```python
-  >>> rt = ragged.constant([[1, 2, 3], [], [4, 5], [6]])
-  >>> ragged.map_flat_values(tf.ones_like, rt).eval().tolist()
+  >>> rt = tf.ragged.constant([[1, 2, 3], [], [4, 5], [6]])
+  >>> map_flat_values(tf.ones_like, rt).to_list()
   [[1, 1, 1], [], [1, 1], [1]]
-  >>> ragged.map_flat_values(tf.multiply, rt, rt).eval().tolist()
+  >>> map_flat_values(tf.multiply, rt, rt).to_list()
   [[1, 4, 9], [], [16, 25], [36]]
-  >>> ragged.map_flat_values(tf.add, rt, 5).eval().tolist()
+  >>> map_flat_values(tf.add, rt, 5).to_list()
   [[6, 7, 8], [], [9, 10], [11]]
-  ```
 
   Args:
     op: The operation that should be applied to the RaggedTensor `flat_values`.
@@ -72,12 +73,23 @@ def map_flat_values(op, *args, **kwargs):
   if not nested_splits_lists:
     return op(*args, **kwargs)
 
+  split_dtypes = set(splits[0].dtype for splits in nested_splits_lists)
+  if len(split_dtypes) > 1:
+    if not ragged_config.auto_cast_partition_dtype():
+      raise ValueError("Input RaggedTensors have mismatched row_splits dtypes; "
+                       "use RaggedTensor.with_row_splits_dtype() to convert "
+                       "them to compatible dtypes.")
+
+    nested_splits_lists = [
+        [math_ops.cast(s, dtypes.int64) for s in nested_splits]  # pylint: disable=g-complex-comprehension
+        for nested_splits in nested_splits_lists]
+
   with ops.control_dependencies(
       ragged_util.assert_splits_match(nested_splits_lists)):
     # Delegate to op, and then compose the result from the transformed values
     # and the splits.
     return ragged_tensor.RaggedTensor.from_nested_row_splits(
-        op(*inner_args, **inner_kwargs), nested_splits_lists[0])
+        op(*inner_args, **inner_kwargs), nested_splits_lists[0], validate=False)
 
 
 def _replace_ragged_with_flat_values(value, nested_splits_lists):

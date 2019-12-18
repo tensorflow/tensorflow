@@ -24,6 +24,7 @@ namespace tensorflow {
 // Name of attribute used to tag operators for compilation with XLA
 extern const char* const kXlaCompileAttr;  // "_XlaCompile"
 extern const char* const kXlaScopeAttr;    // "_XlaScope"
+extern const char* const kXlaInternalScopeAttr;  // "_XlaInternalScope"
 
 }  // namespace tensorflow
 

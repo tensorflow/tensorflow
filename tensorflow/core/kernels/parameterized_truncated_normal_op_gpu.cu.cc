@@ -13,21 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/parameterized_truncated_normal_op.h"
-
 #include <assert.h>
 #include <stdio.h>
+
 #include <cmath>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/parameterized_truncated_normal_op.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 #if defined(_MSC_VER) && !defined(__clang__)
 // msvc does not support unroll. One could try the loop pragma but we need to
@@ -53,12 +53,13 @@ template <typename T>
 __global__ void __launch_bounds__(1024)
     TruncatedNormalKernel(random::PhiloxRandom gen, T* data, int64 num_batches,
                           int64 samples_per_batch, int64 num_elements,
-                          const T* means, bool single_mean, const T* stddevs,
-                          bool single_stddev, const T* minvals,
-                          bool single_minval, const T* maxvals,
-                          bool single_maxval, int64 kMaxIterations) {
+                          const T* __restrict__ means, bool single_mean,
+                          const T* __restrict__ stddevs, bool single_stddev,
+                          const T* __restrict__ minvals, bool single_minval,
+                          const T* __restrict__ maxvals, bool single_maxval,
+                          int64 kMaxIterations) {
   const int32 max_samples_per_item = 2 * kMaxIterations;
-  // Initial offset as given by CUDA_1D_KERNEL_LOOP.
+  // Initial offset as given by GPU_1D_KERNEL_LOOP.
   const int32 initial_offset = blockIdx.x * blockDim.x + threadIdx.x;
   gen.Skip(max_samples_per_item * initial_offset);
   typedef random::UniformDistribution<random::PhiloxRandom, T> Uniform;
@@ -84,7 +85,7 @@ __global__ void __launch_bounds__(1024)
   const int32 samples_between_processed_elements =
       max_samples_per_item * (gridDim.x * blockDim.x);
 
-  CUDA_1D_KERNEL_LOOP(offset, num_elements) {
+  GPU_1D_KERNEL_LOOP(offset, num_elements) {
     // Track how many more samples we need to skip before we process the next
     // element.
     int32 remaining_samples = samples_between_processed_elements;
@@ -161,7 +162,7 @@ __global__ void __launch_bounds__(1024)
       Eigen::array<T, 4> z;
       Eigen::array<T, 4> g;
 
-      const T plusFactor = (normMin < T(0)) ? T(0) : normMin * normMin;
+      const T plusFactor = (normMin < T(0)) ? T(0) : T(normMin * normMin);
 
       int numIterations = 0;
       while (numIterations < kMaxIterations) {
@@ -240,14 +241,14 @@ struct TruncatedNormalFunctor<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat maxvals,
                   const random::PhiloxRandom& gen,
                   typename TTypes<T>::Flat output) {
-    const auto config = GetCudaLaunchConfig(num_elements, d);
+    const auto config = GetGpuLaunchConfig(num_elements, d);
 
-    CudaLaunchKernel(
+    TF_CHECK_OK(GpuLaunchKernel(
         TruncatedNormalKernel<T>, config.block_count, config.thread_per_block,
         0, d.stream(), gen, output.data(), num_batches, samples_per_batch,
         num_elements, means.data(), means.dimension(0) == 1, stddevs.data(),
         stddevs.dimension(0) == 1, minvals.data(), minvals.dimension(0) == 1,
-        maxvals.data(), maxvals.dimension(0) == 1, kMaxIterations);
+        maxvals.data(), maxvals.dimension(0) == 1, kMaxIterations));
   }
 };
 
@@ -259,4 +260,4 @@ template struct TruncatedNormalFunctor<GPUDevice, double>;
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

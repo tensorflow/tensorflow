@@ -32,6 +32,12 @@ namespace xla {
 StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
                                         HloInstruction* rhs);
 
+// Creates a compare HLO instruction and adds it to the computation containing
+// `lhs` and `rhs` (`lhs` and `rhs` must be in the same computation).
+StatusOr<HloInstruction*> MakeCompareHlo(ComparisonDirection direction,
+                                         HloInstruction* lhs,
+                                         HloInstruction* rhs);
+
 // Creates a pad HLO instruction and adds it to the computation containing
 // `operand` and `padding_value` (`operand` and `padding_value` must be in the
 // same computation).
@@ -85,6 +91,9 @@ StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
 HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
                                  absl::Span<const int64> broadcast_dimensions,
                                  absl::Span<const int64> result_shape_bounds);
+HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
+                                 absl::Span<const int64> broadcast_dimensions,
+                                 const Shape& shape);
 
 // Creates a GetTupleElement HLO instruction and adds it to the computation
 // containing `operand`.
@@ -96,6 +105,18 @@ StatusOr<HloInstruction*> MakeGetTupleElementHlo(HloInstruction* operand,
 // contained in the same computation).
 StatusOr<HloInstruction*> MakeConcatHlo(
     absl::Span<HloInstruction* const> operands, int64 dimension);
+
+// Creates a Convert HLO instruction that converts the given instruction to have
+// the given primitive type.
+HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type);
+
+// Creates a BitcastConvert HLO instruction.
+HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
+                                        PrimitiveType type);
+
+// Creates an Iota HLO instruction.
+HloInstruction* MakeIotaHlo(HloComputation* computation, const Shape& shape,
+                            int64 iota_dimension);
 
 // Creates a Dot HLO instruction and adds it to the computation containing `lhs`
 // and `rhs` (both must be in the same computation).
@@ -118,10 +139,12 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
 
 // Creates a Select HLO instruction and adds it to the computation containing
 // the predicate. The on_true and on_false instructions must also be contained
-// in the same computation.
+// in the same computation. If on_true and on_false are tuples, create a tuple
+// select instead. `pred` is broadcasted up from a scalar if necessary.
 StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
                                         HloInstruction* on_true,
-                                        HloInstruction* on_false);
+                                        HloInstruction* on_false,
+                                        HloInstruction* derived_from = nullptr);
 
 // Creates a Sort HLO instruction and adds it to the computation containing the
 // operands. All operands must be in the same computation. Also creates a
@@ -144,6 +167,30 @@ StatusOr<HloInstruction*> MakeR1ConstantHlo(HloComputation* computation,
   }
   return computation->AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
+}
+
+// Creates an R0 Constant HLO instruction of the PrimitiveType corresponding to
+// `NativeT` with the given value and adds it to the given computation.
+template <class NativeT>
+HloInstruction* MakeR0ConstantHlo(HloComputation* computation, NativeT value) {
+  return computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<NativeT>(value)));
+}
+
+// Makes a scalar that is elementwise compatible with the shape of the base
+// instruction.
+template <class NativeT>
+HloInstruction* MakeScalarLike(HloInstruction* base, NativeT value) {
+  auto scalar = base->parent()->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<NativeT>(value)
+                                         .Convert(base->shape().element_type())
+                                         .ValueOrDie()));
+  if (base->shape().rank() == 0) {
+    *scalar->mutable_shape() = base->shape();
+    return scalar;
+  }
+  return base->parent()->AddInstruction(
+      HloInstruction::CreateBroadcast(base->shape(), scalar, {}));
 }
 
 // -----------------------------------------------------------------------------

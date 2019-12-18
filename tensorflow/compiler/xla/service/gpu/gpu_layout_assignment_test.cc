@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -348,7 +350,7 @@ TEST_F(LayoutAssignmentTest, DotLayout) {
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnVerifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -374,7 +376,7 @@ TEST_F(LayoutAssignmentTest, SortLayout) {
     p.0.rhs = f32[] parameter(1)
     p.1.lhs = f32[] parameter(2)
     p.1.rhs = f32[] parameter(3)
-    ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+    ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
   }
 
   ENTRY sort {
@@ -386,7 +388,7 @@ TEST_F(LayoutAssignmentTest, SortLayout) {
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnVerifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -400,6 +402,35 @@ TEST_F(LayoutAssignmentTest, SortLayout) {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Sort(op::ShapeWithLayout(expected_shape),
                        op::ShapeWithLayout(expected_shape)));
+}
+
+TEST_F(LayoutAssignmentTest, FftLayout) {
+  const char* hlo_text = R"(
+  HloModule Fft_module
+
+  ENTRY Fft {
+    input = c64[8,32]{0,1} parameter(0)
+    fft = c64[8,32] fft(input), fft_type=FFT, fft_length={32}
+    ROOT transpose = c64[32,8] transpose(fft), dimensions={1,0}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+      backend().default_stream_executor());
+  EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
+
+  Shape expected_shape = ShapeUtil::MakeShapeWithLayout(C64, {8, 32}, {1, 0});
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(op::Transpose(op::ShapeWithLayout(expected_shape))));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Copy(op::Transpose(op::Fft(op::ShapeWithLayout(expected_shape)))));
 }
 
 }  // namespace

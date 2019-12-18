@@ -37,8 +37,8 @@ from tensorflow.python.training import gradient_descent
 class FtrlOptimizerTest(test.TestCase):
 
   def doTestFtrlwithoutRegularization(self, use_resource=False):
-    for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session() as sess:
+    for dtype in [dtypes.float32]:
+      with self.cached_session(use_gpu=True):
         if use_resource:
           var0 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
           var1 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
@@ -80,7 +80,7 @@ class FtrlOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testFtrlwithoutRegularization2(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session() as sess:
+      with self.cached_session(use_gpu=True):
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -110,7 +110,7 @@ class FtrlOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+      with self.cached_session(use_gpu=True):
         var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
@@ -132,7 +132,7 @@ class FtrlOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testFtrlWithL1(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session() as sess:
+      with self.cached_session(use_gpu=True):
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -162,7 +162,7 @@ class FtrlOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testFtrlWithL1_L2(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session() as sess:
+      with self.cached_session(use_gpu=True):
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -199,7 +199,7 @@ class FtrlOptimizerTest(test.TestCase):
     weights will tend to have smaller magnitudes with this parameter set.
     """
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session() as sess:
+      with self.cached_session(use_gpu=True):
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -232,7 +232,7 @@ class FtrlOptimizerTest(test.TestCase):
   def testFtrlWithL1_L2_L2ShrinkageSparse(self):
     """Tests the new FTRL op with support for l2 shrinkage on sparse grads."""
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session() as sess:
+      with self.cached_session(use_gpu=True):
         var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
         var1 = variables.Variable([[4.0], [3.0]], dtype=dtype)
         grads0 = ops.IndexedSlices(
@@ -267,7 +267,7 @@ class FtrlOptimizerTest(test.TestCase):
   def testFtrlWithL2ShrinkageDoesNotChangeLrSchedule(self):
     """Verifies that l2 shrinkage in FTRL does not change lr schedule."""
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session() as sess:
+      with self.cached_session(use_gpu=True) as sess:
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([1.0, 2.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -325,7 +325,6 @@ class FtrlOptimizerTest(test.TestCase):
     update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
     variables.global_variables_initializer().run()
 
-    sess = ops.get_default_session()
     v0_val, v1_val = self.evaluate([var0, var1])
     if is_sparse:
       self.assertAllCloseAccordingToType([[0.0], [0.0]], v0_val)
@@ -351,7 +350,7 @@ class FtrlOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testEquivAdagradwithoutRegularization(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session():
+      with self.cached_session(use_gpu=True):
         val0, val1 = self.applyOptimizer(
             ftrl.Ftrl(
                 3.0,
@@ -362,7 +361,7 @@ class FtrlOptimizerTest(test.TestCase):
                 l2_regularization_strength=0.0),
             dtype)
 
-      with self.cached_session():
+      with self.cached_session(use_gpu=True):
         val2, val3 = self.applyOptimizer(
             adagrad.AdagradOptimizer(3.0, initial_accumulator_value=0.1), dtype)
 
@@ -396,7 +395,7 @@ class FtrlOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testEquivSparseGradientDescentwithoutRegularization(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session():
+      with self.cached_session(use_gpu=True):
         val0, val1 = self.applyOptimizer(
             ftrl.Ftrl(
                 3.0,
@@ -408,7 +407,7 @@ class FtrlOptimizerTest(test.TestCase):
             dtype,
             is_sparse=True)
 
-      with self.cached_session():
+      with self.cached_session(use_gpu=True):
         val2, val3 = self.applyOptimizer(
             gradient_descent.GradientDescentOptimizer(3.0),
             dtype,
@@ -420,7 +419,7 @@ class FtrlOptimizerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testEquivGradientDescentwithoutRegularization(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session():
+      with self.cached_session(use_gpu=True):
         val0, val1 = self.applyOptimizer(
             ftrl.Ftrl(
                 3.0,
@@ -431,7 +430,7 @@ class FtrlOptimizerTest(test.TestCase):
                 l2_regularization_strength=0.0),
             dtype)
 
-      with self.cached_session():
+      with self.cached_session(use_gpu=True):
         val2, val3 = self.applyOptimizer(
             gradient_descent.GradientDescentOptimizer(3.0), dtype)
 

@@ -295,8 +295,9 @@ class NdtrGradientTest(test.TestCase):
       # grad_eval.shape = (N, N), with grad_eval[i, j] the partial derivative of
       # the ith output point w.r.t. the jth grid point.  We only expect the
       # diagonal to be nonzero.
-      # TODO(b/31131137): Replace tf.test.compute_gradient with our own custom
-      # gradient evaluation to ensure we correctly handle small function delta.
+      # TODO(b/31131137): Replace tf.compat.v1.test.compute_gradient with our
+      # own custom gradient evaluation to ensure we correctly handle small
+      # function delta.
       grad_eval, _ = gradient_checker.compute_gradient(grid, grid_spec.shape,
                                                        fn(grid),
                                                        grid_spec.shape)

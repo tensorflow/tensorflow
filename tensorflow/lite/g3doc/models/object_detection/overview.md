@@ -1,29 +1,58 @@
 # Object detection
+
 <img src="../images/detection.png" class="attempt-right">
 
-Detect multiple objects with bounding boxes. Yes, dogs and cats too.
+Detect multiple objects within an image, with bounding boxes. Recognize 80
+different classes of objects.
 
-<a class="button button-primary" href="http://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">Download starter model and labels</a>
+## Get started
 
-## Tutorials (coming soon)
-<a class="button button-primary" href="">iOS</a>
-<a class="button button-primary" href="">Android</a>
+If you are new to TensorFlow Lite and are working with Android or iOS, we
+recommend exploring the following example applications that can help you get
+started.
+
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android">Android
+example</a>
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/ios">iOS
+example</a>
+
+If you are using a platform other than Android or iOS, or you are already
+familiar with the <a href="https://www.tensorflow.org/api_docs/python/tf/lite">TensorFlow Lite APIs</a>, you can
+download our starter object detection model and the accompanying labels.
+
+<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">Download
+starter model and labels</a>
+
+For more information about the starter model, see
+<a href="#starter_model">Starter model</a>.
 
 ## What is object detection?
-Given an image or a video stream, an object detection model can identify which of a known set of objects might be present and provide information about their positions within the image.
 
-<!-- TODO -->
-For example, this screenshot of our <a href="">object detection sample app</a> shows how several objects have been recognized and their positions annotated:
+Given an image or a video stream, an object detection model can identify which
+of a known set of objects might be present and provide information about their
+positions within the image.
 
+For example, this screenshot of our <a href="#get_started">example
+application</a> shows how two objects have been recognized and their positions
+annotated:
 
-<!-- TODO -->
-TODO: Insert image
+<img src="images/android_apple_banana.png" alt="Screenshot of Android example" width="30%">
 
-An object detection model is trained to detect the presence and location of multiple classes of objects. For example, a model might be trained with images that contain various pieces of computer hardware, along with a label that specifies the class of hardware they represent (e.g. a laptop, a keyboard, or a monitor), and data specifying where each object appears in the image.
+An object detection model is trained to detect the presence and location of
+multiple classes of objects. For example, a model might be trained with images
+that contain various pieces of fruit, along with a _label_ that specifies the
+class of fruit they represent (e.g. an apple, a banana, or a strawberry), and
+data specifying where each object appears in the image.
 
-When we subsequently provide an image to the model, it will output a list of the objects it detects, the location of a bounding box that contains each object, and a score that indicates the confidence that detection was correct.
+When we subsequently provide an image to the model, it will output a list of the
+objects it detects, the location of a bounding box that contains each object,
+and a score that indicates the confidence that detection was correct.
 
 ### Model output
+
+Imagine a model has been trained to detect apples, bananas, and strawberries.
+When we pass it an image, it will output a set number of detection results - in
+this example, 5.
 
 <table style="width: 60%;">
   <thead>
@@ -35,27 +64,27 @@ When we subsequently provide an image to the model, it will output a list of the
   </thead>
   <tbody>
     <tr>
-      <td>Laptop</td>
+      <td>Apple</td>
       <td>0.92</td>
       <td>[18, 21, 57, 63]</td>
     </tr>
     <tr>
-      <td>Keyboard</td>
+      <td>Banana</td>
       <td>0.88</td>
       <td>[100, 30, 180, 150]</td>
     </tr>
     <tr>
-      <td>Monitor</td>
+      <td>Strawberry</td>
       <td>0.87</td>
       <td>[7, 82, 89, 163] </td>
     </tr>
     <tr>
-      <td>Keyboard</td>
+      <td>Banana</td>
       <td>0.23</td>
       <td>[42, 66, 57, 83]</td>
     </tr>
     <tr>
-      <td>Monitor</td>
+      <td>Apple</td>
       <td>0.11</td>
       <td>[6, 42, 31, 58]</td>
     </tr>
@@ -64,9 +93,16 @@ When we subsequently provide an image to the model, it will output a list of the
 
 ### Confidence score
 
-To interpret these results, we can look at the score and the location for each detected object. The score is a number between 0 and 1 that indicates confidence that the object was genuinely detected. The closer the number is to 1, the more confident the model is.
+To interpret these results, we can look at the score and the location for each
+detected object. The score is a number between 0 and 1 that indicates confidence
+that the object was genuinely detected. The closer the number is to 1, the more
+confident the model is.
 
-Depending on your application, you can decide a cut-off threshold below which you will discard detection results. For our example, we might decide a sensible cut-off is a score of 0.5 (meaning a 50% probability that the detection is valid). In that case, we would ignore the last two objects in the array, because those confidence scores are below 0.5:
+Depending on your application, you can decide a cut-off threshold below which
+you will discard detection results. For our example, we might decide a sensible
+cut-off is a score of 0.5 (meaning a 50% probability that the detection is
+valid). In that case, we would ignore the last two objects in the array, because
+those confidence scores are below 0.5:
 
 <table style="width: 60%;">
   <thead>
@@ -78,41 +114,51 @@ Depending on your application, you can decide a cut-off threshold below which yo
   </thead>
   <tbody>
     <tr>
-      <td>Laptop</td>
+      <td>Apple</td>
       <td>0.92</td>
       <td>[18, 21, 57, 63]</td>
     </tr>
     <tr>
-      <td>Keyboard</td>
+      <td>Banana</td>
       <td>0.88</td>
       <td>[100, 30, 180, 150]</td>
     </tr>
     <tr>
-      <td>Monitor</td>
+      <td>Strawberry</td>
       <td>0.87</td>
       <td>[7, 82, 89, 163] </td>
     </tr>
     <tr>
-      <td style="background-color: #e9cecc; text-decoration-line: line-through;">Keyboard</td>
+      <td style="background-color: #e9cecc; text-decoration-line: line-through;">Banana</td>
       <td style="background-color: #e9cecc; text-decoration-line: line-through;">0.23</td>
       <td style="background-color: #e9cecc; text-decoration-line: line-through;">[42, 66, 57, 83]</td>
     </tr>
     <tr>
-      <td style="background-color: #e9cecc; text-decoration-line: line-through;">Monitor</td>
+      <td style="background-color: #e9cecc; text-decoration-line: line-through;">Apple</td>
       <td style="background-color: #e9cecc; text-decoration-line: line-through;">0.11</td>
       <td style="background-color: #e9cecc; text-decoration-line: line-through;">[6, 42, 31, 58]</td>
     </tr>
   </tbody>
 </table>
 
-The cut-off you use should be based on whether you are more comfortable with false positives (objects that are wrongly identified, or areas of the image that are erroneously identified as objects when they are not), or false negatives (genuine objects that are missed because their confidence was low).
+The cut-off you use should be based on whether you are more comfortable with
+false positives (objects that are wrongly identified, or areas of the image that
+are erroneously identified as objects when they are not), or false negatives
+(genuine objects that are missed because their confidence was low).
 
-<!-- TODO -->
-TODO: Insert screenshot showing both
+For example, in the following image, a pear (which is not an object that the
+model was trained to detect) was misidentified as a "person". This is an example
+of a false positive that could be ignored by selecting an appropriate cut-off.
+In this case, a cut-off of 0.6 (or 60%) would comfortably exclude the false
+positive.
+
+<img src="images/false_positive.png" alt="Screenshot of Android example showing a false positive" width="30%">
 
 ### Location
 
-For each detected object, the model will return an array of four numbers representing a bounding rectangle that surrounds its position. The numbers are ordered as follows:
+For each detected object, the model will return an array of four numbers
+representing a bounding rectangle that surrounds its position. For the starter
+model we provide, the numbers are ordered as follows:
 
 <table style="width: 50%; margin: 0 auto;">
   <tbody>
@@ -127,49 +173,94 @@ For each detected object, the model will return an array of four numbers represe
   </tbody>
 </table>
 
-The top value represents the distance of the rectangle’s top edge from the top of the image, in pixels. The left value represents the left edge’s distance from the left of the input image. The other values represent the bottom and right edges in a similar manner.
+The top value represents the distance of the rectangle’s top edge from the top
+of the image, in pixels. The left value represents the left edge’s distance from
+the left of the input image. The other values represent the bottom and right
+edges in a similar manner.
 
-<!-- TODO -->
-Note: Object detection models accept input images of a specific size. This is likely to be different from the size of the raw image captured by your device’s camera, and you will have to write code to crop and scale your raw image to fit the model’s input size (there are examples of this in our <a href="">sample code</a>).<br /><br />The pixel values output by the model refer to the position in the cropped and scaled image, so you must scale them to fit the raw image in order to interpret them correctly.
+Note: Object detection models accept input images of a specific size. This is likely to be different from the size of the raw image captured by your device’s camera, and you will have to write code to crop and scale your raw image to fit the model’s input size (there are examples of this in our <a href="#get_started">example applications</a>).<br /><br />The pixel values output by the model refer to the position in the cropped and scaled image, so you must scale them to fit the raw image in order to interpret them correctly.
 
+## Performance Benchmarks
+
+Performance benchmark numbers are generated with the tool
+[described here](https://www.tensorflow.org/lite/performance/benchmarks).
+
+<table>
+  <thead>
+    <tr>
+      <th>Model Name</th>
+      <th>Model size </th>
+      <th>Device </th>
+      <th>GPU</th>
+      <th>CPU</th>
+    </tr>
+  </thead>
+  <tr>
+    <td rowspan = 3>
+      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">COCO SSD MobileNet v1</a>
+    </td>
+    <td rowspan = 3>
+      27 Mb
+    </td>
+    <td>Pixel 3 (Android 10) </td>
+    <td>22ms</td>
+    <td>46ms*</td>
+  </tr>
+   <tr>
+     <td>Pixel 4 (Android 10) </td>
+    <td>20ms</td>
+    <td>29ms*</td>
+  </tr>
+   <tr>
+     <td>iPhone XS (iOS 12.4.1) </td>
+     <td>7.6ms</td>
+    <td>11ms** </td>
+  </tr>
+</table>
+
+\* 4 threads used.
+
+\*\* 2 threads used on iPhone for the best performance result.
+
+## Starter model
+
+We recommend starting with this pre-trained quantized COCO SSD MobileNet v1
+model.
+
+<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">Download
+starter model and labels</a>
 
 ### Uses and limitations
 
-<!-- TODO -->
-The object detection model we provide can identify and locate up to 10 objects in an image. It is trained to recognize 80 classes of object. For a full list of classes, see the labels file in the <a href="">model zip</a>.
+The object detection model we provide can identify and locate up to 10 objects
+in an image. It is trained to recognize 80 classes of object. For a full list of
+classes, see the labels file in the
+<a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">model
+zip</a>.
 
-If you want to train a model to recognize new classes, see <a href="#customize_model">Customize model</a>.
+If you want to train a model to recognize new classes, see
+<a href="#customize_model">Customize model</a>.
 
 For the following use cases, you should use a different type of model:
 
 <ul>
-  <li>Predicting which single label the image most likely represents (see <a href="image_classification">image classification</a>)</li>
-  <li>Predicting the composition of an image, for example subject versus background (see <a href="segmentation">segmentation</a>)</li>
+  <li>Predicting which single label the image most likely represents (see <a href="../image_classification/overview.md">image classification</a>)</li>
+  <li>Predicting the composition of an image, for example subject versus background (see <a href="../segmentation/overview.md">segmentation</a>)</li>
 </ul>
 
-Get started
-If you are new to TensorFlow Lite and are working with Android or iOS, we recommend following the corresponding tutorial that will walk you through our sample code.
-
-<!-- TODO -->
-<a class="button button-primary" href="">iOS</a>
-<a class="button button-primary" href="">Android</a>
-
-If you are using a platform other than Android or iOS, or you are already familiar with the <a href="../apis">TensorFlow Lite APIs</a>, you can download our starter object detection model and the accompanying labels.
-
-<a href="http://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">Download starter model and labels</a>
-
-The model will return 10 detection results...
-
-## Starter model
-We recommend starting to implement object detection using the quantized COCO SSD MobileNet v1 model, available with labels from this download link:
-
-<a href="http://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">Download starter model and labels</a>
-
 ### Input
-The model takes an image as input. The expected image is 300x300 pixels, with three channels (red, blue, and green) per pixel. This should be fed to the model as a flattened buffer of 270,000 byte values (300x300x3). Since the model is <a href="">quantized</a>, each value should be a single byte representing a value between 0 and 255.
+
+The model takes an image as input. The expected image is 300x300 pixels, with
+three channels (red, blue, and green) per pixel. This should be fed to the model
+as a flattened buffer of 270,000 byte values (300x300x3). Since the model is
+<a href="../../performance/post_training_quantization.md">quantized</a>, each
+value should be a single byte representing a value between 0 and 255.
 
 ### Output
-The model outputs four arrays, mapped to the indices 0-4. Arrays 0, 1, and 2 describe 10 detected objects, with one element in each array corresponding to each object. There will always be 10 objects detected.
+
+The model outputs four arrays, mapped to the indices 0-4. Arrays 0, 1, and 2
+describe 10 detected objects, with one element in each array corresponding to
+each object. There will always be 10 objects detected.
 
 <table>
   <thead>
@@ -205,16 +296,17 @@ The model outputs four arrays, mapped to the indices 0-4. Arrays 0, 1, and 2 des
 
 ## Customize model
 
-<!-- TODO -->
-The pre-trained models we provide are trained to detect 80 classes of object. For a full list of classes, see the labels file in the <a href="">model zip</a>.
+The pre-trained models we provide are trained to detect 80 classes of object.
+For a full list of classes, see the labels file in the
+<a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">model
+zip</a>.
 
-You can use a technique known as transfer learning to re-train a model to recognize classes not in the original set. For example, you could re-train the model to detect multiple types of vegetable, despite there only being one vegetable in the original training data. To do this, you will need a set of training images for each of the new labels you wish to train.
+You can use a technique known as transfer learning to re-train a model to
+recognize classes not in the original set. For example, you could re-train the
+model to detect multiple types of vegetable, despite there only being one
+vegetable in the original training data. To do this, you will need a set of
+training images for each of the new labels you wish to train.
 
-Learn how to perform transfer learning in the <a href="https://medium.com/tensorflow/training-and-serving-a-realtime-mobile-object-detector-in-30-minutes-with-cloud-tpus-b78971cf1193">Training and serving a real-time mobile object detector in 30 minutes</a> blog post.
-
-<!-- TODO -->
-Read more about this
-<ul>
-  <li>Blog post:</li>
-  <li>Object detection GitHub:</li>
-</ul>
+Learn how to perform transfer learning in
+<a href="https://medium.com/tensorflow/training-and-serving-a-realtime-mobile-object-detector-in-30-minutes-with-cloud-tpus-b78971cf1193">Training
+and serving a real-time mobile object detector in 30 minutes</a>.

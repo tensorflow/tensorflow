@@ -1,9 +1,13 @@
 path: "tensorflow.nn.rnn_cell.DeviceWrapper"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.DeviceWrapper\'>"
+  is_instance: "<class \'tensorflow.python.ops.rnn_cell_wrapper_impl.DeviceWrapperBase\'>"
+  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl._RNNCellWrapperV1\'>"
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.RNNCell\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
+  is_instance: "<class \'tensorflow.python.module.module.Module\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -39,11 +43,23 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "input_spec"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "losses"
     mtype: "<type \'property\'>"
   }
   member {
+    name: "metrics"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name_scope"
     mtype: "<type \'property\'>"
   }
   member {
@@ -83,6 +99,18 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "stateful"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "submodules"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "trainable"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "trainable_variables"
     mtype: "<type \'property\'>"
   }
@@ -104,7 +132,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'cell\', \'device\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "add_loss"
@@ -124,7 +152,7 @@ tf_class {
   }
   member_method {
     name: "add_weight"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'use_resource\', \'synchronization\', \'aggregation\', \'partitioner\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\', \'None\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'use_resource\', \'synchronization\', \'aggregation\', \'partitioner\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\', \'None\'], "
   }
   member_method {
     name: "apply"
@@ -147,12 +175,16 @@ tf_class {
     argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "compute_output_signature"
+    argspec: "args=[\'self\', \'input_signature\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "count_params"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_config"
-    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "get_config"
@@ -201,6 +233,10 @@ tf_class {
   member_method {
     name: "set_weights"
     argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_name_scope"
+    argspec: "args=[\'cls\', \'method\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "zero_state"

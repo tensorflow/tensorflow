@@ -197,7 +197,7 @@ void MfccMelFilterbank::Compute(const std::vector<double> &input,
 }
 
 double MfccMelFilterbank::FreqToMel(double freq) const {
-  return 1127.0 * log(1.0 + (freq / 700.0));
+  return 1127.0 * log1p(freq / 700.0);
 }
 
 }  // namespace internal

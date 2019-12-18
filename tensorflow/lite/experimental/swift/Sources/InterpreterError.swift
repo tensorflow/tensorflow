@@ -14,8 +14,8 @@
 
 import Foundation
 
-/// TensorFlow Lite interpreter errors.
-public enum InterpreterError: Error {
+/// Errors thrown by the TensorFlow Lite `Interpreter`.
+public enum InterpreterError: Error, Equatable, Hashable {
   case invalidTensorIndex(index: Int, maxIndex: Int)
   case invalidTensorDataCount(provided: Int, required: Int)
   case invalidTensorDataType
@@ -29,18 +29,16 @@ public enum InterpreterError: Error {
   case tensorFlowLiteError(String)
 }
 
-// MARK: - Extensions
-
 extension InterpreterError: LocalizedError {
-  /// Localized description of the interpreter error.
+  /// A localized description of the interpreter error.
   public var errorDescription: String? {
     switch self {
     case .invalidTensorIndex(let index, let maxIndex):
       return "Invalid tensor index \(index), max index is \(maxIndex)."
-    case .invalidTensorDataCount(let providedCount, let requiredCount):
-      return "Provided data count \(providedCount) must match the required count \(requiredCount)."
+    case .invalidTensorDataCount(let provided, let required):
+      return "Provided data count \(provided) must match the required count \(required)."
     case .invalidTensorDataType:
-      return "Tensor data type is unsupported or could not be determined because of a model error."
+      return "Tensor data type is unsupported or could not be determined due to a model error."
     case .failedToLoadModel:
       return "Failed to load the given model."
     case .failedToCreateInterpreter:
@@ -62,38 +60,6 @@ extension InterpreterError: LocalizedError {
 }
 
 extension InterpreterError: CustomStringConvertible {
-  /// Textual representation of the TensorFlow Lite interpreter error.
-  public var description: String {
-    return errorDescription ?? "Unknown error."
-  }
+  /// A textual representation of the TensorFlow Lite interpreter error.
+  public var description: String { return errorDescription ?? "Unknown error." }
 }
-
-#if swift(>=4.2)
-extension InterpreterError: Equatable {}
-#else
-extension InterpreterError: Equatable {
-  public static func == (lhs: InterpreterError, rhs: InterpreterError) -> Bool {
-    switch (lhs, rhs) {
-    case (.invalidTensorDataType, .invalidTensorDataType),
-         (.failedToLoadModel, .failedToLoadModel),
-         (.failedToCreateInterpreter, .failedToCreateInterpreter),
-         (.failedToAllocateTensors, .failedToAllocateTensors),
-         (.allocateTensorsRequired, .allocateTensorsRequired),
-         (.invokeInterpreterRequired, .invokeInterpreterRequired):
-      return true
-    case (.invalidTensorIndex(let lhsIndex, let lhsMaxIndex),
-          .invalidTensorIndex(let rhsIndex, let rhsMaxIndex)):
-      return lhsIndex == rhsIndex && lhsMaxIndex == rhsMaxIndex
-    case (.invalidTensorDataCount(let lhsProvidedCount, let lhsRequiredCount),
-          .invalidTensorDataCount(let rhsProvidedCount, let rhsRequiredCount)):
-      return lhsProvidedCount == rhsProvidedCount && lhsRequiredCount == rhsRequiredCount
-    case (.failedToResizeInputTensor(let lhsIndex), .failedToResizeInputTensor(let rhsIndex)):
-      return lhsIndex == rhsIndex
-    case (.tensorFlowLiteError(let lhsMessage), .tensorFlowLiteError(let rhsMessage)):
-      return lhsMessage == rhsMessage
-    default:
-      return false
-    }
-  }
-}
-#endif  // swift(>=4.2)

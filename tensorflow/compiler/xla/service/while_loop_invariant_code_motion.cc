@@ -219,18 +219,19 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
 
       for (auto* operand : instruction->operands()) {
         ShapeUtil::ForEachSubshape(
-            operand->shape(),
-            [&input_size](const Shape& subshape, const ShapeIndex& /*index*/) {
+            operand->shape(), [&input_size, this](const Shape& subshape,
+                                                  const ShapeIndex& /*index*/) {
               if (subshape.IsArray()) {
-                input_size += ShapeUtil::ByteSizeOfElements(subshape);
+                input_size += shape_size_function_(subshape);
               }
             });
       }
       ShapeUtil::ForEachSubshape(
           instruction->shape(),
-          [&output_size](const Shape& subshape, const ShapeIndex& /*index*/) {
+          [&output_size, this](const Shape& subshape,
+                               const ShapeIndex& /*index*/) {
             if (subshape.IsArray()) {
-              output_size += ShapeUtil::ByteSizeOfElements(subshape);
+              output_size += shape_size_function_(subshape);
             }
           });
 
@@ -316,7 +317,7 @@ StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
     // TryHoistingInvariantInstructionsFromWhileBody can be generalized to
     // optimize the condition computation too, if needed.
     //
-    // The transform we do here is a pessmization for while loops that execute
+    // The transform we do here is a pessimization for while loops that execute
     // zero times*, but at this time we expect those to be rare.  If this
     // becomes a problem we can consider using the conditional HLO to avoid
     // doing extra work for while loops with zero trip count.

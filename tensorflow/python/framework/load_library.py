@@ -24,13 +24,10 @@ import imp
 import os
 import platform
 import sys
-import threading  # pylint: disable=unused-import
 
-from tensorflow.core.framework import op_def_pb2
-from tensorflow.core.lib.core import error_codes_pb2  # pylint: disable=unused-import
+from tensorflow.python import _pywrap_python_op_gen
 from tensorflow.python import pywrap_tensorflow as py_tf
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -59,15 +56,13 @@ def load_op_library(library_filename):
     RuntimeError: when unable to load the library or get the python wrappers.
   """
   lib_handle = py_tf.TF_LoadLibrary(library_filename)
-
-  op_list_str = py_tf.TF_GetOpList(lib_handle)
-  op_list = op_def_pb2.OpList()
-  op_list.ParseFromString(compat.as_bytes(op_list_str))
-  wrappers = py_tf.GetPythonWrappers(op_list_str)
-
-  # Delete the library handle to release any memory held in C
-  # that are no longer needed.
-  py_tf.TF_DeleteLibraryHandle(lib_handle)
+  try:
+    wrappers = _pywrap_python_op_gen.GetPythonWrappers(
+        py_tf.TF_GetOpList(lib_handle))
+  finally:
+    # Delete the library handle to release any memory held in C
+    # that are no longer needed.
+    py_tf.TF_DeleteLibraryHandle(lib_handle)
 
   # Get a unique name for the module.
   module_name = hashlib.md5(wrappers).hexdigest()
@@ -76,15 +71,14 @@ def load_op_library(library_filename):
   module = imp.new_module(module_name)
   # pylint: disable=exec-used
   exec(wrappers, module.__dict__)
-  # Stash away the library handle for making calls into the dynamic library.
-  module.LIB_HANDLE = lib_handle
-  # OpDefs of the list of ops defined in the library.
-  module.OP_LIST = op_list
+  # Allow this to be recognized by AutoGraph.
+  setattr(module, '_IS_TENSORFLOW_PLUGIN', True)
   sys.modules[module_name] = module
   return module
 
 
-@deprecation.deprecated(date=None, instructions='Use tf.load_library instead.')
+@deprecation.deprecated(date=None,
+                        instructions='Use `tf.load_library` instead.')
 @tf_export(v1=['load_file_system_library'])
 def load_file_system_library(library_filename):
   """Loads a TensorFlow plugin, containing file system implementation.
@@ -131,7 +125,7 @@ def load_library(library_location):
   """Loads a TensorFlow plugin.
 
   "library_location" can be a path to a specific shared object, or a folder.
-  If it is a folder, all sahred objects that are named "libtfkernel*" will be
+  If it is a folder, all shared objects that are named "libtfkernel*" will be
   loaded. When the library is loaded, kernels registered in the library via the
   `REGISTER_*` macros are made available in the TensorFlow process.
 
@@ -164,4 +158,3 @@ def load_library(library_location):
         errno.ENOENT,
         'The file or folder to load kernel libraries from does not exist.',
         library_location)
-

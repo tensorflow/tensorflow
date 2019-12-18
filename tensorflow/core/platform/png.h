@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 
 #if defined(PLATFORM_GOOGLE) && !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/platform/google/build_config/png.h"
+#include "png.h"  // TF:png
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_WINDOWS) || \
     defined(PLATFORM_POSIX_ANDROID) || defined(IS_MOBILE_PLATFORM)
 #include <png.h>

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import copy
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.example import example_pb2
@@ -28,12 +29,13 @@ from tensorflow.python.data.experimental.ops import parsing_ops as contrib_parsi
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 # Helpers for creating Example objects
@@ -49,19 +51,15 @@ feature_lists = lambda d: feature_pb2.FeatureLists(feature_list=d)
 sequence_example = example_pb2.SequenceExample
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class ParseExampleDatasetTest(test_base.DatasetTestBase):
+class ParseExampleDatasetTest(test_base.DatasetTestBase,
+                              parameterized.TestCase):
 
   def _compare_output_to_expected(self, dict_tensors, expected_tensors):
     self.assertEqual(set(dict_tensors.keys()), set(expected_tensors.keys()))
 
     for k, v in sorted(dict_tensors.items()):
       expected_v = expected_tensors[k]
-      if sparse_tensor.is_sparse(v):
-        self.assertSparseValuesEqual(expected_v, v)
-      else:
-        # One output for standard Tensor.
-        self.assertAllEqual(expected_v, v)
+      self.assertValuesEqual(expected_v, v)
 
   def _test(self,
             input_tensor,
@@ -110,6 +108,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         self.assertEqual(
             dataset_ops.get_legacy_output_shapes(dataset)[k].as_list()[1], None)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testEmptySerializedWithAllDefaults(self):
     sparse_name = "st_a"
     a_name = "a"
@@ -148,7 +147,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_values=expected_output,
         create_iterator_twice=True)
 
-  @test_util.run_deprecated_v1
+  @combinations.generate(test_base.graph_only_combinations())
   def testEmptySerializedWithoutDefaultsShouldFail(self):
     input_features = {
         "st_a":
@@ -182,7 +181,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_err=(errors_impl.InvalidArgumentError,
                       "Feature: c \\(data type: float\\) is required"))
 
-  @test_util.run_deprecated_v1
+  @combinations.generate(test_base.graph_only_combinations())
   def testDenseNotMatchingShapeShouldFail(self):
     original = [
         example(features=features({
@@ -200,6 +199,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_err=(errors_impl.InvalidArgumentError,
                       "Key: a, Index: 1.  Number of float values"))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDenseDefaultNoShapeShouldFail(self):
     original = [example(features=features({"a": float_feature([1, 1, 3]),})),]
 
@@ -210,6 +210,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         {"a": parsing_ops.FixedLenFeature(None, dtypes.float32)},
         expected_err=(ValueError, "Missing shape for feature a"))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingSparse(self):
     original = [
         example(features=features({
@@ -251,6 +252,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_values=expected_output,
         create_iterator_twice=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingSparseFeature(self):
     original = [
         example(features=features({
@@ -287,6 +289,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_values=expected_output,
         create_iterator_twice=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingSparseFeatureReuse(self):
     original = [
         example(features=features({
@@ -328,6 +331,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_values=expected_output,
         create_iterator_twice=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContaining3DSparseFeature(self):
     original = [
         example(features=features({
@@ -373,6 +377,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_values=expected_output,
         create_iterator_twice=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingDense(self):
     aname = "a"
     bname = "b*has+a:tricky_name"
@@ -410,6 +415,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
 
   # This test is identical as the previous one except
   # for the creation of 'serialized'.
+  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingDenseWithConcat(self):
     aname = "a"
     bname = "b*has+a:tricky_name"
@@ -455,6 +461,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_values=expected_output,
         create_iterator_twice=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingDenseScalar(self):
     original = [
         example(features=features({
@@ -479,6 +486,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_values=expected_output,
         create_iterator_twice=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingDenseWithDefaults(self):
     original = [
         example(features=features({
@@ -517,6 +525,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_values=expected_output,
         create_iterator_twice=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSerializedSparseAndSparseFeatureAndDenseWithNoDefault(self):
     expected_st_a = sparse_tensor.SparseTensorValue(  # indices, values, shape
         np.empty((0, 2), dtype=np.int64),  # indices
@@ -572,6 +581,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_values=expected_output,
         create_iterator_twice=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testerializedContainingSparseAndSparseFeatureWithReuse(self):
     expected_idx = sparse_tensor.SparseTensorValue(  # indices, values, shape
         np.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=np.int64),
@@ -670,11 +680,13 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_values=expected_output,
         create_iterator_twice=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSerializedContainingVarLenDenseLargerBatch(self):
     np.random.seed(3456)
     for batch_size in (1, 10, 20, 100, 256):
       self._testSerializedContainingVarLenDenseLargerBatch(batch_size)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSerializedShapeMismatch(self):
     aname = "a"
     bname = "b"
@@ -727,7 +739,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
           expected_err=(ValueError,
                         "Cannot reshape a tensor with 0 elements to shape"))
 
-  @test_util.run_deprecated_v1
+  @combinations.generate(test_base.graph_only_combinations())
   def testSerializedContainingVarLenDense(self):
     aname = "a"
     bname = "b"
@@ -879,6 +891,224 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_err=(ValueError,
                       "Unsupported: FixedLenSequenceFeature requires "
                       "allow_missing to be True."))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSerializedContainingRaggedFeatureWithNoPartitions(self):
+    original = [
+        example(
+            features=features({
+                "rt_c": float_feature([3, 4, 5, 6, 7, 8]),
+            })),
+        example(
+            features=features({
+                "rt_c": float_feature([]),  # empty float list
+            })),
+        example(
+            features=features({
+                "rt_d": feature(),  # feature with nothing in it
+            })),
+        example(
+            features=features({
+                "rt_c": float_feature([1, 2, -1]),
+                "rt_d": bytes_feature([b"hi"]),
+            }))
+    ]
+
+    serialized = [m.SerializeToString() for m in original]
+
+    expected_rt_c = ragged_factory_ops.constant_value(
+        [[3.0, 4.0, 5.0, 6.0, 7.0, 8.0], [], [], [1.0, 2.0, -1.0]],
+        row_splits_dtype=dtypes.int32)
+    expected_rt_d = ragged_factory_ops.constant_value(
+        [[], [], [], [b"hi"]], row_splits_dtype=dtypes.int64)
+
+    expected_output = {
+        "rt_c": expected_rt_c,
+        "rt_d": expected_rt_d,
+    }
+
+    self._test(
+        ops.convert_to_tensor(serialized), {
+            "rt_c":
+                parsing_ops.RaggedFeature(dtypes.float32),
+            "rt_d":
+                parsing_ops.RaggedFeature(
+                    dtypes.string, row_splits_dtype=dtypes.int64),
+        },
+        expected_values=expected_output,
+        create_iterator_twice=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSerializedContainingRaggedFeatureWithOnePartition(self):
+    original = [
+        example(
+            features=features({
+                # rt = [[3], [4, 5, 6]]
+                "rt_values": float_feature([3, 4, 5, 6]),
+                "rt_splits": int64_feature([0, 1, 4]),
+                "rt_lengths": int64_feature([1, 3]),
+                "rt_starts": int64_feature([0, 1]),
+                "rt_limits": int64_feature([1, 4]),
+                "rt_rowids": int64_feature([0, 1, 1, 1]),
+            })),
+        example(
+            features=features({
+                # rt = []
+                "rt_values": float_feature([]),
+                "rt_splits": int64_feature([0]),
+                "rt_lengths": int64_feature([]),
+                "rt_starts": int64_feature([]),
+                "rt_limits": int64_feature([]),
+                "rt_rowids": int64_feature([]),
+            })),
+        example(
+            features=features({
+                # rt = []
+                "rt_values": feature(),  # feature with nothing in it
+                "rt_splits": int64_feature([0]),
+                "rt_lengths": feature(),
+                "rt_starts": feature(),
+                "rt_limits": feature(),
+                "rt_rowids": feature(),
+            })),
+        example(
+            features=features({
+                # rt = [[1.0, 2.0, -1.0], [], [8.0, 9.0], [5.0]]
+                "rt_values": float_feature([1, 2, -1, 8, 9, 5]),
+                "rt_splits": int64_feature([0, 3, 3, 5, 6]),
+                "rt_lengths": int64_feature([3, 0, 2, 1]),
+                "rt_starts": int64_feature([0, 3, 3, 5]),
+                "rt_limits": int64_feature([3, 3, 5, 6]),
+                "rt_rowids": int64_feature([0, 0, 0, 2, 2, 3]),
+            }))
+    ]
+    serialized = [m.SerializeToString() for m in original]
+
+    test_features = {
+        "rt1":
+            parsing_ops.RaggedFeature(
+                value_key="rt_values",
+                partitions=[parsing_ops.RaggedFeature.RowSplits("rt_splits")],
+                dtype=dtypes.float32),
+        "rt2":
+            parsing_ops.RaggedFeature(
+                value_key="rt_values",
+                partitions=[parsing_ops.RaggedFeature.RowLengths("rt_lengths")],
+                dtype=dtypes.float32),
+        "rt3":
+            parsing_ops.RaggedFeature(
+                value_key="rt_values",
+                partitions=[parsing_ops.RaggedFeature.RowStarts("rt_starts")],
+                dtype=dtypes.float32),
+        "rt4":
+            parsing_ops.RaggedFeature(
+                value_key="rt_values",
+                partitions=[parsing_ops.RaggedFeature.RowLimits("rt_limits")],
+                dtype=dtypes.float32),
+        "rt5":
+            parsing_ops.RaggedFeature(
+                value_key="rt_values",
+                partitions=[parsing_ops.RaggedFeature.ValueRowIds("rt_rowids")],
+                dtype=dtypes.float32),
+        "uniform1":
+            parsing_ops.RaggedFeature(
+                value_key="rt_values",
+                partitions=[parsing_ops.RaggedFeature.UniformRowLength(2)],
+                dtype=dtypes.float32),
+        "uniform2":
+            parsing_ops.RaggedFeature(
+                value_key="rt_values",
+                partitions=[
+                    parsing_ops.RaggedFeature.UniformRowLength(2),
+                    parsing_ops.RaggedFeature.RowSplits("rt_splits")
+                ],
+                dtype=dtypes.float32),
+    }
+
+    expected_rt = ragged_factory_ops.constant(
+        [[[3], [4, 5, 6]], [], [], [[1, 2, -1], [], [8, 9], [5]]],
+        dtype=dtypes.float32,
+        row_splits_dtype=dtypes.int32)
+
+    expected_uniform1 = ragged_factory_ops.constant(
+        [[[3, 4], [5, 6]], [], [], [[1, 2], [-1, 8], [9, 5]]],
+        ragged_rank=1,
+        dtype=dtypes.float32,
+        row_splits_dtype=dtypes.int32)
+
+    expected_uniform2 = ragged_factory_ops.constant(
+        [[[[3], [4, 5, 6]]], [], [], [[[1, 2, -1], []], [[8, 9], [5]]]],
+        dtype=dtypes.float32,
+        row_splits_dtype=dtypes.int32)
+
+    expected_output = {
+        "rt1": expected_rt,
+        "rt2": expected_rt,
+        "rt3": expected_rt,
+        "rt4": expected_rt,
+        "rt5": expected_rt,
+        "uniform1": expected_uniform1,
+        "uniform2": expected_uniform2,
+    }
+
+    self._test(
+        ops.convert_to_tensor(serialized),
+        test_features,
+        expected_values=expected_output,
+        create_iterator_twice=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSerializedContainingRaggedFeatureWithMultiplePartitions(self):
+    original = [
+        # rt shape: [(batch), 2, None, None]
+        example(
+            features=features({
+                # rt = [[[[1]], [[2, 3], [4]]], [[], [[5, 6, 7]]]]
+                "rt_values": float_feature([1, 2, 3, 4, 5, 6, 7]),
+                "lengths_axis2": int64_feature([1, 2, 0, 1]),
+                "lengths_axis3": int64_feature([1, 2, 1, 3]),
+                "splits_axis3": int64_feature([0, 1, 3, 4, 7]),
+            })),
+        example(
+            features=features({
+                # rt = [[[[1, 2, 3], [4]], [[5], [6], [7, 8]]]]
+                "rt_values": float_feature([1, 2, 3, 4, 5, 6, 7, 8]),
+                "lengths_axis2": int64_feature([2, 3]),
+                "lengths_axis3": int64_feature([3, 1, 1, 1, 2]),
+                "splits_axis3": int64_feature([0, 3, 4, 5, 6, 8]),
+            }))
+    ]
+    serialized = [m.SerializeToString() for m in original]
+
+    test_features = {
+        "rt1":
+            parsing_ops.RaggedFeature(
+                value_key="rt_values",
+                partitions=[
+                    parsing_ops.RaggedFeature.UniformRowLength(2),
+                    parsing_ops.RaggedFeature.RowLengths("lengths_axis2"),
+                    parsing_ops.RaggedFeature.RowSplits("splits_axis3"),
+                ],
+                dtype=dtypes.float32,
+                row_splits_dtype=dtypes.int64,
+            ),
+    }
+
+    expected_rt = ragged_factory_ops.constant(
+        [[[[[1]], [[2, 3], [4]]], [[], [[5, 6, 7]]]],
+         [[[[1, 2, 3], [4]], [[5], [6], [7, 8]]]]],
+        dtype=dtypes.float32,
+        row_splits_dtype=dtypes.int64)
+
+    expected_output = {
+        "rt1": expected_rt,
+    }
+
+    self._test(
+        ops.convert_to_tensor(serialized),
+        test_features,
+        expected_values=expected_output,
+        create_iterator_twice=True)
 
 
 if __name__ == "__main__":

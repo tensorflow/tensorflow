@@ -31,7 +31,10 @@ class Conv1DTest(test.TestCase):
 
   def testBasic(self):
     """Test that argument passing to conv1d is handled properly."""
-    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+    # double datatype is currently not supported for convolution ops
+    # on the ROCm platform
+    optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
+    for dtype in [dtypes.float16, dtypes.float32] + optional_float64:
       x = constant_op.constant([1, 2, 3, 4], dtype=dtype)
       x = array_ops.expand_dims(x, 0)  # Add batch dimension
       x = array_ops.expand_dims(x, 2)  # And depth dimension

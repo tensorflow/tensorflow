@@ -17,6 +17,10 @@ tf_module {
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "fftshift"
+    argspec: "args=[\'x\', \'axes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "frame"
     argspec: "args=[\'signal\', \'frame_length\', \'frame_step\', \'pad_end\', \'pad_value\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'0\', \'-1\', \'None\'], "
   }
@@ -43,6 +47,10 @@ tf_module {
   member_method {
     name: "ifft3d"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ifftshift"
+    argspec: "args=[\'x\', \'axes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "inverse_stft"

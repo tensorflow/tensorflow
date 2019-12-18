@@ -98,5 +98,4 @@ keras_export("keras.initializers.TruncatedNormal", v1=[])(
     init_ops_v2.TruncatedNormal)
 # pylint: enable=bad-continuation
 
-
-keras_export("keras.backend.name_scope")(ops.name_scope)
+keras_export(v1=["keras.backend.name_scope"])(ops.name_scope_v1)

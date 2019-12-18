@@ -22,6 +22,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
@@ -29,11 +30,12 @@ from tensorflow.python.platform import test
 linalg = linalg_lib
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorDiagTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  def _operator_and_matrix(
+  def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
     shape = list(build_info.shape)
@@ -81,14 +83,13 @@ class LinearOperatorDiagTest(
       with self.assertRaisesOpError("non-positive real.*not positive definite"):
         operator.assert_positive_definite().run()
 
-  @test_util.run_deprecated_v1
   def test_assert_positive_definite_does_not_raise_if_pd_and_complex(self):
     with self.cached_session():
       x = [1., 2.]
       y = [1., 0.]
       diag = math_ops.complex(x, y)  # Re[diag] > 0.
       # Should not fail
-      linalg.LinearOperatorDiag(diag).assert_positive_definite().run()
+      self.evaluate(linalg.LinearOperatorDiag(diag).assert_positive_definite())
 
   def test_assert_non_singular_raises_if_zero_eigenvalue(self):
     # Singlular matrix with one positive eigenvalue and one zero eigenvalue.
@@ -98,14 +99,13 @@ class LinearOperatorDiagTest(
       with self.assertRaisesOpError("Singular operator"):
         operator.assert_non_singular().run()
 
-  @test_util.run_deprecated_v1
   def test_assert_non_singular_does_not_raise_for_complex_nonsingular(self):
     with self.cached_session():
       x = [1., 0.]
       y = [0., 1.]
       diag = math_ops.complex(x, y)
       # Should not raise.
-      linalg.LinearOperatorDiag(diag).assert_non_singular().run()
+      self.evaluate(linalg.LinearOperatorDiag(diag).assert_non_singular())
 
   def test_assert_self_adjoint_raises_if_diag_has_complex_part(self):
     with self.cached_session():
@@ -116,7 +116,6 @@ class LinearOperatorDiagTest(
       with self.assertRaisesOpError("imaginary.*not self-adjoint"):
         operator.assert_self_adjoint().run()
 
-  @test_util.run_deprecated_v1
   def test_assert_self_adjoint_does_not_raise_for_diag_with_zero_imag(self):
     with self.cached_session():
       x = [1., 0.]
@@ -124,7 +123,7 @@ class LinearOperatorDiagTest(
       diag = math_ops.complex(x, y)
       operator = linalg.LinearOperatorDiag(diag)
       # Should not raise
-      operator.assert_self_adjoint().run()
+      self.evaluate(operator.assert_self_adjoint())
 
   def test_scalar_diag_raises(self):
     with self.assertRaisesRegexp(ValueError, "must have at least 1 dimension"):
@@ -146,16 +145,16 @@ class LinearOperatorDiagTest(
       # Create a batch matrix with the broadcast shape of operator.
       diag_broadcast = array_ops.concat((diag, diag), 1)
       mat = array_ops.matrix_diag(diag_broadcast)
-      self.assertAllEqual((2, 2, 3, 3), mat.get_shape())  # being pedantic.
+      self.assertAllEqual((2, 2, 3, 3), mat.shape)  # being pedantic.
 
       operator_matmul = operator.matmul(x)
       mat_matmul = math_ops.matmul(mat, x)
-      self.assertAllEqual(operator_matmul.get_shape(), mat_matmul.get_shape())
+      self.assertAllEqual(operator_matmul.shape, mat_matmul.shape)
       self.assertAllClose(*self.evaluate([operator_matmul, mat_matmul]))
 
       operator_solve = operator.solve(x)
       mat_solve = linalg_ops.matrix_solve(mat, x)
-      self.assertAllEqual(operator_solve.get_shape(), mat_solve.get_shape())
+      self.assertAllEqual(operator_solve.shape, mat_solve.shape)
       self.assertAllClose(*self.evaluate([operator_solve, mat_solve]))
 
   def test_diag_matmul(self):
@@ -187,6 +186,35 @@ class LinearOperatorDiagTest(
         linalg_lib.LinearOperatorDiag))
     self.assertAllClose([6., 9.], self.evaluate(operator_matmul.diag))
 
+  def test_diag_solve(self):
+    operator1 = linalg_lib.LinearOperatorDiag([2., 3.], is_non_singular=True)
+    operator2 = linalg_lib.LinearOperatorDiag([1., 2.], is_non_singular=True)
+    operator3 = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2, multiplier=3., is_non_singular=True)
+    operator_solve = operator1.solve(operator2)
+    self.assertTrue(isinstance(
+        operator_solve,
+        linalg_lib.LinearOperatorDiag))
+    self.assertAllClose([0.5, 2 / 3.], self.evaluate(operator_solve.diag))
+
+    operator_solve = operator2.solve(operator1)
+    self.assertTrue(isinstance(
+        operator_solve,
+        linalg_lib.LinearOperatorDiag))
+    self.assertAllClose([2., 3 / 2.], self.evaluate(operator_solve.diag))
+
+    operator_solve = operator1.solve(operator3)
+    self.assertTrue(isinstance(
+        operator_solve,
+        linalg_lib.LinearOperatorDiag))
+    self.assertAllClose([3 / 2., 1.], self.evaluate(operator_solve.diag))
+
+    operator_solve = operator3.solve(operator1)
+    self.assertTrue(isinstance(
+        operator_solve,
+        linalg_lib.LinearOperatorDiag))
+    self.assertAllClose([2 / 3., 1.], self.evaluate(operator_solve.diag))
+
   def test_diag_adjoint_type(self):
     diag = [1., 3., 5., 8.]
     operator = linalg.LinearOperatorDiag(diag, is_non_singular=True)
@@ -206,6 +234,12 @@ class LinearOperatorDiagTest(
     operator = linalg.LinearOperatorDiag(diag, is_non_singular=True)
     self.assertIsInstance(operator.inverse(), linalg.LinearOperatorDiag)
 
+  def test_tape_safe(self):
+    diag = variables_module.Variable([[2.]])
+    operator = linalg.LinearOperatorDiag(diag)
+    self.check_tape_safe(operator)
+
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(LinearOperatorDiagTest)
   test.main()

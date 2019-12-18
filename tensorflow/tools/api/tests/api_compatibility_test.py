@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,13 +34,13 @@ import re
 import sys
 
 import six
+from six.moves import range
 import tensorflow as tf
 
 from google.protobuf import message
 from google.protobuf import text_format
 
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -47,6 +48,14 @@ from tensorflow.tools.api.lib import api_objects_pb2
 from tensorflow.tools.api.lib import python_object_to_proto_visitor
 from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
+
+# pylint: disable=g-import-not-at-top,unused-import
+_TENSORBOARD_AVAILABLE = True
+try:
+  import tensorboard as _tb
+except ImportError:
+  _TENSORBOARD_AVAILABLE = False
+# pylint: enable=g-import-not-at-top,unused-import
 
 # FLAGS defined at the bottom:
 FLAGS = None
@@ -89,13 +98,21 @@ def _KeyToFilePath(key, api_version):
   """From a given key, construct a filepath.
 
   Filepath will be inside golden folder for api_version.
+
+  Args:
+    key: a string used to determine the file path
+    api_version: a number indicating the tensorflow API version, e.g. 1 or 2.
+
+  Returns:
+    A string of file path to the pbtxt file which describes the public API
   """
 
   def _ReplaceCapsWithDash(matchobj):
     match = matchobj.group(0)
     return '-%s' % (match.lower())
 
-  case_insensitive_key = re.sub('([A-Z]{1})', _ReplaceCapsWithDash, key)
+  case_insensitive_key = re.sub('([A-Z]{1})', _ReplaceCapsWithDash,
+                                six.ensure_str(key))
   api_folder = (
       _API_GOLDEN_FOLDER_V2 if api_version == 2 else _API_GOLDEN_FOLDER_V1)
   return os.path.join(api_folder, '%s.pbtxt' % case_insensitive_key)
@@ -111,7 +128,7 @@ def _FileNameToKey(filename):
   base_filename = os.path.basename(filename)
   base_filename_without_ext = os.path.splitext(base_filename)[0]
   api_object_key = re.sub('((-[a-z]){1})', _ReplaceDashWithCaps,
-                          base_filename_without_ext)
+                          six.ensure_str(base_filename_without_ext))
   return api_object_key
 
 
@@ -135,8 +152,8 @@ def _FilterNonCoreGoldenFiles(golden_file_list):
   filtered_package_prefixes = ['tensorflow.%s.' % p for p in _NON_CORE_PACKAGES]
   for f in golden_file_list:
     if any(
-        f.rsplit('/')[-1].startswith(pre) for pre in filtered_package_prefixes
-    ):
+        six.ensure_str(f).rsplit('/')[-1].startswith(pre)
+        for pre in filtered_package_prefixes):
       continue
     filtered_file_list.append(f)
   return filtered_file_list
@@ -286,6 +303,7 @@ class ApiCompatibilityTest(test.TestCase):
     visitor.do_not_descend_map['tf'].append('contrib')
     if FLAGS.only_test_core_api:
       visitor.do_not_descend_map['tf'].extend(_NON_CORE_PACKAGES)
+    visitor.private_map['tf.compat'] = ['v1', 'v2']
     traverse.traverse(tf.compat.v1, visitor)
 
   def testNoSubclassOfMessageV2(self):
@@ -295,6 +313,7 @@ class ApiCompatibilityTest(test.TestCase):
     visitor.do_not_descend_map['tf'].append('contrib')
     if FLAGS.only_test_core_api:
       visitor.do_not_descend_map['tf'].extend(_NON_CORE_PACKAGES)
+    visitor.private_map['tf.compat'] = ['v1', 'v2']
     traverse.traverse(tf.compat.v2, visitor)
 
   def _checkBackwardsCompatibility(self,
@@ -307,7 +326,7 @@ class ApiCompatibilityTest(test.TestCase):
     visitor = python_object_to_proto_visitor.PythonObjectToProtoVisitor()
 
     public_api_visitor = public_api.PublicAPIVisitor(visitor)
-    public_api_visitor.private_map['tf'] = ['contrib']
+    public_api_visitor.private_map['tf'].append('contrib')
     if api_version == 2:
       public_api_visitor.private_map['tf'].append('enable_v2_behavior')
 
@@ -347,33 +366,47 @@ class ApiCompatibilityTest(test.TestCase):
         update_goldens=FLAGS.update_goldens,
         api_version=api_version)
 
-  @test_util.run_v1_only('b/120545219')
   def testAPIBackwardsCompatibility(self):
-    api_version = 2 if '_api.v2' in tf.__name__ else 1
+    api_version = 2 if '_api.v2' in tf.bitwise.__name__ else 1
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
+    omit_golden_symbols_map = {}
+    if (api_version == 2 and FLAGS.only_test_core_api
+        and not _TENSORBOARD_AVAILABLE):
+      # In TF 2.0 these summary symbols are imported from TensorBoard.
+      omit_golden_symbols_map['tensorflow.summary'] = [
+          'audio', 'histogram', 'image', 'scalar', 'text']
+
     self._checkBackwardsCompatibility(
         tf,
         golden_file_pattern,
         api_version,
         # Skip compat.v1 and compat.v2 since they are validated
         # in separate tests.
-        additional_private_map={'tf.compat': ['v1', 'v2']})
+        additional_private_map={'tf.compat': ['v1', 'v2']},
+        omit_golden_symbols_map=omit_golden_symbols_map)
 
     # Also check that V1 API has contrib
     self.assertTrue(
+        api_version == 2 or
         'tensorflow.python.util.lazy_loader.LazyLoader'
         in str(type(tf.contrib)))
+    # Check that V2 API does not have contrib
+    self.assertTrue(api_version == 1 or not hasattr(tf, 'contrib'))
 
-  @test_util.run_v1_only('b/120545219')
   def testAPIBackwardsCompatibilityV1(self):
     api_version = 1
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
-    self._checkBackwardsCompatibility(tf.compat.v1, golden_file_pattern,
-                                      api_version)
+    self._checkBackwardsCompatibility(
+        tf.compat.v1, golden_file_pattern, api_version,
+        additional_private_map={
+            'tf': ['pywrap_tensorflow'],
+            'tf.compat': ['v1', 'v2'],
+        },
+        omit_golden_symbols_map={'tensorflow': ['pywrap_tensorflow']})
 
   def testAPIBackwardsCompatibilityV2(self):
     api_version = 2
@@ -381,7 +414,7 @@ class ApiCompatibilityTest(test.TestCase):
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
     omit_golden_symbols_map = {}
-    if FLAGS.only_test_core_api:
+    if FLAGS.only_test_core_api and not _TENSORBOARD_AVAILABLE:
       # In TF 2.0 these summary symbols are imported from TensorBoard.
       omit_golden_symbols_map['tensorflow.summary'] = [
           'audio', 'histogram', 'image', 'scalar', 'text']

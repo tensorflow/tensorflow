@@ -4,8 +4,12 @@
 
 load("@local_config_remote_execution//:remote_execution.bzl", "gpu_test_tags")
 
-def tf_cuda_tests_tags():
+def tf_gpu_tests_tags():
     return ["requires-gpu", "gpu"] + gpu_test_tags()
+
+# terminology changes: saving tf_cuda_* for compatibility
+def tf_cuda_tests_tags():
+    return tf_gpu_tests_tags()
 
 def tf_sycl_tests_tags():
     return ["requires-gpu", "gpu"] + gpu_test_tags()
@@ -36,34 +40,25 @@ def tf_additional_license_deps():
         "//conditions:default": [],
     })
 
-def tf_additional_verbs_deps():
-    return select({
-        str(Label("//tensorflow:with_verbs_support")): [
-            str(Label("//tensorflow/contrib/verbs:verbs_server_lib")),
-            str(Label("//tensorflow/contrib/verbs:grpc_verbs_client")),
-        ],
-        "//conditions:default": [],
-    })
+# Include specific extra dependencies when building statically, or
+# another set of dependencies otherwise. If "macos" is provided, that
+# dependency list is used when using the framework_shared_object config
+# on MacOS platforms. If "macos" is not provided, the "otherwise" list is
+# used for all framework_shared_object platforms including MacOS.
+def if_static(extra_deps, otherwise = [], macos = []):
+    ret = {
+        str(Label("//tensorflow:framework_shared_object")): otherwise,
+        "//conditions:default": extra_deps,
+    }
+    if macos:
+        ret[str(Label("//tensorflow:macos_with_framework_shared_object"))] = macos
+    return select(ret)
 
-def tf_additional_mpi_deps():
-    return select({
-        str(Label("//tensorflow:with_mpi_support")): [
-            str(Label("//tensorflow/contrib/mpi:mpi_server_lib")),
-        ],
-        "//conditions:default": [],
-    })
-
-def tf_additional_gdr_deps():
-    return select({
-        str(Label("//tensorflow:with_gdr_support")): [
-            str(Label("//tensorflow/contrib/gdr:gdr_server_lib")),
-        ],
-        "//conditions:default": [],
-    })
-
-def if_static(extra_deps, otherwise = []):
+def if_static_and_not_mobile(extra_deps, otherwise = []):
     return select({
         str(Label("//tensorflow:framework_shared_object")): otherwise,
+        str(Label("//tensorflow:android")): otherwise,
+        str(Label("//tensorflow:ios")): otherwise,
         "//conditions:default": extra_deps,
     })
 
@@ -72,3 +67,6 @@ def if_dynamic_kernels(extra_deps, otherwise = []):
         str(Label("//tensorflow:dynamic_loaded_kernels")): extra_deps,
         "//conditions:default": otherwise,
     })
+
+def register_extension_info(**kwargs):
+    pass

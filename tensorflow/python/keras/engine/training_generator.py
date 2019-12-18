@@ -68,7 +68,11 @@ def model_iteration(model,
         declaring one epoch finished and starting the next epoch. Ignored with
         the default value of `None`.
       epochs: Number of times to iterate over the data.
-      verbose: Verbosity mode, 0, 1 or 2.
+      verbose: 0, 1, or 2. Verbosity mode.
+        0 = silent, 1 = progress bar, 2 = one line per epoch.
+        Note that the progress bar is not particularly useful when
+        logged to a file, so verbose=2 is recommended when not running
+        interactively (eg, in a production environment).
       callbacks: List of callbacks to be called during training.
       validation_data: Either a tuple of NumPy/Tensor inputs (i.e. `(x,)` or
         `(x, y)` or `(x, y, sample_weights)`) or a generator or
@@ -76,7 +80,7 @@ def model_iteration(model,
       validation_steps: Total number of steps (batches of samples) before
         declaring validation finished.
       validation_freq: Only relevant if validation data is provided. Integer or
-        `collections.Container` instance (e.g. list, tuple, etc.). If an
+        `collections.abc.Container` instance (e.g. list, tuple, etc.). If an
         integer, specifies how many training epochs to run before a new
         validation run is performed, e.g. `validation_freq=2` runs
         validation every 2 epochs. If a Container, specifies the epochs on
@@ -129,7 +133,7 @@ def model_iteration(model,
     if steps_per_epoch is None:
       reset_dataset_after_each_epoch = True
       steps_per_epoch = training_utils.infer_steps_for_dataset(
-          data, steps_per_epoch, epochs=epochs, steps_name=steps_name)
+          model, data, steps_per_epoch, epochs=epochs, steps_name=steps_name)
 
   # Convert to a format that supports `next(generator)`.
   generator, steps_per_epoch = convert_to_generator_like(
@@ -178,18 +182,22 @@ def model_iteration(model,
   progbar.params['verbose'] = verbose
 
   if mode == ModeKeys.PREDICT:
-    aggregator = training_utils.OutputsAggregator(True, steps_per_epoch)
+    aggregator = training_utils.OutputsAggregator(True, steps=steps_per_epoch)
   else:
-    aggregator = training_utils.MetricsAggregator(True, steps_per_epoch)
+    aggregator = training_utils.MetricsAggregator(True, steps=steps_per_epoch)
 
   should_set_learning_phase = context.executing_eagerly() and model.run_eagerly
   if should_set_learning_phase:
-    old_learning_phase = backend.learning_phase()
-    backend.set_eager_learning_phase(1 if mode == ModeKeys.TRAIN else 0)
+    learning_phase_scope = backend.eager_learning_phase_scope(
+        1 if mode == ModeKeys.TRAIN else 0)
+    learning_phase_scope.__enter__()
 
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
   progbar.on_train_begin()
+
+  initial_epoch = model._maybe_load_initial_epoch_from_ckpt(initial_epoch, mode)
+
   for epoch in range(initial_epoch, epochs):
     if callbacks.model.stop_training:
       break
@@ -210,7 +218,7 @@ def model_iteration(model,
 
     step = 0
     while step < target_steps:
-      batch_data = _get_next_batch(generator, mode)
+      batch_data = _get_next_batch(generator)
       if batch_data is None:
         if is_dataset:
           # The dataset passed by the user ran out of batches.
@@ -228,9 +236,10 @@ def model_iteration(model,
                 % (steps_name, steps_per_epoch * epochs))
           elif step > 0:
             steps_per_epoch = step
-            aggregator.num_samples_or_steps = steps_per_epoch
-            progbar.params['steps'] = steps_per_epoch
-            progbar.progbar.target = steps_per_epoch
+            aggregator.steps = steps_per_epoch
+            if mode == ModeKeys.TRAIN:
+              progbar.params['steps'] = steps_per_epoch
+              progbar.progbar.target = steps_per_epoch
         else:
           # We ran out of batches while the user passed an iterator (legacy).
           callbacks.model.stop_training = True
@@ -309,7 +318,7 @@ def model_iteration(model,
           use_multiprocessing=use_multiprocessing,
           max_queue_size=max_queue_size,
           callbacks=callbacks,
-          verbose=0,
+          verbose=verbose,
           mode=ModeKeys.TEST,
           steps_name='validation_steps')
 
@@ -327,13 +336,14 @@ def model_iteration(model,
     if reset_dataset_after_each_epoch and epoch < epochs - 1:
       generator = dataset_ops.make_one_shot_iterator(original_dataset)
 
+  model._successful_loop_finish = True
   callbacks._call_end_hook(mode)
 
   if enqueuer is not None:
     enqueuer.stop()
 
   if should_set_learning_phase:
-    backend.set_eager_learning_phase(old_learning_phase)
+    learning_phase_scope.__exit__(None, None, None)
 
   if mode == ModeKeys.TRAIN:
     return model.history
@@ -348,25 +358,21 @@ predict_generator = functools.partial(
     model_iteration, mode=ModeKeys.PREDICT, shuffle=False)
 
 
-def _get_next_batch(generator, mode):
+def _get_next_batch(generator):
   """Retrieves the next batch of input data."""
   try:
     generator_output = next(generator)
   except (StopIteration, errors.OutOfRangeError):
     return None
-  if not isinstance(generator_output, tuple):
-    if mode == ModeKeys.PREDICT:
-      # Always wrap in a tuple.
-      return (generator_output,)
-    else:
-      raise ValueError('Output of generator should be '
-                       'a tuple `(x, y, sample_weight)` '
-                       'or `(x, y)`. Found: ' + str(generator_output))
 
-  if len(generator_output) < 1 or len(generator_output) > 3:
-    raise ValueError('Output of generator should be '
-                     'a tuple `(x, y, sample_weight)` '
-                     'or `(x, y)` or (x,). Found: ' + str(generator_output))
+  if not isinstance(generator_output, tuple):
+    # Always wrap in a tuple.
+    generator_output = (generator_output,)
+  if len(generator_output) not in [1, 2, 3]:
+    raise ValueError(
+        'Output of generator should be a tuple of 1 or 2 or 3 '
+        'elements: (input,) or (input, target) or '
+        '(input, target, sample_weights). Received {}'.format(generator_output))
   return generator_output
 
 
@@ -417,7 +423,7 @@ def _validate_arguments(is_sequence, is_dataset, use_multiprocessing, workers,
 
   val_gen = (
       data_utils.is_generator_or_sequence(validation_data) or
-      isinstance(validation_data, iterator_ops.EagerIterator))
+      isinstance(validation_data, iterator_ops.OwnedIterator))
   if (val_gen and not isinstance(validation_data, data_utils.Sequence) and
       not validation_steps):
     raise ValueError('Please specify the `validation_steps` argument.')
@@ -436,9 +442,9 @@ def convert_to_generator_like(data,
 
   Arguments:
     data: Either a generator or `keras.utils.data_utils.Sequence` object or
-      `Dataset` or `EagerIterator` or a {1,2,3}-tuple of NumPy arrays or
-      EagerTensors. If a tuple, the elements represent `(x, y, sample_weights)`
-      and may be `None` or `[None]`.
+      `Dataset`, `Iterator`, or a {1,2,3}-tuple of NumPy arrays or EagerTensors.
+      If a tuple, the elements represent `(x, y, sample_weights)` and may be
+      `None` or `[None]`.
     batch_size: Used when creating a generator out of tuples of NumPy arrays or
       EagerTensors.
     steps_per_epoch: Steps of the generator to run each epoch. If `None` the
@@ -448,7 +454,7 @@ def convert_to_generator_like(data,
     shuffle: Whether the data should be shuffled.
 
   Returns:
-    - Generator or `keras.utils.data_utils.Sequence` or EagerIterator.
+    - Generator, `keras.utils.data_utils.Sequence`, or `Iterator`.
 
   Raises:
     - ValueError: If `batch_size` is not provided for NumPy or EagerTensor
@@ -458,11 +464,9 @@ def convert_to_generator_like(data,
     # Scrub `Nones` that might have been passed for `targets`, `sample_weights`.
     data = tuple(
         ele for ele in data if not all(e is None for e in nest.flatten(ele)))
-    if len(data) == 1:
-      data = data[0]
 
   if data_utils.is_generator_or_sequence(data) or isinstance(
-      data, iterator_ops.EagerIterator):
+      data, iterator_ops.OwnedIterator):
     if isinstance(data, data_utils.Sequence):
       if steps_per_epoch is None:
         steps_per_epoch = len(data)
@@ -473,7 +477,9 @@ def convert_to_generator_like(data,
   # Create generator from NumPy or EagerTensor Input.
   num_samples = int(nest.flatten(data)[0].shape[0])
   if batch_size is None:
-    raise ValueError('You must specify `batch_size`')
+    raise ValueError(
+        'When passing input data as arrays, do not specify '
+        '`steps_per_epoch`/`steps` argument. Please use `batch_size` instead.')
   steps_per_epoch = int(math.ceil(num_samples / batch_size))
 
   def _gen(data):
@@ -544,3 +550,291 @@ def _get_num_samples_or_steps(data, steps_per_epoch):
   if hasattr(flat_inputs[0], 'shape'):
     return int(flat_inputs[0].shape[0]), False
   return steps_per_epoch, True
+
+
+class GeneratorOrSequenceTrainingLoop(training_utils.TrainingLoop):
+  """Generator-like.
+
+  Input is Python generator, or Sequence object.
+
+  The difference between this class and `GeneratorLikeTrainingFunction` is that
+  this class only handles inputs that with x, y and sample_weight fused into one
+  param.
+  """
+
+  def fit(self,
+          model,
+          x=None,
+          y=None,
+          batch_size=None,
+          epochs=1,
+          verbose=1,
+          callbacks=None,
+          validation_split=0.,
+          validation_data=None,
+          shuffle=True,
+          class_weight=None,
+          sample_weight=None,
+          initial_epoch=0,
+          steps_per_epoch=None,
+          validation_steps=None,
+          validation_freq=1,
+          max_queue_size=10,
+          workers=1,
+          use_multiprocessing=False):
+    model._validate_or_infer_batch_size(batch_size, steps_per_epoch, x)
+    training_utils.check_generator_arguments(
+        y, sample_weight, validation_split=validation_split)
+    return fit_generator(
+        model,
+        x,
+        steps_per_epoch=steps_per_epoch,
+        epochs=epochs,
+        verbose=verbose,
+        callbacks=callbacks,
+        validation_data=validation_data,
+        validation_steps=validation_steps,
+        validation_freq=validation_freq,
+        class_weight=class_weight,
+        max_queue_size=max_queue_size,
+        workers=workers,
+        use_multiprocessing=use_multiprocessing,
+        shuffle=shuffle,
+        initial_epoch=initial_epoch,
+        steps_name='steps_per_epoch')
+
+  def evaluate(self,
+               model,
+               x=None,
+               y=None,
+               batch_size=None,
+               verbose=1,
+               sample_weight=None,
+               steps=None,
+               callbacks=None,
+               max_queue_size=10,
+               workers=1,
+               use_multiprocessing=False):
+    model._validate_or_infer_batch_size(batch_size, steps, x)
+    training_utils.check_generator_arguments(y, sample_weight)
+    return evaluate_generator(
+        model,
+        x,
+        steps=steps,
+        verbose=verbose,
+        callbacks=callbacks,
+        max_queue_size=max_queue_size,
+        workers=workers,
+        use_multiprocessing=use_multiprocessing)
+
+  def predict(self,
+              model,
+              x,
+              batch_size=None,
+              verbose=0,
+              steps=None,
+              callbacks=None,
+              max_queue_size=10,
+              workers=1,
+              use_multiprocessing=False):
+    model._validate_or_infer_batch_size(batch_size, steps, x)
+    return predict_generator(
+        model,
+        x,
+        steps=steps,
+        verbose=verbose,
+        callbacks=callbacks,
+        max_queue_size=max_queue_size,
+        workers=workers,
+        use_multiprocessing=use_multiprocessing)
+
+
+class EagerDatasetOrIteratorTrainingLoop(training_utils.TrainingLoop):
+  """A non-distributed Dataset or iterator in eager execution."""
+
+  def fit(self,
+          model,
+          x=None,
+          y=None,
+          batch_size=None,
+          epochs=1,
+          verbose=1,
+          callbacks=None,
+          validation_split=0.,
+          validation_data=None,
+          shuffle=True,
+          class_weight=None,
+          sample_weight=None,
+          initial_epoch=0,
+          steps_per_epoch=None,
+          validation_steps=None,
+          validation_freq=1,
+          **kwargs):
+    model._validate_or_infer_batch_size(batch_size, steps_per_epoch, x)
+    # Make sure that y, sample_weights, validation_split are not passed.
+    training_utils.validate_dataset_input(x, y, sample_weight, validation_split)
+    if (isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)) and
+        shuffle):
+      training_utils.verify_dataset_shuffled(x)
+
+    return fit_generator(
+        model,
+        x,
+        steps_per_epoch=steps_per_epoch,
+        epochs=epochs,
+        verbose=verbose,
+        callbacks=callbacks,
+        validation_data=validation_data,
+        validation_steps=validation_steps,
+        validation_freq=validation_freq,
+        class_weight=class_weight,
+        workers=0,
+        shuffle=shuffle,
+        initial_epoch=initial_epoch,
+        steps_name='steps_per_epoch')
+
+  def evaluate(self,
+               model,
+               x=None,
+               y=None,
+               batch_size=None,
+               verbose=1,
+               sample_weight=None,
+               steps=None,
+               callbacks=None,
+               **kwargs):
+    model._validate_or_infer_batch_size(batch_size, steps, x)
+    # Make sure that y, sample_weights, validation_split are not passed.
+    training_utils.validate_dataset_input(x, y, sample_weight)
+    return evaluate_generator(
+        model, x, steps=steps, verbose=verbose, workers=0, callbacks=callbacks)
+
+  def predict(self,
+              model,
+              x,
+              batch_size=None,
+              verbose=0,
+              steps=None,
+              callbacks=None,
+              **kwargs):
+    model._validate_or_infer_batch_size(batch_size, steps, x)
+    return predict_generator(
+        model, x, steps=steps, verbose=verbose, workers=0, callbacks=callbacks)
+
+
+class GeneratorLikeTrainingLoop(training_utils.TrainingLoop):
+  """TrainingLoop that handle inputs like python generator.
+
+  This is the default handler for most of the input data types, includes
+  symbolic tensors or Numpy array-like, Datasets and iterators in graph mode
+  (since they generate symbolic tensors). This Function is used to handle model
+  with `run_eagerly` = True.
+  """
+
+  def fit(self,
+          model,
+          x=None,
+          y=None,
+          batch_size=None,
+          epochs=1,
+          verbose=1,
+          callbacks=None,
+          validation_split=0.,
+          validation_data=None,
+          shuffle=True,
+          class_weight=None,
+          sample_weight=None,
+          initial_epoch=0,
+          steps_per_epoch=None,
+          validation_steps=None,
+          validation_freq=1,
+          **kwargs):
+    batch_size = model._validate_or_infer_batch_size(batch_size,
+                                                     steps_per_epoch, x)
+    x, y, sample_weights = model._standardize_user_data(
+        x,
+        y,
+        sample_weight=sample_weight,
+        class_weight=class_weight,
+        batch_size=batch_size,
+        check_steps=True,
+        steps_name='steps_per_epoch',
+        steps=steps_per_epoch,
+        validation_split=validation_split,
+        shuffle=shuffle)
+
+    if validation_data:
+      validation_data = model._prepare_validation_data(validation_data,
+                                                       batch_size,
+                                                       validation_steps)
+    elif validation_split and 0. < validation_split < 1.:
+      (x, y, sample_weights, val_x, val_y,
+       val_sample_weights) = training_utils.split_training_and_validation_data(
+           x, y, sample_weights, validation_split)
+      validation_data = (val_x, val_y, val_sample_weights)
+    else:
+      if validation_steps:
+        raise ValueError('`validation_steps` should not be specified if '
+                         '`validation_data` is None.')
+
+    return fit_generator(
+        model, (x, y, sample_weights),
+        steps_per_epoch=steps_per_epoch,
+        batch_size=batch_size,
+        epochs=epochs,
+        verbose=verbose,
+        callbacks=callbacks,
+        validation_data=validation_data,
+        validation_steps=validation_steps,
+        validation_freq=validation_freq,
+        workers=0,
+        shuffle=shuffle,
+        initial_epoch=initial_epoch,
+        steps_name='steps_per_epoch')
+
+  def evaluate(self,
+               model,
+               x=None,
+               y=None,
+               batch_size=None,
+               verbose=1,
+               sample_weight=None,
+               steps=None,
+               callbacks=None,
+               **kwargs):
+    batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
+    x, y, sample_weights = model._standardize_user_data(
+        x,
+        y,
+        sample_weight=sample_weight,
+        batch_size=batch_size,
+        check_steps=True,
+        steps_name='steps',
+        steps=steps)
+    return evaluate_generator(
+        model, (x, y, sample_weights),
+        steps=steps,
+        batch_size=batch_size,
+        verbose=verbose,
+        workers=0,
+        callbacks=callbacks)
+
+  def predict(self,
+              model,
+              x,
+              batch_size=None,
+              verbose=0,
+              steps=None,
+              callbacks=None,
+              **kwargs):
+    batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
+    x, _, _ = model._standardize_user_data(
+        x, check_steps=True, steps_name='steps', steps=steps)
+    return predict_generator(
+        model,
+        x,
+        steps=steps,
+        batch_size=batch_size,
+        verbose=verbose,
+        workers=0,
+        callbacks=callbacks)

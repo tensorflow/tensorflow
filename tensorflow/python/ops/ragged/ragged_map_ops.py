@@ -29,6 +29,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops.ragged import ragged_config
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -162,7 +163,7 @@ def map_fn(fn,
     elems=ragged.constant([[1, 2, 3], [4, 5], [6, 7]], dtype=tf.int64)
     out = map_fn(fn=lambda x: x+1, elems,
       dtype=ragged.RaggedTensorType(type=tf.int64, ragged_rank=0))
-    # out = ragged.constant([[2, 3, 4], [5, 6], [7, 8]])
+    # out = tf.ragged.constant([[2, 3, 4], [5, 6], [7, 8]])
     ```
   """
   if not callable(fn):
@@ -196,6 +197,7 @@ def map_fn(fn,
     return nest.pack_sequence_as(elems, x) if input_is_sequence else x[0]
 
   elems_flat = input_flatten(elems)
+  elems_flat = ragged_tensor.match_row_splits_dtypes(*elems_flat)
 
   with ops.name_scope(name, "map", elems_flat):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
@@ -397,8 +399,9 @@ def _maybe_recompose_tensor(t):
   nested_row_lengths = tuple(t.nested_row_lengths)
   for nested_row_length in reversed(nested_row_lengths):
     values = ragged_tensor.RaggedTensor.from_row_lengths(
-        values, nested_row_length)
-  return ragged_tensor.RaggedTensor.from_row_lengths(values, t.outer_row_length)
+        values, nested_row_length, validate=False)
+  return ragged_tensor.RaggedTensor.from_row_lengths(values, t.outer_row_length,
+                                                     validate=False)
 
 
 def _maybe_decompose_dtype(d):
@@ -408,8 +411,9 @@ def _maybe_decompose_dtype(d):
 
   result = _RaggedTensorComponents(
       flat_values=d.dtype,
-      nested_row_lengths=tuple(dtypes.int64 for i in range(d.ragged_rank - 1)),
-      outer_row_length=dtypes.int64,
+      nested_row_lengths=tuple(
+          d.row_splits_dtype for i in range(d.ragged_rank - 1)),
+      outer_row_length=d.row_splits_dtype,
   )
   return result
 
@@ -418,31 +422,42 @@ def _convert_declared(fn_output_flat, output_declared):
   """Convert outputs which are `Tensor`s into `_RaggedTensorComponents`."""
   for current, declared in zip(fn_output_flat, output_declared):
     if isinstance(declared, ragged_tensor.RaggedTensorType):
-      if isinstance(current, ragged_tensor.RaggedTensor):
-        # Check that the ragged ranks match up.
-        # + 1 to account for the rank of the outermost dimension.
-        if declared.ragged_rank != current.ragged_rank + 1:
-          raise ValueError(
-              "The declared ragged rank (%d) mismatches the result (%d)" %
-              (declared.ragged_rank, current.ragged_rank))
-        yield current
-      else:
-        # We the output is a Tensor, but the caller has declared that we are
-        # expecting an RaggedTensor output.
-        if declared.ragged_rank != 1:
-          raise ValueError(
-              "The declared ragged rank (%d) mismatches the result (1)" %
-              declared.ragged_rank)
-
-        if isinstance(current, ragged_tensor.RaggedTensor):
-          nrows = current.nrows()
-        else:
-          nrows = array_ops.shape(current, out_type=dtypes.int64)[0]
-        row_length = array_ops.expand_dims(nrows, axis=0)
-        rt = _RaggedTensorComponents(
-            flat_values=current,
-            nested_row_lengths=(),
-            outer_row_length=row_length)
-        yield rt
+      yield _convert_declared_ragged(current, declared)
     else:
       yield current
+
+
+def _convert_declared_ragged(current, declared):
+  """Converts an output with RaggedTensorType into a _RaggedTensorComponents."""
+  # Check that the ragged ranks match up.
+  # + 1 to account for the rank of the outermost dimension.
+  current_ragged_rank = getattr(current, "ragged_rank", 0)
+  if declared.ragged_rank != current_ragged_rank + 1:
+    raise ValueError(
+        "The declared ragged rank (%d) mismatches the result (%d)" %
+        (declared.ragged_rank, current_ragged_rank + 1))
+
+  # Check that dtypes match up.
+  if declared.dtype != current.dtype:
+    raise ValueError(
+        "The declared dtype (%s) mismatches the result (%s)" %
+        (declared.dtype, current.dtype))
+  if (isinstance(current, ragged_tensor.RaggedTensor) and
+      declared.row_splits_dtype != current.row_splits.dtype):
+    if not ragged_config.auto_cast_partition_dtype():
+      raise ValueError(
+          "The declared row_splits dtype (%s) mismatches the result (%s)."
+          "  Use RaggedTensor.with_row_splits_dtype to convert it."
+          % (declared.row_splits_dtype, current.row_splits.dtype))
+    current = current.with_row_splits_dtype(declared.row_splits_dtype)
+
+  if isinstance(current, ragged_tensor.RaggedTensor):
+    return current
+  else:
+    nrows = array_ops.shape(current, out_type=declared.row_splits_dtype)[0]
+    row_length = array_ops.expand_dims(nrows, axis=0)
+    return _RaggedTensorComponents(
+        flat_values=current,
+        nested_row_lengths=(),
+        outer_row_length=row_length)
+

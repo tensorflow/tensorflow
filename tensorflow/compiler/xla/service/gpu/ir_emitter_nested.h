@@ -58,11 +58,11 @@ class IrEmitterNested : public IrEmitter {
       const HloInstruction& hlo,
       const llvm_ir::ElementGenerator& body_emitter) override;
 
- private:
-  llvm::Function* EmitBasePointersForNestedComputation(
-      const HloComputation& nested_computation,
-      std::vector<const HloInstruction*>* io_hlos);
+  // Generate the code for the computation passed in the constructor.
+  Status CodegenNestedComputation();
 
+ private:
+  const HloComputation& nested_computation_;
   llvm::Function* emitted_function_;
 };
 

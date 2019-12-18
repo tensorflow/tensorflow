@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 #endif
 
+#include "tensorflow/core/kernels/eigen_convolution_helpers.h"
+
 namespace Eigen {
 
 namespace internal {
@@ -445,14 +447,151 @@ class TensorContractionInputMapper<
       return packetWithPossibleZero(patchId, planeIndex, rowIndex, colIndex,
                                     otherIndex);
     }
-    return loadPacketStandard(patchId, planeIndex, rowIndex, colIndex,
-                              otherIndex);
+    typedef decltype(m_impl) TensorEvaluatorT;
+    return loadPacketStandard<Packet, TensorEvaluatorT>(
+        patchId, planeIndex, rowIndex, colIndex, otherIndex);
   }
 
+  // Helper function to load a 'partial' packet - this is the single row part of
+  // a packet that is split across two rows (but single column). In the
+  // 'partial' packet, the elements corresponding to the row (specified through
+  // rowOffset) are loaded and the rest of the elements are zero-filled into the
+  // 'partial' packet. This function is called from
+  // loadPacketStandardFromSingleColumnTwoRows(). This code path is exercied
+  // only when the packet type supports masked load and when the partial packet
+  // load is available in the TensorEvaluator.
   EIGEN_DEVICE_FUNC
-  EIGEN_ALWAYS_INLINE Packet loadPacketStandard(Index patchId, Index planeIndex,
-                                                Index rowIndex, Index colIndex,
-                                                Index otherIndex) const {
+  EIGEN_ALWAYS_INLINE Packet loadPartialPacketStandard(
+      Index planeIndex, Index rowIndex, Index colIndex, Index otherIndex,
+      Index patchId, const Index span[], const Index patchOffsets[],
+      Index colOffset, Index rowOffset) const {
+    const Index inputCol = colIndex + colOffset;
+    const Index inputRow = rowIndex + rowOffset;
+    const Index planeOffsets[2] = {
+        patchOffsets[0] - colOffset * m_colStride - rowOffset * m_rowStride,
+        patchOffsets[1] - colOffset * m_colStride - rowOffset * m_rowStride};
+    const Index inputPlanes[2] = {planeIndex + planeOffsets[0],
+                                  planeIndex + planeOffsets[1]};
+
+    if (inputRow >= m_inputRows || inputRow < 0 || inputCol >= m_inputCols ||
+        inputCol < 0 || inputPlanes[0] >= m_inputPlanes || inputPlanes[1] < 0) {
+      // Partial packet is all zeros
+      return internal::pset1<Packet>(Scalar(0));
+    } else if (inputPlanes[0] >= 0 && inputPlanes[1] < m_inputPlanes) {
+      // From inputIndex-span[0], we need to load elements starting from index
+      // span[0] all the way upto (and including) span[1].
+      const Index depth = patchId - patchOffsets[0] * patchDepth();
+      const Index inputIndex = depth + inputPlanes[0] * m_planeInputStride +
+                               inputRow * m_rowInputStride +
+                               inputCol * m_colInputStride + otherIndex;
+      return m_impl.template partialPacket<Packet>(
+          inputIndex - span[0], mask<Packet>(span[0], span[1] + 1));
+    } else {
+      // Using slow path for this partial packet.
+      // We need to load elements starting from index span[0] all the way upto
+      // (and including) span[1]. We split this load into 3 parts:
+      // 0 : span[0]-1 - Zeros will be loaded for these indices
+      // span[0] : span[1] - Elements will be loaded here for these indices
+      // span[1]+1 : packetSize-1 - Zeross will be loaded for these indices
+      const Index packetSize = internal::unpacket_traits<Packet>::size;
+      EIGEN_ALIGN_MAX
+      typename internal::remove_const<Scalar>::type values[packetSize];
+      for (int i = 0; i < span[0]; ++i) values[i] = Scalar(0);
+      for (int i = span[0]; i < span[1] + 1; ++i)
+        values[i] = loadCoeff(patchId - span[0] + i, planeIndex, rowIndex,
+                              colIndex, otherIndex);
+      for (int i = span[1] + 1; i < packetSize; ++i) values[i] = Scalar(0);
+      return internal::pload<Packet>(values);
+    }
+  }
+
+  // Helper function to load a packet that is split across two rows (but single
+  // column). If required, this function is called from loadPacketStandard()
+  // when the packet type supports masked load and when the partial packet load
+  // is available in the TensorEvaluator.
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE Packet loadPacketStandardFromSingleColumnTwoRows(
+      Index patchId, Index planeIndex, Index rowIndex, Index colIndex,
+      Index otherIndex, const Index patchOffsets[], const Index colOffsets[],
+      const Index rowOffsets[]) const {
+    eigen_assert(colOffsets[1] == colOffsets[0] &&
+                 rowOffsets[1] == rowOffsets[0] + 1);
+    const Index packetSize = internal::unpacket_traits<Packet>::size;
+
+    // Packet to load will be split into 2 parts where each part spans a single
+    // row and both the parts span the same column.
+    // First determine where to split.
+    const Index patchIdSplit =
+        (((rowOffsets[1] * m_rowStride) + (colOffsets[0] * m_colStride)) *
+         m_patch_depth) -
+        1;
+    const Index patchOffsetSplit = patchIdSplit / m_fastDimZero;
+
+    // patchIds[i]:          patchId corresponding to partial packet i
+    // spans[i]:             Start and end indices corresponding to the elements
+    //                       to be loaded for partial packet i
+    // patchOffsets2Cols[i]: patchOffsets corresponding to partial packet i
+    const Index patchIds[2] = {patchId, patchIdSplit + 1};
+    const Index spans[2][2] = {{0, patchIdSplit - patchId},
+                               {patchIdSplit - patchId + 1, packetSize - 1}};
+    const Index patchOffsets2Cols[2][2] = {
+        {patchOffsets[0], patchOffsetSplit},
+        {patchOffsetSplit + 1, patchOffsets[1]}};
+
+    // Load partial packets and do bit-wise OR to generate required packet
+    return internal::por<Packet>(
+        loadPartialPacketStandard(planeIndex, rowIndex, colIndex, otherIndex,
+                                  patchIds[0], spans[0], patchOffsets2Cols[0],
+                                  colOffsets[0], rowOffsets[0]),
+        loadPartialPacketStandard(planeIndex, rowIndex, colIndex, otherIndex,
+                                  patchIds[1], spans[1], patchOffsets2Cols[1],
+                                  colOffsets[1], rowOffsets[1]));
+  }
+
+  // Helper function to load a packet that is present in a single column and
+  // row. If required, this function is called from loadPacketStandard().
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE Packet loadPacketStandardFromSingleColumnSingleRow(
+      Index patchId, Index planeIndex, Index rowIndex, Index colIndex,
+      Index otherIndex, const Index patchOffsets[], const Index colOffsets[],
+      const Index rowOffsets[], const Index inputCols[],
+      const Index inputRows[]) const {
+    eigen_assert(colOffsets[1] == colOffsets[0] &&
+                 rowOffsets[1] == rowOffsets[0]);
+    const Index planeOffsets[2] = {
+        patchOffsets[0] - colOffsets[0] * m_colStride -
+            rowOffsets[0] * m_rowStride,
+        patchOffsets[1] - colOffsets[1] * m_colStride -
+            rowOffsets[1] * m_rowStride};
+    eigen_assert(planeOffsets[0] <= planeOffsets[1]);
+    const Index inputPlanes[2] = {planeIndex + planeOffsets[0],
+                                  planeIndex + planeOffsets[1]};
+
+    if (inputPlanes[0] >= m_inputPlanes || inputPlanes[1] < 0) {
+      return internal::pset1<Packet>(Scalar(0));
+    }
+    if (inputPlanes[0] >= 0 && inputPlanes[1] < m_inputPlanes) {
+      const Index depth = patchId - patchOffsets[0] * patchDepth();
+      const Index inputIndex = depth + inputPlanes[0] * m_planeInputStride +
+                               inputRows[0] * m_rowInputStride +
+                               inputCols[0] * m_colInputStride + otherIndex;
+      return m_impl.template packet<Unaligned>(inputIndex);
+    }
+    return packetWithPossibleZero(patchId, planeIndex, rowIndex, colIndex,
+                                  otherIndex);
+  }
+
+  // Load standard packet from a patch specified by the "within patch offset"
+  // (patchId) and the precomputed indices of the first element of the patch.
+  // This function will be called if partial packet loading is not available
+  // for the TesnorEvaluator or if the packet type does not support masked
+  // load.
+  template <typename PacketT, typename TensorEvaluatorT>
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE typename std::enable_if<
+      !TensorEvaluatorHasPartialPacket<TensorEvaluatorT, PacketT, Index>::value,
+      PacketT>::type
+  loadPacketStandard(Index patchId, Index planeIndex, Index rowIndex,
+                     Index colIndex, Index otherIndex) const {
     const Index packetSize = internal::unpacket_traits<Packet>::size;
     EIGEN_STATIC_ASSERT(packetSize > 1, YOU_MADE_A_PROGRAMMING_MISTAKE)
     eigen_assert(patchId <
@@ -492,27 +631,81 @@ class TensorContractionInputMapper<
         }
 
         if (inputRows[0] == inputRows[1]) {
-          const Index planeOffsets[2] = {
-              patchOffsets[0] - colOffsets[0] * m_colStride -
-                  rowOffsets[0] * m_rowStride,
-              patchOffsets[1] - colOffsets[1] * m_colStride -
-                  rowOffsets[1] * m_rowStride};
-          eigen_assert(planeOffsets[0] <= planeOffsets[1]);
-          const Index inputPlanes[2] = {planeIndex + planeOffsets[0],
-                                        planeIndex + planeOffsets[1]};
+          return loadPacketStandardFromSingleColumnSingleRow(
+              patchId, planeIndex, rowIndex, colIndex, otherIndex, patchOffsets,
+              colOffsets, rowOffsets, inputCols, inputRows);
+        }
+      }
+    }
 
-          if (inputPlanes[0] >= m_inputPlanes || inputPlanes[1] < 0) {
-            return internal::pset1<Packet>(Scalar(0));
-          }
+    return packetWithPossibleZero(patchId, planeIndex, rowIndex, colIndex,
+                                  otherIndex);
+  }
 
-          if (inputPlanes[0] >= 0 && inputPlanes[1] < m_inputPlanes) {
-            const Index depth = patchId - patchOffsets[0] * patchDepth();
-            const Index inputIndex =
-                depth + inputPlanes[0] * m_planeInputStride +
-                inputRows[0] * m_rowInputStride +
-                inputCols[0] * m_colInputStride + otherIndex;
-            return m_impl.template packet<Unaligned>(inputIndex);
-          }
+  // Load standard packet from a patch specified by the "within patch offset"
+  // (patchId) and the precomputed indices of the first element of the patch.
+  // This function will be called if partial packet loading is available for
+  // the TesnorEvaluator and if the packet type supports masked load.
+  // The only difference between this and the other case is that if the packet
+  // to load is split across two rows (but in same column), then in this case
+  // instead of going to the slow (element-by-element) load, we load two packets
+  // - each containing elements from one of the rows (rest of the elements of
+  // the packets are zeroes), and then combine these two packets to generate the
+  // required packet. The idea is to enable fast load (if possible) of these
+  // 'partial' packets.
+  template <typename PacketT, typename TensorEvaluatorT>
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE typename std::enable_if<
+      TensorEvaluatorHasPartialPacket<TensorEvaluatorT, PacketT, Index>::value,
+      PacketT>::type
+  loadPacketStandard(Index patchId, Index planeIndex, Index rowIndex,
+                     Index colIndex, Index otherIndex) const {
+    const Index packetSize = internal::unpacket_traits<Packet>::size;
+    EIGEN_STATIC_ASSERT(packetSize > 1, YOU_MADE_A_PROGRAMMING_MISTAKE)
+    eigen_assert(patchId <
+                 patchDepth() * patchPlanes() * patchRows() * patchCols());
+    eigen_assert(!nonStandardPatches());
+
+    if ((patchDepth() % packetSize) == 0) {
+      return loadPacketFast(patchId, planeIndex, rowIndex, colIndex,
+                            otherIndex);
+    } else {
+      // Offsets and input calculation here are identical to
+      // loadCoeffStandard(...), but repeated twice.
+
+      const Index patchOffsets[2] = {
+          patchId / m_fastDimZero, (patchId + packetSize - 1) / m_fastDimZero};
+
+      const Index colOffsets[2] = {patchOffsets[0] / m_fastColStride,
+                                   patchOffsets[1] / m_fastColStride};
+      eigen_assert(colOffsets[0] <= colOffsets[1]);
+
+      const Index inputCols[2] = {colIndex + colOffsets[0],
+                                  colIndex + colOffsets[1]};
+      if (inputCols[0] >= m_inputCols || inputCols[1] < 0) {
+        return internal::pset1<Packet>(Scalar(0));
+      }
+
+      if (inputCols[0] == inputCols[1]) {
+        const Index rowOffsets[2] = {
+            (patchOffsets[0] - colOffsets[0] * m_colStride) / m_fastRowStride,
+            (patchOffsets[1] - colOffsets[1] * m_colStride) / m_fastRowStride};
+        eigen_assert(rowOffsets[0] <= rowOffsets[1]);
+        const Index inputRows[2] = {rowIndex + rowOffsets[0],
+                                    rowIndex + rowOffsets[1]};
+
+        if (inputRows[0] >= m_inputRows || inputRows[1] < 0) {
+          return internal::pset1<Packet>(Scalar(0));
+        }
+
+        if (inputRows[0] == inputRows[1]) {
+          return loadPacketStandardFromSingleColumnSingleRow(
+              patchId, planeIndex, rowIndex, colIndex, otherIndex, patchOffsets,
+              colOffsets, rowOffsets, inputCols, inputRows);
+        }
+        if (inputRows[0] + 1 == inputRows[1]) {
+          return loadPacketStandardFromSingleColumnTwoRows(
+              patchId, planeIndex, rowIndex, colIndex, otherIndex, patchOffsets,
+              colOffsets, rowOffsets);
         }
       }
     }
@@ -760,7 +953,8 @@ class TensorContractionSubMapper<
   }
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE Packet
   loadPacketStandard(Index i) const {
-    return m_base_mapper.loadPacketStandard(
+    typedef decltype(m_base_mapper.m_impl) TensorEvaluatorT;
+    return m_base_mapper.template loadPacketStandard<Packet, TensorEvaluatorT>(
         i + m_depth_offset, m_planeIndex, m_rowIndex, m_colIndex, m_otherIndex);
   }
   template <typename Packet>
@@ -1432,23 +1626,20 @@ struct gemm_pack_rhs<
   }
 };
 
-#if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
-// Arrange a block of the right input matrix (in our case it's always a "virtual
-// matrix" constructed from extracted volume patches) in contiguous memory.
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+// Pack a block of the right input matrix (in our case it's always a "virtual
+// matrix" constructed from extracted image patches) in contiguous block in
+// column-major storage order. Knowing the properties of the original patch op
+// we can do it more efficient than the default gemm_pack_colmajor_block.
 //
-// Mkldnn doesn't require Lhs/Rhs blocks to be packed in any specific format, so
-// this is basically the same as taking a slice of the matrix. Knowing
-// properties of the original patch op we can do it more efficient than default
-// mkldnn_gemm_pack.
-//
-// TODO(ezhulenev): mkldnn_gemm_pack for spatial convolutions supports squeezing
-// reads along the 2 innermost dimensions, add it here if needed.
+// TODO(ezhulenev): gemm_pack_colmajor_block for spatial convolutions supports
+// squeezing reads along the 2 innermost dimensions, add it here if needed.
 template <typename NewDimension, Index Planes, Index Rows, Index Cols,
           typename ArgType, typename Device, typename Scalar,
           typename StorageIndex, typename nocontract_t, typename contract_t,
           int packet_size, bool inner_dim_contiguous, bool inner_dim_reordered,
           int Alignment>
-struct mkldnn_gemm_pack<
+struct gemm_pack_colmajor_block<
     Scalar, StorageIndex,
     TensorContractionSubMapper<
         Scalar, StorageIndex, Rhs,
@@ -1594,7 +1785,7 @@ struct mkldnn_gemm_pack<
     }
   }
 };
-#endif  // defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
+#endif  // defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 
 }  // namespace internal
 

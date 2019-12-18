@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 
 #include <stddef.h>
+
 #include <algorithm>
 #include <functional>
 #include <random>
@@ -41,7 +42,8 @@ namespace {
 
 // Internal helper for GetDefaultLayoutForShape and SetToDefaultLayout. Sets
 // minor_to_major to the value that represents the default layout.
-void SetDefaultLayoutToContainer(std::vector<int64>* minor_to_major) {
+template <typename T>
+void SetDefaultLayoutToContainer(T* minor_to_major) {
   // The default XLA layout is major-to-minor (dim 0 is major).
   // For more information on XLA layouts, see:
   // https://www.tensorflow.org/performance/xla/shapes
@@ -55,7 +57,7 @@ void SetDefaultLayoutToContainer(std::vector<int64>* minor_to_major) {
 
 /* static */ Layout LayoutUtil::MakeLayout(
     absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
-    int64 element_size_in_bits) {
+    int64 element_size_in_bits, int64 memory_space) {
   Layout layout;
   layout.set_format(DENSE);
   for (int64 dimension_number : minor_to_major) {
@@ -72,6 +74,7 @@ void SetDefaultLayoutToContainer(std::vector<int64>* minor_to_major) {
     *layout.add_tiles() = tile;
   }
   layout.set_element_size_in_bits(element_size_in_bits);
+  layout.set_memory_space(memory_space);
   return layout;
 }
 
@@ -104,7 +107,7 @@ namespace {
 Layout CreateDefaultLayoutForRank(int64 rank) {
   Layout layout;
   layout.set_format(DENSE);
-  std::vector<int64>* minor_to_major = layout.mutable_minor_to_major();
+  auto* minor_to_major = layout.mutable_minor_to_major();
   minor_to_major->resize(rank, 0);
   SetDefaultLayoutToContainer(minor_to_major);
   return layout;
@@ -466,6 +469,7 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
     }
   }
   hash_value = Hash64Combine(hash_value, layout.element_size_in_bits());
+  hash_value = Hash64Combine(hash_value, layout.memory_space());
 
   return hash_value;
 }

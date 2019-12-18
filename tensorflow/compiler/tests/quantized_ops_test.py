@@ -36,7 +36,7 @@ class QuantizedOpsTest(xla_test.XLATestCase):
 
   # Verify that quantized types can be clustered by XLA.
   def testQuantizedTypeRoundtrip(self):
-    with self.cached_session() as session:
+    with self.session() as session:
       for dtype in self.quantized_tf_types:
         in_values = np.array([1, 2, 3, 4, 5, 6])
         expected = [[1, 2], [3, 4], [5, 6]]
@@ -49,7 +49,7 @@ class QuantizedOpsTest(xla_test.XLATestCase):
         self.assertAllEqual(value, expected)
 
 
-class DeuantizedOpsTest(xla_test.XLATestCase):
+class DequantizedOpsTest(xla_test.XLATestCase):
 
   def pack_uint8_r2_to_uint32(self, test_input):
     num_rows, num_columns = test_input.get_shape().as_list()
@@ -82,7 +82,7 @@ class DeuantizedOpsTest(xla_test.XLATestCase):
     num_rows = 100
     num_columns = 3547
     random_input = np.random.normal(128.0, 10.0, [num_rows, num_columns])
-    with self.cached_session() as session:
+    with self.session() as session:
       with ops.device("CPU"):
         test_input = ops.convert_to_tensor(random_input, dtype=dtypes.float32)
         transposed_input = array_ops.transpose(test_input, [1, 0])
@@ -95,7 +95,7 @@ class DeuantizedOpsTest(xla_test.XLATestCase):
         quantized_output = array_ops.slice(transposed_quantized_output, [0, 0],
                                            [num_rows, num_columns])
 
-    value = session.run(quantized_output)
+      value = session.run(quantized_output)
     self.assertAllClose(value, random_input, 1.0)
 
 

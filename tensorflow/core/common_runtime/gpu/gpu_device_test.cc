@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -55,7 +54,7 @@ Status GetComputeCapability(PlatformGpuId gpu_id, int* cc_major,
 }
 
 void ExpectErrorMessageSubstr(const Status& s, StringPiece substr) {
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
+  EXPECT_TRUE(absl::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }
 }  // namespace
@@ -84,6 +83,36 @@ class GPUDeviceTest : public ::testing::Test {
       }
     }
     return options;
+  }
+
+  void InitCPUTensor(Tensor* cpu_tensor, int num_elements, float value) {
+    auto tensor = cpu_tensor->tensor<float, 1>();
+    for (int i = 0; i < num_elements; ++i) {
+      tensor(i) = value;
+    }
+  }
+
+  void CopyCPUToGPU(Tensor* cpu_tensor, Tensor* gpu_tensor, Device* device,
+                    DeviceContext* device_context) {
+    Notification note;
+    device_context->CopyCPUTensorToDevice(cpu_tensor, device, gpu_tensor,
+                                          [&note](const Status& s) {
+                                            TF_ASSERT_OK(s);
+                                            note.Notify();
+                                          });
+    note.WaitForNotification();
+  }
+
+  void CopyGPUToCPU(Tensor* gpu_tensor, Tensor* cpu_tensor, Device* device,
+                    DeviceContext* device_context) {
+    Notification note;
+    device_context->CopyDeviceTensorToCPU(gpu_tensor, /*tensor_name=*/"",
+                                          device, cpu_tensor,
+                                          [&note](const Status& s) {
+                                            TF_ASSERT_OK(s);
+                                            note.Notify();
+                                          });
+    note.WaitForNotification();
   }
 };
 
@@ -277,29 +306,77 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
   allocator->DeallocateRaw(ptr);
 }
 
+TEST_F(GPUDeviceTest, CopyTensorInSameDevice) {
+  SessionOptions opts = MakeSessionOptions("0");
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_ASSERT_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
+      opts, kDeviceNamePrefix, &devices));
+  Device* device = devices[0].get();
+  auto* device_info = device->tensorflow_gpu_device_info();
+  CHECK(device_info);
+  DeviceContext* device_context = device_info->default_context;
+  Allocator* allocator = device->GetAllocator(AllocatorAttributes());
+
+  constexpr int kNumElements = 4;
+  Tensor input_tensor(allocator, DT_FLOAT, TensorShape({kNumElements}));
+  Tensor output_tensor(allocator, DT_FLOAT, TensorShape({kNumElements}));
+  Tensor cpu_tensor(cpu_allocator(), DT_FLOAT, TensorShape({kNumElements}));
+  // Initialize input as {1, 1, 1, 1} and output as {0, 0, 0, 0}.  After copy,
+  // both should become {1, 1, 1, 1}.
+  InitCPUTensor(&cpu_tensor, kNumElements, 0);
+  CopyCPUToGPU(&cpu_tensor, &output_tensor, device, device_context);
+  InitCPUTensor(&cpu_tensor, kNumElements, 1);
+  CopyCPUToGPU(&cpu_tensor, &input_tensor, device, device_context);
+  Notification note;
+  device->CopyTensorInSameDevice(&input_tensor, &output_tensor, device_context,
+                                 [&note](const Status& s) {
+                                   TF_ASSERT_OK(s);
+                                   note.Notify();
+                                 });
+  note.WaitForNotification();
+
+  Tensor output_cpu_tensor(cpu_allocator(), DT_FLOAT,
+                           TensorShape({kNumElements}));
+  CopyGPUToCPU(&output_tensor, &output_cpu_tensor, device, device_context);
+  auto input = cpu_tensor.tensor<float, 1>();
+  auto output = output_cpu_tensor.tensor<float, 1>();
+  for (int i = 0; i < kNumElements; ++i) {
+    EXPECT_EQ(input(i), output(i)) << " for index " << i;
+  }
+}
+
 class GPUKernelTrackerTest : public ::testing::Test {
  protected:
-  void SetUp() {
+  void Init(const GPUKernelTracker::Params& params) {
     timing_counter_.reset(new SharedCounter);
-    kernel_tracker_.reset(
-        new GPUKernelTracker(Env::Default(), timing_counter_.get()));
+    kernel_tracker_.reset(new GPUKernelTracker(params, Env::Default(), nullptr,
+                                               timing_counter_.get(), nullptr,
+                                               nullptr));
+  }
+
+  void RecordQueued(uint64 v) {
+    mutex_lock l(kernel_tracker_->mu_);
+    kernel_tracker_->RecordQueued(v, 1);
   }
 
   std::unique_ptr<GPUKernelTracker> kernel_tracker_;
   std::unique_ptr<SharedCounter> timing_counter_;
 };
 
-TEST_F(GPUKernelTrackerTest, basic) {
+TEST_F(GPUKernelTrackerTest, CappingOnly) {
+  Init({0 /*max_interval*/, 0 /*max_bytes*/, 32 /*max_pending*/});
   EXPECT_EQ(0, kernel_tracker_->NumPending());
   // 1 is the expected value when no kernels have yet terminated.
-  EXPECT_EQ(1, kernel_tracker_->LastTerminatedCount());
+  EXPECT_EQ(1, kernel_tracker_->LastTerminatedCount(0));
 
   std::deque<int64> queued_counts;
   for (int i = 0; i < 32; ++i) {
-    queued_counts.push_back(kernel_tracker_->RecordQueued());
+    uint64 queued_count = timing_counter_->next();
+    queued_counts.push_back(queued_count);
+    RecordQueued(queued_count);
   }
   EXPECT_EQ(32, kernel_tracker_->NumPending());
-  EXPECT_EQ(1, kernel_tracker_->LastTerminatedCount());
+  EXPECT_EQ(1, kernel_tracker_->LastTerminatedCount(0));
 
   // Mature the kernels in order until empty.
   while (!queued_counts.empty()) {
@@ -307,23 +384,25 @@ TEST_F(GPUKernelTrackerTest, basic) {
     queued_counts.pop_front();
     kernel_tracker_->RecordTerminated(x);
     EXPECT_EQ(queued_counts.size(), kernel_tracker_->NumPending());
-    EXPECT_EQ(x, kernel_tracker_->LastTerminatedCount());
+    EXPECT_EQ(x, kernel_tracker_->LastTerminatedCount(0));
   }
-  EXPECT_EQ(timing_counter_->get(), kernel_tracker_->LastTerminatedCount());
+  EXPECT_EQ(timing_counter_->get(), kernel_tracker_->LastTerminatedCount(0));
 
   // Next inject so many kernel events that the ring buffer needs
   // to grow a couple of times, while maturing a few in random order
   // to introduce gaps between last_completed_ and first_available_.
   int64 lower_bound = timing_counter_->get();
   for (int i = 0; i < 1111; ++i) {
-    queued_counts.push_back(kernel_tracker_->RecordQueued());
+    uint64 queued_count = timing_counter_->next();
+    queued_counts.push_back(queued_count);
+    RecordQueued(queued_count);
     int64 upper_bound = timing_counter_->get();
     if (0 == (i % 16)) {
       size_t index = (random::New64() % queued_counts.size());
       kernel_tracker_->RecordTerminated(queued_counts[index]);
       queued_counts.erase(queued_counts.begin() + index);
-      EXPECT_LE(lower_bound, kernel_tracker_->LastTerminatedCount());
-      EXPECT_GE(upper_bound, kernel_tracker_->LastTerminatedCount());
+      EXPECT_LE(lower_bound, kernel_tracker_->LastTerminatedCount(0));
+      EXPECT_GE(upper_bound, kernel_tracker_->LastTerminatedCount(0));
     }
   }
 
@@ -336,9 +415,9 @@ TEST_F(GPUKernelTrackerTest, basic) {
     // There may be a gap here where we find a kernel that got terminated
     // out of order, earlier, so the LastTerminatedCount can actually
     // jump past x.
-    EXPECT_LE(x, kernel_tracker_->LastTerminatedCount());
+    EXPECT_LE(x, kernel_tracker_->LastTerminatedCount(0));
   }
-  EXPECT_EQ(timing_counter_->get(), kernel_tracker_->LastTerminatedCount());
+  EXPECT_EQ(timing_counter_->get(), kernel_tracker_->LastTerminatedCount(0));
 }
 
 }  // namespace tensorflow

@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -42,19 +43,24 @@ class GpuExecutable;
 class Thunk {
  public:
   enum Kind {
+    kCholesky,
+    kCollectivePermute,
     kConditional,
     kConvolution,
     kCopy,
     kCudnnBatchNormBackward,
     kCudnnBatchNormForwardInference,
     kCudnnBatchNormForwardTraining,
+    kCustomCall,
     kFft,
     kGemm,
     kInfeed,
     kKernel,
     kMemset32BitValue,
     kMemzero,
+    kNcclAllReduce,
     kOutfeed,
+    kReplicaId,
     kSequential,
     kTriangularSolve,
     kTuple,
@@ -83,18 +89,37 @@ class Thunk {
     return Status::OK();
   }
 
-  // Returns true if this kernel will autotune for the stream device the next
-  // time it is run.
-  virtual bool WillAutotuneKernel(se::Stream* /*stream*/) { return false; }
+  // Parameters passed to ExecuteOnStream.  Encapsulated in a struct so that
+  // when we add something we don't have to change every subclass of Thunk.
+  struct ExecuteParams {
+    const BufferAllocations* buffer_allocations;  // never null
+    se::Stream* stream;
+    RunId run_id;
+    HloExecutionProfiler* profiler;       // never null
+    const DeviceAssignment* device_assn;  // never null
+  };
 
   // Execute the kernel for the thunk on the given stream. This method must be
   // called after Initialize and can be called multiple times over Thunk's
-  // lifetime. 'stream' and 'profiler' must be non-null.
+  // lifetime.
   //
   // Precondition: Initialize(stream->parent()) has been called.
-  virtual Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                 se::Stream* stream,
-                                 HloExecutionProfiler* profiler) = 0;
+  virtual Status ExecuteOnStream(const ExecuteParams& params) = 0;
+
+ protected:
+  const HloModuleConfig& GetModuleConfig() const {
+    return hlo_instruction()->GetModule()->config();
+  }
+
+  // Safely copies the given buffer to the GPU, deleting it on the host only
+  // after the copy has completed.
+  template <typename T>
+  void SafeH2DMemcpy(se::DeviceMemory<T> dest, std::unique_ptr<T[]> buf,
+                     int64 count, se::Stream* stream) {
+    stream->ThenMemcpy(&dest, buf.get(), count * sizeof(T));
+    auto* buf_raw = buf.release();
+    stream->ThenRunAfterNextBlockHostUntilDone([buf_raw] { delete[] buf_raw; });
+  }
 
  private:
   Kind kind_;
@@ -104,6 +129,7 @@ class Thunk {
 // A sequence of thunks.
 using ThunkSequence = std::vector<std::unique_ptr<Thunk>>;
 
+absl::string_view ThunkKindToString(Thunk::Kind);
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 
 }  // namespace gpu

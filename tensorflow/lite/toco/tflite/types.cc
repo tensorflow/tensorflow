@@ -37,7 +37,7 @@ DataBuffer::FlatBufferOffset CopyStringToBuffer(
 }
 
 // vector<bool> may be implemented using a bit-set, so we can't just
-// reinterpret_cast, accesing it data as vector<bool> and let flatbuffer
+// reinterpret_cast, accessing its data as vector<bool> and let flatbuffer
 // CreateVector handle it.
 // Background: https://isocpp.org/blog/2012/11/on-vectorbool
 DataBuffer::FlatBufferOffset CopyBoolToBuffer(

@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
+
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/named_tensor.pb.h"
 
@@ -392,6 +394,12 @@ void InMemoryRunGraphRequest::set_store_errors_in_response_body(
   store_errors_in_response_body_ = store_errors;
 }
 
+int64 InMemoryRunGraphRequest::request_id() const { return request_id_; }
+
+void InMemoryRunGraphRequest::set_request_id(int64 request_id) {
+  request_id_ = request_id;
+}
+
 const RunGraphRequest& InMemoryRunGraphRequest::ToProto() const {
   if (!proto_version_) {
     proto_version_.reset(new RunGraphRequest);
@@ -412,6 +420,9 @@ const RunGraphRequest& InMemoryRunGraphRequest::ToProto() const {
     proto_version_->set_is_partial(is_partial());
     proto_version_->set_is_last_partial_run(is_last_partial_run());
   }
+  proto_version_->set_store_errors_in_response_body(
+      store_errors_in_response_body_);
+  proto_version_->set_request_id(request_id_);
   return *proto_version_;
 }
 
@@ -532,6 +543,14 @@ void MutableProtoRunGraphRequest::set_store_errors_in_response_body(
   request_.set_store_errors_in_response_body(store_errors);
 }
 
+int64 MutableProtoRunGraphRequest::request_id() const {
+  return request_.request_id();
+}
+
+void MutableProtoRunGraphRequest::set_request_id(int64 request_id) {
+  request_.set_request_id(request_id);
+}
+
 const RunGraphRequest& MutableProtoRunGraphRequest::ToProto() const {
   return request_;
 }
@@ -587,6 +606,10 @@ bool ProtoRunGraphRequest::is_last_partial_run() const {
 
 bool ProtoRunGraphRequest::store_errors_in_response_body() const {
   return request_->store_errors_in_response_body();
+}
+
+int64 ProtoRunGraphRequest::request_id() const {
+  return request_->request_id();
 }
 
 const RunGraphRequest& ProtoRunGraphRequest::ToProto() const {

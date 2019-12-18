@@ -20,11 +20,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/lib/sorting.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 
@@ -421,13 +423,14 @@ class NonMaxSuppressionOp : public XlaOpKernel {
         errors::InvalidArgument("scores size must equal number of boxes",
                                 scores_shape.DebugString()));
     OP_REQUIRES(context, pad_to_max_output_size_,
-                errors::InvalidArgument(
+                errors::Unimplemented(
                     "XLA compilation requires pad_to_max_output_size == True"));
     OP_REQUIRES(context, num_boxes <= kint32max,
                 errors::InvalidArgument("XLA compilation requires number of "
                                         "boxes to be <= kint32max, got ",
                                         num_boxes));
-
+    xla::PrimitiveType boxes_xla_type = context->InputXlaType("boxes");
+    xla::PrimitiveType scores_xla_type = context->InputXlaType("scores");
     const xla::XlaOp boxes_input = context->Input("boxes");
     const xla::XlaOp scores_input = context->Input("scores");
     int64 output_size;
@@ -445,15 +448,18 @@ class NonMaxSuppressionOp : public XlaOpKernel {
     // Choose a more convenient layout.
     const xla::XlaOp boxes = xla::Transpose(boxes_input, {1, 0});
     const xla::XlaOp boxes_sorted = xla::GetTupleElement(
-        xla::Sort(/*keys=*/-xla::Broadcast(scores_input, {4}),
-                  /*values=*/{boxes},
+        xla::Sort({xla::Broadcast(scores_input, {4}), boxes},
+                  xla::CreateScalarGtComputation(
+                      {scores_xla_type, boxes_xla_type}, builder),
                   /*dimension=*/1),
         1);
     // Track the mapping of indices into sorted domain.
     const xla::XlaOp iota_indices = xla::Iota(builder, xla::S32, num_boxes);
-    const xla::XlaOp indices_sort = xla::Sort(-scores_input, {iota_indices});
+    const xla::XlaOp indices_sort = xla::Sort(
+        {scores_input, iota_indices},
+        xla::CreateScalarGtComputation({scores_xla_type, xla::S32}, builder));
     const xla::XlaOp indices_sorted = xla::GetTupleElement(indices_sort, 1);
-    const xla::XlaOp scores = xla::Neg(xla::GetTupleElement(indices_sort, 0));
+    const xla::XlaOp scores = xla::GetTupleElement(indices_sort, 0);
 
     // Shapes are henceforth [1, num_boxes]. 'c_y0' denotes 'coordinate' y0.
     const xla::XlaOp c_y0 = xla::Reshape(xla::SliceInDim(boxes_sorted,

@@ -86,28 +86,6 @@ bool IsString(PyObject* o) {
          PyUnicode_Check(o);
 }
 
-// Work around a writable-strings warning with Python 2's PyMapping_Keys macro,
-// and while we're at it give them consistent behavior by making sure the
-// returned value is a list.
-//
-// As with PyMapping_Keys, returns a new reference.
-//
-// On failure, returns nullptr.
-PyObject* MappingKeys(PyObject* o) {
-#if PY_MAJOR_VERSION >= 3
-  return PyMapping_Keys(o);
-#else
-  static char key_method_name[] = "keys";
-  Safe_PyObjectPtr raw_result(PyObject_CallMethod(o, key_method_name, nullptr));
-  if (PyErr_Occurred() || raw_result.get() == nullptr) {
-    return nullptr;
-  }
-  return PySequence_Fast(
-      raw_result.get(),
-      "The '.keys()' method of a custom mapping returned a non-sequence.");
-#endif
-}
-
 // Equivalent to Python's 'o.__class__.__name__'
 // Note that '__class__' attribute is set only in new-style classes.
 // A lot of tensorflow code uses __class__ without checks, so it seems like
@@ -214,24 +192,52 @@ class CachedTypeCheck {
       GUARDED_BY(type_to_sequence_map_mu_);
 };
 
+// Returns 1 if 'obj' is an instance of 'type_name'
+// Returns 0 otherwise.
+// Returns -1 if an error occurred (e.g., if 'type_name' is not registered.)
+int IsInstanceOfRegisteredType(PyObject* obj, const char* type_name) {
+  PyObject* type_obj = GetRegisteredType(type_name);
+  if (TF_PREDICT_FALSE(type_obj == nullptr)) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    tensorflow::strings::StrCat(
+                        type_name,
+                        " type has not been set. "
+                        "Please register the type with the identifier \"",
+                        type_name, "\" using RegisterType.")
+                        .c_str());
+    return -1;
+  }
+  return PyObject_IsInstance(obj, type_obj);
+}
+
 // Returns 1 if `o` is considered a mapping for the purposes of Flatten().
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
 int IsMappingHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
-    PyObject* collections_mapping_type = GetRegisteredType("Mapping");
-    if (TF_PREDICT_FALSE(collections_mapping_type == nullptr)) {
-      PyErr_SetString(PyExc_RuntimeError,
-                      tensorflow::strings::StrCat(
-                          "collections.Mapping type has not been set. "
-                          "Please register the type with the identifier "
-                          "\"Mapping\" using RegisterType.")
-                          .c_str());
-      return -1;
-    }
-    return PyObject_IsInstance(to_check, collections_mapping_type);
+    return IsInstanceOfRegisteredType(to_check, "Mapping");
   });
   if (PyDict_Check(o)) return true;
+  return check_cache->CachedLookup(o);
+}
+
+// Returns 1 if `o` is considered a mapping view for the purposes of Flatten().
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
+int IsMappingViewHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "MappingView");
+  });
+  return check_cache->CachedLookup(o);
+}
+
+// Returns 1 if `o` is considered an object proxy
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
+int IsObjectProxy(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "ObjectProxy");
+  });
   return check_cache->CachedLookup(o);
 }
 
@@ -256,17 +262,7 @@ int IsAttrsHelper(PyObject* o) {
 // Returns -1 if an error occurred.
 int IsIndexedSlicesHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
-    PyObject* indexed_slices_type = GetRegisteredType("IndexedSlices");
-    if (TF_PREDICT_FALSE(indexed_slices_type == nullptr)) {
-      PyErr_SetString(PyExc_RuntimeError,
-                      tensorflow::strings::StrCat(
-                          "IndexedSlices type has not been set. "
-                          "Please register the type with the identifier "
-                          "\"IndexedSlices\" using RegisterType.")
-                          .c_str());
-      return -1;
-    }
-    return PyObject_IsInstance(to_check, indexed_slices_type);
+    return IsInstanceOfRegisteredType(to_check, "IndexedSlices");
   });
   return check_cache->CachedLookup(o);
 }
@@ -276,17 +272,37 @@ int IsIndexedSlicesHelper(PyObject* o) {
 // Returns -1 if an error occurred.
 int IsTensorHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
-    PyObject* tensor_type = GetRegisteredType("Tensor");
-    if (TF_PREDICT_FALSE(tensor_type == nullptr)) {
-      PyErr_SetString(PyExc_RuntimeError,
-                      tensorflow::strings::StrCat(
-                          "Tensor type has not been set. "
-                          "Please register the type with the identifier "
-                          "\"Tensor\" using RegisterType.")
-                          .c_str());
-      return -1;
-    }
-    return PyObject_IsInstance(to_check, tensor_type);
+    return IsInstanceOfRegisteredType(to_check, "Tensor");
+  });
+  return check_cache->CachedLookup(o);
+}
+
+// Returns 1 if `o` is an EagerTensor.
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
+int IsEagerTensorHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "EagerTensor");
+  });
+  return check_cache->CachedLookup(o);
+}
+
+// Returns 1 if `o` is a ResourceVariable.
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
+int IsResourceVariableHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "ResourceVariable");
+  });
+  return check_cache->CachedLookup(o);
+}
+
+// Returns 1 if `o` is a ResourceVariable.
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
+int IsVariableHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "Variable");
   });
   return check_cache->CachedLookup(o);
 }
@@ -297,6 +313,7 @@ int IsTensorHelper(PyObject* o) {
 int IsSequenceHelper(PyObject* o) {
   // We treat dicts and other mappings as special cases of sequences.
   if (IsMappingHelper(o)) return true;
+  if (IsMappingViewHelper(o)) return true;
   if (IsAttrsHelper(o)) return true;
   if (PySet_Check(o) && !WarnedThatSetIsNotSequence) {
     LOG(WARNING) << "Sets are not currently considered sequences, "
@@ -305,17 +322,7 @@ int IsSequenceHelper(PyObject* o) {
     WarnedThatSetIsNotSequence = true;
   }
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
-    PyObject* collections_sequence_type = GetRegisteredType("Sequence");
-    if (TF_PREDICT_FALSE(collections_sequence_type == nullptr)) {
-      PyErr_SetString(PyExc_RuntimeError,
-                      tensorflow::strings::StrCat(
-                          "collections.Sequence type has not been set. "
-                          "Please register the type with the identifier "
-                          "\"Sequence\" using RegisterType.")
-                          .c_str());
-      return -1;
-    }
-    int is_instance = PyObject_IsInstance(to_check, collections_sequence_type);
+    int is_instance = IsInstanceOfRegisteredType(to_check, "Sequence");
 
     // Don't cache a failed is_instance check.
     if (is_instance == -1) return -1;
@@ -420,7 +427,7 @@ class SequenceValueIterator : public ValueIterator {
  public:
   explicit SequenceValueIterator(PyObject* iterable)
       : seq_(PySequence_Fast(iterable, "")),
-        size_(PySequence_Fast_GET_SIZE(seq_.get())),
+        size_(seq_.get() ? PySequence_Fast_GET_SIZE(seq_.get()) : 0),
         index_(0) {}
 
   Safe_PyObjectPtr next() override {
@@ -429,8 +436,10 @@ class SequenceValueIterator : public ValueIterator {
       // PySequence_Fast_GET_ITEM returns a borrowed reference.
       PyObject* elem = PySequence_Fast_GET_ITEM(seq_.get(), index_);
       ++index_;
-      Py_INCREF(elem);
-      result.reset(elem);
+      if (elem) {
+        Py_INCREF(elem);
+        result.reset(elem);
+      }
     }
 
     return result;
@@ -442,17 +451,15 @@ class SequenceValueIterator : public ValueIterator {
   Py_ssize_t index_;
 };
 
-// Just return itself as a single item.
-class SparseTensorValueIterator : public ValueIterator {
+// Iterator that just returns a single python object.
+class SingleValueIterator : public ValueIterator {
  public:
-  explicit SparseTensorValueIterator(PyObject* tensor) : tensor_(tensor) {
-    Py_INCREF(tensor);
-  }
+  explicit SingleValueIterator(PyObject* x) : x_(x) { Py_INCREF(x); }
 
-  Safe_PyObjectPtr next() override { return std::move(tensor_); }
+  Safe_PyObjectPtr next() override { return std::move(x_); }
 
  private:
-  Safe_PyObjectPtr tensor_;
+  Safe_PyObjectPtr x_;
 };
 
 // Returns nullptr (to raise an exception) when next() is called.  Caller
@@ -510,28 +517,38 @@ bool IsSparseTensorValueType(PyObject* o) {
 // Returns -1 if an error occurred.
 bool IsCompositeTensorHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
-    PyObject* composite_tensor_type = GetRegisteredType("CompositeTensor");
-    if (TF_PREDICT_FALSE(composite_tensor_type == nullptr)) {
-      PyErr_SetString(PyExc_RuntimeError,
-                      tensorflow::strings::StrCat(
-                          "CompositeTensor type has not been set. "
-                          "Please register the type with the identifier "
-                          "\"CompositeTensor\" using RegisterType.")
-                          .c_str());
-      return -1;
-    }
-    int is_instance = PyObject_IsInstance(to_check, composite_tensor_type);
-
-    // Don't cache a failed is_instance check.
-    if (is_instance == -1) return -1;
-
-    return static_cast<int>(is_instance != 0);
+    return IsInstanceOfRegisteredType(to_check, "CompositeTensor");
   });
   return check_cache->CachedLookup(o);
 }
 
+// Returns 1 if `o` is an instance of TypeSpec, but is not TensorSpec or
+// VariableSpec.
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
+bool IsTypeSpecHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    int is_type_spec = IsInstanceOfRegisteredType(to_check, "TypeSpec");
+    int is_dense_spec = (IsInstanceOfRegisteredType(to_check, "TensorSpec") ||
+                         IsInstanceOfRegisteredType(to_check, "VariableSpec"));
+    if ((is_type_spec == -1) || (is_dense_spec == -1)) return -1;
+    return static_cast<int>(is_type_spec && !is_dense_spec);
+  });
+  return check_cache->CachedLookup(o);
+}
+
+// Returns 1 if `o` is a (non-string) sequence or CompositeTensor or
+// (non-TensorSpec and non-VariableSpec) TypeSpec.
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
 int IsSequenceOrCompositeHelper(PyObject* o) {
-  return IsSequence(o) || IsCompositeTensor(o);
+  int is_sequence = IsSequenceHelper(o);
+  int is_composite = IsCompositeTensorHelper(o);
+  int is_type_spec = IsTypeSpecHelper(o);
+  if ((is_sequence == -1) || (is_composite == -1) || (is_type_spec == -1)) {
+    return -1;
+  }
+  return is_sequence || is_composite || is_type_spec;
 }
 
 int IsSequenceForDataHelper(PyObject* o) {
@@ -560,21 +577,38 @@ ValueIteratorPtr GetValueIteratorForData(PyObject* nested) {
   } else if (IsAttrsHelper(nested)) {
     return absl::make_unique<AttrsValueIterator>(nested);
   } else if (IsSparseTensorValueType(nested)) {
-    return absl::make_unique<SparseTensorValueIterator>(nested);
+    return absl::make_unique<SingleValueIterator>(nested);
   } else {
     return absl::make_unique<SequenceValueIterator>(nested);
   }
 }
 
-// Similar to GetValueIterator above, but expands CompositeTensors.
+// Similar to GetValueIterator above, but expands CompositeTensor and TypeSpec.
 ValueIteratorPtr GetValueIteratorForComposite(PyObject* nested) {
   if (IsCompositeTensor(nested)) {
-    static char expand_method_name[] = "_to_components";
-    nested = PyObject_CallMethod(nested, expand_method_name, nullptr);
-    if (PyErr_Occurred() || nested == nullptr) {
+    Safe_PyObjectPtr spec(PyObject_GetAttrString(nested, "_type_spec"));
+    if (PyErr_Occurred() || !spec) {
       return absl::make_unique<ErrorValueIterator>();
     }
+
+    static char to_components[] = "_to_components";
+    static char argspec[] = "(O)";
+    Safe_PyObjectPtr components(
+        PyObject_CallMethod(spec.get(), to_components, argspec, nested));
+    if (PyErr_Occurred() || components == nullptr) {
+      return absl::make_unique<ErrorValueIterator>();
+    }
+    return absl::make_unique<SingleValueIterator>(components.get());
   }
+
+  if (IsTypeSpec(nested)) {
+    Safe_PyObjectPtr specs(PyObject_GetAttrString(nested, "_component_specs"));
+    if (PyErr_Occurred() || specs == nullptr) {
+      return absl::make_unique<ErrorValueIterator>();
+    }
+    return absl::make_unique<SingleValueIterator>(specs.get());
+  }
+
   return GetValueIterator(nested);
 }
 
@@ -646,7 +680,8 @@ bool AssertSameStructureHelper(
     PyObject* o1, PyObject* o2, bool check_types, string* error_msg,
     bool* is_type_error,
     const std::function<int(PyObject*)>& is_sequence_helper,
-    const std::function<ValueIteratorPtr(PyObject*)>& value_iterator_getter) {
+    const std::function<ValueIteratorPtr(PyObject*)>& value_iterator_getter,
+    bool check_composite_tensor_type_spec) {
   DCHECK(error_msg);
   DCHECK(is_type_error);
   const bool is_seq1 = is_sequence_helper(o1);
@@ -668,6 +703,18 @@ bool AssertSameStructureHelper(
   if (!is_seq1) return true;
 
   if (check_types) {
+    // Treat wrapped tuples as tuples.
+    tensorflow::Safe_PyObjectPtr o1_wrapped;
+    if (IsObjectProxy(o1)) {
+      o1_wrapped.reset(PyObject_GetAttrString(o1, "__wrapped__"));
+      o1 = o1_wrapped.get();
+    }
+    tensorflow::Safe_PyObjectPtr o2_wrapped;
+    if (IsObjectProxy(o2)) {
+      o2_wrapped.reset(PyObject_GetAttrString(o2, "__wrapped__"));
+      o2 = o2_wrapped.get();
+    }
+
     const PyTypeObject* type1 = o1->ob_type;
     const PyTypeObject* type2 = o2->ob_type;
 
@@ -706,7 +753,11 @@ bool AssertSameStructureHelper(
                && !(PyList_Check(o1) && PyList_Check(o2))
                /* Two mapping types will also compare equal, making _DictWrapper
                   and dict compare equal. */
-               && !(IsMappingHelper(o1) && IsMappingHelper(o2))) {
+               && !(IsMappingHelper(o1) && IsMappingHelper(o2))
+               /* For CompositeTensor & TypeSpec, we check below. */
+               && !(check_composite_tensor_type_spec &&
+                    (IsCompositeTensor(o1) || IsCompositeTensor(o2)) &&
+                    (IsTypeSpec(o1) || IsTypeSpec(o2)))) {
       *is_type_error = true;
       *error_msg = tensorflow::strings::StrCat(
           "The two namedtuples don't have the same sequence type. "
@@ -752,6 +803,43 @@ bool AssertSameStructureHelper(
     }
   }
 
+  if (check_composite_tensor_type_spec &&
+      (IsCompositeTensor(o1) || IsCompositeTensor(o2))) {
+    Safe_PyObjectPtr owned_type_spec_1;
+    PyObject* type_spec_1 = o1;
+    if (IsCompositeTensor(o1)) {
+      owned_type_spec_1.reset(PyObject_GetAttrString(o1, "_type_spec"));
+      type_spec_1 = owned_type_spec_1.get();
+    }
+
+    Safe_PyObjectPtr owned_type_spec_2;
+    PyObject* type_spec_2 = o2;
+    if (IsCompositeTensor(o2)) {
+      owned_type_spec_2.reset(PyObject_GetAttrString(o2, "_type_spec"));
+      type_spec_2 = owned_type_spec_2.get();
+    }
+
+    // Two composite tensors are considered to have the same structure if
+    // there is some type spec that is compatible with both of them.  Thus,
+    // we use most_specific_compatible_type(), and check if it raises an
+    // exception.  We do *not* use is_compatible_with, since that would
+    // prevent us from e.g. using a cond statement where the two sides have
+    // different shapes.
+    static char compatible_type[] = "most_specific_compatible_type";
+    static char argspec[] = "(O)";
+    Safe_PyObjectPtr struct_compatible(PyObject_CallMethod(
+        type_spec_1, compatible_type, argspec, type_spec_2));
+    if (PyErr_Occurred() || struct_compatible == nullptr) {
+      PyErr_Clear();
+      *is_type_error = false;
+      *error_msg = tensorflow::strings::StrCat(
+          "Incompatible CompositeTensor TypeSpecs: ",
+          PyObjectToString(type_spec_1), " vs. ",
+          PyObjectToString(type_spec_2));
+      return true;
+    }
+  }
+
   ValueIteratorPtr iter1 = value_iterator_getter(o1);
   ValueIteratorPtr iter2 = value_iterator_getter(o2);
 
@@ -766,7 +854,8 @@ bool AssertSameStructureHelper(
       }
       bool no_internal_errors = AssertSameStructureHelper(
           v1.get(), v2.get(), check_types, error_msg, is_type_error,
-          is_sequence_helper, value_iterator_getter);
+          is_sequence_helper, value_iterator_getter,
+          check_composite_tensor_type_spec);
       Py_LeaveRecursiveCall();
       if (!no_internal_errors) return false;
       if (!error_msg->empty()) return true;
@@ -788,9 +877,46 @@ bool AssertSameStructureHelper(
 
 bool IsSequence(PyObject* o) { return IsSequenceHelper(o) == 1; }
 bool IsMapping(PyObject* o) { return IsMappingHelper(o) == 1; }
+bool IsMappingView(PyObject* o) { return IsMappingViewHelper(o) == 1; }
 bool IsAttrs(PyObject* o) { return IsAttrsHelper(o) == 1; }
 bool IsTensor(PyObject* o) { return IsTensorHelper(o) == 1; }
+bool IsEagerTensorSlow(PyObject* o) { return IsEagerTensorHelper(o) == 1; }
+bool IsResourceVariable(PyObject* o) {
+  return IsResourceVariableHelper(o) == 1;
+}
+bool IsVariable(PyObject* o) { return IsVariableHelper(o) == 1; }
 bool IsIndexedSlices(PyObject* o) { return IsIndexedSlicesHelper(o) == 1; }
+
+bool IsTuple(PyObject* o) {
+  tensorflow::Safe_PyObjectPtr wrapped;
+  if (IsObjectProxy(o)) {
+    wrapped.reset(PyObject_GetAttrString(o, "__wrapped__"));
+    o = wrapped.get();
+  }
+  return PyTuple_Check(o);
+}
+
+// Work around a writable-strings warning with Python 2's PyMapping_Keys macro,
+// and while we're at it give them consistent behavior by making sure the
+// returned value is a list.
+//
+// As with PyMapping_Keys, returns a new reference.
+//
+// On failure, returns nullptr.
+PyObject* MappingKeys(PyObject* o) {
+#if PY_MAJOR_VERSION >= 3
+  return PyMapping_Keys(o);
+#else
+  static char key_method_name[] = "keys";
+  Safe_PyObjectPtr raw_result(PyObject_CallMethod(o, key_method_name, nullptr));
+  if (PyErr_Occurred() || raw_result.get() == nullptr) {
+    return nullptr;
+  }
+  return PySequence_Fast(
+      raw_result.get(),
+      "The '.keys()' method of a custom mapping returned a non-sequence.");
+#endif
+}
 
 PyObject* Flatten(PyObject* nested, bool expand_composites) {
   PyObject* list = PyList_New(0);
@@ -812,6 +938,8 @@ bool IsSequenceOrComposite(PyObject* o) {
 
 bool IsCompositeTensor(PyObject* o) { return IsCompositeTensorHelper(o) == 1; }
 
+bool IsTypeSpec(PyObject* o) { return IsTypeSpecHelper(o) == 1; }
+
 bool IsSequenceForData(PyObject* o) { return IsSequenceForDataHelper(o) == 1; }
 
 PyObject* FlattenForData(PyObject* nested) {
@@ -826,6 +954,15 @@ PyObject* FlattenForData(PyObject* nested) {
 }
 
 PyObject* IsNamedtuple(PyObject* o, bool strict) {
+  // Some low-level CPython calls do not work with wrapt.ObjectProxy, so they
+  // require some unwrapping if we want to treat them like the objects they're
+  // wrapping.
+  tensorflow::Safe_PyObjectPtr o_wrapped;
+  if (IsObjectProxy(o)) {
+    o_wrapped.reset(PyObject_GetAttrString(o, "__wrapped__"));
+    o = o_wrapped.get();
+  }
+
   // Must be subclass of tuple
   if (!PyTuple_Check(o)) {
     Py_RETURN_FALSE;
@@ -848,18 +985,6 @@ PyObject* IsNamedtuple(PyObject* o, bool strict) {
     }
   }
 
-  PyObject* collections_sequence_type = GetRegisteredType("Sequence");
-
-  if (TF_PREDICT_FALSE(collections_sequence_type == nullptr)) {
-    PyErr_SetString(PyExc_RuntimeError,
-                    tensorflow::strings::StrCat(
-                        "collections.Sequence type has not been set. "
-                        "Please register the type with the identifier "
-                        "\"Sequence\" using RegisterType.")
-                        .c_str());
-    return nullptr;
-  }
-
   // o must have attribute '_fields' and every element in
   // '_fields' must be a string.
   int has_fields = PyObject_HasAttrString(o, "_fields");
@@ -868,8 +993,7 @@ PyObject* IsNamedtuple(PyObject* o, bool strict) {
   }
 
   Safe_PyObjectPtr fields = make_safe(PyObject_GetAttrString(o, "_fields"));
-  int is_instance =
-      PyObject_IsInstance(fields.get(), collections_sequence_type);
+  int is_instance = IsInstanceOfRegisteredType(fields.get(), "Sequence");
   if (is_instance == 0) {
     Py_RETURN_FALSE;
   } else if (is_instance == -1) {
@@ -916,10 +1040,12 @@ PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types,
       expand_composites ? IsSequenceOrCompositeHelper : IsSequenceHelper;
   const std::function<ValueIteratorPtr(PyObject*)>& get_value_iterator =
       expand_composites ? GetValueIteratorForComposite : GetValueIterator;
+  const bool check_composite_tensor_type_spec = expand_composites;
   string error_msg;
   bool is_type_error = false;
   AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error,
-                            is_sequence_helper, get_value_iterator);
+                            is_sequence_helper, get_value_iterator,
+                            check_composite_tensor_type_spec);
   if (PyErr_Occurred()) {
     // Don't hide Python exceptions while checking (e.g. errors fetching keys
     // from custom mappings).
@@ -943,7 +1069,7 @@ PyObject* AssertSameStructureForData(PyObject* o1, PyObject* o2,
   string error_msg;
   bool is_type_error = false;
   AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error,
-                            IsSequenceForDataHelper, GetValueIterator);
+                            IsSequenceForDataHelper, GetValueIterator, false);
   if (PyErr_Occurred()) {
     // Don't hide Python exceptions while checking (e.g. errors fetching keys
     // from custom mappings).

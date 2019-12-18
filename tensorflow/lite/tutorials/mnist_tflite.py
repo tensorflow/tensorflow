@@ -33,7 +33,7 @@ flags = flags.FLAGS
 
 def test_image_generator():
   # Generates an iterator over images
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
     input_data = tf.compat.v1.data.make_one_shot_iterator(dataset.test(
         flags.data_dir)).get_next()
     try:
@@ -84,4 +84,4 @@ def main(_):
 
 if __name__ == '__main__':
   tf.logging.set_verbosity(tf.logging.INFO)
-  tf.app.run(main)
+  tf.compat.v1.app.run(main)

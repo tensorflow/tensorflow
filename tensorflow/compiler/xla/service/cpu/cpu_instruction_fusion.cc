@@ -15,37 +15,36 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 
 namespace xla {
 namespace cpu {
 
 namespace {
 
-int64 BytesInDimension(const Shape& shape, int64 dimension) {
-  return ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()) *
-         shape.dimensions(dimension);
-}
-
 bool CanBeLoopFused(const HloInstruction& hlo) {
   // These are the only ones we fuse since we rely on effective elemental IR
   // generation.
   return hlo.IsElementwise() ||  //
+         hlo.opcode() == HloOpcode::kBitcast ||
          hlo.opcode() == HloOpcode::kBroadcast ||
          hlo.opcode() == HloOpcode::kConcatenate ||
          hlo.opcode() == HloOpcode::kDynamicSlice ||
          hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
          hlo.opcode() == HloOpcode::kGather ||
          hlo.opcode() == HloOpcode::kIota || hlo.opcode() == HloOpcode::kPad ||
+         hlo.opcode() == HloOpcode::kReduce ||
          hlo.opcode() == HloOpcode::kReshape ||
          hlo.opcode() == HloOpcode::kReverse ||
          hlo.opcode() == HloOpcode::kSlice ||
          hlo.opcode() == HloOpcode::kTranspose;
 }
 
-bool IsMatrixVectorDot(const HloInstruction* hlo) {
+bool IsNonComplexNonBatchedMatrixVectorDot(const HloInstruction* hlo) {
   const Shape& hlo_shape = hlo->shape();
-  return hlo->opcode() == HloOpcode::kDot && hlo_shape.dimensions_size() == 2 &&
-         (hlo_shape.dimensions(0) == 1 || hlo_shape.dimensions(1) == 1);
+  return !ShapeUtil::ElementIsComplex(hlo_shape) &&
+         hlo->opcode() == HloOpcode::kDot && hlo_shape.dimensions_size() <= 1 &&
+         hlo->dot_dimension_numbers().lhs_batch_dimensions_size() == 0;
 }
 
 bool HasExactlyOneUse(const HloInstruction& hlo_instr) {
@@ -55,7 +54,8 @@ bool HasExactlyOneUse(const HloInstruction& hlo_instr) {
 
 bool CanBeOutputFused(const HloInstruction* producer,
                       const HloInstruction* consumer) {
-  return consumer->opcode() == HloOpcode::kAdd && IsMatrixVectorDot(producer) &&
+  return consumer->opcode() == HloOpcode::kAdd &&
+         IsNonComplexNonBatchedMatrixVectorDot(producer) &&
          HasExactlyOneUse(*producer) == 1;
 }
 
@@ -75,10 +75,13 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   constexpr int kFusionThresholdBytes = 16 * 1024;
 
   if (CanBeOutputFused(producer, consumer)) {
+    VLOG(2) << "Fusion OK: Can create output fusion.";
     return true;
   }
 
   if (CanBeOutputFusedIntoSomeOperand(producer)) {
+    VLOG(2)
+        << "Bailing because producer can be output-fused into some operand.";
     return false;
   }
 
@@ -96,18 +99,30 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
-  // TODO(b/28644064): see if the "producer->operand_count() == 0" check is
-  // necessary.
-  if (producer->operand_count() == 0 ||
-      !InstructionFusion::ShouldFuse(consumer, operand_index)) {
-    VLOG(2)
-        << "Not fusing: producer has no operands, or !ShouldFuse(consumer).";
+  if (!InstructionFusion::ShouldFuse(consumer, operand_index)) {
+    VLOG(2) << "Not fusing: !ShouldFuse(consumer).";
+    return false;
+  }
+
+  // Fuse constants in general but avoid creating 2-instruction fusions with
+  // just a constant and another node.
+  if (producer->opcode() == HloOpcode::kConstant &&
+      consumer->opcode() != HloOpcode::kFusion) {
+    VLOG(2) << "Not fusing: insufficient non-constant nodes.";
     return false;
   }
 
   // Output fusion is not currently supported on CPUs.
   if (producer->opcode() == HloOpcode::kFusion) {
     VLOG(2) << "Not fusing: producer is itself a fusion node.";
+    return false;
+  }
+
+  // Don't fuse if fusing would cause too much code duplication because of
+  // inefficiencies in the fusion emitter.
+  // TODO(b/119692968): Remove this once the fusion emitter can handle
+  // arbitrary fusion nodes.
+  if (FusedIrEmitter::IsFusedIrEmitterInefficient(consumer, producer)) {
     return false;
   }
 
@@ -120,26 +135,41 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     // fusion can easily be overshadowed by the overhead of a naive GEMM
     // algorithm in the IR.
     const Shape& output_shape = consumer->shape();
-    if (output_shape.dimensions_size() == 2) {
-      // We fuse in cases where we have dot([A,B],[B,1]) or dot([1,A],[A,B]) and
+    if (output_shape.dimensions_size() <= 1) {
+      // We fuse in cases where we have a matrix*vector or vector*matrix dot and
       // fusion can get rid of the larger tensor.  We assume that a naive
       // traversal of a small enough (to fit in L1) column or row tensor is
       // "good enough" from the perspective of cache management; and calling out
       // to an optimized GEMM kernel is not a huge win.
-      if (output_shape.dimensions(0) == 1 && operand_index == 1 &&
-          BytesInDimension(output_shape, 1) < kFusionThresholdBytes) {
+      if (consumer->operand(0)->shape().rank() == 1 && operand_index == 1 &&
+          ShapeUtil::ByteSizeOfElements(consumer->operand(0)->shape()) <
+              kFusionThresholdBytes) {
         VLOG(2) << "Fusing small matrix-vector product.";
         return true;
-      } else if (output_shape.dimensions(1) == 1 && operand_index == 0 &&
-                 BytesInDimension(output_shape, 0) < kFusionThresholdBytes) {
+      } else if (consumer->operand(1)->shape().rank() == 1 &&
+                 operand_index == 0 &&
+                 ShapeUtil::ByteSizeOfElements(consumer->operand(1)->shape()) <
+                     kFusionThresholdBytes) {
         VLOG(2) << "Fusing small matrix-vector product.";
         return true;
       }
     }
   }
 
-  if (consumer->opcode() == HloOpcode::kFusion &&
-      consumer->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+  // Don't fuse reductions over the major dimensions. These have an efficient
+  // lowering that's only implemented for the unfused case.
+  if (consumer->opcode() == HloOpcode::kReduce) {
+    return absl::c_linear_search(
+        consumer->dimensions(),
+        LayoutUtil::Minor(consumer->operand(0)->shape().layout(), 0));
+  }
+  if (producer->opcode() == HloOpcode::kReduce) {
+    return absl::c_linear_search(
+        producer->dimensions(),
+        LayoutUtil::Minor(producer->operand(0)->shape().layout(), 0));
+  }
+
+  if (consumer->IsLoopFusion()) {
     VLOG(2) << "Fusing: consumer is a fusion node.";
     return true;
   }

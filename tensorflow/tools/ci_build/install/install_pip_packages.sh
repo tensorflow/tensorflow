@@ -16,12 +16,11 @@
 
 set -e
 
-# We don't apt-get install so that we can install a newer version of pip.
-# Only needed for Ubuntu 14.04 and 16.04; not needed for 18.04 and Debian 8,9?
-# Run easy_install after easy_install3, so that the default pip points to pip2,
-# to match the default python version of 2.7.
-easy_install3 -U pip==18.1
-easy_install -U pip==18.1
+# Get the latest version of pip so it recognize manylinux2010
+wget https://bootstrap.pypa.io/get-pip.py
+python3 get-pip.py
+python get-pip.py
+rm -f get-pip.py
 
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
@@ -39,9 +38,11 @@ pip3 install --upgrade setuptools==39.1.0
 pip2 install virtualenv
 pip3 install virtualenv
 
-# Install six.
+# Install six and future.
 pip2 install --upgrade six==1.12.0
 pip3 install --upgrade six==1.12.0
+pip2 install "future>=0.17.1"
+pip3 install "future>=0.17.1"
 
 # Install absl-py.
 pip2 install --upgrade absl-py
@@ -93,6 +94,12 @@ pip3 install psutil
 pip2 install py-cpuinfo
 pip3 install py-cpuinfo
 
+# pylint==1.6.4 requires python-astroid (>= 1.4.5) requires lazy-object-proxy
+# Latest version of lazy-object-proxy (1.4.2) fails to install from source
+# when using setuptools 39.1.0
+pip2 install lazy-object-proxy==1.4.1
+pip3 install lazy-object-proxy==1.4.1
+
 # pylint tests require the following:
 pip2 install pylint==1.6.4
 pip3 install pylint==1.6.4
@@ -120,13 +127,19 @@ pip2 install --upgrade termcolor
 pip3 install --upgrade termcolor
 
 # Keras
-pip2 install keras_applications==1.0.6 --no-deps
-pip3 install keras_applications==1.0.6 --no-deps
-pip2 install keras_preprocessing==1.0.5 --no-deps
-pip3 install keras_preprocessing==1.0.5 --no-deps
+pip2 install keras_preprocessing==1.1.0 --no-deps
+pip3 install keras_preprocessing==1.1.0 --no-deps
 pip2 install --upgrade h5py==2.8.0
 pip3 install --upgrade h5py==2.8.0
 
 # Estimator
-pip2 install tf-estimator-nightly==1.12.0.dev20181203 --no-deps
-pip3 install tf-estimator-nightly==1.12.0.dev20181203 --no-deps
+pip2 install tf-estimator-nightly --no-deps
+pip3 install tf-estimator-nightly --no-deps
+
+# Tensorboard
+pip2 install tb-nightly --no-deps
+pip3 install tb-nightly --no-deps
+
+# Argparse
+pip2 install --upgrade argparse
+pip3 install --upgrade argparse

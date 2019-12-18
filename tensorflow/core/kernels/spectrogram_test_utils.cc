@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/wav/wav_io.h"
 #include "tensorflow/core/platform/env.h"
@@ -162,7 +163,12 @@ void ReadCSVFileToArrayOrDie(const string& filename,
   std::vector<float> values;
   for (int l = 0; l < lines.size(); ++l) {
     values.clear();
-    CHECK(str_util::SplitAndParseAsFloats(lines[l], ',', &values));
+    std::vector<string> split_line = str_util::Split(lines[l], ",");
+    for (const string& token : split_line) {
+      float tmp;
+      CHECK(strings::safe_strtof(token, &tmp));
+      values.push_back(tmp);
+    }
     array->push_back(values);
   }
 }

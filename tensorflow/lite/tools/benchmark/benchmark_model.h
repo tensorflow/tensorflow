@@ -23,9 +23,11 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/lite/tools/benchmark/benchmark_params.h"
-#include "tensorflow/lite/tools/benchmark/command_line_flags.h"
 #include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/profiling/memory_info.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_params.h"
+#include "tensorflow/lite/tools/command_line_flags.h"
 
 namespace tflite {
 namespace benchmark {
@@ -39,11 +41,15 @@ class BenchmarkResults {
  public:
   BenchmarkResults(int64_t startup_latency_us, uint64_t input_bytes,
                    tensorflow::Stat<int64_t> warmup_time_us,
-                   tensorflow::Stat<int64_t> inference_time_us)
+                   tensorflow::Stat<int64_t> inference_time_us,
+                   const profiling::memory::MemoryUsage& init_mem_usage,
+                   const profiling::memory::MemoryUsage& overall_mem_usage)
       : startup_latency_us_(startup_latency_us),
         input_bytes_(input_bytes),
         warmup_time_us_(warmup_time_us),
-        inference_time_us_(inference_time_us) {}
+        inference_time_us_(inference_time_us),
+        init_mem_usage_(init_mem_usage),
+        overall_mem_usage_(overall_mem_usage) {}
 
   tensorflow::Stat<int64_t> inference_time_us() const {
     return inference_time_us_;
@@ -57,18 +63,33 @@ class BenchmarkResults {
     return bytes_per_sec / (1024.0 * 1024.0);
   }
 
+  const profiling::memory::MemoryUsage& init_mem_usage() const {
+    return init_mem_usage_;
+  }
+  const profiling::memory::MemoryUsage& overall_mem_usage() const {
+    return overall_mem_usage_;
+  }
+
  private:
   int64_t startup_latency_us_;
   uint64_t input_bytes_;
   tensorflow::Stat<int64_t> warmup_time_us_;
   tensorflow::Stat<int64_t> inference_time_us_;
+  profiling::memory::MemoryUsage init_mem_usage_;
+  profiling::memory::MemoryUsage overall_mem_usage_;
 };
 
 class BenchmarkListener {
  public:
+  // Called before the (outer) inference loop begins.
+  // Note that this is called *after* the interpreter has been initialized, but
+  // *before* any warmup runs have been executed.
   virtual void OnBenchmarkStart(const BenchmarkParams& params) {}
+  // Called before a single (inner) inference call starts.
   virtual void OnSingleRunStart(RunType runType) {}
+  // Called before a single (inner) inference call ends.
   virtual void OnSingleRunEnd() {}
+  // Called after the (outer) inference loop begins.
   virtual void OnBenchmarkEnd(const BenchmarkResults& results) {}
   virtual ~BenchmarkListener() {}
 };
@@ -83,6 +104,14 @@ class BenchmarkListeners : public BenchmarkListener {
   void AddListener(BenchmarkListener* listener) {
     listeners_.push_back(listener);
   }
+
+  // Remove all listeners after [index] including the one at 'index'.
+  void RemoveListeners(int index) {
+    if (index >= NumListeners()) return;
+    listeners_.resize(index);
+  }
+
+  int NumListeners() const { return listeners_.size(); }
 
   void OnBenchmarkStart(const BenchmarkParams& params) override {
     for (auto listener : listeners_) {
@@ -123,8 +152,9 @@ class BenchmarkLoggingListener : public BenchmarkListener {
 template <typename T>
 Flag CreateFlag(const char* name, BenchmarkParams* params,
                 const std::string& usage) {
-  return Flag(name, [params, name](const T& val) { params->Set<T>(name, val); },
-              params->Get<T>(name), usage);
+  return Flag(
+      name, [params, name](const T& val) { params->Set<T>(name, val); },
+      params->Get<T>(name), usage);
 }
 
 // Benchmarks a model.
@@ -137,23 +167,41 @@ class BenchmarkModel {
   BenchmarkModel();
   BenchmarkModel(BenchmarkParams params) : params_(std::move(params)) {}
   virtual ~BenchmarkModel() {}
-  virtual void Init() = 0;
-  void Run(int argc, char** argv);
-  virtual void Run();
+  virtual TfLiteStatus Init() = 0;
+  TfLiteStatus Run(int argc, char** argv);
+  virtual TfLiteStatus Run();
   void AddListener(BenchmarkListener* listener) {
     listeners_.AddListener(listener);
   }
+  // Remove all listeners after [index] including the one at 'index'.
+  void RemoveListeners(int index) { listeners_.RemoveListeners(index); }
+  int NumListeners() const { return listeners_.NumListeners(); }
+
+  BenchmarkParams* mutable_params() { return &params_; }
+
+  // Unparsable flags will remain in 'argv' in the original order and 'argc'
+  // will be updated accordingly.
+  TfLiteStatus ParseFlags(int* argc, char** argv);
 
  protected:
   virtual void LogParams();
-  virtual bool ValidateParams();
-  bool ParseFlags(int argc, char** argv);
+  virtual TfLiteStatus ValidateParams();
+
+  TfLiteStatus ParseFlags(int argc, char** argv) {
+    return ParseFlags(&argc, argv);
+  }
   virtual std::vector<Flag> GetFlags();
+
   virtual uint64_t ComputeInputBytes() = 0;
   virtual tensorflow::Stat<int64_t> Run(int min_num_times, float min_secs,
-                                        RunType run_type);
-  virtual void PrepareInputsAndOutputs();
-  virtual void RunImpl() = 0;
+                                        float max_secs, RunType run_type,
+                                        TfLiteStatus* invoke_status);
+  // Prepares input data for benchmark. This can be used to initialize input
+  // data that has non-trivial cost.
+  virtual TfLiteStatus PrepareInputData();
+
+  virtual TfLiteStatus ResetInputsAndOutputs();
+  virtual TfLiteStatus RunImpl() = 0;
   BenchmarkParams params_;
   BenchmarkListeners listeners_;
 };

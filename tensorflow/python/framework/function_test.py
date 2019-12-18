@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import re
-import sys
 import time
 
 import numpy as np
@@ -48,6 +47,7 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -105,7 +105,7 @@ class FunctionTest(test.TestCase):
       with session.Session() as sess:
         self.assertAllEqual([18.0], self.evaluate(call))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testIdentityImplicitDeref(self):
 
     @function.Defun(dtypes.float32, func_name="MyIdentity")
@@ -825,19 +825,6 @@ class FunctionTest(test.TestCase):
       self.assertEqual(self.evaluate(y), 1)
       self.assertEqual(self.evaluate(z), 2)
 
-  def testStableName(self):
-
-    @function.Defun()
-    def Foo(x, y, z):
-      return math_ops.tanh(math_ops.matmul(x, y) + z)
-
-    if sys.byteorder == "big":
-      self.assertEqual("Foo_kEdkAG8SJvg",
-                       Foo.instantiate([dtypes.float32] * 3).name)
-    else:
-      self.assertEqual("Foo_aCYSbwBkR5A",
-                       Foo.instantiate([dtypes.float32] * 3).name)
-
   @test_util.run_deprecated_v1
   def testSignatureHash(self):
     # Foo.Inner and Bar.Inner have identical function body but have
@@ -1055,6 +1042,7 @@ class FunctionTest(test.TestCase):
         self.assertFalse(all(val3 == val1))
         self.assertFalse(all(val4 == val2))
 
+  @test_util.run_v1_only("currently failing on v2")
   def testStatefulFunctionWithWhitelisting(self):
     t = random_ops.random_uniform([100], maxval=10, dtype=dtypes.int32)
 
@@ -1400,6 +1388,20 @@ class FunctionsFromProtos(test.TestCase):
     self.assertEqual(FunctionWithBoolAttr.definition.attr["experimental_tag"].b,
                      True)
 
+  def testImplementsReferenceAttrs(self):
+
+    @function.Defun(
+        dtypes.int32, _implements="org.google.lstm", _reference="arxiv.org")
+    def FunctionWithStrAttr(i):
+      return array_ops.identity(i)
+
+    self.assertIn("_implements", FunctionWithStrAttr.definition.attr)
+    self.assertEqual(FunctionWithStrAttr.definition.attr["_implements"].s,
+                     b"org.google.lstm")
+    self.assertIn("_reference", FunctionWithStrAttr.definition.attr)
+    self.assertEqual(FunctionWithStrAttr.definition.attr["_reference"].s,
+                     b"arxiv.org")
+
 
 class FunctionOverloadTest(test.TestCase):
 
@@ -1622,6 +1624,7 @@ class UnrollLSTMTest(test.TestCase):
 
 class FunctionInlineControlTest(test.TestCase):
 
+  @test_util.disable_xla("XLA changes the names, breaking graph analysis")
   def testFoo(self):
     dtype = dtypes.float32
     cfg = config_pb2.ConfigProto(
@@ -1766,13 +1769,64 @@ class VariableHoistingTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testBasic(self):
-    self._testSimpleModel(True)
     self._testSimpleModel(False)
+    self._testSimpleModel(True)
 
   @test_util.run_deprecated_v1
   def testBasicResource(self):
-    self._testSimpleModel(True, use_resource=True)
     self._testSimpleModel(False, use_resource=True)
+    self._testSimpleModel(True, use_resource=True)
+
+
+class TemplateTest(test.TestCase):
+
+  @test_util.run_v1_only("make_template not supported in TF2")
+  def testBasic(self):
+    self.assertTemplateVariableSharing(use_resource=True, defun_first=False)
+
+  @test_util.run_v1_only("make_template not supported in TF2")
+  def testBasicRef(self):
+    self.assertTemplateVariableSharing(use_resource=False, defun_first=False)
+
+  @test_util.run_v1_only("make_template not supported in TF2")
+  def testBasicDefunFirst(self):
+    self.assertTemplateVariableSharing(use_resource=True, defun_first=True)
+
+  @test_util.run_v1_only("make_template not supported in TF2")
+  def testBasicRefDefunFirst(self):
+    self.assertTemplateVariableSharing(use_resource=False, defun_first=True)
+
+  def assertTemplateVariableSharing(self, use_resource, defun_first):
+    parameters = []
+
+    def MakeModel(x):
+      w = variable_scope.get_variable(
+          "w", (64, 64),
+          initializer=init_ops.random_uniform_initializer(seed=312),
+          use_resource=use_resource)
+      b = variable_scope.get_variable(
+          "b", (64),
+          initializer=init_ops.zeros_initializer(),
+          use_resource=use_resource)
+      parameters.extend((w, b))
+      return math_ops.sigmoid(math_ops.matmul(x, w) + b)
+
+    model = template.make_template("f", MakeModel, create_scope_now_=True)
+
+    @function.Defun()
+    def ModelDefun(x):
+      return model(x)
+
+    x = array_ops.placeholder(dtypes.float32)
+    if defun_first:
+      ModelDefun(x)
+      model(x)
+    else:
+      model(x)
+      ModelDefun(x)
+    w1, b1, w2, b2 = parameters  # pylint: disable=unbalanced-tuple-unpacking
+    self.assertIs(w1, w2)
+    self.assertIs(b1, b2)
 
 
 class DevicePlacementTest(test.TestCase):

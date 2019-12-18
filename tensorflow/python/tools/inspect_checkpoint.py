@@ -18,19 +18,45 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import re
 import sys
 
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
+from tensorflow.python.training import py_checkpoint_reader
 
 FLAGS = None
 
 
+def _count_total_params(reader, count_exclude_pattern=""):
+  """Count total number of variables."""
+  var_to_shape_map = reader.get_variable_to_shape_map()
+
+  # Filter out tensors that we don't want to count
+  if count_exclude_pattern:
+    regex_pattern = re.compile(count_exclude_pattern)
+    new_var_to_shape_map = {}
+    exclude_num_tensors = 0
+    exclude_num_params = 0
+    for v in var_to_shape_map:
+      if regex_pattern.search(v):
+        exclude_num_tensors += 1
+        exclude_num_params += np.prod(var_to_shape_map[v])
+      else:
+        new_var_to_shape_map[v] = var_to_shape_map[v]
+    var_to_shape_map = new_var_to_shape_map
+    print("# Excluding %d tensors (%d params) that match %s when counting." % (
+        exclude_num_tensors, exclude_num_params, count_exclude_pattern))
+
+  var_sizes = [np.prod(var_to_shape_map[v]) for v in var_to_shape_map]
+  return np.sum(var_sizes, dtype=int)
+
+
 def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors,
-                                     all_tensor_names=False):
+                                     all_tensor_names=False,
+                                     count_exclude_pattern=""):
   """Prints tensors in a checkpoint file.
 
   If no `tensor_name` is provided, prints the tensor names and shapes
@@ -43,20 +69,34 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors,
     tensor_name: Name of the tensor in the checkpoint file to print.
     all_tensors: Boolean indicating whether to print all tensors.
     all_tensor_names: Boolean indicating whether to print all tensor names.
+    count_exclude_pattern: Regex string, pattern to exclude tensors when count.
   """
   try:
-    reader = pywrap_tensorflow.NewCheckpointReader(file_name)
+    reader = py_checkpoint_reader.NewCheckpointReader(file_name)
     if all_tensors or all_tensor_names:
       var_to_shape_map = reader.get_variable_to_shape_map()
-      for key in sorted(var_to_shape_map):
-        print("tensor_name: ", key)
+      var_to_dtype_map = reader.get_variable_to_dtype_map()
+      for key, value in sorted(var_to_shape_map.items()):
+        print("tensor: %s (%s) %s" % (key, var_to_dtype_map[key].name, value))
         if all_tensors:
           print(reader.get_tensor(key))
     elif not tensor_name:
-      print(reader.debug_string().decode("utf-8"))
+      print(reader.debug_string().decode("utf-8", errors="ignore"))
     else:
-      print("tensor_name: ", tensor_name)
+      if not reader.has_tensor(tensor_name):
+        print("Tensor %s not found in checkpoint" % tensor_name)
+        return
+
+      var_to_shape_map = reader.get_variable_to_shape_map()
+      var_to_dtype_map = reader.get_variable_to_dtype_map()
+      print("tensor: %s (%s) %s" %
+            (tensor_name, var_to_dtype_map[tensor_name].name,
+             var_to_shape_map[tensor_name]))
       print(reader.get_tensor(tensor_name))
+
+    # Count total number of parameters
+    print("# Total number of params: %d" % _count_total_params(
+        reader, count_exclude_pattern=count_exclude_pattern))
   except Exception as e:  # pylint: disable=broad-except
     print(str(e))
     if "corrupted compressed block contents" in str(e):
@@ -114,8 +154,10 @@ def main(unused_argv):
           "[--printoptions]")
     sys.exit(1)
   else:
-    print_tensors_in_checkpoint_file(FLAGS.file_name, FLAGS.tensor_name,
-                                     FLAGS.all_tensors, FLAGS.all_tensor_names)
+    print_tensors_in_checkpoint_file(
+        FLAGS.file_name, FLAGS.tensor_name,
+        FLAGS.all_tensors, FLAGS.all_tensor_names,
+        count_exclude_pattern=FLAGS.count_exclude_pattern)
 
 
 if __name__ == "__main__":
@@ -133,6 +175,11 @@ if __name__ == "__main__":
       type=str,
       default="",
       help="Name of the tensor to inspect")
+  parser.add_argument(
+      "--count_exclude_pattern",
+      type=str,
+      default="",
+      help="Pattern to exclude tensors, e.g., from optimizers, when counting.")
   parser.add_argument(
       "--all_tensors",
       nargs="?",

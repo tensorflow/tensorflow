@@ -1,7 +1,7 @@
 path: "tensorflow.keras.layers.experimental"
 tf_module {
   member {
-    name: "LayerNormalization"
-    mtype: "<type \'type\'>"
+    name: "preprocessing"
+    mtype: "<type \'module\'>"
   }
 }

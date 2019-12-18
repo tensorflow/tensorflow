@@ -125,10 +125,6 @@ class CheckpointingTests(test.TestCase):
     suffix = "/.ATTRIBUTES/VARIABLE_VALUE"
     expected_checkpoint_names = [
         name + suffix for name in expected_checkpoint_names]
-    # The Dense layers also save get_config() JSON
-    expected_checkpoint_names.extend(
-        ["model/_second/.ATTRIBUTES/OBJECT_CONFIG_JSON",
-         "model/_named_dense/.ATTRIBUTES/OBJECT_CONFIG_JSON"])
     named_variables = {v.name: v for v in named_variables}
     six.assertCountEqual(self, expected_checkpoint_names,
                          named_variables.keys())
@@ -355,7 +351,7 @@ class CheckpointingTests(test.TestCase):
         with ops.Graph().as_default():
           model = MyModel()
           optimizer = adam.AdamOptimizer(0.001)
-          root = trackable_utils.Checkpoint(
+          root = trackable_utils.CheckpointV1(
               optimizer=optimizer, model=model,
               global_step=training_util.get_or_create_global_step())
           input_value = constant_op.constant([[3.]])
@@ -762,10 +758,10 @@ class TemplateTests(test.TestCase):
 
     save_template = template.make_template("s1", _templated)
     v1_save, _, v2_save, manual_scope, manual_scope_v = save_template()
-    six.assertCountEqual(
-        self,
-        [v1_save, v2_save, manual_scope, manual_scope_v, save_template],
-        trackable_utils.list_objects(save_template))
+    six.assertCountEqual(self, [
+        id(obj) for obj in
+        [v1_save, v2_save, manual_scope, manual_scope_v, save_template]
+    ], [id(obj) for obj in trackable_utils.list_objects(save_template)])
     manual_dep, = manual_scope._checkpoint_dependencies
     self.assertEqual("in_manual_scope", manual_dep.name)
     self.assertIs(manual_scope_v, manual_dep.ref)
@@ -870,12 +866,9 @@ class CheckpointCompatibilityTests(test.TestCase):
       if context.executing_eagerly():
         self._check_sentinels(root)
       if context.executing_eagerly():
-        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
-          status.assert_consumed()
-        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
-          status.assert_existing_objects_matched()
-        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
-          status.assert_nontrivial_match()
+        status.assert_consumed()
+        status.assert_existing_objects_matched()
+        status.assert_nontrivial_match()
       else:
         # When graph building, we haven't read any keys, so we don't know
         # whether the restore will be complete.
@@ -904,9 +897,9 @@ class CheckpointCompatibilityTests(test.TestCase):
     with context.graph_mode():
       save_graph = ops.Graph()
       with save_graph.as_default(), self.session(
-          graph=save_graph) as session:
+          graph=save_graph):
         root = self._initialized_model()
-        save_path = root.save(session=session, file_prefix=checkpoint_prefix)
+        save_path = root.save(file_prefix=checkpoint_prefix)
     with context.eager_mode():
       root = self._initialized_model()
       self._set_sentinels(root)

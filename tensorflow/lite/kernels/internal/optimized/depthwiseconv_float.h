@@ -15,8 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
 
-#include "public/gemmlowp.h"
-#include "tensorflow/lite/kernels/internal/common.h"
+#include "profiling/instrumentation.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -890,13 +890,24 @@ inline void DepthwiseConvInitAccBuffer(int num_output_pixels, int output_depth,
   }
 }
 
-inline void DepthwiseConv(
+// DepthwiseConv can run with multi threads on the dim specified by thread_dim.
+// Each thread processes output elements on dim, thread_dim, in the range of
+// [thread_start, thread_end).
+// For example, assume thread_start = 2, thread_end = 6, and thread_dim = 1, it
+// means that it will calculate DepthwiseConv for output_data[:, 2:5, :, :].
+//
+// The cpu_flags is currently unused. This
+// parameter is included so that the signature matches that required by a
+// templated function. Other versions, such as quantized, need this parameter.
+inline void DepthwiseConvImpl(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
     const float* input_data, const RuntimeShape& filter_shape,
     const float* filter_data, const RuntimeShape& bias_shape,
     const float* bias_data, const RuntimeShape& output_shape,
-    float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("DepthwiseConv");
+    float* output_data, const CpuFlags& /* cpu_flags */, int thread_start,
+    int thread_end, int thread_dim) {
+  gemmlowp::ScopedProfilingLabel label("DepthwiseConv/float/DepthwiseConvImpl");
+
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -909,6 +920,7 @@ inline void DepthwiseConv(
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK(thread_dim == 0 || thread_dim == 1);
 
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
   const int output_depth = MatchingDim(filter_shape, 3, output_shape, 3);
@@ -990,9 +1002,37 @@ inline void DepthwiseConv(
   const int filter_height_stride = filter_shape.Dims(3) * filter_shape.Dims(2);
 
   // Now that we have determined row_accum_func, we can start work.
-  float* output_ptr = output_data;
-  for (int b = 0; b < batches; ++b) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
+  int batch_start = 0;
+  int batch_end = batches;
+  int row_start = 0;
+  int row_end = output_height;
+  int output_ptr_offset = 0;
+
+  switch (thread_dim) {
+    case 0:
+      // Multithread along with the batch axis
+      TFLITE_DCHECK_GE(thread_start, 0);
+      TFLITE_DCHECK_LE(thread_end, batches);
+      batch_start = thread_start;
+      batch_end = thread_end;
+      output_ptr_offset = batch_start * FlatSizeSkipDim(output_shape, 0);
+      break;
+    case 1:
+      // Multithread along with the row axis
+      TFLITE_DCHECK_GE(thread_start, 0);
+      TFLITE_DCHECK_LE(thread_end, output_height);
+      row_start = thread_start;
+      row_end = thread_end;
+      output_ptr_offset = row_start * output_width * output_depth;
+      break;
+  }
+
+  float* output_ptr = output_data + output_ptr_offset;
+  int batch_step =
+      (output_height + row_start - row_end) * output_width * output_depth;
+
+  for (int b = batch_start; b < batch_end; ++b) {
+    for (int out_y = row_start; out_y < row_end; ++out_y) {
       const int in_y_origin = (out_y * stride_height) - pad_height;
       const int filter_y_start =
           std::max(0, (-in_y_origin + dilation_height_factor - 1) /
@@ -1066,8 +1106,10 @@ inline void DepthwiseConv(
         }
       }
     }
+    output_ptr += batch_step;
   }
 }
+
 
 }  // namespace optimized_ops
 }  // namespace tflite

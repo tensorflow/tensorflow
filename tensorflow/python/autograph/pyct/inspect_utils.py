@@ -21,12 +21,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
 import itertools
+import linecache
+import sys
+import threading
 import types
 
 import six
 
 from tensorflow.python.util import tf_inspect
+
+# This lock seems to help avoid linecache concurrency errors.
+_linecache_lock = threading.Lock()
 
 
 # These functions test negative for isinstance(*, types.BuiltinFunctionType)
@@ -74,13 +81,71 @@ def isnamedtuple(f):
 
 def isbuiltin(f):
   """Returns True if the argument is a built-in function."""
-  if f in six.moves.builtins.__dict__.values():
+  if any(f is builtin for builtin in six.moves.builtins.__dict__.values()):
     return True
-  if isinstance(f, types.BuiltinFunctionType):
+  elif isinstance(f, types.BuiltinFunctionType):
     return True
-  if tf_inspect.isbuiltin(f):
+  elif inspect.isbuiltin(f):
     return True
-  return False
+  elif f is eval:
+    return True
+  else:
+    return False
+
+
+def isconstructor(cls):
+  """Returns True if the argument is an object constructor.
+
+  In general, any object of type class is a constructor, with the exception
+  of classes created using a callable metaclass.
+  See below for why a callable metaclass is not a trivial combination:
+  https://docs.python.org/2.7/reference/datamodel.html#customizing-class-creation
+
+  Args:
+    cls: Any
+  Returns:
+    Bool
+  """
+  return (
+      inspect.isclass(cls)
+      and not (issubclass(cls.__class__, type)
+               and hasattr(cls.__class__, '__call__')
+               and cls.__class__.__call__ is not type.__call__))
+
+
+def _fix_linecache_record(obj):
+  """Fixes potential corruption of linecache in the presence of functools.wraps.
+
+  functools.wraps modifies the target object's __module__ field, which seems
+  to confuse linecache in special instances, for example when the source is
+  loaded from a .par file (see https://google.github.io/subpar/subpar.html).
+
+  This function simply triggers a call to linecache.updatecache when a mismatch
+  was detected between the object's __module__ property and the object's source
+  file.
+
+  Args:
+    obj: Any
+  """
+  if hasattr(obj, '__module__'):
+    obj_file = inspect.getfile(obj)
+    obj_module = obj.__module__
+
+    # A snapshot of the loaded modules helps avoid "dict changed size during
+    # iteration" errors.
+    loaded_modules = tuple(sys.modules.values())
+    for m in loaded_modules:
+      if hasattr(m, '__file__') and m.__file__ == obj_file:
+        if obj_module is not m:
+          linecache.updatecache(obj_file, m.__dict__)
+
+
+def getimmediatesource(obj):
+  """A variant of inspect.getsource that ignores the __wrapped__ property."""
+  with _linecache_lock:
+    _fix_linecache_record(obj)
+    lines, lnum = inspect.findsource(obj)
+    return ''.join(inspect.getblock(lines[lnum:]))
 
 
 def getnamespace(f):
@@ -171,6 +236,8 @@ def getqualifiedname(namespace, object_, max_depth=5, visited=None):
 def _get_unbound_function(m):
   # TODO(mdan): Figure out why six.get_unbound_function fails in some cases.
   # The failure case is for tf.keras.Model.
+  if hasattr(m, '__func__'):
+    return m.__func__
   if hasattr(m, 'im_func'):
     return m.im_func
   return m
@@ -180,7 +247,7 @@ def getdefiningclass(m, owner_class):
   """Resolves the class (e.g. one of the superclasses) that defined a method."""
   # Normalize bound functions to their respective unbound versions.
   m = _get_unbound_function(m)
-  for superclass in owner_class.__bases__:
+  for superclass in reversed(inspect.getmro(owner_class)):
     if hasattr(superclass, m.__name__):
       superclass_m = getattr(superclass, m.__name__)
       if _get_unbound_function(superclass_m) is m:
@@ -191,9 +258,14 @@ def getdefiningclass(m, owner_class):
   return owner_class
 
 
-def isweakrefself(m):
-  """Tests whether an object is a "weakref self" wrapper, see getmethodself."""
-  return hasattr(m, '__self__') and hasattr(m.__self__, 'ag_self_weakref__')
+def istfmethodtarget(m):
+  """Tests whether an object is a `function.TfMethodTarget`."""
+  # See eager.function.TfMethodTarget for more details.
+  return (hasattr(m, '__self__') and
+          hasattr(m.__self__, 'weakrefself_target__') and
+          hasattr(m.__self__, 'weakrefself_func__') and
+          hasattr(m, '__module__') and
+          (m.__module__ != 'mock'))
 
 
 def getmethodself(m):
@@ -206,8 +278,8 @@ def getmethodself(m):
   # A fallback allowing methods to be actually bound to a type different
   # than __self__. This is useful when a strong reference from the method
   # to the object is not desired, for example when caching is involved.
-  if isweakrefself(m):
-    return m.__self__.ag_self_weakref__()
+  if istfmethodtarget(m):
+    return m.__self__.target
 
   return m.__self__
 
@@ -286,57 +358,16 @@ def getmethodclass(m):
   return None
 
 
-class SuperWrapperForDynamicAttrs(object):
-  """A wrapper that supports dynamic attribute lookup on the super object.
+def getfutureimports(entity):
+  """Detects what future imports are necessary to safely execute entity source.
 
-  For example, in the following code, `super` incorrectly reports that
-  `super(Bar, b)` lacks the `a` attribute:
+  Args:
+    entity: Any object
 
-    class Foo(object):
-      def __init__(self):
-        self.a = lambda: 1
-
-      def bar(self):
-        return hasattr(self, 'a')
-
-    class Bar(Foo):
-      def bar(self):
-        return super(Bar, self).bar()
-
-
-    b = Bar()
-    print(hasattr(super(Bar, b), 'a'))  # False
-    print(super(Bar, b).bar())          # True
-
-  A practical situation when this tends to happen is Keras model hierarchies
-  that hold references to certain layers, like this:
-
-    class MiniModel(keras.Model):
-
-      def __init__(self):
-        super(MiniModel, self).__init__()
-        self.fc = keras.layers.Dense(1)
-
-      def call(self, inputs, training=True):
-        return self.fc(inputs)
-
-    class DefunnedMiniModel(MiniModel):
-
-      def call(self, inputs, training=True):
-        return super(DefunnedMiniModel, self).call(inputs, training=training)
-
-  A side effect of this wrapper is that all attributes become visible, even
-  those created in the subclass.
+  Returns:
+    A tuple of future strings
   """
-
-  # TODO(mdan): Investigate why that happens - it may be for a reason.
-  # TODO(mdan): Probably need more overrides to make it look like super.
-
-  def __init__(self, target):
-    self._target = target
-
-  def __getattribute__(self, name):
-    target = object.__getattribute__(self, '_target')
-    if hasattr(target, name):
-      return getattr(target, name)
-    return getattr(target.__self__, name)
+  if not (tf_inspect.isfunction(entity) or tf_inspect.ismethod(entity)):
+    return tuple()
+  return tuple(sorted(name for name, value in entity.__globals__.items()
+                      if getattr(value, '__module__', None) == '__future__'))

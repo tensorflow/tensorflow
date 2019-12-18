@@ -40,7 +40,9 @@ limitations under the License.
 #include <functional>
 #include <string>
 #include <vector>
+
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/edgeset.h"
@@ -63,8 +65,8 @@ struct OutputTensor;
 class VersionDef;
 class WhileContext;
 
-class NeighborIter;    // Declared below
-class NodeIter;        // Declared below
+class NeighborIter;     // Declared below
+class NodeIter;         // Declared below
 struct NodeProperties;  // Defined in .cc
 
 class Node {
@@ -173,10 +175,32 @@ class Node {
 
   bool IsMetadata() const { return class_ == NC_METADATA; }
   bool IsFakeParam() const { return class_ == NC_FAKE_PARAM; }
+  bool IsPartitionedCall() const { return class_ == NC_PARTITIONED_CALL; }
+
+  // Returns true if this node is any kind of function call node.
+  //
+  // NOTE: "function call nodes" include partitioned call ops, symbolic gradient
+  // ops, and ops whose type_string is the name of a function ("function ops").
+  bool IsFunctionCall() const {
+    return class_ == NC_PARTITIONED_CALL || class_ == NC_FUNCTION_OP ||
+           class_ == NC_SYMBOLIC_GRADIENT;
+  }
+
+  bool IsIfNode() const { return class_ == NC_IF; }
+  bool IsWhileNode() const { return class_ == NC_WHILE; }
+  // Is this node a function input
+  bool IsArg() const { return class_ == NC_ARG; }
+  // Is this node a function output
+  bool IsRetval() const { return class_ == NC_RETVAL; }
 
   template <typename T>
   void AddAttr(const string& name, const T& val) {
     SetAttrValue(val, AddAttrHelper(name));
+    UpdateProperties();
+  }
+
+  void AddAttr(const string& name, std::vector<string>&& val) {
+    MoveAttrValue(std::move(val), AddAttrHelper(name));
     UpdateProperties();
   }
 
@@ -211,7 +235,8 @@ class Node {
 
   NodeProperties* properties() const { return props_.get(); }
 
-  void Initialize(int id, int cost_id, std::shared_ptr<NodeProperties> props);
+  void Initialize(int id, int cost_id, std::shared_ptr<NodeProperties> props,
+                  bool is_function_op);
 
   // Releases memory from props_, in addition to restoring *this to its
   // uninitialized state.
@@ -254,6 +279,13 @@ class Node {
     NC_SCOPED_ALLOCATOR,
     NC_COLLECTIVE,
     NC_FAKE_PARAM,
+    NC_PARTITIONED_CALL,
+    NC_FUNCTION_OP,
+    NC_SYMBOLIC_GRADIENT,
+    NC_IF,
+    NC_WHILE,
+    NC_ARG,
+    NC_RETVAL,
     NC_OTHER  // Not a special kind of node
   };
 
@@ -301,6 +333,8 @@ struct NodeDebugInfo {
 
   NodeDebugInfo(const Node& n);
   NodeDebugInfo(const NodeDef& ndef);
+  NodeDebugInfo(StringPiece node_name, bool has_experimental_debug_info,
+                const NodeDef_ExperimentalDebugInfo& experimental_debug_info);
 };
 
 // Represents an input of a node, i.e., the `index`-th input to `node`.
@@ -468,7 +502,7 @@ class Graph {
   // Adds a new node to this graph, and returns it. Infers the Op and
   // input/output types for the node. *this owns the returned instance.
   // Returns nullptr and sets *status on error.
-  Node* AddNode(const NodeDef& node_def, Status* status);
+  Node* AddNode(NodeDef node_def, Status* status);
 
   // Copies *node, which may belong to another graph, to a new node,
   // which is returned.  Does not copy any edges.  *this owns the
@@ -652,9 +686,10 @@ class Graph {
   //
   // Ownership of the returned Node is not transferred to caller.
   Node* AllocateNode(std::shared_ptr<NodeProperties> props,
-                     const Node* cost_node);
+                     const Node* cost_node, bool is_function_op);
   void ReleaseNode(Node* node);
-
+  // Insert edge in free_edges_ for possible reuse.
+  void RecycleEdge(const Edge* edge);
   // Registry of all known ops, including functions.
   FunctionLibraryDefinition ops_;
 
@@ -757,15 +792,20 @@ inline bool IsHostMemoryPreserving(const Node* node) {
   return IsIdentity(node) || IsControlFlow(node);
 }
 
+// NOTE: We declare Reference type of NodeIter and NeighborIter as Node* (see
+// https://en.cppreference.com/w/cpp/iterator/iterator).
+
 // Iterator for stepping through the nodes of a graph.
-class NodeIter {
+class NodeIter
+    : public std::iterator<std::forward_iterator_tag, Node, std::ptrdiff_t,
+                           /*Pointer*/ Node*, /*Reference*/ Node*> {
  public:
   NodeIter(const Graph* graph, int id);
-  bool operator==(const NodeIter& rhs);
-  bool operator!=(const NodeIter& rhs);
+  bool operator==(const NodeIter& rhs) const;
+  bool operator!=(const NodeIter& rhs) const;
   void operator++();
-  Node* operator*();
-  Node* operator->();
+  reference operator*() const;
+  pointer operator->() const;
 
  private:
   // Invariant: id_ == graph_->num_node_ids() || graph_->FindId(id_) != nullptr
@@ -774,14 +814,16 @@ class NodeIter {
 };
 
 // Iterator for stepping through the neighbors of a node.
-class NeighborIter {
+class NeighborIter
+    : public std::iterator<std::forward_iterator_tag, Node, std::ptrdiff_t,
+                           /*Pointer*/ Node*, /*Reference*/ Node*> {
  public:
   NeighborIter(EdgeSet::const_iterator iter, bool incoming);
-  bool operator==(const NeighborIter& rhs);
-  bool operator!=(const NeighborIter& rhs);
+  bool operator==(const NeighborIter& rhs) const;
+  bool operator!=(const NeighborIter& rhs) const;
   void operator++();
-  Node* operator*();
-  Node* operator->();
+  reference operator*() const;
+  pointer operator->() const;
 
  private:
   EdgeSet::const_iterator iter_;
@@ -793,12 +835,12 @@ class NeighborIter {
 inline NodeIter::NodeIter(const Graph* graph, int id)
     : graph_(graph), id_(id) {}
 
-inline bool NodeIter::operator==(const NodeIter& rhs) {
+inline bool NodeIter::operator==(const NodeIter& rhs) const {
   DCHECK(graph_ == rhs.graph_);
   return id_ == rhs.id_;
 }
 
-inline bool NodeIter::operator!=(const NodeIter& rhs) {
+inline bool NodeIter::operator!=(const NodeIter& rhs) const {
   return !(*this == rhs);
 }
 
@@ -812,29 +854,29 @@ inline void NodeIter::operator++() {
   }
 }
 
-inline Node* NodeIter::operator*() { return graph_->FindNodeId(id_); }
+inline Node* NodeIter::operator*() const { return graph_->FindNodeId(id_); }
 
-inline Node* NodeIter::operator->() { return graph_->FindNodeId(id_); }
+inline Node* NodeIter::operator->() const { return graph_->FindNodeId(id_); }
 
 inline NeighborIter::NeighborIter(EdgeSet::const_iterator iter, bool incoming)
     : iter_(iter), incoming_(incoming) {}
 
-inline bool NeighborIter::operator==(const NeighborIter& rhs) {
+inline bool NeighborIter::operator==(const NeighborIter& rhs) const {
   return iter_ == rhs.iter_ && incoming_ == rhs.incoming_;
 }
 
-inline bool NeighborIter::operator!=(const NeighborIter& rhs) {
+inline bool NeighborIter::operator!=(const NeighborIter& rhs) const {
   return !(*this == rhs);
 }
 
 inline void NeighborIter::operator++() { ++iter_; }
 
-inline Node* NeighborIter::operator*() {
+inline Node* NeighborIter::operator*() const {
   const Edge* e = *iter_;
   return incoming_ ? e->src() : e->dst();
 }
 
-inline Node* NeighborIter::operator->() {
+inline Node* NeighborIter::operator->() const {
   const Edge* e = *iter_;
   return incoming_ ? e->src() : e->dst();
 }

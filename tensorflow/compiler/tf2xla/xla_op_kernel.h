@@ -81,6 +81,11 @@ class XlaOpKernelContext {
   // xla::PRIMITIVE_TYPE_INVALID.
   xla::PrimitiveType input_xla_type(int index);
 
+  // Returns the type of input `name` as an xla::PrimitiveType. If the type
+  // is not representable as an XLA type, sets an error status and returns
+  // xla::PRIMITIVE_TYPE_INVALID.
+  xla::PrimitiveType InputXlaType(absl::string_view name);
+
   // Returns the shape of input `index`.
   TensorShape InputShape(int index);
 
@@ -197,13 +202,24 @@ class XlaOpKernelContext {
   Status GetVariableTypeAndShape(int index, DataType* type,
                                  TensorShape* shape) const;
 
-  // Reads the current value of the resouce variable referred to by input
+  // When dynamic_dimension_is_minus_one is set, querying a dynamic dimension
+  // returns "-1", this is useful when the underlying ops expect explicit
+  // dynamic index like reshape.
+  void set_dynamic_dimension_is_minus_one(bool value) {
+    dynamic_dimension_is_minus_one_ = value;
+  }
+
+  bool dynamic_dimension_is_minus_one() const {
+    return dynamic_dimension_is_minus_one_;
+  }
+
+  // Reads the current value of the resource variable referred to by input
   // `index`. If `shape` is not nullptr, sets `*shape` to the shape of the
   // variable. Returns an error if the variable has not been initialized, or if
   // its type does not match `type`.
   Status ReadVariableInput(int index, DataType type, TensorShape* shape,
                            xla::XlaOp* value);
-  // Reads the current value of the resouce variable referred to by input
+  // Reads the current value of the resource variable referred to by input
   // `name`.
   Status ReadVariableInput(absl::string_view name, DataType type,
                            TensorShape* shape, xla::XlaOp* value);
@@ -275,6 +291,7 @@ class XlaOpKernelContext {
                                xla::Literal* constant_literal);
 
   OpKernelContext* const context_;
+  bool dynamic_dimension_is_minus_one_;
 };
 
 }  // namespace tensorflow

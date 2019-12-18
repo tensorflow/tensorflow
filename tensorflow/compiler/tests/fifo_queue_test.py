@@ -31,13 +31,13 @@ from tensorflow.python.platform import test
 class FIFOQueueTest(xla_test.XLATestCase):
 
   def testEnqueue(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       enqueue_op = q.enqueue((10.0,))
       enqueue_op.run()
 
   def testEnqueueWithShape(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shapes=(3, 2))
       enqueue_correct_op = q.enqueue(([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],))
       enqueue_correct_op.run()
@@ -46,7 +46,7 @@ class FIFOQueueTest(xla_test.XLATestCase):
       self.assertEqual(1, q.size().eval())
 
   def testMultipleDequeues(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
       self.evaluate(q.enqueue([1]))
       self.evaluate(q.enqueue([2]))
@@ -55,7 +55,7 @@ class FIFOQueueTest(xla_test.XLATestCase):
       self.assertAllEqual(set([1, 2, 3]), set([a, b, c]))
 
   def testQueuesDontShare(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
       self.evaluate(q.enqueue(1))
       q2 = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
@@ -64,13 +64,13 @@ class FIFOQueueTest(xla_test.XLATestCase):
       self.assertAllEqual(self.evaluate(q.dequeue()), 1)
 
   def testEnqueueDictWithoutNames(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       with self.assertRaisesRegexp(ValueError, "must have names"):
         q.enqueue({"a": 12.0})
 
   def testParallelEnqueue(self):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
@@ -95,7 +95,7 @@ class FIFOQueueTest(xla_test.XLATestCase):
       self.assertItemsEqual(elems, results)
 
   def testParallelDequeue(self):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
@@ -119,7 +119,7 @@ class FIFOQueueTest(xla_test.XLATestCase):
       self.assertItemsEqual(elems, results)
 
   def testDequeue(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
@@ -133,7 +133,7 @@ class FIFOQueueTest(xla_test.XLATestCase):
         self.assertEqual([elems[i]], vals)
 
   def testEnqueueAndBlockingDequeue(self):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       q = data_flow_ops.FIFOQueue(3, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
@@ -163,7 +163,7 @@ class FIFOQueueTest(xla_test.XLATestCase):
         self.assertEqual([elem], result)
 
   def testMultiEnqueueAndDequeue(self):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       q = data_flow_ops.FIFOQueue(10, (dtypes_lib.int32, dtypes_lib.float32))
       elems = [(5, 10.0), (10, 20.0), (15, 30.0)]
       enqueue_ops = [q.enqueue((x, y)) for x, y in elems]
@@ -179,12 +179,12 @@ class FIFOQueueTest(xla_test.XLATestCase):
         self.assertEqual([y], y_val)
 
   def testQueueSizeEmpty(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       self.assertEqual([0], q.size().eval())
 
   def testQueueSizeAfterEnqueueAndDequeue(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       enqueue_op = q.enqueue((10.0,))
       dequeued_t = q.dequeue()

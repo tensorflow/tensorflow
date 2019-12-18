@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Master implements the service MasterSerivce.
+// Master implements the service MasterService.
 //
 // A Master maintains the state of live graph computation
 // sessions, each session orchestrates both local and remote devices
@@ -476,7 +476,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
     GraphDef* gdef =
         const_cast<CreateSessionRequest*>(req)->mutable_graph_def();
 
-    status = session->Create(gdef, worker_cache_factory_options);
+    status = session->Create(std::move(*gdef), worker_cache_factory_options);
     if (!status.ok()) {
       session->Close().IgnoreError();
       session->Unref();
@@ -629,7 +629,7 @@ void Master::CleanupWorkers(const ResetRequest& reset) {
     int c = 0;
     for (int i = 0; i < num_workers; ++i) {
       const string& worker_name = worker_names[i];
-      auto worker = env_->worker_cache->CreateWorker(worker_name);
+      auto worker = env_->worker_cache->GetOrCreateWorker(worker_name);
       if (worker) {
         worker->CleanupAllAsync(
             &req, &resp[i], [this, &n, worker_name, worker, c](Status s) {
@@ -689,13 +689,11 @@ void Master::MakeCallable(const MakeCallableRequest* req,
     return;
   }
 
-  SchedClosure(std::bind(
-      [session, req, resp](MyClosure done) {
-        Status s = session->MakeCallable(*req, resp);
-        session->Unref();
-        done(s);
-      },
-      std::move(done)));
+  SchedClosure([session, req, resp, done = std::move(done)]() {
+    Status s = session->MakeCallable(*req, resp);
+    session->Unref();
+    done(s);
+  });
 }
 
 void Master::RunCallable(CallOptions* opts, const RunCallableRequest* req,
@@ -712,13 +710,11 @@ void Master::RunCallable(CallOptions* opts, const RunCallableRequest* req,
     return;
   }
 
-  SchedClosure(std::bind(
-      [session, opts, req, resp](MyClosure done) {
-        Status s = session->RunCallable(opts, *req, resp);
-        session->Unref();
-        done(s);
-      },
-      std::move(done)));
+  SchedClosure([session, opts, req, resp, done = std::move(done)]() {
+    Status s = session->RunCallable(opts, *req, resp);
+    session->Unref();
+    done(s);
+  });
 }
 
 void Master::ReleaseCallable(const ReleaseCallableRequest* req,
@@ -729,13 +725,11 @@ void Master::ReleaseCallable(const ReleaseCallableRequest* req,
     return;
   }
 
-  SchedClosure(std::bind(
-      [session, req, resp](MyClosure done) {
-        Status s = session->ReleaseCallable(*req, resp);
-        session->Unref();
-        done(s);
-      },
-      std::move(done)));
+  SchedClosure([session, req, resp, done = std::move(done)]() {
+    Status s = session->ReleaseCallable(*req, resp);
+    session->Unref();
+    done(s);
+  });
 }
 
 }  // end namespace tensorflow

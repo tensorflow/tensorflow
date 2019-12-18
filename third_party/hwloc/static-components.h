@@ -18,9 +18,21 @@ limitations under the License.
 
 #include <private/internal-components.h>
 static const struct hwloc_component* hwloc_static_components[] = {
-    &hwloc_noos_component,      &hwloc_xml_component,
-    &hwloc_synthetic_component, &hwloc_xml_nolibxml_component,
-    &hwloc_linux_component,     &hwloc_linuxio_component,
-    &hwloc_x86_component,       NULL};
+    &hwloc_noos_component,
+    &hwloc_xml_component,
+    &hwloc_synthetic_component,
+    &hwloc_xml_nolibxml_component,
+#ifdef __linux__
+    &hwloc_linux_component,
+    &hwloc_linuxio_component,
+#endif
+#ifdef __FreeBSD__
+    &hwloc_freebsd_component,
+#endif
+#if defined(__x86_64__) || defined(__amd64__) || defined(_M_IX86) || \
+    defined(_M_X64)
+    &hwloc_x86_component,
+#endif
+    NULL};
 
 #endif  // THIRD_PARTY_HWLOC_STATIC_COMPONENTS_H_

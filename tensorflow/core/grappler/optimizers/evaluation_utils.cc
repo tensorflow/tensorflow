@@ -26,44 +26,23 @@ namespace tensorflow {
 namespace grappler {
 using TensorVector = gtl::InlinedVector<TensorValue, 4>;
 
-namespace {
-class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
- public:
-  explicit EigenThreadPoolWrapper(thread::ThreadPool* pool) : pool_(pool) {}
-  ~EigenThreadPoolWrapper() override {}
-  void Schedule(std::function<void()> fn) override {
-    auto wrapped = [=]() {
-      // TensorFlow flushes denormals to zero and rounds to nearest, so we do
-      // the same here.
-      port::ScopedFlushDenormal flush;
-      port::ScopedSetRound round(FE_TONEAREST);
-      fn();
-    };
-    pool_->Schedule(std::move(wrapped));
-  }
-  int NumThreads() const override { return pool_->NumThreads(); }
-  int CurrentThreadId() const override { return pool_->CurrentThreadId(); }
-
- private:
-  thread::ThreadPool* pool_ = nullptr;
-};
-
-}  // namespace
+// In order to avoid the overhead of creating a large thread pool, we set a
+// small default thread count. This value should be revised should DeviceSimple
+// be used to evaluate nodes with a large degree of intra-op parallelism.
+const int kDeviceSimpleThreads = 2;
 
 DeviceSimple::DeviceSimple() : DeviceBase(Env::Default()) {
-  eigen_worker_threads_.num_threads = port::NumSchedulableCPUs();
+  eigen_worker_threads_.num_threads = kDeviceSimpleThreads;
   eigen_worker_threads_.workers = new thread::ThreadPool(
       Env::Default(), "evaluation_utils", eigen_worker_threads_.num_threads);
-  eigen_threadpool_wrapper_.reset(
-      new EigenThreadPoolWrapper(eigen_worker_threads_.workers));
   eigen_device_.reset(new Eigen::ThreadPoolDevice(
-      eigen_threadpool_wrapper_.get(), eigen_worker_threads_.num_threads));
+      eigen_worker_threads_.workers->AsEigenThreadPool(),
+      eigen_worker_threads_.num_threads));
   set_tensorflow_cpu_worker_threads(&eigen_worker_threads_);
   set_eigen_cpu_device(eigen_device_.get());
 }
 
 DeviceSimple::~DeviceSimple() {
-  eigen_threadpool_wrapper_.reset();
   eigen_device_.reset();
   delete eigen_worker_threads_.workers;
 }

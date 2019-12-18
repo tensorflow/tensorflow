@@ -46,8 +46,10 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     element_count = np.size(x) / int(np.shape(x)[-1])
     mean = x_sum / element_count
     var = x_square_sum / element_count - mean * mean
+    factor = element_count / max(element_count - 1, 1)
+    corrected_var = var * factor
     normalized = (x - mean) / np.sqrt(var + epsilon)
-    return (normalized * scale + offset), mean, var
+    return (normalized * scale + offset), mean, var, corrected_var
 
   def _reference_grad(self, x, grad_y, scale, mean, var, epsilon, data_format):
     # Use the following formulas to calculate gradients:
@@ -80,10 +82,10 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     offset_val = np.random.random_sample(scale_shape).astype(np.float32)
     epsilon = 0.001
     data_format_src = "NHWC"
-    y_ref, mean_ref, var_ref = self._reference_training(
+    y_ref, mean_ref, var_ref, _ = self._reference_training(
         x_val, scale_val, offset_val, epsilon, data_format_src)
 
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       # To avoid constant folding
       x_val_converted = test_utils.ConvertBetweenDataFormats(
           x_val, data_format_src, data_format)
@@ -123,10 +125,12 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     var_val = np.random.random_sample(scale_shape).astype(np.float32)
     epsilon = 0.001
     data_format_src = "NHWC"
-    y_ref, mean_ref, var_ref = self._reference_training(
+    # When in training mode, fused_batchnorm applies an implicit Bessel's
+    # correction. So we have to use the corrected variance here, as well.
+    y_ref, mean_ref, _, var_ref_corr = self._reference_training(
         x_val, scale_val, offset_val, epsilon, data_format_src)
 
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       # To avoid constant folding
       x_val_converted = test_utils.ConvertBetweenDataFormats(
           x_val, data_format_src, data_format)
@@ -168,7 +172,7 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
       })
       self.assertAllClose(mean_val, mean_ref, atol=1e-3)
       self.assertAllClose(y_val, y_ref_converted, atol=1e-3)
-      self.assertAllClose(var_val, var_ref, atol=1e-3)
+      self.assertAllClose(var_val, var_ref_corr, atol=1e-3)
 
   @parameterized.named_parameters(*DATA_FORMATS)
   def testLearning(self, data_format):
@@ -209,7 +213,7 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     grad_x_ref, grad_scale_ref, grad_offset_ref = self._reference_grad(
         x_val, grad_val, scale_val, mean_val, var_val, epsilon, data_format_src)
 
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       grad_val_converted = test_utils.ConvertBetweenDataFormats(
           grad_val, data_format_src, data_format)
       x_val_converted = test_utils.ConvertBetweenDataFormats(
@@ -262,7 +266,7 @@ class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
     var_val = np.random.random_sample(scale_shape).astype(np.float32)
     data_format_src = "NHWC"
 
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       grad_val_converted = test_utils.ConvertBetweenDataFormats(
           grad_val, data_format_src, data_format)
       x_val_converted = test_utils.ConvertBetweenDataFormats(

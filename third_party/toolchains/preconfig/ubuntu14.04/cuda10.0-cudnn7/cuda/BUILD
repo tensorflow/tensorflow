@@ -1,3 +1,6 @@
+load(":build_defs.bzl", "cuda_header_library")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
 package(default_visibility = ["//visibility:public"])
@@ -28,37 +31,29 @@ config_setting(
 config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
-    visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "freebsd",
     values = {"cpu": "freebsd"},
-    visibility = ["//visibility:public"],
 )
 
-cc_library(
+cuda_header_library(
     name = "cuda_headers",
     hdrs = [
         "cuda/cuda_config.h",
         ":cuda-include",
-        ":cudnn-include",
     ],
+    include_prefix = "third_party/gpus",
     includes = [
-        ".",
+        ".",  # required to include cuda/cuda/cuda_config.h as cuda/config.h
         "cuda/include",
-        "cuda/include/crt",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cudart_static",
     srcs = ["cuda/lib/libcudart_static.a"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
     linkopts = select({
         ":freebsd": [],
         "//conditions:default": ["-ldl"],
@@ -66,104 +61,75 @@ cc_library(
         "-lpthread",
         "-lrt",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cuda_driver",
     srcs = ["cuda/lib/libcuda.so"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cudart",
     srcs = ["cuda/lib/libcudart.so.10.0"],
     data = ["cuda/lib/libcudart.so.10.0"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
+)
+
+cuda_header_library(
+    name = "cublas_headers",
+    hdrs = [":cublas-include"],
+    include_prefix = "third_party/gpus/cuda/include",
+    includes = ["cublas/include"],
+    strip_include_prefix = "cublas/include",
+    deps = [":cuda_headers"],
 )
 
 cc_library(
     name = "cublas",
     srcs = ["cuda/lib/libcublas.so.10.0"],
     data = ["cuda/lib/libcublas.so.10.0"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cusolver",
     srcs = ["cuda/lib/libcusolver.so.10.0"],
     data = ["cuda/lib/libcusolver.so.10.0"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
     linkopts = ["-lgomp"],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cudnn",
     srcs = ["cuda/lib/libcudnn.so.7"],
     data = ["cuda/lib/libcudnn.so.7"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cudnn_header",
-    includes = [
-        ".",
-        "cuda/include",
-    ],
-    visibility = ["//visibility:public"],
+    hdrs = [":cudnn-include"],
+    include_prefix = "third_party/gpus/cudnn",
+    strip_include_prefix = "cudnn/include",
+    deps = [":cuda_headers"],
 )
 
 cc_library(
     name = "cufft",
     srcs = ["cuda/lib/libcufft.so.10.0"],
     data = ["cuda/lib/libcufft.so.10.0"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "curand",
     srcs = ["cuda/lib/libcurand.so.10.0"],
     data = ["cuda/lib/libcurand.so.10.0"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cuda",
-    visibility = ["//visibility:public"],
     deps = [
         ":cublas",
         ":cuda_headers",
@@ -174,33 +140,38 @@ cc_library(
     ],
 )
 
-cc_library(
+cuda_header_library(
     name = "cupti_headers",
-    hdrs = [
-        "cuda/cuda_config.h",
-        ":cuda-extras",
-    ],
-    includes = [
-        ".",
-        "cuda/extras/CUPTI/include/",
-    ],
-    visibility = ["//visibility:public"],
+    hdrs = [":cuda-extras"],
+    include_prefix = "third_party/gpus",
+    includes = ["cuda/extras/CUPTI/include/"],
+    deps = [":cuda_headers"],
 )
 
 cc_library(
     name = "cupti_dsos",
     data = ["cuda/lib/libcupti.so.10.0"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
-    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "cusparse",
+    srcs = ["cuda/lib/libcusparse.so.10.0"],
+    data = ["cuda/lib/libcusparse.so.10.0"],
+    linkopts = ["-lgomp"],
+    linkstatic = 1,
 )
 
 cc_library(
     name = "libdevice_root",
     data = [":cuda-nvvm"],
-    visibility = ["//visibility:public"],
+)
+
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+    deps = [
+        "@bazel_skylib//lib:selects",
+    ],
 )
 
 genrule(
@@ -1241,6 +1212,18 @@ genrule(
 )
 
 genrule(
+    name = "cublas-include",
+    outs = [
+        "cublas/include/cublas.h",
+        "cublas/include/cublas_v2.h",
+        "cublas/include/cublas_api.h",
+    ],
+    cmd = """cp -f "/usr/local/cuda-10.0/include/cublas.h" "$(location cublas/include/cublas.h)" && \
+cp -f "/usr/local/cuda-10.0/include/cublas_v2.h" "$(location cublas/include/cublas_v2.h)" && \
+cp -f "/usr/local/cuda-10.0/include/cublas_api.h" "$(location cublas/include/cublas_api.h)" """,
+)
+
+genrule(
     name = "cuda-lib",
     outs = [
         "cuda/lib/libcuda.so",
@@ -1252,8 +1235,18 @@ genrule(
         "cuda/lib/libcufft.so.10.0",
         "cuda/lib/libcudnn.so.7",
         "cuda/lib/libcupti.so.10.0",
+        "cuda/lib/libcusparse.so.10.0",
     ],
-    cmd = """cp -f "/usr/local/cuda-10.0/lib64/stubs/libcuda.so" $(location cuda/lib/libcuda.so) && cp -f "/usr/local/cuda-10.0/lib64/libcudart.so.10.0" $(location cuda/lib/libcudart.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcudart_static.a" $(location cuda/lib/libcudart_static.a) && cp -f "/usr/local/cuda-10.0/lib64/libcublas.so.10.0" $(location cuda/lib/libcublas.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcusolver.so.10.0" $(location cuda/lib/libcusolver.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcurand.so.10.0" $(location cuda/lib/libcurand.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcufft.so.10.0" $(location cuda/lib/libcufft.so.10.0) && cp -f "/usr/lib/x86_64-linux-gnu/libcudnn.so.7" $(location cuda/lib/libcudnn.so.7) && cp -f "/usr/local/cuda-10.0/extras/CUPTI/lib64/libcupti.so.10.0" $(location cuda/lib/libcupti.so.10.0) """,
+    cmd = """cp -f "/usr/local/cuda-10.0/lib64/stubs/libcuda.so" "$(location cuda/lib/libcuda.so)" && \
+cp -f "/usr/local/cuda-10.0/lib64/libcudart.so.10.0" "$(location cuda/lib/libcudart.so.10.0)" && \
+cp -f "/usr/local/cuda-10.0/lib64/libcudart_static.a" "$(location cuda/lib/libcudart_static.a)" && \
+cp -f "/usr/local/cuda-10.0/lib64/libcublas.so.10.0" "$(location cuda/lib/libcublas.so.10.0)" && \
+cp -f "/usr/local/cuda-10.0/lib64/libcusolver.so.10.0" "$(location cuda/lib/libcusolver.so.10.0)" && \
+cp -f "/usr/local/cuda-10.0/lib64/libcurand.so.10.0" "$(location cuda/lib/libcurand.so.10.0)" && \
+cp -f "/usr/local/cuda-10.0/lib64/libcufft.so.10.0" "$(location cuda/lib/libcufft.so.10.0)" && \
+cp -f "/usr/lib/x86_64-linux-gnu/libcudnn.so.7" "$(location cuda/lib/libcudnn.so.7)" && \
+cp -f "/usr/local/cuda-10.0/extras/CUPTI/lib64/libcupti.so.10.0" "$(location cuda/lib/libcupti.so.10.0)" && \
+cp -f "/usr/local/cuda-10.0/lib64/libcusparse.so.10.0" "$(location cuda/lib/libcusparse.so.10.0)" """,
 )
 
 genrule(
@@ -1283,7 +1276,7 @@ genrule(
 genrule(
     name = "cudnn-include",
     outs = [
-        "cuda/include/cudnn.h",
+        "cudnn/include/cudnn.h",
     ],
-    cmd = """cp -f "/usr/include/cudnn.h" $(location cuda/include/cudnn.h) """,
+    cmd = """cp -f "/usr/include/cudnn.h" "$(location cudnn/include/cudnn.h)" """,
 )

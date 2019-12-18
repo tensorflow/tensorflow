@@ -26,30 +26,68 @@ import sys as _sys
 
 # pylint: disable=g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
+from tensorflow.python.tools import module_util as _module_util
+from tensorflow.python.platform import tf_logging as _logging
 
 # API IMPORTS PLACEHOLDER
 
-from tensorflow.python.tools import component_api_helper as _component_api_helper
-_component_api_helper.package_hook(
-    parent_package_str=__name__,
-    child_package_str=(
-        'tensorflow_estimator.python.estimator.api._v1.estimator'))
+# WRAPPER_PLACEHOLDER
 
+if "dev" in __version__:   # pylint: disable=undefined-variable
+  _logging.warning("""
+
+  TensorFlow's `tf-nightly` package will soon be updated to TensorFlow 2.0.
+
+  Please upgrade your code to TensorFlow 2.0:
+    * https://www.tensorflow.org/guide/migrate
+
+  Or install the latest stable TensorFlow 1.X release:
+    * `pip install -U "tensorflow==1.*"`
+
+  Otherwise your code may be broken by the change.
+
+  """)
+
+# Make sure directory containing top level submodules is in
+# the __path__ so that "from tensorflow.foo import bar" works.
+# We're using bitwise, but there's nothing special about that.
+_API_MODULE = _sys.modules[__name__].bitwise  # pylint: disable=undefined-variable
 _current_module = _sys.modules[__name__]
-if not hasattr(_current_module, 'estimator'):
-  _component_api_helper.package_hook(
-      parent_package_str=__name__,
-      child_package_str=(
-          'tensorflow_estimator.python.estimator.api.estimator'))
-_component_api_helper.package_hook(
-    parent_package_str=__name__,
-    child_package_str=('tensorflow.python.keras.api._v1.keras'))
+_tf_api_dir = _os.path.dirname(_os.path.dirname(_API_MODULE.__file__))
+if not hasattr(_current_module, '__path__'):
+  __path__ = [_tf_api_dir]
+elif _tf_api_dir not in __path__:
+  __path__.append(_tf_api_dir)
+
+# Hook external TensorFlow modules.
+# Import compat before trying to import summary from tensorboard, so that
+# reexport_tf_summary can get compat from sys.modules. Only needed if using
+# lazy loading.
+_current_module.compat.v2  # pylint: disable=pointless-statement
+try:
+  from tensorflow_estimator.python.estimator.api._v1 import estimator
+  _current_module.__path__ = (
+      [_module_util.get_parent_dir(estimator)] + _current_module.__path__)
+  setattr(_current_module, "estimator", estimator)
+except ImportError:
+  pass
+
+try:
+  from .python.keras.api._v1 import keras
+  _current_module.__path__ = (
+      [_module_util.get_parent_dir(keras)] + _current_module.__path__)
+  setattr(_current_module, "keras", keras)
+except ImportError:
+  pass
+
+
 from tensorflow.python.util.lazy_loader import LazyLoader  # pylint: disable=g-import-not-at-top
 _CONTRIB_WARNING = """
-WARNING: The TensorFlow contrib module will not be included in TensorFlow 2.0.
+The TensorFlow contrib module will not be included in TensorFlow 2.0.
 For more information, please see:
   * https://github.com/tensorflow/community/blob/master/rfcs/20180907-contrib-sunset.md
   * https://github.com/tensorflow/addons
+  * https://github.com/tensorflow/io (for I/O related ops)
 If you depend on functionality not listed there, please file an issue.
 """
 contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib',
@@ -63,18 +101,8 @@ if '__all__' in vars():
 
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
 # The 'app' module will be imported as part of the placeholder section above.
-app.flags = flags  # pylint: disable=undefined-variable
-
-# Also use 'app' module (choice is arbitrary) to derive the API directory below.
-_API_MODULE = app  # pylint: disable=undefined-variable
-
-# Make sure directory containing top level submodules is in
-# the __path__ so that "from tensorflow.foo import bar" works.
-_tf_api_dir = _os.path.dirname(_os.path.dirname(_API_MODULE.__file__))
-if not hasattr(_current_module, '__path__'):
-  __path__ = [_tf_api_dir]
-elif _tf_api_dir not in __path__:
-  __path__.append(_tf_api_dir)
+_current_module.app.flags = flags  # pylint: disable=undefined-variable
+setattr(_current_module, "flags", flags)
 
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
 # running under pip.
@@ -104,30 +132,10 @@ def _running_from_pip_package():
       _current_file_location.startswith(dir_) for dir_ in _site_packages_dirs)
 
 if _running_from_pip_package():
-  for s in _site_packages_dirs:
+  for _s in _site_packages_dirs:
     # TODO(gunan): Add sanity checks to loaded modules here.
-    plugin_dir = _os.path.join(s, 'tensorflow-plugins')
-    if _fi.file_exists(plugin_dir):
-      _ll.load_library(plugin_dir)
+    _plugin_dir = _os.path.join(_s, 'tensorflow-plugins')
+    if _fi.file_exists(_plugin_dir):
+      _ll.load_library(_plugin_dir)
 
-# These symbols appear because we import the python package which
-# in turn imports from tensorflow.core and tensorflow.python. They
-# must come from this module. So python adds these symbols for the
-# resolution to succeed.
-# pylint: disable=undefined-variable
-try:
-  del python
-  del core
-except NameError:
-  # Don't fail if these modules are not available.
-  # For e.g. this file will be originally placed under tensorflow/_api/v1 which
-  # does not have 'python', 'core' directories. Then, it will be copied
-  # to tensorflow/ which does have these two directories.
-  pass
-# Similarly for compiler. Do it separately to make sure we do this even if the
-# others don't exist.
-try:
-  del compiler
-except NameError:
-  pass
-# pylint: enable=undefined-variable
+# __all__ PLACEHOLDER

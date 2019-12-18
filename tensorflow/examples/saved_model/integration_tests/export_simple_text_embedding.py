@@ -23,11 +23,7 @@ import tempfile
 from absl import app
 from absl import flags
 
-import tensorflow as tf
-
-# TODO(vbardiovsky): remove these when symbols are public.
-from tensorflow.python.ops import lookup_ops
-from tensorflow.python.training.tracking import tracking
+import tensorflow.compat.v2 as tf
 
 FLAGS = flags.FLAGS
 
@@ -54,13 +50,15 @@ class TextEmbeddingModel(tf.train.Checkpoint):
   def __init__(self, vocabulary, emb_dim, oov_buckets):
     super(TextEmbeddingModel, self).__init__()
     self._oov_buckets = oov_buckets
-    self._vocabulary_file = tracking.TrackableAsset(
-        write_vocabulary_file(vocabulary))
     self._total_size = len(vocabulary) + oov_buckets
-    self._table = lookup_ops.index_table_from_file(
-        vocabulary_file=self._vocabulary_file,
-        num_oov_buckets=self._oov_buckets,
-        hasher_spec=lookup_ops.FastHashSpec)
+    # Assign the table initializer to this instance to ensure the asset
+    # it depends on is saved with the SavedModel.
+    self._table_initializer = tf.lookup.TextFileInitializer(
+        write_vocabulary_file(vocabulary), tf.string,
+        tf.lookup.TextFileIndex.WHOLE_LINE, tf.int64,
+        tf.lookup.TextFileIndex.LINE_NUMBER)
+    self._table = tf.lookup.StaticVocabularyTable(
+        self._table_initializer, num_oov_buckets=self._oov_buckets)
     self.embeddings = tf.Variable(
         tf.random.uniform(shape=[self._total_size, emb_dim]))
     self.variables = [self.embeddings]
@@ -72,7 +70,7 @@ class TextEmbeddingModel(tf.train.Checkpoint):
     normalized_sentences = tf.strings.regex_replace(
         input=sentences, pattern=r"\pP", rewrite="")
     normalized_sentences = tf.reshape(normalized_sentences, [-1])
-    sparse_tokens = tf.string_split(normalized_sentences, " ")
+    sparse_tokens = tf.strings.split(normalized_sentences, " ").to_sparse()
 
     # Deal with a corner case: there is one empty sentence.
     sparse_tokens, _ = tf.sparse.fill_empty_rows(sparse_tokens, tf.constant(""))

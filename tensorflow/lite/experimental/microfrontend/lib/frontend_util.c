@@ -57,12 +57,10 @@ int FrontendPopulateState(const struct FrontendConfig* config,
 
   int input_correction_bits =
       MostSignificantBit32(state->fft.fft_size) - 1 - (kFilterbankBits / 2);
-  if (!PcanGainControlPopulateState(&config->pcan_gain_control,
-                                    &state->pcan_gain_control,
-                                    state->noise_reduction.estimate,
-                                    state->filterbank.num_channels,
-                                    state->noise_reduction.smoothing_bits,
-                                    input_correction_bits)) {
+  if (!PcanGainControlPopulateState(
+          &config->pcan_gain_control, &state->pcan_gain_control,
+          state->noise_reduction.estimate, state->filterbank.num_channels,
+          state->noise_reduction.smoothing_bits, input_correction_bits)) {
     fprintf(stderr, "Failed to populate pcan gain control state\n");
     return 0;
   }

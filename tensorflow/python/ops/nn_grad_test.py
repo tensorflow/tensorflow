@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
@@ -155,6 +156,80 @@ class DepthwiseConv2dTest(test.TestCase):
 
     grad_wrt_filter = gradients_impl.gradients(out, f)[0]
     self.run_test(x, grad_wrt_filter)
+
+
+class EluGradOpTest(test.TestCase):
+
+  @test_util.run_deprecated_v1
+  def testEluGradGradWRTgrad_ys(self):
+    inputs = constant_op.constant(
+        [[-2, -1, 1, 3], [5, 7, 8, 9]], dtype=dtypes.float32)
+    dummy = constant_op.constant(
+        [[3, 1, -1, -2], [9, 8, 7, 6]], dtype=dtypes.float32)
+
+    elu = gen_nn_ops.elu(inputs)
+    elu_grad = gradients_impl.gradients(elu, inputs, grad_ys=dummy)[0]
+    with self.cached_session():
+      error = gradient_checker.compute_gradient_error(
+          dummy,
+          dummy.shape,
+          elu_grad,
+          elu_grad.shape)
+      self.assertLess(error, 1e-4)
+
+  @test_util.run_deprecated_v1
+  def testEluGradGradWRTinputs(self):
+    inputs = constant_op.constant(
+        [[-2, -1, 1, 3], [5, 7, 8, 9]], dtype=dtypes.float32)
+    dummy = constant_op.constant(
+        [[3, 1, -1, -2], [9, 8, 7, 6]], dtype=dtypes.float32)
+
+    elu = gen_nn_ops.elu(inputs)
+    elu_grad = gradients_impl.gradients(elu, inputs, grad_ys=dummy)[0]
+    with self.cached_session():
+      error = gradient_checker.compute_gradient_error(
+          inputs,
+          inputs.shape,
+          elu_grad,
+          elu_grad.shape)
+      self.assertLess(error, 1e-4)
+
+
+class SeluGradOpTest(test.TestCase):
+
+  @test_util.run_deprecated_v1
+  def testSeluGradGradWRTgrad_ys(self):
+    inputs = constant_op.constant(
+        [[-2, -1, 1, 3], [5, 7, 8, 9]], dtype=dtypes.float32)
+    dummy = constant_op.constant(
+        [[3, 1, -1, -2], [9, 8, 7, 6]], dtype=dtypes.float32)
+
+    selu = gen_nn_ops.selu(inputs)
+    selu_grad = gradients_impl.gradients(selu, inputs, grad_ys=dummy)[0]
+    with self.cached_session():
+      error = gradient_checker.compute_gradient_error(
+          dummy,
+          dummy.shape,
+          selu_grad,
+          selu_grad.shape)
+      self.assertLess(error, 1e-4)
+
+  @test_util.run_deprecated_v1
+  def testSeluGradGradWRTinputs(self):
+    inputs = constant_op.constant(
+        [[-2, -1, 1, 3], [5, 7, 8, 9]], dtype=dtypes.float32)
+    dummy = constant_op.constant(
+        [[3, 1, -1, -2], [9, 8, 7, 6]], dtype=dtypes.float32)
+
+    selu = gen_nn_ops.selu(inputs)
+    selu_grad = gradients_impl.gradients(selu, inputs, grad_ys=dummy)[0]
+    with self.cached_session():
+      error = gradient_checker.compute_gradient_error(
+          inputs,
+          inputs.shape,
+          selu_grad,
+          selu_grad.shape)
+      self.assertLess(error, 1e-4)
 
 
 if __name__ == "__main__":

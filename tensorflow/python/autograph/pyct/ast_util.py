@@ -200,7 +200,7 @@ def matches(node, pattern):
     bool
   """
   if isinstance(pattern, str):
-    pattern, = parser.parse_str(pattern).body
+    pattern = parser.parse_str(pattern)
 
   matcher = PatternMatcher(pattern)
   matcher.visit(node)
@@ -283,8 +283,8 @@ def parallel_walk(node, other):
     n = node_stack.pop()
     o = other_stack.pop()
 
-    if (not isinstance(n, (ast.AST, gast.AST, str)) or
-        not isinstance(o, (ast.AST, gast.AST, str)) or
+    if ((not isinstance(n, (ast.AST, gast.AST, str)) and n is not None) or
+        (not isinstance(o, (ast.AST, gast.AST, str)) and n is not None) or
         n.__class__.__name__ != o.__class__.__name__):
       raise ValueError('inconsistent nodes: {} ({}) and {} ({})'.format(
           n, n.__class__.__name__, o, o.__class__.__name__))
@@ -293,6 +293,9 @@ def parallel_walk(node, other):
 
     if isinstance(n, str):
       assert isinstance(o, str), 'The check above should have ensured this'
+      continue
+    if n is None:
+      assert o is None, 'The check above should have ensured this'
       continue
 
     for f in n._fields:

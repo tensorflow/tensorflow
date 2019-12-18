@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/jit/shape_inference.h"
 
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -41,7 +41,15 @@ Status ShapeHandleToTensorShape(shape_inference::InferenceContext* context,
 
 Status PropagateShapes(const Graph& graph,
                        const std::map<int, InferredShape>& arg_shapes,
+                       const std::vector<BackEdgeHelper::BackEdge>& back_edges,
                        ShapeRefiner* shape_refiner) {
+  std::map<const Node*, const Node*> merge_to_next_iteration;
+  for (const auto& e : back_edges) {
+    if (e.src->IsNextIteration() && e.dst->IsMerge()) {
+      merge_to_next_iteration[e.dst] = e.src;
+    }
+  }
+
   // Visits the nodes in topological order (reverse post-order), inferring
   // shapes.
   // TODO(phawkins): handle cyclic graphs.
@@ -88,6 +96,45 @@ Status PropagateShapes(const Graph& graph,
         TF_RETURN_IF_ERROR(
             context->MakeShapeFromPartialTensorShape(arg_shape.shape, &handle));
         TF_RETURN_IF_ERROR(shape_refiner->SetShape(n, 0, handle));
+      }
+    }
+
+    // Merge node causes a loop so we remove NextIteration->Merge edge before
+    // performing shape inference. But removing those edges also prevents us
+    // from inferring output shape for Merge node (we need shapes for all its
+    // inputs).
+    // For loop invariant resource input's Merge node, we set output resource
+    // shape as Enter node's resource shape.
+    // TODO(b/129367850): clean this up.
+    if (n->IsMerge() && n->output_type(0) == DT_RESOURCE) {
+      // Check if this is a loop invariant input's Merge node. We do it by
+      // checking if corresponding NextIteration node comes from Switch node
+      // directly.
+      auto iter = merge_to_next_iteration.find(n);
+      if (iter != merge_to_next_iteration.end()) {
+        const Node *next_iter = iter->second, *node = next_iter;
+        do {
+          TF_RETURN_IF_ERROR(node->input_node(0, &node));
+        } while (node->IsIdentity());
+        const Node* switch_input;
+        bool is_loop_invariant = node->IsSwitch() &&
+                                 node->input_node(0, &switch_input).ok() &&
+                                 switch_input == n;
+        if (is_loop_invariant) {
+          shape_inference::InferenceContext* context =
+              shape_refiner->GetContext(n);
+          for (int i = 0; i < n->num_inputs(); i++) {
+            const Node* input_node;
+            if (n->input_node(i, &input_node).ok()) {
+              auto shapes_and_types = context->input_handle_shapes_and_types(i);
+              if (shapes_and_types) {
+                context->set_output_handle_shapes_and_types(0,
+                                                            *shapes_and_types);
+              }
+              break;
+            }
+          }
+        }
       }
     }
   }
@@ -149,7 +196,8 @@ Status InferShapes(Graph* graph, const std::map<int, InferredShape>& arg_shapes,
   // the shape inference is complete.
   BackEdgeHelper back_edge;
   TF_RETURN_IF_ERROR(back_edge.Remove(graph));
-  TF_RETURN_IF_ERROR(PropagateShapes(*graph, arg_shapes, &shape_refiner));
+  TF_RETURN_IF_ERROR(PropagateShapes(*graph, arg_shapes,
+                                     back_edge.RemovedEdges(), &shape_refiner));
   TF_RETURN_IF_ERROR(back_edge.Replace());
 
   // Currently information does not flow "backward" from consumers to producers

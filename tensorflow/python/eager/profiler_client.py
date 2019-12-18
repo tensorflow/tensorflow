@@ -18,7 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
+from tensorflow.python.eager import eager_util as c_api_util
 from tensorflow.python.framework import errors
 
 
@@ -28,9 +29,9 @@ def start_tracing(service_addr,
                   worker_list='',
                   include_dataset_ops=True,
                   num_tracing_attempts=3):
-  """Sending grpc requests to profiler server to perform on-demand profiling.
+  """Sends grpc requests to profiler server to perform on-demand profiling.
 
-  Note: This method will block caller thread until receives tracing result.
+  This method will block caller thread until receives tracing result.
 
   Args:
     service_addr: Address of profiler service e.g. localhost:6009.
@@ -45,8 +46,32 @@ def start_tracing(service_addr,
   Raises:
     UnavailableError: If no trace event is collected.
   """
-  # TODO(fishx): Uses errors.raise_exception_on_not_ok_status instead.
-  if not pywrap_tensorflow.TFE_ProfilerClientStartTracing(
+  if not pywrap_tfe.TFE_ProfilerClientStartTracing(
       service_addr, logdir, worker_list, include_dataset_ops, duration_ms,
       num_tracing_attempts):
     raise errors.UnavailableError(None, None, 'No trace event is collected.')
+
+
+def monitor(service_addr,
+            duration_ms,
+            monitoring_level=1,
+            display_timestamp=False):
+  """Sends grpc requests to profiler server to perform on-demand monitoring.
+
+  This method will block caller thread until receives monitoring result.
+
+  Args:
+    service_addr: Address of profiler service e.g. localhost:6009.
+    duration_ms: Duration of tracing or monitoring in ms.
+    monitoring_level: Choose a monitoring level between 1 and 2 to monitor your
+      job. Level 2 is more verbose than level 1 and shows more metrics.
+    display_timestamp: Set to true to display timestamp in monitoring result.
+
+  Returns:
+    A string of monitoring output.
+  """
+  with c_api_util.tf_buffer() as buffer_:
+    pywrap_tfe.TFE_ProfilerClientMonitor(service_addr, duration_ms,
+                                         monitoring_level, display_timestamp,
+                                         buffer_)
+    return pywrap_tfe.TF_GetBuffer(buffer_)

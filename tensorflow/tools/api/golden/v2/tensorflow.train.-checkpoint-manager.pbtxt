@@ -7,12 +7,16 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "directory"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "latest_checkpoint"
     mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'checkpoint\', \'directory\', \'max_to_keep\', \'keep_checkpoint_every_n_hours\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'checkpoint\', \'directory\', \'max_to_keep\', \'keep_checkpoint_every_n_hours\', \'checkpoint_name\'], varargs=None, keywords=None, defaults=[\'None\', \'ckpt\'], "
   }
   member_method {
     name: "save"

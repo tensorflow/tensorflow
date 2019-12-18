@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"  // for DeviceLocality
 #include "tensorflow/core/lib/core/status.h"
@@ -43,12 +44,9 @@ class WorkerCacheInterface {
   // or can be constructed, returns a pointer to a WorkerInterface object
   // wrapping that channel. The returned value must be destroyed by
   // calling `this->ReleaseWorker(target, ret)`
-  // TODO(mrry): rename this to GetOrCreateWorker() or something that
-  // makes it more obvious that this method returns a potentially
-  // shared object.
-  virtual WorkerInterface* CreateWorker(const string& target) = 0;
+  virtual WorkerInterface* GetOrCreateWorker(const string& target) = 0;
 
-  // Release a worker previously returned by this->CreateWorker(target).
+  // Release a worker previously returned by this->GetOrCreateWorker(target).
   //
   // TODO(jeff,sanjay): Consider moving target into WorkerInterface.
   // TODO(jeff,sanjay): Unify all worker-cache impls and factor out a
@@ -71,6 +69,10 @@ class WorkerCacheInterface {
   virtual void GetDeviceLocalityAsync(const string& device,
                                       DeviceLocality* locality,
                                       StatusCallback done) = 0;
+
+  // Build and return a EagerClientCache object wrapping that channel.
+  virtual Status GetEagerClientCache(
+      std::unique_ptr<eager::EagerClientCache>* eager_client_cache) = 0;
 
   // Start/stop logging activity.
   virtual void SetLogging(bool active) {}

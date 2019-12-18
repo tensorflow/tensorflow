@@ -16,7 +16,9 @@ limitations under the License.
 #include <stdio.h>
 
 #include "tensorflow/core/framework/op_def_util.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/ops/compat/op_compatibility_lib.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
@@ -41,19 +43,26 @@ void WriteUpdateTo(const string& directory) {
   // Make sure the current version of ops are compatible with the
   // historical versions, and generate a new history adding all
   // changed ops.
-  OpList out_op_history;
+  OpCompatibilityLib::OpHistory out_op_history;
   int changed_ops = 0;
   int added_ops = 0;
   TF_QCHECK_OK(compatibility.ValidateCompatible(env, &changed_ops, &added_ops,
                                                 &out_op_history));
   printf("%d changed ops\n%d added ops\n", changed_ops, added_ops);
 
-  if (changed_ops + added_ops > 0) {
+  const string& history_dir = compatibility.op_history_directory();
+  Status status = env->CreateDir(history_dir);
+  if (!errors::IsAlreadyExists(status)) {
+    TF_QCHECK_OK(status);
+  }
+  if (changed_ops + added_ops > 0 || !errors::IsAlreadyExists(status)) {
     // Write out new op history.
-    const string& history_file = compatibility.op_history_file();
-    printf("Writing updated op history to %s...\n", history_file.c_str());
-    TF_QCHECK_OK(
-        WriteStringToFile(env, history_file, out_op_history.DebugString()));
+    printf("Writing updated op history to %s/...\n", history_dir.c_str());
+    for (const auto& op_file : out_op_history) {
+      TF_QCHECK_OK(WriteStringToFile(env,
+                                     io::JoinPath(history_dir, op_file.first),
+                                     op_file.second.DebugString()));
+    }
   }
 }
 

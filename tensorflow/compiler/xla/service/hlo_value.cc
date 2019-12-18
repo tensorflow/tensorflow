@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -77,7 +78,7 @@ HloValue::HloValue(HloValue::Id id, HloInstruction* instruction,
 bool HloValue::operator==(const HloValue& other) const {
   bool equal = defining_instruction() == other.defining_instruction() &&
                defining_index() == other.defining_index();
-  // If the values are equal they most both be phi (or non phi).
+  // If the values are equal they must both be phi (or non phi).
   CHECK(!(equal && is_phi() != other.is_phi()));
   return equal;
 }
@@ -87,16 +88,17 @@ bool HloValue::operator!=(const HloValue& other) const {
 }
 
 string HloValue::ToShortString() const {
-  string index_str = defining_instruction()->shape().IsTuple()
-                         ? defining_index().ToString()
-                         : "";
-  return StrCat(id(), " ", is_phi_ ? "PHI " : "",
-                defining_instruction()->name(), index_str);
+  return absl::StrFormat(
+      "<%d %s%s%s%s>", id(), instruction()->name(),
+      instruction()->shape().IsTuple() ? index().ToString() : "",
+      is_phi() ? " (phi)" : "",
+      has_color() ? StrCat(" @", color().value()) : "");
 }
 
 string HloValue::ToString(int indent) const {
   string indentation(indent, ' ');
-  string out = StrCat(indentation, ToShortString(), ", positions:\n");
+  string out =
+      StrCat(indentation, ToShortString(), "\n", indentation, " positions:\n");
   for (const HloPosition& position : positions()) {
     StrAppend(&out, indentation, "  ", position.ToString(), "\n");
   }
@@ -177,12 +179,16 @@ void HloValue::SetPositionsAndComputeUses(
   // Build vector of HloUses for the value.
   for (const HloPosition& position : positions_) {
     for (HloInstruction* user : position.instruction->users()) {
-      for (int64 operand_number : user->OperandIndices(position.instruction)) {
+      for (int64 i = 0; i < user->operand_count(); ++i) {
+        if (user->operand(i) != position.instruction) {
+          continue;
+        }
+
         // Root instructions of computations are considered to be uses whether
         // or not the root instruction itself actually uses the value.
-        if (MayUseOperandValue(operand_number, position.index, user) ||
+        if (MayUseOperandValue(i, position.index, user) ||
             ContainsKey(root_positions, user)) {
-          HloUse new_use{user, operand_number, position.index};
+          HloUse new_use{user, i, position.index};
 
           // The new use must not already exist in uses_.
           for (const HloUse& use : uses_) {
@@ -250,6 +256,14 @@ bool HloValueSet::AddValue(const HloValue* value) {
 std::ostream& operator<<(std::ostream& out, const HloValueSet& value_set) {
   out << value_set.ToString();
   return out;
+}
+
+bool InstructionValueSet::IsAmbiguous() const {
+  bool ambiguous = false;
+  for (auto& iter : *this) {
+    ambiguous |= iter.second.values().size() > 1;
+  }
+  return ambiguous;
 }
 
 bool InstructionValueSet::AssignUnionOf(

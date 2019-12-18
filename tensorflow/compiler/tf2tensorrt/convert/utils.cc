@@ -21,19 +21,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-bool IsGoogleTensorRTEnabled() {
-  // TODO(laigd): consider also checking if tensorrt shared libraries are
-  // accessible. We can then direct users to this function to make sure they can
-  // safely write code that uses tensorrt conditionally. E.g. if it does not
-  // check for for tensorrt, and user mistakenly uses tensorrt, they will just
-  // crash and burn.
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-  return true;
-#else
-  return false;
-#endif
-}
-
 Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name) {
   switch (mode) {
     case TrtPrecisionMode::FP32:

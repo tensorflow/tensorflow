@@ -17,7 +17,7 @@
 
 #include <vector>
 
-#include "third_party/tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.h"
 
 std::vector<tensorflow::uint8> LoadImageFromFile(const char* file_name,
 						 int* out_width,

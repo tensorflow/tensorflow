@@ -253,6 +253,7 @@ class MklCPUAllocator : public Allocator {
     auto l_stats = large_size_allocator_->GetStats();
 
     // Combine statistics from small-size and large-size allocator.
+    mutex_lock l(mutex_);
     stats_.num_allocs = l_stats->num_allocs + s_stats->num_allocs;
     stats_.bytes_in_use = l_stats->bytes_in_use + s_stats->bytes_in_use;
     stats_.peak_bytes_in_use =

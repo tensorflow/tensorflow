@@ -17,15 +17,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 import threading
 import weakref
 
 import numpy as np
 
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -48,9 +49,8 @@ class OpsTest(test_util.TensorFlowTestCase):
     product = three * five
     self.assertAllEqual(15, product)
 
+  @test_util.run_gpu_only
   def testMatMulGPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
     three = constant_op.constant([[3.]]).gpu()
     five = constant_op.constant([[5.]]).gpu()
     product = math_ops.matmul(three, five)
@@ -97,9 +97,8 @@ class OpsTest(test_util.TensorFlowTestCase):
 
   # See comments on handling of int32 tensors on GPU in
   # EagerTensor.__init__.
+  @test_util.run_gpu_only
   def testInt32CPUDefault(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
     with context.device('/gpu:0'):
       r = constant_op.constant(1) + constant_op.constant(2)
     self.assertAllEqual(r, 3)
@@ -166,31 +165,44 @@ class OpsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(3, three_x)
 
   def testOperatorOverrides(self):
-    # TODO(henrytan): test with negative number.
-    a = constant_op.constant([1])
-    b = constant_op.constant([2])
 
-    self.assertAllEqual((-a), [-1])
-    self.assertAllEqual(abs(b), [2])
+    def ops_test(v1, v2):
+      a = constant_op.constant(v1)
+      b = constant_op.constant(v2)
 
-    self.assertAllEqual((a + b), [3])
-    self.assertAllEqual((a - b), [-1])
-    self.assertAllEqual((a * b), [2])
-    self.assertAllEqual((a * a), [1])
+      self.assertAllEqual((-a), np.negative(v1))
+      self.assertAllEqual(abs(b), np.absolute(v2))
 
-    self.assertAllEqual((a**b), [1])
-    self.assertAllEqual((a / b), [1 / 2])
-    self.assertAllEqual((a / a), [1])
-    self.assertAllEqual((a % b), [1])
+      self.assertAllEqual((a + b), np.add(v1, v2))
+      self.assertAllEqual((a - b), np.subtract(v1, v2))
+      self.assertAllEqual((a * b), np.multiply(v1, v2))
+      self.assertAllEqual((a * a), np.multiply(v1, v1))
 
-    self.assertAllEqual((a < b), [True])
-    self.assertAllEqual((a <= b), [True])
-    self.assertAllEqual((a > b), [False])
-    self.assertAllEqual((a >= b), [False])
-    self.assertAllEqual((a == b), False)
-    self.assertAllEqual((a != b), True)
+      if all(x >= 0 for x in v2):
+        self.assertAllEqual((a**b), np.power(v1, v2))
+      self.assertAllEqual((a / b), np.true_divide(v1, v2))
 
-    self.assertAllEqual(1, a[constant_op.constant(0)])
+      self.assertAllEqual((a / a), np.true_divide(v1, v1))
+      self.assertAllEqual((a % b), np.mod(v1, v2))
+
+      self.assertAllEqual((a < b), np.less(v1, v2))
+      self.assertAllEqual((a <= b), np.less_equal(v1, v2))
+      self.assertAllEqual((a > b), np.greater(v1, v2))
+      self.assertAllEqual((a >= b), np.greater_equal(v1, v2))
+
+      # TODO(b/120678848): Remove the else branch once we enable
+      # ops.Tensor._USE_EQUALITY by default.
+      if ops.Tensor._USE_EQUALITY:
+        self.assertAllEqual((a == b), np.equal(v1, v2))
+        self.assertAllEqual((a != b), np.not_equal(v1, v2))
+      else:
+        self.assertAllEqual((a == b), np.equal(v1, v2)[0])
+        self.assertAllEqual((a != b), np.not_equal(v1, v2)[0])
+
+      self.assertAllEqual(v1[0], a[constant_op.constant(0)])
+
+    ops_test([1, 4, 8], [2, 3, 5])
+    ops_test([1, -4, -5], [-2, 3, -6])
 
   def test_basic_slice(self):
     npt = np.arange(1, 19, dtype=np.float32).reshape(3, 2, 3)
@@ -242,10 +254,8 @@ class OpsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(npt[:, 0], t[:, 0])
     self.assertAllEqual(npt[:, :, 0], t[:, :, 0])
 
+  @test_util.run_gpu_only
   def testOpWithInputsOnDifferentDevices(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     # The GPU kernel for the Reshape op requires that the
     # shape input be on CPU.
     value = constant_op.constant([1., 2.]).gpu()
@@ -260,48 +270,43 @@ class OpsTest(test_util.TensorFlowTestCase):
         array_ops.fill(constant_op.constant([2], dtype=dtypes.int64),
                        constant_op.constant(1)))
 
+  @test_util.run_gpu_only
   def testOutputOnHostMemory(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
     # The Shape op kernel on GPU places the output in host memory.
     value = constant_op.constant([1.]).gpu()
     shape = array_ops.shape(value)
     self.assertEqual([1], shape.numpy())
 
+  @test_util.run_gpu_only
   def testSilentCopy(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
     # Temporarily replace the context
     # pylint: disable=protected-access
-    del context._context
+    old_context = context.context()
+    context._set_context(context.Context())
     try:
-      context._context = context.Context(
-          device_policy=context.DEVICE_PLACEMENT_SILENT)
+      config.set_device_policy('silent')
       cpu_tensor = constant_op.constant(1.0)
       gpu_tensor = cpu_tensor.gpu()
       self.assertAllEqual(cpu_tensor + gpu_tensor, 2.0)
     finally:
-      del context._context
-      context._context = context.Context()
+      context._set_context(old_context)
     # pylint: enable=protected-access
 
+  @test_util.run_gpu_only
   def testSoftPlacement(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
     # Temporarily replace the context
     # pylint: disable=protected-access
-    del context._context
+    old_context = context.context()
+    context._set_context(context.Context())
     try:
-      context._context = context.Context(
-          device_policy=context.DEVICE_PLACEMENT_SILENT,
-          config=config_pb2.ConfigProto(allow_soft_placement=True))
+      config.set_device_policy('silent')
+      config.set_soft_device_placement(True)
       cpu_tensor = constant_op.constant(1.0)
       result = cpu_tensor + cpu_tensor
       self.assertEqual(result.device,
                        '/job:localhost/replica:0/task:0/device:GPU:0')
     finally:
-      del context._context
-      context._context = context.Context()
+      context._set_context(old_context)
     # pylint: enable=protected-access
 
   def testRandomUniform(self):
@@ -321,16 +326,18 @@ class OpsTest(test_util.TensorFlowTestCase):
     # Uses default
     ctx = context.context()
     t, r = execute.args_to_matching_eager([[3, 4]], ctx, dtypes.int32)
-    self.assertEquals(t, dtypes.int32)
-    self.assertEquals(r[0].dtype, dtypes.int32)
+    self.assertEqual(t, dtypes.int32)
+    self.assertEqual(r[0].dtype, dtypes.int32)
     t, r = execute.args_to_matching_eager([[3, 4]], ctx, dtypes.int64)
-    self.assertEquals(t, dtypes.int64)
-    self.assertEquals(r[0].dtype, dtypes.int64)
+    self.assertEqual(t, dtypes.int64)
+    self.assertEqual(r[0].dtype, dtypes.int64)
+    t, r = execute.args_to_matching_eager([], ctx, dtypes.int64)
+    self.assertEqual(t, dtypes.int64)
     # Doesn't use default
     t, r = execute.args_to_matching_eager(
         [['string', 'arg']], ctx, dtypes.int32)
-    self.assertEquals(t, dtypes.string)
-    self.assertEquals(r[0].dtype, dtypes.string)
+    self.assertEqual(t, dtypes.string)
+    self.assertEqual(r[0].dtype, dtypes.string)
 
   def testFlattenLayer(self):
     flatten_layer = core.Flatten()
@@ -341,9 +348,8 @@ class OpsTest(test_util.TensorFlowTestCase):
   def testIdentity(self):
     self.assertAllEqual(2, array_ops.identity(2))
 
+  @test_util.run_gpu_only
   def testIdentityOnVariable(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
     with context.device('/gpu:0'):
       v = resource_variable_ops.ResourceVariable(True)
     self.assertAllEqual(True, array_ops.identity(v))
@@ -411,19 +417,37 @@ class OpsTest(test_util.TensorFlowTestCase):
 
   def testWeakKeyDictionaryTensor(self):
     weak_key_dict = weakref.WeakKeyDictionary()
+
     strong_x = constant_op.constant([[1.]])
     strong_y = constant_op.constant([[2.]])
-    weak_key_dict[strong_x] = constant_op.constant([[3.]])
-    weak_key_dict[strong_y] = constant_op.constant([[4.]])
+    strong_x_ref = strong_x.experimental_ref()
+    strong_y_ref = strong_y.experimental_ref()
+    weak_key_dict[strong_x_ref] = constant_op.constant([[3.]])
+    weak_key_dict[strong_y_ref] = constant_op.constant([[4.]])
     strong_y.a = constant_op.constant([[5.]])
-    weak_x = weakref.ref(strong_x)
-    del strong_x
-    self.assertIs(weak_x(), None)
-    self.assertEqual([strong_y], list(weak_key_dict))
+    weak_x_ref = weakref.ref(strong_x)
+
+    del strong_x, strong_x_ref
+    self.assertIs(weak_x_ref(), None)
+    self.assertEqual([strong_y_ref], list(weak_key_dict))
     self.assertEqual(1, len(list(weak_key_dict)))
     self.assertEqual(1, len(weak_key_dict))
-    del strong_y
+
+    del strong_y, strong_y_ref
     self.assertEqual([], list(weak_key_dict))
+
+  def testEagerTensorsCanBeGarbageCollected(self):
+    x = constant_op.constant([[1.]])
+    y = constant_op.constant([[2.]])
+    x.y = y
+    y.x = x
+    weak_x = weakref.ref(x)
+    weak_y = weakref.ref(y)
+    del x
+    del y
+    gc.collect()
+    self.assertIs(weak_x(), None)
+    self.assertIs(weak_y(), None)
 
 
 if __name__ == '__main__':

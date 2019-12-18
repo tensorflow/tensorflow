@@ -34,7 +34,7 @@ class FuzzStringSplit : public FuzzSession {
     Tensor delimiter_tensor(tensorflow::DT_STRING, TensorShape({}));
 
     if (size > 0) {
-      // The spec for split is that the delimeter should be 0 or 1 characters.
+      // The spec for split is that the delimiter should be 0 or 1 characters.
       // Naturally, fuzz it with something larger.  (This omits the possibility
       // of handing it a > int32_max size string, which should be tested for in
       // an explicit test).
@@ -42,9 +42,9 @@ class FuzzStringSplit : public FuzzSession {
       if (delim_len > size) {
         delim_len = size - 1;
       }
-      delimiter_tensor.scalar<string>()() =
+      delimiter_tensor.scalar<tstring>()() =
           string(reinterpret_cast<const char*>(data), delim_len);
-      input_tensor.scalar<string>()() = string(
+      input_tensor.scalar<tstring>()() = string(
           reinterpret_cast<const char*>(data + delim_len), size - delim_len);
 
       RunInputs({{"input", input_tensor}, {"delimiter", delimiter_tensor}});

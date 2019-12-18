@@ -12,89 +12,80 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/optimize_dataset_op.h"
+
 #include <map>
 
-#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/graph_rewrite_dataset.h"
+#include "tensorflow/core/kernels/data/rewrite_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace data {
-namespace {
-
-constexpr char kOptimizerName[] = "tf_data_meta_optimizer";
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
-class OptimizeDatasetOp : public UnaryDatasetOpKernel {
- public:
-  explicit OptimizeDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx),
-        graph_def_version_(ctx->graph_def_version()) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
-  }
 
- protected:
-  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
-                   DatasetBase** output) override {
-    std::vector<string> optimizations;
-    OP_REQUIRES_OK(
-        ctx, ParseVectorArgument<string>(ctx, "optimizations", &optimizations));
-    Dataset* dataset =
-        new Dataset(ctx, input, optimizations, output_types_, output_shapes_);
-    Status s = dataset->Optimize(ctx);
-    if (s.ok()) {
-      *output = dataset;
-    } else {
-      dataset->Unref();
-      OP_REQUIRES_OK(ctx, s);
-    }
-  }
+/* static */ constexpr const char* const OptimizeDatasetOp::kDatasetType;
+/* static */ constexpr const char* const OptimizeDatasetOp::kInputDataset;
+/* static */ constexpr const char* const OptimizeDatasetOp::kOptimizations;
+/* static */ constexpr const char* const OptimizeDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const OptimizeDatasetOp::kOutputShapes;
+/* static */ constexpr const char* const
+    OptimizeDatasetOp::kOptimizationConfigs;
 
- private:
-  class Dataset : public GraphRewriteDataset {
-   public:
-    Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const std::vector<string>& optimizations,
-            const DataTypeVector& output_types,
-            const std::vector<PartialTensorShape>& output_shapes)
-        : GraphRewriteDataset(ctx, input, output_types, output_shapes),
-          optimizations_(optimizations) {}
+constexpr char kOptimizerName[] = "tf_data_meta_optimizer";
+constexpr char kOptimizers[] = "optimizers";
+constexpr char kOptimizerConfigs[] = "optimizer_configs";
 
-    string DebugString() const override { return "OptimizeDatasetOp::Dataset"; }
+OptimizeDatasetOp::OptimizeDatasetOp(OpKernelConstruction* ctx)
+    : UnaryDatasetOpKernel(ctx) {
+  OP_REQUIRES_OK(ctx,
+                 ctx->GetAttr(kOptimizationConfigs, &optimization_configs_));
+}
 
-   private:
-    RewriterConfig CreateGrapplerRewriteConfig() override {
-      RewriterConfig rewriter_config;
-      rewriter_config.add_optimizers(kOptimizerName);
-      rewriter_config.set_meta_optimizer_iterations(
-          RewriterConfig_NumIterationsType_ONE);
-      auto custom_optimizer = rewriter_config.add_custom_optimizers();
-      custom_optimizer->set_name(kOptimizerName);
-      auto* custom_optimizations_list =
-          (*custom_optimizer->mutable_parameter_map())["optimizers"]
-              .mutable_list();
-      for (const auto& opt : optimizations_) {
-        custom_optimizations_list->add_s(opt);
-      }
-      return rewriter_config;
-    }
+void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                                    DatasetBase** output) {
+  std::vector<tstring> optimizations;
+  OP_REQUIRES_OK(
+      ctx, ParseVectorArgument<tstring>(ctx, kOptimizations, &optimizations));
 
-    const std::vector<string> optimizations_;
+  auto config_factory = [this, &optimizations]() {
+    return CreateConfig(optimizations, optimization_configs_);
   };
+  OP_REQUIRES_OK(ctx, RewriteDataset(ctx, input, std::move(config_factory),
+                                     /*optimize_function_library=*/true,
+                                     /*record_fingerprint=*/true, output));
+}
 
-  const int graph_def_version_;
-  DataTypeVector output_types_;
-  std::vector<PartialTensorShape> output_shapes_;
-};
+RewriterConfig OptimizeDatasetOp::CreateConfig(
+    std::vector<tstring> optimizations,
+    std::vector<string> optimizations_configs) {
+  RewriterConfig rewriter_config;
+  rewriter_config.add_optimizers(kOptimizerName);
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
+  rewriter_config.set_fail_on_optimizer_errors(true);
+  auto custom_optimizer = rewriter_config.add_custom_optimizers();
+  custom_optimizer->set_name(kOptimizerName);
+  auto* custom_optimizations_list =
+      (*custom_optimizer->mutable_parameter_map())[kOptimizers].mutable_list();
+  for (const auto& opt : optimizations) {
+    custom_optimizations_list->add_s(opt.data(), opt.size());
+  }
+  auto* config_list =
+      (*custom_optimizer->mutable_parameter_map())[kOptimizerConfigs]
+          .mutable_list();
+  for (const auto& config : optimizations_configs) {
+    config_list->add_s(config.data(), config.size());
+  }
+  return rewriter_config;
+}
 
+namespace {
 REGISTER_KERNEL_BUILDER(Name("OptimizeDataset").Device(DEVICE_CPU),
                         OptimizeDatasetOp);
-
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

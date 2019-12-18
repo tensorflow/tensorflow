@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
+
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -29,7 +30,7 @@ class AliasAnalysisTest : public CpuCodegenTest {};
 
 void FakeCustomCallTarget(float* out, float** in) {}
 
-REGISTER_CUSTOM_CALL_TARGET(FakeCustomCallTarget);
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(FakeCustomCallTarget);
 
 TEST_F(AliasAnalysisTest, EmbeddedComputationParamsMayAliasTemps) {
   const char* hlo_string = R"(
@@ -46,7 +47,7 @@ condition {
   condition.state = f32[] parameter(0)
   addend = f32[] custom-call(condition.state), custom_call_target="FakeCustomCallTarget"
   add = f32[] add(addend, condition.state)
-  ROOT greater-than = pred[] greater-than(const.100, add)
+  ROOT greater-than = pred[] compare(const.100, add), direction=GT
 }
 
 ENTRY while3 {

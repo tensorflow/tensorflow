@@ -23,11 +23,14 @@ namespace toco {
 
 namespace tflite {
 
+enum class QuantizedBufferType { NONE, INT8, FLOAT16 };
+
 // The parameters for exporting a TFLite model.
 struct ExportParams {
   bool allow_custom_ops = false;
+  bool allow_dynamic_tensors = true;
   bool enable_select_tf_ops = false;
-  bool quantize_weights = false;
+  QuantizedBufferType quantize_weights = QuantizedBufferType::NONE;
 };
 
 // Transform the given tf.mini model into a TF Lite flatbuffer and deposit the
@@ -47,7 +50,8 @@ inline void Export(const Model& model, bool allow_custom_ops,
                    bool quantize_weights, string* output_file_contents) {
   ExportParams params;
   params.allow_custom_ops = allow_custom_ops;
-  params.quantize_weights = quantize_weights;
+  params.quantize_weights =
+      quantize_weights ? QuantizedBufferType::INT8 : QuantizedBufferType::NONE;
   auto status = Export(model, output_file_contents, params);
   if (!status.ok()) LOG(QFATAL) << status.error_message();
 }
@@ -60,7 +64,8 @@ inline void Export(
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
   ExportParams params;
   params.allow_custom_ops = allow_custom_ops;
-  params.quantize_weights = quantize_weights;
+  params.quantize_weights =
+      quantize_weights ? QuantizedBufferType::INT8 : QuantizedBufferType::NONE;
   auto status = Export(model, output_file_contents, params, ops_by_type);
   if (!status.ok()) LOG(QFATAL) << status.error_message();
 }

@@ -29,12 +29,13 @@ limitations under the License.
 syntax = "proto3";
 
 package xla;
+
 import "tensorflow/compiler/xla/xla_data.proto";
 
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 62
+// Next ID: 70
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -48,6 +49,12 @@ message HloInstructionProto {
   reserved "called_computation_names";
   reserved 44;
   reserved "replica_group_ids";
+  // Use backend_config instead for custom_call_opaque.
+  reserved 53;
+  reserved "custom_call_opaque";
+  // Use backend_config instead for all_reduce_barrier.
+  reserved 46;
+  reserved "all_reduce_barrier";
 
   string name = 1;
   string opcode = 2;
@@ -119,8 +126,9 @@ message HloInstructionProto {
   // Only present for kBatchNormTraining.
   int64 feature_index = 25;
 
-  // Represents a unique identifier for each Send/Recv instruction pair.
-  // Only present for kSend or kRecv.
+  // Represents a unique identifier for each Send/Recv instruction pair or
+  // optionally for collective instructions (AllReduce, CollectivePermute,
+  // AllToAll). Non-positive channel_id is equivalent to no channel id.
   int64 channel_id = 26;
 
   // The string representation of the infeed configuration.
@@ -129,9 +137,6 @@ message HloInstructionProto {
   // Name of a external target (eg, global symbol) to call, only present for
   // kCustomCall.
   string custom_call_target = 28;
-
-  // Opaque string, only present for kCustomCall.
-  string custom_call_opaque = 53;
 
   // Shape of outfeed request.
   xla.ShapeProto outfeed_shape = 29;
@@ -144,6 +149,9 @@ message HloInstructionProto {
 
   // FFT length.
   repeated int64 fft_length = 32;
+
+  // Comparison direction only used for kCompare.
+  string comparison_direction = 63;
 
   // Gather dimension numbers.
   xla.GatherDimensionNumbers gather_dimension_numbers = 33;
@@ -167,8 +175,9 @@ message HloInstructionProto {
 
   // Cross replica op fields.
   repeated ReplicaGroup replica_groups = 49;
-  int64 all_reduce_id = 45;
-  string all_reduce_barrier = 46;
+  // Deprecated, but keeping it for backward compatibility. Use channel_id.
+  // Non-positive all_reduce_id is equivalent to no all_reduce_id.
+  int64 all_reduce_id = 45 [deprecated = true];
 
   // Whether this Send/Recv instruction transfers data to/from the host. Only
   // present for Send and Recv instructions and their SendDone and RecvDone
@@ -200,8 +209,38 @@ message HloInstructionProto {
   // Options for TriangularSolve
   xla.TriangularSolveOptions triangular_solve_options = 59;
 
+  // Options for Cholesky
+  xla.CholeskyOptions cholesky_options = 62;
+
   // Describes how parameters behave with regards to replicas.
   xla.ParameterReplication parameter_replication = 61;
+
+  // If set, the given instruction is run in parallel on e.g. multiple CPU
+  // cores.  The outermost dimension gets split up into
+  // outer_dimension_partitions[0] pieces, the next-outermost dim gets split
+  // into outer_dimension_partitions[1] pieces, etc.
+  //
+  // It's illegal to partition a dimension into more shards than there are
+  // elements in that dimension.
+  repeated int64 outer_dimension_partitions = 64;
+
+  // Whether the kCustomCall instruction has side-effects, only present for
+  // kCustomCall.
+  bool custom_call_has_side_effect = 65;
+
+  // The delta value for kRngGetAndUpdateState.
+  int64 delta = 66;
+
+  // Specifies if the gather/scatter indices are guaranteed to be sorted by the
+  // caller.
+  bool indices_are_sorted = 67;
+
+  // Frontend attributes to pass to the XLA backend.
+  xla.FrontendAttributes frontend_attributes = 68;
+
+  // Specifies if all elements updated are guaranteed to be unique by
+  // the caller.
+  bool unique_indices = 69;
 }
 
 // Serialization of HloComputation.

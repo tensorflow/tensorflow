@@ -38,13 +38,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
-
 namespace {
 // A fake device used to populate a DeviceSet.
 class FakeDevice : public Device {
@@ -68,37 +65,34 @@ std::unique_ptr<Device> FakeDevice::Make(const string& name,
   device_attributes.set_device_type(DeviceType(type).type());
   return std::unique_ptr<Device>(new FakeDevice(device_attributes));
 }
+
+Status FindPassWithName(absl::string_view name,
+                        GraphOptimizationPass** result) {
+  *result = nullptr;
+  // Run the optimization pass specified by the command line flag.
+  for (const auto& groups_and_passes :
+       OptimizationPassRegistry::Global()->groups()) {
+    for (const auto& phase_and_passes : groups_and_passes.second) {
+      for (const auto& pass : phase_and_passes.second) {
+        if (pass->name() == name) {
+          if (*result) {
+            return errors::Internal("Found more than one pass with name ",
+                                    name);
+          }
+          *result = pass.get();
+        }
+      }
+    }
+  }
+
+  return *result == nullptr
+             ? errors::Internal("Could not find pass with name ", name)
+             : Status::OK();
+}
 }  // namespace
 
-Status OptimizationPassRunner::RunMain(int argc, char** argv) {
-  string input_file_path;
-  string output_file_path;
-  string optimization_pass;
-
-  const std::vector<Flag> flag_list = {
-      Flag("input_file_path", &input_file_path, "Location of the input graph."),
-      Flag("output_file_path", &output_file_path,
-           "Location to write the resulting graph."),
-      // For now only a single optimization pass can be run.
-      Flag("optimization_pass", &optimization_pass,
-           "Which optimization pass to run."),
-  };
-  if (!Flags::Parse(&argc, argv, flag_list)) {
-    return errors::FailedPrecondition("Invalid flags passed");
-  }
-  port::InitMain(argv[0], &argc, &argv);
-
-  if (input_file_path.empty()) {
-    return errors::FailedPrecondition("input_file_path is a required flag.");
-  }
-  if (output_file_path.empty()) {
-    return errors::FailedPrecondition("output_file_path is a required flag.");
-  }
-  if (optimization_pass.empty()) {
-    return errors::FailedPrecondition("optimization_pass is a required flag.");
-  }
-
-  // Turn on XLA Auto-Jit.
+Status OptimizationPassRunner::Run(absl::string_view pass_to_run,
+                                   GraphDef input, GraphDef* result) {
   auto session_options = absl::make_unique<SessionOptions>();
   session_options->config.mutable_graph_options()
       ->mutable_optimizer_options()
@@ -107,19 +101,18 @@ Status OptimizationPassRunner::RunMain(int argc, char** argv) {
   std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
 
   GraphOptimizationPassOptions options;
-  options.session_options = session_options.release();
+  options.session_options = session_options.get();
   options.graph = &graph;
-  options.flib_def =
-      new FunctionLibraryDefinition((*options.graph)->op_registry(), flib);
+  std::unique_ptr<FunctionLibraryDefinition> flib_def(
+      new FunctionLibraryDefinition((*options.graph)->op_registry(), flib));
+  options.flib_def = flib_def.get();
 
   // Grab the data
-  GraphDef graphdef;
   GraphConstructorOptions graph_opts;
   graph_opts.expect_device_spec = true;
   graph_opts.allow_internal_ops = true;
-  TF_RETURN_IF_ERROR(ReadTextProto(Env::Default(), input_file_path, &graphdef));
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(graph_opts, graphdef, options.graph->get()));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(graph_opts, std::move(input),
+                                            options.graph->get()));
 
   // Add all devices that were previously configured with AddDevice.
   DeviceSet device_set;
@@ -128,27 +121,11 @@ Status OptimizationPassRunner::RunMain(int argc, char** argv) {
   }
   options.device_set = &device_set;
 
-  Status result = errors::NotFound(
-      "An OptimizationPass was not found with the desired name.");
+  GraphOptimizationPass* pass;
+  TF_RETURN_IF_ERROR(FindPassWithName(pass_to_run, &pass));
+  TF_RETURN_IF_ERROR(pass->Run(options));
 
-  // Run the optimization pass specified by the command line flag.
-  for (const auto& groups_and_passes :
-       OptimizationPassRegistry::Global()->groups()) {
-    for (const auto& phase_and_passes : groups_and_passes.second) {
-      for (const auto& pass : phase_and_passes.second) {
-        if (pass->name() == optimization_pass) {
-          result = pass->Run(options);
-        }
-      }
-    }
-  }
-
-  TF_RETURN_IF_ERROR(result);
-
-  // Write out the result.
-  options.graph->get()->ToGraphDef(&graphdef);
-  TF_RETURN_IF_ERROR(
-      WriteTextProto(Env::Default(), output_file_path, graphdef));
+  options.graph->get()->ToGraphDef(result);
   return Status::OK();
 }
 
@@ -158,10 +135,17 @@ Status OptimizationPassRunner::SetJitLevel(
   return Status::OK();
 }
 
-Status OptimizationPassRunner::AddDevice(const string& name,
-                                         const string& type) {
-  devices_.push_back(FakeDevice::Make(name, type));
+Status OptimizationPassRunner::AddDevices(absl::string_view type, int count) {
+  for (int i = 0; i < count; i++) {
+    devices_.push_back(FakeDevice::Make(
+        absl::StrCat("/job:localhost/replica:0/task:0/device:", type, ":", i),
+        absl::StrCat(type)));
+    devices_.push_back(FakeDevice::Make(
+        absl::StrCat("/job:localhost/replica:0/task:0/device:XLA_", type, ":",
+                     i),
+        absl::StrCat(type)));
+  }
+
   return Status::OK();
 }
-
 }  // namespace tensorflow

@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/common_runtime/collective_executor_mgr.h"
-
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
+
+#include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -39,7 +39,7 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
     device_count->insert({"CPU", NUM_DEVS});
     std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices));
-    device_mgr_.reset(new DeviceMgr(std::move(devices)));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     drl_.reset(new DeviceResolverLocal(device_mgr_.get()));
     prl_.reset(new CollectiveParamResolverLocal(cp, device_mgr_.get(),
                                                 drl_.get(), task_name));
@@ -47,7 +47,7 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
 
   void RunCompleteDefaultRanking(
       const CollectiveParams& shared_cp,
-      const std::vector<DeviceLocality>& localities,
+      const std::vector<DeviceAttributes>& attributes,
       const std::vector<int32>& gpu_ring_order,
       const std::vector<string>& expected_device_order) {
     CollectiveParams cp;
@@ -69,7 +69,7 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
             ir.shared.instance.gpu_ring_order, gpu_ring_order.back());
       }
       VLOG(2) << "gpu_ring_order " << ir.shared.instance.gpu_ring_order;
-      prl_->CompleteDefaultRanking(nullptr, &cp, &ir, localities);
+      prl_->CompleteDefaultRanking(nullptr, &cp, &ir, attributes);
       EXPECT_EQ(ir.shared.instance.device_names, expected_device_order);
     }
   }
@@ -82,7 +82,7 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
 TEST_F(CollectiveParamResolverLocalTest, CompleteDefaultRanking) {
   constexpr int kNumGpus = 8;
   CollectiveParams cp;
-  std::vector<DeviceLocality> localities(kNumGpus);
+  std::vector<DeviceAttributes> attributes(kNumGpus);
   cp.name = "PRLTest";
   cp.group.device_type = DeviceType("GPU");
   cp.group.num_tasks = 1;
@@ -95,7 +95,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteDefaultRanking) {
     cp.instance.task_names.push_back("/job:localhost/replica:0/task:0");
     cp.instance.device_names.push_back(strings::StrCat(
         "/job:localhost/replica:0/task:0/device:GPU:", gpu_idx));
-    DeviceLocality* locality = &localities[gpu_idx];
+    DeviceLocality locality;
     // Build localities so that 0,1,6,7 and 2,3,4,5 form 2 strongly connected
     // components.  Across components, connect 3 and 7.
     for (int link_idx = 0; link_idx < kNumGpus; ++link_idx) {
@@ -104,20 +104,21 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteDefaultRanking) {
       bool link_in_clique1 = clique1.find(link_idx) != clique1.end();
       if ((gpu_in_clique1 && link_in_clique1) ||
           (!gpu_in_clique1 && !link_in_clique1)) {
-        LocalLinks* links = locality->mutable_links();
+        LocalLinks* links = locality.mutable_links();
         InterconnectLink* ilink = links->add_link();
         ilink->set_device_id(link_idx);
         ilink->set_strength(2);
       } else if ((gpu_idx == 3 && link_idx == 7) ||
                  (gpu_idx == 7 && link_idx == 3)) {
-        LocalLinks* links = locality->mutable_links();
+        LocalLinks* links = locality.mutable_links();
         InterconnectLink* ilink = links->add_link();
         ilink->set_device_id(link_idx);
         ilink->set_strength(1);
       }
     }
+    *attributes[gpu_idx].mutable_locality() = locality;
   }
-  RunCompleteDefaultRanking(cp, localities, {1, 3, 5, 7, 6, 4, 2, 0},
+  RunCompleteDefaultRanking(cp, attributes, {1, 3, 5, 7, 6, 4, 2, 0},
                             {
                                 "/job:localhost/replica:0/task:0/device:GPU:1",
                                 "/job:localhost/replica:0/task:0/device:GPU:3",
@@ -128,7 +129,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteDefaultRanking) {
                                 "/job:localhost/replica:0/task:0/device:GPU:2",
                                 "/job:localhost/replica:0/task:0/device:GPU:0",
                             });
-  RunCompleteDefaultRanking(cp, localities, {7, 6, 5, 4, 3, 2, 1, 0},
+  RunCompleteDefaultRanking(cp, attributes, {7, 6, 5, 4, 3, 2, 1, 0},
                             {
                                 "/job:localhost/replica:0/task:0/device:GPU:7",
                                 "/job:localhost/replica:0/task:0/device:GPU:6",
@@ -141,7 +142,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteDefaultRanking) {
                             });
   // With no gpu_ring_order passed, automatic link detection should kick in.
   // Starting at dev 0, the best order would be: 0,1,6,7,3,2,4,5
-  RunCompleteDefaultRanking(cp, localities, {},
+  RunCompleteDefaultRanking(cp, attributes, {},
                             {
                                 "/job:localhost/replica:0/task:0/device:GPU:0",
                                 "/job:localhost/replica:0/task:0/device:GPU:1",

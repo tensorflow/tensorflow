@@ -26,7 +26,7 @@ import os
 import threading
 import time
 
-from tensorflow.core.util.event_pb2 import SessionLog
+from tensorflow.core.util import event_pb2
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -64,14 +64,18 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
       ValueError: One of `save_steps` or `save_secs` should be set.
       ValueError: At most one of `saver` or `scaffold` should be set.
     """
-    logging.info("Create AsyncCheckpointSaverHook.")
+    save_path = os.path.join(checkpoint_dir, checkpoint_basename)
+    logging.info("Create AsyncCheckpointSaverHook saving to path\n%s",
+                 save_path)
+    if listeners:
+      logging.info(" with %d listener(s).", len(listeners))
     if saver is not None and scaffold is not None:
       raise ValueError("You cannot provide both saver and scaffold.")
     self._saver = saver
     self._save_thread = None
     self._write_graph_thread = None
     self._checkpoint_dir = checkpoint_dir
-    self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
+    self._save_path = save_path
     self._scaffold = scaffold
     self._timer = basic_session_run_hooks.SecondOrStepTimer(
         every_secs=save_secs, every_steps=save_steps)
@@ -148,10 +152,6 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
   def _save(self, session, step, asynchronous=True):
     """Saves the latest checkpoint, returns should_stop."""
 
-    # Skip saving on step 0
-    if step == 0:
-      return
-
     def _save_fn():
       """Run the saver process."""
       logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
@@ -162,9 +162,9 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
 
       self._get_saver().save(session, self._save_path, global_step=step)
       self._summary_writer.add_session_log(
-          SessionLog(
-              status=SessionLog.CHECKPOINT, checkpoint_path=self._save_path),
-          step)
+          event_pb2.SessionLog(
+              status=event_pb2.SessionLog.CHECKPOINT,
+              checkpoint_path=self._save_path), step)
 
       for l in self._listeners:
         l.after_save(session, step)

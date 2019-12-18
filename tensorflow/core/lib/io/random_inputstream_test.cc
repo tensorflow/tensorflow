@@ -30,7 +30,7 @@ TEST(RandomInputStream, ReadNBytes) {
 
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
-  string read;
+  tstring read;
   RandomAccessInputStream in(file.get());
   TF_ASSERT_OK(in.ReadNBytes(3, &read));
   EXPECT_EQ(read, "012");
@@ -59,7 +59,7 @@ TEST(RandomInputStream, SkipNBytes) {
 
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
-  string read;
+  tstring read;
   RandomAccessInputStream in(file.get());
   TF_ASSERT_OK(in.SkipNBytes(3));
   EXPECT_EQ(3, in.Tell());
@@ -90,7 +90,7 @@ TEST(RandomInputStream, Seek) {
 
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
-  string read;
+  tstring read;
   RandomAccessInputStream in(file.get());
 
   // Seek forward

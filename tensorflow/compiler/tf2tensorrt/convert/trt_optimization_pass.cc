@@ -14,6 +14,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/trt_optimization_pass.h"
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
@@ -32,9 +34,9 @@ namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 // TODO(sami): Remove VLOG messages once the code matures
+using absl::AsciiStrToUpper;
 using absl::StrAppend;
 using absl::StrCat;
-using str_util::Uppercase;
 
 Status TRTOptimizationPass::Init(
     const RewriterConfig_CustomGraphOptimizer* config) {
@@ -52,13 +54,6 @@ Status TRTOptimizationPass::Init(
   if (params.count("is_dynamic_op")) {
     is_dynamic_op_ = params.at("is_dynamic_op").b();
   }
-  if (params.count("cached_engine_batches")) {
-    auto batch_vec = params.at("cached_engine_batches").list();
-    batches_.reserve(batch_vec.i_size());
-    for (const auto i : batch_vec.i()) {
-      batches_.push_back(i);
-    }
-  }
   if (params.count("maximum_cached_engines")) {
     max_cached_batches_ = params.at("maximum_cached_engines").i();
   }
@@ -67,10 +62,16 @@ Status TRTOptimizationPass::Init(
   }
   if (params.count("precision_mode")) {
     TF_RETURN_IF_ERROR(TrtPrecisionModeFromName(
-        Uppercase(params.at("precision_mode").s()), &precision_mode_));
+        AsciiStrToUpper(params.at("precision_mode").s()), &precision_mode_));
   }
   if (params.count("use_calibration")) {
     use_calibration_ = params.at("use_calibration").b();
+  }
+  if (params.count("trt_logger")) {
+    trt_logger_name_ = params.at("trt_logger").s();
+  }
+  if (params.count("use_implicit_batch")) {
+    use_implicit_batch_ = params.at("use_implicit_batch").b();
   }
   return Status::OK();
 }
@@ -185,9 +186,11 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   // generated funcdefs! This is fragile but we don't have any other option
   // until framework fixes it.
   if (item.id != "tf_graph") {
-    LOG(WARNING) << name_
-                 << " is probably called on funcdef! This optimizer must *NOT* "
-                    "be called on function objects.";
+    VLOG(1) << "Called TRTOptimization Pass " << name_
+            << " on a grappler item with id=" << item.id
+            << ", which is probably a function object (funcdef). "
+            << "Skipping optimization because TensorRTOptimizer "
+            << "should not be called on function objects.";
     *optimized_graph = item.graph;
     return Status::OK();
   }
@@ -195,31 +198,30 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
     LOG(INFO) << CurrentStackTrace();
     PrintDebugInfo(cluster, item);
   }
-  int max_dim = -1;
-  if (!item.feed.empty()) {
-    for (const auto& f : item.feed) {
-      const auto& shape = f.second.shape();
-      if (shape.dims() > 0) {
-        if (shape.dim_size(0) > max_dim) max_dim = shape.dim_size(0);
+  if (!is_dynamic_op_) {
+    int max_batch_dim = -1;
+    if (!item.feed.empty()) {
+      for (const auto& f : item.feed) {
+        const auto& shape = f.second.shape();
+        if (shape.dims() > 0) {
+          if (shape.dim_size(0) > max_batch_dim)
+            max_batch_dim = shape.dim_size(0);
+          VLOG(2) << "Setting max_batch_dim to " << max_batch_dim
+                  << " using batch dimension of " << f.first << " with shape "
+                  << shape;
+        }
       }
     }
-  }
-  if (maximum_batch_size_ < 0) {  // automatic batch size from input
-    if (max_dim > 0) {
-      maximum_batch_size_ = max_dim;
-      VLOG(1) << "Setting maximum batch size to " << max_dim;
-    } else {
-      maximum_batch_size_ = 128;
-      LOG(WARNING) << "Maximum batch size is not set"
-                      " and can't be deduced from inputs setting it to"
-                   << maximum_batch_size_
-                   << ". Suggest configuring it from configuration parameters";
-    }
-  } else {
-    if (max_dim > maximum_batch_size_) {
-      LOG(WARNING) << "Configured batch size " << maximum_batch_size_
-                   << " is less than input batch size " << max_dim
-                   << " adjusting maximum batch size to match input batch size";
+    if (max_batch_dim > maximum_batch_size_) {
+      return errors::InvalidArgument(
+          "Specified max_batch_size=", maximum_batch_size_,
+          " is less than maximum batch dimension of inputs (", max_batch_dim,
+          "). ", "To continue, set max_batch_size to >= ", max_batch_dim);
+    } else if (max_batch_dim < maximum_batch_size_) {
+      LOG(INFO) << "Specified max_batch_size=" << maximum_batch_size_
+                << " is larger than maximum batch dimension of inputs ("
+                << max_batch_dim << "). "
+                << "This can result in poor performance.";
     }
   }
   grappler::GraphProperties static_graph_properties(item);
@@ -251,6 +253,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   }
   cp.input_graph_def = &item.graph;
   cp.output_names = &nodes_to_preserve;
+  cp.trt_logger_name = trt_logger_name_;
   cp.max_batch_size = maximum_batch_size_;
   cp.max_workspace_size_bytes = max_workspace_size_bytes_;
   cp.output_graph_def = optimized_graph;
@@ -259,9 +262,9 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   cp.graph_properties = &static_graph_properties;
   cp.cluster = cluster;
   cp.is_dyn_op = is_dynamic_op_;
-  cp.cached_engine_batches = batches_;
   cp.max_cached_engines = max_cached_batches_;
   cp.use_calibration = use_calibration_;
+  cp.use_implicit_batch = use_implicit_batch_;
   auto status = ConvertAfterShapes(cp);
   VLOG(1) << "Returning from " << name_;
   return status;

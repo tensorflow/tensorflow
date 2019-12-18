@@ -53,8 +53,8 @@ void FilterbankAccumulateChannels(struct FilterbankState* state,
     const int width = *channel_widths++;
     int j;
     for (j = 0; j < width; ++j) {
-      weight_accumulator += *weights++ * ((uint64_t) *magnitudes);
-      unweight_accumulator += *unweights++ * ((uint64_t) *magnitudes);
+      weight_accumulator += *weights++ * ((uint64_t)*magnitudes);
+      unweight_accumulator += *unweights++ * ((uint64_t)*magnitudes);
       ++magnitudes;
     }
     *work++ = weight_accumulator;
@@ -93,7 +93,7 @@ static uint32_t Sqrt64(uint64_t num) {
   // clear. This will cause a slight off by one issue for numbers close to 2^32,
   // but it probably isn't going to matter (and gives us a big performance win).
   if ((num >> 32) == 0) {
-    return Sqrt32((uint32_t) num);
+    return Sqrt32((uint32_t)num);
   }
   uint64_t res = 0;
   int max_bit_number = 64 - MostSignificantBit64(num);
@@ -118,15 +118,15 @@ static uint32_t Sqrt64(uint64_t num) {
 
 uint32_t* FilterbankSqrt(struct FilterbankState* state, int scale_down_shift) {
   const int num_channels = state->num_channels;
-  const int64_t* work = state->work + 1;
+  const uint64_t* work = state->work + 1;
   // Reuse the work buffer since we're fine clobbering it at this point to hold
   // the output.
-  uint32_t* output = (uint32_t*) state->work;
+  uint32_t* output = (uint32_t*)state->work;
   int i;
   for (i = 0; i < num_channels; ++i) {
     *output++ = Sqrt64(*work++) >> scale_down_shift;
   }
-  return (uint32_t*) state->work;
+  return (uint32_t*)state->work;
 }
 
 void FilterbankReset(struct FilterbankState* state) {

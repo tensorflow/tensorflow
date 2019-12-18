@@ -133,6 +133,10 @@ tf_module {
     argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
   member_method {
+    name: "depthwise_conv2d"
+    argspec: "args=[\'x\', \'depthwise_kernel\', \'strides\', \'padding\', \'data_format\', \'dilation_rate\'], varargs=None, keywords=None, defaults=[\'(1, 1)\', \'valid\', \'None\', \'(1, 1)\'], "
+  }
+  member_method {
     name: "dot"
     argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
   }
@@ -245,6 +249,10 @@ tf_module {
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "is_keras_tensor"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "is_sparse"
     argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
   }
@@ -267,6 +275,14 @@ tf_module {
   member_method {
     name: "less_equal"
     argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "local_conv1d"
+    argspec: "args=[\'inputs\', \'kernel\', \'kernel_size\', \'strides\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "local_conv2d"
+    argspec: "args=[\'inputs\', \'kernel\', \'kernel_size\', \'strides\', \'output_shape\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "log"
@@ -334,7 +350,7 @@ tf_module {
   }
   member_method {
     name: "placeholder"
-    argspec: "args=[\'shape\', \'ndim\', \'dtype\', \'sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\', \'None\'], "
+    argspec: "args=[\'shape\', \'ndim\', \'dtype\', \'sparse\', \'name\', \'ragged\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\', \'None\', \'False\'], "
   }
   member_method {
     name: "pool2d"

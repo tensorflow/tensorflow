@@ -22,17 +22,21 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_common.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_logger.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
+#include "tensorflow/lite/tools/optimize/calibration/logging_op.h"
 #include "tensorflow/lite/tools/optimize/calibration/logging_op_resolver.h"
 #include "tensorflow/lite/tools/optimize/calibration/node_info_delegate.h"
 
@@ -79,8 +83,12 @@ class Calibrator {
 
 KernelEvalFuncPtr Calibrator::GetKernelInvoke(const TfLiteNode* node) const {
   auto op_info = node_ptr_opinfo_map_.at(node);
+  if (op_info.is_custom_op) {
+    return logging_op_resolver_->GetWrappedKernelInvoke(op_info.name.c_str(),
+                                                        op_info.version);
+  }
   return logging_op_resolver_->GetWrappedKernelInvoke(op_info.builtin_op_code,
-                                                      1);
+                                                      op_info.version);
 }
 
 // A registry of |Calibrator| objects per |TfLiteContext|.
@@ -155,6 +163,19 @@ GlobalCalibratorRegistry* GetCalibratorRegistry() {
   return registry;
 }
 
+// Get the logging kernel if there are any.
+// TODO(jianlijianli): extend this to support multiple recipe for the same
+// model.
+logging_kernel_func_ptr GetLoggingEvalFunc(TfLiteContext* context,
+                                           TfLiteNode* node) {
+  const int lstm_number_input = 24;
+  if (node->inputs->size == lstm_number_input) {
+    // LSTM Op.
+    return tflite::optimize::calibration::builtin::lstm_logging_kernel;
+  }
+  return nullptr;
+}
+
 // A wrapper implementation for |TfLiteRegistration.invoke| that logs inputs,
 // invokes the wrapped implementation and then logs the outputs.
 TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
@@ -171,18 +192,34 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
 
   for (int i : op_info.loggable_inputs) {
     auto tensor = context->tensors[i];
-    logger->LogTensorValue(i, tensor.data.f, tensor.bytes / sizeof(float));
+    TF_LITE_ENSURE_STATUS(
+        logger->LogTensorValue(i, tensor.data.f, tensor.bytes / sizeof(float)));
+  }
+  auto kernel_invoke_intermediate = GetLoggingEvalFunc(context, node);
+  TfLiteStatus status;
+  if (kernel_invoke_intermediate == nullptr) {
+    status = kernel_invoke(context, node);
+  } else {
+    status = kernel_invoke_intermediate(context, node, calibrator->GetLogger());
   }
 
-  auto status = kernel_invoke(context, node);
   // TODO(shashishekhar): An intermediate tensor in graph will get logged twice
   // once as an input and second time as output. This doesn't change the min max
   // values but is inefficient.
   // Using moving average will also break this.
 
+  // Log input again to make sure the state tensors are captured after lstm
+  // cell.
+  for (int i : op_info.loggable_inputs) {
+    auto tensor = context->tensors[i];
+    TF_LITE_ENSURE_STATUS(
+        logger->LogTensorValue(i, tensor.data.f, tensor.bytes / sizeof(float)));
+  }
+
   for (int i : op_info.loggable_outputs) {
     auto tensor = context->tensors[i];
-    logger->LogTensorValue(i, tensor.data.f, tensor.bytes / sizeof(float));
+    TF_LITE_ENSURE_STATUS(
+        logger->LogTensorValue(i, tensor.data.f, tensor.bytes / sizeof(float)));
   }
 
   return status;
@@ -197,6 +234,9 @@ std::vector<int> GetLoggableTensorIndices(
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* tensor_buffers) {
   std::vector<int> loggable;
   for (auto tensor_index : tensor_indices) {
+    if (tensor_index == kTfLiteOptionalTensor) {
+      continue;
+    }
     auto tensor = tensors->Get(tensor_index);
     auto buffer_index = tensor->buffer();
     const bool has_no_buffer =
@@ -218,9 +258,7 @@ TfLiteStatus GetNodeOpInfoMapAndContext(
     const std::unordered_map<int, OperatorInfo>& node_to_opinfo,
     tflite::Interpreter* const interpreter,
     std::unordered_map<const TfLiteNode*, OperatorInfo>* node_ptr_opinfo_map,
-    const TfLiteContext** context
-
-) {
+    const TfLiteContext** context) {
   NodeInfoDelegateObserver delegate_observer(node_to_opinfo,
                                              node_ptr_opinfo_map);
   NodeInfoDelegateParams delegate_params;
@@ -282,7 +320,8 @@ TfLiteStatus BuildLoggingInterpreter(
   auto operators = primary_subgraph->operators();
   auto tensors = primary_subgraph->tensors();
   std::unordered_map<int, OperatorInfo> node_to_opinfo;
-  BuiltinOpsSet op_and_versions;
+  BuiltinOpsSet builtin_op_and_versions;
+  CustomOpsSet custom_op_and_versions;
 
   for (size_t i = 0; i < operators->size(); i++) {
     OperatorInfo op_info;
@@ -292,6 +331,7 @@ TfLiteStatus BuildLoggingInterpreter(
     op_info.builtin_op_code = operator_code->builtin_code();
     op_info.name = GetOpName(*operator_code);
     op_info.is_custom_op = operator_code->custom_code() != nullptr;
+    op_info.version = operator_code->version();
 
     auto op_inputs = op->inputs();
     auto op_outputs = op->outputs();
@@ -301,21 +341,25 @@ TfLiteStatus BuildLoggingInterpreter(
         GetLoggableTensorIndices(op_info.inputs, tensors, tensor_buffers);
     op_info.loggable_outputs =
         GetLoggableTensorIndices(op_info.outputs, tensors, tensor_buffers);
-    if (!op_info.is_custom_op) {
-      op_info.registration = op_resolver.FindOp(operator_code->builtin_code(),
-                                                operator_code->version());
-    } else {
+    if (op_info.is_custom_op) {
       op_info.registration =
           op_resolver.FindOp(op_info.name.c_str(), operator_code->version());
+      custom_op_and_versions.insert(
+          {op_info.name.c_str(), operator_code->version()});
+    } else {
+      op_info.registration = op_resolver.FindOp(operator_code->builtin_code(),
+                                                operator_code->version());
+      builtin_op_and_versions.insert(
+          {op_info.builtin_op_code, operator_code->version()});
     }
     node_to_opinfo[i] = op_info;
-    op_and_versions.insert({op_info.builtin_op_code, operator_code->version()});
   }
 
   // Prepare the logging op resolver to use |LoggingEval| for kernel
   // invocations.
   auto logging_op_resolver = absl::make_unique<LoggingOpResolver>(
-      op_and_versions, op_resolver, LoggingEval);
+      builtin_op_and_versions, custom_op_and_versions, op_resolver,
+      LoggingEval);
   tflite::InterpreterBuilder(model, *logging_op_resolver)(interpreter);
 
   if (!(*interpreter)) {

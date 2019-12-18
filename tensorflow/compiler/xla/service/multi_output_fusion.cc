@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/multi_output_fusion.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -29,10 +31,10 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
 
   for (auto* computation : module->MakeNonfusionComputations()) {
     computation_ = computation;
-    RecomputeReachability();
     candidates_.clear();
     candidates_index_.clear();
     all_fusion_candidates_.clear();
+    RecomputeReachability();
 
     int64 index = 0;
     for (auto it : computation_->MakeInstructionPostOrder()) {
@@ -61,7 +63,19 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
           continue;
         }
         VLOG(10) << "Operand profitable: " << operand->name();
-        for (auto user : operand->users()) {
+        // We don't look at all users of operands as it's quadratic. Only look
+        // at one slice of users.
+        const int64 kUserSliceSize = 128;
+
+        const int64 user_slice_begin =
+            RoundDownToNearest(operand->UserId(instruction), kUserSliceSize);
+
+        const int64 user_slice_end =
+            std::min(static_cast<int64>(operand->users().size()),
+                     user_slice_begin + kUserSliceSize);
+
+        for (int64 i = user_slice_begin; i < user_slice_end; ++i) {
+          HloInstruction* user = operand->users()[i];
           VLOG(10) << "User: " << user->name();
           if (user == instruction || !IsFusible(user)) {
             VLOG(10) << "User is not fusible, or is the instruction itself: "
@@ -107,6 +121,11 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
       changed = true;
     }
   }
+  // Clean up state in case this pass is wrapped in an HloPassPipeline.
+  candidates_.clear();
+  candidates_index_.clear();
+  all_fusion_candidates_.clear();
+  reachability_.reset();
   return changed;
 }
 
@@ -122,11 +141,12 @@ HloInstruction* MultiOutputFusion::Fuse(HloInstruction* instr1,
   if (fused->IsMultiOutputFusion()) {
     std::swap(remaining, fused);
   }
-
   if (fused->opcode() == HloOpcode::kFusion) {
     remaining->MergeFusionInstructionIntoMultiOutput(fused);
   } else {
     remaining->FuseInstructionIntoMultiOutput(fused);
+    CHECK_EQ(0, fused->user_count());
+    TF_CHECK_OK(computation()->RemoveInstruction(fused));
   }
   return remaining;
 }
@@ -222,7 +242,7 @@ bool MultiOutputFusion::LegalToFuse(HloInstruction* instr1,
     return false;
   }
 
-  // Fusing nodes with 0 user makes no sense and the rest of the implementation
+  // Fusing nodes with 0 users makes no sense and the rest of the implementation
   // doesn't support it either.
   if (instr1->user_count() == 0 || instr2->user_count() == 0) {
     return false;
@@ -246,18 +266,18 @@ bool MultiOutputFusion::LegalToFuse(HloInstruction* instr1,
       multioutput_user_is_not_gte(instr2)) {
     return false;
   }
-
   if (is_connected(instr1, instr2)) {
     return false;
   }
   if (!ShapesCompatibleForFusion(instr1, instr2)) {
     return false;
   }
-
   return true;
 }
 
 void MultiOutputFusion::RecomputeReachability() {
+  // Free the memory used for the reachability map before computing a new one.
+  reachability_.reset();
   reachability_ = HloReachabilityMap::Build(computation_);
 }
 
@@ -287,10 +307,6 @@ bool MultiOutputFusion::Perform() {
   int changed = false;
   // Pick the top candidate from queue and try to merge.
   while (!worklist_.empty()) {
-    if (fuel_ <= 0) {
-      VLOG(2) << "No fusing: run out of fuel.";
-      break;
-    }
     ToBeFused candidate = worklist_.top();
     worklist_.pop();
 
@@ -306,6 +322,12 @@ bool MultiOutputFusion::Perform() {
             << "\n\t\tinstr2 = " << instr2->ToString();
 
     if (LegalToFuse(instr1, instr2)) {
+      if (!ConsumeFuel(name(), [&] {
+            return absl::StrFormat("Not fusing %s and %s.", instr1->ToString(),
+                                   instr2->ToString());
+          })) {
+        break;
+      }
       VLOG(1) << "Fuse!";
       VLOG(2) << "Before multi_output_fusion:";
       VLOG(2) << "instr1: " << instr1->ToString();
@@ -325,8 +347,6 @@ bool MultiOutputFusion::Perform() {
       VLOG(2) << "After fusion, \t this: " << ret->name() << "\n"
               << ret->fused_instructions_computation()->ToString(
                      HloPrintOptions().set_indent_amount(1));
-      auto users = ret->users();
-      --fuel_;
     }
   }
   if (DoProducerConsumerMultiOutputFusion()) {
@@ -336,4 +356,5 @@ bool MultiOutputFusion::Perform() {
 }
 
 bool MultiOutputFusion::DoProducerConsumerMultiOutputFusion() { return false; }
+
 }  // namespace xla

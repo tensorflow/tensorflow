@@ -38,9 +38,12 @@ from tensorflow.python.training import training_util
 _WATCHDOG = None
 
 
-class CoordinatorShutdownException(Exception):
-  """Raised when the coordinator needs to shutdown."""
-  pass
+class CoordinatorResetError(errors.AbortedError):
+  """Raised when the monitored session should reset."""
+
+  def __init__(self):
+    errors.AbortedError.__init__(
+        self, None, None, 'Resetting session loop due to worker shutdown.')
 
 
 def _clone_session(session, graph=None):
@@ -48,29 +51,6 @@ def _clone_session(session, graph=None):
       target=session.sess_str,
       config=session._config,  # pylint: disable=protected-access
       graph=graph if graph else session.graph)
-
-
-def _make_heartbeat_op(session, device, request_ph):
-  """Return a heartbeat op or None if heartbeats are not supported by device."""
-  try:
-    # Test if we can connect in a isolated graph + session
-    with ops.Graph().as_default():
-      with _clone_session(session) as temp_session:
-        with ops.device(device):
-          heartbeat_op = tpu_ops.worker_heartbeat('')
-          options = config_pb2.RunOptions(timeout_in_ms=5000)
-          temp_session.run(heartbeat_op, options=options)
-  except errors.InvalidArgumentError as _:
-    logging.warning('Error running heartbeat on %s', device)
-    return None
-  except errors.DeadlineExceededError as _:
-    logging.warning('Timeout connecting to %s when testing heartbeat', device)
-    return None
-
-  # If we successfully connected and pinged the worker, go ahead and construct
-  # the operation.
-  with ops.device(device):
-    return tpu_ops.worker_heartbeat(request_ph)
 
 
 class WorkerHeartbeatManager(object):
@@ -82,7 +62,7 @@ class WorkerHeartbeatManager(object):
     (Prefer using `WorkerHeartbeatManager.from_devices` when possible.)
 
     Args:
-      session: `tf.Session`, session to use for heartbeat operations.
+      session: `tf.compat.v1.Session`, session to use for heartbeat operations.
       devices: `list[string]` Set of devices to connect to.
       heartbeat_ops: `list[tf.Operation]` Heartbeat operations.
       request_placeholder: `tf.Placeholder[String]` Placeholder used to specify
@@ -104,16 +84,11 @@ class WorkerHeartbeatManager(object):
         name='worker_heartbeat_request', dtype=dtypes.string)
 
     heartbeat_ops = []
-    kept_devices = []
     for device in devices:
-      heartbeat_op = _make_heartbeat_op(session, device, request_placeholder)
-      if heartbeat_op is not None:
-        kept_devices.append(device)
-        heartbeat_ops.append(heartbeat_op)
-      else:
-        logging.warning('Heartbeat support not available for %s', device)
+      with ops.device(device):
+        heartbeat_ops.append(tpu_ops.worker_heartbeat(request_placeholder))
 
-    return WorkerHeartbeatManager(session, kept_devices, heartbeat_ops,
+    return WorkerHeartbeatManager(session, devices, heartbeat_ops,
                                   request_placeholder)
 
   def num_workers(self):
@@ -168,28 +143,37 @@ class WorkerHeartbeatManager(object):
   def __repr__(self):
     return 'HeartbeatManager(%s)' % ','.join(self._devices)
 
-  def shutdown(self, timeout_ms=10000):
+  # Default timeout is set to allow other shutdown triggered operations (log
+  # flushing etc) to finish before terminating the worker.
+  def shutdown(self, wait_time_in_ms=60000, exit_code=None):
     """Shutdown all workers after `shutdown_timeout_secs`."""
     logging.info('Shutting down %s.', self)
     req = event_pb2.WorkerHeartbeatRequest(
-        watchdog_config=event_pb2.WatchdogConfig(timeout_ms=timeout_ms),
-        shutdown_mode=event_pb2.WAIT_FOR_COORDINATOR)
+        watchdog_config=event_pb2.WatchdogConfig(timeout_ms=wait_time_in_ms),
+        shutdown_mode=event_pb2.SHUTDOWN_AFTER_TIMEOUT,
+        exit_code=event_pb2.RequestedExitCode(
+            exit_code=exit_code) if exit_code is not None else None)
     self.configure(req)
 
-    # Wait for workers to shutdown.  This isn't strictly required
-    # but it avoids triggering multiple checkpoints with the same lame worker.
-    logging.info('Waiting %dms for worker shutdown.', timeout_ms)
-    time.sleep(timeout_ms / 1000)
+    # Wait for workers to shutdown.
+    sleep_sec = 10.0 + wait_time_in_ms / 1000
+    logging.info('Waiting %.2f seconds for worker shutdown.', sleep_sec)
+    time.sleep(sleep_sec)
 
 
 def all_worker_devices(session):
   """Return a list of devices for each worker in the system."""
   devices = session.list_devices()
-  return [
-      device.name
-      for device in devices
-      if ':CPU:' in device.name and 'coordinator' not in device.name
-  ]
+
+  devices_that_support_heartbeats = []
+
+  for device in devices:
+    name = device.name
+    # Pick devices that have a TPU but target the attached CPU
+    if ':TPU:0' in name and 'coordinator' not in name:
+      devices_that_support_heartbeats.append(name.replace('TPU', 'CPU'))
+
+  return devices_that_support_heartbeats
 
 
 class WatchdogManager(threading.Thread):
@@ -238,7 +222,7 @@ class WatchdogManager(threading.Thread):
     self._session = None
     self._worker_manager = None
 
-  def _reset_manager(self):
+  def _reset_manager(self, stopping=False):
     """Reset the graph, session and worker manager."""
     self._graph = ops.Graph()
     self._session = session_lib.Session(
@@ -254,11 +238,17 @@ class WatchdogManager(threading.Thread):
       self._worker_manager = WorkerHeartbeatManager.from_devices(
           self._session, self._devices)
 
+    if stopping:
+      timeout_ms = -1
+      shutdown_mode = event_pb2.NOT_CONFIGURED
+    else:
+      timeout_ms = self.shutdown_timeout * 1000
+      shutdown_mode = event_pb2.WAIT_FOR_COORDINATOR
+
     self._worker_manager.configure(
         event_pb2.WorkerHeartbeatRequest(
-            watchdog_config=event_pb2.WatchdogConfig(
-                timeout_ms=self.shutdown_timeout * 1000,),
-            shutdown_mode=event_pb2.WAIT_FOR_COORDINATOR))
+            watchdog_config=event_pb2.WatchdogConfig(timeout_ms=timeout_ms),
+            shutdown_mode=shutdown_mode))
 
   def configure_and_run(self):
     logging.info(
@@ -271,10 +261,7 @@ class WatchdogManager(threading.Thread):
 
   def stop(self):
     logging.info('Stopping worker watchdog.')
-    self._worker_manager.configure(
-        event_pb2.WorkerHeartbeatRequest(
-            watchdog_config=event_pb2.WatchdogConfig(timeout_ms=-1,),
-            shutdown_mode=event_pb2.NOT_CONFIGURED))
+    self._reset_manager(stopping=True)
     self._running = False
     self.join()
 
@@ -310,6 +297,14 @@ def start_worker_watchdog(session,
     _WATCHDOG = WatchdogManager(session, devices, ping_interval,
                                 shutdown_timeout)
     _WATCHDOG.configure_and_run()
+
+
+def stop_worker_watchdog():
+  """Stop global worker watchdog."""
+  global _WATCHDOG
+  if _WATCHDOG is not None:
+    _WATCHDOG.stop()
+    _WATCHDOG = None
 
 
 class GracefulShutdownHook(session_run_hook.SessionRunHook):
@@ -353,9 +348,15 @@ class GracefulShutdownHook(session_run_hook.SessionRunHook):
           self._session, all_worker_devices(self._session))
       self._heartbeat_supported = self._workers.num_workers() > 0
       if self._heartbeat_supported:
-        self._workers.configure(
-            event_pb2.WorkerHeartbeatRequest(
-                shutdown_mode=event_pb2.WAIT_FOR_COORDINATOR))
+        try:
+          self._workers.configure(
+              event_pb2.WorkerHeartbeatRequest(
+                  shutdown_mode=event_pb2.WAIT_FOR_COORDINATOR))
+        except errors.InvalidArgumentError:
+          logging.warn(
+              'TPU device does not support heartbeats. Failure '
+              'handling will be disabled.')
+          self._heartbeat_supported = False
       else:
         logging.warn(
             'No workers support hearbeats. Failure handling will be disabled.')
@@ -382,11 +383,11 @@ class GracefulShutdownHook(session_run_hook.SessionRunHook):
 
   def after_run(self, run_context, run_values):
     del run_values
-
     if not self._heartbeat_supported:
       return
 
     lame_workers = self._workers.lame_workers()
+
     if lame_workers:
       logging.info('ShutdownHook: lame workers found: %s', lame_workers)
 
@@ -406,22 +407,22 @@ class GracefulShutdownHook(session_run_hook.SessionRunHook):
         fn(run_context, self._workers, lame_workers)
 
 
-class RestartComputation(object):
-  """Restart the entire computation.
+class ResetComputation(object):
+  """Hook to reset a TPUEstimator computation loop.
 
-  This hook shuts down all workers and returns control to the top-level by
-  throwing a CoordinatorShutdownException.
+  This hook shuts down all workers and resets the monitored session loop by
+  throwing a CoordinatorResetError.
   """
 
-  def __init__(self, timeout_ms=10000):
-    self.timeout_ms = timeout_ms
+  def __init__(self):
+    pass
 
   def __call__(self, run_context, all_workers, lame_workers):
     del run_context, lame_workers
-    all_workers.shutdown(timeout_ms=self.timeout_ms)
+    all_workers.shutdown()
 
-    logging.info('Terminating coordinator.')
-    raise CoordinatorShutdownException()
+    logging.info('Resetting coordinator.')
+    raise CoordinatorResetError()
 
 
 class ShutdownLameWorkers(object):
@@ -431,8 +432,22 @@ class ShutdownLameWorkers(object):
   workers to be restarted).
   """
 
-  def __init__(self, timeout_ms=10000):
-    self.timeout_in_ms = timeout_ms
+  def __init__(self):
+    pass
 
   def __call__(self, run_context, all_workers, lame_workers):
-    lame_workers.shutdown(timeout_ms=self.timeout_in_ms)
+    lame_workers.shutdown()
+
+
+class ShutdownAllWorkers(object):
+  """Shutdown all workers.
+
+  Processing will continue normally (typically by waiting for the down
+  workers to be restarted).
+  """
+
+  def __init__(self):
+    pass
+
+  def __call__(self, run_context, all_workers, lame_workers):
+    all_workers.shutdown()

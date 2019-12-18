@@ -37,8 +37,8 @@ int GetPlatformSeverity(LogSeverity severity) {
 
 }  // namespace
 
-void MinimalLogger::VLog(LogSeverity severity, const char* format,
-                         va_list args) {
+void MinimalLogger::LogFormatted(LogSeverity severity, const char* format,
+                                 va_list args) {
   // TODO(b/123704468): Use os_log when available.
   vsyslog(GetPlatformSeverity(severity), format, args);
 }

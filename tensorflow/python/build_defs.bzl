@@ -1,5 +1,3 @@
-# -*- Python -*-
-
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 # Intended only for use within this directory.
@@ -16,7 +14,7 @@ def tf_gen_op_wrapper_private_py(
         name,
         out = None,
         deps = [],
-        require_shape_functions = True,
+        require_shape_functions = False,
         visibility = []):
     if not name.endswith("_gen"):
         fail("name must end in _gen")

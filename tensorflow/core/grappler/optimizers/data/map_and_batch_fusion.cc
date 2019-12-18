@@ -31,7 +31,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr char kFusedOpName[] = "ExperimentalMapAndBatchDataset";
+constexpr char kFusedOpName[] = "MapAndBatchDataset";
 
 NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
                             MutableGraphView* graph) {

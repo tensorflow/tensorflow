@@ -19,13 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_ragged_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
-from tensorflow.python.ops.ragged import ragged_conversion_ops
+from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 
 
@@ -51,21 +52,19 @@ def gather(params, indices, validate_indices=None, axis=0, batch_dims=0,
 
   Examples:
 
-  ```python
   >>> params = tf.constant(['a', 'b', 'c', 'd', 'e'])
   >>> indices = tf.constant([3, 1, 2, 1, 0])
   >>> ragged_params = tf.ragged.constant([['a', 'b', 'c'], ['d'], [], ['e']])
   >>> ragged_indices = tf.ragged.constant([[3, 1, 2], [1], [], [0]])
 
-  >>> print ragged.gather(params, ragged_indices)
-  [['d', 'b', 'c'], ['b'], [], ['a']]
+  >>> tf.gather(params, ragged_indices)
+  <tf.RaggedTensor [[b'd', b'b', b'c'], [b'b'], [], [b'a']]>
 
-  >>> print ragged.gather(ragged_params, indices)
-  [['e'], ['d'], [], ['d'], ['a', 'b', 'c']]
+  >>> tf.gather(ragged_params, indices)
+  <tf.RaggedTensor [[b'e'], [b'd'], [], [b'd'], [b'a', b'b', b'c']]>
 
-  >>> print ragged.gather(ragged_params, ragged_indices)
-  [[['e'], ['d'], []], [['d']], [], [['a', 'b', 'c']]]
-  ```
+  >>> tf.gather(ragged_params, ragged_indices)
+  <tf.RaggedTensor [[[b'e'], [b'd'], []], [[b'd']], [], [[b'a', b'b', b'c']]]>
 
   Args:
     params: The potentially ragged tensor from which to gather values. Must be
@@ -96,6 +95,7 @@ def gather(params, indices, validate_indices=None, axis=0, batch_dims=0,
         params, name='params')
     indices = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         indices, name='indices')
+    params, indices = ragged_tensor.match_row_splits_dtypes(params, indices)
 
     if ragged_tensor.is_ragged(indices):
       return indices.with_values(gather(params, indices.values))
@@ -116,13 +116,13 @@ def gather(params, indices, validate_indices=None, axis=0, batch_dims=0,
 
     # Compose the RaggedTensor from splits & values.
     return ragged_tensor.RaggedTensor.from_nested_row_splits(
-        result.output_dense_values, result.output_nested_splits)
+        result.output_dense_values, result.output_nested_splits, validate=False)
 
 
 #===============================================================================
 # ragged.gather_nd
 #===============================================================================
-def gather_nd(params, indices, name=None):
+def gather_nd(params, indices, batch_dims=0, name=None):
   """Gather slices from `params` using `n`-dimensional indices.
 
   This operation is similar to `gather`, but it uses the innermost dimension
@@ -139,32 +139,33 @@ def gather_nd(params, indices, name=None):
   Args:
     params: A potentially ragged tensor with shape `[A1...AN, I]`.
     indices: A potentially ragged tensor with shape `[B1...BM]`.
+    batch_dims: Must be zero.
     name: A name for the operation (optional).
 
   Returns:
     A potentially ragged tensor with shape `[A1...AN, B_{I+1}...BM]`.
 
   #### Examples:
-    ```python
-    >>> params = tf.ragged.constant_value(
-    ...     [ [ ['000', '001'], ['010'              ]          ],
-    ...       [ ['100'       ], ['110', '111', '112'], ['120'] ],
-    ...       [ [            ], ['210'              ]          ] ])
 
-    >>> # Gather 2D slices from a 3D tensor
-    >>> ragged.gather_nd(params, [[2], [0]])
-    [ [ [            ], ['210'] ]
-      [ ['000', '001'], ['010'] ] ]
+  >>> params = tf.ragged.constant(
+  ...     [ [ ['000', '001'], ['010'              ]          ],
+  ...       [ ['100'       ], ['110', '111', '112'], ['120'] ],
+  ...       [ [            ], ['210'              ]          ] ])
 
-    >>> # Gather 1D slices from a 3D tensor
-    >>> ragged.gather_nd(params, [[2, 1], [0, 0]])
-    [['210'], ['000', '001']]
+  >>> # Gather 2D slices from a 3D tensor
+  >>> tf.gather_nd(params, [[2], [0]])
+  <tf.RaggedTensor [[[], [b'210']], [[b'000', b'001'], [b'010']]]>
 
-    >>> # Gather scalars from a 3D tensor
-    >>> ragged.gather_nd(params, [[0, 0, 1], [1, 1, 2]])
-    ['001', '112']
-    ```
+  >>> # Gather 1D slices from a 3D tensor
+  >>> tf.gather_nd(params, [[2, 1], [0, 0]])
+  <tf.RaggedTensor [[b'210'], [b'000', b'001']]>
+
+  >>> # Gather scalars from a 3D tensor
+  >>> tf.gather_nd(params, [[0, 0, 1], [1, 1, 2]]).numpy()
+  array([b'001', b'112'], dtype=object)
   """
+  if not isinstance(batch_dims, int) or batch_dims != 0:
+    raise ValueError('batch_dims != 0 is not supported for ragged gather yet.')
   if not (ragged_tensor.is_ragged(params) or ragged_tensor.is_ragged(indices)):
     return array_ops.gather_nd(params, indices, name)
 
@@ -174,6 +175,7 @@ def gather_nd(params, indices, name=None):
         params, name='params')
     indices = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         indices, name='indices')
+    params, indices = ragged_tensor.match_row_splits_dtypes(params, indices)
     indices_shape = indices.shape
     indices_ndims = indices_shape.ndims
     if indices_ndims is None:
@@ -196,12 +198,13 @@ def gather_nd(params, indices, name=None):
     if indices_ndims > 2:
       indices_is_dense = not ragged_tensor.is_ragged(indices)
       if indices_is_dense:
-        indices = ragged_conversion_ops.from_tensor(
-            indices, ragged_rank=indices_ndims - 2)
+        indices = ragged_tensor.RaggedTensor.from_tensor(
+            indices, ragged_rank=indices_ndims - 2,
+            row_splits_dtype=params.row_splits.dtype)
       result = indices.with_flat_values(gather_nd(params, indices.flat_values))
       if (indices_is_dense and ragged_tensor.is_ragged(result) and
           result.ragged_rank == indices_ndims - 2):
-        result = ragged_conversion_ops.to_tensor(result)
+        result = ragged_tensor.RaggedTensor.to_tensor(result)
       return result
 
     # indices_ndims <= 2, and the innermost dimension of indices may not be
@@ -232,7 +235,7 @@ def gather_nd(params, indices, name=None):
     # index tuples point to the correct values in the flattened params; and
     # then use ragged.gather on the flattened index tuples & params.
     else:
-      indices = math_ops.to_int64(indices)
+      indices = math_ops.cast(indices, params.row_splits.dtype)
 
       # Flatten the outermost 2 dimensions of the index tuples & params.
       flattened_index_tuples = array_ops.gather(params.row_splits,
@@ -256,3 +259,37 @@ def gather_nd(params, indices, name=None):
 
       # Gather using the flattened index tuples and params.
       return gather(flattened_params, flattened_index_tuples)
+
+
+#===============================================================================
+# Gradient for the RaggedGather kernel
+#===============================================================================
+@ops.RegisterGradient('RaggedGather')
+def _ragged_gather_grad(op, *grads):
+  """Gradient for RaggedGather op."""
+  param_nested_splits = op.inputs[:-2]
+  param_inner_values = op.inputs[-2]
+  indices = op.inputs[-1]
+  grad_inner_values = grads[-1]
+
+  # For each row in `params`, find the range of values in `params.inner_values`
+  # that is covered by that row.  In particular, the values in row `i` are
+  # `param_inner_values[combined_splits[i]:combined_splits[i+1]`.
+  combined_splits = param_nested_splits[0]
+  for row_splits in param_nested_splits[1:]:
+    combined_splits = array_ops.gather(row_splits, combined_splits)
+
+  # The outer dimensions of `indices` correspond 1:1 with the outer dimensions
+  # of `ragged_grad` that are encoded by `grad_nested_splits`.  Thus, the
+  # flattened `indices` correspond 1:1 with `grad_inner_values`.
+  flat_indices = array_ops.reshape(indices, [-1])
+
+  # Build an IndexedSlices where the values are taken from `flat_grad`.
+  grad_indices = ragged_math_ops.range(
+      array_ops.gather(combined_splits, flat_indices),
+      array_ops.gather(combined_splits[1:], flat_indices)).values
+
+  param_inner_values_grad = indexed_slices.IndexedSlices(
+      values=grad_inner_values, indices=grad_indices,
+      dense_shape=array_ops.shape(param_inner_values))
+  return [None for _ in param_nested_splits] + [param_inner_values_grad, None]

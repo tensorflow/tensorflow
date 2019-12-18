@@ -62,7 +62,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -3424,7 +3423,7 @@ int main(int argc, char** argv) {
       tensorflow::Flag(
           "tf_xla_random_seed", &tensorflow::tf_xla_random_seed,
           "Random seed to use for XLA tests. <= 0 means choose a seed "
-          "nondetermistically."),
+          "nondeterministically."),
       // TODO(phawkins): it might make more sense to run each test up to a
       // configurable time bound.
       tensorflow::Flag("tf_xla_test_repetitions",
@@ -3457,7 +3456,7 @@ int main(int argc, char** argv) {
   std::vector<std::unique_ptr<tensorflow::Device>> devices;
   TF_CHECK_OK(tensorflow::DeviceFactory::AddDevices(
       tensorflow::SessionOptions(), "", &devices));
-  tensorflow::DeviceMgr device_mgr(std::move(devices));
+  tensorflow::StaticDeviceMgr device_mgr(std::move(devices));
 
   tensorflow::Device* ignored;
   TF_QCHECK_OK(

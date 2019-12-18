@@ -14,13 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 // XLA TensorList operators.
-// Tensor lists are represented as tuple consisting of a pre-allocated list
-// consisting of the tensors (and where dim 0 is the list index), along with a
-// scalar telling us the current number of elements.
 
 #include <limits>
 #include <vector>
 
+#include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -28,6 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -35,76 +36,57 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-namespace {
 
-Status GetTensorListShape(xla::XlaBuilder* builder, xla::XlaOp op,
-                          TensorShape* tensor_list_shape) {
-  auto shape_or_status = builder->GetShape(op);
-  if (!shape_or_status.ok()) {
-    return shape_or_status.status();
-  }
-  xla::Shape shape = shape_or_status.ValueOrDie();
-  TF_RET_CHECK(shape.IsTuple());
-  return XLAShapeToTensorShape(xla::ShapeUtil::GetTupleElementShape(shape, 0),
-                               tensor_list_shape);
-}
+namespace {
 
 class TensorListLengthOp : public XlaOpKernel {
  public:
   explicit TensorListLengthOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaOp tl = ctx->Input(0);
-    xla::XlaOp index = xla::GetTupleElement(tl, 1);
-    ctx->SetOutput(0, index);
+    int64 leading_dim;
+    OP_REQUIRES_OK(ctx,
+                   GetLeadingDimForTensorList(ctx->Input(0), &leading_dim));
+    Tensor length_tensor(DT_INT32, {});
+    length_tensor.scalar<int32>()() = static_cast<int32>(leading_dim);
+    ctx->SetConstantOutput(0, length_tensor);
   }
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(TensorListLengthOp);
 };
 
-REGISTER_XLA_OP(Name("TensorListLength"), TensorListLengthOp);
+REGISTER_XLA_OP(Name("TensorListLength").IsMetadataOp(), TensorListLengthOp);
 
-// Creates an empty list with size (leading_dim, *element_shape) if
-// element_shape is known at compile time. Otherwise creates one with size
-// (leading_dim, 0) which gets initialized later in `GetInitializedList`.
-Status CreateZerosList(XlaOpKernelContext* ctx, int element_shape_index,
-                       int64 leading_dim, DataType dtype, xla::XlaOp* list) {
-  TensorShape list_shape;
-  list_shape.AddDim(leading_dim);
-  xla::XlaOp element_shape_handle = ctx->Input(element_shape_index);
-  TF_ASSIGN_OR_RETURN(
-      bool is_element_shape_compile_time_const,
-      element_shape_handle.builder()->IsConstant(element_shape_handle));
-  PartialTensorShape partial_element_shape;
-  if (is_element_shape_compile_time_const) {
-    TF_RETURN_IF_ERROR(ctx->ConstantInputAsPartialShape(
-        element_shape_index, &partial_element_shape));
+// "input" is the shape input for EmptyTensorList/TensorListReserve ops.
+// If "input" is a compile time constant and not "unknown rank" (-1), return
+// its value in "*shape".
+Status TryGetElementShapeFromInput(XlaOpKernelContext* ctx, xla::XlaOp input,
+                                   xla::PrimitiveType dtype, bool* got_shape,
+                                   xla::Shape* shape) {
+  auto is_compile_time_constant_or = input.builder()->IsConstant(input);
+  TF_RETURN_IF_ERROR(is_compile_time_constant_or.status());
+
+  bool is_compile_time_constant = is_compile_time_constant_or.ValueOrDie();
+  if (!is_compile_time_constant) {
+    *got_shape = false;
+    return Status::OK();
   }
-  if (is_element_shape_compile_time_const &&
-      partial_element_shape.IsFullyDefined()) {
-    TensorShape element_shape;
-    partial_element_shape.AsTensorShape(&element_shape);
-    list_shape.AppendShape(element_shape);
-  } else {
-    // If element_shape is not a compile time constant or if it is not fully
-    // defined we will have to wait for the first write call to fully allocate
-    // the array.
-    // TODO(srbs): We are using element_shape of [0] as a proxy to denote an
-    // uninitialized list. A better implementation may be to represent the
-    // list as a 3-tuple containining an explicit "initialized" flag. However,
-    // we would still need to create a dummy tensor for the first tuple
-    // element.
-    list_shape.AddDim(0);
+
+  PartialTensorShape partial_shape;
+  TF_RETURN_IF_ERROR(ctx->ConstantInputAsPartialShape(0, &partial_shape));
+  if (!partial_shape.IsFullyDefined()) {
+    *got_shape = false;
+    return Status::OK();
   }
-  *list = xla::Broadcast(XlaHelpers::Zero(ctx->builder(), dtype),
-                         list_shape.dim_sizes());
+
+  *shape = xla::ShapeUtil::MakeShape(dtype, partial_shape.dim_sizes());
+  *got_shape = true;
   return Status::OK();
 }
 
@@ -112,18 +94,53 @@ class TensorListReserveOp : public XlaOpKernel {
  public:
   explicit TensorListReserveOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("element_dtype", &dtype_));
+    // Only non-nested TensorList is supported for now.
+    OP_REQUIRES(
+        ctx, dtype_ != DT_VARIANT,
+        errors::Unimplemented(
+            "Only non-nested TensorList is supported for TensorListReserve."));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
     int64 num_elements;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &num_elements));
+    OP_REQUIRES(
+        ctx, num_elements >= 0,
+        errors::InvalidArgument("XLA compilation requires a fixed tensor list "
+                                "size. Set the number of elements."));
 
-    xla::XlaOp list;
-    OP_REQUIRES_OK(ctx, CreateZerosList(ctx, 0, num_elements, dtype_, &list));
+    // If element shape is compile time constant and it's not "unknown rank"
+    // shape (-1), create an initialized TensorList. Otherwise create an
+    // uninitialized TensorList.
+    xla::XlaOp element_shape_handle = ctx->Input(0);
+    xla::PrimitiveType type;
+    OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(dtype_, &type));
+    bool got_shape;
+    xla::Shape element_shape;
+    OP_REQUIRES_OK(ctx,
+                   TryGetElementShapeFromInput(ctx, element_shape_handle, type,
+                                               &got_shape, &element_shape));
+    if (got_shape) {
+      xla::Shape list_shape;
+      OP_REQUIRES_OK(ctx, GetTensorListShapeFromElementShape(
+                              element_shape, num_elements, &list_shape));
 
-    xla::XlaBuilder* b = ctx->builder();
-    ctx->SetTensorListOutput(
-        0, xla::Tuple(b, {list, xla::ConstantR0<int32>(b, num_elements)}));
+      xla::XlaOp new_list;
+      OP_REQUIRES_OK(ctx, CreateZerosTensorListWithShape(
+                              ctx->builder(), list_shape, &new_list));
+      xla::XlaOp result;
+      OP_REQUIRES_OK(
+          ctx,
+          SetTensorListPushIndex(
+              new_list, xla::ConstantR0<int32>(ctx->builder(), num_elements),
+              &result));
+      ctx->SetTensorListOutput(0, result);
+      return;
+    }
+
+    xla::XlaOp result =
+        BuildUninitializedTensorList(ctx->builder(), num_elements);
+    ctx->SetTensorListOutput(0, result);
   }
 
  private:
@@ -151,13 +168,37 @@ class EmptyTensorListOp : public XlaOpKernel {
         errors::InvalidArgument("XLA compilation requires a fixed tensor list "
                                 "size. Set the max number of elements."));
 
-    xla::XlaOp list;
-    OP_REQUIRES_OK(ctx,
-                   CreateZerosList(ctx, 0, max_num_elements, dtype_, &list));
+    if (dtype_ != DT_VARIANT) {
+      // We are creating a non-nested TensorList.
+      // If element shape is compile time constant and it's not "unknown rank"
+      // shape (-1), create an initialized TensorList. Otherwise create an
+      // uninitialized TensorList.
+      xla::XlaOp element_shape_handle = ctx->Input(0);
+      xla::PrimitiveType type;
+      OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(dtype_, &type));
+      bool got_shape;
+      xla::Shape element_shape;
+      OP_REQUIRES_OK(
+          ctx, TryGetElementShapeFromInput(ctx, element_shape_handle, type,
+                                           &got_shape, &element_shape));
+      if (got_shape) {
+        xla::Shape list_shape;
+        OP_REQUIRES_OK(ctx, GetTensorListShapeFromElementShape(
+                                element_shape, max_num_elements, &list_shape));
 
-    xla::XlaBuilder* b = ctx->builder();
-    ctx->SetTensorListOutput(
-        0, xla::Tuple(b, {list, xla::ConstantR0<int32>(b, 0)}));
+        xla::XlaOp result;
+        OP_REQUIRES_OK(ctx, CreateZerosTensorListWithShape(
+                                ctx->builder(), list_shape, &result));
+        ctx->SetTensorListOutput(0, result);
+        return;
+      }
+    }
+
+    // We are creating a nested TensorList or a non-nested TensorList with
+    // unknown shape. Just create an uninitialized TensorList.
+    xla::XlaOp result =
+        BuildUninitializedTensorList(ctx->builder(), max_num_elements);
+    ctx->SetTensorListOutput(0, result);
   }
 
  private:
@@ -168,7 +209,8 @@ class EmptyTensorListOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("EmptyTensorList")
                     .CompileTimeConstantInput("element_shape")
-                    .CompileTimeConstantInput("max_num_elements"),
+                    .CompileTimeConstantInput("max_num_elements")
+                    .AllowVariantTypes(),
                 EmptyTensorListOp);
 
 class TensorListElementShapeOp : public XlaOpKernel {
@@ -179,18 +221,34 @@ class TensorListElementShapeOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
+    // Check that the TensorList is initialized.
+    bool is_initialized;
+    OP_REQUIRES_OK(ctx,
+                   (IsTensorListInitialized(ctx->Input(0), &is_initialized)));
+    OP_REQUIRES(ctx, is_initialized,
+                errors::InvalidArgument("TensorList is not initialized"));
+
+    // Only non-nested TensorList is supported for now.
+    bool is_nested;
+    OP_REQUIRES_OK(ctx, IsNestedTensorList(ctx->Input(0), &is_nested));
+    OP_REQUIRES(ctx, !is_nested,
+                errors::Unimplemented("Only non-nested TensorList is supported "
+                                      "for TensorListElementShape."));
+
+    // For non-nested TensorList, element shape is the buffer shape without
+    // the first dimension.
     xla::XlaBuilder* b = ctx->builder();
-    TensorShape shape;
-    OP_REQUIRES_OK(ctx, GetTensorListShape(b, ctx->Input(0), &shape));
-    shape.RemoveDim(0);
+    xla::Shape list_shape;
+    OP_REQUIRES_OK(ctx, GetTensorListBufferShape(ctx->Input(0), &list_shape));
+    list_shape.DeleteDimension(0);
 
     switch (shape_type_) {
       case DT_INT64:
-        ctx->SetOutput(0, xla::ConstantR1<int64>(b, shape.dim_sizes()));
+        ctx->SetOutput(0, xla::ConstantR1<int64>(b, list_shape.dimensions()));
         break;
       case DT_INT32: {
         std::vector<int32> size;
-        for (int64 s : shape.dim_sizes()) {
+        for (int64 s : list_shape.dimensions()) {
           size.push_back(s);
         }
         ctx->SetOutput(0, xla::ConstantR1<int32>(b, size));
@@ -209,7 +267,8 @@ class TensorListElementShapeOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(TensorListElementShapeOp);
 };
 
-REGISTER_XLA_OP(Name("TensorListElementShape"), TensorListElementShapeOp);
+REGISTER_XLA_OP(Name("TensorListElementShape").IsMetadataOp(),
+                TensorListElementShapeOp);
 
 class TensorListGetItemOp : public XlaOpKernel {
  public:
@@ -218,27 +277,27 @@ class TensorListGetItemOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* b = ctx->builder();
-    xla::XlaOp state = ctx->Input(0);
+    // Check that the TensorList is initialized.
+    bool is_initialized;
+    OP_REQUIRES_OK(ctx,
+                   (IsTensorListInitialized(ctx->Input(0), &is_initialized)));
+    OP_REQUIRES(ctx, is_initialized,
+                errors::InvalidArgument("TensorList is not initialized"));
 
-    TensorShape shape;
-    OP_REQUIRES_OK(ctx, GetTensorListShape(b, state, &shape));
+    // Only non-nested TensorList is supported for now.
+    bool is_nested;
+    OP_REQUIRES_OK(ctx, IsNestedTensorList(ctx->Input(0), &is_nested));
+    OP_REQUIRES(ctx, !is_nested,
+                errors::Unimplemented("Only non-nested TensorList is supported "
+                                      "for TensorListGetItem."));
 
-    xla::XlaOp ta = xla::GetTupleElement(state, 0);
+    xla::XlaOp list = ctx->Input(0);
     xla::XlaOp index = ctx->Input(1);
 
-    // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
-    std::vector<xla::XlaOp> start_indices(shape.dims(),
-                                          xla::ConstantR0<int32>(b, 0));
-    start_indices[0] = index;
-    auto slice_shape = shape.dim_sizes();
-    slice_shape[0] = 1LL;
+    xla::XlaOp result;
+    OP_REQUIRES_OK(ctx, ExecuteTensorListGetItem(list, index, &result));
 
-    xla::XlaOp read = xla::DynamicSlice(ta, start_indices, slice_shape);
-    // Remove the leading '1' dimension.
-    std::vector<int64> value_shape(slice_shape.begin() + 1, slice_shape.end());
-
-    ctx->SetOutput(0, xla::Reshape(read, value_shape));
+    ctx->SetOutput(0, result);
   }
 
  private:
@@ -249,21 +308,84 @@ class TensorListGetItemOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("TensorListGetItem"), TensorListGetItemOp);
 
-class TensorListStackOp : public XlaOpKernel {
+class TensorListGatherOp : public XlaOpKernel {
  public:
-  explicit TensorListStackOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+  explicit TensorListGatherOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("element_dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaOp state = ctx->Input(0);
-    xla::XlaOp ta = xla::GetTupleElement(state, 0);
-    ctx->SetOutput(0, ta);
+    // Check that the TensorList is initialized.
+    bool is_initialized;
+    OP_REQUIRES_OK(ctx,
+                   (IsTensorListInitialized(ctx->Input(0), &is_initialized)));
+    OP_REQUIRES(ctx, is_initialized,
+                errors::InvalidArgument("TensorList is not initialized"));
+
+    // Only non-nested TensorList is supported for now.
+    bool is_nested;
+    OP_REQUIRES_OK(ctx, IsNestedTensorList(ctx->Input(0), &is_nested));
+    OP_REQUIRES(ctx, !is_nested,
+                errors::Unimplemented("Only non-nested TensorList is supported "
+                                      "for TensorListGather."));
+
+    DataType indices_type = ctx->input_type(1);
+
+    const TensorShape indices_shape = ctx->InputShape(1);
+    OP_REQUIRES(ctx, indices_shape.dims() == 1,
+                errors::InvalidArgument("indices must be rank 1"));
+
+    xla::XlaOp list = ctx->Input(0);
+    xla::XlaOp indices = ctx->Input(1);
+
+    xla::XlaOp buffer;
+    OP_REQUIRES_OK(ctx, GetTensorListBuffer(list, &buffer));
+    xla::Shape buffer_xla_shape;
+    OP_REQUIRES_OK(ctx, GetTensorListBufferShape(list, &buffer_xla_shape));
+    TensorShape buffer_shape;
+    OP_REQUIRES_OK(ctx, XLAShapeToTensorShape(buffer_xla_shape, &buffer_shape));
+
+    xla::XlaOp result;
+    OP_REQUIRES_OK(
+        ctx, XlaGather(buffer, buffer_shape, indices, indices_shape, /*axis=*/0,
+                       /*indices_are_nd=*/false, dtype_, indices_type,
+                       ctx->builder(), &result));
+    ctx->SetOutput(0, result);
   }
 
  private:
   DataType dtype_;
 
+  TF_DISALLOW_COPY_AND_ASSIGN(TensorListGatherOp);
+};
+
+REGISTER_XLA_OP(Name("TensorListGather"), TensorListGatherOp);
+
+class TensorListStackOp : public XlaOpKernel {
+ public:
+  explicit TensorListStackOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    // Check that the TensorList is initialized.
+    bool is_initialized;
+    OP_REQUIRES_OK(ctx,
+                   (IsTensorListInitialized(ctx->Input(0), &is_initialized)));
+    OP_REQUIRES(ctx, is_initialized,
+                errors::InvalidArgument("TensorList is not initialized"));
+
+    // Only non-nested TensorList is supported for now.
+    bool is_nested;
+    OP_REQUIRES_OK(ctx, IsNestedTensorList(ctx->Input(0), &is_nested));
+    OP_REQUIRES(ctx, !is_nested,
+                errors::Unimplemented("Only non-nested TensorList is supported "
+                                      "for TensorListGetItem."));
+
+    xla::XlaOp buffer;
+    OP_REQUIRES_OK(ctx, GetTensorListBuffer(ctx->Input(0), &buffer));
+    ctx->SetOutput(0, buffer);
+  }
+
+ private:
   TF_DISALLOW_COPY_AND_ASSIGN(TensorListStackOp);
 };
 
@@ -272,31 +394,20 @@ REGISTER_XLA_OP(Name("TensorListStack"), TensorListStackOp);
 class TensorListFromTensorOp : public XlaOpKernel {
  public:
   explicit TensorListFromTensorOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("element_dtype", &dtype_));
-  }
+      : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    TensorShape element_shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(1, &element_shape));
-
-    const TensorShape tensor_shape = ctx->InputShape(0);
-    OP_REQUIRES(ctx, tensor_shape.dims() > 0,
-                errors::InvalidArgument("Input value must be at least a "
-                                        "vector but received shape: ",
-                                        tensor_shape.DebugString()));
-    const int num_elements = tensor_shape.dim_size(0);
-
-    xla::XlaBuilder* b = ctx->builder();
+    const TensorShape& tensor_shape = ctx->InputShape(0);
+    int num_elements = tensor_shape.dim_size(0);
     const xla::XlaOp tensor = ctx->Input(0);
-
-    ctx->SetTensorListOutput(
-        0, xla::Tuple(b, {tensor, xla::ConstantR0<int32>(b, num_elements)}));
+    xla::XlaOp result;
+    OP_REQUIRES_OK(ctx,
+                   ExecuteTensorListFromTensor(num_elements, tensor, &result));
+    auto list_shape_or = ctx->builder()->GetShape(result);
+    ctx->SetTensorListOutput(0, result);
   }
 
  private:
-  DataType dtype_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(TensorListFromTensorOp);
 };
 
@@ -304,70 +415,34 @@ REGISTER_XLA_OP(
     Name("TensorListFromTensor").CompileTimeConstantInput("element_shape"),
     TensorListFromTensorOp);
 
-// Returns the 0'th element of `tuple` containing the list tensor if it has been
-// initialized already else creates one lazily. This allows lazy initialization
-// of the list on the first call to SetItem or PushBack.
-Status GetInitializedList(XlaOpKernelContext* ctx, const xla::XlaOp& tuple,
-                          const TensorShape& element_shape, DataType dtype,
-                          xla::XlaOp* list) {
-  *list = xla::GetTupleElement(tuple, 0);
-  TensorShape list_shape;
-  TF_RETURN_IF_ERROR(GetTensorListShape(ctx->builder(), tuple, &list_shape));
-  int64 leading_dim = list_shape.dim_size(0);
-  TensorShape list_element_shape = list_shape;
-  list_element_shape.RemoveDim(0);
-  // This checks for the lazy initialization contract set by CreateEmptyList.
-  // In TensorListReserve if the element_shape is not known at compile time,
-  // it creates a list with shape [leading_dim, 0].
-  if (element_shape != list_element_shape) {
-    if (list_element_shape.num_elements() != 0) {
-      return errors::InvalidArgument(
-          "Invalid shape of value in TensorListSetItem. Expected: ",
-          list_element_shape.DebugString(),
-          " Actual: ", element_shape.DebugString());
-    }
-    list_shape = element_shape;
-    list_shape.InsertDim(0, leading_dim);
-    *list = xla::Broadcast(XlaHelpers::Zero(ctx->builder(), dtype),
-                           list_shape.dim_sizes());
-  }
-  return Status::OK();
-}
-
 class TensorListSetItemOp : public XlaOpKernel {
  public:
-  explicit TensorListSetItemOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("element_dtype", &dtype_));
-  }
+  explicit TensorListSetItemOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* b = ctx->builder();
-    xla::XlaOp tl = ctx->Input(0);
-    TensorShape elem_shape = ctx->InputShape(2);
-
-    xla::XlaOp list;
-    OP_REQUIRES_OK(ctx, GetInitializedList(ctx, tl, elem_shape, dtype_, &list));
-
+    xla::XlaOp list = ctx->Input(0);
     xla::XlaOp index = ctx->Input(1);
-    xla::XlaOp value = ctx->Input(2);
+    xla::XlaOp element = ctx->Input(2);
+    xla::XlaOp initialized_list;
+    OP_REQUIRES_OK(ctx, GetInitializedTensorListForElement(
+                            list, element, /*element_is_tensor_list=*/false,
+                            &initialized_list));
 
-    // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
-    std::vector<xla::XlaOp> start_indices(elem_shape.dims() + 1,
-                                          xla::ConstantR0<int32>(b, 0));
-    start_indices[0] = index;
+    // Only non-nested TensorList is supported for now.
+    bool is_nested;
+    OP_REQUIRES_OK(ctx, IsNestedTensorList(initialized_list, &is_nested));
+    OP_REQUIRES(ctx, !is_nested,
+                errors::Unimplemented("Only non-nested TensorList is supported "
+                                      "for TensorListSetItem."));
 
-    TensorShape slice_shape = elem_shape;
-    slice_shape.InsertDim(0, 1LL);
-    auto update = xla::Reshape(value, slice_shape.dim_sizes());
+    xla::XlaOp result;
+    OP_REQUIRES_OK(ctx, ExecuteTensorListSetItem(initialized_list, index,
+                                                 element, &result));
 
-    ctx->SetTensorListOutput(
-        0, xla::Tuple(b, {xla::DynamicUpdateSlice(list, update, start_indices),
-                          xla::GetTupleElement(tl, 1)}));
+    ctx->SetTensorListOutput(0, result);
   }
 
  private:
-  DataType dtype_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(TensorListSetItemOp);
 };
 
@@ -375,75 +450,57 @@ REGISTER_XLA_OP(Name("TensorListSetItem"), TensorListSetItemOp);
 
 class TensorListPushBackOp : public XlaOpKernel {
  public:
-  explicit TensorListPushBackOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("element_dtype", &dtype_));
-  }
+  explicit TensorListPushBackOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* b = ctx->builder();
-    xla::XlaOp list_tuple = ctx->Input(0);
-    TensorShape elem_shape = ctx->InputShape(1);
-
-    xla::XlaOp list;
+    xla::XlaOp list = ctx->Input(0);
+    xla::XlaOp element = ctx->Input(1);
+    bool element_is_tensor_list = IsTensorListInput(ctx, 1);
+    xla::XlaOp initialized_list;
     OP_REQUIRES_OK(
-        ctx, GetInitializedList(ctx, list_tuple, elem_shape, dtype_, &list));
+        ctx, GetInitializedTensorListForElement(
+                 list, element, element_is_tensor_list, &initialized_list));
 
-    xla::XlaOp index = xla::GetTupleElement(list_tuple, 1);
-    xla::XlaOp value = ctx->Input(1);
+    xla::XlaOp result;
+    OP_REQUIRES_OK(ctx,
+                   ExecuteTensorListPushBack(initialized_list, element,
+                                             element_is_tensor_list, &result));
 
-    // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
-    std::vector<xla::XlaOp> start_indices(elem_shape.dims() + 1,
-                                          xla::ConstantR0<int32>(b, 0));
-    start_indices[0] = index;
-
-    TensorShape slice_shape = elem_shape;
-    slice_shape.InsertDim(0, 1LL);
-    auto update = xla::Reshape(value, slice_shape.dim_sizes());
-
-    ctx->SetTensorListOutput(
-        0, xla::Tuple(b, {xla::DynamicUpdateSlice(list, update, start_indices),
-                          index + xla::ConstantR0<int32>(b, 1)}));
+    ctx->SetTensorListOutput(0, result);
   }
 
  private:
-  DataType dtype_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(TensorListPushBackOp);
 };
 
-REGISTER_XLA_OP(Name("TensorListPushBack"), TensorListPushBackOp);
+REGISTER_XLA_OP(Name("TensorListPushBack").AllowVariantTypes(),
+                TensorListPushBackOp);
 
 class TensorListPopBackOp : public XlaOpKernel {
  public:
-  explicit TensorListPopBackOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("element_dtype", &dtype_));
-  }
+  explicit TensorListPopBackOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* b = ctx->builder();
-    xla::XlaOp state = ctx->Input(0);
+    // Check that the TensorList is initialized.
+    bool is_initialized;
+    OP_REQUIRES_OK(ctx,
+                   (IsTensorListInitialized(ctx->Input(0), &is_initialized)));
+    OP_REQUIRES(ctx, is_initialized,
+                errors::InvalidArgument("TensorList is not initialized"));
 
-    TensorShape shape;
-    OP_REQUIRES_OK(ctx, GetTensorListShape(b, state, &shape));
+    xla::XlaOp list = ctx->Input(0);
+    xla::XlaOp list_result, element_result;
+    bool element_is_tensor_list;
+    OP_REQUIRES_OK(ctx,
+                   ExecuteTensorListPopBack(list, &list_result, &element_result,
+                                            &element_is_tensor_list));
 
-    xla::XlaOp ta = xla::GetTupleElement(state, 0);
-    xla::XlaOp index = xla::GetTupleElement(state, 1);
-
-    index = index - xla::ConstantR0<int32>(b, 1);
-
-    // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
-    std::vector<xla::XlaOp> start_indices(shape.dims(),
-                                          xla::ConstantR0<int32>(b, 0));
-    start_indices[0] = index;
-    auto slice_shape = shape.dim_sizes();
-    slice_shape[0] = 1LL;
-
-    xla::XlaOp read = xla::DynamicSlice(ta, start_indices, slice_shape);
-    // Remove the leading '1' dimension.
-    std::vector<int64> value_shape(slice_shape.begin() + 1, slice_shape.end());
-
-    ctx->SetTensorListOutput(0, xla::Tuple(b, {ta, index}));
-    ctx->SetOutput(1, xla::Reshape(read, value_shape));
+    ctx->SetTensorListOutput(0, list_result);
+    if (element_is_tensor_list) {
+      ctx->SetTensorListOutput(1, element_result);
+    } else {
+      ctx->SetOutput(1, element_result);
+    }
   }
 
  private:
@@ -452,7 +509,8 @@ class TensorListPopBackOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(TensorListPopBackOp);
 };
 
-REGISTER_XLA_OP(Name("TensorListPopBack"), TensorListPopBackOp);
+REGISTER_XLA_OP(Name("TensorListPopBack").AllowVariantTypes(),
+                TensorListPopBackOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

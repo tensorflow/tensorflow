@@ -14,6 +14,7 @@ import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/protobuf/saved_object_graph.proto";
 import "tensorflow/core/protobuf/saver.proto";
+import "tensorflow/core/protobuf/struct.proto";
 
 // NOTE: This protocol buffer is evolving, and will go through revisions in the
 // coming months.
@@ -225,6 +226,15 @@ message TensorInfo {
     string dense_shape_tensor_name = 3;
   }
 
+  // Generic encoding for composite tensors.
+  message CompositeTensor {
+    // The serialized TypeSpec for the composite tensor.
+    TypeSpecProto type_spec = 1;
+
+    // A TensorInfo for each flattened component tensor.
+    repeated TensorInfo components = 2;
+  }
+
   oneof encoding {
     // For dense `Tensor`s, the name of the tensor in the graph.
     string name = 1;
@@ -233,6 +243,8 @@ message TensorInfo {
     // uses only the COO encoding.  This is supported and documented in the
     // SparseTensor Python class.
     CooSparse coo_sparse = 4;
+    // Generic encoding for CompositeTensors.
+    CompositeTensor composite_tensor = 5;
   }
   DataType dtype = 2;
   // The static shape should be recorded here, to the extent that it can

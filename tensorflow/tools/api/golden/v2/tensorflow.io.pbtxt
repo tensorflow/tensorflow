@@ -9,11 +9,11 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "SparseFeature"
+    name: "RaggedFeature"
     mtype: "<type \'type\'>"
   }
   member {
-    name: "TFRecordCompressionType"
+    name: "SparseFeature"
     mtype: "<type \'type\'>"
   }
   member {
@@ -22,7 +22,7 @@ tf_module {
   }
   member {
     name: "TFRecordWriter"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "VarLenFeature"
@@ -58,7 +58,7 @@ tf_module {
   }
   member_method {
     name: "decode_image"
-    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'uint8\'>\", \'None\'], "
+    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\', \'expand_animations\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'uint8\'>\", \'None\', \'True\'], "
   }
   member_method {
     name: "decode_jpeg"
@@ -73,8 +73,12 @@ tf_module {
     argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \"<dtype: \'uint8\'>\", \'None\'], "
   }
   member_method {
+    name: "decode_proto"
+    argspec: "args=[\'bytes\', \'message_type\', \'field_names\', \'output_types\', \'descriptor_source\', \'message_format\', \'sanitize\', \'name\'], varargs=None, keywords=None, defaults=[\'local://\', \'binary\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "decode_raw"
-    argspec: "args=[\'bytes\', \'out_type\', \'little_endian\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'input_bytes\', \'out_type\', \'little_endian\', \'fixed_length\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "deserialize_many_sparse"
@@ -87,6 +91,10 @@ tf_module {
   member_method {
     name: "encode_jpeg"
     argspec: "args=[\'image\', \'format\', \'quality\', \'progressive\', \'optimize_size\', \'chroma_downsampling\', \'density_unit\', \'x_density\', \'y_density\', \'xmp_metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'95\', \'False\', \'False\', \'True\', \'in\', \'300\', \'300\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "encode_proto"
+    argspec: "args=[\'sizes\', \'values\', \'field_names\', \'message_type\', \'descriptor_source\', \'name\'], varargs=None, keywords=None, defaults=[\'local://\', \'None\'], "
   }
   member_method {
     name: "extract_jpeg_shape"

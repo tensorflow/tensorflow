@@ -8,6 +8,10 @@ tf_class {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "aggregation"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "constraint"
     mtype: "<type \'property\'>"
   }
@@ -44,12 +48,16 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "synchronization"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "trainable"
     mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'initial_value\', \'trainable\', \'validate_shape\', \'caching_device\', \'name\', \'variable_def\', \'dtype\', \'import_scope\', \'constraint\', \'synchronization\', \'aggregation\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'True\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
+    argspec: "args=[\'self\', \'initial_value\', \'trainable\', \'validate_shape\', \'caching_device\', \'name\', \'variable_def\', \'dtype\', \'import_scope\', \'constraint\', \'synchronization\', \'aggregation\', \'shape\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\', \'None\'], "
   }
   member_method {
     name: "assign"
@@ -76,8 +84,16 @@ tf_class {
     argspec: "args=[\'self\', \'session\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "experimental_ref"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "from_proto"
     argspec: "args=[\'variable_def\', \'import_scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "gather_nd"
+    argspec: "args=[\'self\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "get_shape"
@@ -97,6 +113,22 @@ tf_class {
   }
   member_method {
     name: "scatter_add"
+    argspec: "args=[\'self\', \'sparse_delta\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "scatter_div"
+    argspec: "args=[\'self\', \'sparse_delta\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "scatter_max"
+    argspec: "args=[\'self\', \'sparse_delta\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "scatter_min"
+    argspec: "args=[\'self\', \'sparse_delta\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "scatter_mul"
     argspec: "args=[\'self\', \'sparse_delta\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
@@ -122,6 +154,10 @@ tf_class {
   member_method {
     name: "set_shape"
     argspec: "args=[\'self\', \'shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "sparse_read"
+    argspec: "args=[\'self\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "to_proto"

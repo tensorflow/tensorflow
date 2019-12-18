@@ -19,10 +19,13 @@ int main(int argc, char** argv) {
   tflite::testing::kernel_test::TestOptions options =
       tflite::testing::kernel_test::ParseTfliteKernelTestFlags(&argc, argv);
   const bool run_reference_kernel = options.kernel_type == "REFERENCE";
-  const bool use_nnapi = options.kernel_type == "NNAPI";
+  const tflite::testing::TfLiteDriver::DelegateType delegate_type =
+      options.kernel_type == "NNAPI"
+          ? tflite::testing::TfLiteDriver::DelegateType::kNnapi
+          : tflite::testing::TfLiteDriver::DelegateType::kNone;
 
   auto runner = absl::make_unique<tflite::testing::TfLiteDriver>(
-      use_nnapi, "", run_reference_kernel);
+      delegate_type, run_reference_kernel);
   if (tflite::testing::kernel_test::RunKernelTest(options, runner.get()) ==
       kTfLiteOk) {
     return 0;

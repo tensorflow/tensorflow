@@ -41,7 +41,7 @@ class CsvDatasetBenchmark(test.Benchmark):
   FLOAT_VAL = '1.23456E12'
   STR_VAL = string.ascii_letters * 10
 
-  def _setUp(self, str_val):
+  def _set_up(self, str_val):
     # Since this isn't test.TestCase, have to manually create a test dir
     gfile.MakeDirs(googletest.GetTempDir())
     self._temp_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
@@ -54,14 +54,14 @@ class CsvDatasetBenchmark(test.Benchmark):
       with open(fn, 'wb') as f:
         # Just write 100 rows and use `repeat`... Assumes the cost
         # of creating an iterator is not significant
-        row = ','.join([str_val for _ in range(n)])
-        f.write('\n'.join([row for _ in range(100)]))
+        row = ','.join(str_val for _ in range(n))
+        f.write('\n'.join(row for _ in range(100)))
       self._filenames.append(fn)
 
-  def _tearDown(self):
+  def _tear_down(self):
     gfile.DeleteRecursively(self._temp_dir)
 
-  def _runBenchmark(self, dataset, num_cols, prefix):
+  def _run_benchmark(self, dataset, num_cols, prefix):
     dataset = dataset.skip(self._num_per_iter - 1)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
@@ -87,45 +87,45 @@ class CsvDatasetBenchmark(test.Benchmark):
         wall_time=median_wall_time,
         name='%s_with_cols_%d' % (prefix, num_cols))
 
-  def benchmarkMapWithFloats(self):
-    self._setUp(self.FLOAT_VAL)
+  def benchmark_map_with_floats(self):
+    self._set_up(self.FLOAT_VAL)
     for i in range(len(self._filenames)):
       num_cols = self._num_cols[i]
       kwargs = {'record_defaults': [[0.0]] * num_cols}
       dataset = core_readers.TextLineDataset(self._filenames[i]).repeat()
       dataset = dataset.map(lambda l: parsing_ops.decode_csv(l, **kwargs))  # pylint: disable=cell-var-from-loop
-      self._runBenchmark(dataset, num_cols, 'csv_float_map_decode_csv')
-    self._tearDown()
+      self._run_benchmark(dataset, num_cols, 'csv_float_map_decode_csv')
+    self._tear_down()
 
-  def benchmarkMapWithStrings(self):
-    self._setUp(self.STR_VAL)
+  def benchmark_map_with_strings(self):
+    self._set_up(self.STR_VAL)
     for i in range(len(self._filenames)):
       num_cols = self._num_cols[i]
       kwargs = {'record_defaults': [['']] * num_cols}
       dataset = core_readers.TextLineDataset(self._filenames[i]).repeat()
       dataset = dataset.map(lambda l: parsing_ops.decode_csv(l, **kwargs))  # pylint: disable=cell-var-from-loop
-      self._runBenchmark(dataset, num_cols, 'csv_strings_map_decode_csv')
-    self._tearDown()
+      self._run_benchmark(dataset, num_cols, 'csv_strings_map_decode_csv')
+    self._tear_down()
 
-  def benchmarkCsvDatasetWithFloats(self):
-    self._setUp(self.FLOAT_VAL)
+  def benchmark_csv_dataset_with_floats(self):
+    self._set_up(self.FLOAT_VAL)
     for i in range(len(self._filenames)):
       num_cols = self._num_cols[i]
       kwargs = {'record_defaults': [[0.0]] * num_cols}
       dataset = core_readers.TextLineDataset(self._filenames[i]).repeat()
       dataset = readers.CsvDataset(self._filenames[i], **kwargs).repeat()  # pylint: disable=cell-var-from-loop
-      self._runBenchmark(dataset, num_cols, 'csv_float_fused_dataset')
-    self._tearDown()
+      self._run_benchmark(dataset, num_cols, 'csv_float_fused_dataset')
+    self._tear_down()
 
-  def benchmarkCsvDatasetWithStrings(self):
-    self._setUp(self.STR_VAL)
+  def benchmark_csv_dataset_with_strings(self):
+    self._set_up(self.STR_VAL)
     for i in range(len(self._filenames)):
       num_cols = self._num_cols[i]
       kwargs = {'record_defaults': [['']] * num_cols}
       dataset = core_readers.TextLineDataset(self._filenames[i]).repeat()
       dataset = readers.CsvDataset(self._filenames[i], **kwargs).repeat()  # pylint: disable=cell-var-from-loop
-      self._runBenchmark(dataset, num_cols, 'csv_strings_fused_dataset')
-    self._tearDown()
+      self._run_benchmark(dataset, num_cols, 'csv_strings_fused_dataset')
+    self._tear_down()
 
 if __name__ == '__main__':
   test.main()

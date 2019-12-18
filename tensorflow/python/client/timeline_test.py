@@ -57,7 +57,7 @@ class TimelineTest(test.TestCase):
     ctf = tl.generate_chrome_trace_format()
     self._validateTrace(ctf)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testTimelineCpu(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.FULL_TRACE)
@@ -86,6 +86,7 @@ class TimelineTest(test.TestCase):
         show_memory=False, show_dataflow=False)
     self._validateTrace(ctf)
 
+  @test_util.deprecated_graph_mode_only
   def testTimelineGpu(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -103,7 +104,10 @@ class TimelineTest(test.TestCase):
     step_stats = run_metadata.step_stats
     devices = [d.device for d in step_stats.dev_stats]
     self.assertTrue('/job:localhost/replica:0/task:0/device:GPU:0' in devices)
-    self.assertTrue('/device:GPU:0/stream:all' in devices)
+    if not test.is_built_with_rocm():
+      # skip this check for the ROCm platform
+      # stream level tracing is not yet supported on the ROCm platform
+      self.assertTrue('/device:GPU:0/stream:all' in devices)
     tl = timeline.Timeline(step_stats)
     ctf = tl.generate_chrome_trace_format()
     self._validateTrace(ctf)

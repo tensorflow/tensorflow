@@ -18,7 +18,7 @@ limitations under the License.
 #include <limits>
 #include <random>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/testing/join.h"
 #include "tensorflow/lite/testing/split.h"
@@ -47,8 +47,8 @@ template <typename T>
 std::vector<T> GenerateUniform(TfLiteIntArray* dims, float min, float max) {
   auto random_float = [](float min, float max) {
     // TODO(yunluli): Change seed for each invocation if needed.
-    static unsigned int seed;
-    return min + (max - min) * static_cast<float>(rand_r(&seed)) / RAND_MAX;
+    // Used rand() instead of rand_r() here to make it runnable on android.
+    return min + (max - min) * static_cast<float>(rand()) / RAND_MAX;
   };
 
   std::function<T(int)> random_t = [&](int) {

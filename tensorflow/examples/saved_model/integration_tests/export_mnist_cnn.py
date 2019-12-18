@@ -26,7 +26,7 @@ from __future__ import print_function
 
 from absl import app
 from absl import flags
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from tensorflow.examples.saved_model.integration_tests import mnist_util
 from tensorflow.python.util import tf_decorator
@@ -40,6 +40,11 @@ flags.DEFINE_string(
 flags.DEFINE_integer(
     'epochs', 10,
     'Number of epochs to train.')
+flags.DEFINE_bool(
+    'use_keras_save_api', False,
+    'Uses tf.keras.models.save_model() on the feature extractor '
+    'instead of tf.saved_model.save() on a manually wrapped version. '
+    'With this, the exported model has no hparams.')
 flags.DEFINE_bool(
     'fast_test_mode', False,
     'Shortcut training for running in unit tests.')
@@ -59,7 +64,7 @@ def make_feature_extractor(l2_strength, dropout_rate):
   net = tf.keras.layers.MaxPooling2D(pool_size=(2, 2), name='pool1')(net)
   net = tf.keras.layers.Dropout(dropout_rate, name='dropout1')(net)
   net = tf.keras.layers.Flatten(name='flatten')(net)
-  net = tf.keras.layers.Dense(128, activation='relu', name='dense1',
+  net = tf.keras.layers.Dense(10, activation='relu', name='dense1',
                               kernel_regularizer=regularizer())(net)
   return tf.keras.Model(inputs=inp, outputs=net)
 
@@ -82,9 +87,19 @@ def make_classifier(feature_extractor, l2_strength, dropout_rate=0.5):
 def wrap_keras_model_for_export(model, batch_input_shape,
                                 set_hparams, default_hparams):
   """Wraps `model` for saving and loading as SavedModel."""
+  # The primary input to the module is a Tensor with a batch of images.
+  # Here we determine its spec.
+  inputs_spec = tf.TensorSpec(shape=batch_input_shape, dtype=tf.float32)
+
+  # The module also accepts certain hparams as optional Tensor inputs.
+  # Here, we cut all the relevant slices from `default_hparams`
+  # (and don't worry if anyone accidentally modifies it later).
   if default_hparams is None: default_hparams = {}
   hparam_keys = list(default_hparams.keys())
   hparam_defaults = tuple(default_hparams.values())
+  hparams_spec = {name: tf.TensorSpec.from_tensor(tf.constant(value))
+                  for name, value in default_hparams.items()}
+
   # The goal is to save a function with this argspec...
   argspec = tf_inspect.FullArgSpec(
       args=(['inputs', 'training'] + hparam_keys),
@@ -101,33 +116,26 @@ def wrap_keras_model_for_export(model, batch_input_shape,
     kwargs = dict(zip(hparam_keys, args))
     if kwargs: set_hparams(model, **kwargs)
     return model(inputs, training=training)
+
   # We cannot spell out `args` in def statement for call_fn, but since
   # tf.function uses tf_inspect, we can use tf_decorator to wrap it with
   # the desired argspec.
   def wrapped(*args, **kwargs):  # TODO(arnoegw): Can we use call_fn itself?
     return call_fn(*args, **kwargs)
-  traced_call_fn = tf.function(autograph=False)(
+  traced_call_fn = tf.function(
       tf_decorator.make_decorator(call_fn, wrapped, decorator_argspec=argspec))
-  # Now we need to trigger traces for
-  # - training set to Python values True or False (hence two traces),
-  # - tensor inputs of the expected nesting, shape and dtype,
-  # - tensor-valued kwargs for hparams, with caller-side defaults.
-  # Tracing with partially determined shapes requires an input signature,
-  # so we initiate tracing from a helper function with only tensor inputs.
-  @tf.function(autograph=False)
-  def trigger_traces(inputs, **kwargs):
-    return tuple(traced_call_fn(inputs, training=training, **kwargs)
-                 for training in (True, False))
-  inputs_spec = tf.TensorSpec(shape=batch_input_shape, dtype=tf.float32)
-  hparams_spec = {name: tf.TensorSpec.from_tensor(tf.constant(value))
-                  for name, value in default_hparams.items()}
-  _ = trigger_traces.get_concrete_function(inputs_spec, **hparams_spec)
 
-  # Assemble the output object.
+  # Now we need to trigger traces for all supported combinations of the
+  # non-Tensor-value inputs.
+  for training in (True, False):
+    traced_call_fn.get_concrete_function(inputs_spec, training, **hparams_spec)
+
+  # Finally, we assemble the object for tf.saved_model.save().
   obj = tf.train.Checkpoint()
   obj.__call__ = traced_call_fn
   obj.trainable_variables = model.trainable_variables
   obj.variables = model.trainable_variables + model.non_trainable_variables
+  # Make tf.functions for the regularization terms of the loss.
   obj.regularization_losses = [_get_traced_loss(model, i)
                                for i in range(len(model.losses))]
   return obj
@@ -177,13 +185,20 @@ def main(argv):
   # Save the feature extractor to a framework-agnostic SavedModel for reuse.
   # Note that the feature_extractor object has not been compiled or fitted,
   # so it does not contain an optimizer and related state.
-  exportable = wrap_keras_model_for_export(feature_extractor,
-                                           (None,) + mnist_util.INPUT_SHAPE,
-                                           set_feature_extractor_hparams,
-                                           default_hparams)
-  tf.saved_model.save(exportable, FLAGS.export_dir)
+  if FLAGS.use_keras_save_api:
+    # Use Keras' built-in way of creating reusable SavedModels.
+    # This has no support for adjustable hparams at this time (July 2019).
+    # (We could also call tf.saved_model.save(feature_extractor, ...),
+    # point is we're passing a Keras model, not a plain Checkpoint.)
+    tf.keras.models.save_model(feature_extractor, FLAGS.export_dir)
+  else:
+    # Assemble a reusable SavedModel manually, with adjustable hparams.
+    exportable = wrap_keras_model_for_export(feature_extractor,
+                                             (None,) + mnist_util.INPUT_SHAPE,
+                                             set_feature_extractor_hparams,
+                                             default_hparams)
+    tf.saved_model.save(exportable, FLAGS.export_dir)
 
 
 if __name__ == '__main__':
-  # tf.enable_v2_behavior()
   app.run(main)

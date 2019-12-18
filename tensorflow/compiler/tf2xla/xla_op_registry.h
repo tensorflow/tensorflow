@@ -47,19 +47,22 @@ extern const char* const DEVICE_XLA_GPU;
 
 constexpr std::array<DataType, 4> kFloatTypes = {
     {DT_HALF, DT_FLOAT, DT_DOUBLE, DT_BFLOAT16}};
-constexpr std::array<DataType, 12> kNumericTypes = {
-    {DT_UINT8, DT_UINT32, DT_UINT64, DT_INT8, DT_INT32, DT_INT64, DT_HALF,
-     DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128, DT_BFLOAT16}};
-
-constexpr std::array<DataType, 15> kCpuAllTypes = {
-    {DT_UINT8, DT_QUINT8, DT_UINT32, DT_UINT64, DT_INT8, DT_QINT8, DT_INT32,
-     DT_QINT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64,
-     DT_COMPLEX128, DT_BOOL}};
-
-constexpr std::array<DataType, 15> kGpuAllTypes = {
-    {DT_UINT8, DT_QUINT8, DT_UINT32, DT_UINT64, DT_INT8, DT_QINT8, DT_INT32,
-     DT_QINT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL,
+constexpr std::array<DataType, 6> kFloatAndComplexTypes = {
+    {DT_HALF, DT_FLOAT, DT_DOUBLE, DT_BFLOAT16, DT_COMPLEX64, DT_COMPLEX128}};
+constexpr std::array<DataType, 14> kNumericTypes = {
+    {DT_UINT8, DT_UINT16, DT_UINT32, DT_UINT64, DT_INT8, DT_INT16, DT_INT32,
+     DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128,
      DT_BFLOAT16}};
+
+constexpr std::array<DataType, 18> kCpuAllTypes = {
+    {DT_UINT8, DT_QUINT8, DT_UINT16, DT_UINT32, DT_UINT64, DT_INT8, DT_QINT8,
+     DT_INT16, DT_INT32, DT_QINT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
+     DT_COMPLEX64, DT_COMPLEX128, DT_BOOL, DT_BFLOAT16}};
+
+constexpr std::array<DataType, 18> kGpuAllTypes = {
+    {DT_UINT8, DT_QUINT8, DT_UINT16, DT_UINT32, DT_UINT64, DT_INT8, DT_QINT8,
+     DT_INT16, DT_INT32, DT_QINT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
+     DT_COMPLEX64, DT_COMPLEX128, DT_BOOL, DT_BFLOAT16}};
 
 // Class that manages registrations of operators and devices for the XLA JIT.
 // Not thread-safe.
@@ -88,8 +91,40 @@ class XlaOpRegistry {
     // When should we autocluster operators assigned to this device?
     AutoclusteringPolicy autoclustering_policy;
 
-    // Enable compilation of operators that use DT_RESOURCE types?
-    bool compile_resource_ops = false;
+    // If we should ignore the resource variable memory model when clustering
+    // resource variable reads and writes placed on this device.
+    bool cluster_resource_variable_ops_unsafely = false;
+
+    // If we should auto-cluster Stack operations placed on this device.
+    bool cluster_stack_ops = false;
+
+    // If we should auto-cluster TensorArray operations placed on this device.
+    bool cluster_tensor_array_ops = false;
+
+    // If we should auto-cluster stateful RNG operations placed on this device.
+    // Stateful RNG semantics are not properly supported by XLA so it is not
+    // necessarily correct to auto-cluster stateful RNG ops in general.
+    bool cluster_stateful_rng_ops = false;
+
+    // If we should auto-cluster ControlTrigger operations placed on this
+    // device.  ControlTrigger operations are not necessarily safe to cluster
+    // since they affect deadness (a dead ControlTrigger produces a live
+    // output).
+    bool cluster_control_trigger = false;
+
+    // If we should cluster Assert and CheckNumerics by eliding them (XLA does
+    // not natively support Assert or CheckNumerics).
+    bool elide_assert_and_checknumerics = false;
+
+    // If we should cluster operations returning DT_VARIANT.
+    bool cluster_variant_ops = false;
+
+    // Whether ops known to be slow should be auto-clustered.
+    bool cluster_slow_ops = false;
+
+    // Whether ops known to have numerical accuracy issues should be
+    // auto-clustered.
+    bool cluster_inaccurate_ops = false;
   };
 
   // Registers an XLA backend. `compilation_device_name` is the name of the
@@ -216,6 +251,10 @@ class XlaOpRegistry {
     // allow TensorList which is of type DT_VARIANT.
     bool allow_variant_types = false;
 
+    // Should we allow string type for type attributes? Used by PartitionedCall
+    // to allow DT_STRING.
+    bool allow_string_type = false;
+
     // Mapping from attribute name to a list of supported types.
     std::unordered_map<string, std::set<DataType>> type_constraints;
 
@@ -230,6 +269,8 @@ class XlaOpRegistry {
     // True if this is a "metadata" op, one that only looks at the shapes of its
     // operands and not their values.
     bool is_metadata_op = false;
+
+    std::string label;
 
     // Factory used to build OpKernels that perform symbolic execution.
     Factory factory;
@@ -300,6 +341,9 @@ class XlaOpRegistrationBuilder {
   // Allow DT_VARIANT types for type parameters.
   XlaOpRegistrationBuilder& AllowVariantTypes();
 
+  // Allow DT_STRING type for type parameters.
+  XlaOpRegistrationBuilder& AllowStringType();
+
   // Mark 'input_name' as an argument whose value must be known at compile-time.
   XlaOpRegistrationBuilder& CompileTimeConstantInput(
       absl::string_view input_name);
@@ -307,6 +351,9 @@ class XlaOpRegistrationBuilder {
   // Mark this op as a "metadata" op, one that only looks at the shapes of its
   // operands and not their values.
   XlaOpRegistrationBuilder& IsMetadataOp();
+
+  // Specifies a particular value for the "_kernel" attr.
+  XlaOpRegistrationBuilder& Label(std::string label);
 
   std::unique_ptr<XlaOpRegistry::OpRegistration> Build(
       XlaOpRegistry::Factory factory);

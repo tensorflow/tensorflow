@@ -97,16 +97,26 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
                                               TfLiteTensor* output,
                                               double* multiplier) {
   const double input_product_scale = input->params.scale * filter->params.scale;
-  const double bias_scale = bias->params.scale;
-  const double output_scale = output->params.scale;
-
   // TODO(ahentz): The following conditions must be guaranteed by the training
   // pipeline.
-  TF_LITE_ENSURE(context, std::abs(input_product_scale - bias_scale) <=
-                              1e-6 * std::min(input_product_scale, bias_scale));
-  TF_LITE_ENSURE(context, input_product_scale >= 0);
+  if (bias) {
+    const double bias_scale = bias->params.scale;
+    TF_LITE_ENSURE(context,
+                   std::abs(input_product_scale - bias_scale) <=
+                       1e-6 * std::min(input_product_scale, bias_scale));
+  }
+  return GetQuantizedConvolutionMultipler(context, input, filter, output,
+                                          multiplier);
+}
 
-  *multiplier = input_product_scale / output_scale;
+TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
+                                              const TfLiteTensor* input,
+                                              const TfLiteTensor* filter,
+                                              TfLiteTensor* output,
+                                              double* multiplier) {
+  const double input_product_scale = input->params.scale * filter->params.scale;
+  TF_LITE_ENSURE(context, input_product_scale >= 0);
+  *multiplier = input_product_scale / output->params.scale;
 
   return kTfLiteOk;
 }
@@ -195,9 +205,9 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         const TfLiteTensor* input1,
                                         const TfLiteTensor* input2,
                                         TfLiteIntArray** output_shape) {
-  int64_t dims1 = NumDimensions(input1);
-  int64_t dims2 = NumDimensions(input2);
-  int64_t out_dims = std::max(dims1, dims2);
+  int dims1 = NumDimensions(input1);
+  int dims2 = NumDimensions(input2);
+  int out_dims = std::max(dims1, dims2);
   if (NumElements(input1) == 0) {
     *output_shape = TfLiteIntArrayCopy(input1->dims);
     return kTfLiteOk;
@@ -205,10 +215,35 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
       TfLiteIntArrayCreate(out_dims), TfLiteIntArrayFree);
   for (int i = 0; i < out_dims; ++i) {
-    int64_t d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
-    int64_t d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
+    int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
+    int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
     TF_LITE_ENSURE(context, d1 == d2 || d1 == 1 || d2 == 1);
     shape->data[out_dims - i - 1] = std::max(d1, d2);
+  }
+  *output_shape = shape.release();
+  return kTfLiteOk;
+}
+
+TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
+                                        const TfLiteTensor* input1,
+                                        const TfLiteTensor* input2,
+                                        const TfLiteTensor* input3,
+                                        TfLiteIntArray** output_shape) {
+  int dims1 = NumDimensions(input1);
+  int dims2 = NumDimensions(input2);
+  int dims3 = NumDimensions(input3);
+  int out_dims = std::max(std::max(dims1, dims2), dims3);
+  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
+      TfLiteIntArrayCreate(out_dims), TfLiteIntArrayFree);
+  for (int i = 0; i < out_dims; ++i) {
+    int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
+    int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
+    int d3 = i >= dims3 ? 1 : SizeOfDimension(input3, dims3 - i - 1);
+    int max_value = std::max(std::max(d1, d2), d3);
+    TF_LITE_ENSURE(context, d1 == 1 || d1 == max_value);
+    TF_LITE_ENSURE(context, d2 == 1 || d2 == max_value);
+    TF_LITE_ENSURE(context, d3 == 1 || d3 == max_value);
+    shape->data[out_dims - i - 1] = max_value;
   }
   *output_shape = shape.release();
   return kTfLiteOk;

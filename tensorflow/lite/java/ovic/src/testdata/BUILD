@@ -1,5 +1,8 @@
 # Testdata for OVIC benchmarker demo App and tests.
-licenses(["notice"])  # Apache 2.0
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 filegroup(
     name = "ovic_testdata",

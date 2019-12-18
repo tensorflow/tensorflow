@@ -16,31 +16,84 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/placer.h"
 
 #include <memory>
-#include <set>
-#include <utility>
 #include <vector>
 
-#include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/port.h"
 
 namespace tensorflow {
 
 namespace {
+
+struct NameCounts {
+  mutex counts_mutex;
+  std::unordered_map<string, int> counts;
+};
+
+string MakeUniqueFilename(string name) {
+  static NameCounts& instance = *new NameCounts;
+
+  // Remove illegal characters from `name`.
+  for (int i = 0; i < name.size(); ++i) {
+    char ch = name[i];
+    if (ch == '/' || ch == '[' || ch == ']' || ch == '*' || ch == '?') {
+      name[i] = '_';
+    }
+  }
+
+  int count;
+  {
+    mutex_lock lock(instance.counts_mutex);
+    count = instance.counts[name]++;
+  }
+
+  string filename = name;
+  if (count > 0) {
+    absl::StrAppend(&filename, "_", count);
+  }
+  absl::StrAppend(&filename, ".txt");
+  return filename;
+}
+
+Status GetFileName(string base_name, string* fname) {
+  const char* dir = nullptr;
+  dir = getenv("TF_DUMP_GRAPH_PREFIX");
+  if (!dir) {
+    return errors::Internal("Failed to get the directory for ", base_name,
+                            " because dump location is not specified through "
+                            "TF_DUMP_GRAPH_PREFIX environment variable");
+  }
+  base_name = MakeUniqueFilename(base_name);
+  *fname = absl::StrCat(dir, "/", base_name);
+  return Status::OK();
+}
+
+void DumpColocationGraph(const string& base_name,
+                         const ColocationGraph& colocation_graph) {
+  string fname;
+  Status status = GetFileName(base_name, &fname);
+  if (status.ok()) {
+    status = WriteStringToFile(Env::Default(), fname,
+                               colocation_graph.DebugString());
+    if (status.ok()) {
+      LOG(INFO) << "Wrote ColocationGraph to " << fname;
+    }
+  }
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to write final colocation graph to file " << fname
+               << " with " << status.ToString();
+  }
+}
 
 // Returns true if the node has no inputs and produces outputs
 // that are consumed by a single node.
@@ -59,8 +112,8 @@ void LogDeviceAssignment(const Node* node, bool log_device_placement) {
     printf("%s: (%s): %s\n", node->name().c_str(), node->type_string().c_str(),
            node->assigned_device_name().c_str());
     LOG(INFO) << node->name() << ": "
-              << "(" << node->type_string() << ")"
-              << node->assigned_device_name();
+              << "(" << node->type_string()
+              << "): " << node->assigned_device_name();
   }
 }
 
@@ -78,17 +131,27 @@ Status AssignAndLog(int assigned_device, Node* node,
 
 }  // namespace
 
-Placer::Placer(Graph* graph, const DeviceSet* devices,
-               const SessionOptions* options, const Device* default_device)
+Placer::Placer(Graph* graph, const string& function_name,
+               const FunctionLibraryDefinition* flib_def,
+               const DeviceSet* devices, const Device* default_local_device,
+               bool allow_soft_placement, bool log_device_placement)
     : graph_(graph),
+      function_name_(function_name),
+      flib_def_(flib_def),
       devices_(devices),
-      options_(options),
-      log_device_placement_(options != nullptr &&
-                            options->config.log_device_placement()),
-      default_device_(default_device) {}
+      default_local_device_(default_local_device),
+      allow_soft_placement_(allow_soft_placement),
+      log_device_placement_(log_device_placement) {}
 
-Placer::Placer(Graph* graph, const DeviceSet* devices)
-    : Placer(graph, devices, nullptr, nullptr) {}
+Placer::Placer(Graph* graph, const string& function_name,
+               const DeviceSet* devices, const Device* default_local_device)
+    : Placer(graph, function_name, &graph->flib_def(), devices,
+             default_local_device, true, false) {}
+
+Placer::Placer(Graph* graph, const string& function_name,
+               const DeviceSet* devices)
+    : Placer(graph, function_name, &graph->flib_def(), devices, nullptr, true,
+             false) {}
 
 Placer::~Placer() {}
 
@@ -98,18 +161,20 @@ Status Placer::Run() {
   }
 
   if (VLOG_IS_ON(3)) {
-    DumpGraphToFile("placer_input", *graph_, nullptr, "/tmp");
+    DumpGraphToFile("placer_input", *graph_, nullptr);
+  }
+  if (VLOG_IS_ON(5)) {
     for (const Node* node : graph_->op_nodes()) {
-      VLOG(3) << "    " << node->name() << ": requested: '"
+      VLOG(5) << "    " << node->name() << ": requested: '"
               << node->requested_device() << "' assigned: '"
               << node->assigned_device_name() << "'";
     }
   }
 
-  ColocationGraph colocation_graph(
-      graph_, devices_, default_device_,
-      options_ == nullptr || options_->config.allow_soft_placement(),
-      log_device_placement_);
+  FunctionStack stack(function_name_);
+  ColocationGraph colocation_graph(graph_, stack, flib_def_, devices_,
+                                   default_local_device_, allow_soft_placement_,
+                                   log_device_placement_);
 
   TF_RETURN_IF_ERROR(colocation_graph.Initialize());
 
@@ -223,7 +288,8 @@ Status Placer::Run() {
   }
 
   if (VLOG_IS_ON(3)) {
-    DumpGraphToFile("placer_output", *graph_, nullptr, "/tmp");
+    DumpGraphToFile("placer_output", *graph_, nullptr);
+    DumpColocationGraph("colocation_graph", colocation_graph);
   }
   return Status::OK();
 }

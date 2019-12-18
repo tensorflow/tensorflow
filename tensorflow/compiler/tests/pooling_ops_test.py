@@ -89,7 +89,7 @@ class PoolingTest(xla_test.XLATestCase):
     # numbers from 1.
     x = np.array([f * 1.0 for f in range(1, total_size + 1)], dtype=np.float32)
     x = x.reshape(input_sizes)
-    with self.cached_session() as sess:
+    with self.session() as sess:
       with self.test_scope():
         inputs = array_ops.placeholder(dtypes.float32)
         t = inputs
@@ -324,7 +324,7 @@ class PoolGradTest(xla_test.XLATestCase):
     # TODO(b/74222344): Fix nan handling for max pool grad.
     # x[np.random.choice(total_size)] = np.nan
     x = x.reshape(input_sizes)
-    with self.cached_session() as sess:
+    with self.session() as sess:
       # Use the forward pool function to compute some corresponding outputs
       # (needed for the CPU device, and we need the shape in both cases).
       with ops.device(self.CPU_DEVICE):
@@ -454,7 +454,7 @@ class PoolGradTest(xla_test.XLATestCase):
     """Verifies the output values of the pooling function.
 
     Args:
-      pool_func: Pooling function to be called, e.g., tf.nn.max_pool
+      pool_func: Pooling function to be called, e.g., tf.nn.max_pool2d
       pool_grad_func: Corresponding pooling gradient function.
       input_sizes: Input tensor dimensions.
       ksize: The kernel size dimensions

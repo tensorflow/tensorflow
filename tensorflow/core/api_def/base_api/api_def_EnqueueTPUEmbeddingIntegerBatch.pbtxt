@@ -1,5 +1,6 @@
 op {
   graph_op_name: "EnqueueTPUEmbeddingIntegerBatch"
+  visibility: HIDDEN
   in_arg {
     name: "batch"
     description: <<END

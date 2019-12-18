@@ -43,9 +43,10 @@ class MatrixSolveOpTest(test.TestCase):
       else:
         tol = 1e-12
       for adjoint in False, True:
-        if np_type is [np.float32, np.float64]:
-          a = x.real().astype(np_type)
-          b = y.real().astype(np_type)
+        if np_type in (np.float32, np.float64):
+          a = x.real.astype(np_type)
+          b = y.real.astype(np_type)
+          a_np = np.transpose(a) if adjoint else a
         else:
           a = x.astype(np_type)
           b = y.astype(np_type)

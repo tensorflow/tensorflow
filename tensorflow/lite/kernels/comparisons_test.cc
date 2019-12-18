@@ -92,6 +92,17 @@ class ComparisonOpModel : public SingleOpModel {
   }
 };
 
+TEST(ComparisonsTest, EqualBool) {
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_BOOL,
+                          BuiltinOperator_EQUAL);
+  model.PopulateTensor<bool>(model.input1(), {true, false, true, false});
+  model.PopulateTensor<bool>(model.input2(), {true, true, false, false});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, true));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
 TEST(ComparisonsTest, EqualFloat) {
   ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT32,
                           BuiltinOperator_EQUAL);
@@ -135,6 +146,17 @@ TEST(ComparisonsTest, EqualBroadcastTwoD) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, false, false, false,
                                              false, true, false));
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 2, 4));
+}
+
+TEST(ComparisonsTest, NotEqualBool) {
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_BOOL,
+                          BuiltinOperator_NOT_EQUAL);
+  model.PopulateTensor<bool>(model.input1(), {true, false, true, false});
+  model.PopulateTensor<bool>(model.input2(), {true, true, false, false});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, true, false));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
 }
 
 TEST(ComparisonsTest, NotEqualFloat) {
@@ -675,12 +697,5 @@ TEST(ComparisonsTest, QuantizedInt8LessEqualWithBroadcast) {
         << "With shape number " << i;
   }
 }
-
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

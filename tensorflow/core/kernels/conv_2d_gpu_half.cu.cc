@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -28,12 +28,6 @@ limitations under the License.
 namespace tensorflow {
 
 namespace functor {
-
-template struct ShuffleAndReverse<Eigen::GpuDevice, Eigen::half, 4, int>;
-template struct ShuffleAndReverse<Eigen::GpuDevice, Eigen::half, 4,
-                                  Eigen::DenseIndex>;
-
-template struct TransformDepth<Eigen::GpuDevice, Eigen::half, int>;
 
 template struct SwapDimension1And2InTensor3<Eigen::GpuDevice, Eigen::half>;
 
@@ -54,4 +48,4 @@ template struct PadInput<Eigen::GpuDevice, Eigen::half, int, 5>;
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

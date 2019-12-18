@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_EIGEN_SUPPORT_H_
 #define TENSORFLOW_LITE_KERNELS_EIGEN_SUPPORT_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace EigenForTFLite {
 struct ThreadPoolDevice;
@@ -32,6 +32,11 @@ void IncrementUsageCounter(TfLiteContext* context);
 // usages all temporary Eigen objects will be deleted.
 void DecrementUsageCounter(TfLiteContext* context);
 
+// Fetch the ThreadPoolDevice associated with the provided context.
+//
+// Note: The caller must ensure that |IncrementUsageCounter()| has already been
+// called. Moreover, it is *not* safe to cache the returned device; it may be
+// invalidated if the context thread count changes.
 const EigenForTFLite::ThreadPoolDevice* GetThreadPoolDevice(
     TfLiteContext* context);
 

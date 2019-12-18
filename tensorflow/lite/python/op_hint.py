@@ -30,13 +30,14 @@ Example:
     output, = custom.add_outputs(output)
     return output
 
-  image = tf.placeholder(tf.float32, (1, 16, 16, 1))
+  image = tf.compat.v1.placeholder(tf.float32, (1, 16, 16, 1))
   output = tf.identity(tflite_cool_activation(image))
 
-  session = tf.Session()
+  session = tf.compat.v1.Session()
 
   graphdef_to_convert = tf.lite.convert_op_hints_to_stubs(session)
-  tflite_graph = tf.lite.toco_convert(graphdef_to_convert, [image], [output])
+  tflite_graph = tf.compat.v1.lite.toco_convert(
+      graphdef_to_convert, [image], [output])
   with open("/tmp/graph.fb", "wb") as fp:
     fp.write(tflite_graph)
 
@@ -88,7 +89,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
-@_tf_export("lite.OpHint")
+@_tf_export(v1=["lite.OpHint"])
 class OpHint(object):
   """A class that helps build tflite function invocations.
 
@@ -114,7 +115,7 @@ class OpHint(object):
   FUNCTION_NAME_ATTR = "_tflite_function_name"
   # UUID of the function (each OpHint gets a new uuid).
   FUNCTION_UUID_ATTR = "_tflite_function_uuid"
-  # The index index of the input (or nothing if it is an output).
+  # The input index of the input (or nothing if it is an output).
   FUNCTION_INPUT_INDEX_ATTR = "_tflite_function_input_index"
   # The output index of the output (or nothing if it is an input).
   FUNCTION_OUTPUT_INDEX_ATTR = "_tflite_function_output_index"
@@ -234,7 +235,7 @@ class OpHint(object):
           and OpHint.AGGREGATE_STACK.
           Note, aggregate is only valid if tag is specified.
         index_override: Specify what input/output index should this be in the
-          final stub. i.e. add(arg0, index=1); add(arg1, index=0) wil make the
+          final stub. i.e. add(arg0, index=1); add(arg1, index=0) will make the
           final stub be as stub_func(inputs[arg1, arg0], outputs=[]) rather than
           the default call order based ordering.
 
@@ -593,7 +594,10 @@ class _LiteAggregateOperand(_LiteOperand):
       The name of a pack that aggregates this node.
     """
     flattened = self.flatten_nodes()
-    if len(flattened) == 1:
+    if (self.aggregation == OpHint.AGGREGATE_FIRST) or (
+        self.aggregation == OpHint.AGGREGATE_LAST):
+      assert len(flattened) == 1
+    if len(flattened) == 1 and self.aggregation != OpHint.AGGREGATE_STACK:
       return _tensor_name_base(flattened[0].name)
     else:
       new_node = _node_def_pb2.NodeDef()
@@ -624,7 +628,10 @@ class _LiteAggregateOperand(_LiteOperand):
       op).
     """
     flattened = self.flatten_nodes()
-    if len(flattened) == 1:
+    if (self.aggregation == OpHint.AGGREGATE_FIRST) or (
+        self.aggregation == OpHint.AGGREGATE_LAST):
+      assert len(flattened) == 1
+    if len(flattened) == 1 and self.aggregation != OpHint.AGGREGATE_STACK:
       temp_op = _LiteSingleOperand(flattened[0])
       return temp_op.aggregate_and_return_name_for_output(
           fused_op_name, output_index, out_graphdef)
@@ -728,10 +735,10 @@ def _find_all_hints_in_nodes(nodes):
   for node in nodes:
     attr = node.attr
     # This is an op hint if it has a FUNCTION_UUID_ATTR, otherwise skip
-    uuid = attr[OpHint.FUNCTION_UUID_ATTR].s
     if (OpHint.FUNCTION_UUID_ATTR not in attr
         or not attr[OpHint.FUNCTION_UUID_ATTR].s):
       continue
+    uuid = attr[OpHint.FUNCTION_UUID_ATTR].s
 
     # Start building function
     call_def = func_calls[uuid]
@@ -795,7 +802,7 @@ def _find_children_hints_in_while_loop(function_def, nodes_mapping):
 
   # Make nodes inside function def inputs point to the real nodes.
   for node in function_def.node_def:
-    for i in range(len(node.input)):
+    for i, _ in enumerate(node.input):
       if node.input[i] in nodes_mapping:
         node.input[i] = nodes_mapping[node.input[i]]
     new_nodes.append(_copy.deepcopy(node))
@@ -847,7 +854,7 @@ def _find_children_hints(call, graph_def):
     if n in reachable_by_output:
       if n not in reachable_by_input and n not in output_nodes_set:
         # special handle for while loop function def.
-        if node.op == "While":
+        if node.op == "While" or node.op == "StatelessWhile":
           body_name = node.attr["body"].func.name
           inputs_outside_loop = node.input
           for function_def in graph_def.library.function:
@@ -855,8 +862,8 @@ def _find_children_hints(call, graph_def):
               function_inputs = function_def.signature.input_arg
               assert len(inputs_outside_loop) == len(function_inputs)
               nodes_mapping = {}
-              for i in range(len(function_inputs)):
-                nodes_mapping[function_inputs[i].name] = inputs_outside_loop[i]
+              for i, function_input in enumerate(function_inputs):
+                nodes_mapping[function_input.name] = inputs_outside_loop[i]
               # TODO(b/123050804): Consider use grappler.
               (children_hints_in_loop,
                new_nodes) = _find_children_hints_in_while_loop(
@@ -928,7 +935,7 @@ def _convert_single_op_hint_to_stub(call,
 
   Args:
     call: A single function call to be converted.
-    graph_def: A graph_def to use as input (that hass call obviously).
+    graph_def: A graph_def to use as input (that has call obviously).
     function_def_nodes: Nodes inside the function def those are not connected to
       the graph.
     is_last_run: Whether it is the last run for a given pass (for OpHint has
@@ -995,7 +1002,7 @@ def _convert_single_op_hint_to_stub(call,
     new_node.input.append(input_name)
   new_node.attr[OpHint.TFLITE_INPUT_INDICES].list.i.extend(sorted_input_indices)
 
-  # Ceate the function
+  # Create the function
   new_node.op = call.function_name
   new_node.name = call.uuid
   out.node.extend([new_node])
@@ -1140,7 +1147,6 @@ def _get_correct_mapping(original_index, nodes):
   return original_index
 
 
-@_tf_export("lite.convert_op_hints_to_stubs")
 def _convert_op_hints_to_stubs_helper(
     graph_def, write_callback=lambda sess, graph_def: None):
   """Converts a graph_def to a new graph_def where all op hints are stubbed.
@@ -1176,8 +1182,7 @@ def _convert_op_hints_to_stubs_helper(
       # Re-wire the children hints inputs/outputs, so latter child's inputs
       # connect to previous child node's outputs.
       children_inputs_mappings = hints[hint_uuid].children_inputs_mappings
-      for j in range(len(children_hints)):
-        child_hint = children_hints[j]
+      for j, child_hint in enumerate(children_hints):
         if j == 0:
           for mapping in children_inputs_mappings["parent_first_child_input"]:
             parent_input_index = _get_correct_mapping(
@@ -1204,8 +1209,7 @@ def _convert_op_hints_to_stubs_helper(
             child_hint.outputs[child_output_index] = hints[hint_uuid].outputs[
                 parent_output_index]
 
-      for j in range(len(children_hints)):
-        child_hint = children_hints[j]
+      for j, child_hint in enumerate(children_hints):
         curr_graph_def = _convert_single_op_hint_to_stub(
             child_hint, curr_graph_def, function_def_nodes,
             j == len(children_hints) - 1)
@@ -1225,6 +1229,12 @@ def find_all_hinted_output_nodes(session=None, graph_def=None):
   This is used to get all the output nodes those are ophinted, it is important
   for operation like convert_variables_to_constants keep all ophints structure.
   Note: only one of session or graph_def should be used, not both.
+  Why this can be useful? Some TensorFlow ops (e.g. bidirectional rnn), can
+  generate multiple outputs for unfused subgraph. If not all output nodes are
+  consumed, graph optimization can potentially drop the unused nodes and cause
+  ophints in an invalid states (due to missing ophinted output nodes). So it's
+  important for us to find all those hinted output nodes and make sure they're
+  not discarded away.
 
   Args:
     session: A TensorFlow session that contains the graph to convert.
@@ -1243,11 +1253,12 @@ def find_all_hinted_output_nodes(session=None, graph_def=None):
   elif graph_def is not None:
     hints = _find_all_hints_in_nodes(graph_def.node)
   for hint in _six.itervalues(hints):
-    _, ouput_nodes = hint.flattened_inputs_and_outputs()
-    hinted_outputs_nodes.extend(ouput_nodes)
+    _, output_nodes = hint.flattened_inputs_and_outputs()
+    hinted_outputs_nodes.extend(output_nodes)
   return hinted_outputs_nodes
 
 
+@_tf_export(v1=["lite.experimental.convert_op_hints_to_stubs"])
 def convert_op_hints_to_stubs(session=None,
                               graph_def=None,
                               write_callback=lambda graph_def, comments: None):

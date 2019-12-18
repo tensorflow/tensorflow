@@ -17,13 +17,21 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device_base.h"
 
+#include <algorithm>
+#include <vector>
+
+#include "absl/container/flat_hash_set.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 
-DeviceBase::~DeviceBase() { gtl::STLDeleteElements(&eigen_cpu_devices_); }
+DeviceBase::~DeviceBase() {
+  for (auto& temp : eigen_cpu_devices_) {
+    delete temp;
+  }
+  eigen_cpu_devices_.clear();
+}
 
 const DeviceAttributes& DeviceBase::attributes() const {
   LOG(FATAL) << "Device does not implement attributes()";
@@ -56,6 +64,29 @@ const Eigen::ThreadPoolDevice* DeviceBase::eigen_cpu_device() {
       1,
       std::min<int>(GetPerThreadMaxParallelism(), eigen_cpu_devices_.size()));
   return eigen_cpu_devices_[parallelism - 1];
+}
+
+namespace {
+
+absl::flat_hash_set<std::string>* GetSymbolicDeviceList() {
+  static absl::flat_hash_set<std::string>* symbolic_device_list =
+      new absl::flat_hash_set<std::string>();
+  return symbolic_device_list;
+}
+
+}  // namespace
+
+void AddSymbolicExecutionDevice(const absl::string_view device_name) {
+  GetSymbolicDeviceList()->insert(std::string(device_name));
+}
+
+bool IsSymbolicExecutionDevice(const absl::string_view device_name) {
+  absl::flat_hash_set<std::string>* symbolic_devices = GetSymbolicDeviceList();
+  if (symbolic_devices->contains(device_name)) {
+    return true;
+  } else {
+    return false;
+  }
 }
 
 }  // namespace tensorflow

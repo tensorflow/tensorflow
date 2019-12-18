@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -31,51 +30,61 @@ from tensorflow.python.platform import test
 
 
 class ExcludeUnsupportedInt32Test(trt_test.TfTrtIntegrationTestBase):
+  """Test exclusion of ops which are not supported in INT32 mode by TF-TRT"""
 
   def _ConstOp(self, shape, dtype):
     return constant_op.constant(np.random.randn(*shape), dtype=dtype)
 
+  def GraphFn(self, x):
+    dtype = x.dtype
+    b = self._ConstOp((4, 10), dtype)
+    x = math_ops.matmul(x, b)
+    b = self._ConstOp((10,), dtype)
+    x = nn.bias_add(x, b)
+    return array_ops.identity(x, name='output_0')
+
   def GetParams(self):
-    """Test exclusion of ops which are not supported in INT32 mode by TF-TRT"""
-    input_name = 'input'
-    output_name = 'output'
-    input_dims = [100, 4]
-    dtype = dtypes.int32
-    g = ops.Graph()
-    with g.as_default():
-      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
-      b = self._ConstOp((4, 10), dtype)
-      x = math_ops.matmul(x, b)
-      b = self._ConstOp((10,), dtype)
-      x = nn.bias_add(x, b)
-      x = array_ops.identity(x, name=output_name)
-    return trt_test.TfTrtIntegrationTestParams(
-        gdef=g.as_graph_def(),
-        input_names=[input_name],
-        input_dims=[[input_dims]],
-        output_names=[output_name],
-        expected_output_dims=[[[100, 10]]])
+    return self.BuildParams(self.GraphFn, dtypes.int32, [[100, 4]], [[100, 10]])
 
   def GetConversionParams(self, run_params):
     """Return a ConversionParams for test."""
     conversion_params = super(ExcludeUnsupportedInt32Test,
                               self).GetConversionParams(run_params)
-    return conversion_params._replace(
-        max_batch_size=100,
-        maximum_cached_engines=1,
+    conversion_params._replace(max_batch_size=100, maximum_cached_engines=1)
+    rewrite_config_with_trt = self.GetTrtRewriterConfig(
+        run_params=run_params,
+        conversion_params=conversion_params,
         # Disable layout optimizer, since it will convert BiasAdd with NHWC
         # format to NCHW format under four dimentional input.
-        rewriter_config=trt_test.OptimizerDisabledRewriterConfig())
+        disable_non_trt_optimizers=True)
+    return conversion_params._replace(
+        rewriter_config_template=rewrite_config_with_trt)
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return []
 
+
+class CalibrationInt32Support(trt_test.TfTrtIntegrationTestBase):
+  """Test execution of calibration with int32 input"""
+
+  def GraphFn(self, inp):
+    # Can use any op that is converted to TRT with int32 inputs
+    inp_transposed = array_ops.transpose(inp, [0, 3, 2, 1], name='transpose_0')
+    return array_ops.identity(inp_transposed, name='output_0')
+
+  def GetParams(self):
+    return self.BuildParams(self.GraphFn, dtypes.int32, [[3, 4, 5, 6]],
+                            [[3, 6, 5, 4]])
+
   def ShouldRunTest(self, run_params):
-    """Whether to run the test."""
-    # TODO(aaroey): Trt 4.0 forbids conversion for tensors with rank <3 in int8
-    # mode, which is a bug. Re-enable this when trt library is fixed.
-    return not trt_test.IsQuantizationMode(run_params.precision_mode)
+    # Although test passes with all configurations but only
+    # execute INT8 with use_calibration=True because
+    # that is the purpose of the test.
+    return trt_test.IsQuantizationWithCalibration(run_params)
+
+  def ExpectedEnginesToBuild(self, run_params):
+    return ['TRTEngineOp_0']
 
 
 if __name__ == '__main__':

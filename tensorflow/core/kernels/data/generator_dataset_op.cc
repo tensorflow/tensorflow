@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
@@ -27,6 +29,20 @@ namespace data {
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
+
+/* static */ constexpr const char* const GeneratorDatasetOp::kDatasetType;
+/* static */ constexpr const char* const GeneratorDatasetOp::kInitFuncOtherArgs;
+/* static */ constexpr const char* const GeneratorDatasetOp::kNextFuncOtherArgs;
+/* static */ constexpr const char* const
+    GeneratorDatasetOp::kFinalizeFuncOtherArgs;
+/* static */ constexpr const char* const GeneratorDatasetOp::kInitFunc;
+/* static */ constexpr const char* const GeneratorDatasetOp::kNextFunc;
+/* static */ constexpr const char* const GeneratorDatasetOp::kFinalizeFunc;
+/* static */ constexpr const char* const GeneratorDatasetOp::kTinitFuncArgs;
+/* static */ constexpr const char* const GeneratorDatasetOp::kTnextFuncArgs;
+/* static */ constexpr const char* const GeneratorDatasetOp::kTfinalizeFuncArgs;
+/* static */ constexpr const char* const GeneratorDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const GeneratorDatasetOp::kOutputShapes;
 
 class GeneratorDatasetOp::Dataset : public DatasetBase {
  public:
@@ -44,8 +60,8 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(
-        Iterator::Params{this, strings::StrCat(prefix, "::Generator")});
+    return absl::make_unique<Iterator>(Iterator::Params{
+        this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
@@ -54,14 +70,22 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override { return "GeneratorDatasetOp::Dataset"; }
+  string DebugString() const override {
+    return name_utils::DatasetDebugString(kDatasetType);
+  }
+
+  Status CheckExternalState() const override {
+    TF_RETURN_IF_ERROR(init_func_->CheckExternalState());
+    TF_RETURN_IF_ERROR(next_func_->CheckExternalState());
+    return finalize_func_->CheckExternalState();
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
                             Node** output) const override {
-    return errors::Unimplemented("%s does not support serialization",
-                                 DebugString());
+    return errors::Unimplemented(DebugString(),
+                                 " does not support serialization");
   }
 
  private:
@@ -154,27 +178,31 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
 
 GeneratorDatasetOp::GeneratorDatasetOp(OpKernelConstruction* ctx)
     : DatasetOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("init_func", &init_func_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("next_func", &next_func_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("finalize_func", &finalize_func_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kInitFunc, /*params=*/{},
+                                               &init_func_metadata_));
+  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kNextFunc, /*params=*/{},
+                                               &next_func_metadata_));
+  OP_REQUIRES_OK(ctx,
+                 FunctionMetadata::Create(ctx, kFinalizeFunc, /*params=*/{},
+                                          &finalize_func_metadata_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
 }
 
 void GeneratorDatasetOp::MakeDataset(OpKernelContext* ctx,
                                      DatasetBase** output) {
   std::unique_ptr<CapturedFunction> init_func;
-  OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                          init_func_, ctx, "init_func_other_args", &init_func));
+  OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, init_func_metadata_,
+                                               kInitFuncOtherArgs, &init_func));
 
   std::unique_ptr<CapturedFunction> next_func;
-  OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                          next_func_, ctx, "next_func_other_args", &next_func));
+  OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, next_func_metadata_,
+                                               kNextFuncOtherArgs, &next_func));
 
   std::unique_ptr<CapturedFunction> finalize_func;
-  OP_REQUIRES_OK(ctx, CapturedFunction::Create(finalize_func_, ctx,
-                                               "finalize_func_other_args",
-                                               &finalize_func));
+  OP_REQUIRES_OK(
+      ctx, CapturedFunction::Create(ctx, finalize_func_metadata_,
+                                    kFinalizeFuncOtherArgs, &finalize_func));
 
   *output =
       new Dataset(ctx, std::move(init_func), std::move(next_func),

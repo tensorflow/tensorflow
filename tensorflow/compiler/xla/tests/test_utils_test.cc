@@ -57,7 +57,7 @@ XLA_TEST_F(TestUtilsTest, UnusedParam) {
 }
 
 XLA_TEST_F(TestUtilsTest, Token) {
-  auto module = ParseHloString(
+  auto module = ParseAndReturnUnverifiedModule(
                     R"(HloModule outfeed_module
 
     ENTRY InfeedToOutfeed {
@@ -75,7 +75,7 @@ XLA_TEST_F(TestUtilsTest, Token) {
 }
 
 XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
-  auto module = ParseHloString(
+  auto module = ParseAndReturnVerifiedModule(
                     R"(HloModule index_space_module
 
     ENTRY IndexSpace {
@@ -103,7 +103,7 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
 }
 
 XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
-  auto module = ParseHloString(
+  auto module = ParseAndReturnVerifiedModule(
                     R"(HloModule index_space_module
 
     ENTRY IndexSpace {
@@ -135,7 +135,7 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
 
 XLA_TEST_F(TestUtilsTest, NoDuplicatesFloats) {
   // Inputs which are sort keys in key/value sorts should have no duplicates.
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule sort.148.1589
 
 compare {
@@ -143,7 +143,7 @@ compare {
   p.0.rhs = f32[] parameter(1)
   p.1.lhs = s32[] parameter(2)
   p.1.rhs = s32[] parameter(3)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (f32[1048576], s32[1048576]) {
@@ -166,7 +166,7 @@ ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (
 
 XLA_TEST_F(TestUtilsTest, NoDuplicatesInt32) {
   // Inputs which are sort keys in key/value sorts should have no duplicates.
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule sort.148.1589
 
 compare {
@@ -174,7 +174,7 @@ compare {
   p.0.rhs = s32[] parameter(1)
   p.1.lhs = s32[] parameter(2)
   p.1.rhs = s32[] parameter(3)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (s32[1048576], s32[1048576]) {
@@ -197,7 +197,7 @@ ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (
 
 XLA_TEST_F(TestUtilsTest, NoDuplicatesBfloat16) {
   // Inputs which are sort keys in key/value sorts should have no duplicates.
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule sort, is_scheduled=true
 
 compare {
@@ -205,7 +205,7 @@ compare {
   p.0.rhs = bf16[] parameter(1)
   p.1.lhs = s32[] parameter(2)
   p.1.rhs = s32[] parameter(3)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY %sort. (parameter.0: bf16[2,1452], parameter.1: s32[2,1452]) -> (bf16[2,1452], s32[2,1452]) {
@@ -227,7 +227,7 @@ ENTRY %sort. (parameter.0: bf16[2,1452], parameter.1: s32[2,1452]) -> (bf16[2,14
 }
 
 XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsR0InputToDynamicSlice) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule Test
 
 ENTRY %module (parameter.0: s32[], parameter.1: f32[20,20]) -> f32[] {
@@ -255,10 +255,10 @@ ENTRY %module (parameter.0: s32[], parameter.1: f32[20,20]) -> f32[] {
 }
 
 XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsForGather) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
   HloModule Test
 
-ENTRY %module(paramater.0: f32[200,100,300], parameter.1: s32[10,2]) ->
+ENTRY %module(parameter.0: f32[200,100,300], parameter.1: s32[10,2]) ->
                                                           f32[10,300] {
   %parameter.0 = f32[200,100,300] parameter(0)
   %parameter.1 = s32[10,2] parameter(1)
@@ -289,7 +289,7 @@ ENTRY %module(paramater.0: f32[200,100,300], parameter.1: s32[10,2]) ->
 }
 
 XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsForScatter) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
   HloModule Test
 
 scatter_update (lhs: f32[], rhs: f32[]) -> f32[] {

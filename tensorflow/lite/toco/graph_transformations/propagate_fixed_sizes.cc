@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cmath>
 #include <iterator>
 #include <memory>
 #include <numeric>
@@ -21,11 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -719,21 +720,33 @@ void ProcessRangeOperator(Model* model, RangeOperator* op) {
     return;
   }
 
-  CHECK(start_array.data_type == ArrayDataType::kInt32)
-      << "Range op inputs must be int32.";
-  CHECK(limit_array.data_type == ArrayDataType::kInt32)
-      << "Range op inputs must be int32.";
-  CHECK(delta_array.data_type == ArrayDataType::kInt32)
-      << "Range op inputs must be int32.";
+  const ArrayDataType& start_dtype = start_array.data_type;
+  CHECK(start_dtype == ArrayDataType::kInt32 ||
+        start_dtype == ArrayDataType::kFloat)
+      << "Range op inputs must be int32 or float.";
+  CHECK(limit_array.data_type == start_dtype)
+      << "In Range op, limit tensor must have the same data type as start "
+         "tensor.";
+  CHECK(delta_array.data_type == start_dtype)
+      << "In Range op, delta tensor must have the same data type as start "
+         "tensor.";
   CHECK_EQ(RequiredBufferSizeForShape(start_array.shape()), 1)
       << "Range op inputs must be scalar.";
   CHECK_EQ(RequiredBufferSizeForShape(limit_array.shape()), 1)
       << "Range op inputs must be scalar.";
   CHECK_EQ(RequiredBufferSizeForShape(delta_array.shape()), 1)
       << "Range op inputs must be scalar.";
-  int size = floor((limit_array.GetBuffer<ArrayDataType::kInt32>().data[0] -
-                    start_array.GetBuffer<ArrayDataType::kInt32>().data[0]) /
-                   delta_array.GetBuffer<ArrayDataType::kInt32>().data[0]);
+
+  int size = 0;
+  if (start_dtype == ArrayDataType::kInt32) {
+    size = std::floor((limit_array.GetBuffer<ArrayDataType::kInt32>().data[0] -
+                       start_array.GetBuffer<ArrayDataType::kInt32>().data[0]) /
+                      delta_array.GetBuffer<ArrayDataType::kInt32>().data[0]);
+  } else if (start_dtype == ArrayDataType::kFloat) {
+    size = std::floor((limit_array.GetBuffer<ArrayDataType::kFloat>().data[0] -
+                       start_array.GetBuffer<ArrayDataType::kFloat>().data[0]) /
+                      delta_array.GetBuffer<ArrayDataType::kFloat>().data[0]);
+  }
 
   // Only set the output shape. Contents are set by ResolveConstantRange.
   CHECK_EQ(op->outputs.size(), 1);
@@ -1081,6 +1094,18 @@ void ProcessUnidirectionalSequenceLstmOperator(
 
   // TODO(renjieliu): check the inputs, as well as all kinds of weights.
   const auto& input_array = model->GetArray(op->inputs[0]);
+
+  constexpr int kInputActivationStateTensor = 18;
+  constexpr int kInputCellStateTensor = 19;
+
+  // TFlite intepreter does not support array which is variable and contains a
+  // buffer (see b/115961645 for more discussion).
+  // The follow block remove buffer from the array to work around the
+  // restriction, as a consequence, downstream applications should not
+  // read lstm state as input to other operations.
+  model->GetArray(op->inputs[kInputActivationStateTensor]).buffer.reset();
+  model->GetArray(op->inputs[kInputCellStateTensor]).buffer.reset();
+
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -1095,12 +1120,6 @@ void ProcessUnidirectionalSequenceLstmOperator(
   if (!recurrent_to_output_weights_array.has_shape()) {
     return;
   }
-
-  constexpr int kInputActivationStateTensor = 18;
-  constexpr int kInputCellStateTensor = 19;
-  // b(115961645): This is a hack to work around.
-  model->GetArray(op->inputs[kInputActivationStateTensor]).buffer.reset();
-  model->GetArray(op->inputs[kInputCellStateTensor]).buffer.reset();
 
   const auto& output_weights_shape = recurrent_to_output_weights_array.shape();
   const int output_size = output_weights_shape.dims(1);
@@ -1122,6 +1141,14 @@ void ProcessUnidirectionalSequenceRnnOperator(
     return;
   }
 
+  constexpr int kHiddenStateTensor = 4;
+  // TFlite intepreter does not support array which is variable and contains a
+  // buffer (see b/115961645 for more discussion).
+  // The follow block remove buffer from the array to work around the
+  // restriction, as a consequence, downstream applications should not
+  // read lstm state as input to other operations.
+  model->GetArray(op->inputs[kHiddenStateTensor]).buffer.reset();
+
   // TODO(renjieliu): check the inputs, as well as all kinds of weights.
   const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
@@ -1137,10 +1164,6 @@ void ProcessUnidirectionalSequenceRnnOperator(
   if (!bias_array.has_shape()) {
     return;
   }
-
-  constexpr int kHiddenStateTensor = 4;
-  // b(115961645): This is a hack to work around.
-  model->GetArray(op->inputs[kHiddenStateTensor]).buffer.reset();
 
   const auto& bias_shape = bias_array.shape();
   const int output_size = bias_shape.dims(0);
@@ -1673,8 +1696,8 @@ void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
         strided_slice_params, ToRuntimeShape(input_array.shape()), axis,
         start_index);
 
-    int dim_size =
-        ceil(static_cast<float>(stop_index - start_index) / op->strides[axis]);
+    int dim_size = std::ceil(static_cast<float>(stop_index - start_index) /
+                             op->strides[axis]);
 
     CHECK_GT(dim_size, 0)
         << "Output size for an axis must be greater than 0. Axis " << axis
@@ -1707,11 +1730,16 @@ void ProcessSqueezeOperator(Model* model, SqueezeOperator* op) {
   const std::vector<int>& input_dims = input_array.shape().dims();
   std::vector<int> output_dims;
 
-  for (int i = 0; i < input_dims.size(); ++i) {
+  std::vector<int> squeeze_dims;
+  const int input_num_dims = input_dims.size();
+  for (int i : op->squeeze_dims) {
+    squeeze_dims.push_back(i < 0 ? i + input_num_dims : i);
+  }
+  for (int i = 0; i < input_num_dims; ++i) {
     if (input_dims[i] != 1 ||
-        (!op->squeeze_dims.empty() &&
-         std::find(op->squeeze_dims.begin(), op->squeeze_dims.end(), i) ==
-             op->squeeze_dims.end())) {
+        (!squeeze_dims.empty() &&
+         std::find(squeeze_dims.begin(), squeeze_dims.end(), i) ==
+             squeeze_dims.end())) {
       output_dims.push_back(input_dims[i]);
     }
   }
@@ -1719,7 +1747,7 @@ void ProcessSqueezeOperator(Model* model, SqueezeOperator* op) {
 }
 
 void ProcessSvdfOperator(Model* model, SvdfOperator* op) {
-  CHECK(op->inputs.size() == 3 || op->inputs.size() == 4);
+  CHECK(op->inputs.size() == 4 || op->inputs.size() == 5);
   const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) return;
 
@@ -1729,7 +1757,7 @@ void ProcessSvdfOperator(Model* model, SvdfOperator* op) {
   const auto& weights_time_array = model->GetArray(op->inputs[2]);
   if (!weights_time_array.has_shape()) return;
 
-  const bool has_bias = (op->inputs.size() == 4);
+  const bool has_bias = (op->inputs.size() == 5);
   if (has_bias) {
     const auto& bias_array = model->GetArray(op->inputs[3]);
     if (!bias_array.has_shape()) return;
@@ -2045,6 +2073,43 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
   idx_output_array.copy_shape(input_array.shape());
 }
 
+void ProcessMatrixDiagOperator(Model* model, MatrixDiagOperator* op) {
+  CHECK_EQ(op->inputs.size(), 1);
+  CHECK_EQ(op->outputs.size(), 1);
+  auto& input_array = model->GetArray(op->inputs[0]);
+  auto& output_array = model->GetArray(op->outputs[0]);
+  // The input array must have a shape in order to proceed. Also,
+  // bail out if the output shape has already been calculated.
+  if (!input_array.has_shape() || output_array.has_shape()) {
+    // We have already run
+    return;
+  }
+  // Get the input_shape
+  Shape* mutable_shape = input_array.mutable_shape();
+  std::vector<int>* dims = mutable_shape->mutable_dims();
+  int dims_size = dims->size();
+  // Scalars are not allowed.
+  CHECK_GT(dims_size, 0);
+  int last_dim = (*dims)[dims_size - 1];
+  dims->push_back(last_dim);
+  output_array.copy_shape(*mutable_shape);
+}
+
+void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
+  CHECK_EQ(op->inputs.size(), 2);
+  CHECK_EQ(op->outputs.size(), 1);
+  auto& input_array = model->GetArray(op->inputs[0]);
+  auto& output_array = model->GetArray(op->outputs[0]);
+  // The shape of the input array must be known because that will
+  // be the shape of the output array.
+  if (!input_array.has_shape() || !output_array.has_shape()) {
+    // We have already run
+    return;
+  }
+
+  output_array.copy_shape(input_array.shape());
+}
+
 }  // namespace
 
 ::tensorflow::Status PropagateFixedSizes::Run(Model* model,
@@ -2066,6 +2131,7 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
     case OperatorType::kL2Normalization:
     case OperatorType::kDequantize:
     case OperatorType::kElu:
+    case OperatorType::kHardSwish:
     case OperatorType::kRelu:
     case OperatorType::kRelu1:
     case OperatorType::kRelu6:
@@ -2088,6 +2154,7 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
     case OperatorType::kCast:
     case OperatorType::kFloor:
     case OperatorType::kCeil:
+    case OperatorType::kRound:
     case OperatorType::kExp:
     case OperatorType::kSin:
     case OperatorType::kCos:
@@ -2096,6 +2163,7 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
     case OperatorType::kLogicalOr:
     case OperatorType::kZerosLike:
     case OperatorType::kReverseV2:
+    case OperatorType::kReverseSequence:
       ProcessSimpleOperator(model, op, 0);
       break;
     case OperatorType::kGather:
@@ -2346,6 +2414,33 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
       // The size of the output can only be known after evaluating the cond
       // tensor. Ignore shape propagation here and defer that to the
       // interpreter.
+      break;
+    case OperatorType::kMatrixDiag:
+      ProcessMatrixDiagOperator(model, static_cast<MatrixDiagOperator*>(op));
+      break;
+    case OperatorType::kMatrixSetDiag:
+      ProcessMatrixSetDiagOperator(model,
+                                   static_cast<MatrixSetDiagOperator*>(op));
+      break;
+    case OperatorType::kCTCBeamSearchDecoder:
+      // The sizes of the outputs are only known in runtime based on the input.
+      // Ignore shape progapation here and defer that to the interpreter.
+      break;
+    case OperatorType::kMatrixSetDiagV2:
+      // MatrixSetDiagV2 operators are converted to MatrixSetDiag,
+      // after which their shapes are propagated.
+      break;
+    case OperatorType::kMatrixDiagV2:
+      // MatrixDiagV2 operators are converted to MatrixDiag, after which their
+      // shapes are propagated.
+      break;
+    case OperatorType::kMatrixDiagV3:
+      // MatrixDiagV3 operators are converted to MatrixDiag, after which their
+      // shapes are propagated.
+      break;
+    case OperatorType::kMatrixSetDiagV3:
+      // MatrixSetDiagV3 operators are converted to MatrixSetDiag, after which
+      // their shapes are propagated.
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

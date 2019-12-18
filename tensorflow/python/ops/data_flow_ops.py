@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import hashlib
 import threading
 
@@ -40,6 +39,7 @@ from tensorflow.python.ops import resource_variable_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: enable=wildcard-import
@@ -63,7 +63,7 @@ def _as_shape_list(shapes,
   """Convert shapes to a list of tuples of int (or None)."""
   del dtypes
   if unknown_dim_allowed:
-    if (not isinstance(shapes, collections.Sequence) or not shapes or
+    if (not isinstance(shapes, collections_abc.Sequence) or not shapes or
         any(shape is None or isinstance(shape, int) for shape in shapes)):
       raise ValueError(
           "When providing partial shapes, a list of shapes must be provided.")
@@ -82,7 +82,7 @@ def _as_shape_list(shapes,
     if any(not shape.is_fully_defined() for shape in shapes):
       raise ValueError("All shapes must be fully defined: %s" % shapes)
   if not unknown_rank_allowed:
-    if any([shape.dims is None for shape in shapes]):
+    if any(shape.dims is None for shape in shapes):
       raise ValueError("All shapes must have a defined rank: %s" % shapes)
 
   return shapes
@@ -129,8 +129,8 @@ class QueueBase(object):
   handle single elements, versions that support enqueuing and
   dequeuing a batch of elements at once.
 
-  See `tf.FIFOQueue` and
-  `tf.RandomShuffleQueue` for concrete
+  See `tf.queue.FIFOQueue` and
+  `tf.queue.RandomShuffleQueue` for concrete
   implementations of this class, and instructions on how to create
   them.
   """
@@ -171,7 +171,7 @@ class QueueBase(object):
     else:
       self._names = None
     self._queue_ref = queue_ref
-    if context.executing_eagerly():
+    if isinstance(queue_ref, ops.EagerTensor):
       if context.context().scope_name:
         self._name = context.context().scope_name
       else:
@@ -625,7 +625,7 @@ def _shared_name(shared_name):
 class RandomShuffleQueue(QueueBase):
   """A queue implementation that dequeues elements in a random order.
 
-  See `tf.QueueBase` for a description of the methods on
+  See `tf.queue.QueueBase` for a description of the methods on
   this class.
   """
 
@@ -674,7 +674,7 @@ class RandomShuffleQueue(QueueBase):
         with the same length as `dtypes`, or `None`.  If specified the dequeue
         methods return a dictionary with the names as keys.
       seed: A Python integer. Used to create a random seed. See
-        `tf.set_random_seed`
+        `tf.compat.v1.set_random_seed`
         for behavior.
       shared_name: (Optional.) If non-empty, this queue will be shared under
         the given name across multiple sessions.
@@ -711,7 +711,7 @@ class RandomShuffleQueue(QueueBase):
 class FIFOQueue(QueueBase):
   """A queue implementation that dequeues elements in first-in first-out order.
 
-  See `tf.QueueBase` for a description of the methods on
+  See `tf.queue.QueueBase` for a description of the methods on
   this class.
   """
 
@@ -754,12 +754,13 @@ class FIFOQueue(QueueBase):
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes)
     names = _as_name_list(names, dtypes)
-    queue_ref = gen_data_flow_ops.fifo_queue_v2(
-        component_types=dtypes,
-        shapes=shapes,
-        capacity=capacity,
-        shared_name=_shared_name(shared_name),
-        name=name)
+    with ops.init_scope():
+      queue_ref = gen_data_flow_ops.fifo_queue_v2(
+          component_types=dtypes,
+          shapes=shapes,
+          capacity=capacity,
+          shared_name=_shared_name(shared_name),
+          name=name)
 
     super(FIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
@@ -774,7 +775,7 @@ class PaddingFIFOQueue(QueueBase):
   A `PaddingFIFOQueue` may contain components with dynamic shape, while also
   supporting `dequeue_many`.  See the constructor for more details.
 
-  See `tf.QueueBase` for a description of the methods on
+  See `tf.queue.QueueBase` for a description of the methods on
   this class.
   """
 
@@ -847,7 +848,7 @@ class PaddingFIFOQueue(QueueBase):
 class PriorityQueue(QueueBase):
   """A queue implementation that dequeues elements in prioritized order.
 
-  See `tf.QueueBase` for a description of the methods on
+  See `tf.queue.QueueBase` for a description of the methods on
   this class.
   """
 
@@ -1091,8 +1092,8 @@ class Barrier(object):
       else:
         batch_dim = tensor_shape.Dimension(
             tensor_util.constant_value(op.inputs[1]))
-      op.outputs[0].set_shape(tensor_shape.vector(batch_dim))  # indices
-      op.outputs[1].set_shape(tensor_shape.vector(batch_dim))  # keys
+      op.outputs[0].set_shape(tensor_shape.TensorShape([batch_dim]))  # indices
+      op.outputs[1].set_shape(tensor_shape.TensorShape([batch_dim]))  # keys
       for output, shape in zip(op.outputs[2:], self._shapes):  # value_list
         output.set_shape(
             tensor_shape.TensorShape([batch_dim]).concatenate(shape))
@@ -1215,7 +1216,8 @@ class ConditionalAccumulatorBase(object):
     """
     if name is None:
       name = "%s_NumAccumulated" % self._name
-    return gen_data_flow_ops.accumulator_num_accumulated(
+
+    return gen_data_flow_ops.resource_accumulator_num_accumulated(
         self._accumulator_ref, name=name)
 
   def set_global_step(self, new_global_step, name=None):
@@ -1231,9 +1233,9 @@ class ConditionalAccumulatorBase(object):
     Returns:
       Operation that sets the accumulator's time step.
     """
-    return gen_data_flow_ops.accumulator_set_global_step(
+    return gen_data_flow_ops.resource_accumulator_set_global_step(
         self._accumulator_ref,
-        math_ops.to_int64(ops.convert_to_tensor(new_global_step)),
+        math_ops.cast(ops.convert_to_tensor(new_global_step), _dtypes.int64),
         name=name)
 
 
@@ -1264,12 +1266,16 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
       name: Optional name for the accumulator.
       reduction_type: Reduction type to use when taking the gradient.
     """
-    accumulator_ref = gen_data_flow_ops.conditional_accumulator(
+    accumulator_ref = gen_data_flow_ops.resource_conditional_accumulator(
         dtype=dtype,
         shape=shape,
         shared_name=shared_name,
         name=name,
         reduction_type=reduction_type)
+    if context.executing_eagerly():
+      self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
+          handle=accumulator_ref, handle_device=context.context().device_name)
+
     super(ConditionalAccumulator, self).__init__(dtype, shape, accumulator_ref)
 
   def apply_grad(self, grad, local_step=0, name=None):
@@ -1291,8 +1297,9 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     """
     grad = ops.convert_to_tensor(grad, self._dtype)
     grad.get_shape().assert_is_compatible_with(self._shape)
-    local_step = math_ops.to_int64(ops.convert_to_tensor(local_step))
-    return gen_data_flow_ops.accumulator_apply_gradient(
+    local_step = math_ops.cast(ops.convert_to_tensor(local_step), _dtypes.int64)
+
+    return gen_data_flow_ops.resource_accumulator_apply_gradient(
         self._accumulator_ref, local_step=local_step, gradient=grad, name=name)
 
   def take_grad(self, num_required, name=None):
@@ -1317,20 +1324,18 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     Raises:
       InvalidArgumentError: If num_required < 1
     """
-    out = gen_data_flow_ops.accumulator_take_gradient(
+    out = gen_data_flow_ops.resource_accumulator_take_gradient(
         self._accumulator_ref, num_required, dtype=self._dtype, name=name)
     out.set_shape(self._shape)
     return out
 
 
 @tf_export(
-    "sparse.SparseConditionalAccumulator",
     v1=["sparse.SparseConditionalAccumulator", "SparseConditionalAccumulator"])
-@deprecation.deprecated_endpoints("SparseConditionalAccumulator")
 class SparseConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating sparse gradients.
 
-  Sparse gradients are represented by IndexedSlices.
+  Sparse gradients are represented by `IndexedSlices`.
 
   Up-to-date gradients (i.e., time step at which gradient was computed is
   equal to the accumulator's time step) are added to the accumulator.
@@ -1365,11 +1370,11 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
   def apply_indexed_slices_grad(self, grad, local_step=0, name=None):
     """Attempts to apply a gradient to the accumulator.
 
-    The attempt is silently dropped if the gradient is stale, i.e., local_step
+    The attempt is silently dropped if the gradient is stale, i.e., `local_step`
     is less than the accumulator's global time step.
 
     Args:
-      grad: The gradient IndexedSlices to be applied.
+      grad: The gradient `IndexedSlices` to be applied.
       local_step: Time step at which the gradient was computed.
       name: Optional name for the operation.
 
@@ -1394,7 +1399,7 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
                  name=None):
     """Attempts to apply a sparse gradient to the accumulator.
 
-    The attempt is silently dropped if the gradient is stale, i.e., local_step
+    The attempt is silently dropped if the gradient is stale, i.e., `local_step`
     is less than the accumulator's global time step.
 
     A sparse gradient is represented by its indices, values and possibly empty
@@ -1405,7 +1410,7 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
     None, must be consistent with the accumulator's shape (if also provided).
 
     Example:
-      A tensor [[0, 0], [0. 1], [2, 3]] can be represented
+      A tensor [[0, 0], [0, 1], [2, 3]] can be represented
         indices: [1,2]
         values: [[0,1],[2,3]]
         shape: [3, 2]
@@ -1423,14 +1428,14 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
     Raises:
       InvalidArgumentError: If grad is of the wrong shape
     """
-    local_step = math_ops.to_int64(ops.convert_to_tensor(local_step))
+    local_step = math_ops.cast(ops.convert_to_tensor(local_step), _dtypes.int64)
     return gen_data_flow_ops.sparse_accumulator_apply_gradient(
         self._accumulator_ref,
         local_step=local_step,
-        gradient_indices=math_ops.to_int64(grad_indices),
+        gradient_indices=math_ops.cast(grad_indices, _dtypes.int64),
         gradient_values=grad_values,
-        gradient_shape=math_ops.to_int64([]
-                                         if grad_shape is None else grad_shape),
+        gradient_shape=math_ops.cast(
+            [] if grad_shape is None else grad_shape, _dtypes.int64),
         has_known_shape=(grad_shape is not None),
         name=name)
 
@@ -1453,7 +1458,7 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
       A tuple of indices, values, and shape representing the average gradient.
 
     Raises:
-      InvalidArgumentError: If num_required < 1
+      InvalidArgumentError: If `num_required` < 1
     """
     return gen_data_flow_ops.sparse_accumulator_take_gradient(
         self._accumulator_ref, num_required, dtype=self._dtype, name=name)
@@ -1474,10 +1479,10 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
       name: Optional name for the operation
 
     Returns:
-      An IndexedSlices holding the value of the average gradient.
+      An `IndexedSlices` holding the value of the average gradient.
 
     Raises:
-      InvalidArgumentError: If num_required < 1
+      InvalidArgumentError: If `num_required` < 1
     """
     return_val = gen_data_flow_ops.sparse_accumulator_take_gradient(
         self._accumulator_ref, num_required, dtype=self._dtype, name=name)
@@ -1485,6 +1490,40 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
         indices=return_val.indices,
         values=return_val.values,
         dense_shape=return_val.shape)
+
+  # SparseConditionalAccumulator is not switched to resource. Use old kernels.
+  def num_accumulated(self, name=None):
+    """Number of gradients that have currently been aggregated in accumulator.
+
+    Args:
+      name: Optional name for the operation.
+
+    Returns:
+      Number of accumulated gradients currently in accumulator.
+    """
+    if name is None:
+      name = "%s_NumAccumulated" % self._name
+
+    return gen_data_flow_ops.accumulator_num_accumulated(
+        self._accumulator_ref, name=name)
+
+  def set_global_step(self, new_global_step, name=None):
+    """Sets the global time step of the accumulator.
+
+    The operation logs a warning if we attempt to set to a time step that is
+    lower than the accumulator's own time step.
+
+    Args:
+      new_global_step: Value of new time step. Can be a variable or a constant
+      name: Optional name for the operation.
+
+    Returns:
+      Operation that sets the accumulator's time step.
+    """
+    return gen_data_flow_ops.accumulator_set_global_step(
+        self._accumulator_ref,
+        math_ops.cast(ops.convert_to_tensor(new_global_step), _dtypes.int64),
+        name=name)
 
 
 class BaseStagingArea(object):
@@ -2394,8 +2433,7 @@ class RecordInput(object):
       with ops.name_scope(self._name):
         batch_list = [[] for _ in six.moves.range(self._batches)]
         records = array_ops.split(records, self._batch_size, 0)
-        records = [array_ops.reshape(record, []) for record in records]
-        for index, protobuf in zip(six.moves.range(len(records)), records):
+        for index, protobuf in enumerate(records):
           batch_index = index % self._batches
-          batch_list[batch_index].append(protobuf)
+          batch_list[batch_index].append(array_ops.reshape(protobuf, []))
         return batch_list

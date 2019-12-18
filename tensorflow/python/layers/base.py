@@ -22,11 +22,13 @@ import copy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -63,9 +65,9 @@ def keras_style_scope():
   class RNNModel(tf.keras.Model):
 
     def __init__(self, name):
-      super(RNNModel, self.).__init__(name=name)
-      self.rnn = tf.nn.rnn_cell.MultiRNNCell(
-        [tf.nn.rnn_cell.LSTMCell(64) for _ in range(2)])
+      super(RNNModel, self).__init__(name=name)
+      self.rnn = tf.compat.v1.nn.rnn_cell.MultiRNNCell(
+        [tf.compat.v1.nn.rnn_cell.LSTMCell(64) for _ in range(2)])
 
     def call(self, input, state):
       return self.rnn(input, state)
@@ -198,6 +200,15 @@ class Layer(base_layer.Layer):
     self._trainable_weights = []
     self.built = False
 
+    if dtype is None:
+      # Indicates to infer dtype from inputs. When the V2 dtype behavior is
+      # enabled, Keras layers default their dtype to floatx instead, so we pass
+      # an "infer" policy to keep the old V1 behavior.
+      dtype = policy.Policy('infer')
+
+    if 'autocast' not in kwargs:
+      kwargs['autocast'] = False
+
     super(Layer, self).__init__(trainable=trainable, name=name, dtype=dtype,
                                 **kwargs)
 
@@ -214,7 +225,6 @@ class Layer(base_layer.Layer):
     else:
       self._keras_style = False
 
-    self._graph = None
     self._call_has_scope_arg = 'scope' in self._call_fn_args
     if scope:
       with vs.variable_scope(scope) as captured_scope:
@@ -223,11 +233,17 @@ class Layer(base_layer.Layer):
       self._scope = None
     self._current_scope = None
 
+  # We no longer track graph in tf.layers layers. This property is only kept to
+  # maintain API backward compatibility.
   @property
+  @deprecation.deprecated(
+      date=None,
+      instructions='Stop using this property because tf.layers layers no '
+      'longer track their graph.')
   def graph(self):
     if context.executing_eagerly():
       raise RuntimeError('Layer.graph not supported when executing eagerly.')
-    return self._graph
+    return None
 
   def _init_set_name(self, name):
     # Determine layer name (non-unique).
@@ -244,11 +260,12 @@ class Layer(base_layer.Layer):
   def _make_unique_name(self, name_uid_map=None, avoid_names=None,
                         namespace='', zero_based=False):
     base_name = base_layer.to_snake_case(self.__class__.__name__)
-    name = base_layer_utils.unique_layer_name(base_name,
-                                              name_uid_map=name_uid_map,
-                                              avoid_names=avoid_names,
-                                              namespace=namespace,
-                                              zero_based=zero_based)
+    name = backend.unique_object_name(
+        base_name,
+        name_uid_map=name_uid_map,
+        avoid_names=avoid_names,
+        namespace=namespace,
+        zero_based=zero_based)
     return (name, base_name)
 
   @property
@@ -307,7 +324,8 @@ class Layer(base_layer.Layer):
                  use_resource=None,
                  synchronization=vs.VariableSynchronization.AUTO,
                  aggregation=vs.VariableAggregation.NONE,
-                 partitioner=None):
+                 partitioner=None,
+                 **kwargs):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
     Arguments:
@@ -338,10 +356,11 @@ class Layer(base_layer.Layer):
         provided, when the requested variable is created it will be split
         into multiple partitions according to `partitioner`.  In this case,
         an instance of `PartitionedVariable` is returned.  Available
-        partitioners include `tf.fixed_size_partitioner` and
-        `tf.variable_axis_size_partitioner`.  For more details, see the
-        documentation of `tf.get_variable` and the  "Variable Partitioners
-        and Sharding" section of the API guide.
+        partitioners include `tf.compat.v1.fixed_size_partitioner` and
+        `tf.compat.v1.variable_axis_size_partitioner`.  For more details, see
+        the documentation of `tf.compat.v1.get_variable` and the  "Variable
+        Partitioners and Sharding" section of the API guide.
+      **kwargs: Additional keyword arguments.
 
     Returns:
       The created variable.  Usually either a `Variable` or `ResourceVariable`
@@ -349,11 +368,14 @@ class Layer(base_layer.Layer):
       instance is returned.
 
     Raises:
-      RuntimeError: If called with partioned variable regularization and
+      RuntimeError: If called with partitioned variable regularization and
         eager execution is enabled.
       ValueError: When trainable has been set to True with synchronization
         set as `ON_READ`.
     """
+    for kwarg in kwargs:
+      if kwarg != 'experimental_autocast':
+        raise TypeError('Unknown keyword argument:', kwarg)
     if self._keras_style:
       return super(Layer, self).add_weight(
           name=name,
@@ -361,12 +383,13 @@ class Layer(base_layer.Layer):
           dtype=dtype,
           initializer=initializer,
           regularizer=regularizer,
-          trainable=trainable,
+          trainable=trainable and self.trainable,
           constraint=constraint,
           use_resource=use_resource,
           synchronization=vs.VariableSynchronization.AUTO,
           aggregation=vs.VariableAggregation.NONE,
-          partitioner=partitioner)
+          partitioner=partitioner,
+          **kwargs)
 
     if synchronization == vs.VariableSynchronization.ON_READ:
       if trainable:
@@ -416,7 +439,7 @@ class Layer(base_layer.Layer):
     with vs.variable_scope(
         self._scope, reuse=reuse, auxiliary_name_scope=False) as scope:
       self._current_scope = scope
-      with ops.name_scope(self._name_scope()):
+      with ops.name_scope(self._name_scope(), skip_on_eager=False):
         use_resource = (use_resource or
                         self._use_resource_variables or
                         scope.use_resource)
@@ -427,17 +450,18 @@ class Layer(base_layer.Layer):
             shape,
             dtype=dtypes.as_dtype(dtype),
             initializer=initializer,
-            trainable=trainable,
+            trainable=trainable and self.trainable,
             constraint=constraint,
             partitioner=partitioner,
             use_resource=use_resource,
             synchronization=synchronization,
             aggregation=aggregation,
-            getter=vs.get_variable)
+            getter=vs.get_variable,
+            **kwargs)
 
         if regularizer:
-          if context.executing_eagerly() or _should_add_regularizer(
-              variable, existing_variables):
+          if (ops.executing_eagerly_outside_functions()
+              or _should_add_regularizer(variable, existing_variables)):
             self._handle_weight_regularization(name, variable, regularizer)
 
         if init_graph is not None:
@@ -491,14 +515,6 @@ class Layer(base_layer.Layer):
 
     self._set_scope(scope)
 
-    if not context.executing_eagerly():
-      try:
-        # Set layer's "graph" at build time
-        self._graph = ops._get_graph_from_inputs(nest.flatten(inputs),  # pylint: disable=protected-access
-                                                 graph=self._graph)
-      except ValueError as e:
-        raise ValueError('Input graph and Layer graph are not the same: %s' % e)
-
     if self.built:
       try:
         # Some classes which inherit from Layer do not use its constructor, so
@@ -536,7 +552,7 @@ class Layer(base_layer.Layer):
     return outputs
 
   def __deepcopy__(self, memo):
-    no_copy = set(['_graph'])
+    no_copy = set(['_graph', '_thread_local'])
     shallow_copy = set(['_scope', '_always_reuse_variable_scope'])
     cls = self.__class__
     result = cls.__new__(cls)
@@ -556,6 +572,11 @@ class Layer(base_layer.Layer):
     # By-pass the automatic dependency tracking performed by the parent Layer.
     super(trackable.Trackable, self).__setattr__(value, name)
 
+  @property
+  def _is_legacy_layer(self):
+    """Used by keras to check compatibility. This should not be overridden."""
+    return True
+
 
 def _add_elements_to_collection(elements, collection_list):
   if context.executing_eagerly():
@@ -566,7 +587,7 @@ def _add_elements_to_collection(elements, collection_list):
   collection_list = nest.flatten(collection_list)
   for name in collection_list:
     collection = ops.get_collection_ref(name)
-    collection_set = set(collection)
+    collection_set = {id(e) for e in collection}
     for element in elements:
-      if element not in collection_set:
+      if id(element) not in collection_set:
         collection.append(element)

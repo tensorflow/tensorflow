@@ -64,12 +64,12 @@ class SignatureDefUtilsTest(test.TestCase):
   def testBuildSignatureDef(self):
     x = array_ops.placeholder(dtypes.float32, 1, name="x")
     x_tensor_info = utils.build_tensor_info(x)
-    inputs = dict()
+    inputs = {}
     inputs["foo-input"] = x_tensor_info
 
     y = array_ops.placeholder(dtypes.float32, name="y")
     y_tensor_info = utils.build_tensor_info(y)
-    outputs = dict()
+    outputs = {}
     outputs["foo-output"] = y_tensor_info
 
     signature_def = signature_def_utils_impl.build_signature_def(

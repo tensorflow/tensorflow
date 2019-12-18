@@ -88,18 +88,27 @@ void ReplaceReferences(const string& from, const string& to,
 
 void AddFunctionOutputWithUniqueName(StringPiece prefix,
                                      StringPiece output_tensor_name,
-                                     FunctionDef* function, DataType dt) {
+                                     FunctionDef* fdef, DataType dtype) {
   string name = string(prefix);
-  int id = function->signature().output_arg_size();
-  while (ContainsFunctionOutputWithName(name, *function)) {
+  int id = fdef->signature().output_arg_size();
+  while (ContainsFunctionOutputWithName(name, *fdef)) {
     name = strings::StrCat(prefix, "/_", id);
     ++id;
   }
-  auto* output = function->mutable_signature()->mutable_output_arg()->Add();
+  auto* output = fdef->mutable_signature()->mutable_output_arg()->Add();
   output->set_name(name);
-  output->set_type(dt);
+  output->set_type(dtype);
 
-  (*function->mutable_ret())[name] = string(output_tensor_name);
+  (*fdef->mutable_ret())[name] = string(output_tensor_name);
+}
+
+OpDef_ArgDef* AddFunctionInput(const string& name, FunctionDef* fdef,
+                               DataType dtype) {
+  auto* input_arg = fdef->mutable_signature()->mutable_input_arg()->Add();
+  input_arg->set_type(dtype);
+  input_arg->set_name(name);
+
+  return input_arg;
 }
 
 NodeDef* AddNode(StringPiece name, StringPiece op,

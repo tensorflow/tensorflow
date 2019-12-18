@@ -19,6 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.lite.python import interpreter
+from tensorflow.lite.python import lite
+from tensorflow.python.eager import def_function
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.training import saver
 
@@ -31,11 +34,11 @@ def grappler_optimize(graph, fetches=None, config_proto=None):
     fetches: An optional list of `Tensor`s to fetch (i.e. not optimize away).
       Grappler uses the 'train_op' collection to look for fetches, so if not
       provided this collection should be non-empty.
-    config_proto: An optional `tf.ConfigProto` to use when rewriting the
-      graph.
+    config_proto: An optional `tf.compat.v1.ConfigProto` to use when rewriting
+      the graph.
 
   Returns:
-    A `tf.GraphDef` containing the rewritten graph.
+    A `tf.compat.v1.GraphDef` containing the rewritten graph.
   """
   if config_proto is None:
     config_proto = config_pb2.ConfigProto()
@@ -45,3 +48,55 @@ def grappler_optimize(graph, fetches=None, config_proto=None):
       graph.add_to_collection('train_op', fetch)
   metagraph = saver.export_meta_graph(graph_def=graph.as_graph_def())
   return tf_optimizer.OptimizeGraph(config_proto, metagraph)
+
+
+def tflite_convert(fn, input_templates, use_mlir=False):
+  """Converts the provided fn to tf.lite model.
+
+  Args:
+    fn: A callable that expects a list of inputs like input_templates that
+      returns a tensor or structure of tensors.
+    input_templates: A list of Tensors, ndarrays or TensorSpecs describing the
+      inputs that fn expects. The actual values of the Tensors or ndarrays are
+      unused.
+    use_mlir: Experimental. Whether to use the tf.lite MLIR converter.
+
+  Returns:
+    The serialized tf.lite model.
+  """
+  fn = def_function.function(fn)
+  concrete_func = fn.get_concrete_function(*input_templates)
+  converter = lite.TFLiteConverterV2([concrete_func])
+  converter.experimental_new_converter = use_mlir
+  return converter.convert()
+
+
+def evaluate_tflite_model(tflite_model, input_ndarrays):
+  """Evaluates the provided tf.lite model with the given input ndarrays.
+
+  Args:
+    tflite_model: bytes. The serialized tf.lite model.
+    input_ndarrays: A list of NumPy arrays to feed as input to the model.
+
+  Returns:
+    A list of ndarrays produced by the model.
+
+  Raises:
+    ValueError: If the number of input arrays does not match the number of
+      inputs the model expects.
+  """
+  the_interpreter = interpreter.Interpreter(model_content=tflite_model)
+  the_interpreter.allocate_tensors()
+
+  input_details = the_interpreter.get_input_details()
+  output_details = the_interpreter.get_output_details()
+
+  if len(input_details) != len(input_ndarrays):
+    raise ValueError('Wrong number of inputs: provided=%s, '
+                     'input_details=%s output_details=%s' % (
+                         input_ndarrays, input_details, output_details))
+  for input_tensor, data in zip(input_details, input_ndarrays):
+    the_interpreter.set_tensor(input_tensor['index'], data)
+  the_interpreter.invoke()
+  return [the_interpreter.get_tensor(details['index'])
+          for details in output_details]

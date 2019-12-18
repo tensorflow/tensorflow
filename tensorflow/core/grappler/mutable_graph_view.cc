@@ -89,8 +89,9 @@ bool CanDedupControlWithRegularInput(const MutableGraphView& graph,
 bool CanDedupControlWithRegularInput(const MutableGraphView& graph,
                                      absl::string_view control_node_name) {
   NodeDef* control_node = graph.GetNode(control_node_name);
-  DCHECK(control_node != nullptr)
-      << "Didn't find a node for control dependency: " << control_node_name;
+  if (control_node == nullptr) {
+    return false;
+  }
   return CanDedupControlWithRegularInput(graph, *control_node);
 }
 
@@ -639,6 +640,9 @@ Status MutableGraphView::SwapNodeNames(absl::string_view from_node_name,
   swap_names();
 
   // Swap controlling fanouts.
+  //
+  // Note: To and from control fanout iterators are still valid as no mutations
+  // has been performed on fanouts().
   SwapFanoutsMapValues(&fanouts(), from_control, from_control_fanouts,
                        to_control, to_control_fanouts);
 
@@ -706,6 +710,9 @@ Status MutableGraphView::SwapNodeNames(absl::string_view from_node_name,
     if (to_is_switch) {
       dedup_switch_control(from_node);
     } else {
+      // Fetch iterator again as the original iterator might have been
+      // invalidated by container rehash triggered due to mutations.
+      auto from_control_fanouts = fanouts().find(from_control);
       dedup_control_fanouts(from_node, from_control_fanouts);
     }
   }
@@ -713,6 +720,9 @@ Status MutableGraphView::SwapNodeNames(absl::string_view from_node_name,
     if (from_is_switch) {
       dedup_switch_control(to_node);
     } else {
+      // Fetch iterator again as the original iterator might have been
+      // invalidated by container rehash triggered due to mutations.
+      auto to_control_fanouts = fanouts().find(to_control);
       dedup_control_fanouts(to_node, to_control_fanouts);
     }
   }

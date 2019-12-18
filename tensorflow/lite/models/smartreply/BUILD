@@ -1,17 +1,18 @@
-package(default_visibility = [
-    "//visibility:public",
-])
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "gen_selected_ops", "tflite_copts")
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
 gen_selected_ops(
     name = "smartreply_ops",
-    model = "@tflite_smartreply//:smartreply.tflite",
+    model = ["@tflite_smartreply//:smartreply.tflite"],
 )
 
 cc_library(
@@ -28,6 +29,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
@@ -50,6 +52,7 @@ cc_library(
     ],
 )
 
+# TODO(b/118895218): Make this test compatible with oss.
 tf_cc_test(
     name = "predictor_test",
     srcs = ["predictor_test.cc"],
@@ -68,7 +71,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "extract_feature_op_test",
     size = "small",
     srcs = ["ops/extract_feature_test.cc"],
@@ -83,7 +86,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "normalize_op_test",
     size = "small",
     srcs = ["ops/normalize_test.cc"],
@@ -98,7 +101,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "predict_op_test",
     size = "small",
     srcs = ["ops/predict_test.cc"],

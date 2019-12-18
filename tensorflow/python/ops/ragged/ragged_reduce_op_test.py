@@ -28,7 +28,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 _MAX_INT32 = dtypes.int32.max
@@ -41,7 +40,7 @@ def mean(*values):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedReduceOpsTest(ragged_test_util.RaggedTensorTestCase,
+class RaggedReduceOpsTest(test_util.TensorFlowTestCase,
                           parameterized.TestCase):
 
   @parameterized.parameters(
@@ -304,11 +303,30 @@ class RaggedReduceOpsTest(ragged_test_util.RaggedTensorTestCase,
           rt_input=[[[1, 2], [3, 4, 5]], [[6, 7], [8]], [[9]]],
           axis=2,
           expected=[[mean(1, 2), mean(3, 4, 5)], [mean(6, 7), 8], [9]]),
+
+      # Test case for GitHub issue 27497, multiple negative axes.
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
+          axis=[-2, -1],
+          expected=[1 + 2 + 3 + 4 + 5, 6 + 7 + 8, 0, 9]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_sum,
+          rt_input=[[[1, 2], [], [3, 4, 5]], [[6, 7], [], [8]], [], [[9]]],
+          axis=[-3, -2, -1],
+          expected=sum([1, 2, 3, 4, 5, 6, 7, 8, 9])),
   )
   def testReduce(self, ragged_reduce_op, rt_input, axis, expected):
     rt_input = ragged_factory_ops.constant(rt_input)
     reduced = ragged_reduce_op(rt_input, axis)
-    self.assertRaggedEqual(reduced, expected)
+    self.assertAllEqual(reduced, expected)
+
+  def testReduceKeepsInnerDimensionShape(self):
+    # Test for bug [b/139823356].
+    rt = ragged_factory_ops.constant([[[[1, 1]]]], ragged_rank=2)
+    self.assertEqual(rt.shape.as_list(), [1, None, None, 2])
+    reduced = ragged_math_ops.reduce_sum(rt, axis=2)
+    self.assertEqual(reduced.shape.as_list(), [1, None, 2])
 
   def assertEqualWithNan(self, actual, expected):
     """Like assertEqual, but NaN==NaN."""
@@ -328,7 +346,7 @@ class RaggedReduceOpsTest(ragged_test_util.RaggedTensorTestCase,
     tensor = [[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]]
     expected = [2.0, 20.0]
     reduced = ragged_math_ops.reduce_mean(tensor, axis=1)
-    self.assertRaggedEqual(reduced, expected)
+    self.assertAllEqual(reduced, expected)
 
   def testErrors(self):
     rt_input = ragged_factory_ops.constant([[1, 2, 3], [4, 5]])

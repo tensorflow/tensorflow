@@ -71,6 +71,7 @@ enum ConvolutionKind {
   FORWARD = 1;
   BACKWARD_FILTER = 2;
   BACKWARD_DATA = 3;
+  FORWARD_BIAS_ACTIVATION = 4;
 }
 
 // Generic tensor representation.
@@ -107,23 +108,6 @@ message ConvolutionDescriptorProto {
   // See cuDNN's group count.
   int32 group_count = 5;
   ConvolutionMode convolution_mode = 6;
-}
-
-// A convolution. Currently it's only used for logging. In the future, we may
-// want to use it in the API as well.
-message ConvolutionProto {
-  ConvolutionKind kind = 1;
-  TensorDescriptorProto input = 2;
-  TensorDescriptorProto filter = 3;
-  TensorDescriptorProto output = 4;
-  AlgorithmProto algorithm = 5;
-  ConvolutionDescriptorProto conv_desc = 6;
-
-  // result = conv_scale * conv(...) + side_value_scale * side_value.
-  // side_value is an arbitrary buffer if activation is not none. Otherwise, it
-  // has to be the result buffer (using its old values).
-  double conv_scale = 7;
-  double side_value_scale = 8;
-
-  ActivationMode activation = 9;
+  // Tensorflow node name, same as in NodeDef, for debugging purposes.
+  string name = 7;
 }

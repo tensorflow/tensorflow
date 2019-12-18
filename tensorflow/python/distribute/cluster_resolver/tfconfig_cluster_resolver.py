@@ -50,7 +50,12 @@ def _get_value_in_tfconfig(key, default=None):
 
 @tf_export('distribute.cluster_resolver.TFConfigClusterResolver')
 class TFConfigClusterResolver(ClusterResolver):
-  """Implementation of a ClusterResolver which reads the TF_CONFIG EnvVar."""
+  """Implementation of a ClusterResolver which reads the TF_CONFIG EnvVar.
+
+  This is an implementation of cluster resolvers when using TF_CONFIG to set
+  information about the cluster. The cluster spec returned will be
+  initialized from the TF_CONFIG environment variable.
+  """
 
   def __init__(self,
                task_type=None,
@@ -112,6 +117,15 @@ class TFConfigClusterResolver(ClusterResolver):
   def rpc_layer(self, rpc_layer):
     self._rpc_layer = rpc_layer
 
+  def num_accelerators(self,
+                       task_type=None,
+                       task_id=None,
+                       config_proto=None):
+    task_type = self.task_type if task_type is None else task_type
+    task_id = self.task_id if task_id is None else task_id
+    return super(TFConfigClusterResolver, self).num_accelerators(
+        task_type, task_id, config_proto)
+
   def cluster_spec(self):
     """Returns a ClusterSpec based on the TF_CONFIG environment variable.
 
@@ -158,6 +172,7 @@ class TFConfigClusterResolver(ClusterResolver):
     # where available
     task_type = task_type if task_type is not None else self.task_type
     task_id = task_id if task_id is not None else self.task_id
+    rpc_layer = rpc_layer if rpc_layer is not None else self.rpc_layer
 
     return format_master_url(cluster_spec.task_address(task_type, task_id),
-                             self.rpc_layer)
+                             rpc_layer)

@@ -19,11 +19,11 @@ limitations under the License.
 #include <ctime>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 // Windows.h #defines ERROR, but it is also used in
@@ -31,7 +31,7 @@ limitations under the License.
 #undef ERROR
 #include "tensorflow/core/profiler/op_profile.pb.h"
 #include "tensorflow/core/profiler/rpc/client/trace_events_to_json.h"
-#include "tensorflow/core/profiler/trace_events.pb.h"
+#include "tensorflow/core/protobuf/trace_events.pb.h"
 #include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
@@ -43,10 +43,7 @@ namespace {
 using ::tensorflow::io::JoinPath;
 using ::tensorflow::protobuf::util::JsonOptions;
 using ::tensorflow::protobuf::util::MessageToJsonString;
-using ::tensorflow::str_util::EndsWith;
-using ::tensorflow::strings::StrCat;
 
-constexpr char kGraphRunPrefix[] = "tpu_profiler.hlo_graph.";
 constexpr char kJsonOpProfileFileName[] = "op_profile.json";
 constexpr char kJsonTraceFileName[] = "trace.json.gz";
 constexpr char kProfilePluginDirectory[] = "plugins/profile/";
@@ -71,12 +68,13 @@ Status WriteGzippedDataToFile(const string& filename, const string& data) {
 Status DumpTraceToLogDirectory(StringPiece run_dir, const string& host_prefix,
                                const string& encoded_trace, std::ostream* os) {
   string proto_path =
-      JoinPath(run_dir, StrCat(host_prefix, kProtoTraceFileName));
+      JoinPath(run_dir, absl::StrCat(host_prefix, kProtoTraceFileName));
   TF_RETURN_IF_ERROR(
       WriteStringToFile(Env::Default(), proto_path, encoded_trace));
   LOG(INFO) << "Dumped raw-proto trace data to " << proto_path;
 
-  string json_path = JoinPath(run_dir, StrCat(host_prefix, kJsonTraceFileName));
+  string json_path =
+      JoinPath(run_dir, absl::StrCat(host_prefix, kJsonTraceFileName));
   Trace trace;
   trace.ParseFromString(encoded_trace);
   if (os) {
@@ -95,7 +93,8 @@ Status DumpOpProfileToLogDirectory(StringPiece run_dir,
                                    const string& host_prefix,
                                    const op_profile::Profile& profile,
                                    std::ostream* os) {
-  string path = JoinPath(run_dir, StrCat(host_prefix, kJsonOpProfileFileName));
+  string path =
+      JoinPath(run_dir, absl::StrCat(host_prefix, kJsonOpProfileFileName));
   string json;
   JsonOptions options;
   options.always_print_primitive_fields = true;
@@ -117,10 +116,10 @@ Status DumpToolDataToLogDirectory(StringPiece run_dir,
                                   const ProfileToolData& tool,
                                   std::ostream* os) {
   // Don't save the intermediate results for combining the per host tool data.
-  if (EndsWith(tool.name(), kFlatProfilerFileName) ||
-      EndsWith(tool.name(), kTfStatsHelperSuffix))
+  if (absl::EndsWith(tool.name(), kFlatProfilerFileName) ||
+      absl::EndsWith(tool.name(), kTfStatsHelperSuffix))
     return Status::OK();
-  string path = JoinPath(run_dir, StrCat(host_prefix, tool.name()));
+  string path = JoinPath(run_dir, absl::StrCat(host_prefix, tool.name()));
   TF_RETURN_IF_ERROR(WriteStringToFile(Env::Default(), path, tool.data()));
   if (os) {
     *os << "Dumped tool data for " << tool.name() << " to " << path
@@ -136,7 +135,7 @@ Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
                                   const ProfileResponse& response,
                                   std::ostream* os) {
   // Dumps profile data to <logdir>/plugins/profile/<run>/.
-  string host_prefix = host.empty() ? "" : StrCat(host, ".");
+  string host_prefix = host.empty() ? "" : absl::StrCat(host, ".");
   string profile_run_dir = JoinPath(logdir, kProfilePluginDirectory, run);
   *os << "Creating directory: " << profile_run_dir;
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(profile_run_dir));

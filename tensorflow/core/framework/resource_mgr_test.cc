@@ -19,10 +19,12 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -73,7 +75,7 @@ string LookupOrCreate(ResourceMgr* rm, const string& container,
 }
 
 static void HasError(const Status& s, const string& substr) {
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
+  EXPECT_TRUE(absl::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }
 
@@ -189,11 +191,13 @@ string Policy(const string& attr_container, const string& attr_shared_name,
 
 TEST(ContainerInfo, Basic) {
   // Correct cases.
-  EXPECT_EQ(Policy("", "", false), "[localhost,_0_foo,private]");
+  EXPECT_TRUE(RE2::FullMatch(Policy("", "", false),
+                             "\\[localhost,_\\d+_foo,private\\]"));
   EXPECT_EQ(Policy("", "", true), "[localhost,foo,public]");
   EXPECT_EQ(Policy("", "bar", false), "[localhost,bar,public]");
   EXPECT_EQ(Policy("", "bar", true), "[localhost,bar,public]");
-  EXPECT_EQ(Policy("cat", "", false), "[cat,_1_foo,private]");
+  EXPECT_TRUE(
+      RE2::FullMatch(Policy("cat", "", false), "\\[cat,_\\d+_foo,private\\]"));
   EXPECT_EQ(Policy("cat", "", true), "[cat,foo,public]");
   EXPECT_EQ(Policy("cat", "bar", false), "[cat,bar,public]");
   EXPECT_EQ(Policy("cat", "bar", true), "[cat,bar,public]");
@@ -237,6 +241,7 @@ class StubDevice : public DeviceBase {
   }
 
   const DeviceAttributes& attributes() const override { return attr_; }
+  const string& name() const override { return attr_.name(); }
 
  private:
   DeviceAttributes attr_;
@@ -266,15 +271,14 @@ TEST(ResourceHandleTest, CRUD) {
     TF_EXPECT_OK(CreateResource(&ctx, p, r));
   }
   {
-    StubResource* r = nullptr;
+    core::RefCountPtr<StubResource> r;
     TF_ASSERT_OK(LookupResource(&ctx, p, &r));
     ASSERT_TRUE(r != nullptr);
     EXPECT_EQ(r->value_, 42);
-    r->Unref();
   }
   {
     TF_EXPECT_OK(DeleteResource<StubResource>(&ctx, p));
-    StubResource* unused = nullptr;
+    core::RefCountPtr<StubResource> unused;
     EXPECT_FALSE(LookupResource(&ctx, p, &unused).ok());
   }
 }
@@ -338,13 +342,12 @@ TEST(ResourceHandleTest, DeleteUsingResourceHandle) {
   StubResource* r = new StubResource;
   TF_EXPECT_OK(CreateResource(&ctx, p, r));
 
-  StubResource* lookup_r = nullptr;
+  core::RefCountPtr<StubResource> lookup_r;
   TF_EXPECT_OK(LookupResource<StubResource>(&ctx, p, &lookup_r));
-  EXPECT_EQ(lookup_r, r);
+  EXPECT_EQ(lookup_r.get(), r);
 
   TF_EXPECT_OK(DeleteResource(&ctx, p));
   EXPECT_NE(LookupResource<StubResource>(&ctx, p, &lookup_r).ok(), true);
-  r->Unref();
 }
 
 }  // end namespace tensorflow

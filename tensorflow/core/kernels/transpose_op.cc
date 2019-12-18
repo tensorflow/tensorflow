@@ -176,10 +176,9 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
     }
   }
   for (int i = 0; i < dims; ++i) {
-    OP_REQUIRES(
-        ctx, bits[i],
-        errors::InvalidArgument(i, " is missing from {",
-                                str_util::Join(permutation, ","), "}."));
+    OP_REQUIRES(ctx, bits[i],
+                errors::InvalidArgument(i, " is missing from {",
+                                        absl::StrJoin(permutation, ","), "}."));
   }
 
   // 0-D, 1-D, and identity transposes do nothing.
@@ -218,20 +217,6 @@ Status ConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                                             perm, out);
 }
 
-#if defined(INTEL_MKL) && defined(ENABLE_MKL)
-#define REGISTER(T)                                   \
-  REGISTER_KERNEL_BUILDER(Name("Transpose")           \
-                              .Device(DEVICE_CPU)     \
-                              .TypeConstraint<T>("T") \
-                              .HostMemory("perm"),    \
-                          MklTransposeCpuOp);         \
-  REGISTER_KERNEL_BUILDER(Name("ConjugateTranspose")  \
-                              .Device(DEVICE_CPU)     \
-                              .TypeConstraint<T>("T") \
-                              .HostMemory("perm"),    \
-                          MklConjugateTransposeCpuOp);
-
-#else  // INTEL_MKL && ENABLE_MKL
 #define REGISTER(T)                                   \
   REGISTER_KERNEL_BUILDER(Name("Transpose")           \
                               .Device(DEVICE_CPU)     \
@@ -243,12 +228,11 @@ Status ConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                               .TypeConstraint<T>("T") \
                               .HostMemory("perm"),    \
                           ConjugateTransposeCpuOp);
-#endif  // INTEL_MKL && ENABLE_MKL
 
 TF_CALL_ALL_TYPES(REGISTER)
 #undef REGISTER
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 Status TransposeGpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                                    gtl::ArraySlice<int32> perm, Tensor* out) {
   typedef Eigen::GpuDevice GPUDevice;

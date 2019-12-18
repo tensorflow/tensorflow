@@ -19,9 +19,13 @@ from __future__ import print_function
 
 import os
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests import sql_dataset_test_base
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.experimental.ops import readers
+from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -29,7 +33,8 @@ from tensorflow.python.platform import test
 
 class SqlDatasetSerializationTest(
     sql_dataset_test_base.SqlDatasetTestBase,
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
   def _build_dataset(self, num_repeats):
     data_source_name = os.path.join(test.get_temp_dir(), "tftest.sqlite")
@@ -41,12 +46,11 @@ class SqlDatasetSerializationTest(
     return readers.SqlDataset(driver_name, data_source_name, query,
                               output_types).repeat(num_repeats)
 
-  def testSQLSaveable(self):
+  @combinations.generate(test_base.default_test_combinations())
+  def testCore(self):
     num_repeats = 4
     num_outputs = num_repeats * 2
-    self.run_core_tests(lambda: self._build_dataset(num_repeats),
-                        lambda: self._build_dataset(num_repeats // 2),
-                        num_outputs)
+    self.run_core_tests(lambda: self._build_dataset(num_repeats), num_outputs)
 
 
 if __name__ == "__main__":

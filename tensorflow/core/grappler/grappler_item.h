@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -98,6 +99,9 @@ struct GrapplerItem {
     // undefined type parameters in the function signature, or placeholder
     // attributes in the function body).
     bool optimize_function_library = true;
+
+    // Mark the grapper optimization run in eager mode or not.
+    bool is_eager_mode = false;
   };
 
   const std::unordered_set<string>& devices() const;
@@ -138,6 +142,14 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
 // exist.
 std::vector<const NodeDef*> ComputeTransitiveFanin(
     const GraphDef& graph, const std::vector<string>& terminal_nodes,
+    bool* ill_formed);
+
+// Return the transitive fanin of a set of terminal nodes. Sets 'ill_formed' to
+// true if one of the node is missing in the graph, or some node inputs don't
+// exist. Sets name_to_fanin_node for name to fanin nodes map.
+std::vector<const NodeDef*> ComputeTransitiveFanin(
+    const GraphDef& graph, const std::vector<string>& terminal_nodes,
+    std::unordered_map<string, const NodeDef*>* name_to_fanin_node,
     bool* ill_formed);
 
 }  // end namespace grappler

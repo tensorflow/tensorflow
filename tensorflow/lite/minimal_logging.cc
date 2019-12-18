@@ -23,7 +23,7 @@ namespace logging_internal {
 void MinimalLogger::Log(LogSeverity severity, const char* format, ...) {
   va_list args;
   va_start(args, format);
-  VLog(severity, format, args);
+  LogFormatted(severity, format, args);
   va_end(args);
 }
 
@@ -35,9 +35,8 @@ const char* MinimalLogger::GetSeverityName(LogSeverity severity) {
       return "WARNING";
     case TFLITE_LOG_ERROR:
       return "ERROR";
-    default:
-      return "<Unknown severity>";
   }
+  return "<Unknown severity>";
 }
 
 }  // namespace logging_internal

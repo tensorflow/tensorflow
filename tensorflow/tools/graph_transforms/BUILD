@@ -1,18 +1,18 @@
 # Description:
 #   Utilities that perform useful transformations on graphs
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "if_not_windows",
-    "tf_copts",
     "tf_cc_binary",
     "tf_cc_test",
+    "tf_copts",
     "tf_py_test",
-    "if_not_v2",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
@@ -98,7 +98,6 @@ cc_library(
         "fold_old_batch_norms.cc",
         "freeze_requantization_ranges.cc",
         "fuse_convolutions.cc",
-        "fuse_quantized_convolution.cc",
         "insert_logging.cc",
         "obfuscate_names.cc",
         "quantize_nodes.cc",
@@ -150,6 +149,7 @@ cc_library(
         "//tensorflow/core:string_ops_op_lib",
         "//tensorflow/core:remote_fused_graph_ops_op_lib",
         "//tensorflow/core:random_ops_op_lib",
+        "//tensorflow/core:rnn_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:manip_ops_op_lib",
@@ -158,9 +158,6 @@ cc_library(
         "//tensorflow/core:control_flow_ops_op_lib",
         "//tensorflow/core:candidate_sampling_ops_op_lib",
         "//tensorflow/core:array_ops_op_lib",
-    ]) + if_not_v2([
-        "//tensorflow/contrib/rnn:gru_ops_op_lib",
-        "//tensorflow/contrib/rnn:lstm_ops_op_lib",
     ]),
     alwayslink = 1,
 )
@@ -210,6 +207,18 @@ tf_cc_test(
     ],
 )
 
+filegroup(
+    name = "transform_graph_hdrs",
+    srcs = [
+        "transform_graph.h",
+        "transform_utils.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "transform_graph_lib",
     srcs = ["transform_graph.cc"],
@@ -225,6 +234,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
     ],
+    alwayslink = 1,
 )
 
 # This library includes a main function, to make it easy to create other
@@ -319,8 +329,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:_pywrap_transform_graph",
         "//tensorflow/python:errors",
-        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:util",
     ],
 )
@@ -329,7 +339,9 @@ tf_py_test(
     name = "transform_graph_py_test",
     size = "small",
     srcs = ["python/transform_graph_test.py"],
-    additional_deps = [
+    main = "python/transform_graph_test.py",
+    tags = ["v1only"],
+    deps = [
         ":transform_graph_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -337,5 +349,4 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
     ],
-    main = "python/transform_graph_test.py",
 )

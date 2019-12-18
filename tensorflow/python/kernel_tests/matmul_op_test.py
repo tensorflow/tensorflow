@@ -51,7 +51,7 @@ def _AddTest(test, op_name, testcase_name, fn):
   test_name = "_".join(["test", op_name, testcase_name])
   if hasattr(test, test_name):
     raise RuntimeError("Test %s defined more than once" % test_name)
-  setattr(test, test_name, fn)
+  setattr(test, test_name, test_util.deprecated_graph_mode_only(fn))
 
 
 def _GetTransposedMatrices(x, x_name, kwargs):
@@ -74,7 +74,7 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
     use_gpu = True
     if a_np_.dtype is np.float16 and (
-        not test_util.CudaSupportsHalfMatMulAndConv()):
+        not test_util.GpuSupportsHalfMatMulAndConv()):
       use_gpu = False
       print("Built without fp16 matmul support for Cuda, running test on CPU.")
 
@@ -99,8 +99,8 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     self.assertAllCloseAccordingToType(
         tf_val,
         np_val,
-        float_rtol=2e-5,
-        float_atol=2e-5,
+        float_rtol=3e-5,
+        float_atol=3e-5,
         half_rtol=0.2,
         half_atol=0.2)
 
@@ -127,7 +127,7 @@ def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     epsilon = np.finfo(a_np_.dtype).eps
     delta = epsilon**(1.0 / 3.0)
     tol = 20 * delta
-    with self.session(), test_util.use_gpu():
+    with self.session():
       theoretical, numerical = gradient_checker_v2.compute_gradient(
           lambda x: math_ops.matmul(x, effective_b_np, **kwargs_),
           [effective_a_np],
@@ -225,10 +225,13 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
 if __name__ == "__main__":
   sizes = [1, 3, 5]
   trans_options = [[False, False], [True, False], [False, True]]
+  dtypes_to_test = [np.int32, np.int64, np.float16, np.float32, np.float64]
+  if not test_lib.is_built_with_rocm():
+    # ROCm does not support BLAS operations for complex types
+    dtypes_to_test += [np.complex64, np.complex128]
   # TF2 does not support placeholders under eager so we skip it
   for use_static_shape in set([True, tf2.enabled()]):
-    for dtype in (np.int32, np.int64, np.float16, np.float32, np.float64,
-                  np.complex64, np.complex128):
+    for dtype in dtypes_to_test:
       if not use_static_shape and (dtype == np.int32 or dtype == np.int64):
         # TODO(rmlarsen): Re-enable this test when we have fixed the underlying
         # bug in Windows (b/35935459).

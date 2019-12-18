@@ -23,6 +23,37 @@ limitations under the License.
 namespace xla {
 namespace llvm_ir {
 
+bool MayBeImplementedAsInPlaceDynamicUpdateSlice(const HloInstruction* instr) {
+  // Today we can't emit a dynamic-update-slice if the DUS node is parallelized;
+  // the emitter will not emit correct code.  It's possible to change this, but
+  // then ParallelTaskAssigner would have to somehow know whether a node *will*
+  // be emitted as an in-place DUS, and it can't, because it doesn't have a
+  // buffer assignment when it runs.
+  if (!instr->outer_dimension_partitions().empty()) {
+    return false;
+  }
+
+  // Until we know the final buffer assignment, any unfused dynamic-update-slice
+  // might be implementable as an in-place DUS.
+  if (instr->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    return true;
+  }
+
+  // A fusion may be implementable as an in-place dynamic update slice if
+  //  - it's a loop fusion,
+  //  - dynamic-update-slice is the root of the fusion, and
+  //  - operand 0 of the dynamic-update-slice is a parameter to the fusion
+  //    (ignoring any get-tuple-element operations in the way).
+  if (instr->IsLoopFusion()) {
+    const HloInstruction* fused_root = instr->fused_expression_root();
+    return fused_root->opcode() == HloOpcode::kDynamicUpdateSlice &&
+           fused_root->operand(0)->LatestNonGteAncestor()->opcode() ==
+               HloOpcode::kParameter;
+  }
+
+  return false;
+}
+
 bool CanUpdateDynamicSliceInPlace(HloInstruction* dynamic_update_slice,
                                   const BufferAssignment& assignment) {
   CHECK_EQ(HloOpcode::kDynamicUpdateSlice, dynamic_update_slice->opcode());
@@ -30,6 +61,29 @@ bool CanUpdateDynamicSliceInPlace(HloInstruction* dynamic_update_slice,
   return assignment.HasTopLevelAllocation(dynamic_update_slice) &&
          assignment.HasTopLevelAllocation(operand) &&
          assignment.SharesTopLevelSlice(dynamic_update_slice, operand);
+}
+
+bool CanEmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
+                                           const BufferAssignment& assignment) {
+  CHECK_EQ(fusion->opcode(), HloOpcode::kFusion);
+  if (!MayBeImplementedAsInPlaceDynamicUpdateSlice(fusion)) {
+    return false;
+  }
+
+  // Walk DynamicUpdateSlice operand(0) to fused parameter and get its
+  // associated operand. See if it shares an allocation with this operand.
+  HloInstruction* fused_root = fusion->fused_expression_root();
+  HloInstruction* fusion_operand;
+  ShapeIndex index;
+  std::tie(fusion_operand, index) =
+      fused_root->mutable_operand(0)->LatestNonGteAncestorAndIndex();
+  // MayBeImplementedAsInPlaceDynamicUpdateSlice should have ensured that
+  // fusion_operand is a parameter.
+  CHECK_EQ(fusion_operand->opcode(), HloOpcode::kParameter);
+  auto* operand = fusion->operand(fusion_operand->parameter_number());
+  return assignment.HasAllocationAt(operand, index) &&
+         assignment.HasAllocationAt(fusion, {}) &&
+         assignment.SharesSliceAtIndex(fusion, {}, operand, index);
 }
 
 // Shared implementation of EmitDynamicUpdateSliceInPlace and
@@ -47,29 +101,30 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
 
   // Read start indices from start_indices_generator.
   const int64 rank = output_shape.rank();
-  IrArray::Index start_index(b->getInt64Ty(), rank);
+  std::vector<llvm::Value*> start_multi_index(rank);
   for (int64 i = 0; i < rank; ++i) {
-    TF_ASSIGN_OR_RETURN(start_index[i], start_indices_generator(i));
+    TF_ASSIGN_OR_RETURN(start_multi_index[i], start_indices_generator(i));
     llvm::Value* output_dim_size = llvm::ConstantInt::get(
-        start_index[i]->getType(), output_shape.dimensions(i));
+        start_multi_index[i]->getType(), output_shape.dimensions(i));
     llvm::Value* update_dim_size = llvm::ConstantInt::get(
-        start_index[i]->getType(), update_shape.dimensions(i));
+        start_multi_index[i]->getType(), update_shape.dimensions(i));
 
     // Clamp the start index so that the update region fits in the operand.
     // start_index = clamp(start_index, 0, output_dim_size - update_dim_size)
     llvm::Value* max_bound = b->CreateSub(output_dim_size, update_dim_size);
-    llvm::Value* zero = llvm::ConstantInt::get(start_index[i]->getType(), 0);
-    start_index[i] =
+    llvm::Value* zero =
+        llvm::ConstantInt::get(start_multi_index[i]->getType(), 0);
+    start_multi_index[i] =
         b->CreateSelect(b->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SGE
                                                 : llvm::ICmpInst::ICMP_UGE,
-                                      zero, start_index[i]),
-                        zero, start_index[i]);
+                                      zero, start_multi_index[i]),
+                        zero, start_multi_index[i]);
 
-    start_index[i] =
+    start_multi_index[i] =
         b->CreateSelect(b->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SLE
                                                 : llvm::ICmpInst::ICMP_ULE,
-                                      max_bound, start_index[i]),
-                        max_bound, start_index[i]);
+                                      max_bound, start_multi_index[i]),
+                        max_bound, start_multi_index[i]);
   }
 
   auto loop_body_emitter = [&](const IrArray::Index& update_index) -> Status {
@@ -78,14 +133,16 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
     //
     //   output_index[dim] = start_index[dim] + update_index[dim]
     //
-    IrArray::Index output_index(start_index.GetType(), rank);
+    std::vector<llvm::Value*> output_multi_index(rank);
     for (int64 i = 0; i < rank; ++i) {
-      llvm::Value* start_index0 =
-          b->CreateSExtOrBitCast(start_index[i], update_index[i]->getType());
-      output_index[i] = b->CreateAdd(start_index0, update_index[i]);
+      llvm::Value* start_index0 = b->CreateSExtOrBitCast(
+          start_multi_index[i], update_index[i]->getType());
+      output_multi_index[i] = b->CreateAdd(start_index0, update_index[i]);
     }
 
     // Do output[output_index] = update[update_index].
+    IrArray::Index output_index(output_multi_index, output_shape,
+                                b->getInt64Ty());
     TF_ASSIGN_OR_RETURN(llvm::Value * update_data,
                         update_array_generator(update_index));
     output_array.EmitWriteArrayElement(output_index, update_data, b);

@@ -24,10 +24,10 @@ limitations under the License.
 #include <map>
 #include <memory>
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/temporary_device_memory.h"
 
@@ -108,7 +108,7 @@ class TemporaryMemoryManager {
       uint64 element_count, uint64 element_size);
 
   // Mutex to guard temporary record state.
-  mutable mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   // Mapping from device memory to the current (live) temporary memory record.
   //

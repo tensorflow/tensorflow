@@ -21,20 +21,23 @@ import tensorflow as tf
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib
 
+_TEST_VERSION = 1
+
 
 class TestUpgrade(test_util.TensorFlowTestCase):
   """Test various APIs that have been changed in 2.0."""
 
+  @classmethod
+  def setUpClass(cls):
+    cls._tf_api_version = 1 if hasattr(tf, 'contrib') else 2
+
   def setUp(self):
-    tf.enable_eager_execution()
+    tf.compat.v1.enable_v2_behavior()
 
-  @test_util.run_v1_only("b/120545219")
   def testRenames(self):
-    with self.cached_session():
-      self.assertAllClose(1.04719755, tf.acos(0.5))
-      self.assertAllClose(0.5, tf.rsqrt(4.0))
+    self.assertAllClose(1.04719755, tf.acos(0.5))
+    self.assertAllClose(0.5, tf.rsqrt(4.0))
 
-  @test_util.run_v1_only("b/120545219")
   def testSerializeSparseTensor(self):
     sp_input = tf.SparseTensor(
         indices=tf.constant([[1]], dtype=tf.int64),
@@ -46,7 +49,6 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       self.assertEqual((3,), serialized_sp.shape)
       self.assertTrue(serialized_sp[0].numpy())  # check non-empty
 
-  @test_util.run_v1_only("b/120545219")
   def testSerializeManySparse(self):
     sp_input = tf.SparseTensor(
         indices=tf.constant([[0, 1]], dtype=tf.int64),
@@ -58,7 +60,6 @@ class TestUpgrade(test_util.TensorFlowTestCase):
           sp_input, 'serialize_name', tf.string)
       self.assertEqual((1, 3), serialized_sp.shape)
 
-  @test_util.run_v1_only("b/120545219")
   def testArgMaxMin(self):
     self.assertAllClose(
         [1],
@@ -70,7 +71,6 @@ class TestUpgrade(test_util.TensorFlowTestCase):
         [0],
         tf.argmin([[1, 3, 2]], name='abc', dimension=1))
 
-  @test_util.run_v1_only("b/120545219")
   def testSoftmaxCrossEntropyWithLogits(self):
     out = tf.nn.softmax_cross_entropy_with_logits(
         logits=[0.1, 0.8], labels=[0, 1])
@@ -78,6 +78,38 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     out = tf.nn.softmax_cross_entropy_with_logits_v2(
         logits=[0.1, 0.8], labels=[0, 1])
     self.assertAllClose(out, 0.40318608)
+
+  def testLinearClassifier(self):
+    if _TEST_VERSION == 2 and self._tf_api_version == 1:
+      # Skip if we converted this file to v2 but running with tf v1.
+      # In this case, conversion script adds reference to
+      # tf.keras.losses.Reduction which is not available in v1.
+      self.skipTest(
+          'After converting to 2.0, this test does not work with '
+          'TensorFlow 1.x.')
+      return
+    feature_column = tf.feature_column.numeric_column(
+        'feature', shape=(1,))
+
+    classifier = tf.estimator.LinearClassifier(
+        n_classes=2, feature_columns=[feature_column])
+
+    data = {'feature': [1, 20, 3]}
+    target = [0, 1, 0]
+    classifier.train(
+        input_fn=lambda: (data, target),
+        steps=100)
+    scores = classifier.evaluate(
+        input_fn=lambda: (data, target),
+        steps=100)
+    self.assertGreater(scores['accuracy'], 0.99)
+
+  def testUniformUnitScalingInitializer(self):
+    init = tf.initializers.uniform_unit_scaling(0.5, seed=1)
+    self.assertArrayNear(
+        [-0.45200047, 0.72815341],
+        init((2,)).numpy(),
+        err=1e-6)
 
 
 if __name__ == "__main__":

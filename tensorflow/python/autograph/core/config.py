@@ -18,44 +18,42 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph import utils
+from tensorflow.python.autograph.core import config_lib
+
+Action = config_lib.Action
+Convert = config_lib.Convert
+DoNotConvert = config_lib.DoNotConvert
 
 
-PYTHON_LITERALS = {
-    'None': None,
-    'False': False,
-    'True': True,
-    'float': float,
-}
+# This list is evaluated in order and stops at the first rule that tests True
+# for a definitely_convert of definitely_bypass call.
+CONVERSION_RULES = (
+    # Known packages
+    Convert('tensorflow.python.training.experimental'),
 
+    # Builtin modules
+    DoNotConvert('collections'),
+    DoNotConvert('copy'),
+    DoNotConvert('cProfile'),
+    DoNotConvert('inspect'),
+    DoNotConvert('ipdb'),
+    DoNotConvert('linecache'),
+    DoNotConvert('mock'),
+    DoNotConvert('pathlib'),
+    DoNotConvert('pdb'),
+    DoNotConvert('posixpath'),
+    DoNotConvert('pstats'),
+    DoNotConvert('re'),
+    DoNotConvert('threading'),
 
-def _internal_name(name):
-  """This function correctly resolves internal and external names."""
-  reference_name = utils.__name__
+    # Known libraries
+    DoNotConvert('numpy'),
+    DoNotConvert('tensorflow'),
+    DoNotConvert('PIL'),
 
-  reference_root = 'tensorflow.'
-  # If the TF module is foo.tensorflow, then all other modules
-  # are then assumed to be prefixed by 'foo'.
+    # TODO(b/133417201): Remove.
+    DoNotConvert('tensorflow_probability'),
 
-  if reference_name.startswith(reference_root):
-    return name
-
-  reference_begin = reference_name.find('.' + reference_root)
-  assert reference_begin > 0
-
-  root_prefix = reference_name[:reference_begin]
-  return root_prefix + '.' + name
-
-
-DEFAULT_UNCOMPILED_MODULES = set((
-    ('tensorflow',),
-    (_internal_name('tensorflow'),),
-    # TODO(mdan): Remove once the conversion process is optimized.
-    ('tensorflow_probability',),
-    (_internal_name('tensorflow_probability'),),
-))
-
-
-COMPILED_IMPORT_STATEMENTS = (
-    'from __future__ import print_function',
+    # TODO(b/133842282): Remove.
+    DoNotConvert('tensorflow_datasets.core'),
 )

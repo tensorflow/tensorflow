@@ -24,9 +24,20 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+constexpr int64 kMaxOperandsAndOutputsPerFusion = 64;
+
+// Whether 'instr' can occur inside fusions, i.e. whether it is a candidate
+// for being fused. Note that further restrictions apply, e.g. Scatter must
+// be the root of an input fusion.
+bool IsFusible(const HloInstruction& instr);
+
+bool IsInputFusible(const HloInstruction& instr);
+
+bool IsLoopFusible(const HloInstruction& instr);
+
 // The code emitted for reduce-rooted input fusions (EmitReductionToVector)
 // suffers from poor data locality if the layouts of input parameters differ. In
-// such situtations it is better not to fuse. Only input params with
+// such situations it is better not to fuse. Only input params with
 // maximum rank are considered. Params with smaller ranks will be broadcasted
 // and have not been observed to cause data locality issues.
 // TODO(b/111977086): Improve reduce emitters to remove this limitation.
@@ -46,6 +57,21 @@ bool IsReduceInputFusion(const HloInstruction& instr);
 // is either an unfused reduction-to-vector op or a reduce input fusion.
 bool IsInputFusibleReduction(const HloInstruction& instr);
 
+// Whether `instr` is fusible as root of a scatter input fusions, i.e. `instr`
+// is either an unfused scatter op or a scatter input fusion.
+bool IsInputFusibleScatter(const HloInstruction& instr);
+
+// Determines whether the combination of `instr1` and `instr2` into a (possibly
+// multi-output) fusion would be "too large" -- i.e., have more operands and
+// outputs than is allowed.
+bool FusionWouldBeTooLarge(const HloInstruction& instr1,
+                           const HloInstruction& instr2);
+
+// Check if fusing producer and consumer will generate a nested loop, e.g. both
+// producer and consumer are `reduce-window` HLO instructions.
+bool CreatesNestedLoop(const HloInstruction& producer,
+                       const HloInstruction& consumer);
+
 // Whether instruction shapes are compatible for multi-output fusion, i.e.
 // whether the emitters support lowering the resulting fusion.
 // This function works for both, sibling and producer-consumer multi-output
@@ -55,6 +81,25 @@ bool IsInputFusibleReduction(const HloInstruction& instr);
 // themselves are fusible!
 bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
                                           const HloInstruction& instr2);
+
+// Whether the instructions are compatible for producer-consumer fusion
+// i.e. whether the producer and consumer are loop/input fusible and
+// they are not library calls.
+bool IsProducerConsumerFusible(const HloInstruction& producer,
+                               const HloInstruction& consumer);
+
+// Whether the instructions are producer-consumer fusible with multiple outputs.
+// That is, the root tuple of the multi-output fusion will contain the results
+// of both, the producer and consumer.
+bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
+                                          const HloInstruction& consumer);
+// Whether `instr` is a candidate for sibling fusion or as a consumer in
+// a producer-consumer multi-output fusion.
+bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr);
+
+// Determines the fusion kind to be used when fusing `producer` and `consumer`.
+HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
+                                            const HloInstruction& consumer);
 
 }  // namespace gpu
 }  // namespace xla

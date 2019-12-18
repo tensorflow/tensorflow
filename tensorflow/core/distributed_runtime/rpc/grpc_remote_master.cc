@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service_impl.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 
 namespace tensorflow {
@@ -110,11 +113,12 @@ class GrpcRemoteMaster : public MasterInterface {
 
  private:
   // Start tracing, attaching a unique ID to both the trace and the RPC.
-  tracing::ScopedActivity* NewTraceRpc(StringPiece name,
-                                       ::grpc::ClientContext* ctx) {
+  profiler::TraceMe* NewTraceRpc(StringPiece name, ::grpc::ClientContext* ctx) {
     string trace_id = strings::StrCat(tracing::GetUniqueArg());
     ctx->AddMetadata(GrpcIdKey(), trace_id);
-    return new tracing::ScopedActivity(name, trace_id);
+    return new profiler::TraceMe(
+        [&] { return strings::StrCat(name, ":", trace_id); },
+        profiler::TraceMeLevel::kInfo);
   }
 
   template <typename Request, typename Response>
@@ -126,12 +130,12 @@ class GrpcRemoteMaster : public MasterInterface {
     int64 timeout_in_ms = call_options->GetTimeout();
     int64 expired_time_micros = Env::Default()->NowMicros();
     if (timeout_in_ms > 0) {
-      expired_time_micros += (timeout_in_ms / 1000.);
+      expired_time_micros += (timeout_in_ms * 1000);
     }
     Status s;
     for (int num_retries = 0;; ++num_retries) {
       ::grpc::ClientContext ctx;
-      std::unique_ptr<tracing::ScopedActivity> trace;
+      std::unique_ptr<profiler::TraceMe> trace;
       if (!trace_string.empty()) {
         trace.reset(NewTraceRpc(trace_string, &ctx));
       }
@@ -144,7 +148,8 @@ class GrpcRemoteMaster : public MasterInterface {
         // being double what was expected.
         // TODO(b/117162170): investigate fixing this behavior for legacy and
         // gRPC RPC layers.
-        ctx.set_deadline(gpr_time_from_millis(timeout_in_ms, GPR_TIMESPAN));
+        ctx.set_deadline(absl::ToChronoTime(absl::Now() +
+                                            absl::Milliseconds(timeout_in_ms)));
       }
       s = FromGrpcStatus((stub_.get()->*pfunc)(&ctx, *request, response));
       if (!errors::IsUnavailable(s)) {

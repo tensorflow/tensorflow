@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
@@ -176,7 +177,7 @@ class Scope {
   /// Note: The status object is shared between all children of this scope.
   /// If the resulting status is not Status::OK() and exit_on_error_ is set on
   /// this scope, this function exits by calling LOG(FATAL).
-  void UpdateStatus(const Status s) const;
+  void UpdateStatus(const Status& s) const;
 
   // START_SKIP_DOXYGEN
 
@@ -205,14 +206,15 @@ class Scope {
 
   // START_SKIP_DOXYGEN
 
-  /// If status() is Status::OK(), construct a Graph object using the default
+  /// If status() is Status::OK(), construct a Graph object using `opts` as the
   /// GraphConstructorOptions, and return Status::OK if graph construction was
   /// successful. Otherwise, return the error status.
   // TODO(josh11b, keveman): Make this faster; right now it converts
   // Graph->GraphDef->Graph.  This cleans up the graph (e.g. adds
   // edges from the source and to the sink node, resolves back edges
   // by name), and makes sure the resulting graph is valid.
-  Status ToGraph(Graph* g) const;
+  Status ToGraph(
+      Graph* g, GraphConstructorOptions opts = GraphConstructorOptions{}) const;
 
   // Calls AddNode() using this scope's ShapeRefiner. This exists in the public
   // API to prevent custom op wrappers from needing access to shape_refiner.h or
@@ -253,6 +255,12 @@ struct CompositeOpScopes {
   Scope last;
 };
 
+// Creates a node of the given operation, with the given inputs, and assigns the
+// result to output. This does not support the ability to add additional
+// attributes.
+Status CreateOutputWithScope(string op_name,
+                             absl::Span<const ::tensorflow::Input> inputs,
+                             const Scope& scope, Output* output);
 /// @}
 
 }  // namespace tensorflow

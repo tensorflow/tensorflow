@@ -102,6 +102,14 @@ class IsChiefTest(test.TestCase):
         ValueError, "The `task_id` 2 exceeds the maximum id of worker."):
       multi_worker_util.is_chief(cluster_spec, "worker", 2)
 
+  def testEvaluatorIsChief(self):
+    cluster_spec = {
+        "chief": ["127.0.0.1:1234"],
+        "worker": ["127.0.0.1:8964", "127.0.0.1:2333"],
+        "evaluator": ["127.0.0.1:2019"]
+    }
+    self.assertTrue(multi_worker_util.is_chief(cluster_spec, "evaluator", 0))
+
 
 class NumWorkersTest(test.TestCase):
 
@@ -190,6 +198,68 @@ class IdInClusterTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  "There must be at most one 'chief' job."):
       multi_worker_util.id_in_cluster(cluster_spec, "chief", 0)
+
+
+class CollectiveLeaderTest(test.TestCase):
+
+  def testChiefAsLeader(self):
+    cluster_spec = {
+        "chief": ["127.0.0.1:1234"],
+        "worker": ["127.0.0.1:8964", "127.0.0.1:2333"],
+        "ps": ["127.0.0.1:1926", "127.0.0.1:3141"]
+    }
+    self.assertEqual(
+        multi_worker_util.collective_leader(cluster_spec, "worker", 0),
+        "/job:chief/replica:0/task:0")
+
+  def testWorkerAsLeader(self):
+    cluster_spec = {
+        "worker": ["127.0.0.1:8964", "127.0.0.1:2333"],
+        "ps": ["127.0.0.1:1926", "127.0.0.1:3141"]
+    }
+    self.assertEqual(
+        multi_worker_util.collective_leader(cluster_spec, "worker", 1),
+        "/job:worker/replica:0/task:0")
+
+  def testLeaderForEvaluator(self):
+    cluster_spec = {
+        "chief": ["127.0.0.1:1234"],
+        "worker": ["127.0.0.1:8964", "127.0.0.1:2333"],
+        "ps": ["127.0.0.1:1926", "127.0.0.1:3141"],
+        "evaluator": ["127.0.0.1:2019"]
+    }
+    self.assertEqual(
+        multi_worker_util.collective_leader(cluster_spec, "evaluator", 0), "")
+
+  def testLocalLeader(self):
+    cluster_spec = {}
+    self.assertEqual(
+        multi_worker_util.collective_leader(cluster_spec, None, 0), "")
+
+
+# Most of the validation logic is tested by above tests except for some.
+class ClusterSpecValidationTest(test.TestCase):
+
+  def testEvaluatorNotInCluster(self):
+    cluster_spec = {
+        "chief": ["127.0.0.1:1234"],
+        "worker": ["127.0.0.1:8964", "127.0.0.1:2333"],
+        "ps": ["127.0.0.1:1926", "127.0.0.1:3141"]
+    }
+    multi_worker_util._validate_cluster_spec(cluster_spec, "chief", 0)
+    multi_worker_util._validate_cluster_spec(cluster_spec, "worker", 0)
+    multi_worker_util._validate_cluster_spec(cluster_spec, "ps", 0)
+    multi_worker_util._validate_cluster_spec(cluster_spec, "evaluator", 0)
+
+  def testWorkerNotInCluster(self):
+    cluster_spec = {
+        "chief": ["127.0.0.1:1234"],
+        "ps": ["127.0.0.1:1926", "127.0.0.1:3141"]
+    }
+    multi_worker_util._validate_cluster_spec(cluster_spec, "evaluator", 0)
+    with self.assertRaisesRegexp(
+        ValueError, "`task_type` 'worker' not found in cluster_spec."):
+      multi_worker_util._validate_cluster_spec(cluster_spec, "worker", 0)
 
 
 if __name__ == "__main__":

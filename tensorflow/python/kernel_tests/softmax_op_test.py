@@ -34,7 +34,7 @@ from tensorflow.python.platform import tf_logging as logging
 class SoftmaxTest(test.TestCase):
 
   def _npSoftmax(self, features, dim=-1, log=False):
-    if dim is -1:
+    if dim == -1:
       dim = len(features.shape) - 1
     one_only_on_dim = list(features.shape)
     one_only_on_dim[dim] = 1

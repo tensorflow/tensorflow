@@ -327,14 +327,15 @@ void FindConstantFoldableNodes(
         shape_replacement_map) {
   bool internal_node_inserted = false;
   // Walk the nodes in data flow order.
-  ReverseDFS(*graph, nullptr,
-             [nodes, constant_control_deps, shape_replacement_map,
-              &internal_node_inserted, &opts](Node* n) {
-               ConsiderConstantFoldableNode(
-                   n, opts, nodes, constant_control_deps, shape_replacement_map,
-                   &internal_node_inserted);
-             },
-             NodeComparatorName());
+  ReverseDFS(
+      *graph, nullptr,
+      [nodes, constant_control_deps, shape_replacement_map,
+       &internal_node_inserted, &opts](Node* n) {
+        ConsiderConstantFoldableNode(n, opts, nodes, constant_control_deps,
+                                     shape_replacement_map,
+                                     &internal_node_inserted);
+      },
+      NodeComparatorName());
   // If we have inserted just leaf level nodes, then there is nothing to fold.
   if (!internal_node_inserted) {
     nodes->clear();
@@ -418,7 +419,7 @@ Graph* GetConstantGraph(
     const Graph* orig_graph, const std::vector<Node*>& nodes,
     const std::unordered_map<const Node*, std::vector<Tensor>>&
         shape_replacement_map,
-    std::map<NodeAndOutput, Node*>* tensors_to_fetch,
+    std::map<NodeAndOutput, NodeAndOutput>* tensors_to_fetch,
     const ConstantFoldNameGenerator& generate_new_name) {
   Graph* constant_graph = new Graph(orig_graph->op_registry());
   std::unordered_map<Node*, std::vector<Node*>> node_map;
@@ -440,7 +441,7 @@ Graph* GetConstantGraph(
         if (added_nodes.second.size() == 1) {
           tensors_to_fetch->insert(
               {{added_nodes.second[0], out_edge->src_output()},
-               added_nodes.first});
+               {added_nodes.first, out_edge->src_output()}});
         } else {
           // The node had multiple outputs and was replaced by a
           // vector of constants, so the NodeAndOutput is the 0th
@@ -448,7 +449,7 @@ Graph* GetConstantGraph(
           // output of the added node as in the standard case above.
           tensors_to_fetch->insert(
               {{added_nodes.second[out_edge->src_output()], 0},
-               added_nodes.first});
+               {added_nodes.first, out_edge->src_output()}});
         }
       }
     }
@@ -464,7 +465,7 @@ Graph* GetConstantGraph(
 // 'control_deps' is the set of nodes that should be control predecessors of the
 // new constant node.
 bool ReplaceTensorWithConstant(
-    Graph* graph, Device* partition_device, NodeAndOutput tensor,
+    Graph* graph, const Device* partition_device, NodeAndOutput tensor,
     const Tensor& constant, const gtl::FlatSet<Node*>& control_deps,
     int64 max_constant_size_in_bytes,
     const ConstantFoldNameGenerator& generate_new_name) {
@@ -561,7 +562,8 @@ bool ReplaceTensorWithConstant(
 
 Status ConstantFold(const ConstantFoldingOptions& opts,
                     FunctionLibraryRuntime* function_library, Env* env,
-                    Device* partition_device, Graph* graph, bool* was_mutated) {
+                    const Device* partition_device, Graph* graph,
+                    bool* was_mutated) {
   // TensorFlow flushes denormals to zero and rounds to nearest, so we do
   // the same here.
   port::ScopedFlushDenormal flush;
@@ -588,7 +590,7 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
     return Status::OK();
   }
 
-  std::map<NodeAndOutput, Node*> tensors_to_fetch;
+  std::map<NodeAndOutput, NodeAndOutput> tensors_to_fetch;
   std::unique_ptr<Graph> constant_graph(
       GetConstantGraph(graph, constant_foldable_nodes, shape_replacement_map,
                        &tensors_to_fetch, generate_new_name));
@@ -607,17 +609,18 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
   std::vector<NodeAndOutput> tensors_to_replace;
   // Sorting the nodes based on the name gives us a stable ordering between runs
   // for the same graph.
-  std::vector<std::pair<NodeAndOutput, Node*>> tensors_to_fetch_sorted(
+  std::vector<std::pair<NodeAndOutput, NodeAndOutput>> tensors_to_fetch_sorted(
       tensors_to_fetch.begin(), tensors_to_fetch.end());
   std::sort(tensors_to_fetch_sorted.begin(), tensors_to_fetch_sorted.end(),
-            [](const std::pair<NodeAndOutput, Node*>& n1,
-               const std::pair<NodeAndOutput, Node*>& n2) {
-              return n1.first.first->name() < n2.first.first->name();
+            [](const std::pair<NodeAndOutput, NodeAndOutput>& n1,
+               const std::pair<NodeAndOutput, NodeAndOutput>& n2) {
+              return std::tie(n1.first.first->name(), n1.first.second) <
+                     std::tie(n2.first.first->name(), n2.first.second);
             });
   for (auto n : tensors_to_fetch_sorted) {
     tensors_to_fetch_names.push_back(
         strings::StrCat(n.first.first->name(), ":", n.first.second));
-    tensors_to_replace.push_back({n.second, n.first.second});
+    tensors_to_replace.push_back(n.second);
   }
 
   auto graph_runner = std::unique_ptr<GraphRunner>(new GraphRunner(env));

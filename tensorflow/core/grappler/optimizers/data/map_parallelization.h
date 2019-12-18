@@ -29,6 +29,8 @@ class MapParallelization : public TFDataOptimizerBase {
 
   string name() const override { return "map_parallelization"; };
 
+  bool UsesFunctionLibrary() const override { return false; }
+
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     return Status::OK();

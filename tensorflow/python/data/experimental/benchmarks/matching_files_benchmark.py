@@ -35,7 +35,7 @@ from tensorflow.python.platform import test
 class MatchingFilesBenchmark(test.Benchmark):
   """Benchmark for the experimental `MatchingFilesDataset`."""
 
-  def benchmarkNestedDirectories(self):
+  def benchmark_nested_directories(self):
     tmp_dir = tempfile.mkdtemp()
     width = 500
     depth = 10

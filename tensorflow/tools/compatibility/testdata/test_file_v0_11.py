@@ -126,21 +126,12 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       self.assertAllEqual(tf.squeeze(tf.expand_dims(a, 1), [1]).eval(),
                           a)
       self.assertAllEqual(
-          tf.expand_dims(
-              tf.squeeze(
-                  [[1, 2, 3]], squeeze_dims=[0]), dim=0).eval(),
-          a)
+          tf.expand_dims(tf.squeeze([[1, 2, 3]], axis=[0]), dim=0).eval(), a)
       self.assertAllEqual(
-          tf.squeeze(
-              tf.expand_dims(
-                  [[1, 2, 3]], dim=1), squeeze_dims=[1]).eval(),
-          a)
+          tf.squeeze(tf.expand_dims([[1, 2, 3]], dim=1), axis=[1]).eval(), a)
 
       self.assertAllEqual(
-          tf.squeeze(
-              tf.expand_dims(
-                  [[1, 2, 3]], dim=1), squeeze_dims=[1]).eval(),
-          a)
+          tf.squeeze(tf.expand_dims([[1, 2, 3]], dim=1), axis=[1]).eval(), a)
 
   @test_util.run_v1_only("b/120545219")
   def testArithmeticRenames(self):
@@ -203,7 +194,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       # make some variables
       _ = [tf.Variable([1, 2, 3], dtype=tf.float32),
            tf.Variable([1, 2, 3], dtype=tf.int32)]
-      s.run(tf.initialize_all_variables())
+      s.run(tf.global_variables_initializer())
       _ = [v.name for v in tf.all_variables()]
       _ = [v.name for v in tf.local_variables()]
 
@@ -211,7 +202,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
   def testSummaries(self):
     with self.cached_session() as s:
       var = tf.Variable([1, 2, 3], dtype=tf.float32)
-      s.run(tf.initialize_all_variables())
+      s.run(tf.global_variables_initializer())
       x, y = np.meshgrid(np.linspace(-10, 10, 256), np.linspace(-10, 10, 256))
       image = np.sin(x**2 + y**2) / np.sqrt(x**2 + y**2) * .5 + .5
       image = image[None, :, :, None]

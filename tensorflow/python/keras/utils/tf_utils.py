@@ -25,9 +25,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond as smart_module
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.keras import backend as K
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
+from tensorflow.python.util import tf_contextlib
 
 
 def smart_cond(pred, true_fn=None, false_fn=None, name=None):
@@ -104,19 +107,27 @@ def get_reachable_from_inputs(inputs, targets=None):
   Returns:
     A set of tensors reachable from the inputs (includes the inputs themselves).
   """
-  inputs = nest.flatten(inputs)
-  reachable = set(inputs)
+  inputs = nest.flatten(inputs, expand_composites=True)
+  reachable = object_identity.ObjectIdentitySet(inputs)
   if targets:
-    targets = set(targets)
+    remaining_targets = object_identity.ObjectIdentitySet(nest.flatten(targets))
   queue = inputs[:]
 
   while queue:
     x = queue.pop()
+    if isinstance(x, tuple(_user_convertible_tensor_types)):
+      # Can't find consumers of user-specific types.
+      continue
+
     if isinstance(x, ops.Operation):
       outputs = x.outputs[:] or []
       outputs += x._control_outputs  # pylint: disable=protected-access
     elif isinstance(x, variables.Variable):
-      outputs = [x.op]
+      try:
+        outputs = [x.op]
+      except AttributeError:
+        # Variables can be created in an Eager context.
+        outputs = []
     elif tensor_util.is_tensor(x):
       outputs = x.consumers()
     else:
@@ -125,10 +136,13 @@ def get_reachable_from_inputs(inputs, targets=None):
     for y in outputs:
       if y not in reachable:
         reachable.add(y)
+        if targets:
+          remaining_targets.discard(y)
         queue.insert(0, y)
 
-    if targets and targets.issubset(reachable):
+    if targets and not remaining_targets:
       return reachable
+
   return reachable
 
 
@@ -171,7 +185,7 @@ def map_structure_with_atomic(is_atomic_fn, map_fn, nested):
 
 
 def convert_shapes(input_shape, to_tuples=True):
-  """Converts nested shape representations  to desired format.
+  """Converts nested shape representations to desired format.
 
   Performs:
 
@@ -193,17 +207,16 @@ def convert_shapes(input_shape, to_tuples=True):
     Nested structure of shapes in desired format.
   """
 
-  def _is_shape_component(element):
-    value = tensor_shape.as_dimension(element).value
-    return value is None or isinstance(value, int)
+  def _is_shape_component(value):
+    return value is None or isinstance(value, (int, tensor_shape.Dimension))
 
   def _is_atomic_shape(input_shape):
     # Ex: TensorShape or (None, 10, 32) or 5 or `None`
-    if input_shape is None or isinstance(input_shape, int):
+    if _is_shape_component(input_shape):
       return True
     if isinstance(input_shape, tensor_shape.TensorShape):
       return True
-    if (isinstance(input_shape, tuple) and
+    if (isinstance(input_shape, (tuple, list)) and
         all(_is_shape_component(ele) for ele in input_shape)):
       return True
     return False
@@ -237,13 +250,10 @@ def convert_inner_node_data(nested, wrap=False):
       unwraps `ListWrapper` objects into lists.
 
   Returns:
-    Strucutre of same type as nested, with lists wrapped/unwrapped.
+    Structure of same type as nested, with lists wrapped/unwrapped.
   """
 
-  def _is_atomic_nested(nested):
-    """Returns `True` if `nested` is a list representing node data."""
-    if isinstance(nested, ListWrapper):
-      return True
+  def _is_serialized_node_data(nested):
     # Node data can be of form `[layer_name, node_id, tensor_id]` or
     # `[layer_name, node_id, tensor_id, kwargs]`.
     if (isinstance(nested, list) and (len(nested) in [3, 4]) and
@@ -251,12 +261,22 @@ def convert_inner_node_data(nested, wrap=False):
       return True
     return False
 
+  def _is_atomic_nested(nested):
+    """Returns `True` if `nested` is a list representing node data."""
+    if isinstance(nested, ListWrapper):
+      return True
+    if _is_serialized_node_data(nested):
+      return True
+    return not nest.is_sequence(nested)
+
   def _convert_object_or_list(nested):
     """Convert b/t `ListWrapper` object and list representations."""
     if wrap:
       if isinstance(nested, ListWrapper):
         return nested
-      return ListWrapper(nested)
+      if _is_serialized_node_data(nested):
+        return ListWrapper(nested)
+      return nested
     else:
       if isinstance(nested, ListWrapper):
         return nested.as_list()
@@ -311,14 +331,21 @@ def is_symbolic_tensor(tensor):
   Returns:
     True for symbolic tensors, False for eager tensors.
   """
+  if isinstance(tensor, tuple(_user_convertible_tensor_types)):
+    tensor = ops.convert_to_tensor_or_composite(tensor)
   if isinstance(tensor, variables.Variable):
-    return not context.executing_eagerly()
+    # Variables that are output of a Keras Layer in Functional API mode
+    # should be considered symbolic.
+    # TODO(omalleyt): We need a better way to check this in order to
+    # enable `run_eagerly=True` for Models containing Layers that
+    # return Variables as outputs.
+    return (getattr(tensor, '_keras_history', False) or
+            not context.executing_eagerly())
   if isinstance(tensor, composite_tensor.CompositeTensor):
-    return tensor._is_graph_tensor  # pylint: disable=protected-access
+    component_tensors = nest.flatten(tensor, expand_composites=True)
+    return any(hasattr(t, 'graph') for t in component_tensors)
   if isinstance(tensor, ops.Tensor):
     return hasattr(tensor, 'graph')
-  if isinstance(tensor, tuple(_user_convertible_tensor_types)):
-    return hasattr(ops.convert_to_tensor(tensor), 'graph')
   return False
 
 
@@ -357,3 +384,57 @@ def register_symbolic_tensor_type(cls):
 
 def is_tensor_or_variable(x):
   return tensor_util.is_tensor(x) or isinstance(x, variables.Variable)
+
+
+def assert_no_legacy_layers(layers):
+  """Prevent tf.layers.Layers from being used with Keras.
+
+  Certain legacy layers inherit from their keras analogs; however they are
+  not supported with keras and can lead to subtle and hard to diagnose bugs.
+
+  Args:
+    layers: A list of layers to check
+
+  Raises:
+    TypeError: If any elements of layers are tf.layers.Layers
+  """
+
+  # isinstance check for tf.layers.Layer introduces a circular dependency.
+  legacy_layers = [l for l in layers if getattr(l, '_is_legacy_layer', None)]
+  if legacy_layers:
+    layer_str = '\n'.join('  ' + str(l) for l in legacy_layers)
+    raise TypeError(
+        'The following are legacy tf.layers.Layers:\n{}\nTo use keras as a '
+        'framework (for instance using the Network, Model, or Sequential '
+        'classes), please use the tf.keras.layers implementation instead. '
+        '(Or, if writing custom layers, subclass from tf.keras.layers rather '
+        'than tf.layers)'.format(layer_str))
+
+
+@tf_contextlib.contextmanager
+def maybe_init_scope(layer):
+  """Open an `init_scope` if in V2 mode and using the keras graph.
+
+  Arguments:
+    layer: The Layer/Model that is currently active.
+
+  Yields:
+    None
+  """
+  # Don't open an init_scope in V1 mode or when using legacy tf.layers.
+  if (ops.executing_eagerly_outside_functions() and
+      getattr(layer, '_keras_style', True)):
+    with ops.init_scope():
+      yield
+  else:
+    yield
+
+
+@tf_contextlib.contextmanager
+def graph_context_for_symbolic_tensors(*args, **kwargs):
+  """Returns graph context manager if any of the inputs is a symbolic tensor."""
+  if any(is_symbolic_tensor(v) for v in list(args) + list(kwargs.values())):
+    with K.get_graph().as_default():
+      yield
+  else:
+    yield

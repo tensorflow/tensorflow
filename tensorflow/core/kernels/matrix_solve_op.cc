@@ -76,7 +76,7 @@ class MatrixSolveOp : public LinearAlgebraOp<Scalar> {
                      MatrixMaps* outputs) final {
     const ConstMatrixMap& matrix = inputs[0];
     const ConstMatrixMap& rhs = inputs[1];
-    if (matrix.rows() == 0 || rhs.cols() == 0) {
+    if (matrix.rows() == 0 || matrix.cols() == 0 || rhs.cols() == 0) {
       // To be consistent with the MatrixInverse op, we define the solution for
       // an empty set of equation as the empty matrix.
       return;
@@ -162,7 +162,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
 
     // To be consistent with the MatrixInverse op, we define the solution for
     // an empty set of equations as the empty matrix.
-    if (rhs.NumElements() == 0) {
+    if (input.NumElements() == 0 || rhs.NumElements() == 0) {
       done();
       return;
     }

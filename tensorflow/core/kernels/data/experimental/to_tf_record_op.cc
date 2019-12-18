@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -23,6 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class ToTFRecordOp : public AsyncOpKernel {
@@ -46,63 +48,67 @@ class ToTFRecordOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     // The call to `iterator->GetNext()` may block and depend on an inter-op
     // thread pool thread, so we issue the call using a background thread.
-    background_worker_.Schedule([this, ctx, done]() {
-      string filename;
-      OP_REQUIRES_OK_ASYNC(
-          ctx, ParseScalarArgument<string>(ctx, "filename", &filename), done);
-      string compression_type;
-      OP_REQUIRES_OK_ASYNC(ctx,
-                           ParseScalarArgument<string>(ctx, "compression_type",
-                                                       &compression_type),
-                           done);
-      std::unique_ptr<WritableFile> file;
-      OP_REQUIRES_OK_ASYNC(ctx, ctx->env()->NewWritableFile(filename, &file),
-                           done);
-      std::unique_ptr<io::RecordWriter> writer =
-          absl::make_unique<io::RecordWriter>(
-              file.get(), io::RecordWriterOptions::CreateRecordWriterOptions(
-                              compression_type));
-
-      DatasetBase* dataset;
-      OP_REQUIRES_OK_ASYNC(
-          ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
-      std::unique_ptr<IteratorBase> iterator;
-      IteratorContext::Params params(ctx);
-      std::unique_ptr<FunctionHandleCache> function_handle_cache =
-          absl::make_unique<FunctionHandleCache>(params.lib);
-      params.function_handle_cache = function_handle_cache.get();
-      IteratorContext iter_ctx(std::move(params));
-
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          dataset->MakeIterator(&iter_ctx, "ToTFRecordOpIterator", &iterator),
-          done);
-
-      std::vector<Tensor> components;
-      components.reserve(dataset->output_dtypes().size());
-      bool end_of_sequence;
-      do {
-        OP_REQUIRES_OK_ASYNC(
-            ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
-            done);
-
-        if (!end_of_sequence) {
-          OP_REQUIRES_OK_ASYNC(
-              ctx, writer->WriteRecord(components[0].scalar<string>()()), done);
-        }
-        components.clear();
-      } while (!end_of_sequence);
+    background_worker_.Schedule([this, ctx, done = std::move(done)]() {
+      OP_REQUIRES_OK_ASYNC(ctx, DoCompute(ctx), done);
       done();
     });
   }
 
  private:
+  Status DoCompute(OpKernelContext* ctx) {
+    tstring filename;
+    TF_RETURN_IF_ERROR(
+        ParseScalarArgument<tstring>(ctx, "filename", &filename));
+    tstring compression_type;
+    TF_RETURN_IF_ERROR(ParseScalarArgument<tstring>(ctx, "compression_type",
+                                                    &compression_type));
+    std::unique_ptr<WritableFile> file;
+    TF_RETURN_IF_ERROR(ctx->env()->NewWritableFile(filename, &file));
+    auto writer = absl::make_unique<io::RecordWriter>(
+        file.get(),
+        io::RecordWriterOptions::CreateRecordWriterOptions(compression_type));
+
+    DatasetBase* dataset;
+    TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
+
+    IteratorContext::Params params(ctx);
+    FunctionHandleCache function_handle_cache(params.flr);
+    params.function_handle_cache = &function_handle_cache;
+    ResourceMgr resource_mgr;
+    params.resource_mgr = &resource_mgr;
+    CancellationManager cancellation_manager(ctx->cancellation_manager());
+    params.cancellation_manager = &cancellation_manager;
+
+    IteratorContext iter_ctx(std::move(params));
+    std::unique_ptr<IteratorBase> iterator;
+    TF_RETURN_IF_ERROR(
+        dataset->MakeIterator(&iter_ctx, "ToTFRecordOpIterator", &iterator));
+
+    std::vector<Tensor> components;
+    components.reserve(dataset->output_dtypes().size());
+    bool end_of_sequence;
+    do {
+      TF_RETURN_IF_ERROR(
+          iterator->GetNext(&iter_ctx, &components, &end_of_sequence));
+
+      if (!end_of_sequence) {
+        TF_RETURN_IF_ERROR(
+            writer->WriteRecord(components[0].scalar<tstring>()()));
+      }
+      components.clear();
+    } while (!end_of_sequence);
+    return Status::OK();
+  }
+
   BackgroundWorker background_worker_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("DatasetToTFRecord").Device(DEVICE_CPU),
+                        ToTFRecordOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalDatasetToTFRecord").Device(DEVICE_CPU), ToTFRecordOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

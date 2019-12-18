@@ -19,11 +19,11 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -33,6 +33,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_grad
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -40,7 +42,25 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
 
+_COS_DERIVATIVES = [math_ops.cos,
+                    lambda x: -math_ops.sin(x),
+                    lambda x: -math_ops.cos(x),
+                    math_ops.sin,
+                    math_ops.cos]
+
+
 class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super(FunctionGradientsTest, self).setUp()
+    cpus = config.list_physical_devices('CPU')
+    # Set 4 virtual CPUs
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
 
   def testGraphModeWithGradients(self):
     v = resource_variable_ops.ResourceVariable(1.0, name='v')
@@ -68,8 +88,147 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(grads.eval(), 2.0)
       self.assertEqual(grads.shape, v.shape)
 
+  def testSymbolicHigherOrder(self):
+    @def_function.function
+    def f(x, order):
+      y = def_function.function(lambda: math_ops.cos(x))()
+      for _ in range(order):
+        y, = gradients_impl.gradients(y, [x])
+      return y
+    for order, expected in enumerate(_COS_DERIVATIVES):
+      self.assertAllClose(
+          expected(constant_op.constant(1.)),
+          f(constant_op.constant(1.), order))
+
+  @parameterized.parameters([dict(persistent=True),
+                             dict(persistent=False)])
+  def testSymbolicHigherOrderUnderTape(self, persistent):
+    @def_function.function
+    def f(x, order):
+      with backprop.GradientTape(persistent=persistent) as tape:
+        tape.watch(x)
+        # Note that having a tape active, even if we don't use it, forces us
+        # down a different function call path. Symbolic gradients should work
+        # here too; correctness of tape gradients are tested elsewhere.
+        y = def_function.function(lambda: math_ops.cos(x))()
+      tape_dy = tape.gradient(y, x)
+      for _ in range(order):
+        y, = gradients_impl.gradients(y, [x])
+      if order > 0:
+        y1 = tape_dy
+        for _ in range(order - 1):
+          y1, = gradients_impl.gradients(y1, [x])
+      else:
+        y1 = y
+      return y, y1
+    for order, expected_f in enumerate(_COS_DERIVATIVES):
+      expected = self.evaluate(expected_f(constant_op.constant(1.)))
+      self.assertAllClose(
+          (expected, expected),
+          f(constant_op.constant(1.), order))
+
+  def testIteratedGradientsNested(self):
+
+    def _grad(f):
+      def _grad_function(primal):
+        with backprop.GradientTape() as tape:
+          tape.watch(primal)
+          primal_out = f(primal)
+        return tape.gradient(primal_out, primal)
+      return _grad_function
+
+    @def_function.function
+    def _forward(x):
+      return math_ops.cos(x)
+
+    f = _forward
+    traced_f = def_function.function(f)
+    one = constant_op.constant(1.)
+    for expected in _COS_DERIVATIVES:
+      self.assertAllClose(expected(one), f(one))
+      self.assertAllClose(expected(one), traced_f(one))
+      self.assertAllClose(expected(one), def_function.function(f)(one))
+      f = _grad(f)
+      traced_f = def_function.function(_grad(traced_f))
+
+  def testIteratedGradientsNestedWithVariable(self):
+
+    def _grad(f):
+      def _grad_function():
+        with backprop.GradientTape() as tape:
+          primal_out = f()
+        g, = tape.gradient(primal_out, tape.watched_variables())
+        return g
+      return _grad_function
+
+    v = variables.Variable(2.)
+
+    @def_function.function
+    def _forward():
+      return math_ops.cos(v)
+
+    f = _forward
+
+    two = constant_op.constant(2.)
+
+    for expected in _COS_DERIVATIVES:
+      self.assertAllClose(expected(two), f())
+      self.assertAllClose(expected(two), def_function.function(f)())
+      f = _grad(f)
+
+  def testIteratedGradientsPersistent(self):
+
+    @def_function.function
+    def _forward(z):
+      return math_ops.cos(z)
+
+    f = _forward
+    with backprop.GradientTape(persistent=True) as tape:
+      start = constant_op.constant(1.)
+      tape.watch(start)
+      x = f(start)
+      for expected in _COS_DERIVATIVES:
+        self.assertAllClose(expected(start), x)
+        x = tape.gradient(x, start)
+
+  def testHigherOrderWithVariable(self):
+
+    v = variables.Variable(1.)
+
+    @def_function.function
+    def _forward():
+      return math_ops.cos(v)
+
+    f = _forward
+    with backprop.GradientTape(persistent=True) as tape:
+      x = f()
+      for expected in _COS_DERIVATIVES:
+        self.assertAllClose(expected(constant_op.constant(1.)), x)
+        x, = tape.gradient(x, tape.watched_variables())
+
+  def testGradientsChained(self):
+
+    @def_function.function
+    def _forward(z):
+      return math_ops.cos(z)
+
+    f = _forward
+    x = constant_op.constant(1.)
+    with backprop.GradientTape() as t:
+      t.watch(x)
+      y = f(x)
+    with backprop.GradientTape() as tt:
+      doutputs = constant_op.constant(2.)
+      tt.watch(doutputs)
+      g = t.gradient(y, x, doutputs)
+    self.assertAllClose(-2. * math_ops.sin(x), g)
+    gg = tt.gradient(g, doutputs)
+    # We're taking gradients with respect to doutputs, which is just a linear
+    # function of the gradient.
+    self.assertAllClose(-math_ops.sin(x), gg)
+
   def testSymGradGatherNd(self):
-    with ops.Graph().as_default(), self.cached_session() as sess:
+    with ops.Graph().as_default(), self.cached_session():
 
       @def_function.function
       def f(x):
@@ -138,6 +297,24 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       t.watch(x)
       y = f(x)
     self.assertAllEqual(self.evaluate(t.gradient(y, x)), 4.0)
+
+  def testGraphLoopGradientInsideSession(self):
+    with ops.Graph().as_default():
+      n = constant_op.constant(2.0)
+      x = array_ops.placeholder(dtypes.float32, shape=None)
+
+      @def_function.function
+      def f():
+        c = lambda n: n < 10
+        b = lambda n: n * x
+        return control_flow_ops.while_loop(c, b, [n],
+                                           [tensor_shape.unknown_shape()])
+
+      l = f()
+      dx = gradients_impl.gradients(l, [x])[0]
+
+      with self.cached_session():
+        self.assertEqual(dx.eval(feed_dict={x: 2.0}), 24.0)
 
   def testDefunDifferentiable(self):
     v = resource_variable_ops.ResourceVariable(1.0)
@@ -226,8 +403,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(g, 1.0)
 
   def testGradient(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     def sq(x):
       return matmul(x, x, transpose_a=True)
@@ -697,8 +873,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(g2, 2.0)
 
   def testGradientWithKeywordArguments(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     def sq(x):
       return matmul(a=x, b=x, transpose_a=True)
@@ -723,6 +898,32 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       return backprop.gradients_function(lambda y: y * y, [0])(x)[0]
 
     self.assertAllEqual(f(x=constant_op.constant(1.0)), 2.0)
+
+  def testFunctionHasNoSecondOrderGradient(self):
+
+    # This test needs nn_grad imported. We could just disable the lint error,
+    # but this way if the test is deleted we'll know the import isn't needed.
+    _ = nn_grad
+
+    v = variables.Variable(1.)
+
+    @def_function.function
+    def f(labels, logits):
+      return def_function.function(
+          nn_ops.sparse_softmax_cross_entropy_with_logits)(
+              labels=labels, logits=logits + v)
+
+    @def_function.function
+    def f_grad():
+      with backprop.GradientTape() as tape:
+        logits = constant_op.constant([1., 2.])
+        tape.watch(logits)
+        out = f(constant_op.constant(1), logits)
+      return tape.gradient(out, logits)
+    # Mainly we want to check that the function builds despite
+    # sparse_softmax_cross_entropy_with_logits not having a second-order
+    # gradient defined.
+    self.assertAllEqual([2], f_grad().shape)
 
   @test_util.run_in_graph_and_eager_modes
   def testBackwardNone(self):
@@ -753,6 +954,5 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  ops.enable_eager_execution(
-      config=config_pb2.ConfigProto(device_count={'CPU': 4}))
+  ops.enable_eager_execution()
   test.main()

@@ -27,7 +27,15 @@ class ConditionalExpressionTransformer(converter.Base):
 
   def visit_IfExp(self, node):
     return templates.replace_as_expression(
-        'ag__.if_stmt(test, lambda: true_expr, lambda: false_expr)',
+        '''ag__.if_stmt(
+            test,
+            lambda: true_expr,
+            lambda: false_expr,
+            lambda: (),
+            lambda _: None,
+            ('<internal expr>',),
+            ())
+        ''',
         test=node.test,
         true_expr=node.body,
         false_expr=node.orelse)

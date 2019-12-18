@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
@@ -38,6 +40,9 @@ class LocallyConnected1D(Layer):
   the `Conv1D` layer, except that weights are unshared,
   that is, a different set of filters is applied at each different patch
   of the input.
+
+  Note: layer attributes cannot be modified after the layer has been called
+  once (except the `trainable` attribute).
 
   Example:
   ```python
@@ -85,7 +90,7 @@ class LocallyConnected1D(Layer):
           the output of the layer (its "activation")..
       kernel_constraint: Constraint function applied to the kernel matrix.
       bias_constraint: Constraint function applied to the bias vector.
-      implementation: implementation mode, either `1` or `2`.
+      implementation: implementation mode, either `1`, `2`, or `3`.
           `1` loops over input spatial locations to perform the forward pass.
           It is memory-efficient but performs a lot of (small) ops.
 
@@ -93,20 +98,30 @@ class LocallyConnected1D(Layer):
           and implements the forward pass as a single matrix-multiply. It uses
           a lot of RAM but performs few (large) ops.
 
-          Depending on the inputs, layer parameters, hardware, and
-          `tf.executing_eagerly()` one implementation can be dramatically faster
-          (e.g. 50X) than another.
+          `3` stores layer weights in a sparse tensor and implements the forward
+          pass as a single sparse matrix-multiply.
 
-          It is recommended to benchmark both in the setting of interest to pick
-          the most efficient one (in terms of speed and memory usage).
+          How to choose:
 
-          Following scenarios could benefit from setting `implementation=2`:
-              - eager execution;
-              - inference;
-              - running on CPU;
-              - large amount of RAM available;
-              - small models (few filters, small kernel);
-              - using `padding=same` (only possible with `implementation=2`).
+          `1`: large, dense models,
+          `2`: small models,
+          `3`: large, sparse models,
+
+          where "large" stands for large input/output activations
+          (i.e. many `filters`, `input_filters`, large `input_size`,
+          `output_size`), and "sparse" stands for few connections between inputs
+          and outputs, i.e. small ratio
+          `filters * input_filters * kernel_size / (input_size * strides)`,
+          where inputs to and outputs of the layer are assumed to have shapes
+          `(input_size, input_filters)`, `(output_size, filters)`
+          respectively.
+
+          It is recommended to benchmark each in the setting of interest to pick
+          the most efficient one (in terms of speed and memory usage). Correct
+          choice of implementation can lead to dramatic speed improvements (e.g.
+          50X), potentially at the expense of RAM.
+
+          Also, only `padding="valid"` is supported by `implementation=1`.
 
   Input shape:
       3D tensor with shape: `(batch_size, steps, input_dim)`
@@ -199,8 +214,29 @@ class LocallyConnected1D(Layer):
           strides=self.strides,
           padding=self.padding,
           data_format=self.data_format,
-          dtype=self.kernel.dtype
       )
+
+    elif self.implementation == 3:
+      self.kernel_shape = (self.output_length * self.filters,
+                           input_length * input_dim)
+
+      self.kernel_idxs = sorted(
+          conv_utils.conv_kernel_idxs(
+              input_shape=(input_length,),
+              kernel_shape=self.kernel_size,
+              strides=self.strides,
+              padding=self.padding,
+              filters_in=input_dim,
+              filters_out=self.filters,
+              data_format=self.data_format)
+      )
+
+      self.kernel = self.add_weight(
+          shape=(len(self.kernel_idxs),),
+          initializer=self.kernel_initializer,
+          name='kernel',
+          regularizer=self.kernel_regularizer,
+          constraint=self.kernel_constraint)
 
     else:
       raise ValueError('Unrecognized implementation mode: %d.'
@@ -245,6 +281,11 @@ class LocallyConnected1D(Layer):
     elif self.implementation == 2:
       output = local_conv_matmul(inputs, self.kernel, self.kernel_mask,
                                  self.compute_output_shape(inputs.shape))
+
+    elif self.implementation == 3:
+      output = local_conv_sparse_matmul(inputs, self.kernel, self.kernel_idxs,
+                                        self.kernel_shape,
+                                        self.compute_output_shape(inputs.shape))
 
     else:
       raise ValueError('Unrecognized implementation mode: %d.'
@@ -302,6 +343,9 @@ class LocallyConnected2D(Layer):
   that is, a different set of filters is applied at each
   different patch of the input.
 
+  Note: layer attributes cannot be modified after the layer has been called
+  once (except the `trainable` attribute).
+
   Examples:
   ```python
       # apply a 3x3 unshared weights convolution with 64 output filters on a
@@ -354,7 +398,7 @@ class LocallyConnected2D(Layer):
           the output of the layer (its "activation").
       kernel_constraint: Constraint function applied to the kernel matrix.
       bias_constraint: Constraint function applied to the bias vector.
-      implementation: implementation mode, either `1` or `2`.
+      implementation: implementation mode, either `1`, `2`, or `3`.
           `1` loops over input spatial locations to perform the forward pass.
           It is memory-efficient but performs a lot of (small) ops.
 
@@ -362,20 +406,30 @@ class LocallyConnected2D(Layer):
           and implements the forward pass as a single matrix-multiply. It uses
           a lot of RAM but performs few (large) ops.
 
-          Depending on the inputs, layer parameters, hardware, and
-          `tf.executing_eagerly()` one implementation can be dramatically faster
-          (e.g. 50X) than another.
+          `3` stores layer weights in a sparse tensor and implements the forward
+          pass as a single sparse matrix-multiply.
 
-          It is recommended to benchmark both in the setting of interest to pick
-          the most efficient one (in terms of speed and memory usage).
+          How to choose:
 
-          Following scenarios could benefit from setting `implementation=2`:
-              - eager execution;
-              - inference;
-              - running on CPU;
-              - large amount of RAM available;
-              - small models (few filters, small kernel);
-              - using `padding=same` (only possible with `implementation=2`).
+          `1`: large, dense models,
+          `2`: small models,
+          `3`: large, sparse models,
+
+          where "large" stands for large input/output activations
+          (i.e. many `filters`, `input_filters`, large `np.prod(input_size)`,
+          `np.prod(output_size)`), and "sparse" stands for few connections
+          between inputs and outputs, i.e. small ratio
+          `filters * input_filters * np.prod(kernel_size) / (np.prod(input_size)
+          * np.prod(strides))`, where inputs to and outputs of the layer are
+          assumed to have shapes `input_size + (input_filters,)`,
+          `output_size + (filters,)` respectively.
+
+          It is recommended to benchmark each in the setting of interest to pick
+          the most efficient one (in terms of speed and memory usage). Correct
+          choice of implementation can lead to dramatic speed improvements (e.g.
+          50X), potentially at the expense of RAM.
+
+          Also, only `padding="valid"` is supported by `implementation=1`.
 
   Input shape:
       4D tensor with shape:
@@ -483,8 +537,29 @@ class LocallyConnected2D(Layer):
           strides=self.strides,
           padding=self.padding,
           data_format=self.data_format,
-          dtype=self.kernel.dtype
       )
+
+    elif self.implementation == 3:
+      self.kernel_shape = (self.output_row * self.output_col * self.filters,
+                           input_row * input_col * input_filter)
+
+      self.kernel_idxs = sorted(
+          conv_utils.conv_kernel_idxs(
+              input_shape=(input_row, input_col),
+              kernel_shape=self.kernel_size,
+              strides=self.strides,
+              padding=self.padding,
+              filters_in=input_filter,
+              filters_out=self.filters,
+              data_format=self.data_format)
+      )
+
+      self.kernel = self.add_weight(
+          shape=(len(self.kernel_idxs),),
+          initializer=self.kernel_initializer,
+          name='kernel',
+          regularizer=self.kernel_regularizer,
+          constraint=self.kernel_constraint)
 
     else:
       raise ValueError('Unrecognized implementation mode: %d.'
@@ -534,6 +609,11 @@ class LocallyConnected2D(Layer):
       output = local_conv_matmul(inputs, self.kernel, self.kernel_mask,
                                  self.compute_output_shape(inputs.shape))
 
+    elif self.implementation == 3:
+      output = local_conv_sparse_matmul(inputs, self.kernel, self.kernel_idxs,
+                                        self.kernel_shape,
+                                        self.compute_output_shape(inputs.shape))
+
     else:
       raise ValueError('Unrecognized implementation mode: %d.'
                        % self.implementation)
@@ -581,18 +661,14 @@ class LocallyConnected2D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-def get_locallyconnected_mask(input_shape,
-                              kernel_shape,
-                              strides,
-                              padding,
-                              data_format,
-                              dtype):
+def get_locallyconnected_mask(input_shape, kernel_shape, strides, padding,
+                              data_format):
   """Return a mask representing connectivity of a locally-connected operation.
 
-  This method returns a masking tensor of 0s and 1s (of type `dtype`) that,
-  when element-wise multiplied with a fully-connected weight tensor, masks out
-  the weights between disconnected input-output pairs and thus implements local
-  connectivity through a sparse fully-connected weight tensor.
+  This method returns a masking numpy array of 0s and 1s (of type `np.float32`)
+  that, when element-wise multiplied with a fully-connected weight tensor, masks
+  out the weights between disconnected input-output pairs and thus implements
+  local connectivity through a sparse fully-connected weight tensor.
 
   Assume an unshared convolution with given parameters is applied to an input
   having N spatial dimensions with `input_shape = (d_in1, ..., d_inN)`
@@ -613,10 +689,9 @@ def get_locallyconnected_mask(input_shape,
     strides: tuple of size N, strides along each spatial dimension.
     padding: type of padding, string `"same"` or `"valid"`.
     data_format: a string, `"channels_first"` or `"channels_last"`.
-    dtype: type of the layer operation, e.g. `tf.float64`.
 
   Returns:
-    a `dtype`-tensor of shape
+    a `np.float32`-type `np.ndarray` of shape
     `(1, d_in1, ..., d_inN, 1, d_out1, ..., d_outN)`
     if `data_format == `"channels_first"`, or
     `(d_in1, ..., d_inN, 1, d_out1, ..., d_outN, 1)`
@@ -634,15 +709,14 @@ def get_locallyconnected_mask(input_shape,
   )
 
   ndims = int(mask.ndim / 2)
-  mask = K.variable(mask, dtype)
 
   if data_format == 'channels_first':
-    mask = K.expand_dims(mask, 0)
-    mask = K.expand_dims(mask, - ndims - 1)
+    mask = np.expand_dims(mask, 0)
+    mask = np.expand_dims(mask, -ndims - 1)
 
   elif data_format == 'channels_last':
-    mask = K.expand_dims(mask, ndims)
-    mask = K.expand_dims(mask, -1)
+    mask = np.expand_dims(mask, ndims)
+    mask = np.expand_dims(mask, -1)
 
   else:
     raise ValueError('Unrecognized data_format: ' + str(data_format))
@@ -702,6 +776,44 @@ def local_conv_matmul(inputs, kernel, kernel_mask, output_shape):
   output = K.reshape(output_flat,
                      [K.shape(output_flat)[0],] + output_shape.as_list()[1:])
   return output
+
+
+def local_conv_sparse_matmul(inputs, kernel, kernel_idxs, kernel_shape,
+                             output_shape):
+  """Apply N-D convolution with un-shared weights using a single sparse matmul.
+
+  This method outputs `inputs . tf.SparseTensor(indices=kernel_idxs,
+  values=kernel, dense_shape=kernel_shape)`, with `.` standing for
+  matrix-multiply. It also reshapes `inputs` to 2-D and `output` to (N+2)-D.
+
+  Arguments:
+      inputs: (N+2)-D tensor with shape `(batch_size, channels_in, d_in1, ...,
+        d_inN)` or `(batch_size, d_in1, ..., d_inN, channels_in)`.
+      kernel: a 1-D tensor with shape `(len(kernel_idxs),)` containing all the
+        weights of the layer.
+      kernel_idxs:  a list of integer tuples representing indices in a sparse
+        matrix performing the un-shared convolution as a matrix-multiply.
+      kernel_shape: a tuple `(input_size, output_size)`, where `input_size =
+        channels_in * d_in1 * ... * d_inN` and `output_size = channels_out *
+        d_out1 * ... * d_outN`.
+      output_shape: a tuple of (N+2) elements representing the output shape:
+        `(batch_size, channels_out, d_out1, ..., d_outN)` or `(batch_size,
+        d_out1, ..., d_outN, channels_out)`, with the ordering of channels and
+        spatial dimensions matching that of the input.
+
+  Returns:
+      Output (N+2)-D dense tensor with shape `output_shape`.
+  """
+  inputs_flat = K.reshape(inputs, (K.shape(inputs)[0], -1))
+  output_flat = K.sparse_ops.sparse_tensor_dense_mat_mul(
+      kernel_idxs, kernel, kernel_shape, inputs_flat, adjoint_b=True)
+  output_flat_transpose = K.transpose(output_flat)
+
+  output_reshaped = K.reshape(
+      output_flat_transpose,
+      [K.shape(output_flat_transpose)[0],] + output_shape.as_list()[1:]
+  )
+  return output_reshaped
 
 
 def make_2d(tensor, split_dim):

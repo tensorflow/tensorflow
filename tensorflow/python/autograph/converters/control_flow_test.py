@@ -18,38 +18,46 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
+import numpy as np
+
 from tensorflow.python.autograph.converters import control_flow
 from tensorflow.python.autograph.core import converter_testing
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import test
+from tensorflow.python.util import nest
+
+# TODO(mdan): These tests are not isolated - they also test the operators.
 
 
-class ControlFlowTest(converter_testing.TestCase):
+class ControlFlowTestBase(converter_testing.TestCase):
 
-  def assertTransformedResult(self, test_fn, inputs, expected):
+  def assertValuesEqual(self, actual, expected):
+    values = nest.map_structure(
+        lambda x: self.evaluate(x) if tensor_util.is_tensor(x) else x,
+        actual)
+    self.assertAllEqual(values, expected)
+
+  def assertTransformedResult(self, test_fn, inputs, expected, symbols=None):
     if not isinstance(inputs, tuple):
       inputs = (inputs,)
-    with self.converted(test_fn, control_flow, {},
-                        constant_op.constant) as result:
-      self.assertEqual(self.evaluate(result.test_fn(*inputs)), expected)
+    if not symbols:
+      symbols = {}
+    with self.converted(test_fn, control_flow, symbols,
+                        (constant_op.constant,)) as result:
+      returns = result.test_fn(*inputs)
+      self.assertValuesEqual(returns, expected)
 
-  @test_util.run_deprecated_v1
-  def test_while_basic(self):
 
-    def test_fn(n):
-      i = 0
-      s = 0
-      while i < n:
-        s += i
-        i += 1
-      return s, i, n
+class NestedControlFlowTest(ControlFlowTestBase):
 
-    self.assertTransformedResult(test_fn, constant_op.constant(5), (10, 5, 5))
-
-  @test_util.run_deprecated_v1
-  def test_while_nested(self):
+  def test_basic(self):
 
     def test_fn(n):
       i = 0
@@ -67,8 +75,50 @@ class ControlFlowTest(converter_testing.TestCase):
     self.assertTransformedResult(test_fn, constant_op.constant(5),
                                  (25, 5, 0, 5))
 
-  @test_util.run_deprecated_v1
-  def test_while_single_output(self):
+  def test_composite_state_complex(self):
+
+    class TestClassX(object):
+
+      def __init__(self, x):
+        self.x = x
+
+    class TestClassY(object):
+
+      def __init__(self, y):
+        self.y = y
+
+    def test_fn(n):
+      tc = TestClassX(TestClassY({'z': TestClassX(n)}))
+      if n > 0:
+        while n > 0:
+          if n < 2:
+            tc.x.y['z'].x += 1
+          n -= 1
+      return n, tc
+
+    with self.converted(test_fn, control_flow, {
+        'TestClassX': TestClassX,
+        'TestClassY': TestClassY,
+    }) as result:
+      n, tc = result.test_fn(constant_op.constant(5))
+      self.assertValuesEqual((n, tc.x.y['z'].x), (0, 6))
+
+
+class WhileStatementTest(ControlFlowTestBase):
+
+  def test_basic(self):
+
+    def test_fn(n):
+      i = 0
+      s = 0
+      while i < n:
+        s += i
+        i += 1
+      return s, i, n
+
+    self.assertTransformedResult(test_fn, constant_op.constant(5), (10, 5, 5))
+
+  def test_single_output(self):
 
     def test_fn(n):
       while n > 0:
@@ -77,8 +127,211 @@ class ControlFlowTest(converter_testing.TestCase):
 
     self.assertTransformedResult(test_fn, constant_op.constant(5), 0)
 
-  @test_util.run_deprecated_v1
-  def test_while_dispatches_by_cond_only(self):
+  def test_composite_state_attr(self):
+
+    class TestClass(object):
+
+      def __init__(self):
+        self.x = constant_op.constant(3)
+
+    def test_fn(n):
+      tc = TestClass()
+      while n > 0:
+        tc.x += 1
+        n -= 1
+      return n
+
+    self.assertTransformedResult(
+        test_fn, constant_op.constant(5), 0, symbols={'TestClass': TestClass})
+
+  def test_composite_state_slice(self):
+
+    def test_fn(n):
+      d = {'a': n}
+      k = 'a'
+      while n > 0:
+        d[k] += 1
+        n -= 1
+      return d[k], n
+
+    self.assertTransformedResult(test_fn, constant_op.constant(5), (10, 0))
+
+  def test_composite_state_literal_slice(self):
+
+    def test_fn(n):
+      d = {'a': n}
+      while n > 0:
+        d['a'] += 1
+        n -= 1
+      return d['a'], n
+
+    self.assertTransformedResult(test_fn, constant_op.constant(5), (10, 0))
+
+  def test_composite_state_attr_initialized_in_loop(self):
+
+    class TestClass(object):
+      pass
+
+    def test_fn(n, x):
+      tc = TestClass()
+      while n < 5:
+        if n == 0:
+          tc.subattr = x
+        else:
+          tc.subattr = tc.subattr + 1
+        n += 1
+      return tc.subattr
+
+    self.assertTransformedResult(
+        test_fn, (0, constant_op.constant(10)),
+        14,
+        symbols={'TestClass': TestClass})
+    with self.converted(
+        test_fn, control_flow, {'TestClass': TestClass}) as result:
+      # TODO(b/128519776): Better error message.
+      with self.assertRaisesRegex(AttributeError, 'subattr'):
+        result.test_fn(constant_op.constant(0), constant_op.constant(5))
+
+  def test_composite_state_slice_initialized_in_loop(self):
+
+    def test_fn(n, x):
+      d = {}
+      k = 'subkey'
+      while n < 5:
+        if n == 0:
+          d[k] = x
+        else:
+          d[k] = d[k] + 1
+        n += 1
+      return d
+
+    self.assertTransformedResult(test_fn, (0, constant_op.constant(10)),
+                                 {'subkey': 14})
+    with self.converted(test_fn, control_flow, {}) as result:
+      # TODO(b/128519776): Better error message.
+      with self.assertRaisesRegex(KeyError, 'subkey'):
+        result.test_fn(constant_op.constant(0), constant_op.constant(5))
+
+  def test_composite_state_literal_slice_initialized_in_loop(self):
+
+    def test_fn(n, x):
+      d = {}
+      while n < 5:
+        if n == 0:
+          d['subkey'] = x
+        else:
+          d['subkey'] = d['subkey'] + 1
+        n += 1
+      return d
+
+    self.assertTransformedResult(test_fn, (0, constant_op.constant(10)),
+                                 {'subkey': 14})
+    with self.converted(test_fn, control_flow, {}) as result:
+      # TODO(b/128519776): Better error message.
+      with self.assertRaisesRegex(KeyError, 'subkey'):
+        result.test_fn(constant_op.constant(0), constant_op.constant(5))
+
+  def test_composite_state_slice_aliased_to_local(self):
+
+    def test_fn(n, x):
+      d = {}
+      while n < 5:
+        k = 'subkey'
+        d[k] = x + 1
+        n += 1
+      return d
+
+    self.assertTransformedResult(test_fn, (0, constant_op.constant(10)),
+                                 {'subkey': 11})
+    with self.converted(test_fn, control_flow, {}) as result:
+      # TODO(b/128519776): Better error message.
+      # Note that this error happens at execution time.
+      with self.assertRaises(errors.InaccessibleTensorError):
+        graph_fn = def_function.function(result.test_fn, autograph=False)
+        self.evaluate(
+            graph_fn(constant_op.constant(0), constant_op.constant(5)))
+
+  def test_local_composite_attr(self):
+
+    class TestClass(object):
+
+      def __init__(self):
+        self.x = constant_op.constant(3)
+
+    def test_fn(n):
+      while n > 0:
+        tc = TestClass()
+        tc.x = tc.x
+        n -= 1
+      return n
+
+    self.assertTransformedResult(
+        test_fn, constant_op.constant(5), 0, symbols={'TestClass': TestClass})
+
+  def test_local_composite_slice(self):
+
+    def test_fn(n):
+      while n > 0:
+        d = {'x': n}
+        k = 'x'
+        d[k] = d[k]
+        n -= 1
+      return n
+
+    self.assertTransformedResult(test_fn, constant_op.constant(5), 0, {})
+
+  def test_local_composite_literal_slice(self):
+
+    def test_fn(n):
+      while n > 0:
+        d = {'x': n}
+        d['x'] = d['x']
+        n -= 1
+      return n
+
+    self.assertTransformedResult(test_fn, constant_op.constant(5), 0, {})
+
+  def test_non_tensor_state(self):
+
+    # This class is ok to be in a tf.while_loop's state.
+    class TestClass(collections.namedtuple('TestClass', ('x'))):
+      pass
+
+    def test_fn(n):
+      tc = TestClass([constant_op.constant(0)])
+      while n > 0:
+        tc = TestClass([constant_op.constant(3)])
+        tc.x[0] = tc.x[0] + 1
+        n -= 1
+      return tc.x[0]
+
+    ns = {'TestClass': TestClass, 'constant_op': constant_op}
+    self.assertTransformedResult(
+        test_fn, constant_op.constant(5), 4, symbols=ns)
+
+  def test_non_tensor_state_illegal_type(self):
+
+    class TestClass(object):
+
+      def __init__(self):
+        self.x = [constant_op.constant(3)]
+
+    def test_fn(n):
+      while n > 0:
+        tc = TestClass()
+        tc.x[0] = tc.x[0] + 1
+        n -= 1
+      return tc.x[0]
+
+    with self.converted(
+        test_fn, control_flow, {'TestClass': TestClass}) as result:
+      # The tested function would require `tc` to become part of the while loop
+      # state, but TensorFlow doesn't support classes at the moment.
+      with self.assertRaisesRegexp(
+          ValueError, 'must be defined before the loop:.*tc.*'):
+        result.test_fn(constant_op.constant(5))
+
+  def test_dispatches_by_cond_only(self):
 
     class TensorIncompatibleNumeric(object):
       """Works in arithmetic expression, but errors out with TF ops."""
@@ -104,8 +357,10 @@ class ControlFlowTest(converter_testing.TestCase):
       with self.assertRaises(TypeError):
         result.test_fn(constant_op.constant(5), TensorIncompatibleNumeric(0))
 
-  @test_util.run_deprecated_v1
-  def test_if_basic(self):
+
+class IfStatementTest(ControlFlowTestBase):
+
+  def test_basic(self):
 
     def test_fn(n):
       a = 0
@@ -119,8 +374,19 @@ class ControlFlowTest(converter_testing.TestCase):
     self.assertTransformedResult(test_fn, constant_op.constant(1), (-1, 0))
     self.assertTransformedResult(test_fn, constant_op.constant(-1), (0, -2))
 
-  @test_util.run_deprecated_v1
-  def test_if_complex_outputs(self):
+  def test_sparse_tensor(self):
+
+    def test_fn(cond, a):
+      if cond:
+        a = -a
+      return a
+
+    st = sparse_tensor.SparseTensor(
+        indices=((0,),), values=(0,), dense_shape=(1,))
+    self.assertTransformedResult(test_fn, (st, constant_op.constant(1)), -1)
+    self.assertTransformedResult(test_fn, (None, constant_op.constant(1)), 1)
+
+  def test_complex_outputs(self):
 
     class TestClass(object):
 
@@ -139,12 +405,11 @@ class ControlFlowTest(converter_testing.TestCase):
 
     with self.converted(test_fn, control_flow, {}) as result:
       res_obj = result.test_fn(constant_op.constant(1), TestClass(0, 0))
-      self.assertEqual(self.evaluate((res_obj.a, res_obj.b)), (-1, 0))
+      self.assertValuesEqual((res_obj.a, res_obj.b), (-1, 0))
       res_obj = result.test_fn(constant_op.constant(-1), TestClass(0, 0))
-      self.assertEqual(self.evaluate((res_obj.a, res_obj.b)), (0, -2))
+      self.assertValuesEqual((res_obj.a, res_obj.b), (0, -2))
 
-  @test_util.run_deprecated_v1
-  def test_if_single_output(self):
+  def test_single_output(self):
 
     def test_fn(n):
       if n > 0:
@@ -153,8 +418,7 @@ class ControlFlowTest(converter_testing.TestCase):
 
     self.assertTransformedResult(test_fn, constant_op.constant(1), -1)
 
-  @test_util.run_deprecated_v1
-  def test_if_semi(self):
+  def test_semi(self):
 
     def test_fn(n):
       if n > 0:
@@ -164,8 +428,7 @@ class ControlFlowTest(converter_testing.TestCase):
     self.assertTransformedResult(test_fn, constant_op.constant(2), 3)
     self.assertTransformedResult(test_fn, constant_op.constant(-3), -3)
 
-  @test_util.run_deprecated_v1
-  def test_if_local_var(self):
+  def test_local_var(self):
 
     def test_fn(n):
       if n > 0:
@@ -176,8 +439,7 @@ class ControlFlowTest(converter_testing.TestCase):
     self.assertTransformedResult(test_fn, constant_op.constant(1), 5)
     self.assertTransformedResult(test_fn, constant_op.constant(-1), -1)
 
-  @test_util.run_deprecated_v1
-  def test_if_no_outputs(self):
+  def test_no_outputs(self):
 
     def test_fn(n):
       if n > 0:
@@ -189,8 +451,54 @@ class ControlFlowTest(converter_testing.TestCase):
     self.assertTransformedResult(test_fn, constant_op.constant(1), 1)
     self.assertTransformedResult(test_fn, constant_op.constant(-1), -1)
 
-  @test_util.run_deprecated_v1
-  def test_simple_for(self):
+  def test_unbalanced_multiple_composites(self):
+
+    class Foo(object):
+
+      def __init__(self):
+        self.b = 2
+        self.c = 3
+
+    def test_fn(x, condition):
+
+      z = 5
+      if condition:
+        x.b = 7
+        x.c = 11
+        z = 13
+
+      return x.b, x.c, z
+
+    self.assertTransformedResult(test_fn, (Foo(), constant_op.constant(True)),
+                                 (7, 11, 13))
+    self.assertTransformedResult(test_fn, (Foo(), constant_op.constant(False)),
+                                 (2, 3, 5))
+
+  def test_unbalanced_composite(self):
+
+    class Foo(object):
+
+      def __init__(self):
+        self.b = 2
+
+    def test_fn(x, condition):
+
+      z = 5
+      if condition:
+        x.b = 7
+        z = 13
+
+      return x.b, z
+
+    self.assertTransformedResult(test_fn, (Foo(), constant_op.constant(True)),
+                                 (7, 13))
+    self.assertTransformedResult(test_fn, (Foo(), constant_op.constant(False)),
+                                 (2, 5))
+
+
+class ForStatementTest(ControlFlowTestBase):
+
+  def test_basic(self):
 
     def test_fn(l):
       s1 = 0
@@ -204,8 +512,7 @@ class ControlFlowTest(converter_testing.TestCase):
     empty_vector = constant_op.constant([], shape=(0,), dtype=dtypes.int32)
     self.assertTransformedResult(test_fn, empty_vector, (0, 0))
 
-  @test_util.run_deprecated_v1
-  def test_for_single_output(self):
+  def test_single_output(self):
 
     def test_fn(l):
       s = 0
@@ -217,7 +524,7 @@ class ControlFlowTest(converter_testing.TestCase):
     empty_vector = constant_op.constant([], shape=(0,), dtype=dtypes.int32)
     self.assertTransformedResult(test_fn, empty_vector, 0)
 
-  def test_for_iterated_expression(self):
+  def test_iterated_expression(self):
 
     eval_count = [0]
 
@@ -239,8 +546,33 @@ class ControlFlowTest(converter_testing.TestCase):
       self.assertEqual(result.test_fn(5), 10)
       self.assertEqual(eval_count[0], 1)
 
-  @test_util.run_deprecated_v1
-  def test_for_tuple_unpacking(self):
+  def test_composite_state_initialized_in_loop(self):
+
+    class TestClass(object):
+      pass
+
+    def test_fn(n, x):
+      tc = TestClass()
+      for i in n:
+        if i == 0:
+          tc.x = x
+        else:
+          tc.x = tc.x + i
+      return tc.x
+
+    self.assertTransformedResult(
+        test_fn, (range(5), constant_op.constant(10)),
+        20,
+        symbols={'TestClass': TestClass})
+    with self.converted(
+        test_fn, control_flow, {'TestClass': TestClass}) as result:
+      # TODO(b/128519776): Better error message.
+      with self.assertRaisesRegex(
+          AttributeError, '\'TestClass\' object has no attribute \'x\''):
+        result.test_fn(
+            constant_op.constant(list(range(5))), constant_op.constant(5))
+
+  def test_tuple_unpacking(self):
     def test_fn(x_list):
       z = tf.constant(0)  # pylint:disable=undefined-variable
       for i, x in enumerate(x_list):
@@ -248,6 +580,19 @@ class ControlFlowTest(converter_testing.TestCase):
       return z
 
     self.assertTransformedResult(test_fn, [3, 3], 7)
+
+  def test_with_comprehension_in_body(self):
+
+    def test_fn(l, n):
+      s = constant_op.constant(list(range(n)))
+      for _ in l:
+        s += constant_op.constant([a for a in range(n)])
+      return s
+
+    self.assertTransformedResult(
+        test_fn, (constant_op.constant([1, 2, 3]), 5),
+        np.array(range(5)) * 4,
+        symbols={'constant_op': constant_op})
 
 
 if __name__ == '__main__':

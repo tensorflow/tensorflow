@@ -59,7 +59,14 @@ class CalibrationWrapper {
 
   PyObject* FeedTensor(PyObject* input_value);
 
-  PyObject* QuantizeModel();
+  PyObject* QuantizeModel(int input_py_type, int output_py_type,
+                          bool allow_float, bool enable_mlir_quantizer = false);
+
+  // Allows quantizing only the operator that produces the tensor with name
+  // operator_output_name. (This can be used to help debug.).
+  // TODO(suharshs): Allow providing multiple names.
+  PyObject* QuantizeModel(int input_py_type, int output_py_type,
+                          bool allow_float, const char* operator_output_name);
 
  private:
   // CalibrationWrapper is not copyable or assignable. We avoid the use of

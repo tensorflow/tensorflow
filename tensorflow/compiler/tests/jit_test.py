@@ -22,10 +22,10 @@ import os
 import numpy as np
 
 from tensorflow.compiler.tests import test_utils
-from tensorflow.contrib.compiler import jit
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.compiler.xla import jit
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -95,7 +95,12 @@ class JitLaunchTest(test.TestCase):
   # If 'require_kernel_launch' is True, then we verify that an XlaCompile/XlaRun
   # node actually ran. However, it is sometimes possible for XlaCompile/XlaRun
   # ops to be constant-folded away, so the check is optional.
-  def _compare(self, fn, args, require_kernel_launch=True, noinline=None):
+  def _compare(self,
+               fn,
+               args,
+               require_kernel_launch=True,
+               name=None,
+               noinline=None):
     with session_lib.Session(config=NoRewriteSessionConfig()) as sess:
       placeholders = []
       feeds = {}
@@ -105,7 +110,8 @@ class JitLaunchTest(test.TestCase):
         placeholders.append(placeholder)
         feeds[placeholder] = arg
 
-      compiled_op = CompiledKernel(fn, *placeholders, noinline=noinline)
+      compiled_op = CompiledKernel(
+          fn, *placeholders, name=name, noinline=noinline)
       direct_op = fn(*placeholders)
 
       run_metadata = config_pb2.RunMetadata()
@@ -155,17 +161,16 @@ class JitLaunchTest(test.TestCase):
     # to symbolically execute Bar correctly regardless of whether Bar is inlined
     # or not.
 
-    # TODO(b/36139787): Re-enable this test when noinline works again.
     # Tests compiled=True and noinline=True.
-    # self._compare(
-    #     AddOnceReturnTwice, [np.array(
-    #         [[[0.5, -1.0]]], dtype=np.float32)],
-    #     noinline=True)
+    self._compare(
+        AddOnceReturnTwice, [np.array([[[0.5, -1.0]]], dtype=np.float32)],
+        name="AddOnceReturnTwice_inline",
+        noinline=True)
 
     # Tests compiled=True and noinline=False.
     self._compare(
-        AddOnceReturnTwice, [np.array(
-            [[[0.5, -1.0]]], dtype=np.float32)],
+        AddOnceReturnTwice, [np.array([[[0.5, -1.0]]], dtype=np.float32)],
+        name="AddOnceReturnTwice_noinline",
         noinline=False)
 
   def testOneConstOutput(self):
@@ -509,22 +514,6 @@ class ElementWiseFusionTest(test.TestCase):
       self.assertEqual(xla_compile_count, xla_run_count)
 
       return output, xla_run_count
-
-  def testElementWiseClustering(self):
-    arg0 = np.random.rand(2, 2).astype(np.float32)
-    arg1 = np.random.rand(2, 2).astype(np.float32)
-    os.environ["TF_XLA_FLAGS"] = (
-        "--tf_xla_fusion_only=true "
-        "--tf_xla_cpu_global_jit " + os.environ.get("TF_XLA_FLAGS", ""))
-    tf_op, tf_count = self.simpleTest(arg0, arg1,
-                                      config_pb2.OptimizerOptions.OFF)
-    self.assertEqual(0, tf_count)
-
-    tfef_op, tfef_count = self.simpleTest(arg0, arg1,
-                                          config_pb2.OptimizerOptions.ON_1)
-    self.assertEqual(2, tfef_count)
-
-    self.assertAllClose(tf_op, tfef_op, rtol=1e-1)
 
 
 class LazyCompilationTest(test.TestCase):

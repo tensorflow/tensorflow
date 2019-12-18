@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <vector>
+
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 
@@ -436,6 +439,7 @@ Status AddGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format on
 }
 REGISTER_OP_GRADIENT("Add", AddGrad);
+REGISTER_OP_GRADIENT("AddV2", AddGrad);
 
 Status SubGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
@@ -592,6 +596,20 @@ Status XdivyGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format on
 }
 REGISTER_OP_GRADIENT("Xdivy", XdivyGrad);
+
+Status SquaredDifferenceGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForBinaryCwise(g, {
+      FDH::Const("c", 2LL),
+      {{"two"}, "Cast", {"c"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+      {{"x_sub_y"}, "Sub", {"x", "y"}},
+      {{"two_x_sub_y"}, "Mul", {"two", "x_sub_y"}},  // 2 * (x - y)
+      {{"gx"}, "Mul", {"two_x_sub_y", "dz"}},
+      {{"gy"}, "Neg", {"gx"}}
+    });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("SquaredDifference", SquaredDifferenceGrad);
 
 Status MaximumMinimumGradHelper(const string& comparator,
                                 const AttrSlice& attrs, FunctionDef* g) {
@@ -775,7 +793,47 @@ static Status MatMulGradHelper(FunctionDef* g, const string& opname,
                                const string& attr_adj_y, const string& x0,
                                bool ax0, const string& x1, bool ax1,
                                const string& y0, bool ay0, const string& y1,
-                               bool ay1) {
+                               bool ay1, bool enable_broadcasting) {
+  // The final outputs are "dx" and "dy". If we're broadcasting compute
+  // intermediate nodes for now.
+  std::vector<FDH::Node> nodes = {
+      {{(enable_broadcasting ? "gx" : "dx")},
+       opname,
+       {x0, x1},
+       {{"T", "$T"}, {attr_adj_x, ax0}, {attr_adj_y, ax1}}},
+      {{(enable_broadcasting ? "gy" : "dy")},
+       opname,
+       {y0, y1},
+       {{"T", "$T"}, {attr_adj_x, ay0}, {attr_adj_y, ay1}}},
+  };
+  // TODO(anudhyan): Figure out a way to inspect the static shapes of "x" and
+  // "y". If they have the same batch dimensions, then we can omit adding the
+  // broadcasting-specific ops.
+  if (enable_broadcasting) {
+    std::vector<FDH::Node> unbroadcast_gradients = {
+        FDH::Const<int32>("zero", gtl::ArraySlice<int32>{0}),
+        FDH::Const<int32>("one", gtl::ArraySlice<int32>{1}),
+        FDH::Const<int32>("minustwo", gtl::ArraySlice<int32>{-2}),
+        // Compute the batch shapes of the inputs (all but last two dims).
+        {{"sx"}, "Shape", {"x"}, {{"T", "$T"}}},
+        {{"sy"}, "Shape", {"y"}, {{"T", "$T"}}},
+        {{"batch_sx"},
+         "StridedSlice",
+         {"sx", "zero", "minustwo", "one"},
+         {{"T", DT_INT32}, {"Index", DT_INT32}}},
+        {{"batch_sy"},
+         "StridedSlice",
+         {"sy", "zero", "minustwo", "one"},
+         {{"T", DT_INT32}, {"Index", DT_INT32}}},
+        // Sum along dimensions that the inputs were broadcasted across.
+        {{"rx", "ry"}, "BroadcastGradientArgs", {"batch_sx", "batch_sy"}},
+        {{"sum_gx"}, "Sum", {"gx", "rx"}, {{"T", "$T"}}},
+        {{"sum_gy"}, "Sum", {"gy", "ry"}, {{"T", "$T"}}},
+        {{"dx"}, "Reshape", {"sum_gx", "sx"}, {{"T", "$T"}}},
+        {{"dy"}, "Reshape", {"sum_gy", "sy"}, {{"T", "$T"}}}};
+    nodes.insert(nodes.end(), unbroadcast_gradients.begin(),
+                 unbroadcast_gradients.end());
+  }
   *g = FDH::Define(
       // Arg defs
       {"x: T", "y: T", "dz: T"},
@@ -784,22 +842,13 @@ static Status MatMulGradHelper(FunctionDef* g, const string& opname,
       // Attr defs
       {{"T: {half, float, double}"}},
       // Nodes
-      {
-          {{"dx"},
-           opname,
-           {x0, x1},
-           {{"T", "$T"}, {attr_adj_x, ax0}, {attr_adj_y, ax1}}},
-          {{"dy"},
-           opname,
-           {y0, y1},
-           {{"T", "$T"}, {attr_adj_x, ay0}, {attr_adj_y, ay1}}},
-      });
+      nodes);
   return Status::OK();
 }
 
 Status MatMulGradCommon(const string& opname, const string& attr_adj_x,
                         const string& attr_adj_y, const AttrSlice& attrs,
-                        FunctionDef* g) {
+                        FunctionDef* g, bool enable_broadcasting) {
   DataType T;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &T));
   if (T == DT_COMPLEX64 || T == DT_COMPLEX128) {
@@ -812,30 +861,38 @@ Status MatMulGradCommon(const string& opname, const string& attr_adj_x,
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, attr_adj_y, &tb));
   if (!ta && !tb) {
     return MatMulGradHelper(g, opname, attr_adj_x, attr_adj_y, "dz", false, "y",
-                            true, "x", true, "dz", false);
+                            true, "x", true, "dz", false, enable_broadcasting);
   }
   if (!ta && tb) {
     return MatMulGradHelper(g, opname, attr_adj_x, attr_adj_y, "dz", false, "y",
-                            false, "dz", true, "x", false);
+                            false, "dz", true, "x", false, enable_broadcasting);
   }
   if (ta && !tb) {
     return MatMulGradHelper(g, opname, attr_adj_x, attr_adj_y, "y", false, "dz",
-                            true, "x", false, "dz", false);
+                            true, "x", false, "dz", false, enable_broadcasting);
   }
   CHECK(ta && tb);
   return MatMulGradHelper(g, opname, attr_adj_x, attr_adj_y, "y", true, "dz",
-                          true, "dz", true, "x", true);
+                          true, "dz", true, "x", true, enable_broadcasting);
 }
 
 Status MatMulGrad(const AttrSlice& attrs, FunctionDef* g) {
-  return MatMulGradCommon("MatMul", "transpose_a", "transpose_b", attrs, g);
+  return MatMulGradCommon("MatMul", "transpose_a", "transpose_b", attrs, g,
+                          false /* enable_broadcasting */);
 }
 REGISTER_OP_GRADIENT("MatMul", MatMulGrad);
 
 Status BatchMatMulGrad(const AttrSlice& attrs, FunctionDef* g) {
-  return MatMulGradCommon("BatchMatMul", "adj_x", "adj_y", attrs, g);
+  return MatMulGradCommon("BatchMatMul", "adj_x", "adj_y", attrs, g,
+                          false /* enable_broadcasting */);
 }
 REGISTER_OP_GRADIENT("BatchMatMul", BatchMatMulGrad);
+
+Status BatchMatMulV2Grad(const AttrSlice& attrs, FunctionDef* g) {
+  return MatMulGradCommon("BatchMatMulV2", "adj_x", "adj_y", attrs, g,
+                          true /* enable_broadcasting */);
+}
+REGISTER_OP_GRADIENT("BatchMatMulV2", BatchMatMulV2Grad);
 
 // REGISTER_OP_GRADIENT("SparseMatMul", SparseMatMulGrad);
 

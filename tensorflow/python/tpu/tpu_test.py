@@ -19,12 +19,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import importer
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import special_math_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_feed
@@ -33,6 +40,7 @@ from tensorflow.python.tpu import training_loop
 
 class TPUContextTest(test.TestCase):
 
+  @test_util.deprecated_graph_mode_only
   def testIsInContext(self):
     """Test that control_flow_util can check that we're in a TPU context."""
     z1 = array_ops.identity(1)
@@ -47,6 +55,7 @@ class TPUContextTest(test.TestCase):
 
 class TPULayerRewriteTest(test.TestCase):
 
+  @test_util.deprecated_graph_mode_only
   def testUsingInfeedQueueWithRegularizer(self):
     """Test that Layer regularizers can reference data created in loops."""
 
@@ -74,6 +83,97 @@ class TPULayerRewriteTest(test.TestCase):
 
     # This should not throw an error.
     tpu.rewrite(loop)
+
+class TPUGraphPruneTest(test.TestCase):
+
+  def test_prune_unconnected_ops(self):
+    with ops.Graph().as_default():
+      a = array_ops.placeholder(dtype=dtypes.float32, name="a")
+      b = array_ops.placeholder(dtype=dtypes.float32, name="b")
+      constant_op.constant(1.0, name="constant")
+      x = variable_scope.get_variable(
+          name="x",
+          dtype=dtypes.float32,
+          shape=[],
+          use_resource=True,
+          initializer=init_ops.constant_initializer(2.0))
+      y = variable_scope.get_variable(
+          name="y",
+          dtype=dtypes.float32,
+          shape=[],
+          use_resource=True,
+          initializer=init_ops.constant_initializer(3.0))
+      math_ops.add(a, b)
+      math_ops.add(x, y)
+      graph_def = ops.get_default_graph().as_graph_def()
+
+      for node in graph_def.node:
+        # Attach a TPU_REPLICATE_ATTR to each node.
+        node.attr[tpu._TPU_REPLICATE_ATTR].s = b"0"
+        # Rewire placeholder "a" and variable "y" leaving them unconnected.
+        for (input_index, node_input) in enumerate(node.input):
+          if node_input == "b":
+            node.input[input_index] = "constant"
+          if node_input == "y":
+            node.input[input_index] = "x"
+
+    with ops.Graph().as_default() as graph:
+      # Reimport the graph and prune unconnected ops.
+      importer.import_graph_def(graph_def)
+      tpu.prune_unconnected_ops_from_xla(ops.get_default_graph())
+
+      # Verify that ops "a" and "x" still have TPU_REPLICATE_ATTR.
+      a = graph.get_operation_by_name("import/a").get_attr(
+          tpu._TPU_REPLICATE_ATTR)
+      self.assertEqual(b"0", a)
+      x = graph.get_operation_by_name("import/x").get_attr(
+          tpu._TPU_REPLICATE_ATTR)
+      self.assertEqual(b"0", x)
+      # Verify that ops "b" and "y" have TPU_REPLICATE_ATTR removed.
+      with self.assertRaisesRegexp(
+          ValueError,
+          "Operation \'import/b\' has no attr named \'_tpu_replicate\'"):
+        graph.get_operation_by_name("import/b").get_attr(
+            tpu._TPU_REPLICATE_ATTR)
+      with self.assertRaisesRegexp(
+          ValueError,
+          "Operation \'import/y\' has no attr named \'_tpu_replicate\'"):
+        graph.get_operation_by_name("import/y").get_attr(
+            tpu._TPU_REPLICATE_ATTR)
+
+def do_einsum():
+  a = array_ops.placeholder(dtype=dtypes.float32, name="a", shape=[2, 3, 4])
+  b = array_ops.placeholder(dtype=dtypes.float32, name="b", shape=[2, 4, 5])
+  return special_math_ops.einsum("abc,acd->abd", a, b)
+
+
+def find_einsum(g):
+  graph_def = g.as_graph_def()
+  for node in graph_def.node:
+    if node.op == "Einsum":
+      return True
+  return False
+
+
+def find_xla_einsum(g):
+  graph_def = g.as_graph_def()
+  for node in graph_def.node:
+    if node.op == "XlaEinsum":
+      return True
+  return False
+
+
+class TPUXlaEinsumTest(test.TestCase):
+
+  def test_tpu_rewrite_uses_xla_einsum(self):
+    with ops.Graph().as_default() as g:
+      tpu.rewrite(do_einsum)
+      self.assertTrue(find_einsum(g) or find_xla_einsum(g))
+
+  def test_default_does_not_use_xla_einsum(self):
+    with ops.Graph().as_default() as g:
+      do_einsum()
+      self.assertFalse(find_xla_einsum(g))
 
 
 if __name__ == "__main__":

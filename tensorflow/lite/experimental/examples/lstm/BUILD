@@ -1,8 +1,9 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow:internal"])
-
 load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_library(
     name = "rnn",
@@ -34,8 +35,9 @@ py_library(
 
 py_test(
     name = "unidirectional_sequence_lstm_test",
-    size = "large",
+    size = "medium",
     srcs = ["unidirectional_sequence_lstm_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
@@ -49,7 +51,6 @@ py_test(
         "//tensorflow/lite/python:lite",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
-        "//tensorflow/python/tools:optimize_for_inference_lib",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -57,8 +58,9 @@ py_test(
 
 py_test(
     name = "unidirectional_sequence_rnn_test",
-    size = "large",
+    size = "medium",
     srcs = ["unidirectional_sequence_rnn_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
@@ -72,7 +74,6 @@ py_test(
         "//tensorflow/lite/python:lite",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
-        "//tensorflow/python/tools:optimize_for_inference",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -80,8 +81,9 @@ py_test(
 
 py_test(
     name = "bidirectional_sequence_lstm_test",
-    size = "large",
+    size = "medium",
     srcs = ["bidirectional_sequence_lstm_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
@@ -95,7 +97,6 @@ py_test(
         "//tensorflow/lite/python:lite",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
-        "//tensorflow/python/tools:optimize_for_inference",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -103,12 +104,14 @@ py_test(
 
 py_test(
     name = "bidirectional_sequence_rnn_test",
-    size = "large",
+    size = "medium",
     srcs = ["bidirectional_sequence_rnn_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
         "no_pip",
+        "notap",  # b/141373014
     ],
     deps = [
         ":rnn",
@@ -118,7 +121,6 @@ py_test(
         "//tensorflow/lite/python:lite",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
-        "//tensorflow/python/tools:optimize_for_inference",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],

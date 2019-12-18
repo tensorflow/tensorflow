@@ -183,9 +183,19 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     optimizer->options_.convert_sqrt_div_to_rsqrt_mul = true;
   }
 
+  void EnableOnlyLogSoftmax(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.convert_log_softmax = true;
+  }
+
   void EnableOnlyConvertPow(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.convert_pow = true;
+  }
+
+  void EnableOnlyFuseSquaredDiff(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.fuse_squared_diff = true;
   }
 
   void EnableOnlyRemoveIdempotent(ArithmeticOptimizer* optimizer) {

@@ -62,8 +62,8 @@ TEST_F(SummaryTensorOpV2Test, BasicPluginData) {
   MakeOp();
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({}), {"tag_foo"});
-  AddInputFromArray<string>(TensorShape({}), {"some string tensor content"});
+  AddInputFromArray<tstring>(TensorShape({}), {"tag_foo"});
+  AddInputFromArray<tstring>(TensorShape({}), {"some string tensor content"});
 
   // Create a SummaryMetadata that stores data for 2 plugins.
   SummaryMetadata summary_metadata;
@@ -71,8 +71,8 @@ TEST_F(SummaryTensorOpV2Test, BasicPluginData) {
       summary_metadata.mutable_plugin_data();
   plugin_data->set_plugin_name("foo");
   plugin_data->set_content("content_for_plugin_foo");
-  AddInputFromArray<string>(TensorShape({}),
-                            {summary_metadata.SerializeAsString()});
+  AddInputFromArray<tstring>(TensorShape({}),
+                             {summary_metadata.SerializeAsString()});
 
   TF_ASSERT_OK(RunOpKernel());
 
@@ -80,14 +80,14 @@ TEST_F(SummaryTensorOpV2Test, BasicPluginData) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
   ASSERT_EQ(1, summary.value_size());
 
   // Check the content of the tensor stored in the summary.
   Tensor string_content_tensor;
   CHECK(string_content_tensor.FromProto(summary.value(0).tensor()));
   ASSERT_EQ("some string tensor content",
-            string_content_tensor.scalar<string>()());
+            string_content_tensor.scalar<tstring>()());
 
   // Check plugin-related data.
   ASSERT_EQ("tag_foo", summary.value(0).tag());

@@ -22,7 +22,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_UTIL_H_
 
 #include <vector>
-#include "tensorflow/lite/c/c_api_internal.h"
+
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 
@@ -57,6 +58,20 @@ struct TfLiteIntArrayDeleter {
     if (a) TfLiteIntArrayFree(a);
   }
 };
+
+// Populates the size in bytes of a type into `bytes`. Returns kTfLiteOk for
+// valid types, and kTfLiteError otherwise.
+TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
+                           size_t* bytes);
+
+// Creates a stub TfLiteRegistration instance with the provided
+// `custom_op_name`. The op will fail if invoked, and is useful as a placeholde
+// to defer op resolution.
+// Note that `custom_op_name` must remain valid for the returned op's lifetime..
+TfLiteRegistration CreateUnresolvedCustomOp(const char* custom_op_name);
+
+// Checks whether the provided op is an unresolved custom op.
+bool IsUnresolvedCustomOp(const TfLiteRegistration& registration);
 
 }  // namespace tflite
 

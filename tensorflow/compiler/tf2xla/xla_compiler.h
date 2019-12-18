@@ -116,6 +116,9 @@ class XlaCompiler {
 
       // Argument is an XLA token.
       kToken,
+
+      // Argument is a TensorList.
+      kTensorList,
     };
 
     Kind kind = kInvalid;
@@ -144,11 +147,17 @@ class XlaCompiler {
     // The name of this argument, used for debugging.
     string name;
 
+    // The name of TensorFlow _Arg node, used for debugging.
+    string node_name;
+
     // For a kResource, what kind of resource is it?
     XlaResource::Kind resource_kind = XlaResource::kInvalid;
 
     // For a kResource, has this resource been initialized?
     bool initialized = false;
+
+    // For a kResource, is this resource on Fast Memory.
+    bool fast_mem = false;
 
     // For a TensorArray or Stack resource, what is the array's declared size?
     // (Used for lazy initialization.)
@@ -163,6 +172,9 @@ class XlaCompiler {
     std::map<int32, int32> dynamic_dim_to_arg_num_map;
     bool is_pad_arg = false;
 
+    // Whether this argument will receive the same data across all replicas.
+    bool is_same_data_across_replicas = false;
+
     bool operator==(const Argument& other) const;
 
     // Returns a human-readable summary of the argument.
@@ -170,6 +182,7 @@ class XlaCompiler {
 
     // Returns the dimension sizes for either TensorShape or xla::Shape.
     std::vector<int64> DimensionSizes() const;
+    absl::InlinedVector<int64, 4> DimensionSizesAsInlinedVector() const;
 
     // Returns the human-readable string for either TensorShape or xla::Shape.
     string ShapeHumanString() const;
@@ -188,12 +201,6 @@ class XlaCompiler {
     // modified by the computation. Used when compiling loop bodies to ensure
     // the input and output signatures match.
     bool return_updated_values_for_all_resources = false;
-
-    // If 'resolve_compile_time_constants' is true, then outputs of a
-    // computation that are known to be compile-time constants will be returned
-    // as Tensors at compile-time, rather than as run-time outputs of the
-    // computation.
-    bool resolve_compile_time_constants = true;
 
     // If 'always_return_tuple' is true, then the output of a computation will
     // always be a tuple. Otherwise, a single-element output will not be wrapped
@@ -223,6 +230,9 @@ class XlaCompiler {
     // When this output is a resource, i.e. `type == DT_RESOURCE`, this is
     // the index of the input that contains the resource.
     int input_index;
+
+    // Whether this output is a TensorList.
+    bool is_tensor_list = false;
   };
 
   // Describes a variable write side effect of the computation.
@@ -277,7 +287,8 @@ class XlaCompiler {
     std::shared_ptr<xla::XlaComputation> computation;
   };
 
-  typedef std::function<xla::StatusOr<xla::Shape>(const TensorShape&, DataType)>
+  typedef std::function<xla::StatusOr<xla::Shape>(const TensorShape&, DataType,
+                                                  bool)>
       ShapeRepresentationFn;
   struct Options {
     // Name of the compilation device to use. It must be set by the caller.
@@ -302,6 +313,12 @@ class XlaCompiler {
     // for CPU.
     bool allow_cpu_custom_calls = false;
 
+    // If both this and 'allow_cpu_custom_calls' are true then tf.fake_quant_*
+    // ops will be emitted as custom calls to a 'fake_quant_with_min_max_vars'
+    // function accepting the input, min, max, num_bits, and narrow_range values
+    // as runtime arguments.
+    bool custom_fake_quant_op_calls = false;
+
     // If set, the XLA representation of variables represented to XLA as the
     // shape given by this shape function. Variables are reshaped to this shape
     // on write, and reshaped to their original shape on read.
@@ -324,12 +341,20 @@ class XlaCompiler {
     // here, but on some devices (notably, GPUs), TensorFlow tends to eagerly
     // allocate most or all available memory on the device, leaving none for the
     // compiler to access, unless it can use TensorFlow's allocator.
-    xla::DeviceMemoryAllocator* device_allocator = nullptr;
+    se::DeviceMemoryAllocator* device_allocator = nullptr;
+
+    // Alias input and output buffers for parameters that are passed-through XLA
+    // modules without being changed.
+    bool alias_passthrough_params = false;
   };
 
   explicit XlaCompiler(Options options);
 
   ~XlaCompiler();
+
+  // Helper function to populate an XlaCompiler::Argument from XlaResource.
+  static void PopulateArgumentFromResource(const XlaResource& resource,
+                                           Argument* arg);
 
   Status CompileFunction(const CompileOptions& options,
                          const NameAttrList& fn_name_attrs,
@@ -339,10 +364,11 @@ class XlaCompiler {
   // Compiles a tensorflow::Graph into an xla::XlaComputation.
   // Similar to CompileFunction, but takes a Graph as input rather than a
   // function.
-  Status CompileGraph(const CompileOptions& options, string const& name,
-                      std::unique_ptr<Graph> graph,
-                      absl::Span<const Argument> args,
-                      CompilationResult* result);
+  Status CompileGraph(
+      const CompileOptions& options, string const& name,
+      std::unique_ptr<Graph> graph, absl::Span<const Argument> args,
+      absl::Span<const xla::XlaBuilder::InputOutputAlias> user_aliases,
+      CompilationResult* result);
 
   // Compiles a single Op, given by `node_def`, into an
   // xla::XlaComputation. Similar to CompileFunction but takes a single Op as
@@ -355,8 +381,10 @@ class XlaCompiler {
   // Returns the shape of the XLA parameter for an argument 'arg'.
   // See the class comment for more details about the argument passing
   // convention.
-  Status XLAShapeForArgument(const Argument& arg, bool is_entry_computation,
-                             xla::Shape* xla_shape) const;
+  Status XLAShapeForArgument(
+      const Argument& arg, bool is_entry_computation,
+      const absl::optional<xla::HloSharding>& arg_sharding,
+      xla::Shape* xla_shape) const;
 
   // Retrieves the channel handle associated with `key`. Allocates
   // a new channel handle if none exists.
@@ -416,11 +444,11 @@ class XlaCompiler {
   Status SetNodeToken(const string& node_name, const xla::XlaOp& op);
   xla::StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
 
- private:
   // Sets the function body `fbody` to the one registered as `function`.
   Status FindFunctionBody(const NameAttrList& function,
                           const FunctionBody** fbody);
 
+ private:
   // Returns the optimized graph object in this function body.
   std::unique_ptr<Graph> GetGraph(const FunctionBody* fbody);
 
@@ -430,7 +458,7 @@ class XlaCompiler {
                         const std::vector<XlaCompiler::Argument>& args,
                         bool use_tuple_arg, xla::XlaBuilder* builder,
                         XlaContext* context,
-                        const std::map<int, int>& arg_cores,
+                        const std::map<int, xla::OpSharding>& arg_shardings,
                         std::vector<XlaExpression>* arg_expressions,
                         std::vector<int>* input_to_args,
                         std::vector<xla::Shape>* input_shapes,
@@ -453,7 +481,7 @@ class XlaCompiler {
   int64 next_step_id_;
 
   XlaCompilationDevice* device_;  // Owned by device_mgr_
-  DeviceMgr device_mgr_;
+  StaticDeviceMgr device_mgr_;
 
   // To avoid copying the client's function library, use a local function
   // library and runtime for functions created as part of the functionalize

@@ -20,12 +20,16 @@ from __future__ import print_function
 
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.keras import backend
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.python.util.tf_export import tf_export
 
 
-@keras_export('keras.layers.InputSpec', v1=['keras.layers.InputSpec'])
+@keras_export('keras.layers.InputSpec')
 @tf_export(v1=['layers.InputSpec'])
 class InputSpec(object):
   """Specifies the ndim, dtype and shape of every input to a layer.
@@ -54,15 +58,27 @@ class InputSpec(object):
                max_ndim=None,
                min_ndim=None,
                axes=None):
-    self.dtype = dtype
-    self.shape = shape
+    self.dtype = dtypes.as_dtype(dtype).name if dtype is not None else None
     if shape is not None:
       self.ndim = len(shape)
+      self.shape = shape
     else:
       self.ndim = ndim
+      self.shape = None
     self.max_ndim = max_ndim
     self.min_ndim = min_ndim
-    self.axes = axes or {}
+    try:
+      axes = axes or {}
+      self.axes = {int(k): axes[k] for k in axes}
+    except (ValueError, TypeError):
+      raise TypeError('The keys in axes must be integers.')
+
+    if self.axes and (self.ndim is not None or self.max_ndim is not None):
+      max_dim = (self.ndim if self.ndim else self.max_ndim) - 1
+      max_axis = max(self.axes)
+      if max_axis > max_dim:
+        raise ValueError('Axis {} is greater than the maximum allowed value: {}'
+                         .format(max_axis, max_dim))
 
   def __repr__(self):
     spec = [('dtype=' + str(self.dtype)) if self.dtype else '',
@@ -73,6 +89,42 @@ class InputSpec(object):
             ('axes=' + str(self.axes)) if self.axes else '']
     return 'InputSpec(%s)' % ', '.join(x for x in spec if x)
 
+  def get_config(self):
+    return {
+        'dtype': self.dtype,
+        'shape': self.shape,
+        'ndim': self.ndim,
+        'max_ndim': self.max_ndim,
+        'min_ndim': self.min_ndim,
+        'axes': self.axes}
+
+  @classmethod
+  def from_config(cls, config):
+    return cls(**config)
+
+
+def to_tensor_shape(spec):
+  """Returns a tf.TensorShape object that matches the shape specifications.
+
+  If the InputSpec's shape or ndim is defined, this method will return a fully
+  or partially-known shape. Otherwise, the returned TensorShape is None.
+
+  Args:
+    spec: an InputSpec object.
+
+  Returns:
+    a tf.TensorShape object
+  """
+  if spec.ndim is None and spec.shape is None:
+    return tensor_shape.TensorShape(None)
+  elif spec.shape is not None:
+    return tensor_shape.TensorShape(spec.shape)
+  else:
+    shape = [None] * spec.ndim
+    for a in spec.axes:
+      shape[a] = spec.axes[a]  # Assume that axes is defined
+    return tensor_shape.TensorShape(shape)
+
 
 def assert_input_compatibility(input_spec, inputs, layer_name):
   """Checks compatibility between the layer and provided inputs.
@@ -81,8 +133,10 @@ def assert_input_compatibility(input_spec, inputs, layer_name):
   of a layer (if any). If not, a clear and actional exception gets raised.
 
   Arguments:
-      input_spec: An InputSpec instance, or None.
-      inputs: Input tensor or list of input tensors.
+      input_spec: An InputSpec instance, list of InputSpec instances, a nested
+          structure of InputSpec instances, or None.
+      inputs: Input tensor, list of input tensors, or a nested structure of
+          input tensors.
       layer_name: String, name of the layer (for error message formatting).
 
   Raises:
@@ -91,10 +145,9 @@ def assert_input_compatibility(input_spec, inputs, layer_name):
   """
   if not input_spec:
     return
-  if not isinstance(input_spec, (list, tuple)):
-    input_spec = nest.flatten(input_spec)
 
   inputs = nest.flatten(inputs)
+  input_spec = nest.flatten(input_spec)
   if len(inputs) != len(input_spec):
     raise ValueError('Layer ' + layer_name + ' expects ' +
                      str(len(input_spec)) + ' inputs, '
@@ -169,3 +222,12 @@ def assert_input_compatibility(input_spec, inputs, layer_name):
                                ' is incompatible with layer ' + layer_name +
                                ': expected shape=' + str(spec.shape) +
                                ', found shape=' + str(shape))
+
+
+def to_tensor_spec(input_spec, default_dtype=None):
+  """Converts a Keras InputSpec object to a TensorSpec."""
+  default_dtype = default_dtype or backend.floatx()
+  if isinstance(input_spec, InputSpec):
+    dtype = input_spec.dtype or default_dtype
+    return tensor_spec.TensorSpec(to_tensor_shape(input_spec), dtype)
+  return tensor_spec.TensorSpec(None, default_dtype)

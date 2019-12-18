@@ -108,16 +108,7 @@ namespace toco {
 
   CopyMinMaxAndQuantizationRelatedFields(input_array, &output_array);
 
-  // Erase input arrays if no longer used.
-  for (const auto& input : op->inputs) {
-    if (IsDiscardableArray(*model, input) &&
-        CountOpsWithInput(*model, input) == 1) {
-      model->EraseArray(input);
-    }
-  }
-
-  // Erase the operator.
-  model->operators.erase(it);
+  DeleteOpAndArrays(model, op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

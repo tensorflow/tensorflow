@@ -78,9 +78,19 @@ class HloRunner {
     // saved modules are coming from after the HLO pass pipeline, so triggering
     // another run will likely cause errors.
     bool run_hlo_passes = false;
+
+    // If true, executes on multiple threads using se::Stream::ExecuteOnStream.
+    // Otherwise, executes using xla::Executable::ExecuteOnStreams.
+    bool use_threads = false;
   };
 
-  explicit HloRunner(se::Platform* platform);
+  // intra_op_parallelism_threads: For the CPU backend only. It is the thread
+  // pool size for parallel execution of an individual operator. The default
+  // value of -1 will result in initializing the thread pool with the number of
+  // threads equal to the number of
+  // cores in the system.
+  explicit HloRunner(se::Platform* platform,
+                     int intra_op_parallelism_threads = -1);
 
   ~HloRunner();
 
@@ -104,9 +114,9 @@ class HloRunner {
   // Transfers data between the host and device.
   StatusOr<ScopedShapedBuffer> TransferLiteralToDevice(const Literal& literal);
   StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
-      const absl::Span<const Literal* const> literals);
+      absl::Span<const Literal* const> literals);
   StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
-      const absl::Span<const Literal> literals);
+      absl::Span<const Literal> literals);
   StatusOr<Literal> TransferLiteralFromDevice(const ShapedBuffer& buffer);
 
   // Executes the given module with given literals as input and returns the
@@ -115,46 +125,44 @@ class HloRunner {
   // If run_hlo_passes is false, the module will be executed without Hlo
   // optimization.
   StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
-                            const absl::Span<const Literal* const> arguments,
+                            absl::Span<const Literal* const> arguments,
                             bool run_hlo_passes = true,
                             ExecutionProfile* profile = nullptr);
 
   StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
-                            const absl::Span<const Literal> arguments,
+                            absl::Span<const Literal> arguments,
                             bool run_hlo_passes = true,
                             ExecutionProfile* profile = nullptr);
 
   StatusOr<Literal> Execute(std::unique_ptr<Executable> executable,
-                            const absl::Span<const Literal* const> arguments,
+                            absl::Span<const Literal* const> arguments,
                             ExecutionProfile* profile = nullptr);
 
   StatusOr<Literal> Execute(std::unique_ptr<Executable> executable,
-                            const absl::Span<const Literal> arguments,
+                            absl::Span<const Literal> arguments,
                             ExecutionProfile* profile = nullptr);
 
   // As Execute(), but accepts and returns device buffers instead of host
   // buffers.
   StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
       std::unique_ptr<HloModule> module,
-      const absl::Span<const ShapedBuffer* const> arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
 
   StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
       std::unique_ptr<HloModule> module,
-      const absl::Span<const ScopedShapedBuffer> arguments,
+      absl::Span<const ScopedShapedBuffer> arguments,
       bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
 
   // In the following two calls, "executable" is not a unique_ptr to allow
   // reuse of the Executable.  This call may update the profile information in
   // *executable.
   StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
-      Executable* executable,
-      const absl::Span<const ShapedBuffer* const> arguments,
+      Executable* executable, absl::Span<const ShapedBuffer* const> arguments,
       ExecutionProfile* profile = nullptr);
 
   StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
-      Executable* executable,
-      const absl::Span<const ScopedShapedBuffer> arguments,
+      Executable* executable, absl::Span<const ScopedShapedBuffer> arguments,
       ExecutionProfile* profile = nullptr);
 
   // Creates an executable object given an HLO module. If run_hlo_passes is
@@ -168,6 +176,21 @@ class HloRunner {
   StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
       const ReplicatedExecuteOptions& options);
+
+  // Same as above, but with specified device assignment.
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
+      std::unique_ptr<HloModule> module,
+      const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment);
+
+  // Same as above, but with a reusable Executable.  This may update the profile
+  // information in *executable.
+  //
+  // Note that this call ignores ReplicatedExecutionOptions::run_hlo_passes,
+  // since we've already compiled the Executable.
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
+      Executable* executable, const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment, ExecutionProfile* profile = nullptr);
 
   // If backend is not created in the constructor, creates and returns the
   // default backend. If creation fails, crashes the program.
@@ -183,7 +206,8 @@ class HloRunner {
   // will be used to configure the replication parameters. Replicated executions
   // should pass the device_assignment parameter.
   ServiceExecutableRunOptions GetServiceRunOptionsForDevice(
-      int64 device, se::Stream* stream, DeviceAssignment* device_assignment);
+      int64 device, se::Stream* stream, DeviceAssignment* device_assignment,
+      RunId run_id);
 
   std::unique_ptr<Backend> backend_;
 };

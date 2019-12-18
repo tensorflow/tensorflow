@@ -94,7 +94,11 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
   def test_layer_as_activation(self):
     layer = keras.layers.Dense(1, activation=keras.layers.ReLU())
     model = testing_utils.get_model_from_layers([layer], input_shape=(10,))
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(np.ones((10, 10)), np.ones((10, 1)), batch_size=2)
 
 

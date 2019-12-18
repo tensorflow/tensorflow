@@ -17,14 +17,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import multiprocessing
+import os
+
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
@@ -50,6 +53,8 @@ def _interleave(lists, cycle_length, block_length):
   # `open_iterators` are the iterators whose elements are currently being
   # interleaved.
   open_iterators = []
+  if cycle_length == dataset_ops.AUTOTUNE:
+    cycle_length = multiprocessing.cpu_count()
   for i in range(cycle_length):
     if all_iterators:
       open_iterators.append(all_iterators.pop(0))
@@ -87,29 +92,47 @@ def _repeat(values, count):
   return [[value] * value for value in np.tile(values, count)]
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @parameterized.named_parameters(
-      ("1", [4, 5, 6], 1, 1, [
-          4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 4, 4, 4, 4, 5, 5, 5, 5,
-          5, 6, 6, 6, 6, 6, 6
-      ]),
-      ("2", [4, 5, 6], 2, 1, [
-          4, 5, 4, 5, 4, 5, 4, 5, 5, 6, 6, 4, 6, 4, 6, 4, 6, 4, 6, 5, 6, 5, 6,
-          5, 6, 5, 6, 5, 6, 6
-      ]),
-      ("3", [4, 5, 6], 2, 3, [
-          4, 4, 4, 5, 5, 5, 4, 5, 5, 6, 6, 6, 4, 4, 4, 6, 6, 6, 4, 5, 5, 5, 6,
-          6, 6, 5, 5, 6, 6, 6
-      ]),
-      ("4", [4, 5, 6], 7, 2, [
-          4, 4, 5, 5, 6, 6, 4, 4, 5, 5, 6, 6, 4, 4, 5, 5, 6, 6, 4, 4, 5, 5, 6,
-          6, 5, 6, 6, 5, 6, 6
-      ]),
-      ("5", [4, 0, 6], 2, 1,
-       [4, 4, 6, 4, 6, 4, 6, 6, 4, 6, 4, 6, 4, 4, 6, 6, 6, 6, 6, 6]),
-  )
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              input_values=[[4, 5, 6]],
+              cycle_length=1,
+              block_length=1,
+              expected_elements=[[
+                  4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 4, 4, 4, 4, 5, 5,
+                  5, 5, 5, 6, 6, 6, 6, 6, 6
+              ]]) + combinations.combine(
+                  input_values=[[4, 5, 6]],
+                  cycle_length=2,
+                  block_length=1,
+                  expected_elements=[[
+                      4, 5, 4, 5, 4, 5, 4, 5, 5, 6, 6, 4, 6, 4, 6, 4, 6, 4, 6,
+                      5, 6, 5, 6, 5, 6, 5, 6, 5, 6, 6
+                  ]]) + combinations.combine(
+                      input_values=[[4, 5, 6]],
+                      cycle_length=2,
+                      block_length=3,
+                      expected_elements=[[
+                          4, 4, 4, 5, 5, 5, 4, 5, 5, 6, 6, 6, 4, 4, 4, 6, 6, 6,
+                          4, 5, 5, 5, 6, 6, 6, 5, 5, 6, 6, 6
+                      ]]) + combinations.combine(
+                          input_values=[[4, 5, 6]],
+                          cycle_length=7,
+                          block_length=2,
+                          expected_elements=[[
+                              4, 4, 5, 5, 6, 6, 4, 4, 5, 5, 6, 6, 4, 4, 5, 5, 6,
+                              6, 4, 4, 5, 5, 6, 6, 5, 6, 6, 5, 6, 6
+                          ]]) +
+          combinations.combine(
+              input_values=[[4, 0, 6]],
+              cycle_length=2,
+              block_length=1,
+              expected_elements=[[
+                  4, 4, 6, 4, 6, 4, 6, 6, 4, 6, 4, 6, 4, 4, 6, 6, 6, 6, 6, 6
+              ]])))
   def testPythonImplementation(self, input_values, cycle_length, block_length,
                                expected_elements):
     input_lists = _repeat(input_values, 2)
@@ -119,26 +142,35 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
                                        block_length)):
       self.assertEqual(expected, produced)
 
-  @parameterized.named_parameters(
-      ("1", np.int64([4, 5, 6]), 1, 3, None),
-      ("2", np.int64([4, 5, 6]), 1, 3, 1),
-      ("3", np.int64([4, 5, 6]), 2, 1, None),
-      ("4", np.int64([4, 5, 6]), 2, 1, 1),
-      ("5", np.int64([4, 5, 6]), 2, 1, 2),
-      ("6", np.int64([4, 5, 6]), 2, 3, None),
-      ("7", np.int64([4, 5, 6]), 2, 3, 1),
-      ("8", np.int64([4, 5, 6]), 2, 3, 2),
-      ("9", np.int64([4, 5, 6]), 7, 2, None),
-      ("10", np.int64([4, 5, 6]), 7, 2, 1),
-      ("11", np.int64([4, 5, 6]), 7, 2, 3),
-      ("12", np.int64([4, 5, 6]), 7, 2, 5),
-      ("13", np.int64([4, 5, 6]), 7, 2, 7),
-      ("14", np.int64([]), 2, 3, None),
-      ("15", np.int64([0, 0, 0]), 2, 3, None),
-      ("16", np.int64([4, 0, 6]), 2, 3, None),
-      ("17", np.int64([4, 0, 6]), 2, 3, 1),
-      ("18", np.int64([4, 0, 6]), 2, 3, 2),
-  )
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              input_values=[np.int64([4, 5, 6])],
+              cycle_length=1,
+              block_length=3,
+              num_parallel_calls=[None, 1]) + combinations.combine(
+                  input_values=[np.int64([4, 5, 6])],
+                  cycle_length=2,
+                  block_length=[1, 3],
+                  num_parallel_calls=[None, 1, 2]) + combinations.combine(
+                      input_values=[np.int64([4, 5, 6])],
+                      cycle_length=7,
+                      block_length=2,
+                      num_parallel_calls=[None, 1, 3, 5, 7]) +
+          combinations.combine(
+              input_values=[np.int64([4, 5, 6, 7])],
+              cycle_length=dataset_ops.AUTOTUNE,
+              block_length=3,
+              num_parallel_calls=[None, 1]) + combinations.combine(
+                  input_values=[np.int64([]), np.int64([0, 0, 0])],
+                  cycle_length=2,
+                  block_length=3,
+                  num_parallel_calls=[None]) + combinations.combine(
+                      input_values=[np.int64([4, 0, 6])],
+                      cycle_length=2,
+                      block_length=3,
+                      num_parallel_calls=[None, 1, 2])))
   def testInterleaveDataset(self, input_values, cycle_length, block_length,
                             num_parallel_calls):
     count = 2
@@ -152,21 +184,22 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
     ]
     self.assertDatasetProduces(dataset, expected_output)
 
-  @parameterized.named_parameters(
-      ("1", np.float32([1., np.nan, 2., np.nan, 3.]), 1, 3, None),
-      ("2", np.float32([1., np.nan, 2., np.nan, 3.]), 1, 3, 1),
-      ("3", np.float32([1., np.nan, 2., np.nan, 3.]), 2, 1, None),
-      ("4", np.float32([1., np.nan, 2., np.nan, 3.]), 2, 1, 1),
-      ("5", np.float32([1., np.nan, 2., np.nan, 3.]), 2, 1, 2),
-      ("6", np.float32([1., np.nan, 2., np.nan, 3.]), 2, 3, None),
-      ("7", np.float32([1., np.nan, 2., np.nan, 3.]), 2, 3, 1),
-      ("8", np.float32([1., np.nan, 2., np.nan, 3.]), 2, 3, 2),
-      ("9", np.float32([1., np.nan, 2., np.nan, 3.]), 7, 2, None),
-      ("10", np.float32([1., np.nan, 2., np.nan, 3.]), 7, 2, 1),
-      ("11", np.float32([1., np.nan, 2., np.nan, 3.]), 7, 2, 3),
-      ("12", np.float32([1., np.nan, 2., np.nan, 3.]), 7, 2, 5),
-      ("13", np.float32([1., np.nan, 2., np.nan, 3.]), 7, 2, 7),
-  )
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              input_values=[np.float32([1., np.nan, 2., np.nan, 3.])],
+              cycle_length=1,
+              block_length=3,
+              num_parallel_calls=[None, 1]) + combinations.combine(
+                  input_values=[np.float32([1., np.nan, 2., np.nan, 3.])],
+                  cycle_length=2,
+                  block_length=[1, 3],
+                  num_parallel_calls=[None, 1, 2]) + combinations.combine(
+                      input_values=[np.float32([1., np.nan, 2., np.nan, 3.])],
+                      cycle_length=7,
+                      block_length=2,
+                      num_parallel_calls=[None, 1, 3, 5, 7])))
   def testInterleaveDatasetError(self, input_values, cycle_length, block_length,
                                  num_parallel_calls):
     dataset = dataset_ops.Dataset.from_tensor_slices(input_values).map(
@@ -184,6 +217,7 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testInterleaveSparse(self):
 
     def _map_fn(i):
@@ -206,19 +240,30 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  @parameterized.named_parameters(
-      ("1", np.int64([4, 5, 6]), 1, 3, 1),
-      ("2", np.int64([4, 5, 6]), 2, 1, 1),
-      ("3", np.int64([4, 5, 6]), 2, 1, 2),
-      ("4", np.int64([4, 5, 6]), 2, 3, 1),
-      ("5", np.int64([4, 5, 6]), 2, 3, 2),
-      ("6", np.int64([4, 5, 6]), 7, 2, 1),
-      ("7", np.int64([4, 5, 6]), 7, 2, 3),
-      ("8", np.int64([4, 5, 6]), 7, 2, 5),
-      ("9", np.int64([4, 5, 6]), 7, 2, 7),
-      ("10", np.int64([4, 0, 6]), 2, 3, 1),
-      ("11", np.int64([4, 0, 6]), 2, 3, 2),
-  )
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              input_values=[np.int64([4, 5, 6])],
+              cycle_length=1,
+              block_length=3,
+              num_parallel_calls=1) + combinations.combine(
+                  input_values=[np.int64([4, 5, 6])],
+                  cycle_length=2,
+                  block_length=[1, 3],
+                  num_parallel_calls=[1, 2]) + combinations.combine(
+                      input_values=[np.int64([4, 5, 6])],
+                      cycle_length=7,
+                      block_length=2,
+                      num_parallel_calls=[1, 3, 5, 7]) + combinations.combine(
+                          input_values=[np.int64([4, 5, 6, 7])],
+                          cycle_length=dataset_ops.AUTOTUNE,
+                          block_length=3,
+                          num_parallel_calls=1) + combinations.combine(
+                              input_values=[np.int64([4, 0, 6])],
+                              cycle_length=2,
+                              block_length=3,
+                              num_parallel_calls=[1, 2])))
   def testSloppyInterleaveDataset(self, input_values, cycle_length,
                                   block_length, num_parallel_calls):
     count = 2
@@ -238,6 +283,31 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
     for _ in range(len(expected_output)):
       actual_output.append(self.evaluate(get_next()))
     self.assertAllEqual(expected_output.sort(), actual_output.sort())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testInterleaveMap(self):
+    dataset = dataset_ops.Dataset.range(100)
+
+    def interleave_fn(x):
+      dataset = dataset_ops.Dataset.from_tensors(x)
+      return dataset.map(lambda x: x + x)
+
+    dataset = dataset.interleave(interleave_fn, cycle_length=5)
+    dataset = dataset.interleave(interleave_fn, cycle_length=5)
+
+    self.assertDatasetProduces(dataset, [4 * x for x in range(100)])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testParallelInterleaveCached(self):
+    dataset = dataset_ops.Dataset.range(5)
+    dataset = dataset.cache(os.path.join(self.get_temp_dir(), "cache_dir"))
+
+    def interleave_fn(x):
+      return dataset_ops.Dataset.from_tensors(x)
+
+    dataset = dataset.interleave(
+        interleave_fn, cycle_length=2, num_parallel_calls=2)
+    self.assertDatasetProduces(dataset, list(range(5)))
 
 
 if __name__ == "__main__":

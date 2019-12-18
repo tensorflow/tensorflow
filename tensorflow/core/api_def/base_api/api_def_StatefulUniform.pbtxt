@@ -1,0 +1,39 @@
+op {
+  graph_op_name: "StatefulUniform"
+  visibility: HIDDEN
+  in_arg {
+    name: "resource"
+    description: <<END
+The handle of the resource variable that stores the state of the RNG.
+END
+  }
+  in_arg {
+    name: "algorithm"
+    description: <<END
+The RNG algorithm.
+END
+  }
+  in_arg {
+    name: "shape"
+    description: <<END
+The shape of the output tensor.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Random values with specified shape.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of the output.
+END
+  }
+  summary: "Outputs random values from a uniform distribution."
+  description: <<END
+The generated values follow a uniform distribution in the range `[0, 1)`. The
+lower bound 0 is included in the range, while the upper bound 1 is excluded.
+END
+}

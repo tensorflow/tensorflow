@@ -76,7 +76,7 @@ def generate_checkpoint_state_proto(save_dir,
     last_preserved_timestamp: A float, indicating the number of seconds since
       the Epoch when the last preserved checkpoint was written, e.g. due to a
       `keep_checkpoint_every_n_hours` parameter (see
-      `tf.contrib.checkpoint.CheckpointManager` for an implementation).
+      `tf.train.CheckpointManager` for an implementation).
   Returns:
     CheckpointState proto with model_checkpoint_path and
     all_model_checkpoint_paths updated to either absolute paths or
@@ -108,8 +108,7 @@ def generate_checkpoint_state_proto(save_dir,
   if not os.path.isabs(save_dir):
     if not os.path.isabs(model_checkpoint_path):
       model_checkpoint_path = os.path.relpath(model_checkpoint_path, save_dir)
-    for i in range(len(all_model_checkpoint_paths)):
-      p = all_model_checkpoint_paths[i]
+    for i, p in enumerate(all_model_checkpoint_paths):
       if not os.path.isabs(p):
         all_model_checkpoint_paths[i] = os.path.relpath(p, save_dir)
 
@@ -124,8 +123,8 @@ def generate_checkpoint_state_proto(save_dir,
 
 @deprecation.deprecated(
     date=None,
-    instructions=("Use tf.train.CheckpointManager to manage checkpoints rather "
-                  "than manually editing the Checkpoint proto."))
+    instructions=("Use `tf.train.CheckpointManager` to manage checkpoints "
+                  "rather than manually editing the Checkpoint proto."))
 @tf_export(v1=["train.update_checkpoint_state"])
 def update_checkpoint_state(save_dir,
                             model_checkpoint_path,
@@ -153,7 +152,7 @@ def update_checkpoint_state(save_dir,
     last_preserved_timestamp: A float, indicating the number of seconds since
       the Epoch when the last preserved checkpoint was written, e.g. due to a
       `keep_checkpoint_every_n_hours` parameter (see
-      `tf.contrib.checkpoint.CheckpointManager` for an implementation).
+      `tf.train.CheckpointManager` for an implementation).
   Raises:
     RuntimeError: If any of the model checkpoint paths conflict with the file
       containing CheckpointSate.
@@ -197,7 +196,7 @@ def update_checkpoint_state_internal(save_dir,
     last_preserved_timestamp: A float, indicating the number of seconds since
       the Epoch when the last preserved checkpoint was written, e.g. due to a
       `keep_checkpoint_every_n_hours` parameter (see
-      `tf.contrib.checkpoint.CheckpointManager` for an implementation).
+      `tf.train.CheckpointManager` for an implementation).
 
   Raises:
     RuntimeError: If any of the model checkpoint paths conflict with the file
@@ -281,8 +280,7 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
       if not os.path.isabs(ckpt.model_checkpoint_path):
         ckpt.model_checkpoint_path = os.path.join(checkpoint_dir,
                                                   ckpt.model_checkpoint_path)
-      for i in range(len(ckpt.all_model_checkpoint_paths)):
-        p = ckpt.all_model_checkpoint_paths[i]
+      for i, p in enumerate(ckpt.all_model_checkpoint_paths):
         if not os.path.isabs(p):
           ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
   except errors.OpError as e:
@@ -323,11 +321,21 @@ def _prefix_to_checkpoint_path(prefix, format_version):
 def latest_checkpoint(checkpoint_dir, latest_filename=None):
   """Finds the filename of latest saved checkpoint file.
 
+  Gets the checkpoint state given the provided checkpoint_dir and looks for a
+  corresponding TensorFlow 2 (preferred) or TensorFlow 1.x checkpoint path.
+  The latest_filename argument is only applicable if you are saving checkpoint
+  using `v1.Saver.save`
+
+
+  See the [Training Checkpoints
+  Guide](https://www.tensorflow.org/guide/checkpoint) for more details and
+  examples.`
+
   Args:
     checkpoint_dir: Directory where the variables were saved.
     latest_filename: Optional name for the protocol buffer file that
       contains the list of most recent checkpoint filenames.
-      See the corresponding argument to `Saver.save()`.
+      See the corresponding argument to `v1.Saver.save`.
 
   Returns:
     The full path to the latest checkpoint or `None` if no checkpoint was found.
@@ -349,6 +357,30 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   return None
 
 
+def checkpoint_exists_internal(checkpoint_prefix):
+  """Checks whether a V1 or V2 checkpoint exists with the specified prefix.
+
+  This is an internal function to check if a checkpoint exists,
+  since it takes into account the naming difference between V1 and V2 formats.
+
+  Args:
+    checkpoint_prefix: the prefix of a V1 or V2 checkpoint, with V2 taking
+      priority.  Typically the result of `Saver.save()` or that of
+      `tf.train.latest_checkpoint()`, regardless of sharded/non-sharded or
+      V1/V2.
+  Returns:
+    A bool, true if a checkpoint referred to by `checkpoint_prefix` exists.
+  """
+  pathname = _prefix_to_checkpoint_path(checkpoint_prefix,
+                                        saver_pb2.SaverDef.V2)
+  if file_io.get_matching_files(pathname):
+    return True
+  elif file_io.get_matching_files(checkpoint_prefix):
+    return True
+  else:
+    return False
+
+
 @deprecation.deprecated(
     date=None,
     instructions="Use standard file APIs to check for files with this prefix.")
@@ -364,17 +396,11 @@ def checkpoint_exists(checkpoint_prefix):
       priority.  Typically the result of `Saver.save()` or that of
       `tf.train.latest_checkpoint()`, regardless of sharded/non-sharded or
       V1/V2.
+
   Returns:
-    A bool, true iff a checkpoint referred to by `checkpoint_prefix` exists.
+    A bool, true if a checkpoint referred to by `checkpoint_prefix` exists.
   """
-  pathname = _prefix_to_checkpoint_path(checkpoint_prefix,
-                                        saver_pb2.SaverDef.V2)
-  if file_io.get_matching_files(pathname):
-    return True
-  elif file_io.get_matching_files(checkpoint_prefix):
-    return True
-  else:
-    return False
+  return checkpoint_exists_internal(checkpoint_prefix)
 
 
 @deprecation.deprecated(
@@ -390,6 +416,10 @@ def get_checkpoint_mtimes(checkpoint_prefixes):
 
   This is the recommended way to get the mtimes, since it takes into account
   the naming difference between V1 and V2 formats.
+
+  Note: If not all checkpoints exist, the length of the returned mtimes list
+  will be smaller than the length of `checkpoint_prefixes` list, so mapping
+  checkpoints to corresponding mtimes will not be possible.
 
   Args:
     checkpoint_prefixes: a list of checkpoint paths, typically the results of
@@ -477,10 +507,11 @@ class CheckpointManager(object):
   """Deletes old checkpoints.
 
   Example usage:
+
   ```python
   import tensorflow as tf
   checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
-  manager = tf.contrib.checkpoint.CheckpointManager(
+  manager = tf.train.CheckpointManager(
       checkpoint, directory="/tmp/model", max_to_keep=5)
   status = checkpoint.restore(manager.latest_checkpoint)
   while True:
@@ -493,8 +524,12 @@ class CheckpointManager(object):
   particular directory at a time.
   """
 
-  def __init__(self, checkpoint, directory,
-               max_to_keep, keep_checkpoint_every_n_hours=None):
+  def __init__(self,
+               checkpoint,
+               directory,
+               max_to_keep,
+               keep_checkpoint_every_n_hours=None,
+               checkpoint_name="ckpt"):
     """Configure a `CheckpointManager` for use in `directory`.
 
     If a `CheckpointManager` was previously used in `directory`, its
@@ -533,6 +568,7 @@ class CheckpointManager(object):
         checkpoint will be preserved if it has been at least
         `keep_checkpoint_every_n_hours` since the last preserved checkpoint. The
         default setting of `None` does not preserve any checkpoints in this way.
+      checkpoint_name: Custom name for the checkpoint file.
 
     Raises:
       ValueError: If `max_to_keep` is not a positive integer.
@@ -547,7 +583,7 @@ class CheckpointManager(object):
     self._max_to_keep = max_to_keep
     self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
     self._directory = directory
-    self._checkpoint_prefix = os.path.join(directory, "ckpt")
+    self._checkpoint_prefix = os.path.join(directory, checkpoint_name)
     recovered_state = get_checkpoint_state(directory)
     current_clock = time.time()
     self._maybe_delete = collections.OrderedDict()
@@ -578,6 +614,10 @@ class CheckpointManager(object):
         timestamp = min(timestamp, current_clock)
         if timestamp > self._last_preserved_timestamp:
           self._maybe_delete[filename] = timestamp
+
+  @property
+  def directory(self):
+    return self._directory
 
   @property
   def latest_checkpoint(self):
@@ -663,7 +703,7 @@ class CheckpointManager(object):
 
     Returns:
       The path to the new checkpoint. It is also recorded in the `checkpoints`
-      and `latest_checkpoint` properies.
+      and `latest_checkpoint` properties.
     """
     # Save counter logic duplicated from tf.train.Checkpoint, soon to diverge
     # slightly with a custom numbering option.
@@ -699,6 +739,13 @@ class CheckpointManager(object):
       del self._maybe_delete[save_path]
     self._maybe_delete[save_path] = timestamp
     self._latest_checkpoint = save_path
+    # Before deleting anything we update the Checkpoint proto with the new
+    # checkpoint. We'll go back and correct it after cleaning up old files, but
+    # a preemption while deleting will be more likely to see the new checkpoint
+    # this way.
+    self._record_state()
     self._sweep()
+    # Write out the Checkpoint proto a second time, now without the deleted
+    # checkpoints.
     self._record_state()
     return save_path

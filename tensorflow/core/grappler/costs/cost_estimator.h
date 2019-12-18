@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
 
-#include <chrono>
 #include <cmath>
 #include <unordered_map>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
@@ -42,7 +42,7 @@ struct DeviceInfo {
   // Read bandwidth to intermediate memory in GB per second.
   double intermediate_read_gb_per_sec;
 
-  // Read bandwidth to intermediate memory in GB per second.
+  // Write bandwidth to intermediate memory in GB per second.
   double intermediate_write_gb_per_sec;
 
   DeviceInfo()
@@ -134,6 +134,8 @@ struct Costs {
 
   // Intermediate memory access cost of running the graph
   Duration intermediate_memory_time;
+  Duration intermediate_memory_read_time;   // Intermediate memory read cost.
+  Duration intermediate_memory_write_time;  // Intermediate memory write cost.
 
   // This field can be a very pessimistic estimate of the main memory
   // requirements of a graph. For example, it might assume that all activations
@@ -201,6 +203,12 @@ Costs Costs::ZeroCosts() {
   costs.max_per_op_streaming = kZeroMemory;
   return costs;
 }
+
+Costs CombineCosts(const Costs& left, const Costs& right);
+
+// Multiplies Costs by a scalar.
+// Equivalent to applying CombineCosts "multiplier" times.
+Costs MultiplyCosts(const Costs& costs, int multiplier);
 
 // Given a GrapperItem and an optimized implementation of the corresponding
 // TensorFlow graph, the CostEstimator attempts to predicts the actual cost of

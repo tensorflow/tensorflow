@@ -73,14 +73,14 @@ static const char kTestFlagString[] =
     "--single_quoted='single quoted \\\\ \n \"' "
     "--double_quoted=\"double quoted \\\\ \n '\\\"\" ";
 
-// Test that the environent variable is parsed correctly.
+// Test that the environment variable is parsed correctly.
 TEST(ParseFlagsFromEnv, Basic) {
   // Prepare environment.
   setenv("TF_XLA_FLAGS", kTestFlagString, true /*overwrite*/);
   TestParseFlagsFromEnv("(flags in environment variable)");
 }
 
-// Test that a file named by the environent variable is parsed correctly.
+// Test that a file named by the environment variable is parsed correctly.
 TEST(ParseFlagsFromEnv, File) {
   // environment variables where  tmp dir may be specified.
   static const char* kTempVars[] = {"TEST_TMPDIR", "TMP"};
@@ -154,7 +154,7 @@ int main(int argc, char* argv[]) {
   xla::int32 int_flag = 1;
   const std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("recursing", &recursing,
-                       "Whether the binary is being invoked recusively."),
+                       "Whether the binary is being invoked recursively."),
       tensorflow::Flag("int_flag", &int_flag, "An integer flag to test with"),
   };
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);

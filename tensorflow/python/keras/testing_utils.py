@@ -18,13 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import threading
 
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.python.keras.optimizer_v2 import adam as adam_v2
@@ -33,6 +38,7 @@ from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_de
 from tensorflow.python.keras.optimizer_v2 import nadam as nadam_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 
@@ -65,9 +71,11 @@ def get_test_data(train_samples,
           (x[train_samples:], y[train_samples:]))
 
 
+@test_util.use_deterministic_cudnn
 def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
                input_data=None, expected_output=None,
-               expected_output_dtype=None):
+               expected_output_dtype=None, expected_output_shape=None,
+               validate_training=True, adapt_data=None):
   """Test routine for a layer with a single input and single output.
 
   Arguments:
@@ -77,8 +85,14 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     input_shape: Input shape tuple.
     input_dtype: Data type of the input data.
     input_data: Numpy array of input data.
-    expected_output: Shape tuple for the expected shape of the output.
+    expected_output: Numpy array of the expected output.
     expected_output_dtype: Data type expected for the output.
+    expected_output_shape: Shape tuple for the expected shape of the output.
+    validate_training: Whether to attempt to validate training on this layer.
+      This might be set to False for non-differentiable layers that output
+      string or integer values.
+    adapt_data: Optional data for an 'adapt' call. If None, adapt() will not
+      be tested for this layer. This is only relevant for PreprocessingLayers.
 
   Returns:
     The output data (Numpy array) returned by the layer, for additional
@@ -111,6 +125,10 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   kwargs = kwargs or {}
   layer = layer_cls(**kwargs)
 
+  # Test adapt, if data was passed.
+  if adapt_data is not None:
+    layer.adapt(adapt_data)
+
   # test get_weights , set_weights at layer level
   weights = layer.get_weights()
   layer.set_weights(weights)
@@ -131,27 +149,50 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
                           keras.backend.dtype(y),
                           expected_output_dtype,
                           kwargs))
-  # check shape inference
-  model = keras.models.Model(x, y)
-  expected_output_shape = tuple(
-      layer.compute_output_shape(
-          tensor_shape.TensorShape(input_shape)).as_list())
-  actual_output = model.predict(input_data)
-  actual_output_shape = actual_output.shape
-  for expected_dim, actual_dim in zip(expected_output_shape,
-                                      actual_output_shape):
-    if expected_dim is not None:
-      if expected_dim != actual_dim:
+
+  def assert_shapes_equal(expected, actual):
+    """Asserts that the output shape from the layer matches the actual shape."""
+    if len(expected) != len(actual):
+      raise AssertionError(
+          'When testing layer %s, for input %s, found output_shape='
+          '%s but expected to find %s.\nFull kwargs: %s' %
+          (layer_cls.__name__, x, actual, expected, kwargs))
+
+    for expected_dim, actual_dim in zip(expected, actual):
+      if isinstance(expected_dim, tensor_shape.Dimension):
+        expected_dim = expected_dim.value
+      if isinstance(actual_dim, tensor_shape.Dimension):
+        actual_dim = actual_dim.value
+      if expected_dim is not None and expected_dim != actual_dim:
         raise AssertionError(
             'When testing layer %s, for input %s, found output_shape='
             '%s but expected to find %s.\nFull kwargs: %s' %
-            (layer_cls.__name__,
-             x,
-             actual_output_shape,
-             expected_output_shape,
-             kwargs))
+            (layer_cls.__name__, x, actual, expected, kwargs))
+
+  if expected_output_shape is not None:
+    assert_shapes_equal(tensor_shape.TensorShape(expected_output_shape),
+                        y.shape)
+
+  # check shape inference
+  model = keras.models.Model(x, y)
+  computed_output_shape = tuple(
+      layer.compute_output_shape(
+          tensor_shape.TensorShape(input_shape)).as_list())
+  computed_output_signature = layer.compute_output_signature(
+      tensor_spec.TensorSpec(shape=input_shape, dtype=input_dtype))
+  actual_output = model.predict(input_data)
+  actual_output_shape = actual_output.shape
+  assert_shapes_equal(computed_output_shape, actual_output_shape)
+  assert_shapes_equal(computed_output_signature.shape, actual_output_shape)
+  if computed_output_signature.dtype != actual_output.dtype:
+    raise AssertionError(
+        'When testing layer %s, for input %s, found output_dtype='
+        '%s but expected to find %s.\nFull kwargs: %s' %
+        (layer_cls.__name__, x, actual_output.dtype,
+         computed_output_signature.dtype, kwargs))
   if expected_output is not None:
-    np.testing.assert_allclose(actual_output, expected_output, rtol=1e-3)
+    np.testing.assert_allclose(actual_output, expected_output,
+                               rtol=1e-3, atol=1e-6)
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
@@ -160,33 +201,37 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=2e-3)
+    np.testing.assert_allclose(output, actual_output, rtol=1e-3, atol=1e-6)
 
   # test training mode (e.g. useful for dropout tests)
   # Rebuild the model to avoid the graph being reused between predict() and
-  # train(). This was causing some error for layer with Defun as it body.
   # See b/120160788 for more details. This should be mitigated after 2.0.
-  model = keras.models.Model(x, layer(x))
-  if _thread_local_data.run_eagerly is not None:
-    model.compile(
-        'rmsprop',
-        'mse',
-        weighted_metrics=['acc'],
-        run_eagerly=should_run_eagerly())
-  else:
-    model.compile('rmsprop', 'mse', weighted_metrics=['acc'])
-  model.train_on_batch(input_data, actual_output)
+  if validate_training:
+    model = keras.models.Model(x, layer(x))
+    if _thread_local_data.run_eagerly is not None:
+      model.compile(
+          'rmsprop',
+          'mse',
+          weighted_metrics=['acc'],
+          run_eagerly=should_run_eagerly())
+    else:
+      model.compile('rmsprop', 'mse', weighted_metrics=['acc'])
+    model.train_on_batch(input_data, actual_output)
 
   # test as first layer in Sequential API
   layer_config = layer.get_config()
   layer_config['batch_input_shape'] = input_shape
   layer = layer.__class__.from_config(layer_config)
 
+  # Test adapt, if data was passed.
+  if adapt_data is not None:
+    layer.adapt(adapt_data)
+
   model = keras.models.Sequential()
   model.add(layer)
   actual_output = model.predict(input_data)
   actual_output_shape = actual_output.shape
-  for expected_dim, actual_dim in zip(expected_output_shape,
+  for expected_dim, actual_dim in zip(computed_output_shape,
                                       actual_output_shape):
     if expected_dim is not None:
       if expected_dim != actual_dim:
@@ -197,10 +242,11 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
             (layer_cls.__name__,
              x,
              actual_output_shape,
-             expected_output_shape,
+             computed_output_shape,
              kwargs))
   if expected_output is not None:
-    np.testing.assert_allclose(actual_output, expected_output, rtol=1e-3)
+    np.testing.assert_allclose(actual_output, expected_output,
+                               rtol=1e-3, atol=1e-6)
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
@@ -209,7 +255,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=2e-3)
+    np.testing.assert_allclose(output, actual_output, rtol=1e-3, atol=1e-6)
 
   # for further checks in the caller function
   return actual_output
@@ -218,6 +264,8 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
 _thread_local_data = threading.local()
 _thread_local_data.model_type = None
 _thread_local_data.run_eagerly = None
+_thread_local_data.experimental_run_tf_function = None
+_thread_local_data.saved_model_format = None
 
 
 @tf_contextlib.contextmanager
@@ -273,6 +321,71 @@ def should_run_eagerly():
   return _thread_local_data.run_eagerly and context.executing_eagerly()
 
 
+@tf_contextlib.contextmanager
+def experimental_run_tf_function_scope(value):
+  """Provides a scope within which we compile models to run with distribution.
+
+  The boolean gets restored to its original value upon exiting the scope.
+
+  Arguments:
+     value: Bool specifying if we should run models with default distribution
+     in the active test. Should be True or False.
+
+  Yields:
+    The provided value.
+  """
+  previous_value = _thread_local_data.experimental_run_tf_function
+  try:
+    _thread_local_data.experimental_run_tf_function = value
+    yield value
+  finally:
+    # Restore model type to initial value.
+    _thread_local_data.experimental_run_tf_function = previous_value
+
+
+def should_run_tf_function():
+  """Returns whether the models we are testing should be run distributed."""
+  if _thread_local_data.experimental_run_tf_function is None:
+    raise ValueError(
+        'Cannot call `should_run_tf_function()` outside of a '
+        '`experimental_run_tf_function_scope()` or `run_all_keras_modes` '
+        'decorator.')
+
+  return (_thread_local_data.experimental_run_tf_function and
+          context.executing_eagerly())
+
+
+@tf_contextlib.contextmanager
+def saved_model_format_scope(value):
+  """Provides a scope within which the savde model format to test is `value`.
+
+  The saved model format gets restored to its original value upon exiting the
+  scope.
+
+  Arguments:
+     value: saved model format value
+
+  Yields:
+    The provided value.
+  """
+  previous_value = _thread_local_data.saved_model_format
+  try:
+    _thread_local_data.saved_model_format = value
+    yield value
+  finally:
+    # Restore saved model format to initial value.
+    _thread_local_data.saved_model_format = previous_value
+
+
+def get_save_format():
+  if _thread_local_data.saved_model_format is None:
+    raise ValueError(
+        'Cannot call `get_save_format()` outside of a '
+        '`saved_model_format_scope()` or `run_with_all_saved_model_formats` '
+        'decorator.')
+  return _thread_local_data.saved_model_format
+
+
 def get_model_type():
   """Gets the model type that should be tested."""
   if _thread_local_data.model_type is None:
@@ -303,17 +416,28 @@ def get_small_functional_mlp(num_hidden, num_classes, input_dim):
   return keras.Model(inputs, outputs)
 
 
-class _SmallSubclassMLP(keras.Model):
+class SmallSubclassMLP(keras.Model):
   """A subclass model based small MLP."""
 
-  def __init__(self, num_hidden, num_classes):
-    super(_SmallSubclassMLP, self).__init__()
+  def __init__(self, num_hidden, num_classes, use_bn=False, use_dp=False):
+    super(SmallSubclassMLP, self).__init__(name='test_model')
+    self.use_bn = use_bn
+    self.use_dp = use_dp
+
     self.layer_a = keras.layers.Dense(num_hidden, activation='relu')
     activation = 'sigmoid' if num_classes == 1 else 'softmax'
     self.layer_b = keras.layers.Dense(num_classes, activation=activation)
+    if self.use_dp:
+      self.dp = keras.layers.Dropout(0.5)
+    if self.use_bn:
+      self.bn = keras.layers.BatchNormalization(axis=-1)
 
   def call(self, inputs, **kwargs):
     x = self.layer_a(inputs)
+    if self.use_dp:
+      x = self.dp(x)
+    if self.use_bn:
+      x = self.bn(x)
     return self.layer_b(x)
 
 
@@ -338,7 +462,7 @@ class _SmallSubclassMLPCustomBuild(keras.Model):
 
 
 def get_small_subclass_mlp(num_hidden, num_classes):
-  return _SmallSubclassMLP(num_hidden, num_classes)
+  return SmallSubclassMLP(num_hidden, num_classes)
 
 
 def get_small_subclass_mlp_with_custom_build(num_hidden, num_classes):
@@ -362,14 +486,27 @@ def get_small_mlp(num_hidden, num_classes, input_dim):
 class _SubclassModel(keras.Model):
   """A Keras subclass model."""
 
-  def __init__(self, layers):
-    super(_SubclassModel, self).__init__()
+  def __init__(self, layers, *args, **kwargs):
+    """Instantiate a model.
+
+    Args:
+      layers: a list of layers to be added to the model.
+      *args: Model's args
+      **kwargs: Model's keyword args, at most one of
+        input_tensor -> the input tensor required for ragged/sparse input.
+    """
+
+    inputs = kwargs.pop('input_tensor', None)
+    super(_SubclassModel, self).__init__(*args, **kwargs)
     # Note that clone and build doesn't support lists of layers in subclassed
     # models. Adding each layer directly here.
     for i, layer in enumerate(layers):
       setattr(self, self._layer_name_for_i(i), layer)
 
     self.num_layers = len(layers)
+
+    if inputs is not None:
+      self._set_inputs(inputs)
 
   def _layer_name_for_i(self, i):
     return 'layer{}'.format(i)
@@ -385,8 +522,8 @@ class _SubclassModel(keras.Model):
 class _SubclassModelCustomBuild(keras.Model):
   """A Keras subclass model that uses a custom build method."""
 
-  def __init__(self, layer_generating_func):
-    super(_SubclassModelCustomBuild, self).__init__()
+  def __init__(self, layer_generating_func, *args, **kwargs):
+    super(_SubclassModelCustomBuild, self).__init__(*args, **kwargs)
     self.all_layers = None
     self._layer_generating_func = layer_generating_func
 
@@ -403,20 +540,50 @@ class _SubclassModelCustomBuild(keras.Model):
     return x
 
 
-def get_model_from_layers(layers, input_shape=None):
-  """Builds a model from a sequence of layers."""
+def get_model_from_layers(layers,
+                          input_shape=None,
+                          input_dtype=None,
+                          name=None,
+                          input_ragged=None,
+                          input_sparse=None):
+  """Builds a model from a sequence of layers.
+
+  Args:
+    layers: The layers used to build the network.
+    input_shape: Shape tuple of the input or 'TensorShape' instance.
+    input_dtype: Datatype of the input.
+    name: Name for the model.
+    input_ragged: Boolean, whether the input data is a ragged tensor.
+    input_sparse: Boolean, whether the input data is a sparse tensor.
+
+  Returns:
+    A Keras model.
+  """
+
   model_type = get_model_type()
   if model_type == 'subclass':
-    return _SubclassModel(layers)
+    inputs = None
+    if input_ragged or input_sparse:
+      inputs = keras.Input(
+          shape=input_shape,
+          dtype=input_dtype,
+          ragged=input_ragged,
+          sparse=input_sparse)
+    return _SubclassModel(layers, name=name, input_tensor=inputs)
 
   if model_type == 'subclass_custom_build':
     layer_generating_func = lambda: layers
-    return _SubclassModelCustomBuild(layer_generating_func)
+    return _SubclassModelCustomBuild(layer_generating_func, name=name)
 
   if model_type == 'sequential':
-    model = keras.models.Sequential()
+    model = keras.models.Sequential(name=name)
     if input_shape:
-      model.add(keras.layers.InputLayer(input_shape=input_shape))
+      model.add(
+          keras.layers.InputLayer(
+              input_shape=input_shape,
+              dtype=input_dtype,
+              ragged=input_ragged,
+              sparse=input_sparse))
     for layer in layers:
       model.add(layer)
     return model
@@ -425,11 +592,15 @@ def get_model_from_layers(layers, input_shape=None):
     if not input_shape:
       raise ValueError('Cannot create a functional model from layers with no '
                        'input shape.')
-    inputs = keras.Input(shape=input_shape)
+    inputs = keras.Input(
+        shape=input_shape,
+        dtype=input_dtype,
+        ragged=input_ragged,
+        sparse=input_sparse)
     outputs = inputs
     for layer in layers:
       outputs = layer(outputs)
-    return keras.Model(inputs, outputs)
+    return keras.Model(inputs, outputs, name=name)
 
   raise ValueError('Unknown model type {}'.format(model_type))
 
@@ -438,8 +609,8 @@ class _MultiIOSubclassModel(keras.Model):
   """Multi IO Keras subclass model."""
 
   def __init__(self, branch_a, branch_b, shared_input_branch=None,
-               shared_output_branch=None):
-    super(_MultiIOSubclassModel, self).__init__()
+               shared_output_branch=None, name=None):
+    super(_MultiIOSubclassModel, self).__init__(name=name)
     self._shared_input_branch = shared_input_branch
     self._branch_a = branch_a
     self._branch_b = branch_b
@@ -680,3 +851,36 @@ def get_v2_optimizer(name, **kwargs):
     raise ValueError(
         'Could not find requested v2 optimizer: {}\nValid choices: {}'.format(
             name, list(_V2_OPTIMIZER_MAP.keys())))
+
+
+def get_expected_metric_variable_names(var_names, name_suffix=''):
+  """Returns expected metric variable names given names and prefix/suffix."""
+  if tf2.enabled() or context.executing_eagerly():
+    # In V1 eager mode and V2 variable names are not made unique.
+    return [n + ':0' for n in var_names]
+  # In V1 graph mode variable names are made unique using a suffix.
+  return [n + name_suffix + ':0' for n in var_names]
+
+
+def enable_v2_dtype_behavior(fn):
+  """Decorator for enabling the layer V2 dtype behavior on a test."""
+  return _set_v2_dtype_behavior(fn, True)
+
+
+def disable_v2_dtype_behavior(fn):
+  """Decorator for disabling the layer V2 dtype behavior on a test."""
+  return _set_v2_dtype_behavior(fn, False)
+
+
+def _set_v2_dtype_behavior(fn, enabled):
+  """Returns version of 'fn' that runs with v2 dtype behavior on or off."""
+  @functools.wraps(fn)
+  def wrapper(*args, **kwargs):
+    v2_dtype_behavior = base_layer_utils.V2_DTYPE_BEHAVIOR
+    base_layer_utils.V2_DTYPE_BEHAVIOR = enabled
+    try:
+      return fn(*args, **kwargs)
+    finally:
+      base_layer_utils.V2_DTYPE_BEHAVIOR = v2_dtype_behavior
+
+  return tf_decorator.make_decorator(fn, wrapper)

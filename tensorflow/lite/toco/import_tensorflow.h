@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
 
 namespace toco {
 
@@ -34,13 +34,19 @@ struct TensorFlowImportFlags {
   bool import_all_ops_as_unsupported = false;
 };
 
+// Converts TOCO model from TensorFlow GraphDef with given flags.
 std::unique_ptr<Model> ImportTensorFlowGraphDef(
     const ModelFlags& model_flags, const TensorFlowImportFlags& tf_import_flags,
     const tensorflow::GraphDef& graph_def);
 
+// Converts TOCO model from the file content of TensorFlow GraphDef with given
+// flags.
 std::unique_ptr<Model> ImportTensorFlowGraphDef(
     const ModelFlags& model_flags, const TensorFlowImportFlags& tf_import_flags,
     const string& input_file_contents);
+
+// Gets a list of supported ops by their names.
+std::vector<std::string> GetPotentiallySupportedOps();
 
 }  // namespace toco
 

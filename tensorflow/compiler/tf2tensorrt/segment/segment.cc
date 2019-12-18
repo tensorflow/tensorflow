@@ -443,6 +443,10 @@ Status SegmentGraph(const Graph* tf_graph,
         unsupported_ops.emplace(node->tf_node()->type_string());
         num_unsupported_ops++;
         node = nullptr;
+      } else {
+        VLOG(2) << "Accepted as a TF-TRT candidate, "
+                << "(Op type: " << node->tf_node()->type_string() << "), "
+                << "(Op name: " << node->name();
       }
     }
     node_segments.emplace_back(node);
@@ -455,14 +459,14 @@ Status SegmentGraph(const Graph* tf_graph,
   }
   LOG(INFO) << msg << "(For more information see "
             << "https://docs.nvidia.com/deeplearning"
-            << "/dgx/integrate-tf-trt/index.html#support-ops).";
+            << "/frameworks/tf-trt-user-guide/index.html#supported-ops).";
 
   // The segmentation algorithm below visits nodes in reverse topological order
   // and attempts to merge nodes along output edges. That means that subgraphs
   // grow from the output-side of the network towards the inputs.
   //
   // In general this is not guaranteed to produce a globally optimal
-  // segmentation. For exaample, consider graph with node {A, B, C, D} and edges
+  // segmentation. For example, consider graph with node {A, B, C, D} and edges
   // {A->B, A->C, B->D, C->D), where A, B, D are trt compatible but C is not, so
   // in theory we can choose to contract either A, B or B, D but not both, but
   // here it always choose to contract B, D.
@@ -668,37 +672,42 @@ Status SegmentGraph(const Graph* tf_graph,
     const string& segment_root = itr.first;
     // Return format does not require set comparator.
     std::set<const Node*> segment_nodes(itr.second.begin(), itr.second.end());
-    if (VLOG_IS_ON(1)) {
-      string s = "parent=" + segment_root + ":";
-      for (auto node : segment_nodes) s += " " + node->name();
-      VLOG(1) << "Segment " << segments->size() << ": " << s;
+    if (VLOG_IS_ON(1) && !segment_nodes.empty()) {
+      string s;
+      for (auto node : segment_nodes) {
+        StrAppend(&s, "\n[Op type: ", node->type_string(), "] ", node->name());
+      }
+      VLOG(1) << "Nodes in segment " << segments->size()
+              << " with parent=" << segment_root << ":" << s;
     }
 
-    // Don't use small segments.
-    if (static_cast<int>(segment_nodes.size()) < options.minimum_segment_size) {
+    const int num_effective_nodes = std::count_if(
+        segment_nodes.begin(), segment_nodes.end(), [](const Node* node) {
+          static auto noops =
+              new std::set<string>{"Identity", "Snapshot", "StopGradient"};
+          return noops->count(node->type_string()) == 0;
+        });
+
+    // Don't use segments whose number of effective nodes is small.
+    if (num_effective_nodes < options.minimum_segment_size) {
       VLOG(1) << "Segment " << segments->size() << " has only "
-              << segment_nodes.size() << " nodes, dropping";
+              << num_effective_nodes << " effective nodes, dropping";
       continue;
     }
 
-    // TODO(sami): Make segmenter placement aware once trtscopes are in place
     const auto& dev_itr = device_maps.find(segment_root);
     if (dev_itr == device_maps.end() || dev_itr->second.empty()) {
       VLOG(1) << "No device assigned to segment " << segments->size();
-      segments->emplace_back(std::make_pair(segment_nodes, string()));
     } else if (dev_itr->second.size() > 1) {
-      string s("Segment ");
-      StrAppend(&s, segments->size(), " has multiple devices attached: ");
+      string s = StrCat("Segment ", segments->size(),
+                        " has multiple devices attached: ");
       for (const auto& dev : dev_itr->second) {
         StrAppend(&s, dev, ", ");
       }
-      LOG(WARNING) << s << " choosing " << *(dev_itr->second.begin());
-      segments->emplace_back(
-          std::make_pair(segment_nodes, *(dev_itr->second.begin())));
-    } else {
-      segments->emplace_back(
-          std::make_pair(segment_nodes, *(dev_itr->second.begin())));
+      LOG(WARNING) << s;
     }
+
+    segments->emplace_back(segment_nodes);
   }
   if (VLOG_IS_ON(1)) {
     for (const auto& d : device_maps) {

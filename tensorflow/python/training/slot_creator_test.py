@@ -23,6 +23,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -133,6 +134,46 @@ class SlotCreatorTest(test.TestCase):
         v = variables.Variable([1.0, 2.5], name="var")
         slot = slot_creator.create_slot(v, v.initialized_value(), name="slot")
         self.assertEqual("scope/scope/var/slot", slot.op.name)
+
+  @test_util.run_deprecated_v1
+  def testCreateSlotFromFirstMDimensionVariable(self):
+    with self.test_session():
+      s = variables.Variable([1.0, 2.5], name="var")
+      p_v = variable_scope.get_variable(
+          "var",
+          shape=[2, 2],
+          partitioner=partitioned_variables.fixed_size_partitioner(2))
+      for i, v in enumerate(p_v):
+        slot = slot_creator.create_slot(v, s.initialized_value(), name="slot")
+        si = slot._save_slice_info
+
+        variables.global_variables_initializer().run()
+
+        self.assertEqual("var/part_%d/slot" % i, slot.op.name)
+        self.assertEqual([2], slot.get_shape().as_list())
+        self.assertEqual(dtypes.float32, slot.dtype.base_dtype)
+        self.assertAllEqual([1.0, 2.5], slot.eval())
+        self.assertAllEqual([2], si.full_shape)
+        self.assertAllEqual([i], si.var_offset)
+        self.assertAllEqual([1], si.var_shape)
+
+  @test_util.run_deprecated_v1
+  def testCreateSlotFromScalarVariable(self):
+    with self.test_session():
+      s = variables.Variable(1.0, name="var")
+      p_v = variable_scope.get_variable(
+          "var",
+          shape=[2, 2],
+          partitioner=partitioned_variables.fixed_size_partitioner(2))
+      for i, v in enumerate(p_v):
+        slot = slot_creator.create_slot(v, s.initialized_value(), name="slot")
+
+        variables.global_variables_initializer().run()
+
+        self.assertEqual("var/part_%d/slot" % i, slot.op.name)
+        self.assertEqual([], slot.get_shape().as_list())
+        self.assertEqual(dtypes.float32, slot.dtype.base_dtype)
+        self.assertAllEqual(1.0, slot.eval())
 
 
 if __name__ == "__main__":

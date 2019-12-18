@@ -77,7 +77,7 @@ FP16ConvMode CudnnConvComputeMode() {
   if (!status.ok()) {
     LOG(ERROR) << status;
   }
-  string lowercase_value = str_util::Lowercase(value);
+  string lowercase_value = absl::AsciiStrToLower(value);
   if (lowercase_value == "accurate") {
     return FP16ConvMode::kAccurate;
   } else if (lowercase_value == "fast") {
@@ -88,6 +88,14 @@ FP16ConvMode CudnnConvComputeMode() {
                << value;
   }
   return FP16ConvMode::kAccurate;
+}
+
+bool IsCudnnSupportedFilterSize(const int32 filter_rows,
+                                const int32 filter_cols, const int32 in_depth,
+                                const int32 out_depth) {
+  return in_depth == out_depth && filter_rows == filter_cols &&
+         (filter_rows == 1 || filter_rows == 3 || filter_rows == 5 ||
+          filter_rows == 7);
 }
 
 }  // namespace tensorflow

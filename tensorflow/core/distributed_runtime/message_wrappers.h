@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/master.pb.h"
@@ -87,6 +87,9 @@ class RunStepRequestWrapper {
   // truncate long metadata messages.
   virtual bool store_errors_in_response_body() const = 0;
 
+  // Unique identifier for this request. Every RunGraphRequest must have a
+  // unique request_id, and retried RunGraphRequests must have the same
+  // request_id. If request_id is zero, retry detection is disabled.
   virtual int64 request_id() const = 0;
 
   // Returns a human-readable representation of this message for debugging.
@@ -292,6 +295,8 @@ class RunGraphRequestWrapper {
   // truncate long metadata messages.
   virtual bool store_errors_in_response_body() const = 0;
 
+  virtual int64 request_id() const = 0;
+
   // Returns the wrapped data as a protocol buffer message.
   virtual const RunGraphRequest& ToProto() const = 0;
 };
@@ -320,6 +325,7 @@ class MutableRunGraphRequestWrapper : public RunGraphRequestWrapper {
   virtual void set_is_partial(bool is_partial) = 0;
   virtual void set_is_last_partial_run(bool is_last_partial_run) = 0;
   virtual void set_store_errors_in_response_body(bool store_errors) = 0;
+  virtual void set_request_id(int64 request_id) = 0;
 };
 
 class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
@@ -339,6 +345,7 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
   bool is_last_partial_run() const override;
   const RunGraphRequest& ToProto() const override;
   bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
 
   // MutableRunGraphRequestWrapper methods.
   void set_session_handle(const string& handle) override;
@@ -356,6 +363,7 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
   void set_is_partial(bool is_partial) override;
   void set_is_last_partial_run(bool is_last_partial_run) override;
   void set_store_errors_in_response_body(bool store_errors) override;
+  void set_request_id(int64 request_id) override;
 
  private:
   string session_handle_;
@@ -368,6 +376,7 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
   bool is_partial_ = false;
   bool is_last_partial_run_ = false;
   bool store_errors_in_response_body_ = false;
+  int64 request_id_ = 0;
 
   // Holds a cached and owned representation of the proto
   // representation of this request, if needed, so that `ToProto()`
@@ -395,6 +404,7 @@ class MutableProtoRunGraphRequest : public MutableRunGraphRequestWrapper {
   bool is_partial() const override;
   bool is_last_partial_run() const override;
   bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
   const RunGraphRequest& ToProto() const override;
 
   // MutableRunGraphRequestWrapper methods.
@@ -413,6 +423,7 @@ class MutableProtoRunGraphRequest : public MutableRunGraphRequestWrapper {
   void set_is_partial(bool is_partial) override;
   void set_is_last_partial_run(bool is_last_partial_run) override;
   void set_store_errors_in_response_body(bool store_errors) override;
+  void set_request_id(int64 request_id) override;
 
  private:
   RunGraphRequest request_;
@@ -436,6 +447,7 @@ class ProtoRunGraphRequest : public RunGraphRequestWrapper {
   bool is_partial() const override;
   bool is_last_partial_run() const override;
   bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
   const RunGraphRequest& ToProto() const override;
 
  private:

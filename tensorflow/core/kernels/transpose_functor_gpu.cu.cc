@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 // TODO(yangzihao): Remove the dependency of conv_2d.h once we move all
 // GPU util functions and transpose kernels into separate files.
@@ -32,12 +32,13 @@ namespace tensorflow {
 namespace internal {
 
 template <typename T, bool conjugate>
-__global__ void TransposeKernel(int nthreads, const T* src, const int32* buf,
-                                const int32 ndims, T* dst) {
+__global__ void TransposeKernel(int nthreads, const T* __restrict__ src,
+                                const int32* __restrict__ buf,
+                                const int32 ndims, T* __restrict__ dst) {
   const int32* in_strides = buf;
   const int32* out_strides = buf + ndims;
   const int32* perm = buf + ndims * 2;
-  CUDA_1D_KERNEL_LOOP(o_idx, nthreads) {
+  GPU_1D_KERNEL_LOOP(o_idx, nthreads) {
     int32 i_idx = 0;
     int32 t = o_idx;
     for (int32 i = 0; i < ndims; ++i) {
@@ -73,17 +74,17 @@ void TransposeSimple(const GPUDevice& d, const Tensor& in,
   // Copies the input strides, output strides and permutation to the device.
   auto num_bytes = sizeof(int64) * host_buf.size();
   auto dev_buf = d.allocate(num_bytes);
-  // NOTE: host_buf is not allocated by CudaHostAllocator, and
+  // NOTE: host_buf is not allocated by GpuHostAllocator, and
   // therefore we are doing a sync copy effectively.
   d.memcpyHostToDevice(dev_buf, host_buf.data(), num_bytes);
   // Launch kernel to q[...] = p[...].
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
-  CudaLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
-  CudaLaunchKernel(TransposeKernel<T, conjugate>, cfg.block_count,
-                   cfg.thread_per_block, 0, d.stream(),
-                   cfg.virtual_thread_count, p,
-                   reinterpret_cast<const int32*>(dev_buf), ndims, q);
+  GpuLaunchConfig cfg = GetGpuLaunchConfig(nelem, d);
+  TF_CHECK_OK(GpuLaunchKernel(
+      TransposeKernel<T, conjugate>, cfg.block_count, cfg.thread_per_block, 0,
+      d.stream(), cfg.virtual_thread_count, p,
+      reinterpret_cast<const int32*>(dev_buf), ndims, q));
   // Safe to deallocate immediately after the kernel launch.
   d.deallocate(dev_buf);
 }
@@ -168,60 +169,29 @@ struct TransposeUsingTile<complex128, conjugate> {
 }  // namespace internal
 
 // Transpose kernel specialized for GPU Device.
+#define HANDLE_DIM(DIM)                                                      \
+  case DIM:                                                                  \
+    internal::TransposeUsingEigen<GPUDevice, T, DIM>(d, in, perm, conjugate, \
+                                                     out);                   \
+    break
+
 template <typename T, bool conjugate>
 struct Transpose<GPUDevice, T, conjugate> {
   static void run(const GPUDevice& d, const Tensor& in,
                   const gtl::ArraySlice<int32> perm, Tensor* out) {
+    if (in.dims() < 2) return;
+    if (internal::TransposeUsingTile<T, conjugate>::run(d, in, perm, out)) {
+      return;
+    }
+
     switch (in.dims()) {
-      case 2:
-        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
-                                                             out)) {
-          internal::TransposeUsingEigen<GPUDevice, T, 2>(d, in, perm, conjugate,
-                                                         out);
-        }
-        break;
-      case 3:
-        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
-                                                             out)) {
-          internal::TransposeUsingEigen<GPUDevice, T, 3>(d, in, perm, conjugate,
-                                                         out);
-        }
-        break;
-      case 4:
-        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
-                                                             out)) {
-          internal::TransposeUsingEigen<GPUDevice, T, 4>(d, in, perm, conjugate,
-                                                         out);
-        }
-        break;
-      case 5:
-        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
-                                                             out)) {
-          internal::TransposeUsingEigen<GPUDevice, T, 5>(d, in, perm, conjugate,
-                                                         out);
-        }
-        break;
-      case 6:
-        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
-                                                             out)) {
-          internal::TransposeUsingEigen<GPUDevice, T, 6>(d, in, perm, conjugate,
-                                                         out);
-        }
-        break;
-      case 7:
-        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
-                                                             out)) {
-          internal::TransposeUsingEigen<GPUDevice, T, 7>(d, in, perm, conjugate,
-                                                         out);
-        }
-        break;
-      case 8:
-        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
-                                                             out)) {
-          internal::TransposeUsingEigen<GPUDevice, T, 8>(d, in, perm, conjugate,
-                                                         out);
-        }
-        break;
+      HANDLE_DIM(2);
+      HANDLE_DIM(3);
+      HANDLE_DIM(4);
+      HANDLE_DIM(5);
+      HANDLE_DIM(6);
+      HANDLE_DIM(7);
+      HANDLE_DIM(8);
       default:
         internal::TransposeSimple<T, conjugate>(d, in, perm, out);
         break;
@@ -229,8 +199,10 @@ struct Transpose<GPUDevice, T, conjugate> {
   }
 };
 
+#undef HANDLE_DIM
+
 template <bool conjugate>
-struct Transpose<GPUDevice, string, conjugate> {
+struct Transpose<GPUDevice, tstring, conjugate> {
   static void run(const GPUDevice& d, const Tensor& in,
                   const gtl::ArraySlice<int32> perm, Tensor* out) {
     LOG(FATAL) << "Transpose of DT_STRING tensor not supported on GPU.";
@@ -238,7 +210,7 @@ struct Transpose<GPUDevice, string, conjugate> {
 };
 
 // Explicit instantiation.
-template struct Transpose<GPUDevice, string, false>;
+template struct Transpose<GPUDevice, tstring, false>;
 
 template <>
 Status DoTranspose(const GPUDevice& device, const Tensor& in,
@@ -262,4 +234,4 @@ Status DoConjugateMatrixTranspose(const GPUDevice& device, const Tensor& in,
 }
 
 }  // namespace tensorflow
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -35,27 +35,33 @@ bool IsSequence(PyObject* o);
 
 // Implements the same interface as nest.is_sequence_or_composite
 // Returns a true if its input is a collections.Sequence (except strings)
-// or a CompositeTensor.
+// or a CompositeTensor or a TypeSpec (except TensorSpec).
 //
 // Args:
 //   seq: an input sequence.
 //
 // Returns:
 //   True if the sequence is a not a string and is a collections.Sequence or a
-//   dict or a CompositeTensor.
+//   dict or a CompositeTensor or a TypeSpec.
 bool IsSequenceOrComposite(PyObject* o);
 
-// Implements the same interface as nest.is_sequence_or_composite
-// Returns a true if its input is a collections.Sequence (except strings)
-// or a CompositeTensor.
+// Returns a true if its input is a CompositeTensor or a TypeSpec.
 //
 // Args:
 //   seq: an input sequence.
 //
 // Returns:
-//   True if the sequence is a not a string and is a collections.Sequence or a
-//   dict or a CompositeTensor.
+//   True if the sequence is a CompositeTensor.
 bool IsCompositeTensor(PyObject* o);
+
+// Returns a true if its input is a TypeSpec, but is not a TensorSpec.
+//
+// Args:
+//   seq: an input sequence.
+//
+// Returns:
+//   True if the sequence is a TypeSpec, but is not a TensorSpec.
+bool IsTypeSpec(PyObject* o);
 
 // Implements the same interface as tensorflow.util.nest._is_namedtuple
 // Returns Py_True iff `instance` should be considered a `namedtuple`.
@@ -80,6 +86,33 @@ PyObject* IsNamedtuple(PyObject* o, bool strict);
 //   True if the sequence subclasses mapping.
 bool IsMapping(PyObject* o);
 
+// Returns a true if its input is a (possibly wrapped) tuple.
+//
+// Args:
+//   seq: the input to be checked.
+//
+// Returns:
+//   True if the sequence is a tuple.
+bool IsTuple(PyObject* o);
+
+// Returns a true if its input is a collections.MappingView.
+//
+// Args:
+//   seq: the input to be checked.
+//
+// Returns:
+//   True if the sequence subclasses mapping.
+bool IsMappingView(PyObject* o);
+
+// A version of PyMapping_Keys that works in C++11
+//
+// Args:
+//   o: The input to extract keys from
+//
+// Returns:
+//   A new reference to a list of keys in the mapping.
+PyObject* MappingKeys(PyObject* o);
+
 // Returns a true if its input is an instance of an attr.s decorated class.
 //
 // Args:
@@ -92,16 +125,43 @@ bool IsAttrs(PyObject* o);
 // Returns a true if its input is an ops.Tensor.
 //
 // Args:
-//   seq: the input to be checked.
+//   o: the input to be checked.
 //
 // Returns:
 //   True if the object is a tensor.
 bool IsTensor(PyObject* o);
 
+// Returns a true if its input is an eager.EagerTensor.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is an eager tensor (or mimicking as one).
+bool IsEagerTensorSlow(PyObject* o);
+
+// Returns a true if its input is a ResourceVariable.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is a ResourceVariable.
+bool IsResourceVariable(PyObject* o);
+
+// Returns a true if its input is a Variable.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is a Variable.
+bool IsVariable(PyObject* o);
+
 // Returns a true if its input is an ops.IndexesSlices.
 //
 // Args:
-//   seq: the input to be checked.
+//   o: the input to be checked.
 //
 // Returns:
 //   True if the object is an ops.IndexedSlices.

@@ -180,7 +180,7 @@ TEST_F(RaggedTensorToSparseTest, NoSplits) {
                    .Attr("RAGGED_RANK", 0)
                    .Attr("T", dtype)
                    .Finalize(node_def()));
-  EXPECT_TRUE(str_util::StartsWith(
+  EXPECT_TRUE(absl::StartsWith(
       InitOp().error_message(),
       "Value for attr 'RAGGED_RANK' of 0 must be at least minimum 1"));
 }

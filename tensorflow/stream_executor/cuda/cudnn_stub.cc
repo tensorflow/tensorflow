@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "cuda/include/cudnn.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 
@@ -53,10 +53,13 @@ cudnnStatus_t GetSymbolNotFoundError() { return CUDNN_STATUS_INTERNAL_ERROR; }
 #include "tensorflow/stream_executor/cuda/cudnn_6_0.inc"
 #elif CUDNN_MINOR < 1
 #include "tensorflow/stream_executor/cuda/cudnn_7_0.inc"
-#elif CUDNN_MINOR < 3
+// 2 instead of 3: see https://github.com/tensorflow/tensorflow/issues/32350
+#elif CUDNN_MINOR < 2
 #include "tensorflow/stream_executor/cuda/cudnn_7_1.inc"
 #elif CUDNN_MINOR < 4
 #include "tensorflow/stream_executor/cuda/cudnn_7_3.inc"
-#else
+#elif CUDNN_MINOR < 6
 #include "tensorflow/stream_executor/cuda/cudnn_7_4.inc"
+#else
+#include "tensorflow/stream_executor/cuda/cudnn_7_6.inc"
 #endif

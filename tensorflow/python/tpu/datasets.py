@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
@@ -130,7 +129,12 @@ def StreamingFilesDataset(files,
   if sloppy is None:
     sloppy = True
 
-  with ops.device('/job:%s' % file_reader_job):
+  if file_reader_job == 'coordinator':
+    file_reader_device = '/job:coordinator/task:0'
+  else:
+    file_reader_device = '/job:%s' % file_reader_job
+
+  with ops.device(file_reader_device):
     if isinstance(files, str):
       source_dataset = dataset_ops.Dataset.list_files(files)
     elif isinstance(files, dataset_ops.DatasetV2):
@@ -189,6 +193,6 @@ def StreamingFilesDataset(files,
 
     if batch_transfer_size:
       # Undo the batching used during the transfer.
-      output_dataset = output_dataset.apply(batching.unbatch()).prefetch(1)
+      output_dataset = output_dataset.unbatch().prefetch(1)
 
   return output_dataset

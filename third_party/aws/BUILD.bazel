@@ -12,16 +12,22 @@ load("@org_tensorflow//third_party:common.bzl", "template_rule")
 cc_library(
     name = "aws",
     srcs = select({
+        "@org_tensorflow//tensorflow:linux_aarch64": glob([
+            "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
+        ]),
         "@org_tensorflow//tensorflow:linux_x86_64": glob([
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
         ]),
-        "@org_tensorflow//tensorflow:darwin": glob([
+        "@org_tensorflow//tensorflow:macos": glob([
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
         ]),
         "@org_tensorflow//tensorflow:linux_ppc64le": glob([
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
         ]),
         "@org_tensorflow//tensorflow:raspberry_pi_armeabi": glob([
+            "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
+        ]),
+        "@org_tensorflow//tensorflow:freebsd": glob([
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
         ]),
         "//conditions:default": [],
@@ -46,8 +52,6 @@ cc_library(
         "aws-cpp-sdk-core/source/utils/xml/**/*.cpp",
         "aws-cpp-sdk-core/source/utils/crypto/*.cpp",
         "aws-cpp-sdk-core/source/utils/crypto/factory/**/*.cpp",
-        "aws-cpp-sdk-kinesis/include/**/*.h",
-        "aws-cpp-sdk-kinesis/source/**/*.cpp",
         "aws-cpp-sdk-s3/include/**/*.h",
         "aws-cpp-sdk-s3/source/**/*.cpp",
     ]),
@@ -60,12 +64,17 @@ cc_library(
         "-DAWS_SDK_VERSION_PATCH=8",
     ],
     defines = select({
+        "@org_tensorflow//tensorflow:linux_aarch64": [
+            "PLATFORM_LINUX",
+            "ENABLE_CURL_CLIENT",
+            "ENABLE_NO_ENCRYPTION",
+        ],
         "@org_tensorflow//tensorflow:linux_x86_64": [
             "PLATFORM_LINUX",
             "ENABLE_CURL_CLIENT",
             "ENABLE_NO_ENCRYPTION",
         ],
-        "@org_tensorflow//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:macos": [
             "PLATFORM_APPLE",
             "ENABLE_CURL_CLIENT",
             "ENABLE_NO_ENCRYPTION",
@@ -79,7 +88,6 @@ cc_library(
     }),
     includes = [
         "aws-cpp-sdk-core/include/",
-        "aws-cpp-sdk-kinesis/include/",
         "aws-cpp-sdk-s3/include/",
     ],
     deps = [

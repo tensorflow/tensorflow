@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_SCAN_OPS_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_SCAN_OPS_GPU_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -24,19 +24,29 @@ limitations under the License.
 #define CUB_USE_COOPERATIVE_GROUPS
 #endif  // CUDA_VERSION >= 9000
 
+#if GOOGLE_CUDA
 #include "third_party/cub/block/block_load.cuh"
 #include "third_party/cub/block/block_scan.cuh"
 #include "third_party/cub/block/block_store.cuh"
 #include "third_party/cub/iterator/counting_input_iterator.cuh"
 #include "third_party/cub/iterator/transform_input_iterator.cuh"
-#include "cuda/include/cuComplex.h"
+#include "third_party/gpus/cuda/include/cuComplex.h"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/include/hipcub/hipcub.hpp"
+#endif
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/util/cuda_launch_config.h"
+#include "tensorflow/core/kernels/scan_ops.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/permutation_output_iterator.h"
 
-#include "tensorflow/core/kernels/scan_ops.h"
+#if GOOGLE_CUDA
+namespace gpuprim = ::cub;
+#elif TENSORFLOW_USE_ROCM
+namespace gpuprim = ::hipcub;
+#endif
 
 namespace tensorflow {
 
@@ -134,8 +144,15 @@ struct IsProd {
 };
 
 template <typename T, typename Op>
+struct IsLogSumExp {
+  constexpr static bool value = (std::is_same<Op, LogSumExp<T>>::value ||
+                                 std::is_same<Op, LogSumExpReducer<T>>::value);
+};
+
+template <typename T, typename Op>
 struct IdentityValue {
-  static_assert(IsSum<T, Op>::value || IsProd<T, Op>::value,
+  static_assert(IsSum<T, Op>::value || IsProd<T, Op>::value ||
+                    IsLogSumExp<T, Op>::value,
                 "IdentityValue not yet defined for this type.");
 
   template <typename U = T, typename OpCopy = Op>
@@ -149,6 +166,13 @@ struct IdentityValue {
       typename std::enable_if<IsProd<U, OpCopy>::value, U>::type t = U(1)) {
     return t;
   }
+
+  template <typename U = T, typename OpCopy = Op>
+  __host__ __device__ U
+  operator()(typename std::enable_if<IsLogSumExp<U, OpCopy>::value, U>::type t =
+                 U(Eigen::NumTraits<U>::lowest())) {
+    return t;
+  }
 };
 
 // Each block is mapped to one sequence.  A contiguous range is mapped to the
@@ -158,14 +182,16 @@ struct IdentityValue {
 // used in the large 1D case, even though it would be more efficient, because
 // it is not deterministic.
 template <typename T, typename Op, int BlockDim = 128, int ItemsPerThread = 4>
-__global__ void scan_kernel(const T* in, T* out, int dimx, int dimy, int dimz,
-                            bool exclusive, bool reverse, Op op) {
-  typedef cub::BlockLoad<T, BlockDim, ItemsPerThread, cub::BLOCK_LOAD_TRANSPOSE>
+__launch_bounds__(BlockDim) __global__
+    void scan_kernel(const T* in, T* out, int dimx, int dimy, int dimz,
+                     bool exclusive, bool reverse, Op op) {
+  typedef gpuprim::BlockLoad<T, BlockDim, ItemsPerThread,
+                             gpuprim::BLOCK_LOAD_TRANSPOSE>
       BlockLoad;
-  typedef cub::BlockStore<T, BlockDim, ItemsPerThread,
-                          cub::BLOCK_STORE_TRANSPOSE>
+  typedef gpuprim::BlockStore<T, BlockDim, ItemsPerThread,
+                              gpuprim::BLOCK_STORE_TRANSPOSE>
       BlockStore;
-  typedef cub::BlockScan<T, BlockDim> BlockScan;
+  typedef gpuprim::BlockScan<T, BlockDim> BlockScan;
 
   // Allocate aliased shared memory for BlockLoad, BlockStore, and BlockScan
   __shared__ union {
@@ -189,11 +215,11 @@ __global__ void scan_kernel(const T* in, T* out, int dimx, int dimy, int dimz,
                           problem_length - (block_offset % problem_length));
 
     // first construct a counting iterator that has the desired start point
-    typedef cub::TransformInputIterator<int, MapIndexToLocation,
-                                        cub::CountingInputIterator<int>>
+    typedef gpuprim::TransformInputIterator<int, MapIndexToLocation,
+                                            gpuprim::CountingInputIterator<int>>
         MapIterType;
 
-    cub::CountingInputIterator<int> counting_iter(block_offset);
+    gpuprim::CountingInputIterator<int> counting_iter(block_offset);
 
     // Next map the iterator to the actual locations in memory
     MapIterType map_iter(counting_iter, map_op);
@@ -242,34 +268,40 @@ void LaunchScan(const GPUDevice& d, typename TTypes<T, 3>::ConstTensor in,
   // Launch on the smallest power of 2 block size that we can.
   if (ideal_block_size >= 1024 && std::is_same<T, float>::value) {
     const int block_size = 1024;
-    CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
-                     num_blocks, block_size, 0, d.stream(), in.data(),
-                     out.data(), dimx, dimy, dimz, exclusive, reverse, op);
+    TF_CHECK_OK(
+        GpuLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
+                        num_blocks, block_size, 0, d.stream(), in.data(),
+                        out.data(), dimx, dimy, dimz, exclusive, reverse, op));
   } else if (ideal_block_size >= 512) {
     const int block_size = 512;
-    CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
-                     num_blocks, block_size, 0, d.stream(), in.data(),
-                     out.data(), dimx, dimy, dimz, exclusive, reverse, op);
+    TF_CHECK_OK(
+        GpuLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
+                        num_blocks, block_size, 0, d.stream(), in.data(),
+                        out.data(), dimx, dimy, dimz, exclusive, reverse, op));
   } else if (ideal_block_size >= 256) {
     const int block_size = 256;
-    CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
-                     num_blocks, block_size, 0, d.stream(), in.data(),
-                     out.data(), dimx, dimy, dimz, exclusive, reverse, op);
+    TF_CHECK_OK(
+        GpuLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
+                        num_blocks, block_size, 0, d.stream(), in.data(),
+                        out.data(), dimx, dimy, dimz, exclusive, reverse, op));
   } else if (ideal_block_size >= 128) {
     const int block_size = 128;
-    CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
-                     num_blocks, block_size, 0, d.stream(), in.data(),
-                     out.data(), dimx, dimy, dimz, exclusive, reverse, op);
+    TF_CHECK_OK(
+        GpuLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
+                        num_blocks, block_size, 0, d.stream(), in.data(),
+                        out.data(), dimx, dimy, dimz, exclusive, reverse, op));
   } else if (ideal_block_size >= 64) {
     const int block_size = 64;
-    CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
-                     num_blocks, block_size, 0, d.stream(), in.data(),
-                     out.data(), dimx, dimy, dimz, exclusive, reverse, op);
+    TF_CHECK_OK(
+        GpuLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
+                        num_blocks, block_size, 0, d.stream(), in.data(),
+                        out.data(), dimx, dimy, dimz, exclusive, reverse, op));
   } else {
     const int block_size = 32;
-    CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
-                     num_blocks, block_size, 0, d.stream(), in.data(),
-                     out.data(), dimx, dimy, dimz, exclusive, reverse, op);
+    TF_CHECK_OK(
+        GpuLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
+                        num_blocks, block_size, 0, d.stream(), in.data(),
+                        out.data(), dimx, dimy, dimz, exclusive, reverse, op));
   }
 }
 
@@ -293,9 +325,19 @@ struct Scan<GPUDevice, Eigen::internal::ProdReducer<T>, T> {
   }
 };
 
+template <typename T>
+struct Scan<GPUDevice, LogSumExpReducer<T>, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T, 3>::ConstTensor in,
+                  typename TTypes<T, 3>::Tensor out,
+                  const LogSumExpReducer<T>& reducer, const bool reverse,
+                  const bool exclusive) {
+    LaunchScan<T, LogSumExp<T>>(d, in, out, LogSumExp<T>(), reverse, exclusive);
+  }
+};
+
 }  // namespace functor
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_SCAN_OPS_GPU_H_

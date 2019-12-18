@@ -1,0 +1,120 @@
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/protobuf/config.proto";
+
+// Summarizes the results of auto-clustering a TensorFlow graph.
+//
+// Next ID: 5
+message XlaAutoClusteringSummary {
+  // Represents a single element in a histogram of ops ("op" as in "TensorFlow
+  // operation").
+  //
+  // Next ID: 3
+  message OpAndCount {
+    // The TensorFlow operation (like MatMult, Add etc.)
+    string op = 1;
+
+    // The number of times this occurs.
+    int32 count = 2;
+  }
+
+  // Describes a single XLA cluster.
+  //
+  // Next ID: 4
+  message Cluster {
+    string name = 1;
+
+    // The number of nodes in the cluster.
+    int32 size = 2;
+
+    // A histogram of the TF operations in this cluster.
+    repeated OpAndCount op_histogram = 3;
+  };
+
+  // The number of nodes in the graph that are not inside an XLA cluster.
+  int32 unclustered_node_count = 1;
+
+  // The number of nodes in the graph that are in an XLA cluster.
+  int32 clustered_node_count = 2;
+
+  // All of the XLA clusters in the TF graph.
+  repeated Cluster clusters = 3;
+
+  // A histogram of the TF operations that were not clustered.
+  repeated OpAndCount unclustered_op_histogram = 4;
+}
+
+// Listeners listening for auto clustering events get messages of this type.
+//
+// Next ID: 4
+message XlaAutoClusteringActivity {
+  // The value of GlobalJitLevel, as determined by `GetGlobalJitLevelForGraph`.
+  // This determines if global auto-clustering is enabled.
+  OptimizerOptions.GlobalJitLevel global_jit_level = 1;
+
+  // Whether --tf_xla_cpu_global_jit is enabled in TF_XLA_FLAGS.
+  bool cpu_global_jit_enabled = 2;
+
+  XlaAutoClusteringSummary summary = 3;
+}
+
+// Listeners listening for JIT compilation events get messages of this type.
+// Each instance of XlaJitCompilationActivity corresponds to a single
+// compilation of a single XLA cluster.  E.g. if a graph has two clusters, A and
+// B, and A is compiled 5 times and B is compiled 2 times then we will generate
+// 7 instances of XlaJitCompilationActivity.
+//
+// Next ID: 5
+message XlaJitCompilationActivity {
+  string cluster_name = 1;
+
+  // The number of time this cluster has been compiled.
+  int32 compile_count = 2;
+
+  // Microseconds spent in the individual compilation being reported.
+  int64 compile_time_us = 3;
+
+  // Total microseconds spent in (re-)compiling this cluster so far.
+  int64 cumulative_compile_time_us = 4;
+}
+
+// LINT.IfChange
+//
+// Used for logging situations seen in Tensorflow models being optimized that
+// are known to not perform well with XLA.
+//
+// Next ID: 3
+message XlaOptimizationRemark {
+  // Next ID: 6
+  enum Warning {
+    NONE = 0;
+    INACCURATE_OPERATION = 1;
+    SLOW_OPERATION = 2;
+    UNIMPLEMENTED_OPERATION = 3;
+    SLOW_IMAGE_RESIZE_DIMENSIONS = 4;
+    MEGAMORPHIC_FUNCTION = 5;
+  }
+
+  Warning warning = 1;
+
+  // Information such as which node was the problem.
+  string debug_information = 2;
+}
+// LINT.ThenChange(https://www.tensorflow.org/code/tensorflow/compiler/jit/xla_activity_listener.h)

@@ -27,10 +27,13 @@ limitations under the License.
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -58,14 +61,6 @@ llvm::Module* ModuleFromIRBuilder(llvm::IRBuilder<>* b) {
 
 }  // namespace
 
-string AsString(const std::string& str) {
-  return string(str.data(), str.length());
-}
-
-llvm::StringRef AsStringRef(absl::string_view str) {
-  return llvm::StringRef(str.data(), str.size());
-}
-
 std::unique_ptr<llvm::Module> DropConstantInitializers(
     const llvm::Module& module) {
   std::unique_ptr<llvm::Module> cloned_module = CloneModule(module);
@@ -81,7 +76,7 @@ string DumpModuleToString(const llvm::Module& module) {
   llvm::raw_string_ostream ostream(buffer_string);
   module.print(ostream, nullptr);
   ostream.flush();
-  return AsString(buffer_string);
+  return buffer_string;
 }
 
 llvm::CallInst* EmitCallToIntrinsic(
@@ -200,7 +195,7 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     }  // A Tuple contains an array of pointers. Use i8*.
     case TUPLE:
     // An Opaque is like a void*, use i8*.
-    case OPAQUE:
+    case OPAQUE_TYPE:
       return llvm::Type::getInt8PtrTy(module->getContext());
     case TOKEN:
       // Tokens do not have a physical representation, but the compiler needs
@@ -248,16 +243,7 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
     return InternalError("Encoded shape size exceeded int32 size limit.");
   }
   *shape_size = static_cast<int32>(encoded_shape.size());
-  return b->CreateGlobalStringPtr(llvm_ir::AsStringRef(encoded_shape));
-}
-
-StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
-                                                  int32 size_bytes) {
-  ShapeProto shape_proto;
-  TF_RET_CHECK(shape_proto.ParseFromArray(shape_ptr, size_bytes));
-  Shape shape(shape_proto);
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  return std::move(shape);
+  return b->CreateGlobalStringPtr(encoded_shape);
 }
 
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
@@ -273,12 +259,13 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
 llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
                                                llvm::Type* tile_type,
                                                absl::string_view name) {
-  const int kNVPTXSharedMemoryAddrSpace = 3;
+  // Both AMDGPU and NVPTX use the same address space for shared memory.
+  const int kGPUSharedMemoryAddrSpace = 3;
   return new llvm::GlobalVariable(
       *module, tile_type,
       /*isConstant=*/false, llvm::GlobalValue::PrivateLinkage,
       llvm::UndefValue::get(tile_type), AsStringRef(name), nullptr,
-      llvm::GlobalValue::NotThreadLocal, kNVPTXSharedMemoryAddrSpace);
+      llvm::GlobalValue::NotThreadLocal, kGPUSharedMemoryAddrSpace);
 }
 
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
@@ -293,16 +280,15 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
                                                      absl::string_view name,
                                                      llvm::IRBuilder<>* b,
                                                      int alignment) {
-  llvm::IRBuilder<>::InsertPoint insert_point = b->saveIP();
+  llvm::IRBuilder<>::InsertPointGuard guard(*b);
   llvm::Function* function = b->GetInsertBlock()->getParent();
   b->SetInsertPoint(&function->getEntryBlock(),
                     function->getEntryBlock().getFirstInsertionPt());
   llvm::AllocaInst* alloca =
       b->CreateAlloca(type, element_count, AsStringRef(name));
   if (alignment != 0) {
-    alloca->setAlignment(alignment);
+    alloca->setAlignment(llvm::MaybeAlign(alignment));
   }
-  b->restoreIP(insert_point);
   return alloca;
 }
 
@@ -334,7 +320,7 @@ LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
     b->CreateBr(if_data.after_block);
   } else {
     if_data.after_block = if_data.if_block->splitBasicBlock(
-        b->GetInsertPoint(), AsStringRef(absl::StrCat(name, "-after")));
+        b->GetInsertPoint(), absl::StrCat(name, "-after"));
   }
 
   // Our basic block should now end with an unconditional branch.  Remove it;
@@ -507,24 +493,20 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
   return ShapeUtil::ByteSizeOf(shape, pointer_size);
 }
 
-llvm::FastMathFlags GetFastMathFlags(bool fast_math_enabled) {
+llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config) {
   llvm::FastMathFlags flags;
-  if (fast_math_enabled) {
-    // Fast implies AllowReassoc, NoInfs, NoNaNs, NoSignedZeros,
-    // AllowReciprocal, AllowContract, and ApproxFunc.
-    flags.setFast();
+  const auto& options = module_config.debug_options();
+  if (!options.xla_cpu_enable_fast_math()) {
+    return flags;
   }
+  // Fast implies AllowReassoc, NoInfs, NoNaNs, NoSignedZeros, AllowReciprocal,
+  // AllowContract, and ApproxFunc.
+  flags.setFast();
+  flags.setNoNaNs(!options.xla_cpu_fast_math_honor_nans());
+  flags.setNoInfs(!options.xla_cpu_fast_math_honor_infs());
+  flags.setAllowReciprocal(!options.xla_cpu_fast_math_honor_division());
+  flags.setApproxFunc(!options.xla_cpu_fast_math_honor_functions());
   return flags;
-}
-
-void SetTargetOptions(bool fast_math_enabled,
-                      llvm::TargetOptions* target_options) {
-  // In LLVM backend flags, UnsafeFPMath does not explicitly imply
-  // NoInfs, etc.
-  target_options->UnsafeFPMath = fast_math_enabled;
-  target_options->NoInfsFPMath = fast_math_enabled;
-  target_options->NoNaNsFPMath = fast_math_enabled;
-  target_options->NoSignedZerosFPMath = fast_math_enabled;
 }
 
 std::map<int, llvm::MDNode*> MergeMetadata(
@@ -575,14 +557,6 @@ std::map<int, llvm::MDNode*> MergeMetadata(
   return result;
 }
 
-static string GetProcessUniqueIrFileName(absl::string_view prefix) {
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  static NameUniquer* uniquer = new NameUniquer(/*separator=*/"-");
-
-  tensorflow::mutex_lock lock(mu);
-  return uniquer->GetUniqueName(prefix);
-}
-
 static Status CreateAndWriteStringToFile(const string& directory_name,
                                          const string& file_name,
                                          const string& text) {
@@ -596,35 +570,34 @@ static Status CreateAndWriteStringToFile(const string& directory_name,
   return Status::OK();
 }
 
-Status DumpIRToDirectory(const string& directory_name,
-                         const string& hlo_module_name,
-                         const llvm::Module& llvm_module, bool optimized) {
+void DumpIrIfEnabled(const HloModule& hlo_module,
+                     const llvm::Module& llvm_module, bool optimized) {
+  const auto& debug_opts = hlo_module.config().debug_options();
+  if (!DumpingEnabledForHloModule(hlo_module)) {
+    return;
+  }
   // We can end up compiling different modules with the same name when using
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
-  string unique_and_safe_file_name = GetProcessUniqueIrFileName(
-      absl::StrCat("ir-", SanitizeFileName(hlo_module_name), "-",
-                   optimized ? "with" : "no", "-opt"));
-
-  string ir_file_name = tensorflow::io::JoinPath(
-      directory_name, absl::StrCat(unique_and_safe_file_name, ".ll"));
+  string suffix = absl::StrCat("ir-", optimized ? "with" : "no", "-opt");
+  DumpToFileInDirOrStdout(hlo_module, absl::StrCat(suffix, ".ll"),
+                          DumpModuleToString(llvm_module));
 
   // For some models the embedded constants can be huge, so also dump the module
-  // with the constants stripped to get IR that is easier to manipulate.
-  string ir_no_constant_initializers_file_name = tensorflow::io::JoinPath(
-      directory_name, absl::StrCat(unique_and_safe_file_name, "-noconst.ll"));
-
-  TF_RETURN_IF_ERROR(CreateAndWriteStringToFile(
-      directory_name, ir_file_name, DumpModuleToString(llvm_module)));
-  return CreateAndWriteStringToFile(
-      directory_name, ir_no_constant_initializers_file_name,
-      DumpModuleToString(*DropConstantInitializers(llvm_module)));
+  // with the constants stripped to get IR that is easier to manipulate.  Skip
+  // this if we're dumping to stdout; there's no point in duplicating everything
+  // when writing to the terminal.
+  if (!DumpingToStdout(debug_opts)) {
+    DumpToFileInDir(hlo_module, absl::StrCat(suffix, "-noconst.ll"),
+                    DumpModuleToString(*DropConstantInitializers(llvm_module)));
+  }
 }
 
-llvm::Function* CreateFunction(llvm::FunctionType* function_type,
-                               llvm::GlobalValue::LinkageTypes linkage,
-                               bool enable_fast_math, bool optimize_for_size,
-                               absl::string_view name, llvm::Module* module) {
+llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
+                                  llvm::GlobalValue::LinkageTypes linkage,
+                                  const HloModuleConfig& module_config,
+                                  absl::string_view name,
+                                  llvm::Module* module) {
   llvm::Function* function =
       llvm::Function::Create(function_type, linkage, AsStringRef(name), module);
   function->setCallingConv(llvm::CallingConv::C);
@@ -634,17 +607,15 @@ llvm::Function* CreateFunction(llvm::FunctionType* function_type,
   // created by the JIT compiled code.
   function->setHasUWTable();
 
-  if (enable_fast_math) {
-    function->addFnAttr("unsafe-fp-math", "true");
-    function->addFnAttr("no-infs-fp-math", "true");
-    function->addFnAttr("no-nans-fp-math", "true");
-    function->addFnAttr("no-signed-zeros-fp-math", "true");
-  }
+  // Tensorflow always flushes denormals to zero, let LLVM know that flushing
+  // denormals is safe. This allows vectorization using ARM's neon instruction
+  // set.
+  function->addFnAttr("denormal-fp-math", "preserve-sign");
 
-  // Add the optize attribute to the function if optimizing for size. This
+  // Add the optimize attribute to the function if optimizing for size. This
   // controls internal behavior of some optimization passes (e.g. loop
   // unrolling).
-  if (optimize_for_size) {
+  if (cpu::options::OptimizeForSizeRequested(module_config)) {
     function->addFnAttr(llvm::Attribute::OptimizeForSize);
   }
 
@@ -698,34 +669,54 @@ std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
   return std::make_pair(low_32bits, high_32bits);
 }
 
-llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
-    llvm::Module* module, llvm::IRBuilder<>* b) {
-  static const char* kPhiloxRngStateVariableName = "philox_rng_state";
+unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module) {
+  const unsigned kAMDGPUGlobalMemoryAddrSpace = 1;
+  llvm::Triple target_triple = llvm::Triple(module.getTargetTriple());
+  if (target_triple.getArch() == llvm::Triple::amdgcn) {
+    // AMDGPU uses 1 for global memory address space.
+    return kAMDGPUGlobalMemoryAddrSpace;
+  }
+  return 0;
+}
+
+llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
+                                                     llvm::IRBuilder<>* b) {
+  static const char* kRngStateVariableName = "rng_state";
   llvm::GlobalVariable* state_ptr =
-      module->getNamedGlobal(kPhiloxRngStateVariableName);
+      module->getNamedGlobal(kRngStateVariableName);
   if (!state_ptr) {
+    unsigned global_address_space = GetGlobalMemoryAddressSpace(*module);
+    llvm::Type* state_type = b->getInt128Ty();
+    // Use a non-zero initial value as zero state can cause the result of the
+    // first random number generation not passing the chi-square test. The
+    // values used here are arbitrarily chosen, any non-zero values should be
+    // fine.
     state_ptr = new llvm::GlobalVariable(
         /*M=*/*module,
-        /*Ty=*/b->getInt64Ty(),
+        /*Ty=*/state_type,
         /*isConstant=*/false,
         /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
-        /*Initializer=*/b->getInt64(0),
-        /*Name=*/kPhiloxRngStateVariableName);
+        /*Initializer=*/llvm::ConstantInt::get(b->getInt128Ty(), 0x7012395ull),
+        /*Name=*/kRngStateVariableName,
+        /*InsertBefore=*/nullptr,
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/global_address_space,
+        /*isExternallyInitialized=*/false);
   }
   return state_ptr;
 }
 
-void IncrementVariableForPhiloxRngState(int64 value, llvm::Module* module,
-                                        llvm::IRBuilder<>* builder) {
+llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
+                                  llvm::IRBuilder<>* builder) {
   llvm::GlobalVariable* state_ptr =
-      GetOrCreateVariableForPhiloxRngState(module, builder);
-  llvm::Value* state_value_old = builder->CreateLoad(state_ptr, "load_state");
-  // If the 64-bit value overflows, we use the wraparound value. This should
-  // be fine in practice as we only add one to the value each time when a RNG is
-  // executed.
+      GetOrCreateVariableForRngState(module, builder);
+  llvm::LoadInst* state_value_old =
+      builder->CreateLoad(state_ptr, "load_state");
   llvm::Value* state_value_new = builder->CreateAdd(
-      state_value_old, builder->getInt64(value), "inc_state");
+      state_value_old,
+      llvm::ConstantInt::get(state_value_old->getType(), delta));
   builder->CreateStore(state_value_new, state_ptr);
+  return state_value_old;
 }
 
 }  // namespace llvm_ir

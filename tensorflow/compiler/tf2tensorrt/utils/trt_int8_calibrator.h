@@ -25,8 +25,8 @@ limitations under the License.
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 
-#include "cuda/include/cuda_runtime_api.h"
-#include "tensorrt/include/NvInfer.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -34,7 +34,7 @@ namespace tensorrt {
 // TRTs pull model for calibration. When TRT implements a means for
 // a push calibration This class should be updated accordingly
 
-// IInt8EntropyCalibrator2 is prefferred for TRT 5.1+.
+// IInt8EntropyCalibrator2 is preferred for TRT 5.1+.
 #if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
 struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator2 {
 #else
@@ -57,6 +57,8 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   bool getBatch(void* bindings[], const char* names[],
                 int num_bindings) override;
 
+  // Feed calibration data to the calibrator, and return true if the data is
+  // accepted. Return false if the calibrator has been terminated.
   bool setBatch(const std::unordered_map<string, void*>& data,
                 const cudaStream_t stream);
 
@@ -87,7 +89,7 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   bool done_;
 
   // Map to keep tensorrt input buffers and sizes keyed with buffer names
-  const std::unordered_map<string, std::pair<void*, size_t>> dev_buffers_;
+  std::unordered_map<string, std::pair<void*, size_t>> dev_buffers_;
 
   bool calib_running_;
   bool batch_is_set_;

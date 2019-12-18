@@ -61,7 +61,7 @@ TEST(ValidateGraphDefTest, GraphWithUnspecifiedDefaultAttr) {
   CHECK(parser.MergeFromString(graph_def_str, &graph_def)) << graph_def_str;
   Status s = graph::ValidateGraphDef(graph_def, *OpRegistry::Global());
   EXPECT_FALSE(s.ok());
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), "NodeDef missing attr"));
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "NodeDef missing attr"));
 
   // Add the defaults.
   TF_ASSERT_OK(AddDefaultAttrsToGraphDef(&graph_def, *OpRegistry::Global(), 0));
@@ -84,7 +84,7 @@ TEST(ValidateGraphDefTest, GraphWithUnspecifiedRequiredAttr) {
   CHECK(parser.MergeFromString(graph_def_str, &graph_def)) << graph_def_str;
   Status s = graph::ValidateGraphDef(graph_def, *OpRegistry::Global());
   EXPECT_FALSE(s.ok());
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), "NodeDef missing attr"));
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "NodeDef missing attr"));
 
   // Add the defaults.
   TF_ASSERT_OK(AddDefaultAttrsToGraphDef(&graph_def, *OpRegistry::Global(), 0));
@@ -92,7 +92,7 @@ TEST(ValidateGraphDefTest, GraphWithUnspecifiedRequiredAttr) {
   // Validation should still fail.
   s = graph::ValidateGraphDef(graph_def, *OpRegistry::Global());
   EXPECT_FALSE(s.ok());
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), "NodeDef missing attr"));
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "NodeDef missing attr"));
 }
 
 TEST(ValidateGraphDefAgainstOpListTest, GraphWithOpOnlyInOpList) {

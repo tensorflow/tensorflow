@@ -1,58 +1,97 @@
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+
 package(
     default_visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
-licenses(["notice"])  # Apache 2.0
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cuda_library",
-)
-
-tf_cuda_library(
+cc_library(
     name = "profiler_session",
-    srcs = [
-        "profiler_session.cc",
-    ],
-    hdrs = [
-        "profiler_session.h",
-    ],
+    srcs = ["profiler_session.cc"],
+    hdrs = ["profiler_session.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/core/common_runtime/eager:context",
-        "//tensorflow/core/profiler/internal/gpu:tracer",
-        "//tensorflow/core/profiler/internal/runtime:eager_profiler",
+        ":profiler_utils",
         "//tensorflow/core/profiler/internal:profiler_interface",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler/internal:profiler_factory",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
-        ],
+        "//tensorflow:android": [],
         "//conditions:default": [
-            "//tensorflow/core:core_cpu_lib",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:framework_internal",
+            "//tensorflow/core/profiler/convert:run_metadata_to_trace_events",
+            "//tensorflow/core/platform",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
+            "//tensorflow/core:framework",
             "//tensorflow/core:protos_all_cc",
-            "//tensorflow/core:session_options",
-            "//tensorflow/core:device_tracer",
         ],
     }),
 )
 
 tf_cuda_library(
+    name = "profiler_lib",
+    cuda_deps = [
+        "//tensorflow/core/profiler/internal/gpu:device_tracer",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core/profiler/internal/cpu:host_tracer",
+    ],
+    alwayslink = True,
+)
+
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "profiler_session.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
+cc_library(
     name = "traceme",
-    srcs = ["traceme.cc"],
     hdrs = ["traceme.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:traceme_recorder",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
+)
+
+cc_library(
+    name = "scoped_annotation",
+    hdrs = ["scoped_annotation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform",
+        "//tensorflow/core/profiler/internal:annotation_stack",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "profiler_utils",
+    srcs = ["profiler_utils.cc"],
+    hdrs = ["profiler_utils.h"],
+    visibility = ["//tensorflow/core/profiler:internal"],
+)
+
+filegroup(
+    name = "mobile_srcs",
+    srcs = [
+        "profiler_session.cc",
+        "profiler_session.h",
+        "scoped_annotation.h",
+        "traceme.h",
+    ],
+    visibility = ["//visibility:public"],
 )

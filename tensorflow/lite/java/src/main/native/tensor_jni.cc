@@ -13,13 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/java/src/main/native/tensor_jni.h"
+#include <jni.h>
+
 #include <cstring>
 #include <memory>
-#include "tensorflow/lite/c/c_api_internal.h"
+#include <string>
+
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/java/src/main/native/exception_jni.h"
+#include "tensorflow/lite/java/src/main/native/jni_utils.h"
 #include "tensorflow/lite/string_util.h"
+
+using tflite::jni::ThrowException;
 
 namespace {
 
@@ -44,7 +49,7 @@ class TensorHandle {
 
 TfLiteTensor* GetTensorFromHandle(JNIEnv* env, jlong handle) {
   if (handle == 0) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Internal error: Invalid handle to TfLiteTensor.");
     return nullptr;
   }
@@ -53,7 +58,7 @@ TfLiteTensor* GetTensorFromHandle(JNIEnv* env, jlong handle) {
 
 int GetTensorIndexFromHandle(JNIEnv* env, jlong handle) {
   if (handle == 0) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Internal error: Invalid handle to TfLiteTensor.");
     return -1;
   }
@@ -95,7 +100,7 @@ size_t WriteOneDimensionalArray(JNIEnv* env, jobject object, TfLiteType type,
   const int num_elements = env->GetArrayLength(array);
   size_t to_copy = num_elements * ElementByteSize(type);
   if (to_copy > dst_size) {
-    throwException(env, kIllegalStateException,
+    ThrowException(env, kIllegalStateException,
                    "Internal error: cannot write Java array of %d bytes to "
                    "Tensor of %d bytes",
                    to_copy, dst_size);
@@ -127,7 +132,7 @@ size_t WriteOneDimensionalArray(JNIEnv* env, jobject object, TfLiteType type,
       return to_copy;
     }
     default: {
-      throwException(env, kUnsupportedOperationException,
+      ThrowException(env, kUnsupportedOperationException,
                      "DataType error: TensorFlowLite currently supports float "
                      "(32 bits), int (32 bits), byte (8 bits), and long "
                      "(64 bits), support for other types (DataType %d in this "
@@ -143,7 +148,7 @@ size_t ReadOneDimensionalArray(JNIEnv* env, TfLiteType data_type,
   const int len = env->GetArrayLength(dst);
   const size_t size = len * ElementByteSize(data_type);
   if (size > src_size) {
-    throwException(
+    ThrowException(
         env, kIllegalStateException,
         "Internal error: cannot fill a Java array of %d bytes with a Tensor of "
         "%d bytes",
@@ -175,7 +180,7 @@ size_t ReadOneDimensionalArray(JNIEnv* env, TfLiteType data_type,
       return size;
     }
     default: {
-      throwException(env, kIllegalStateException,
+      ThrowException(env, kIllegalStateException,
                      "DataType error: invalid DataType(%d)", data_type);
     }
   }
@@ -215,7 +220,10 @@ int ReadMultiDimensionalStringArray(JNIEnv* env, TfLiteTensor* tensor,
     for (int i = 0; i < len; ++i) {
       const tflite::StringRef strref =
           tflite::GetString(tensor, start_str_index + num_strings_read);
-      jstring string_dest = env->NewStringUTF(strref.str);
+      // Makes sure the string is null terminated before passing to
+      // NewStringUTF.
+      std::string str(strref.str, strref.len);
+      jstring string_dest = env->NewStringUTF(str.data());
       env->SetObjectArrayElement(object_array, i, string_dest);
       env->DeleteLocalRef(string_dest);
       ++num_strings_read;
@@ -294,6 +302,10 @@ void WriteMultiDimensionalStringArray(JNIEnv* env, jobject src,
 
 }  // namespace
 
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
+
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_Tensor_create(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jint tensor_index) {
   tflite::Interpreter* interpreter =
@@ -313,7 +325,7 @@ JNIEXPORT jobject JNICALL Java_org_tensorflow_lite_Tensor_buffer(JNIEnv* env,
   TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
   if (tensor == nullptr) return nullptr;
   if (tensor->data.raw == nullptr) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Internal error: Tensor hasn't been allocated.");
     return nullptr;
   }
@@ -328,7 +340,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_lite_Tensor_writeDirectBuffer(
 
   char* src_data_raw = static_cast<char*>(env->GetDirectBufferAddress(src));
   if (!src_data_raw) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Input ByteBuffer is not a direct buffer");
     return;
   }
@@ -345,7 +357,7 @@ Java_org_tensorflow_lite_Tensor_readMultiDimensionalArray(JNIEnv* env,
   if (tensor == nullptr) return;
   int num_dims = tensor->dims->size;
   if (num_dims == 0) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Internal error: Cannot copy empty/scalar Tensors.");
     return;
   }
@@ -367,12 +379,12 @@ Java_org_tensorflow_lite_Tensor_writeMultiDimensionalArray(JNIEnv* env,
   TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
   if (tensor == nullptr) return;
   if (tensor->type != kTfLiteString && tensor->data.raw == nullptr) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Internal error: Target Tensor hasn't been allocated.");
     return;
   }
   if (tensor->dims->size == 0) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Internal error: Cannot copy empty/scalar Tensors.");
     return;
   }
@@ -390,6 +402,27 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_dtype(JNIEnv* env,
   TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
   if (tensor == nullptr) return 0;
   return static_cast<jint>(tensor->type);
+}
+
+JNIEXPORT jstring JNICALL Java_org_tensorflow_lite_Tensor_name(JNIEnv* env,
+                                                               jclass clazz,
+                                                               jlong handle) {
+  TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
+  if (tensor == nullptr) {
+    ThrowException(env, kIllegalArgumentException,
+                   "Target Tensor doesn't exist.");
+    return nullptr;
+  }
+
+  if (tensor->name == nullptr) {
+    return env->NewStringUTF("");
+  }
+
+  jstring tensor_name = env->NewStringUTF(tensor->name);
+  if (tensor_name == nullptr) {
+    return env->NewStringUTF("");
+  }
+  return tensor_name;
 }
 
 JNIEXPORT jintArray JNICALL
@@ -426,3 +459,7 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_index(JNIEnv* env,
                                                              jlong handle) {
   return GetTensorIndexFromHandle(env, handle);
 }
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus

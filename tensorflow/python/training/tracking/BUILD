@@ -1,18 +1,21 @@
 # Description:
 #   Utilities for reading and writing object-based checkpoints.
 
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "tf_py_logged_benchmark",
+)
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+
 package(
     default_visibility = [
         "//tensorflow:internal",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
-licenses(["notice"])  # Apache 2.0
-
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 py_library(
     name = "base",
@@ -36,7 +39,7 @@ py_library(
 tf_py_test(
     name = "base_test",
     srcs = ["base_test.py"],
-    additional_deps = [
+    deps = [
         ":base",
         "//tensorflow/python:client_testlib",
     ],
@@ -55,7 +58,7 @@ py_library(
 tf_py_test(
     name = "tracking_test",
     srcs = ["tracking_test.py"],
-    additional_deps = [
+    deps = [
         ":base",
         ":tracking",
         "//tensorflow/python:client_testlib",
@@ -76,13 +79,18 @@ py_library(
         ":base",
         ":layer_utils",
         "//tensorflow/python/saved_model:revived_types",
+        "@wrapt",
     ],
 )
 
 tf_py_test(
     name = "data_structures_test",
     srcs = ["data_structures_test.py"],
-    additional_deps = [
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
         ":data_structures",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_test_lib",
@@ -93,16 +101,6 @@ tf_py_test(
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:layers",
     ],
-    tags = [
-        "nomac" +
-        "no_windows",
-    ],
-)
-
-py_library(
-    name = "object_identity",
-    srcs = ["object_identity.py"],
-    srcs_version = "PY2AND3",
 )
 
 py_library(
@@ -111,7 +109,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":base",
-        ":object_identity",
         ":tracking",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",
@@ -130,7 +127,6 @@ py_library(
         ":base",
         ":data_structures",
         ":graph_view",
-        ":object_identity",
         ":tracking",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -142,38 +138,42 @@ py_library(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:io_ops_gen",
         "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:saver",
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/keras:backend",
         "//tensorflow/python/training/saving:functional_saver",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "@six_archive//:six",
     ],
 )
 
 tf_py_test(
     name = "util_test",
     srcs = ["util_test.py"],
-    additional_deps = [
+    tags = ["notsan"],  # b/74395663
+    deps = [
         ":base",
         ":graph_view",
         ":tracking",
         ":util",
-        "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
-        "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python:checkpoint_management",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:saver",
@@ -181,25 +181,28 @@ tf_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:template",
         "//tensorflow/python:training_util",
-        "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:layers",
-        "//tensorflow/python:variables",
+        "//tensorflow/python/keras/optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
+        "@six_archive//:six",
     ],
-    tags = ["notsan"],  # b/74395663
 )
 
 tf_xla_py_test(
     name = "util_xla_test",
     srcs = ["util_xla_test.py"],
+    python_version = "PY3",
     tags = [
         "no_pip",
-        "no_rocm",
+        "no_windows",
         "nomac",
         "notsan",  # b/74395663
     ],
@@ -221,13 +224,14 @@ tf_xla_py_test(
 tf_py_test(
     name = "util_with_v1_optimizers_test",
     srcs = ["util_with_v1_optimizers_test.py"],
-    additional_deps = [
+    tags = [
+        "notsan",  # b/74395663
+    ],
+    deps = [
         ":base",
         ":graph_view",
         ":tracking",
         ":util",
-        "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
         "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -251,9 +255,43 @@ tf_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:layers",
+        "@absl_py//absl/testing:parameterized",
+        "@six_archive//:six",
     ],
-    tags = [
-        "no_windows",  # b/124401331
-        "notsan",  # b/74395663
+)
+
+py_library(
+    name = "python_state",
+    srcs = ["python_state.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base",
     ],
+)
+
+tf_py_test(
+    name = "python_state_test",
+    srcs = ["python_state_test.py"],
+    deps = [
+        ":base",
+        ":util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/module",
+    ],
+)
+
+tf_py_test(
+    name = "benchmarks_test",
+    srcs = ["benchmarks_test.py"],
+    deps = [
+        ":util",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_py_logged_benchmark(
+    name = "benchmarks",
+    target = "//tensorflow/python/training/tracking:benchmarks_test",
 )

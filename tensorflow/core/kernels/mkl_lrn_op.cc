@@ -22,6 +22,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 #include <vector>
+
 #include "mkldnn.hpp"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
@@ -108,8 +109,10 @@ class MklLRNOp : public OpKernel {
         return;
       } else if (!src_dnn_shape.IsMklChannelDim(src_dnn_shape.GetDimension() -
                                                 1)) {
-        Tensor converted_tensor =
-            ConvertMklToTF<T>(context, src_tensor, src_dnn_shape);
+        Tensor converted_tensor;
+        OP_REQUIRES_OK(context,
+                       ConvertMklToTF<T>(context, src_tensor, src_dnn_shape,
+                                         &converted_tensor));
         MklDefaultToEigen(context, converted_tensor);
         return;
       }
@@ -531,22 +534,26 @@ class MklLRNGradOp : public OpKernel {
     GetMklShape(context, kIdxOrigOutput, &orig_output_dnn_shape);
 
     if (input_grad_dnn_shape.IsMklTensor()) {
-      input_gradient_tensor = ConvertMklToTF<T>(
-          context, MklGetInput(context, kIdxGradient), input_grad_dnn_shape);
+      OP_REQUIRES_OK(
+          context,
+          ConvertMklToTF<T>(context, MklGetInput(context, kIdxGradient),
+                            input_grad_dnn_shape, &input_gradient_tensor));
     } else {
       input_gradient_tensor = MklGetInput(context, kIdxGradient);
     }
 
     if (orig_input_dnn_shape.IsMklTensor()) {
-      orig_input_tensor = ConvertMklToTF<T>(
-          context, MklGetInput(context, kIdxOrigInput), orig_input_dnn_shape);
+      OP_REQUIRES_OK(context, ConvertMklToTF<T>(
+                                  context, MklGetInput(context, kIdxOrigInput),
+                                  orig_input_dnn_shape, &orig_input_tensor));
     } else {
       orig_input_tensor = MklGetInput(context, kIdxOrigInput);
     }
 
     if (orig_output_dnn_shape.IsMklTensor()) {
-      orig_output_tensor = ConvertMklToTF<T>(
-          context, MklGetInput(context, kIdxOrigOutput), orig_output_dnn_shape);
+      OP_REQUIRES_OK(context, ConvertMklToTF<T>(
+                                  context, MklGetInput(context, kIdxOrigOutput),
+                                  orig_output_dnn_shape, &orig_output_tensor));
     } else {
       orig_output_tensor = MklGetInput(context, kIdxOrigOutput);
     }
@@ -671,17 +678,19 @@ class MklLRNGradOp : public OpKernel {
   float beta_;
 };
 
-#define REGISTER_MKL_LRN_CPU(T)                                     \
-  REGISTER_KERNEL_BUILDER(Name("_MklLRN")                           \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklLRNOp<T>);                             \
-  REGISTER_KERNEL_BUILDER(Name("_MklLRNGrad")                       \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklLRNGradOp<T>);
+#define REGISTER_MKL_LRN_CPU(T)                                \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklLRN")                                          \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklLRNOp<T>);                                            \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklLRNGrad")                                      \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklLRNGradOp<T>);
 
 TF_CALL_float(REGISTER_MKL_LRN_CPU);
 

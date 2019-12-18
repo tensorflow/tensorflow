@@ -21,6 +21,7 @@ from __future__ import print_function
 import gast
 
 from tensorflow.python.autograph.pyct import anno
+from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.platform import test
@@ -30,12 +31,7 @@ class TransformerTest(test.TestCase):
 
   def _simple_context(self):
     entity_info = transformer.EntityInfo(
-        source_code=None,
-        source_file=None,
-        namespace=None,
-        arg_values=None,
-        arg_types=None,
-        owner_type=None)
+        source_code=None, source_file=None, future_features=(), namespace=None)
     return transformer.Context(entity_info)
 
   def test_entity_scope_tracking(self):
@@ -69,10 +65,10 @@ class TransformerTest(test.TestCase):
           return b, inner_function
       return a, TestClass
 
-    node, _ = parser.parse_entity(test_function)
+    node, _ = parser.parse_entity(test_function, future_features=())
     node = tr.visit(node)
 
-    test_function_node = node.body[0]
+    test_function_node = node
     test_class = test_function_node.body[1]
     test_method = test_class.body[0]
     inner_function = test_method.body[1]
@@ -142,10 +138,10 @@ class TransformerTest(test.TestCase):
           while True:
             raise '1'
 
-    node, _ = parser.parse_entity(test_function)
+    node, _ = parser.parse_entity(test_function, future_features=())
     node = tr.visit(node)
 
-    fn_body = node.body[0].body
+    fn_body = node.body
     outer_while_body = fn_body[1].body
     self.assertSameAnno(fn_body[0], outer_while_body[0], 'cond_state')
     self.assertDifferentAnno(fn_body[0], outer_while_body[0], 'loop_state')
@@ -208,10 +204,10 @@ class TransformerTest(test.TestCase):
             raise '1'
       return 'nor this'
 
-    node, _ = parser.parse_entity(test_function)
+    node, _ = parser.parse_entity(test_function, future_features=())
     node = tr.visit(node)
 
-    for_node = node.body[0].body[2]
+    for_node = node.body[2]
     while_node = for_node.body[1].orelse[1]
 
     self.assertFalse(anno.hasanno(for_node, 'string'))
@@ -239,7 +235,7 @@ class TransformerTest(test.TestCase):
         print(a)
       return None
 
-    node, _ = parser.parse_entity(no_exit)
+    node, _ = parser.parse_entity(no_exit, future_features=())
     with self.assertRaises(AssertionError):
       tr.visit(node)
 
@@ -247,7 +243,7 @@ class TransformerTest(test.TestCase):
       for _ in a:
         print(a)
 
-    node, _ = parser.parse_entity(no_entry)
+    node, _ = parser.parse_entity(no_entry, future_features=())
     with self.assertRaises(AssertionError):
       tr.visit(node)
 
@@ -273,9 +269,8 @@ class TransformerTest(test.TestCase):
 
     tr = TestTransformer(self._simple_context())
 
-    node, _ = parser.parse_entity(test_function)
+    node, _ = parser.parse_entity(test_function, future_features=())
     node = tr.visit(node)
-    node = node.body[0]
 
     self.assertEqual(len(node.body), 2)
     self.assertTrue(isinstance(node.body[0], gast.Assign))
@@ -304,7 +299,7 @@ class TransformerTest(test.TestCase):
 
     tr = BrokenTransformer(self._simple_context())
 
-    node, _ = parser.parse_entity(test_function)
+    node, _ = parser.parse_entity(test_function, future_features=())
     with self.assertRaises(ValueError) as cm:
       node = tr.visit(node)
     obtained_message = str(cm.exception)
@@ -335,7 +330,7 @@ class TransformerTest(test.TestCase):
 
     tr = BrokenTransformer(self._simple_context())
 
-    node, _ = parser.parse_entity(test_function)
+    node, _ = parser.parse_entity(test_function, future_features=())
     with self.assertRaises(ValueError) as cm:
       node = tr.visit(node)
     obtained_message = str(cm.exception)
@@ -343,6 +338,59 @@ class TransformerTest(test.TestCase):
     # from the exception handler.
     expected_substring = 'I blew up'
     self.assertTrue(expected_substring in obtained_message, obtained_message)
+
+  def test_origin_info_propagated_to_new_nodes(self):
+
+    class TestTransformer(transformer.Base):
+
+      def visit_If(self, node):
+        return gast.Pass()
+
+    tr = TestTransformer(self._simple_context())
+
+    def test_fn():
+      x = 1
+      if x > 0:
+        x = 1
+      return x
+
+    node, source = parser.parse_entity(test_fn, future_features=())
+    origin_info.resolve(node, source, 'test_file', 100, 0)
+    node = tr.visit(node)
+
+    created_pass_node = node.body[1]
+    # Takes the line number of the if statement.
+    self.assertEqual(
+        anno.getanno(created_pass_node, anno.Basic.ORIGIN).loc.lineno, 102)
+
+  def test_origin_info_preserved_in_moved_nodes(self):
+
+    class TestTransformer(transformer.Base):
+
+      def visit_If(self, node):
+        return node.body
+
+    tr = TestTransformer(self._simple_context())
+
+    def test_fn():
+      x = 1
+      if x > 0:
+        x = 1
+        x += 3
+      return x
+
+    node, source = parser.parse_entity(test_fn, future_features=())
+    origin_info.resolve(node, source, 'test_file', 100, 0)
+    node = tr.visit(node)
+
+    assign_node = node.body[1]
+    aug_assign_node = node.body[2]
+    # Keep their original line numbers.
+    self.assertEqual(
+        anno.getanno(assign_node, anno.Basic.ORIGIN).loc.lineno, 103)
+    self.assertEqual(
+        anno.getanno(aug_assign_node, anno.Basic.ORIGIN).loc.lineno, 104)
+
 
 if __name__ == '__main__':
   test.main()

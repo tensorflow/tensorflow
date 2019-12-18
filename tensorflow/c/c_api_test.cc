@@ -22,15 +22,16 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/c_test_util.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/graph.pb_text.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
-#include "tensorflow/core/framework/node_def.pb_text.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -40,12 +41,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
@@ -56,7 +57,7 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 namespace {
 
 static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
-  EXPECT_TRUE(str_util::StrContains(s, expected))
+  EXPECT_TRUE(absl::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }
 
@@ -233,7 +234,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
     // Create C++ Tensor
     Tensor src(tensorflow::DT_STRING, TensorShape(dims));
     for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
-      src.flat<string>()(i) = data[i];
+      src.flat<tstring>()(i) = data[i];
     }
     TF_Tensor* dst = TF_TensorFromTensor(src, status);
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -243,7 +244,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
     ASSERT_EQ(Status::OK(), TF_TensorToTensor(dst, &output)) << line;
     ASSERT_EQ(src.NumElements(), output.NumElements()) << line;
     for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
-      ASSERT_EQ(data[i], output.flat<string>()(i)) << line;
+      ASSERT_EQ(data[i], output.flat<tstring>()(i)) << line;
     }
 
     TF_DeleteTensor(dst);
@@ -556,7 +557,7 @@ TEST(CAPI, Graph) {
       EXPECT_FALSE(found_add);
       found_add = true;
     } else {
-      ADD_FAILURE() << "Unexpected NodeDef: " << ProtoDebugString(n);
+      ADD_FAILURE() << "Unexpected NodeDef: " << n.DebugString();
     }
   }
   EXPECT_TRUE(found_placeholder);
@@ -581,20 +582,20 @@ TEST(CAPI, Graph) {
   // Compare with first GraphDef + added NodeDef.
   NodeDef* added_node = graph_def.add_node();
   *added_node = node_def;
-  EXPECT_EQ(ProtoDebugString(graph_def), ProtoDebugString(graph_def2));
+  EXPECT_EQ(graph_def.DebugString(), graph_def2.DebugString());
 
   // Look up some nodes by name.
   TF_Operation* neg2 = TF_GraphOperationByName(graph, "neg");
   EXPECT_TRUE(neg == neg2);
   NodeDef node_def2;
   ASSERT_TRUE(GetNodeDef(neg2, &node_def2));
-  EXPECT_EQ(ProtoDebugString(node_def), ProtoDebugString(node_def2));
+  EXPECT_EQ(node_def.DebugString(), node_def2.DebugString());
 
   TF_Operation* feed2 = TF_GraphOperationByName(graph, "feed");
   EXPECT_TRUE(feed == feed2);
   ASSERT_TRUE(GetNodeDef(feed, &node_def));
   ASSERT_TRUE(GetNodeDef(feed2, &node_def2));
-  EXPECT_EQ(ProtoDebugString(node_def), ProtoDebugString(node_def2));
+  EXPECT_EQ(node_def.DebugString(), node_def2.DebugString());
 
   // Test iterating through the nodes of a graph.
   found_placeholder = false;
@@ -618,7 +619,7 @@ TEST(CAPI, Graph) {
       found_neg = true;
     } else {
       ASSERT_TRUE(GetNodeDef(oper, &node_def));
-      ADD_FAILURE() << "Unexpected Node: " << ProtoDebugString(node_def);
+      ADD_FAILURE() << "Unexpected Node: " << node_def.DebugString();
     }
   }
   EXPECT_TRUE(found_placeholder);
@@ -1385,7 +1386,7 @@ TEST(CAPI, SavedModel) {
     tensorflow::Example example;
     auto* feature_map = example.mutable_features()->mutable_feature();
     (*feature_map)["x"].mutable_float_list()->add_value(i);
-    input.flat<string>()(i) = example.SerializeAsString();
+    input.flat<tstring>()(i) = example.SerializeAsString();
   }
 
   const tensorflow::string input_op_name(
@@ -2497,6 +2498,38 @@ TEST(TestKernel, TestGetRegisteredKernelsForOpNoKernels) {
 }
 
 #undef EXPECT_TF_META
+
+TEST(CAPI, TestTensorAligned) {
+  int64_t dim = 7;
+  size_t tensor_size_bytes = dim * TF_DataTypeSize(TF_FLOAT);
+  TF_Tensor* a = TF_AllocateTensor(
+      /*dtype=*/TF_FLOAT, /*dims=*/&dim, /*num_dims=*/1,
+      /*len=*/tensor_size_bytes);
+  float* data = reinterpret_cast<float*>(TF_TensorData(a));
+  for (int i = 0; i < dim; ++i) {
+    data[i] = 0;
+  }
+  if (EIGEN_MAX_ALIGN_BYTES > 0) {
+    EXPECT_TRUE(TF_TensorIsAligned(a));
+  }
+  TF_DeleteTensor(a);
+}
+
+TEST(CAPI, TestTensorIsNotAligned) {
+  // Test unaligned access via a Slice.
+  Tensor x(DT_FLOAT, TensorShape({30}));
+  x.flat<float>().setConstant(0.0);
+
+  // Take an unaligned slice.
+  Tensor y = x.Slice(1, 13);
+  TF_Status* status = TF_NewStatus();
+  TF_Tensor* a = TF_TensorFromTensor(y, status);
+  if (EIGEN_MAX_ALIGN_BYTES > 0) {
+    EXPECT_FALSE(TF_TensorIsAligned(a));
+  }
+  TF_DeleteStatus(status);
+  TF_DeleteTensor(a);
+}
 
 }  // namespace
 }  // namespace tensorflow

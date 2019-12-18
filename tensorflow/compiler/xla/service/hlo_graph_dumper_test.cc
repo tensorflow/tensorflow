@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
@@ -31,24 +32,13 @@ namespace {
 using absl::StrCat;
 using ::testing::HasSubstr;
 
+using HloGraphDumperTest = HloTestBase;
+
 string TestName() {
   return ::testing::UnitTest::GetInstance()->current_test_info()->name();
 }
 
-class DotRenderer : public hlo_graph_dumper::GraphRendererInterface {
- public:
-  string RenderGraph(const string& graph, GraphKind graph_kind,
-                     const DebugOptions& debug_options) override {
-    return graph;
-  }
-
- private:
-  string last_graph_;
-};
-
-XLA_REGISTER_GRAPH_RENDERER(DotRenderer);
-
-TEST(HloGraphDumperTest, NestedFusion) {
+TEST_F(HloGraphDumperTest, NestedFusion) {
   HloComputation::Builder b("b");
 
   // Build param0 + param1 + param2 + param3 + param4.
@@ -90,8 +80,9 @@ TEST(HloGraphDumperTest, NestedFusion) {
           {fused_sums[1], fused_sums[0]}, HloInstruction::FusionKind::kLoop);
 
   // Generate the graph; all nodes should be present.
-  string graph = hlo_graph_dumper::DumpGraph(*root_computation, /*label=*/"",
-                                             DebugOptions());
+  TF_ASSERT_OK_AND_ASSIGN(
+      string graph, RenderGraph(*root_computation, /*label=*/"", DebugOptions(),
+                                RenderedGraphFormat::kDot));
   for (const HloComputation* computation :
        {root_computation,  //
         inner_fusion->fused_instructions_computation(),
@@ -113,12 +104,13 @@ TEST(HloGraphDumperTest, NestedFusion) {
     }
   }
   ASSERT_NE(inner_sum, nullptr);
-  EXPECT_THAT(
-      hlo_graph_dumper::DumpNeighborhoodAround(*inner_sum, /*radius=*/1),
-      HasSubstr(inner_sum->name()));
+  TF_ASSERT_OK_AND_ASSIGN(string neighborhood_graph,
+                          RenderNeighborhoodAround(*inner_sum, /*radius=*/1,
+                                                   RenderedGraphFormat::kDot));
+  EXPECT_THAT(neighborhood_graph, HasSubstr(inner_sum->name()));
 }
 
-TEST(HloGraphDumperTest, Constant) {
+TEST_F(HloGraphDumperTest, Constant) {
   HloComputation::Builder b("b");
   auto instruction = b.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(-42)));
@@ -126,13 +118,14 @@ TEST(HloGraphDumperTest, Constant) {
   HloModuleConfig config;
   HloModule m(TestName(), config);
   HloComputation* root_computation = m.AddEntryComputation(b.Build());
-  string graph = hlo_graph_dumper::DumpGraph(
-      *root_computation, /*label=*/"an_empty_graph", DebugOptions());
+  TF_ASSERT_OK_AND_ASSIGN(
+      string graph, RenderGraph(*root_computation, /*label=*/"an_empty_graph",
+                                DebugOptions(), RenderedGraphFormat::kDot));
   EXPECT_THAT(graph, HasSubstr("an_empty_graph"));
   EXPECT_THAT(graph, Not(HasSubstr("i_am_a_constant_root_instruction")));
 }
 
-TEST(HloGraphDumperTest, TupleConstant) {
+TEST_F(HloGraphDumperTest, TupleConstant) {
   Shape tuple_shape = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShape(F32, {3, 2}), ShapeUtil::MakeShape(S32, {4, 5})});
   HloComputation::Builder b("b");
@@ -144,10 +137,29 @@ TEST(HloGraphDumperTest, TupleConstant) {
   HloModuleConfig config;
   HloModule m(TestName(), config);
   HloComputation* root_computation = m.AddEntryComputation(b.Build(gte));
-  string graph = hlo_graph_dumper::DumpGraph(
-      *root_computation, /*label=*/"tuple_constant", DebugOptions());
+  TF_ASSERT_OK_AND_ASSIGN(
+      string graph, RenderGraph(*root_computation, /*label=*/"tuple_constant",
+                                DebugOptions(), RenderedGraphFormat::kDot));
   EXPECT_THAT(graph, HasSubstr("tuple_constant"));
   EXPECT_THAT(graph, HasSubstr("constant (f32[3,2], s32[4,5])"));
+}
+
+TEST_F(HloGraphDumperTest, Compare) {
+  const char* hlo_string = R"(
+    HloModule comp
+
+    ENTRY comp {
+      param.0 = f32[10] parameter(0)
+      param.1 = f32[10] parameter(1)
+      ROOT lt = pred[10] compare(param.0, param.1), direction=LT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      string graph,
+      RenderGraph(*module->entry_computation(), /*label=*/"tuple_constant",
+                  DebugOptions(), RenderedGraphFormat::kDot));
+  EXPECT_THAT(graph, HasSubstr("direction=LT"));
 }
 
 }  // anonymous namespace

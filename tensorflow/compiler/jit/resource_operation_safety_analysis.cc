@@ -84,6 +84,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -93,22 +94,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-// Returns true if `n` may call a function.
-Status MayCallFunction(const Node& n, const FunctionLibraryDefinition* flib_def,
-                       bool* out_result) {
-  if (flib_def->Contains(n.type_string())) {
-    *out_result = true;
-  } else {
-    *out_result =
-        std::any_of(n.def().attr().begin(), n.def().attr().end(),
-                    [](const std::pair<string, AttrValue>& name_attr_pair) {
-                      return name_attr_pair.second.has_func();
-                    });
-  }
-
-  return Status::OK();
-}
-
 // Maps `n` to the XlaResourceOpKind corresponding to its operation.  If `n` is
 // not a resource operation recognized by XLA then sets `out_resource_op_kind`
 // to nullopt.
@@ -134,9 +119,7 @@ Status XlaResourceOpKindForNode(
   // We conservatively assume that functions will both read and write resource
   // variables.  In the future we may consider doing some form of
   // inter-procedural analysis.
-  bool may_call_function;
-  TF_RETURN_IF_ERROR(MayCallFunction(n, flib_def, &may_call_function));
-  if (may_call_function) {
+  if (MayCallFunction(n, flib_def)) {
     *out_resource_op_kind = XlaResourceOpKind::kReadWrite;
   } else {
     *out_resource_op_kind = absl::nullopt;

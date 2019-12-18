@@ -25,6 +25,10 @@ Status GetNodeAttr(const NodeDef& node_def, StringPiece attr_name,
                    Padding* value) {
   string str_value;
   TF_RETURN_IF_ERROR(GetNodeAttr(node_def, attr_name, &str_value));
+  return GetPaddingFromString(str_value, value);
+}
+
+Status GetPaddingFromString(StringPiece str_value, Padding* value) {
   if (str_value == "SAME") {
     *value = SAME;
   } else if (str_value == "VALID") {

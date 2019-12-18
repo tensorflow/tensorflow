@@ -213,8 +213,8 @@ class SoftmaxCrossEntropyLossTest(test.TestCase):
       # where for a softmax activation
       # \log q_i = x_i - \log \sum_j \exp x_j
       #          = x_i - x_max - \log \sum_j \exp (x_j - x_max)
-      # For our activations, [100, -100, -100] the log partion function becomes
-      # \log ( exp(0) + exp(-200) + exp(-200) ) = 0
+      # For our activations, [100, -100, -100] the log partition function
+      # becomes \log ( exp(0) + exp(-200) + exp(-200) ) = 0
       # so our log softmaxes become: [0, -200, -200]
       # so our cross entropy loss is:
       # -(1 - L + L/n) * 0 + 400 * L/n = 400 L/n
@@ -488,7 +488,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       labels = constant_op.constant([[0, 1], [2, 3]])
       weights = constant_op.constant(1.2)
 
-      with self.assertRaisesRegexp(ValueError, 'dimension'):
+      with self.assertRaisesRegexp(ValueError, 'mismatch'):
         losses.sparse_softmax_cross_entropy(
             labels, logits, weights=weights).eval()
 

@@ -90,7 +90,7 @@ class MemoryOptimizerSwapTest(test.TestCase):
 
       self.assertEqual(len(graph.node), graph_size + 2)
       self.assertTrue(
-          set([node.name for node in graph.node]) > set(
+          set(node.name for node in graph.node) > set(
               ['a', 'b', 'c', 'd', 'swap_in_d_0', 'swap_out_d_0']))
       for node in graph.node:
         if node.name == 'swap_in_d_0':
@@ -302,6 +302,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
         self.evaluate(init_op)
         self.evaluate(train_op)
 
+  @test_util.run_v1_only('b/120545219')
   def testHintDoesRewrite(self):
     graph = self._annotated_graph()[0]
     with graph.as_default():
@@ -318,8 +319,10 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
     rewritten_graph_def = tf_optimizer.OptimizeGraph(config, metagraph)
     self.assertEqual(
         9,
-        len([node for node in rewritten_graph_def.node
-             if 'Recomputed/' in node.name]))
+        len([
+            node for node in rewritten_graph_def.node
+            if 'Recomputed/' in node.name
+        ]))
 
 if __name__ == '__main__':
   test.main()

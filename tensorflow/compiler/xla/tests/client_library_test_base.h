@@ -105,7 +105,7 @@ class ClientLibraryTestBase : public ::testing::Test {
       const Shape* shape_with_output_layout = nullptr);
 
   // This executes the computation via the reference client (which connects a
-  // interpreter backend). The result is used as the expected values of the
+  // interpreter backend). The result is used as the expected value of the
   // computation.
   StatusOr<Literal> ExecuteAndTransferReference(
       const XlaComputation& computation,
@@ -344,8 +344,8 @@ class ClientLibraryTestBase : public ::testing::Test {
       const string& name, XlaBuilder* builder, XlaOp* data_handle);
 
   // Creates a parameter instruction that wraps the given constant array
-  // "array_2d" and then stores to "data_handle" the global handle for that
-  // parameter.
+  // "array_2d" and then stores it to the global handle for that parameter
+  // "data_handle".
   //
   // "parameter_number" is the parameter number.
   // "name" is the name of the parameter instruction.
@@ -358,8 +358,8 @@ class ClientLibraryTestBase : public ::testing::Test {
       const string& name, XlaBuilder* builder, XlaOp* data_handle);
 
   // Creates a parameter instruction that wraps the given constant array
-  // "array_3d" and then stores to "data_handle" the global handle for that
-  // parameter.
+  // "array_3d" and then stores it to the global handle for that parameter
+  // "data_handle".
   //
   // "parameter_number" is the parameter number.
   // "name" is the name of the parameter instruction.
@@ -369,6 +369,20 @@ class ClientLibraryTestBase : public ::testing::Test {
   template <typename NativeT>
   std::unique_ptr<GlobalData> CreateR3Parameter(
       const Array3D<NativeT>& array_3d, int64 parameter_number,
+      const string& name, XlaBuilder* builder, XlaOp* data_handle);
+
+  // Creates a parameter instruction that wraps the given constant array
+  // "array_4d" and then stores it to the global handle for that parameter
+  // "data_handle".
+  //
+  // "parameter_number" is the parameter number.
+  // "name" is the name of the parameter instruction.
+  //
+  // When the use_bfloat16 flag is set but NativeT is float, the data will be
+  // converted to bfloat16.
+  template <typename NativeT>
+  std::unique_ptr<GlobalData> CreateR4Parameter(
+      const Array4D<NativeT>& array_4d, int64 parameter_number,
       const string& name, XlaBuilder* builder, XlaOp* data_handle);
 
   // Getter and setter for the use_bfloat16 flag, which indicates whether to run
@@ -384,6 +398,9 @@ class ClientLibraryTestBase : public ::testing::Test {
   // actual).
   StatusOr<std::pair<Literal, Literal>> ComputeValueAndReference(
       XlaBuilder* builder, absl::Span<const Literal> arguments);
+
+  // Converts an f32 literal to bf16 if use_bfloat16_ is true.
+  Literal MaybeConvertLiteralToBfloat16(const Literal& literal);
 
   LocalClient* client_;
   LocalClient* ref_client_;  // To compute reference result.
@@ -402,8 +419,7 @@ class ClientLibraryTestBase : public ::testing::Test {
                                const string& error_message)>& verify_output,
       const Shape* output_with_layout = nullptr);
 
-  // Converts an f32 shape/literal to bf16 if use_bfloat16_ is true.
-  Literal MaybeConvertLiteralToBfloat16(const Literal& literal);
+  // Converts an f32 shape to bf16 if use_bfloat16_ is true.
   Shape MaybeConvertShapeToBfloat16(const Shape& shape);
 
   // Whether to run tests with all float-type input/output converted to
@@ -592,6 +608,20 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR3Parameter(
     const Array3D<NativeT>& array_3d, int64 parameter_number,
     const string& name, XlaBuilder* builder, XlaOp* data_handle) {
   Literal literal = LiteralUtil::CreateR3FromArray3D(array_3d);
+  if (use_bfloat16_ && literal.shape().element_type() == F32) {
+    literal = LiteralUtil::ConvertF32ToBF16(literal);
+  }
+  std::unique_ptr<GlobalData> data =
+      client_->TransferToServer(literal).ConsumeValueOrDie();
+  *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
+  return data;
+}
+
+template <typename NativeT>
+std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR4Parameter(
+    const Array4D<NativeT>& array_4d, int64 parameter_number,
+    const string& name, XlaBuilder* builder, XlaOp* data_handle) {
+  Literal literal = LiteralUtil::CreateR4FromArray4D(array_4d);
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
     literal = LiteralUtil::ConvertF32ToBF16(literal);
   }

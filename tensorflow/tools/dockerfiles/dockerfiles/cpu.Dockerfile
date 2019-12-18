@@ -19,9 +19,11 @@
 # throughout. Please refer to the TensorFlow dockerfiles documentation
 # for more information.
 
-ARG UBUNTU_VERSION=16.04
+ARG UBUNTU_VERSION=18.04
 
 FROM ubuntu:${UBUNTU_VERSION} as base
+
+RUN apt-get update && apt-get install -y curl
 
 ARG USE_PYTHON_3_NOT_2
 ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}

@@ -6,7 +6,7 @@ package(
 
 licenses(["notice"])
 
-exports_files(["LICENSE"])
+exports_files(["COPYING"])
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@org_tensorflow//third_party:common.bzl", "template_rule")
@@ -26,24 +26,34 @@ VAR_SETTINGS_COPTS = [
     "-DRUNSTATEDIR=",
 ]
 
+_INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
+    "#undef HWLOC_VERSION_MAJOR": "#define HWLOC_VERSION_MAJOR 2",
+    "#undef HWLOC_VERSION_MINOR": "#define HWLOC_VERSION_MINOR 0",
+    "#undef HWLOC_VERSION_RELEASE": "#define HWLOC_VERSION_RELEASE 3",
+    "#undef HWLOC_VERSION_GREEK": "#define HWLOC_VERSION_GREEK \"\"",
+    "#undef HWLOC_VERSION": "#define HWLOC_VERSION \"2.0.3\"",
+    "#undef hwloc_pid_t": "#define hwloc_pid_t pid_t",
+    "#undef hwloc_thread_t": "#define hwloc_thread_t pthread_t",
+    "#  undef HWLOC_HAVE_STDINT_H": "#  define HWLOC_HAVE_STDINT_H 1",
+    "#undef HWLOC_SYM_TRANSFORM": "#define HWLOC_SYM_TRANSFORM 0",
+    "#undef HWLOC_SYM_PREFIX_CAPS": "#define HWLOC_SYM_PREFIX_CAPS HWLOC_",
+    "#undef HWLOC_SYM_PREFIX": "#define HWLOC_SYM_PREFIX hwloc_",
+}
+
+_INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS = dict(_INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS)
+
+_INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS.update({
+    "#undef HWLOC_LINUX_SYS": "#define HWLOC_LINUX_SYS 1",
+})
+
 template_rule(
     name = "include_hwloc_autogen_config_h",
     src = "include/hwloc/autogen/config.h.in",
     out = "include/hwloc/autogen/config.h",
-    substitutions = {
-        "#undef HWLOC_VERSION_MAJOR": "#define HWLOC_VERSION_MAJOR 2",
-        "#undef HWLOC_VERSION_MINOR": "#define HWLOC_VERSION_MINOR 0",
-        "#undef HWLOC_VERSION_RELEASE": "#define HWLOC_VERSION_RELEASE 3",
-        "#undef HWLOC_VERSION_GREEK": "#define HWLOC_VERSION_GREEK \"\"",
-        "#undef HWLOC_VERSION": "#define HWLOC_VERSION \"2.0.3\"",
-        "#undef HWLOC_LINUX_SYS": "#define HWLOC_LINUX_SYS 1",
-        "#undef hwloc_pid_t": "#define hwloc_pid_t pid_t",
-        "#undef hwloc_thread_t": "#define hwloc_thread_t pthread_t",
-        "#  undef HWLOC_HAVE_STDINT_H": "#  define HWLOC_HAVE_STDINT_H 1 ",
-        "#undef HWLOC_SYM_TRANSFORM": "#define HWLOC_SYM_TRANSFORM 0",
-        "#undef HWLOC_SYM_PREFIX": "#define HWLOC_SYM_PREFIX hwloc_",
-        "#undef HWLOC_SYM_PREFIX_CAPS": "#define HWLOC_SYM_PREFIX_CAPS HWLOC_",
-    },
+    substitutions = select({
+        "@org_tensorflow//tensorflow:linux_x86_64": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS,
+        "//conditions:default": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS,
+    }),
 )
 
 _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
@@ -73,8 +83,8 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
     "#undef HAVE_DECL__STRDUP": "#define HAVE_DECL__STRDUP 0",
     "#undef HAVE_DIRENT_H": "#define HAVE_DIRENT_H 1",
     "#undef HAVE_DLFCN_H": "#define HAVE_DLFCN_H 1",
-    "#undef HAVE_FFS": "#define HAVE_FFS 1",
     "#undef HAVE_FFSL": "#define HAVE_FFSL 1",
+    "#undef HAVE_FFS": "#define HAVE_FFS 1",
     "#undef HAVE_GETPAGESIZE": "#define HAVE_GETPAGESIZE 1",
     "#undef HAVE_INTTYPES_H": "#define HAVE_INTTYPES_H 1",
     "#undef HAVE_LANGINFO_H": "#define HAVE_LANGINFO_H 1",
@@ -86,7 +96,6 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
     "#undef HAVE_NL_LANGINFO": "#define HAVE_NL_LANGINFO 1",
     "#undef HAVE_OPENAT": "#define HAVE_OPENAT 1",
     "#undef HAVE_POSIX_MEMALIGN": "#define HAVE_POSIX_MEMALIGN 1",
-    "#undef HAVE_PROGRAM_INVOCATION_NAME": "#define HAVE_PROGRAM_INVOCATION_NAME 1",
     "#undef HAVE_PTHREAD_T": "#define HAVE_PTHREAD_T 1",
     "#undef HAVE_PUTWC": "#define HAVE_PUTWC 1",
     "#undef HAVE_SETLOCALE": "#define HAVE_SETLOCALE 1",
@@ -112,10 +121,8 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
     "#undef HAVE_X11_KEYSYM_H": "#define HAVE_X11_KEYSYM_H 1",
     "#undef HAVE_X11_XLIB_H": "#define HAVE_X11_XLIB_H 1",
     "#undef HAVE_X11_XUTIL_H": "#define HAVE_X11_XUTIL_H 1",
-    "#undef HAVE_XLOCALE_H": "#define HAVE_XLOCALE_H 1",
     "#undef HAVE___PROGNAME": "#define HAVE___PROGNAME 1",
     "#undef HWLOC_C_HAVE_VISIBILITY": "#define HWLOC_C_HAVE_VISIBILITY 1",
-    "#undef HWLOC_HAVE_ATTRIBUTE": "#define HWLOC_HAVE_ATTRIBUTE 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_ALIGNED": "#define HWLOC_HAVE_ATTRIBUTE_ALIGNED 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_ALWAYS_INLINE": "#define HWLOC_HAVE_ATTRIBUTE_ALWAYS_INLINE 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_COLD": "#define HWLOC_HAVE_ATTRIBUTE_COLD 1",
@@ -134,14 +141,15 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
     "#undef HWLOC_HAVE_ATTRIBUTE_UNUSED": "#define HWLOC_HAVE_ATTRIBUTE_UNUSED 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_WARN_UNUSED_RESULT": "#define HWLOC_HAVE_ATTRIBUTE_WARN_UNUSED_RESULT 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_WEAK_ALIAS": "#define HWLOC_HAVE_ATTRIBUTE_WEAK_ALIAS 1",
-    "#undef HWLOC_HAVE_CPU_SET": "#define HWLOC_HAVE_CPU_SET 1",
+    "#undef HWLOC_HAVE_ATTRIBUTE": "#define HWLOC_HAVE_ATTRIBUTE 1",
     "#undef HWLOC_HAVE_CPU_SET_S": "#define HWLOC_HAVE_CPU_SET_S 1",
-    "#undef HWLOC_HAVE_DECL_FFS": "#define HWLOC_HAVE_DECL_FFS 1",
+    "#undef HWLOC_HAVE_CPU_SET": "#define HWLOC_HAVE_CPU_SET 1",
     "#undef HWLOC_HAVE_DECL_FFSL": "#define HWLOC_HAVE_DECL_FFSL 1",
+    "#undef HWLOC_HAVE_DECL_FFS": "#define HWLOC_HAVE_DECL_FFS 1",
     "#undef HWLOC_HAVE_DECL_STRCASECMP": "#define HWLOC_HAVE_DECL_STRCASECMP 1",
     "#undef HWLOC_HAVE_DECL_STRNCASECMP": "#define HWLOC_HAVE_DECL_STRNCASECMP 1",
-    "#undef HWLOC_HAVE_FFS": "#define HWLOC_HAVE_FFS 1",
     "#undef HWLOC_HAVE_FFSL": "#define HWLOC_HAVE_FFSL 1",
+    "#undef HWLOC_HAVE_FFS": "#define HWLOC_HAVE_FFS 1",
     "#undef HWLOC_HAVE_LIBTERMCAP": "#define HWLOC_HAVE_LIBTERMCAP 1",
     "#undef HWLOC_HAVE_LINUXIO": "#define HWLOC_HAVE_LINUXIO 1",
     "#undef HWLOC_HAVE_PTHREAD_MUTEX": "#define HWLOC_HAVE_PTHREAD_MUTEX 1",
@@ -150,27 +158,26 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
     "#undef HWLOC_HAVE_SYSCALL": "#define HWLOC_HAVE_SYSCALL 1",
     "#undef HWLOC_HAVE_X11_KEYSYM": "#define HWLOC_HAVE_X11_KEYSYM 1",
     "#undef HWLOC_HAVE_X86_CPUID": "#define HWLOC_HAVE_X86_CPUID 1",
-    "#undef HWLOC_LINUX_SYS": "#define HWLOC_LINUX_SYS 1",
     "#undef HWLOC_SIZEOF_UNSIGNED_INT": "#define HWLOC_SIZEOF_UNSIGNED_INT 4",
     "#undef HWLOC_SIZEOF_UNSIGNED_LONG": "#define HWLOC_SIZEOF_UNSIGNED_LONG 8",
-    "#undef HWLOC_SYM_PREFIX": "#define HWLOC_SYM_PREFIX hwloc_",
     "#undef HWLOC_SYM_PREFIX_CAPS": "#define HWLOC_SYM_PREFIX_CAPS HWLOC_",
+    "#undef HWLOC_SYM_PREFIX": "#define HWLOC_SYM_PREFIX hwloc_",
     "#undef HWLOC_SYM_TRANSFORM": "#define HWLOC_SYM_TRANSFORM 0",
     "#undef HWLOC_USE_NCURSES": "#define HWLOC_USE_NCURSES 1",
-    "#undef HWLOC_VERSION": "#define HWLOC_VERSION \"2.0.3\"",
     "#undef HWLOC_VERSION_GREEK": "#define HWLOC_VERSION_GREEK \"\"",
     "#undef HWLOC_VERSION_MAJOR": "#define HWLOC_VERSION_MAJOR 2",
     "#undef HWLOC_VERSION_MINOR": "#define HWLOC_VERSION_MINOR 0",
     "#undef HWLOC_VERSION_RELEASE": "#define HWLOC_VERSION_RELEASE 3",
+    "#undef HWLOC_VERSION": "#define HWLOC_VERSION \"2.0.3\"",
     "#undef HWLOC_X86_64_ARCH": "#define HWLOC_X86_64_ARCH 1",
     "#undef LT_OBJDIR": "#define LT_OBJDIR \".libs/\"",
-    "#undef PACKAGE": "#define PACKAGE \"hwloc\"",
-    "#undef PACKAGE_BUGREPORT": "#define PACKAGE_BUGREPORT \"http://github.com/open-mpi/hwloc/i",
+    "#undef PACKAGE_BUGREPORT": "#define PACKAGE_BUGREPORT \"http://github.com/open-mpi/hwloc/issues",
     "#undef PACKAGE_NAME": "#define PACKAGE_NAME \"hwloc\"",
     "#undef PACKAGE_STRING": "#define PACKAGE_STRING \"hwloc 2.0.3\"",
     "#undef PACKAGE_TARNAME": "#define PACKAGE_TARNAME \"hwloc\"",
     "#undef PACKAGE_URL": "#define PACKAGE_URL \"\"",
     "#undef PACKAGE_VERSION": "#define PACKAGE_VERSION \"2.0.3\"",
+    "#undef PACKAGE": "#define PACKAGE \"hwloc\"",
     "#undef SIZEOF_UNSIGNED_INT": "#define SIZEOF_UNSIGNED_INT 4",
     "#undef SIZEOF_UNSIGNED_LONG": "#define SIZEOF_UNSIGNED_LONG 8",
     "#undef SIZEOF_VOID_P": "#define SIZEOF_VOID_P 8",
@@ -191,7 +198,16 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_CUDA_SUBS = {
     "#undef HAVE_CUDA": "#undef HAVE_CUDA 1",
     "#undef HAVE_CUDA_H": "#undef HAVE_CUDA_H 1",
     "#undef HAVE_CUDA_RUNTIME_API_H": "#undef HAVE_CUDA_RUNTIME_API_H 1",
-} + _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS
+}
+
+_INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS = {
+    "#undef HAVE_PROGRAM_INVOCATION_NAME": "#define HAVE_PROGRAM_INVOCATION_NAME 1",
+    "#undef HWLOC_LINUX_SYS": "#define HWLOC_LINUX_SYS 1",
+}
+
+_INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS.update(_INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS)
+
+_INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_CUDA_SUBS.update(_INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS)
 
 template_rule(
     name = "include_private_hwloc_autogen__config_h",
@@ -199,7 +215,7 @@ template_rule(
     out = "include/private/autogen/config.h",
     substitutions = if_cuda(
         _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_CUDA_SUBS,
-        if_false = _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS,
+        if_false = _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS,
     ),
 )
 
@@ -225,25 +241,34 @@ cc_library(
         "hwloc/static-components.h",
         "hwloc/topology.c",
         "hwloc/topology-hardwired.c",
-        "hwloc/topology-linux.c",
         "hwloc/topology-noos.c",
         "hwloc/topology-synthetic.c",
-        "hwloc/topology-x86.c",
         "hwloc/topology-xml.c",
         "hwloc/topology-xml-nolibxml.c",
         "hwloc/traversal.c",
-        "include/hwloc/linux.h",
         "include/hwloc/plugins.h",
         "include/hwloc/shmem.h",
         "include/private/autogen/config.h",
         "include/private/components.h",
-        "include/private/cpuid-x86.h",
         "include/private/debug.h",
         "include/private/internal-components.h",
         "include/private/misc.h",
         "include/private/private.h",
         "include/private/xml.h",
-    ],
+    ] + select({
+        "@org_tensorflow//tensorflow:linux_x86_64": [
+            "hwloc/topology-linux.c",
+            "include/hwloc/linux.h",
+            "hwloc/topology-x86.c",
+            "include/private/cpuid-x86.h",
+        ],
+        "@org_tensorflow//tensorflow:freebsd": [
+            "hwloc/topology-freebsd.c",
+            "hwloc/topology-x86.c",
+            "include/private/cpuid-x86.h",
+        ],
+        "//conditions:default": [],
+    }),
     hdrs = [
         "include/hwloc.h",
         "include/hwloc/autogen/config.h",

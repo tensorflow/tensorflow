@@ -53,6 +53,8 @@ class TfDriver : public TestRunner {
   void AllocateTensors() override {}
   // no-op. Tf driver is not supposed to check the results.
   void SetExpectation(int id, const string& values_as_string) override {}
+  // no-op. Tf driver is not supposed to check the results.
+  void SetShapeExpectation(int id, const string& values_as_string) override {}
   // tf driver is not supposed to check the results.
   bool CheckResults() override { return false; }
 

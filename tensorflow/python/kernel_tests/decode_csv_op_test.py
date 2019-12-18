@@ -21,13 +21,12 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class DecodeCSVOpTest(test.TestCase):
 
   def _test(self, args, expected_out=None, expected_err_re=None):
@@ -41,7 +40,7 @@ class DecodeCSVOpTest(test.TestCase):
         else:
           self.assertAllEqual(field, expected_out[i])
     else:
-      with self.assertRaisesOpError(expected_err_re):
+      with self.assertRaisesWithPredicateMatch(Exception, expected_err_re):
         decode = parsing_ops.decode_csv(**args)
         self.evaluate(decode)
 
@@ -74,7 +73,7 @@ class DecodeCSVOpTest(test.TestCase):
     if context.executing_eagerly():
       err_spec = errors.InvalidArgumentError, (
           "Each record default should be at "
-          "most rank 1.")
+          "most rank 1")
     else:
       err_spec = ValueError, "Shape must be at most rank 1 but is rank 2"
     with self.assertRaisesWithPredicateMatch(*err_spec):
@@ -319,6 +318,16 @@ class DecodeCSVOpTest(test.TestCase):
     }
     # Only successfully parses one of the columns
     self._test(args, expected_err_re="Expect 2 fields but have 1 in record 0")
+
+  def testNumpyAttribute(self):
+    args = {
+        "record_defaults": np.zeros(5),
+        "records": constant_op.constant("1,2,3,4,5"),
+    }
+    if context.executing_eagerly():
+      self._test(args, expected_out=[1, 2, 3, 4, 5])
+    else:
+      self._test(args, expected_err_re="Expected list for 'record_defaults'")
 
 
 if __name__ == "__main__":

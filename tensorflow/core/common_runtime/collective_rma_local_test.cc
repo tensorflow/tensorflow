@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/unbounded_work_queue.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -38,20 +39,24 @@ class CollectiveRemoteAccessLocalTest : public ::testing::Test {
   const string kTaskName = "/job:localhost/replica:0/task:0";
 
   CollectiveRemoteAccessLocalTest() {
+    work_queue_ = std::make_shared<UnboundedWorkQueue>(Env::Default(), "test");
     ConfigProto cp;
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", NUM_DEVS});
     std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(options, kTaskName, &devices));
-    device_mgr_.reset(new DeviceMgr(std::move(devices)));
-    drl_.reset(new DeviceResolverLocal(device_mgr_.get()));
-    prl_.reset(new CollectiveParamResolverLocal(cp, device_mgr_.get(),
-                                                drl_.get(), kTaskName));
-    rma_.reset(new CollectiveRemoteAccessLocal(device_mgr_.get(), drl_.get(),
-                                               kStepId));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+    drl_ = absl::make_unique<DeviceResolverLocal>(device_mgr_.get());
+    prl_ = absl::make_unique<CollectiveParamResolverLocal>(
+        cp, device_mgr_.get(), drl_.get(), kTaskName);
+    rma_ = absl::make_unique<CollectiveRemoteAccessLocal>(
+        device_mgr_.get(), drl_.get(), work_queue_, kStepId);
   }
 
+  ~CollectiveRemoteAccessLocalTest() override = default;
+
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<DeviceResolverLocal> drl_;
   std::unique_ptr<CollectiveParamResolverLocal> prl_;

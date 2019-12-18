@@ -13,14 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <jni.h>
 #include <stdio.h>
 
-#include "tensorflow/lite/java/src/main/native/tensorflow_lite_jni.h"
 #include "tensorflow/lite/version.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
+
 JNIEXPORT jstring JNICALL
-Java_org_tensorflow_lite_TensorFlowLite_version(JNIEnv* env, jclass /*clazz*/) {
+Java_org_tensorflow_lite_TensorFlowLite_runtimeVersion(JNIEnv* env,
+                                                       jclass /*clazz*/) {
+  const char* kTfLiteVersionString = TFLITE_VERSION_STRING;
+  return env->NewStringUTF(kTfLiteVersionString);
+}
+
+JNIEXPORT jstring JNICALL Java_org_tensorflow_lite_TensorFlowLite_schemaVersion(
+    JNIEnv* env, jclass /*clazz*/) {
   char buf[64];
   snprintf(buf, sizeof(buf), "%d", TFLITE_SCHEMA_VERSION);
   return env->NewStringUTF(buf);
 }
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus

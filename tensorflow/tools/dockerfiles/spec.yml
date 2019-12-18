@@ -1,5 +1,5 @@
 header: |
-    # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+    # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
     #
     # Licensed under the Apache License, Version 2.0 (the "License");
     # you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ releases:
     nightly:
         tag_specs:
             - "{nightly}{py}{jupyter}"
-            - "{ubuntu-devel}{py}"
+            - "{_TAG_PREFIX}{ubuntu-devel}{py}"
 
     # Built per-release and pushed to tensorflow/tensorflow
     # --arg _TAG_PREFIX=<val> should be set to "1.11" (for example) or "latest".
@@ -83,6 +83,21 @@ slice_sets:
               - ubuntu/python
               - tensorflow
               - shell
+        - add_to_name: "-horovod"
+          dockerfile_exclusive_name: "horovod"
+          dockerfile_subdirectory: "mkl_horovod"
+          partials:
+              - ubuntu/version
+              - ubuntu/cpu
+              - ubuntu/python
+              - tensorflow
+              - mkl_horovod/mpi
+              - mkl_horovod/horovod
+              - shell
+          tests:
+              - import-mkl-horovod.sh
+          args:
+              - TF_PACKAGE=intel-tensorflow
         - add_to_name: "-gpu"
           dockerfile_exclusive_name: "gpu"
           args:
@@ -110,6 +125,22 @@ slice_sets:
               - build-cpu.sh
           args:
               - CHECKOUT_TF_SRC=1
+        - add_to_name: "devel-horovod"
+          dockerfile_exclusive_name: "devel-horovod"
+          dockerfile_subdirectory: "mkl_horovod"
+          partials:
+              - ubuntu/version
+              - ubuntu/devel-cpu
+              - ubuntu/python
+              - ubuntu/bazel
+              - mkl_horovod/mpi
+              - mkl_horovod/devel-horovod
+              - shell
+          tests:
+              - build-mkl-horovod.sh
+          args:
+              - CHECKOUT_TF_SRC=1
+              - CHECKOUT_HOROVOD_SRC=1
         - add_to_name: "devel-gpu"
           dockerfile_exclusive_name: "devel-gpu"
           partials:

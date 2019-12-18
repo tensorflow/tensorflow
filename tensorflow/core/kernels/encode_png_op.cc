@@ -78,17 +78,17 @@ class EncodePngOp : public OpKernel {
                    context->allocate_output(0, TensorShape({}), &output));
     if (desired_channel_bits_ == 8) {
       OP_REQUIRES(context,
-                  png::WriteImageToBuffer(image.flat<uint8>().data(), width,
-                                          height, width * channels, channels,
-                                          desired_channel_bits_, compression_,
-                                          &output->scalar<string>()(), nullptr),
+                  png::WriteImageToBuffer(
+                      image.flat<uint8>().data(), width, height,
+                      width * channels, channels, desired_channel_bits_,
+                      compression_, &output->scalar<tstring>()(), nullptr),
                   errors::Internal("PNG encoding failed"));
     } else {
       OP_REQUIRES(context,
                   png::WriteImageToBuffer(
                       image.flat<uint16>().data(), width, height,
                       width * channels * 2, channels, desired_channel_bits_,
-                      compression_, &output->scalar<string>()(), nullptr),
+                      compression_, &output->scalar<tstring>()(), nullptr),
                   errors::Internal("PNG encoding failed"));
     }
   }

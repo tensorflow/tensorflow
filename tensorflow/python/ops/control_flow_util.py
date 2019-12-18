@@ -26,12 +26,25 @@ from __future__ import print_function
 import os
 import traceback
 
+from tensorflow.python import tf2
 from tensorflow.python.platform import tf_logging as logging
 
-ENABLE_CONTROL_FLOW_V2 = (os.getenv("TF_ENABLE_CONTROL_FLOW_V2", "0") != "0" or
+ENABLE_CONTROL_FLOW_V2 = ((tf2.enabled() and
+                           os.getenv("TF_ENABLE_CONTROL_FLOW_V2") != "0") or
+                          os.getenv("TF_ENABLE_CONTROL_FLOW_V2", "0") != "0" or
                           os.getenv("TF_ENABLE_COND_V2", "0") != "0" or
                           os.getenv("TF_ENABLE_WHILE_V2", "0") != "0" or
                           os.getenv("TF_ENABLE_TENSOR_ARRAY_V2", "0") != "0")
+
+
+# TODO(b/137793122): Remove this.
+def enable_control_flow_v2():  # pylint: disable=invalid-name
+  """Use control flow v2.
+
+  Do not use this symbol. This will be removed.
+  """
+  global ENABLE_CONTROL_FLOW_V2
+  ENABLE_CONTROL_FLOW_V2 = True
 
 
 def EnableControlFlowV2(graph):
@@ -348,3 +361,11 @@ def CheckInputFromValidContext(op, input_op):
         input_op.name, "".join(traceback.format_list(input_op.traceback)))
     logging.info(log_msg)
     raise ValueError(error_msg + " See info log for more details.")
+
+
+def GetWhileContext(op):
+  """Get the WhileContext to which this op belongs."""
+  ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
+  if ctxt:
+    ctxt = ctxt.GetWhileContext()
+  return ctxt

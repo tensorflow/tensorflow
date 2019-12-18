@@ -20,13 +20,12 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.ops.ragged import segment_id_ops
 from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedSplitsToSegmentIdsOpTest(ragged_test_util.RaggedTensorTestCase):
+class RaggedSplitsToSegmentIdsOpTest(test_util.TensorFlowTestCase):
 
   def testDocStringExample(self):
     splits = [0, 3, 3, 5, 6, 9]
@@ -43,8 +42,8 @@ class RaggedSplitsToSegmentIdsOpTest(ragged_test_util.RaggedTensorTestCase):
     self.assertRaisesRegexp(ValueError, r'Invalid row_splits: \[\]',
                             segment_id_ops.row_splits_to_segment_ids, [])
     self.assertRaisesRegexp(
-        ValueError, r'Tensor conversion requested dtype int64 for '
-        'Tensor with dtype float32', segment_id_ops.row_splits_to_segment_ids,
+        ValueError, r'splits must have dtype int32 or int64',
+        segment_id_ops.row_splits_to_segment_ids,
         constant_op.constant([0.5]))
     self.assertRaisesRegexp(ValueError, r'Shape \(\) must have rank 1',
                             segment_id_ops.row_splits_to_segment_ids, 0)

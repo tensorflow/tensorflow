@@ -41,7 +41,7 @@ Status RemoveAttribute(const GraphDef& input_graph_def,
   if (context.params.count("op_name")) {
     if (context.params.at("op_name").size() != 1) {
       return errors::InvalidArgument(
-          "remove_nodes expects a single op_name argument, but found ",
+          "remove_attribute expects a single op_name argument, but found ",
           context.params.at("op_name").size());
     }
     op_name = context.params.at("op_name")[0];

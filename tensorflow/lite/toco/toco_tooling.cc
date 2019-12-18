@@ -20,17 +20,18 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/allocate_transient_arrays.h"
 #include "tensorflow/lite/toco/dump_graphviz.h"
 #include "tensorflow/lite/toco/export_tensorflow.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/import_tensorflow.h"
+#include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/tflite/export.h"
 #include "tensorflow/lite/toco/tflite/import.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 namespace {
@@ -53,6 +54,8 @@ void MakeGeneralGraphTransformationsSet(
     GraphTransformationsSet* transformations) {
   CHECK(transformations->empty());
   transformations->Add(new ConvertExpandDimsToReshape);
+  transformations->Add(new ConvertMatrixDiagV2OrV3ToV1);
+  transformations->Add(new ConvertMatrixSetDiagV2OrV3ToV1);
   transformations->Add(new ConvertSqueezeToReshape);
   transformations->Add(new ConvertTrivialAddNToAdd);
   transformations->Add(new ConvertTrivialPackToReshape);
@@ -64,6 +67,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new PropagateActivationFunctionIntoConstants);
   transformations->Add(new PropagateArrayDataTypes);
   transformations->Add(new PropagateFixedSizes);
+  transformations->Add(new RemoveSuccesiveTranspose);
   transformations->Add(new RemoveTensorFlowAssert);
   transformations->Add(new RemoveTensorFlowIdentity);
   transformations->Add(new RemoveTrivialConcatenation);
@@ -101,6 +105,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowSwitch);
   transformations->Add(new ResolveTensorFlowConcat);
   transformations->Add(new ResolveMultiplyByZero);
+  transformations->Add(new IdentifyHardSwish);
   transformations->Add(new IdentifyL2Normalization);
   transformations->Add(new IdentifyL2Pool);
   transformations->Add(new IdentifyRelu1);
@@ -405,6 +410,23 @@ tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
         dequantization_transformations));
   }
 
+  // It's actually unfortunate we have to put the graph transformation here:
+  // If user choose to use broadcast mul to do nearset neighbor upsampling. That
+  // is:
+  //    Input [1, 20, 1, 20, 1, 64] * ones [1, 3, 1, 3, 1, 1]
+  // The problem is if the input is quantized, then the quantization parameters
+  // will be slightly different for the input and the output. (althought the
+  // difference is really small).
+  // But, since we're changing this pattern to be pack-based which enforce
+  // the quantization paramters to be exactly the same.
+  // So we have to wait for all quantization parameters being resolved and
+  // propagated and create our own.
+  // We may need to revisit this logic later.
+  GraphTransformationsSet nearest_upsample_transformations;
+  nearest_upsample_transformations.Add(new toco::IdentifyNearestUpsample);
+  TF_RETURN_IF_ERROR(RunGraphTransformationsWithStatus(
+      model, "Identify nearest upsample.", nearest_upsample_transformations));
+
   if (output_format == TENSORFLOW_GRAPHDEF) {
     EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(model);
   }
@@ -428,12 +450,25 @@ tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
   CheckModelCounts(*model);
   CheckFinalDataTypesSatisfied(*model);
 
-  int64 ops_count;
+  // Estimate and log the number of arithmetic ops
+  int64 ops_count = 0;
   if (EstimateArithmeticOpsCount(*model, &ops_count)) {
-    LOG(INFO) << "Estimated count of arithmetic ops: " << 1e-9 * ops_count
-              << " billion (note that a multiply-add is counted as 2 ops).";
+    LOG(INFO) << "Estimated count of arithmetic ops: " << ops_count
+              << " ops, equivalently " << ops_count / 2 << " MACs";
   }
   model->ops_count = ops_count;
+  int64 params_count = 0;
+
+  // Compute and log the number of parameters
+  for (const auto& array_pair : model->GetArrayMap()) {
+    const Array& array = *array_pair.second;
+    if (!array.buffer) {
+      // not a parameter array
+      continue;
+    }
+    params_count += RequiredBufferSizeForShape(array.shape());
+  }
+  LOG(INFO) << "Number of parameters: " << params_count;
   return tensorflow::Status::OK();
 }
 
@@ -449,8 +484,15 @@ tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
       params.enable_select_tf_ops =
           toco_flags.force_select_tf_ops() || toco_flags.enable_select_tf_ops();
       params.allow_custom_ops = allow_custom_ops;
-      params.quantize_weights = toco_flags.post_training_quantize();
+      params.allow_dynamic_tensors = toco_flags.allow_dynamic_tensors();
 
+      if (toco_flags.post_training_quantize()) {
+        if (toco_flags.quantize_to_float16()) {
+          params.quantize_weights = tflite::QuantizedBufferType::FLOAT16;
+        } else {
+          params.quantize_weights = tflite::QuantizedBufferType::INT8;
+        }
+      }
       auto status = toco::tflite::Export(model, output_file_contents, params);
       if (!status.ok()) {
         LOG(ERROR) << status.error_message();

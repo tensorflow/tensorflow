@@ -19,22 +19,24 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 INPUT_SHAPE = (28, 28, 1)
 NUM_CLASSES = 10
 
 
+def _load_random_data(num_train_and_test):
+  return ((np.random.randint(0, 256, (num, 28, 28), dtype=np.uint8),
+           np.random.randint(0, 10, (num,), dtype=np.int64))
+          for num in num_train_and_test)
+
+
 def load_reshaped_data(use_fashion_mnist=False, fake_tiny_data=False):
-  """Returns MNIST or Fashion MNIST train and test data."""
-  if fake_tiny_data:
-    num_fakes = 10
-    x_train = x_test = np.zeros((num_fakes, 28, 28), dtype=np.uint8)
-    y_train = y_test = np.zeros((num_fakes,), dtype=np.int64)
-  else:
-    mnist = (tf.keras.datasets.fashion_mnist if use_fashion_mnist else
-             tf.keras.datasets.mnist)
-    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+  """Returns MNIST or Fashion MNIST or fake train and test data."""
+  load = ((lambda: _load_random_data([128, 128])) if fake_tiny_data else
+          tf.keras.datasets.fashion_mnist.load_data if use_fashion_mnist else
+          tf.keras.datasets.mnist.load_data)
+  (x_train, y_train), (x_test, y_test) = load()
   return ((_prepare_image(x_train), _prepare_label(y_train)),
           (_prepare_image(x_test), _prepare_label(y_test)))
 

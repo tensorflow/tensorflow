@@ -13,13 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if TENSORFLOW_USE_ROCM
+#include "rocm/include/hip/hip_runtime.h"
+#endif
 
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/kernels/random_op_gpu.h"
-#include "tensorflow/core/kernels/stateful_random_ops.h"
-#include "tensorflow/core/util/cuda_launch_config.h"
+#include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 
@@ -30,8 +35,8 @@ __device__ int thread_counter;
 template <typename Distribution>
 __global__ void FillKernel(
     Distribution dist, int64 state_size, int64 output_size,
-    StateElementType* state_data,
-    typename Distribution::ResultElementType* output_data) {
+    StateElementType* __restrict__ state_data,
+    typename Distribution::ResultElementType* __restrict__ output_data) {
   // Threads in this block share `philox`. Thread 0 is responsible for
   // initializing it.
   __shared__ char philox_raw[sizeof(PhiloxRandom)];
@@ -53,8 +58,9 @@ __global__ void FillKernel(
 
 template <typename Distribution>
 void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
-    OpKernelContext* ctx, const GPUDevice& d, int64 output_size,
-    int64 alg_tag_skip, ScopedUnlockUnref* not_used, Tensor* state_tensor,
+    OpKernelContext* ctx, const GPUDevice& d, Distribution dist,
+    int64 output_size, int64 alg_tag_skip, ScopedUnlockUnrefVar* not_used,
+    Tensor* state_tensor,
     typename Distribution::ResultElementType* output_data) {
   OP_REQUIRES(
       ctx, alg_tag_skip == 0,
@@ -69,14 +75,31 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
   // maximize occupancy
   const int kGroupSize = Distribution::kResultElementCount;
   int work_element_count = (output_size + kGroupSize - 1) / kGroupSize;
-  CudaLaunchConfig cfg = GetCudaLaunchConfig(work_element_count, d,
-                                             FillKernel<Distribution>, 0, 0);
+  GpuLaunchConfig cfg =
+      GetGpuLaunchConfig(work_element_count, d, FillKernel<Distribution>, 0, 0);
 
   int zero = 0;
+#if GOOGLE_CUDA
   cudaMemcpyToSymbol(thread_counter, &zero, sizeof(int));
-  CudaLaunchKernel(FillKernel<Distribution>, cfg.block_count,
-                   cfg.thread_per_block, 0, d.stream(), Distribution(),
-                   state_size, output_size, state_data, output_data);
+#else  // TENSORFLOW_USE_ROCM
+  hipMemcpyToSymbol(HIP_SYMBOL(thread_counter), &zero, sizeof(int));
+#endif
+  TF_CHECK_OK(GpuLaunchKernel(
+      FillKernel<Distribution>, cfg.block_count, cfg.thread_per_block, 0,
+      d.stream(), dist, state_size, output_size, state_data, output_data));
+}
+
+// Precondition: there is only 1 block and 1 thread.
+__global__ void SkipKernel(int64 delta,
+                           StateElementType* __restrict__ state_data) {
+  auto philox = GetPhiloxRandomFromMem(state_data);
+  UpdateMemWithPhiloxRandom(philox, delta, state_data);
+}
+
+void RngSkip_Philox<GPUDevice>::operator()(const GPUDevice& d, int64 delta,
+                                           Tensor* state_tensor) {
+  TF_CHECK_OK(GpuLaunchKernel(SkipKernel, 1, 1, 0, d.stream(), delta,
+                              state_tensor->flat<StateElementType>().data()));
 }
 
 // Explicit instantiation of the GPU distributions functors.
@@ -89,8 +112,42 @@ template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, float> >;
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, double> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::TruncatedNormalDistribution<
+                 random::SingleSampleAdapter<random::PhiloxRandom>,
+                 Eigen::half> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::TruncatedNormalDistribution<
+                 random::SingleSampleAdapter<random::PhiloxRandom>,
+                 float> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::TruncatedNormalDistribution<
+                 random::SingleSampleAdapter<random::PhiloxRandom>,
+                 double> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, Eigen::half> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, float> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, double> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, int32> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, int64> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformFullIntDistribution<
+                 random::PhiloxRandom, int32> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformFullIntDistribution<
+                 random::PhiloxRandom, int64> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformFullIntDistribution<
+                 random::PhiloxRandom, uint32> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformFullIntDistribution<
+                 random::PhiloxRandom, uint64> >;
 // clang-format on
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

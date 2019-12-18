@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
@@ -38,24 +40,28 @@ Status OptimizationPassRegistry::RunGrouping(
       VLOG(1) << "Running optimization phase " << phase.first;
       for (auto& pass : phase.second) {
         VLOG(1) << "Running optimization pass: " << pass->name();
+        const uint64 start_us = Env::Default()->NowMicros();
         Status s = pass->Run(options);
+        const uint64 end_us = Env::Default()->NowMicros();
+        metrics::UpdateGraphOptimizationPassTime(pass->name(),
+                                                 end_us - start_us);
         if (!s.ok()) return s;
         if (VLOG_IS_ON(1)) {
           if (options.graph) {
-            DumpGraphToFile(
-                strings::StrCat(
-                    "after_phase_", phase.first, "_", pass->name(), "_",
-                    reinterpret_cast<uintptr_t>((*options.graph).get())),
-                **options.graph);
+            DumpGraphToFile(strings::StrCat("after_group_", grouping, "_phase_",
+                                            phase.first, "_", pass->name(), "_",
+                                            reinterpret_cast<uintptr_t>(
+                                                (*options.graph).get())),
+                            **options.graph, options.flib_def);
           }
           if (options.partition_graphs) {
             for (auto& part : *options.partition_graphs) {
               DumpGraphToFile(
                   strings::StrCat(
-                      "after_phase_", phase.first, "_", pass->name(),
-                      "_partition_", part.first, "_",
+                      "after_group_", grouping, "_phase_", phase.first, "_",
+                      pass->name(), "_partition_", part.first, "_",
                       reinterpret_cast<uintptr_t>(part.second.get())),
-                  *part.second);
+                  *part.second, options.flib_def);
             }
           }
         }

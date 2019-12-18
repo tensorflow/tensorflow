@@ -1,5 +1,6 @@
 op {
   graph_op_name: "TPUReplicateMetadata"
+  visibility: HIDDEN
   attr {
     name: "num_replicas"
     description: <<END
@@ -42,5 +43,8 @@ END
   attr {
     name: "padding_map"
   }
-  summary: "Metadata indicaitng how the TPU computation should be replicated."
+  summary: "Metadata indicating how the TPU computation should be replicated."
+  description: <<END
+This operation holds the metadata common to operations of a `tpu.replicate()` computation subgraph.
+END
 }

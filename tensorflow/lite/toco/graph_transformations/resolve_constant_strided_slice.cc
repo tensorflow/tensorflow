@@ -71,7 +71,7 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
   // Each "digit" is incremented individually (by the stride). When it overflows
   // (becomes greater than the stop), that digit is reset and a carry flag is
   // used to increment the next digit.
-  for (int dst_offset = 0; dst_offset < output_data.size(); ++dst_offset) {
+  for (size_t dst_offset = 0; dst_offset < output_data.size(); ++dst_offset) {
     // Copy element.
     output_data[dst_offset] = input_buffer.data[Offset(input_shape, src_coord)];
 
@@ -163,8 +163,7 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
       break;
   }
 
-  DeleteOpAndArraysIfUnused(model, it->get());
-
+  DeleteOpAndArrays(model, op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

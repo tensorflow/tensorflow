@@ -8,11 +8,11 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "check_deps")
-load("//tensorflow:tensorflow.bzl", "if_cuda")
-load("//tensorflow:tensorflow.bzl", "if_rocm")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
 load("@local_config_sycl//sycl:build_defs.bzl", "if_ccpp")
 
@@ -34,7 +34,10 @@ cc_library(
 
 tf_cuda_library(
     name = "stream_executor",
-    cuda_deps = ["//tensorflow/stream_executor/cuda:cuda_activation"],
+    cuda_deps = [
+        "//tensorflow/stream_executor/cuda:cuda_activation",
+        "//tensorflow/stream_executor/rocm:rocm_activation",
+    ],
     deps = [
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:dnn",
@@ -62,10 +65,13 @@ cc_library(
     name = "stream_executor_cuda",
     deps = [
         ":stream_executor_no_cuda",
-        ":cuda",
-    ] + if_static(
-        ["//tensorflow/stream_executor/cuda:all_runtime"],
-    ) + select({
+    ] + select({
+        "//tensorflow:oss": ["//tensorflow/stream_executor/cuda:cudart_stub"],
+        "//conditions:default": [
+            "//tensorflow/stream_executor/cuda:all_runtime",
+            ":cuda",
+        ],
+    }) + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
         "//conditions:default": [],
     }),
@@ -207,7 +213,7 @@ cc_library(
     name = "gif",
     copts = tf_copts(),
     deps = [
-        "@gif_archive//:gif",
+        "@gif",
     ],
 )
 
@@ -215,7 +221,7 @@ cc_library(
     name = "jpeg",
     copts = tf_copts(),
     deps = [
-        "@jpeg",
+        "@libjpeg_turbo//:jpeg",
     ],
 )
 
@@ -223,7 +229,7 @@ cc_library(
     name = "png",
     copts = tf_copts(),
     deps = [
-        "@png_archive//:png",
+        "@png",
         "@zlib_archive//:zlib",
     ],
 )
@@ -282,20 +288,6 @@ cc_library(
     deps = [
         "@local_config_cuda//cuda:cudart",
     ],
-)
-
-# Check that libtensorflow_framework.so does not depend on cuda shared libraries.
-check_deps(
-    name = "libtensorflow_cuda_check_deps",
-    disallowed_deps = [
-        ":cuda",
-        "@local_config_cuda//cuda:cublas",
-        "@local_config_cuda//cuda:cuda_driver",
-        "@local_config_cuda//cuda:cudnn",
-        "@local_config_cuda//cuda:curand",
-        "@local_config_cuda//cuda:cusolver",
-    ],
-    deps = ["//tensorflow:libtensorflow_framework.so"],
 )
 
 cc_library(

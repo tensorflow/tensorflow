@@ -13,18 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/window_dataset.h"
+
+#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
+constexpr char kWindow[] = "Window";
+constexpr char kWindowDataset[] = "WindowDataset";
+constexpr char kCurIndex[] = "i";
+
 class WindowDataset : public DatasetBase {
  public:
   WindowDataset(std::vector<std::vector<Tensor>> elements,
                 DataTypeVector output_types,
                 std::vector<PartialTensorShape> output_shapes)
-      : DatasetBase(DatasetContext({"Window"})),
+      : DatasetBase(DatasetContext({kWindow})),
         elements_(std::move(elements)),
         output_types_(std::move(output_types)),
         output_shapes_(std::move(output_shapes)) {}
@@ -32,7 +38,7 @@ class WindowDataset : public DatasetBase {
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
     return absl::make_unique<Iterator>(
-        Iterator::Params{this, strings::StrCat(prefix, "::Window")});
+        Iterator::Params{this, name_utils::IteratorPrefix(kWindow, prefix)});
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
@@ -49,9 +55,19 @@ class WindowDataset : public DatasetBase {
     return allocated_bytes;
   }
 
+  int64 TotalBytes() const override {
+    int64 total_bytes = 0;
+    for (auto& element : elements_) {
+      total_bytes += GetTotalBytes(element);
+    }
+    return total_bytes;
+  }
+
   int64 Cardinality() const override { return elements_.size(); }
 
-  string DebugString() const override { return "WindowDataset"; }
+  string DebugString() const override { return kWindowDataset; }
+
+  Status CheckExternalState() const override { return Status::OK(); }
 
  protected:
   // TODO(b/110981596): Support checkpointing.
@@ -83,7 +99,7 @@ class WindowDataset : public DatasetBase {
 
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIndex), i_));
       return Status::OK();
     }
 
@@ -91,7 +107,7 @@ class WindowDataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       int64 i;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurIndex), &i));
       i_ = size_t(i);
       return Status::OK();
     }

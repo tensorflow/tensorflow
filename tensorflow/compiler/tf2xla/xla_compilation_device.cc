@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "tensorflow/compiler/tf2xla/frontend_attributes_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -42,7 +43,7 @@ class XlaCompilationAllocator : public Allocator {
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     // Regardless of the size requested, always allocates an XlaExpression.
-    // Respects the aligment request because there is alignment checking even
+    // Respects the alignment request because there is alignment checking even
     // for Tensors whose data is never accessed.
     void* p = port::AlignedMalloc(sizeof(XlaExpression), alignment);
     XlaExpression* expression = reinterpret_cast<XlaExpression*>(p);
@@ -58,18 +59,13 @@ class XlaCompilationAllocator : public Allocator {
 
   // Make sure that even tensors with 0 elements have allocated
   // buffers, so they get ids to track.
-  bool ShouldAllocateEmptyTensors() override { return true; }
-
- private:
-  // Don't run any constructors or destructors for complex objects,
-  // since there is no backing store for the tensor to run them
-  // on. strings are the only complex objects currently stored in
-  // Tensors. If others are added, this set of overrides must be
-  // extended to include them.
-  void RunStringCtor(string* p, size_t n) override {}
-  void RunStringDtor(string* p, size_t n) override {}
-  void RunResourceCtor(ResourceHandle* p, size_t n) override {}
-  void RunResourceDtor(ResourceHandle* p, size_t n) override {}
+  //
+  // NOTE: It is the caller's responsibility to track whether an allocated
+  // object is a buffer or an opaque handle. In particular, when this allocator
+  // is used, the caller must not run any constructors or destructors for
+  // complex objects, since there is no backing store for the tensor in which to
+  // place their outputs.
+  bool AllocatesOpaqueHandle() const override { return true; }
 };
 
 XlaCompilationDevice::XlaCompilationDevice(const SessionOptions& options,
@@ -102,6 +98,20 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
   OP_REQUIRES_OK(context, sharding_parse_result.status());
   absl::optional<xla::OpSharding> op_sharding =
       sharding_parse_result.ValueOrDie();
+
+  auto frontend_attributes_result =
+      GetFrontendAttributesFromAttrSlice(AttrSlice(op_kernel->def()));
+  OP_REQUIRES_OK(context, frontend_attributes_result.status());
+  absl::optional<xla::FrontendAttributes> attributes =
+      frontend_attributes_result.ValueOrDie();
+
+  xla::FrontendAttributes merged_attributes = b->frontend_attributes();
+  if (attributes.has_value()) {
+    merged_attributes.mutable_map()->insert(attributes.value().map().begin(),
+                                            attributes.value().map().end());
+  }
+  xla::XlaScopedFrontendAttributesAssignment assign_frontend_attributes(
+      b, std::move(merged_attributes));
 
   // If no sharding metadata is found, XLA is free to use whatever device it
   // wants. In practice this usually has the effect of placing things on device

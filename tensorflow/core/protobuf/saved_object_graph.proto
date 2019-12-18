@@ -5,6 +5,7 @@ import "tensorflow/core/protobuf/struct.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/framework/versions.proto";
+import "tensorflow/core/framework/variable.proto";
 
 option cc_enable_arenas = true;
 
@@ -73,6 +74,8 @@ message SavedUserObject {
   string identifier = 1;
   // Version information from the producer of this SavedUserObject.
   VersionDef version = 2;
+  // Initialization-related metadata.
+  string metadata = 3;
 }
 
 // A SavedAsset points to an asset in the MetaGraph.
@@ -132,6 +135,9 @@ message SavedVariable {
   DataType dtype = 1;
   TensorShapeProto shape = 2;
   bool trainable = 3;
+  VariableSynchronization synchronization = 4;
+  VariableAggregation aggregation = 5;
+  string name = 6;
 }
 
 // Represents `FunctionSpec` used in `Function`. This represents a
@@ -141,18 +147,18 @@ message FunctionSpec {
   StructuredValue fullargspec = 1;
   // Whether this represents a class method.
   bool is_method = 2;
-  // Which arguments to always prepend, in case the original function is based
-  // on a functools.partial.
-  StructuredValue args_to_prepend = 3;
-  // Which kwargs to always include, in case the original function is based on a
-  // functools.partial.
-  StructuredValue kwargs_to_include = 4;
   // The input signature, if specified.
   StructuredValue input_signature = 5;
+
+  reserved 3, 4;
 }
 
 // A SavedResource represents a TF object that holds state during its lifetime.
+// An object of this type can have a reference to a:
+// create_resource() and an initialize() function.
 message SavedResource {
-  // An object of this type can have a reference to a:
-  // create_resource() and an initialize() function.
+  // A device specification indicating a required placement for the resource
+  // creation function, e.g. "CPU". An empty string allows the user to select a
+  // device.
+  string device = 1;
 }

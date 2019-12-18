@@ -48,8 +48,9 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndex) {
       HloInstruction::CreateParameter(0, param_shape, "x"));
   HloInstruction* param_y = builder.AddInstruction(
       HloInstruction::CreateParameter(1, param_shape, "y"));
-  builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(PRED, {5, 7, 2}), HloOpcode::kGe, param_x, param_y));
+  builder.AddInstruction(HloInstruction::CreateCompare(
+      ShapeUtil::MakeShape(PRED, {5, 7, 2}), param_x, param_y,
+      ComparisonDirection::kGe));
 
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
@@ -66,16 +67,16 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndex) {
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshape) {
   HloModuleConfig config;
   config.set_debug_options(HloTestBase::GetDebugOptionsForTest());
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     ENTRY CompatibleUseLinearIndexWithReshape {
       x = f32[5,7,2]{2,1,0} parameter(0)
       y = f32[5,14]{1,0} parameter(1)
       reshape = f32[5,7,2]{2,1,0} reshape(y)
-      ROOT gte = pred[5,7,2]{2,1,0} greater-than-or-equal-to(x, reshape)
+      ROOT gte = pred[5,7,2]{2,1,0} compare(x, reshape), direction=GE
     })",
-                               config)
+                                             config)
                     .ValueOrDie();
 
   // Check the optimized IR as the unoptimized IR contains dead udiv and urem.
@@ -90,7 +91,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshape) {
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
   HloModuleConfig config;
   config.set_debug_options(HloTestBase::GetDebugOptionsForTest());
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     ENTRY CompatibleUseLinearIndexWithReshape {
@@ -98,9 +99,9 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
       y = f32[14]{0} parameter(1)
       reshape = f32[7,2]{1,0} reshape(y)
       broadcast = f32[5,7,2]{2,1,0} broadcast(reshape), dimensions={1,2}
-      ROOT gte = pred[5,7,2]{2,1,0} greater-than-or-equal-to(x, broadcast)
+      ROOT gte = pred[5,7,2]{2,1,0} compare(x, broadcast), direction=GE
     })",
-                               config)
+                                             config)
                     .ValueOrDie();
 
   // Check the optimized IR reuses the linear index by calculating modulo 14.
@@ -120,14 +121,14 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
   debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
   config.set_debug_options(debug_options);
 
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule  test_module
 
     ENTRY CompatibleUseLinearIndexWithSizeOneDimensions  {
       x = f32[1,1024,1,256]{3,2,1,0} parameter(0)
       ROOT y = f16[1,1024,1,256]{2,3,1,0} convert(x)
     })",
-                               config)
+                                             config)
                     .ValueOrDie();
 
   // Check that the unoptimized IR reuses the linear index.

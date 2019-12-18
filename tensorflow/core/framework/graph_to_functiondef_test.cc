@@ -75,16 +75,16 @@ TEST(GraphToFunctionDefTest, Basics) {
   FunctionDef fdef_expected = FunctionDefHelper::Create(
       "test_fn",                             // function name
       {"a: float", "b: float", "c: float"},  // inputs
-      {"h_0: float"},                        // outputs
+      {"h: float"},                          // outputs
       {},                                    // attrs
       {
           // nodes in the function body
           {{"D"}, "Add", {"a", "b"}, {{"T", DT_FLOAT}}},
           {{"b_0"}, "Add", {"D:z:0", "c"}, {{"T", DT_FLOAT}}},
-          {{"h"}, "Neg", {"b_0:z:0"}, {{"T", DT_FLOAT}}},
-          {{"G"}, "AddN", {"b_0:z:0", "h:y:0"}, {{"N", 2}, {"T", DT_FLOAT}}},
+          {{"h_0"}, "Neg", {"b_0:z:0"}, {{"T", DT_FLOAT}}},
+          {{"G"}, "AddN", {"b_0:z:0", "h_0:y:0"}, {{"N", 2}, {"T", DT_FLOAT}}},
       },
-      {{"h_0", "G:sum:0"}});  // return values
+      {{"h", "G:sum:0"}});  // return values
 
   string diff;
   bool fdefs_equal =
@@ -119,6 +119,46 @@ TEST(GraphToFunctionDefTest, ControlDependencies) {
           {{"b"}, "Neg", {"a", "^a"}, {{"T", DT_FLOAT}}},
       },
       {{"c", "b:y:0"}});  // return values
+
+  string diff;
+  bool fdefs_equal =
+      EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
+  EXPECT_TRUE(fdefs_equal) << diff;
+}
+
+TEST(GraphToFunctionDefTest, ControlOutputs) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(root.WithOpName("a"), DT_FLOAT, 0);
+  auto b = ops::Neg(root.WithOpName("b"), a);
+  auto c = ops::_Retval(root.WithOpName("c"), b, 0);
+
+  GraphDef graph_def;
+  TF_EXPECT_OK(root.ToGraphDef(&graph_def));
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  GraphConstructorOptions options;
+  TF_EXPECT_OK(ConvertGraphDefToGraph(options, graph_def, graph.get()));
+
+  // Add a 'b' node to the control return set.
+  const auto control_ret = [](const Node* n) -> absl::optional<string> {
+    if (n->name() == "b") return absl::make_optional<string>("must_execute");
+    return absl::nullopt;
+  };
+
+  FunctionDef fdef;
+  TF_EXPECT_OK(GraphToFunctionDef(*graph, "test_fn", control_ret, &fdef));
+
+  FunctionDef fdef_expected =
+      FunctionDefHelper::Create("test_fn",     // function name
+                                {"a: float"},  // inputs
+                                {"c: float"},  // outputs
+                                {},            // attrs
+                                {
+                                    // nodes in the function body
+                                    {{"b"}, "Neg", {"a"}, {{"T", DT_FLOAT}}},
+                                },
+                                {{"c", "b:y:0"}},          // return values
+                                {{"must_execute", "b"}});  // control returns
 
   string diff;
   bool fdefs_equal =

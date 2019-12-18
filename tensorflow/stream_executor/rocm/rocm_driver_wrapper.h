@@ -20,14 +20,12 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DRIVER_WRAPPER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DRIVER_WRAPPER_H_
 
+#define __HIP_DISABLE_CPP_FUNCTIONS__
+
 #include "rocm/include/hip/hip_runtime.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/port.h"
-
-#if defined(TENSORFLOW_USE_ROCM)
-
-#endif
 
 namespace tensorflow {
 namespace wrap {
@@ -47,21 +45,6 @@ namespace wrap {
 #else
 #define TO_STR_(x) #x
 #define TO_STR(x) TO_STR_(x)
-
-// hipMalloc and hipHostMalloc are defined as funtion templates in the
-// HIP header files, and hence their names get mangled and the attempt
-// to resolve their name when trying to dynamically load them will fail
-// Updating the HIP header files to make them C functions is underway.
-// Until that change flows through, we will workaround the issue by
-// creating dummy wrappers for them here
-
-hipError_t hipMallocVanilla(void** ptr, size_t size) {
-  return hipErrorNotInitialized;
-}
-
-hipError_t hipHostMallocVanilla(void** ptr, size_t size, unsigned int flags) {
-  return hipErrorNotInitialized;
-}
 
 #define STREAM_EXECUTOR_HIP_WRAP(hipSymbolName)                             \
   template <typename... Args>                                               \
@@ -96,8 +79,8 @@ hipError_t hipHostMallocVanilla(void** ptr, size_t size, unsigned int flags) {
   __macro(hipDeviceTotalMem)                        \
   __macro(hipDriverGetVersion)                      \
   __macro(hipEventCreateWithFlags)                  \
-  __macro(hipEventElapsedTime)                      \
   __macro(hipEventDestroy)                          \
+  __macro(hipEventElapsedTime)                      \
   __macro(hipEventQuery)                            \
   __macro(hipEventRecord)                           \
   __macro(hipEventSynchronize)                      \
@@ -107,9 +90,11 @@ hipError_t hipHostMallocVanilla(void** ptr, size_t size, unsigned int flags) {
   __macro(hipGetDeviceCount)                        \
   __macro(hipGetDeviceProperties)                   \
   __macro(hipHostFree)                              \
+  __macro(hipHostMalloc)                            \
   __macro(hipHostRegister)                          \
   __macro(hipHostUnregister)                        \
   __macro(hipInit)                                  \
+  __macro(hipMalloc)                                \
   __macro(hipMemGetAddressRange)                    \
   __macro(hipMemGetInfo)                            \
   __macro(hipMemcpyDtoD)                            \
@@ -119,7 +104,10 @@ hipError_t hipHostMallocVanilla(void** ptr, size_t size, unsigned int flags) {
   __macro(hipMemcpyHtoD)                            \
   __macro(hipMemcpyHtoDAsync)                       \
   __macro(hipMemset)                                \
+  __macro(hipMemsetD32)                             \
+  __macro(hipMemsetD8)                              \
   __macro(hipMemsetAsync)                           \
+  __macro(hipMemsetD32Async)                        \
   __macro(hipModuleGetFunction)                     \
   __macro(hipModuleGetGlobal)                       \
   __macro(hipModuleLaunchKernel)                    \

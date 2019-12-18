@@ -22,11 +22,6 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/toco/model.h"
-#include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/lite/toco/runtime/types.h"
-#include "tensorflow/lite/toco/tensorflow_util.h"
-#include "tensorflow/lite/toco/tooling_util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -34,6 +29,11 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/model_flags.pb.h"
+#include "tensorflow/lite/toco/runtime/types.h"
+#include "tensorflow/lite/toco/tensorflow_util.h"
+#include "tensorflow/lite/toco/tooling_util.h"
 
 using tensorflow::DT_BOOL;
 using tensorflow::DT_COMPLEX64;
@@ -1145,7 +1145,8 @@ void ConvertSplitOperator(const Model& model,
   for (const auto& input : src_op.inputs) {
     *split_op->add_input() = input;
   }
-  (*split_op->mutable_attr())["T"].set_type(DT_FLOAT);
+  (*split_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.outputs[0]));
   (*split_op->mutable_attr())["num_split"].set_i(src_op.num_split);
   const auto& split_dim_array = model.GetArray(src_op.inputs[0]);
   CHECK(split_dim_array.buffer);
@@ -1168,17 +1169,11 @@ void ConvertSplitVOperator(const Model& model,
     *split_v_op->add_input() = input;
   }
   (*split_v_op->mutable_attr())["T"].set_type(
-      GetTensorFlowDataType(model, src_op.inputs[0]));
+      GetTensorFlowDataType(model, src_op.outputs[0]));
+  (*split_v_op->mutable_attr())["Tlen"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[1]));
   (*split_v_op->mutable_attr())["num_split"].set_i(src_op.num_split);
-  const auto& split_dim_array = model.GetArray(src_op.inputs[1]);
-  CHECK(split_dim_array.buffer);
-  CHECK(split_dim_array.data_type == ArrayDataType::kInt32);
-  const auto& split_dim_data =
-      split_dim_array.GetBuffer<ArrayDataType::kInt32>().data;
-  CHECK_EQ(split_dim_data.size(), 1);
-  const int split_dim = split_dim_data[0];
-  CreateDummyConcatDimTensorConst(src_op.inputs[0], split_dim,
-                                  tensorflow_graph);
+  ConvertIntTensorConst(model, src_op.inputs[1], tensorflow_graph);
 }
 
 void ConvertCastOperator(const Model& model, const CastOperator& src_op,
@@ -1213,6 +1208,16 @@ void ConvertCeilOperator(const Model& model, const CeilOperator& src_op,
   CHECK_EQ(src_op.inputs.size(), 1);
   *ceil_op->add_input() = src_op.inputs[0];
   (*ceil_op->mutable_attr())["T"].set_type(DT_FLOAT);
+}
+
+void ConvertRoundOperator(const Model& model, const RoundOperator& src_op,
+                          GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* round_op = tensorflow_graph->add_node();
+  round_op->set_op("Round");
+  round_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 1);
+  *round_op->add_input() = src_op.inputs[0];
+  (*round_op->mutable_attr())["T"].set_type(DT_FLOAT);
 }
 
 void ConvertGatherOperator(const Model& model, const GatherOperator& src_op,
@@ -2077,6 +2082,19 @@ void ConvertReverseV2Operator(const Model& model,
   (*reverse_v2_op->mutable_attr())["T"].set_type(data_type);
 }
 
+void ConvertReverseSequenceOperator(const Model& model,
+                                    const ReverseSequenceOperator& src_op,
+                                    GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* reverse_seq_op = tensorflow_graph->add_node();
+  reverse_seq_op->set_op("ReverseSequence");
+  reverse_seq_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *reverse_seq_op->add_input() = src_op.inputs[0];
+  *reverse_seq_op->add_input() = src_op.inputs[1];
+  (*reverse_seq_op->mutable_attr())["seq_dim"].set_i(src_op.seq_dim);
+  (*reverse_seq_op->mutable_attr())["batch_dim"].set_i(src_op.batch_dim);
+}
+
 void ConvertOperator(const Model& model, const Operator& src_op,
                      GraphDef* tensorflow_graph) {
   if (src_op.fused_activation_function != FusedActivationFunctionType::kNone) {
@@ -2197,6 +2215,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kCeil) {
     ConvertCeilOperator(model, static_cast<const CeilOperator&>(src_op),
                         tensorflow_graph);
+  } else if (src_op.type == OperatorType::kRound) {
+    ConvertRoundOperator(model, static_cast<const RoundOperator&>(src_op),
+                         tensorflow_graph);
   } else if (src_op.type == OperatorType::kGather) {
     ConvertGatherOperator(model, static_cast<const GatherOperator&>(src_op),
                           tensorflow_graph);
@@ -2361,6 +2382,10 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertReverseV2Operator(model,
                              static_cast<const ReverseV2Operator&>(src_op),
                              "Reverse_V2", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kReverseSequence) {
+    ConvertReverseSequenceOperator(
+        model, static_cast<const ReverseSequenceOperator&>(src_op),
+        tensorflow_graph);
   } else {
     LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(src_op.type);
   }

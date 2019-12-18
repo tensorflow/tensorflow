@@ -30,6 +30,11 @@ class WhitelistedStatefulOpRegistry {
     return Status::OK();
   }
 
+  Status Remove(string op_name) {
+    op_names_.erase(op_name);
+    return Status::OK();
+  }
+
   bool Contains(const string& op_name) { return op_names_.count(op_name); }
 
   static WhitelistedStatefulOpRegistry* Global() {

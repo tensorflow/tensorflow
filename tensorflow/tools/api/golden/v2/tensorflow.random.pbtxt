@@ -1,5 +1,17 @@
 path: "tensorflow.random"
 tf_module {
+  member {
+    name: "Algorithm"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "Generator"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "all_candidate_sampler"
     argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
@@ -9,12 +21,20 @@ tf_module {
     argspec: "args=[\'logits\', \'num_samples\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "create_rng_state"
+    argspec: "args=[\'seed\', \'alg\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "fixed_unigram_candidate_sampler"
     argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'range_max\', \'vocab_file\', \'distortion\', \'num_reserved_ids\', \'num_shards\', \'shard\', \'unigrams\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'1.0\', \'0\', \'1\', \'0\', \'()\', \'None\', \'None\'], "
   }
   member_method {
     name: "gamma"
     argspec: "args=[\'shape\', \'alpha\', \'beta\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\", \'None\', \'None\'], "
+  }
+  member_method {
+    name: "get_global_generator"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "learned_unigram_candidate_sampler"
@@ -31,6 +51,10 @@ tf_module {
   member_method {
     name: "poisson"
     argspec: "args=[\'shape\', \'lam\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\', \'None\'], "
+  }
+  member_method {
+    name: "set_global_generator"
+    argspec: "args=[\'generator\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "set_seed"

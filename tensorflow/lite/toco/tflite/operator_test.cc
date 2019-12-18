@@ -17,11 +17,10 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/toco/model.h"
-#include "tensorflow/lite/toco/tooling_util.h"
-
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/tooling_util.h"
 
 namespace toco {
 
@@ -114,6 +113,7 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<FloorOperator>("FLOOR", OperatorType::kFloor);
   CheckSimpleOperator<CeilOperator>("CEIL", OperatorType::kCeil);
   CheckSimpleOperator<EluOperator>("ELU", OperatorType::kElu);
+  CheckSimpleOperator<RoundOperator>("ROUND", OperatorType::kRound);
   CheckSimpleOperator<ReluOperator>("RELU", OperatorType::kRelu);
   CheckSimpleOperator<Relu1Operator>("RELU_N1_TO_1", OperatorType::kRelu1);
   CheckSimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6);
@@ -302,44 +302,6 @@ TEST_F(OperatorTest, BuiltinMaxPool) {
   EXPECT_EQ(op.padding.type, output_toco_op->padding.type);
   EXPECT_EQ(op.kwidth, output_toco_op->kwidth);
   EXPECT_EQ(op.kheight, output_toco_op->kheight);
-}
-
-TEST_F(OperatorTest, VersioningMaxTest) {
-  TensorFlowMaximumOperator max_op;
-  max_op.inputs = {"input1"};
-  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
-  const BaseOperator* op = operator_by_type_map.at(max_op.type).get();
-
-  Model uint8_model;
-  Array& uint8_array = uint8_model.GetOrCreateArray(max_op.inputs[0]);
-  uint8_array.data_type = ArrayDataType::kUint8;
-  OperatorSignature uint8_signature = {.model = &uint8_model, .op = &max_op};
-  EXPECT_EQ(op->GetVersion(uint8_signature), 1);
-
-  Model int8_model;
-  Array& int8_array = int8_model.GetOrCreateArray(max_op.inputs[0]);
-  int8_array.data_type = ArrayDataType::kInt8;
-  OperatorSignature int8_signature = {.model = &int8_model, .op = &max_op};
-  EXPECT_EQ(op->GetVersion(int8_signature), 2);
-}
-
-TEST_F(OperatorTest, VersioningMinTest) {
-  TensorFlowMinimumOperator min_op;
-  min_op.inputs = {"input1"};
-  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
-  const BaseOperator* op = operator_by_type_map.at(min_op.type).get();
-
-  Model uint8_model;
-  Array& uint8_array = uint8_model.GetOrCreateArray(min_op.inputs[0]);
-  uint8_array.data_type = ArrayDataType::kUint8;
-  OperatorSignature uint8_signature = {.model = &uint8_model, .op = &min_op};
-  EXPECT_EQ(op->GetVersion(uint8_signature), 1);
-
-  Model int8_model;
-  Array& int8_array = int8_model.GetOrCreateArray(min_op.inputs[0]);
-  int8_array.data_type = ArrayDataType::kInt8;
-  OperatorSignature int8_signature = {.model = &int8_model, .op = &min_op};
-  EXPECT_EQ(op->GetVersion(int8_signature), 2);
 }
 
 TEST_F(OperatorTest, BuiltinReshape) {
@@ -567,6 +529,39 @@ TEST_F(OperatorTest, BuiltinSparseToDense) {
   EXPECT_EQ(op.validate_indices, output_toco_op->validate_indices);
 }
 
+TEST_F(OperatorTest, VersioningSpareToDense) {
+  SparseToDenseOperator op;
+  op.inputs = {"indices", "output_shape", "input_values", "default_value"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model int32_model;
+  Array& int32_array = int32_model.GetOrCreateArray(op.inputs[2]);
+  int32_array.data_type = ArrayDataType::kInt32;
+  OperatorSignature int32_signature = {.op = &op, .model = &int32_model};
+  EXPECT_EQ(base_op->GetVersion(int32_signature), 1);
+
+  // Expect version 2 for int64 input.
+  Model int64_model;
+  Array& int64_array = int64_model.GetOrCreateArray(op.inputs[2]);
+  int64_array.data_type = ArrayDataType::kInt64;
+  OperatorSignature int64_signature = {.op = &op, .model = &int64_model};
+  EXPECT_EQ(base_op->GetVersion(int64_signature), 2);
+
+  // Expect version 3 for int8 and uint8 input.
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(op.inputs[2]);
+  int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.op = &op, .model = &int8_model};
+  EXPECT_EQ(base_op->GetVersion(int8_signature), 3);
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(op.inputs[2]);
+  uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.op = &op, .model = &uint8_model};
+  EXPECT_EQ(base_op->GetVersion(uint8_signature), 3);
+}
+
 TEST_F(OperatorTest, BuiltinPack) {
   PackOperator op;
   op.values_count = 3;
@@ -732,6 +727,31 @@ TEST_F(OperatorTest, BuiltinUnique) {
   EXPECT_EQ(output_toco_op->idx_out_type, op.idx_out_type);
 }
 
+TEST_F(OperatorTest, BuiltinReverseSequence) {
+  ReverseSequenceOperator op;
+  op.seq_dim = 3;
+  op.batch_dim = 1;
+  std::unique_ptr<toco::ReverseSequenceOperator> output_toco_op =
+      SerializeAndDeserialize(
+          GetOperator("REVERSE_SEQUENCE", OperatorType::kReverseSequence), op);
+  EXPECT_EQ(op.seq_dim, output_toco_op->seq_dim);
+  EXPECT_EQ(op.batch_dim, output_toco_op->batch_dim);
+}
+
+TEST_F(OperatorTest, BuiltinMatrixDiag) {
+  MatrixDiagOperator op;
+  std::unique_ptr<toco::MatrixDiagOperator> output_toco_op =
+      SerializeAndDeserialize(
+          GetOperator("MATRIX_DIAG", OperatorType::kMatrixDiag), op);
+}
+
+TEST_F(OperatorTest, BuiltinMatrixSetDiag) {
+  MatrixSetDiagOperator op;
+  std::unique_ptr<toco::MatrixSetDiagOperator> output_toco_op =
+      SerializeAndDeserialize(
+          GetOperator("MATRIX_SET_DIAG", OperatorType::kMatrixSetDiag), op);
+}
+
 // Test version for a simple Op with 2 versions and the input type controls the
 // version.
 template <typename Op>
@@ -744,13 +764,35 @@ void SimpleVersioningTest() {
   Model uint8_model;
   Array& uint8_array = uint8_model.GetOrCreateArray(op.inputs[0]);
   uint8_array.data_type = ArrayDataType::kUint8;
-  OperatorSignature uint8_signature = {.model = &uint8_model, .op = &op};
+  OperatorSignature uint8_signature = {.op = &op, .model = &uint8_model};
   EXPECT_EQ(base_op->GetVersion(uint8_signature), 1);
 
   Model int8_model;
   Array& int8_array = int8_model.GetOrCreateArray(op.inputs[0]);
   int8_array.data_type = ArrayDataType::kInt8;
-  OperatorSignature int8_signature = {.model = &int8_model, .op = &op};
+  OperatorSignature int8_signature = {.op = &op, .model = &int8_model};
+  EXPECT_EQ(base_op->GetVersion(int8_signature), 2);
+}
+
+// Test version for a simple Op with 2 versions and the output type controls the
+// version.
+template <typename Op>
+void SimpleOutputVersioningTest() {
+  Op op;
+  op.outputs = {"output1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(op.outputs[0]);
+  uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.op = &op, .model = &uint8_model};
+  EXPECT_EQ(base_op->GetVersion(uint8_signature), 1);
+
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(op.outputs[0]);
+  int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.op = &op, .model = &int8_model};
   EXPECT_EQ(base_op->GetVersion(int8_signature), 2);
 }
 
@@ -790,6 +832,31 @@ TEST_F(OperatorTest, VersioningPackTest) {
   SimpleVersioningTest<PackOperator>();
 }
 
+TEST_F(OperatorTest, VersioningUnpackTest) {
+  UnpackOperator op;
+  op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model int32_model;
+  Array& int32_array = int32_model.GetOrCreateArray(op.inputs[0]);
+  int32_array.data_type = ArrayDataType::kInt32;
+  OperatorSignature int32_signature = {.op = &op, .model = &int32_model};
+  EXPECT_EQ(base_op->GetVersion(int32_signature), 1);
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(op.inputs[0]);
+  uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.op = &op, .model = &uint8_model};
+  EXPECT_EQ(base_op->GetVersion(uint8_signature), 2);
+
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(op.inputs[0]);
+  int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.op = &op, .model = &int8_model};
+  EXPECT_EQ(base_op->GetVersion(int8_signature), 2);
+}
+
 TEST_F(OperatorTest, VersioningBatchToSpaceNDTest) {
   SimpleVersioningTest<BatchToSpaceNDOperator>();
 }
@@ -808,22 +875,86 @@ TEST_F(OperatorTest, VersioningSpaceToDepthTest) {
 
 TEST_F(OperatorTest, VersioningSliceTest) {
   SimpleVersioningTest<SliceOperator>();
+
+  // Check that a string input results in a version 3 op.
+  SliceOperator op;
+  op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model string_model;
+  Array& string_array = string_model.GetOrCreateArray(op.inputs[0]);
+  string_array.data_type = ArrayDataType::kString;
+  OperatorSignature string_signature = {.op = &op, .model = &string_model};
+  EXPECT_EQ(base_op->GetVersion(string_signature), 3);
 }
 
 TEST_F(OperatorTest, VersioningLogisticTest) {
   SimpleVersioningTest<LogisticOperator>();
 }
 
+TEST_F(OperatorTest, VersioningL2NormTest) {
+  SimpleOutputVersioningTest<L2NormalizationOperator>();
+}
+
+TEST_F(OperatorTest, VersioningMaxTest) {
+  SimpleVersioningTest<TensorFlowMaximumOperator>();
+}
+
+TEST_F(OperatorTest, VersioningMinTest) {
+  SimpleVersioningTest<TensorFlowMinimumOperator>();
+}
+
+TEST_F(OperatorTest, VersioningMeanTest) {
+  SimpleVersioningTest<MeanOperator>();
+}
+
+TEST_F(OperatorTest, VersioningSumTest) {
+  SimpleVersioningTest<TensorFlowSumOperator>();
+}
+
 TEST_F(OperatorTest, VersioningAddTest) { SimpleVersioningTest<AddOperator>(); }
 
 TEST_F(OperatorTest, VersioningSubTest) { SimpleVersioningTest<SubOperator>(); }
 
-TEST_F(OperatorTest, VersioningMulTest) { SimpleVersioningTest<MulOperator>(); }
+void SimpleMulVersioningTest(ArrayDataType data_type, float multiplier,
+                             int version) {
+  MulOperator op;
+  op.inputs = {"input1", "input2"};
+  op.outputs = {"output"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model model;
+  Array& input0 = model.GetOrCreateArray(op.inputs[0]);
+  Array& input1 = model.GetOrCreateArray(op.inputs[1]);
+  Array& output = model.GetOrCreateArray(op.outputs[0]);
+
+  input0.data_type = data_type;
+  input0.GetOrCreateQuantizationParams().scale = 1.0f;
+  input1.data_type = data_type;
+  input1.GetOrCreateQuantizationParams().scale = 1.0f;
+  output.data_type = data_type;
+  output.GetOrCreateQuantizationParams().scale = 1.0f / multiplier;
+
+  OperatorSignature signature = {.op = &op, .model = &model};
+  EXPECT_EQ(base_op->GetVersion(signature), version);
+}
+
+TEST_F(OperatorTest, VersioningMulTest) {
+  SimpleMulVersioningTest(ArrayDataType::kUint8, 0.5f, 1);
+  SimpleMulVersioningTest(ArrayDataType::kInt8, 0.5f, 2);
+  SimpleMulVersioningTest(ArrayDataType::kInt8, 2.0f, 3);
+}
 
 TEST_F(OperatorTest, VersioningPadTest) { SimpleVersioningTest<PadOperator>(); }
 
 TEST_F(OperatorTest, VersioningPadV2Test) {
   SimpleVersioningTest<PadV2Operator>();
+}
+
+TEST_F(OperatorTest, VersioningConcatenationTest) {
+  SimpleVersioningTest<ConcatenationOperator>();
 }
 
 TEST_F(OperatorTest, VersioningSelectTest) {
@@ -852,9 +983,9 @@ TEST_F(OperatorTest, VersioningFullyConnectedTest) {
   Array& output_uint8_array =
       uint8_model.GetOrCreateArray(fully_connected_op.outputs[0]);
   output_uint8_array.data_type = ArrayDataType::kUint8;
-  OperatorSignature uint8_signature = {.model = &uint8_model,
-                                       .op = &fully_connected_op};
-  EXPECT_EQ(op->GetVersion(uint8_signature), 1);
+  OperatorSignature uint8_signature = {.op = &fully_connected_op,
+                                       .model = &uint8_model};
+  EXPECT_EQ(op->GetVersion(uint8_signature), 6);
 
   Model int8_model;
   Array& input_int8_array =
@@ -866,9 +997,106 @@ TEST_F(OperatorTest, VersioningFullyConnectedTest) {
   Array& output_int8_array =
       int8_model.GetOrCreateArray(fully_connected_op.outputs[0]);
   output_int8_array.data_type = ArrayDataType::kInt8;
-  OperatorSignature int8_signature = {.model = &int8_model,
-                                      .op = &fully_connected_op};
-  EXPECT_EQ(op->GetVersion(int8_signature), 4);
+  OperatorSignature int8_signature = {.op = &fully_connected_op,
+                                      .model = &int8_model};
+  EXPECT_EQ(op->GetVersion(int8_signature), 6);
+}
+
+TEST_F(OperatorTest, VersioningDequantizeTest) {
+  DequantizeOperator dequant_op;
+  dequant_op.inputs = {"input"};
+  dequant_op.outputs = {"output"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* op = operator_by_type_map.at(dequant_op.type).get();
+
+  Model int16_model;
+  Array& input_int16_array = int16_model.GetOrCreateArray(dequant_op.inputs[0]);
+  input_int16_array.data_type = ArrayDataType::kInt16;
+  OperatorSignature int16_signature = {.op = &dequant_op,
+                                       .model = &int16_model};
+  EXPECT_EQ(op->GetVersion(int16_signature), 3);
+
+  Model float16_model;
+  Array& input_float16_array =
+      float16_model.GetOrCreateArray(dequant_op.inputs[0]);
+  input_float16_array.data_type = ArrayDataType::kFloat16;
+  OperatorSignature float16_signature = {.op = &dequant_op,
+                                         .model = &float16_model};
+  EXPECT_EQ(op->GetVersion(float16_signature), 3);
+
+  Model int8_model;
+  Array& input_int8_array = int8_model.GetOrCreateArray(dequant_op.inputs[0]);
+  input_int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.op = &dequant_op, .model = &int8_model};
+  EXPECT_EQ(op->GetVersion(int8_signature), 2);
+
+  Model float_model;
+  Array& input_float_array = float_model.GetOrCreateArray(dequant_op.inputs[0]);
+  input_float_array.data_type = ArrayDataType::kFloat;
+  OperatorSignature float_signature = {.op = &dequant_op,
+                                       .model = &float_model};
+  EXPECT_EQ(op->GetVersion(float_signature), 1);
+}
+
+TEST_F(OperatorTest, VersioningConv2DTest) {
+  ConvOperator conv_op;
+  conv_op.inputs = {"input", "filter"};
+  conv_op.outputs = {"output"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* op = operator_by_type_map.at(conv_op.type).get();
+
+  Model uint8_model;
+  Array& input_uint8_array = uint8_model.GetOrCreateArray(conv_op.inputs[0]);
+  input_uint8_array.data_type = ArrayDataType::kUint8;
+  Array& filter_uint8_array = uint8_model.GetOrCreateArray(conv_op.inputs[1]);
+  filter_uint8_array.data_type = ArrayDataType::kUint8;
+  Array& output_uint8_array = uint8_model.GetOrCreateArray(conv_op.outputs[0]);
+  output_uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.op = &conv_op, .model = &uint8_model};
+  EXPECT_EQ(op->GetVersion(uint8_signature), 1);
+
+  Model int8_model;
+  Array& input_int8_array = int8_model.GetOrCreateArray(conv_op.inputs[0]);
+  input_int8_array.data_type = ArrayDataType::kInt8;
+  Array& filter_int8_array = int8_model.GetOrCreateArray(conv_op.inputs[1]);
+  filter_int8_array.data_type = ArrayDataType::kInt8;
+  Array& output_int8_array = int8_model.GetOrCreateArray(conv_op.outputs[0]);
+  output_int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.op = &conv_op, .model = &int8_model};
+  EXPECT_EQ(op->GetVersion(int8_signature), 3);
+
+  Model float_model;
+  Array& input_float_array = float_model.GetOrCreateArray(conv_op.inputs[0]);
+  input_float_array.data_type = ArrayDataType::kFloat;
+  Array& filter_int8_array1 = float_model.GetOrCreateArray(conv_op.inputs[1]);
+  filter_int8_array1.data_type = ArrayDataType::kInt8;
+  Array& output_float_array = float_model.GetOrCreateArray(conv_op.outputs[0]);
+  output_float_array.data_type = ArrayDataType::kFloat;
+  OperatorSignature float_signature = {.op = &conv_op, .model = &float_model};
+  EXPECT_EQ(op->GetVersion(float_signature), 2);
+}
+
+TEST_F(OperatorTest, VersioningFloorDivOperatorTest) {
+  FloorDivOperator floordiv_op;
+  floordiv_op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* op = operator_by_type_map.at(floordiv_op.type).get();
+
+  Model int32_model;
+  Array& input_int32_array =
+      int32_model.GetOrCreateArray(floordiv_op.inputs[0]);
+  input_int32_array.data_type = ArrayDataType::kInt32;
+  OperatorSignature int32_signature = {.op = &floordiv_op,
+                                       .model = &int32_model};
+  EXPECT_EQ(op->GetVersion(int32_signature), 1);
+
+  Model float_model;
+  Array& input_float_array =
+      float_model.GetOrCreateArray(floordiv_op.inputs[0]);
+  input_float_array.data_type = ArrayDataType::kFloat;
+  OperatorSignature float_signature = {.op = &floordiv_op,
+                                       .model = &float_model};
+  EXPECT_EQ(op->GetVersion(float_signature), 2);
 }
 
 }  // namespace

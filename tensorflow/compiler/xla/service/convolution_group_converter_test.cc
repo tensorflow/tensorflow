@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -44,12 +43,13 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,2], filter: f32[1,1,2]) -> f32[1,2
   ROOT %convolution = f32[1,2,2]{2,0,1} convolution(f32[1,2,2]{2,0,1} %copy, f32[1,1,2]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f, feature_group_count=2
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
-  ConvolutionGroupConverter converter(nullptr, /*convert_batch_groups_only=*/
+  auto cost_model = [](HloInstruction* conv) { return true; };
+  ConvolutionGroupConverter converter(cost_model, /*convert_batch_groups_only=*/
                                       false);
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();
@@ -75,12 +75,13 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,4], filter: f32[1,2,2]) -> f32[1,2
   ROOT %convolution = f32[1,2,2]{2,0,1} convolution(f32[1,2,4]{2,0,1} %copy, f32[1,2,2]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f, feature_group_count=2
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
-  ConvolutionGroupConverter converter(nullptr, /*convert_batch_groups_only=*/
+  auto cost_model = [](HloInstruction* conv) { return true; };
+  ConvolutionGroupConverter converter(cost_model, /*convert_batch_groups_only=*/
                                       false);
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();
@@ -104,7 +105,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[16,19,19,512]{3,2,1,0}, filter: f32[16
   ROOT %convolution = f32[3,3,512,1]{3,2,1,0} convolution(f32[16,19,19,512]{3,2,1,0} %input, f32[16,19,19,512]{3,2,1,0} %filter), window={size=19x19 pad=1_1x1_1}, dim_labels=f01b_i01o->01fb, batch_group_count=512
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   HloInstruction* root = computation->root_instruction();

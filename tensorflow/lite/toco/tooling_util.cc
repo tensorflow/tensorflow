@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "re2/re2.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/dump_graphviz.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_graphviz_dump_options.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -157,25 +157,41 @@ int CountOpsWithInput(const Model& model, const string& array_name) {
 
 bool DeleteArrayIfUnused(const string& array_name, Model* model) {
   if (IsDiscardableArray(*model, array_name) &&
-      CountOpsWithInput(*model, array_name) == 0) {
+      CountOpsWithInput(*model, array_name) == 0 &&
+      GetOpWithOutput(*model, array_name) == nullptr) {
     model->EraseArray(array_name);
     return true;
   }
   return false;
 }
 
-bool DeleteArrayIfUsedOnce(const string& array_name, Model* model) {
-  if (IsDiscardableArray(*model, array_name) &&
-      CountOpsWithInput(*model, array_name) == 1) {
-    model->EraseArray(array_name);
-    return true;
+bool DeleteArrayIfUnusedOutsideOfOp(const string& array_name,
+                                    const Operator* op, Model* model) {
+  if (!IsDiscardableArray(*model, array_name)) {
+    return false;
   }
-  return false;
+  if (CountOpsWithInput(*model, array_name) > 1) {
+    return false;
+  }
+  const Operator* op_having_this_as_input = GetOpWithInput(*model, array_name);
+  if (op_having_this_as_input && op_having_this_as_input != op) {
+    return false;
+  }
+  const Operator* op_having_this_as_output =
+      GetOpWithOutput(*model, array_name);
+  if (op_having_this_as_output && op_having_this_as_output != op) {
+    return false;
+  }
+  model->EraseArray(array_name);
+  return true;
 }
 
-void DeleteOpAndArraysIfUnused(Model* model, const Operator* op) {
+void DeleteOpAndArrays(Model* model, const Operator* op) {
   for (const string& array_name : op->inputs) {
-    DeleteArrayIfUsedOnce(array_name, model);
+    DeleteArrayIfUnusedOutsideOfOp(array_name, op, model);
+  }
+  for (const string& array_name : op->outputs) {
+    DeleteArrayIfUnusedOutsideOfOp(array_name, op, model);
   }
   auto op_it = FindOp(*model, op);
   CHECK(op_it != model->operators.end());
@@ -320,6 +336,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(DepthToSpace)
     HANDLE_OPERATORTYPENAME_CASE(SpaceToDepth)
     HANDLE_OPERATORTYPENAME_CASE(FullyConnected)
+    HANDLE_OPERATORTYPENAME_CASE(HardSwish)
     HANDLE_OPERATORTYPENAME_CASE(Dequantize)
     HANDLE_OPERATORTYPENAME_CASE(L2Normalization)
     HANDLE_OPERATORTYPENAME_CASE(LocalResponseNormalization)
@@ -387,6 +404,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Cast)
     HANDLE_OPERATORTYPENAME_CASE(Floor)
     HANDLE_OPERATORTYPENAME_CASE(Ceil)
+    HANDLE_OPERATORTYPENAME_CASE(Round)
     HANDLE_OPERATORTYPENAME_CASE(Gather)
     HANDLE_OPERATORTYPENAME_CASE(GatherNd)
     HANDLE_OPERATORTYPENAME_CASE(ResizeBilinear)
@@ -426,6 +444,13 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(ReverseV2)
     HANDLE_OPERATORTYPENAME_CASE(Cos)
     HANDLE_OPERATORTYPENAME_CASE(Where)
+    HANDLE_OPERATORTYPENAME_CASE(ReverseSequence)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixDiag)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiag)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixDiagV2)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiagV2)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixDiagV3)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiagV3)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -902,8 +927,9 @@ void CheckNonExistentIOArrays(const Model& model) {
     return;
   }
   static constexpr char general_comment[] =
-      "Is it a typo? To silence this message, pass this flag:  "
-      "allow_nonexistent_arrays";
+      "Is it a typo? This should not happen. If you trigger this error "
+      "please send a bug report (with code to reporduce this error), to the "
+      "TensorFlow Lite team.";
   for (const string& output_array : model.flags.output_arrays()) {
     if (IsConstantParameterArray(model, output_array)) {
       continue;  // It is OK to request that a constant be an output.
@@ -1025,18 +1051,20 @@ void CheckEachArray(const Model& model) {
     const auto& array = array_entry.second;
     // It's OK to have a buffer or an alloc, but not both.
     // (Since allocs are for transient arrays without a buffer).
-    CHECK(!array->buffer || !array->alloc);
+    CHECK(!array->buffer || !array->alloc) << "Tensor: " << array_entry.first;
     if (array->buffer) {
       // If there is a buffer, its type should be consistent with data_type.
-      CHECK(array->buffer->type == array->data_type);
+      CHECK(array->buffer->type == array->data_type)
+          << "Tensor: " << array_entry.first;
       // The presence of a fixed buffer should imply the presence of a fixed
       // shape.
-      CHECK(array->has_shape());
+      CHECK(array->has_shape()) << array_entry.first;
       // Constant buffer should has a valid shape.
       CheckValidShape(array->shape());
       // The shape flat-size should agree with the buffer length.
       CHECK_EQ(array->buffer->Length(),
-               RequiredBufferSizeForShape(array->shape()));
+               RequiredBufferSizeForShape(array->shape()))
+          << "Tensor: " << array_entry.first;
     }
 
     // Check name.  Either "name_with_suffix_8", "name_with_port:3", but not
@@ -1096,7 +1124,7 @@ void FixOperatorOrdering(Model* model) {
   std::unordered_map<string, string> reason_why_leftover;
   while (true) {
     bool inserted_something = false;
-    for (auto i : remaining) {
+    for (const auto& i : remaining) {
       bool can_insert = true;
       auto& op = old_operators[i];
       CHECK(op);
@@ -1166,7 +1194,7 @@ void FixOperatorOrdering(Model* model) {
       }
       bad_inputs_already_traced.insert(bad_input);
       bad_op = nullptr;
-      for (auto i : remaining) {
+      for (const auto& i : remaining) {
         const Operator* op = old_operators[i].get();
         for (const string& output : op->outputs) {
           if (bad_input == output) {
@@ -1269,7 +1297,7 @@ void FixEdgeArrays(Model* model) {
 
 void DedupeConstantArrays(Model* model, size_t min_size) {
   // Walk all 0..N and compare with the remaining n+1..N.
-  // This lets us avoid N^2 comparisions and erase duplicate arrays while
+  // This lets us avoid N^2 comparisons and erase duplicate arrays while
   // iterating.
   const auto& array_map = model->GetArrayMap();
   for (auto lhs_array_it = array_map.begin(); lhs_array_it != array_map.end();
@@ -1329,7 +1357,9 @@ namespace {
 void CopyArrayAttribs(const Array& source_array, Array* target_array) {
   target_array->data_type = source_array.data_type;
   target_array->final_data_type = source_array.final_data_type;
-  target_array->copy_shape(source_array.shape());
+  if (source_array.has_shape()) {
+    target_array->copy_shape(source_array.shape());
+  }
 
   if (source_array.minmax) {
     target_array->GetOrCreateMinMax() = source_array.GetMinMax();
@@ -1379,23 +1409,9 @@ void CloneArray(Model* model, const string& source_array_name,
   Array& target_array = model->GetOrCreateArray(target_array_name);
   CopyArrayAttribs(source_array, &target_array);
 
-  if (source_array.minmax) {
-    const auto& smm = source_array.GetMinMax();
-    auto& tmm = target_array.GetOrCreateMinMax();
-    tmm.min = smm.min;
-    tmm.max = smm.max;
+  if (!source_array.buffer) {
+    return;
   }
-
-  if (source_array.quantization_params) {
-    const auto& sqp = source_array.GetQuantizationParams();
-    auto& tqp = target_array.GetOrCreateQuantizationParams();
-    tqp.zero_point = sqp.zero_point;
-    tqp.scale = sqp.scale;
-  }
-
-  target_array.data_type = source_array.data_type;
-  target_array.final_data_type = source_array.final_data_type;
-  target_array.copy_shape(source_array.shape());
 
   switch (source_array.data_type) {
     case ArrayDataType::kBool:
@@ -1461,16 +1477,22 @@ void MakeArrayDims(int num_dims, int batch, int height, int width, int depth,
   }
 }
 
-void CreateOrCheckRnnStateArray(const string& name, int size, Model* model) {
+void CreateOrCheckRnnStateArray(const string& name, int size,
+                                int state_num_dims, Model* model) {
   int batch = 1;
   int num_dims = -1;
-  for (const auto& input_array : model->flags.input_arrays()) {
-    // Pick 'num_dims' and 'batch' from the first input_arrays, unless we find
-    // a better match by name.
-    if (input_array.name() == name || num_dims == -1) {
-      num_dims = input_array.shape().dims_size();
-      if (num_dims > 0) {
-        batch = input_array.shape().dims(0);
+  if (state_num_dims > 0) {
+    num_dims = state_num_dims;
+  } else {
+    // state_num_dims is not given. We will infer it from an input tensor.
+    for (const auto& input_array : model->flags.input_arrays()) {
+      // Pick 'num_dims' and 'batch' from the first input_arrays, unless we find
+      // a better match by name.
+      if (input_array.name() == name || num_dims == -1) {
+        num_dims = input_array.shape().dims_size();
+        if (num_dims > 0) {
+          batch = input_array.shape().dims(0);
+        }
       }
     }
   }
@@ -1633,7 +1655,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       if (input_array_proto.has_shape()) {
         auto& input_array_dims = *input_array.mutable_shape()->mutable_dims();
         CheckValidShapeDimensions(input_array_proto.shape().dims());
-        for (auto dim : input_array_proto.shape().dims()) {
+        for (const auto& dim : input_array_proto.shape().dims()) {
           input_array_dims.push_back(dim);
         }
       }
@@ -1674,7 +1696,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
   // Creation of the RNN state arrays
   for (const auto& rnn_state : model->flags.rnn_states()) {
     CreateOrCheckRnnStateArray(rnn_state.state_array(), rnn_state.size(),
-                               model);
+                               rnn_state.num_dims(), model);
   }
 
   model->flags.set_change_concat_input_ranges(
@@ -1885,6 +1907,26 @@ bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
         // There is a bias vector. One more op per output value.
         *result += RequiredBufferSizeForShape(output_array.shape());
       }
+      break;
+    }
+    case OperatorType::kTransposeConv: {
+      const auto& input_array = model.GetArray(op.inputs[2]);
+      const auto& weights_array = model.GetArray(op.inputs[1]);
+      if (!input_array.has_shape() || !weights_array.has_shape()) {
+        return false;
+      }
+      const Shape& input = input_array.shape();
+      const Shape& weights = weights_array.shape();
+      // Compute op count from the seven nested loops of
+      // tflite::reference_ops::TransposeConv():
+      *result = 2 * input.dims(0) * input.dims(1) * input.dims(2) *
+                input.dims(3) * weights.dims(1) * weights.dims(2) *
+                weights.dims(0);
+      // Note that tflite::optimized_ops::TransposeConv() uses an im2col matrix
+      // and has a higher op count, by a factor of (output_height*output_width)
+      // vs. (input_height*input_width). Yet it generally performs better
+      // because of coherent memory access. (At least for 2x2 striding. But not
+      // likely for all cases.)
       break;
     }
     case OperatorType::kAdd:
@@ -2309,6 +2351,12 @@ std::unordered_set<string> ScanArrayNames(
 void UseArraysExtraInfo(Model* model, bool quantize_output) {
   for (const auto& entry : model->flags.arrays_extra_info().entries()) {
     const auto matches = ScanArrayNames(*model, entry);
+    if (matches.empty()) {
+      LOG(ERROR) << "arrays_extra_info_file: No matching arrays found for "
+                 << (entry.has_name() ? entry.name() : "")
+                 << (entry.has_name_regexp() ? entry.name_regexp() : "");
+      continue;
+    }
     for (const auto& matched_name : matches) {
       auto& array = model->GetArray(matched_name);
       if (entry.has_min() || entry.has_max()) {
@@ -2326,7 +2374,7 @@ void UseArraysExtraInfo(Model* model, bool quantize_output) {
         // Make sure to create the shape even if there are no dims, to
         // correctly record 0-D shapes.
         array.mutable_shape();
-        for (int dim : entry.shape().dims()) {
+        for (const auto& dim : entry.shape().dims()) {
           array.mutable_shape()->mutable_dims()->push_back(dim);
         }
       }

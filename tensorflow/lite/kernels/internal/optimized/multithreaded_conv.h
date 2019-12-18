@@ -85,12 +85,12 @@ class EigenTensorConvFunctor {
 
  public:
   void operator()(const Eigen::ThreadPoolDevice& device, const T* input_data,
-                  T* im2col_buffer, int input_batches, int input_height,
-                  int input_width, int input_depth, const T* filter_data,
-                  int filter_height, int filter_width, int filter_count,
-                  int stride_rows, int stride_cols, int pad_width,
-                  int pad_height, PaddingType padding, T* output_data,
-                  int output_height, int output_width) {
+                  int input_batches, int input_height, int input_width,
+                  int input_depth, const T* filter_data, int filter_height,
+                  int filter_width, int filter_count, int stride_rows,
+                  int stride_cols, int pad_width, int pad_height,
+                  PaddingType padding, T* output_data, int output_height,
+                  int output_width) {
     const bool is_1x1_kernel = (filter_height == 1 && filter_width == 1 &&
                                 stride_rows == 1 && stride_cols == 1);
     if (is_1x1_kernel) {
@@ -139,6 +139,13 @@ inline void Conv(const Eigen::ThreadPoolDevice& device,
                  const float* bias_data, const RuntimeShape& output_shape,
                  float* output_data, const RuntimeShape& im2col_shape,
                  float* im2col_data) {
+  // Nest profiling under "Conv", to aggregate with other kernels.
+  gemmlowp::ScopedProfilingLabel label("Conv");
+  gemmlowp::ScopedProfilingLabel inner_label("Multithreaded EigenTensor");
+
+  // im2col data should not be generated for the multi-thread supporting case.
+  TFLITE_DCHECK(!im2col_data);
+  (void)im2col_shape;
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const PaddingType padding = params.padding_type;
@@ -160,11 +167,10 @@ inline void Conv(const Eigen::ThreadPoolDevice& device,
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
   EigenTensorConvFunctor<float> conv_functor;
-  conv_functor(device, input_data, im2col_data, batches, input_height,
-               input_width, input_depth, filter_data, filter_height,
-               filter_width, output_depth, stride_height, stride_width,
-               pad_height, pad_width, padding, output_data, output_height,
-               output_width);
+  conv_functor(device, input_data, batches, input_height, input_width,
+               input_depth, filter_data, filter_height, filter_width,
+               output_depth, stride_height, stride_width, pad_height, pad_width,
+               padding, output_data, output_height, output_width);
 
   optimized_ops::AddBiasAndEvalActivationFunction(
       output_activation_min, output_activation_max, bias_shape, bias_data,

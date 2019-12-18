@@ -23,7 +23,7 @@ import os
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.contrib.framework.python.ops import audio_ops as contrib_audio
+
 from tensorflow.examples.speech_commands import input_data
 from tensorflow.examples.speech_commands import models
 from tensorflow.python.framework import test_util
@@ -35,7 +35,7 @@ class InputDataTest(test.TestCase):
   def _getWavData(self):
     with self.cached_session() as sess:
       sample_data = tf.zeros([32000, 2])
-      wav_encoder = contrib_audio.encode_wav(sample_data, 16000)
+      wav_encoder = tf.audio.encode_wav(sample_data, 16000)
       wav_data = self.evaluate(wav_encoder)
     return wav_data
 
@@ -201,6 +201,10 @@ class InputDataTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testGetDataMfcc(self):
     self._runGetDataTest("mfcc", 30)
+
+  @test_util.run_deprecated_v1
+  def testGetDataMicro(self):
+    self._runGetDataTest("micro", 20)
 
   @test_util.run_deprecated_v1
   def testGetUnprocessedData(self):

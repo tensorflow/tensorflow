@@ -16,10 +16,9 @@ limitations under the License.
 #include "tensorflow/core/platform/hadoop/hadoop_file_system.h"
 
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -55,8 +54,7 @@ class HadoopFileSystemTest : public ::testing::Test {
 
     content->resize(file_size);
     StringPiece result;
-    TF_RETURN_IF_ERROR(
-        reader->Read(0, file_size, &result, gtl::string_as_array(content)));
+    TF_RETURN_IF_ERROR(reader->Read(0, file_size, &result, &*content->begin()));
     if (file_size != result.size()) {
       return errors::DataLoss("expected ", file_size, " got ", result.size(),
                               " bytes");
@@ -81,14 +79,13 @@ TEST_F(HadoopFileSystemTest, RandomAccessFile) {
 
   string got;
   got.resize(content.size());
-  TF_EXPECT_OK(
-      reader->Read(0, content.size(), &result, gtl::string_as_array(&got)));
+  TF_EXPECT_OK(reader->Read(0, content.size(), &result, &*got.begin()));
   EXPECT_EQ(content.size(), result.size());
   EXPECT_EQ(content, result);
 
   got.clear();
   got.resize(4);
-  TF_EXPECT_OK(reader->Read(2, 4, &result, gtl::string_as_array(&got)));
+  TF_EXPECT_OK(reader->Read(2, 4, &result, &*got.begin()));
   EXPECT_EQ(4, result.size());
   EXPECT_EQ(content.substr(2, 4), result);
 }
@@ -207,7 +204,7 @@ TEST_F(HadoopFileSystemTest, WriteWhileReading) {
   // Skip the test if we're not testing on HDFS. Hadoop's local filesystem
   // implementation makes no guarantees that writable files are readable while
   // being written.
-  if (!str_util::StartsWith(fname, "hdfs://")) {
+  if (!absl::StartsWith(fname, "hdfs://")) {
     return;
   }
 
@@ -223,8 +220,7 @@ TEST_F(HadoopFileSystemTest, WriteWhileReading) {
   string got;
   got.resize(content1.size());
   StringPiece result;
-  TF_EXPECT_OK(
-      reader->Read(0, content1.size(), &result, gtl::string_as_array(&got)));
+  TF_EXPECT_OK(reader->Read(0, content1.size(), &result, &*got.begin()));
   EXPECT_EQ(content1, result);
 
   string content2 = "content2";
@@ -232,8 +228,8 @@ TEST_F(HadoopFileSystemTest, WriteWhileReading) {
   TF_EXPECT_OK(writer->Flush());
 
   got.resize(content2.size());
-  TF_EXPECT_OK(reader->Read(content1.size(), content2.size(), &result,
-                            gtl::string_as_array(&got)));
+  TF_EXPECT_OK(
+      reader->Read(content1.size(), content2.size(), &result, &*got.begin()));
   EXPECT_EQ(content2, result);
 
   TF_EXPECT_OK(writer->Close());

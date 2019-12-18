@@ -20,13 +20,13 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/null_file_system.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -49,6 +49,11 @@ GraphDef CreateTestProto() {
   node->set_name("name2");
   node->set_op("op2");
   return g;
+}
+
+static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
+  EXPECT_TRUE(absl::StrContains(s, expected))
+      << "'" << s << "' does not contain '" << expected << "'";
 }
 
 }  // namespace
@@ -118,6 +123,11 @@ TEST_F(DefaultEnvTest, ReadWriteBinaryProto) {
   GraphDef result;
   TF_EXPECT_OK(ReadBinaryProto(env_, filename, &result));
   EXPECT_EQ(result.DebugString(), proto.DebugString());
+
+  // Reading as text or binary proto should also work.
+  GraphDef result2;
+  TF_EXPECT_OK(ReadTextOrBinaryProto(env_, filename, &result2));
+  EXPECT_EQ(result2.DebugString(), proto.DebugString());
 }
 
 TEST_F(DefaultEnvTest, ReadWriteTextProto) {
@@ -133,6 +143,11 @@ TEST_F(DefaultEnvTest, ReadWriteTextProto) {
   GraphDef result;
   TF_EXPECT_OK(ReadTextProto(env_, filename, &result));
   EXPECT_EQ(result.DebugString(), proto.DebugString());
+
+  // Reading as text or binary proto should also work.
+  GraphDef result2;
+  TF_EXPECT_OK(ReadTextOrBinaryProto(env_, filename, &result2));
+  EXPECT_EQ(result2.DebugString(), proto.DebugString());
 }
 
 TEST_F(DefaultEnvTest, FileToReadonlyMemoryRegion) {
@@ -304,13 +319,27 @@ class TmpDirFileSystem : public NullFileSystem {
     if (host != "testhost") {
       return errors::FailedPrecondition("host must be testhost");
     }
-    return Env::Default()->CreateDir(io::JoinPath(BaseDir(), path));
+    Status status = Env::Default()->CreateDir(io::JoinPath(BaseDir(), path));
+    if (status.ok()) {
+      // Record that we have created this directory so `IsDirectory` works.
+      created_directories_.push_back(std::string(path));
+    }
+    return status;
+  }
+
+  Status IsDirectory(const string& dir) override {
+    StringPiece scheme, host, path;
+    io::ParseURI(dir, &scheme, &host, &path);
+    for (const auto& existing_dir : created_directories_)
+      if (existing_dir == path) return Status::OK();
+    return errors::NotFound(dir, " not found");
   }
 
   void FlushCaches() override { flushed_ = true; }
 
  private:
   bool flushed_ = false;
+  std::vector<std::string> created_directories_ = {"/"};
 };
 
 REGISTER_FILE_SYSTEM("tmpdirfs", TmpDirFileSystem);
@@ -388,7 +417,7 @@ TEST_F(DefaultEnvTest, CreateUniqueFileName) {
 
   EXPECT_TRUE(env->CreateUniqueFileName(&filename, suffix));
 
-  EXPECT_TRUE(str_util::StartsWith(filename, prefix));
+  EXPECT_TRUE(absl::StartsWith(filename, prefix));
   EXPECT_TRUE(str_util::EndsWith(filename, suffix));
 }
 
@@ -406,6 +435,21 @@ TEST_F(DefaultEnvTest, GetThreadInformation) {
   EXPECT_TRUE(res);
   EXPECT_GT(thread_name.size(), 0);
 #endif
+}
+
+TEST_F(DefaultEnvTest, GetChildThreadInformation) {
+  Env* env = Env::Default();
+  Thread* child_thread = env->StartThread({}, "tf_child_thread", [env]() {
+  // TODO(fishx): Turn on this test for Apple.
+#if !defined(__APPLE__)
+    EXPECT_NE(env->GetCurrentThreadId(), 0);
+#endif
+    string thread_name;
+    bool res = env->GetCurrentThreadName(&thread_name);
+    EXPECT_TRUE(res);
+    ExpectHasSubstr(thread_name, "tf_child_thread");
+  });
+  delete child_thread;
 }
 
 }  // namespace tensorflow

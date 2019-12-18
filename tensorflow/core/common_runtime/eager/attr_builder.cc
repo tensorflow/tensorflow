@@ -18,10 +18,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/public/version.h"
@@ -32,8 +32,9 @@ namespace {
 
 mutex g_op_name_to_attr_type_map_lock(LINKER_INITIALIZED);
 
-std::unordered_map<string, const AttrTypeMap*>* OpNameToAttrTypeMap() {
-  static auto* const m = new std::unordered_map<string, const AttrTypeMap*>;
+tensorflow::gtl::FlatMap<string, const AttrTypeMap*>* OpNameToAttrTypeMap() {
+  static auto* const m =
+      new tensorflow::gtl::FlatMap<string, const AttrTypeMap*>;
   return m;
 }
 
@@ -121,20 +122,26 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
   return Status::OK();
 }
 
-#define DEFINE_SET_ATTR(value_type, value_field)                             \
-  template <>                                                                \
-  AttrBuilder& AttrBuilder::Set(StringPiece attr_name, value_type&& value) { \
-    value_field.push_back(std::make_pair(string(attr_name), value));         \
-    cached_cache_key_ = absl::nullopt;                                       \
-    return *this;                                                            \
+#define DEFINE_GET_ATTR(TYPE, FIELD, ATTR_TYPE)                         \
+  template <>                                                           \
+  Status AttrBuilder::Get(StringPiece attr_name, TYPE* value) const {   \
+    auto it = encoded_attrs_.find(string(attr_name));                   \
+    if (it == encoded_attrs_.end()) {                                   \
+      return errors::NotFound("No attr named'", attr_name,              \
+                              "' found in AttrBuilder for ", op_name_); \
+    }                                                                   \
+    attr_tmp_.ParseFromString(it->second);                              \
+    TF_RETURN_IF_ERROR(AttrValueHasType(attr_tmp_, ATTR_TYPE));         \
+    *value = attr_tmp_.FIELD();                                         \
+    return Status::OK();                                                \
   }
 
-DEFINE_SET_ATTR(float, float_attrs_);
-DEFINE_SET_ATTR(int, int_attrs_);
-DEFINE_SET_ATTR(bool, bool_attrs_);
-DEFINE_SET_ATTR(tensorflow::DataType, type_attrs_);
+DEFINE_GET_ATTR(float, f, "float");
+DEFINE_GET_ATTR(int, i, "int");
+DEFINE_GET_ATTR(bool, b, "bool");
+DEFINE_GET_ATTR(tensorflow::DataType, type, "type");
 
-#undef DEFINE_SET_ATTR
+#undef DEFINE_GET_ATTR
 
 AttrBuilder& AttrBuilder::NumInputs(int n) {
   DCHECK(!node_def_finalized_) << "Calling NumInputs after BuildNodeDef.";
@@ -142,32 +149,17 @@ AttrBuilder& AttrBuilder::NumInputs(int n) {
   return *this;
 }
 
-void AttrBuilder::FillAttrValueMap(AttrValueMap* m,
-                                   bool include_those_in_node_def) const {
-  for (const auto& p : int_attrs_) {
-    SetInAttrValueMap(m, p.first, p.second);
-  }
-  for (const auto& p : float_attrs_) {
-    SetInAttrValueMap(m, p.first, p.second);
-  }
-  for (const auto& p : bool_attrs_) {
-    SetInAttrValueMap(m, p.first, p.second);
-  }
-  for (const auto& p : type_attrs_) {
-    SetInAttrValueMap(m, p.first, p.second);
-  }
-  if (include_those_in_node_def && node_def_ != nullptr) {
-    for (AttrValueMap::const_iterator it = node_def_->attr().begin();
-         it != node_def_->attr().end(); ++it) {
-      m->insert(*it);
-    }
+void AttrBuilder::FillAttrValueMap(AttrValueMap* m) const {
+  for (auto& entry : encoded_attrs_) {
+    attr_tmp_.ParseFromString(entry.second);
+    m->insert(AttrValueMap::value_type(entry.first, attr_tmp_));
   }
   // For any attr-value pairs that exist in the op def (from op registry) but
   // not `m`, fill them into `m`, so that we can run a TFE_Op without having to
   // specify all the default attr values (e.g. for matmul, the `transpose_a`
   // attr defaults to false).
   const OpDef* op_def = nullptr;
-  Status s = OpDefForOp(op_name_.c_str(), &op_def);
+  Status s = OpDefForOp(op_name().c_str(), &op_def);
   // This is expected, if this op is a custom function, and is therefore not
   // present in the op registry.
   if (!s.ok()) return;
@@ -180,15 +172,53 @@ void AttrBuilder::FillAttrValueMap(AttrValueMap* m,
   }
 }
 
-const NodeDef& AttrBuilder::BuildNodeDef() {
-  if (node_def_finalized_) return *node_def_;
-  MayBeInitializeNodeDef();
-  for (int i = 0; i < num_inputs_; ++i) {
-    node_def_->add_input("dummy_input");
+namespace {
+
+bool ValueMatchesDefault(const OpDef* op_def, const string& attr_name,
+                         const AttrValue& attr_value) {
+  // TODO(iga): It might make sense to augment OpRegistrationData with a
+  // {attr_name -> default_attr_value} FlatMap to avoid the loop here.
+  for (const OpDef::AttrDef& attr_def : op_def->attr()) {
+    if (attr_def.name() == attr_name && attr_def.has_default_value() &&
+        AreAttrValuesEqual(attr_def.default_value(), attr_value)) {
+      return true;
+    }
   }
-  FillAttrValueMap(node_def_->mutable_attr(), false);
+  return false;
+}
+
+}  // namespace
+
+void AttrBuilder::FillAttrValueMapWithoutDefaults(AttrValueMap* m) const {
+  const OpDef* op_def = nullptr;
+  Status s = OpDefForOp(op_name().c_str(), &op_def);
+
+  for (auto& entry : encoded_attrs_) {
+    attr_tmp_.ParseFromString(entry.second);
+    // Insert the attr-value pair if we did not find the OpDef or if the value
+    // is different from default.
+    if (!s.ok() || !ValueMatchesDefault(op_def, entry.first, attr_tmp_)) {
+      m->insert(AttrValueMap::value_type(entry.first, attr_tmp_));
+    }
+  }
+}
+
+void AttrBuilder::AddAttrIfNotPresent(StringPiece attr_name,
+                                      const AttrValue& value) {
+  encoded_attrs_.emplace(string(attr_name), value.SerializeAsString());
+}
+
+const NodeDef& AttrBuilder::BuildNodeDef() {
+  if (node_def_finalized_) return node_def_;
+  if (!node_def_initialized_) {
+    InitializeNodeDef();
+  }
+  for (int i = 0; i < num_inputs_; ++i) {
+    node_def_.add_input("dummy_input");
+  }
+  FillAttrValueMap(node_def_.mutable_attr());
   node_def_finalized_ = true;
-  return *node_def_;
+  return node_def_;
 }
 
 Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
@@ -232,59 +262,32 @@ inline tensorflow::Fprint128 CacheKeyHelper(StringPiece s, uint64 b) {
 
 }  // namespace
 
-tensorflow::Fprint128 AttrBuilder::CacheKey(const string& device) {
+tensorflow::Fprint128 AttrBuilder::CacheKey(const StringPiece device) {
   if (!cached_cache_key_ || device != device_for_cached_cache_key_) {
     cached_cache_key_ = BuildCacheKeyForDevice(device);
-    device_for_cached_cache_key_ = device;
+    device_for_cached_cache_key_ = string(device);
   }
 
   return *cached_cache_key_;
 }
 
 tensorflow::Fprint128 AttrBuilder::BuildCacheKeyForDevice(
-    const string& device) const {
-  tensorflow::Fprint128 f = tensorflow::Fingerprint128(op_name_);
+    const StringPiece device) const {
+  tensorflow::Fprint128 f = tensorflow::Fingerprint128(op_name());
   f = tensorflow::FingerprintCat128(f, tensorflow::Fingerprint128(device));
-  if (node_def_ != nullptr) {
-    // Some attributes are directly written to node_def_ instead of being
-    // stored explicitly.
-    string value;
-    for (const auto& attr : node_def_->attr()) {
-      attr.second.SerializeToString(&value);
-      CombineUnordered(
-          CacheKeyHelper(attr.first, tensorflow::Fingerprint128(value)), &f);
-    }
-    // Note that node_def_ may be created but not finalized. This can happen
-    // when the creation was triggered by a call to Set, but BuildNodeDef has
-    // not been called.
-    if (node_def_finalized_) return f;
-  }
-  for (const auto& p : int_attrs_) {
-    CombineUnordered(CacheKeyHelper(p.first, static_cast<uint64>(p.second)),
-                     &f);
-  }
-  static std::hash<float> float_hasher;
-  for (const auto& p : float_attrs_) {
+  for (const auto& p : encoded_attrs_) {
     CombineUnordered(
-        CacheKeyHelper(p.first, static_cast<uint64>(float_hasher(p.second))),
-        &f);
-  }
-  for (const auto& p : bool_attrs_) {
-    CombineUnordered(CacheKeyHelper(p.first, p.second ? 1u : 0u), &f);
-  }
-  for (const auto& p : type_attrs_) {
-    CombineUnordered(CacheKeyHelper(p.first, static_cast<uint64>(p.second)),
-                     &f);
+        CacheKeyHelper(p.first, tensorflow::Fingerprint128(p.second)), &f);
   }
   return f;
 }
 
-void AttrBuilder::MayBeInitializeNodeDef() {
-  if (node_def_ == nullptr) {
-    node_def_.reset(new NodeDef());
-    node_def_->set_name(op_name_);
-    node_def_->set_op(op_name_);
-  }
+void AttrBuilder::InitializeNodeDef() {
+  DCHECK(!node_def_initialized_);
+  node_def_.Clear();
+  node_def_.set_name(op_name_);
+  node_def_.set_op(op_name_);
+  node_def_initialized_ = true;
 }
 
 }  // namespace tensorflow

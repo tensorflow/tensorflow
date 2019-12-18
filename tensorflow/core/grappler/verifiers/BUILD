@@ -1,6 +1,8 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "graph_verifier",

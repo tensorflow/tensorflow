@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -25,13 +26,15 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.signal import reconstruction_ops
 from tensorflow.python.platform import test
 
 
-class ReconstructionOpsTest(test.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class ReconstructionOpsTest(test.TestCase, parameterized.TestCase):
 
   def __init__(self, *args, **kwargs):
     super(ReconstructionOpsTest, self).__init__(*args, **kwargs)
@@ -56,131 +59,93 @@ class ReconstructionOpsTest(test.TestCase):
   def test_all_ones(self):
     signal = array_ops.ones([3, 5])
     reconstruction = reconstruction_ops.overlap_and_add(signal, 2)
-
     self.assertEqual(reconstruction.shape.as_list(), [9])
+    expected_output = np.array([1, 1, 2, 2, 3, 2, 2, 1, 1])
+    self.assertAllClose(reconstruction, expected_output)
 
-    with self.session(use_gpu=True):
-      output = self.evaluate(reconstruction)
-
-      expected_output = np.array([1, 1, 2, 2, 3, 2, 2, 1, 1])
-
-      self.assertAllClose(output, expected_output)
-
-  @test_util.run_deprecated_v1
   def test_unknown_shapes(self):
-    # This test uses placeholders and does not work in eager mode.
+    # This test uses placeholders and does not work in Eager mode.
     if context.executing_eagerly():
       return
-
-    signal = array_ops.placeholder(dtype=dtypes.int32, shape=[None, None, None])
-    frame_step = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    signal = array_ops.placeholder_with_default(
+        np.ones((4, 3, 5)).astype(np.int32), shape=[None, None, None])
+    frame_step = array_ops.placeholder_with_default(2, shape=[])
     reconstruction = reconstruction_ops.overlap_and_add(signal, frame_step)
-
     self.assertEqual(reconstruction.shape.as_list(), [None, None])
+    expected_output = np.array([[1, 1, 2, 2, 3, 2, 2, 1, 1]] * 4)
+    self.assertAllClose(reconstruction, expected_output)
 
-    with self.session(use_gpu=True) as sess:
-      output = sess.run(reconstruction,
-                        feed_dict={signal: np.ones([4, 3, 5]), frame_step: 2})
-
-      expected_output = np.array([[1, 1, 2, 2, 3, 2, 2, 1, 1]] * 4)
-
-      self.assertAllClose(output, expected_output)
-
-  @test_util.run_deprecated_v1
   def test_unknown_rank(self):
     # This test uses placeholders and does not work in eager mode.
     if context.executing_eagerly():
       return
-
-    signal = array_ops.placeholder(dtype=dtypes.int32, shape=None)
-    frame_step = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    signal = array_ops.placeholder_with_default(
+        np.ones((4, 3, 5)).astype(np.int32), shape=None)
+    frame_step = array_ops.placeholder_with_default(2, shape=[])
     reconstruction = reconstruction_ops.overlap_and_add(signal, frame_step)
 
     self.assertEqual(reconstruction.shape, None)
+    expected_output = np.array([[1, 1, 2, 2, 3, 2, 2, 1, 1]] * 4)
+    self.assertAllClose(reconstruction, expected_output)
 
-    with self.session(use_gpu=True) as sess:
-      output = sess.run(reconstruction,
-                        feed_dict={signal: np.ones([4, 3, 5]), frame_step: 2})
-
-      expected_output = np.array([[1, 1, 2, 2, 3, 2, 2, 1, 1]] * 4)
-
-      self.assertAllClose(output, expected_output)
-
-  @test_util.run_deprecated_v1
   def test_fast_path(self):
     # This test uses tensor names and does not work in eager mode.
     if context.executing_eagerly():
       return
-
     signal = array_ops.ones([3, 5])
     frame_step = 5
     reconstruction = reconstruction_ops.overlap_and_add(signal, frame_step)
-
     self.assertEqual(reconstruction.name, "overlap_and_add/fast_path:0")
+    expected_output = np.ones([15])
+    self.assertAllClose(reconstruction, expected_output)
 
-    with self.session(use_gpu=True) as sess:
-      output = self.evaluate(reconstruction)
+  @parameterized.parameters(
+      # All hop lengths on a frame length of 2.
+      (2, [1, 5, 9, 6], 1),
+      (2, [1, 2, 3, 4, 5, 6], 2),
 
-      expected_output = np.ones([15])
+      # All hop lengths on a frame length of 3.
+      (3, [1, 6, 15, 14, 9], 1),
+      (3, [1, 2, 7, 5, 13, 8, 9], 2),
+      (3, [1, 2, 3, 4, 5, 6, 7, 8, 9], 3),
 
-      self.assertAllClose(output, expected_output)
-
-  @test_util.run_deprecated_v1
-  def test_simple(self):
+      # All hop lengths on a frame length of 4.
+      (4, [1, 7, 18, 21, 19, 12], 1),
+      (4, [1, 2, 8, 10, 16, 18, 11, 12], 2),
+      (4, [1, 2, 3, 9, 6, 7, 17, 10, 11, 12], 3),
+      (4, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 4))
+  def test_simple(self, frame_length, expected, frame_hop):
     def make_input(frame_length, num_frames=3):
       """Generate a tensor of num_frames frames of frame_length."""
       return np.reshape(np.arange(1, num_frames * frame_length + 1),
                         (-1, frame_length))
-
-    # List of (signal, expected_result, frame_hop).
-    configurations = [
-        # All hop lengths on a frame length of 2.
-        (make_input(2), [1, 5, 9, 6], 1),
-        (make_input(2), [1, 2, 3, 4, 5, 6], 2),
-
-        # All hop lengths on a frame length of 3.
-        (make_input(3), [1, 6, 15, 14, 9], 1),
-        (make_input(3), [1, 2, 7, 5, 13, 8, 9], 2),
-        (make_input(3), [1, 2, 3, 4, 5, 6, 7, 8, 9], 3),
-
-        # All hop lengths on a frame length of 4.
-        (make_input(4), [1, 7, 18, 21, 19, 12], 1),
-        (make_input(4), [1, 2, 8, 10, 16, 18, 11, 12], 2),
-        (make_input(4), [1, 2, 3, 9, 6, 7, 17, 10, 11, 12], 3),
-        (make_input(4), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 4),
-    ]
-
-    with self.session(use_gpu=True):
-      for signal, expected, frame_hop in configurations:
-        reconstruction = reconstruction_ops.overlap_and_add(
-            np.array(signal), frame_hop).eval()
-        expected_output = np.array(expected)
-        self.assertAllClose(reconstruction, expected_output)
+    signal = make_input(frame_length)
+    reconstruction = reconstruction_ops.overlap_and_add(
+        np.array(signal), frame_hop)
+    expected_output = np.array(expected)
+    self.assertAllClose(reconstruction, expected_output)
 
   def test_powers(self):
     signal = constant_op.constant(np.squeeze(self.powers[0, :, :]),
                                   dtype=dtypes.int64)
     reconstruction = reconstruction_ops.overlap_and_add(signal, self.frame_hop)
 
-    with self.session(use_gpu=True):
-      output = self.evaluate(reconstruction)
-      string_output = [np.base_repr(x, self.bases[0]) for x in output]
-
-      self.assertEqual(string_output, self.expected_string)
+    output = self.evaluate(reconstruction)
+    string_output = [np.base_repr(x, self.bases[0]) for x in output]
+    self.assertEqual(string_output, self.expected_string)
 
   def test_batch(self):
     signal = constant_op.constant(self.powers, dtype=dtypes.int64)
     reconstruction = reconstruction_ops.overlap_and_add(signal, self.frame_hop)
 
-    with self.session(use_gpu=True):
-      output = self.evaluate(reconstruction)
+    output = self.evaluate(reconstruction)
 
-      accumulator = True
-      for i in range(self.batch_size):
-        string_output = [np.base_repr(x, self.bases[i]) for x in output[i, :]]
-        accumulator = accumulator and (string_output == self.expected_string)
+    accumulator = True
+    for i in range(self.batch_size):
+      string_output = [np.base_repr(x, self.bases[i]) for x in output[i, :]]
+      accumulator = accumulator and (string_output == self.expected_string)
 
-      self.assertTrue(accumulator)
+    self.assertTrue(accumulator)
 
   def test_one_element_batch(self):
     input_matrix = np.squeeze(self.powers[0, :, :])
@@ -188,71 +153,68 @@ class ReconstructionOpsTest(test.TestCase):
     signal = constant_op.constant(input_matrix, dtype=dtypes.float32)
     reconstruction = reconstruction_ops.overlap_and_add(signal, self.frame_hop)
 
-    with self.session(use_gpu=True):
-      output = self.evaluate(reconstruction)
+    output = self.evaluate(reconstruction)
 
-      string_output = [np.base_repr(int(x), self.bases[0]) for x in
-                       np.squeeze(output)]
+    string_output = [np.base_repr(int(x), self.bases[0]) for x in
+                     np.squeeze(output)]
 
-      self.assertEqual(output.shape, (1, 9))
-      self.assertEqual(string_output, self.expected_string)
+    self.assertEqual(output.shape, (1, 9))
+    self.assertEqual(string_output, self.expected_string)
 
-  @test_util.run_deprecated_v1
-  def test_gradient(self):
-    configurations = [
-        ((1, 128), 1),
-        ((5, 35), 17),
-        ((10, 128), 128),
-        ((2, 10, 128), 127),
-        ((2, 2, 10, 128), 126),
-        ((2, 2, 2, 10, 128), 125),
-    ]
+  @parameterized.parameters(
+      ((1, 128), 1),
+      ((5, 35), 17),
+      ((10, 128), 128),
+      ((2, 10, 128), 127),
+      ((2, 2, 10, 128), 126),
+      ((2, 2, 2, 10, 128), 125))
+  def test_gradient(self, shape, frame_hop):
+    # TODO(rjryan): Eager gradient tests.
+    if context.executing_eagerly():
+      return
+    signal = array_ops.zeros(shape)
+    reconstruction = reconstruction_ops.overlap_and_add(signal, frame_hop)
+    loss = math_ops.reduce_sum(reconstruction)
+    # Increasing any sample in the input frames by one will increase the sum
+    # of all the samples in the reconstruction by 1, so the gradient should
+    # be all ones, no matter the shape or hop.
+    gradient = self.evaluate(gradients_impl.gradients([loss], [signal])[0])
+    self.assertTrue((gradient == 1.0).all())
 
-    with self.session(use_gpu=True) as sess:
-      for shape, frame_hop in configurations:
-        signal = array_ops.zeros(shape)
-        reconstruction = reconstruction_ops.overlap_and_add(signal, frame_hop)
-        loss = math_ops.reduce_sum(reconstruction)
-        # Increasing any sample in the input frames by one will increase the sum
-        # of all the samples in the reconstruction by 1, so the gradient should
-        # be all ones, no matter the shape or hop.
-        gradient = sess.run(gradients_impl.gradients([loss], [signal])[0])
-        self.assertTrue((gradient == 1.0).all())
-
-  @test_util.run_deprecated_v1
   def test_gradient_batch(self):
-    with self.session(use_gpu=True) as sess:
-      signal = array_ops.zeros((2, 10, 10))
-      frame_hop = 10
-      reconstruction = reconstruction_ops.overlap_and_add(signal, frame_hop)
+    # TODO(rjryan): Eager gradient tests.
+    if context.executing_eagerly():
+      return
+    signal = array_ops.zeros((2, 10, 10))
+    frame_hop = 10
+    reconstruction = reconstruction_ops.overlap_and_add(signal, frame_hop)
 
-      # Multiply the first batch-item's reconstruction by zeros. This will block
-      # gradient from flowing into the first batch item from the loss. Multiply
-      # the second batch item by the integers from 0 to 99. Since there is zero
-      # overlap, the gradient for this batch item will be 0-99 shaped as (10,
-      # 10).
-      reconstruction *= array_ops.stack(
-          [array_ops.zeros((100,)), math_ops.to_float(math_ops.range(100))])
-      loss = math_ops.reduce_sum(reconstruction)
+    # Multiply the first batch-item's reconstruction by zeros. This will block
+    # gradient from flowing into the first batch item from the loss. Multiply
+    # the second batch item by the integers from 0 to 99. Since there is zero
+    # overlap, the gradient for this batch item will be 0-99 shaped as (10,
+    # 10).
+    reconstruction *= array_ops.stack(
+        [array_ops.zeros((100,)),
+         math_ops.cast(math_ops.range(100), dtypes.float32)])
+    loss = math_ops.reduce_sum(reconstruction)
 
-      # Verify that only the second batch item receives gradient.
-      gradient = sess.run(gradients_impl.gradients([loss], [signal])[0])
-      expected_gradient = np.stack([
-          np.zeros((10, 10)),
-          np.reshape(np.arange(100).astype(np.float32), (10, 10))])
-      self.assertAllEqual(expected_gradient, gradient)
+    # Verify that only the second batch item receives gradient.
+    gradient = self.evaluate(gradients_impl.gradients([loss], [signal])[0])
+    expected_gradient = np.stack([
+        np.zeros((10, 10)),
+        np.reshape(np.arange(100).astype(np.float32), (10, 10))])
+    self.assertAllEqual(expected_gradient, gradient)
 
-  @test_util.run_deprecated_v1
   def test_gradient_numerical(self):
-    with self.session(use_gpu=True):
-      shape = (2, 10, 10)
-      framed_signal = array_ops.zeros(shape)
-      frame_hop = 10
-      reconstruction = reconstruction_ops.overlap_and_add(
-          framed_signal, frame_hop)
-      error = test.compute_gradient_error(
-          framed_signal, shape, reconstruction, [2, 100])
-      self.assertLess(error, 2e-5)
+    shape = (2, 10, 10)
+    framed_signal = array_ops.zeros(shape)
+    frame_hop = 10
+    def f(signal):
+      return reconstruction_ops.overlap_and_add(signal, frame_hop)
+    ((jacob_t,), (jacob_n,)) = gradient_checker_v2.compute_gradient(
+        f, [framed_signal])
+    self.assertAllClose(jacob_t, jacob_n)
 
 
 if __name__ == "__main__":

@@ -1,13 +1,13 @@
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
+# Licensed under the Apache License, Version 2.0 (the 'License');
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
+# distributed under the License is distributed on an 'AS IS' BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
@@ -20,11 +20,18 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.python import framework
+from tensorflow.python.client import session
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.eager.context import LogicalDevice
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
+mock = test.mock
 
+
+@test_util.run_all_in_graph_and_eager_modes
 class TFConfigClusterResolverTest(test.TestCase):
 
   def _verifyClusterSpecEquality(self, cluster_spec, expected_proto):
@@ -236,6 +243,50 @@ class TFConfigClusterResolverTest(test.TestCase):
 
     cluster_resolver = TFConfigClusterResolver()
     self.assertEqual('', cluster_resolver.master())
+
+  @mock.patch.object(framework.config, 'list_logical_devices')
+  @mock.patch.object(session.BaseSession, 'list_devices')
+  def testNumAcceleratorsFilterTasksByEnvVar(self, mock_list_devices,
+                                             mock_eager_list_devices):
+    os.environ['TF_CONFIG'] = """
+    {
+      "cluster": {
+        "worker1": ["w10:2222"],
+        "worker2": ["w21:2222", "w22:2222", "w23:2222", "w24:2222"]
+      },
+      "rpc_layer": "grpc",
+      "task": {
+        "type": "worker1",
+        "index": "0"
+      }
+    }
+    """
+
+    devices = [
+        LogicalDevice('/job:worker1/task:0/device:TPU:0', 'TPU'),
+        LogicalDevice('/job:worker1/task:0/device:TPU:1', 'TPU'),
+        LogicalDevice('/job:worker1/task:0/device:GPU:0', 'GPU'),
+        LogicalDevice('/job:worker1/task:0/device:GPU:1', 'GPU'),
+        LogicalDevice('/job:worker2/task:1/device:TPU:2', 'TPU'),
+        LogicalDevice('/job:worker2/task:2/device:TPU:3', 'TPU'),
+        LogicalDevice('/job:worker2/task:3/device:GPU:2', 'GPU'),
+        LogicalDevice('/job:worker2/task:4/device:GPU:3', 'GPU'),
+    ]
+    device_list = [
+        session._DeviceAttributes(d.name, d.device_type, 1024, 0)
+        for d in devices
+    ]
+    mock_eager_list_devices.return_value = devices
+    mock_list_devices.return_value = device_list
+
+    resolver = TFConfigClusterResolver()
+
+    # By default we read from TF_CONFIG
+    self.assertEqual(resolver.num_accelerators(), {'TPU': 2, 'GPU': 2})
+
+    # Override still works when we want it to
+    self.assertEqual(resolver.num_accelerators(task_type='worker2', task_id=3),
+                     {'GPU': 1})
 
 
 if __name__ == '__main__':

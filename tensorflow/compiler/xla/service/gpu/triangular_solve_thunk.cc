@@ -68,9 +68,10 @@ TriangularSolveThunk::TriangularSolveThunk(
   }();
 }
 
-Status TriangularSolveThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+Status TriangularSolveThunk::ExecuteOnStream(const ExecuteParams& params) {
+  auto& stream = *params.stream;
+  auto& buffer_allocations = *params.buffer_allocations;
+
   VLOG(3) << "uplo=" << se::blas::UpperLowerString(uplo_)
           << " side=" << se::blas::SideString(side_)
           << " diagonal=" << se::blas::DiagonalString(unit_diagonal_)
@@ -95,20 +96,20 @@ Status TriangularSolveThunk::ExecuteOnStream(
       case F32: {
         se::DeviceMemory<float> b_data_typed(b_data);
         launch_ok = stream
-                        ->ThenBlasTrsm(side_, uplo_, transpose_a_,
-                                       unit_diagonal_, m_, n_, /*alpha=*/1.0f,
-                                       se::DeviceMemory<float>(a_data), lda,
-                                       &b_data_typed, ldb)
+                        .ThenBlasTrsm(side_, uplo_, transpose_a_,
+                                      unit_diagonal_, m_, n_, /*alpha=*/1.0f,
+                                      se::DeviceMemory<float>(a_data), lda,
+                                      &b_data_typed, ldb)
                         .ok();
         break;
       }
       case F64: {
         se::DeviceMemory<double> b_data_typed(b_data);
         launch_ok = stream
-                        ->ThenBlasTrsm(side_, uplo_, transpose_a_,
-                                       unit_diagonal_, m_, n_, /*alpha=*/1.0,
-                                       se::DeviceMemory<double>(a_data), lda,
-                                       &b_data_typed, ldb)
+                        .ThenBlasTrsm(side_, uplo_, transpose_a_,
+                                      unit_diagonal_, m_, n_, /*alpha=*/1.0,
+                                      se::DeviceMemory<double>(a_data), lda,
+                                      &b_data_typed, ldb)
                         .ok();
         break;
       }
@@ -116,10 +117,10 @@ Status TriangularSolveThunk::ExecuteOnStream(
         se::DeviceMemory<std::complex<float>> b_data_typed(b_data);
         launch_ok =
             stream
-                ->ThenBlasTrsm(side_, uplo_, transpose_a_, unit_diagonal_, m_,
-                               n_, /*alpha=*/1.0f,
-                               se::DeviceMemory<std::complex<float>>(a_data),
-                               lda, &b_data_typed, ldb)
+                .ThenBlasTrsm(side_, uplo_, transpose_a_, unit_diagonal_, m_,
+                              n_, /*alpha=*/1.0f,
+                              se::DeviceMemory<std::complex<float>>(a_data),
+                              lda, &b_data_typed, ldb)
                 .ok();
         break;
       }
@@ -127,10 +128,10 @@ Status TriangularSolveThunk::ExecuteOnStream(
         se::DeviceMemory<std::complex<double>> b_data_typed(b_data);
         launch_ok =
             stream
-                ->ThenBlasTrsm(side_, uplo_, transpose_a_, unit_diagonal_, m_,
-                               n_, /*alpha=*/1.0,
-                               se::DeviceMemory<std::complex<double>>(a_data),
-                               lda, &b_data_typed, ldb)
+                .ThenBlasTrsm(side_, uplo_, transpose_a_, unit_diagonal_, m_,
+                              n_, /*alpha=*/1.0,
+                              se::DeviceMemory<std::complex<double>>(a_data),
+                              lda, &b_data_typed, ldb)
                 .ok();
         break;
       }

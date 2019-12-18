@@ -1,9 +1,9 @@
 # TensorFlow Python API Upgrade Utility
 
-This tool allows you to upgrade your existing TensorFlow Python scripts.
-Specifically: \
-`tf_upgrade_v2.py`: upgrades code from TensorFlow 1.12 to TensorFlow 2.0 preview. \
-`tf_upgrade.py`: upgrades code to TensorFlow 1.0 from TensorFlow 0.11.
+This tool allows you to upgrade your existing TensorFlow Python scripts,
+specifically:
+* `tf_upgrade_v2.py`: Upgrade code from TensorFlow 1.x to TensorFlow 2.0 preview.
+* `tf_upgrade.py`: Upgrade code to TensorFlow 1.0 from TensorFlow 0.11.
 
 ## Running the script from pip package
 
@@ -27,8 +27,9 @@ tf_upgrade_v2 --intree coolcode --outtree coolcode-upgraded
 tf_upgrade_v2 --intree coolcode --outtree coolcode-upgraded --copyotherfiles False
 ```
 
-*Note: `tf_upgrade_v2` is installed automatically as a script by the pip install 
-after TensorFlow 1.12.
+*Note: `tf_upgrade_v2` is installed automatically as a script by the pip install
+ after TensorFlow 1.12.
+
 
 ## Report
 
@@ -42,9 +43,9 @@ e.g.:
 Added keyword 'input' to reordered function 'tf.argmax'
 Renamed keyword argument from 'dimension' to 'axis'
 
-    Old:         tf.argmax([[1, 3, 2]], dimension=0))
+    Old:         tf.argmax([[1, 3, 2]], dimension=0)
                                         ~~~~~~~~~~
-    New:         tf.argmax(input=[[1, 3, 2]], axis=0))
+    New:         tf.argmax(input=[[1, 3, 2]], axis=0)
 
 ```
 
@@ -58,17 +59,14 @@ arguments that mismap arguments.
 - This script wouldn't actually reorder arguments. Instead, the script will add
 keyword arguments to functions that had their arguments reordered.
 
-- This script is not able to upgrade all functions. One notable example is
-`tf.nn.conv2d` that no longer takes `use_cudnn_on_gpu` argument.
-If the script detects this, it will report this to stdout
-(and in the report), and you can fix it manually. For example if you have
-`tf.nn.conv2d(inputs, filters, strides, padding, use_cudnn_on_gpu=True)`
-you will need to manually change it to
-`tf.nn.conv2d(input, filters, strides, padding)`.
+- The script assumes that `tensorflow` is imported using `import tensorflow as tf`.
 
-- There are some syntaxes that are not handleable with this script as this
+- Note for upgrading to 2.0: Check out [tf2up.ml](http://tf2up.ml) for a
+  convenient tool to upgrade Jupyter notebooks and Python files in a GitHub
+  repository.
+
+- Note for upgrading to 1.0: There are some syntaxes that are not handleable with this script as this
 script was designed to use only standard python packages.
-There is an alternative available for TensorFlow 0.* to 1.0 upgrade script.
 If the script fails with "A necessary keyword argument failed to be inserted." or
 "Failed to find keyword lexicographically. Fix manually.", you can try
 [@machrisaa's fork of this script](https://github.com/machrisaa/tf0to1).

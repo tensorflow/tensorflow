@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -26,7 +27,7 @@ namespace {
 
 class FmaxSimpleTest : public ClientLibraryTestBase {};
 
-TEST_F(FmaxSimpleTest, FmaxTenValues) {
+XLA_TEST_F(FmaxSimpleTest, FmaxTenValues) {
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(
@@ -40,7 +41,7 @@ TEST_F(FmaxSimpleTest, FmaxTenValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-TEST_F(FmaxSimpleTest, FmaxEdgeCases) {
+XLA_TEST_F(FmaxSimpleTest, FmaxEdgeCases) {
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
   XlaOp param0, param1;
@@ -62,7 +63,7 @@ TEST_F(FmaxSimpleTest, FmaxEdgeCases) {
                              ErrorSpec(0.0001));
 }
 
-TEST_F(FmaxSimpleTest, FminEdgeCases) {
+XLA_TEST_F(FmaxSimpleTest, FminEdgeCases) {
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
   XlaOp param0, param1;

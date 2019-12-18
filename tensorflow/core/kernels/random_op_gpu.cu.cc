@@ -13,21 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/random_op.h"
-#include "tensorflow/core/kernels/random_op_gpu.h"
-
 #include <assert.h>
 #include <stdio.h>
+
+#include "tensorflow/core/kernels/random_op_gpu.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -36,32 +34,6 @@ class OpKernelContext;
 namespace functor {
 
 typedef Eigen::GpuDevice GPUDevice;
-
-// A simple launch pad to call the correct function templates to fill the data
-template <class Distribution>
-__global__ void __launch_bounds__(1024)
-    FillPhiloxRandomKernelLaunch(random::PhiloxRandom base_gen,
-                                 typename Distribution::ResultElementType* data,
-                                 int64 size, Distribution dist) {
-  FillPhiloxRandomKernel<Distribution,
-                         Distribution::kVariableSamplesPerOutput>()
-      .Run(base_gen, data, size, dist);
-}
-
-// Partial specialization for GPU
-template <class Distribution>
-void FillPhiloxRandom<GPUDevice, Distribution>::operator()(
-    OpKernelContext*, const GPUDevice& d, random::PhiloxRandom gen,
-    typename Distribution::ResultElementType* data, int64 size,
-    Distribution dist) {
-  const int32 block_size = d.maxGpuThreadsPerBlock();
-  const int32 num_blocks =
-      (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
-      block_size;
-
-  CudaLaunchKernel(FillPhiloxRandomKernelLaunch<Distribution>, num_blocks,
-                   block_size, 0, d.stream(), gen, data, size, dist);
-}
 
 // Explicit instantiation of the GPU distributions functors
 // clang-format off
@@ -96,4 +68,4 @@ template struct FillPhiloxRandom<
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

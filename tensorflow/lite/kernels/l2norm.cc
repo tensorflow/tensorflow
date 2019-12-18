@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/l2normalization.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -45,13 +46,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE(context, NumDimensions(input) <= 4);
 
-  TF_LITE_ENSURE(
-      context, output->type == kTfLiteFloat32 || output->type == kTfLiteUInt8);
+  TF_LITE_ENSURE(context, output->type == kTfLiteFloat32 ||
+                              output->type == kTfLiteUInt8 ||
+                              output->type == kTfLiteInt8);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
 
-  if (output->type == kTfLiteUInt8) {
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
     TF_LITE_ENSURE_EQ(context, output->params.scale, (1. / 128.));
-    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 128);
+    if (output->type == kTfLiteUInt8) {
+      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 128);
+    }
+    if (output->type == kTfLiteInt8) {
+      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+    }
   }
 
   // TODO(ahentz): For some reason our implementations don't support
@@ -97,6 +104,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_L2NORM(optimized_ops);
     }
 #undef TF_LITE_L2NORM
+  } else if (output->type == kTfLiteInt8) {
+    const auto input_shape = GetTensorShape(input);
+    const auto output_shape = GetTensorShape(output);
+    const int trailing_dim = input_shape.DimensionsCount() - 1;
+    const int depth =
+        MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+    const int outer_size =
+        MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+    reference_integer_ops::L2Normalization(input->params.zero_point, outer_size,
+                                           depth, GetTensorData<int8>(input),
+                                           GetTensorData<int8>(output));
   } else {
     context->ReportError(context, "Output type is %d, requires float.",
                          output->type);

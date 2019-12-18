@@ -16,29 +16,22 @@ limitations under the License.
 #include "tensorflow/core/kernels/batch_matmul_op_impl.h"
 
 #if GOOGLE_CUDA
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
-// MKL_ML registers its own float and double kernels in mkl_batch_matmul_op.cc
-// if defined(INTEL_MKL) && !defined(INTEL_MKL_DNN_ONLY) && defined(ENABLE_MKL).
-// Anything else (the complement) should register the TF ones.
-// (MKL-DNN doesn't implement these kernels either.)
-#if !defined(INTEL_MKL) || defined(INTEL_MKL_DNN_ONLY) || !defined(ENABLE_MKL)
 TF_CALL_float(REGISTER_BATCH_MATMUL_CPU);
 TF_CALL_double(REGISTER_BATCH_MATMUL_CPU);
-#endif  // !INTEL_MKL || INTEL_MKL_DNN_ONLY || !ENABLE_MKL
-
 TF_CALL_half(REGISTER_BATCH_MATMUL_CPU);
 TF_CALL_int32(REGISTER_BATCH_MATMUL_CPU);
 TF_CALL_int64(REGISTER_BATCH_MATMUL_CPU);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TF_CALL_float(REGISTER_BATCH_MATMUL_GPU);
 TF_CALL_double(REGISTER_BATCH_MATMUL_GPU);
 TF_CALL_half(REGISTER_BATCH_MATMUL_GPU);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 TF_CALL_float(REGISTER_BATCH_MATMUL_SYCL);

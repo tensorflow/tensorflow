@@ -28,8 +28,8 @@ from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.training.saving import saveable_object as saveable_object_lib
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
-from tensorflow.python.training.tracking import object_identity
 from tensorflow.python.training.tracking import tracking
+from tensorflow.python.util import object_identity
 
 
 _ESCAPE_CHAR = "."  # For avoiding conflicts with user-specified names.

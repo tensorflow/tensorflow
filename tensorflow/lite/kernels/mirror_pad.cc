@@ -14,13 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
@@ -30,127 +34,26 @@ namespace builtin {
 namespace mirror_pad {
 namespace {
 
-// Simple class that represents a mirror padded tensor - which is the output
-// from the Op.
-struct PaddedTensor {
-  // If not null that means this is a scalar value.
-  // Note: This is not owned by default. It will point to the value
-  // in the input tensor.
-  const void* value = nullptr;
-  // If this tensor is not one value, then this vector will have
-  // all the tensors that belongs to this tensor.
-  // Pointers are not owned.
-  std::vector<PaddedTensor*> values;
-  // Pointers to PaddedTensors that are padded on the left of the current
-  // tensor.
-  std::vector<PaddedTensor*> left_pad_ptrs;
-  // Pointers to PaddedTensors that are padded on the right of the current
-  // tensor.
-  std::vector<PaddedTensor*> right_pad_ptrs;
+// Nil value for paddingMode/offset.
+const int kUnsetOffset = -1;
 
-  // Returns mutable pointer to the tensor identified by 'indices'.
-  PaddedTensor* GetMutable(const std::vector<int>& indices) {
-    auto* result = this;
-    for (int i = 0; i < indices.size(); ++i) {
-      if (indices[i] >= result->values.size()) {
-        return nullptr;
-      }
-      result = result->values[indices[i]];
-      if (result == nullptr) break;
-    }
-    return result;
-  }
+// Wrapper for params passed to the Eval<T> function.
+template <typename T>
+struct EvalData {
+  const TfLiteTensor* padding_matrix = nullptr;
+  const TfLiteIntArray* input_dims = nullptr;
+  // Holds number of elements at the nth dimension.
+  // value at last dimension = 1, at second to last = sizeof last dimension.
+  const std::vector<int>* output_dims_num_elements = nullptr;
+  const std::vector<int>* input_dims_num_elements = nullptr;
+  const T* input_data = nullptr;
+
+  int offset = kUnsetOffset;
+  T* output_data = nullptr;
+  int num_dims = 0;
 };
 
-// Wrapper for all intermediate data used by the op.
-struct OpData {
-  // Holds intermediate data structure of the padded tensor.
-  std::vector<PaddedTensor> pad_tensor_buffer;
-  // Total number of intermediate elements in the pad_tensor_buffer.
-  int num_elements;
-};
-
-// Util method to initialize the memory of the padded tensor.
-void InitializeTensorMemory(const TfLiteIntArray* const dims, int dims_size,
-                            std::vector<PaddedTensor>* padded_tensor_buffer) {
-  int dimension_index = 0;
-  int element_index = 0;
-  // We hold 2 vectors with values for nodes in current level, and
-  // nodes in the next level, and swap while moving on dimensions of the tensor.
-  std::vector<PaddedTensor*> current_nodes, next_level;
-  current_nodes.push_back(&(*padded_tensor_buffer)[element_index]);
-  element_index++;
-  int next_level_size = 1;
-  while (!current_nodes.empty() && dimension_index < dims_size) {
-    next_level_size *= dims->data[dimension_index];
-    next_level.resize(next_level_size);
-    // Index of elements in next level.
-    int index = 0;
-    for (auto* padded_tensor : current_nodes) {
-      padded_tensor->values.resize(dims->data[dimension_index]);
-      for (int i = 0; i < dims->data[dimension_index]; ++i) {
-        padded_tensor->values[i] = &(*padded_tensor_buffer)[element_index];
-        next_level[index++] = padded_tensor->values[i];
-        element_index++;
-      }
-    }
-    std::swap(current_nodes, next_level);
-    dimension_index++;
-  }
-}
-
-// Returns pointer to the value at the specified index in 'data'.
-inline const void* GetValuePointerAtIndex(const void* data, int index,
-                                          const TfLiteType data_type) {
-  switch (data_type) {
-    case kTfLiteFloat32:
-      return static_cast<const float*>(data) + index;
-    case kTfLiteInt32:
-      return static_cast<const int32_t*>(data) + index;
-    case kTfLiteUInt8:
-      return static_cast<const uint8_t*>(data) + index;
-    case kTfLiteInt64:
-      return static_cast<const int64_t*>(data) + index;
-    case kTfLiteBool:
-      return static_cast<const bool*>(data) + index;
-    case kTfLiteInt16:
-      return static_cast<const int16_t*>(data) + index;
-    case kTfLiteInt8:
-      return static_cast<const int8_t*>(data) + index;
-    // Unsupported types ?
-    default:
-      return nullptr;
-  }
-  return nullptr;
-}
-
-// Fills the 'padded_tensor' with data from 'input_tensor'.
-TfLiteStatus InitFromInputTensor(const TfLiteTensor* input_tensor,
-                                 PaddedTensor* padded_tensor) {
-  const auto* dims = input_tensor->dims;
-  const auto data_type = input_tensor->type;
-  const void* data = static_cast<const void*>(input_tensor->data.raw_const);
-  // Either invalid input or unsupported type.+
-  if (data == nullptr) {
-    return kTfLiteError;
-  }
-  // Index of current processing tensor.
-  std::vector<int> tensor_index(dims->size, 0);
-  int flat_index = 0;
-  const int num_elements = NumElements(input_tensor);
-  auto* tensor = padded_tensor->GetMutable(tensor_index);
-  while (flat_index < num_elements) {
-    if (tensor == nullptr) {
-      return kTfLiteError;
-    }
-    tensor->value = GetValuePointerAtIndex(data, flat_index, data_type);
-    ++tensor;
-    ++flat_index;
-  }
-
-  return kTfLiteOk;
-}
-
+// Helper method that fills the left and right pads.
 template <typename T>
 inline void GetPadding(const T* data, int offset, int64_t* left_pad,
                        int64_t* right_pad) {
@@ -158,9 +61,8 @@ inline void GetPadding(const T* data, int offset, int64_t* left_pad,
   *right_pad = static_cast<int64_t>(*(data + offset * 2 + 1));
 }
 
-inline TfLiteStatus GetPadding(const TfLiteTensor* padding_matrix,
-                               int dimension, int64_t* left_pad,
-                               int64_t* right_pad) {
+inline void GetPadding(const TfLiteTensor* padding_matrix, int dimension,
+                       int64_t* left_pad, int64_t* right_pad) {
   switch (padding_matrix->type) {
     case kTfLiteInt32:
       GetPadding(padding_matrix->data.i32, dimension, left_pad, right_pad);
@@ -169,95 +71,8 @@ inline TfLiteStatus GetPadding(const TfLiteTensor* padding_matrix,
       GetPadding(padding_matrix->data.i64, dimension, left_pad, right_pad);
       break;
     default:
-      return kTfLiteError;
+      return;
   }
-  return kTfLiteOk;
-}
-
-TfLiteStatus ValidateTensor(const TfLiteTensor* padding_matrix, int offset,
-                            int dimension_index, PaddedTensor* padded_tensor,
-                            TfLiteContext* context) {
-  if (dimension_index >= padding_matrix->dims->data[0]) {
-    return kTfLiteOk;
-  }
-
-  int64_t left_pad = 0, right_pad = 0;
-  TF_LITE_ENSURE_STATUS(
-      GetPadding(padding_matrix, dimension_index, &left_pad, &right_pad));
-  // If we are not going to include border we must have enough values
-  // to use.
-  if (left_pad + offset > padded_tensor->values.size()) {
-    context->ReportError(
-        context, "Not enough values for Mirror Pad, required %d, available %d.",
-        left_pad + offset, padded_tensor->values.size());
-    return kTfLiteError;
-  }
-  if (right_pad + offset > padded_tensor->values.size()) {
-    context->ReportError(
-        context, "Not enough values for Mirror Pad, required %d, available %d.",
-        right_pad + offset, padded_tensor->values.size());
-    return kTfLiteError;
-  }
-  if (!padded_tensor->values.empty()) {
-    ValidateTensor(padding_matrix, offset, dimension_index + 1,
-                   padded_tensor->values[0], context);
-  }
-  return kTfLiteOk;
-}
-
-// Fills 'padded_tensor' with the padding information based on
-// 'padding_matrix'.
-// 'dimension_index' represents which dimension the function is operating on.
-TfLiteStatus PadTensor(const TfLiteTensor* padding_matrix, int offset,
-                       int dimension_index, PaddedTensor* padded_tensor,
-                       TfLiteContext* context) {
-  if (dimension_index >= padding_matrix->dims->data[0]) return kTfLiteOk;
-
-  int64_t left_pad = 0, right_pad = 0;
-  TF_LITE_ENSURE_STATUS(
-      GetPadding(padding_matrix, dimension_index, &left_pad, &right_pad));
-
-  padded_tensor->left_pad_ptrs.clear();
-  for (int i = left_pad + offset - 1; i >= offset && left_pad > 0;
-       --i, --left_pad) {
-    padded_tensor->left_pad_ptrs.push_back(padded_tensor->values[i]);
-  }
-  padded_tensor->right_pad_ptrs.clear();
-  for (int i = padded_tensor->values.size() - (1 + offset);
-       i >= 0 && right_pad > 0; --i, --right_pad) {
-    padded_tensor->right_pad_ptrs.push_back(padded_tensor->values[i]);
-  }
-
-  for (auto& tensor : padded_tensor->values) {
-    TF_LITE_ENSURE_STATUS(PadTensor(padding_matrix, offset, dimension_index + 1,
-                                    tensor, context));
-  }
-  return kTfLiteOk;
-}
-
-// Fills 'output_data' with data from 'padded_tensor'.
-// The function does this recursively by setting left padding first then
-// original data, followed by the right padding.
-template <typename T>
-int FillOutput(const PaddedTensor* padded_tensor, T* output_data,
-               int index_in_output) {
-  if (padded_tensor == nullptr || output_data == nullptr) {
-    return -1;
-  }
-  if (padded_tensor->value != nullptr) {
-    output_data[index_in_output] = *static_cast<const T*>(padded_tensor->value);
-    return index_in_output + 1;
-  }
-  for (const auto* tensor : padded_tensor->left_pad_ptrs) {
-    index_in_output = FillOutput(tensor, output_data, index_in_output);
-  }
-  for (const auto& tensor : padded_tensor->values) {
-    index_in_output = FillOutput(tensor, output_data, index_in_output);
-  }
-  for (const auto* tensor : padded_tensor->right_pad_ptrs) {
-    index_in_output = FillOutput(tensor, output_data, index_in_output);
-  }
-  return index_in_output;
 }
 
 // Returns the shape of the final output after padding.
@@ -275,14 +90,78 @@ std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> GetPaddedOutputShape(
   return shape;
 }
 
+// Given dimension index and the left/right padding.
+// Returns the corresponding dimension in the input array.
+inline int GetInputDimension(int padded_dimension, int left_pad, int right_pad,
+                             int input_dim_size, int offset) {
+  if (padded_dimension < left_pad) {
+    const int original_ind = left_pad + offset - 1;
+    return original_ind - (std::min(padded_dimension, original_ind - offset));
+  }
+  padded_dimension -= left_pad;
+  if (padded_dimension >= input_dim_size) {
+    padded_dimension -= input_dim_size;
+    const int original_ind = input_dim_size - (1 + offset);
+    return original_ind - std::min(padded_dimension, original_ind);
+  }
+  return padded_dimension;
+}
+
+// Given and index in output array, returns the index of the value
+// in input array.
+template <typename T>
+int GetFlatIndex(int index, EvalData<T>* eval_data) {
+  int flat_index = 0;
+  int64_t left_pad = 0, right_pad = 0, dimension_index, index_in_input;
+  for (int i = 0; i < eval_data->num_dims; ++i) {
+    switch (eval_data->padding_matrix->type) {
+      case kTfLiteInt32:
+        GetPadding(eval_data->padding_matrix->data.i32, i, &left_pad,
+                   &right_pad);
+        break;
+      case kTfLiteInt64:
+        GetPadding(eval_data->padding_matrix->data.i64, i, &left_pad,
+                   &right_pad);
+        break;
+      default:
+        break;
+    }
+    dimension_index = index / (*eval_data->output_dims_num_elements)[i];
+    index_in_input =
+        GetInputDimension(dimension_index, left_pad, right_pad,
+                          eval_data->input_dims->data[i], eval_data->offset);
+    flat_index += index_in_input * (*eval_data->input_dims_num_elements)[i];
+    index %= (*eval_data->output_dims_num_elements)[i];
+  }
+  return flat_index;
+}
+
+template <typename T>
+struct MirrorPadWorkerTask : cpu_backend_threadpool::Task {
+  MirrorPadWorkerTask(EvalData<T>* eval_data, int start, int end)
+      : eval_data(eval_data), start(start), end(end) {}
+  void Run() override {
+    auto* input_data = eval_data->input_data;
+    auto* output_data = eval_data->output_data;
+    for (int i = start; i < end; ++i) {
+      output_data[i] = input_data[GetFlatIndex(i, eval_data)];
+    }
+  }
+
+ private:
+  EvalData<T>* eval_data;
+  int start;
+  int end;
+};
+
 }  // namespace
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  gemmlowp::ScopedProfilingLabel label("MirrorPad");
   const TfLiteTensor* input_tensor = GetInput(context, node, 0);
   const TfLiteTensor* padding_matrix = GetInput(context, node, 1);
   auto* params =
       reinterpret_cast<TfLiteMirrorPaddingParams*>(node->builtin_data);
-  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
   if (params == nullptr) {
     return kTfLiteError;
@@ -299,27 +178,45 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         context->ResizeTensor(context, output_tensor, output_size.release()));
   }
 
-  PaddedTensor& padded_tensor = op_data->pad_tensor_buffer[0];
-  // Initialize memory.
-  InitializeTensorMemory(input_tensor->dims, input_dims,
-                         &op_data->pad_tensor_buffer);
-  // Set the values from the input_tensor.
-  TF_LITE_ENSURE_STATUS(InitFromInputTensor(input_tensor, &padded_tensor));
+  std::vector<int> output_dims_num_elements(input_dims, 1);
+  std::vector<int> input_dims_num_elements(input_dims, 1);
+  for (int i = input_dims - 2; i >= 0; i--) {
+    output_dims_num_elements[i] =
+        output_dims_num_elements[i + 1] * output_tensor->dims->data[i + 1];
+    input_dims_num_elements[i] =
+        input_dims_num_elements[i + 1] * input_tensor->dims->data[i + 1];
+  }
+
   const int offset =
       params->mode != TfLiteMirrorPaddingMode::kTfLiteMirrorPaddingReflect ? 0
                                                                            : 1;
-  // Make sure padding values are sufficient and valid to use.
-  TF_LITE_ENSURE_STATUS(
-      ValidateTensor(padding_matrix, offset, 0, &padded_tensor, context));
-  // Apply padding.
-  TF_LITE_ENSURE_STATUS(
-      PadTensor(padding_matrix, offset, 0, &padded_tensor, context));
 
-  // Fill the output tensor from the padded tensor.
+  CpuBackendContext* cpu_backend_context =
+      CpuBackendContext::GetFromContext(context);
+  const int thread_count = cpu_backend_context->max_num_threads();
   TfLiteStatus status = kTfLiteOk;
-
-#define TF_LITE_MIRROR_PAD(type) \
-  FillOutput(&padded_tensor, GetTensorData<type>(output_tensor), 0);
+  const int output_size = NumElements(output_tensor);
+#define TF_LITE_MIRROR_PAD(type)                                           \
+  EvalData<type> eval_data;                                                \
+  eval_data.input_data = GetTensorData<type>(input_tensor);                \
+  eval_data.input_dims = input_tensor->dims;                               \
+  eval_data.input_dims = input_tensor->dims;                               \
+  eval_data.output_dims_num_elements = &output_dims_num_elements;          \
+  eval_data.input_dims_num_elements = &input_dims_num_elements;            \
+  eval_data.num_dims = input_dims;                                         \
+  eval_data.offset = offset;                                               \
+  eval_data.output_data = GetTensorData<type>(output_tensor);              \
+  eval_data.padding_matrix = padding_matrix;                               \
+  std::vector<MirrorPadWorkerTask<type>> tasks;                            \
+  tasks.reserve(thread_count);                                             \
+  int start = 0;                                                           \
+  for (int i = 0; i < thread_count; ++i) {                                 \
+    int end = start + (output_size - start) / (thread_count - i);          \
+    tasks.emplace_back(MirrorPadWorkerTask<type>(&eval_data, start, end)); \
+    start = end;                                                           \
+  }                                                                        \
+  cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),              \
+                                  cpu_backend_context);
 
   switch (output_tensor->type) {
     case kTfLiteFloat32: {
@@ -347,40 +244,25 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return new OpData();
+  return nullptr;
 }
 
-void Free(TfLiteContext* context, void* buffer) {
-  delete reinterpret_cast<OpData*>(buffer);
-}
+void Free(TfLiteContext* context, void* buffer) {}
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input_tensor = GetInput(context, node, 0);
   const TfLiteTensor* padding_matrix = GetInput(context, node, 1);
   TfLiteTensor* output_tensor = GetOutput(context, node, 0);
-  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(padding_matrix), 2);
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(padding_matrix, 0),
                     NumDimensions(input_tensor));
-
-  // Calculate total number of nodes in the tree structure of a tensor
-  // and pre-allocates it.
-  int num_elements = NumElements(input_tensor) + 1;
-  int extra_nodes = 1;
-  for (int i = 0; i < NumDimensions(input_tensor) - 1; ++i) {
-    extra_nodes *= input_tensor->dims->data[i];
-    num_elements += extra_nodes;
-  }
-  op_data->pad_tensor_buffer.resize(num_elements);
-  op_data->num_elements = num_elements;
 
   if (!IsConstantTensor(padding_matrix)) {
     SetTensorToDynamic(output_tensor);
     return kTfLiteOk;
   }
   // We have constant padding, so we can infer output size.
-
   auto output_size = GetPaddedOutputShape(input_tensor, padding_matrix);
   if (output_size == nullptr) {
     return kTfLiteError;

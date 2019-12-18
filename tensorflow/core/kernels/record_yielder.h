@@ -90,7 +90,7 @@ class RecordYielder {
   RecordYielder& operator=(const RecordYielder&) = delete;
 
   // Yields one 'value'.
-  Status YieldOne(string* value);
+  Status YieldOne(tstring* value);
 
   // Returns the current epoch number.
   int64 current_epoch() const { return epoch_; }

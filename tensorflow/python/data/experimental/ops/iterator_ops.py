@@ -13,13 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Iterator ops."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
@@ -29,10 +28,16 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export("data.experimental.make_saveable_from_iterator")
 def make_saveable_from_iterator(iterator):
-  """Returns a SaveableObject for saving/restore iterator state using Saver.
+  """Returns a SaveableObject for saving/restoring iterator state using Saver.
 
   Args:
     iterator: Iterator.
+
+  Returns:
+    A SaveableObject for saving/restoring iterator state using Saver.
+
+  Raises:
+    ValueError: If iterator does not support checkpointing.
 
   For example:
 
@@ -44,8 +49,8 @@ def make_saveable_from_iterator(iterator):
     saveable_obj = tf.data.experimental.make_saveable_from_iterator(iterator)
     # Add the SaveableObject to the SAVEABLE_OBJECTS collection so
     # it can be automatically saved using Saver.
-    tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable_obj)
-    saver = tf.train.Saver()
+    tf.compat.v1.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable_obj)
+    saver = tf.compat.v1.train.Saver()
 
     while continue_training:
       ... Perform training ...
@@ -63,24 +68,8 @@ def make_saveable_from_iterator(iterator):
   Note: Not all iterators support checkpointing yet. Attempting to save the
   state of an unsupported iterator will throw an error.
   """
-  return _Saveable(iterator._iterator_resource)  # pylint: disable=protected-access
-
-
-class _Saveable(saver_lib.BaseSaverBuilder.SaveableObject):
-  """SaveableObject for saving/restoring iterator state."""
-
-  def __init__(self, iterator_resource):
-    serialized_iterator = gen_dataset_ops.serialize_iterator(iterator_resource)
-    specs = [
-        saver_lib.BaseSaverBuilder.SaveSpec(serialized_iterator, "",
-                                            iterator_resource.name + "-state")
-    ]
-    super(_Saveable, self).__init__(iterator_resource, specs,
-                                    iterator_resource.name)
-
-  def restore(self, restored_tensors, unused_restored_shapes):
-    with ops.colocate_with(self.op):
-      return gen_dataset_ops.deserialize_iterator(self.op, restored_tensors[0])
+  return iterator_ops._IteratorSaveable(iterator._iterator_resource,  # pylint: disable=protected-access
+                                        iterator._iterator_resource.name)  # pylint: disable=protected-access
 
 
 @tf_export("data.experimental.CheckpointInputPipelineHook")
@@ -175,7 +164,6 @@ class CheckpointInputPipelineHook(session_run_hook.SessionRunHook):
     # `checkpoint_dir` is the same as the model checkpoint directory, there are
     # no conflicts during restore.
     self._latest_filename = "checkpoint_" + checkpoint_prefix
-    self._first_run = True
 
   def begin(self):
     # Build a Saver that saves all iterators in the `GLOBAL_ITERATORS`
@@ -184,11 +172,16 @@ class CheckpointInputPipelineHook(session_run_hook.SessionRunHook):
     if (self._checkpoint_saver_hook._saver is None and
         self._checkpoint_saver_hook._scaffold is None):
       iterators = ops.get_collection(iterator_ops.GLOBAL_ITERATORS)
-      saveables = [_Saveable(i) for i in iterators]
+      saveables = [iterator_ops._IteratorSaveable(i, i.name) for i in iterators]
       self._checkpoint_saver_hook._saver = _CustomSaver(saveables,
                                                         self._latest_filename)
     # pylint: enable=protected-access
     self._checkpoint_saver_hook.begin()
+
+  def after_create_session(self, session, coord):
+    # If a new session was created, we set _first_run to True so that we can
+    # restore if needed.
+    self._first_run = True
 
   def _restore_or_save_initial_ckpt(self, session):
     # Ideally this should be run in after_create_session but is not for the
@@ -261,8 +254,3 @@ class _CustomSaver(saver_lib.Saver):
     return super(_CustomSaver, self).save(
         sess, save_path, global_step, latest_filename or self._latest_filename,
         meta_graph_suffix, write_meta_graph, write_state, strip_default_attrs)
-
-
-tf_export("data.experimental.Optional")(optional_ops.Optional)
-tf_export("data.experimental.get_next_as_optional")(
-    iterator_ops.get_next_as_optional)

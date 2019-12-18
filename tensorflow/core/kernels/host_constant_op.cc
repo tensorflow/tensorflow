@@ -43,7 +43,7 @@ void _HostConstantOp::Compute(OpKernelContext* ctx) {
   ctx->set_output(0, tensor_);
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
@@ -52,7 +52,7 @@ REGISTER_KERNEL_BUILDER(Name("Const")
                             .HostMemory("output")
                             .TypeConstraint<int32>("dtype"),
                         _HostConstantOp);
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("Const")
@@ -63,16 +63,10 @@ REGISTER_KERNEL_BUILDER(Name("Const")
 #endif  // TENSORFLOW_USE_SYCL
 
 // HostConst: forced to generate output on the host.
-// Only used in tests; no op is registered for this kernel
-// externally (i.e., in array_ops.cc)
 REGISTER_KERNEL_BUILDER(Name("HostConst").Device(DEVICE_CPU), _HostConstantOp);
 REGISTER_KERNEL_BUILDER(
-    Name("HostConst").Device(DEVICE_GPU).HostMemory("output"), _HostConstantOp);
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("HostConst").Device(DEVICE_SYCL).HostMemory("output"),
+    Name("HostConst").Device(DEVICE_DEFAULT).HostMemory("output"),
     _HostConstantOp);
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow
 

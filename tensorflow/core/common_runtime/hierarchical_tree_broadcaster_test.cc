@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/hierarchical_tree_broadcaster.h"
 
 #include <algorithm>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/unbounded_work_queue.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 
@@ -136,8 +138,9 @@ DEF_TL_TEST(8, 7, 7, -1, V(0, 1))
 class FailTestRMA : public CollectiveRemoteAccessLocal {
  public:
   FailTestRMA(const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
-              int64 step_id, int fail_after)
-      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, step_id),
+              std::shared_ptr<UnboundedWorkQueue> work_queue, int64 step_id,
+              int fail_after)
+      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, work_queue, step_id),
         fail_after_(fail_after) {}
 
   bool MaybeFail(const StatusCallback& done) {
@@ -244,12 +247,15 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       }
     }
     if (!dev_mgr_ || device_type == DEVICE_CPU) {
-      dev_mgr_.reset(new DeviceMgr(std::move(local_devices)));
+      dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(local_devices));
     }
-    if (!gpu_ring_order_) gpu_ring_order_.reset(new string());
-    dev_resolver_.reset(new DeviceResolverLocal(dev_mgr_.get()));
-    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), kStepId,
-                           fail_after);
+    if (!gpu_ring_order_) {
+      gpu_ring_order_ = absl::make_unique<string>();
+    }
+    dev_resolver_ = absl::make_unique<DeviceResolverLocal>(dev_mgr_.get());
+    work_queue_ = std::make_shared<UnboundedWorkQueue>(Env::Default(), "test");
+    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), work_queue_,
+                           kStepId, fail_after);
     col_exec_ = new BaseCollectiveExecutor(
         &col_exec_mgr_, rma_, kStepId, dev_mgr_.get(), gpu_ring_order_.get());
     col_params_.name = "test_collective";
@@ -455,8 +461,9 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
     for (int di = 0; di < instances_.size(); ++di) {
       if (!instances_[di]->status_.ok()) {
         ASSERT_GT(fail_after, 0);
-        ASSERT_EQ(instances_[di]->status_.error_message(),
-                  "Deliberate failure");
+        ASSERT_NE(
+            instances_[di]->status_.error_message().find("Deliberate failure"),
+            string::npos);
         mutex_lock l(mu_);
         ++failure_count_;
         continue;
@@ -504,7 +511,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
     // instance may succeed while others fail, even if a transmission
     // failure occurs early in the operation chain.  So, when an abort
     // is specified we need to verify that at least one Op fails with
-    // the expected status and any Op that succeeds yeilds the correct
+    // the expected status and any Op that succeeds yields the correct
     // value.
     if (fail_after > 0) {
       mutex_lock l(mu_);
@@ -637,7 +644,6 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       gtl::InlinedVector<AllocatorAttributes, 4> input_aa(
           {AllocatorAttributes()});
       op_params.input_alloc_attrs = &input_aa;
-      gtl::InlinedVector<DeviceContext*, 4> input_dc;
       DeviceContext* dev_ctx = nullptr;
       auto* dev_info = device_->tensorflow_gpu_device_info();
       if (dev_info) {
@@ -646,8 +652,6 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       } else {
         dev_ctx = new DeviceContext;
       }
-      input_dc.push_back(dev_ctx);
-      op_params.input_device_contexts = &input_dc;
       op_params.op_device_context = dev_ctx;
       int forward_from[] = {OpKernelContext::Params::kNeverForward};
       if (forward_input) forward_from[0] = 0;
@@ -713,6 +717,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
   CollectiveExecutor* col_exec_ = nullptr;
   CollectiveRemoteAccessLocal* rma_;
   std::unique_ptr<DeviceResolverLocal> dev_resolver_;
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
   std::vector<DeviceInstance*> instances_;
   CollectiveParams col_params_;
   std::vector<std::unique_ptr<tensorflow::Device>> gpu_devices_;

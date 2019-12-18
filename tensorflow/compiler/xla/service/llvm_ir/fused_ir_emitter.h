@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/kernel_tiling.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -52,7 +51,7 @@ namespace xla {
 // created produces an LLVM struct with N elements, one for each element of the
 // arrays in the tuple.  It follows that the arrays in the tuple must have the
 // same length.
-class FusedIrEmitter : public DfsHloVisitorWithDefault {
+class FusedIrEmitter : public ConstDfsHloVisitorWithDefault {
  public:
   using IndexedGenerator = llvm_ir::ElementGenerator;
   using NonIndexedGenerator = std::function<StatusOr<llvm::Value*>()>;
@@ -60,26 +59,33 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
       std::function<std::vector<llvm_ir::IrArray>()>;
 
   FusedIrEmitter(GeneratorForOperandIrArrays operand_arrays_generator,
-                 ElementalIrEmitter* elemental_emitter)
+                 ElementalIrEmitter* elemental_emitter,
+                 llvm::Value* tile_param_x = nullptr,
+                 llvm::Value* tile_param_y = nullptr,
+                 absl::Span<llvm::Value* const> param_shmem_buffers = {})
       : operand_arrays_(),
         operand_arrays_generator_(std::move(operand_arrays_generator)),
-        tiled_parameter_info_(nullptr),
+        tile_param_x_(tile_param_x),
+        tile_param_y_(tile_param_y),
+        param_shmem_buffers_(param_shmem_buffers.begin(),
+                             param_shmem_buffers.end()),
         elemental_emitter_(elemental_emitter),
         b_(elemental_emitter->b()),
         module_(elemental_emitter->module()) {}
 
-  Status DefaultAction(HloInstruction* hlo) override;
+  Status DefaultAction(const HloInstruction* hlo) override;
 
-  Status HandleConstant(HloInstruction* constant) override;
+  Status HandleConstant(const HloInstruction* constant) override;
 
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
+  Status HandleGetTupleElement(
+      const HloInstruction* get_tuple_element) override;
 
-  Status HandleParameter(HloInstruction* parameter) override;
+  Status HandleParameter(const HloInstruction* parameter) override;
 
   // Emits the ir value for each element in the tuple.
-  Status HandleTuple(HloInstruction* tuple) override;
+  Status HandleTuple(const HloInstruction* tuple) override;
 
-  Status FinishVisit(HloInstruction* root) override;
+  Status FinishVisit(const HloInstruction* root) override;
 
   // Returns the generator function for the root of the fused computation.
   IndexedGenerator GetRootGenerator() const;
@@ -87,9 +93,13 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
   // Returns the generator function for the given instruction.
   IndexedGenerator GetGenerator(const HloInstruction* instruction) const;
 
-  void SetTiledParameterInfo(const llvm_ir::TiledParameterInfo* info) {
-    tiled_parameter_info_ = info;
-  }
+  // Evaluates whether fusing 'producer' into 'consumer' might cause exponential
+  // behavior in FusedIrEmitter. We currently can have exponential time/memory
+  // requirements for emitting certain fusion kernels, in which case we don't
+  // want to fuse.
+  // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
+  static bool IsFusedIrEmitterInefficient(const HloInstruction* consumer,
+                                          const HloInstruction* producer);
 
  protected:
   // Returns the IrArrays for the fusion instruction operands.
@@ -110,7 +120,15 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
   absl::optional<std::vector<llvm_ir::IrArray>> operand_arrays_;
   GeneratorForOperandIrArrays operand_arrays_generator_;
 
-  const llvm_ir::TiledParameterInfo* tiled_parameter_info_;
+  // The x coordinate within a tile.
+  llvm::Value* tile_param_x_;
+
+  // The y coordinate within a tile.
+  llvm::Value* tile_param_y_;
+
+  // Param_buffers_[i] stores the tile buffer for the ith parameter or nullptr
+  // if the parameter is not tiled.
+  std::vector<llvm::Value*> param_shmem_buffers_;
 
   ElementalIrEmitter* elemental_emitter_;
 

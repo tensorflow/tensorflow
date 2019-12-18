@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_LIB_IO_SNAPPY_OUTPUTBUFFER_H_
-#define TENSORFLOW_CORE_LIB_IO_SNAPPY_OUTPUTBUFFER_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_SNAPPY_SNAPPY_OUTPUTBUFFER_H_
+#define TENSORFLOW_CORE_LIB_IO_SNAPPY_SNAPPY_OUTPUTBUFFER_H_
 
 #include <string>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -43,7 +45,7 @@ namespace io {
 // _compressed_ block _excluding_ this header. The compressed
 // block (excluding the 4 byte header) is a valid snappy block and can directly
 // be uncompressed using Snappy_Uncompress.
-class SnappyOutputBuffer {
+class SnappyOutputBuffer : public WritableFile {
  public:
   // Create an SnappyOutputBuffer for `file` with two buffers that cache the
   // 1. input data to be deflated
@@ -52,6 +54,40 @@ class SnappyOutputBuffer {
   // Does not take ownership of `file`.
   SnappyOutputBuffer(WritableFile* file, int32 input_buffer_bytes,
                      int32 output_buffer_bytes);
+
+  // Per convention, the dtor does not call Flush() or Close(). We expect the
+  // caller to call those manually when done.
+  ~SnappyOutputBuffer() override;
+
+  // Adds `data` to the compression pipeline.
+  //
+  // The input data is buffered internally and will be written to disk at a
+  // later time. To immediately write contents to file call `Flush()`.
+  Status Append(StringPiece data) override;
+
+#if defined(PLATFORM_GOOGLE)
+  Status Append(const absl::Cord& cord) override;
+#endif
+
+  // Compresses any buffered input and writes all output to file. This must be
+  // called before the destructor to avoid any data loss.
+  //
+  // Contrary to `Flush()` this informs snappy that it should not expect any
+  // further input.
+  //
+  // After calling this, any further calls to `Write()`, `Flush()` or `Close()`
+  // will fail.
+  Status Close() override;
+
+  // Returns the name of the underlying file.
+  Status Name(StringPiece* result) const override;
+
+  // Deflates any cached input, writes all output to file and syncs it.
+  Status Sync() override;
+
+  // Returns the write position in the underlying file. The position does not
+  // reflect buffered, un-flushed data.
+  Status Tell(int64* position) override;
 
   // Adds `data` to the compression pipeline.
   //
@@ -117,4 +153,4 @@ class SnappyOutputBuffer {
 }  // namespace io
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_LIB_IO_SNAPPY_OUTPUTBUFFER_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_SNAPPY_SNAPPY_OUTPUTBUFFER_H_

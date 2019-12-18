@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/meta_optimizer.h"
 
+#include "absl/strings/str_split.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
@@ -29,30 +30,85 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+namespace {
+
+using ConfigMap =
+    std::map<string, tensorflow::RewriterConfig_CustomGraphOptimizer>;
+
+// tf.data optimizations, in the order we want to perform them.
+constexpr std::array<const char*, 16> kTFDataOptimizations = {
+    "make_stateless",
+    "noop_elimination",
+    "shuffle_and_repeat_fusion",
+    "map_fusion",
+    "filter_fusion",
+    "filter_with_random_uniform_fusion",
+    "map_and_filter_fusion",
+    "hoist_random_uniform",
+    "map_parallelization",
+    "map_and_batch_fusion",
+    "map_vectorization",
+    "latency_all_edges",
+    "make_sloppy",
+    "parallel_batch",
+    "slack",
+    "inject_prefetch"};
+
+// Standard grappler optimizations, in the order we want to perform them.
+constexpr std::array<const char*, 5> kGrapplerOptimizations = {
+    "pruning", "function", "shape", "arithmetic", "dependency"};
+
+// Parses a list of string optimizer configurations into a map from
+// optimizer name -> rewriter config for that optimizer.
+Status ToConfigMap(
+    const tensorflow::RewriterConfig_CustomGraphOptimizer* config,
+    ConfigMap* result) {
+  auto found = gtl::FindOrNull(config->parameter_map(), "optimizer_configs");
+  if (!found) return Status::OK();
+
+  auto& options = found->list().s();
+  for (const auto& option_string : options) {
+    // The option string has the format
+    // <optimizer_name>:<config_key>:<config_value>
+    std::vector<string> split = absl::StrSplit(option_string, ':');
+    if (split.size() != 3) {
+      return errors::Internal(
+          "Wrong format for optimizer options. Expect <optimizer name>:<config "
+          "key>:<config value>, received: ",
+          option_string);
+    }
+
+    const string& optimizer_name = split[0];
+    const string& config_key = split[1];
+    const string& config_value = split[2];
+
+    auto optimizer_config = gtl::FindOrNull(*result, optimizer_name);
+    if (!optimizer_config) {
+      (*result)[optimizer_name] =
+          tensorflow::RewriterConfig_CustomGraphOptimizer();
+      optimizer_config = gtl::FindOrNull(*result, optimizer_name);
+    }
+    (*optimizer_config->mutable_parameter_map())[config_key].set_s(
+        config_value);
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
+
 Status TFDataMetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                      GraphDef* output) {
   // Stores the optimized item so far.
   GrapplerItem optimized_item = item;
 
   // Perform optimizations in a meaningful order.
-  for (const auto& optimization :
-       {"noop_elimination",
-        "shuffle_and_repeat_fusion",
-        "map_fusion",
-        "filter_fusion",
-        "map_and_filter_fusion",
-        "hoist_random_uniform",
-        "map_parallelization",
-        "map_and_batch_fusion",
-        "map_vectorization",
-        "make_numa_aware",
-        "latency_all_edges",
-        "make_sloppy",
-        "pruning",
-        "function",
-        "shape",
-        "arithmetic",
-        "dependency"}) {
+  for (const auto& optimization : kTFDataOptimizations) {
+    TF_RETURN_IF_ERROR(
+        ApplyOptimization(optimization, cluster, &optimized_item));
+  }
+
+  for (const auto& optimization : kGrapplerOptimizations) {
     TF_RETURN_IF_ERROR(
         ApplyOptimization(optimization, cluster, &optimized_item));
   }
@@ -74,10 +130,18 @@ Status TFDataMetaOptimizer::ApplyOptimization(const string& name,
 
   GraphDef result;
   (*optimizer)->set_deadline_usec(this->deadline_usec());
-  TF_RETURN_IF_ERROR((*optimizer)->Optimize(cluster, *item, &result));
-  item->graph.Swap(&result);
+  Status status = (*optimizer)->Optimize(cluster, *item, &result);
+  if (status.ok()) {
+    // The optimizer succeeded and wrote the optimized graph to result.
+    item->graph.Swap(&result);
+  } else if (errors::IsAborted(status)) {
+    // A status of errors::Aborted just means that the optimizer was a no-op and
+    // did not populate result. Swallow the error status and leave the original
+    // graph in item.
+    status = Status::OK();
+  }
 
-  return Status::OK();
+  return status;
 }
 
 Status TFDataMetaOptimizer::Init(
@@ -86,13 +150,16 @@ Status TFDataMetaOptimizer::Init(
 
   // Initialize custom tf.data optimizers based on config.
   auto& optimizers = config->parameter_map().at("optimizers").list().s();
+  ConfigMap optimizer_configs;
+  TF_RETURN_IF_ERROR(ToConfigMap(config, &optimizer_configs));
+
   for (const auto& optimizer_name : optimizers) {
     auto optimizer =
         CustomGraphOptimizerRegistry::CreateByNameOrNull(optimizer_name);
     if (optimizer) {
-      // None of our data optimizers implement a meaningful Init function.
-      // This returns an error in case any of them does.
-      TF_RETURN_IF_ERROR(optimizer->Init());
+      TF_RETURN_IF_ERROR(
+          optimizer->Init(gtl::FindOrNull(optimizer_configs, optimizer_name)));
+
       enabled_optimizers_[optimizer_name] = std::move(optimizer);
     } else {
       // This should never happen.
@@ -104,8 +171,8 @@ Status TFDataMetaOptimizer::Init(
 
   // Initialize standard grappler optimizers.
   enabled_optimizers_["pruning"] = MakeUnique<ModelPruner>();
-  enabled_optimizers_["function"] =
-      MakeUnique<FunctionOptimizer>(RewriterConfig::ON);
+  enabled_optimizers_["function"] = MakeUnique<FunctionOptimizer>(
+      RewriterConfig::ON, /*lower_control_flow=*/true);
   enabled_optimizers_["shape"] = MakeUnique<ShapeOptimizer>();
   enabled_optimizers_["arithmetic"] = MakeUnique<ArithmeticOptimizer>();
   enabled_optimizers_["dependency"] = MakeUnique<DependencyOptimizer>();

@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/no_op.h"
 
 namespace tensorflow {
 namespace {

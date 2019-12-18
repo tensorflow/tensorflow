@@ -26,8 +26,8 @@ bool GpuStream::Init() {
   if (!GpuDriver::CreateStream(parent_->gpu_context(), &gpu_stream_)) {
     return false;
   }
-  return GpuDriver::CreateEvent(parent_->gpu_context(), &completed_event_,
-                                GpuDriver::EventFlags::kDisableTiming)
+  return GpuDriver::InitEvent(parent_->gpu_context(), &completed_event_,
+                              GpuDriver::EventFlags::kDisableTiming)
       .ok();
 }
 

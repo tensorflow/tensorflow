@@ -23,43 +23,30 @@ import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-def _random_seq_lens(count):
-  return np.random.randint(20, size=(count,)).astype(np.int32)
-
-
-@test_util.run_all_in_graph_and_eager_modes
 class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @parameterized.named_parameters(
-      ('default_padding', _random_seq_lens(32), 4, [-1], False),
-      ('constant_padding', _random_seq_lens(32), 4, [25], False),
-      ('uneven_with_remainder', _random_seq_lens(34), 4, [-1], False),
-      ('uneven_without_remainder', _random_seq_lens(34), 4, [-1], True),
-  )
-  def testPaddedBatchDataset(self, seq_lens, batch_size, padded_shapes,
-                             drop_remainder):
-    """Tests the padded batch dataset logic for various input configurations.
-
-    Args:
-      seq_lens: the input sequence lengths
-      batch_size: the batch size
-      padded_shapes: the padded shapes to use
-      drop_remainder: whether a smaller batch size should be produced if batch
-        size does not divide number of inputs evenly
-    """
-
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              count=[32, 34],
+              padded_shapes=[[None], [25]],
+              drop_remainder=[True, False])))
+  def testPaddedBatchDataset(self, count, padded_shapes, drop_remainder):
+    seq_lens = np.random.randint(20, size=(count,)).astype(np.int32)
+    batch_size = 4
     dataset = dataset_ops.Dataset.from_tensor_slices(seq_lens).map(
         lambda x: array_ops.fill([x], x)).padded_batch(
             batch_size=batch_size,
@@ -81,7 +68,9 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     if not drop_remainder and len(seq_lens) % batch_size > 0:
       result = self.evaluate(get_next())
-      padded_len = np.max(result) if result.size > 0 else 0
+      padded_len = padded_shapes[0]
+      if padded_len is None or padded_len == -1:
+        padded_len = np.max(result) if result.size > 0 else 0
       self.assertEqual((len(seq_lens) % batch_size, padded_len), result.shape)
       for j in range(len(seq_lens) % batch_size):
         seq_len = seq_lens[num_full_batches * batch_size + j]
@@ -93,7 +82,7 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  @test_util.run_deprecated_v1
+  @combinations.generate(test_base.default_test_combinations())
   def testPaddedBatchShortPadding(self):
     dataset = (
         dataset_ops.Dataset.from_tensor_slices(
@@ -102,6 +91,7 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset, expected_error=(errors.DataLossError, ''))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPaddedBatchEmptyTensors(self):
     dataset = (
         dataset_ops.Dataset.from_tensor_slices(
@@ -109,6 +99,7 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
                 batch_size=4, padded_shapes=[-1]))
     self.assertDatasetProduces(dataset, expected_output=[[[], [], [], []]])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPaddedBatchDatasetNonDefaultPadding(self):
 
     def fill_tuple(x):
@@ -139,6 +130,7 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPaddedBatchDatasetUnicode(self):
     # See GitHub issue 16149
     def generator():
@@ -156,9 +148,8 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     next_element = self.getNext(padded_dataset)
     self.evaluate(next_element())
 
-  # NOTE: This test is specific to graph mode and is skipped in eager mode.
-  @test_util.run_deprecated_v1
-  def testSkipEagerPaddedBatchDatasetShapeSpecifications(self):
+  @combinations.generate(test_base.graph_only_combinations())
+  def testPaddedBatchDatasetShapeSpecifications(self):
     int_placeholder = array_ops.placeholder(dtypes.int32)
     float_placeholder = array_ops.placeholder(dtypes.float32)
     string_placeholder = array_ops.placeholder(dtypes.string)
@@ -190,6 +181,7 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual([None, None, None], dataset_output_shapes[1].as_list())
       self.assertEqual([None, 37], dataset_output_shapes[2].as_list())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPaddedBatchSparseError(self):
 
     def _map_fn(i):
@@ -199,6 +191,7 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(TypeError):
       _ = dataset_ops.Dataset.range(10).map(_map_fn).padded_batch(10)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPaddedBatchShapeError(self):
     with self.assertRaisesRegexp(
         ValueError, r'The padded shape \(1,\) is not compatible with the '
@@ -221,7 +214,7 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         TypeError, r'Padded shape .* must be a 1-D tensor '
         r'of tf.int64 values, but its element type was float32.'):
       _ = dataset_ops.Dataset.from_tensors([1, 2, 3]).padded_batch(
-          5, padded_shapes=constant_op.constant([1., 2., 3.]))
+          5, padded_shapes=constant_op.constant([1.5, 2., 3.]))
 
     with self.assertRaisesRegexp(
         ValueError, r'The padded shape \(1,\) is not compatible with the '
@@ -230,9 +223,8 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       _ = dataset_ops.Dataset.range(10).padded_batch(
           5, padded_shapes=shape_as_tensor)
 
-  # NOTE: This test is specific to graph mode and is skipped in eager mode.
-  @test_util.run_deprecated_v1
-  def testSkipEagerPaddedBatchShapeError(self):
+  @combinations.generate(test_base.graph_only_combinations())
+  def testPaddedBatchShapeErrorPlaceholder(self):
     with self.assertRaisesRegexp(
         ValueError,
         r'The padded shape \((\?|None), (\?|None)\) is not compatible with the '

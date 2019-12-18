@@ -34,8 +34,8 @@ namespace internal {
 class GrpcCall {
  public:
   explicit GrpcCall(CallContainer<GrpcCall>* container, int index, bool try_rpc,
-                    const string* request_msg, string* response_msg,
-                    int32* status_code, string* status_message)
+                    const tstring* request_msg, tstring* response_msg,
+                    int32* status_code, tstring* status_message)
       : container_(container),
         index_(index),
         try_rpc_(try_rpc),
@@ -59,18 +59,18 @@ class GrpcCall {
 
   CallOptions* call_opts() { return &call_opts_; }
   int index() { return index_; }
-  const string& request() const { return *request_msg_; }
-  string* response() const { return response_msg_; }
+  const tstring& request() const { return *request_msg_; }
+  tstring* response() const { return response_msg_; }
 
  private:
   CallContainer<GrpcCall>* const container_;
   const int index_;
   bool try_rpc_;
   CallOptions call_opts_;
-  const string* request_msg_;
-  string* response_msg_;
+  const tstring* request_msg_;
+  tstring* response_msg_;
   int* status_code_;
-  string* status_message_;
+  tstring* status_message_;
 };
 
 }  // namespace internal
@@ -168,16 +168,16 @@ void GrpcRPCFactory::CreateCall(const Tensor& request_t, const bool try_rpc,
                                 int index, CallContainer<GrpcCall>* container,
                                 Tensor* response_t, Tensor* status_code_t,
                                 Tensor* status_message_t) {
-  auto request = request_t.flat<string>();
-  auto get_request_ptr = [&request](int64 ix) -> const string* {
+  auto request = request_t.flat<tstring>();
+  auto get_request_ptr = [&request](int64 ix) -> const tstring* {
     return (request.size() > 1) ? &(request(ix)) : &(request(0));
   };
-  auto response = response_t->flat<string>();
+  auto response = response_t->flat<tstring>();
   int32* status_code_ptr = nullptr;
-  string* status_message_ptr = nullptr;
+  tstring* status_message_ptr = nullptr;
   if (try_rpc) {
     status_code_ptr = status_code_t->flat<int32>().data();
-    status_message_ptr = status_message_t->flat<string>().data();
+    status_message_ptr = status_message_t->flat<tstring>().data();
   }
   container->RegisterCall(container, index, try_rpc, get_request_ptr(index),
                           &response(index),
@@ -187,8 +187,8 @@ void GrpcRPCFactory::CreateCall(const Tensor& request_t, const bool try_rpc,
 
 void GrpcRPCFactory::StartCall(const Tensor& address_t, const Tensor& method_t,
                                GrpcCall* call) {
-  auto address = address_t.flat<string>();
-  auto method = method_t.flat<string>();
+  auto address = address_t.flat<tstring>();
+  auto method = method_t.flat<tstring>();
   // Stubs are maintained by the GrpcRPCFactory class and will be
   // deleted when the class is destroyed.
   ::grpc::GenericStub* singleton_stub = nullptr;
@@ -200,13 +200,13 @@ void GrpcRPCFactory::StartCall(const Tensor& address_t, const Tensor& method_t,
     return (address.size() > 1) ? GetOrCreateStubForAddress(address(ix))
                                 : singleton_stub;
   };
-  auto get_method_ptr = [&method](int64 ix) -> const string* {
+  auto get_method_ptr = [&method](int64 ix) -> const tstring* {
     return (method.size() > 1) ? &(method(ix)) : &(method(0));
   };
 
   int index = call->index();
   // This object will delete itself when done.
-  new RPCState<string>(
+  new RPCState<tstring>(
       get_stub(index), &completion_queue_, *get_method_ptr(index),
       call->request(), call->response(),
       /*done=*/[call](const Status& s) { call->Done(s); }, call->call_opts(),

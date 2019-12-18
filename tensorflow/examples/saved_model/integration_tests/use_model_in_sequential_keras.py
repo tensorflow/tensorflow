@@ -18,17 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tempfile
 from absl import app
 from absl import flags
 
 import numpy as np
-
-import tensorflow as tf
-# TODO(vbardiovsky): Remove when load symbol is public.
-from tensorflow.examples.saved_model.integration_tests import util
-from tensorflow.python.saved_model.load import load
-
-tf.saved_model.load = load
+import tensorflow.compat.v2 as tf
+import tensorflow_hub as hub
 
 FLAGS = flags.FLAGS
 
@@ -47,7 +43,8 @@ def train(fine_tuning):
   l = tf.keras.layers
   model = tf.keras.Sequential()
   model.add(l.Reshape((), batch_input_shape=[None, 1], dtype=tf.string))
-  model.add(util.CustomLayer(module, output_shape=[10], trainable=fine_tuning))
+  # TODO(b/124219898): output_shape should be optional.
+  model.add(hub.KerasLayer(module, output_shape=[10], trainable=fine_tuning))
   model.add(l.Dense(100, activation="relu"))
   model.add(l.Dense(50, activation="relu"))
   model.add(l.Dense(1, activation="sigmoid"))
@@ -60,6 +57,10 @@ def train(fine_tuning):
       run_eagerly=True)
 
   model.fit_generator(generator=dataset.batch(1), epochs=5)
+
+  # This is testing that a model using a SavedModel can be re-exported again,
+  # e.g. to catch issues such as b/142231881.
+  tf.saved_model.save(model, tempfile.mkdtemp())
 
 
 def main(argv):

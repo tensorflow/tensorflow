@@ -30,6 +30,22 @@ namespace llvm_ir {
 using GeneratorForOperandIrArrays =
     std::function<std::vector<llvm_ir::IrArray>()>;
 
+// Determines whether the given instruction might be implemented as an
+// in-place dynamic-update-slice after we have a buffer assignment.
+//
+// If this returns false, then CanUpdateDynamicSliceInPlace and
+// CanEmitFusedDynamicUpdateSliceInPlace will also return false.
+//
+// This is useful if you want to check whether an instruction might be an
+// in-place DUS during an HLO pass, at which point you don't have a buffer
+// assignment.
+//
+// Note that simplifications to the HLO graph might change this function from
+// returning false to returning true.  Specifically, simplifying the contents of
+// fusion nodes might cause a false->true transition.  In general this isn't a
+// problem by the time you're calling this function, but beware.
+bool MayBeImplementedAsInPlaceDynamicUpdateSlice(const HloInstruction* instr);
+
 // Checks if we can emit code for the given DynamicUpdateSlice node that updates
 // its input in place.  Returns true if the dynamic-update-slice's
 // array-to-be-updated and output share the same BufferAllocation::Slice.
@@ -40,28 +56,8 @@ bool CanUpdateDynamicSliceInPlace(HloInstruction* dynamic_update_slice,
 
 // Checks if the given fusion node is amenable to being implemented by
 // EmitFusedDynamicUpdateSliceInPlace.
-inline bool CanEmitFusedDynamicUpdateSliceInPlace(
-    HloInstruction* fusion, const BufferAssignment& assignment) {
-  CHECK_EQ(fusion->opcode(), HloOpcode::kFusion);
-  HloInstruction* fused_root = fusion->fused_expression_root();
-  if (fused_root->opcode() != HloOpcode::kDynamicUpdateSlice ||
-      fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
-    return false;
-  }
-  // Walk DynamicUpdateSlice operand(0) to fused parameter and get its
-  // associated operand. See if it shares an allocation with this operand.
-  HloInstruction* fusion_operand;
-  ShapeIndex index;
-  std::tie(fusion_operand, index) =
-      fused_root->mutable_operand(0)->LatestNonGteAncestorAndIndex();
-  if (fusion_operand->opcode() != HloOpcode::kParameter) {
-    return false;
-  }
-  auto* operand = fusion->operand(fusion_operand->parameter_number());
-  return assignment.HasAllocationAt(operand, index) &&
-         assignment.HasAllocationAt(fusion, {}) &&
-         assignment.SharesSliceAtIndex(fusion, {}, operand, index);
-}
+bool CanEmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
+                                           const BufferAssignment& assignment);
 
 // Emits IR for running the given dynamic-update-slice op in-place -- that is,
 // where the input and output buffers share the same slice, so we can simply

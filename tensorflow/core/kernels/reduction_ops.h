@@ -26,6 +26,11 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
+template <typename Reducer>
+struct ReducerTraits {
+  enum { IsScalarIdentity = true };
+};
+
 // Dummy class used for template specialization for mean reduction, which is
 // accomplished by SumReducer and on-the-fly division by the reduction factor.
 template <typename Scalar>
@@ -37,6 +42,11 @@ struct MeanReducer {
 template <typename Scalar>
 struct EuclideanNormReducer {
   Scalar initialize() const { return Scalar(0); }
+};
+
+template <typename Scalar>
+struct ReducerTraits<EuclideanNormReducer<Scalar>> {
+  enum { IsScalarIdentity = false };
 };
 
 template <typename Device, typename OUT_T, typename IN_T,
@@ -61,6 +71,34 @@ struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
                     static_cast<Scalar>(in.size() / out.size());
   }
 };
+
+// Specialization for which we do the reduction in IntermediateType to
+// avoid integer overflow.
+#define CASTING_SPECIALIZATION(ScalarType, IntermediateType)                  \
+  template <typename Device, typename OUT_T, typename IN_T,                   \
+            typename ReductionAxes>                                           \
+  struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,                  \
+                         functor::MeanReducer<ScalarType>> {                  \
+    void operator()(const Device& d, OUT_T out, IN_T in,                      \
+                    const ReductionAxes& reduction_axes,                      \
+                    const functor::MeanReducer<ScalarType>& reducer) {        \
+      static_assert(std::is_same<ScalarType, typename OUT_T::Scalar>::value,  \
+                    "");                                                      \
+      Eigen::internal::SumReducer<IntermediateType> sum_reducer;              \
+      out.device(d) = (in.template cast<IntermediateType>().reduce(           \
+                           reduction_axes, sum_reducer) /                     \
+                       static_cast<IntermediateType>(in.size() / out.size())) \
+                          .template cast<ScalarType>();                       \
+    }                                                                         \
+  }
+
+CASTING_SPECIALIZATION(uint8, uint64);
+CASTING_SPECIALIZATION(uint16, uint64);
+CASTING_SPECIALIZATION(uint32, uint64);
+CASTING_SPECIALIZATION(int8, int64);
+CASTING_SPECIALIZATION(int16, int64);
+CASTING_SPECIALIZATION(int32, int64);
+#undef CASTING_SPECIALIZATION
 
 // TODO(rmlarsen): Refactor this such that taking the sqrt can be optional
 // controlled by an attribute.
@@ -117,8 +155,6 @@ struct Identity {
 FIX_MEAN_IDENTITY(Eigen::half)
 FIX_MEAN_IDENTITY(float)
 FIX_MEAN_IDENTITY(double)
-FIX_MEAN_IDENTITY(complex64)
-FIX_MEAN_IDENTITY(complex128)
 #undef FIX_MEAN_IDENTITY
 
 template <typename Device, typename OUT_T, typename Reducer>

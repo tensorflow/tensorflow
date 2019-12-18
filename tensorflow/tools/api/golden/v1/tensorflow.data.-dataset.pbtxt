@@ -2,7 +2,13 @@ path: "tensorflow.data.Dataset"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetV1\'>"
   is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetV2\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
   is_instance: "<type \'object\'>"
+  member {
+    name: "element_spec"
+    mtype: "<type \'property\'>"
+  }
   member {
     name: "output_classes"
     mtype: "<type \'property\'>"
@@ -24,6 +30,10 @@ tf_class {
     argspec: "args=[\'self\', \'transformation_func\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "as_numpy_iterator"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "batch"
     argspec: "args=[\'self\', \'batch_size\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
@@ -34,6 +44,10 @@ tf_class {
   member_method {
     name: "concatenate"
     argspec: "args=[\'self\', \'dataset\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enumerate"
+    argspec: "args=[\'self\', \'start\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
   member_method {
     name: "filter"
@@ -65,7 +79,7 @@ tf_class {
   }
   member_method {
     name: "interleave"
-    argspec: "args=[\'self\', \'map_func\', \'cycle_length\', \'block_length\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "
+    argspec: "args=[\'self\', \'map_func\', \'cycle_length\', \'block_length\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'-1\', \'1\', \'None\'], "
   }
   member_method {
     name: "list_files"
@@ -101,7 +115,7 @@ tf_class {
   }
   member_method {
     name: "range"
-    argspec: "args=[], varargs=args, keywords=None, defaults=None"
+    argspec: "args=[], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "reduce"
@@ -126,6 +140,10 @@ tf_class {
   member_method {
     name: "take"
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "unbatch"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "window"

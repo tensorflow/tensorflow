@@ -40,15 +40,15 @@ namespace xla {
 //      fused and their fusion profit scores.
 //
 //  Function Perform() applies the optimization. It picks up the most profitable
-//  pair in the worklist_, check if it's legal to fuse and fuse the pair.
-//  After fusion, it updates the associated structure such as reachability_,
+//  pair in the worklist_, checks if it's legal to fuse and fuses the pair.
+//  After fusion, it updates the associated structures such as reachability_,
 //  candidates_ and worklist_.
 //  Note that the reachability map is updated based on the original computation.
 //  This works because the reachability is monotonically increasing with
 //  instruction fusion.
 class MultiOutputFusion : public HloModulePass {
  public:
-  MultiOutputFusion(int64 fuel) : fuel_(fuel) {}
+  MultiOutputFusion() = default;
 
   absl::string_view name() const override { return "multi_output_fusion"; }
 
@@ -69,7 +69,8 @@ class MultiOutputFusion : public HloModulePass {
   virtual bool IsFusible(HloInstruction* instr) = 0;
 
   // This function estimates the savings by merging instr1 and instr2 into one
-  // multi-output fusion instruction.
+  // multi-output fusion instruction. It returns a result in kib. (The result
+  // is intentionally not granules, because this method is not TPU-specific.)
   virtual int64 GetProfit(HloInstruction* instr1, HloInstruction* instr2) = 0;
 
   // Whether fusing the instruction can reduce memory reads.
@@ -78,7 +79,7 @@ class MultiOutputFusion : public HloModulePass {
   // Test if it's legal to fuse instr1 and instr2 into one fusion instruction.
   virtual bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2);
 
-  // Fuse HloInstrctuion instr1 and instr2 and return the fused instruction.
+  // Fuse HloInstruction instr1 and instr2 and return the fused instruction.
   // The other instruction is removed from its parent computation.
   virtual HloInstruction* Fuse(HloInstruction* instr1, HloInstruction* instr2);
 
@@ -104,20 +105,7 @@ class MultiOutputFusion : public HloModulePass {
   // InstructionFusion instead.
   virtual bool DoProducerConsumerMultiOutputFusion();
 
-  // Optimization fuel is a compiler debugging technique that makes an
-  // optimization pass stop what it is doing after having made N changes to the
-  // program, where N is the fuel. By varying N, this can be used to find the
-  // first single change that makes a test fail.
-  int64 fuel_;
-
  private:
-  // Update the internal data structures after instr1 and instr2 are fused into
-  // one fusion instruction.
-  void Update(HloInstruction* instr1, HloInstruction* instr2);
-
-  // Computation for the pass.
-  HloComputation* computation_;
-
   // An internal data structure for each instruction in current computation.
   // When an instruction is removed, member 'hlo' is set to nullptr.
   struct FusionCandidate {
@@ -125,16 +113,6 @@ class MultiOutputFusion : public HloModulePass {
     std::list<std::pair<HloInstruction*, int64>> fusibles;
     explicit FusionCandidate(HloInstruction* hlo) : hlo(hlo) {}
   };
-  std::vector<FusionCandidate> candidates_;
-
-  // A map that maps an instruction to the index_.
-  absl::flat_hash_map<HloInstruction*, int> candidates_index_;
-
-  // The reachability map of current computation.
-  std::unique_ptr<HloReachabilityMap> reachability_;
-
-  // This stores all the candidate instructions in current computation.
-  std::vector<HloInstruction*> all_fusion_candidates_;
 
   // The pair of candidates to be fused and the profit score.
   struct ToBeFused {
@@ -145,7 +123,10 @@ class MultiOutputFusion : public HloModulePass {
         : instr1(instr1), instr2(instr2), score(score) {}
     bool operator<(const ToBeFused& rhs) const { return score < rhs.score; }
   };
-  std::priority_queue<ToBeFused> worklist_;
+
+  // Update the internal data structures after instr1 and instr2 are fused into
+  // one fusion instruction.
+  void Update(HloInstruction* instr1, HloInstruction* instr2);
 
   int64 get_candidate_id(HloInstruction* instr) {
     return FindOrDie(candidates_index_, instr);
@@ -162,6 +143,21 @@ class MultiOutputFusion : public HloModulePass {
   bool is_connected(HloInstruction* instr1, HloInstruction* instr2) {
     return reachability_->IsConnected(instr1, instr2);
   }
+
+  std::vector<FusionCandidate> candidates_;
+  std::priority_queue<ToBeFused> worklist_;
+
+  // A map that maps an instruction to the index_.
+  absl::flat_hash_map<HloInstruction*, int> candidates_index_;
+
+  // The reachability map of current computation.
+  std::unique_ptr<HloReachabilityMap> reachability_;
+
+  // This stores all the candidate instructions in current computation.
+  std::vector<HloInstruction*> all_fusion_candidates_;
+
+  // Computation for the pass.
+  HloComputation* computation_;
 };
 
 }  // namespace xla

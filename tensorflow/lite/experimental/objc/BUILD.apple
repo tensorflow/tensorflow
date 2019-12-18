@@ -1,10 +1,13 @@
-# TensorFlow Lite Objective-C API.
+# TensorFlow Lite for Objective-C
 
-package(default_visibility = ["//visibility:private"])
+load("//tensorflow/lite:special_rules.bzl", "ios_visibility_whitelist")
+load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
 
-licenses(["notice"])  # Apache 2.0
-
-load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 SOURCES = glob([
     "sources/*.h",
@@ -15,8 +18,6 @@ SOURCES = glob([
 API_HEADERS = glob([
     "apis/*.h",
 ])
-
-MINIMUM_OS_VERSION = "9.0"
 
 # Compiler flags for building regular non-test libraries.
 RELEASE_COPTS = [
@@ -43,7 +44,7 @@ RELEASE_COPTS = [
     # Warns if an @selector() expression is encountered with a method name that hasn't been defined yet.
     "-Wundeclared-selector",
     # Turn off warnings for headers not part of TensorFlow Lite Objective-C API.
-    "--system-header-prefix=tensorflow/lite/experimental/c/",
+    "--system-header-prefix=tensorflow/lite/c/",
 ]
 
 # Compiler flags for building test libraries.
@@ -54,40 +55,33 @@ TEST_COPTS = RELEASE_COPTS + [
     "-Wno-shadow",
 ]
 
-# Default tags for filtering targets. Targets in this file are restricted to Apple platforms.
-DEFAULT_TAGS = [
-    "apple",
-    "manual",
-]
-
 objc_library(
     name = "TensorFlowLite",
     srcs = SOURCES,
     hdrs = API_HEADERS,
     copts = RELEASE_COPTS,
-    tags = DEFAULT_TAGS,
+    tags = TFL_DEFAULT_TAGS,
+    visibility = ios_visibility_whitelist(),
     deps = [
-        "//tensorflow/lite/experimental/c:c_api",
+        "//tensorflow/lite/c:c_api",
     ],
     alwayslink = 1,
 )
 
 ios_unit_test(
-    name = "TensorFlowLiteTests",
-    size = "small",
-    minimum_os_version = MINIMUM_OS_VERSION,
-    tags = DEFAULT_TAGS + [
-        # These sanitizer tests are not supported by iOS build toolchain (b/74292221).
-        # Disabled these for iOS test targets.
-        "noasan",
-        "notsan",
-        "nomsan",
+    name = "Tests",
+    size = "medium",
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS + [
+        "nozapfhahn",  # TODO(b/145984659): Enable after solving tool failure.
     ],
-    deps = [":TensorFlowLiteTestsLib"],
+    deps = [
+        ":TestsLibrary",
+    ],
 )
 
 objc_library(
-    name = "TensorFlowLiteTestsLib",
+    name = "TestsLibrary",
     testonly = 1,
     srcs = glob([
         "tests/*.m",
@@ -102,7 +96,45 @@ objc_library(
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
     ],
-    tags = DEFAULT_TAGS,
+    tags = TFL_DEFAULT_TAGS,
+    deps = [
+        ":TensorFlowLite",
+    ],
+)
+
+ios_application(
+    name = "TestApp",
+    app_icons = glob(["apps/TestApp/TestApp/Assets.xcassets/AppIcon.appiconset/**"]),
+    bundle_id = "com.tensorflow.lite.objc.TestApp",
+    families = [
+        "ipad",
+        "iphone",
+    ],
+    infoplists = ["apps/TestApp/TestApp/Info.plist"],
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    sdk_frameworks = [
+        "CoreGraphics",
+    ],
+    tags = TFL_DEFAULT_TAGS,
+    deps = [
+        ":TestAppLibrary",
+    ],
+)
+
+objc_library(
+    name = "TestAppLibrary",
+    srcs = glob(["apps/TestApp/TestApp/*.m"]),
+    hdrs = glob(["apps/TestApp/TestApp/*.h"]),
+    data = glob(["apps/TestApp/TestApp/Base.lproj/*.storyboard"]) + [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/add_quantized.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
+    includes = [
+        "apis",
+    ],
+    module_name = "TestApp",
+    tags = TFL_DEFAULT_TAGS + ["manual"],
     deps = [
         ":TensorFlowLite",
     ],

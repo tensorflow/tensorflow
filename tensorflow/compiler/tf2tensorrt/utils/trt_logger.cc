@@ -17,6 +17,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
+#include "tensorflow/compiler/tf2tensorrt/convert/logger_registry.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -48,11 +49,21 @@ void Logger::log(Severity severity, const char* msg) {
     // This is useless for now. But would catch it in future if enum changes. It
     // is always good to have default case!
     default: {
-      LOG(FATAL) << name_ << "Got unknown severity level from TRT " << msg;
+      LOG(FATAL) << name_ << "Got unknown severity level " << int(severity)
+                 << " from TensorRT: " << msg;
       break;
     }
   }
 }
+
+// static
+Logger* Logger::GetLogger() {
+  static Logger* logger = new Logger("DefaultLogger");
+  return logger;
+}
+
+REGISTER_TENSORRT_LOGGER("DefaultLogger", Logger::GetLogger());
+
 }  // namespace tensorrt
 }  // namespace tensorflow
 

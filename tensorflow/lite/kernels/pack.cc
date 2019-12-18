@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -28,16 +28,20 @@ namespace {
 constexpr int kOutputTensor = 0;
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  const TfLitePackParams* data =
+  TfLitePackParams* data =
       reinterpret_cast<TfLitePackParams*>(node->builtin_data);
 
   TF_LITE_ENSURE_EQ(context, NumInputs(node), data->values_count);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   const TfLiteTensor* input0 = GetInput(context, node, 0);
+  const int dimension_size = NumDimensions(input0) + 1;
+  if (data->axis < 0) {
+    data->axis += dimension_size;
+  }
   TF_LITE_ENSURE(context, NumDimensions(input0) >= data->axis);
-  // TODO(renjieliu): Support negative axis.
   TF_LITE_ENSURE(context, data->axis >= 0);
+
   if (input0->type != kTfLiteInt32 && input0->type != kTfLiteFloat32 &&
       input0->type != kTfLiteUInt8 && input0->type != kTfLiteInt8 &&
       input0->type != kTfLiteInt16 && input0->type != kTfLiteInt64) {
@@ -53,7 +57,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Resize output. rank R will become rank R + 1
-  const int dimension_size = NumDimensions(input0) + 1;
   const TfLiteIntArray* input_shape = input0->dims;
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(dimension_size);
   int i = 0;
@@ -81,8 +84,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 template <typename T>
-void PackImpl(TfLiteContext* context, TfLiteNode* node, TfLiteTensor* output,
-              int values_count, int axis) {
+TfLiteStatus PackImpl(TfLiteContext* context, TfLiteNode* node,
+                      TfLiteTensor* output, int values_count, int axis) {
+  TF_LITE_ENSURE(context, axis >= 0);
+
   VectorOfTensors<T> all_inputs(*context, *node->inputs);
   tflite::PackParams op_params;
   op_params.axis = axis;
@@ -90,6 +95,7 @@ void PackImpl(TfLiteContext* context, TfLiteNode* node, TfLiteTensor* output,
 
   reference_ops::Pack<T>(op_params, all_inputs.shapes(), all_inputs.data(),
                          GetTensorShape(output), GetTensorData<T>(output));
+  return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -99,24 +105,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   switch (output->type) {
     case kTfLiteFloat32: {
-      PackImpl<float>(context, node, output, data->values_count, data->axis);
-      break;
+      return PackImpl<float>(context, node, output, data->values_count,
+                             data->axis);
     }
     case kTfLiteUInt8: {
-      PackImpl<uint8_t>(context, node, output, data->values_count, data->axis);
-      break;
+      return PackImpl<uint8_t>(context, node, output, data->values_count,
+                               data->axis);
     }
     case kTfLiteInt8: {
-      PackImpl<int8_t>(context, node, output, data->values_count, data->axis);
-      break;
+      return PackImpl<int8_t>(context, node, output, data->values_count,
+                              data->axis);
     }
     case kTfLiteInt32: {
-      PackImpl<int32_t>(context, node, output, data->values_count, data->axis);
-      break;
+      return PackImpl<int32_t>(context, node, output, data->values_count,
+                               data->axis);
     }
     case kTfLiteInt64: {
-      PackImpl<int64_t>(context, node, output, data->values_count, data->axis);
-      break;
+      return PackImpl<int64_t>(context, node, output, data->values_count,
+                               data->axis);
     }
     default: {
       context->ReportError(context, "Type '%s' is not supported by pack.",

@@ -1,16 +1,16 @@
 # Description:
 # Tools for testing
 
-package(default_visibility = ["//tensorflow:internal"])
-
 load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_cc_logged_benchmark",
     "tf_py_logged_benchmark",
 )
-load("//tensorflow:tensorflow.bzl", "py_test")
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -22,16 +22,19 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
 py_binary(
     name = "system_info",
     srcs = ["system_info.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":system_info_lib",
@@ -49,15 +52,20 @@ py_library(
         ":system_info_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
 py_binary(
     name = "run_and_gather_logs",
     srcs = ["run_and_gather_logs.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [":run_and_gather_logs_main_lib"],
+    deps = [
+        ":run_and_gather_logs_main_lib",
+        "@six_archive//:six",
+    ],
 )
 
 py_library(
@@ -70,6 +78,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
@@ -78,7 +87,7 @@ py_library(
 #cuda_py_test(
 #    name = "run_and_gather_logs_test",
 #    srcs = ["run_and_gather_logs.py"],
-#    additional_deps = [
+#    deps = [
 #        ":run_and_gather_logs",
 #    ],
 #    args = [
@@ -99,4 +108,9 @@ tf_cc_logged_benchmark(
 tf_py_logged_benchmark(
     name = "rnn_op_benchmark",
     target = "//tensorflow/python/kernel_tests:rnn_test",
+)
+
+tf_py_logged_benchmark(
+    name = "sparse_csr_matrix_ops_benchmark",
+    target = "//tensorflow/python/kernel_tests/linalg/sparse:csr_sparse_matrix_ops_test",
 )

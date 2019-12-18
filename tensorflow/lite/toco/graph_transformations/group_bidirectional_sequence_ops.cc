@@ -70,7 +70,8 @@ bool MatchDynamicBidirectionalSequenceOutputs(Operator* op, const Model& model,
     return false;
   }
 
-  if (reverse_output->type != OperatorType::kReverseV2) {
+  if (reverse_output->type != OperatorType::kReverseV2 &&
+      reverse_output->type != OperatorType::kReverseSequence) {
     return false;
   }
 
@@ -103,9 +104,8 @@ bool FindUnidirectionalSequenceOp(const Model& model, const Operator& output_op,
 }
 
 bool CheckTwoUnidirectionalSequenceOpsAreValid(
-    const Model& model,
-    const std::stack<Operator*>& fw_unidirectional_sequence_ops,
-    const std::stack<Operator*>& bw_unidirectional_sequence_ops,
+    const Model& model, std::stack<Operator*> fw_unidirectional_sequence_ops,
+    std::stack<Operator*> bw_unidirectional_sequence_ops,
     const Operator* first_fw_sequence_op_input,
     const Operator* first_bw_sequence_op_input, bool is_dynamic_rnn) {
   if (fw_unidirectional_sequence_ops.size() !=
@@ -114,10 +114,49 @@ bool CheckTwoUnidirectionalSequenceOpsAreValid(
     return false;
   }
 
+  // Fw & bw sequence ops are allowed to have different input shapes, but they
+  // need to have the same data type.
+  while (!fw_unidirectional_sequence_ops.empty()) {
+    Operator* fw_sequence_op = fw_unidirectional_sequence_ops.top();
+    Operator* bw_sequence_op = bw_unidirectional_sequence_ops.top();
+
+    if (fw_sequence_op->inputs.size() != bw_sequence_op->inputs.size() ||
+        fw_sequence_op->outputs.size() != bw_sequence_op->outputs.size())
+      return false;
+
+    // Make sure the inputs datatype matches.
+    for (int i = 0; i < fw_sequence_op->inputs.size(); ++i) {
+      const auto& fw_input_array_name = fw_sequence_op->inputs[i];
+      const auto& bw_input_array_name = bw_sequence_op->inputs[i];
+      if (model.HasArray(fw_input_array_name) &&
+          model.HasArray(bw_input_array_name)) {
+        if (model.GetArray(fw_input_array_name).data_type !=
+            model.GetArray(bw_input_array_name).data_type)
+          return false;
+      }
+    }
+
+    // Make sure the outputs datatype matches.
+    for (int i = 0; i < fw_sequence_op->outputs.size(); ++i) {
+      const auto& fw_output_array_name = fw_sequence_op->outputs[i];
+      const auto& bw_output_array_name = bw_sequence_op->outputs[i];
+      if (model.HasArray(fw_output_array_name) &&
+          model.HasArray(bw_output_array_name)) {
+        if (model.GetArray(fw_output_array_name).data_type !=
+            model.GetArray(bw_output_array_name).data_type)
+          return false;
+      }
+    }
+
+    fw_unidirectional_sequence_ops.pop();
+    bw_unidirectional_sequence_ops.pop();
+  }
+
   if (is_dynamic_rnn) {
     // For dynamic bidirectional sequence ops, bw_sequence will have a reverse
     // op.
-    if (first_bw_sequence_op_input->type != OperatorType::kReverseV2) {
+    if (first_bw_sequence_op_input->type != OperatorType::kReverseV2 &&
+        first_bw_sequence_op_input->type != OperatorType::kReverseSequence) {
       return false;
     }
 
@@ -135,7 +174,7 @@ bool CheckTwoUnidirectionalSequenceOpsAreValid(
     }
 
     // fw_lstm & bw_lstm should point to the same input, but reversed sequence.
-    for (int i = 0; i < first_fw_sequence_op_input->inputs.size(); ++i) {
+    for (size_t i = 0; i < first_fw_sequence_op_input->inputs.size(); ++i) {
       if (first_fw_sequence_op_input->inputs[i] !=
           first_bw_sequence_op_input
               ->inputs[first_fw_sequence_op_input->inputs.size() - i - 1]) {
@@ -296,12 +335,14 @@ void RewireBidirectionalSequenceSequenceOpsConnections(
   }
   string cur_fw_input = input_array_name;
   string cur_bw_input = input_array_name;
-  for (int i = 0; i < bidirectional_sequence_ops.size(); ++i) {
-    DeleteArrayIfUsedOnce(bidirectional_sequence_ops[i]->inputs[0], model);
+  for (size_t i = 0; i < bidirectional_sequence_ops.size(); ++i) {
+    DeleteArrayIfUnusedOutsideOfOp(bidirectional_sequence_ops[i]->inputs[0],
+                                   bidirectional_sequence_ops[i], model);
     bidirectional_sequence_ops[i]->inputs[0] = cur_fw_input;
     if (i != 0) {
-      DeleteArrayIfUsedOnce(
-          bidirectional_sequence_ops[i]->inputs[aux_input_index], model);
+      DeleteArrayIfUnusedOutsideOfOp(
+          bidirectional_sequence_ops[i]->inputs[aux_input_index],
+          bidirectional_sequence_ops[i], model);
       bidirectional_sequence_ops[i]->inputs[aux_input_index] = cur_bw_input;
     }
     cur_fw_input = bidirectional_sequence_ops[i]->outputs[0];
@@ -329,7 +370,7 @@ void RewireFinalUnpackOutputs(const UnpackOperator& original_unpack_operator,
   (*final_unpack_operator)->axis = original_unpack_operator.axis;
   (*final_unpack_operator)->num = original_unpack_operator.num;
 
-  for (int i = 0; i < original_unpack_operator.outputs.size(); ++i) {
+  for (size_t i = 0; i < original_unpack_operator.outputs.size(); ++i) {
     const string& output_array_name = original_unpack_operator.outputs[i];
     const string& final_unpack_output_array_name = AvailableArrayName(
         *model, "bidirectional_sequence_unpack_" + std::to_string(i));
@@ -344,24 +385,16 @@ void RewireFinalUnpackOutputs(const UnpackOperator& original_unpack_operator,
         (*final_unpack_operator)->outputs[i] = concat_output;
       }
       // Remove the concat op.
-      model->operators.erase(FindOperator(model, *unpack_following_op));
+      DeleteOpAndArrays(model, unpack_following_op);
     }
   }
-}
-
-void RemoveUnpackOperator(const Operator& unpack_op, Model* model) {
-  for (const string& output_array_name : unpack_op.outputs) {
-    DeleteArrayIfUnused(output_array_name, model);
-  }
-  model->operators.erase(FindOperator(model, unpack_op));
 }
 
 void RemoveUnidirectionalSequenceOps(std::stack<Operator*> uni_sequence_ops,
                                      Model* model) {
   while (!uni_sequence_ops.empty()) {
     Operator* uni_sequence_op = uni_sequence_ops.top();
-    DeleteArrayIfUnused(uni_sequence_op->outputs[0], model);
-    model->operators.erase(FindOperator(model, *uni_sequence_op));
+    DeleteOpAndArrays(model, uni_sequence_op);
     uni_sequence_ops.pop();
   }
 }
@@ -415,9 +448,6 @@ template <typename T>
     return ::tensorflow::Status::OK();
   }
 
-  // TODO(b/125143808): Before really group the fw & bw sequence ops and
-  // modified the model, we should check both the fw & bw sequence ops have the
-  // same data_type, inputs_shapes, output_shapes etc.
   std::vector<T> bidirectional_sequence_ops;
   GroupFwBwSequenceOps(model, fw_unidirectional_sequence_ops,
                        bw_unidirectional_sequence_ops,
@@ -435,14 +465,9 @@ template <typename T>
   // Delete unused ops.
   RemoveUnidirectionalSequenceOps(fw_unidirectional_sequence_ops, model);
   RemoveUnidirectionalSequenceOps(bw_unidirectional_sequence_ops, model);
-
-  DeleteArrayIfUnused(final_concat_op->inputs[0], model);
-  DeleteArrayIfUnused(final_concat_op->inputs[1], model);
-  model->operators.erase(FindOperator(model, *final_concat_op));
-
+  DeleteOpAndArrays(model, final_concat_op);
   // Only keep the fw lstm's input.
-  DeleteArrayIfUnused(first_bw_sequence_input->outputs[0], model);
-  model->operators.erase(FindOperator(model, *first_bw_sequence_input));
+  DeleteOpAndArrays(model, first_bw_sequence_input);
   *modified = true;
   return ::tensorflow::Status::OK();
 }
@@ -493,9 +518,6 @@ template <typename T>
     return ::tensorflow::Status::OK();
   }
 
-  // TODO(b/125143808): Before really group the fw & bw sequence ops and
-  // modified the model, we should check both the fw & bw sequence ops have the
-  // same data_type, inputs_shapes, output_shapes etc.
   std::vector<BidirectionalSequenceLstmOperator*>
       bidirectional_sequence_lstm_ops;
   GroupFwBwSequenceOps(model, fw_unidirectional_sequence_lstm_ops,
@@ -519,13 +541,12 @@ template <typename T>
   model->operators.emplace(op_it, unpack_operator);
 
   // Delete unused ops.
-  RemoveUnpackOperator(*fw_lstm_output, model);
-  RemoveUnpackOperator(*bw_lstm_output, model);
+  DeleteOpAndArrays(model, fw_lstm_output);
+  DeleteOpAndArrays(model, bw_lstm_output);
   RemoveUnidirectionalSequenceOps(fw_unidirectional_sequence_lstm_ops, model);
   RemoveUnidirectionalSequenceOps(bw_unidirectional_sequence_lstm_ops, model);
   // Only keep the fw lstm's pack input.
-  DeleteArrayIfUnused(first_bw_lstm_input->outputs[0], model);
-  model->operators.erase(FindOperator(model, *first_bw_lstm_input));
+  DeleteOpAndArrays(model, first_bw_lstm_input);
   *modified = true;
   return ::tensorflow::Status::OK();
 }
@@ -574,9 +595,6 @@ template <typename T>
     return ::tensorflow::Status::OK();
   }
 
-  // TODO(b/125143808): Before really group the fw & bw sequence ops and
-  // modified the model, we should check both the fw & bw sequence ops have the
-  // same data_type, inputs_shapes, output_shapes etc.
   std::vector<BidirectionalSequenceRnnOperator*> bidirectional_sequence_rnn_ops;
   GroupFwBwSequenceOps(model, fw_unidirectional_sequence_rnn_ops,
                        bw_unidirectional_sequence_rnn_ops,
@@ -598,13 +616,12 @@ template <typename T>
   model->operators.emplace(op_it, unpack_operator);
 
   // Delete unused ops.
-  RemoveUnpackOperator(*fw_rnn_output, model);
-  RemoveUnpackOperator(*bw_rnn_output, model);
+  DeleteOpAndArrays(model, fw_rnn_output);
+  DeleteOpAndArrays(model, bw_rnn_output);
   RemoveUnidirectionalSequenceOps(fw_unidirectional_sequence_rnn_ops, model);
   RemoveUnidirectionalSequenceOps(bw_unidirectional_sequence_rnn_ops, model);
   // Only keep the fw rnn's pack input.
-  DeleteArrayIfUnused(first_bw_rnn_input->outputs[0], model);
-  model->operators.erase(FindOperator(model, *first_bw_rnn_input));
+  DeleteOpAndArrays(model, first_bw_rnn_input);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

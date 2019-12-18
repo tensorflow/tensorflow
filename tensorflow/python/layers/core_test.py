@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import platform
 
 import numpy as np
 
@@ -555,6 +556,23 @@ class FlattenTest(test.TestCase):
       np_output = sess.run(y, feed_dict={x: np.zeros((5, 3, 2))})
       self.assertEqual(list(np_output.shape), [5, 6])
       self.assertEqual(y.get_shape().as_list(), [5, None])
+
+  @test_util.run_deprecated_v1
+  def testFlattenLargeDim(self):
+    if any(platform.win32_ver()):
+      self.skipTest('values are truncated on windows causing test failures')
+
+    x = array_ops.placeholder(shape=(None, 21316, 21316, 80), dtype='float32')
+    y = core_layers.Flatten()(x)
+    self.assertEqual(y.shape.as_list(), [None, 21316 * 21316 * 80])
+
+  @test_util.run_deprecated_v1
+  def testFlattenLargeBatchDim(self):
+    batch_size = np.iinfo(np.int32).max + 10
+    x = array_ops.placeholder(
+        shape=(batch_size, None, None, 1), dtype='float32')
+    y = core_layers.Flatten()(x)
+    self.assertEqual(y.shape.as_list(), [batch_size, None])
 
 
 if __name__ == '__main__':

@@ -43,6 +43,8 @@ limitations under the License.
 
 namespace xla {
 
+class ShapeIndexView;
+
 // An index for specifying a particular nested subshape within a shape. Used in
 // ShapeUtil::GetSubshape and other interfaces. Shapes are recursive data
 // structures (trees) and ShapeIndex defines a path through the tree where each
@@ -68,6 +70,8 @@ class ShapeIndex {
   ShapeIndex(std::initializer_list<int64> init) : indices_(init) {}
   template <typename InputIt>
   ShapeIndex(InputIt start, InputIt end) : indices_(start, end) {}
+
+  explicit ShapeIndex(ShapeIndexView v);
 
   bool empty() const { return indices_.empty(); }
   size_t size() const { return indices_.size(); }
@@ -137,6 +141,10 @@ class ShapeIndexView {
     CHECK(!empty());
     return indices_.front();
   }
+  int64 back() const {
+    CHECK(!empty());
+    return indices_.back();
+  }
   ShapeIndexView ConsumeFront() const {
     ShapeIndexView result = *this;
     result.indices_.remove_prefix(1);
@@ -160,6 +168,9 @@ class ShapeIndexView {
  private:
   absl::Span<const int64> indices_;
 };
+
+inline ShapeIndex::ShapeIndex(ShapeIndexView v)
+    : ShapeIndex(v.begin(), v.end()) {}
 
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
 std::ostream& operator<<(std::ostream& out, const ShapeIndexView& shape_index);
@@ -269,7 +280,6 @@ class ShapeUtil {
     if (SameElementType(a, b)) {
       return a.element_type();
     }
-    CHECK(SameElementTypeIgnoringFpPrecision(a, b));
     return primitive_util::BitWidth(a.element_type()) <
                    primitive_util::BitWidth(b.element_type())
                ? b.element_type()
@@ -292,6 +302,9 @@ class ShapeUtil {
 
   // Returns whether the lhs and rhs shapes are identical.
   static bool Equal(const Shape& lhs, const Shape& rhs);
+
+  // As Equal, but does not compare the element type.
+  static bool EqualIgnoringElementType(const Shape& lhs, const Shape& rhs);
 
   // As Equal, but allow one of lhs and rhs to be F16 while the other is F32.
   static bool EqualIgnoringFpPrecision(const Shape& lhs, const Shape& rhs);
@@ -351,6 +364,14 @@ class ShapeUtil {
   // Appends a shape to the given tuple.
   static void AppendShapeToTuple(const Shape& shape, Shape* tuple_shape);
 
+  // Update a subshape of a tuple.
+  static void UpdateTupleShape(const Shape& shape, int64 index,
+                               Shape* tuple_shape);
+
+  // Update the dynamic dimension for a shape. This shape can be a nested tuple.
+  static void UpdateDynamicDimension(Shape* shape, ShapeIndexView index,
+                                     int64 dim, bool is_dynamic);
+
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
 
@@ -366,6 +387,9 @@ class ShapeUtil {
   // dimensions.
   static Shape MakeShape(PrimitiveType element_type,
                          absl::Span<const int64> dimensions);
+
+  // Make a scalar shape with given primitive type.
+  static Shape MakeScalarShape(PrimitiveType element_type);
 
   // Constructs a new shape with the given element type and sequence of
   // potentially dynamic dimensions. The argument 'dynamic_dimensions' indicates
@@ -400,11 +424,14 @@ class ShapeUtil {
                                    absl::Span<const int64> dimensions,
                                    absl::Span<const int64> minor_to_major,
                                    absl::Span<const Tile> tiles = {},
-                                   int64 element_size_in_bits = 0);
+                                   int64 element_size_in_bits = 0,
+                                   int64 memory_space = 0);
 
   static Shape MakeShapeWithSparseLayout(PrimitiveType element_type,
                                          absl::Span<const int64> dimensions,
                                          int64 max_sparse_elements);
+  // Returns the same shape except with all dimensions set to be static.
+  static Shape MakeShapeWithStaticDimensions(const Shape& shape);
 
   // Constructs a new shape with major-first layout (i.e. {n, n-1, ..., 0}).
   static Shape MakeShapeWithDescendingLayout(
@@ -578,6 +605,20 @@ class ShapeUtil {
   static std::vector<std::pair<int64, int64>> DimensionsUnmodifiedByReshape(
       const Shape& input_shape, const Shape& output_shape);
 
+  // Return whether the given reshape instruction leaves the dimensions at the
+  // given input indices unmodified, and returns their output indices.
+  //
+  // Example:
+  //   input_dim_indices = {2, 3}
+  //   input  shape = T[a, b, x, y, cd]
+  //   output shape = T[ab, x, 1, y, c, d]
+  //   return value = {1, 3}
+  //
+  // Precondition: input_dim_indices is sorted.
+  static absl::optional<std::vector<int64>> ReshapeLeavesDimensionsUnmodified(
+      const Shape& from_shape, const Shape& to_shape,
+      absl::Span<const int64> input_dim_indices);
+
   // Returns whether a transpose from input_shape to output_shape with dimension
   // mapping "dimension_mapping" produces a result which is bit-wise identical
   // to its input and thus may be replaced with a bitcast.
@@ -624,7 +665,7 @@ class ShapeUtil {
   // continue, or false otherwise.
   //
   // visitor_function must be a callable of type
-  // StatusOr<bool>(Span<int64>) or compatible.
+  // StatusOr<bool>(absl::Span<int64>) or compatible.
   template <typename FnType>
   static Status ForEachIndexWithStatus(const Shape& shape,
                                        absl::Span<const int64> base,
@@ -709,6 +750,21 @@ class ShapeUtil {
   // Compute a hash for `shape`.
   static size_t Hash(const Shape& shape);
 
+  // About 0-2-1 transpose:
+  //
+  // If a shape can be viewed as three logical components 0-1-2 in the order of
+  // major to minor, a 0-2-1-transpose changes the order of such logical
+  // components to 0-2-1. We call the shape being transposed the input shape and
+  // the transposed shape the output shape. The logical view of the input/output
+  // shapes for the transpose are called the 0-1-2/0-2-1 shapes or the
+  // normalized shapes. The original input/output shapes are called unnormalized
+  // shapes.
+  //
+  // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
+  // normalized shape of `b` or the 0-2-1 shape.
+  static absl::optional<std::vector<int64>> FindTranspose021(const Shape& a,
+                                                             const Shape& b);
+
  private:
   // Validates the shape size is sane. This makes sure it's safe to do
   // calculations in int64 without overflowing.
@@ -736,7 +792,7 @@ class ShapeUtil {
     // once with the proper empty indexes.
     int64 n = -1;
     std::vector<int64> indexes(base.begin(), base.end());
-    const int kNumThreads = tensorflow::port::NumSchedulableCPUs();
+    const int kNumThreads = tensorflow::port::MaxParallelism();
     absl::optional<tensorflow::thread::ThreadPool> pool;
     if (parallel) {
       pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);

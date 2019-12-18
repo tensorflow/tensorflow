@@ -61,13 +61,7 @@ namespace toco {
   output_array.mutable_shape()->ReplaceDims(
       {static_cast<int>(output_buffer.data.size())});
 
-  // Delete the input array if no longer used
-  if (IsDiscardableArray(*model, op->inputs[0]) &&
-      CountOpsWithInput(*model, op->inputs[0]) == 1) {
-    model->EraseArray(op->inputs[0]);
-  }
-
-  model->operators.erase(it);
+  DeleteOpAndArrays(model, op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

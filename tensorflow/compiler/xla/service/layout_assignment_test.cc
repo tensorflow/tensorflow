@@ -570,13 +570,10 @@ TEST_F(LayoutAssignmentTest, MakeOperandsTheSame) {
   OperandsMustBeTheSameLayoutAssignment layout_assignment(&computation_layout);
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
 
-  EXPECT_EQ(HloOpcode::kCopy, concatenate->operand(0)->opcode());
-  EXPECT_THAT(concatenate->operand(0)->shape().layout().minor_to_major(),
-              ElementsAre(1, 0));
-  EXPECT_THAT(concatenate->operand(1)->shape().layout().minor_to_major(),
-              ElementsAre(1, 0));
-  EXPECT_THAT(concatenate->shape().layout().minor_to_major(),
-              ElementsAre(1, 0));
+  EXPECT_EQ(concatenate->operand(0)->shape().layout().minor_to_major(),
+            concatenate->operand(1)->shape().layout().minor_to_major());
+  EXPECT_EQ(concatenate->shape().layout().minor_to_major(),
+            concatenate->operand(1)->shape().layout().minor_to_major());
 }
 
 // Test layout assignment of a transpose into a bitcast based on its operand.
@@ -822,8 +819,8 @@ TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
   auto constant0 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(
           {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
-  builder.AddInstruction(HloInstruction::CreateUnary(
-      constant0->shape(), HloOpcode::kBitcast, constant0));
+  builder.AddInstruction(
+      HloInstruction::CreateBitcast(constant0->shape(), constant0));
   auto m = CreateNewVerifiedModule();
   m->AddEntryComputation(builder.Build());
 
@@ -872,11 +869,8 @@ TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
   ChannelLayoutConstraints channel_constraints;
   AssignLayouts(m.get(), &computation_layout, &channel_constraints);
 
-  EXPECT_THAT(LayoutOf(m.get(), "gte"), ElementsAre(0, 1));
-  EXPECT_THAT(LayoutOf(m.get(), "root"), ElementsAre(1, 0));
-  EXPECT_TRUE(ShapeUtil::Equal(
-      ShapeUtil::GetSubshape(FindInstruction(m.get(), "send")->shape(), {0}),
-      ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0})));
+  EXPECT_TRUE(ShapeUtil::Equal(FindInstruction(m.get(), "send")->shape(),
+                               FindInstruction(m.get(), "recv")->shape()));
 }
 
 TEST_F(LayoutAssignmentTest, AllReduceLayoutMissmatch) {
@@ -894,11 +888,11 @@ TEST_F(LayoutAssignmentTest, AllReduceLayoutMissmatch) {
       param = (f32[2,2]) parameter(0)
       gte = f32[2,2] get-tuple-element(param), index=0
       ar.0 = f32[2,2] all-reduce(gte),
-        all_reduce_id=1, replica_groups={{0}}, to_apply=add,
+        channel_id=1, replica_groups={{0}}, to_apply=add,
         sharding={maximal device=0}
       const = f32[2,2] constant({{0,1},{2,3}})
       ROOT ar.1 = f32[2,2] all-reduce(const),
-        all_reduce_id=1, replica_groups={{0}}, to_apply=add,
+        channel_id=1, replica_groups={{0}}, to_apply=add,
         sharding={maximal device=1}
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
@@ -1084,7 +1078,7 @@ TEST_F(LayoutAssignmentTest, TupleCopyOnLayoutMismatch) {
       tup.1 = (s32[], token[], f32[512,1024]{0,1}) parameter(0)
       counter.1 = s32[] get-tuple-element(tup.1), index=0
       five = s32[] constant(5)
-      ROOT lt = pred[] less-than(counter.1, five)
+      ROOT lt = pred[] compare(counter.1, five), direction=LT
     }
 
     body.2 (tup: (s32[], token[], f32[512,1024]{0,1})) -> (s32[], token[], f32[512,1024]{0,1}) {
@@ -1351,6 +1345,44 @@ TEST_F(LayoutAssignmentTest, OverwriteDiamondShapedConstraintsX) {
               ElementsAre(1, 0));
 
   EXPECT_THAT(transpose->shape().layout().minor_to_major(), ElementsAre(0, 1));
+}
+
+// Tests that the layout assignment supports layout-constrained all-reduce with
+// different operand layouts (b/146056839).
+TEST_F(LayoutAssignmentTest, LayoutConstrainedAllReduce) {
+  const char* module_str = R"(
+HloModule test_module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry_computation {
+  param = (f32[8,4]{0,1}, f32[16,2]{0,1}) parameter(0)
+  gte0 = f32[8,4] get-tuple-element(param), index=0
+  gte1 = f32[16,2] get-tuple-element(param), index=1
+  crs = (f32[8,4]{0,1}, f32[16,2]{1,0}) all-reduce(gte0, gte1),
+    replica_groups={}, constrain_layout=true, to_apply=add
+  gte2 = f32[8,4] get-tuple-element(crs), index=0
+  gte3 = f32[16,2] get-tuple-element(crs), index=1
+  ROOT result = (f32[8,4]{1,0}, f32[16,2]{1,0}) tuple(gte2, gte3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(), /*ignore_layouts=*/false);
+
+  ChannelLayoutConstraints channel_constraints;
+  AssignLayouts(m.get(), &computation_layout, &channel_constraints);
+
+  const HloInstruction* crs = FindInstruction(m.get(), "crs");
+  ExpectTupleLayoutIs(crs->shape(), {{0, 1}, {1, 0}});
+  ExpectLayoutIs(crs->operand(0)->shape(), {0, 1});
+  ExpectLayoutIs(crs->operand(1)->shape(), {1, 0});
 }
 
 }  // namespace

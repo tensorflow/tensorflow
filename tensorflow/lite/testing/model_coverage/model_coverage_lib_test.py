@@ -26,8 +26,10 @@ from tensorflow.lite.python import lite
 from tensorflow.lite.testing.model_coverage import model_coverage_lib as model_coverage
 from tensorflow.python import keras
 from tensorflow.python.client import session
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -43,62 +45,93 @@ class EvaluateFrozenGraph(test.TestCase):
     write_graph(sess.graph_def, '', graph_def_file, False)
     return graph_def_file
 
-  @test_util.run_v1_only('b/120545219')
   def testFloat(self):
-    with session.Session().as_default() as sess:
-      in_tensor = array_ops.placeholder(
-          shape=[1, 16, 16, 3], dtype=dtypes.float32)
-      _ = in_tensor + in_tensor
-    filename = self._saveFrozenGraph(sess)
+    with ops.Graph().as_default():
+      with session.Session().as_default() as sess:
+        in_tensor = array_ops.placeholder(
+            shape=[1, 16, 16, 3], dtype=dtypes.float32)
+        _ = in_tensor + in_tensor
 
+    filename = self._saveFrozenGraph(sess)
     model_coverage.test_frozen_graph(filename, ['Placeholder'], ['add'])
 
-  @test_util.run_v1_only('b/120545219')
-  def testMultipleOutputs(self):
-    with session.Session().as_default() as sess:
-      in_tensor_1 = array_ops.placeholder(
-          shape=[1, 16], dtype=dtypes.float32, name='inputA')
-      in_tensor_2 = array_ops.placeholder(
-          shape=[1, 16], dtype=dtypes.float32, name='inputB')
+  def testInputWithRange(self):
+    with ops.Graph().as_default():
+      with session.Session().as_default() as sess:
+        in_tensor = array_ops.placeholder(
+            shape=[1, 16, 16, 3], dtype=dtypes.float32)
+        _ = in_tensor + in_tensor
 
-      weight = constant_op.constant(-1.0, shape=[16, 16])
-      bias = constant_op.constant(-1.0, shape=[16])
-      layer = math_ops.matmul(in_tensor_1, weight) + bias
-      _ = math_ops.reduce_mean(math_ops.square(layer - in_tensor_2))
     filename = self._saveFrozenGraph(sess)
+    model_coverage.test_frozen_graph(
+        filename, ['Placeholder'], ['add'],
+        input_data_range={'Placeholder': (0, 10)})
 
+  def testMultipleOutputs(self):
+    with ops.Graph().as_default():
+      with session.Session().as_default() as sess:
+        in_tensor_1 = array_ops.placeholder(
+            shape=[1, 16], dtype=dtypes.float32, name='inputA')
+        in_tensor_2 = array_ops.placeholder(
+            shape=[1, 16], dtype=dtypes.float32, name='inputB')
+
+        weight = constant_op.constant(-1.0, shape=[16, 16])
+        bias = constant_op.constant(-1.0, shape=[16])
+        layer = math_ops.matmul(in_tensor_1, weight) + bias
+        _ = math_ops.reduce_mean(math_ops.square(layer - in_tensor_2))
+
+    filename = self._saveFrozenGraph(sess)
     model_coverage.test_frozen_graph(filename, ['inputA', 'inputB'],
                                      ['add', 'Mean'])
 
+  @test_util.run_in_graph_and_eager_modes
+  def testFunctions(self):
+    """Tests functions."""
+
+    @def_function.function
+    def plus_placeholder(x, placeholder):
+      return x + placeholder
+
+    with ops.Graph().as_default():
+      placeholder = array_ops.placeholder(
+          dtype=dtypes.float32, shape=[1], name='input')
+      variable_node = constant_op.constant(1.0, name='variable_node')
+      defun_node = plus_placeholder(variable_node, placeholder)
+      _ = math_ops.multiply(defun_node, 2.0, name='output_node')
+
+      # Initialize variables in the model.
+      sess = session.Session()
+
+    filename = self._saveFrozenGraph(sess)
+    model_coverage.test_frozen_graph(filename, ['input'], ['output_node'])
+
   def _getQuantizedModel(self):
     np.random.seed(0)
-    with session.Session().as_default() as sess:
-      # The tensor needs to have more than 1024 elements for quantize_weights to
-      # kick in. Thus, the [33, 33] shape.
-      in_tensor_1 = array_ops.placeholder(
-          shape=[33, 33], dtype=dtypes.float32, name='inputA')
-      in_tensor_2 = constant_op.constant(
-          np.random.uniform(low=-10., high=10., size=(33, 33)),
-          shape=[33, 33],
-          dtype=dtypes.float32,
-          name='inputB')
-      _ = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
+    with ops.Graph().as_default():
+      with session.Session().as_default() as sess:
+        # The tensor needs to have more than 1024 elements for quantize_weights
+        # to kick in. Thus, the [33, 33] shape.
+        in_tensor_1 = array_ops.placeholder(
+            shape=[33, 33], dtype=dtypes.float32, name='inputA')
+        in_tensor_2 = constant_op.constant(
+            np.random.uniform(low=-10., high=10., size=(33, 33)),
+            shape=[33, 33],
+            dtype=dtypes.float32,
+            name='inputB')
+        _ = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
 
     filename = self._saveFrozenGraph(sess)
     return filename
 
-  @test_util.run_v1_only('b/120545219')
   def testQuantized(self):
     filename = self._getQuantizedModel()
     model_coverage.test_frozen_graph_quant(filename, ['inputA'], ['output'])
 
-  @test_util.run_v1_only('b/120545219')
   def testQuantizedInputShapes(self):
     filename = self._getQuantizedModel()
     model_coverage.test_frozen_graph_quant(
         filename, ['inputA'], ['output'], input_shapes={'inputA': [33, 33]})
 
-  @test_util.run_v1_only('b/120545219')
   def testQuantizedFlexAll(self):
     filename = self._getQuantizedModel()
     model_coverage.test_frozen_graph_quant(
@@ -108,19 +141,19 @@ class EvaluateFrozenGraph(test.TestCase):
 
 class EvaluateSavedModel(test.TestCase):
 
-  @test_util.run_v1_only('b/120545219')
   def testFloat(self):
     saved_model_dir = os.path.join(self.get_temp_dir(), 'simple_savedmodel')
-    with session.Session().as_default() as sess:
-      in_tensor_1 = array_ops.placeholder(
-          shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputB')
-      in_tensor_2 = array_ops.placeholder(
-          shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputA')
-      out_tensor = in_tensor_1 + in_tensor_2
+    with ops.Graph().as_default():
+      with session.Session().as_default() as sess:
+        in_tensor_1 = array_ops.placeholder(
+            shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputB')
+        in_tensor_2 = array_ops.placeholder(
+            shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputA')
+        out_tensor = in_tensor_1 + in_tensor_2
 
-      inputs = {'x': in_tensor_1, 'y': in_tensor_2}
-      outputs = {'z': out_tensor}
-      saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+        inputs = {'x': in_tensor_1, 'y': in_tensor_2}
+        outputs = {'z': out_tensor}
+        saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
     model_coverage.test_saved_model(saved_model_dir)
 
 
@@ -146,21 +179,18 @@ class EvaluateKerasModel(test.TestCase):
       os.close(fd)
     return keras_file
 
-  @test_util.run_v1_only('b/120545219')
   def testFloat(self):
     model = self._getSingleInputKerasModel()
     keras_file = self._saveKerasModel(model)
 
     model_coverage.test_keras_model(keras_file)
 
-  @test_util.run_v1_only('b/120545219')
   def testPostTrainingQuantize(self):
     model = self._getSingleInputKerasModel()
     keras_file = self._saveKerasModel(model)
 
     model_coverage.test_keras_model(keras_file, post_training_quantize=True)
 
-  @test_util.run_v1_only('b/120545219')
   def testTargetOps(self):
     model = self._getSingleInputKerasModel()
     keras_file = self._saveKerasModel(model)

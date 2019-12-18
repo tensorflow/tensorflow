@@ -47,8 +47,8 @@ TEST_F(StringFormatGraphTest, Int32Success_7) {
   AddInputFromArray<int32>(TensorShape({7}), {1, 2, 3, 4, 5, 6, 7});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_STRING, TensorShape({}));
-  test::FillValues<string>(&expected, {"First tensor: [1 2 3 ... 5 6 7]"});
-  test::ExpectTensorEqual<string>(expected, *GetOutput(0));
+  test::FillValues<tstring>(&expected, {"First tensor: [1 2 3 ... 5 6 7]"});
+  test::ExpectTensorEqual<tstring>(expected, *GetOutput(0));
 }
 
 TEST_F(StringFormatGraphTest, Int32Success_3_3) {
@@ -57,9 +57,9 @@ TEST_F(StringFormatGraphTest, Int32Success_3_3) {
   AddInputFromArray<int32>(TensorShape({3, 3}), {1, 2, 3, 4, 5, 6, 7, 8, 9});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_STRING, TensorShape({}));
-  test::FillValues<string>(&expected, {"First tensor: [[1 ... 3]\n ..."
-                                       "\n [7 ... 9]]"});
-  test::ExpectTensorEqual<string>(expected, *GetOutput(0));
+  test::FillValues<tstring>(&expected, {"First tensor: [[1 ... 3]\n ..."
+                                        "\n [7 ... 9]]"});
+  test::ExpectTensorEqual<tstring>(expected, *GetOutput(0));
 }
 
 }  // end namespace

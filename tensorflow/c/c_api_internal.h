@@ -24,10 +24,16 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#ifndef __ANDROID__
-#include "tensorflow/core/distributed_runtime/server_lib.h"
+// clang-format off
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
+
+#include "tensorflow/c/tf_status_internal.h"
+#include "tensorflow/c/tf_tensor_internal.h"
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/core/framework/op_gen_lib.h"
-#endif
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -42,22 +48,11 @@ limitations under the License.
 namespace tensorflow {
 class Device;
 class DeviceMgr;
+class ServerInterface;
 }  // namespace tensorflow
 
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on.
-
-struct TF_Status {
-  tensorflow::Status status;
-};
-
-struct TF_Tensor {
-  ~TF_Tensor();
-
-  TF_DataType dtype;
-  tensorflow::TensorShape shape;
-  tensorflow::TensorBuffer* buffer;
-};
 
 struct TF_SessionOptions {
   tensorflow::SessionOptions options;
@@ -167,38 +162,29 @@ struct TF_Function {
 struct TF_ApiDefMap {
   explicit TF_ApiDefMap(const tensorflow::OpList& op_list)
       :
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
         api_def_map(op_list),
-#endif
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
         update_docs_called(false) {
   }
 
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
   tensorflow::ApiDefMap api_def_map GUARDED_BY(lock);
-#endif
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
   bool update_docs_called GUARDED_BY(lock);
   tensorflow::mutex lock;
 };
 
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 struct TF_Server {
   TF_Server(std::unique_ptr<tensorflow::ServerInterface> server);
 
   const tensorflow::string target;
   std::unique_ptr<tensorflow::ServerInterface> server;
 };
-#endif
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 namespace tensorflow {
-
-class TensorCApi {
- public:
-  static TensorBuffer* Buffer(const Tensor& tensor) { return tensor.buf_; }
-  static Tensor MakeTensor(TF_DataType type, const TensorShape& shape,
-                           TensorBuffer* buf) {
-    return Tensor(static_cast<DataType>(type), shape, buf);
-  }
-};
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 

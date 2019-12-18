@@ -32,6 +32,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class MatchingFilesDatasetOp : public DatasetOpKernel {
@@ -41,9 +42,9 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     const Tensor* patterns_t;
     OP_REQUIRES_OK(ctx, ctx->input("patterns", &patterns_t));
-    const auto patterns = patterns_t->flat<string>();
+    const auto patterns = patterns_t->flat<tstring>();
     size_t num_patterns = static_cast<size_t>(patterns.size());
-    std::vector<string> pattern_strs;
+    std::vector<tstring> pattern_strs;
     pattern_strs.reserve(num_patterns);
 
     for (size_t i = 0; i < num_patterns; i++) {
@@ -56,7 +57,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
  private:
   class Dataset : public DatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, std::vector<string> patterns)
+    Dataset(OpKernelContext* ctx, std::vector<tstring> patterns)
         : DatasetBase(DatasetContext(ctx)), patterns_(std::move(patterns)) {}
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
@@ -79,6 +80,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
     string DebugString() const override {
       return "MatchingFilesDatasetOp::Dataset";
     }
+
+    Status CheckExternalState() const override { return Status::OK(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -125,7 +128,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
                              current_path.first.end(), '/', '\\');
               }
 
-              filepath_tensor.scalar<string>()() =
+              filepath_tensor.scalar<tstring>()() =
                   std::move(current_path.first);
               out_tensors->emplace_back(std::move(filepath_tensor));
               *end_of_sequence = false;
@@ -140,6 +143,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           } else {
             // search a new pattern
             current_pattern_ = dataset()->patterns_[current_pattern_index_];
+            StringPiece current_pattern_view = StringPiece(current_pattern_);
 
             // Windows paths contain backslashes and Windows APIs accept forward
             // and backslashes equivalently, so we convert the pattern to use
@@ -147,17 +151,17 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
             // indicator of Windows paths. Note that this is not ideal, since
             // the API expects backslash as an escape character, but no code
             // appears to rely on this behavior
-            if (current_pattern_.find('\\') != std::string::npos) {
+            if (current_pattern_view.find('\\') != std::string::npos) {
               isWindows_ = true;
-              std::replace(current_pattern_.begin(), current_pattern_.end(),
-                           '\\', '/');
+              std::replace(&current_pattern_[0],
+                           &current_pattern_[0] + current_pattern_.size(), '\\',
+                           '/');
             } else {
               isWindows_ = false;
             }
 
-            StringPiece fixed_prefix =
-                StringPiece(current_pattern_)
-                    .substr(0, current_pattern_.find_first_of("*?[\\"));
+            StringPiece fixed_prefix = current_pattern_view.substr(
+                0, current_pattern_view.find_first_of("*?[\\"));
             string current_dir(io::Dirname(fixed_prefix));
 
             // If current_dir is empty then we need to fix up fixed_prefix and
@@ -226,8 +230,11 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
             full_name("current_pattern_index"), &current_pattern_index));
         current_pattern_index_ = size_t(current_pattern_index);
 
+        tstring current_pattern_tstr;
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("current_pattern"),
-                                              &current_pattern_));
+                                              &current_pattern_tstr));
+        current_pattern_ = current_pattern_tstr;
+
         int64 hasMatch;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name("hasMatch"), &hasMatch));
@@ -243,7 +250,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           TF_RETURN_IF_ERROR(
               reader->ReadScalar(full_name("queue_size"), &queue_size));
           for (int i = 0; i < queue_size; i++) {
-            string path;
+            tstring path;
             int64 path_status;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
                 full_name(strings::StrCat("path_", i)), &path));
@@ -308,7 +315,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
             const string child_path = io::JoinPath(current_dir, children[i]);
             // In case the child_path doesn't start with the fixed_prefix, then
             // we don't need to explore this path.
-            if (!str_util::StartsWith(child_path, fixed_prefix)) {
+            if (!absl::StartsWith(child_path, fixed_prefix)) {
               children_dir_status[i] =
                   errors::Cancelled("Operation not needed");
             } else {
@@ -357,19 +364,22 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
                           std::greater<PathStatus>>
           filepath_queue_ GUARDED_BY(mu_);
       size_t current_pattern_index_ GUARDED_BY(mu_) = 0;
-      string current_pattern_ GUARDED_BY(mu_);
+      tstring current_pattern_ GUARDED_BY(mu_);
       bool hasMatch_ GUARDED_BY(mu_) = false;
       bool isWindows_ GUARDED_BY(mu_) = false;
     };
 
-    const std::vector<string> patterns_;
+    const std::vector<tstring> patterns_;
   };
 };
 
+REGISTER_KERNEL_BUILDER(Name("MatchingFilesDataset").Device(DEVICE_CPU),
+                        MatchingFilesDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalMatchingFilesDataset").Device(DEVICE_CPU),
     MatchingFilesDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

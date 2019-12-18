@@ -127,25 +127,45 @@ template <>
 struct unpacket_traits<Packet64q8i> {
   typedef QInt8 type;
   typedef Packet32q8i half;
-  enum { size = 64, alignment = Aligned64 };
+  enum {
+    size = 64,
+    alignment = Aligned64,
+    masked_load_available = false,
+    masked_store_available = false
+  };
 };
 template <>
 struct unpacket_traits<Packet32q16i> {
   typedef QInt16 type;
   typedef Packet16q16i half;
-  enum { size = 32, alignment = Aligned64 };
+  enum {
+    size = 32,
+    alignment = Aligned64,
+    masked_load_available = false,
+    masked_store_available = false
+  };
 };
 template <>
 struct unpacket_traits<Packet64q8u> {
   typedef QUInt8 type;
   typedef Packet32q8u half;
-  enum { size = 64, alignment = Aligned64 };
+  enum {
+    size = 64,
+    alignment = Aligned64,
+    masked_load_available = false,
+    masked_store_available = false
+  };
 };
 template <>
 struct unpacket_traits<Packet16q32i> {
   typedef QInt32 type;
   typedef Packet8q32i half;
-  enum { size = 16, alignment = Aligned64 };
+  enum {
+    size = 16,
+    alignment = Aligned64,
+    masked_load_available = false,
+    masked_store_available = false
+  };
 };
 
 // Unaligned load

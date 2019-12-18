@@ -37,8 +37,10 @@ StatusOr<bool> ReplaceGetSize(
   TF_ASSIGN_OR_RETURN(auto legal_shape,
                       ShapeInference::InferGetDimensionSizeShape(
                           instr->operand(0)->shape(), instr->dimension()));
-  TF_RET_CHECK(ShapeUtil::Equal(instr->shape(), legal_shape));
-  TF_RET_CHECK(ShapeUtil::HasPrimitiveType(instr->shape(), U32));
+  TF_RET_CHECK(ShapeUtil::Equal(instr->shape(), legal_shape))
+      << "instr->shape() " << instr->shape().ToString() << " , "
+      << "legal_shape " << legal_shape.ToString();
+  TF_RET_CHECK(ShapeUtil::HasPrimitiveType(instr->shape(), S32));
   HloInstruction* operand = instr->mutable_operand(0);
   int64 dim = instr->dimension();
   HloInstruction* dynamic_size =
@@ -46,11 +48,26 @@ StatusOr<bool> ReplaceGetSize(
   if (dynamic_size != nullptr) {
     TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(dynamic_size));
   } else {
-    uint32 size = instr->operand(0)->shape().dimensions(dim);
+    int32 size = instr->operand(0)->shape().dimensions(dim);
     HloInstruction* new_instr = computation->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(size)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(size)));
     TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(new_instr));
   }
+  return true;
+}
+
+StatusOr<bool> ReplaceSetSize(HloInstruction* instr) {
+  if (instr->opcode() != HloOpcode::kSetDimensionSize) {
+    return false;
+  }
+
+  TF_RET_CHECK(Shape::Equal().IgnoreDynamicDimension()(
+      instr->shape(), instr->operand(0)->shape()))
+      << "instr->shape() " << instr->shape().ToString() << " , "
+      << "instruction operand shape " << instr->operand(0)->shape();
+  HloInstruction* operand = instr->mutable_operand(0);
+
+  TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(operand));
   return true;
 }
 
@@ -62,11 +79,32 @@ StatusOr<bool> HloGetDimensionSizeRewriter::Run(HloModule* module) {
   TF_ASSIGN_OR_RETURN(DynamicDimensionInference inference,
                       DynamicDimensionInference::Run(module));
   *proto.mutable_hlo_module() = module->ToProto();
+  // It's important to replace get-dimension-size first before
+  // set-dimension-size for the case below:
+  //  static_op    dynamic_size
+  //    |             |
+  //  set-dimension-size // Marks the dimension as dynamic
+  //    |
+  //  get-dimension-size
+  //
+  // If we replace set dimension size first, we'd have
+  //
+  //  static_op
+  //    |
+  //  get-dimension-size
+  //
+  // This will get static size of the op, which is incorrect.
   for (auto* computation : module->computations()) {
     for (auto instruction : computation->instructions()) {
-      TF_ASSIGN_OR_RETURN(bool replaced,
+      TF_ASSIGN_OR_RETURN(bool replaced_get_size,
                           ReplaceGetSize(instruction, &inference));
-      changed = changed || replaced;
+      changed = changed || replaced_get_size;
+    }
+  }
+  for (auto* computation : module->computations()) {
+    for (auto instruction : computation->instructions()) {
+      TF_ASSIGN_OR_RETURN(bool replaced_set_size, ReplaceSetSize(instruction));
+      changed = changed || replaced_set_size;
     }
   }
   return changed;

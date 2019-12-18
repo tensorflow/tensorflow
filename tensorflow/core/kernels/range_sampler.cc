@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/range_sampler.h"
 
+#include <cmath>
 #include <unordered_set>
 #include <vector>
 
@@ -69,7 +70,7 @@ static float ExpectedCountHelper(float p, int batch_size, int num_tries) {
     return p * batch_size;
   }
   // numerically stable version of (1 - (1-p)^num_tries)
-  return -expm1(num_tries * log1p(-p));
+  return -std::expm1(num_tries * std::log1p(-p));
 }
 
 }  // namespace
@@ -154,14 +155,16 @@ int64 UniformSampler::Sample(random::SimplePhilox* rnd) const {
 float UniformSampler::Probability(int64 value) const { return inv_range_; }
 
 LogUniformSampler::LogUniformSampler(int64 range)
-    : RangeSampler(range), log_range_(log(range + 1)) {}
+    : RangeSampler(range), log_range_(log1p(range)) {}
 
 int64 LogUniformSampler::Sample(random::SimplePhilox* rnd) const {
   const int64 value =
       static_cast<int64>(exp(rnd->RandDouble() * log_range_)) - 1;
-  CHECK_GE(value, 0);
+  DCHECK_GE(value, 0);
   // Mathematically, value should be <= range_, but might not be due to some
-  // floating point roundoff, so we mod by range_.
+  // floating point roundoff, so we mod by range_.  In practice this case
+  // happens never regardless of the value of range_, including and up to
+  // DBL_MAX.  But we include it as a guarantee of the function's output.
   return value % range_;
 }
 
@@ -298,7 +301,7 @@ Status FixedUnigramSampler::LoadFromFile(Env* env, const string& vocab_file,
         return errors::InvalidArgument("Wrong vocabulary format at line: ",
                                        line);
       }
-      w = pow(w, distortion);
+      w = std::pow(w, distortion);
       total_weight_ += w;
       weights_.push_back(w);
     }
@@ -313,7 +316,7 @@ void FixedUnigramSampler::LoadFromUnigrams(const std::vector<float>& unigrams,
   for (float w : unigrams) {
     // Skip entries that do not belong to this shard.
     if (word_id % num_shards_ == shard_) {
-      w = pow(w, distortion);
+      w = std::pow(w, distortion);
       total_weight_ += w;
       weights_.push_back(w);
     }

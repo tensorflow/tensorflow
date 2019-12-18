@@ -1,3 +1,4 @@
+# Lint as python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,25 +21,32 @@ from __future__ import print_function
 
 from abc import abstractmethod
 from contextlib import closing
+import errno
+import functools
+import gc
 import hashlib
 import multiprocessing
-from multiprocessing.pool import ThreadPool
+import multiprocessing.dummy
 import os
 import random
 import shutil
+import signal
 import sys
 import tarfile
 import threading
 import time
+import weakref
 import zipfile
 
 import numpy as np
 import six
 from six.moves.urllib.error import HTTPError
 from six.moves.urllib.error import URLError
-from six.moves.urllib.request import urlopen
 
+from tensorflow.python.framework import ops
+from six.moves.urllib.request import urlopen
 from tensorflow.python.keras.utils.generic_utils import Progbar
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
@@ -48,11 +56,18 @@ try:
 except ImportError:
   import Queue as queue
 
+try:
+  import typing
+  is_iterator = lambda x: isinstance(x, typing.Iterator)
+except ImportError:
+  # Python2 uses next, and Python3 should have typing so __next__ is not needed.
+  is_iterator = lambda x: hasattr(x, '__iter__') and hasattr(x, 'next')
+
 
 if sys.version_info[0] == 2:
 
   def urlretrieve(url, filename, reporthook=None, data=None):
-    """Replacement for `urlretrive` for Python 2.
+    """Replacement for `urlretrieve` for Python 2.
 
     Under Python 2, `urlretrieve` relies on `FancyURLopener` from legacy
     `urllib` module, known to have issues with proxy management.
@@ -60,12 +75,10 @@ if sys.version_info[0] == 2:
     Arguments:
         url: url to retrieve.
         filename: where to store the retrieved data locally.
-        reporthook: a hook function that will be called once
-            on establishment of the network connection and once
-            after each block read thereafter.
-            The hook will be passed three arguments;
-            a count of blocks transferred so far,
-            a block size in bytes, and the total size of the file.
+        reporthook: a hook function that will be called once on establishment of
+          the network connection and once after each block read thereafter. The
+          hook will be passed three arguments; a count of blocks transferred so
+          far, a block size in bytes, and the total size of the file.
         data: `data` argument passed to `urlopen`.
     """
 
@@ -95,7 +108,10 @@ else:
 
 def is_generator_or_sequence(x):
   """Check if `x` is a Keras generator type."""
-  return tf_inspect.isgenerator(x) or isinstance(x, Sequence)
+  builtin_iterators = (str, list, tuple, dict, set, frozenset)
+  if isinstance(x, (ops.Tensor, np.ndarray) + builtin_iterators):
+    return False
+  return tf_inspect.isgenerator(x) or isinstance(x, Sequence) or is_iterator(x)
 
 
 def _extract_archive(file_path, path='.', archive_format='auto'):
@@ -204,8 +220,7 @@ def get_file(fname,
   if not os.access(datadir_base, os.W_OK):
     datadir_base = os.path.join('/tmp', '.keras')
   datadir = os.path.join(datadir_base, cache_subdir)
-  if not os.path.exists(datadir):
-    os.makedirs(datadir)
+  _makedirs_exist_ok(datadir)
 
   if untar:
     untar_fpath = os.path.join(datadir, fname)
@@ -267,15 +282,26 @@ def get_file(fname,
   return fpath
 
 
+def _makedirs_exist_ok(datadir):
+  if six.PY3:
+    os.makedirs(datadir, exist_ok=True)  # pylint: disable=unexpected-keyword-arg
+  else:
+    # Python 2 doesn't have the exist_ok arg, so we try-except here.
+    try:
+      os.makedirs(datadir)
+    except OSError as e:
+      if e.errno != errno.EEXIST:
+        raise
+
+
 def _hash_file(fpath, algorithm='sha256', chunk_size=65535):
   """Calculates a file sha256 or md5 hash.
 
   Example:
 
   ```python
-      >>> from keras.data_utils import _hash_file
-      >>> _hash_file('/path/to/file.zip')
-      'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+  _hash_file('/path/to/file.zip')
+  'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
   ```
 
   Arguments:
@@ -322,6 +348,49 @@ def validate_file(fpath, file_hash, algorithm='auto', chunk_size=65535):
     return True
   else:
     return False
+
+
+class ThreadsafeIter(object):
+  """Wrap an iterator with a lock and propagate exceptions to all threads."""
+
+  def __init__(self, it):
+    self.it = it
+    self.lock = threading.Lock()
+
+    # After a generator throws an exception all subsequent next() calls raise a
+    # StopIteration Exception. This, however, presents an issue when mixing
+    # generators and threading because it means the order of retrieval need not
+    # match the order in which the generator was called. This can make it appear
+    # that a generator exited normally when in fact the terminating exception is
+    # just in a different thread. In order to provide thread safety, once
+    # self.it has thrown an exception we continue to throw the same exception.
+    self._exception = None
+
+  def __iter__(self):
+    return self
+
+  def __next__(self):
+    return self.next()
+
+  def next(self):
+    with self.lock:
+      if self._exception:
+        raise self._exception  # pylint: disable=raising-bad-type
+
+      try:
+        return next(self.it)
+      except Exception as e:
+        self._exception = e
+        raise
+
+
+def threadsafe_generator(f):
+
+  @functools.wraps(f)
+  def g(*a, **kw):
+    return ThreadsafeIter(f(*a, **kw))
+
+  return g
 
 
 @keras_export('keras.utils.Sequence')
@@ -423,9 +492,157 @@ _SHARED_SEQUENCES = {}
 _SEQUENCE_COUNTER = None
 
 
+# Because multiprocessing pools are inherently unsafe, starting from a clean
+# state can be essential to avoiding deadlocks. In order to accomplish this, we
+# need to be able to check on the status of Pools that we create.
+_DATA_POOLS = weakref.WeakSet()
+_WORKER_ID_QUEUE = None  # Only created if needed.
+_WORKER_IDS = set()
+_FORCE_THREADPOOL = False
+_FORCE_THREADPOOL_LOCK = threading.RLock()
+
+
+def dont_use_multiprocessing_pool(f):
+  @functools.wraps(f)
+  def wrapped(*args, **kwargs):
+    with _FORCE_THREADPOOL_LOCK:
+      global _FORCE_THREADPOOL
+      old_force_threadpool, _FORCE_THREADPOOL = _FORCE_THREADPOOL, True
+      out = f(*args, **kwargs)
+      _FORCE_THREADPOOL = old_force_threadpool
+      return out
+  return wrapped
+
+
+def get_pool_class(use_multiprocessing):
+  global _FORCE_THREADPOOL
+  if not use_multiprocessing or _FORCE_THREADPOOL:
+    return multiprocessing.dummy.Pool  # ThreadPool
+  logging.warning(
+      'multiprocessing can interact badly with TensorFlow, causing '
+      'nondeterministic deadlocks. For high performance data pipelines tf.data '
+      'is recommended.')
+  return multiprocessing.Pool
+
+
+def get_worker_id_queue():
+  """Lazily create the queue to track worker ids."""
+  global _WORKER_ID_QUEUE
+  if _WORKER_ID_QUEUE is None:
+    _WORKER_ID_QUEUE = multiprocessing.Queue()
+  return _WORKER_ID_QUEUE
+
+
 def init_pool(seqs):
   global _SHARED_SEQUENCES
   _SHARED_SEQUENCES = seqs
+
+
+@keras_export('keras.experimental.terminate_keras_multiprocessing_pools')
+def terminate_keras_multiprocessing_pools(grace_period=0.1, use_sigkill=False):
+  """Destroy Keras' multiprocessing pools to prevent deadlocks.
+
+  In general multiprocessing.Pool can interact quite badly with other, seemingly
+  unrelated, parts of a codebase due to Pool's reliance on fork. This method
+  cleans up all pools which are known to belong to Keras (and thus can be safely
+  terminated).
+
+  Args:
+    grace_period: Time (in seconds) to wait for process cleanup to propagate.
+    use_sigkill: Boolean of whether or not to perform a cleanup pass using
+      SIGKILL.
+
+  Returns:
+    A list of human readable strings describing all issues encountered. It is up
+    to the caller to decide whether to treat this as an error condition.
+  """
+  errors = []
+
+  # First cleanup the pools spawned by Keras. If we start killing workers and
+  # a parent pool is still alive it will just spawn replacements which we don't
+  # want.
+  gc.collect()
+  for pool in _DATA_POOLS:
+    pool.close()
+    pool.terminate()
+    # We do not join the pool, because that would wait forever if a worker
+    # refused to exit.
+
+    # Finally, delete our reference to the pool so that we do not block garbage
+    # collection.
+    del pool
+
+  # If there were any pools, sleep for a small grace period to allow everything
+  # to finalize.
+  if _DATA_POOLS:
+    time.sleep(grace_period)
+
+  # Now we kill any workers which are still alive. However we must compare
+  # the worker identifier to the set of identifiers which are known to have been
+  # spawned by pools belonging to Keras to avoid deleting unrelated workers.
+  # First we call the .terminate() method of a worker, and then if it still
+  # persists we directly send a signal to the process.  Certain worker tasks may
+  # be able to gracefully handle shutdown, so we send a SIGTERM and then
+  # optionally follow up with a SIGKILL.
+  visited_workers = set()
+  cleanup_passes = ['.terminate', 'SIGTERM']
+  if use_sigkill:
+    cleanup_passes.append('SIGKILL')
+  cleanup_passes.append('log')
+
+  for cleanup_pass in cleanup_passes:
+    while True:
+      # In rare cases, queue.qsize() overestimates the number of elements. This
+      # loop is designed to be more robust.
+      try:
+        _WORKER_IDS.add(get_worker_id_queue().get_nowait())
+      except queue.Empty:
+        break
+
+    gc.collect()
+    workers_terminated_this_pass = False
+    for worker in multiprocessing.active_children():
+      ident = worker.ident
+      if ident in _WORKER_IDS and worker.is_alive():
+        try:
+          if cleanup_pass == '.terminate':
+            # First we ask nicely.
+            worker.terminate()
+            worker.join(timeout=grace_period)
+            visited_workers.add(ident)
+            workers_terminated_this_pass = True
+          elif cleanup_pass in ('SIGTERM', 'SIGKILL'):
+            # Then we ask increasingly tersely.
+            os.kill(worker.pid, signal.SIGKILL if cleanup_pass == 'SIGKILL'
+                    else signal.SIGTERM)
+            workers_terminated_this_pass = True
+
+          elif cleanup_pass == 'log':
+            # And finally we give up and log the failure.
+            errors.append('worker still alive: {}, pid={}, hash={}'
+                          .format(worker.name, worker.pid, hash(worker)))
+
+        except OSError:
+          # Worker exited since the start of this loop.
+          pass
+
+    if workers_terminated_this_pass:
+      # There can be a small propagation delay between worker destruction and
+      # workers reporting False for is_alive and no longer appearing in the
+      # list of active children. Once again, we sleep for a small grace period.
+      # This prevents false positives from workers which are simply still in the
+      # process of spinning down.
+      time.sleep(grace_period)
+
+  # Finally we remove the visited worker ids to handle the edge case that a
+  # pid is reused.
+  _WORKER_IDS.difference_update(visited_workers)
+
+  gc.collect()
+  for pool in _DATA_POOLS:
+    errors.append('pool still exists: {}, hash={}'.format(pool, hash(pool)))
+
+  return errors
 
 
 def get_index(uid, i):
@@ -512,7 +729,7 @@ class SequenceEnqueuer(object):
       self.executor_fn = self._get_executor_init(workers)
     else:
       # We do not need the init since it's threads.
-      self.executor_fn = lambda _: ThreadPool(workers)
+      self.executor_fn = lambda _: get_pool_class(False)(workers)
     self.workers = workers
     self.queue = queue.Queue(max_queue_size)
     self.stop_signal = threading.Event()
@@ -540,6 +757,10 @@ class SequenceEnqueuer(object):
       self.queue.not_full.notify()
     self.run_thread.join(timeout)
     _SHARED_SEQUENCES[self.uid] = None
+
+  def __del__(self):
+    if self.is_running():
+      self.stop()
 
   @abstractmethod
   def _run(self):
@@ -596,8 +817,11 @@ class OrderedEnqueuer(SequenceEnqueuer):
         Function, a Function to initialize the pool
     """
     def pool_fn(seqs):
-      return multiprocessing.Pool(
-          workers, initializer=init_pool_generator, initargs=(seqs, None))
+      pool = get_pool_class(True)(
+          workers, initializer=init_pool_generator,
+          initargs=(seqs, None, get_worker_id_queue()))
+      _DATA_POOLS.add(pool)
+      return pool
 
     return pool_fn
 
@@ -620,6 +844,7 @@ class OrderedEnqueuer(SequenceEnqueuer):
         for i in sequence:
           if self.stop_signal.is_set():
             return
+
           self.queue.put(
               executor.apply_async(get_index, (self.uid, i)), block=True)
 
@@ -655,13 +880,31 @@ class OrderedEnqueuer(SequenceEnqueuer):
       six.reraise(*sys.exc_info())
 
 
-def init_pool_generator(gens, random_seed=None):
+def init_pool_generator(gens, random_seed=None, id_queue=None):
+  """Initializer function for pool workers.
+
+  Args:
+    gens: State which should be made available to worker processes.
+    random_seed: An optional value with which to seed child processes.
+    id_queue: A multiprocessing Queue of worker ids. This is used to indicate
+      that a worker process was created by Keras and can be terminated using
+      the cleanup_all_keras_forkpools utility.
+  """
   global _SHARED_SEQUENCES
   _SHARED_SEQUENCES = gens
 
+  worker_proc = multiprocessing.current_process()
+
+  # name isn't used for anything, but setting a more descriptive name is helpful
+  # when diagnosing orphaned processes.
+  worker_proc.name = 'Keras_worker_{}'.format(worker_proc.name)
+
   if random_seed is not None:
-    ident = multiprocessing.current_process().ident
-    np.random.seed(random_seed + ident)
+    np.random.seed(random_seed + worker_proc.ident)
+
+  if id_queue is not None:
+    # If a worker dies during init, the pool will just create a replacement.
+    id_queue.put(worker_proc.ident, block=True, timeout=0.1)
 
 
 def next_sample(uid):
@@ -713,9 +956,11 @@ class GeneratorEnqueuer(SequenceEnqueuer):
         A Function to initialize the pool
     """
     def pool_fn(seqs):
-      return multiprocessing.Pool(workers,
-                                  initializer=init_pool_generator,
-                                  initargs=(seqs, self.random_seed))
+      pool = get_pool_class(True)(
+          workers, initializer=init_pool_generator,
+          initargs=(seqs, self.random_seed, get_worker_id_queue()))
+      _DATA_POOLS.add(pool)
+      return pool
     return pool_fn
 
   def _run(self):
@@ -725,6 +970,7 @@ class GeneratorEnqueuer(SequenceEnqueuer):
       while True:
         if self.stop_signal.is_set():
           return
+
         self.queue.put(
             executor.apply_async(next_sample, (self.uid,)), block=True)
 

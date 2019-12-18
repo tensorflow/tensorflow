@@ -102,14 +102,14 @@ def gradients(ys,
 
   `unconnected_gradients` determines the value returned for each x in xs if it
   is unconnected in the graph to ys. By default this is None to safeguard
-  against errors. MAthematically these gradients are zero which can be requested
+  against errors. Mathematically these gradients are zero which can be requested
   using the `'zero'` option. `tf.UnconnectedGradients` provides the
   following options and behaviors:
 
   ```python
   a = tf.ones([1, 2])
   b = tf.ones([3, 1])
-  g1 = tf.gradients([b], [a], unnconnected_gradients='none')
+  g1 = tf.gradients([b], [a], unconnected_gradients='none')
   sess.run(g1)  # [None]
 
   g2 = tf.gradients([b], [a], unconnected_gradients='zero')
@@ -220,14 +220,14 @@ def gradients_v2(ys,  # pylint: disable=invalid-name
 
   `unconnected_gradients` determines the value returned for each x in xs if it
   is unconnected in the graph to ys. By default this is None to safeguard
-  against errors. MAthematically these gradients are zero which can be requested
+  against errors. Mathematically these gradients are zero which can be requested
   using the `'zero'` option. `tf.UnconnectedGradients` provides the
   following options and behaviors:
 
   ```python
   a = tf.ones([1, 2])
   b = tf.ones([3, 1])
-  g1 = tf.gradients([b], [a], unnconnected_gradients='none')
+  g1 = tf.gradients([b], [a], unconnected_gradients='none')
   sess.run(g1)  # [None]
 
   g2 = tf.gradients([b], [a], unconnected_gradients='zero')

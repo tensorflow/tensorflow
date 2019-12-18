@@ -22,6 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 static const double kPercentile = 90.0;
@@ -157,6 +158,13 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
 
     int64 Cardinality() const override { return cardinality_; }
 
+    Status CheckExternalState() const override {
+      for (const auto& input : inputs_) {
+        TF_RETURN_IF_ERROR(input->CheckExternalState());
+      }
+      return Status::OK();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -217,8 +225,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
           }
           return threads[0].result->status;
         }
-        return input_impls_[fastest_index_]->GetNext(ctx, out_tensors,
-                                                     end_of_sequence);
+        return fastest_input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
       }
 
      protected:
@@ -232,7 +239,14 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       // from scratch.
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        if (input_impls_.empty()) {
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("experiment_counter"),
+                                               experiment_counter_));
+
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(full_name("fastest_index"), fastest_index_));
+        if (fastest_index_ != -1) {
+          TF_RETURN_IF_ERROR(SaveInput(writer, fastest_input_impl_));
+        } else if (input_impls_.empty()) {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impls_empty"), ""));
         } else {
@@ -240,17 +254,22 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
             TF_RETURN_IF_ERROR(SaveInput(writer, input_impl));
           }
         }
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("experiment_counter"),
-                                               experiment_counter_));
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name("fastest_index"), fastest_index_));
         return Status::OK();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        if (reader->Contains(full_name("input_impls_empty"))) {
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("experiment_counter"),
+                                              &experiment_counter_));
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(full_name("fastest_index"), &fastest_index_));
+        if (fastest_index_ != -1) {
+          TF_RETURN_IF_ERROR(dataset()->inputs_[fastest_index_]->MakeIterator(
+              ctx, strings::StrCat(prefix(), "_", fastest_index_),
+              &fastest_input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, fastest_input_impl_));
+        } else if (reader->Contains(full_name("input_impls_empty"))) {
           input_impls_.clear();
         } else {
           DCHECK_EQ(input_impls_.size(), dataset()->inputs_.size());
@@ -258,10 +277,6 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
             TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl));
           }
         }
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("experiment_counter"),
-                                              &experiment_counter_));
-        TF_RETURN_IF_ERROR(
-            reader->ReadScalar(full_name("fastest_index"), &fastest_index_));
         return Status::OK();
       }
 
@@ -279,6 +294,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       };
 
       std::vector<std::unique_ptr<IteratorBase>> input_impls_;
+      std::unique_ptr<IteratorBase> fastest_input_impl_;
       // For tracking the time taken for each input's iterations.
       std::vector<histogram::Histogram> histograms_;
 
@@ -292,20 +308,19 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
         for (size_t i = 0, num_inputs = dataset()->inputs_.size();
              i < num_inputs; ++i) {
           threads[i].result = absl::make_unique<InvocationResult>();
-          threads[i].thread.reset(ctx->env()->StartThread(
-              {}, strings::StrCat("tf_data_merge_", i),
+          threads[i].thread = ctx->StartThread(
+              strings::StrCat("tf_data_merge_", i),
               std::bind(&ChooseFastestIterator::RunnerThread, this, ctx,
-                        threads[i].result.get(), i)));
+                        threads[i].result.get(), i));
         }
         return threads;
       }
 
       void RunnerThread(IteratorContext* ctx, InvocationResult* result, int i) {
-        int64 start = Env::Default()->NowNanos();
+        int64 start = EnvTime::NowNanos();
         Status s = input_impls_[i]->GetNext(ctx, &result->out_tensors,
                                             &result->end_of_sequence);
-        histograms_[i].Add(
-            static_cast<double>(Env::Default()->NowNanos() - start));
+        histograms_[i].Add(static_cast<double>(EnvTime::NowNanos() - start));
 
         result->status = s;
         result->notification.Notify();
@@ -317,15 +332,23 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       void SelectFastestInputIndex() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         fastest_index_ = 0;
 
+        VLOG(2) << "90.0 percentile iteration time:";
         double best_percentile = histograms_[0].Percentile(kPercentile);
+        VLOG(2) << "Branch 0: " << best_percentile;
         for (size_t i = 1, num_inputs = histograms_.size(); i < num_inputs;
              ++i) {
           double percentile = histograms_[i].Percentile(kPercentile);
+          VLOG(2) << "Branch " << i << ": " << percentile;
           if (percentile <= best_percentile) {
             best_percentile = percentile;
             fastest_index_ = i;
           }
         }
+        VLOG(1) << "Selecting index " << fastest_index_
+                << " as the fastest index.";
+
+        fastest_input_impl_ = std::move(input_impls_[fastest_index_]);
+        input_impls_.clear();  // Delete the unused iterators.
       }
     };  // class Iterator
 
@@ -341,11 +364,13 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };  // class ChooseFastestDatasetOp
 
-// Register the kernel implementation for ChooseFastestDataset.
+REGISTER_KERNEL_BUILDER(Name("ChooseFastestDataset").Device(DEVICE_CPU),
+                        ChooseFastestDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalChooseFastestDataset").Device(DEVICE_CPU),
     ChooseFastestDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

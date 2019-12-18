@@ -37,7 +37,6 @@ DeviceDescription::DeviceDescription()
                         kUninitializedUint64),
       block_dim_limit_(kUninitializedUint64, kUninitializedUint64,
                        kUninitializedUint64),
-      blocks_per_core_limit_(kUninitializedUint64),
       threads_per_core_limit_(kUninitializedUint64),
       threads_per_block_limit_(kUninitializedUint64),
       threads_per_warp_(kUninitializedUint64),
@@ -148,8 +147,8 @@ uint64 DivideCeil(uint64 x, uint64 y) {
 }
 
 void CalculateDimensionality(const DeviceDescription &device_description,
-                             uint64 element_count, uint64 *threads_per_block,
-                             uint64 *block_count) {
+                             int64 element_count, int64 *threads_per_block,
+                             int64 *block_count) {
   *threads_per_block = device_description.threads_per_block_limit();
   *block_count = port::MathUtil::CeilOfRatio(element_count, *threads_per_block);
   if (*block_count == 1) {

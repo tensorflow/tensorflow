@@ -26,8 +26,25 @@ bool IsGoogleCudaEnabled() {
 #endif
 }
 
-bool CudaSupportsHalfMatMulAndConv() {
-#if GOOGLE_CUDA
+bool IsBuiltWithROCm() {
+#if TENSORFLOW_USE_ROCM
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool IsBuiltWithNvcc() {
+#if TENSORFLOW_USE_NVCC
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool GpuSupportsHalfMatMulAndConv() {
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   return true;
 #else
   return false;

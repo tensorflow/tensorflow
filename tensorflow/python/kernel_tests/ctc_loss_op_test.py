@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -305,7 +307,7 @@ class CTCLossTest(test.TestCase):
 
 class CTCLossTestV2(test.TestCase):
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes
   def testCtcLossV2(self):
     random_seed.set_random_seed(5)
 
@@ -326,17 +328,21 @@ class CTCLossTestV2(test.TestCase):
     labels *= label_mask
     logit_length = [num_frames] * batch_size
 
-    ref_loss = ctc_ops.ctc_loss_v2(
-        labels=labels,
-        logits=logits,
-        label_length=label_length,
-        logit_length=logit_length)
-    ref_grad = gradients_impl.gradients(ref_loss, [logits])
+    with backprop.GradientTape() as t:
+      t.watch(logits)
+      ref_loss = ctc_ops.ctc_loss_v2(
+          labels=labels,
+          logits=logits,
+          label_length=label_length,
+          logit_length=logit_length)
+    ref_grad = t.gradient(ref_loss, [logits])
 
     sparse_labels = ctc_ops.dense_labels_to_sparse(labels, label_length)
 
     def assert_same_loss_and_grads(loss):
-      with self.cached_session() as sess:
+      if context.executing_eagerly():
+        return
+      with self.cached_session():
         self.assertAllClose(*self.evaluate([loss, ref_loss]))
         grad = gradients_impl.gradients(loss, [logits])
         self.assertAllClose(
@@ -497,7 +503,8 @@ class CTCLossTestV2(test.TestCase):
         logits[:, :, -1:],
         logits[:, :, blank_index:-1],
     ], axis=2)
-    shifted_labels = array_ops.where(labels < blank_index, labels, labels + 1)
+    shifted_labels = array_ops.where_v2(labels < blank_index, labels,
+                                        labels + 1)
 
     ctc_loss = ctc_ops.ctc_loss_dense(
         labels=shifted_labels,

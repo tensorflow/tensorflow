@@ -1148,7 +1148,7 @@ TYPED_TEST(Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Input_Batch_In_Lanes,
 }
 
 template <typename T>
-class Convolve2D_1x4x4x160_3x3x1x160_Dephtwise_Both_Batch_In_Lanes
+class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes
     : public ConvolutionTest {
  public:
   void RunTest() {
@@ -1210,9 +1210,9 @@ class Convolve2D_1x4x4x160_3x3x1x160_Dephtwise_Both_Batch_In_Lanes
   }
 };
 
-TYPED_TEST_CASE(Convolve2D_1x4x4x160_3x3x1x160_Dephtwise_Both_Batch_In_Lanes,
+TYPED_TEST_CASE(Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes,
                 TestTypes);
-TYPED_TEST(Convolve2D_1x4x4x160_3x3x1x160_Dephtwise_Both_Batch_In_Lanes,
+TYPED_TEST(Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes,
            Types) {
   this->RunTest();
 }
@@ -1801,7 +1801,8 @@ INSTANTIATE_TEST_CASE_P(
                       Convolve1DTestParam{24, 1, 1, 10, 5},
                       Convolve1DTestParam{160, 1, 1, 10, 1},
                       Convolve1DTestParam{255, 1, 1, 3, 1},
-                      Convolve1DTestParam{130, 1, 1, 1, 3},
+                      Convolve1DTestParam{130, 1, 1, 1, 2},
+                      Convolve1DTestParam{136, 1, 1, 1, 2},
                       Convolve1DTestParam{64, 1, 1, 1, 1},
                       Convolve1DTestParam{128, 1, 1, 1, 1},
                       Convolve1DTestParam{139, 1, 1, 128, 1},
@@ -1841,15 +1842,11 @@ INSTANTIATE_TEST_CASE_P(
                       Convolve1DTestParam{130, 1, 1, 1, 3},
                       Convolve1DTestParam{64, 1, 1, 1, 1},
                       Convolve1DTestParam{128, 1, 1, 1, 1},
-// TODO(b/72566306): The following five tests failed on CPU with unreasonable
-// relative errors.  Last ran on 2018-02-22.
-#if XLA_TEST_BACKEND_GPU
                       Convolve1DTestParam{139, 1, 1, 128, 1},
                       Convolve1DTestParam{640, 3, 3, 128, 1},
                       Convolve1DTestParam{900, 1, 1, 10, 1},
                       Convolve1DTestParam{1, 10, 10, 1, 10},
                       Convolve1DTestParam{1, 10, 130, 1, 1},
-#endif
                       Convolve1DTestParam{1, 10, 130, 1, 2},
                       Convolve1DTestParam{1, 64, 64, 1, 10},
                       Convolve1DTestParam{1, 65, 65, 1, 1},
@@ -1889,7 +1886,7 @@ XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
 // (We run this test on all platforms, because, what the heck.)
 XLA_TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
-      "cudnn-conv-algorithm-picker");
+      "gpu-conv-algorithm-picker");
 
   XlaBuilder builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
@@ -1911,10 +1908,10 @@ XLA_TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
   XlaBuilder builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 64, 100, 100});
   Array4D<float> input_data(1, 64, 100, 100);
-  input_data.FillRandom(/*value=*/0.023, 0.001, /*seed=*/45321);
+  input_data.FillRandom(/*stddev=*/0.023, 0.001, /*seed=*/45321);
   Shape filter_shape = ShapeUtil::MakeShape(F32, {7, 7, 1, 64});
   Array4D<float> filter_data(7, 7, 1, 64);
-  input_data.FillRandom(/*value=*/0.023, 0.001, /*seed=*/45320);
+  filter_data.FillRandom(/*stddev=*/0.023, 0.001, /*seed=*/45320);
   auto input = Parameter(&builder, 0, input_shape, "input");
   auto filter = ConstantR4FromArray4D(&builder, filter_data);
 
@@ -1945,7 +1942,8 @@ XLA_TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
 
 class ConvolutionHloTest : public HloTestBase {};
 
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_CPU(ConvolveF64Forward)) {
+// double datatype is not yet supported in ROCm
+XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_GPU_ROCM(ConvolveF64Forward)) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1957,7 +1955,7 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_CPU(ConvolveF32ForwardReversed)) {
+XLA_TEST_F(ConvolutionHloTest, ConvolveF32ForwardReversed) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1969,7 +1967,9 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_CPU(ConvolveF64BackwardFilter)) {
+// double datatype is not yet supported in ROCm
+XLA_TEST_F(ConvolutionHloTest,
+           DISABLED_ON_GPU_ROCM(ConvolveF64BackwardFilter)) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1981,7 +1981,8 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_CPU(ConvolveF64BackwardInput)) {
+// double datatype is not yet supported in ROCm
+XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_GPU_ROCM(ConvolveF64BackwardInput)) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1992,6 +1993,19 @@ ENTRY Test {
   ROOT %convolution = f64[4,3,16,16] convolution(%output, %reverse), window={size=7x7 pad=3_3x3_3}, dim_labels=bf01_io01->bf01
 })";
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, ConvolveBackwardInput) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY Test {
+  %output = f32[3,3,64,64] parameter(0)
+  %kernel = f32[672,7,7,64] parameter(1)
+  %reverse = f32[672,7,7,64]{3,2,1,0} reverse(f32[672,7,7,64]{3,2,1,0} %kernel), dimensions={1,2}
+  ROOT %convolution = f32[672,9,9,64]{3,2,1,0} convolution(f32[3,3,64,64]{3,2,1,0} %output, f32[672,7,7,64]{3,2,1,0} %reverse), window={size=7x7 pad=6_6x6_6}, dim_labels=01bf_o01i->f01b
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
 }  // namespace

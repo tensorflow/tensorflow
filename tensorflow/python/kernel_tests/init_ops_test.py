@@ -746,6 +746,13 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
         else:
           shape = [4, 16, 16, 16, 64]
           convolution = convolutional.conv3d
+
+          if test.is_built_with_rocm():
+            # This subtest triggers a known bug in ROCm runtime code
+            # The bug has been fixed and will be available in ROCm 2.7
+            # Re-enable this test once ROCm 2.7 is released
+            continue
+
         inputs = random_ops.random_normal(shape, dtype=dtype)
         inputs_2norm = linalg_ops.norm(inputs)
         outputs = convolution(

@@ -5,7 +5,7 @@ op {
   }
   summary: "Returns x * y element-wise. Returns zero if y is zero, even if x if infinite or NaN."
   description: <<END
-*NOTE*: `Mul` supports broadcasting. More about broadcasting
+*NOTE*: `MulNoNan` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 END
 }

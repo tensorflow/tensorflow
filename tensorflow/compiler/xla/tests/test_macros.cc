@@ -18,9 +18,8 @@ limitations under the License.
 #include <fstream>
 #include <streambuf>
 #include <string>
-#include <unordered_map>
 
-#include "absl/strings/ascii.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/logging.h"
@@ -31,7 +30,7 @@ namespace {
 
 // Mapping from test name; i.e. MyTest.MyTestCase to platforms on which it is
 // disabled - a sequence of regexps.
-using ManifestT = std::unordered_map<string, std::vector<string>>;
+using ManifestT = absl::flat_hash_map<string, std::vector<string>>;
 
 ManifestT ReadManifest() {
   ManifestT manifest;
@@ -68,9 +67,18 @@ ManifestT ReadManifest() {
 
 }  // namespace
 
-string PrependDisabledIfIndicated(const string& test_case_name,
-                                  const string& test_name) {
+std::string PrependDisabledIfIndicated(absl::string_view test_case_name,
+                                       absl::string_view test_name) {
   ManifestT manifest = ReadManifest();
+
+  // If the test name ends with a slash followed by one or more digits, strip
+  // that off; this is just a shard number, and matching on this would be
+  // unstable even if someone wanted to do it.
+  static LazyRE2 shard_num_pattern = {R"(/\d+$)"};
+  absl::string_view suffix;
+  if (RE2::PartialMatch(test_name, *shard_num_pattern, &suffix)) {
+    test_name.remove_suffix(suffix.size());
+  }
 
   // First try full match: test_case_name.test_name
   // If that fails, try to find just the test_case_name; this would disable all
@@ -79,7 +87,7 @@ string PrependDisabledIfIndicated(const string& test_case_name,
   if (it == manifest.end()) {
     it = manifest.find(test_case_name);
     if (it == manifest.end()) {
-      return test_name;
+      return std::string(test_name);
     }
   }
 
@@ -88,12 +96,12 @@ string PrependDisabledIfIndicated(const string& test_case_name,
   string platform_string = XLA_PLATFORM;
   for (const auto& s : disabled_platforms) {
     if (RE2::FullMatch(/*text=*/platform_string, /*re=*/s)) {
-      return "DISABLED_" + test_name;
+      return absl::StrCat("DISABLED_", test_name);
     }
   }
 
   // We didn't hit in the disabled manifest entries, so don't disable it.
-  return test_name;
+  return std::string(test_name);
 }
 
 }  // namespace xla

@@ -97,6 +97,8 @@ def _cudnn_rnn_backwardv3(op, *grads):
       dropout=op.get_attr("dropout"),
       seed=op.get_attr("seed"),
       seed2=op.get_attr("seed2"),
+      time_major=op.get_attr("time_major"),
+      num_proj=op.get_attr("num_proj"),
       rnn_mode=op.get_attr("rnn_mode"),
       input_mode=op.get_attr("input_mode"),
       direction=op.get_attr("direction")) + (None,)

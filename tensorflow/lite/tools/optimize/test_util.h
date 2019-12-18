@@ -34,6 +34,9 @@ extern const char* kConvModelWithMinus128Plus127Weights;
 // Activations have min = 0, max = 10.
 extern const char* kConvModelWith0Plus10Weights;
 
+// Test model where no bias is in the conv.
+extern const char* kConvModelWithNoBias;
+
 // A floating point model with a single softmax. The input tensor has min
 // and max in range [-5, 5], not necessarily -5 or +5.
 extern const char* kSingleSoftmaxModelMinMinus5MaxPlus5;
@@ -45,6 +48,55 @@ extern const char* kSingleAvgPoolModelMinMinus5MaxPlus5;
 // Test model with a weights variable that is shared between a convolution layer
 // and an add operation.
 extern const char* kModelWithSharedWeights;
+
+// Test model with Add followed by a reshape. Model has 2 inputs for add.
+extern const char* kMultiInputAddWithReshape;
+
+// Test gather operation with quantized input.
+extern const char* kQuantizedWithGather;
+
+// Test model with a tf.constant input to tf.add. Model has 2 inputs one
+// constant and other placeholder.
+extern const char* kConstInputAddModel;
+
+// A float test model with concat that has [0, 5] and [0, 10] for inputs and [0,
+// 10] as output.
+extern const char* kFloatConcatMax5Max10Max10;
+
+// Test model with a custom op.
+extern const char* kModelWithCustomOp;
+
+// Test model with a argmax op.
+extern const char* kModelWithArgMaxOp;
+
+// Test model with a argmax op.
+extern const char* kModelWithFCOp;
+
+// Test model with mixed quantizable and un-quantizable ops.
+// reshape->custom->custom->squeeze.
+extern const char* kModelMixed;
+
+// Test model with split op.
+extern const char* kModelSplit;
+
+// Test model with LSTM op that has layer norm, has projection, without
+// peephole, without cifg.
+extern const char* kLstmCalibrated;
+extern const char* kLstmQuantized;
+
+// Test model with a minimum op.
+extern const char* kModelWithMinimumOp;
+
+// Test model with a maximum op.
+extern const char* kModelWithMaximumOp;
+
+// Test model with LSTM op that has peephole, without layer norm, without
+// projection, without cifg.
+extern const char* kLstmCalibrated2;
+extern const char* kLstmQuantized2;
+
+// Test model with an unpack op.
+extern const char* kModelWithUnpack;
 
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {

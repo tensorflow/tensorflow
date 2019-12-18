@@ -63,11 +63,16 @@ TEST_F(FunctionsTest, InstantiationParameters) {
   FunctionDef func = FunctionDefHelper::Create(
       "ParametrizedFunc",
       /* inputs */
-      {"input1:A", "input2:B", "input3:float"},
+      {"input1:A", "input2:B", "input3:float", "input4: C"},
       /* outputs */
-      {"output1: A", "output2:C"},
+      {"output1: A", "output2:D"},
       /* type parameters */
-      {"A: {float, double}", "B: {float, int32}", "C: {float, double}"},
+      {
+          "A: {float, double}",
+          "B: {float, int32}",
+          "C: list(type)",
+          "D: {float, double}",
+      },
       /* function body*/
       {{{"output"}, "FakeOp", {"input1", "input2"}, {{"key", "$key"}}}},
       /* Mapping between function returns and function node outputs. */
@@ -77,16 +82,20 @@ TEST_F(FunctionsTest, InstantiationParameters) {
   func_instantiation_attr["key"].set_s("key-value");
   func_instantiation_attr["A"].set_type(DT_FLOAT);
   func_instantiation_attr["B"].set_type(DT_INT32);
-  func_instantiation_attr["C"].set_type(DT_DOUBLE);
+  func_instantiation_attr["C"].mutable_list()->add_type(DT_FLOAT);
+  func_instantiation_attr["C"].mutable_list()->add_type(DT_INT32);
+  func_instantiation_attr["D"].set_type(DT_DOUBLE);
 
   absl::flat_hash_map<string, DataType> type_parameters;
   TF_EXPECT_OK(InstantiationTypeParameters(
       func, AttrSlice(&func_instantiation_attr), &type_parameters));
 
-  ASSERT_EQ(3, type_parameters.size());
+  ASSERT_EQ(5, type_parameters.size());
   EXPECT_EQ(DT_FLOAT, type_parameters["A"]);
   EXPECT_EQ(DT_INT32, type_parameters["B"]);
-  EXPECT_EQ(DT_DOUBLE, type_parameters["C"]);
+  EXPECT_EQ(DT_FLOAT, type_parameters["C:0"]);
+  EXPECT_EQ(DT_INT32, type_parameters["C:1"]);
+  EXPECT_EQ(DT_DOUBLE, type_parameters["D"]);
 
   absl::flat_hash_map<string, AttrValue> body_parameters;
   TF_EXPECT_OK(InstantiationBodyParameters(
@@ -94,131 +103,6 @@ TEST_F(FunctionsTest, InstantiationParameters) {
 
   ASSERT_EQ(1, body_parameters.size());
   EXPECT_EQ("key-value", body_parameters["key"].s());
-}
-
-TEST_F(FunctionsTest, GrapplerFunctionConnectivity_ExpandFunctionDefInput) {
-  GrapplerFunctionConnectivity connectivity;
-
-  connectivity.RegisterInputArgExpansion(
-      {"inputA", DT_FLOAT, /*is_ref=*/false, {"inputA"}});
-  connectivity.RegisterInputArgExpansion(
-      {"inputB", DT_FLOAT, /*is_ref=*/false, {"inputB_0", "inputB_1"}});
-
-  connectivity.RegisterFunctionBodyOutputs("Add", {{"z", {0, 1}}});
-  connectivity.RegisterFunctionBodyOutputs("Func",
-                                           {{"o1", {0, 2}}, {"o2", {2, 4}}});
-
-  std::vector<string> inputs;
-  TF_EXPECT_OK(connectivity.ExpandFunctionDefInput("inputA", &inputs));
-  ASSERT_EQ(1, inputs.size());
-  EXPECT_EQ("inputA", inputs[0]);
-
-  inputs.clear();
-  TF_EXPECT_OK(connectivity.ExpandFunctionDefInput("inputB", &inputs));
-  ASSERT_EQ(2, inputs.size());
-  EXPECT_EQ("inputB_0", inputs[0]);
-  EXPECT_EQ("inputB_1", inputs[1]);
-
-  inputs.clear();
-  TF_EXPECT_OK(connectivity.ExpandFunctionDefInput("inputB:1", &inputs));
-  ASSERT_EQ(1, inputs.size());
-  EXPECT_EQ("inputB_1", inputs[0]);
-
-  inputs.clear();
-  TF_EXPECT_OK(connectivity.ExpandFunctionDefInput("Add:z", &inputs));
-  ASSERT_EQ(1, inputs.size());
-  EXPECT_EQ("Add", inputs[0]);
-
-  inputs.clear();
-  TF_EXPECT_OK(connectivity.ExpandFunctionDefInput("Func:o1", &inputs));
-  ASSERT_EQ(2, inputs.size());
-  EXPECT_EQ("Func", inputs[0]);
-  EXPECT_EQ("Func:1", inputs[1]);
-
-  inputs.clear();
-  TF_EXPECT_OK(connectivity.ExpandFunctionDefInput("Func:o2", &inputs));
-  ASSERT_EQ(2, inputs.size());
-  EXPECT_EQ("Func:2", inputs[0]);
-  EXPECT_EQ("Func:3", inputs[1]);
-
-  inputs.clear();
-  TF_EXPECT_OK(connectivity.ExpandFunctionDefInput("Func:o1:0", &inputs));
-  ASSERT_EQ(1, inputs.size());
-  EXPECT_EQ("Func", inputs[0]);
-
-  inputs.clear();
-  TF_EXPECT_OK(connectivity.ExpandFunctionDefInput("Func:o1:1", &inputs));
-  ASSERT_EQ(1, inputs.size());
-  EXPECT_EQ("Func:1", inputs[0]);
-
-  inputs.clear();
-  TF_EXPECT_OK(connectivity.ExpandFunctionDefInput("Func:o2:0", &inputs));
-  ASSERT_EQ(1, inputs.size());
-  EXPECT_EQ("Func:2", inputs[0]);
-
-  inputs.clear();
-  TF_EXPECT_OK(connectivity.ExpandFunctionDefInput("Func:o2:1", &inputs));
-  ASSERT_EQ(1, inputs.size());
-  EXPECT_EQ("Func:3", inputs[0]);
-}
-
-TEST_F(FunctionsTest, GrapplerFunctionConnectivity_AsFunctionDefInput) {
-  GrapplerFunctionConnectivity connectivity;
-
-  connectivity.RegisterInputArgExpansion(
-      {"inputA", DT_FLOAT, /*is_ref=*/false, {"inputA"}});
-  connectivity.RegisterInputArgExpansion(
-      {"inputB", DT_FLOAT, /*is_ref=*/false, {"inputB_0", "inputB_1"}});
-
-  connectivity.RegisterFunctionBodyOutputs("Add", {{"z", {0, 1}}});
-  connectivity.RegisterFunctionBodyOutputs("Func",
-                                           {{"o1", {0, 2}}, {"o2", {2, 4}}});
-
-  string input;
-
-  TF_EXPECT_OK(connectivity.AsFunctionDefInput("inputA", &input));
-  EXPECT_EQ("inputA:0", input);
-
-  TF_EXPECT_OK(connectivity.AsFunctionDefInput("inputB_0", &input));
-  EXPECT_EQ("inputB:0", input);
-
-  TF_EXPECT_OK(connectivity.AsFunctionDefInput("inputB_1", &input));
-  EXPECT_EQ("inputB:1", input);
-
-  TF_EXPECT_OK(connectivity.AsFunctionDefInput("Add", &input));
-  EXPECT_EQ("Add:z:0", input);
-
-  TF_EXPECT_OK(connectivity.AsFunctionDefInput("Func", &input));
-  EXPECT_EQ("Func:o1:0", input);
-
-  TF_EXPECT_OK(connectivity.AsFunctionDefInput("Func:1", &input));
-  EXPECT_EQ("Func:o1:1", input);
-
-  TF_EXPECT_OK(connectivity.AsFunctionDefInput("Func:2", &input));
-  EXPECT_EQ("Func:o2:0", input);
-
-  TF_EXPECT_OK(connectivity.AsFunctionDefInput("Func:3", &input));
-  EXPECT_EQ("Func:o2:1", input);
-}
-
-TEST_F(FunctionsTest, GrapplerFunctionConnectivity_ExpandNodeInputs) {
-  GrapplerFunctionConnectivity connectivity;
-
-  connectivity.RegisterInputArgExpansion(
-      {"inputA", DT_FLOAT, /*is_ref=*/false, {"inputA"}});
-  connectivity.RegisterInputArgExpansion(
-      {"inputB", DT_FLOAT, /*is_ref=*/false, {"inputB_0", "inputB_1"}});
-
-  NodeDef node;
-  node.add_input("inputA:0");
-  node.add_input("inputB");
-
-  TF_EXPECT_OK(connectivity.ExpandNodeInputs(&node));
-
-  EXPECT_EQ(3, node.input_size());
-  EXPECT_EQ("inputA", node.input(0));
-  EXPECT_EQ("inputB_0", node.input(1));
-  EXPECT_EQ("inputB_1", node.input(2));
 }
 
 TEST_F(FunctionsTest, FromSimpleFunctionDef) {
@@ -252,19 +136,17 @@ TEST_F(FunctionsTest, FromSimpleFunctionDef) {
   EXPECT_EQ(5, item.function_body().node_size());
 
   EXPECT_EQ(1, item.input_size());
-  EXPECT_EQ("x", item.input(0).input_name);
-  ASSERT_EQ(1, item.input(0).placeholders.size());
-  EXPECT_EQ("x", item.input(0).placeholders[0]);
+  EXPECT_EQ("x", item.input(0).node_name);
 
   EXPECT_EQ(1, item.output_size());
-  EXPECT_EQ("y", item.output(0).output_name);
-  EXPECT_EQ("y_output_node_0", item.output(0).output_nodes[0]);
+  EXPECT_EQ("y_RetVal", item.output(0).node_name);
 
   int count = 0;
   for (const NodeDef &node : item.function_body().node()) {
     if (node.name() == "x" && ++count) {
-      EXPECT_EQ("Placeholder", node.op());
-      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
+      EXPECT_EQ("_Arg", node.op());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      EXPECT_EQ(0, node.attr().at("index").i());
       EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "two" && ++count) {
       EXPECT_EQ("Const", node.op());
@@ -280,10 +162,11 @@ TEST_F(FunctionsTest, FromSimpleFunctionDef) {
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("x", node.input(0));
       EXPECT_EQ("scale", node.input(1));
-    } else if (node.name() == "y_output_node_0" && ++count) {
-      EXPECT_EQ("Identity", node.op());
+    } else if (node.name() == "y_RetVal" && ++count) {
+      EXPECT_EQ("_Retval", node.op());
       ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("y", node.input(0));
+      EXPECT_EQ(0, node.attr().at("index").i());
     }
   }
   EXPECT_EQ(5, count);
@@ -334,20 +217,22 @@ TEST_F(FunctionsTest, FromFunctionDefWithMultiOutputNodes) {
   EXPECT_EQ(14, item.function_body().node_size());
 
   ASSERT_EQ(3, item.input_size());
-  EXPECT_EQ("x", item.input(0).input_name);
-  EXPECT_EQ("y", item.input(1).input_name);
-  EXPECT_EQ("dz", item.input(2).input_name);
+  EXPECT_EQ("x", item.input(0).node_name);
+  EXPECT_EQ("y", item.input(1).node_name);
+  EXPECT_EQ("dz", item.input(2).node_name);
 
   ASSERT_EQ(2, item.output_size());
-  EXPECT_EQ("dx_output_node_0", item.output(0).output_nodes[0]);
-  EXPECT_EQ("dy_output_node_0", item.output(1).output_nodes[0]);
+  EXPECT_EQ("dx_RetVal", item.output(0).node_name);
+  EXPECT_EQ("dy_RetVal", item.output(1).node_name);
 
   int count = 0;
   for (const NodeDef &node : item.function_body().node()) {
     if (node.name() == "x" || node.name() == "y" || node.name() == "dz") {
       count++;
-      EXPECT_EQ("Placeholder", node.op());
-      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
+      EXPECT_EQ("_Arg", node.op());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      int expected_index = node.name() == "x" ? 0 : node.name() == "y" ? 1 : 2;
+      EXPECT_EQ(expected_index, node.attr().at("index").i());
       EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "rx" && ++count) {
       EXPECT_EQ("BroadcastGradientArgs", node.op());
@@ -364,12 +249,14 @@ TEST_F(FunctionsTest, FromFunctionDefWithMultiOutputNodes) {
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("gy", node.input(0));
       EXPECT_EQ("rx:1", node.input(1));
-    } else if (node.name() == "dx_output_node_0" && ++count) {
-      EXPECT_EQ("Identity", node.op());
+    } else if (node.name() == "dx_RetVal" && ++count) {
+      EXPECT_EQ("_Retval", node.op());
+      EXPECT_EQ(0, node.attr().at("index").i());
       ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("dx", node.input(0));
-    } else if (node.name() == "dy_output_node_0" && ++count) {
-      EXPECT_EQ("Identity", node.op());
+    } else if (node.name() == "dy_RetVal" && ++count) {
+      EXPECT_EQ("_Retval", node.op());
+      EXPECT_EQ(1, node.attr().at("index").i());
       ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("dy", node.input(0));
     }
@@ -425,8 +312,10 @@ TEST_F(FunctionsTest, FromFunctionDefWithNestedFuncs) {
   for (const NodeDef &node : item.function_body().node()) {
     if (node.name() == "x" || node.name() == "y") {
       count++;
-      EXPECT_EQ("Placeholder", node.op());
-      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
+      EXPECT_EQ("_Arg", node.op());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      int expected_index = node.name() == "x" ? 0 : 1;
+      EXPECT_EQ(expected_index, node.attr().at("index").i());
       EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "a0" && ++count) {
       EXPECT_EQ("Swap", node.op());
@@ -485,13 +374,14 @@ TEST_F(FunctionsTest, FromFunctionDefWithOutputMappings) {
                                         flib, TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ(1, item.output_size());
-  EXPECT_EQ("out_output_node_0", item.output(0).output_nodes[0]);
+  EXPECT_EQ("out_RetVal", item.output(0).node_name);
 
   int count = 0;
   for (const NodeDef &node : item.function_body().node()) {
     if (node.name() == "in" && ++count) {
-      EXPECT_EQ("Placeholder", node.op());
-      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
+      EXPECT_EQ("_Arg", node.op());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      EXPECT_EQ(0, node.attr().at("index").i());
       EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "Linear_func" && ++count) {
       EXPECT_EQ("Identity", node.op());
@@ -501,77 +391,14 @@ TEST_F(FunctionsTest, FromFunctionDefWithOutputMappings) {
       EXPECT_EQ("Exp", node.op());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("Linear_func", node.input(0));
-    } else if (node.name() == "out_output_node_0" && ++count) {
-      EXPECT_EQ("Identity", node.op());
+    } else if (node.name() == "out_RetVal" && ++count) {
+      EXPECT_EQ("_Retval", node.op());
+      EXPECT_EQ(0, node.attr().at("index").i());
       ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("Exp", node.input(0));
     }
   }
   EXPECT_EQ(4, count);
-}
-
-TEST_F(FunctionsTest, FromFunctionDefWithInputForwarding) {
-  FunctionDef func = FunctionDefHelper::Create(
-      // Name
-      "ForwardInputs",
-      // Args
-      {"in0: float", "in1: float", "arg2: float", "arg3: int32", "arg4: float"},
-      // Return values
-      {"out0: float", "arg2: float", "arg3: int32"},
-      // Attr def
-      {},
-      // Nodes
-      {},
-      // Mapping
-      {{"out0", "in0"}});
-
-  protobuf::Map<string, AttrValue> func_instantiation_attr;
-  FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
-
-  GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func,
-                                        AttrSlice(&func_instantiation_attr),
-                                        flib, TF_GRAPH_DEF_VERSION, &item));
-
-  EXPECT_EQ("ForwardInputs", item.id);
-  EXPECT_EQ(8, item.function_body().node_size());
-
-  EXPECT_EQ(3, item.output_size());
-  EXPECT_EQ("out0_output_node_0", item.output(0).output_nodes[0]);
-  EXPECT_EQ("arg2_output_node_0", item.output(1).output_nodes[0]);
-  EXPECT_EQ("arg3_output_node_0", item.output(2).output_nodes[0]);
-
-  int count = 0;
-
-  const auto is_arg_placeholder = [](const string &name) {
-    return name == "in0" || name == "in1" || name == "arg2" || name == "arg3" ||
-           name == "arg4";
-  };
-
-  for (const NodeDef &node : item.function_body().node()) {
-    if (is_arg_placeholder(node.name()) && node.op() == "Placeholder") {
-      count++;
-      if (node.name() == "arg3") {
-        EXPECT_EQ(DT_INT32, node.attr().at("dtype").type());
-      } else {
-        EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
-      }
-      continue;
-    }
-
-    EXPECT_EQ("Identity", node.op());
-    ASSERT_EQ(1, node.input_size());
-    EXPECT_TRUE(is_arg_placeholder(node.input(0)));
-
-    if (node.name() == "out0_output_node_0" && ++count) {
-      EXPECT_EQ("in0", node.input(0));
-    } else if (node.name() == "arg2_output_node_0" && ++count) {
-      EXPECT_EQ("arg2", node.input(0));
-    } else if (node.name() == "arg3_output_node_0" && ++count) {
-      EXPECT_EQ("arg3", node.input(0));
-    }
-  }
-  EXPECT_EQ(8, count);
 }
 
 TEST_F(FunctionsTest, FromFunctionDefWithoutInput) {
@@ -600,7 +427,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithoutInput) {
 
   EXPECT_EQ(0, item.input_size());
   EXPECT_EQ(1, item.output_size());
-  EXPECT_EQ("o_output_node_0", item.output(0).output_nodes[0]);
+  EXPECT_EQ("o_RetVal", item.output(0).node_name);
   EXPECT_EQ(3, item.function_body().node_size());
 
   const NodeDef &two = item.function_body().node(0);
@@ -613,7 +440,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithoutInput) {
   EXPECT_EQ("two", cast.input(0));
 
   const NodeDef &retval = item.function_body().node(2);
-  EXPECT_EQ("o_output_node_0", retval.name());
+  EXPECT_EQ("o_RetVal", retval.name());
   EXPECT_EQ(1, retval.input_size());
   EXPECT_EQ("o", retval.input(0));
 }
@@ -714,14 +541,14 @@ TEST_F(FunctionsTest, MakeFunctionDef) {
   EXPECT_EQ("y", specialized.signature().output_arg(0).name());
   EXPECT_EQ(DT_FLOAT, specialized.signature().output_arg(0).type());
 
-  // Function body specialized for instantiation types
+  // Function body specialized for instantiation types.
   int count = 0;
   for (const NodeDef &node : specialized.node_def()) {
     if (node.name() == "scale" && ++count) {
       EXPECT_EQ(DT_FLOAT, node.attr().at("DstT").type());
     } else if (node.name() == "y" && ++count) {
       EXPECT_EQ("Mul", node.op());
-      EXPECT_EQ("x:0", node.input(0));
+      EXPECT_EQ("x", node.input(0));
       EXPECT_EQ("scale:y:0", node.input(1));
       EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
     }
@@ -753,9 +580,9 @@ TEST_F(FunctionsTest, ReplaceInputWithConst) {
   const NodeDef &input_x = item.function_body().node(0);
   const NodeDef &input_y = item.function_body().node(1);
 
-  // Initially inputs added to the graph as placeholders.
-  EXPECT_EQ("Placeholder", input_x.op());
-  EXPECT_EQ("Placeholder", input_y.op());
+  // Initially inputs added to the graph as _Arg nodes.
+  EXPECT_EQ("_Arg", input_x.op());
+  EXPECT_EQ("_Arg", input_y.op());
 
   // Replace inputs x and y with constants.
   NodeDef const_input_x;
@@ -824,7 +651,7 @@ TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
   GraphDef id_func_body = test::function::GDef(
       {/* Read and return input argument through Identity node. */
        NDef("read_x", "Identity", {"x"}, {{"T", "float"}}),
-       NDef("z_output_node_0", "Identity", {"read_x"}, {{"T", "float"}})});
+       NDef("z_RetVal", "_Retval", {"read_x"}, {{"T", "float"}})});
 
   protobuf::Map<string, AttrValue> func_instantiation_attr;
   func_instantiation_attr["T"].set_type(DT_FLOAT);
@@ -849,7 +676,7 @@ TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
   for (const NodeDef &node : specialized.node_def()) {
     if (node.name() == "read_x" && ++count) {
       EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ("x:0", node.input(0));
+      EXPECT_EQ("x", node.input(0));
     }
   }
   EXPECT_EQ(1, count);

@@ -36,7 +36,12 @@ die() {
 
 num_cpus() {
   # Get the number of CPUs
-  N_CPUS=$(grep -c ^processor /proc/cpuinfo)
+  if [[ -f /proc/cpuinfo ]]; then
+    N_CPUS=$(grep -c ^processor /proc/cpuinfo)
+  else
+    # Fallback method
+    N_CPUS=`getconf _NPROCESSORS_ONLN`
+  fi
   if [[ -z ${N_CPUS} ]]; then
     die "ERROR: Unable to determine the number of CPUs"
   fi
@@ -100,12 +105,15 @@ do_pylint() {
 "^tensorflow/contrib/eager/python/evaluator\.py.*\[E0202.*method-hidden "\
 "^tensorflow/contrib/eager/python/metrics_impl\.py.*\[E0202.*method-hidden "\
 "^tensorflow/contrib/rate/rate\.py.*\[E0202.*method-hidden "\
+"^tensorflow/python/training/tracking/tracking\.py.*\[E0202.*method-hidden "\
 "^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator "\
 "^tensorflow/python/keras/callbacks\.py.*\[E1133.*not-an-iterable "\
 "^tensorflow/python/keras/engine/base_layer.py.*\[E0203.*access-member-before-definition "\
 "^tensorflow/python/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition "\
 "^tensorflow/python/kernel_tests/constant_op_eager_test.py.*\[E0303.*invalid-length-returned "\
-"^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable"
+"^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable "\
+"^tensorflow/python/autograph/.*_py3_test\.py.*\[E0001.*syntax-error "\
+"^tensorflow/python/keras/preprocessing/image\.py.*\[E0240.*Inconsistent method resolution "
 
   echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
 
@@ -212,7 +220,7 @@ do_pylint() {
 
   echo ""
   if [[ ${N_ERRORS} != 0 ]]; then
-    echo "FAIL: Found ${N_ERRORS} non-whitelited pylint errors:"
+    echo "FAIL: Found ${N_ERRORS} non-whitelisted pylint errors:"
     cat "${NONWL_ERRORS_FILE}"
     return 1
   else
@@ -294,7 +302,7 @@ do_buildifier(){
 
   rm -rf ${BUILDIFIER_OUTPUT_FILE}
 
-  buildifier -showlog -v -mode=check \
+  buildifier -v -mode=check \
     ${BUILD_FILES} 2>&1 | tee ${BUILDIFIER_OUTPUT_FILE}
   BUILDIFIER_END_TIME=$(date +'%s')
 
@@ -305,7 +313,7 @@ do_buildifier(){
   if [[ -s ${BUILDIFIER_OUTPUT_FILE} ]]; then
     echo "FAIL: buildifier found errors and/or warnings in above BUILD files."
     echo "buildifier suggested the following changes:"
-    buildifier -showlog -v -mode=diff ${BUILD_FILES}
+    buildifier -v -mode=diff -diff_command=diff ${BUILD_FILES}
     echo "Please fix manually or run buildifier <file> to auto-fix."
     return 1
   else
@@ -356,12 +364,12 @@ do_external_licenses_check(){
 
   # Blacklist
   echo ${MISSING_LICENSES_FILE}
-  grep -e "@bazel_tools//third_party/" -e "@com_google_absl//absl" -e "@org_tensorflow//" -e "@com_github_googlecloudplatform_google_cloud_cpp//google" -v ${MISSING_LICENSES_FILE} > temp.txt
+  grep -e "@bazel_tools//third_party/" -e "@bazel_tools//tools" -e "@local" -e "@com_google_absl//absl" -e "@org_tensorflow//" -e "@com_github_googlecloudplatform_google_cloud_cpp//google" -v ${MISSING_LICENSES_FILE} > temp.txt
   mv temp.txt ${MISSING_LICENSES_FILE}
 
   # Whitelist
   echo ${EXTRA_LICENSE_FILE}
-  grep -e "@bazel_tools//src" -e "@bazel_tools//tools/" -e "@com_google_absl//" -e "//external" -e "@local" -e "@com_github_googlecloudplatform_google_cloud_cpp//" -e "@embedded_jdk//" -v ${EXTRA_LICENSES_FILE} > temp.txt
+  grep -e "//third_party/mkl_dnn" -e "@bazel_tools//src" -e "@bazel_tools//tools/" -e "@org_tensorflow//tensorflow" -e "@com_google_absl//" -e "//external" -e "@local" -e "@com_github_googlecloudplatform_google_cloud_cpp//" -e "@embedded_jdk//" -e "^//$" -v ${EXTRA_LICENSES_FILE} > temp.txt
   mv temp.txt ${EXTRA_LICENSES_FILE}
 
 
@@ -439,12 +447,28 @@ cmd_status(){
 # out by default in TF WORKSPACE file.
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/delegates/gpu/..."
   BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/java/demo/app/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/examples/android/..."
   BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/schema/..."
   BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}
+
+  cmd_status \
+    "This is due to invalid BUILD files."
+}
+
+do_bazel_deps_query() {
+  local BUILD_TARGET='//tensorflow/...'
+  # Android targets tend to depend on an Android runtime being available.
+  # Exclude until the sanity test has such a runtime available.
+  #
+  # TODO(mikecase): Remove TF Lite exclusion from this list. Exclusion is
+  # necessary since the @androidsdk WORKSPACE dependency is commented out by
+  # default in TF WORKSPACE file.
+  local BUILD_TARGET="${BUILD_TARGET}"' - kind("android_*", //tensorflow/...)'
+
+  bazel query ${BAZEL_FLAGS} -- "deps($BUILD_TARGET)" > /dev/null
 
   cmd_status \
     "This is due to invalid BUILD files."
@@ -540,12 +564,75 @@ do_check_file_name_test() {
   python file_name_test.py
 }
 
-do_libtensorflow_framework_not_depend_on_cuda_check() {
-  bazel build --action_env=TF_NEED_CUDA=1 --define framework_shared_object=true --config=cuda --nobuild_tests_only tensorflow/core/platform/default/build_config:libtensorflow_cuda_check_deps
+# Check that TARGET does not depend on DISALLOWED_DEP.
+_check_no_deps() {
+  TARGET="$1"
+  DISALLOWED_DEP="$2"
+  EXTRA_FLAG="$3"
+
+  TMP_FILE="$(mktemp)_tmp.log"
+  echo "Checking ${TARGET} does not depend on ${DISALLOWED_DEP} ..."
+  bazel cquery ${EXTRA_FLAG} "somepath(${TARGET}, ${DISALLOWED_DEP})" --keep_going> "${TMP_FILE}" 2>&1
+  if cat "${TMP_FILE}" | grep "Empty query results"; then
+      echo "Success."
+  else
+      cat "${TMP_FILE}"
+      echo
+      echo "ERROR: Found path from ${TARGET} to disallowed dependency ${DISALLOWED_DEP}."
+      echo "See above for path."
+      rm "${TMP_FILE}"
+      exit 1
+  fi
+  rm "${TMP_FILE}"
 }
+
+_do_pip_no_cuda_deps_check() {
+  EXTRA_FLAG="$1"
+  DISALLOWED_CUDA_DEPS=("@local_config_cuda//cuda:cudart"
+        "@local_config_cuda//cuda:cublas"
+        "@local_config_cuda//cuda:cuda_driver"
+        "@local_config_cuda//cuda:cudnn"
+        "@local_config_cuda//cuda:curand"
+        "@local_config_cuda//cuda:cusolver"
+        "@local_config_cuda//cuda:cusparse"
+        "@local_config_tensorrt//:tensorrt")
+  for cuda_dep in "${DISALLOWED_CUDA_DEPS[@]}"
+  do
+   _check_no_deps "//tensorflow/tools/pip_package:build_pip_package" "${cuda_dep}" "${EXTRA_FLAG}"
+   RESULT=$?
+
+   if [[ ${RESULT} != "0" ]]; then
+    exit 1
+   fi
+  done
+}
+
+do_pip_no_cuda_deps_check_ubuntu() {
+  _do_pip_no_cuda_deps_check "--define using_cuda=true --define using_cuda_nvcc=true"
+}
+
+do_pip_no_cuda_deps_check_windows() {
+  _do_pip_no_cuda_deps_check "--define using_cuda=true --define using_cuda_nvcc=true --define framework_shared_object=false"
+}
+
+do_configure_test() {
+  for WITH_CUDA in 1 0
+  do
+    export TF_NEED_CUDA=${WITH_CUDA}
+    export CUDNN_INSTALL_PATH="/usr/local/cudnn"
+    export PYTHON_BIN_PATH=$(which python)
+    yes "" | ./configure
+
+    RESULT=$?
+    if [[ ${RESULT} != "0" ]]; then
+     exit 1
+    fi
+  done
+}
+
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_check_futures_test" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test" "do_libtensorflow_framework_not_depend_on_cuda_check")
-SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "Check that python files have certain __future__ imports" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases" "Check gpu libtensorflow_framework.so does not depend on cuda shared libraries.")
+SANITY_STEPS=("do_configure_test" "do_pylint PYTHON2" "do_pylint PYTHON3" "do_check_futures_test" "do_buildifier" "do_bazel_nobuild" "do_bazel_deps_query" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test" "do_pip_no_cuda_deps_check_ubuntu" "do_pip_no_cuda_deps_check_windows")
+SANITY_STEPS_DESC=("Run ./configure" "Python 2 pylint" "Python 3 pylint" "Check that python files have certain __future__ imports" "buildifier check" "bazel nobuild" "bazel query" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases" "Check Ubuntu gpu pip package does not depend on cuda shared libraries" "Check Windows gpu pip package does not depend on cuda shared libraries")
 
 INCREMENTAL_FLAG=""
 DEFAULT_BAZEL_CONFIGS=""

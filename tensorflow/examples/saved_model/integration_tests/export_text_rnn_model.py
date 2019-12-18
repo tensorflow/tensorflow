@@ -21,7 +21,7 @@ from __future__ import print_function
 from absl import app
 from absl import flags
 
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 FLAGS = flags.FLAGS
 
@@ -50,7 +50,7 @@ class TextRnnModel(tf.train.Checkpoint):
     # splitting on spaces.
     normalized_sentences = tf.strings.regex_replace(
         input=sentences, pattern=r"\pP", rewrite="")
-    sparse_tokens = tf.string_split(normalized_sentences, " ")
+    sparse_tokens = tf.strings.split(normalized_sentences, " ").to_sparse()
 
     # Deal with a corner case: there is one empty sentence.
     sparse_tokens, _ = tf.sparse.fill_empty_rows(sparse_tokens, tf.constant(""))

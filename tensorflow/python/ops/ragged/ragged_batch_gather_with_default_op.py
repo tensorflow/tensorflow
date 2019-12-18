@@ -20,7 +20,6 @@ from __future__ import print_function
 
 
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -60,16 +59,12 @@ def batch_gather_with_default(params,
     `result.ragged_rank = max(indices.ragged_rank, params.ragged_rank)`.
 
   #### Example:
-    ```python
-    >>> params = tf.ragged.constant([
-          ['a', 'b', 'c'],
-          ['d'],
-          [],
-          ['e']])
-    >>> indices = tf.ragged.constant([[1, 2, -1], [], [], [0, 10]])
-    >>> batch_gather_with_default(params, indices, 'FOO')
-    [['b', 'c', 'FOO'], [], [], ['e', 'FOO']]
-  ```
+
+  >>> params = tf.ragged.constant([['a', 'b', 'c'], ['d'], [], ['e']])
+  >>> indices = tf.ragged.constant([[1, 2, -1], [], [], [0, 10]])
+  >>> batch_gather_with_default(params, indices, 'FOO')
+  <tf.RaggedTensor [[b'b', b'c', b'FOO'], [], [], [b'e', b'FOO']]>
+
   """
   with ops.name_scope(name, 'RaggedBatchGatherWithDefault'):
     params = ragged_tensor.convert_to_tensor_or_ragged_tensor(
@@ -81,6 +76,9 @@ def batch_gather_with_default(params,
     default_value = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         default_value, name='default_value',
     )
+    row_splits_dtype, (params, indices, default_value) = (
+        ragged_tensor.match_row_splits_dtypes(params, indices, default_value,
+                                              return_dtype=True))
     # TODO(hterry): lift this restriction and support default_values of
     #               of rank > 1
     if (default_value.shape.ndims is not 0
@@ -113,7 +111,7 @@ def batch_gather_with_default(params,
             axis=-1)
         upper_bounds = math_ops.cast(row_lengths, indices.dtype)
 
-        pad_shape = _get_pad_shape(params, indices)
+        pad_shape = _get_pad_shape(params, indices, row_splits_dtype)
 
         pad = ragged_tensor_shape.broadcast_to(
             default_value, pad_shape)
@@ -144,17 +142,17 @@ def batch_gather_with_default(params,
           params=padded_params, indices=adjusted_indices, name=name)
 
 
-def _get_pad_shape(params, indices):
+def _get_pad_shape(params, indices, row_splits_dtype):
   """Gets the RaggedTensorDynamicShape for the pad tensor."""
   num_batch_dimensions = indices.shape.ndims - 1
   params_shape = ragged_tensor_shape.RaggedTensorDynamicShape.from_tensor(
-      params)
+      params, dim_size_dtype=row_splits_dtype)
 
   # We want to create a pad tensor that can be concatenated with the params.
   if params.shape.ndims == indices.shape.ndims:
     # When params and indices are the same rank, the shape of the pad tensor is
     # almost identical to params, except the last dimension which has size = 1.
-    if params_shape.num_inner_dimensions is 0:
+    if params_shape.num_inner_dimensions == 0:
       pad_dims = params_shape.partitioned_dim_sizes[:-1] + (
           array_ops.ones_like(params_shape.partitioned_dim_sizes[-1]),)
       return ragged_tensor_shape.RaggedTensorDynamicShape(
@@ -169,8 +167,8 @@ def _get_pad_shape(params, indices):
     # has size 1.
     pad_dims = None
     if num_batch_dimensions == 0:
-      pad_dims = (constant_op.constant(1, dtype=dtypes.int64),) + (
-          constant_op.constant([1], dtype=dtypes.int64),) * (
+      pad_dims = (constant_op.constant(1, dtype=row_splits_dtype),) + (
+          constant_op.constant([1], dtype=row_splits_dtype),) * (
               params_shape.num_partitioned_dimensions -
               num_batch_dimensions - 1)
     else:

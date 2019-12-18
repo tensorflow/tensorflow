@@ -13,106 +13,56 @@
 # limitations under the License.
 # ==============================================================================
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 
-common_linkopts = tflite_linkopts() + select({
-    "//conditions:default": [],
-    "//tensorflow:android": [
-        "-pie",
-        "-llog",
-    ],
-})
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(glob([
+    "testdata/**",
+]))
 
 cc_library(
     name = "evaluation_stage",
-    srcs = ["evaluation_stage.cc"],
     hdrs = ["evaluation_stage.h"],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_proto_cc",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
     ],
 )
 
 cc_library(
-    name = "evaluation_stage_factory",
-    hdrs = ["evaluation_stage_factory.h"],
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
     copts = tflite_copts(),
     deps = [
-        ":evaluation_stage",
-        ":identity_stage",
-        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_proto_cc",
-        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_proto_cc",
-        "@com_google_absl//absl/memory",
+        "//tensorflow/lite:context",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/gpu:delegate",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+cc_test(
+    name = "utils_test",
+    srcs = ["utils_test.cc"],
+    data = [
+        "testdata/empty.txt",
+        "testdata/labels.txt",
     ],
-)
-
-cc_library(
-    name = "identity_stage",
-    srcs = ["identity_stage.cc"],
-    hdrs = ["identity_stage.h"],
-    copts = tflite_copts(),
-    deps = [
-        ":evaluation_stage",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_proto_cc",
-    ] + select(
-        {
-            "//tensorflow:android": [
-                "//tensorflow/core:android_tensorflow_lib",
-            ],
-            "//conditions:default": [
-                "//tensorflow/core:tensorflow",
-                "//tensorflow/core:protos_all_cc",
-                "//tensorflow/core:core_cpu",
-                "//tensorflow/core:framework",
-                "//tensorflow/core:lib",
-                "//tensorflow/core:ops",
-            ],
-        },
-    ),
-    alwayslink = 1,
-)
-
-tf_cc_test(
-    name = "evaluation_stage_test",
-    srcs = ["evaluation_stage_test.cc"],
-    linkopts = common_linkopts,
+    linkopts = tflite_linkopts(),
     linkstatic = 1,
-    tags = [
-        "tflite_not_portable_android",
-        "tflite_not_portable_ios",
-    ],
     deps = [
-        ":evaluation_stage",
-        ":evaluation_stage_factory",
-        ":identity_stage",
+        ":utils",
+        "//tensorflow/lite:context",
         "@com_google_googletest//:gtest_main",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_proto_cc",
-        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_proto_cc",
-    ] + select(
-        {
-            "//tensorflow:android": [
-                "//tensorflow/core:android_tensorflow_lib",
-                "//tensorflow/core:android_tensorflow_test_lib",
-            ],
-            "//conditions:default": [
-                "//tensorflow/core:framework",
-                "//tensorflow/core:core_cpu",
-                "//tensorflow/core:ops",
-                "//tensorflow/core:tensorflow",
-            ],
-        },
-    ),
+    ],
 )

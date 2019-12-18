@@ -29,12 +29,13 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
-from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import nest
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -72,7 +73,11 @@ def model_iteration(model,
       sample_weights: Optional list of sample weight arrays.
       batch_size: Integer batch size or None if unknown.
       epochs: Number of times to iterate over the data
-      verbose: Verbosity mode, 0, 1 or 2
+      verbose: 0, 1, or 2. Verbosity mode.
+        0 = silent, 1 = progress bar, 2 = one line per epoch.
+        Note that the progress bar is not particularly useful when
+        logged to a file, so verbose=2 is recommended when not running
+        interactively (eg, in a production environment).
       callbacks: List of callbacks to be called during training
       val_inputs: Either a list or dictionary of arrays, or a dataset instance.
       val_targets: List/dictionary of target arrays.
@@ -86,9 +91,10 @@ def model_iteration(model,
         declaring one epoch finished and starting the next epoch. Ignored with
         the default value of `None`.
       validation_steps: Number of steps to run validation for (only if doing
-        validation from data tensors). Ignored with the default value of `None`.
+        validation from data tensors). Ignored with the default value of
+        `None`.
       validation_freq: Only relevant if validation data is provided. Integer or
-        `collections.Container` instance (e.g. list, tuple, etc.). If an
+        `collections_abc.Container` instance (e.g. list, tuple, etc.). If an
         integer, specifies how many training epochs to run before a new
         validation run is performed, e.g. `validation_freq=2` runs
         validation every 2 epochs. If a Container, specifies the epochs on
@@ -96,8 +102,8 @@ def model_iteration(model,
         validation at the end of the 1st, 2nd, and 10th epochs.
       mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
       validation_in_fit: if true, then this method is invoked from within
-        training iteration (for validation). In the case where `val_inputs` is a
-        dataset, this flag indicates that its iterator and feed values are
+        training iteration (for validation). In the case where `val_inputs` is
+        a dataset, this flag indicates that its iterator and feed values are
         already created so should properly reuse resources.
       prepared_feed_values_from_dataset: if True, `inputs` is a list of feed
         tensors returned from `_prepare_feed_values` call on the validation
@@ -134,21 +140,16 @@ def model_iteration(model,
     if steps_per_epoch is None:
       reset_dataset_after_each_epoch = True
       steps_per_epoch = training_utils.infer_steps_for_dataset(
-          inputs, steps_per_epoch, epochs=epochs, steps_name=steps_name)
+          model, inputs, steps_per_epoch, epochs=epochs, steps_name=steps_name)
     input_iterator = _get_iterator(inputs, model._distribution_strategy)
 
-  if mode == ModeKeys.TRAIN:
-    _print_train_info(inputs, val_inputs, steps_per_epoch, verbose)
-
-  # Enter DistributionStrategy scope.
+  # Enter tf.distribute.Strategy scope.
   if model._distribution_strategy:
     scope = distributed_training_utils.distributed_scope(
         strategy=model._distribution_strategy,
         learning_phase=(1 if mode == ModeKeys.TRAIN else 0))
     scope.__enter__()
 
-  # Get step function and loop type.
-  f = _make_execution_function(model, mode)
   use_steps = is_dataset or steps_per_epoch is not None
   do_validation = val_inputs is not None
 
@@ -166,11 +167,26 @@ def model_iteration(model,
     ins = inputs
   else:
     ins = _prepare_feed_values(model, inputs, targets, sample_weights, mode)
+    # `ins` is a function when a distribute strategy is used in Eager mode.  In
+    # that case `is_dataset` is True.  The code branches that have requirements
+    # about the type of `ins` do not trigger in the distributed case.
+
   if not is_dataset:
     num_samples_or_steps = _get_num_samples_or_steps(ins, batch_size,
                                                      steps_per_epoch)
   else:
     num_samples_or_steps = steps_per_epoch
+
+  # Update sample_weight_mode of the model if sample_weights is specified by the
+  # user. We need to call this function after we have a handle on the inputs
+  # (both numpy arrays and datasets) in order to determine if the user has
+  # specified sample_weights.
+  _update_sample_weight_mode(model, mode, ins)
+
+  # Get step function and loop type. As part of building the execution
+  # function we recompile the metrics based on the updated
+  # sample_weight_mode value.
+  f = _make_execution_function(model, mode)
 
   # Prepare validation data. Hold references to the iterator and the input list
   # to properly reinitialize and reuse in multiple validation passes.
@@ -182,6 +198,7 @@ def model_iteration(model,
       # that determines the number of steps required. To avoid this issue,
       # set validation_steps here if validation_steps is None.
       validation_steps = training_utils.infer_steps_for_dataset(
+          model,
           val_inputs,
           validation_steps,
           epochs=epochs,
@@ -189,6 +206,15 @@ def model_iteration(model,
     val_iterator = _get_iterator(val_inputs, model._distribution_strategy)
     val_inputs = _prepare_feed_values(
         model, val_iterator, val_targets, val_sample_weights, ModeKeys.TEST)
+    # Get num steps for printing.
+    val_samples_or_steps = validation_steps
+  else:
+    # Get num samples for printing.
+    val_samples_or_steps = val_inputs and nest.flatten(
+        val_inputs)[0].shape[0] or None
+
+  if mode == ModeKeys.TRAIN and verbose:
+    _print_train_info(num_samples_or_steps, val_samples_or_steps, is_dataset)
 
   # Configure callbacks.
   count_mode = 'steps' if use_steps else 'samples'
@@ -203,7 +229,8 @@ def model_iteration(model,
       verbose=0,  # Handle ProgBarLogger separately in this loop.
       mode=mode)
   # TODO(omalleyt): Handle ProgBar as part of Callbacks once hooks are ready.
-  progbar = training_utils.get_progbar(model, count_mode)
+  progbar = training_utils.get_progbar(
+      model, count_mode, mode != ModeKeys.PREDICT)
   progbar.params = callbacks.params
   progbar.params['verbose'] = verbose
 
@@ -217,11 +244,15 @@ def model_iteration(model,
 
   # Select aggregation method.
   if mode == ModeKeys.PREDICT:
-    aggregator = training_utils.OutputsAggregator(use_steps,
-                                                  num_samples_or_steps)
+    aggregator = training_utils.OutputsAggregator(
+        use_steps,
+        num_samples=None if steps_per_epoch else num_samples_or_steps,
+        steps=steps_per_epoch)
   else:
-    aggregator = training_utils.MetricsAggregator(use_steps,
-                                                  num_samples_or_steps)
+    aggregator = training_utils.MetricsAggregator(
+        use_steps,
+        num_samples=None if steps_per_epoch else num_samples_or_steps,
+        steps=steps_per_epoch)
 
   if model._compile_distribution:
     distributed_training_utils._copy_weights_to_distributed_model(model, mode)
@@ -230,13 +261,18 @@ def model_iteration(model,
   callbacks._call_begin_hook(mode)
   progbar.on_train_begin()
 
+  initial_epoch = model._maybe_load_initial_epoch_from_ckpt(initial_epoch, mode)
+
   for epoch in range(initial_epoch, epochs):
     if callbacks.model.stop_training:
       break
 
     # Setup work for each epoch
     epoch_logs = {}
-    model.reset_metrics()
+    if mode != ModeKeys.PREDICT:
+      # Collecting and resetting metrics has non-zero cost and will needlessly
+      # slow down model.predict.
+      model.reset_metrics()
     if mode == ModeKeys.TRAIN:
       callbacks.on_epoch_begin(epoch, epoch_logs)
     progbar.on_epoch_begin(epoch, epoch_logs)
@@ -258,8 +294,13 @@ def model_iteration(model,
 
         # Get outputs.
         try:
-          # `ins` can be callable in DistributionStrategy + eager case.
-          actual_inputs = ins() if callable(ins) else ins
+          # `ins` can be callable in tf.distribute.Strategy + eager case.
+          if not callable(ins) or (
+              model._distribution_strategy and
+              not distributed_training_utils.is_distributing_by_cloning(model)):
+            actual_inputs = ins
+          else:
+            actual_inputs = ins()
           batch_outs = f(actual_inputs)
         except errors.OutOfRangeError:
           if is_dataset:
@@ -278,9 +319,10 @@ def model_iteration(model,
                   % (steps_name, steps_per_epoch * epochs))
             elif step > 0:
               steps_per_epoch = step
-              aggregator.num_samples_or_steps = steps_per_epoch
-              progbar.params['steps'] = steps_per_epoch
-              progbar.progbar.target = steps_per_epoch
+              aggregator.steps = steps_per_epoch
+              if mode == ModeKeys.TRAIN:
+                progbar.params['steps'] = steps_per_epoch
+                progbar.progbar.target = steps_per_epoch
           else:
             # We ran out of batches while the user passed an iterator (legacy).
             callbacks.model.stop_training = True
@@ -297,8 +339,8 @@ def model_iteration(model,
           batch_outs = [batch_outs]
 
         if model._distribution_strategy:
-          batch_outs = distributed_training_utils._per_device_aggregate_batch(
-              batch_outs, model, mode)
+          batch_outs = distributed_training_utils._per_replica_aggregate_batch(
+              model._distribution_strategy, batch_outs, model, mode)
 
         # Aggregate results.
         if step == 0:
@@ -321,21 +363,26 @@ def model_iteration(model,
       elif shuffle:
         np.random.shuffle(index_array)
       batches = make_batches(num_samples_or_steps, batch_size)
-
       for batch_index, (batch_start, batch_end) in enumerate(batches):
         batch_ids = index_array[batch_start:batch_end]
-
         # Slice into a batch.
-        try:
-          if ins and isinstance(ins[-1], int):
-            # Do not slice the training phase flag.
-            ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
-          else:
-            ins_batch = slice_arrays(ins, batch_ids)
-        except TypeError:
-          raise TypeError('TypeError while preparing batch. '
-                          'If using HDF5 input data, '
-                          'pass shuffle="batch".')
+        if len(batches) == 1:
+          # If we only have one batch, do not slice. This takes care of
+          # composite tensors in non-Dataset modes; we currently don't support
+          # slicing them.
+          # TODO(b/133517906): Add slicing support.
+          ins_batch = ins
+        else:
+          try:
+            if ins and isinstance(ins[-1], int):
+              # Do not slice the training phase flag.
+              ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
+            else:
+              ins_batch = slice_arrays(ins, batch_ids)
+          except TypeError:
+            raise TypeError('TypeError while preparing batch. '
+                            'If using HDF5 input data, '
+                            'pass shuffle="batch".')
 
         # Sparse to dense conversion.
         if issparse is not None:
@@ -411,6 +458,7 @@ def model_iteration(model,
     if reset_dataset_after_each_epoch and epoch < epochs - 1:
       _reinitialize_iterator(input_iterator, model._distribution_strategy)
 
+  model._successful_loop_finish = True
   callbacks._call_end_hook(mode)
 
   if model._distribution_strategy:
@@ -433,11 +481,14 @@ def _get_model_feed(model, mode):
   return feed
 
 
-def _print_train_info(inputs, val_inputs, steps_per_epoch, verbose):
-  if (val_inputs and steps_per_epoch is None and verbose and inputs and
-      hasattr(inputs[0], 'shape') and hasattr(val_inputs[0], 'shape')):
-    print('Train on %d samples, validate on %d samples' %
-          (inputs[0].shape[0], val_inputs[0].shape[0]))
+def _print_train_info(num_samples_or_steps, val_samples_or_steps, is_dataset):
+  increment = 'steps' if is_dataset else 'samples'
+  msg = 'Train on {0} {increment}'.format(
+      num_samples_or_steps, increment=increment)
+  if val_samples_or_steps:
+    msg += ', validate on {0} {increment}'.format(
+        val_samples_or_steps, increment=increment)
+  print(msg)
 
 
 def _get_num_samples_or_steps(ins, batch_size, steps_per_epoch):
@@ -475,7 +526,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
     # in Distribution Strategy case as it follows the same code path for both
     # eager and graph modes.
     # TODO(priyag,omalleyt): Either we should move the training DS with
-    # EagerIterator to use training_generator code path, or figure out how to
+    # OwnedIterator to use training_generator code path, or figure out how to
     # set a symbolic Iterator out of a Dataset when in eager mode.
     if context.executing_eagerly():
       return get_distributed_inputs
@@ -489,8 +540,8 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
         extract_tensors_from_dataset=True)
 
   inputs = training_utils.ModelInputs(inputs).as_list()
-  targets = targets or []
-  sample_weights = sample_weights or []
+  targets = list(targets or [])
+  sample_weights = list(sample_weights or [])
   ins = inputs + targets + sample_weights
   if mode == ModeKeys.TRAIN and not isinstance(K.symbolic_learning_phase(),
                                                int):
@@ -520,9 +571,158 @@ def _make_execution_function(model, mode):
   return model._make_execution_function(mode)
 
 
+def _update_sample_weight_mode(model, mode, inputs):
+  """Updates the sample_weight_mode of a given model."""
+  # Add a quick return to prevent us from calling model._feed_targets that
+  # accesses certain model properties that may not be set in the `PREDICT` mode.
+  if mode == ModeKeys.PREDICT:
+    return
+
+  sample_weights = None
+  # `inputs` is the model's inputs + targets + sample_weights +
+  # learning phase placeholder if specified. To update the sample_weight_mode
+  # we need to determine if the user has passed sample weights as part of the
+  # input.
+  if not callable(inputs):
+    sample_weights = inputs[len(model._feed_inputs) + len(model._feed_targets):]
+    has_learning_phase_pl = (mode == ModeKeys.TRAIN and
+                             not isinstance(K.symbolic_learning_phase(), int))
+    if has_learning_phase_pl:
+      sample_weights = sample_weights[:-1]
+    model._update_sample_weight_modes(sample_weights=sample_weights)
+
+  # Call the DistributionStrategy specific function to update the
+  # sample_weight_mode on the model.
+  if model._distribution_strategy:
+    distributed_training_utils._update_sample_weight_modes(model, mode,
+                                                           sample_weights)
+
 # For backwards compatibility for internal users of these loops.
 fit_loop = functools.partial(model_iteration, mode=ModeKeys.TRAIN)
 test_loop = functools.partial(
     model_iteration, mode=ModeKeys.TEST, shuffle=False)
 predict_loop = functools.partial(
     model_iteration, mode=ModeKeys.PREDICT, shuffle=False)
+
+
+class ArrayLikeTrainingLoop(training_utils.TrainingLoop):
+  """TrainingLoop that handle inputs like array.
+
+  This is the default handler for most of the input data types, includes
+  symbolic tensors or Numpy array-like, Datasets and iterators in graph mode
+  (since they generate symbolic tensors). This Function is used to handle model
+  with `run_eagerly` = False.
+  """
+
+  def fit(self,
+          model,
+          x=None,
+          y=None,
+          batch_size=None,
+          epochs=1,
+          verbose=1,
+          callbacks=None,
+          validation_split=0.,
+          validation_data=None,
+          shuffle=True,
+          class_weight=None,
+          sample_weight=None,
+          initial_epoch=0,
+          steps_per_epoch=None,
+          validation_steps=None,
+          validation_freq=1,
+          **kwargs):
+    batch_size = model._validate_or_infer_batch_size(batch_size,
+                                                     steps_per_epoch, x)
+
+    x, y, sample_weights = model._standardize_user_data(
+        x,
+        y,
+        sample_weight=sample_weight,
+        class_weight=class_weight,
+        batch_size=batch_size,
+        check_steps=True,
+        steps_name='steps_per_epoch',
+        steps=steps_per_epoch,
+        validation_split=validation_split,
+        shuffle=shuffle)
+
+    if validation_data:
+      val_x, val_y, val_sample_weights = model._prepare_validation_data(
+          validation_data, batch_size, validation_steps)
+    elif validation_split and 0. < validation_split < 1.:
+      (x, y, sample_weights, val_x, val_y,
+       val_sample_weights) = training_utils.split_training_and_validation_data(
+           x, y, sample_weights, validation_split)
+    else:
+      if validation_steps:
+        raise ValueError('`validation_steps` should not be specified if '
+                         '`validation_data` is None.')
+      val_x, val_y, val_sample_weights = None, None, None
+
+    return fit_loop(
+        model,
+        inputs=x,
+        targets=y,
+        sample_weights=sample_weights,
+        batch_size=batch_size,
+        epochs=epochs,
+        verbose=verbose,
+        callbacks=callbacks,
+        val_inputs=val_x,
+        val_targets=val_y,
+        val_sample_weights=val_sample_weights,
+        shuffle=shuffle,
+        initial_epoch=initial_epoch,
+        steps_per_epoch=steps_per_epoch,
+        validation_steps=validation_steps,
+        validation_freq=validation_freq,
+        steps_name='steps_per_epoch')
+
+  def evaluate(self,
+               model,
+               x=None,
+               y=None,
+               batch_size=None,
+               verbose=1,
+               sample_weight=None,
+               steps=None,
+               callbacks=None,
+               **kwargs):
+    batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
+    x, y, sample_weights = model._standardize_user_data(
+        x,
+        y,
+        sample_weight=sample_weight,
+        batch_size=batch_size,
+        check_steps=True,
+        steps_name='steps',
+        steps=steps)
+    return test_loop(
+        model,
+        inputs=x,
+        targets=y,
+        sample_weights=sample_weights,
+        batch_size=batch_size,
+        verbose=verbose,
+        steps=steps,
+        callbacks=callbacks)
+
+  def predict(self,
+              model,
+              x,
+              batch_size=None,
+              verbose=0,
+              steps=None,
+              callbacks=None,
+              **kwargs):
+    batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
+    x, _, _ = model._standardize_user_data(
+        x, check_steps=True, steps_name='steps', steps=steps)
+    return predict_loop(
+        model,
+        x,
+        batch_size=batch_size,
+        verbose=verbose,
+        steps=steps,
+        callbacks=callbacks)

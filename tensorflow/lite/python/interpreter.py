@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,11 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ctypes
+import platform
 import sys
+
 import numpy as np
 
 # pylint: disable=g-import-not-at-top
-try:
+if not __file__.endswith('tflite_runtime/interpreter.py'):
+  # This file is part of tensorflow package.
   from tensorflow.python.util.lazy_loader import LazyLoader
   from tensorflow.python.util.tf_export import tf_export as _tf_export
 
@@ -36,35 +41,167 @@ try:
   # pylint: enable=g-inconsistent-quotes
 
   del LazyLoader
-except ImportError:
-  # When full Tensorflow Python PIP is not available do not use lazy load
-  # and instead uf the tflite_runtime path.
-  from tflite_runtime.lite.python import interpreter_wrapper as _interpreter_wrapper
+else:
+  # This file is part of tflite_runtime package.
+  from tflite_runtime import interpreter_wrapper as _interpreter_wrapper
 
-  def tf_export_dummy(*x, **kwargs):
+  def _tf_export(*x, **kwargs):
     del x, kwargs
     return lambda x: x
-  _tf_export = tf_export_dummy
+
+
+class Delegate(object):
+  """Python wrapper class to manage TfLiteDelegate objects.
+
+  The shared library is expected to have two functions:
+    TfLiteDelegate* tflite_plugin_create_delegate(
+        char**, char**, size_t, void (*report_error)(const char *))
+    void tflite_plugin_destroy_delegate(TfLiteDelegate*)
+
+  The first one creates a delegate object. It may return NULL to indicate an
+  error (with a suitable error message reported by calling report_error()).
+  The second one destroys delegate object and must be called for every
+  created delegate object. Passing NULL as argument value is allowed, i.e.
+
+    tflite_plugin_destroy_delegate(tflite_plugin_create_delegate(...))
+
+  always works.
+  """
+
+  def __init__(self, library, options=None):
+    """Loads delegate from the shared library.
+
+    Args:
+      library: Shared library name.
+      options: Dictionary of options that are required to load the delegate. All
+        keys and values in the dictionary should be serializable. Consult the
+        documentation of the specific delegate for required and legal options.
+        (default None)
+    Raises:
+      RuntimeError: This is raised if the Python implementation is not CPython.
+    """
+
+    # TODO(b/136468453): Remove need for __del__ ordering needs of CPython
+    # by using explicit closes(). See implementation of Interpreter __del__.
+    if platform.python_implementation() != 'CPython':
+      raise RuntimeError('Delegates are currently only supported into CPython'
+                         'due to missing immediate reference counting.')
+
+    self._library = ctypes.pydll.LoadLibrary(library)
+    self._library.tflite_plugin_create_delegate.argtypes = [
+        ctypes.POINTER(ctypes.c_char_p),
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_int,
+        ctypes.CFUNCTYPE(None, ctypes.c_char_p)
+    ]
+    self._library.tflite_plugin_create_delegate.restype = ctypes.c_void_p
+
+    # Convert the options from a dictionary to lists of char pointers.
+    options = options or {}
+    options_keys = (ctypes.c_char_p * len(options))()
+    options_values = (ctypes.c_char_p * len(options))()
+    for idx, (key, value) in enumerate(options.items()):
+      options_keys[idx] = str(key).encode('utf-8')
+      options_values[idx] = str(value).encode('utf-8')
+
+    class ErrorMessageCapture(object):
+
+      def __init__(self):
+        self.message = ''
+
+      def report(self, x):
+        self.message += x if isinstance(x, str) else x.decode('utf-8')
+
+    capture = ErrorMessageCapture()
+    error_capturer_cb = ctypes.CFUNCTYPE(None, ctypes.c_char_p)(capture.report)
+    # Do not make a copy of _delegate_ptr. It is freed by Delegate's finalizer.
+    self._delegate_ptr = self._library.tflite_plugin_create_delegate(
+        options_keys, options_values, len(options), error_capturer_cb)
+    if self._delegate_ptr is None:
+      raise ValueError(capture.message)
+
+  def __del__(self):
+    # __del__ can be called multiple times, so if the delegate is destroyed.
+    # don't try to destroy it twice.
+    if self._library is not None:
+      self._library.tflite_plugin_destroy_delegate.argtypes = [ctypes.c_void_p]
+      self._library.tflite_plugin_destroy_delegate(self._delegate_ptr)
+      self._library = None
+
+  def _get_native_delegate_pointer(self):
+    """Returns the native TfLiteDelegate pointer.
+
+    It is not safe to copy this pointer because it needs to be freed.
+
+    Returns:
+      TfLiteDelegate *
+    """
+    return self._delegate_ptr
+
+
+@_tf_export('lite.experimental.load_delegate')
+def load_delegate(library, options=None):
+  """Returns loaded Delegate object.
+
+  Args:
+    library: Name of shared library containing the
+      [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates).
+    options: Dictionary of options that are required to load the delegate. All
+      keys and values in the dictionary should be convertible to str. Consult
+      the documentation of the specific delegate for required and legal options.
+      (default None)
+
+  Returns:
+    Delegate object.
+
+  Raises:
+    ValueError: Delegate failed to load.
+    RuntimeError: If delegate loading is used on unsupported platform.
+  """
+  try:
+    delegate = Delegate(library, options)
+  except ValueError as e:
+    raise ValueError('Failed to load delegate from {}\n{}'.format(
+        library, str(e)))
+  return delegate
 
 
 @_tf_export('lite.Interpreter')
 class Interpreter(object):
-  """Interpreter inferace for TF-Lite Models."""
+  """Interpreter interface for TensorFlow Lite Models.
 
-  def __init__(self, model_path=None, model_content=None):
+  This makes the TensorFlow Lite interpreter accessible in Python.
+  It is possible to use this interpreter in a multithreaded Python environment,
+  but you must be sure to call functions of a particular instance from only
+  one thread at a time. So if you want to have 4 threads running different
+  inferences simultaneously, create  an interpreter for each one as thread-local
+  data. Similarly, if you are calling invoke() in one thread on a single
+  interpreter but you want to use tensor() on another thread once it is done,
+  you must use a synchronization primitive between the threads to ensure invoke
+  has returned before calling tensor().
+  """
+
+  def __init__(self,
+               model_path=None,
+               model_content=None,
+               experimental_delegates=None):
     """Constructor.
 
     Args:
       model_path: Path to TF-Lite Flatbuffer file.
       model_content: Content of model.
+      experimental_delegates: Experimental. Subject to change. List of
+        [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
+        objects returned by lite.load_delegate().
 
     Raises:
       ValueError: If the interpreter was unable to create.
     """
+    if not hasattr(self, '_custom_op_registerers'):
+      self._custom_op_registerers = []
     if model_path and not model_content:
       self._interpreter = (
           _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromFile(
-              model_path))
+              model_path, self._custom_op_registerers))
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
     elif model_content and not model_path:
@@ -74,11 +211,31 @@ class Interpreter(object):
       self._model_content = model_content
       self._interpreter = (
           _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromBuffer(
-              model_content))
+              model_content, self._custom_op_registerers))
     elif not model_path and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
       raise ValueError('Can\'t both provide `model_path` and `model_content`')
+
+    # Each delegate is a wrapper that owns the delegates that have been loaded
+    # as plugins. The interpreter wrapper will be using them, but we need to
+    # hold them in a list so that the lifetime is preserved at least as long as
+    # the interpreter wrapper.
+    self._delegates = []
+    if experimental_delegates:
+      self._delegates = experimental_delegates
+      for delegate in self._delegates:
+        self._interpreter.ModifyGraphWithDelegate(
+            delegate._get_native_delegate_pointer())  # pylint: disable=protected-access
+
+  def __del__(self):
+    # Must make sure the interpreter is destroyed before things that
+    # are used by it like the delegates. NOTE this only works on CPython
+    # probably.
+    # TODO(b/136468453): Remove need for __del__ ordering needs of CPython
+    # by using explicit closes(). See implementation of Interpreter __del__.
+    self._interpreter = None
+    self._delegates = None
 
   def allocate_tensors(self):
     self._ensure_safe()
@@ -112,6 +269,31 @@ class Interpreter(object):
       only hold the function returned from tensor() if you are using raw
       data access.""")
 
+  # Experimental and subject to change
+  def _get_op_details(self, op_index):
+    """Gets a dictionary with arrays of ids for tensors involved with an op.
+
+    Args:
+      op_index: Operation/node index of node to query.
+
+    Returns:
+      a dictionary containing the index, op name, and arrays with lists of the
+      indices for the inputs and outputs of the op/node.
+    """
+    op_index = int(op_index)
+    op_name = self._interpreter.NodeName(op_index)
+    op_inputs = self._interpreter.NodeInputs(op_index)
+    op_outputs = self._interpreter.NodeOutputs(op_index)
+
+    details = {
+        'index': op_index,
+        'op_name': op_name,
+        'inputs': op_inputs,
+        'outputs': op_outputs,
+    }
+
+    return details
+
   def _get_tensor_details(self, tensor_index):
     """Gets tensor details.
 
@@ -119,7 +301,18 @@ class Interpreter(object):
       tensor_index: Tensor index of tensor to query.
 
     Returns:
-      a dictionary containing the name, index, shape and type of the tensor.
+      A dictionary containing the following fields of the tensor:
+        'name': The tensor name.
+        'index': The tensor index in the interpreter.
+        'shape': The shape of the tensor.
+        'quantization': Deprecated, use 'quantization_parameters'. This field
+            only works for per-tensor quantization, whereas
+            'quantization_parameters' works in all cases.
+        'quantization_parameters': The parameters used to quantize the tensor:
+          'scales': List of scales (one if per-tensor quantization)
+          'zero_points': List of zero_points (one if per-tensor quantization)
+          'quantized_dimension': Specifies the dimension of per-axis
+              quantization, in the case of multiple scales/zero_points.
 
     Raises:
       ValueError: If tensor_index is invalid.
@@ -129,6 +322,8 @@ class Interpreter(object):
     tensor_size = self._interpreter.TensorSize(tensor_index)
     tensor_type = self._interpreter.TensorType(tensor_index)
     tensor_quantization = self._interpreter.TensorQuantization(tensor_index)
+    tensor_quantization_params = self._interpreter.TensorQuantizationParameters(
+        tensor_index)
 
     if not tensor_name or not tensor_type:
       raise ValueError('Could not get tensor details')
@@ -139,9 +334,26 @@ class Interpreter(object):
         'shape': tensor_size,
         'dtype': tensor_type,
         'quantization': tensor_quantization,
+        'quantization_parameters': {
+            'scales': tensor_quantization_params[0],
+            'zero_points': tensor_quantization_params[1],
+            'quantized_dimension': tensor_quantization_params[2],
+        }
     }
 
     return details
+
+  # Experimental and subject to change
+  def _get_ops_details(self):
+    """Gets op details for every node.
+
+    Returns:
+      A list of dictionaries containing arrays with lists of tensor ids for
+      tensors involved in the op.
+    """
+    return [
+        self._get_op_details(idx) for idx in range(self._interpreter.NumNodes())
+    ]
 
   def get_tensor_details(self):
     """Gets tensor details for every tensor with valid tensor details.
@@ -282,7 +494,10 @@ class Interpreter(object):
     """Invoke the interpreter.
 
     Be sure to set the input sizes, allocate tensors and fill values before
-    calling this.
+    calling this. Also, note that this function releases the GIL so heavy
+    computation can be done in the background while the Python interpreter
+    continues. No other function on this object should be called while the
+    invoke() call has not finished.
 
     Raises:
       ValueError: When the underlying interpreter fails raise ValueError.
@@ -292,3 +507,40 @@ class Interpreter(object):
 
   def reset_all_variables(self):
     return self._interpreter.ResetVariableTensors()
+
+
+class InterpreterWithCustomOps(Interpreter):
+  """Interpreter interface for TensorFlow Lite Models that accepts custom ops.
+
+  The interface provided by this class is experimenal and therefore not exposed
+  as part of the public API.
+
+  Wraps the tf.lite.Interpreter class and adds the ability to load custom ops
+  by providing the names of functions that take a pointer to a BuiltinOpResolver
+  and add a custom op.
+  """
+
+  def __init__(self,
+               model_path=None,
+               model_content=None,
+               experimental_delegates=None,
+               custom_op_registerers=None):
+    """Constructor.
+
+    Args:
+      model_path: Path to TF-Lite Flatbuffer file.
+      model_content: Content of model.
+      experimental_delegates: Experimental. Subject to change. List of
+        [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
+          objects returned by lite.load_delegate().
+      custom_op_registerers: List of str, symbol names of functions that take a
+        pointer to a MutableOpResolver and register a custom op.
+
+    Raises:
+      ValueError: If the interpreter was unable to create.
+    """
+    self._custom_op_registerers = custom_op_registerers
+    super(InterpreterWithCustomOps, self).__init__(
+        model_path=model_path,
+        model_content=model_content,
+        experimental_delegates=experimental_delegates)

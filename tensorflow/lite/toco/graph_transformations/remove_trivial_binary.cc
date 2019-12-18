@@ -31,7 +31,7 @@ namespace {
 template <typename Scalar>
 bool AreAllBufferElementsEqualTo(const std::vector<Scalar>& buffer_data,
                                  Scalar value) {
-  for (auto x : buffer_data) {
+  for (const auto& x : buffer_data) {
     if (x != value) {
       return false;
     }

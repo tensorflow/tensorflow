@@ -29,7 +29,7 @@ tf_class {
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "no_name_scope"
+    name: "with_name_scope"
     argspec: "args=[\'cls\', \'method\'], varargs=None, keywords=None, defaults=None"
   }
 }

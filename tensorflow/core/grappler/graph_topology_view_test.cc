@@ -113,5 +113,41 @@ TEST_F(GraphTopologyViewTest, GraphWithALoop) {
   EXPECT_EQ(graph_view.GetFanout(3), Fanout({2}));
 }
 
+TEST_F(GraphTopologyViewTest, GraphWithControls) {
+  const GraphDef graph = CreateGraph({
+      {"a", {}},                // idx: 0
+      {"b", {}},                // idx: 1
+      {"c", {"a", "b", "^d"}},  // idx: 2
+      {"d", {"a", "c"}},        // idx: 3
+  });
+
+  {
+    GraphTopologyView graph_view;
+    TF_CHECK_OK(graph_view.InitializeFromGraph(graph));
+    EXPECT_TRUE(graph_view.is_initialized());
+
+    using Fanin = absl::InlinedVector<int, 4>;
+    EXPECT_EQ(graph_view.GetFanin(2), Fanin({0, 1, 3}));
+    EXPECT_EQ(graph_view.GetFanin(3), Fanin({0, 2}));
+
+    using Fanout = absl::InlinedVector<int, 2>;
+    EXPECT_EQ(graph_view.GetFanout(2), Fanout({3}));
+    EXPECT_EQ(graph_view.GetFanout(3), Fanout({2}));
+  }
+  {
+    GraphTopologyView graph_view;
+    TF_CHECK_OK(
+        graph_view.InitializeFromGraph(graph, /*ignore_controls*/ true));
+    EXPECT_TRUE(graph_view.is_initialized());
+    using Fanin = absl::InlinedVector<int, 4>;
+    EXPECT_EQ(graph_view.GetFanin(2), Fanin({0, 1}));
+    EXPECT_EQ(graph_view.GetFanin(3), Fanin({0, 2}));
+
+    using Fanout = absl::InlinedVector<int, 2>;
+    EXPECT_EQ(graph_view.GetFanout(2), Fanout({3}));
+    EXPECT_EQ(graph_view.GetFanout(3), Fanout({}));
+  }
+}
+
 }  // namespace grappler
 }  // namespace tensorflow

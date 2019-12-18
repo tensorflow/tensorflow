@@ -19,14 +19,15 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <vector>
+
 #include <curl/curl.h>
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -224,7 +225,7 @@ class CurlHttpRequest : public HttpRequest {
   string uri_;
   RequestMethod method_ = RequestMethod::kGet;
 
-  // Limit the size of a http response that is copied into an error message.
+  // Limit the size of an http response that is copied into an error message.
   const size_t response_to_error_limit_ = 500;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CurlHttpRequest);

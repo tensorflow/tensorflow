@@ -124,6 +124,17 @@ bool ParseTocoFlagsFromCommandLineFlags(
            parsed_flags.allow_custom_ops.default_value(),
            "If true, allow TOCO to create TF Lite Custom operators for all the "
            "unsupported TensorFlow ops."),
+      Flag("custom_opdefs", parsed_flags.custom_opdefs.bind(),
+           parsed_flags.custom_opdefs.default_value(),
+           "List of strings representing custom ops OpDefs that are included "
+           "in the GraphDef."),
+      Flag("allow_dynamic_tensors", parsed_flags.allow_dynamic_tensors.bind(),
+           parsed_flags.allow_dynamic_tensors.default_value(),
+           "Boolean flag indicating whether the converter should allow models "
+           "with dynamic Tensor shape. When set to False, the converter will "
+           "generate runtime memory offsets for activation Tensors (with 128 "
+           "bits alignment) and error out on models with undetermined Tensor "
+           "shape. (Default: True)"),
       Flag(
           "drop_control_dependency",
           parsed_flags.drop_control_dependency.bind(),
@@ -158,6 +169,11 @@ bool ParseTocoFlagsFromCommandLineFlags(
            parsed_flags.split_tflite_lstm_inputs.default_value(),
            "Split the LSTM inputs from 5 tensors to 18 tensors for TFLite. "
            "Ignored if the output format is not TFLite."),
+      Flag("quantize_to_float16", parsed_flags.quantize_to_float16.bind(),
+           parsed_flags.quantize_to_float16.default_value(),
+           "Used in conjuction with post_training_quantize. Specifies that "
+           "the weights should be quantized to fp16 instead of the default "
+           "(int8)"),
       Flag("quantize_weights", parsed_flags.quantize_weights.bind(),
            parsed_flags.quantize_weights.default_value(),
            "Deprecated. Please use --post_training_quantize instead."),
@@ -266,6 +282,7 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
   READ_TOCO_FLAG(dedupe_array_min_size_bytes, FlagRequirement::kNone);
   READ_TOCO_FLAG(split_tflite_lstm_inputs, FlagRequirement::kNone);
   READ_TOCO_FLAG(quantize_weights, FlagRequirement::kNone);
+  READ_TOCO_FLAG(quantize_to_float16, FlagRequirement::kNone);
   READ_TOCO_FLAG(post_training_quantize, FlagRequirement::kNone);
   READ_TOCO_FLAG(enable_select_tf_ops, FlagRequirement::kNone);
   READ_TOCO_FLAG(force_select_tf_ops, FlagRequirement::kNone);

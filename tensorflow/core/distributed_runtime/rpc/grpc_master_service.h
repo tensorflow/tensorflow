@@ -17,12 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_MASTER_SERVICE_H_
 
 #include <memory>
+#include "grpcpp/server_builder.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/master.pb.h"
-
-namespace grpc {
-class ServerBuilder;
-}  // namespace grpc
 
 namespace tensorflow {
 

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_LOOKUP_TABLE_OP_H_
 #define TENSORFLOW_CORE_KERNELS_LOOKUP_TABLE_OP_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -41,9 +42,15 @@ class LookupTableOp : public OpKernel {
   // ctx is not owned by this class.
   explicit LookupTableOp(OpKernelConstruction* ctx)
       : OpKernel(ctx), table_handle_set_(false) {
-    OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_STRING,
-                                                 tensorflow::TensorShape({2}),
-                                                 &table_handle_, nullptr));
+    if (ctx->output_type(0) == DT_RESOURCE) {
+      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_RESOURCE,
+                                                   tensorflow::TensorShape({}),
+                                                   &table_handle_, nullptr));
+    } else {
+      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_STRING,
+                                                   tensorflow::TensorShape({2}),
+                                                   &table_handle_, nullptr));
+    }
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("use_node_name_sharing", &use_node_name_sharing_));
   }
@@ -57,19 +64,21 @@ class LookupTableOp : public OpKernel {
                                       use_node_name_sharing_));
     }
 
-    auto creator = [ctx, this](lookup::LookupInterface** ret) {
-      lookup::LookupInterface* container = new Container(ctx, this);
-      if (!ctx->status().ok()) {
-        container->Unref();
-        return ctx->status();
-      }
-      if (ctx->track_allocations()) {
-        ctx->record_persistent_memory_allocation(
-            container->MemoryUsed() + table_handle_.AllocatedBytes());
-      }
-      *ret = container;
-      return Status::OK();
-    };
+    auto creator =
+        [ctx, this](lookup::LookupInterface** ret)
+            EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+              lookup::LookupInterface* container = new Container(ctx, this);
+              if (!ctx->status().ok()) {
+                container->Unref();
+                return ctx->status();
+              }
+              if (ctx->track_allocations()) {
+                ctx->record_persistent_memory_allocation(
+                    container->MemoryUsed() + table_handle_.AllocatedBytes());
+              }
+              *ret = container;
+              return Status::OK();
+            };
 
     lookup::LookupInterface* table = nullptr;
     OP_REQUIRES_OK(ctx,
@@ -83,14 +92,16 @@ class LookupTableOp : public OpKernel {
                             DataTypeToEnum<value_dtype>::v(), cinfo_.name()));
 
     if (ctx->expected_output_dtype(0) == DT_RESOURCE) {
-      Tensor* handle;
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &handle));
-      handle->scalar<ResourceHandle>()() =
-          MakeResourceHandle<lookup::LookupInterface>(ctx, cinfo_.container(),
-                                                      cinfo_.name());
+      if (!table_handle_set_) {
+        auto h =
+            table_handle_.AccessTensor(ctx)->template scalar<ResourceHandle>();
+        h() = MakeResourceHandle<lookup::LookupInterface>(
+            ctx, cinfo_.container(), cinfo_.name());
+      }
+      ctx->set_output(0, *table_handle_.AccessTensor(ctx));
     } else {
       if (!table_handle_set_) {
-        auto h = table_handle_.AccessTensor(ctx)->template flat<string>();
+        auto h = table_handle_.AccessTensor(ctx)->template flat<tstring>();
         h(0) = cinfo_.container();
         h(1) = cinfo_.name();
       }
@@ -132,7 +143,7 @@ T SubtleMustCopyIfIntegral(const T& value) {
   return internal::SubtleMustCopy(value);
 }
 
-inline const string& SubtleMustCopyIfIntegral(const string& value) {
+inline const tstring& SubtleMustCopyIfIntegral(const tstring& value) {
   return value;
 }
 
@@ -146,7 +157,12 @@ inline const Variant& SubtleMustCopyIfIntegral(const Variant& value) {
   return value;
 }
 
-// Lookup table that wraps an unordered_map, where the key and value data type
+inline const ResourceHandle& SubtleMustCopyIfIntegral(
+    const ResourceHandle& value) {
+  return value;
+}
+
+// Lookup table that wraps an flat_hash_map, where the key and value data type
 // is specified.
 //
 // This table is recommended for any variations to key values.
@@ -157,13 +173,7 @@ inline const Variant& SubtleMustCopyIfIntegral(const Variant& value) {
 // Sample use case:
 //
 // HashTable<int64, int64> table;  // int64 -> int64.
-// table.Prepare(10); // Prepare the underlying data structure, the number of
-//                    // elements is required by interface, but not used.
-// // Populate the table, elements could be added in one or multiple calls.
-// table.Insert(key_tensor, value_tensor); // Populate the table.
-// ...
-// table.set_is_initialized();
-//
+// table.Initialize(...);
 // table.Find(in_t, &out_t, default_t)
 //
 template <class K, class V>
@@ -172,20 +182,18 @@ class HashTable : public InitializableLookupTable {
   HashTable(OpKernelContext* ctx, OpKernel* kernel) {}
 
   size_t size() const override {
-    // return the size of the table only if it's initialized, otherwise 0.
-    if (!is_initialized_) {
+    if (!is_initialized())
       return 0;
-    }
-    std::atomic_thread_fence(std::memory_order_acquire);
-    return table_ ? table_->size() : 0;
+    else
+      return table_.size();
   }
 
   Status ExportValues(OpKernelContext* context) override {
-    if (!is_initialized_) {
+    if (!is_initialized()) {
       return errors::Aborted("HashTable is not initialized.");
     }
 
-    const int64 size = table_->size();
+    const int64 size = table_.size();
 
     Tensor* keys;
     Tensor* values;
@@ -197,7 +205,7 @@ class HashTable : public InitializableLookupTable {
     auto keys_data = keys->flat<K>();
     auto values_data = values->flat<V>();
     int64 i = 0;
-    for (auto it = table_->begin(); it != table_->end(); ++it, ++i) {
+    for (auto it = table_.begin(); it != table_.end(); ++it, ++i) {
       keys_data(i) = it->first;
       values_data(i) = it->second;
     }
@@ -209,37 +217,29 @@ class HashTable : public InitializableLookupTable {
   DataType value_dtype() const override { return DataTypeToEnum<V>::v(); }
 
  protected:
-  Status DoPrepare(size_t unused) override {
-    if (is_initialized_) {
+  Status DoPrepare(size_t size) override {
+    if (is_initialized()) {
       return errors::Aborted("HashTable already initialized.");
     }
-    if (!table_) {
-      table_ = std::unique_ptr<std::unordered_map<K, V>>(
-          new std::unordered_map<K, V>());
-    }
+    table_.reserve(size);
     return Status::OK();
   };
 
-  Status DoLazyPrepare(std::function<int64(void)> unused) override {
-    constexpr size_t kUnusedSize = 0;
-    return DoPrepare(kUnusedSize);
+  Status DoLazyPrepare(std::function<int64(void)> size_fn) override {
+    return DoPrepare(size_fn());
   }
 
   Status DoInsert(const Tensor& keys, const Tensor& values) override {
-    if (!table_) {
-      return errors::FailedPrecondition("HashTable is not prepared.");
-    }
-
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
     for (int64 i = 0; i < key_values.size(); ++i) {
-      const K key = SubtleMustCopyIfIntegral(key_values(i));
-      const V value = SubtleMustCopyIfIntegral(value_values(i));
-      const V& previous_value = gtl::LookupOrInsert(table_.get(), key, value);
-      if (previous_value != value) {
+      auto&& key = SubtleMustCopyIfIntegral(key_values(i));
+      auto&& value = SubtleMustCopyIfIntegral(value_values(i));
+      auto result = table_.try_emplace(key, value);
+      if (!result.second && result.first->second != value) {
         return errors::FailedPrecondition(
             "HashTable has different value for same key. Key ", key, " has ",
-            previous_value, " and trying to add value ", value);
+            result.first->second, " and trying to add value ", value);
       }
     }
     return Status::OK();
@@ -253,22 +253,21 @@ class HashTable : public InitializableLookupTable {
 
     for (int64 i = 0; i < key_values.size(); ++i) {
       value_values(i) = gtl::FindWithDefault(
-          *table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
+          table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
     }
     return Status::OK();
   }
 
   int64 MemoryUsed() const override {
-    if (table_) {
-      const int64 num_elements = table_->size();
-      return num_elements * (sizeof(K) + sizeof(V));
-    } else {
+    if (!is_initialized()) {
       return 0;
     }
+    const int64 num_elements = table_.size();
+    return num_elements * (sizeof(K) + sizeof(V));
   }
 
  private:
-  std::unique_ptr<std::unordered_map<K, V>> table_;
+  absl::flat_hash_map<K, V> table_;
 };
 
 }  // namespace lookup

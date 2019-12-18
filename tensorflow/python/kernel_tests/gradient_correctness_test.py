@@ -59,7 +59,7 @@ class GradientCorrectnessTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testGradientWithIntegerPath(self):
     x = constant_op.constant([3.9, 4.1])
-    k = math_ops.to_float(math_ops.to_int32(x))
+    k = math_ops.cast(math_ops.cast(x, dtypes.int32), dtypes.float32)
     y = x * k
     dy_dx, = gradients_impl.gradients(y, x)
     with self.cached_session() as sess:
@@ -68,7 +68,7 @@ class GradientCorrectnessTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testNoIntegerGradient1(self):
     x = constant_op.constant([3.9, 4.1])
-    k = math_ops.to_float(math_ops.to_int32(x))
+    k = math_ops.cast(math_ops.cast(x, dtypes.int32), dtypes.float32)
     y = k * k
     dy_dx, = gradients_impl.gradients(y, x)
     self.assertIsNone(dy_dx)
@@ -76,7 +76,7 @@ class GradientCorrectnessTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testNoIntegerGradient2(self):
     k = constant_op.constant([3, 4])
-    x = math_ops.to_float(k)
+    x = math_ops.cast(k, dtypes.float32)
     y = x * x
     dy_dk, = gradients_impl.gradients(y, k)
     self.assertIsNone(dy_dk)
@@ -106,7 +106,7 @@ class GradientCorrectnessTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testNoIntegerGradient6(self):
     k = constant_op.constant(3)
-    x = math_ops.to_float(k)
+    x = math_ops.cast(k, dtypes.float32)
     grad_1, = gradients_impl.gradients(k * k, k)
     grad_2, = gradients_impl.gradients(x * x, k)
     grad_3, = gradients_impl.gradients(math_ops.square(k), k)

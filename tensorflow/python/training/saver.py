@@ -32,7 +32,6 @@ import numpy as np
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.core.protobuf import trackable_object_graph_pb2
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -49,13 +48,13 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training import training_util
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
-
 
 # TODO(allenl): Remove these aliases once all users are migrated off.
 get_checkpoint_state = checkpoint_management.get_checkpoint_state
@@ -174,13 +173,11 @@ class BaseSaverBuilder(object):
     tensors = []
     for spec in saveable.specs:
       tensors.append(
-          io_ops.restore_v2(
-              filename_tensor,
-              [spec.name],
-              [spec.slice_spec],
-              [spec.dtype])[0])
+          io_ops.restore_v2(filename_tensor, [spec.name], [spec.slice_spec],
+                            [spec.dtype])[0])
 
     return tensors
+
   # pylint: enable=unused-argument
 
   def sharded_filename(self, filename_tensor, shard, num_shards):
@@ -217,8 +214,8 @@ class BaseSaverBuilder(object):
     from each device.
 
     Args:
-      checkpoint_prefix: scalar String Tensor.  Interpreted *NOT AS A
-        FILENAME*, but as a prefix of a V2 checkpoint;
+      checkpoint_prefix: scalar String Tensor.  Interpreted *NOT AS A FILENAME*,
+        but as a prefix of a V2 checkpoint;
       per_device: A list of (device, BaseSaverBuilder.VarToSave) pairs, as
         returned by _GroupByDevices().
 
@@ -319,8 +316,8 @@ class BaseSaverBuilder(object):
       saveables: A list of SaveableObject objects.
       restore_sequentially: True if we want to restore variables sequentially
         within a shard.
-      reshape: True if we want to reshape loaded tensors to the shape of
-        the corresponding variable.
+      reshape: True if we want to reshape loaded tensors to the shape of the
+        corresponding variable.
       preferred_shard: Shard to open first when loading a sharded file.
       name: Name for the returned op.
 
@@ -361,12 +358,12 @@ class BaseSaverBuilder(object):
 
     Args:
       filename_tensor: Tensor for the path of the file to load.
-      per_device: A list of (device, SaveableObject) pairs, as
-        returned by _GroupByDevices().
+      per_device: A list of (device, SaveableObject) pairs, as returned by
+        _GroupByDevices().
       restore_sequentially: True if we want to restore variables sequentially
         within a shard.
-      reshape: True if we want to reshape loaded tensors to the shape of
-        the corresponding variable.
+      reshape: True if we want to reshape loaded tensors to the shape of the
+        corresponding variable.
 
     Returns:
       An Operation that restores the variables.
@@ -424,14 +421,13 @@ class BaseSaverBuilder(object):
 
     Args:
       names_to_saveables: A dictionary mapping name to a Variable or
-        SaveableObject. Each name will be associated with the
-        corresponding variable in the checkpoint.
-      reshape: If True, allow restoring parameters from a checkpoint
-        that where the parameters have a different shape.  This is
-        only needed when you try to restore from a Dist-Belief checkpoint,
-        and only some times.
-      sharded: If True, shard the checkpoints, one per device that has
-        Variable nodes.
+        SaveableObject. Each name will be associated with the corresponding
+        variable in the checkpoint.
+      reshape: If True, allow restoring parameters from a checkpoint that where
+        the parameters have a different shape.  This is only needed when you try
+        to restore from a Dist-Belief checkpoint, and only some times.
+      sharded: If True, shard the checkpoints, one per device that has Variable
+        nodes.
       max_to_keep: Maximum number of checkpoints to keep.  As new checkpoints
         are created, old ones are deleted.  If None or 0, no checkpoints are
         deleted from the filesystem but only the last one is kept in the
@@ -597,8 +593,8 @@ def _get_saver_or_default():
     if len(savers) > 1:
       raise RuntimeError(
           "More than one item in collection {}. "
-          "Please indicate which one to use by passing it to the constructor.".
-          format(collection_key))
+          "Please indicate which one to use by passing it to the constructor."
+          .format(collection_key))
     return savers[0]
   saver = Saver(sharded=True, allow_empty=True)
   if saver is not None:
@@ -662,9 +658,9 @@ class Saver(object):
   ```python
   ...
   # Create a saver.
-  saver = tf.train.Saver(...variables...)
+  saver = tf.compat.v1.train.Saver(...variables...)
   # Launch the graph and train, saving the model every 1,000 steps.
-  sess = tf.Session()
+  sess = tf.compat.v1.Session()
   for step in xrange(1000000):
       sess.run(..training_op..)
       if step % 1000 == 0:
@@ -717,14 +713,17 @@ class Saver(object):
     v2 = tf.Variable(..., name='v2')
 
     # Pass the variables as a dict:
-    saver = tf.train.Saver({'v1': v1, 'v2': v2})
+    saver = tf.compat.v1.train.Saver({'v1': v1, 'v2': v2})
 
     # Or pass them as a list.
-    saver = tf.train.Saver([v1, v2])
+    saver = tf.compat.v1.train.Saver([v1, v2])
     # Passing a list is equivalent to passing a dict with the variable op names
     # as keys:
-    saver = tf.train.Saver({v.op.name: v for v in [v1, v2]})
+    saver = tf.compat.v1.train.Saver({v.op.name: v for v in [v1, v2]})
     ```
+
+    Note: the newer `AutoTrackable` API is not supported by `Saver`. In this
+    case, the `tf.train.Checkpoint` class should be used.
 
     The optional `reshape` argument, if `True`, allows restoring a variable from
     a save file where the variable had a different shape, but the same number
@@ -738,35 +737,33 @@ class Saver(object):
       var_list: A list of `Variable`/`SaveableObject`, or a dictionary mapping
         names to `SaveableObject`s. If `None`, defaults to the list of all
         saveable objects.
-      reshape: If `True`, allows restoring parameters from a checkpoint
-        where the variables have a different shape.
+      reshape: If `True`, allows restoring parameters from a checkpoint where
+        the variables have a different shape.
       sharded: If `True`, shard the checkpoints, one per device.
-      max_to_keep: Maximum number of recent checkpoints to keep.
-        Defaults to 5.
-      keep_checkpoint_every_n_hours: How often to keep checkpoints.
-        Defaults to 10,000 hours.
+      max_to_keep: Maximum number of recent checkpoints to keep. Defaults to 5.
+      keep_checkpoint_every_n_hours: How often to keep checkpoints. Defaults to
+        10,000 hours.
       name: String.  Optional name to use as a prefix when adding operations.
       restore_sequentially: A `Bool`, which if true, causes restore of different
         variables to happen sequentially within each device.  This can lower
         memory usage when restoring very large models.
       saver_def: Optional `SaverDef` proto to use instead of running the
-        builder. This is only useful for specialty code that wants to recreate
-        a `Saver` object for a previously built `Graph` that had a `Saver`.
-        The `saver_def` proto should be the one returned by the
-        `as_saver_def()` call of the `Saver` that was created for that `Graph`.
+        builder. This is only useful for specialty code that wants to recreate a
+        `Saver` object for a previously built `Graph` that had a `Saver`. The
+        `saver_def` proto should be the one returned by the `as_saver_def()`
+        call of the `Saver` that was created for that `Graph`.
       builder: Optional `SaverBuilder` to use if a `saver_def` was not provided.
         Defaults to `BulkSaverBuilder()`.
       defer_build: If `True`, defer adding the save and restore ops to the
         `build()` call. In that case `build()` should be called before
         finalizing the graph or using the saver.
-      allow_empty: If `False` (default) raise an error if there are no
-        variables in the graph. Otherwise, construct the saver anyway and make
-        it a no-op.
+      allow_empty: If `False` (default) raise an error if there are no variables
+        in the graph. Otherwise, construct the saver anyway and make it a no-op.
       write_version: controls what format to use when saving checkpoints.  It
         also affects certain filepath matching logic.  The V2 format is the
-        recommended choice: it is much more optimized than V1 in terms of
-        memory required and latency incurred during restore.  Regardless of
-        this flag, the Saver is able to restore from both V2 and V1 checkpoints.
+        recommended choice: it is much more optimized than V1 in terms of memory
+          required and latency incurred during restore.  Regardless of this
+          flag, the Saver is able to restore from both V2 and V1 checkpoints.
       pad_step_number: if True, pads the global step number in the checkpoint
         filepaths to some fixed width (8 by default).  This is turned off by
         default.
@@ -780,7 +777,7 @@ class Saver(object):
       TypeError: If `var_list` is invalid.
       ValueError: If any of the keys or values in `var_list` are not unique.
       RuntimeError: If eager execution is enabled and`var_list` does not specify
-        a list of varialbes to save.
+        a list of variables to save.
 
     @compatibility(eager)
     When eager execution is enabled, `var_list` must specify a `list` or `dict`
@@ -877,7 +874,8 @@ class Saver(object):
           name=self._name,
           restore_sequentially=self._restore_sequentially,
           filename=checkpoint_path,
-          build_save=build_save, build_restore=build_restore)
+          build_save=build_save,
+          build_restore=build_restore)
     elif self.saver_def and self._name:
       # Since self._name is used as a name_scope by builder(), we are
       # overloading the use of this field to represent the "import_scope" as
@@ -997,8 +995,8 @@ class Saver(object):
         saver_def.filename_tensor_name, export_scope)
     saver_def.save_tensor_name = ops.strip_name_scope(
         saver_def.save_tensor_name, export_scope)
-    saver_def.restore_op_name = ops.strip_name_scope(
-        saver_def.restore_op_name, export_scope)
+    saver_def.restore_op_name = ops.strip_name_scope(saver_def.restore_op_name,
+                                                     export_scope)
     return saver_def
 
   @staticmethod
@@ -1066,8 +1064,12 @@ class Saver(object):
     Args:
       checkpoint_paths: a list of checkpoint paths.
     """
-    mtimes = checkpoint_management.get_checkpoint_mtimes(checkpoint_paths)
-    self.set_last_checkpoints_with_time(list(zip(checkpoint_paths, mtimes)))
+    checkpoints_with_mtimes = []
+    for checkpoint_path in checkpoint_paths:
+      mtime = checkpoint_management.get_checkpoint_mtimes([checkpoint_path])
+      if mtime:
+        checkpoints_with_mtimes.append((checkpoint_path, mtime[0]))
+    self.set_last_checkpoints_with_time(checkpoints_with_mtimes)
 
   def save(self,
            sess,
@@ -1092,14 +1094,13 @@ class Saver(object):
     Args:
       sess: A Session to use to save the variables.
       save_path: String.  Prefix of filenames created for the checkpoint.
-      global_step: If provided the global step number is appended to
-        `save_path` to create the checkpoint filenames. The optional argument
-        can be a `Tensor`, a `Tensor` name or an integer.
+      global_step: If provided the global step number is appended to `save_path`
+        to create the checkpoint filenames. The optional argument can be a
+        `Tensor`, a `Tensor` name or an integer.
       latest_filename: Optional name for the protocol buffer file that will
-        contains the list of most recent checkpoints.  That file,
-        kept in the same directory as the checkpoint files, is automatically
-        managed by the saver to keep track of recent checkpoints.  Defaults to
-        'checkpoint'.
+        contains the list of most recent checkpoints.  That file, kept in the
+        same directory as the checkpoint files, is automatically managed by the
+        saver to keep track of recent checkpoints.  Defaults to 'checkpoint'.
       meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
       write_meta_graph: `Boolean` indicating whether or not to write the meta
         graph file.
@@ -1107,7 +1108,8 @@ class Saver(object):
         `CheckpointStateProto`.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
         removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+        [Stripping Default-Valued
+          Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
       save_debug_info: If `True`, save the GraphDebugInfo to a separate file,
         which in the same directory of save_path and with `_debug` added before
         the file extension. This is only enabled when `write_meta_graph` is
@@ -1151,8 +1153,7 @@ class Saver(object):
         checkpoint_file = "%s-%s" % (save_path, "{:08d}".format(global_step))
     else:
       checkpoint_file = save_path
-      if os.path.basename(
-          save_path) == latest_filename and not self._sharded:
+      if os.path.basename(save_path) == latest_filename and not self._sharded:
         # Guard against collision between data file and checkpoint state file.
         raise ValueError(
             "'latest_filename' collides with 'save_path': '%s' and '%s'" %
@@ -1197,7 +1198,8 @@ class Saver(object):
       if not context.executing_eagerly():
         with sess.graph.as_default():
           self.export_meta_graph(
-              meta_graph_filename, strip_default_attrs=strip_default_attrs,
+              meta_graph_filename,
+              strip_default_attrs=strip_default_attrs,
               save_debug_info=save_debug_info)
 
     if self._is_empty:
@@ -1225,11 +1227,12 @@ class Saver(object):
       clear_devices: Whether or not to clear the device field for an `Operation`
         or `Tensor` during export.
       clear_extraneous_savers: Remove any Saver-related information from the
-        graph (both Save/Restore ops and SaverDefs) that are not associated
-        with this Saver.
+        graph (both Save/Restore ops and SaverDefs) that are not associated with
+        this Saver.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
         removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+        [Stripping Default-Valued
+          Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
       save_debug_info: If `True`, save the GraphDebugInfo to a separate file,
         which in the same directory of filename and with `_debug` added before
         the file extension.
@@ -1273,11 +1276,12 @@ class Saver(object):
     if save_path is None:
       raise ValueError("Can't load save_path when it is None.")
 
-    if not checkpoint_management.checkpoint_exists(compat.as_text(save_path)):
-      raise ValueError("The passed save_path is not a valid checkpoint: "
-                       + compat.as_text(save_path))
+    checkpoint_prefix = compat.as_text(save_path)
+    if not checkpoint_management.checkpoint_exists_internal(checkpoint_prefix):
+      raise ValueError("The passed save_path is not a valid checkpoint: " +
+                       checkpoint_prefix)
 
-    logging.info("Restoring parameters from %s", compat.as_text(save_path))
+    logging.info("Restoring parameters from %s", checkpoint_prefix)
     try:
       if context.executing_eagerly():
         self._build_eager(save_path, build_save=False, build_restore=True)
@@ -1330,13 +1334,15 @@ class Saver(object):
       key: One of the GraphKeys or user-defined string.
       export_scope: Optional `string`. Name scope to remove.
     """
-    meta_graph.add_collection_def(meta_graph_def, key,
-                                  export_scope=export_scope)
+    meta_graph.add_collection_def(
+        meta_graph_def, key, export_scope=export_scope)
 
 
 @tf_export(v1=["train.import_meta_graph"])
-def import_meta_graph(meta_graph_or_file, clear_devices=False,
-                      import_scope=None, **kwargs):
+def import_meta_graph(meta_graph_or_file,
+                      clear_devices=False,
+                      import_scope=None,
+                      **kwargs):
   """Recreates a Graph saved in a `MetaGraphDef` proto.
 
   This function takes a `MetaGraphDef` protocol buffer as input. If
@@ -1358,10 +1364,10 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   ```Python
   ...
   # Create a saver.
-  saver = tf.train.Saver(...variables...)
+  saver = tf.compat.v1.train.Saver(...variables...)
   # Remember the training_op we want to run by adding it to a collection.
-  tf.add_to_collection('train_op', train_op)
-  sess = tf.Session()
+  tf.compat.v1.add_to_collection('train_op', train_op)
+  sess = tf.compat.v1.Session()
   for step in xrange(1000000):
       sess.run(train_op)
       if step % 1000 == 0:
@@ -1375,10 +1381,11 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
 
   ```Python
   with tf.Session() as sess:
-    new_saver = tf.train.import_meta_graph('my-save-dir/my-model-10000.meta')
+    new_saver =
+    tf.train.import_meta_graph('my-save-dir/my-model-10000.meta')
     new_saver.restore(sess, 'my-save-dir/my-model-10000')
-    # tf.get_collection() returns a list. In this example we only want the
-    # first one.
+    # tf.get_collection() returns a list. In this example we only want
+    # the first one.
     train_op = tf.get_collection('train_op')[0]
     for step in xrange(1000000):
       sess.run(train_op)
@@ -1387,7 +1394,7 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   NOTE: Restarting training from saved `meta_graph` only works if the
   device assignments have not changed.
 
-  Example 2:
+  Example:
   Variables, placeholders, and independent operations can also be stored, as
   shown in the following example.
 
@@ -1395,12 +1402,12 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   # Saving contents and operations.
   v1 = tf.placeholder(tf.float32, name="v1")
   v2 = tf.placeholder(tf.float32, name="v2")
-  v3 = tf.mul(v1, v2)
+  v3 = tf.math.multiply(v1, v2)
   vx = tf.Variable(10.0, name="vx")
   v4 = tf.add(v3, vx, name="v4")
   saver = tf.train.Saver([vx])
   sess = tf.Session()
-  sess.run(tf.initialize_all_variables())
+  sess.run(tf.global_variables_initializer())
   sess.run(vx.assign(tf.add(vx, vx)))
   result = sess.run(v4, feed_dict={v1:12.0, v2:3.3})
   print(result)
@@ -1441,13 +1448,16 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   execution is enabled.
   @end_compatibility
   """  # pylint: disable=g-doc-exception
-  return _import_meta_graph_with_return_elements(
-      meta_graph_or_file, clear_devices, import_scope, **kwargs)[0]
+  return _import_meta_graph_with_return_elements(meta_graph_or_file,
+                                                 clear_devices, import_scope,
+                                                 **kwargs)[0]
 
 
-def _import_meta_graph_with_return_elements(
-    meta_graph_or_file, clear_devices=False, import_scope=None,
-    return_elements=None, **kwargs):
+def _import_meta_graph_with_return_elements(meta_graph_or_file,
+                                            clear_devices=False,
+                                            import_scope=None,
+                                            return_elements=None,
+                                            **kwargs):
   """Import MetaGraph, and return both a saver and returned elements."""
   if context.executing_eagerly():
     raise RuntimeError("Exporting/importing meta graphs is not supported when "
@@ -1466,13 +1476,13 @@ def _import_meta_graph_with_return_elements(
           return_elements=return_elements,
           **kwargs))
 
-  saver = _create_saver_from_imported_meta_graph(
-      meta_graph_def, import_scope, imported_vars)
+  saver = _create_saver_from_imported_meta_graph(meta_graph_def, import_scope,
+                                                 imported_vars)
   return saver, imported_return_elements
 
 
-def _create_saver_from_imported_meta_graph(
-    meta_graph_def, import_scope, imported_vars):
+def _create_saver_from_imported_meta_graph(meta_graph_def, import_scope,
+                                           imported_vars):
   """Return a saver for restoring variable values to an imported MetaGraph."""
   if meta_graph_def.HasField("saver_def"):
     # Infer the scope that is prepended by `import_scoped_meta_graph`.
@@ -1510,7 +1520,9 @@ def export_meta_graph(filename=None,
                       save_debug_info=False,
                       **kwargs):
   # pylint: disable=line-too-long
-  """Returns `MetaGraphDef` proto. Optionally writes it to filename.
+  """Returns `MetaGraphDef` proto.
+
+  Optionally writes it to filename.
 
   This function exports the graph, saver, and collection objects into
   `MetaGraphDef` protocol buffer with the intention of it being imported
@@ -1518,29 +1530,29 @@ def export_meta_graph(filename=None,
   a subgraph.
 
   Args:
-    filename: Optional filename including the path for writing the
-      generated `MetaGraphDef` protocol buffer.
+    filename: Optional filename including the path for writing the generated
+      `MetaGraphDef` protocol buffer.
     meta_info_def: `MetaInfoDef` protocol buffer.
     graph_def: `GraphDef` protocol buffer.
     saver_def: `SaverDef` protocol buffer.
     collection_list: List of string keys to collect.
     as_text: If `True`, writes the `MetaGraphDef` as an ASCII proto.
     graph: The `Graph` to export. If `None`, use the default graph.
-    export_scope: Optional `string`. Name scope under which to extract
-      the subgraph. The scope name will be striped from the node definitions
-      for easy import later into new name scopes. If `None`, the whole graph
-      is exported. graph_def and export_scope cannot both be specified.
+    export_scope: Optional `string`. Name scope under which to extract the
+      subgraph. The scope name will be striped from the node definitions for
+      easy import later into new name scopes. If `None`, the whole graph is
+      exported. graph_def and export_scope cannot both be specified.
     clear_devices: Whether or not to clear the device field for an `Operation`
       or `Tensor` during export.
-    clear_extraneous_savers: Remove any Saver-related information from the
-        graph (both Save/Restore ops and SaverDefs) that are not associated
-        with the provided SaverDef.
+    clear_extraneous_savers: Remove any Saver-related information from the graph
+      (both Save/Restore ops and SaverDefs) that are not associated with the
+      provided SaverDef.
     strip_default_attrs: Boolean. If `True`, default-valued attributes will be
       removed from the NodeDefs. For a detailed guide, see
       [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
     save_debug_info: If `True`, save the GraphDebugInfo to a separate file,
-      which in the same directory of filename and with `_debug` added before
-      the file extend.
+      which in the same directory of filename and with `_debug` added before the
+      file extend.
     **kwargs: Optional keyed arguments.
 
   Returns:
@@ -1602,11 +1614,9 @@ def object_graph_key_mapping(checkpoint_path):
   Returns:
     Dictionary mapping tensor names to checkpoint keys.
   """
-  reader = pywrap_tensorflow.NewCheckpointReader(checkpoint_path)
-  object_graph_string = reader.get_tensor(
-      trackable.OBJECT_GRAPH_PROTO_KEY)
-  object_graph_proto = (
-      trackable_object_graph_pb2.TrackableObjectGraph())
+  reader = py_checkpoint_reader.NewCheckpointReader(checkpoint_path)
+  object_graph_string = reader.get_tensor(trackable.OBJECT_GRAPH_PROTO_KEY)
+  object_graph_proto = (trackable_object_graph_pb2.TrackableObjectGraph())
   object_graph_proto.ParseFromString(object_graph_string)
   names_to_keys = {}
   for node in object_graph_proto.nodes:
@@ -1615,9 +1625,11 @@ def object_graph_key_mapping(checkpoint_path):
   return names_to_keys
 
 
-def saver_from_object_based_checkpoint(
-    checkpoint_path, var_list=None, builder=None, names_to_keys=None,
-    cached_saver=None):
+def saver_from_object_based_checkpoint(checkpoint_path,
+                                       var_list=None,
+                                       builder=None,
+                                       names_to_keys=None,
+                                       cached_saver=None):
   """Return a `Saver` which reads from an object-based checkpoint.
 
   This function validates that all variables in the variables list are remapped
@@ -1659,8 +1671,8 @@ def saver_from_object_based_checkpoint(
     try:
       names_to_keys = object_graph_key_mapping(checkpoint_path)
     except errors.NotFoundError:
-      raise ValueError("Checkpoint in %s not an object-based checkpoint."
-                       % checkpoint_path)
+      raise ValueError("Checkpoint in %s not an object-based checkpoint." %
+                       checkpoint_path)
   if var_list is None:
     var_list = variables._all_saveable_objects()  # pylint: disable=protected-access
   if builder is None:
@@ -1677,7 +1689,8 @@ def saver_from_object_based_checkpoint(
     extra_names = previous_names - current_names
     intersecting_names = previous_names.intersection(current_names)
     raise errors.NotFoundError(
-        None, None,
+        None,
+        None,
         message=(
             "\n\nExisting variables not in the checkpoint: %s\n\n"
             "Variables names when this checkpoint was written which don't "
@@ -1695,9 +1708,9 @@ def saver_from_object_based_checkpoint(
             "existed, and if variable names have changed you may need to "
             "make this a dictionary with the old names as keys. If you're "
             "using an Estimator, you'll need to return a tf.train.Saver "
-            "inside a tf.train.Scaffold from your model_fn.")
-        % (", ".join(sorted(missing_names)), ", ".join(sorted(extra_names)),
-           len(intersecting_names)))
+            "inside a tf.train.Scaffold from your model_fn.") %
+        (", ".join(sorted(missing_names)), ", ".join(
+            sorted(extra_names)), len(intersecting_names)))
   for saveable in saveables:
     for spec in saveable.specs:
       spec.name = names_to_keys[spec.name]

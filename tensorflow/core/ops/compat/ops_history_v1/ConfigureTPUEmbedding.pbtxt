@@ -1,0 +1,8 @@
+op {
+  name: "ConfigureTPUEmbedding"
+  attr {
+    name: "config"
+    type: "string"
+  }
+  is_stateful: true
+}

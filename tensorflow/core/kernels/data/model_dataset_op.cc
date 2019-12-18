@@ -16,6 +16,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -26,23 +27,48 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-constexpr int kOptimizationPeriodThresholdMs = 60 * EnvTime::kSecondsToMicros;
+constexpr int64 kOptimizationPeriodThresholdMs = 60 * EnvTime::kSecondsToMillis;
+
+// Default share of available RAM that can be used by model's internal buffers.
+constexpr double kRamBudgetShare = 0.5;
 
 class ModelDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ModelDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+      : UnaryDatasetOpKernel(ctx) {
+    if (ctx->HasAttr("algorithm")) {
+      int64 algorithm;
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("algorithm", &algorithm));
+      algorithm_ = model::AutotuneAlgorithm(algorithm);
+    } else {
+      algorithm_ = model::AutotuneAlgorithm::HILL_CLIMB;
+    }
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("cpu_budget", &cpu_budget_));
+    if (cpu_budget_ == 0) {
+      cpu_budget_ = port::NumSchedulableCPUs();
+    }
+    OP_REQUIRES(ctx, cpu_budget_ > 0,
+                errors::InvalidArgument("CPU budget must be positive but is ",
+                                        cpu_budget_, "."));
+    ram_budget_ = kRamBudgetShare * port::AvailableRam();
+  }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    *output = new Dataset(ctx, input);
+    *output = new Dataset(ctx, input, algorithm_, cpu_budget_, ram_budget_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, const DatasetBase* input)
-        : DatasetBase(DatasetContext(ctx)), input_(input) {
+    Dataset(OpKernelContext* ctx, const DatasetBase* input,
+            model::AutotuneAlgorithm algorithm, int64 cpu_budget,
+            int64 ram_budget)
+        : DatasetBase(DatasetContext(ctx)),
+          input_(input),
+          algorithm_(algorithm),
+          cpu_budget_(cpu_budget),
+          ram_budget_(ram_budget) {
       input_->Ref();
     }
 
@@ -64,6 +90,10 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override { return "ModelDatasetOp::Dataset"; }
 
     int64 Cardinality() const override { return input_->Cardinality(); }
+
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -140,9 +170,8 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
         if (!optimize_thread_) {
           std::shared_ptr<IteratorContext> new_ctx =
               std::make_shared<IteratorContext>(*ctx);
-          optimize_thread_.reset(ctx->env()->StartThread(
-              {}, "tf_data_model",
-              [this, new_ctx]() { OptimizeThread(new_ctx); }));
+          optimize_thread_ = ctx->StartThread(
+              "tf_data_model", [this, new_ctx]() { OptimizeThread(new_ctx); });
         }
         return Status::OK();
       }
@@ -150,31 +179,31 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
       void OptimizeThread(const std::shared_ptr<IteratorContext>& ctx) {
         int64 last_optimization_ms = 0;
         int64 optimization_period_ms = 10;
+        int64 current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
         while (true) {
           {
             mutex_lock l(mu_);
             while (!cancelled_ &&
-                   last_optimization_ms + optimization_period_ms >=
-                       ctx->env()->NowMicros() / EnvTime::kMillisToMicros) {
-              cond_var_.wait_for(
-                  l, std::chrono::milliseconds(
-                         last_optimization_ms + optimization_period_ms -
-                         ctx->env()->NowMicros() / EnvTime::kMillisToMicros));
+                   last_optimization_ms + optimization_period_ms >
+                       current_time_ms) {
+              auto wait_ms = last_optimization_ms + optimization_period_ms -
+                             current_time_ms;
+              VLOG(2) << "Waiting for " << wait_ms << " ms.";
+              cond_var_.wait_for(l, std::chrono::milliseconds(wait_ms));
+              current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
             }
             if (cancelled_) return;
           }
-          model_->Optimize(port::NumSchedulableCPUs());
+          model_->Optimize(dataset()->algorithm_, dataset()->cpu_budget_,
+                           dataset()->ram_budget_);
           // Exponentially increase the period of running the optimization
           // until a threshold is reached.
-          if (optimization_period_ms < kOptimizationPeriodThresholdMs) {
-            if (optimization_period_ms << 1 < kOptimizationPeriodThresholdMs) {
-              optimization_period_ms <<= 1;
-            } else {
-              optimization_period_ms = kOptimizationPeriodThresholdMs;
-            }
+          if (optimization_period_ms != kOptimizationPeriodThresholdMs) {
+            optimization_period_ms = std::min(optimization_period_ms << 1,
+                                              kOptimizationPeriodThresholdMs);
           }
-          last_optimization_ms =
-              ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
+          current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+          last_optimization_ms = current_time_ms;
         }
       }
 
@@ -187,7 +216,14 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* input_;
+    const model::AutotuneAlgorithm algorithm_;
+    const int64 cpu_budget_;
+    const int64 ram_budget_;
   };
+
+  model::AutotuneAlgorithm algorithm_;
+  int64 cpu_budget_;
+  int64 ram_budget_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ModelDataset").Device(DEVICE_CPU),
