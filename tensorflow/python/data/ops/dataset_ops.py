@@ -870,7 +870,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     return id_dataset.flat_map(flat_map_fn)
 
   @staticmethod
-  def range(*args):
+  def range(*args, **kwargs):
     """Creates a `Dataset` of a step-separated range of values.
 
     >>> list(Dataset.range(5).as_numpy_iterator())
@@ -885,12 +885,18 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     []
     >>> list(Dataset.range(5, 1, -2).as_numpy_iterator())
     [5, 3]
+    >>> list(Dataset.range(2, 5, output_type=tf.int32).as_numpy_iterator())
+    [2, 3, 4]
+    >>> list(Dataset.range(1, 5, 2, output_type=tf.float32).as_numpy_iterator())
+    [1.0, 3.0]
 
     Args:
       *args: follows the same semantics as python's xrange.
         len(args) == 1 -> start = 0, stop = args[0], step = 1
         len(args) == 2 -> start = args[0], stop = args[1], step = 1
         len(args) == 3 -> start = args[0], stop = args[1, stop = args[2]
+      **kwargs:
+        - output_type: Its expected dtype. (Optional, default: `tf.int64`).
 
     Returns:
       Dataset: A `RangeDataset`.
@@ -898,7 +904,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     Raises:
       ValueError: if len(args) == 0.
     """
-    return RangeDataset(*args)
+    return RangeDataset(*args, **kwargs)
 
   @staticmethod
   def zip(datasets):
@@ -2228,8 +2234,8 @@ class DatasetV1(DatasetV2):
 
   @staticmethod
   @functools.wraps(DatasetV2.range)
-  def range(*args):
-    return DatasetV1Adapter(DatasetV2.range(*args))
+  def range(*args, **kwargs):
+    return DatasetV1Adapter(DatasetV2.range(*args, **kwargs))
 
   @staticmethod
   @functools.wraps(DatasetV2.zip)
@@ -3344,10 +3350,10 @@ class RepeatDataset(UnaryUnchangedStructureDataset):
 class RangeDataset(DatasetSource):
   """A `Dataset` of a step separated range of values."""
 
-  def __init__(self, *args):
+  def __init__(self, *args, **kwargs):
     """See `Dataset.range()` for details."""
-    self._parse_args(*args)
-    self._structure = tensor_spec.TensorSpec([], dtypes.int64)
+    self._parse_args(*args, **kwargs)
+    self._structure = tensor_spec.TensorSpec([], self._output_type)
     variant_tensor = gen_dataset_ops.range_dataset(
         start=self._start,
         stop=self._stop,
@@ -3355,7 +3361,7 @@ class RangeDataset(DatasetSource):
         **self._flat_structure)
     super(RangeDataset, self).__init__(variant_tensor)
 
-  def _parse_args(self, *args):
+  def _parse_args(self, *args, **kwargs):
     """Parse arguments according to the same rules as the `range()` builtin."""
     if len(args) == 1:
       self._start = self._build_tensor(0, "start")
@@ -3371,6 +3377,10 @@ class RangeDataset(DatasetSource):
       self._step = self._build_tensor(args[2], "step")
     else:
       raise ValueError("Invalid arguments to RangeDataset: %s" % str(args))
+    if "output_type" in kwargs:
+      self._output_type = kwargs["output_type"]
+    else:
+      self._output_type = dtypes.int64
 
   def _build_tensor(self, int64_value, name):
     return ops.convert_to_tensor(int64_value, dtype=dtypes.int64, name=name)
