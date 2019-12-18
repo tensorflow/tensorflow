@@ -10,7 +10,7 @@ cc_library(
     deps = [
         ":op_metrics_db_combiner",
         ":op_stack",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:event_span",
@@ -40,7 +40,7 @@ cc_library(
     srcs = ["op_metrics_db_combiner.cc"],
     hdrs = ["op_metrics_db_combiner.h"],
     deps = [
-        "//tensorflow/core/platform:logging",
+        "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/utils:op_metrics_db_utils",
     ],
