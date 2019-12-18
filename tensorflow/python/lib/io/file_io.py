@@ -188,7 +188,7 @@ class FileIO(object):
     else:
       self._prewrite_check()
 
-      return self._writable_file.read()
+      return self._writable_file.tell()
 
   def __enter__(self):
     """Make usable with "with" statement."""
