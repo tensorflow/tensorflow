@@ -130,10 +130,7 @@ string GetLinkedTensorRTVersion() {
   minor = 0;
   patch = 0;
 #endif
-  string trt_version = absl::StrCat(std::to_string(major), ".",
-                              std::to_string(minor), ".",
-                              std::to_string(patch));
-  return trt_version;
+  return absl::StrCat(major, ".", minor, ".", patch);
 }
 
 string GetLoadedTensorRTVersion() {
@@ -149,10 +146,7 @@ string GetLoadedTensorRTVersion() {
   minor = 0;
   patch = 0;
 #endif
-  string trt_version = absl::StrCat(std::to_string(major), ".",
-                              std::to_string(minor), ".",
-                              std::to_string(patch));
-  return trt_version;
+  return absl::StrCat(major, ".", minor, ".", patch);
 }
 
 }  // namespace tensorrt
