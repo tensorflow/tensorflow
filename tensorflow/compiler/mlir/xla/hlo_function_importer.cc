@@ -287,6 +287,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
               llvm::ArrayRef<Value*>(operands.begin() + 2, operands.end()))
           .getOperation();
     }
+    case HloOpcode::kInfeed: {
+      attributes.push_back(builder_->getNamedAttr(
+          "infeed_config", mlir::StringAttr::get(instruction->infeed_config(),
+                                                 builder_->getContext())));
+      MakeAndReturn(InfeedOp);
+    }
     case HloOpcode::kPad: {
       const auto& padding_config = instruction->padding_config();
       llvm::SmallVector<int64_t, 4> edge_padding_low;
@@ -448,7 +454,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kExp, ExpOp);
       NoAttributeCase(kExpm1, Expm1Op);
       NoAttributeCase(kFloor, FloorOp);
-      NoAttributeCase(kInfeed, InfeedOp);
       NoAttributeCase(kImag, ImagOp);
       NoAttributeCase(kLog, LogOp);
       NoAttributeCase(kLog1p, Log1pOp);

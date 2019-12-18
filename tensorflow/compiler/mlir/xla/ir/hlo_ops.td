@@ -343,7 +343,10 @@ def HLO_InfeedOp : HLO_Op<"infeed", []> {
     See https://www.tensorflow.org/xla/operation_semantics#infeed.
   }];
 
-  let arguments = (ins HLO_Token:$token);
+  let arguments = (ins
+    HLO_Token:$token,
+    DefaultValuedAttr<StrAttr, "">:$infeed_config
+  );
   let results = (outs HLO_Tuple);
   let hasCustomHLOConverter = 1;
 }

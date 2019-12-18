@@ -364,6 +364,16 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %imag.3 = f32[4] imag(c64[4] %Arg_0.1)
 }
 
+// CHECK-LABEL:  func @test_infeed
+// CHECK-SAME: ([[TOKEN:%.*]]: !xla_hlo.token) -> tuple<tensor<3xi32>, !xla_hlo.token> {
+%test_infeed (token0: token[]) -> (s32[3], token[]) {
+  %token0 = token[] parameter(0)
+  // CHECK-NEXT:  "xla_hlo.infeed"([[TOKEN]])
+  // CHECK-SAME:  infeed_config = "foobar"
+  ROOT %infeed = (s32[3], token[]) infeed(token[] %token0), infeed_config="foobar"
+}
+
+
 // CHECK-LABEL:  func @test_iota_1() -> tensor<4xf32> {
 %test_iota_1 () -> f32[4] {
   // CHECK-NEXT:  "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xf32>

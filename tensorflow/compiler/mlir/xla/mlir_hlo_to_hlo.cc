@@ -558,8 +558,8 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   // The shape argument expected by the xla client API is the type of the first
   // element in the result tuple.
   auto result_type = op.getType().cast<mlir::TupleType>().getType(0);
-  value_map[op] = xla::InfeedWithToken(value_map[op.token()],
-                                       xla::TypeToShape(result_type));
+  value_map[op] = xla::InfeedWithToken(
+      value_map[op.token()], xla::TypeToShape(result_type), op.infeed_config());
   return success();
 }
 
