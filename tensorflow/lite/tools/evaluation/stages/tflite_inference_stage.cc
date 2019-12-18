@@ -95,8 +95,6 @@ TfLiteStatus TfliteInferenceStage::Init() {
   }
   interpreter_->SetNumThreads(params.num_threads());
 
-  // TODO(b/122482115): Add support for multiple delegates in
-  // TfLiteInferenceParams.
   if (params.delegate() == TfliteInferenceParams::NNAPI) {
     Interpreter::TfLiteDelegatePtr delegate = CreateNNAPIDelegate();
     if (delegate) {
