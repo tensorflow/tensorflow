@@ -67,7 +67,7 @@ std::string generateLibraryCallName(Operation *op);
 /// `A(i, k) * B(k, j) -> C(i, j)` will have the following, ordered, list of
 /// affine maps:
 ///
-/// ```{.mlir}
+/// ```mlir
 ///    (
 ///      (i, j, k) -> (i, k),
 ///      (i, j, k) -> (k, j),

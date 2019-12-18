@@ -512,7 +512,7 @@ static LogicalResult verify(YieldOp op) {
 
 // A LinalgLibraryOp prints as:
 //
-// ```{.mlir}
+// ```mlir
 //   concrete_op_name (ssa-inputs, ssa-outputs) : view-types
 // ```
 //
