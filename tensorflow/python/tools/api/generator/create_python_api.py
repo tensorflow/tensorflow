@@ -243,12 +243,11 @@ class _ModuleInitCodeBuilder(object):
     # from it using * import. Don't need this for lazy_loading because the
     # underscore symbols are already included in __all__ when passed in and
     # handled by TFModuleWrapper.
-    root_module_footer = ''
     if not self._lazy_loading:
       underscore_names_str = ', '.join(
           '\'%s\'' % name for name in self._underscore_names_in_root)
 
-      root_module_footer = '''
+      module_text_map[''] = module_text_map.get('', '') + '''
 _names_with_underscore = [%s]
 __all__ = [_s for _s in dir() if not _s.startswith('_')]
 __all__.extend([_s for _s in _names_with_underscore])
@@ -274,7 +273,7 @@ __all__.extend([_s for _s in _names_with_underscore])
         footer_text_map[dest_module] = _DEPRECATION_FOOTER % (
             dest_module, public_apis_name, deprecation, has_lite)
 
-    return module_text_map, footer_text_map, root_module_footer
+    return module_text_map, footer_text_map
 
   def format_import(self, source_module_name, source_name, dest_name):
     """Formats import statement.
@@ -621,11 +620,7 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
       os.makedirs(os.path.dirname(file_path))
     open(file_path, 'a').close()
 
-  (
-      module_text_map,
-      deprecation_footer_map,
-      root_module_footer,
-  ) = get_api_init_text(
+  module_text_map, deprecation_footer_map = get_api_init_text(
       packages, output_package, api_name,
       api_version, compat_api_versions, lazy_loading, use_relative_imports)
 
@@ -657,7 +652,6 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
       with open(root_init_template, 'r') as root_init_template_file:
         contents = root_init_template_file.read()
         contents = contents.replace('# API IMPORTS PLACEHOLDER', text)
-        contents = contents.replace('# __all__ PLACEHOLDER', root_module_footer)
     elif module in compat_module_to_template:
       # Read base init file for compat module
       with open(compat_module_to_template[module], 'r') as init_template_file:
