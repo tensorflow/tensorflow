@@ -69,7 +69,7 @@ static LogicalResult encodeInstructionInto(SmallVectorImpl<uint32_t> &binary,
 /// serialization of the merge block and the continue block, if exists, until
 /// after all other blocks have been processed.
 static LogicalResult visitInPrettyBlockOrder(
-    Block *headerBlock, llvm::function_ref<LogicalResult(Block *)> blockHandler,
+    Block *headerBlock, function_ref<LogicalResult(Block *)> blockHandler,
     bool skipHeader = false, ArrayRef<Block *> skipBlocks = {}) {
   llvm::df_iterator_default_set<Block *, 4> doneBlocks;
   doneBlocks.insert(skipBlocks.begin(), skipBlocks.end());
@@ -301,7 +301,7 @@ private:
   /// instruction if this is a SPIR-V selection/loop header block.
   LogicalResult
   processBlock(Block *block, bool omitLabel = false,
-               llvm::function_ref<void()> actionBeforeTerminator = nullptr);
+               function_ref<void()> actionBeforeTerminator = nullptr);
 
   /// Emits OpPhi instructions for the given block if it has block arguments.
   LogicalResult emitPhiForBlockArguments(Block *block);
@@ -457,7 +457,7 @@ private:
   /// placed inside `functions`) here. And then after emitting all blocks, we
   /// replace the dummy <id> 0 with the real result <id> by overwriting
   /// `functions[offset]`.
-  DenseMap<Value *, llvm::SmallVector<size_t, 1>> deferredPhiValues;
+  DenseMap<Value *, SmallVector<size_t, 1>> deferredPhiValues;
 };
 } // namespace
 
@@ -1341,7 +1341,7 @@ uint32_t Serializer::getOrCreateBlockID(Block *block) {
 
 LogicalResult
 Serializer::processBlock(Block *block, bool omitLabel,
-                         llvm::function_ref<void()> actionBeforeTerminator) {
+                         function_ref<void()> actionBeforeTerminator) {
   LLVM_DEBUG(llvm::dbgs() << "processing block " << block << ":\n");
   LLVM_DEBUG(block->print(llvm::dbgs()));
   LLVM_DEBUG(llvm::dbgs() << '\n');
@@ -1773,7 +1773,7 @@ Serializer::processOp<spirv::FunctionCallOp>(spirv::FunctionCallOp op) {
   auto funcName = op.callee();
   uint32_t resTypeID = 0;
 
-  llvm::SmallVector<Type, 1> resultTypes(op.getResultTypes());
+  SmallVector<Type, 1> resultTypes(op.getResultTypes());
   if (failed(processType(op.getLoc(),
                          (resultTypes.empty() ? getVoidType() : resultTypes[0]),
                          resTypeID))) {

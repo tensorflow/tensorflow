@@ -23,7 +23,7 @@
 using namespace mlir;
 using namespace mlir::detail;
 
-constexpr llvm::StringLiteral kPassStatsDescription =
+constexpr StringLiteral kPassStatsDescription =
     "... Pass statistics report ...";
 
 namespace {

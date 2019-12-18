@@ -513,11 +513,11 @@ Value *mlir::vector::unrollSingleResultOpMatchingType(
 
 // Generates slices of 'vectorType' according to 'sizes' and 'strides, and
 // calls 'fn' with linear index and indices for each slice.
-static void generateTransferOpSlices(
-    VectorType vectorType, TupleType tupleType, ArrayRef<int64_t> sizes,
-    ArrayRef<int64_t> strides, ArrayRef<Value *> indices,
-    PatternRewriter &rewriter,
-    llvm::function_ref<void(unsigned, ArrayRef<Value *>)> fn) {
+static void
+generateTransferOpSlices(VectorType vectorType, TupleType tupleType,
+                         ArrayRef<int64_t> sizes, ArrayRef<int64_t> strides,
+                         ArrayRef<Value *> indices, PatternRewriter &rewriter,
+                         function_ref<void(unsigned, ArrayRef<Value *>)> fn) {
   // Compute strides w.r.t. to slice counts in each dimension.
   auto maybeDimSliceCounts = shapeRatio(vectorType.getShape(), sizes);
   assert(maybeDimSliceCounts.hasValue());

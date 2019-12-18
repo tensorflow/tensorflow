@@ -105,12 +105,11 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(Operation *m) {
 }
 
 static TranslateFromMLIRRegistration
-    registration("mlir-to-nvvmir",
-                 [](ModuleOp module, llvm::raw_ostream &output) {
-                   auto llvmModule = mlir::translateModuleToNVVMIR(module);
-                   if (!llvmModule)
-                     return failure();
+    registration("mlir-to-nvvmir", [](ModuleOp module, raw_ostream &output) {
+      auto llvmModule = mlir::translateModuleToNVVMIR(module);
+      if (!llvmModule)
+        return failure();
 
-                   llvmModule->print(output, nullptr);
-                   return success();
-                 });
+      llvmModule->print(output, nullptr);
+      return success();
+    });

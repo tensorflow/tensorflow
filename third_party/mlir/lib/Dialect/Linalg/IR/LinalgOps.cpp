@@ -632,7 +632,7 @@ namespace linalg {
 } // namespace linalg
 } // namespace mlir
 
-static AffineMap extractOrIdentityMap(llvm::Optional<AffineMap> maybeMap,
+static AffineMap extractOrIdentityMap(Optional<AffineMap> maybeMap,
                                       unsigned rank, MLIRContext *context) {
   if (maybeMap)
     return maybeMap.getValue();

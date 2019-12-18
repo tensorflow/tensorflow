@@ -35,7 +35,7 @@ using namespace mlir;
 /// Remap locations from the inlined blocks with CallSiteLoc locations with the
 /// provided caller location.
 static void
-remapInlinedLocations(llvm::iterator_range<Region::iterator> inlinedBlocks,
+remapInlinedLocations(iterator_range<Region::iterator> inlinedBlocks,
                       Location callerLoc) {
   DenseMap<Location, Location> mappedLocations;
   auto remapOpLoc = [&](Operation *op) {
@@ -50,9 +50,8 @@ remapInlinedLocations(llvm::iterator_range<Region::iterator> inlinedBlocks,
     block.walk(remapOpLoc);
 }
 
-static void
-remapInlinedOperands(llvm::iterator_range<Region::iterator> inlinedBlocks,
-                     BlockAndValueMapping &mapper) {
+static void remapInlinedOperands(iterator_range<Region::iterator> inlinedBlocks,
+                                 BlockAndValueMapping &mapper) {
   auto remapOperands = [&](Operation *op) {
     for (auto &operand : op->getOpOperands())
       if (auto *mappedOp = mapper.lookupOrNull(operand.get()))
@@ -133,7 +132,7 @@ LogicalResult mlir::inlineRegion(InlinerInterface &interface, Region *src,
                                  Operation *inlinePoint,
                                  BlockAndValueMapping &mapper,
                                  ArrayRef<Value *> resultsToReplace,
-                                 llvm::Optional<Location> inlineLoc,
+                                 Optional<Location> inlineLoc,
                                  bool shouldCloneInlinedRegion) {
   // We expect the region to have at least one block.
   if (src->empty())
@@ -226,7 +225,7 @@ LogicalResult mlir::inlineRegion(InlinerInterface &interface, Region *src,
                                  Operation *inlinePoint,
                                  ArrayRef<Value *> inlinedOperands,
                                  ArrayRef<Value *> resultsToReplace,
-                                 llvm::Optional<Location> inlineLoc,
+                                 Optional<Location> inlineLoc,
                                  bool shouldCloneInlinedRegion) {
   // We expect the region to have at least one block.
   if (src->empty())

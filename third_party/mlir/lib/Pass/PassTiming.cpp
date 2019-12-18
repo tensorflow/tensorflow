@@ -29,7 +29,7 @@
 using namespace mlir;
 using namespace mlir::detail;
 
-constexpr llvm::StringLiteral kPassTimingDescription =
+constexpr StringLiteral kPassTimingDescription =
     "... Pass execution timing report ...";
 
 namespace {
@@ -182,11 +182,10 @@ struct PassTiming : public PassInstrumentation {
   void runAfterPassFailed(Pass *pass, Operation *op) override {
     runAfterPass(pass, op);
   }
-  void runBeforeAnalysis(llvm::StringRef name, AnalysisID *id,
-                         Operation *) override {
+  void runBeforeAnalysis(StringRef name, AnalysisID *id, Operation *) override {
     startAnalysisTimer(name, id);
   }
-  void runAfterAnalysis(llvm::StringRef, AnalysisID *, Operation *) override;
+  void runAfterAnalysis(StringRef, AnalysisID *, Operation *) override;
 
   /// Print and clear the timing results.
   void print();
@@ -195,7 +194,7 @@ struct PassTiming : public PassInstrumentation {
   void startPassTimer(Pass *pass);
 
   /// Start a new timer for the given analysis.
-  void startAnalysisTimer(llvm::StringRef name, AnalysisID *id);
+  void startAnalysisTimer(StringRef name, AnalysisID *id);
 
   /// Pop the last active timer for the current thread.
   Timer *popLastActiveTimer() {
@@ -301,7 +300,7 @@ void PassTiming::startPassTimer(Pass *pass) {
 }
 
 /// Start a new timer for the given analysis.
-void PassTiming::startAnalysisTimer(llvm::StringRef name, AnalysisID *id) {
+void PassTiming::startAnalysisTimer(StringRef name, AnalysisID *id) {
   Timer *timer = getTimer(id, TimerKind::PassOrAnalysis,
                           [name] { return "(A) " + name.str(); });
   timer->start();
@@ -330,12 +329,12 @@ void PassTiming::runAfterPass(Pass *pass, Operation *) {
 }
 
 /// Stop a timer.
-void PassTiming::runAfterAnalysis(llvm::StringRef, AnalysisID *, Operation *) {
+void PassTiming::runAfterAnalysis(StringRef, AnalysisID *, Operation *) {
   popLastActiveTimer()->stop();
 }
 
 /// Utility to print the timer heading information.
-static void printTimerHeader(llvm::raw_ostream &os, TimeRecord total) {
+static void printTimerHeader(raw_ostream &os, TimeRecord total) {
   os << "===" << std::string(73, '-') << "===\n";
   // Figure out how many spaces to description name.
   unsigned padding = (80 - kPassTimingDescription.size()) / 2;

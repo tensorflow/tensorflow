@@ -237,7 +237,7 @@ KernelDim3 LaunchOp::getBlockSizeOperandValues() {
   return KernelDim3{getOperand(3), getOperand(4), getOperand(5)};
 }
 
-llvm::iterator_range<Block::args_iterator> LaunchOp::getKernelArguments() {
+iterator_range<Block::args_iterator> LaunchOp::getKernelArguments() {
   auto args = body().getBlocks().front().getArguments();
   return llvm::drop_begin(args, LaunchOp::kNumConfigRegionAttributes);
 }

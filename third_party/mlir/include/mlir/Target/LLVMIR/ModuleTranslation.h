@@ -116,13 +116,13 @@ private:
   std::unique_ptr<llvm::Module> llvmModule;
 
   // Mappings between llvm.mlir.global definitions and corresponding globals.
-  llvm::DenseMap<Operation *, llvm::GlobalValue *> globalsMapping;
+  DenseMap<Operation *, llvm::GlobalValue *> globalsMapping;
 
 protected:
   // Mappings between original and translated values, used for lookups.
   llvm::StringMap<llvm::Function *> functionMapping;
-  llvm::DenseMap<Value *, llvm::Value *> valueMapping;
-  llvm::DenseMap<Block *, llvm::BasicBlock *> blockMapping;
+  DenseMap<Value *, llvm::Value *> valueMapping;
+  DenseMap<Block *, llvm::BasicBlock *> blockMapping;
 };
 
 } // namespace LLVM

@@ -78,7 +78,7 @@ private:
   /// Top level OpBuilder.
   OpBuilder &builder;
   /// The previous insertion point of the builder.
-  llvm::Optional<OpBuilder::InsertPoint> prevBuilderInsertPoint;
+  Optional<OpBuilder::InsertPoint> prevBuilderInsertPoint;
   /// Current location.
   Location location;
   /// Parent context we return into.
@@ -178,7 +178,7 @@ public:
   /// The only purpose of this operator is to serve as a sequence point so that
   /// the evaluation of `fun` (which build IR snippets in a scoped fashion) is
   /// scoped within a LoopBuilder.
-  void operator()(llvm::function_ref<void(void)> fun = nullptr);
+  void operator()(function_ref<void(void)> fun = nullptr);
 
 private:
   LoopBuilder() = default;
@@ -217,7 +217,7 @@ public:
   AffineLoopNestBuilder(ArrayRef<ValueHandle *> ivs, ArrayRef<ValueHandle> lbs,
                         ArrayRef<ValueHandle> ubs, ArrayRef<int64_t> steps);
 
-  void operator()(llvm::function_ref<void(void)> fun = nullptr);
+  void operator()(function_ref<void(void)> fun = nullptr);
 
 private:
   SmallVector<LoopBuilder, 4> loops;
@@ -228,13 +228,12 @@ private:
 /// loop.for.
 class LoopNestBuilder {
 public:
-  LoopNestBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
-                  ArrayRef<ValueHandle> lbs, ArrayRef<ValueHandle> ubs,
-                  ArrayRef<ValueHandle> steps);
+  LoopNestBuilder(ArrayRef<edsc::ValueHandle *> ivs, ArrayRef<ValueHandle> lbs,
+                  ArrayRef<ValueHandle> ubs, ArrayRef<ValueHandle> steps);
   void operator()(std::function<void(void)> fun = nullptr);
 
 private:
-  llvm::SmallVector<LoopBuilder, 4> loops;
+  SmallVector<LoopBuilder, 4> loops;
 };
 
 // This class exists solely to handle the C++ vexing parse case when
@@ -264,7 +263,7 @@ public:
   /// The only purpose of this operator is to serve as a sequence point so that
   /// the evaluation of `fun` (which build IR snippets in a scoped fashion) is
   /// scoped within a BlockBuilder.
-  void operator()(llvm::function_ref<void(void)> fun = nullptr);
+  void operator()(function_ref<void(void)> fun = nullptr);
 
 private:
   BlockBuilder(BlockBuilder &) = delete;

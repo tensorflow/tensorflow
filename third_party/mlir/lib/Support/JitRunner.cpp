@@ -122,14 +122,14 @@ static void initializeLLVM() {
   llvm::InitializeNativeTargetAsmPrinter();
 }
 
-static inline Error make_string_error(const llvm::Twine &message) {
+static inline Error make_string_error(const Twine &message) {
   return llvm::make_error<llvm::StringError>(message.str(),
                                              llvm::inconvertibleErrorCode());
 }
 
-static llvm::Optional<unsigned> getCommandLineOptLevel() {
-  llvm::Optional<unsigned> optLevel;
-  llvm::SmallVector<std::reference_wrapper<llvm::cl::opt<bool>>, 4> optFlags{
+static Optional<unsigned> getCommandLineOptLevel() {
+  Optional<unsigned> optLevel;
+  SmallVector<std::reference_wrapper<llvm::cl::opt<bool>>, 4> optFlags{
       optO0, optO1, optO2, optO3};
 
   // Determine if there is an optimization flag present.
@@ -217,7 +217,7 @@ static Error compileAndExecuteSingleFloatReturnFunction(
 // the MLIR module to the ExecutionEngine.
 int mlir::JitRunnerMain(
     int argc, char **argv,
-    llvm::function_ref<LogicalResult(mlir::ModuleOp)> mlirTransformer) {
+    function_ref<LogicalResult(mlir::ModuleOp)> mlirTransformer) {
   llvm::InitLLVM y(argc, argv);
 
   initializeLLVM();
@@ -225,8 +225,8 @@ int mlir::JitRunnerMain(
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "MLIR CPU execution driver\n");
 
-  llvm::Optional<unsigned> optLevel = getCommandLineOptLevel();
-  llvm::SmallVector<std::reference_wrapper<llvm::cl::opt<bool>>, 4> optFlags{
+  Optional<unsigned> optLevel = getCommandLineOptLevel();
+  SmallVector<std::reference_wrapper<llvm::cl::opt<bool>>, 4> optFlags{
       optO0, optO1, optO2, optO3};
   unsigned optCLIPosition = 0;
   // Determine if there is an optimization flag present, and its CLI position
@@ -240,7 +240,7 @@ int mlir::JitRunnerMain(
   }
   // Generate vector of pass information, plus the index at which we should
   // insert any optimization passes in that vector (optPosition).
-  llvm::SmallVector<const llvm::PassInfo *, 4> passes;
+  SmallVector<const llvm::PassInfo *, 4> passes;
   unsigned optPosition = 0;
   for (unsigned i = 0, e = llvmPasses.size(); i < e; ++i) {
     passes.push_back(llvmPasses[i]);

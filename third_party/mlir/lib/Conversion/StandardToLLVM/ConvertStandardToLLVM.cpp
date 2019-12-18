@@ -1603,15 +1603,14 @@ struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
 
     // If ReturnOp has 0 or 1 operand, create it and return immediately.
     if (numArguments == 0) {
-      rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(op, llvm::ArrayRef<Value *>(),
-                                                  llvm::ArrayRef<Block *>(),
-                                                  op->getAttrs());
+      rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
+          op, ArrayRef<Value *>(), ArrayRef<Block *>(), op->getAttrs());
       return matchSuccess();
     }
     if (numArguments == 1) {
       rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
-          op, llvm::ArrayRef<Value *>(operands.front()),
-          llvm::ArrayRef<Block *>(), op->getAttrs());
+          op, ArrayRef<Value *>(operands.front()), ArrayRef<Block *>(),
+          op->getAttrs());
       return matchSuccess();
     }
 
@@ -1626,9 +1625,8 @@ struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
           op->getLoc(), packedType, packed, operands[i],
           rewriter.getI64ArrayAttr(i));
     }
-    rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(op, llvm::makeArrayRef(packed),
-                                                llvm::ArrayRef<Block *>(),
-                                                op->getAttrs());
+    rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
+        op, llvm::makeArrayRef(packed), ArrayRef<Block *>(), op->getAttrs());
     return matchSuccess();
   }
 };
@@ -1971,7 +1969,7 @@ static void ensureDistinctSuccessors(Block &bb) {
   auto *terminator = bb.getTerminator();
 
   // Find repeated successors with arguments.
-  llvm::SmallDenseMap<Block *, llvm::SmallVector<int, 4>> successorPositions;
+  llvm::SmallDenseMap<Block *, SmallVector<int, 4>> successorPositions;
   for (int i = 0, e = terminator->getNumSuccessors(); i < e; ++i) {
     Block *successor = terminator->getSuccessor(i);
     // Blocks with no arguments are safe even if they appear multiple times

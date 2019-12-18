@@ -370,13 +370,13 @@ private:
                 [&] {
                   Value *shflValue = rewriter.create<LLVM::ExtractValueOp>(
                       loc, type, shfl, rewriter.getIndexArrayAttr(0));
-                  return llvm::SmallVector<Value *, 1>{
+                  return SmallVector<Value *, 1>{
                       accumFactory(loc, value, shflValue, rewriter)};
                 },
                 [&] { return llvm::makeArrayRef(value); });
             value = rewriter.getInsertionBlock()->getArgument(0);
           }
-          return llvm::SmallVector<Value *, 1>{value};
+          return SmallVector<Value *, 1>{value};
         },
         // Generate a reduction over the entire warp. This is a specialization
         // of the above reduction with unconditional accumulation.
@@ -394,7 +394,7 @@ private:
                 /*return_value_and_is_valid=*/UnitAttr());
             value = accumFactory(loc, value, shflValue, rewriter);
           }
-          return llvm::SmallVector<Value *, 1>{value};
+          return SmallVector<Value *, 1>{value};
         });
     return rewriter.getInsertionBlock()->getArgument(0);
   }

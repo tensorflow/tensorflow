@@ -2362,6 +2362,7 @@ cc_library(
         ":IR",
         ":QuantOps",
         ":StandardOps",
+        ":Support",
         "@llvm//:support",
     ],
 )

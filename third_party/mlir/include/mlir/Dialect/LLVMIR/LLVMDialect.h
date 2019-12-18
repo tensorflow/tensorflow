@@ -156,7 +156,7 @@ private:
   /// Get an LLVMType with an llvm type that may cause changes to the underlying
   /// llvm context when constructed.
   static LLVMType getLocked(LLVMDialect *dialect,
-                            llvm::function_ref<llvm::Type *()> typeBuilder);
+                            function_ref<llvm::Type *()> typeBuilder);
 };
 
 ///// Ops /////

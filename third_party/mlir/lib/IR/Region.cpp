@@ -129,7 +129,7 @@ void Region::dropAllReferences() {
 /// is used to point to the operation containing the region, the actual error is
 /// reported at the operation with an offending use.
 static bool isIsolatedAbove(Region &region, Region &limit,
-                            llvm::Optional<Location> noteLoc) {
+                            Optional<Location> noteLoc) {
   assert(limit.isAncestor(&region) &&
          "expected isolation limit to be an ancestor of the given region");
 
@@ -174,7 +174,7 @@ static bool isIsolatedAbove(Region &region, Region &limit,
   return true;
 }
 
-bool Region::isIsolatedFromAbove(llvm::Optional<Location> noteLoc) {
+bool Region::isIsolatedFromAbove(Optional<Location> noteLoc) {
   return isIsolatedAbove(*this, *this, noteLoc);
 }
 

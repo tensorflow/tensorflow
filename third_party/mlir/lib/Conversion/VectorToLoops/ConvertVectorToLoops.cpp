@@ -155,16 +155,16 @@ void coalesceCopy(TransferOpTy transfer,
 /// Emits remote memory accesses that are clipped to the boundaries of the
 /// MemRef.
 template <typename TransferOpTy>
-llvm::SmallVector<edsc::ValueHandle, 8> clip(TransferOpTy transfer,
-                                             edsc::MemRefView &view,
-                                             ArrayRef<edsc::IndexHandle> ivs) {
+SmallVector<edsc::ValueHandle, 8> clip(TransferOpTy transfer,
+                                       edsc::MemRefView &view,
+                                       ArrayRef<edsc::IndexHandle> ivs) {
   using namespace mlir::edsc;
   using namespace edsc::op;
   using edsc::intrinsics::select;
 
   IndexHandle zero(index_t(0)), one(index_t(1));
-  llvm::SmallVector<edsc::ValueHandle, 8> memRefAccess(transfer.indices());
-  llvm::SmallVector<edsc::ValueHandle, 8> clippedScalarAccessExprs(
+  SmallVector<edsc::ValueHandle, 8> memRefAccess(transfer.indices());
+  SmallVector<edsc::ValueHandle, 8> clippedScalarAccessExprs(
       memRefAccess.size(), edsc::IndexHandle());
 
   // Indices accessing to remote memory are clipped and their expressions are

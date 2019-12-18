@@ -637,7 +637,7 @@ def LLVM_LLVMFuncOp
 def LLVM_NullOp
     : LLVM_OneResultOp<"mlir.null", [NoSideEffect]>,
       LLVM_Builder<"$res = llvm::ConstantPointerNull::get("
-                   "    llvm::cast<llvm::PointerType>($_resultType));"> {
+                   "    cast<llvm::PointerType>($_resultType));"> {
   let parser = [{ return parseNullOp(parser, result); }];
   let printer = [{ printNullOp(p, *this); }];
   let verifier = [{ return ::verify(*this); }];

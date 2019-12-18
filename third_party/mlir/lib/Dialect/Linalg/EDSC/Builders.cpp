@@ -44,7 +44,7 @@ static void getMaxDimIndex(ArrayRef<StructuredIndexed> structuredIndices,
 Operation *mlir::edsc::makeLinalgGenericOp(
     ArrayRef<IterType> iteratorTypes, ArrayRef<StructuredIndexed> inputs,
     ArrayRef<StructuredIndexed> outputs,
-    llvm::function_ref<void(ArrayRef<BlockArgument *>)> regionBuilder,
+    function_ref<void(ArrayRef<BlockArgument *>)> regionBuilder,
     ArrayRef<Value *> otherValues, ArrayRef<Attribute> otherAttributes) {
   auto &builder = edsc::ScopedContext::getBuilder();
   auto *ctx = builder.getContext();

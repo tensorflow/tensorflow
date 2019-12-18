@@ -473,7 +473,7 @@ LogicalResult ModuleTranslation::convertFunctions() {
   for (auto function : getModuleBody(mlirModule).getOps<LLVMFuncOp>()) {
     llvm::FunctionCallee llvmFuncCst = llvmModule->getOrInsertFunction(
         function.getName(),
-        llvm::cast<llvm::FunctionType>(function.getType().getUnderlyingType()));
+        cast<llvm::FunctionType>(function.getType().getUnderlyingType()));
     assert(isa<llvm::Function>(llvmFuncCst.getCallee()));
     functionMapping[function.getName()] =
         cast<llvm::Function>(llvmFuncCst.getCallee());

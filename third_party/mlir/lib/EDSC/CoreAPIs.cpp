@@ -34,7 +34,7 @@ using namespace mlir;
 mlir_type_t makeMemRefType(mlir_context_t context, mlir_type_t elemType,
                            int64_list_t sizes) {
   auto t = mlir::MemRefType::get(
-      llvm::ArrayRef<int64_t>(sizes.values, sizes.n),
+      ArrayRef<int64_t>(sizes.values, sizes.n),
       mlir::Type::getFromOpaquePointer(elemType),
       {mlir::AffineMap::getMultiDimIdentityMap(
           sizes.n, reinterpret_cast<mlir::MLIRContext *>(context))},
@@ -44,7 +44,7 @@ mlir_type_t makeMemRefType(mlir_context_t context, mlir_type_t elemType,
 
 mlir_type_t makeFunctionType(mlir_context_t context, mlir_type_list_t inputs,
                              mlir_type_list_t outputs) {
-  llvm::SmallVector<mlir::Type, 8> ins(inputs.n), outs(outputs.n);
+  SmallVector<mlir::Type, 8> ins(inputs.n), outs(outputs.n);
   for (unsigned i = 0; i < inputs.n; ++i) {
     ins[i] = mlir::Type::getFromOpaquePointer(inputs.types[i]);
   }

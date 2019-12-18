@@ -47,7 +47,7 @@ def InferTypeOpInterface : OpInterface<"InferTypeOpInterface"> {
       }],
       /*retTy=*/"LogicalResult",
       /*methodName=*/"inferReturnTypes",
-      /*args=*/(ins "llvm::Optional<Location>":$location,
+      /*args=*/(ins "Optional<Location>":$location,
                     "ValueRange":$operands,
                     "ArrayRef<NamedAttribute>":$attributes,
                     "RegionRange":$regions,

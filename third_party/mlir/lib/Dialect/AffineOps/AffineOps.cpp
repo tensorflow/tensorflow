@@ -616,9 +616,8 @@ AffineApplyOp mlir::makeComposedAffineApply(OpBuilder &b, Location loc,
 // A symbol may appear as a dim in affine.apply operations. This function
 // canonicalizes dims that are valid symbols into actual symbols.
 template <class MapOrSet>
-static void
-canonicalizePromotedSymbols(MapOrSet *mapOrSet,
-                            llvm::SmallVectorImpl<Value *> *operands) {
+static void canonicalizePromotedSymbols(MapOrSet *mapOrSet,
+                                        SmallVectorImpl<Value *> *operands) {
   if (!mapOrSet || operands->empty())
     return;
 
@@ -662,7 +661,7 @@ canonicalizePromotedSymbols(MapOrSet *mapOrSet,
 template <class MapOrSet>
 static void
 canonicalizeMapOrSetAndOperands(MapOrSet *mapOrSet,
-                                llvm::SmallVectorImpl<Value *> *operands) {
+                                SmallVectorImpl<Value *> *operands) {
   static_assert(std::is_same<MapOrSet, AffineMap>::value ||
                     std::is_same<MapOrSet, IntegerSet>::value,
                 "Argument must be either of AffineMap or IntegerSet type");
@@ -738,13 +737,13 @@ canonicalizeMapOrSetAndOperands(MapOrSet *mapOrSet,
   *operands = resultOperands;
 }
 
-void mlir::canonicalizeMapAndOperands(
-    AffineMap *map, llvm::SmallVectorImpl<Value *> *operands) {
+void mlir::canonicalizeMapAndOperands(AffineMap *map,
+                                      SmallVectorImpl<Value *> *operands) {
   canonicalizeMapOrSetAndOperands<AffineMap>(map, operands);
 }
 
-void mlir::canonicalizeSetAndOperands(
-    IntegerSet *set, llvm::SmallVectorImpl<Value *> *operands) {
+void mlir::canonicalizeSetAndOperands(IntegerSet *set,
+                                      SmallVectorImpl<Value *> *operands) {
   canonicalizeMapOrSetAndOperands<IntegerSet>(set, operands);
 }
 

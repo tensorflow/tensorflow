@@ -2297,7 +2297,7 @@ static void print(OpAsmPrinter &p, ViewOp op) {
 
 Value *ViewOp::getDynamicOffset() {
   int64_t offset;
-  llvm::SmallVector<int64_t, 4> strides;
+  SmallVector<int64_t, 4> strides;
   auto result =
       succeeded(mlir::getStridesAndOffset(getType(), strides, offset));
   assert(result);
@@ -2341,7 +2341,7 @@ static LogicalResult verify(ViewOp op) {
 
   // Verify that the result memref type has a strided layout map.
   int64_t offset;
-  llvm::SmallVector<int64_t, 4> strides;
+  SmallVector<int64_t, 4> strides;
   if (failed(getStridesAndOffset(viewType, strides, offset)))
     return op.emitError("result type ") << viewType << " is not strided";
 
@@ -2383,7 +2383,7 @@ struct ViewOpShapeFolder : public OpRewritePattern<ViewOp> {
 
     // Get offset from old memref view type 'memRefType'.
     int64_t oldOffset;
-    llvm::SmallVector<int64_t, 4> oldStrides;
+    SmallVector<int64_t, 4> oldStrides;
     if (failed(getStridesAndOffset(memrefType, oldStrides, oldOffset)))
       return matchFailure();
 
@@ -2585,13 +2585,13 @@ static LogicalResult verify(SubViewOp op) {
 
   // Verify that the base memref type has a strided layout map.
   int64_t baseOffset;
-  llvm::SmallVector<int64_t, 4> baseStrides;
+  SmallVector<int64_t, 4> baseStrides;
   if (failed(getStridesAndOffset(baseType, baseStrides, baseOffset)))
     return op.emitError("base type ") << subViewType << " is not strided";
 
   // Verify that the result memref type has a strided layout map.
   int64_t subViewOffset;
-  llvm::SmallVector<int64_t, 4> subViewStrides;
+  SmallVector<int64_t, 4> subViewStrides;
   if (failed(getStridesAndOffset(subViewType, subViewStrides, subViewOffset)))
     return op.emitError("result type ") << subViewType << " is not strided";
 
@@ -2677,8 +2677,7 @@ static LogicalResult verify(SubViewOp op) {
   return success();
 }
 
-llvm::raw_ostream &mlir::operator<<(llvm::raw_ostream &os,
-                                    SubViewOp::Range &range) {
+raw_ostream &mlir::operator<<(raw_ostream &os, SubViewOp::Range &range) {
   return os << "range " << *range.offset << ":" << *range.size << ":"
             << *range.stride;
 }
@@ -2734,7 +2733,7 @@ static bool hasConstantOffsetSizesAndStrides(MemRefType memrefType) {
     return false;
   // Get offset and strides.
   int64_t offset;
-  llvm::SmallVector<int64_t, 4> strides;
+  SmallVector<int64_t, 4> strides;
   if (failed(getStridesAndOffset(memrefType, strides, offset)))
     return false;
   // Return 'false' if any of offset or strides is dynamic.

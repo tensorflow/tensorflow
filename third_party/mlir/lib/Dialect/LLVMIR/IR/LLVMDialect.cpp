@@ -1227,7 +1227,7 @@ static ParseResult parseLLVMFuncOp(OpAsmParser &parser,
 
   auto *body = result.addRegion();
   return parser.parseOptionalRegion(
-      *body, entryArgs, entryArgs.empty() ? llvm::ArrayRef<Type>() : argTypes);
+      *body, entryArgs, entryArgs.empty() ? ArrayRef<Type>() : argTypes);
 }
 
 // Print the LLVMFuncOp. Collects argument and result types and passes them to
@@ -1499,7 +1499,7 @@ LLVMType LLVMType::get(MLIRContext *context, llvm::Type *llvmType) {
 /// Get an LLVMType with an llvm type that may cause changes to the underlying
 /// llvm context when constructed.
 LLVMType LLVMType::getLocked(LLVMDialect *dialect,
-                             llvm::function_ref<llvm::Type *()> typeBuilder) {
+                             function_ref<llvm::Type *()> typeBuilder) {
   // Lock access to the llvm context and build the type.
   llvm::sys::SmartScopedLock<true> lock(dialect->impl->mutex);
   return get(dialect->getContext(), typeBuilder());

@@ -62,16 +62,16 @@ public:
 /// directly. In the current implementation it produces loop.for operations.
 class LoopNestRangeBuilder {
 public:
-  LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
-                       llvm::ArrayRef<edsc::ValueHandle> ranges);
-  LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
-                       llvm::ArrayRef<Value *> ranges);
-  LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
-                       llvm::ArrayRef<SubViewOp::Range> ranges);
+  LoopNestRangeBuilder(ArrayRef<edsc::ValueHandle *> ivs,
+                       ArrayRef<edsc::ValueHandle> ranges);
+  LoopNestRangeBuilder(ArrayRef<edsc::ValueHandle *> ivs,
+                       ArrayRef<Value *> ranges);
+  LoopNestRangeBuilder(ArrayRef<edsc::ValueHandle *> ivs,
+                       ArrayRef<SubViewOp::Range> ranges);
   edsc::ValueHandle operator()(std::function<void(void)> fun = nullptr);
 
 private:
-  llvm::SmallVector<LoopRangeBuilder, 4> loops;
+  SmallVector<LoopRangeBuilder, 4> loops;
 };
 
 } // namespace edsc
@@ -150,10 +150,10 @@ struct TiledLinalgOp {
 /// When non-null, the optional pointer `folder` is used to call into the
 /// `createAndFold` builder method. If `folder` is null, the regular `create`
 /// method is called.
-llvm::Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
-                                           ArrayRef<Value *> tileSizes,
-                                           ArrayRef<unsigned> permutation = {},
-                                           OperationFolder *folder = nullptr);
+Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
+                                     ArrayRef<Value *> tileSizes,
+                                     ArrayRef<unsigned> permutation = {},
+                                     OperationFolder *folder = nullptr);
 
 /// Performs standalone tiling of a single LinalgOp by constant `tileSizes`.
 /// and permute the loop nest according to `permutation`
@@ -170,14 +170,14 @@ llvm::Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
 /// When non-null, the optional pointer `folder` is used to call into the
 /// `createAndFold` builder method. If `folder` is null, the regular `create`
 /// method is called.
-llvm::Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
-                                           ArrayRef<int64_t> tileSizes,
-                                           ArrayRef<unsigned> permutation = {},
-                                           OperationFolder *folder = nullptr);
+Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
+                                     ArrayRef<int64_t> tileSizes,
+                                     ArrayRef<unsigned> permutation = {},
+                                     OperationFolder *folder = nullptr);
 
 template <typename... Args>
-llvm::Optional<TiledLinalgOp> tileLinalgOperation(OpBuilder &b, Operation *op,
-                                                  Args... args) {
+Optional<TiledLinalgOp> tileLinalgOperation(OpBuilder &b, Operation *op,
+                                            Args... args) {
   return tileLinalgOp(b, cast<LinalgOp>(op), args...);
 }
 
@@ -198,14 +198,14 @@ struct PromotionInfo {
 ///
 /// Returns a list of PromotionInfo which hold the promoted buffer and the
 /// full and partial views indexing into the buffer.
-llvm::SmallVector<PromotionInfo, 8>
+SmallVector<PromotionInfo, 8>
 promoteSubViews(OpBuilder &b, Location loc, ArrayRef<Value *> subViews,
                 bool dynamicBuffers = false, OperationFolder *folder = nullptr);
 
 /// Returns all the operands of `linalgOp` that are not views.
 /// Asserts that these operands are value types to allow transformations like
 /// tiling to just use the values when cloning `linalgOp`.
-llvm::SmallVector<Value *, 4> getAssumedNonViewOperands(LinalgOp linalgOp);
+SmallVector<Value *, 4> getAssumedNonViewOperands(LinalgOp linalgOp);
 
 /// Apply the permutation defined by `permutation` to `inVec`.
 /// Element `i` in `inVec` is mapped to location `j = permutation[i]`.

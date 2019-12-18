@@ -149,7 +149,7 @@ Optional<uint64_t> parseAndVerify<uint64_t>(SPIRVDialect const &dialect,
                                             DialectAsmParser &parser);
 
 static bool isValidSPIRVIntType(IntegerType type) {
-  return llvm::is_contained(llvm::ArrayRef<unsigned>({1, 8, 16, 32, 64}),
+  return llvm::is_contained(ArrayRef<unsigned>({1, 8, 16, 32, 64}),
                             type.getWidth());
 }
 

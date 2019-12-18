@@ -64,7 +64,7 @@ using llvm::orc::ThreadSafeModule;
 using llvm::orc::TMOwningSimpleCompiler;
 
 // Wrap a string into an llvm::StringError.
-static inline Error make_string_error(const llvm::Twine &message) {
+static inline Error make_string_error(const Twine &message) {
   return llvm::make_error<StringError>(message.str(),
                                        llvm::inconvertibleErrorCode());
 }
@@ -89,7 +89,7 @@ std::unique_ptr<MemoryBuffer> SimpleObjectCache::getObject(const Module *M) {
   return MemoryBuffer::getMemBuffer(I->second->getMemBufferRef());
 }
 
-void SimpleObjectCache::dumpToObjectFile(llvm::StringRef outputFilename) {
+void SimpleObjectCache::dumpToObjectFile(StringRef outputFilename) {
   // Set up the output file.
   std::string errorMessage;
   auto file = openOutputFile(outputFilename, &errorMessage);
@@ -105,7 +105,7 @@ void SimpleObjectCache::dumpToObjectFile(llvm::StringRef outputFilename) {
   file->keep();
 }
 
-void ExecutionEngine::dumpToObjectFile(llvm::StringRef filename) {
+void ExecutionEngine::dumpToObjectFile(StringRef filename) {
   cache->dumpToObjectFile(filename);
 }
 
@@ -136,7 +136,7 @@ static std::string makePackedFunctionName(StringRef name) {
 void packFunctionArguments(Module *module) {
   auto &ctx = module->getContext();
   llvm::IRBuilder<> builder(ctx);
-  llvm::DenseSet<llvm::Function *> interfaceFunctions;
+  DenseSet<llvm::Function *> interfaceFunctions;
   for (auto &func : module->getFunctionList()) {
     if (func.isDeclaration()) {
       continue;
@@ -152,8 +152,7 @@ void packFunctionArguments(Module *module) {
         /*isVarArg=*/false);
     auto newName = makePackedFunctionName(func.getName());
     auto funcCst = module->getOrInsertFunction(newName, newType);
-    llvm::Function *interfaceFunc =
-        llvm::cast<llvm::Function>(funcCst.getCallee());
+    llvm::Function *interfaceFunc = cast<llvm::Function>(funcCst.getCallee());
     interfaceFunctions.insert(interfaceFunc);
 
     // Extract the arguments from the type-erased argument list and cast them to
@@ -162,11 +161,11 @@ void packFunctionArguments(Module *module) {
     bb->insertInto(interfaceFunc);
     builder.SetInsertPoint(bb);
     llvm::Value *argList = interfaceFunc->arg_begin();
-    llvm::SmallVector<llvm::Value *, 8> args;
+    SmallVector<llvm::Value *, 8> args;
     args.reserve(llvm::size(func.args()));
     for (auto &indexedArg : llvm::enumerate(func.args())) {
       llvm::Value *argIndex = llvm::Constant::getIntegerValue(
-          builder.getInt64Ty(), llvm::APInt(64, indexedArg.index()));
+          builder.getInt64Ty(), APInt(64, indexedArg.index()));
       llvm::Value *argPtrPtr = builder.CreateGEP(argList, argIndex);
       llvm::Value *argPtr = builder.CreateLoad(argPtrPtr);
       argPtr = builder.CreateBitCast(
@@ -181,7 +180,7 @@ void packFunctionArguments(Module *module) {
     // Assuming the result is one value, potentially of type `void`.
     if (!result->getType()->isVoidTy()) {
       llvm::Value *retIndex = llvm::Constant::getIntegerValue(
-          builder.getInt64Ty(), llvm::APInt(64, llvm::size(func.args())));
+          builder.getInt64Ty(), APInt(64, llvm::size(func.args())));
       llvm::Value *retPtrPtr = builder.CreateGEP(argList, retIndex);
       llvm::Value *retPtr = builder.CreateLoad(retPtrPtr);
       retPtr = builder.CreateBitCast(retPtr, result->getType()->getPointerTo());
@@ -220,7 +219,7 @@ Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
     llvm::raw_svector_ostream os(buffer);
     WriteBitcodeToFile(*llvmModule, os);
   }
-  llvm::MemoryBufferRef bufferRef(llvm::StringRef(buffer.data(), buffer.size()),
+  llvm::MemoryBufferRef bufferRef(StringRef(buffer.data(), buffer.size()),
                                   "cloned module buffer");
   auto expectedModule = parseBitcodeFile(bufferRef, *ctx);
   if (!expectedModule)

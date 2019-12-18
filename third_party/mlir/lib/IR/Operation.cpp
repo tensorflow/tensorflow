@@ -1174,7 +1174,7 @@ Value *impl::foldCastOp(Operation *op) {
 /// terminator operation to insert.
 void impl::ensureRegionTerminator(
     Region &region, Location loc,
-    llvm::function_ref<Operation *()> buildTerminatorOp) {
+    function_ref<Operation *()> buildTerminatorOp) {
   if (region.empty())
     region.push_back(new Block);
 

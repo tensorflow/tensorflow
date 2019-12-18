@@ -35,7 +35,7 @@ using namespace mlir::detail;
 /// If 'target' is nonnull, operations that are recursively legal have their
 /// regions pre-filtered to avoid considering them for legalization.
 static LogicalResult
-computeConversionSet(llvm::iterator_range<Region::iterator> region,
+computeConversionSet(iterator_range<Region::iterator> region,
                      Location regionLoc, std::vector<Operation *> &toConvert,
                      ConversionTarget *target = nullptr) {
   if (llvm::empty(region))
@@ -537,9 +537,8 @@ struct ConversionPatternRewriterImpl {
                                         Region::iterator before);
 
   /// Notifies that the blocks of a region were cloned into another.
-  void
-  notifyRegionWasClonedBefore(llvm::iterator_range<Region::iterator> &blocks,
-                              Location origRegionLoc);
+  void notifyRegionWasClonedBefore(iterator_range<Region::iterator> &blocks,
+                                   Location origRegionLoc);
 
   /// Remap the given operands to those with potentially different types.
   void remapValues(Operation::operand_range operands,
@@ -742,7 +741,7 @@ void ConversionPatternRewriterImpl::notifyRegionIsBeingInlinedBefore(
 }
 
 void ConversionPatternRewriterImpl::notifyRegionWasClonedBefore(
-    llvm::iterator_range<Region::iterator> &blocks, Location origRegionLoc) {
+    iterator_range<Region::iterator> &blocks, Location origRegionLoc) {
   for (Block &block : blocks)
     blockActions.push_back(BlockAction::getCreate(&block));
 
@@ -986,7 +985,7 @@ private:
   void computeLegalizationGraphBenefit();
 
   /// The current set of patterns that have been applied.
-  llvm::SmallPtrSet<RewritePattern *, 8> appliedPatterns;
+  SmallPtrSet<RewritePattern *, 8> appliedPatterns;
 
   /// The set of legality information for operations transitively supported by
   /// the target.
@@ -1572,7 +1571,7 @@ void mlir::populateFuncOpTypeConversionPattern(
 /// 'convertSignatureArg' for each argument. This function should return a valid
 /// conversion for the signature on success, None otherwise.
 auto TypeConverter::convertBlockSignature(Block *block)
-    -> llvm::Optional<SignatureConversion> {
+    -> Optional<SignatureConversion> {
   SignatureConversion conversion(block->getNumArguments());
   for (unsigned i = 0, e = block->getNumArguments(); i != e; ++i)
     if (failed(convertSignatureArg(i, block->getArgument(i)->getType(),

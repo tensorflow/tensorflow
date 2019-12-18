@@ -443,7 +443,7 @@ def GPU_LaunchOp : GPU_Op<"launch", [IsolatedFromAbove]>,
     KernelDim3 getBlockSizeOperandValues();
 
     /// Get the SSA values of the kernel arguments.
-    llvm::iterator_range<Block::args_iterator> getKernelArguments();
+    iterator_range<Block::args_iterator> getKernelArguments();
 
     /// Erase the `index`-th kernel argument.  Both the entry block argument and
     /// the operand will be dropped.  The block argument must not have any uses.

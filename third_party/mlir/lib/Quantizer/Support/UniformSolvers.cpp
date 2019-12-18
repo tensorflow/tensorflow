@@ -16,9 +16,8 @@
 // =============================================================================
 
 #include "mlir/Quantizer/Support/UniformSolvers.h"
-
+#include "mlir/Support/LLVM.h"
 #include "llvm/Support/raw_ostream.h"
-
 #include <cmath>
 
 using namespace mlir;
@@ -131,14 +130,13 @@ double UniformParamsFromMinMaxSolver::dequantize(int64_t xq) const {
 namespace mlir {
 namespace quantizer {
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                              const UniformStorageParams &p) {
+raw_ostream &operator<<(raw_ostream &os, const UniformStorageParams &p) {
   os << "UniformStorageParams{" << p.numLevels << ", " << p.minValue << "}";
   return os;
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                              const UniformParamsFromMinMaxSolver &s) {
+raw_ostream &operator<<(raw_ostream &os,
+                        const UniformParamsFromMinMaxSolver &s) {
   os << "UniformParamsFromMinMaxSolver(" << s.getStepCount() << "){";
   os << "(" << s.getBoundingMin() << ":" << s.getBoundingMax() << ") -> ";
   if (!s.isSatisfied()) {

@@ -213,7 +213,7 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
   // Parse the optional function body.
   auto *body = result.addRegion();
   return parser.parseOptionalRegion(
-      *body, entryArgs, entryArgs.empty() ? llvm::ArrayRef<Type>() : argTypes);
+      *body, entryArgs, entryArgs.empty() ? ArrayRef<Type>() : argTypes);
 }
 
 // Print a function result list.

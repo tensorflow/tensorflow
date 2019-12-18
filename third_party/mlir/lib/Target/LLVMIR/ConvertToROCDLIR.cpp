@@ -60,11 +60,11 @@ static llvm::Value *createDeviceFunctionCall(llvm::IRBuilder<> &builder,
       llvm::Type::getInt64Ty(module->getContext()), // return type.
       llvm::Type::getInt32Ty(module->getContext()), // parameter type.
       false);                                       // no variadic arguments.
-  llvm::Function *fn = llvm::dyn_cast<llvm::Function>(
+  llvm::Function *fn = dyn_cast<llvm::Function>(
       module->getOrInsertFunction(fn_name, function_type).getCallee());
   llvm::Value *fn_op0 = llvm::ConstantInt::get(
       llvm::Type::getInt32Ty(module->getContext()), parameter);
-  return builder.CreateCall(fn, llvm::ArrayRef<llvm::Value *>(fn_op0));
+  return builder.CreateCall(fn, ArrayRef<llvm::Value *>(fn_op0));
 }
 
 class ModuleTranslation : public LLVM::ModuleTranslation {
@@ -111,12 +111,11 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToROCDLIR(Operation *m) {
 }
 
 static TranslateFromMLIRRegistration
-    registration("mlir-to-rocdlir",
-                 [](ModuleOp module, llvm::raw_ostream &output) {
-                   auto llvmModule = mlir::translateModuleToROCDLIR(module);
-                   if (!llvmModule)
-                     return failure();
+    registration("mlir-to-rocdlir", [](ModuleOp module, raw_ostream &output) {
+      auto llvmModule = mlir::translateModuleToROCDLIR(module);
+      if (!llvmModule)
+        return failure();
 
-                   llvmModule->print(output, nullptr);
-                   return success();
-                 });
+      llvmModule->print(output, nullptr);
+      return success();
+    });

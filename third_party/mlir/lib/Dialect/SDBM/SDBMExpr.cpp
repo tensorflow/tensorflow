@@ -89,7 +89,7 @@ public:
       : subExprs(exprs.begin(), exprs.end()) {}
   AffineExprMatcherStorage(AffineExprMatcher &a, AffineExprMatcher &b)
       : subExprs({a, b}) {}
-  llvm::SmallVector<AffineExprMatcher, 0> subExprs;
+  SmallVector<AffineExprMatcher, 0> subExprs;
   AffineExpr matched;
 };
 } // namespace
@@ -311,7 +311,7 @@ AffineExpr SDBMExpr::getAsAffineExpr() const {
 // LHS if the constant becomes zero.  Otherwise, construct a sum expression.
 template <typename Result>
 Result addConstantAndSink(SDBMDirectExpr expr, int64_t constant, bool negated,
-                          llvm::function_ref<Result(SDBMDirectExpr)> builder) {
+                          function_ref<Result(SDBMDirectExpr)> builder) {
   SDBMDialect *dialect = expr.getDialect();
   if (auto sumExpr = expr.dyn_cast<SDBMSumExpr>()) {
     if (negated)

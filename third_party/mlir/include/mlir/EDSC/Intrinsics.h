@@ -106,14 +106,14 @@ public:
     values.append(vals.begin(), vals.end());
   }
   ValueHandleArray(ArrayRef<index_t> vals) {
-    llvm::SmallVector<IndexHandle, 8> tmp(vals.begin(), vals.end());
+    SmallVector<IndexHandle, 8> tmp(vals.begin(), vals.end());
     values.append(tmp.begin(), tmp.end());
   }
   operator ArrayRef<Value *>() { return values; }
 
 private:
   ValueHandleArray() = default;
-  llvm::SmallVector<Value *, 8> values;
+  SmallVector<Value *, 8> values;
 };
 
 template <typename T> inline T unpack(T value) { return value; }

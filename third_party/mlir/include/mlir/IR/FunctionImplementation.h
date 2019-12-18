@@ -55,7 +55,7 @@ void addArgAndResultAttrs(Builder &builder, OperationState &result,
 /// function arguments and results, VariadicFlag indicates whether the function
 /// should have variadic arguments; in case of error, it may populate the last
 /// argument with a message.
-using FuncTypeBuilder = llvm::function_ref<Type(
+using FuncTypeBuilder = function_ref<Type(
     Builder &, ArrayRef<Type>, ArrayRef<Type>, VariadicFlag, std::string &)>;
 
 /// Parses a function signature using `parser`. The `allowVariadic` argument
