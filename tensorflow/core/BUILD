@@ -316,14 +316,10 @@ cc_library(
     ],
 )
 
-cc_library(
+alias(
     name = "framework_bounds_check",
-    hdrs = ["//tensorflow/core/framework:bounds_check.h"],
+    actual = "//tensorflow/core/framework:bounds_check",
     visibility = ["//tensorflow/core/kernels:friends"],
-    deps = [
-        ":platform_base",
-        "//third_party/eigen3",
-    ],
 )
 
 filegroup(
@@ -2511,6 +2507,9 @@ tf_cuda_library(
         "//tensorflow/core/framework:attr_value_proto_text",
         "//tensorflow/core/framework:bfloat16",
         "//tensorflow/core/framework:numeric_types",
+        "//tensorflow/core/framework:resource_handle",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/internal:annotation_stack_impl",
