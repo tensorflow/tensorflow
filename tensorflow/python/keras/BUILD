@@ -1052,6 +1052,7 @@ tf_py_test(
     srcs = ["layers/recurrent_test.py"],
     python_version = "PY3",
     shard_count = 10,
+    tags = ["no_rocm"],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
