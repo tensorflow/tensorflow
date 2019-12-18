@@ -156,11 +156,6 @@ class OutputEdgeValidator {
   bool operator()(const Edge* out_edge) const;
 };
 
-string DebugString(const nvinfer1::DimensionType type);
-string DebugString(const nvinfer1::DataType trt_dtype);
-string DebugString(const nvinfer1::Dims& dims);
-string DebugString(const nvinfer1::Permutation& permutation, int len);
-string DebugString(const nvinfer1::ITensor& tensor);
 int64_t TrtWeightDimsNumElements(const nvinfer1::Dims& dims);
 int64_t TrtTensorDimsNumElements(const nvinfer1::Dims& dims);
 

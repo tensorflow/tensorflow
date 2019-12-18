@@ -70,8 +70,10 @@ struct VectorTensorShapeHasher {
     NV_TENSORRT_PATCH == patch && NV_TENSORRT_BUILD >= build))
 
 string DebugString(const nvinfer1::DimensionType type);
-
 string DebugString(const nvinfer1::Dims& dims);
+string DebugString(const nvinfer1::DataType trt_dtype);
+string DebugString(const nvinfer1::Permutation& permutation, int len);
+string DebugString(const nvinfer1::ITensor& tensor);
 
 inline bool HasStaticShape(const nvinfer1::Dims& dims) {
   if (dims.nbDims < 0) return false;
