@@ -1310,10 +1310,11 @@ bool NNAPIDelegateKernel::Validate(
       auto builtin = reinterpret_cast<TfLitePoolParams*>(node->builtin_data);
       // TODO(b/138756912): Large filter window would overflow on the
       // reference CPU path.
-      Expect(is_accelerator_specified ||
+      Expect(android_sdk_version >= kMinSdkVersionForNNAPI12 ||
                  (builtin->filter_width * builtin->filter_height <= 256),
              NNAPIValidationFailureType::kUnsupportedOperandSize,
-             "Large filter window would overflow on the reference CPU path",
+             "Before NNAPI 1.2, large filter window would overflow on the "
+             "reference CPU path",
              &val_ctx);
     } break;
     case kTfLiteBuiltinMaxPool2d: {
