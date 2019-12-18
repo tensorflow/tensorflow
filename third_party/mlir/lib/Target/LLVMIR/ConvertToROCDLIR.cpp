@@ -35,8 +35,6 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/ToolOutputFile.h"
 
-#include <iostream>
-
 using namespace mlir;
 
 // Create a call to llvm intrinsic
