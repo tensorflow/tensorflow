@@ -405,13 +405,37 @@ public:
                                      PatternRewriter &rewriter) const override {
     // Expand affine map from 'affineLoadOp'.
     SmallVector<Value *, 8> indices(op.getMapOperands());
-    auto maybeExpandedMap =
+    auto resultOperands =
         expandAffineMap(rewriter, op.getLoc(), op.getAffineMap(), indices);
-    if (!maybeExpandedMap)
+    if (!resultOperands)
       return matchFailure();
 
     // Build std.load memref[expandedMap.results].
-    rewriter.replaceOpWithNewOp<LoadOp>(op, op.getMemRef(), *maybeExpandedMap);
+    rewriter.replaceOpWithNewOp<LoadOp>(op, op.getMemRef(), *resultOperands);
+    return matchSuccess();
+  }
+};
+
+// Apply the affine map from an 'affine.prefetch' operation to its operands, and
+// feed the results to a newly created 'std.prefetch' operation (which replaces
+// the original 'affine.prefetch').
+class AffinePrefetchLowering : public OpRewritePattern<AffinePrefetchOp> {
+public:
+  using OpRewritePattern<AffinePrefetchOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(AffinePrefetchOp op,
+                                     PatternRewriter &rewriter) const override {
+    // Expand affine map from 'affinePrefetchOp'.
+    SmallVector<Value *, 8> indices(op.getMapOperands());
+    auto resultOperands =
+        expandAffineMap(rewriter, op.getLoc(), op.getAffineMap(), indices);
+    if (!resultOperands)
+      return matchFailure();
+
+    // Build std.prefetch memref[expandedMap.results].
+    rewriter.replaceOpWithNewOp<PrefetchOp>(
+        op, op.memref(), *resultOperands, op.isWrite(),
+        op.localityHint().getZExtValue(), op.isDataCache());
     return matchSuccess();
   }
 };
@@ -506,11 +530,10 @@ public:
 
 void mlir::populateAffineToStdConversionPatterns(
     OwningRewritePatternList &patterns, MLIRContext *ctx) {
-  patterns
-      .insert<AffineApplyLowering, AffineDmaStartLowering,
-              AffineDmaWaitLowering, AffineLoadLowering, AffineStoreLowering,
-              AffineForLowering, AffineIfLowering, AffineTerminatorLowering>(
-          ctx);
+  patterns.insert<
+      AffineApplyLowering, AffineDmaStartLowering, AffineDmaWaitLowering,
+      AffineLoadLowering, AffinePrefetchLowering, AffineStoreLowering,
+      AffineForLowering, AffineIfLowering, AffineTerminatorLowering>(ctx);
 }
 
 namespace {

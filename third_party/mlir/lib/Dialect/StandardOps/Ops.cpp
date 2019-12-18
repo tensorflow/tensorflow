@@ -1789,6 +1789,76 @@ OpFoldResult MulIOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// PrefetchOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter &p, PrefetchOp op) {
+  p << PrefetchOp::getOperationName() << " " << *op.memref() << '[';
+  p.printOperands(op.indices());
+  p << ']' << ", " << (op.isWrite() ? "write" : "read");
+  p << ", locality<" << op.localityHint();
+  p << ">, " << (op.isDataCache() ? "data" : "instr");
+  p.printOptionalAttrDict(
+      op.getAttrs(),
+      /*elidedAttrs=*/{"localityHint", "isWrite", "isDataCache"});
+  p << " : " << op.getMemRefType();
+}
+
+static ParseResult parsePrefetchOp(OpAsmParser &parser,
+                                   OperationState &result) {
+  OpAsmParser::OperandType memrefInfo;
+  SmallVector<OpAsmParser::OperandType, 4> indexInfo;
+  IntegerAttr localityHint;
+  MemRefType type;
+  StringRef readOrWrite, cacheType;
+
+  auto indexTy = parser.getBuilder().getIndexType();
+  auto i32Type = parser.getBuilder().getIntegerType(32);
+  if (parser.parseOperand(memrefInfo) ||
+      parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseComma() || parser.parseKeyword(&readOrWrite) ||
+      parser.parseComma() || parser.parseKeyword("locality") ||
+      parser.parseLess() ||
+      parser.parseAttribute(localityHint, i32Type, "localityHint",
+                            result.attributes) ||
+      parser.parseGreater() || parser.parseComma() ||
+      parser.parseKeyword(&cacheType) || parser.parseColonType(type) ||
+      parser.resolveOperand(memrefInfo, type, result.operands) ||
+      parser.resolveOperands(indexInfo, indexTy, result.operands))
+    return failure();
+
+  if (!readOrWrite.equals("read") && !readOrWrite.equals("write"))
+    return parser.emitError(parser.getNameLoc(),
+                            "rw specifier has to be 'read' or 'write'");
+  result.addAttribute(
+      PrefetchOp::getIsWriteAttrName(),
+      parser.getBuilder().getBoolAttr(readOrWrite.equals("write")));
+
+  if (!cacheType.equals("data") && !cacheType.equals("instr"))
+    return parser.emitError(parser.getNameLoc(),
+                            "cache type has to be 'data' or 'instr'");
+
+  result.addAttribute(
+      PrefetchOp::getIsDataCacheAttrName(),
+      parser.getBuilder().getBoolAttr(cacheType.equals("data")));
+
+  return success();
+}
+
+static LogicalResult verify(PrefetchOp op) {
+  if (op.getNumOperands() != 1 + op.getMemRefType().getRank())
+    return op.emitOpError("too few indices");
+
+  return success();
+}
+
+LogicalResult PrefetchOp::fold(ArrayRef<Attribute> cstOperands,
+                               SmallVectorImpl<OpFoldResult> &results) {
+  // prefetch(memrefcast) -> prefetch
+  return foldMemRefCast(*this);
+}
+
+//===----------------------------------------------------------------------===//
 // RankOp
 //===----------------------------------------------------------------------===//
 

@@ -49,7 +49,8 @@ static bool isMemRefDereferencingOp(Operation &op) {
 /// Return the AffineMapAttr associated with memory 'op' on 'memref'.
 static NamedAttribute getAffineMapAttrForMemRef(Operation *op, Value *memref) {
   return TypeSwitch<Operation *, NamedAttribute>(op)
-      .Case<AffineDmaStartOp, AffineLoadOp, AffineStoreOp, AffineDmaWaitOp>(
+      .Case<AffineDmaStartOp, AffineLoadOp, AffinePrefetchOp, AffineStoreOp,
+            AffineDmaWaitOp>(
           [=](auto op) { return op.getAffineMapAttrForMemRef(memref); });
 }
 

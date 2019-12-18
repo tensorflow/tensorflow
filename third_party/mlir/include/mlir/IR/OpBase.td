@@ -1242,7 +1242,11 @@ class AllAttrConstraintsOf<list<AttrConstraint> constraints> : AttrConstraint<
 
 class IntMinValue<int n> : AttrConstraint<
     CPred<"$_self.cast<IntegerAttr>().getInt() >= " # n>,
-    "whose minimal value is " # n>;
+    "whose minimum value is " # n>;
+
+class IntMaxValue<int n> : AttrConstraint<
+    CPred<"$_self.cast<IntegerAttr>().getInt() <= " # n>,
+    "whose maximum value is " # n>;
 
 class ArrayMinCount<int n> : AttrConstraint<
     CPred<"$_self.cast<ArrayAttr>().size() >= " # n>,

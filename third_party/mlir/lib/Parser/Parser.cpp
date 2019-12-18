@@ -3883,6 +3883,16 @@ public:
     return parser.parseToken(Token::equal, "expected '='");
   }
 
+  /// Parse a '<' token.
+  ParseResult parseLess() override {
+    return parser.parseToken(Token::less, "expected '<'");
+  }
+
+  /// Parse a '>' token.
+  ParseResult parseGreater() override {
+    return parser.parseToken(Token::greater, "expected '>'");
+  }
+
   /// Parse a `(` token.
   ParseResult parseLParen() override {
     return parser.parseToken(Token::l_paren, "expected '('");

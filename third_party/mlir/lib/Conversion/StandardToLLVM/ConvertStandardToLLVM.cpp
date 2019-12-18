@@ -1462,6 +1462,39 @@ struct StoreOpLowering : public LoadStoreOpLowering<StoreOp> {
   }
 };
 
+// The prefetch operation is lowered in a way similar to the load operation
+// except that the llvm.prefetch operation is used for replacement.
+struct PrefetchOpLowering : public LoadStoreOpLowering<PrefetchOp> {
+  using Base::Base;
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto prefetchOp = cast<PrefetchOp>(op);
+    OperandAdaptor<PrefetchOp> transformed(operands);
+    auto type = prefetchOp.getMemRefType();
+
+    Value *dataPtr = getDataPtr(op->getLoc(), type, transformed.memref(),
+                                transformed.indices(), rewriter, getModule());
+
+    // Replace with llvm.prefetch.
+    auto llvmI32Type = lowering.convertType(rewriter.getIntegerType(32));
+    auto isWrite = rewriter.create<LLVM::ConstantOp>(
+        op->getLoc(), llvmI32Type,
+        rewriter.getI32IntegerAttr(prefetchOp.isWrite()));
+    auto localityHint = rewriter.create<LLVM::ConstantOp>(
+        op->getLoc(), llvmI32Type,
+        rewriter.getI32IntegerAttr(prefetchOp.localityHint().getZExtValue()));
+    auto isData = rewriter.create<LLVM::ConstantOp>(
+        op->getLoc(), llvmI32Type,
+        rewriter.getI32IntegerAttr(prefetchOp.isDataCache()));
+
+    rewriter.replaceOpWithNewOp<LLVM::Prefetch>(op, dataPtr, isWrite,
+                                                localityHint, isData);
+    return matchSuccess();
+  }
+};
+
 // The lowering of index_cast becomes an integer conversion since index becomes
 // an integer.  If the bit width of the source and target integer types is the
 // same, just erase the cast.  If the target type is wider, sign-extend the
@@ -2041,6 +2074,7 @@ void mlir::populateStdToLLVMNonMemoryConversionPatterns(
       MulFOpLowering,
       MulIOpLowering,
       OrOpLowering,
+      PrefetchOpLowering,
       RemFOpLowering,
       RemISOpLowering,
       RemIUOpLowering,

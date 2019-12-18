@@ -674,6 +674,17 @@ def LLVM_FMulAddOp : LLVM_Op<"intr.fmuladd", [NoSideEffect]>,
   }];
 }
 
+def LLVM_Prefetch : LLVM_ZeroResultOp<"intr.prefetch">,
+                    Arguments<(ins LLVM_Type:$addr, LLVM_Type:$rw,
+                    LLVM_Type:$hint, LLVM_Type:$cache)> {
+  let llvmBuilder = [{
+    llvm::Module *module = builder.GetInsertBlock()->getModule();
+    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
+        module, llvm::Intrinsic::prefetch, $addr->getType());
+    builder.CreateCall(fn, {$addr, $rw, $hint, $cache});
+  }];
+}
+
 def LLVM_ExpOp : LLVM_Op<"intr.exp", [NoSideEffect]>,
                    Arguments<(ins LLVM_Type:$in)>,
                    Results<(outs LLVM_Type:$res)> {
