@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
@@ -40,8 +41,15 @@ struct TfMetricsDbData {
   HostOpMetricsDbBuilder tf_metrics_db_builder{&tf_metrics_db};
 };
 
+absl::flat_hash_map<int64, TfOp> CollectTfOpsFromHostThreadsXPlane(
+    const XPlane& host_trace);
+
 TfMetricsDbData ConvertHostThreadsXLineToTfMetricsDbData(
     const XLineVisitor& line, const absl::flat_hash_map<int64, TfOp>& tf_ops);
+
+void ConsumeTfMetricsDbData(TfMetricsDbData src, OpMetricsDbCombiner* dst);
+
+OpMetricsDb ConvertHostThreadsXPlaneToTfMetricsDb(const XPlane& host_trace);
 
 }  // namespace profiler
 }  // namespace tensorflow

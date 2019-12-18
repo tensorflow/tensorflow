@@ -20,6 +20,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/profiler/convert/op_stack.h"
+#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/op_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
@@ -137,6 +139,23 @@ void CollectTfActivities(const XLineVisitor& line,
 
 }  // namespace
 
+absl::flat_hash_map<int64, TfOp> CollectTfOpsFromHostThreadsXPlane(
+    const XPlane& host_trace) {
+  absl::flat_hash_map<int64, TfOp> tf_ops;
+  for (const auto& id_metadata : host_trace.event_metadata()) {
+    const XEventMetadata& metadata = id_metadata.second;
+    // On the host, we have added some user-specified TraceMe's in addition to
+    // the TraceMe's added to every TensorFlow op by the system. These
+    // user-inserted TraceMe's have "unknown" type. We don't count them in
+    // Tf-stats.
+    TfOp tf_op = ParseTfOpFullname(metadata.name());
+    if (!IsUnknownOp(tf_op.type)) {
+      tf_ops.try_emplace(metadata.id(), tf_op);
+    }
+  }
+  return tf_ops;
+}
+
 TfMetricsDbData ConvertHostThreadsXLineToTfMetricsDbData(
     const XLineVisitor& line, const absl::flat_hash_map<int64, TfOp>& tf_ops) {
   TfMetricsDbData tf_metrics_db_data;
@@ -146,6 +165,25 @@ TfMetricsDbData ConvertHostThreadsXLineToTfMetricsDbData(
     ProcessTfActivities(&tf_activities, &tf_metrics_db_data);
   }
   return tf_metrics_db_data;
+}
+
+void ConsumeTfMetricsDbData(TfMetricsDbData src, OpMetricsDbCombiner* dst) {
+  AddIdleOp(&src.tf_metrics_db);
+  dst->Combine(src.tf_metrics_db);
+  src.tf_metrics_db.Clear();
+}
+
+OpMetricsDb ConvertHostThreadsXPlaneToTfMetricsDb(const XPlane& host_trace) {
+  absl::flat_hash_map<int64, TfOp> tf_ops =
+      CollectTfOpsFromHostThreadsXPlane(host_trace);
+  OpMetricsDb result;
+  OpMetricsDbCombiner combiner(&result);
+  XPlaneVisitor plane(&host_trace);
+  plane.ForEachLine([&tf_ops, &combiner](const XLineVisitor& line) {
+    ConsumeTfMetricsDbData(
+        ConvertHostThreadsXLineToTfMetricsDbData(line, tf_ops), &combiner);
+  });
+  return result;
 }
 
 }  // namespace profiler

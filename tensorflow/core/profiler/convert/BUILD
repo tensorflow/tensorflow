@@ -8,6 +8,7 @@ cc_library(
     srcs = ["host_threads_xplane_to_tf_metrics_db.cc"],
     hdrs = ["host_threads_xplane_to_tf_metrics_db.h"],
     deps = [
+        ":op_metrics_db_combiner",
         ":op_stack",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
