@@ -5491,7 +5491,6 @@ tf_py_wrap_cc(
         "grappler/item.i",
         "grappler/tf_optimizer.i",
         "lib/core/strings.i",
-        "lib/io/file_io.i",
         "lib/io/py_record_reader.i",
         "lib/io/py_record_writer.i",
         "platform/base.i",
@@ -5680,6 +5679,19 @@ cc_import(
 
 # ** Targets for Windows build (end) **
 
+tf_python_pybind_extension(
+    name = "_pywrap_file_io",
+    srcs = ["lib/io/file_io_wrapper.cc"],
+    module_name = "_pywrap_file_io",
+    deps = [
+        ":pybind11_absl",
+        ":pybind11_status",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:protos_all_cc",
+        "@pybind11",
+    ],
+)
+
 py_library(
     name = "lib",
     srcs = [
@@ -5689,6 +5701,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_file_io",
         ":errors",
         ":pywrap_tensorflow",
         ":util",

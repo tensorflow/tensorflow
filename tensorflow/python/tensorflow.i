@@ -19,8 +19,6 @@ limitations under the License.
 
 %include "tensorflow/python/client/tf_session.i"
 
-%include "tensorflow/python/lib/io/file_io.i"
-
 %include "tensorflow/python/lib/io/py_record_reader.i"
 %include "tensorflow/python/lib/io/py_record_writer.i"
 
