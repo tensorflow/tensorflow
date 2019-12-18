@@ -39,86 +39,6 @@ using namespace mlir;
 using vector::TransferReadOp;
 using vector::TransferWriteOp;
 
-namespace {
-
-using vector_type_cast = edsc::intrinsics::ValueBuilder<vector::TypeCastOp>;
-
-/// Implements lowering of TransferReadOp and TransferWriteOp to a
-/// proper abstraction for the hardware.
-///
-/// For now, we only emit a simple loop nest that performs clipped pointwise
-/// copies from a remote to a locally allocated memory.
-///
-/// Consider the case:
-///
-/// ```mlir
-///    // Read the slice `%A[%i0, %i1:%i1+256, %i2:%i2+32]` into
-///    // vector<32x256xf32> and pad with %f0 to handle the boundary case:
-///    %f0 = constant 0.0f : f32
-///    loop.for %i0 = 0 to %0 {
-///      loop.for %i1 = 0 to %1 step %c256 {
-///        loop.for %i2 = 0 to %2 step %c32 {
-///          %v = vector.transfer_read %A[%i0, %i1, %i2], %f0
-///               {permutation_map: (d0, d1, d2) -> (d2, d1)} :
-///               memref<?x?x?xf32>, vector<32x256xf32>
-///    }}}
-/// ```
-///
-/// The rewriters construct loop and indices that access MemRef A in a pattern
-/// resembling the following (while guaranteeing an always full-tile
-/// abstraction):
-///
-/// ```mlir
-///    loop.for %d2 = 0 to %c256 {
-///      loop.for %d1 = 0 to %c32 {
-///        %s = %A[%i0, %i1 + %d1, %i2 + %d2] : f32
-///        %tmp[%d2, %d1] = %s
-///      }
-///    }
-/// ```
-///
-/// In the current state, only a clipping transfer is implemented by `clip`,
-/// which creates individual indexing expressions of the form:
-///
-/// ```mlir-dsc
-///    auto condMax = i + ii < N;
-///    auto max = select(condMax, i + ii, N - one)
-///    auto cond = i + ii < zero;
-///    select(cond, zero, max);
-/// ```
-///
-/// In the future, clipping should not be the only way and instead we should
-/// load vectors + mask them. Similarly on the write side, load/mask/store for
-/// implementing RMW behavior.
-///
-/// Lowers TransferOp into a combination of:
-///   1. local memory allocation;
-///   2. perfect loop nest over:
-///      a. scalar load/stores from local buffers (viewed as a scalar memref);
-///      a. scalar store/load to original memref (with clipping).
-///   3. vector_load/store
-///   4. local memory deallocation.
-/// Minor variations occur depending on whether a TransferReadOp or
-/// a TransferWriteOp is rewritten.
-template <typename TransferOpTy>
-struct VectorTransferRewriter : public RewritePattern {
-  explicit VectorTransferRewriter(MLIRContext *context)
-      : RewritePattern(TransferOpTy::getOperationName(), 1, context) {}
-
-  /// Used for staging the transfer in a local scalar buffer.
-  MemRefType tmpMemRefType(TransferOpTy transfer) const {
-    auto vectorType = transfer.getVectorType();
-    return MemRefType::get(vectorType.getShape(), vectorType.getElementType(),
-                           {}, 0);
-  }
-
-  /// Performs the rewrite.
-  PatternMatchResult matchAndRewrite(Operation *op,
-                                     PatternRewriter &rewriter) const override;
-};
-
-} // namespace
-
 /// Analyzes the `transfer` to find an access dimension along the fastest remote
 /// MemRef dimension. If such a dimension with coalescing properties is found,
 /// `pivs` and `vectorView` are swapped so that the invocation of
@@ -210,6 +130,84 @@ static SmallVector<edsc::ValueHandle, 8> clip(TransferOpTy transfer,
 
   return clippedScalarAccessExprs;
 }
+
+namespace {
+
+using vector_type_cast = edsc::intrinsics::ValueBuilder<vector::TypeCastOp>;
+
+/// Implements lowering of TransferReadOp and TransferWriteOp to a
+/// proper abstraction for the hardware.
+///
+/// For now, we only emit a simple loop nest that performs clipped pointwise
+/// copies from a remote to a locally allocated memory.
+///
+/// Consider the case:
+///
+/// ```mlir
+///    // Read the slice `%A[%i0, %i1:%i1+256, %i2:%i2+32]` into
+///    // vector<32x256xf32> and pad with %f0 to handle the boundary case:
+///    %f0 = constant 0.0f : f32
+///    loop.for %i0 = 0 to %0 {
+///      loop.for %i1 = 0 to %1 step %c256 {
+///        loop.for %i2 = 0 to %2 step %c32 {
+///          %v = vector.transfer_read %A[%i0, %i1, %i2], %f0
+///               {permutation_map: (d0, d1, d2) -> (d2, d1)} :
+///               memref<?x?x?xf32>, vector<32x256xf32>
+///    }}}
+/// ```
+///
+/// The rewriters construct loop and indices that access MemRef A in a pattern
+/// resembling the following (while guaranteeing an always full-tile
+/// abstraction):
+///
+/// ```mlir
+///    loop.for %d2 = 0 to %c256 {
+///      loop.for %d1 = 0 to %c32 {
+///        %s = %A[%i0, %i1 + %d1, %i2 + %d2] : f32
+///        %tmp[%d2, %d1] = %s
+///      }
+///    }
+/// ```
+///
+/// In the current state, only a clipping transfer is implemented by `clip`,
+/// which creates individual indexing expressions of the form:
+///
+/// ```mlir-dsc
+///    auto condMax = i + ii < N;
+///    auto max = select(condMax, i + ii, N - one)
+///    auto cond = i + ii < zero;
+///    select(cond, zero, max);
+/// ```
+///
+/// In the future, clipping should not be the only way and instead we should
+/// load vectors + mask them. Similarly on the write side, load/mask/store for
+/// implementing RMW behavior.
+///
+/// Lowers TransferOp into a combination of:
+///   1. local memory allocation;
+///   2. perfect loop nest over:
+///      a. scalar load/stores from local buffers (viewed as a scalar memref);
+///      a. scalar store/load to original memref (with clipping).
+///   3. vector_load/store
+///   4. local memory deallocation.
+/// Minor variations occur depending on whether a TransferReadOp or
+/// a TransferWriteOp is rewritten.
+template <typename TransferOpTy>
+struct VectorTransferRewriter : public RewritePattern {
+  explicit VectorTransferRewriter(MLIRContext *context)
+      : RewritePattern(TransferOpTy::getOperationName(), 1, context) {}
+
+  /// Used for staging the transfer in a local scalar buffer.
+  MemRefType tmpMemRefType(TransferOpTy transfer) const {
+    auto vectorType = transfer.getVectorType();
+    return MemRefType::get(vectorType.getShape(), vectorType.getElementType(),
+                           {}, 0);
+  }
+
+  /// Performs the rewrite.
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const override;
+};
 
 /// Lowers TransferReadOp into a combination of:
 ///   1. local memory allocation;
@@ -359,6 +357,8 @@ PatternMatchResult VectorTransferRewriter<TransferWriteOp>::matchAndRewrite(
   rewriter.eraseOp(op);
   return matchSuccess();
 }
+
+} // namespace
 
 void mlir::populateVectorToAffineLoopsConversionPatterns(
     MLIRContext *context, OwningRewritePatternList &patterns) {
