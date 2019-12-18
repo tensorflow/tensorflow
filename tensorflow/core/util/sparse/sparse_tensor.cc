@@ -33,7 +33,7 @@ Status GetDimsFromIx(const Tensor& ix, int* result) {
                                    ix.shape().DebugString());
   }
   *result = UnsafeGetDimsFromIx(ix);
-  return Status::OK();
+  return Status();
 }
 
 }  // namespace
@@ -108,15 +108,10 @@ SparseTensor::SparseTensor(Tensor ix, Tensor vals, const VarDimArray shape,
   DCHECK_EQ(shape.size(), dims_) << "Shape rank must be SparseTensor rank.";
 }
 
-Status SparseTensor::IndicesValid() const {
+template <bool standard_order>
+Status SparseTensor::IndicesValidHelper() const {
   const auto ix_t = ix_.matrix<int64>();
-  for (int64 ord : order_) {
-    if (ord < 0) {
-      return errors::FailedPrecondition(
-          "Order was not provided.  Provide an order at "
-          "construction time or run ReorderInPlace");
-    }
-  }
+  const int64* const shape_ptr = shape_.data();
 
   for (std::size_t n = 0; n < num_entries(); ++n) {
     bool valid = true;
@@ -124,13 +119,19 @@ Status SparseTensor::IndicesValid() const {
     bool increasing = true;
     if (n == 0) {
       for (int di = 0; di < dims_; ++di) {
-        if (ix_t(n, di) < 0 || ix_t(n, di) >= shape_[di]) valid = false;
+        if (ix_t(n, di) < 0 || ix_t(n, di) >= shape_ptr[di]) valid = false;
       }
       different = true;
     } else {
       for (int di = 0; di < dims_; ++di) {
-        if (ix_t(n, di) < 0 || ix_t(n, di) >= shape_[di]) valid = false;
-        int64 diff = ix_t(n, order_[di]) - ix_t(n - 1, order_[di]);
+        if (ix_t(n, di) < 0 || ix_t(n, di) >= shape_ptr[di]) valid = false;
+        int ordered_dim;
+        if (standard_order) {
+          ordered_dim = di;
+        } else {
+          ordered_dim = order_[di];
+        }
+        int64 diff = ix_t(n, ordered_dim) - ix_t(n - 1, ordered_dim);
         if (diff > 0) different = true;
         if (!different && diff < 0) increasing = false;
       }
@@ -159,6 +160,24 @@ Status SparseTensor::IndicesValid() const {
   }
 
   return Status::OK();
+}
+
+Status SparseTensor::IndicesValid() const {
+  bool standard_order = true;
+  for (size_t i = 0; i < order_.size(); ++i) {
+    if (order_[i] < 0) {
+      return errors::FailedPrecondition(
+          "Order was not provided.  Provide an order at "
+          "construction time or run ReorderInPlace");
+    }
+    standard_order = standard_order && order_[i] == i;
+  }
+
+  if (standard_order) {
+    return IndicesValidHelper<true>();
+  } else {
+    return IndicesValidHelper<false>();
+  }
 }
 
 }  // namespace sparse

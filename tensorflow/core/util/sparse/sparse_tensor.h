@@ -201,6 +201,9 @@ class SparseTensor {
     return vec;
   }
 
+  template <bool standard_order>
+  Status IndicesValidHelper() const;
+
   // Helper for ToDense<T>()
   template <typename T>
   bool ValidateAndInitializeToDense(Tensor* out, bool initialize);
