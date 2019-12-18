@@ -1554,7 +1554,7 @@ def per_image_standardization(image):
     adjusted_stddev = math_ops.maximum(stddev, min_stddev)
 
     image -= image_mean
-    image = math_ops.div(image, adjusted_stddev, name=scope)
+    image = math_ops.divide(image, adjusted_stddev, name=scope)
     return convert_image_dtype(image, orig_dtype, saturate=True)
 
 
@@ -1823,7 +1823,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
         # cause in.max to be mapped to above out.max but below out.max+1,
         # so that the output is safely in the supported range.
         scale = (scale_in + 1) // (scale_out + 1)
-        scaled = math_ops.div(image, scale)
+        scaled = math_ops.floordiv(image, scale)
 
         if saturate:
           return math_ops.saturate_cast(scaled, dtype, name=name)
