@@ -29,7 +29,10 @@
 #include "mlir/Transforms/InliningUtils.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SCCIterator.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/Parallel.h"
+
+#define DEBUG_TYPE "inlining"
 
 using namespace mlir;
 
@@ -173,6 +176,10 @@ static LogicalResult inlineCallsInSCC(Inliner &inliner,
   bool inlinedAnyCalls = false;
   for (unsigned i = 0; i != calls.size(); ++i) {
     ResolvedCall &it = calls[i];
+    LLVM_DEBUG({
+      llvm::dbgs() << "* Considering inlining call: ";
+      it.call.dump();
+    });
     if (!shouldInline(it))
       continue;
 

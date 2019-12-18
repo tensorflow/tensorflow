@@ -26,6 +26,7 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
 #define DEBUG_TYPE "inlining"
@@ -110,8 +111,13 @@ static bool isLegalToInline(InlinerInterface &interface, Region *src,
   for (auto &block : *src) {
     for (auto &op : block) {
       // Check this operation.
-      if (!interface.isLegalToInline(&op, insertRegion, valueMapping))
+      if (!interface.isLegalToInline(&op, insertRegion, valueMapping)) {
+        LLVM_DEBUG({
+          llvm::dbgs() << "* Illegal to inline because of op: ";
+          op.dump();
+        });
         return false;
+      }
       // Check any nested regions.
       if (interface.shouldAnalyzeRecursively(&op) &&
           llvm::any_of(op.getRegions(), [&](Region &region) {
