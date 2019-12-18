@@ -159,17 +159,6 @@ static llvm::CmpInst::Predicate getLLVMCmpPredicate(FCmpPredicate p) {
   llvm_unreachable("incorrect comparison predicate");
 }
 
-// A helper to look up remapped operands in the value remapping table.
-template <typename Range>
-SmallVector<llvm::Value *, 8> ModuleTranslation::lookupValues(Range &&values) {
-  SmallVector<llvm::Value *, 8> remapped;
-  remapped.reserve(llvm::size(values));
-  for (Value *v : values) {
-    remapped.push_back(valueMapping.lookup(v));
-  }
-  return remapped;
-}
-
 // Given a single MLIR operation, create the corresponding LLVM IR operation
 // using the `builder`.  LLVM IR Builder does not have a generic interface so
 // this has to be a long chain of `if`s calling different functions with a
