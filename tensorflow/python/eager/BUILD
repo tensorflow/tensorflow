@@ -739,7 +739,6 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",
-        "no_cuda",
         "no_windows",
         "nomac",
     ],
@@ -821,8 +820,6 @@ tpu_py_test(
     srcs = ["remote_cloud_tpu_test.py"],
     python_version = "PY3",
     tags = [
-        "no_cuda",
-        "no_rocm",
         "notap",
     ],
     deps = [
