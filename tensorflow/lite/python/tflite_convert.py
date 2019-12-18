@@ -592,7 +592,7 @@ def _get_parser(use_v2_converter):
 
 
 def run_main(_):
-  """Main in toco_convert.py."""
+  """Main in tflite_convert.py."""
   use_v2_converter = tf2.enabled()
   parser = _get_parser(use_v2_converter)
   tflite_flags, unparsed = parser.parse_known_args(args=sys.argv[1:])
