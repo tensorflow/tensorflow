@@ -715,7 +715,6 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
-        "no_rocm",
         "no_windows",  # TODO(b/142475891): Enable this test on Windows.
         "no_windows_gpu",  # TODO(b/130551176)
     ],

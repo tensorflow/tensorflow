@@ -266,7 +266,6 @@ cuda_py_test(
     srcs = ["backprop_test.py"],
     python_version = "PY3",
     tags = [
-        "no_rocm",
         "no_windows",  #TODO(b/139745667)
     ],
     deps = [
