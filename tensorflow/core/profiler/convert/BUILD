@@ -35,6 +35,16 @@ cc_library(
 )
 
 cc_library(
+    name = "op_metrics_db_combiner",
+    srcs = ["op_metrics_db_combiner.cc"],
+    hdrs = ["op_metrics_db_combiner.h"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
+    ],
+)
+
+cc_library(
     name = "op_metrics_to_record",
     srcs = ["op_metrics_to_record.cc"],
     hdrs = ["op_metrics_to_record.h"],
@@ -59,7 +69,7 @@ cc_library(
     srcs = ["op_stats_to_tf_stats.cc"],
     hdrs = ["op_stats_to_tf_stats.h"],
     deps = [
-        "//tensorflow/core/profiler/convert:op_metrics_to_record",
+        ":op_metrics_to_record",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:tf_stats_proto_cc",
