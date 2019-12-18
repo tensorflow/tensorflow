@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import re
+import six
 
 from tensorflow.python import tf2
 from tensorflow.python.framework import ops
@@ -336,7 +337,16 @@ def _flatten_module(module,
     if key in attributes_to_ignore:
       continue
 
-    for leaf_path, leaf in nest.flatten_with_tuple_paths(module_dict[key]):
+    prop = module_dict[key]
+    try:
+      leaves = nest.flatten_with_tuple_paths(prop)
+    except Exception as cause:  # pylint: disable=broad-except
+      six.raise_from(
+          ValueError(
+              "Error processing property {!r} of {!r}".format(key, prop)),
+          cause)
+
+    for leaf_path, leaf in leaves:
       leaf_path = (key,) + leaf_path
 
       # TODO(tomhennigan) Handle cycles for `with_path=True` (e.g. `a.a = a`).
@@ -362,7 +372,7 @@ def _flatten_module(module,
         recursive=recursive,
         predicate=predicate,
         attribute_traversal_key=attribute_traversal_key,
-        attributes_to_ignore=submodule._TF_MODULE_IGNORED_PROPERTIES,
+        attributes_to_ignore=submodule._TF_MODULE_IGNORED_PROPERTIES,  # pylint: disable=protected-access
         with_path=with_path,
         module_path=submodule_path,
         seen=seen)
