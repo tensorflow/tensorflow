@@ -71,6 +71,12 @@ class LegalizeTF : public FunctionPass<LegalizeTF> {
   /// Performs the lowering to XLA dialect.
   void runOnFunction() override;
 
+  /// Print this pass for a textual pipeline. It must round-trip.
+  void printAsTextualPipeline(raw_ostream &os) override {
+    os << "xla-legalize-tf{allow-partial-conversion="
+       << (allow_partial_conversion_ ? "true" : "false") << "}";
+  }
+
  private:
   bool allow_partial_conversion_;
 };
