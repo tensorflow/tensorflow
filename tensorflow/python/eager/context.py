@@ -1458,7 +1458,7 @@ class Context(object):
     if policy is None:
       policy = MIRRORING_NONE
 
-    if self._mirroring_policy != policy:
+    if self._mirroring_policy is not None or self._mirroring_policy != policy:
       self._mirroring_policy = policy
 
       # Only set the policy if the context has already been initialized
