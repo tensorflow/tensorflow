@@ -57,6 +57,12 @@ llvm::Optional<StringRef> OpInterfaceMethod::getBody() const {
   return value.empty() ? llvm::Optional<StringRef>() : value;
 }
 
+// Return the default implementation for this method if it has one.
+llvm::Optional<StringRef> OpInterfaceMethod::getDefaultImplementation() const {
+  auto value = def->getValueAsString("defaultBody");
+  return value.empty() ? llvm::Optional<StringRef>() : value;
+}
+
 // Return the description of this method if it has one.
 llvm::Optional<StringRef> OpInterfaceMethod::getDescription() const {
   auto value = def->getValueAsString("description");

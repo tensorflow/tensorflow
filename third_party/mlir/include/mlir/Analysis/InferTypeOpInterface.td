@@ -59,15 +59,16 @@ def InferTypeOpInterface : OpInterface<"InferTypeOpInterface"> {
       /*retTy=*/"bool",
       /*methodName=*/"isCompatibleReturnTypes",
       /*args=*/(ins "ArrayRef<Type>":$lhs, "ArrayRef<Type>":$rhs),
-      [{
+      /*methodBody=*/[{
         return ConcreteOp::isCompatibleReturnTypes(lhs, rhs);
+      }],
+      /*defaultImplementation=*/[{
+        /// Returns whether two arrays are equal as strongest check for
+        /// compatibility by default.
+        return lhs == rhs;
       }]
     >,
   ];
 }
-
-// Default implementations for some of the interface methods above:
-// - compatibleReturnTypes returns whether strictly true.
-def InferTypeOpInterfaceDefault : NativeOpTrait<"TypeOpInterfaceDefault">;
 
 #endif // MLIR_INFERTYPEOPINTERFACE
