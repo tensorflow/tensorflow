@@ -346,7 +346,7 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
   def testTPU(self, input_type, api_type, iteration_type, distribution,
               enable_get_next_as_optional):
     worker_device_pairs = collections.OrderedDict()
-    for tpu_device in distribution.extended._tpu_devices:
+    for tpu_device in distribution.extended.worker_devices:
       host_device = device_util.get_host_for_device(tpu_device)
       worker_device_pairs.setdefault(host_device, [])
       worker_device_pairs[host_device].append(tpu_device)

@@ -237,25 +237,40 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
     self._device_assignment = device_assignment
 
-    self._tpu_devices = [d.name for d in self._tpu_metadata.devices
-                         if "device:TPU:" in d.name]
+    tpu_devices_flat = [
+        d.name for d in self._tpu_metadata.devices if "device:TPU:" in d.name]
 
-    # Only create variables for the number of replicas we're running.
-    if device_assignment is not None:
-      job_name = device_spec.DeviceSpecV2.from_string(self._tpu_devices[0]).job
+    # `self._tpu_devices` is a two-dimensional NumPy array of strings. It is
+    # indexed using `[replica_id][logical_device_id]`.
+    if device_assignment is None:
+      self._tpu_devices = np.array(
+          [[d] for d in tpu_devices_flat], dtype=object)
+    else:
+      job_name = device_spec.DeviceSpecV2.from_string(tpu_devices_flat[0]).job
 
-      self._tpu_devices = []
+      tpu_devices = []
       for replica_id in range(device_assignment.num_replicas):
-        tpu_device = device_assignment.tpu_device(
-            replica=replica_id, logical_core=0, job=job_name)
-        tpu_device = device_util.canonicalize(tpu_device)
-        self._tpu_devices.append(tpu_device)
+        replica_devices = []
 
-    self._host_device = device_util.get_host_for_device(self._tpu_devices[0])
+        for logical_core in range(device_assignment.num_cores_per_replica):
+          replica_devices.append(
+              device_util.canonicalize(
+                  device_assignment.tpu_device(
+                      replica=replica_id,
+                      logical_core=logical_core,
+                      job=job_name)))
 
-    # Preload the data onto the TPUs.
+        tpu_devices.append(replica_devices)
+      self._tpu_devices = np.array(tpu_devices, dtype=object)
+
+    self._host_device = device_util.get_host_for_device(self._tpu_devices[0][0])
+
+    # Preload the data onto the TPUs. Currently we always preload onto logical
+    # device 0 for each replica.
+    # TODO(cjfj): Create `InputWorkers` lazily, allowing users to place the
+    # input onto a different logical device?
     input_worker_devices = collections.OrderedDict()
-    for tpu_device in self._tpu_devices:
+    for tpu_device in self._tpu_devices[:, 0]:
       host_device = device_util.get_host_for_device(tpu_device)
       input_worker_devices.setdefault(host_device, [])
       input_worker_devices[host_device].append(tpu_device)
@@ -274,6 +289,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self.experimental_enable_get_next_as_optional = True
     self.experimental_enable_dynamic_batch_size = True
     self._prefetch_on_host = False
+
+    self._logical_device_stack = [0]
 
   # TODO(bfontain): Remove once a proper dataset API exists for prefetching
   # a dataset to multiple devices exists.
@@ -463,6 +480,26 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     with _TPUReplicaContext(self._container_strategy()):
       return fn(*args, **kwargs)
 
+  @contextlib.contextmanager
+  def experimental_logical_device(self, logical_device_id):
+    """Places variables and ops on the specified logical device."""
+    num_logical_devices_per_replica = self._tpu_devices.shape[1]
+    if logical_device_id >= num_logical_devices_per_replica:
+      raise ValueError(
+          "`logical_device_id` not in range (was {}, but there are only {} "
+          "logical devices per replica).".format(
+              logical_device_id, num_logical_devices_per_replica))
+
+    self._logical_device_stack.append(logical_device_id)
+    try:
+      if values._enclosing_tpu_context() is None:  # pylint: disable=protected-access
+        yield
+      else:
+        with ops.device(tpu.core(logical_device_id)):
+          yield
+    finally:
+      self._logical_device_stack.pop()
+
   def _experimental_initialize_system(self):
     """Experimental method added to be used by Estimator.
 
@@ -478,7 +515,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     colocate_with = kwargs.pop("colocate_with", None)
     if colocate_with is None:
-      devices = self._tpu_devices
+      devices = self._tpu_devices[:, self._logical_device_stack[-1]]
     elif isinstance(colocate_with, numpy_dataset.SingleDevice):
       with ops.device(colocate_with.device):
         return next_creator(*args, **kwargs)
@@ -515,8 +552,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       return value_list
 
     return values.create_mirrored_variable(
-        self._container_strategy(), _real_mirrored_creator,
-        values.TPUMirroredVariable, values.TPUSyncOnReadVariable,
+        self._container_strategy(),
+        _real_mirrored_creator,
+        values.TPUMirroredVariable,
+        values.TPUSyncOnReadVariable,
         *args, **kwargs)
 
   def _reduce_to(self, reduce_op, value, destinations):
@@ -663,11 +702,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   @property
   def worker_devices(self):
-    return self._tpu_devices
+    return tuple(self._tpu_devices[:, self._logical_device_stack[-1]])
 
   @property
   def parameter_devices(self):
-    return self._tpu_devices
+    return self.worker_devices
 
   def non_slot_devices(self, var_list):
     return self._host_device
@@ -829,6 +868,10 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
       return (tpu.core(0),)
     else:
       return (ds.extended.worker_devices[replica_id],)
+
+  def experimental_logical_device(self, logical_device_id):
+    """Places variables and ops on the specified logical device."""
+    return self.strategy.extended.experimental_logical_device(logical_device_id)
 
 
 def _set_last_step_outputs(ctx, last_step_tensor_outputs):
