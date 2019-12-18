@@ -75,3 +75,8 @@ py_library(
         "//third_party/py/numpy",
     ],
 )
+
+cc_library(
+    name = "c_api",
+    hdrs = ["c_api.h"],
+)
