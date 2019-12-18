@@ -2393,7 +2393,8 @@ def sparse_tensor_dense_matmul(mat_a,
   """
   # pylint: enable=line-too-long
 
-  if isinstance(mat_b, sparse_tensor.SparseTensor) or isinstance(mat_b, sparse_tensor.SparseTensorValue):
+  if isinstance(mat_b, sparse_tensor.SparseTensor) \
+          or isinstance(mat_b, sparse_tensor.SparseTensorValue):
 
     if adjoint_a == True and adjoint_b == False:
       return array_ops.transpose(sparse_tensor_dense_matmul(mat_b, mat_a,
