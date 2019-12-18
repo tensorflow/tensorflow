@@ -402,7 +402,7 @@ ENTRY %Abs (val: f32[2,2]) -> f32[2,2] {
 })",
                      R"(
 ;CHECK: func @abs(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
-;CHECK:   "xla_lhlo.abs"(%[[ARG0]], %[[ARG1]]) {name = "abs"} : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK:   "xla_lhlo.abs"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
 ;CHECK: }
       )");
 }
@@ -416,7 +416,7 @@ ENTRY %Ceil (val: f32[2,2]) -> f32[2,2] {
 })",
                      R"(
 ;CHECK: func @ceil(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
-;CHECK:   "xla_lhlo.ceil"(%[[ARG0]], %[[ARG1]]) {name = "ceil"} : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK:   "xla_lhlo.ceil"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
 ;CHECK: }
       )");
 }
@@ -424,13 +424,57 @@ ENTRY %Ceil (val: f32[2,2]) -> f32[2,2] {
 TEST_F(LhloGenTest, Convert) {
   CompileAndVerifyIr(R"(
 HloModule Convert
-ENTRY %Convert (val: f32[2,2]) -> f32[2,2] {
-  %val = f32[2,2]{1,0} parameter(0)
-  ROOT %convert = f32[2,2]{1,0} convert(f32[2,2]{1,0} %val)
+ENTRY %Convert (val: i32[2,2]) -> f32[2,2] {
+  %val = i32[2,2]{1,0} parameter(0)
+  ROOT %convert = f32[2,2]{1,0} convert(i32[2,2]{1,0} %val)
 })",
                      R"(
 ;CHECK: func @convert(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
-;CHECK:   "xla_lhlo.convert"(%[[ARG0]], %[[ARG1]]) {name = "convert"} : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK:   "xla_lhlo.convert"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
+      )");
+  CompileAndVerifyIr(R"(
+HloModule Convert
+ENTRY %Convert (val: f32[2,2]) -> f64[2,2] {
+  %val = f32[2,2]{1,0} parameter(0)
+  ROOT %convert = f64[2,2]{1,0} convert(f32[2,2]{1,0} %val)
+})",
+                     R"(
+;CHECK: func @convert(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.convert"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
+      )");
+  CompileAndVerifyIr(R"(
+HloModule Convert
+ENTRY %Convert (val: f64[2,2]) -> f32[2,2] {
+  %val = f64[2,2]{1,0} parameter(0)
+  ROOT %convert = f32[2,2]{1,0} convert(f64[2,2]{1,0} %val)
+})",
+                     R"(
+;CHECK: func @convert(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.convert"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
+      )");
+  CompileAndVerifyIr(R"(
+HloModule Convert
+ENTRY %Convert (val: i32[2,2]) -> i8[2,2] {
+  %val = i32[2,2]{1,0} parameter(0)
+  ROOT %convert = i8[2,2]{1,0} convert(i32[2,2]{1,0} %val)
+})",
+                     R"(
+;CHECK: func @convert(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.convert"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
+      )");
+  CompileAndVerifyIr(R"(
+HloModule Convert
+ENTRY %Convert (val: i8[2,2]) -> i32[2,2] {
+  %val = i8[2,2]{1,0} parameter(0)
+  ROOT %convert = i32[2,2]{1,0} convert(i8[2,2]{1,0} %val)
+})",
+                     R"(
+;CHECK: func @convert(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.convert"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
 ;CHECK: }
       )");
 }
@@ -444,7 +488,7 @@ ENTRY %Cos (val: f32[2,2]) -> f32[2,2] {
 })",
                      R"(
 ;CHECK: func @cos(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
-;CHECK:   "xla_lhlo.cos"(%[[ARG0]], %[[ARG1]]) {name = "cos"} : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK:   "xla_lhlo.cos"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
 ;CHECK: }
       )");
 }
@@ -458,7 +502,7 @@ ENTRY %Neg (val: f32[2,2]) -> f32[2,2] {
 })",
                      R"(
 ;CHECK: func @neg(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
-;CHECK:   "xla_lhlo.neg"(%[[ARG0]], %[[ARG1]]) {name = "neg"} : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK:   "xla_lhlo.neg"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
 ;CHECK: }
       )");
 }
@@ -473,7 +517,7 @@ ENTRY %Rem(x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 })",
                      R"(
 ;CHECK: func @remainder(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]) {
-;CHECK:   "xla_lhlo.remainder(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[ARG0]], %[[ARG1]], %[[ARG2]]
+;CHECK:   "xla_lhlo.remainder(%[[ARG0]], %[[ARG1]], %[[ARG2]]) : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
 ;CHECK: }
       )");
 }
@@ -487,7 +531,7 @@ ENTRY %Sign (val: f32[2,2]) -> f32[2,2] {
 })",
                      R"(
 ;CHECK: func @sign(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
-;CHECK:   "xla_lhlo.sign"(%[[ARG0]], %[[ARG1]]) {name = "sign"} : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK:   "xla_lhlo.sign"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
 ;CHECK: }
       )");
 }
@@ -501,7 +545,7 @@ ENTRY %Tanh (val: f32[2,2]) -> f32[2,2] {
 })",
                      R"(
 ;CHECK: func @tanh(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
-;CHECK:   "xla_lhlo.tanh"(%[[ARG0]], %[[ARG1]]) {name = "tanh"} : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK:   "xla_lhlo.tanh"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
 ;CHECK: }
       )");
 }
