@@ -781,6 +781,15 @@ using BinaryOpLLVMOpLowering = NaryOpLLVMOpLowering<SourceOp, TargetOp, 2>;
 
 // Specific lowerings.
 // FIXME: this should be tablegen'ed.
+struct AbsFOpLowering : public UnaryOpLLVMOpLowering<AbsFOp, LLVM::FAbsOp> {
+  using Super::Super;
+};
+struct CeilFOpLowering : public UnaryOpLLVMOpLowering<CeilFOp, LLVM::FCeilOp> {
+  using Super::Super;
+};
+struct CosOpLowering : public UnaryOpLLVMOpLowering<CosOp, LLVM::CosOp> {
+  using Super::Super;
+};
 struct ExpOpLowering : public UnaryOpLLVMOpLowering<ExpOp, LLVM::ExpOp> {
   using Super::Super;
 };
@@ -791,6 +800,9 @@ struct Log10OpLowering : public UnaryOpLLVMOpLowering<Log10Op, LLVM::Log10Op> {
   using Super::Super;
 };
 struct Log2OpLowering : public UnaryOpLLVMOpLowering<Log2Op, LLVM::Log2Op> {
+  using Super::Super;
+};
+struct NegFOpLowering : public UnaryOpLLVMOpLowering<NegFOp, LLVM::FNegOp> {
   using Super::Super;
 };
 struct AddIOpLowering : public BinaryOpLLVMOpLowering<AddIOp, LLVM::AddOp> {
@@ -836,6 +848,10 @@ struct DivFOpLowering : public BinaryOpLLVMOpLowering<DivFOp, LLVM::FDivOp> {
   using Super::Super;
 };
 struct RemFOpLowering : public BinaryOpLLVMOpLowering<RemFOp, LLVM::FRemOp> {
+  using Super::Super;
+};
+struct CopySignOpLowering
+    : public BinaryOpLLVMOpLowering<CopySignOp, LLVM::CopySignOp> {
   using Super::Super;
 };
 struct SelectOpLowering
@@ -2051,15 +2067,19 @@ void mlir::populateStdToLLVMNonMemoryConversionPatterns(
   // FIXME: this should be tablegen'ed
   // clang-format off
   patterns.insert<
+      AbsFOpLowering,
       AddFOpLowering,
       AddIOpLowering,
       AndOpLowering,
       BranchOpLowering,
       CallIndirectOpLowering,
       CallOpLowering,
+      CeilFOpLowering,
       CmpFOpLowering,
       CmpIOpLowering,
       CondBranchOpLowering,
+      CopySignOpLowering,
+      CosOpLowering,
       ConstLLVMOpLowering,
       DivFOpLowering,
       DivISOpLowering,
@@ -2073,6 +2093,7 @@ void mlir::populateStdToLLVMNonMemoryConversionPatterns(
       IndexCastOpLowering,
       MulFOpLowering,
       MulIOpLowering,
+      NegFOpLowering,
       OrOpLowering,
       PrefetchOpLowering,
       RemFOpLowering,
