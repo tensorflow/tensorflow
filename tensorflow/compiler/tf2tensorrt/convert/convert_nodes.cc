@@ -652,10 +652,10 @@ size_t TRT_ShapedWeights::size_bytes() const {
 }
 
 string TRT_ShapedWeights::DebugString() const {
-  return StrCat("TRT_ShapedWeights(shape=",
-                tensorflow::tensorrt::DebugString(shape_),
-                ", type=", tensorflow::tensorrt::DebugString(type_),
-                ", values=", reinterpret_cast<uintptr_t>(GetValues()), ")");
+  return StrCat(
+      "TRT_ShapedWeights(shape=", tensorflow::tensorrt::DebugString(shape_),
+      ", type=", tensorflow::tensorrt::DebugString(type_),
+      ", values=", reinterpret_cast<uintptr_t>(GetValues()), ")");
 }
 
 // A fake ITensor implementation used to check whether the TF-TRT converter can
