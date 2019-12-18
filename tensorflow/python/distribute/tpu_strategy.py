@@ -101,9 +101,11 @@ def validate_experimental_run_function(fn):
           fn, function.ConcreteFunction) and not (callable(fn) and isinstance(
               fn.__call__, def_function.Function)):
     raise NotImplementedError(
-        "TPUStrategy.experimental_run_v2(fn, ...) does not support eager "
-        "execution. Either convert `fn` into a tf.function or consider "
-        "calling strategy.experimental_run_v2 inside a tf.function.")
+        "TPUStrategy.experimental_run_v2(fn, ...) does not support pure eager "
+        "execution. please make sure the function passed into "
+        "`strategy.experimental_run_v2` is a `tf.function` or "
+        "`strategy.experimental_run_v2` is called inside a `tf.function` if "
+        "eager behavior is enabled.")
 
 
 @tf_export("distribute.experimental.TPUStrategy", v1=[])
@@ -134,8 +136,8 @@ class TPUStrategy(distribute_lib.Strategy):
     training loop by calling `strategy.experimental_run_v2` directly. Note that
     TPUStrategy doesn't support pure eager execution, so please make sure the
     function passed into `strategy.experimental_run_v2` is a `tf.function` or
-    `strategy.experimental_run_v2` us called inside a `tf.function` if running
-    in eager mode.
+    `strategy.experimental_run_v2` is called inside a `tf.function` if eager
+    behavior is enabled.
 
     Args:
       tpu_cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
