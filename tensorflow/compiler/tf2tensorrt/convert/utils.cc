@@ -130,9 +130,9 @@ string GetLinkedTensorRTVersion() {
   minor = 0;
   patch = 0;
 #endif
-  string trt_version = std::to_string(major) + "." +
-                       std::to_string(minor) + "." +
-                       std::to_string(patch);
+  string trt_version = absl::StrCat(std::to_string(major), ".",
+                              std::to_string(minor), ".",
+                              std::to_string(patch));
   return trt_version;
 }
 
@@ -149,9 +149,9 @@ string GetLoadedTensorRTVersion() {
   minor = 0;
   patch = 0;
 #endif
-  string trt_version = std::to_string(major) + "." +
-                       std::to_string(minor) + "." +
-                       std::to_string(patch);
+  string trt_version = absl::StrCat(std::to_string(major), ".",
+                              std::to_string(minor), ".",
+                              std::to_string(patch));
   return trt_version;
 }
 

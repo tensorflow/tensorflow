@@ -1374,13 +1374,13 @@ Status Converter::BuildCudaEngine(
   TF_RETURN_IF_ERROR(TrtPrecisionModeToName(
       precision_mode_, &precision_mode_str));
   string trt_version_str = GetLoadedTensorRTVersion();
-  string trt_network_name =
-      "TF" + string(TF_VERSION_STRING) + "-" +
-      "TRT" + trt_version_str + "-" +
-      "Precision-" + precision_mode_str + "-" +
-      "Calibration-" + std::to_string(use_calibration_) + "-" +
-      "Max-Batch-Size-" + std::to_string(max_batch_size) + "-" +
-      "Max-Workspace-Size-" + std::to_string(max_workspace_size_bytes);
+  string trt_network_name = StrCat(
+      "TF:", string(TF_VERSION_STRING), ", ",
+      "TRT:", trt_version_str, "-",
+      "Precision:", precision_mode_str, ", ",
+      "Calibration:", std::to_string(use_calibration_), ", ",
+      "Max-Batch-Size:", std::to_string(max_batch_size), ", ",
+      "Max-Workspace-Size:", std::to_string(max_workspace_size_bytes));
   VLOG(1) << "Setting TensorRT network name to " << trt_network_name;
   network()->setName(trt_network_name.c_str());
 
