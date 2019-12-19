@@ -16,7 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/shape_optimization_profiles.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -105,7 +105,7 @@ Status TrtShapeOptimizationProfile::configureBuilder(
     // profile is added by GetEngine
     return errors::Internal("No TRT optimization profile found");
   }
-  initProfiles(n_profiles, network->getNbInputs());
+  initProfiles(n_profiles);
   addProfiles(builder, config, network);
 #endif
   return Status::OK();
@@ -155,7 +155,7 @@ Status TrtShapeOptimizationProfile::createExcecutionContexts(
     exec_context.push_back(
       std::move(TrtUniquePtrType<nvinfer1::IExecutionContext>(ctx)));
     i++;
-  } while (i<profile_map_.size())
+  } while (i<profile_map_.size());
 
   return Status::OK();
 }
