@@ -796,7 +796,11 @@ class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
   def __init__(self, iterator_resource, name):
     serialized_iterator = gen_dataset_ops.serialize_iterator(iterator_resource)
     specs = [
-        BaseSaverBuilder.SaveSpec(serialized_iterator, "", name + "_STATE")
+        BaseSaverBuilder.SaveSpec(
+            serialized_iterator,
+            "",
+            name + "_STATE",
+            device=iterator_resource.device)
     ]
     super(_IteratorSaveable, self).__init__(iterator_resource, specs, name)
 

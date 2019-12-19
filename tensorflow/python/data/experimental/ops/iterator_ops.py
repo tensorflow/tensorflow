@@ -173,8 +173,8 @@ class CheckpointInputPipelineHook(session_run_hook.SessionRunHook):
         self._checkpoint_saver_hook._scaffold is None):
       iterators = ops.get_collection(iterator_ops.GLOBAL_ITERATORS)
       saveables = [iterator_ops._IteratorSaveable(i, i.name) for i in iterators]
-      self._checkpoint_saver_hook._saver = _CustomSaver(saveables,
-                                                        self._latest_filename)
+      self._checkpoint_saver_hook._saver = _CustomSaver(
+          saveables, self._latest_filename, sharded=True)
     # pylint: enable=protected-access
     self._checkpoint_saver_hook.begin()
 
@@ -238,8 +238,8 @@ class _CustomSaver(saver_lib.Saver):
   the model ckpt saved by the `CheckpointSaverHook`.
   """
 
-  def __init__(self, var_list, latest_filename):
-    super(_CustomSaver, self).__init__(var_list)
+  def __init__(self, var_list, latest_filename, sharded=False):
+    super(_CustomSaver, self).__init__(var_list, sharded=sharded)
     self._latest_filename = latest_filename
 
   def save(self,
