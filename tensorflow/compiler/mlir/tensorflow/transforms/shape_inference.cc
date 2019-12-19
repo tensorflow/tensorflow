@@ -127,10 +127,9 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
 
   // Get information from the registry and check if we have a shape function for
   // this op.
-  const tensorflow::OpRegistrationData* op_reg_data;
-  if (!tensorflow::OpRegistry::Global()
-           ->LookUp(node_name.data(), &op_reg_data)
-           .ok()) {
+  const tensorflow::OpRegistrationData* op_reg_data =
+      tensorflow::OpRegistry::Global()->LookUp(node_name.data());
+  if (!op_reg_data) {
     LLVM_DEBUG(llvm::dbgs() << "Skipping inference for unregistered op '"
                             << op->getName() << "'.\n";);
     return false;
