@@ -45,9 +45,7 @@ def _mel_to_hertz(mel_values, name=None):
   """
   with ops.name_scope(name, 'mel_to_hertz', [mel_values]):
     mel_values = ops.convert_to_tensor(mel_values)
-    return _MEL_BREAK_FREQUENCY_HERTZ * (
-        math_ops.exp(mel_values / _MEL_HIGH_FREQUENCY_Q) - 1.0
-    )
+    return _MEL_BREAK_FREQUENCY_HERTZ * math_ops.expm1(mel_values / _MEL_HIGH_FREQUENCY_Q)
 
 
 def _hertz_to_mel(frequencies_hertz, name=None):
@@ -63,8 +61,7 @@ def _hertz_to_mel(frequencies_hertz, name=None):
   """
   with ops.name_scope(name, 'hertz_to_mel', [frequencies_hertz]):
     frequencies_hertz = ops.convert_to_tensor(frequencies_hertz)
-    return _MEL_HIGH_FREQUENCY_Q * math_ops.log(
-        1.0 + (frequencies_hertz / _MEL_BREAK_FREQUENCY_HERTZ))
+    return _MEL_HIGH_FREQUENCY_Q * math_ops.log1p(frequencies_hertz / _MEL_BREAK_FREQUENCY_HERTZ)
 
 
 def _validate_arguments(num_mel_bins, sample_rate,
