@@ -318,6 +318,25 @@ func @FuseFullyConnectedAddConst(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf
   // CHECK: return %[[fc]]
 }
 
+// CHECK-LABEL: @FuseFullyConnectedReshapeAddConst
+func @FuseFullyConnectedReshapeAddConst(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> tensor<40x40xf32> {
+  %cst = constant dense<3.0> : tensor<40x40xf32>
+  %cst2 = constant dense<2.0> : tensor<40xf32>
+  %shape1 = constant dense<[1, 40, 40]> : tensor<3xi32>
+  %shape2 = constant dense<[40, 40]> : tensor<2xi32>
+
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<40x37xf32>, tensor<40x37xf32>, tensor<40x40xf32>) -> (tensor<40x40xf32>)
+  %1 = "tfl.reshape"(%0, %shape1) : (tensor<40x40xf32>, tensor<3xi32>) -> tensor<1x40x40xf32>
+  %2 = "tfl.add"(%1, %cst2) {fused_activation_function = "NONE"} : (tensor<1x40x40xf32>, tensor<40xf32>) -> tensor<1x40x40xf32>
+  %3 = "tfl.reshape"(%2, %shape2) : (tensor<1x40x40xf32>, tensor<2xi32>) -> tensor<40x40xf32>
+
+  return %3 : tensor<40x40xf32>
+
+  // CHECK: %[[cst:.*]] = constant dense<5.000000e+00> : tensor<40x40xf32>
+  // CHECK: %[[fc:.*]] = "tfl.fully_connected"(%arg0, %arg1, %[[cst]])
+  // CHECK: return %[[fc]]
+}
+
 // CHECK-LABEL: @FuseFullyConnectedRelu
 func @FuseFullyConnectedRelu(%arg0: tensor<1x256xf32>, %arg1: tensor<128x256xf32>, %arg2: tensor<128xf32>) -> tensor<1x128xf32> {
   %0 = "tfl.fully_connected" (%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x256xf32>, tensor<128x256xf32>, tensor<128xf32>) -> tensor<1x128xf32>

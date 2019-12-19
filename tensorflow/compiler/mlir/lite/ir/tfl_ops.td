@@ -1181,7 +1181,8 @@ def TFL_FloorModOp : TFL_Op<"floor_mod", [Broadcastable, NoSideEffect]> {
   let builders = [TFL_BroadcastableBinaryBuilder];
 }
 
-def TFL_GreaterOp : TFL_Op<"greater", [NoSideEffect, NoQuantizableResult]> {
+def TFL_GreaterOp : TFL_Op<"greater", [
+    Broadcastable, NoSideEffect, NoQuantizableResult]> {
   let summary = "Greater operator";
 
   let description = [{
@@ -1193,6 +1194,8 @@ def TFL_GreaterOp : TFL_Op<"greater", [NoSideEffect, NoQuantizableResult]> {
     AnyTensor:$rhs);
 
   let results = (outs AnyTensor:$output);
+
+  let builders = [TFL_ComparisonBinaryBuilder];
 
   let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
