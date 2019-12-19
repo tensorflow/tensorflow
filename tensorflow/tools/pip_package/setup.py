@@ -73,6 +73,8 @@ REQUIRED_PACKAGES = [
     # functools comes with python3, need to install the backport for python2
     'functools32 >= 3.2.3;python_version<"3"',
     'six >= 1.12.0',
+    # scipy < 1.4.1 causes segfaults due to pybind11
+    'scipy == 1.4.1',
 ]
 
 if sys.byteorder == 'little':
