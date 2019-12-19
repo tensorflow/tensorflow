@@ -179,7 +179,8 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
 
   const int total_dims = sparsity->traversal_order()->size();
 
-  if (sparsity->dim_metadata()->size() != total_dims) {
+  if (total_dims < tensor.shape()->size() ||
+      sparsity->dim_metadata()->size() != total_dims) {
     return absl::nullopt;
   }
 
