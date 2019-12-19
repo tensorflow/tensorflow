@@ -69,7 +69,7 @@ class ProfilerSession {
   bool active_ GUARDED_BY(mutex_);
 
   tensorflow::Status status_ GUARDED_BY(mutex_);
-  const uint64 start_time_micros_;
+  const uint64 start_time_ns_;
   mutex mutex_;
 };
 

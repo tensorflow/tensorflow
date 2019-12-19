@@ -1148,7 +1148,7 @@ TYPED_TEST(Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Input_Batch_In_Lanes,
 }
 
 template <typename T>
-class Convolve2D_1x4x4x160_3x3x1x160_Dephtwise_Both_Batch_In_Lanes
+class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes
     : public ConvolutionTest {
  public:
   void RunTest() {
@@ -1210,9 +1210,9 @@ class Convolve2D_1x4x4x160_3x3x1x160_Dephtwise_Both_Batch_In_Lanes
   }
 };
 
-TYPED_TEST_CASE(Convolve2D_1x4x4x160_3x3x1x160_Dephtwise_Both_Batch_In_Lanes,
+TYPED_TEST_CASE(Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes,
                 TestTypes);
-TYPED_TEST(Convolve2D_1x4x4x160_3x3x1x160_Dephtwise_Both_Batch_In_Lanes,
+TYPED_TEST(Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes,
            Types) {
   this->RunTest();
 }

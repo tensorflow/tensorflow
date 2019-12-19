@@ -48,7 +48,7 @@ public:
   }
 
 private:
-  llvm::Optional<int64_t> constantFoldImpl(AffineExpr expr) {
+  Optional<int64_t> constantFoldImpl(AffineExpr expr) {
     switch (expr.getKind()) {
     case AffineExprKind::Add:
       return constantFoldBinExpr(
@@ -83,8 +83,8 @@ private:
   }
 
   // TODO: Change these to operate on APInts too.
-  llvm::Optional<int64_t> constantFoldBinExpr(AffineExpr expr,
-                                              int64_t (*op)(int64_t, int64_t)) {
+  Optional<int64_t> constantFoldBinExpr(AffineExpr expr,
+                                        int64_t (*op)(int64_t, int64_t)) {
     auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
     if (auto lhs = constantFoldImpl(binOpExpr.getLHS()))
       if (auto rhs = constantFoldImpl(binOpExpr.getRHS()))
@@ -324,7 +324,7 @@ AffineMap mlir::concatAffineMaps(ArrayRef<AffineMap> maps) {
   for (auto m : maps)
     numResults += m ? m.getNumResults() : 0;
   unsigned numDims = 0;
-  llvm::SmallVector<AffineExpr, 8> results;
+  SmallVector<AffineExpr, 8> results;
   results.reserve(numResults);
   for (auto m : maps) {
     if (!m)

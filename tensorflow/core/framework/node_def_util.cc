@@ -285,7 +285,10 @@ bool AttrSlice::EqualAttrs(AttrSlice other, Scratch* scratch) const {
     }                                                                     \
     return true;                                                          \
   }
-
+#ifdef USE_TSTRING
+DEFINE_GET_ATTR(tstring, s, "string", emplace_back, v, ;)
+DEFINE_TRY_GET_ATTR(tstring, s, "string", emplace_back, v, ;)
+#endif
 DEFINE_GET_ATTR(string, s, "string", emplace_back, v, ;)
 DEFINE_TRY_GET_ATTR(string, s, "string", emplace_back, v, ;)
 DEFINE_GET_ATTR(int64, i, "int", emplace_back, v, ;)
@@ -740,6 +743,7 @@ void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def) {
 
 namespace {
 
+using ::tensorflow::tstring;
 using ::tensorflow::strings::Scanner;
 
 bool IsValidNodeName(StringPiece sp) {

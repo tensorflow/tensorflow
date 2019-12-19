@@ -60,10 +60,43 @@ std::string MakeUniqueFilename(string name) {
   filename = llvm::Twine(filename).concat(".mlir").str();
   return filename;
 }
+
+// Simple raw_ostream that prints to LOG(INFO).
+struct LogInfoRawStream : public llvm::raw_ostream {
+  LogInfoRawStream() { SetUnbuffered(); }
+  ~LogInfoRawStream() override = default;
+  uint64_t current_pos() const override { return 0; }
+
+  void write_impl(const char* ptr, size_t size) override {
+    LOG(INFO) << absl::string_view(ptr, size);
+  }
+};
+
+// Simple raw_ostream that prints to a file.
+struct WritableFileRawStream : public llvm::raw_ostream {
+  explicit WritableFileRawStream(std::unique_ptr<WritableFile> file)
+      : file(std::move(file)) {
+    SetUnbuffered();
+  }
+  ~WritableFileRawStream() override = default;
+  uint64_t current_pos() const override { return 0; }
+
+  void write_impl(const char* ptr, size_t size) override {
+    // Write the file if it is still valid. If the write fails, null out the
+    // file to avoid encountering another error.
+    if (file && !file->Append(StringPiece(ptr, size)).ok()) {
+      file = nullptr;
+    }
+  }
+
+  // The file being written to.
+  std::unique_ptr<WritableFile> file;
+};
 }  // namespace
 
-std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
-                             llvm::StringRef dirname) {
+Status CreateFileForDumping(llvm::StringRef name,
+                            std::unique_ptr<llvm::raw_ostream>* os,
+                            std::string* filepath, llvm::StringRef dirname) {
   const char* dir = nullptr;
   if (!dirname.empty())
     dir = dirname.data();
@@ -72,44 +105,49 @@ std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
 
   if (!dir) {
     LOG(WARNING)
-        << "Failed to dump MLIR operation '"
-        << op->getName().getStringRef().str() << "' to '" << name.str()
-        << "' because dump location is not specified through either "
+        << "Failed to generate file because dump location is not specified "
+           "through either "
            "TF_DUMP_GRAPH_PREFIX environment variable or function argument.";
-    return "(TF_DUMP_GRAPH_PREFIX not specified)";
+    return Status(error::Code::INVALID_ARGUMENT,
+                  "(TF_DUMP_GRAPH_PREFIX not specified)");
   }
 
-  std::string txt_op;
-  {
-    llvm::raw_string_ostream os(txt_op);
-    op->print(os, mlir::OpPrintingFlags().useLocalScope());
-    os.flush();
-  }
-
-  Env* env = Env::Default();
-  std::string filepath;
   if (std::strncmp(dir, "-", 2) == 0) {
-    LOG(INFO) << txt_op;
-    filepath = "LOG(INFO)";
-  } else {
-    Status status = env->RecursivelyCreateDir(dir);
-    if (!status.ok()) {
-      LOG(WARNING) << "Failed to create '" << dir
-                   << "' directory for dumping MLIR operation '"
-                   << op->getName().getStringRef().str() << "': " << status;
-      return "(unavailable)";
-    }
-    filepath =
-        llvm::Twine(dir).concat("/").concat(MakeUniqueFilename(name)).str();
-    status = WriteStringToFile(env, filepath, txt_op);
-    if (!status.ok()) {
-      LOG(WARNING) << "Failed to dump MLIR operation '"
-                   << op->getName().getStringRef().str() << "' to file '"
-                   << filepath << "': " << status;
-      return "(unavailable)";
-    }
+    *os = std::make_unique<LogInfoRawStream>();
+    *filepath = "LOG(INFO)";
+    return Status();
   }
 
+  // Get a valid file path to dump with.
+  Env* env = Env::Default();
+  Status status = env->RecursivelyCreateDir(dir);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to create '" << dir
+                 << "' directory for dumping: " << status;
+    return Status(error::Code::UNAVAILABLE, "(unavailable)");
+  }
+  *filepath =
+      llvm::Twine(dir).concat("/").concat(MakeUniqueFilename(name)).str();
+
+  // Try to open the file and generate a raw_ostream.
+  std::unique_ptr<WritableFile> file;
+  status = env->NewWritableFile(*filepath, &file);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to create file '" << filepath << "': " << status;
+    return Status(error::Code::UNAVAILABLE, "(unavailable)");
+  }
+  *os = std::make_unique<WritableFileRawStream>(std::move(file));
+  return Status();
+}
+
+std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
+                             llvm::StringRef dirname) {
+  std::unique_ptr<llvm::raw_ostream> os;
+  std::string filepath;
+  Status result = CreateFileForDumping(name, &os, &filepath, dirname);
+  if (!result.ok()) return result.error_message();
+
+  op->print(*os, mlir::OpPrintingFlags().useLocalScope());
   LOG(INFO) << "Dumped MLIR operation '" << op->getName().getStringRef().str()
             << "' to '" << filepath << "'";
   return filepath;

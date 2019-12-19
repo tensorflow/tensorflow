@@ -94,7 +94,7 @@ The participating cores can be configured by:
     in the same order of 1, 2, 3. Then, another AllToAll will be applied within
     replicas 4, 5, 0, and the concatenation order is also 4, 5, 0. If
     `replica_groups` is empty, all replicas belong to one group, in the
-    concatenation order of their appearence.
+    concatenation order of their appearance.
 
 Prerequisites:
 

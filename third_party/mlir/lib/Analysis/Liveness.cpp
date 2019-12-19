@@ -266,13 +266,13 @@ void Liveness::print(raw_ostream &os) const {
   DenseMap<Value *, size_t> valueIds;
   for (Region &region : operation->getRegions())
     for (Block &block : region) {
-      blockIds[&block] = blockIds.size();
+      blockIds.insert({&block, blockIds.size()});
       for (BlockArgument *argument : block.getArguments())
-        valueIds[argument] = valueIds.size();
+        valueIds.insert({argument, valueIds.size()});
       for (Operation &operation : block) {
-        operationIds[&operation] = operationIds.size();
+        operationIds.insert({&operation, operationIds.size()});
         for (Value *result : operation.getResults())
-          valueIds[result] = valueIds.size();
+          valueIds.insert({result, valueIds.size()});
       }
     }
 

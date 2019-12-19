@@ -43,6 +43,7 @@ using namespace mlir::linalg;
 using namespace mlir::linalg::intrinsics;
 
 using llvm::dbgs;
+using llvm::SetVector;
 
 // Marker used as attribute name in generated Linalg rewriting transformations.
 const StringLiteral mlir::linalg::LinalgTransforms::kLinalgTransformMarker =
@@ -99,7 +100,7 @@ LogicalResult mlir::linalg::tileAndFuseLinalgOpAndSetMarker(
 
 bool mlir::linalg::detail::isProducedByOpOfTypeImpl(
     Operation *consumerOp, Value *consumedView,
-    llvm::function_ref<bool(Operation *)> isaOpType) {
+    function_ref<bool(Operation *)> isaOpType) {
   LinalgOp consumer = dyn_cast<LinalgOp>(consumerOp);
   if (!consumer)
     return false;
@@ -211,22 +212,36 @@ mlir::linalg::permuteGenericLinalgOp(PatternRewriter &rewriter, Operation *op,
   auto permutationMap = inversePermutation(
       AffineMap::getPermutationMap(permutation, rewriter.getContext()));
   SmallVector<AffineMap, 4> newIndexingMap;
-  auto indexingMaps =
-      linOp.getAttrOfType<ArrayAttr>("indexing_maps").getValue();
+  auto indexingMaps = linOp.indexing_maps().getValue();
   for (unsigned i = 0, e = linOp.getNumInputsAndOutputs(); i != e; ++i) {
     AffineMap m = indexingMaps[i].cast<AffineMapAttr>().getValue().compose(
         permutationMap);
     newIndexingMap.push_back(m);
   }
-  auto itTypes = linOp.getAttrOfType<ArrayAttr>("iterator_types").getValue();
-  SmallVector<StringRef, 4> itTypesVector;
+  auto itTypes = linOp.iterator_types().getValue();
+  SmallVector<Attribute, 4> itTypesVector;
   for (unsigned i = 0, e = itTypes.size(); i != e; ++i)
-    itTypesVector.push_back(itTypes[i].cast<StringAttr>().getValue());
+    itTypesVector.push_back(itTypes[i]);
   applyPermutationToVector(itTypesVector, permutation);
-  op->setAttr("indexing_maps", rewriter.getAffineMapArrayAttr(newIndexingMap));
-  op->setAttr("iterator_types", rewriter.getStrArrayAttr(itTypesVector));
+  op->setAttr(getIndexingMapsAttrName(),
+              rewriter.getAffineMapArrayAttr(newIndexingMap));
+  op->setAttr(getIteratorTypesAttrName(), rewriter.getArrayAttr(itTypesVector));
   op->setAttr(LinalgTransforms::kLinalgTransformMarker,
               rewriter.getStringAttr(linalgMarker));
   linOp.clone(rewriter, linOp.getLoc(), op->getOperands());
   return success();
+}
+
+LogicalResult mlir::linalg::linalgOpPromoteSubviews(PatternRewriter &rewriter,
+                                                    Operation *op) {
+  LinalgOp linOp = dyn_cast<LinalgOp>(op);
+  SetVector<Value *> subViews;
+  for (auto it : linOp.getInputsAndOutputs())
+    if (auto sv = dyn_cast_or_null<SubViewOp>(it->getDefiningOp()))
+      subViews.insert(sv);
+  if (!subViews.empty()) {
+    auto resOp = promoteSubViewOperands(rewriter, linOp, subViews);
+    return success(resOp);
+  }
+  return failure();
 }

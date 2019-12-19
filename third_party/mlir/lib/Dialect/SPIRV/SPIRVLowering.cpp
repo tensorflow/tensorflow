@@ -246,47 +246,17 @@ Value *mlir::spirv::getBuiltinVariableValue(Operation *op,
 }
 
 //===----------------------------------------------------------------------===//
-// Entry Function signature Conversion
+// Set ABI attributes for lowering entry functions.
 //===----------------------------------------------------------------------===//
 
-FuncOp mlir::spirv::lowerAsEntryFunction(
-    FuncOp funcOp, SPIRVTypeConverter &typeConverter,
-    ConversionPatternRewriter &rewriter,
-    ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo,
-    spirv::EntryPointABIAttr entryPointInfo) {
-  auto fnType = funcOp.getType();
-  if (fnType.getNumResults()) {
-    funcOp.emitError("SPIR-V lowering only supports entry functions"
-                     "with no return values right now");
-    return nullptr;
-  }
-  if (fnType.getNumInputs() != argABIInfo.size()) {
-    funcOp.emitError(
-        "lowering as entry functions requires ABI info for all arguments");
-    return nullptr;
-  }
-  // For entry functions need to make the signature void(void). Compute the
-  // replacement value for all arguments and replace all uses.
-  TypeConverter::SignatureConversion signatureConverter(fnType.getNumInputs());
-  {
-    for (auto argType : enumerate(funcOp.getType().getInputs())) {
-      auto convertedType = typeConverter.convertType(argType.value());
-      signatureConverter.addInputs(argType.index(), convertedType);
-    }
-  }
-  auto newFuncOp = rewriter.cloneWithoutRegions(funcOp);
-  rewriter.inlineRegionBefore(funcOp.getBody(), newFuncOp.getBody(),
-                              newFuncOp.end());
-  newFuncOp.setType(rewriter.getFunctionType(
-      signatureConverter.getConvertedTypes(), llvm::None));
-  rewriter.applySignatureConversion(&newFuncOp.getBody(), signatureConverter);
-  rewriter.eraseOp(funcOp);
-
+LogicalResult
+mlir::spirv::setABIAttrs(FuncOp funcOp, spirv::EntryPointABIAttr entryPointInfo,
+                         ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo) {
   // Set the attributes for argument and the function.
   StringRef argABIAttrName = spirv::getInterfaceVarABIAttrName();
-  for (auto argIndex : llvm::seq<unsigned>(0, newFuncOp.getNumArguments())) {
-    newFuncOp.setArgAttr(argIndex, argABIAttrName, argABIInfo[argIndex]);
+  for (auto argIndex : llvm::seq<unsigned>(0, funcOp.getNumArguments())) {
+    funcOp.setArgAttr(argIndex, argABIAttrName, argABIInfo[argIndex]);
   }
-  newFuncOp.setAttr(spirv::getEntryPointABIAttrName(), entryPointInfo);
-  return newFuncOp;
+  funcOp.setAttr(spirv::getEntryPointABIAttrName(), entryPointInfo);
+  return success();
 }

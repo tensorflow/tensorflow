@@ -26,6 +26,7 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
 #define DEBUG_TYPE "inlining"
@@ -35,7 +36,7 @@ using namespace mlir;
 /// Remap locations from the inlined blocks with CallSiteLoc locations with the
 /// provided caller location.
 static void
-remapInlinedLocations(llvm::iterator_range<Region::iterator> inlinedBlocks,
+remapInlinedLocations(iterator_range<Region::iterator> inlinedBlocks,
                       Location callerLoc) {
   DenseMap<Location, Location> mappedLocations;
   auto remapOpLoc = [&](Operation *op) {
@@ -50,9 +51,8 @@ remapInlinedLocations(llvm::iterator_range<Region::iterator> inlinedBlocks,
     block.walk(remapOpLoc);
 }
 
-static void
-remapInlinedOperands(llvm::iterator_range<Region::iterator> inlinedBlocks,
-                     BlockAndValueMapping &mapper) {
+static void remapInlinedOperands(iterator_range<Region::iterator> inlinedBlocks,
+                                 BlockAndValueMapping &mapper) {
   auto remapOperands = [&](Operation *op) {
     for (auto &operand : op->getOpOperands())
       if (auto *mappedOp = mapper.lookupOrNull(operand.get()))
@@ -111,8 +111,13 @@ static bool isLegalToInline(InlinerInterface &interface, Region *src,
   for (auto &block : *src) {
     for (auto &op : block) {
       // Check this operation.
-      if (!interface.isLegalToInline(&op, insertRegion, valueMapping))
+      if (!interface.isLegalToInline(&op, insertRegion, valueMapping)) {
+        LLVM_DEBUG({
+          llvm::dbgs() << "* Illegal to inline because of op: ";
+          op.dump();
+        });
         return false;
+      }
       // Check any nested regions.
       if (interface.shouldAnalyzeRecursively(&op) &&
           llvm::any_of(op.getRegions(), [&](Region &region) {
@@ -133,7 +138,7 @@ LogicalResult mlir::inlineRegion(InlinerInterface &interface, Region *src,
                                  Operation *inlinePoint,
                                  BlockAndValueMapping &mapper,
                                  ArrayRef<Value *> resultsToReplace,
-                                 llvm::Optional<Location> inlineLoc,
+                                 Optional<Location> inlineLoc,
                                  bool shouldCloneInlinedRegion) {
   // We expect the region to have at least one block.
   if (src->empty())
@@ -226,7 +231,7 @@ LogicalResult mlir::inlineRegion(InlinerInterface &interface, Region *src,
                                  Operation *inlinePoint,
                                  ArrayRef<Value *> inlinedOperands,
                                  ArrayRef<Value *> resultsToReplace,
-                                 llvm::Optional<Location> inlineLoc,
+                                 Optional<Location> inlineLoc,
                                  bool shouldCloneInlinedRegion) {
   // We expect the region to have at least one block.
   if (src->empty())

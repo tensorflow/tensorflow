@@ -202,7 +202,7 @@ protected:
 
   /// A list of the potential operations that may be generated when rewriting
   /// an op with this pattern.
-  llvm::SmallVector<OperationName, 2> generatedOps;
+  SmallVector<OperationName, 2> generatedOps;
 };
 
 /// OpRewritePattern is a wrapper around RewritePattern that allows for
@@ -217,17 +217,17 @@ template <typename SourceOp> struct OpRewritePattern : public RewritePattern {
   /// Wrappers around the RewritePattern methods that pass the derived op type.
   void rewrite(Operation *op, std::unique_ptr<PatternState> state,
                PatternRewriter &rewriter) const final {
-    rewrite(llvm::cast<SourceOp>(op), std::move(state), rewriter);
+    rewrite(cast<SourceOp>(op), std::move(state), rewriter);
   }
   void rewrite(Operation *op, PatternRewriter &rewriter) const final {
-    rewrite(llvm::cast<SourceOp>(op), rewriter);
+    rewrite(cast<SourceOp>(op), rewriter);
   }
   PatternMatchResult match(Operation *op) const final {
-    return match(llvm::cast<SourceOp>(op));
+    return match(cast<SourceOp>(op));
   }
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const final {
-    return matchAndRewrite(llvm::cast<SourceOp>(op), rewriter);
+    return matchAndRewrite(cast<SourceOp>(op), rewriter);
   }
 
   /// Rewrite and Match methods that operate on the SourceOp type. These must be
@@ -302,9 +302,9 @@ public:
     return OpTy();
   }
 
-  /// This is implemented to create the specified operations and serves as a
+  /// This is implemented to insert the specified operation and serves as a
   /// notification hook for rewriters that want to know about new operations.
-  virtual Operation *createOperation(const OperationState &state) = 0;
+  virtual Operation *insert(Operation *op) = 0;
 
   /// Move the blocks that belong to "region" before the given position in
   /// another region "parent". The two regions must be different. The caller

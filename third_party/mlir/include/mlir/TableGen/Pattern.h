@@ -46,7 +46,7 @@ namespace tblgen {
 // is shared among multiple patterns to avoid creating the wrapper object for
 // the same op again and again. But this map will continuously grow.
 using RecordOperatorMap =
-    llvm::DenseMap<const llvm::Record *, std::unique_ptr<Operator>>;
+    DenseMap<const llvm::Record *, std::unique_ptr<Operator>>;
 
 class Pattern;
 

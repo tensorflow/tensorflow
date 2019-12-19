@@ -360,8 +360,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* activation_state =
       GetVariableInput(context, node, kInputActivationStateTensor);
+  TF_LITE_ENSURE(context, activation_state != nullptr);
   TfLiteTensor* cell_state =
       GetVariableInput(context, node, kInputCellStateTensor);
+  TF_LITE_ENSURE(context, cell_state != nullptr);
 
   // Check the shape of input state tensors.
   // These tensor may be 1D or 2D. It's fine as long as the total size is
@@ -551,8 +553,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* activation_state =
       GetVariableInput(context, node, kInputActivationStateTensor);
+  TF_LITE_ENSURE(context, activation_state != nullptr);
   TfLiteTensor* cell_state =
       GetVariableInput(context, node, kInputCellStateTensor);
+  TF_LITE_ENSURE(context, cell_state != nullptr);
 
   const TfLiteTensor* input_layer_norm_coefficients =
       is_layer_norm_lstm ? GetOptionalInputTensor(

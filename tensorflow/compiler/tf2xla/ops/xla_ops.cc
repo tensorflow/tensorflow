@@ -84,7 +84,7 @@ lower: a boolean specifies whether the calculation is done with the lower
 
 max_iter: maximum number of sweep update, i.e., the whole lower triangular
   part or upper triangular part based on parameter lower. Heuristically, it has
-  been argued that approximatly logN sweeps are needed in practice (Ref: Golub &
+  been argued that approximately logN sweeps are needed in practice (Ref: Golub &
   van Loan "Matrix Computation").
 
 epsilon: the tolerance ratio.
@@ -116,7 +116,7 @@ a: the input tensor.
 
 max_iter: maximum number of sweep update, i.e., the whole lower triangular
   part or upper triangular part based on parameter lower. Heuristically, it has
-  been argued that approximatly log(min (M, N)) sweeps are needed in practice
+  been argued that approximately log(min (M, N)) sweeps are needed in practice
   (Ref: Golub & van Loan "Matrix Computation").
 
 epsilon: the tolerance ratio.
@@ -610,7 +610,7 @@ REGISTER_OP("XlaDequantize")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Takes the packed uint32 input and unpacks the input to uint8 to do
-Dequantization on deivce.
+Dequantization on device.
 
 input: Input tensors whose types is uint32, shape is [d0, ..., dn].
 output: Output tensors whose types is bloat16. If transpose_output is true,
@@ -644,7 +644,7 @@ REGISTER_OP("XlaEinsum")
     .Doc(R"doc(
 An op which supports basic einsum op with 2 inputs and 1 output.
 
-This op has better TPU performnce since it doesn't have explicitly reshape and
+This op has better TPU performance since it doesn't have explicitly reshape and
 transpose operations as tf.einsum does.
 )doc");
 

@@ -725,7 +725,7 @@ void PassInstrumentor::runAfterPassFailed(Pass *pass, Operation *op) {
 }
 
 /// See PassInstrumentation::runBeforeAnalysis for details.
-void PassInstrumentor::runBeforeAnalysis(llvm::StringRef name, AnalysisID *id,
+void PassInstrumentor::runBeforeAnalysis(StringRef name, AnalysisID *id,
                                          Operation *op) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
   for (auto &instr : impl->instrumentations)
@@ -733,7 +733,7 @@ void PassInstrumentor::runBeforeAnalysis(llvm::StringRef name, AnalysisID *id,
 }
 
 /// See PassInstrumentation::runAfterAnalysis for details.
-void PassInstrumentor::runAfterAnalysis(llvm::StringRef name, AnalysisID *id,
+void PassInstrumentor::runAfterAnalysis(StringRef name, AnalysisID *id,
                                         Operation *op) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
   for (auto &instr : llvm::reverse(impl->instrumentations))

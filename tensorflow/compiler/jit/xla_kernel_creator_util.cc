@@ -222,7 +222,7 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
   // using xla::ComputationDataHandle, which is just a symbolic handle that
   // xla::ComputationBuilder assigns. How does this handle gets assigned for
   // constant arguments? Even constant arguments get an _Arg node in the graph
-  // instatiated for Function compilation. The tf2xla kernel for constant _Arg
+  // instantiated for Function compilation. The tf2xla kernel for constant _Arg
   // nodes takes the constant value, converts it to XlaLiteral, and feeds it
   // to xla::ComputationBuilder.ConstantLiteral, which returns the handle. This
   // constant XlaLiteral is included in the HLO graph, and subsequently, in

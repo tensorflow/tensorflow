@@ -230,7 +230,7 @@ static StatusOr<std::vector<const HloInstruction*>> ComputeOperandToValueMap(
       has_failed = true;
       continue;
     }
-    // host_index is the argument positon to the surrounding function that
+    // host_index is the argument position to the surrounding function that
     // contains the launch. This index corresponds to HLO operand indices
     // by construction.
     auto host_index = launchop_operand->getArgNumber();
@@ -330,40 +330,43 @@ Status InsertBufferLoadPreduleIntoKernel(
       builder.create<mlir::LLVM::StoreOp>(loc, offset, structOffsetAddr);
       // Fill the shape.
       auto shape = operand->shape();
-      auto entry_type =
-          struct_type.getStructElementType(3).getArrayElementType();
-      // TODO(b/137624192) Pass in the descriptor to allow for dynamic shapes.
-      assert(shape.IsArray() && shape.is_static());
-      for (auto extent : llvm::enumerate(shape.dimensions())) {
-        auto index = builder.create<mlir::LLVM::ConstantOp>(
-            loc, offset_type, builder.getI64IntegerAttr(extent.index()));
-        auto shapeEntryPtr = builder.create<mlir::LLVM::GEPOp>(
-            loc, entry_type, descPtr,
-            llvm::ArrayRef<Value*>{zero, shapeIndex, index});
-        auto extentValue = builder.create<mlir::LLVM::ConstantOp>(
-            loc, entry_type, builder.getI64IntegerAttr(extent.value()));
-        builder.create<mlir::LLVM::StoreOp>(loc, extentValue, shapeEntryPtr);
-      }
-      // Finally, fill the strides.
-      // TODO(b/137624192): Take assigned layout into account.
-      entry_type = struct_type.getStructElementType(4).getArrayElementType();
-      Value* accumulator = nullptr;
-      for (int64 idx = shape.rank() - 1; idx >= 0; --idx) {
-        auto indexValue = builder.create<mlir::LLVM::ConstantOp>(
-            loc, offset_type, builder.getI64IntegerAttr(idx));
-        auto strideEntryPtr = builder.create<mlir::LLVM::GEPOp>(
-            loc, entry_type, descPtr,
-            llvm::ArrayRef<Value*>{zero, strideIndex, indexValue});
-        if (accumulator) {
-          auto strideValue = builder.create<mlir::LLVM::ConstantOp>(
-              loc, entry_type,
-              builder.getI64IntegerAttr(shape.dimensions(idx + 1)));
-          accumulator = builder.create<mlir::LLVM::MulOp>(
-              loc, entry_type, accumulator, strideValue);
-        } else {
-          accumulator = one;
+      // Unless the operand is a scalar pointer, also fill shape and strides.
+      if (!shape.dimensions().empty()) {
+        auto entry_type =
+            struct_type.getStructElementType(3).getArrayElementType();
+        // TODO(b/137624192) Pass in the descriptor to allow for dynamic shapes.
+        assert(shape.IsArray() && shape.is_static());
+        for (auto extent : llvm::enumerate(shape.dimensions())) {
+          auto index = builder.create<mlir::LLVM::ConstantOp>(
+              loc, offset_type, builder.getI64IntegerAttr(extent.index()));
+          auto shapeEntryPtr = builder.create<mlir::LLVM::GEPOp>(
+              loc, entry_type, descPtr,
+              llvm::ArrayRef<Value*>{zero, shapeIndex, index});
+          auto extentValue = builder.create<mlir::LLVM::ConstantOp>(
+              loc, entry_type, builder.getI64IntegerAttr(extent.value()));
+          builder.create<mlir::LLVM::StoreOp>(loc, extentValue, shapeEntryPtr);
         }
-        builder.create<mlir::LLVM::StoreOp>(loc, accumulator, strideEntryPtr);
+        // Finally, fill the strides.
+        // TODO(b/137624192): Take assigned layout into account.
+        entry_type = struct_type.getStructElementType(4).getArrayElementType();
+        Value* accumulator = nullptr;
+        for (int64 idx = shape.rank() - 1; idx >= 0; --idx) {
+          auto indexValue = builder.create<mlir::LLVM::ConstantOp>(
+              loc, offset_type, builder.getI64IntegerAttr(idx));
+          auto strideEntryPtr = builder.create<mlir::LLVM::GEPOp>(
+              loc, entry_type, descPtr,
+              llvm::ArrayRef<Value*>{zero, strideIndex, indexValue});
+          if (accumulator) {
+            auto strideValue = builder.create<mlir::LLVM::ConstantOp>(
+                loc, entry_type,
+                builder.getI64IntegerAttr(shape.dimensions(idx + 1)));
+            accumulator = builder.create<mlir::LLVM::MulOp>(
+                loc, entry_type, accumulator, strideValue);
+          } else {
+            accumulator = one;
+          }
+          builder.create<mlir::LLVM::StoreOp>(loc, accumulator, strideEntryPtr);
+        }
       }
       // Now we can use the descriptor instead of the original argument.
       value->replaceAllUsesWith(descPtr);

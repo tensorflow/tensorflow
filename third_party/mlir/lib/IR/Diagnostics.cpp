@@ -104,7 +104,7 @@ void DiagnosticArgument::print(raw_ostream &os) const {
 static StringRef twineToStrRef(const Twine &val,
                                std::vector<std::unique_ptr<char[]>> &strings) {
   // Allocate memory to hold this string.
-  llvm::SmallString<64> data;
+  SmallString<64> data;
   auto strRef = val.toStringRef(data);
   strings.push_back(std::unique_ptr<char[]>(new char[strRef.size()]));
   memcpy(&strings.back()[0], strRef.data(), strRef.size());
@@ -157,7 +157,7 @@ std::string Diagnostic::str() const {
 /// Attaches a note to this diagnostic. A new location may be optionally
 /// provided, if not, then the location defaults to the one specified for this
 /// diagnostic. Notes may not be attached to other notes.
-Diagnostic &Diagnostic::attachNote(llvm::Optional<Location> noteLoc) {
+Diagnostic &Diagnostic::attachNote(Optional<Location> noteLoc) {
   // We don't allow attaching notes to notes.
   assert(severity != DiagnosticSeverity::Note &&
          "cannot attach a note to a note");
@@ -285,9 +285,8 @@ void DiagnosticEngine::emit(Diagnostic diag) {
 /// Helper function used to emit a diagnostic with an optionally empty twine
 /// message. If the message is empty, then it is not inserted into the
 /// diagnostic.
-static InFlightDiagnostic emitDiag(Location location,
-                                   DiagnosticSeverity severity,
-                                   const llvm::Twine &message) {
+static InFlightDiagnostic
+emitDiag(Location location, DiagnosticSeverity severity, const Twine &message) {
   auto &diagEngine = location->getContext()->getDiagEngine();
   auto diag = diagEngine.emit(location, severity);
   if (!message.isTriviallyEmpty())
@@ -374,7 +373,7 @@ struct SourceMgrDiagnosticHandlerImpl {
 } // end namespace mlir
 
 /// Return a processable FileLineColLoc from the given location.
-static llvm::Optional<FileLineColLoc> getFileLineColLoc(Location loc) {
+static Optional<FileLineColLoc> getFileLineColLoc(Location loc) {
   switch (loc->getKind()) {
   case StandardAttributes::NameLocation:
     return getFileLineColLoc(loc.cast<NameLoc>().getChildLoc());
@@ -405,7 +404,7 @@ static llvm::SourceMgr::DiagKind getDiagKind(DiagnosticSeverity kind) {
 
 SourceMgrDiagnosticHandler::SourceMgrDiagnosticHandler(llvm::SourceMgr &mgr,
                                                        MLIRContext *ctx,
-                                                       llvm::raw_ostream &os)
+                                                       raw_ostream &os)
     : ScopedDiagnosticHandler(ctx), mgr(mgr), os(os),
       impl(new SourceMgrDiagnosticHandlerImpl()) {
   setHandler([this](Diagnostic &diag) { emitDiagnostic(diag); });
@@ -556,8 +555,7 @@ struct SourceMgrDiagnosticVerifierHandlerImpl {
   SourceMgrDiagnosticVerifierHandlerImpl() : status(success()) {}
 
   /// Returns the expected diagnostics for the given source file.
-  llvm::Optional<MutableArrayRef<ExpectedDiag>>
-  getExpectedDiags(StringRef bufName);
+  Optional<MutableArrayRef<ExpectedDiag>> getExpectedDiags(StringRef bufName);
 
   /// Computes the expected diagnostics for the given source buffer.
   MutableArrayRef<ExpectedDiag>
@@ -592,7 +590,7 @@ static StringRef getDiagKindStr(DiagnosticSeverity kind) {
 }
 
 /// Returns the expected diagnostics for the given source file.
-llvm::Optional<MutableArrayRef<ExpectedDiag>>
+Optional<MutableArrayRef<ExpectedDiag>>
 SourceMgrDiagnosticVerifierHandlerImpl::getExpectedDiags(StringRef bufName) {
   auto expectedDiags = expectedDiagsPerFile.find(bufName);
   if (expectedDiags != expectedDiagsPerFile.end())
@@ -681,7 +679,7 @@ SourceMgrDiagnosticVerifierHandlerImpl::computeExpectedDiags(
 }
 
 SourceMgrDiagnosticVerifierHandler::SourceMgrDiagnosticVerifierHandler(
-    llvm::SourceMgr &srcMgr, MLIRContext *ctx, llvm::raw_ostream &out)
+    llvm::SourceMgr &srcMgr, MLIRContext *ctx, raw_ostream &out)
     : SourceMgrDiagnosticHandler(srcMgr, ctx, out),
       impl(new SourceMgrDiagnosticVerifierHandlerImpl()) {
   // Compute the expected diagnostics for each of the current files in the

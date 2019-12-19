@@ -212,7 +212,7 @@ private:
 class OperationName {
 public:
   using RepresentationUnion =
-      llvm::PointerUnion<Identifier, const AbstractOperation *>;
+      PointerUnion<Identifier, const AbstractOperation *>;
 
   OperationName(AbstractOperation *op) : representation(op) {}
   OperationName(StringRef name, MLIRContext *context);
@@ -511,7 +511,7 @@ public:
 private:
   /// Elide large elements attributes if the number of elements is larger than
   /// the upper limit.
-  llvm::Optional<int64_t> elementsAttrElementLimit;
+  Optional<int64_t> elementsAttrElementLimit;
 
   /// Print debug information.
   bool printDebugInfoFlag : 1;
@@ -616,9 +616,8 @@ private:
 /// parameter.
 class ValueRange final
     : public detail::indexed_accessor_range_base<
-          ValueRange,
-          llvm::PointerUnion<Value *const *, OpOperand *, OpResult *>, Value *,
-          Value *, Value *> {
+          ValueRange, PointerUnion<Value *const *, OpOperand *, OpResult *>,
+          Value *, Value *, Value *> {
 public:
   using RangeBaseT::RangeBaseT;
 
@@ -646,7 +645,7 @@ public:
 private:
   /// The type representing the owner of this range. This is either a list of
   /// values, operands, or results.
-  using OwnerT = llvm::PointerUnion<Value *const *, OpOperand *, OpResult *>;
+  using OwnerT = PointerUnion<Value *const *, OpOperand *, OpResult *>;
 
   /// See `detail::indexed_accessor_range_base` for details.
   static OwnerT offset_base(const OwnerT &owner, ptrdiff_t index);

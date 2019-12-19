@@ -50,7 +50,7 @@ public:
 // - the op has no side-effects. If sideEffecting is Never, sideeffects of this
 //   op and its nested ops are ignored.
 static bool canBeHoisted(Operation *op,
-                         llvm::function_ref<bool(Value *)> definedOutside,
+                         function_ref<bool(Value *)> definedOutside,
                          SideEffecting sideEffecting,
                          SideEffectsInterface &interface) {
   // Check that dependencies are defined outside of loop.

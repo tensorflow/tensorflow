@@ -394,14 +394,14 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       // w * (x ' c) + b => (w ' c) x + b
       // so we have to update the weight.
       bool is_mul = llvm::isa<MulOp>(binary_op);
-      auto new_fitler =
+      auto new_filter =
           filter_cst.mapValues(filter_type.getElementType(), [&](APFloat it) {
             return (is_mul ? it * cst_value : it / cst_value).bitcastToAPInt();
           });
       // We recreate the constant op in case it is shared by the other ops. This
       // might increase the model size.
       auto new_filter_op = rewriter.create<ConstOp>(
-          fc_op.getLoc(), filter->getType(), new_fitler);
+          fc_op.getLoc(), filter->getType(), new_filter);
       fc_op.setOperand(0, binary_op->getOperand(0));
       if (fc_op.filter() != filter) {
         // This filter goes through quantize and dequantize ops. Then we just

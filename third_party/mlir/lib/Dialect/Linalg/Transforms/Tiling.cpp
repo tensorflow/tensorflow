@@ -315,7 +315,7 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
   return res;
 }
 
-llvm::Optional<TiledLinalgOp> mlir::linalg::tileLinalgOp(
+Optional<TiledLinalgOp> mlir::linalg::tileLinalgOp(
     OpBuilder &b, LinalgOp op, ArrayRef<Value *> tileSizes,
     ArrayRef<unsigned> permutation, OperationFolder *folder) {
   // 1. Enforce the convention that "tiling by zero" skips tiling a particular
@@ -356,7 +356,7 @@ llvm::Optional<TiledLinalgOp> mlir::linalg::tileLinalgOp(
   // 3. Create the tiled loops.
   LinalgOp res = op;
   SmallVector<IndexHandle, 4> ivs(loopRanges.size());
-  auto pivs = makeIndexHandlePointers(ivs);
+  auto pivs = makeHandlePointers(MutableArrayRef<IndexHandle>(ivs));
   LoopNestRangeBuilder(pivs, loopRanges)([&] {
     auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
@@ -389,7 +389,7 @@ llvm::Optional<TiledLinalgOp> mlir::linalg::tileLinalgOp(
   return TiledLinalgOp{res, loops};
 }
 
-llvm::Optional<TiledLinalgOp> mlir::linalg::tileLinalgOp(
+Optional<TiledLinalgOp> mlir::linalg::tileLinalgOp(
     OpBuilder &b, LinalgOp op, ArrayRef<int64_t> tileSizes,
     ArrayRef<unsigned> permutation, OperationFolder *folder) {
   if (tileSizes.empty())

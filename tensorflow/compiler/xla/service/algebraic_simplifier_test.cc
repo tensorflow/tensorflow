@@ -4756,7 +4756,7 @@ TEST_P(DotStrengthReductionTest, DotStrengthReduction) {
   const bool computation_should_be_modified =
       dot_should_be_transformed || (transpose_lhs && transpose_rhs);
   EXPECT_EQ(changed, computation_should_be_modified);
-  // The second pass of algebriac simplifer will remove dots without
+  // The second pass of algebraic simplifier will remove dots without
   // non-contracting dimensions or contracting dimensions.
   TF_ASSERT_OK_AND_ASSIGN(changed, simplifier.Run(module.get()));
   EXPECT_EQ(changed, computation_should_be_modified);

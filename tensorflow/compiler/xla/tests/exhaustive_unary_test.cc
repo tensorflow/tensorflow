@@ -165,7 +165,7 @@ using ExhaustiveUnaryTest = ExhaustiveOpTestBase<T, 1>;
 // Test parameter is a tuple containing
 //   - primitive type under test,
 //   - (begin, end) range under test, as zero-extended int64s bitcast to the
-//     primtive type under test.
+//     primitive type under test.
 template <PrimitiveType T>
 class Exhaustive32BitOrLessUnaryTest
     : public ExhaustiveUnaryTest<T>,
@@ -727,7 +727,7 @@ INSTANTIATE_TEST_SUITE_P(NormalValues, ExhaustiveF64UnaryTest,
 // Tests a total of 4000000000 inputs, with 16000000 inputs in each sub-test, to
 // keep the peak memory usage low.
 INSTANTIATE_TEST_SUITE_P(
-    LargeAndSmallMagnituedNormalValues, ExhaustiveF64UnaryTest,
+    LargeAndSmallMagnitudeNormalValues, ExhaustiveF64UnaryTest,
     ::testing::ValuesIn(GetFpValuesForMagnitudeExtremeNormals<double>(
         4000000000ull, 16000000)));
 
@@ -873,7 +873,7 @@ INSTANTIATE_TEST_SUITE_P(
 // Tests a total of 40000 ^ 2 inputs, with 4000 ^ 2 inputs in each sub-test, to
 // keep the peak memory usage low.
 INSTANTIATE_TEST_SUITE_P(
-    F32LargeAndSmallMagnituedNormalValues, ExhaustiveC64UnaryTest,
+    F32LargeAndSmallMagnitudeNormalValues, ExhaustiveC64UnaryTest,
     ::testing::Combine(
         ::testing::ValuesIn(GetFpValuesForMagnitudeExtremeNormals<float>(40000,
                                                                          4000)),
@@ -960,7 +960,7 @@ INSTANTIATE_TEST_SUITE_P(
 // Tests a total of 40000 ^ 2 inputs, with 2000 ^ 2 inputs in each sub-test, to
 // keep the peak memory usage low.
 INSTANTIATE_TEST_SUITE_P(
-    LargeAndSmallMagnituedNormalValues, ExhaustiveC128UnaryTest,
+    LargeAndSmallMagnitudeNormalValues, ExhaustiveC128UnaryTest,
     ::testing::Combine(
         ::testing::ValuesIn(
             GetFpValuesForMagnitudeExtremeNormals<double>(40000, 2000)),

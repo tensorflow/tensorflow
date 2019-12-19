@@ -52,6 +52,17 @@ using LLVMPatternListFiller =
 using LLVMTypeConverterMaker =
     std::function<std::unique_ptr<LLVMTypeConverter>(MLIRContext *)>;
 
+/// Collect a set of patterns to convert memory-related operations from the
+/// Standard dialect to the LLVM dialect, excluding the memory-related
+/// operations.
+void populateStdToLLVMMemoryConversionPatters(
+    LLVMTypeConverter &converter, OwningRewritePatternList &patterns);
+
+/// Collect a set of patterns to convert from the Standard dialect to the LLVM
+/// dialect, excluding the memory-related operations.
+void populateStdToLLVMNonMemoryConversionPatterns(
+    LLVMTypeConverter &converter, OwningRewritePatternList &patterns);
+
 /// Collect a set of patterns to convert from the Standard dialect to LLVM.
 void populateStdToLLVMConversionPatterns(LLVMTypeConverter &converter,
                                          OwningRewritePatternList &patterns);

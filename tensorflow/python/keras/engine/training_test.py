@@ -1476,17 +1476,9 @@ class TrainingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_add_loss_correctness(self):
-    class Bias(keras.layers.Layer):
-
-      def build(self, input_shape):
-        self.bias = self.add_variable('bias', (1,), initializer='zeros')
-
-      def call(self, inputs):
-        return inputs + self.bias
-
     inputs = keras.Input(shape=(1,))
     targets = keras.Input(shape=(1,))
-    outputs = Bias()(inputs)
+    outputs = testing_utils.Bias()(inputs)
     model = keras.Model([inputs, targets], outputs)
 
     model.add_loss(2 * math_ops.reduce_mean(
@@ -1503,6 +1495,29 @@ class TrainingTest(keras_parameterized.TestCase):
     x = np.array([[0.], [1.], [2.]])
     y = np.array([[0.5], [2.], [3.5]])
     history = model.fit([x, y], y, batch_size=3, epochs=5)
+    self.assertAllClose(history.history['loss'], [4., 3.6, 3.2, 2.8, 2.4], 1e-3)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_add_loss_with_sample_weight_correctness(self):
+    inputs = keras.Input(shape=(1,))
+    targets = keras.Input(shape=(1,))
+    sw = keras.Input(shape=(1,))
+    outputs = testing_utils.Bias()(inputs)
+    model = keras.Model([inputs, targets, sw], outputs)
+
+    model.add_loss(2 * math_ops.reduce_mean(
+        sw * keras.losses.mean_absolute_error(targets, outputs)))
+    model.add_loss(keras.losses.MeanAbsoluteError()(targets, outputs, sw))
+    model.compile(
+        keras.optimizer_v2.gradient_descent.SGD(0.025),
+        loss=keras.losses.MeanAbsoluteError(),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    x = np.array([[0.], [1.], [2.]])
+    y = np.array([[0.5], [2.], [3.5]])
+    w = np.array([1.25, 0.5, 1.25])
+    history = model.fit([x, y, w], y, batch_size=3, epochs=5, sample_weight=w)
     self.assertAllClose(history.history['loss'], [4., 3.6, 3.2, 2.8, 2.4], 1e-3)
 
   @keras_parameterized.run_all_keras_modes

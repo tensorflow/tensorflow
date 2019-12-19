@@ -56,6 +56,7 @@ limitations under the License.
 #include "mlir/Translation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -374,6 +375,10 @@ class Translator {
       mlir::TF::WhileOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
+  BufferOffset<tflite::Operator> BuildNumericVerifyOperator(
+      mlir::TFL::NumericVerifyOp op, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
   Optional<CustomOptionsOffset> CreateFlexOpCustomOptions(
       const ::tensorflow::NodeDef& node_def, const mlir::Location& loc);
 
@@ -610,6 +615,21 @@ BufferOffset<tflite::Operator> Translator::BuildWhileOperator(
                                 builtin_options);
 }
 
+BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
+    mlir::TFL::NumericVerifyOp op, const std::vector<int32_t>& operands,
+    const std::vector<int32_t>& results) {
+  float tolerance = op.tolerance().convertToFloat();
+  std::vector<uint8_t> custom_options(sizeof(float));
+  memcpy(custom_options.data(), &tolerance, sizeof(float));
+  auto opcode_index =
+      GetOpcodeIndex("NumericVerify", tflite::BuiltinOperator_CUSTOM);
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
+      /*builtin_options=*/0, builder_.CreateVector<uint8_t>(custom_options),
+      tflite::CustomOptionsFormat_FLEXBUFFERS);
+}
+
 Optional<CustomOptionsOffset> Translator::CreateFlexOpCustomOptions(
     const ::tensorflow::NodeDef& node_def, const mlir::Location& loc) {
   std::string node_def_str;
@@ -650,6 +670,16 @@ Translator::CreateFlexBuilderWithNodeAttrs(
       case ::tensorflow::AttrValue::kS:
         flex_builder->String(key, attr.s());
         break;
+      case ::tensorflow::AttrValue::kType: {
+        auto status_or_tfl_type = tflite::TfTypeToTflType(attr.type());
+        if (status_or_tfl_type.ok()) {
+          flex_builder->Int(key, status_or_tfl_type.ValueOrDie());
+        } else {
+          emitWarning(loc, "ignoring unsupported tensorflow type: ")
+              << std::to_string(attr.type());
+        }
+        break;
+      }
       case ::tensorflow::AttrValue::kI:
         flex_builder->Int(key, attr.i());
         break;
@@ -736,6 +766,9 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
 
     auto builtin_code = GetBuiltinOpCode(inst);
     if (!builtin_code) {
+      if (auto verify_op = dyn_cast<mlir::TFL::NumericVerifyOp>(inst)) {
+        return BuildNumericVerifyOperator(verify_op, operands, results);
+      }
       inst->emitOpError("is not a supported TFLite op");
       return llvm::None;
     }

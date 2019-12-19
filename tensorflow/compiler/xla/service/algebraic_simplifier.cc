@@ -673,7 +673,7 @@ Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
         bitcast, HloInstruction::CreateBitcast(bitcast->shape(), op));
   }
   // All bitcasts can be eliminated (assuming layout constraints are
-  // satisified).
+  // satisfied).
   ReplaceInstructionIfSameShape(bitcast, bitcast->mutable_operand(0));
   return Status::OK();
 }
@@ -692,7 +692,7 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
     return ReplaceWithNewInstruction(
         copy, HloInstruction::CreateUnary(copy->shape(), HloOpcode::kCopy, op));
   }
-  // All copies can be eliminated (assuming layout constraints are satisified).
+  // All copies can be eliminated (assuming layout constraints are satisfied).
   if (ReplaceInstructionIfSameShape(copy, copy->mutable_operand(0))) {
     return Status::OK();
   }
@@ -2735,7 +2735,7 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
 
   // Don't perform this optimization if either of the exponents is complex; this
   // identity is true only for real-valued exponents.  In addition, we cowardly
-  // refuse to do this transformation if the two expontents have different
+  // refuse to do this transformation if the two exponents have different
   // element types.
   if (lhs->opcode() == HloOpcode::kPower &&
       !ShapeUtil::ElementIsComplex(lhs->operand(1)->shape()) &&

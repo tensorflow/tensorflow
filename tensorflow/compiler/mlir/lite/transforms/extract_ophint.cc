@@ -413,13 +413,13 @@ void PreprocessTopoSortGraph(
       }
       operation_to_in_degrees->try_emplace(&op, input_ops.size());
       for (auto* input_op : input_ops) {
-        auto preceeding_op_it = operation_to_outputs->find(input_op);
-        if (preceeding_op_it == operation_to_outputs->end()) {
+        auto preceding_op_it = operation_to_outputs->find(input_op);
+        if (preceding_op_it == operation_to_outputs->end()) {
           auto result = operation_to_outputs->try_emplace(
               input_op, llvm::DenseSet<Operation*>());
-          preceeding_op_it = result.first;
+          preceding_op_it = result.first;
         }
-        preceeding_op_it->second.insert(&op);
+        preceding_op_it->second.insert(&op);
       }
     }
   }

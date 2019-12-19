@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import io
+import logging
 import os
 import tempfile
 
@@ -1543,6 +1545,37 @@ class FromSavedModelTest(TestModels):
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  def testOldConverterWarning(self):
+    """Test if the warning message when using TOCO is logged."""
+    saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
+    log = io.BytesIO() if six.PY2 else io.StringIO()
+    handler = logging.StreamHandler(log)
+    logging.root.addHandler(handler)
+    warning_message = 'Please consider switching to use new converter'
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.experimental_new_converter = False
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+    self.assertIn(warning_message, log.getvalue())
+    logging.root.removeHandler(handler)
+
+  def testNewConverterOptOut(self):
+    """Test if the opt out message when using New converter is logged."""
+    saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
+    log = io.BytesIO() if six.PY2 else io.StringIO()
+    handler = logging.StreamHandler(log)
+    logging.root.addHandler(handler)
+    optout_message = ('Using experimental converter: '
+                      'If you encountered a problem')
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.experimental_new_converter = True
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+    self.assertIn(optout_message, log.getvalue())
+    logging.root.removeHandler(handler)
 
   def testNoneBatchSize(self):
     """Test a SavedModel, with None in input tensor's shape."""

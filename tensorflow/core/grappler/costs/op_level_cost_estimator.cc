@@ -385,6 +385,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   const int quantize_v2_cost =
       EIGEN_COST(scalar_product_op<float>) + EIGEN_COST(scalar_max_op<float>) +
       EIGEN_COST(scalar_min_op<float>) + EIGEN_COST(scalar_round_op<float>);
+  const int quantize_and_dequantize_v2_cost =
+      quantize_v2_cost + EIGEN_COST(scalar_product_op<float>);
 
   // Unary ops alphabetically sorted
   elementwise_ops_.emplace("Acos", EIGEN_COST(scalar_acos_op<float>));
@@ -413,6 +415,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   elementwise_ops_.emplace("Log", EIGEN_COST(scalar_log_op<float>));
   elementwise_ops_.emplace("Log1p", EIGEN_COST(scalar_log1p_op<float>));
   elementwise_ops_.emplace("Neg", EIGEN_COST(scalar_opposite_op<float>));
+  elementwise_ops_.emplace("QuantizeAndDequantizeV2",
+                           quantize_and_dequantize_v2_cost);
   elementwise_ops_.emplace("QuantizeV2", quantize_v2_cost);
   elementwise_ops_.emplace("Reciprocal", EIGEN_COST(scalar_inverse_op<float>));
   elementwise_ops_.emplace("Rint", 1);

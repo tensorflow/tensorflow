@@ -20,7 +20,23 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 
+namespace {
+// Returns int or float DenseElementsAttr with scalar shape with the given
+// element type and the integer value.
+static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
+  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
+  if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
+    FloatAttr attr = FloatAttr::get(float_ty, raw_value);
+    return DenseElementsAttr::get(scalar_ty, attr);
+  }
+
+  auto int_ty = ty.cast<IntegerType>();
+  IntegerAttr attr = IntegerAttr::get(int_ty, raw_value);
+  return DenseElementsAttr::get(scalar_ty, attr);
+}
+
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_decompose_resource_ops.inc"
+}  // namespace
 
 void PopulateDecomposeResourceOpsPatterns(MLIRContext *context,
                                           OwningRewritePatternList *patterns) {

@@ -298,10 +298,12 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
       const Shape& expected_shape =
           entry_comp->parameter_instruction(i)->shape();
       const Shape& actual_shape = arguments[i].shape();
-      CHECK(expected_shape == actual_shape) << absl::StreamFormat(
-          "Shape mismatch on argument %d.  Expected %s, but was %s.", i,
-          expected_shape.ToString(/*print_layout=*/true),
-          actual_shape.ToString(/*print_layout=*/true));
+      CHECK(
+          Shape::Equal().IgnoreDynamicDimension()(expected_shape, actual_shape))
+          << absl::StreamFormat(
+                 "Shape mismatch on argument %d.  Expected %s, but was %s.", i,
+                 expected_shape.ToString(/*print_layout=*/true),
+                 actual_shape.ToString(/*print_layout=*/true));
     }
   }
 
@@ -327,7 +329,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
   //
   // Logically we want this lambda to capture `buffers` by move, ultimately our
   // functor needs to be wrapped in an std::function, and that requires its
-  // functor to be copyable.  Thus we perpitrate the hack of capturing buffers
+  // functor to be copyable.  Thus we perpetrate the hack of capturing buffers
   // "by shared pointer".
   //
   // We also need to change the types of some of the variables we capture:

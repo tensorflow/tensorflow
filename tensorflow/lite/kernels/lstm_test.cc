@@ -2548,7 +2548,212 @@ TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionNoPeephole) {
   for (int i = 0; i < input_sequence_size; ++i) {
     lstm.SetInput(lstm_input[i]);
     lstm.Invoke();
-    const auto x = lstm.GetOutput();
+    EXPECT_THAT(lstm.GetOutput(), ElementsAreArray(expected_output[i]));
+  }
+}
+
+TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionYesPeephole) {
+  // Hyper parameters.
+  const int n_batch = 2;
+  const int n_input = 5;
+  const int n_cell = 4;
+  const int n_output = 3;
+  const float cell_clip = 0.0;
+  const float proj_clip = 0.0;
+
+  // Model related weights.
+  const std::vector<float> input_to_input_weights = {
+      0.5,  0.6, 0.7,  -0.8, -0.9, 0.1,  0.2,  0.3,  -0.4, 0.5,
+      -0.8, 0.7, -0.6, 0.5,  -0.4, -0.5, -0.4, -0.3, -0.2, -0.1};
+
+  const std::vector<float> input_to_forget_weights = {
+      -0.6, -0.1, 0.3,  0.2,  0.9,  -0.5, -0.2, -0.4, 0.3,  -0.8,
+      -0.4, 0.3,  -0.5, -0.4, -0.6, 0.3,  -0.4, -0.6, -0.5, -0.5};
+
+  const std::vector<float> input_to_cell_weights = {
+      -0.4, -0.3, -0.2, -0.1, -0.5, 0.5, -0.2, -0.3, -0.2, -0.6,
+      0.6,  -0.1, -0.4, -0.3, -0.7, 0.7, -0.9, -0.5, 0.8,  0.6};
+
+  const std::vector<float> input_to_output_weights = {
+      -0.8, -0.4, -0.2, -0.9, -0.1, -0.7, 0.3, -0.3, -0.8, -0.2,
+      0.6,  -0.2, 0.4,  -0.7, -0.3, -0.5, 0.1, 0.5,  -0.6, -0.4};
+
+  const std::vector<float> input_gate_bias = {0.03, 0.15, 0.22, 0.38};
+
+  const std::vector<float> forget_gate_bias = {0.1, -0.3, -0.2, 0.1};
+
+  const std::vector<float> cell_gate_bias = {-0.05, 0.72, 0.25, 0.08};
+
+  const std::vector<float> output_gate_bias = {0.05, -0.01, 0.2, 0.1};
+
+  const std::vector<float> recurrent_to_input_weights = {
+      -0.2, -0.3, 0.4, 0.1, -0.5, 0.9, -0.2, -0.3, -0.7, 0.05, -0.2, -0.6};
+
+  const std::vector<float> recurrent_to_cell_weights = {
+      -0.3, 0.2, 0.1, -0.3, 0.8, -0.08, -0.2, 0.3, 0.8, -0.6, -0.1, 0.2};
+
+  const std::vector<float> recurrent_to_forget_weights = {
+      -0.5, -0.3, -0.5, -0.2, 0.6, 0.4, 0.9, 0.3, -0.1, 0.2, 0.5, 0.2};
+
+  const std::vector<float> recurrent_to_output_weights = {
+      0.3, -0.1, 0.1, -0.2, -0.5, -0.7, -0.2, -0.6, -0.1, -0.4, -0.7, -0.2};
+
+  const std::vector<float> cell_to_input_weights = {0.3, -0.1, 0.1, -0.2};
+
+  const std::vector<float> cell_to_forget_weights = {0.2, -0.1, 0.1, -0.2};
+
+  const std::vector<float> cell_to_output_weights = {0.3, -0.1, 0.1, -0.3};
+
+  const std::vector<float> input_layer_norm_coefficients = {0.1, 0.2, 0.3, 0.5};
+  const std::vector<float> forget_layer_norm_coefficients = {0.2, 0.2, 0.4,
+                                                             0.3};
+  const std::vector<float> cell_layer_norm_coefficients = {0.7, 0.2, 0.3, 0.8};
+  const std::vector<float> output_layer_norm_coefficients = {0.6, 0.2, 0.2,
+                                                             0.5};
+
+  const std::vector<float> projection_weights = {
+      -0.1, 0.2, 0.01, -0.2, 0.1, 0.5, 0.3, 0.08, 0.07, 0.2, -0.4, 0.2};
+
+  // Input shapes.
+  const std::vector<std::vector<int32_t>> inputs = {
+      {n_batch, n_input},  // input tensor
+
+      {n_cell, n_input},  // input_to_input_weight tensor
+      {n_cell, n_input},  // input_to_forget_weight tensor
+      {n_cell, n_input},  // input_to_cell_weight tensor
+      {n_cell, n_input},  // input_to_output_weight tensor
+
+      {n_cell, n_output},  // recurrent_to_input_weight tensor
+      {n_cell, n_output},  // recurrent_to_forget_weight tensor
+      {n_cell, n_output},  // recurrent_to_cell_weight tensor
+      {n_cell, n_output},  // recurrent_to_output_weight tensor
+
+      {n_cell},  // cell_to_input_weight tensor
+      {n_cell},  // cell_to_forget_weight tensor
+      {n_cell},  // cell_to_output_weight tensor
+
+      {n_cell},  // input_gate_bias tensor
+      {n_cell},  // forget_gate_bias tensor
+      {n_cell},  // cell_bias tensor
+      {n_cell},  // output_gate_bias tensor
+
+      {n_output, n_cell},  // projection_weight tensor
+      {0},                 // projection_bias tensor
+
+      {n_batch, n_output},  // activation_state tensor
+      {n_batch, n_cell},    // cell_state tensor
+
+      {n_cell},  // input_layer_norm_coefficient tensor
+      {n_cell},  // forget_layer_norm_coefficient tensor
+      {n_cell},  // cell_layer_norm_coefficient tensor
+      {n_cell},  // output_layer_norm_coefficient tensor
+  };
+
+  // Input ranges.
+  const std::vector<std::pair<float, float>> ranges = {
+      {-1.0, 127.0 / 128},  // input tensor
+      {-1.0, 1.0},          // input_to_input_weight tensor
+      {-1.0, 1.0},          // input_to_forget_weight tensor
+      {-1.0, 1.0},          // input_to_cell_weight tensor
+      {-1.0, 1.0},          // input_to_output_weight tensor
+
+      {-1.0, 1.0},  // recurrent_to_input_weight tensor
+      {-0.9, 0.9},  // recurrent_to_forget_weight tensor
+      {-1.0, 1.0},  // recurrent_to_cell_weight tensor
+      {-1.0, 1.0},  // recurrent_to_output_weight tensor
+
+      {-0.3, 0.3},  // cell_to_input_weight tensor
+      {-0.3, 0.3},  // cell_to_forget_weight tensor
+      {-0.3, 0.3},  // cell_to_output_weight tensor
+
+      {-100, 100},  // input_gate_bias tensor
+      {-100, 80},   // forget_gate_bias tensor
+      {-100, 100},  // cell_bias tensor
+      {-100, 100},  // output_gate_bias tensor
+
+      {-0.5, 0.5},  // projection_weight tensor
+      {-1, 1},      // projection_bias tensor
+
+      {-1.0, 32767.0 / 32768},  // activation_state tensor
+      {-1, 1},                  // cell_state tensor
+
+      {-0.5, 0.5},  // input_layer_norm_coefficient tensor
+      {-0.5, 0.5},  // forget_layer_norm_coefficient tensor
+      {-1.0, 1.0},  // cell_layer_norm_coefficient tensor
+      {-1.0, 1.0},  // output_layer_norm_coefficient tensor
+      // Output scale is the same as input activation scale and only activation
+      // scale is used in the op, so this is only provided for clarity.
+      {-1.0, 32767.0 / 32768},  // output tensor.
+  };
+
+  // The scale and zero point of intermediate tensors.
+  std::vector<std::pair<float, int>> intermediates = {
+      {0.007059, 0}, {0.007812, 0}, {0.007059, 0}, {0.007812, 0}, {0.007, 0}};
+
+  // Create model.
+  LSTMIntegerOpModel lstm(n_batch, n_input, n_cell, n_output,
+                          /*use_cifg=*/false, /*use_peephole=*/true,
+                          /*use_projection_weights=*/true,
+                          /*use_projection_bias=*/false,
+                          /*use_layer_norm=*/true, cell_clip, proj_clip, inputs,
+                          ranges, intermediates);
+
+  // Set weights.
+  lstm.SetInputToInputWeights(input_to_input_weights);
+  lstm.SetInputToCellWeights(input_to_cell_weights);
+  lstm.SetInputToForgetWeights(input_to_forget_weights);
+  lstm.SetInputToOutputWeights(input_to_output_weights);
+
+  lstm.SetInputGateBias(input_gate_bias);
+  lstm.SetCellBias(cell_gate_bias);
+  lstm.SetForgetGateBias(forget_gate_bias);
+  lstm.SetOutputGateBias(output_gate_bias);
+
+  lstm.SetRecurrentToInputWeights(recurrent_to_input_weights);
+  lstm.SetRecurrentToCellWeights(recurrent_to_cell_weights);
+  lstm.SetRecurrentToForgetWeights(recurrent_to_forget_weights);
+  lstm.SetRecurrentToOutputWeights(recurrent_to_output_weights);
+
+  lstm.SetCellToInputWeights(cell_to_input_weights);
+  lstm.SetCellToForgetWeights(cell_to_forget_weights);
+  lstm.SetCellToOutputWeights(cell_to_output_weights);
+
+  lstm.SetProjectionWeights(projection_weights);
+
+  lstm.SetInputLayerNormCoefficients(input_layer_norm_coefficients);
+  lstm.SetForgetLayerNormCoefficients(forget_layer_norm_coefficients);
+  lstm.SetCellLayerNormCoefficients(cell_layer_norm_coefficients);
+  lstm.SetOutputLayerNormCoefficients(output_layer_norm_coefficients);
+
+  // Model inputs. sequence -batch - input
+  const std::vector<std::vector<float>> lstm_input = {
+      {
+          0.7, 0.8, 0.1, 0.2, 0.3,  //
+          0.8, 0.1, 0.2, 0.4, 0.5,  //
+      },
+      {
+          0.2, 0.7, 0.7, 0.1, 0.7,  //
+          0.3, 0.2, 0.9, 0.8, 0.1,  //
+      },
+      {
+          0.7, 0.8, 0.1, 0.2, 0.3,  //
+          0.3, 0.2, 0.9, 0.8, 0.1,  //
+      },
+  };
+
+  // Expected outputs.
+  const std::vector<std::vector<int8_t>> expected_output = {
+      {127, 127, -16, -21, 127, 127},
+      {23, 127, 127, -128, 127, 127},
+      {127, 127, 127, -128, 127, 127},
+  };
+
+  // Invoke and verify the result.
+  const int input_sequence_size = lstm_input.size();
+  EXPECT_GT(input_sequence_size, 0);
+  for (int i = 0; i < input_sequence_size; ++i) {
+    lstm.SetInput(lstm_input[i]);
+    lstm.Invoke();
     EXPECT_THAT(lstm.GetOutput(), ElementsAreArray(expected_output[i]));
   }
 }

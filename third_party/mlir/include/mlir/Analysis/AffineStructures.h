@@ -795,10 +795,10 @@ AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 /// 'cst' contains constraints that connect newly introduced local identifiers
 /// to existing dimensional and symbolic identifiers. See documentation for
 /// AffineExprFlattener on how mod's and div's are flattened.
-LogicalResult
-getFlattenedAffineExpr(AffineExpr expr, unsigned numDims, unsigned numSymbols,
-                       llvm::SmallVectorImpl<int64_t> *flattenedExpr,
-                       FlatAffineConstraints *cst = nullptr);
+LogicalResult getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
+                                     unsigned numSymbols,
+                                     SmallVectorImpl<int64_t> *flattenedExpr,
+                                     FlatAffineConstraints *cst = nullptr);
 
 /// Flattens the result expressions of the map to their corresponding flattened
 /// forms and set in 'flattenedExprs'. Returns failure if any expression in the
@@ -810,12 +810,14 @@ getFlattenedAffineExpr(AffineExpr expr, unsigned numDims, unsigned numSymbols,
 /// method should be used instead of repeatedly calling getFlattenedAffineExpr
 /// since local variables added to deal with div's and mod's will be reused
 /// across expressions.
-LogicalResult getFlattenedAffineExprs(
-    AffineMap map, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
-    FlatAffineConstraints *cst = nullptr);
-LogicalResult getFlattenedAffineExprs(
-    IntegerSet set, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
-    FlatAffineConstraints *cst = nullptr);
+LogicalResult
+getFlattenedAffineExprs(AffineMap map,
+                        std::vector<SmallVector<int64_t, 8>> *flattenedExprs,
+                        FlatAffineConstraints *cst = nullptr);
+LogicalResult
+getFlattenedAffineExprs(IntegerSet set,
+                        std::vector<SmallVector<int64_t, 8>> *flattenedExprs,
+                        FlatAffineConstraints *cst = nullptr);
 
 } // end namespace mlir.
 

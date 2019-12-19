@@ -287,6 +287,18 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
               llvm::ArrayRef<Value*>(operands.begin() + 2, operands.end()))
           .getOperation();
     }
+    case HloOpcode::kInfeed: {
+      attributes.push_back(builder_->getNamedAttr(
+          "infeed_config", mlir::StringAttr::get(instruction->infeed_config(),
+                                                 builder_->getContext())));
+      MakeAndReturn(InfeedOp);
+    }
+    case HloOpcode::kOutfeed: {
+      attributes.push_back(builder_->getNamedAttr(
+          "outfeed_config", mlir::StringAttr::get(instruction->outfeed_config(),
+                                                  builder_->getContext())));
+      MakeAndReturn(OutfeedOp);
+    }
     case HloOpcode::kPad: {
       const auto& padding_config = instruction->padding_config();
       llvm::SmallVector<int64_t, 4> edge_padding_low;
@@ -436,6 +448,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       // part of the HLO instruction. They are only a convenience in the XLA
       // builder API.
       NoAttributeCase(kAdd, AddOp);
+      NoAttributeCase(kAfterAll, AfterAllOp);
       NoAttributeCase(kAnd, AndOp);
       NoAttributeCase(kAtan2, Atan2Op);
       NoAttributeCase(kBitcastConvert, BitcastConvertOp);
@@ -561,6 +574,9 @@ StatusOr<mlir::RankedTensorType> HloFunctionImporter::ConvertTensorType(
 }
 
 StatusOr<mlir::Type> HloFunctionImporter::ConvertType(const Shape& shape) {
+  if (shape.IsToken()) {
+    return mlir::xla_hlo::TokenType::get(builder_->getContext());
+  }
   if (shape.IsTuple()) {
     mlir::Type mlir_type;
     llvm::SmallVector<mlir::Type, 4> contents;

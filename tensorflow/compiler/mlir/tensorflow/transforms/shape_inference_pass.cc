@@ -46,7 +46,6 @@ namespace {
 
 // This transformation pass propagate shapes on the TensorFlow graph.
 // It is a ModulePass in order to be able to change function types.
-// TODO(aminim): at the moment the shape inference is intra-procedural.
 struct ShapeInference : public ModulePass<ShapeInference> {
   void runOnModule() override {
     auto module = getModule();

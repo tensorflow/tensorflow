@@ -4197,38 +4197,89 @@ def where(condition, x=None, y=None, name=None):
 
 @tf_export("where", v1=["where_v2"])
 def where_v2(condition, x=None, y=None, name=None):
-  """Return the elements, either from `x` or `y`, depending on the `condition`.
+  """Return the elements where `condition` is `True` (multiplexing `x` and `y`).
 
-  If both `x` and `y` are None, then this operation returns the coordinates of
-  true elements of `condition`.  The coordinates are returned in a 2-D tensor
-  where the first dimension (rows) represents the number of true elements, and
-  the second dimension (columns) represents the coordinates of the true
-  elements. Keep in mind, the shape of the output tensor can vary depending on
-  how many true values there are in input. Indices are output in row-major
-  order.
+  This operator has two modes: in one mode both `x` and `y` are provided, in
+  another mode neither are provided. `condition` is always expected to be a
+  `tf.Tensor` of type `bool`.
 
-  If both non-None, `condition`, `x` and `y` must be broadcastable to the same
-  shape.
+  #### Retrieving indices of `True` elements
 
-  The `condition` tensor acts as a mask that chooses, based on the value at each
-  element, whether the corresponding element / row in the output should be taken
-  from `x` (if true) or `y` (if false).
+  If `x` and `y` are not provided (both are None):
+
+  `tf.where` will return the indices of `condition` that are `True`, in
+  the form of a 2-D tensor with shape (n, d).
+  (Where n is the number of matching indices in `condition`,
+  and d is the number of dimensions in `condition`).
+
+  Indices are output in row-major order.
+
+  >>> tf.where([True, False, False, True])
+  <tf.Tensor: shape=(2, 1), dtype=int64, numpy=
+  array([[0],
+         [3]])>
+
+  >>> tf.where([[True, False], [False, True]])
+  <tf.Tensor: shape=(2, 2), dtype=int64, numpy=
+  array([[0, 0],
+         [1, 1]])>
+
+  >>> tf.where([[[True, False], [False, True], [True, True]]])
+  <tf.Tensor: shape=(4, 3), dtype=int64, numpy=
+  array([[0, 0, 0],
+         [0, 1, 1],
+         [0, 2, 0],
+         [0, 2, 1]])>
+
+  #### Multiplexing between `x` and `y`
+
+  If `x` and `y` are provided (both have non-None values):
+
+  `tf.where` will choose an output shape from the shapes of `condition`, `x`,
+  and `y` that all three shapes are
+  [broadcastable](https://docs.scipy.org/doc/numpy/reference/ufuncs.html) to.
+
+  The `condition` tensor acts as a mask that chooses whether the corresponding
+  element / row in the output should be taken from `x`
+  (if the elemment in `condition is True) or `y` (if it is false).
+
+  >>> tf.where([True, False, False, True], [1,2,3,4], [100,200,300,400])
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 200, 300,   4],
+  dtype=int32)>
+  >>> tf.where([True, False, False, True], [1,2,3,4], [100])
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 100, 100,   4],
+  dtype=int32)>
+  >>> tf.where([True, False, False, True], [1,2,3,4], 100)
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 100, 100,   4],
+  dtype=int32)>
+  >>> tf.where([True, False, False, True], 1, 100)
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 100, 100,   1],
+  dtype=int32)>
+
+  >>> tf.where(True, [1,2,3,4], 100)
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([1, 2, 3, 4],
+  dtype=int32)>
+  >>> tf.where(False, [1,2,3,4], 100)
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([100, 100, 100, 100],
+  dtype=int32)>
 
   Args:
-    condition: A `Tensor` of type `bool`
-    x: A Tensor which is of the same type as `y`, and may be broadcastable with
-      `condition` and `y`.
-    y: A Tensor which is of the same type as `x`, and may be broadcastable with
-      `condition` and `x`.
+    condition: A `tf.Tensor` of type `bool`
+    x: If provided, a Tensor which is of the same type as `y`, and has a shape
+      broadcastable with `condition` and `y`.
+    y: If provided, a Tensor which is of the same type as `y`, and has a shape
+      broadcastable with `condition` and `x`.
     name: A name of the operation (optional).
 
   Returns:
-    A `Tensor` with the same type as `x` and `y`, and shape that
-      is broadcast from `condition`, `x`, and `y`, if `x`, `y` are non-None.
+    If `x` and `y` are provided:
+      A `Tensor` with the same type as `x` and `y`, and shape that
+      is broadcast from `condition`, `x`, and `y`.
     Otherwise, a `Tensor` with shape `(num_true, dim_size(condition))`.
 
   Raises:
-    ValueError: When exactly one of `x` or `y` is non-None.
+    ValueError: When exactly one of `x` or `y` is non-None, or the shapes
+      are not all broadcastable.
   """
   if x is None and y is None:
     with ops.name_scope(name, "Where", [condition]) as name:

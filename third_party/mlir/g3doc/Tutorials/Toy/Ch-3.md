@@ -36,7 +36,7 @@ def transpose_transpose(x) {
 
 Which corresponds to the following IR:
 
-```MLIR(.mlir)
+```mlir
 func @transpose_transpose(%arg0: tensor<*xf64>) -> tensor<*xf64> {
   %0 = "toy.transpose"(%arg0) : (tensor<*xf64>) -> tensor<*xf64>
   %1 = "toy.transpose"(%0) : (tensor<*xf64>) -> tensor<*xf64>
@@ -131,7 +131,7 @@ similar way to LLVM:
 Finally, we can run `toyc-ch3 test/transpose_transpose.toy -emit=mlir -opt` and
 observe our pattern in action:
 
-```MLIR(.mlir)
+```mlir
 func @transpose_transpose(%arg0: tensor<*xf64>) -> tensor<*xf64> {
   %0 = "toy.transpose"(%arg0) : (tensor<*xf64>) -> tensor<*xf64>
   "toy.return"(%arg0) : (tensor<*xf64>) -> ()
@@ -146,13 +146,13 @@ input. The Canonicalizer knows to clean up dead operations; however, MLIR
 conservatively assumes that operations may have side-effects. We can fix this by
 adding a new trait, `NoSideEffect`, to our `TransposeOp`:
 
-```TableGen(.td):
+```tablegen:
 def TransposeOp : Toy_Op<"transpose", [NoSideEffect]> {...}
 ```
 
 Let's retry now `toyc-ch3 test/transpose_transpose.toy -emit=mlir -opt`:
 
-```MLIR(.mlir)
+```mlir
 func @transpose_transpose(%arg0: tensor<*xf64>) -> tensor<*xf64> {
   "toy.return"(%arg0) : (tensor<*xf64>) -> ()
 }
@@ -169,7 +169,7 @@ Declarative, rule-based pattern-match and rewrite (DRR) is an operation
 DAG-based declarative rewriter that provides a table-based syntax for
 pattern-match and rewrite rules:
 
-```TableGen(.td):
+```tablegen:
 class Pattern<
     dag sourcePattern, list<dag> resultPatterns,
     list<dag> additionalConstraints = [],
@@ -179,7 +179,7 @@ class Pattern<
 A redundant reshape optimization similar to SimplifyRedundantTranspose can be
 expressed more simply using DRR as follows:
 
-```TableGen(.td):
+```tablegen:
 // Reshape(Reshape(x)) = Reshape(x)
 def ReshapeReshapeOptPattern : Pat<(ReshapeOp(ReshapeOp $arg)),
                                    (ReshapeOp $arg)>;
@@ -193,7 +193,7 @@ transformation is conditional on some properties of the arguments and results.
 An example is a transformation that eliminates reshapes when they are redundant,
 i.e. when the input and output shapes are identical.
 
-```TableGen(.td):
+```tablegen:
 def TypesAreIdentical : Constraint<CPred<"$0->getType() == $1->getType()">>;
 def RedundantReshapeOptPattern : Pat<
   (ReshapeOp:$res $arg), (replaceWithValue $arg),
@@ -207,7 +207,7 @@ C++. An example of such an optimization is FoldConstantReshape, where we
 optimize Reshape of a constant value by reshaping the constant in place and
 eliminating the reshape operation.
 
-```TableGen(.td):
+```tablegen:
 def ReshapeConstant : NativeCodeCall<"$0.reshape(($1->getType()).cast<ShapedType>())">;
 def FoldConstantReshapeOptPattern : Pat<
   (ReshapeOp:$res (ConstantOp $arg)),
@@ -226,7 +226,7 @@ def main() {
 }
 ```
 
-```MLIR(.mlir)
+```mlir
 module {
   func @main() {
     %0 = "toy.constant"() {value = dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf64>}
@@ -243,7 +243,7 @@ module {
 We can try to run `toyc-ch3 test/trivialReshape.toy -emit=mlir -opt` and observe
 our pattern in action:
 
-```MLIR(.mlir)
+```mlir
 module {
   func @main() {
     %0 = "toy.constant"() {value = dense<[[1.000000e+00], [2.000000e+00]]> \

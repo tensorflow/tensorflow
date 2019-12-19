@@ -783,3 +783,20 @@ tf_cc_test(
         "//tensorflow/core:worker_proto_cc",
     ],
 )
+
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "call_options.h",
+        "message_wrappers.h",
+        "rendezvous_mgr_interface.h",
+        "server_lib.h",
+        "worker_cache.h",
+        "worker_env.h",
+        "worker_interface.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)

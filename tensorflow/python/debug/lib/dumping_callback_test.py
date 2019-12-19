@@ -88,6 +88,8 @@ class TracingCallbackTest(
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
       ("CurtHealth", "CURT_HEALTH"),
+      ("ConciseHealth", "CONCISE_HEALTH"),
+      ("Shape", "SHAPE"),
       ("FullTensor", "FULL_TENSOR"),
   )
   def testPureEagerOpExecution(self, tensor_debug_mode):
@@ -146,6 +148,26 @@ class TracingCallbackTest(
             self.assertAllClose(
                 tensor_util.MakeNdarray(execution.tensor_protos[0]),
                 [-1.0, 0.0])
+        elif tensor_debug_mode == "CONCISE_HEALTH":
+          self.assertLen(execution.tensor_protos, 1)
+          if execution.op_type in ("AddV2", "Mul", "RealDiv"):
+            # 1st element: -1 is the unset tensor_id for eager op execution.
+            # 2nd element: each scalar tensor has 1 element.
+            # Remaining elements: no -inf, inf or nan in these
+            self.assertAllClose(
+                tensor_util.MakeNdarray(execution.tensor_protos[0]),
+                [-1, 1, 0, 0, 0])
+        elif tensor_debug_mode == "SHAPE":
+          self.assertLen(execution.tensor_protos, 1)
+          if execution.op_type in ("AddV2", "Mul", "RealDiv"):
+            # 1st element: -1 is the unset tensor_id for eager op execution.
+            # 2nd element: dtype enum value (float32).
+            # 3rd element: rank (scalar).
+            # 4th element: element count (4).
+            # Remaining elements: shape at fixed length (6).
+            self.assertAllClose(
+                tensor_util.MakeNdarray(execution.tensor_protos[0]),
+                [-1, 1, 0, 1, 0, 0, 0, 0, 0, 0])
         elif tensor_debug_mode == "FULL_TENSOR":
           # Under the FULL_TENSOR mode, the value of the tensor should be
           # available through `tensor_protos`.
@@ -203,8 +225,126 @@ class TracingCallbackTest(
         next(graph_trace_iter)
 
   @parameterized.named_parameters(
+      ("CurtHealth", "CURT_HEALTH"),
+      ("ConciseHealth", "CONCISE_HEALTH"),
+      ("Shape", "SHAPE"),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def testModesSummarizingBadNumericalValue(self, tensor_debug_mode):
+    writer = dumping_callback.enable_dump_debug_info(
+        self.dump_root, tensor_debug_mode=tensor_debug_mode)
+
+    @def_function.function
+    def func(x, y):
+      return (x + y) / (x - y)
+
+    x = np.array([-3, -1, 0, 0, 1, 1, 1, 2], dtype=np.float16)
+    y = np.array([2, -1, 0, 0, 1, 1, 1, 3], dtype=np.float16)
+    # (x + y) / (x - y) = [0.2, -inf, nan, nan, inf, inf, inf, -5].
+    self.evaluate(func(x, y))
+
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+
+    stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
+    (context_ids,
+     _, op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
+
+    (op_names, _, _,
+     tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
+    executed_op_types = [op_name_to_op_type[op_name] for op_name in op_names]
+    self.assertCountEqual(executed_op_types, ["AddV2", "Sub", "RealDiv"])
+
+    if tensor_debug_mode == "CURT_HEALTH":
+      for op_type, tensor_value in zip(executed_op_types, tensor_values):
+        self.assertLen(tensor_value, 2)
+        # 1st element: tensor_id, should be >= 0.
+        # TODO(cais): Assert on detailed value once Function-graph association
+        # is in place.
+        self.assertGreaterEqual(tensor_value[0], 0)
+        # 2nd element: 0 means there is no inf or nan.
+        if op_type == "RealDiv":
+          self.assertEqual(tensor_value[1], 1)
+        else:
+          self.assertEqual(tensor_value[1], 0)
+    elif tensor_debug_mode == "CONCISE_HEALTH":
+      for op_type, tensor_value in zip(executed_op_types, tensor_values):
+        self.assertLen(tensor_value, 5)
+        # 1st element: tensor_id, should be >= 0.
+        # TODO(cais): Assert on detailed value once Function-graph association
+        # is in place.
+        self.assertGreaterEqual(tensor_value[0], 0)
+        # 2nd element: element count.
+        self.assertEqual(tensor_value[1], 8)
+        # Remaining 3 elements: The counts of -inf, inf and nan.
+        if op_type == "RealDiv":
+          self.assertAllClose(tensor_value[2:], [1, 3, 2])
+        else:
+          self.assertAllClose(tensor_value[2:], [0, 0, 0])
+    else:  # SHAPE.
+      for op_type, tensor_value in zip(executed_op_types, tensor_values):
+        self.assertLen(tensor_value, 10)
+        # 1st element: tensor_id, should be >= 0.
+        # TODO(cais): Assert on detailed value once Function-graph association
+        # is in place.
+        self.assertGreaterEqual(tensor_value[0], 0)
+        # 2nd element: dtype enum value (float16).
+        self.assertEqual(tensor_value[1], 19)
+        # 3rd element: rank (1)
+        self.assertEqual(tensor_value[2], 1)
+        # 4th element: element count.
+        self.assertEqual(tensor_value[3], 8)
+        # Remaining elements: shape at fixed length.
+        self.assertAllClose(tensor_value[4:], [8, 0, 0, 0, 0, 0])
+
+  @parameterized.named_parameters(
+      ("Shape", "SHAPE"),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def testBooleanTensors(self, tensor_debug_mode):
+    writer = dumping_callback.enable_dump_debug_info(
+        self.dump_root, tensor_debug_mode=tensor_debug_mode)
+
+    @def_function.function
+    def func(x, y):
+      return math_ops.logical_not(math_ops.logical_and(x, y))
+
+    x = np.array([[False, False], [True, True]], dtype=np.bool)
+    y = np.array([[False, True], [False, True]], dtype=np.bool)
+    self.assertAllEqual(
+        self.evaluate(func(x, y)), [[True, True], [True, False]])
+
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+
+    stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
+    (context_ids,
+     _, op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
+
+    (op_names, _, _,
+     tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
+    executed_op_types = [op_name_to_op_type[op_name] for op_name in op_names]
+    self.assertEqual(executed_op_types, ["LogicalAnd", "LogicalNot"])
+
+    for tensor_value in tensor_values:
+      # 1st element: tensor_id, should be >= 0.
+      # TODO(cais): Assert on detailed value once Function-graph association
+      # is in place.
+      self.assertGreaterEqual(tensor_value[0], 0)
+      # 2nd element: dtype enum value (bool).
+      self.assertEqual(tensor_value[1], 10)
+      # 3rd element: rank (2)
+      self.assertEqual(tensor_value[2], 2)
+      # 4th element: element count.
+      self.assertEqual(tensor_value[3], 4)
+      # Remaining elements: shape at fixed length.
+      self.assertAllClose(tensor_value[4:], [2, 2, 0, 0, 0, 0])
+
+  @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
       ("CurtHealth", "CURT_HEALTH"),
+      ("ConciseHealth", "CONCISE_HEALTH"),
+      ("Shape", "SHAPE"),
       ("FullTensor", "FULL_TENSOR"),
   )
   @test_util.run_in_graph_and_eager_modes
@@ -276,6 +416,30 @@ class TracingCallbackTest(
         self.assertGreaterEqual(tensor_value[0], 0)
         # 2nd element: 0 means there is no inf or nan.
         self.assertEqual(tensor_value[1], 0)
+    elif tensor_debug_mode == "CONCISE_HEALTH":
+      for tensor_value in tensor_values:
+        self.assertLen(tensor_value, 5)
+        # 1st element: tensor_id, should be >= 0.
+        # TODO(cais): Assert on detailed value once Function-graph association
+        # is in place.
+        self.assertGreaterEqual(tensor_value[0], 0)
+        # 2nd element: element count. Remaining elements: all zero because there
+        # is no -inf, inf or nan.
+        self.assertAllClose(tensor_value[1:], [1, 0, 0, 0])
+    elif tensor_debug_mode == "SHAPE":
+      for tensor_value in tensor_values:
+        # 1st element: tensor_id, should be >= 0.
+        # TODO(cais): Assert on detailed value once Function-graph association
+        # is in place.
+        self.assertGreaterEqual(tensor_value[0], 0)
+        # 2nd element: dtype (float32).
+        self.assertGreaterEqual(tensor_value[1], 1)
+        # 3rd element: rank (scalar).
+        self.assertGreaterEqual(tensor_value[2], 0)
+        # 4th element: element count.
+        self.assertGreaterEqual(tensor_value[3], 1)
+        # Remaining elements: shape padded to fixed length.
+        self.assertAllClose(tensor_value[4:], [0, 0, 0, 0, 0, 0])
     elif tensor_debug_mode == "FULL_TENSOR":
       self.assertAllClose(tensor_values[0], 5.0)  # 1st AddV2 op.
       self.assertAllClose(tensor_values[1], np.log(5.0))  # Log op.
@@ -713,6 +877,8 @@ class TracingCallbackTest(
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
       ("CurtHealth", "CURT_HEALTH"),
+      ("ConciseHealth", "CONCISE_HEALTH"),
+      ("Shape", "SHAPE"),
       ("FullTensor", "FULL_TENSOR"),
   )
   def testMultiThreadedExecutionWithSameSetting(self, tensor_debug_mode):
@@ -774,6 +940,35 @@ class TracingCallbackTest(
         self.assertGreaterEqual(tensor_value[0], 0)
         # 2nd element: 0 means there is no inf or nan.
         self.assertEqual(tensor_value[1], 0)
+    elif tensor_debug_mode == "CONCISE_HEALTH":
+      for tensor_value in tensor_values:
+        self.assertLen(tensor_value, 5)
+        # 1st element: tensor_id, should be >= 0.
+        # TODO(cais): Assert on detailed value once Function-graph association
+        # is in place.
+        self.assertGreaterEqual(tensor_value[0], 0)
+        # 2nd element: element count. Remaining elements: all zero because there
+        # is no -inf, inf or nan.
+        self.assertAllClose(tensor_value[1:], [1, 0, 0, 0])
+    elif tensor_debug_mode == "SHAPE":
+      mul_values = [
+          tensor_values[i]
+          for i, op_type in enumerate(executed_op_types)
+          if op_type == "Mul"
+      ]
+      for mul_value in mul_values:
+        # 1st element: tensor_id, should be >= 0.
+        # TODO(cais): Assert on detailed value once Function-graph association
+        # is in place.
+        self.assertGreaterEqual(mul_value[0], 0)
+        # 2nd element: dtype enum value (float32).
+        self.assertEqual(mul_value[1], 1)
+        # 3rd element: rank.
+        self.assertEqual(mul_value[2], 0)
+        # 3rd element: element count.
+        self.assertEqual(mul_value[3], 1)
+        # Remaining elements: shape padded to a fixed length.
+        self.assertAllClose(mul_value[4:], [0, 0, 0, 0, 0, 0])
     elif tensor_debug_mode == "FULL_TENSOR":
       mul_values = [
           tensor_values[i]

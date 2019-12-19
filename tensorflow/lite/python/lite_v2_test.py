@@ -787,6 +787,12 @@ class GrapplerTest(TestModels):
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
     np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
 
+    # Enable hybrid quantization, same result
+    converter.experimental_new_converter = True
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    hybrid_tflite_model = converter.convert()
+    actual_value = self._evaluateTFLiteModel(hybrid_tflite_model, [input_data])
+    np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
 
 if __name__ == '__main__':
   test.main()

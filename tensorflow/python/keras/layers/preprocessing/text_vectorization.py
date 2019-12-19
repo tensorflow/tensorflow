@@ -419,7 +419,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     super(TextVectorization, self).adapt(preprocessed_inputs, reset_state)
 
   def get_vocabulary(self):
-    if self.vocab_size == 0:
+    if self._vocab_size == 0:
       return []
 
     keys, values = self._get_table_data()
@@ -568,7 +568,7 @@ class TextVectorization(CombinerPreprocessingLayer):
       self.set_vocabulary(updates[_VOCAB_NAME])
 
   def _preprocess(self, inputs):
-    if self._standardize is LOWER_AND_STRIP_PUNCTUATION:
+    if self._standardize == LOWER_AND_STRIP_PUNCTUATION:
       lowercase_inputs = gen_string_ops.string_lower(inputs)
       inputs = string_ops.regex_replace(lowercase_inputs, DEFAULT_STRIP_REGEX,
                                         "")
@@ -586,7 +586,7 @@ class TextVectorization(CombinerPreprocessingLayer):
       # so can be squeezed out. We do this here instead of after splitting for
       # performance reasons - it's more expensive to squeeze a ragged tensor.
       inputs = array_ops.squeeze(inputs, axis=1)
-      if self._split is SPLIT_ON_WHITESPACE:
+      if self._split == SPLIT_ON_WHITESPACE:
         # This treats multiple whitespaces as one whitespace, and strips leading
         # and trailing whitespace.
         inputs = ragged_string_ops.string_split_v2(inputs)

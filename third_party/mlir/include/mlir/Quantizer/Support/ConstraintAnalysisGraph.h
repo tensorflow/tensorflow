@@ -68,7 +68,7 @@ public:
   };
 
   // Vector and iterator over nodes.
-  using node_vector = llvm::SmallVector<CAGNode *, 1>;
+  using node_vector = SmallVector<CAGNode *, 1>;
   using iterator = node_vector::iterator;
   using const_iterator = node_vector::const_iterator;
 
@@ -100,12 +100,11 @@ public:
                          const TargetConfiguration &config) {}
 
   /// Prints the node label, suitable for one-line display.
-  virtual void printLabel(llvm::raw_ostream &os) const;
+  virtual void printLabel(raw_ostream &os) const;
 
-  template <typename T>
-  void findChildrenOfKind(llvm::SmallVectorImpl<T *> &found) {
+  template <typename T> void findChildrenOfKind(SmallVectorImpl<T *> &found) {
     for (CAGNode *child : *this) {
-      T *ofKind = llvm::dyn_cast<T>(child);
+      T *ofKind = dyn_cast<T>(child);
       if (ofKind) {
         found.push_back(ofKind);
       }
@@ -173,7 +172,7 @@ public:
   void propagate(SolverContext &solverContext,
                  const TargetConfiguration &config) override;
 
-  void printLabel(llvm::raw_ostream &os) const override;
+  void printLabel(raw_ostream &os) const override;
 
   /// Given the anchor metadata and resolved solutions, chooses the most
   /// salient and returns an appropriate type to represent it.
@@ -213,7 +212,7 @@ public:
 
   Value *getValue() const final { return op->getOperand(operandIdx); }
 
-  void printLabel(llvm::raw_ostream &os) const override;
+  void printLabel(raw_ostream &os) const override;
 
 private:
   Operation *op;
@@ -234,7 +233,7 @@ public:
   Operation *getOp() const final { return resultValue->getDefiningOp(); }
   Value *getValue() const final { return resultValue; }
 
-  void printLabel(llvm::raw_ostream &os) const override;
+  void printLabel(raw_ostream &os) const override;
 
 private:
   Value *resultValue;
@@ -275,8 +274,7 @@ public:
   /// Adds a relation constraint with incoming 'from' anchors and outgoing 'to'
   /// anchors.
   template <typename T, typename... Args>
-  T *addUniqueConstraint(llvm::ArrayRef<CAGAnchorNode *> anchors,
-                         Args... args) {
+  T *addUniqueConstraint(ArrayRef<CAGAnchorNode *> anchors, Args... args) {
     static_assert(std::is_convertible<T *, CAGConstraintNode *>(),
                   "T must be a CAGConstraingNode");
     T *constraintNode = addNode(std::make_unique<T>(args...));
@@ -288,7 +286,7 @@ public:
   /// Adds a unidirectional constraint from a node to an array of target nodes.
   template <typename T, typename... Args>
   T *addUnidirectionalConstraint(CAGAnchorNode *fromAnchor,
-                                 llvm::ArrayRef<CAGAnchorNode *> toAnchors,
+                                 ArrayRef<CAGAnchorNode *> toAnchors,
                                  Args... args) {
     static_assert(std::is_convertible<T *, CAGConstraintNode *>(),
                   "T must be a CAGConstraingNode");
@@ -301,10 +299,10 @@ public:
   }
 
   template <typename T>
-  T *addClusteredConstraint(llvm::ArrayRef<CAGAnchorNode *> anchors) {
+  T *addClusteredConstraint(ArrayRef<CAGAnchorNode *> anchors) {
     static_assert(std::is_convertible<T *, CAGConstraintNode *>(),
                   "T must be a CAGConstraingNode");
-    llvm::SmallVector<T *, 8> cluster;
+    SmallVector<T *, 8> cluster;
     for (auto *anchor : anchors) {
       anchor->findChildrenOfKind<T>(cluster);
     }
@@ -356,14 +354,11 @@ private:
 
   SolverContext &context;
   std::vector<CAGNode *> allNodes;
-  llvm::DenseMap<std::pair<Operation *, unsigned>, CAGOperandAnchor *>
-      operandAnchors;
-  llvm::DenseMap<std::pair<Operation *, unsigned>, CAGResultAnchor *>
-      resultAnchors;
+  DenseMap<std::pair<Operation *, unsigned>, CAGOperandAnchor *> operandAnchors;
+  DenseMap<std::pair<Operation *, unsigned>, CAGResultAnchor *> resultAnchors;
 };
 
-inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                                     const CAGNode &node) {
+inline raw_ostream &operator<<(raw_ostream &os, const CAGNode &node) {
   node.printLabel(os);
   return os;
 }

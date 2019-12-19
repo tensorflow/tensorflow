@@ -399,14 +399,40 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
   return Status::OK();
 }
 
+namespace {
+
+// We assume that all keys are of the form <iterator_prefix>:<name>. We extract
+// the iterator name by getting rid of everything post the final colon.
+Status GetIteratorName(StringPiece key, string* name) {
+  if (!str_util::StartsWith(key, data::kFullNameRandomHex)) {
+    return errors::InvalidArgument("Save key: ", key,
+                                   " not generated using full_name.");
+  }
+  std::vector<string> split_keys = str_util::Split(key, data::kPipe);
+  if (split_keys.size() != 2) {
+    return errors::InvalidArgument("Save key: ", key,
+                                   " not generated using full_name.");
+  }
+  string real_key = split_keys[1];
+  const int pos = real_key.rfind(kColon);
+  *name = real_key.substr(0, pos);
+  return Status::OK();
+}
+
+}  // namespace
+
 VariantTensorDataReader::VariantTensorDataReader(
-    const tensorflow::VariantTensorData* data)
-    : data_(data) {
-  string metadata;
-  data_->get_metadata(&metadata);
-  auto keys = str_util::Split(metadata, kDelimiter, str_util::SkipEmpty());
-  for (size_t i = 0; i < keys.size(); ++i) {
-    map_[keys[i]] = i;
+    const std::vector<const tensorflow::VariantTensorData*>& data) {
+  for (const auto& d : data) {
+    string metadata;
+    d->get_metadata(&metadata);
+    auto keys = str_util::Split(metadata, kDelimiter, str_util::SkipEmpty());
+    const string name = keys[0];
+    data_[name] = d;
+    map_[name] = std::map<string, size_t>();
+    for (size_t i = 1; i < keys.size(); ++i) {
+      map_[name][keys[i]] = i - 1;
+    }
   }
 }
 
@@ -423,24 +449,32 @@ Status VariantTensorDataReader::ReadTensor(StringPiece key, Tensor* val) {
 }
 
 bool VariantTensorDataReader::Contains(StringPiece key) {
-  return map_.find(string(key)) != map_.end();
+  string name;
+  if (!GetIteratorName(key, &name).ok()) {
+    return false;
+  }
+  return map_[name].find(string(key)) != map_[name].end();
 }
 
 template <typename T>
 Status VariantTensorDataReader::ReadScalarInternal(StringPiece key, T* val) {
-  if (map_.find(string(key)) == map_.end()) {
+  string name;
+  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
+  if (map_[name].find(string(key)) == map_[name].end()) {
     return errors::NotFound(key);
   }
-  *val = data_->tensors(map_[string(key)]).scalar<T>()();
+  *val = data_[name]->tensors(map_[name][string(key)]).scalar<T>()();
   return Status::OK();
 }
 
 Status VariantTensorDataReader::ReadTensorInternal(StringPiece key,
                                                    Tensor* val) {
-  if (map_.find(string(key)) == map_.end()) {
+  string name;
+  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
+  if (map_[name].find(string(key)) == map_[name].end()) {
     return errors::NotFound(key);
   }
-  *val = data_->tensors(map_[string(key)]);
+  *val = data_[name]->tensors(map_[name][string(key)]);
   return Status::OK();
 }
 
@@ -458,18 +492,49 @@ Status VariantTensorDataWriter::WriteTensor(StringPiece key,
   return WriteTensorInternal(key, val);
 }
 
-Status VariantTensorDataWriter::Flush() {
-  string metadata;
-  for (size_t i = 0; i < keys_.size(); ++i) {
-    strings::StrAppend(&metadata, kDelimiter, keys_[i]);
+void VariantTensorDataWriter::MaybeFlush() {
+  if (is_flushed_) return;
+  for (auto& keys : keys_) {
+    const string name = keys.first;
+    string metadata = name;
+    for (size_t i = 0; i < keys_[name].size(); ++i) {
+      strings::StrAppend(&metadata, kDelimiter, keys_[name][i]);
+    }
+    data_[name]->set_metadata(metadata);
   }
-  data_->set_metadata(metadata);
-  return Status::OK();
+  is_flushed_ = true;
+}
+
+void VariantTensorDataWriter::Reset() {
+  is_flushed_ = false;
+  data_.clear();
+  keys_.clear();
+}
+
+void VariantTensorDataWriter::ReleaseData(
+    std::vector<std::unique_ptr<VariantTensorData>>* variants) {
+  MaybeFlush();
+  for (auto& it : data_) {
+    variants->push_back(std::move(it.second));
+  }
+  Reset();
+}
+
+void VariantTensorDataWriter::GetData(
+    std::vector<const VariantTensorData*>* variants) {
+  MaybeFlush();
+  for (auto& it : data_) {
+    variants->push_back(it.second.get());
+  }
 }
 
 template <typename T>
 Status VariantTensorDataWriter::WriteScalarInternal(StringPiece key,
                                                     const T& val) {
+  if (is_flushed_) {
+    return errors::FailedPrecondition(
+        "Cannot call WriteScalar after GetData or ReleaseData is called");
+  }
   Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
   val_t.scalar<T>()() = val;
   return WriteTensorInternal(key, val_t);
@@ -477,9 +542,22 @@ Status VariantTensorDataWriter::WriteScalarInternal(StringPiece key,
 
 Status VariantTensorDataWriter::WriteTensorInternal(StringPiece key,
                                                     const Tensor& val) {
+  if (is_flushed_) {
+    return errors::FailedPrecondition(
+        "Cannot call WriteTensor after GetData or ReleaseData is called");
+  }
+  string name;
+  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
   DCHECK_EQ(key.find(kDelimiter), string::npos);
-  keys_.push_back(string(key));
-  *(data_->add_tensors()) = val;
+  if (keys_.count(name) == 0) {
+    keys_[name] = std::vector<string>();
+  }
+  keys_[name].push_back(string(key));
+  if (data_.count(name) == 0) {
+    data_[name] = absl::make_unique<VariantTensorData>();
+    data_[name]->set_type_name("tensorflow::Iterator");
+  }
+  *(data_[name]->add_tensors()) = val;
   return Status::OK();
 }
 

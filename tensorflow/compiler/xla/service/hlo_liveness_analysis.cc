@@ -113,7 +113,7 @@ void MarkLiveAtAllIndices(const HloInstruction* instruction,
 // Propagates liveness through Tuple instructions.
 // *) For each tuple operand:
 //   *) For tuple output shape index associated with operand:
-//     *) Propgate live shape indices to tuple operand at the associated
+//     *) Propagate live shape indices to tuple operand at the associated
 //        shape index in the operands output, and add to worklist.
 void PropagateLivenessThroughTuple(
     const HloInstruction* instruction,
@@ -260,7 +260,7 @@ HloLivenessAnalysis::HloLivenessAnalysis(const HloModule& module)
 void HloLivenessAnalysis::RunAnalysis() {
   Worklist worklist;
   Workset workset;
-  // Add entry compuation root instruction.
+  // Add entry computation root instruction.
   MarkLiveAtAllIndices(module_.entry_computation()->root_instruction(),
                        &live_index_map_, &worklist, &workset);
   for (auto* computation : module_.computations()) {

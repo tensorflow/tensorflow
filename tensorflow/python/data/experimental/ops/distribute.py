@@ -87,6 +87,10 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
 
     def recalculate_batch_size(output_shapes):
       """Recalculates the output_shapes after dividing it by num_replicas."""
+      # If the output shape is unknown, we set the batch dimension to unknown.
+      if output_shapes.rank is None:
+        return None
+
       if len(output_shapes) < 1:
         raise ValueError(
             "Input shape should have at least one dimension. "

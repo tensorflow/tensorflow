@@ -53,41 +53,40 @@ std::string DOTGraphTraits<Region *>::getNodeLabel(Block *Block, Region *) {
 
 } // end namespace llvm
 
-void mlir::viewGraph(Region &region, const llvm::Twine &name, bool shortNames,
-                     const llvm::Twine &title,
-                     llvm::GraphProgram::Name program) {
+void mlir::viewGraph(Region &region, const Twine &name, bool shortNames,
+                     const Twine &title, llvm::GraphProgram::Name program) {
   llvm::ViewGraph(&region, name, shortNames, title, program);
 }
 
-llvm::raw_ostream &mlir::writeGraph(llvm::raw_ostream &os, Region &region,
-                                    bool shortNames, const llvm::Twine &title) {
+raw_ostream &mlir::writeGraph(raw_ostream &os, Region &region, bool shortNames,
+                              const Twine &title) {
   return llvm::WriteGraph(os, &region, shortNames, title);
 }
 
-void mlir::Region::viewGraph(const llvm::Twine &regionName) {
+void mlir::Region::viewGraph(const Twine &regionName) {
   ::mlir::viewGraph(*this, regionName);
 }
 void mlir::Region::viewGraph() { viewGraph("region"); }
 
 namespace {
 struct PrintCFGPass : public FunctionPass<PrintCFGPass> {
-  PrintCFGPass(llvm::raw_ostream &os = llvm::errs(), bool shortNames = false,
-               const llvm::Twine &title = "")
+  PrintCFGPass(raw_ostream &os = llvm::errs(), bool shortNames = false,
+               const Twine &title = "")
       : os(os), shortNames(shortNames), title(title.str()) {}
   void runOnFunction() override {
     mlir::writeGraph(os, getFunction().getBody(), shortNames, title);
   }
 
 private:
-  llvm::raw_ostream &os;
+  raw_ostream &os;
   bool shortNames;
   std::string title;
 };
 } // namespace
 
 std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>>
-mlir::createPrintCFGGraphPass(llvm::raw_ostream &os, bool shortNames,
-                              const llvm::Twine &title) {
+mlir::createPrintCFGGraphPass(raw_ostream &os, bool shortNames,
+                              const Twine &title) {
   return std::make_unique<PrintCFGPass>(os, shortNames, title);
 }
 

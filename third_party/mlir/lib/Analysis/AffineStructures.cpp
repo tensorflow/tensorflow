@@ -24,6 +24,7 @@
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/IntegerSet.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
@@ -34,7 +35,6 @@
 using namespace mlir;
 using llvm::SmallDenseMap;
 using llvm::SmallDenseSet;
-using llvm::SmallPtrSet;
 
 namespace {
 
@@ -73,10 +73,11 @@ private:
 
 // Flattens the expressions in map. Returns failure if 'expr' was unable to be
 // flattened (i.e., semi-affine expressions not handled yet).
-static LogicalResult getFlattenedAffineExprs(
-    ArrayRef<AffineExpr> exprs, unsigned numDims, unsigned numSymbols,
-    std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
-    FlatAffineConstraints *localVarCst) {
+static LogicalResult
+getFlattenedAffineExprs(ArrayRef<AffineExpr> exprs, unsigned numDims,
+                        unsigned numSymbols,
+                        std::vector<SmallVector<int64_t, 8>> *flattenedExprs,
+                        FlatAffineConstraints *localVarCst) {
   if (exprs.empty()) {
     localVarCst->reset(numDims, numSymbols);
     return success();
@@ -109,7 +110,7 @@ static LogicalResult getFlattenedAffineExprs(
 LogicalResult
 mlir::getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
                              unsigned numSymbols,
-                             llvm::SmallVectorImpl<int64_t> *flattenedExpr,
+                             SmallVectorImpl<int64_t> *flattenedExpr,
                              FlatAffineConstraints *localVarCst) {
   std::vector<SmallVector<int64_t, 8>> flattenedExprs;
   LogicalResult ret = ::getFlattenedAffineExprs({expr}, numDims, numSymbols,
@@ -121,7 +122,7 @@ mlir::getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
 /// Flattens the expressions in map. Returns failure if 'expr' was unable to be
 /// flattened (i.e., semi-affine expressions not handled yet).
 LogicalResult mlir::getFlattenedAffineExprs(
-    AffineMap map, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
+    AffineMap map, std::vector<SmallVector<int64_t, 8>> *flattenedExprs,
     FlatAffineConstraints *localVarCst) {
   if (map.getNumResults() == 0) {
     localVarCst->reset(map.getNumDims(), map.getNumSymbols());
@@ -133,7 +134,7 @@ LogicalResult mlir::getFlattenedAffineExprs(
 }
 
 LogicalResult mlir::getFlattenedAffineExprs(
-    IntegerSet set, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
+    IntegerSet set, std::vector<SmallVector<int64_t, 8>> *flattenedExprs,
     FlatAffineConstraints *localVarCst) {
   if (set.getNumConstraints() == 0) {
     localVarCst->reset(set.getNumDims(), set.getNumSymbols());

@@ -86,12 +86,11 @@ public:
 
   // These are hooks implemented for PatternRewriter.
 protected:
-  // Implement the hook for creating operations, and make sure that newly
-  // created ops are added to the worklist for processing.
-  Operation *createOperation(const OperationState &state) override {
-    auto *result = OpBuilder::createOperation(state);
-    addToWorklist(result);
-    return result;
+  // Implement the hook for inserting operations, and make sure that newly
+  // inserted ops are added to the worklist for processing.
+  Operation *insert(Operation *op) override {
+    addToWorklist(op);
+    return OpBuilder::insert(op);
   }
 
   // If an operation is about to be removed, make sure it is not in our
