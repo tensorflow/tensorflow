@@ -80,6 +80,8 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
   endif
   ifeq ($(findstring sparkfun,$(TARGET)), sparkfun)
     BOARD_BSP_PATH := $(APOLLO3_SDK)/$(SF_BSPS_DEST)/$(subst sparkfun_,,$(TARGET))/bsp
+    INCLUDES+= \
+      -I$(APOLLO3_SDK)/$(SF_BSPS_DEST)/common/third_party/hm01b0
   endif
   MICROLITE_LIBS := \
     $(BOARD_BSP_PATH)/gcc/bin/libam_bsp.a \

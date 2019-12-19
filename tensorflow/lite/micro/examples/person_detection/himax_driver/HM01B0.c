@@ -19,7 +19,7 @@ limitations under the License.
 #include "am_bsp.h"
 #include "am_mcu_apollo.h"
 #include "am_util.h"
-#include "platform_Sparkfun_Edge.h"
+#include "platform.h" // TARGET specific implementation
 
 //#define ENABLE_ASYNC
 

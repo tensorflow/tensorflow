@@ -19,14 +19,13 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_RAW8_QVGA_8bits_lsb_5fps.h"
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_debug.h"
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_optimized.h"
-#include "tensorflow/lite/micro/examples/person_detection/himax_driver/platform_Sparkfun_Edge.h"
 
 // These are headers from Ambiq's Apollo3 SDK.
 #include "am_bsp.h"         // NOLINT
 #include "am_mcu_apollo.h"  // NOLINT
 #include "am_util.h"        // NOLINT
 
-// #include "platform.h" // implementation-specific definitions for camera interface
+#include "platform.h" // TARGET specific implementation
 
 // #define DEMO_HM01B0_FRAMEBUFFER_DUMP_ENABLE
 
