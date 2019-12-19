@@ -447,8 +447,8 @@ class MklConvCustomBackpropInputOp
           TFPaddingToMklDnnPadding(this->padding_));
 
       // We don't cache those primitives if the environment variable
-      // TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE is true and if primitve descriptor
-      // includes potentialy large buffers. MKL-DNN allocates buffers
+      // TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE is true and if primitive descriptor
+      // includes potentially large buffers. MKL-DNN allocates buffers
       // in the following cases
       //   1. Legacy CPU without AVX512/AVX2, or
       //   2. 1x1 convolution with stride != 1

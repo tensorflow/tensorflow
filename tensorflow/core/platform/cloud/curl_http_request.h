@@ -213,7 +213,7 @@ class CurlHttpRequest : public HttpRequest {
   // Timeout for the connection phase.
   uint32 connect_timeout_secs_ = 120;  // 2 minutes
 
-  // Tiemout for the whole request. Set only to prevent hanging indefinitely.
+  // Timeout for the whole request. Set only to prevent hanging indefinitely.
   uint32 request_timeout_secs_ = 3600;  // 1 hour
 
   // Members to enforce the usage flow.

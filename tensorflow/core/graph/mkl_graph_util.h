@@ -74,7 +74,7 @@ int inline GetTensorMetaDataIndex(int n, int total_tensors) {
   return DataIndexToMetaDataIndex(tidx, total_tensors);
 }
 
-// check if the control between src and dst nodes alreay exists
+// check if the control between src and dst nodes already exists
 bool inline DoesControlEdgeExist(const Node* src, const Node* dst) {
   for (const Edge* edge : src->out_edges()) {
     if (edge->IsControlEdge() && edge->dst() == dst) {

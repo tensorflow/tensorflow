@@ -1044,7 +1044,7 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
       // short tree, pushing to the front will create a tall tree. We prefer to
       // get a wide tree, it minimizes the potential number of temporary tensors
       // required to keep in memory, though sometimes we can go up to prevent
-      // propagating a brodcast from leaves to the root. Example:
+      // propagating a broadcast from leaves to the root. Example:
       //
       // inputs: [s, s, s, M] (s - scalar, M - matrix)
       // @* - op with broadcast
@@ -1466,7 +1466,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       }
       if (NumControlOutputs(*node, *ctx().node_map) > 0) {
         // TODO(ezhulenev): Unary ops after Split might have a control path to
-        // the Split node, and we currently do not propertly handle cycles.
+        // the Split node, and we currently do not properly handle cycles.
         return false;
       }
       return num_split > 1 && !IsAlreadyOptimized(*node);
@@ -1509,7 +1509,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     // Follow the chains starting at each concat input or split output as long
     // as all the following conditions hold:
     //   1. The ops in all chains are the same.
-    //   2. The ops are unary elemenwise op.
+    //   2. The ops are unary elementwise op.
     //   3. The op output has only a single consumer (concat only).
     ChainLinkSet cur_tails;
     TF_RETURN_IF_ERROR(InitializeChains(root_node, &cur_tails));

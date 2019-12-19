@@ -115,7 +115,7 @@ Status UpdateVariableAndFill(
   }
 }
 
-// Preconditon: input(0) is an existing resource.
+// Precondition: input(0) is an existing resource.
 template <typename Device, class Distribution>
 void StatefulRandomCompute(OpKernelContext* ctx, Distribution dist,
                            int state_input_idx, int shape_input_idx,

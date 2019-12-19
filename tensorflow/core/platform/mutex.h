@@ -180,7 +180,7 @@ class SCOPED_LOCKABLE mutex_lock {
 #define mutex_lock(x) static_assert(0, "mutex_lock_decl_missing_var_name");
 
 // Mimic a subset of the std::shared_lock<tensorflow::mutex> functionality.
-// Name chosen to minimise conflicts with the tf_shared_lock macro, below.
+// Name chosen to minimize conflicts with the tf_shared_lock macro, below.
 class SCOPED_LOCKABLE tf_shared_lock {
  public:
   typedef ::tensorflow::mutex mutex_type;

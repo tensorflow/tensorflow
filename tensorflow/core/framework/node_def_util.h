@@ -158,7 +158,7 @@ class AttrSlice {
   // account.
   //
   // TODO(irving): There is a bug in this routine inherited from its
-  // OptimizerCSE::EqualAttrs precedecessor.  The same tensor attr can be
+  // OptimizerCSE::EqualAttrs predecessor.  The same tensor attr can be
   // represented in more than one way as an AttrValue, since TensorProto is
   // not 1-1.  This bug will go away once I replace everything with NodeInfo,
   // which stores a Tensor object directly.  The Scratch object will also go

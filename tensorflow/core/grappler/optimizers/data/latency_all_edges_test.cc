@@ -40,7 +40,7 @@ TEST(LatencyAllEdgesTest, AddLatenciesAfterTensorMapPrefetch) {
   NodeDef map_node = NDef("map_node", "MapDataset",
                           {"from_tensor_node", "captured_input_node"},
                           {{"f", {}},
-                           {"Targumemts", {}},
+                           {"Targuments", {}},
                            {"output_shapes", {}},
                            {"output_types", {}}});
   NodeDef buffer_size_node = NDef("buffer_size_node", "Const", {},

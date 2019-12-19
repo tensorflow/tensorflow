@@ -493,7 +493,7 @@ class SerializationContext {
     // `input_list`.
     bool fail_if_unimplemented = true;
 
-    // Indicates whether (potentionally large) data tensors should be
+    // Indicates whether (potentially large) data tensors should be
     // serialized, or replaced with a placeholder returned in `input_list`. The
     // latter makes sense to do when performing data agnostic graph rewrites to
     // reduce the memory usage.
@@ -641,7 +641,7 @@ class IteratorBase {
     return errors::Unimplemented("RestoreInternal");
   }
 
-  // Returns the number of elements produced by this itertaor.
+  // Returns the number of elements produced by this iterator.
   int64 num_elements() const {
     if (node_) return node_->num_elements();
     return 0;

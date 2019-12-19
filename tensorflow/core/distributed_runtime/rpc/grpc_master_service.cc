@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// GrpcMasterService implements the RPC service MasterSerivce.
+// GrpcMasterService implements the RPC service MasterService.
 //
 // A GrpcMasterService maintains the state of live graph computation
 // sessions, each session orchestrates both local and remote devices

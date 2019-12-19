@@ -455,7 +455,7 @@ class MklDnnConvUtil {
     // Tensorflow output is in data_format order.
     //     Conv2D: NHWC or NCHW
     //     Conv3D: NDHWC or NCDHW
-    // MKL-DNN uses asymetric padding.
+    // MKL-DNN uses asymmetric padding.
     TensorShape out_shape =
         is_conv2d
             ? ShapeFromFormat(data_format_, out_batch, out_rows, out_cols,

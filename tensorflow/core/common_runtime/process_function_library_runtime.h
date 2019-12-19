@@ -444,7 +444,7 @@ class ProcessFunctionLibraryRuntime {
   std::unordered_map<string, FunctionLibraryRuntime::Handle> table_
       GUARDED_BY(mu_);
 
-  // Function data for instantitated remote functions.
+  // Function data for instantiated remote functions.
   std::unordered_map<FunctionLibraryRuntime::Handle,
                      std::unique_ptr<FunctionData>>
       function_data_ GUARDED_BY(mu_);

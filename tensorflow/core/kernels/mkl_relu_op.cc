@@ -120,7 +120,7 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
     std::shared_ptr<memory> src_mem;
     std::shared_ptr<memory> dst_mem;
 
-    // desc & prmitive desc
+    // desc & primitive desc
     std::shared_ptr<mkldnn::eltwise_forward::desc> fwd_desc;
     std::shared_ptr<EltwiseFwdPd> fwd_pd;
 
@@ -561,9 +561,13 @@ class MklReluOpBase : public OpKernel {
       MklEltwiseFwdPrimitive<T>* eltwise_fwd =
           MklEltwiseFwdPrimitiveFactory<T>::Get(fwdParams);
 
+<<<<<<< HEAD
       auto eltwise_fwd_pd = eltwise_fwd->GetEltwiseFwdPd();
 
       // Check if src needs to be reordered
+=======
+      // prepare for execution
+>>>>>>> minor spelling tweaks
       const T* src_data = src_tensor.flat<T>().data();
       if (IS_SRC_REORDER_NEEDED(src_md, eltwise_fwd_pd, eltwise_fwd)) {
         src.SetUsrMem(src_md, &src_tensor);

@@ -834,7 +834,7 @@ class MklConvOp : public OpKernel {
       pad_right = paddings[7];
     }
     // Create padding arrays for MKL-DNN convolutions.
-    // MKL-DNN uses asymetric padding.
+    // MKL-DNN uses asymmetric padding.
     padding_left = {static_cast<int>(pad_top), static_cast<int>(pad_left)};
     padding_right = {static_cast<int>(pad_bottom), static_cast<int>(pad_right)};
   }
@@ -857,7 +857,7 @@ class MklConvOp : public OpKernel {
 
   // This method is for the base class MklConvOp, which handles the
   // floating point implementation of Conv. The quantized conv implementations
-  // will use overidden versions of this method.
+  // will use overridden versions of this method.
   virtual void ExtendConvFwdParams(OpKernelContext* context,
                                    MklConvFwdParams& params) {
     // Create a string from data types of input, filter, bias, and output.

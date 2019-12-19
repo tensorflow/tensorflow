@@ -45,7 +45,7 @@ class ConvMklToTF : public OpsTestBase {
   template <typename T>
   void ConvertMKL2TF(DataType dtype, const Tensor& first, const Tensor& second,
                      Tensor& output) {
-    // TO-DO : Has to be moved to common uitility file
+    // TO-DO : Has to be moved to common utility file
     // Create an MKL to TF conversion node and execute it
     TF_EXPECT_OK(NodeDefBuilder("mkl_to_tf_op", "_MklToTf")
                      .Input(FakeInput(dtype))     // Input

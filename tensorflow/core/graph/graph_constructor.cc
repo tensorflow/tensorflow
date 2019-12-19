@@ -137,7 +137,7 @@ class GraphConstructor {
     // remove this.
     bool importing;
     // If true, validates that nodes being converted have all expected attrs
-    // set and no unknonw attrs set by calling ValidateNodeDef().
+    // set and no unknown attrs set by calling ValidateNodeDef().
     // `validate_nodes` is always true when `importing` is set.
     bool validate_nodes;
     bool validate_colocation_constraints;

@@ -326,7 +326,7 @@ Status KernelAndDeviceFunc::Run(
   } else {
     opts = absl::make_unique<FunctionLibraryRuntime::Options>();
     if (get_op_id_ && is_cross_process_) {
-      // If the function is a cross-process function and the remote excution
+      // If the function is a cross-process function and the remote execution
       // goes through eager service, create an eager op id for the function.
       opts->op_id = get_op_id_();
     }
