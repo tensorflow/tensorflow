@@ -347,8 +347,8 @@ def multiply(x, y, name=None):  # pylint: disable=missing-docstring
   >>> x = 32
   >>> y = 34
   >>> tf.multiply(x, y)
-  <tf.Tensor: shape=() dtype=int32>
-  #returns 1088
+  <tf.Tensor: shape=(), dtype=int32, numpy=1088>
+  
   
   Args:
     'x': A 'Tensor'. Must be one of the following types: 
