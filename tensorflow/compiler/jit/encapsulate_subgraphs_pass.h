@@ -27,6 +27,15 @@ limitations under the License.
 
 namespace tensorflow {
 
+// EncapsulateSubgraphs pass takes all the nodes with the same cluster ID
+// (derived from kXlaClusterAttr=ID (kXlaClusterAttr) attribute), puts them into
+// a TF function, and replaces the subgraph in the main graph with a call to
+// that TF function annotated with kXlaCompiledKernelAttr (_XlaCompiledKernel).
+class EncapsulateSubgraphsPass : public GraphOptimizationPass {
+ public:
+  Status Run(const GraphOptimizationPassOptions& options) override;
+};
+
 // A rewriting function to apply to each subgraph during encapsulation.
 // 'arg_source_tensors' are the tensors corresponding to the arguments in the
 // original source graph (*not* 'graph').
@@ -99,11 +108,6 @@ extern const char* const kXlaHasReferenceVarsAttr;
 // node's control input fields.
 // TODO(hpucha): Move the utilities to a more appropriate place.
 void SortControlInputs(GraphDef* gdef);
-
-class EncapsulateSubgraphsPass : public GraphOptimizationPass {
- public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
-};
 
 }  // namespace tensorflow
 
