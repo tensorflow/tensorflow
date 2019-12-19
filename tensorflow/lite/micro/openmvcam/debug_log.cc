@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <stdio.h>
 #include <string.h>
-#include "tensorflow/lite/experimental/micro/debug_log.h"
+#include "tensorflow/lite/micro/debug_log.h"
 
 // These are set by openmv py_tf.c code to redirect printing to an error message
 // buffer...
