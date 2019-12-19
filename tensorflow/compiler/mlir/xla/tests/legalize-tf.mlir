@@ -909,13 +909,22 @@ func @maxpool_valid_padding(%arg0: tensor<2x12x20x7xi32>) -> tensor<2x3x5x7xi32>
   return %0 : tensor<2x3x5x7xi32>
 }
 
+// CHECK-LABEL: maxpool_same_padding
+// CHECK-SAME: %[[ARG:.*]]: tensor
+func @maxpool_same_padding(%arg0: tensor<2x13x25x7xi32>) -> tensor<2x4x7x7xi32> {
+  // CHECK: padding = dense<{{\[\[}}0, 0, 1, 0], [0, 1, 1, 0]]> : tensor<2x4xi64>
+
+  %0 = "tf.MaxPool"(%arg0) {data_format = "NHWC", ksize = [1, 2, 3, 1], padding = "SAME", strides = [1, 4, 4, 1]} : (tensor<2x13x25x7xi32>) -> tensor<2x4x7x7xi32>
+  return %0 : tensor<2x4x7x7xi32>
+}
+
 //===----------------------------------------------------------------------===//
 // MaxPoolGrad op legalizations.
 //===----------------------------------------------------------------------===//
 
-// CHECK-LABEL: @max_pool_grad
+// CHECK-LABEL: @max_pool_grad_valid
 // CHECK-SAME: %[[INPUT:.*]]: tensor<10x24x24x64xf32>, %arg1: tensor<10x12x12x64xf32>, %[[GRAD:.*]]: tensor<10x12x12x64xf32>
-func @max_pool_grad(%orig_input: tensor<10x24x24x64xf32>, %orig_output: tensor<10x12x12x64xf32>, %grad: tensor<10x12x12x64xf32>) -> tensor<10x24x24x64xf32> {
+func @max_pool_grad_valid(%orig_input: tensor<10x24x24x64xf32>, %orig_output: tensor<10x12x12x64xf32>, %grad: tensor<10x12x12x64xf32>) -> tensor<10x24x24x64xf32> {
   // CHECK: %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
   // CHECK: %[[RESULT:.*]] = "xla_hlo.select_and_scatter"(%[[INPUT]], %[[GRAD]], %[[ZERO]]) ( {
   // CHECK: ^bb0(%[[VALUE_A:.*]]: tensor<f32>, %[[VALUE_B:.*]]: tensor<f32>):
@@ -935,6 +944,18 @@ func @max_pool_grad(%orig_input: tensor<10x24x24x64xf32>, %orig_output: tensor<1
      strides = [1, 2, 2, 1]
   } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<10x12x12x64xf32>) -> tensor<10x24x24x64xf32>
   return %result : tensor<10x24x24x64xf32>
+}
+
+// CHECK-LABEL: @max_pool_grad_same
+func @max_pool_grad_same(%orig_input: tensor<2x13x25x7xf32>, %orig_output: tensor<2x4x7x7xf32>, %grad: tensor<2x4x7x7xf32>) -> tensor<2x13x25x7xf32> {
+  // CHECK: padding = dense<{{\[\[}}0, 0, 1, 0], [0, 1, 1, 0]]> : tensor<2x4xi64>
+  %result = "tf.MaxPoolGrad"(%orig_input, %orig_output, %grad) {
+     data_format = "NHWC",
+     ksize = [1, 2, 3, 1],
+     padding = "SAME",
+     strides = [1, 4, 4, 1]
+  } : (tensor<2x13x25x7xf32>, tensor<2x4x7x7xf32>, tensor<2x4x7x7xf32>) -> tensor<2x13x25x7xf32>
+  return %result : tensor<2x13x25x7xf32>
 }
 
 //===----------------------------------------------------------------------===//

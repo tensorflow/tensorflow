@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/util/padding.h"
@@ -869,6 +870,41 @@ class ConvertFusedBatchNormV3Op
   }
 };
 
+// Returns padding attribute for ReduceWindow op with given params.
+//
+// Requires padding to be either 'SAME' or 'VALID' and the number of input
+// dimensions to be equal to the size of window dimensions and window strides.
+static DenseIntElementsAttr GetReduceWindowPadding(
+    llvm::ArrayRef<int64_t> input_dims, ArrayAttr window_dims,
+    ArrayAttr window_strides, StringRef padding, Builder *builder) {
+  if (padding == "VALID") return {};
+  DCHECK_EQ(padding.str(), "SAME");
+
+  llvm::SmallVector<tensorflow::int64, 4> input_shape, window_shape, strides;
+  input_shape.reserve(input_dims.size());
+  window_shape.reserve(window_shape.size());
+  strides.reserve(window_strides.size());
+
+  for (const auto &dim : input_dims) input_shape.push_back(dim);
+  for (Attribute attr : window_dims)
+    window_shape.push_back(attr.cast<IntegerAttr>().getInt());
+  for (Attribute attr : window_strides)
+    strides.push_back(attr.cast<IntegerAttr>().getInt());
+
+  std::vector<std::pair<tensorflow::int64, tensorflow::int64>> paddings =
+      ::xla::MakePadding(input_shape, window_shape, strides,
+                         ::xla::Padding::kSame);
+  int64_t rank = paddings.size();
+  llvm::SmallVector<int64_t, 8> flatten_paddings(rank * 2);
+  for (int i = 0; i < rank; i++) {
+    flatten_paddings[i] = paddings[i].first;
+    flatten_paddings[rank + i] = paddings[i].second;
+  }
+  return DenseIntElementsAttr::get(
+      RankedTensorType::get({2, rank}, builder->getIntegerType(64)),
+      flatten_paddings);
+}
+
 // Converts MaxPool op to HLO ReduceWindow op by setting appropriate window
 // dimensions with max as the reduction function.
 //
@@ -884,21 +920,21 @@ class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
 
   PatternMatchResult matchAndRewrite(TF::MaxPoolOp op,
                                      PatternRewriter &rewriter) const override {
-    // TODO(hinsu): Support 'SAME' padding mode.
-    if (op.padding() != "VALID") return matchFailure();
-
     Type element_type =
         op.input()->getType().cast<TensorType>().getElementType();
     if (!element_type.isIntOrFloat()) return matchFailure();
     Location loc = op.getLoc();
     ConstOp init = GetMinValueForType(element_type, loc, &rewriter);
 
+    auto input_ty = op.input()->getType().dyn_cast<RankedTensorType>();
+    if (!input_ty) return matchFailure();
+    DenseIntElementsAttr paddings_attr = GetReduceWindowPadding(
+        input_ty.getShape(), op.ksize(), op.strides(), op.padding(), &rewriter);
     auto reduce = rewriter.create<ReduceWindowOp>(
         loc, op.getType(), op.input(), init.getResult(),
         GetI64ElementsAttr(op.ksize()), GetI64ElementsAttr(op.strides()),
         /*base_dilations=*/DenseIntElementsAttr(),
-        /*window_dilations=*/DenseIntElementsAttr(),
-        /*paddings=*/DenseIntElementsAttr());
+        /*window_dilations=*/DenseIntElementsAttr(), paddings_attr);
     BuildReduceBody<MaxOp>(element_type, &reduce.body(), &rewriter);
 
     rewriter.replaceOp(op, reduce.getResult());
@@ -1851,19 +1887,24 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
 
   PatternMatchResult matchAndRewrite(TF::MaxPoolGradOp op,
                                      PatternRewriter &rewriter) const override {
-    // TODO(parkers): Support 'SAME' padding mode.
-    if (op.padding() != "VALID") return matchFailure();
-
     Location loc = op.getLoc();
 
     Type element_type =
         op.orig_input()->getType().cast<TensorType>().getElementType();
 
+    // Compute paddings using the original input and kernel shape and strides.
+    // Here, ReduceWindow op as used as the MaxPool op is lowered to the
+    // ReduceWindow op.
+    auto input_ty = op.orig_input()->getType().dyn_cast<RankedTensorType>();
+    if (!input_ty) return matchFailure();
+    DenseIntElementsAttr paddings_attr = GetReduceWindowPadding(
+        input_ty.getShape(), op.ksize(), op.strides(), op.padding(), &rewriter);
+
     auto result = rewriter.create<SelectAndScatterOp>(
         loc, op.getType(), op.orig_input(), op.grad(),
         GetScalarConstOfType(element_type, loc, 0, &rewriter),
         GetI64ElementsAttr(op.ksize()), GetI64ElementsAttr(op.strides()),
-        nullptr);
+        paddings_attr);
 
     BuildReduceBody<AddOp>(element_type, &result.scatter(), &rewriter);
     {
