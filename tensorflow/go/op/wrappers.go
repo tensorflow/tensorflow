@@ -18407,6 +18407,22 @@ func SnapshotDatasetSeed2(value int64) SnapshotDatasetAttr {
 	}
 }
 
+// SnapshotDatasetMode sets the optional mode attribute to value.
+// If not specified, defaults to "auto"
+func SnapshotDatasetMode(value string) SnapshotDatasetAttr {
+	return func(m optionalAttr) {
+		m["mode"] = value
+	}
+}
+
+// SnapshotDatasetSnapshotName sets the optional snapshot_name attribute to value.
+// If not specified, defaults to ""
+func SnapshotDatasetSnapshotName(value string) SnapshotDatasetAttr {
+	return func(m optionalAttr) {
+		m["snapshot_name"] = value
+	}
+}
+
 // Creates a dataset that will write to / read from a snapshot.
 //
 // This dataset attempts to determine whether a valid snapshot exists at the
