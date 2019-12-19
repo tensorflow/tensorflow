@@ -10,7 +10,7 @@ TensorFlow 2.1 will be the last TF release supporting Python 2. Python 2 support
   * `Model.fit_generator`, `Model.evaluate_generator`, and `Model.predict_generator` are deprecated endpoints. They are subsumed by `Model.fit`, `Model.evaluate`, and `Model.predict` which now support generators and Sequences.
   * Keras `.compile` `.fit` `.evaluate` and `.predict` are allowed to be outside of the DistributionStrategy scope, as long as the model was constructed inside of a scope.
   * Keras `model.load_weights` now accepts `skip_mismatch` as an argument. This was available in external Keras, and has now been copied over to `tf.keras`.
-  * Introduced the `TextVectorization` layer, which takes as input raw strings and takes care of text standardization, tokenization, n-gram generation, and vocabulary indexing. See this [end-to-end text classification example](https://colab.research.google.com/drive/1RvCnR7h0_l4Ekn5vINWToI9TNJdpUZB3). 
+  * Introduced the `TextVectorization` layer, which takes as input raw strings and takes care of text standardization, tokenization, n-gram generation, and vocabulary indexing. See this [end-to-end text classification example](https://colab.research.google.com/drive/1RvCnR7h0_l4Ekn5vINWToI9TNJdpUZB3).
   * Experimental support for Keras `.compile`, `.fit`, `.evaluate`, and `.predict` is available for Cloud TPU Pods.
   * Automatic outside compilation is now enabled for Cloud TPUs. This allows `tf.summary` to be used more conveniently with Cloud TPUs.
   * Dynamic batch sizes with DistributionStrategy and Keras are supported on Cloud TPUs.
@@ -23,7 +23,7 @@ TensorFlow 2.1 will be the last TF release supporting Python 2. Python 2 support
   * Environment variable `TF_DETERMINISTIC_OPS` added. When set to "true" or "1", this environment variable makes `tf.nn.bias_add` operate deterministically (i.e. reproducibly) when XLA JIT compilation is *not* enabled. It also makes cuDNN convolution and max-pooling operate deterministically. This makes Keras Conv*D and MaxPool*D layers operate deterministically in both the forward and backward directions when running on a CUDA-enabled GPU.
 
 ## Known issues
-Because of [issues with building on windows](https://github.com/tensorflow/tensorflow/issues/10521), we turned off eigen strong inlining for the Windows builds. Windows binaries are expected to be slightly slower until the build issues are resolved. 
+Because of [issues with building on windows](https://github.com/tensorflow/tensorflow/issues/10521), we turned off eigen strong inlining for the Windows builds. Windows binaries are expected to be slightly slower until the build issues are resolved.
 
 ## Breaking Changes
 * Deletes `Operation.traceback_with_start_lines` for which we know of no usages.
@@ -40,7 +40,7 @@ Because of [issues with building on windows](https://github.com/tensorflow/tenso
   * Add `tf.data.experimental.dense_to_ragged_batch()`.
   * Extend `tf.data` parsing ops to support `RaggedTensors`.
 * `tf.distribute`
-  * Fix issue where GRU would crash or give incorrect output when a `tf.distribute.Strategy` was used. 
+  * Fix issue where GRU would crash or give incorrect output when a `tf.distribute.Strategy` was used.
 * `tf.estimator`
   * Added option in `tf.estimator.CheckpointSaverHook` to not save the `GraphDef`.
   * Moving the checkpoint reader from swig to pybind11.
@@ -50,11 +50,13 @@ Because of [issues with building on windows](https://github.com/tensorflow/tenso
   * Fix the incorrect stateful behavior of Keras convolutional layers.
 * `tf.lite`
   * Legalization for `NMS` ops in TFLite.
-  * add `narrow_range` and `axis` to `quantize_v2` and `dequantize` ops. 
+  * add `narrow_range` and `axis` to `quantize_v2` and `dequantize` ops.
   * Added support for `FusedBatchNormV3` in converter.
   * Add an `errno`-like field to `NNAPI` delegate for detecting `NNAPI` errors for fallback behaviour.
   * Refactors `NNAPI` Delegate to support detailed reason why an operation is not accelerated.
   * Converts hardswish subgraphs into atomic ops.
+* `tf.debugging`
+  * * Add `tf.debugging.enable_check_numerics()` and `tf.debugging.disable_check_numerics()` to facilitate debugging of numeric instability (issues involving infinities and `NaN`s).
 * Other
   * Add `RaggedTensor.merge_dims()`.
   * Added new `uniform_row_length` row-partitioning tensor to `RaggedTensor`.
@@ -66,7 +68,7 @@ Because of [issues with building on windows](https://github.com/tensorflow/tenso
   * Add preliminary support for sparse CSR matrices.
   * Tensor equality with `None` now behaves as expected.
   * Make calls to `tf.function(f)()`, `tf.function(f).get_concrete_function` and `tf.function(f).get_initialization_function` thread-safe.
-  * Add `tf.debugging.enable_check_numerics()` and `tf.debugging.disable_check_numerics()` to facilitate debugging of numeric instability (`Infinity`s and `NaN`s) under eager mode and `tf.function`s.
+  (`Infinity`s and `NaN`s) under eager mode and `tf.function`s.
   * Extend `tf.identity` to work with CompositeTensors (such as SparseTensor)
   * Added more `dtypes` and zero-sized inputs to `Einsum` Op and improved its performance
   * Enable multi-worker `NCCL` `all-reduce` inside functions executing eagerly.
@@ -94,7 +96,7 @@ This release contains contributions from many people at Google, as well as:
 8bitmp3, Aaron Ma, AbdüLhamit Yilmaz, Abhai Kollara, aflc, Ag Ramesh, Albert Z. Guo, Alex Torres, amoitra, Andrii Prymostka, angeliand, Anshuman Tripathy, Anthony Barbier, Anton Kachatkou, Anubh-V, Anuja Jakhade, Artem Ryabov, autoih, Bairen Yi, Bas Aarts, Basit Ayantunde, Ben Barsdell, Bhavani Subramanian, Brett Koonce, candy.dc, Captain-Pool, caster, cathy, Chong Yan, Choong Yin Thong, Clayne Robison, Colle, Dan Ganea, David Norman, David Refaeli, dengziming, Diego Caballero, Divyanshu, djshen, Douman, Duncan Riach, EFanZh, Elena Zhelezina, Eric Schweitz, Evgenii Zheltonozhskii, Fei Hu, fo40225, Fred Reiss, Frederic Bastien, Fredrik Knutsson, fsx950223, fwcore, George Grzegorz Pawelczak, George Sterpu, Gian Marco Iodice, Giorgio Arena, giuros01, Gomathi Ramamurthy, Guozhong Zhuang, Haifeng Jin, Haoyu Wu, HarikrishnanBalagopal, HJYOO, Huang Chen-Yi, Ilham Firdausi Putra, Imran Salam, Jared Nielsen, Jason Zaman, Jasper Vicenti, Jeff Daily, Jeff Poznanovic, Jens Elofsson, Jerry Shih, jerryyin, Jesper Dramsch, jim.meyer, Jongwon Lee, Jun Wan, Junyuan Xie, Kaixi Hou, kamalkraj, Kan Chen, Karthik Muthuraman, Keiji Ariyama, Kevin Rose, Kevin Wang, Koan-Sin Tan, kstuedem, Kwabena W. Agyeman, Lakshay Tokas, latyas, Leslie-Fang-Intel, Li, Guizi, Luciano Resende, Lukas Folle, Lukas Geiger, Mahmoud Abuzaina, Manuel Freiberger, Mark Ryan, Martin Mlostek, Masaki Kozuki, Matthew Bentham, Matthew Denton, mbhuiyan, mdfaijul, Muhwan Kim, Nagy Mostafa, nammbash, Nathan Luehr, Nathan Wells, Niranjan Hasabnis, Oleksii Volkovskyi, Olivier Moindrot, olramde, Ouyang Jin, OverLordGoldDragon, Pallavi G, Paul Andrey, Paul Wais, pkanwar23, Pooya Davoodi, Prabindh Sundareson, Rajeshwar Reddy T, Ralovich, Kristof, Refraction-Ray, Richard Barnes, richardbrks, Robert Herbig, Romeo Kienzler, Ryan Mccormick, saishruthi, Saket Khandelwal, Sami Kama, Sana Damani, Satoshi Tanaka, Sergey Mironov, Sergii Khomenko, Shahid, Shawn Presser, ShengYang1, Siddhartha Bagaria, Simon Plovyt, skeydan, srinivasan.narayanamoorthy, Stephen Mugisha, sunway513, Takeshi Watanabe, Taylor Jakobson, TengLu, TheMindVirus, ThisIsIsaac, Tim Gates, Timothy Liu, Tomer Gafner, Trent Lo, Trevor Hickey, Trevor Morris, vcarpani, Wei Wang, Wen-Heng (Jack) Chung, wenshuai, Wenshuai-Xiaomi, wenxizhu, william, William D. Irons, Xinan Jiang, Yannic, Yasir Modak, Yasuhiro Matsumoto, Yong Tang, Yongfeng Gu, Youwei Song, Zaccharie Ramzi, Zhang, Zhenyu Guo, 王振华 (Zhenhua Wang), 韩董, 이중건 Isaac Lee
 
 # Release 1.15.0
-This is the last 1.x release for TensorFlow. We do not expect to update the 1.x branch with features, although we will issue patch releases to fix vulnerabilities for at least one year. 
+This is the last 1.x release for TensorFlow. We do not expect to update the 1.x branch with features, although we will issue patch releases to fix vulnerabilities for at least one year.
 
 ## Major Features and Improvements
 * As [announced](https://groups.google.com/a/tensorflow.org/forum/#!topic/developers/iRCt5m4qUz0), `tensorflow` pip package will by default include GPU support (same as `tensorflow-gpu` now) for the platforms we currently have GPU support (Linux and Windows). It will work on machines with and without Nvidia GPUs. `tensorflow-gpu` will still be available, and CPU-only packages can be downloaded at `tensorflow-cpu` for users who are concerned about package size.
@@ -104,7 +106,7 @@ This enables writing forward compatible code: by explicitly importing either `te
 * Add toggles `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()` for enabling/disabling v2 control flow.
 * Enable v2 control flow as part of `tf.enable_v2_behavior()` and `TF2_BEHAVIOR=1`.
 * AutoGraph translates Python control flow into TensorFlow expressions, allowing users to write regular Python inside `tf.function`-decorated functions. AutoGraph is also applied in functions used with `tf.data`, `tf.distribute` and `tf.keras` APIS.
-* Adds `enable_tensor_equality()`, which switches the behavior such that: 
+* Adds `enable_tensor_equality()`, which switches the behavior such that:
   * Tensors are no longer hashable.
   * Tensors can be compared with `==` and `!=`, yielding a Boolean Tensor with element-wise comparison results. This will be the default behavior in 2.0.
 
@@ -260,12 +262,12 @@ For information on upgrading your existing TensorFlow 1.x models, please refer t
   * TensorFlow 2.0.0 is built using devtoolset7 (GCC7) on Ubuntu 16. This may lead to ABI incompatibilities with extensions built against earlier versions of TensorFlow.
   * Tensorflow code now produces 2 different pip packages: tensorflow_core containing all the code (in the future it will contain only the private implementation) and tensorflow which is a virtual pip package doing forwarding to tensorflow_core (and in the future will contain only the public API of tensorflow). We don't expect this to be breaking, unless you were importing directly from the implementation.
   Removed the `freeze_graph` command line tool; `SavedModel` should be used in place of frozen graphs.
-  
+
 * `tf.contrib`:
   * `tf.contrib` has been deprecated, and functionality has been either migrated to the core TensorFlow API, to an ecosystem project such as [tensorflow/addons](https://www.github.com/tensorflow/addons) or [tensorflow/io](https://www.github.com/tensorflow/io), or removed entirely.
   * Remove `tf.contrib.timeseries` dependency on TF distributions.
   * Replace contrib references with `tf.estimator.experimental.*` for apis in `early_stopping.py`.
-  
+
 * `tf.estimator`:
   * Premade estimators in the tf.estimator.DNN/Linear/DNNLinearCombined family have been updated to use `tf.keras.optimizers` instead of the `tf.compat.v1.train.Optimizer`s. If you do not pass in an `optimizer=` arg or if you use a string, the premade estimator will use the Keras optimizer. This is checkpoint breaking, as the optimizers have separate variables. A checkpoint converter tool for converting optimizers is included with the release,  but if you want to avoid any change, switch to the v1 version of the estimator:  `tf.compat.v1.estimator.DNN/Linear/DNNLinearCombined*`.
   * Default aggregation for canned Estimators is now `SUM_OVER_BATCH_SIZE`. To maintain previous default behavior, please pass `SUM` as the loss aggregation method.
@@ -273,13 +275,13 @@ For information on upgrading your existing TensorFlow 1.x models, please refer t
   * `Estimator.export_savedmodel` has been renamed to `export_saved_model`.
   * When saving to SavedModel, Estimators will strip default op attributes. This is almost always the correct behavior, as it is more forwards compatible, but if you require that default attributes to be saved with the model, please use `tf.compat.v1.Estimator`.
   * Feature Columns have been upgraded to be more Eager-friendly and to work with Keras. As a result, `tf.feature_column.input_layer` has been deprecated in favor of `tf.keras.layers.DenseFeatures`. v1 feature columns have direct analogues in v2 except for `shared_embedding_columns`, which are not cross-compatible with v1 and v2. Use `tf.feature_column.shared_embeddings` instead.
-  
+
 * `tf.keras`:
   * `OMP_NUM_THREADS` is no longer used by the default Keras config.  To configure the number of threads, use `tf.config.threading` APIs.
   * `tf.keras.model.save_model` and `model.save` now defaults to saving a TensorFlow SavedModel. HDF5 files are still supported.
   * Deprecated `tf.keras.experimental.export_saved_model` and `tf.keras.experimental.function`. Please use `tf.keras.models.save_model(..., save_format='tf')` and `tf.keras.models.load_model` instead.
   * Layers now default to float32, and automatically cast their inputs to the layer's dtype. If you had a model that used float64, it will probably silently use float32 in TensorFlow 2, and a warning will be issued that starts with `Layer <layer-name>` is casting an input tensor from dtype float64 to the layer's dtype of float32. To fix, either set the default dtype to float64 with `tf.keras.backend.set_floatx('float64')`, or pass `dtype='float64'` to each of the Layer constructors. See `tf.keras.layers.Layer` for more information.
- 
+
 * `tf.lite`:
   * Removed `lite.OpHint`, `lite.experimental`, and `lite.constant` from 2.0 API.
 * Tensors are no longer hashable, but instead compare element-wise with `==` and `!=`. Use `tf.compat.v1.disable_tensor_equality()` to return to the previous behavior.
@@ -298,7 +300,7 @@ If you experience any snags when using TF 2.0, please let us know at the [TF 2.0
 
 * `tf.contrib`:
   * Expose `tf.contrib.proto.*` ops in `tf.io` (they will exist in TF2)
-  
+
 * `tf.data`:
   * Add support for TensorArrays to `tf.data Dataset`.
   * Integrate Ragged Tensors with `tf.data`.
@@ -341,13 +343,13 @@ If you experience any snags when using TF 2.0, please let us know at the [TF 2.0
   * Add support for passing list of lists to the `metrics` argument in Keras `compile`.
   * Add `tf.keras.layers.AbstractRNNCell` as the preferred implementation for RNN cells in TF v2. User can use it to implement RNN cells with custom behavior.
   * Keras training and validation curves are shown on the same plot when using the TensorBoard callback.
-  * Switched Keras `fit/evaluate/predict` execution to use only a single unified path by default unless eager execution has been explicitly disabled, regardless of input type. This unified path places an eager-friendly training step inside of a `tf.function`. With this 
+  * Switched Keras `fit/evaluate/predict` execution to use only a single unified path by default unless eager execution has been explicitly disabled, regardless of input type. This unified path places an eager-friendly training step inside of a `tf.function`. With this
    1.  All input types are converted to `Dataset`.
-   2. The path assumes there is always a distribution strategy. when distribution strategy is not specified the path uses a no-op distribution strategy. 
-   3. The training step is wrapped in `tf.function` unless `run_eagerly=True` is set in compile. The single path execution code does not yet support all use cases. We fallback to the existing v1 execution paths if your model contains the following: 
-     1. `sample_weight_mode` in compile 
-     2. `weighted_metrics` in compile 
-     3. v1 optimizer 
+   2. The path assumes there is always a distribution strategy. when distribution strategy is not specified the path uses a no-op distribution strategy.
+   3. The training step is wrapped in `tf.function` unless `run_eagerly=True` is set in compile. The single path execution code does not yet support all use cases. We fallback to the existing v1 execution paths if your model contains the following:
+     1. `sample_weight_mode` in compile
+     2. `weighted_metrics` in compile
+     3. v1 optimizer
      4. target tensors in compile
 If you are experiencing any issues because of this change, please inform us (file an issue) about your use case and you can unblock yourself by setting `experimental_run_tf_function=False` in compile meanwhile. We have seen couple of use cases where the model usage pattern is not as expected and would not work with this change.
    1. output tensors of one layer is used in the constructor of another.
@@ -363,25 +365,25 @@ If you are experiencing any issues because of this change, please inform us (fil
   * Updates binary cross entropy logic in Keras when input is probabilities. Instead of converting probabilities to logits, we are using the cross entropy formula for probabilities.
   * Added public APIs for `cumsum` and `cumprod` keras backend functions.
   * Add support for temporal sample weight mode in subclassed models.
-  * Raise `ValueError` if an integer is passed to the training APIs. 
+  * Raise `ValueError` if an integer is passed to the training APIs.
   * Added fault-tolerance support for training Keras model via `model.fit()` with `MultiWorkerMirroredStrategy`, tutorial available.
   * Custom Callback tutorial is now available.
   * To train with `tf.distribute`, Keras API is recommended over estimator.
   * `steps_per_epoch` and `steps` arguments are supported with numpy arrays.
-  * New error message when unexpected keys are used in sample_weight/class_weight dictionaries 
+  * New error message when unexpected keys are used in sample_weight/class_weight dictionaries
   * Losses are scaled in Keras compile/fit and not in the optimizers anymore. If you are using custom training loop, we have new utilities to help scale losses `tf.nn.compute_average_loss`, `tf.nn.scale_regularization_loss`.
   * `Layer` apply and add_variable APIs are deprecated.
   * Added support for channels first data format in cross entropy losses with logits and support for tensors with unknown ranks.
   * Error messages will be raised if `add_update`, `add_metric`, `add_loss`, activity regularizers are used inside of a control flow branch.
-  * New loss reduction types: 
-    1. `AUTO`: Indicates that the reduction option will be determined by the usage context. For almost all cases this defaults to `SUM_OVER_BATCH_SIZE`. When    used with `tf.distribute.Strategy`, outside of built-in training loops such as `tf.keras` `compile` and `fit`, we expect reduction value to be `SUM` or `NONE`. Using `AUTO` in that case will raise an error. 
-    2. `NONE`: Weighted losses with one dimension reduced (axis=-1, or axis specified by loss function). When this reduction type used with built-in Keras training loops like `fit`/`evaluate`, the unreduced vector loss is passed to the optimizer but the reported loss will be a scalar value. 
+  * New loss reduction types:
+    1. `AUTO`: Indicates that the reduction option will be determined by the usage context. For almost all cases this defaults to `SUM_OVER_BATCH_SIZE`. When    used with `tf.distribute.Strategy`, outside of built-in training loops such as `tf.keras` `compile` and `fit`, we expect reduction value to be `SUM` or `NONE`. Using `AUTO` in that case will raise an error.
+    2. `NONE`: Weighted losses with one dimension reduced (axis=-1, or axis specified by loss function). When this reduction type used with built-in Keras training loops like `fit`/`evaluate`, the unreduced vector loss is passed to the optimizer but the reported loss will be a scalar value.
     3. `SUM`: Scalar sum of weighted losses. 4. `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses. This reduction type is not supported when used with `tf.distribute.Strategy` outside of built-in training loops like `tf.keras` `compile`/`fit`.
   * Wraps losses passed to the `compile` API (strings and v1 losses) which are not instances of v2 `Loss` class in `LossWrapper` class. => All losses will now use `SUM_OVER_BATCH_SIZE` reduction as default.
   * `model.add_loss(symbolic_tensor)` should work in ambient eager.
-  * Update metric name to always reflect what the user has given in compile. Affects following cases 
-    1. When name is given as 'accuracy'/'crossentropy' 
-    2. When an aliased function name is used eg. 'mse' 
+  * Update metric name to always reflect what the user has given in compile. Affects following cases
+    1. When name is given as 'accuracy'/'crossentropy'
+    2. When an aliased function name is used eg. 'mse'
     3. Removing the `weighted` prefix from weighted metric names.
   * Allow non-Tensors through v2 losses.
   * Add v2 sparse categorical crossentropy metric.
@@ -526,7 +528,7 @@ If you are experiencing any issues because of this change, please inform us (fil
   * Add support for `add_metric` in the graph function mode.
   * Updating cosine similarity loss - removed the negate sign from cosine similarity.
   * Changed default for gradient accumulation for TPU embeddings to true.
-  * Adds summary trace API for collecting graph and profile information. 
+  * Adds summary trace API for collecting graph and profile information.
   * The `precision_mode` argument to `TrtGraphConverter` is now case insensitive.
 
 
@@ -1305,7 +1307,7 @@ Ag Ramesh, Alex Wiltschko, Alexander Pantyukhin, Amogh Mannekote, An Jiaoyang, A
   * [`tf.contrib.estimator.RNNEstimator`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/estimator/RNNClassifier)
 * The [distributions.Bijector](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/distributions/bijectors/Bijector)
   API supports broadcasting for Bijectors with new API changes.
-  
+
 ## Breaking Changes
   * If you're opening empty variable scopes; replace `variable_scope('', ...)` by
     `variable_scope(tf.get_variable_scope(), ...)`.
@@ -1784,7 +1786,7 @@ Samuel He, Sandeep Dcunha, sandipmgiri, Sang Han, scott, Scott Mudge, Se-Won Kim
 Simone Cirillo, Steffen Schmitz, Suvojit Manna, Sylvus, Taehoon Lee, Ted Chang, Thomas Deegan,
 Till Hoffmann, Tim, Toni Kunic, Toon Verstraelen, Tristan Rice, Urs KöSter, Utkarsh Upadhyay,
 Vish (Ishaya) Abrams, Winnie Tsang, Yan Chen, Yan Facai (颜发才), Yi Yang, Yong Tang,
-Youssef Hesham, Yuan (Terry) Tang, Zhengsheng Wei, zxcqwe4906, 张志豪, 田传武 
+Youssef Hesham, Yuan (Terry) Tang, Zhengsheng Wei, zxcqwe4906, 张志豪, 田传武
 
 We are also grateful to all who filed issues or helped resolve them, asked and
 answered questions, and were part of inspiring discussions.
