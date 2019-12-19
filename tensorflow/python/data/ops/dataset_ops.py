@@ -1172,7 +1172,6 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     [1, 0, 2]
     >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
     [1, 0, 2]
-    ```
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
