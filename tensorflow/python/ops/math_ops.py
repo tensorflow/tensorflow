@@ -338,6 +338,24 @@ def divide(x, y, name=None):
 @dispatch.add_dispatch_support
 def multiply(x, y, name=None):  # pylint: disable=missing-docstring
   # Do an is comparison here since this is cheaper than isinstance or __eq__
+  """Returns 'x' * 'y' element-wise.
+  
+  For example:
+  >>> tf.math.multiply(34.0, 32.0)
+  <tf.Tensor: shape=(), dtype=float32, numpy=1088.0>
+  
+  Args:
+    'x': A 'Tensor'. Must be one of the following types:
+        'bfloat16', 'half', 'float32', 'float64', 'uint8', 'int8', 'uint8', 'int16', 'int32', 'int64', 'complex64', 'complex128'.
+    'y': A 'Tensor'. Must have the same type as 'x'.
+    'name': A name for the operation (optional).
+    
+  Returns:
+    A 'Tensor'. Has the same type as 'x'. 
+    
+    """
+  
+  
   if y is 1:  # pylint: disable=literal-comparison
     return x
 
