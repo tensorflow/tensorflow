@@ -87,16 +87,8 @@ protected:
                                          llvm::IRBuilder<> &builder);
   static std::unique_ptr<llvm::Module> prepareLLVMModule(Operation *m);
 
-  // A helper to look up remapped operands in the value remapping table.
-  template <typename Range>
-  SmallVector<llvm::Value *, 8> lookupValues(Range &&values) {
-    SmallVector<llvm::Value *, 8> remapped;
-    remapped.reserve(llvm::size(values));
-    for (Value *v : values) {
-      remapped.push_back(valueMapping.lookup(v));
-    }
-    return remapped;
-  }
+  /// A helper to look up remapped operands in the value remapping table.
+  SmallVector<llvm::Value *, 8> lookupValues(ValueRange values);
 
 private:
   /// Check whether the module contains only supported ops directly in its body.
