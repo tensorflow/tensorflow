@@ -41345,6 +41345,20 @@ op {
       i: 0
     }
   }
+  attr {
+    name: "mode"
+    type: "string"
+    default_value {
+      s: "auto"
+    }
+  }
+  attr {
+    name: "snapshot_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "Softmax"
