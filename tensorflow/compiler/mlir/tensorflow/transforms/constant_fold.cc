@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/eval_util.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace mlir {
 namespace TF {
@@ -59,6 +60,10 @@ LogicalResult ConstantFoldFallbackHook(
     inputs.push_back(input.cast<ElementsAttr>());
   }
 
+  // Avoid overlapping folds with the same context.
+  // TODO(jpienaar): Avoid using global context & mutex here.
+  static auto* mu = new tensorflow::mutex();
+  tensorflow::mutex_lock l(*mu);
   return tensorflow::EvaluateOperation(inst, inputs, ctx, &results);
 }
 
