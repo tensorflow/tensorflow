@@ -1148,7 +1148,6 @@ class DataHandler(object):
 
   # TODO(omalleyt): Handle `validation_split` with separate utility.
   # TODO(omalleyt): Handle `validation_data` batch size when `x` is a gen.
-  # TODO(omalleyt): Handle `class_weight` in `DataAdapter`s.
   def __init__(self,
                x,
                y=None,
@@ -1158,6 +1157,7 @@ class DataHandler(object):
                initial_epoch=0,
                epochs=1,
                shuffle=False,
+               class_weight=None,
                max_queue_size=10,
                workers=1,
                use_multiprocessing=False):
@@ -1182,6 +1182,8 @@ class DataHandler(object):
 
     strategy = ds_context.get_strategy()
     dataset = self._train_adapter.get_dataset()
+    if class_weight:
+      dataset = dataset.map(_make_class_weight_map_fn(class_weight))
     self._train_dataset = strategy.experimental_distribute_dataset(dataset)
     self._steps_per_epoch = self._infer_steps(steps_per_epoch)
 
@@ -1252,3 +1254,55 @@ class DataHandler(object):
     if size >= 0:
       return size
     return None
+
+
+def _make_class_weight_map_fn(class_weight):
+  """Applies class weighting to a `Dataset`.
+
+  The `Dataset` is assumed to be in format `(x, y)` or `(x, y, sw)`, where
+  `y` must be a single `Tensor`.
+
+  Arguments:
+    class_weight: A map where the keys are integer class ids and values are
+      the class weights, e.g. `{0: 0.2, 1: 0.6, 2: 0.3}`
+
+  Returns:
+    A function that can be used with `tf.data.Dataset.map` to apply class
+    weighting.
+  """
+  class_ids = list(sorted(class_weight.keys()))
+  expected_class_ids = list(range(len(class_ids)))
+  if class_ids != expected_class_ids:
+    error_msg = (
+        "Expected `class_weight` to be a dict with keys from 0 to one less "
+        "than the number of classes, found {}").format(class_weight)
+    raise ValueError(error_msg)
+
+  class_weight_tensor = ops.convert_to_tensor(
+      [class_weight[c] for c in class_ids])
+
+  def _class_weights_map_fn(*data):
+    """Convert `class_weight` to `sample_weight`."""
+    if len(data) == 2:
+      x, y = data
+      sw = None
+    else:
+      x, y, sw = data
+
+    if nest.is_sequence(y):
+      raise ValueError(
+          "`class_weight` is only supported for `Model`s with a single output.")
+
+    cw = array_ops.gather_v2(class_weight_tensor, y)
+    if sw is not None:
+      cw = math_ops.cast(cw, sw.dtype)
+      if len(cw.shape.as_list()) > len(sw.shape.as_list()):
+        cw = array_ops.squeeze(cw)
+      # `class_weight` and `sample_weight` are multiplicative.
+      sw = sw * cw
+    else:
+      sw = cw
+
+    return x, y, sw
+
+  return _class_weights_map_fn

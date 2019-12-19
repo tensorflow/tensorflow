@@ -963,6 +963,77 @@ class DataHandlerTest(keras_parameterized.TestCase):
     self.assertEqual(returned_data, [[([0],), ([1],),
                                       ([2],)], [([0],), ([1],), ([2],)]])
 
+  def test_class_weight(self):
+    data_handler = data_adapter.DataHandler(
+        x=[[0], [1], [2]],
+        y=[[2], [1], [0]],
+        class_weight={
+            0: 0.5,
+            1: 1.,
+            2: 1.5
+        },
+        epochs=2,
+        steps_per_epoch=3)
+    returned_data = []
+    for _, iterator in data_handler.enumerate_epochs():
+      epoch_data = []
+      for _ in data_handler.steps():
+        epoch_data.append(next(iterator))
+      returned_data.append(epoch_data)
+    returned_data = self.evaluate(returned_data)
+    self.assertEqual(returned_data, [[([0], [2], [1.5]), ([1], [1], [1.]),
+                                      ([2], [0], [0.5])],
+                                     [([0], [2], [1.5]), ([1], [1], [1.]),
+                                      ([2], [0], [0.5])]])
+
+  def test_class_weight_and_sample_weight(self):
+    data_handler = data_adapter.DataHandler(
+        x=[[0], [1], [2]],
+        y=[[2], [1], [0]],
+        sample_weight=[[1.], [2.], [4.]],
+        class_weight={
+            0: 0.5,
+            1: 1.,
+            2: 1.5
+        },
+        epochs=2,
+        steps_per_epoch=3)
+    returned_data = []
+    for _, iterator in data_handler.enumerate_epochs():
+      epoch_data = []
+      for _ in data_handler.steps():
+        epoch_data.append(next(iterator))
+      returned_data.append(epoch_data)
+    returned_data = self.evaluate(returned_data)
+    self.assertEqual(returned_data, [[([0], [2], [1.5]), ([1], [1], [2.]),
+                                      ([2], [0], [2.])],
+                                     [([0], [2], [1.5]), ([1], [1], [2.]),
+                                      ([2], [0], [2.])]])
+
+  def test_class_weight_user_errors(self):
+    with self.assertRaisesRegexp(ValueError, 'to be a dict with keys'):
+      data_adapter.DataHandler(
+          x=[[0], [1], [2]],
+          y=[[2], [1], [0]],
+          batch_size=1,
+          sample_weight=[[1.], [2.], [4.]],
+          class_weight={
+              0: 0.5,
+              1: 1.,
+              3: 1.5  # Skips class `2`.
+          })
+
+    with self.assertRaisesRegexp(ValueError, 'with a single output'):
+      data_adapter.DataHandler(
+          x=np.ones((10, 1)),
+          y=[np.ones((10, 1)), np.zeros((10, 1))],
+          batch_size=2,
+          class_weight={
+              0: 0.5,
+              1: 1.,
+              2: 1.5
+          })
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
