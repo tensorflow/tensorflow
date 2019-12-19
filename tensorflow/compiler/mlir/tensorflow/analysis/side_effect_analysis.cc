@@ -413,7 +413,7 @@ void SideEffectAnalysis::AnalyzeRegion(
 
   // Returns whether an access to `resource` can skip control edges from
   // previous accesses to unknown resources, due to that earlier accesses to
-  // `resource` already indirectly tracked previous accesses to uknown
+  // `resource` already indirectly tracked previous accesses to unknown
   // resources. `read_only` specifies the type of access of the current op being
   // considered.
   auto unknown_access_indirectly_tracked_by_resource = [&](int64_t resource,

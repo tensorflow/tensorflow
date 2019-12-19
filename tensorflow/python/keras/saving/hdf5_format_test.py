@@ -632,7 +632,7 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       # out of proportion. Note that it fits into the internal HDF5
       # attribute memory limit on its own but because h5py converts
       # the list of layer names into numpy array, which uses the same
-      # amout of memory for every item, it increases the memory
+      # amount of memory for every item, it increases the memory
       # requirements substantially.
       x = keras.Input(shape=(2,), name='input_' + ('x' * (2**15)))
       f = x
@@ -1238,7 +1238,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
     self.assertEqual(44., self.evaluate(v))
 
   @test_util.run_in_graph_and_eager_modes
-  def test_nonexistant_prefix_directory(self):
+  def test_nonexistent_prefix_directory(self):
     m = keras.Model()
     v = m.add_weight(name='v', shape=[])
     self.evaluate(v.assign(42.))

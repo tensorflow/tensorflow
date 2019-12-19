@@ -166,7 +166,7 @@ class DocGeneratorVisitor(object):
     This function is meant to be used as the `key` to the `sorted` function.
 
     This sorting in order:
-      Prefers names refering to the defining class, over a subclass.
+      Prefers names referring to the defining class, over a subclass.
       Prefers names that are not in "contrib".
       prefers submodules to the root namespace.
       Prefers short names `tf.thing` over `tf.a.b.c.thing`

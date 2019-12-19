@@ -1195,7 +1195,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
 
 namespace {
 
-// Check if the LSTM projection is used. If yes, an additional weigth matrix
+// Check if the LSTM projection is used. If yes, an additional weight matrix
 // (projection matrix) will be fetched to the 'weights'. Otherwise, nothing will
 // be done.
 port::Status CheckAndFetchProjectionWeights(

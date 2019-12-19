@@ -72,7 +72,7 @@
 #   GIT_TAG_OVERRIDE:    Values for `--git_tag_override`. This flag gets passed
 #                        in as `--action_env` for bazel build and tests.
 #   TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES:
-#                        Additonal pip packages to be installed.
+#                        Additional pip packages to be installed.
 #                        Caveat: pip version needs to be checked prior.
 #
 # ==============================================================================

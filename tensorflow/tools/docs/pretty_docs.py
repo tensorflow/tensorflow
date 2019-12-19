@@ -18,7 +18,7 @@
 The adjacent `parser` module creates `PageInfo` objects, containing all data
 necessary to document an element of the TensorFlow API.
 
-This module contains one public function, which handels the conversion of these
+This module contains one public function, which handles the conversion of these
 `PageInfo` objects into a markdown string:
 
     md_page = build_md_page(page_info)

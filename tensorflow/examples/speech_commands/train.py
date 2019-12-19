@@ -398,7 +398,7 @@ if __name__ == '__main__':
       '--window_stride_ms',
       type=float,
       default=10.0,
-      help='How far to move in time between spectogram timeslices.',)
+      help='How far to move in time between spectrogram timeslices.',)
   parser.add_argument(
       '--feature_bin_count',
       type=int,
