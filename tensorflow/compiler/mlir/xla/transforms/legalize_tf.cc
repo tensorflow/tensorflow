@@ -737,6 +737,138 @@ class ConvertEinsumOp : public OpRewritePattern<TF::EinsumOp> {
   }
 };
 
+// Converts TensorFlow FusedBatchNormV3Op to either HLO BatchNormTrainingOp or
+// HLO BatchNormInferenceOp, depending on the value of the 'is_training'
+// parameter.
+class ConvertFusedBatchNormV3Op
+    : public OpRewritePattern<TF::FusedBatchNormV3Op> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::FusedBatchNormV3Op op,
+                                     PatternRewriter &rewriter) const override {
+    auto feature_dim =
+        getFeatureDimensionAttr(rewriter, op.data_formatAttr(), op.x());
+
+    auto input_type_tensor = op.x()->getType().dyn_cast<TensorType>();
+    auto input_element_type = input_type_tensor.getElementType();
+
+    auto scale_type_tensor = op.scale()->getType().dyn_cast<TensorType>();
+    auto scale_element_type = scale_type_tensor.getElementType();
+
+    // The TF FusedBatchNormV3 op supports mixed precision. If the input type
+    // differs, convert it to have the precision of the other types for the
+    // HLO op.
+    bool is_mixed_precision = false;
+    Value *bn_train_input;
+    TensorType bn_train_input_type_tensor;
+    Type bn_train_input_element_type;
+    if (input_element_type != scale_element_type) {
+      // TODO(b/69928690): Support mixed precision in the XLA batch
+      // normalization operators. As a workaround, create a new x with the same
+      // element type as scale (which may be more precise than the input type).
+      is_mixed_precision = true;
+      bn_train_input = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), op.x(),
+                                                           scale_element_type);
+      bn_train_input_type_tensor =
+          ChangeTensorElementType(&rewriter, input_type_tensor,
+                                  scale_element_type)
+              .dyn_cast<TensorType>();
+      bn_train_input_element_type = scale_element_type;
+    } else {
+      bn_train_input = op.x();
+      bn_train_input_type_tensor = input_type_tensor;
+      bn_train_input_element_type = input_element_type;
+    }
+
+    if (op.is_training()) {
+      // Training case.
+      auto operand_shape = bn_train_input_type_tensor.getShape();
+      // The mean and variance are each 1 dimensional arrays the size of the
+      // feature dimension, with the same element type as the operand (x).
+      // This shape must be constructed manually because the mean and variance
+      // inputs are empty in the training case.
+      Type mean_var_type = RankedTensorType::get(
+          {operand_shape[feature_dim.getInt()]}, bn_train_input_element_type);
+      // Op result type is a tuple of 3 values: output with same shape as input;
+      // batch_mean, and batch_var.
+      SmallVector<Type, 3> operand_types = {bn_train_input_type_tensor,
+                                            mean_var_type, mean_var_type};
+      Type result_type = TupleType::get(operand_types, rewriter.getContext());
+
+      auto bn_train_op = rewriter.create<xla_hlo::BatchNormTrainingOp>(
+          op.getLoc(), result_type, bn_train_input, op.scale(), op.offset(),
+          op.epsilon(), feature_dim.getValue());
+      // HLO op outputs a tuple of tensors. Extract those results.
+      auto bn_train_op_result = bn_train_op.getResult();
+      Value *y_out = rewriter.create<xla_hlo::GetTupleElementOp>(
+          op.getLoc(), bn_train_op_result, 0);
+      Value *batch_mean = rewriter.create<xla_hlo::GetTupleElementOp>(
+          op.getLoc(), bn_train_op_result, 1);
+      Value *batch_variance = rewriter.create<xla_hlo::GetTupleElementOp>(
+          op.getLoc(), bn_train_op_result, 2);
+
+      // Apply Bessel's correction on the variance.
+      int total_input_size = bn_train_input_type_tensor.getNumElements();
+      int total_scale_size = scale_type_tensor.getNumElements();
+      int sample_size = total_input_size / total_scale_size;
+      int sample_size_minus_one = std::max(1, sample_size - 1);
+      double factor = static_cast<double>(sample_size) /
+                      static_cast<double>(sample_size_minus_one);
+      auto factor_const_op = rewriter.create<xla_hlo::ConstOp>(
+          op.getLoc(), rewriter.getFloatAttr(scale_element_type, factor));
+
+      auto corrected_variance = rewriter.create<xla_hlo::MulOp>(
+          op.getLoc(), batch_variance->getType(), batch_variance,
+          factor_const_op, /*DenseIntElementsAttr=*/DenseIntElementsAttr());
+
+      if (is_mixed_precision) {
+        // Convert back to input type to stay aligned with expected output type
+        // for TF op.
+        y_out = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), y_out,
+                                                    input_element_type);
+      }
+
+      // TF FusedBatchNormV3 op expects 5 outputs. Outputs 3 and 4 are
+      // currently marked as "reserved spaces 1 and 2". They are used to
+      // pass the per-batch mean and variance to the gradiant. Here we
+      // maintain the same behavior by setting them to the mean and variance
+      // calculated by BatchNormTraining. Output 5 is unused; it doesn't
+      // matter what we pass there.
+      rewriter.replaceOp(op, {y_out, /*batch_mean=*/batch_mean,
+                              /*batch_variance=*/corrected_variance,
+                              /*reserve_space_1=*/batch_mean,
+                              /*reserve_space_2=*/corrected_variance,
+                              /*reserve_space_3=*/op.x()});
+    } else {  // Inference case.
+      auto bn_train_op = rewriter.create<BatchNormInferenceOp>(
+          op.getLoc(),
+          /*result_type=*/bn_train_input_type_tensor, bn_train_input,
+          op.scale(), op.offset(), op.mean(), op.variance(), op.epsilon(),
+          feature_dim.getValue());
+
+      Value *y_out;
+      if (is_mixed_precision) {
+        // Convert back to input type to stay aligned with expected output type
+        // for TF op.
+        y_out = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), bn_train_op,
+                                                    input_element_type);
+      } else {
+        y_out = bn_train_op;
+      }
+
+      // The mean, variance, and reserved space outputs of the batch norm op are
+      // not used for inference. It doesn't matter what values we provide for
+      // the last 5 results.
+      rewriter.replaceOp(
+          op, {/*y=*/y_out, /*batch_mean=*/op.x(),
+               /*batch_variance=*/op.x(), /*reserve_space_1=*/op.x(),
+               /*reserve_space_2=*/op.x(), /*reserve_space_3=*/op.x()});
+    }
+    return Pattern::matchSuccess();
+  }
+};
+
 // Converts MaxPool op to HLO ReduceWindow op by setting appropriate window
 // dimensions with max as the reduction function.
 //
@@ -2442,8 +2574,10 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
   // here for lowering to HLO.
   TF::PopulateLoweringTFPatterns(context, &patterns);
   patterns.insert<
-      ConvertArgMaxOp, ConvertBF16FloorDivOp, ConvertConv2D, ConvertEinsumOp,
-      ConvertMaxPoolOp, ConvertRangeOp, ConvertSigmoidOp, ConvertSizeOp,
+      ConvertArgMaxOp, ConvertBF16FloorDivOp, ConvertConv2D,
+      ConvertFusedBatchNormV3Op, ConvertEinsumOp, ConvertMaxPoolOp,
+      ConvertRangeOp, ConvertSigmoidOp, ConvertSizeOp, ConvertMaxPoolOp,
+      ConvertRangeOp, ConvertSigmoidOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertTopKV2Op,

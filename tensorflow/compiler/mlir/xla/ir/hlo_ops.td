@@ -622,8 +622,8 @@ def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect]>,
   let results = (outs HLO_Tuple);
 }
 
-def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference", [NoSideEffect]>,
-    BASE_HLO_BatchNormInferenceOp {
+def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference",
+    [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_BatchNormInferenceOp {
 
   let arguments = (ins
     HLO_Tensor:$operand,
