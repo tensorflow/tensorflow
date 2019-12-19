@@ -2451,7 +2451,14 @@ def pybind_extension(
         name = so_file,
         srcs = srcs + hdrs,
         data = data,
-        copts = copts + ["-fexceptions"],
+        copts = copts + [
+            "-fexceptions",
+        ] + select({
+            clean_dep("//tensorflow:windows"): [],
+            "//conditions:default": [
+                "-fvisibility=hidden",
+            ],
+        }),
         linkopts = linkopts + _rpath_linkopts(name) + select({
             "@local_config_cuda//cuda:darwin": [
                 "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
