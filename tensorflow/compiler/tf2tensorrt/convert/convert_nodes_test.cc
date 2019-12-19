@@ -3856,7 +3856,7 @@ TEST_F(OpConverterTest, ConvertConv2D) {
   };
 
   // Ok.
-  const int kConv2DOKCases = 7;
+  const int kConv2DOKCases = 9;
   TestParams ok_params[kConv2DOKCases] = {
       // Basic
       TestParams{/*input_dims=*/{1, 2, 3},
@@ -3978,8 +3978,10 @@ TEST_F(OpConverterTest, ConvertConv2D) {
     AddTestWeights<float>("weights", ok_params[i].filter_dims,
                           ok_params[i].filter);
     if (ok_params[i].is_conv2d_backprop_input) {
-      AddTestWeights<float>("input_sizes", ok_params[i].expected_output_dims,
-                            ok_params[i].expected_output);
+      std::vector<int> tf_input_sizes = ok_params[i].expected_output_dims;
+      tf_input_sizes.insert(tf_input_sizes.begin(), 1);  // Add batch dimension.
+      QCHECK_EQ(4, tf_input_sizes.size());
+      AddTestWeights<int>("input_sizes", {4}, tf_input_sizes);
     }
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
