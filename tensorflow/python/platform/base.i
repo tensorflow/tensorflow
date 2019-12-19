@@ -23,7 +23,6 @@ limitations under the License.
   #include "tensorflow/c/tf_datatype.h"
   #include "tensorflow/python/lib/core/py_exception_registry.h"
 
-  using tensorflow::int64;
   using tensorflow::uint64;
   using tensorflow::string;
 
